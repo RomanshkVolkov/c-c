@@ -1,8 +1,8 @@
-version: '3.8'
+version: "3.8"
 
 services:
   swarm-manage:
-    image: ghcr.io/guz-studio/cac/swarm-manage:latest
+    image: ghcr.io/romanshkvolkov/c-c/swarm-manage:latest
     ports:
       - "9090:9090"
     volumes:
