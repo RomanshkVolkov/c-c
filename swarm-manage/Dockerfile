@@ -11,3 +11,5 @@ WORKDIR /app
 COPY --from=builder /app/swarm-manage .
 EXPOSE 9090
 ENTRYPOINT ["./swarm-manage"]
+
+# example for filter changes
