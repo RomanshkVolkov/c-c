@@ -1,0 +1,20 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "./tmp/swarm-manage"
+  cmd = "go build -o ./tmp/swarm-manage ./cmd"
+  delay = 1000
+  exclude_dir = ["tmp", "vendor"]
+  include_ext = ["go"]
+  log = "build-errors.log"
+  stop_on_error = false
+
+[color]
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[screen]
+  clear_on_rebuild = false
