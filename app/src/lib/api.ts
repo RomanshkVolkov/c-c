@@ -1,7 +1,7 @@
 import type { APIResponse, AuthRefreshResponse } from "@/types/auth";
 import { useAuthStore } from "@/store/auth.store";
 
-const BASE_URL = "http://localhost:8080";
+const BASE_URL = import.meta.env.VITE_API_URL ?? "https://cac.guz-studio.dev";
 
 type RequestOptions = RequestInit & { auth?: boolean };
 
