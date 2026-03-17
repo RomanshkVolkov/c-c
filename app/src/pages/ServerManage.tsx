@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Terminal, X } from "lucide-react";
+import { ArrowLeft, RefreshCw, Terminal, X, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,14 +43,20 @@ function LogsPanel({ service, host, agentPort, onClose }: {
   onClose: () => void;
 }) {
   const [logs, setLogs] = useState<string[]>([]);
+  const [status, setStatus] = useState<"connecting" | "connected" | "reconnecting" | "error">("connecting");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLogs([]);
+    setStatus("connecting");
     const url = `http://${host}:${agentPort}/api/v1/services/${service.id}/logs`;
     const es = new EventSource(url);
+    let errorCount = 0;
+
+    es.onopen = () => { setStatus("connected"); errorCount = 0; };
 
     es.onmessage = (e) => {
+      errorCount = 0;
       setLogs((prev) => {
         const next = [...prev, e.data];
         return next.length > 500 ? next.slice(next.length - 500) : next;
@@ -58,8 +64,13 @@ function LogsPanel({ service, host, agentPort, onClose }: {
     };
 
     es.onerror = () => {
-      setLogs((prev) => [...prev, "[connection closed]"]);
-      es.close();
+      errorCount++;
+      if (errorCount >= 3) {
+        setStatus("error");
+        es.close();
+      } else {
+        setStatus("reconnecting");
+      }
     };
 
     return () => es.close();
@@ -81,6 +92,13 @@ function LogsPanel({ service, host, agentPort, onClose }: {
         </Button>
       </CardHeader>
       <CardContent>
+        <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+          <span className={`h-2 w-2 rounded-full ${status === "connected" ? "bg-green-500" : status === "error" ? "bg-destructive" : "bg-yellow-500 animate-pulse"}`} />
+          {status === "connecting" && "Connecting..."}
+          {status === "connected" && "Streaming"}
+          {status === "reconnecting" && "Reconnecting..."}
+          {status === "error" && "Connection failed — agent may be unreachable or endpoint not available"}
+        </div>
         <div className="bg-black rounded-md p-3 h-72 overflow-y-auto font-mono text-xs text-green-400">
           {logs.length === 0 ? (
             <span className="text-muted-foreground">Waiting for logs...</span>
@@ -96,8 +114,10 @@ function LogsPanel({ service, host, agentPort, onClose }: {
   );
 }
 
-function ServicesTab({ services, onLogsClick }: {
+function ServicesTab({ services, host, agentPort, onLogsClick }: {
   services: SwarmService[];
+  host: string;
+  agentPort: number;
   onLogsClick: (svc: SwarmService) => void;
 }) {
   if (services.length === 0) {
@@ -131,10 +151,20 @@ function ServicesTab({ services, onLogsClick }: {
             <TableCell className="text-xs text-muted-foreground">
               {new Date(svc.updatedAt).toLocaleString()}
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="text-right space-x-1">
               <Button variant="ghost" size="sm" onClick={() => onLogsClick(svc)}>
                 <Terminal className="h-3 w-3 mr-1" />
                 Logs
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  fetch(`http://${host}:${agentPort}/api/v1/services/${svc.id}/force-update`, { method: "POST" })
+                }
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Restart
               </Button>
             </TableCell>
           </TableRow>
@@ -259,6 +289,8 @@ export default function ServerManage() {
             ) : tab === "services" ? (
               <ServicesTab
                 services={services}
+                host={server.host}
+                agentPort={server.agentPort}
                 onLogsClick={(svc) =>
                   setSelectedService((prev) => (prev?.id === svc.id ? null : svc))
                 }

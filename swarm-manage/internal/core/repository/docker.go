@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -118,4 +119,43 @@ func (c *DockerClient) ListNodes(ctx context.Context) ([]DockerNode, error) {
 	var nodes []DockerNode
 	err := c.get(ctx, "/v1.41/nodes", &nodes)
 	return nodes, err
+}
+
+func (c *DockerClient) ForceUpdateService(ctx context.Context, serviceID string) error {
+	var svc map[string]interface{}
+	if err := c.get(ctx, fmt.Sprintf("/v1.41/services/%s", serviceID), &svc); err != nil {
+		return err
+	}
+
+	meta, _ := svc["Version"].(map[string]interface{})
+	version, _ := meta["Index"].(float64)
+
+	spec, _ := svc["Spec"].(map[string]interface{})
+	taskTemplate, _ := spec["TaskTemplate"].(map[string]interface{})
+	forceUpdate, _ := taskTemplate["ForceUpdate"].(float64)
+	taskTemplate["ForceUpdate"] = forceUpdate + 1
+	spec["TaskTemplate"] = taskTemplate
+
+	body, err := json.Marshal(spec)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("http://localhost/v1.41/services/%s/update?version=%d", serviceID, int(version)),
+		bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("docker API error: %s", resp.Status)
+	}
+	return nil
 }

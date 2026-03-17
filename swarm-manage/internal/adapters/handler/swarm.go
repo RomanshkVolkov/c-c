@@ -57,6 +57,15 @@ func (h *SwarmHandler) StreamServiceLogs(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+func (h *SwarmHandler) ForceUpdateService(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := h.svc.ForceUpdateService(r.Context(), id); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok(w, map[string]string{"message": "service update triggered"})
+}
+
 func (h *SwarmHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	nodes, err := h.svc.ListNodes(r.Context())
 	if err != nil {

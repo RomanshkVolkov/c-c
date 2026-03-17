@@ -118,6 +118,10 @@ func (s *SwarmService) StreamServiceLogs(ctx context.Context, serviceID string, 
 	}
 }
 
+func (s *SwarmService) ForceUpdateService(ctx context.Context, serviceID string) error {
+	return s.docker.ForceUpdateService(ctx, serviceID)
+}
+
 func (s *SwarmService) ListNodes(ctx context.Context) ([]domain.Node, error) {
 	raw, err := s.docker.ListNodes(ctx)
 	if err != nil {
