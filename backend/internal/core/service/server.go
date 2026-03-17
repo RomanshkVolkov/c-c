@@ -125,6 +125,43 @@ func (s *ServerService) DeployAgent(id string) error {
 	return s.repo.UpdateStatus(id, "online")
 }
 
+const agentImage = "ghcr.io/romanshkvolkov/c-c/swarm-manage:latest"
+
+// UpdateAgent SSHes into the server and pulls the latest swarm-manage image.
+func (s *ServerService) UpdateAgent(id string) error {
+	server, err := s.repo.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("server not found: %w", err)
+	}
+
+	privateKey, err := repository.GetSSHKey(id)
+	if err != nil {
+		return fmt.Errorf("SSH key not found in keychain: %w", err)
+	}
+
+	signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+	if err != nil {
+		return fmt.Errorf("invalid SSH private key: %w", err)
+	}
+
+	config := &ssh.ClientConfig{
+		User:            server.SSHUser,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         15 * time.Second,
+	}
+
+	addr := net.JoinHostPort(server.Host, fmt.Sprintf("%d", server.SSHPort))
+	client, err := ssh.Dial("tcp", addr, config)
+	if err != nil {
+		return fmt.Errorf("SSH connection failed: %w", err)
+	}
+	defer client.Close()
+
+	cmd := fmt.Sprintf("docker service update --image %s cac_swarm-manage", agentImage)
+	return runSSH(client, cmd)
+}
+
 func runSSH(client *ssh.Client, cmd string) error {
 	session, err := client.NewSession()
 	if err != nil {

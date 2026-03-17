@@ -20,5 +20,6 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Post("/", h.CreateServer)
 		r.Delete("/{id}", h.DeleteServer)
 		r.Post("/{id}/deploy-agent", h.DeployAgent)
+		r.Post("/{id}/update-agent", h.UpdateAgent)
 	})
 }

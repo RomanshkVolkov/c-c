@@ -1,4 +1,4 @@
-import { Activity, LogOut, Network, Server, User } from "lucide-react";
+import { Activity, LogOut, Network, RefreshCw, Server, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { session, logout } = useAuth();
-  const { servers, loading, createServer, deployAgent } = useServers();
+  const { servers, loading, createServer, deployAgent, updateAgent } = useServers();
 
   const handleLogout = () => { logout(); navigate("/login"); };
   const initials = session?.username?.slice(0, 2).toUpperCase() ?? "??";
@@ -156,6 +156,16 @@ export default function Dashboard() {
                             onClick={() => deployAgent(server.id)}
                           >
                             {server.status === "error" ? "Retry Deploy" : "Deploy Agent"}
+                          </Button>
+                        )}
+                        {server.status === "online" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => updateAgent(server.id)}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Update
                           </Button>
                         )}
                         <Button

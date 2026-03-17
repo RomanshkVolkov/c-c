@@ -14,6 +14,7 @@ type ServerHandler interface {
 	CreateServer(w http.ResponseWriter, r *http.Request)
 	DeleteServer(w http.ResponseWriter, r *http.Request)
 	DeployAgent(w http.ResponseWriter, r *http.Request)
+	UpdateAgent(w http.ResponseWriter, r *http.Request)
 }
 
 type serverHandler struct {
@@ -56,6 +57,16 @@ func (h *serverHandler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Server deleted"})
+}
+
+func (h *serverHandler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := h.svc.UpdateAgent(id); err != nil {
+		log.Printf("[UpdateAgent] error for server %s: %v", id, err)
+		SendErrorResponse(w, http.StatusInternalServerError, "Update failed", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Agent updated successfully"})
 }
 
 func (h *serverHandler) DeployAgent(w http.ResponseWriter, r *http.Request) {

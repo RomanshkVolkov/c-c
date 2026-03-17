@@ -37,5 +37,10 @@ export function useServers() {
     await fetch();
   };
 
-  return { servers, loading, createServer, deleteServer, deployAgent, refresh: fetch };
+  const updateAgent = async (id: string) => {
+    const res = await api.post<APIResponse<unknown>>(`/api/v1/servers/${id}/update-agent`, {}, true);
+    if (!res.success) throw new Error(res.error ?? "Update failed");
+  };
+
+  return { servers, loading, createServer, deleteServer, deployAgent, updateAgent, refresh: fetch };
 }

@@ -26,7 +26,7 @@ func InitRoutes() *chi.Mux {
 		fmt.Fprint(w, `{"status":"healthy","agent":"swarm-manage"}`)
 	})
 
-	r.Route("/api/v1", func(r chi.Router) {
+r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/stacks", h.ListStacks)
 		r.Get("/stacks/{stack}/services", h.ListServices)
 		r.Get("/services", h.ListServices)
