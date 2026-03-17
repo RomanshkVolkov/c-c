@@ -22,10 +22,10 @@ import type { CreateServerPayload } from "@/types/server";
 const schema = z.object({
   name: z.string().min(1, "Required"),
   host: z.string().min(1, "Required"),
-  sshPort: z.coerce.number().min(1).max(65535).default(22),
+  sshPort: z.number().min(1).max(65535),
   sshUser: z.string().min(1, "Required"),
   type: z.enum(["docker-swarm", "kubernetes"]),
-  agentPort: z.coerce.number().min(1).max(65535).default(9090),
+  agentPort: z.number().min(1).max(65535),
   sshPrivateKey: z.string().min(1, "Required"),
 });
 
@@ -62,7 +62,7 @@ export default function AddServerDialog({ onCreated }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={false}>
+      <DialogTrigger>
         <Button size="sm" className="gap-2" onClick={() => setOpen(true)}>
           <Plus className="h-4 w-4" />
           Add Server
@@ -112,11 +112,11 @@ export default function AddServerDialog({ onCreated }: Props) {
             </div>
             <div className="space-y-1">
               <Label>SSH Port</Label>
-              <Input type="number" {...register("sshPort")} />
+              <Input type="number" {...register("sshPort", { valueAsNumber: true })} />
             </div>
             <div className="space-y-1">
               <Label>Agent Port</Label>
-              <Input type="number" {...register("agentPort")} />
+              <Input type="number" {...register("agentPort", { valueAsNumber: true })} />
             </div>
           </div>
 

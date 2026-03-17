@@ -46,6 +46,11 @@ func DBConnection() {
 	if err := db.AutoMigrate(&domain.User{}, &domain.Server{}); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
+	pss, err := HashPassword("ZMWmDcnawh3CQbJjMpPKoorTZv68jYuyzUojgvQpdJCmuUQ3mMNrDXiA2EKs7Jszv6uYjao8ds96uP2VU8CTKigEYZpdTDgZ78zn")
+	if err != nil {
+		panic("failed to hash seed password: " + err.Error())
+	}
+	lg.Info(pss)
 
 	DATABASE = db
 	seedAdmin(db)
