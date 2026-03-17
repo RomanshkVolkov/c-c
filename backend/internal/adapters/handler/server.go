@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -60,6 +61,7 @@ func (h *serverHandler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 func (h *serverHandler) DeployAgent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.svc.DeployAgent(id); err != nil {
+		log.Printf("[DeployAgent] error for server %s: %v", id, err)
 		SendErrorResponse(w, http.StatusInternalServerError, "Deploy failed", err.Error())
 		return
 	}

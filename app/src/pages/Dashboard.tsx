@@ -149,16 +149,22 @@ export default function Dashboard() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right space-x-1">
-                        {server.status === "pending" && (
+                        {(server.status === "pending" || server.status === "error") && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => deployAgent(server.id)}
                           >
-                            Deploy Agent
+                            {server.status === "error" ? "Retry Deploy" : "Deploy Agent"}
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm">Manage</Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/servers/${server.id}`, { state: server })}
+                        >
+                          Manage
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -110,9 +110,9 @@ func (s *ServerService) DeployAgent(id string) error {
 
 	composeContent := fmt.Sprintf(swarmManageCompose, server.AgentPort, server.AgentPort)
 	commands := []string{
-		"mkdir -p /opt/cac",
-		fmt.Sprintf("cat > /opt/cac/swarm-manage.yml << 'EOF'\n%sEOF", composeContent),
-		"docker stack deploy -c /opt/cac/swarm-manage.yml cac",
+		fmt.Sprintf("cat > /tmp/swarm-manage.yml << 'EOF'\n%sEOF", composeContent),
+		"docker stack deploy -c /tmp/swarm-manage.yml cac",
+		"rm -f /tmp/swarm-manage.yml",
 	}
 
 	for _, cmd := range commands {

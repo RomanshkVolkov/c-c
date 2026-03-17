@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -12,7 +13,8 @@ import (
 const socketPath = "/var/run/docker.sock"
 
 type DockerClient struct {
-	http *http.Client
+	http       *http.Client // normal, with timeout
+	httpStream *http.Client // no timeout, for log streaming
 }
 
 func NewDockerClient() *DockerClient {
@@ -22,7 +24,8 @@ func NewDockerClient() *DockerClient {
 		},
 	}
 	return &DockerClient{
-		http: &http.Client{Transport: transport, Timeout: 30 * time.Second},
+		http:       &http.Client{Transport: transport, Timeout: 30 * time.Second},
+		httpStream: &http.Client{Transport: transport, Timeout: 0},
 	}
 }
 
@@ -86,6 +89,23 @@ type DockerNode struct {
 	Status struct {
 		State string `json:"State"`
 	} `json:"Status"`
+}
+
+func (c *DockerClient) StreamServiceLogs(ctx context.Context, serviceID string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("http://localhost/v1.41/services/%s/logs?stdout=1&stderr=1&follow=1&tail=100", serviceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpStream.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("docker API error: %s", resp.Status)
+	}
+	return resp.Body, nil
 }
 
 func (c *DockerClient) ListServices(ctx context.Context) ([]DockerService, error) {

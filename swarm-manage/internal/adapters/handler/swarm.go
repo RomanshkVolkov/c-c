@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,28 @@ func (h *SwarmHandler) ListServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ok(w, services)
+}
+
+func (h *SwarmHandler) StreamServiceLogs(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		fail(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	if err := h.svc.StreamServiceLogs(r.Context(), id, w, flusher.Flush); err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+	}
 }
 
 func (h *SwarmHandler) ListNodes(w http.ResponseWriter, r *http.Request) {

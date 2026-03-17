@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/binary"
+	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -79,6 +82,40 @@ func (s *SwarmService) ListServices(ctx context.Context, stack string) ([]domain
 		})
 	}
 	return result, nil
+}
+
+func (s *SwarmService) StreamServiceLogs(ctx context.Context, serviceID string, w io.Writer, flush func()) error {
+	body, err := s.docker.StreamServiceLogs(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+	defer body.Close()
+
+	hdr := make([]byte, 8)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+		if _, err := io.ReadFull(body, hdr); err != nil {
+			return nil // client disconnected or stream ended
+		}
+		size := binary.BigEndian.Uint32(hdr[4:8])
+		if size == 0 {
+			continue
+		}
+		frame := make([]byte, size)
+		if _, err := io.ReadFull(body, frame); err != nil {
+			return nil
+		}
+		line := strings.TrimRight(string(frame), "\r\n")
+		if line == "" {
+			continue
+		}
+		fmt.Fprintf(w, "data: %s\n\n", line)
+		flush()
+	}
 }
 
 func (s *SwarmService) ListNodes(ctx context.Context) ([]domain.Node, error) {

@@ -31,6 +31,7 @@ func InitRoutes() *chi.Mux {
 		r.Get("/stacks/{stack}/services", h.ListServices)
 		r.Get("/services", h.ListServices)
 		r.Get("/nodes", h.ListNodes)
+		r.Get("/services/{id}/logs", h.StreamServiceLogs)
 	})
 
 	return r
