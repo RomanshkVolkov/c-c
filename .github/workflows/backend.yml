@@ -1,0 +1,72 @@
+name: backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ghcr.io/romanshkvolkov/c-c/backend:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-push
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy k8s manifests to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "backend/k8s/2-deployment.yaml,backend/k8s/3-service.yaml,backend/k8s/4-http-route.yaml"
+          target: "/tmp/cac-k8s"
+          strip_components: 2
+
+      - name: Apply secrets and deploy
+        uses: appleboy/ssh-action@v1
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET_ACCESS: ${{ secrets.JWT_SECRET_ACCESS }}
+          JWT_SECRET_REFRESH: ${{ secrets.JWT_SECRET_REFRESH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH
+          script: |
+            kubectl create secret generic cac-secret \
+              --from-literal=DATABASE_URL="$DATABASE_URL" \
+              --from-literal=JWT_SECRET_ACCESS="$JWT_SECRET_ACCESS" \
+              --from-literal=JWT_SECRET_REFRESH="$JWT_SECRET_REFRESH" \
+              --dry-run=client -o yaml | kubectl apply -f -
+
+            kubectl apply -f /tmp/cac-k8s/
+            kubectl rollout status deployment/cac-service --timeout=120s
+            rm -rf /tmp/cac-k8s

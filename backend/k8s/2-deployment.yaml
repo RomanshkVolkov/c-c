@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cac-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cac-service
+  template:
+    metadata:
+      labels:
+        app: cac-service
+    spec:
+      containers:
+        - name: cac-service-api
+          image: ghcr.io/romanshkvolkov/c-c/backend:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: cac-secret
