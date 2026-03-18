@@ -1,50 +1,73 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import AnsiToHtml from "ansi-to-html";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, RefreshCw, Terminal, X, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Card, CardContent, CardHeader, CardTitle,
-} from "@/components/ui/card";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import type { Server } from "@/types/server";
 import type { SwarmService, SwarmNode } from "@/types/swarm";
 import { useSwarm } from "@/hooks/use-swarm";
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
-  online: "default",
-  offline: "destructive",
-  pending: "secondary",
-  error: "destructive",
-};
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> =
+  {
+    online: "default",
+    offline: "destructive",
+    pending: "secondary",
+    error: "destructive",
+  };
 
 function ReplicasBadge({ replicas }: { replicas: SwarmService["replicas"] }) {
   const { running, desired } = replicas;
   const color =
-    running === 0 ? "text-destructive" :
-    running < desired ? "text-yellow-500" :
-    "text-green-500";
-  return <span className={`font-mono text-sm font-medium ${color}`}>{running}/{desired}</span>;
+    running === 0
+      ? "text-destructive"
+      : running < desired
+        ? "text-yellow-500"
+        : "text-green-500";
+  return (
+    <span className={`font-mono text-sm font-medium ${color}`}>
+      {running}/{desired}
+    </span>
+  );
 }
 
-function ServiceStatusBadge({ replicas }: { replicas: SwarmService["replicas"] }) {
+function ServiceStatusBadge({
+  replicas,
+}: {
+  replicas: SwarmService["replicas"];
+}) {
   const { running, desired } = replicas;
   if (running === 0) return <Badge variant="destructive">down</Badge>;
   if (running < desired) return <Badge variant="secondary">degraded</Badge>;
   return <Badge variant="default">healthy</Badge>;
 }
 
-function LogsPanel({ service, host, agentPort, onClose }: {
+function LogsPanel({
+  service,
+  host,
+  agentPort,
+  onClose,
+}: {
   service: SwarmService;
   host: string;
   agentPort: number;
   onClose: () => void;
 }) {
   const [logs, setLogs] = useState<string[]>([]);
-  const [status, setStatus] = useState<"connecting" | "connected" | "reconnecting" | "error">("connecting");
+  const [status, setStatus] = useState<
+    "connecting" | "connected" | "reconnecting" | "error"
+  >("connecting");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const converter = useMemo(() => new AnsiToHtml({ escapeXML: true }), []);
 
   useEffect(() => {
     setLogs([]);
@@ -53,7 +76,10 @@ function LogsPanel({ service, host, agentPort, onClose }: {
     const es = new EventSource(url);
     let errorCount = 0;
 
-    es.onopen = () => { setStatus("connected"); errorCount = 0; };
+    es.onopen = () => {
+      setStatus("connected");
+      errorCount = 0;
+    };
 
     es.onmessage = (e) => {
       errorCount = 0;
@@ -93,18 +119,24 @@ function LogsPanel({ service, host, agentPort, onClose }: {
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
-          <span className={`h-2 w-2 rounded-full ${status === "connected" ? "bg-green-500" : status === "error" ? "bg-destructive" : "bg-yellow-500 animate-pulse"}`} />
+          <span
+            className={`h-2 w-2 rounded-full ${status === "connected" ? "bg-green-500" : status === "error" ? "bg-destructive" : "bg-yellow-500 animate-pulse"}`}
+          />
           {status === "connecting" && "Connecting..."}
           {status === "connected" && "Streaming"}
           {status === "reconnecting" && "Reconnecting..."}
-          {status === "error" && "Connection failed — agent may be unreachable or endpoint not available"}
+          {status === "error" &&
+            "Connection failed — agent may be unreachable or endpoint not available"}
         </div>
-        <div className="bg-black rounded-md p-3 h-72 overflow-y-auto font-mono text-xs text-green-400">
+        <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 h-72 overflow-y-auto font-mono text-sm text-green-400">
           {logs.length === 0 ? (
             <span className="text-muted-foreground">Waiting for logs...</span>
           ) : (
             logs.map((line, i) => (
-              <div key={i}>{line}</div>
+              <div
+                key={i}
+                dangerouslySetInnerHTML={{ __html: converter.toHtml(line) }}
+              />
             ))
           )}
           <div ref={bottomRef} />
@@ -114,14 +146,23 @@ function LogsPanel({ service, host, agentPort, onClose }: {
   );
 }
 
-function ServicesTab({ services, host, agentPort, onLogsClick }: {
+function ServicesTab({
+  services,
+  host,
+  agentPort,
+  onLogsClick,
+}: {
   services: SwarmService[];
   host: string;
   agentPort: number;
   onLogsClick: (svc: SwarmService) => void;
 }) {
   if (services.length === 0) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">No services found.</p>;
+    return (
+      <p className="text-sm text-muted-foreground py-8 text-center">
+        No services found.
+      </p>
+    );
   }
   return (
     <Table>
@@ -144,15 +185,27 @@ function ServicesTab({ services, host, agentPort, onLogsClick }: {
               {svc.image}
             </TableCell>
             <TableCell>
-              {svc.stack ? <Badge variant="secondary">{svc.stack}</Badge> : <span className="text-muted-foreground text-xs">—</span>}
+              {svc.stack ? (
+                <Badge variant="secondary">{svc.stack}</Badge>
+              ) : (
+                <span className="text-muted-foreground text-xs">—</span>
+              )}
             </TableCell>
-            <TableCell><ReplicasBadge replicas={svc.replicas} /></TableCell>
-            <TableCell><ServiceStatusBadge replicas={svc.replicas} /></TableCell>
+            <TableCell>
+              <ReplicasBadge replicas={svc.replicas} />
+            </TableCell>
+            <TableCell>
+              <ServiceStatusBadge replicas={svc.replicas} />
+            </TableCell>
             <TableCell className="text-xs text-muted-foreground">
               {new Date(svc.updatedAt).toLocaleString()}
             </TableCell>
             <TableCell className="text-right space-x-1">
-              <Button variant="ghost" size="sm" onClick={() => onLogsClick(svc)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onLogsClick(svc)}
+              >
                 <Terminal className="h-3 w-3 mr-1" />
                 Logs
               </Button>
@@ -160,7 +213,10 @@ function ServicesTab({ services, host, agentPort, onLogsClick }: {
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  fetch(`http://${host}:${agentPort}/api/v1/services/${svc.id}/force-update`, { method: "POST" })
+                  fetch(
+                    `http://${host}:${agentPort}/api/v1/services/${svc.id}/force-update`,
+                    { method: "POST" },
+                  )
                 }
               >
                 <RotateCcw className="h-3 w-3 mr-1" />
@@ -176,7 +232,11 @@ function ServicesTab({ services, host, agentPort, onLogsClick }: {
 
 function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
   if (nodes.length === 0) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">No nodes found.</p>;
+    return (
+      <p className="text-sm text-muted-foreground py-8 text-center">
+        No nodes found.
+      </p>
+    );
   }
   return (
     <Table>
@@ -194,17 +254,25 @@ function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
           <TableRow key={node.id}>
             <TableCell className="font-medium">{node.hostname}</TableCell>
             <TableCell>
-              <Badge variant={node.role === "manager" ? "default" : "secondary"}>
+              <Badge
+                variant={node.role === "manager" ? "default" : "secondary"}
+              >
                 {node.role}
               </Badge>
             </TableCell>
             <TableCell>
-              <Badge variant={node.status === "ready" ? "default" : "destructive"}>
+              <Badge
+                variant={node.status === "ready" ? "default" : "destructive"}
+              >
                 {node.status}
               </Badge>
             </TableCell>
             <TableCell>
-              <Badge variant={node.availability === "active" ? "default" : "secondary"}>
+              <Badge
+                variant={
+                  node.availability === "active" ? "default" : "secondary"
+                }
+              >
                 {node.availability}
               </Badge>
             </TableCell>
@@ -224,7 +292,9 @@ export default function ServerManage() {
   const server = state as Server | null;
 
   const [tab, setTab] = useState<"services" | "nodes">("services");
-  const [selectedService, setSelectedService] = useState<SwarmService | null>(null);
+  const [selectedService, setSelectedService] = useState<SwarmService | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!server) navigate("/dashboard", { replace: true });
@@ -247,7 +317,11 @@ export default function ServerManage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b px-6 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate("/dashboard")}
+        >
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center gap-3 flex-1">
@@ -259,8 +333,15 @@ export default function ServerManage() {
             {server.status}
           </Badge>
         </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          disabled={loading}
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`}
+          />
           Refresh
         </Button>
       </header>
@@ -275,24 +356,34 @@ export default function ServerManage() {
         <Card>
           <CardHeader className="pb-0">
             <div className="flex border-b -mx-6 px-6">
-              <button className={tabClass("services")} onClick={() => setTab("services")}>
+              <button
+                className={tabClass("services")}
+                onClick={() => setTab("services")}
+              >
                 Services {!loading && `(${services.length})`}
               </button>
-              <button className={tabClass("nodes")} onClick={() => setTab("nodes")}>
+              <button
+                className={tabClass("nodes")}
+                onClick={() => setTab("nodes")}
+              >
                 Nodes {!loading && `(${nodes.length})`}
               </button>
             </div>
           </CardHeader>
           <CardContent className="pt-4">
             {loading ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">Loading...</p>
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                Loading...
+              </p>
             ) : tab === "services" ? (
               <ServicesTab
                 services={services}
                 host={server.host}
                 agentPort={server.agentPort}
                 onLogsClick={(svc) =>
-                  setSelectedService((prev) => (prev?.id === svc.id ? null : svc))
+                  setSelectedService((prev) =>
+                    prev?.id === svc.id ? null : svc,
+                  )
                 }
               />
             ) : (
