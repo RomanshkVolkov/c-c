@@ -12,10 +12,12 @@ import (
 )
 
 const socketPath = "/var/run/docker.sock"
+const fallbackAPIVersion = "1.41"
 
 type DockerClient struct {
 	http       *http.Client // normal, with timeout
 	httpStream *http.Client // no timeout, for log streaming
+	apiVersion string
 }
 
 func NewDockerClient() *DockerClient {
@@ -24,14 +26,34 @@ func NewDockerClient() *DockerClient {
 			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socketPath)
 		},
 	}
-	return &DockerClient{
+	c := &DockerClient{
 		http:       &http.Client{Transport: transport, Timeout: 30 * time.Second},
 		httpStream: &http.Client{Transport: transport, Timeout: 0},
+		apiVersion: fallbackAPIVersion,
+	}
+	c.negotiateVersion()
+	return c
+}
+
+// negotiateVersion queries /_ping and uses the server's API-Version header.
+func (c *DockerClient) negotiateVersion() {
+	req, _ := http.NewRequest(http.MethodGet, "http://localhost/_ping", nil)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
+	if v := resp.Header.Get("API-Version"); v != "" {
+		c.apiVersion = v
 	}
 }
 
+func (c *DockerClient) apiURL(path string) string {
+	return "http://localhost/v" + c.apiVersion + path
+}
+
 func (c *DockerClient) get(ctx context.Context, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost"+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL(path), nil)
 	if err != nil {
 		return err
 	}
@@ -95,7 +117,7 @@ type DockerNode struct {
 
 func (c *DockerClient) StreamServiceLogs(ctx context.Context, serviceID string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		fmt.Sprintf("http://localhost/v1.41/services/%s/logs?stdout=1&stderr=1&follow=1&tail=100", serviceID), nil)
+		c.apiURL(fmt.Sprintf("/services/%s/logs?stdout=1&stderr=1&follow=1&tail=100", serviceID)), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -112,19 +134,19 @@ func (c *DockerClient) StreamServiceLogs(ctx context.Context, serviceID string) 
 
 func (c *DockerClient) ListServices(ctx context.Context) ([]DockerService, error) {
 	var services []DockerService
-	err := c.get(ctx, "/v1.41/services?status=true", &services)
+	err := c.get(ctx, "/services?status=true", &services)
 	return services, err
 }
 
 func (c *DockerClient) ListNodes(ctx context.Context) ([]DockerNode, error) {
 	var nodes []DockerNode
-	err := c.get(ctx, "/v1.41/nodes", &nodes)
+	err := c.get(ctx, "/nodes", &nodes)
 	return nodes, err
 }
 
 func (c *DockerClient) ForceUpdateService(ctx context.Context, serviceID string) error {
 	var svc map[string]interface{}
-	if err := c.get(ctx, fmt.Sprintf("/v1.41/services/%s", serviceID), &svc); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/services/%s", serviceID), &svc); err != nil {
 		return err
 	}
 
@@ -143,7 +165,7 @@ func (c *DockerClient) ForceUpdateService(ctx context.Context, serviceID string)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("http://localhost/v1.41/services/%s/update?version=%d", serviceID, int(version)),
+		c.apiURL(fmt.Sprintf("/services/%s/update?version=%d", serviceID, int(version))),
 		bytes.NewReader(body))
 	if err != nil {
 		return err

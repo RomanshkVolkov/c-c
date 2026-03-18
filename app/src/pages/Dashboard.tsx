@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Activity, LogOut, Network, RefreshCw, Server, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -30,11 +31,21 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { session, logout } = useAuth();
   const { servers, loading, createServer, deployAgent, updateAgent } = useServers();
+  const [updating, setUpdating] = useState<string | null>(null);
 
   const handleLogout = () => { logout(); navigate("/login"); };
   const initials = session?.username?.slice(0, 2).toUpperCase() ?? "??";
   const online = servers.filter((s) => s.status === "online").length;
   const types = new Set(servers.map((s) => s.type)).size;
+
+  const handleUpdateAgent = async (id: string) => {
+    setUpdating(id);
+    try {
+      await updateAgent(id);
+    } finally {
+      setUpdating(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -162,10 +173,11 @@ export default function Dashboard() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => updateAgent(server.id)}
+                            disabled={updating === server.id}
+                            onClick={() => handleUpdateAgent(server.id)}
                           >
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            Update
+                            <RefreshCw className={`h-3 w-3 mr-1 ${updating === server.id ? "animate-spin" : ""}`} />
+                            {updating === server.id ? "Updating..." : "Update"}
                           </Button>
                         )}
                         <Button
