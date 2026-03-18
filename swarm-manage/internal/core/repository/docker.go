@@ -41,7 +41,8 @@ func (c *DockerClient) get(ctx context.Context, path string, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("docker API error: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("docker API error: %s - %s", resp.Status, string(body))
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
