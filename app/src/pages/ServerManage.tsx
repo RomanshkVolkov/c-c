@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import AnsiToHtml from "ansi-to-html";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Terminal, X, RotateCcw } from "lucide-react";
+import { ArrowLeft, RefreshCw, Terminal, X, RotateCcw, KeyRound } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -151,11 +157,13 @@ function ServicesTab({
   host,
   agentPort,
   onLogsClick,
+  onSecretsClick,
 }: {
   services: SwarmService[];
   host: string;
   agentPort: number;
   onLogsClick: (svc: SwarmService) => void;
+  onSecretsClick: (svc: SwarmService) => void;
 }) {
   if (services.length === 0) {
     return (
@@ -182,7 +190,16 @@ function ServicesTab({
           <TableRow key={svc.id}>
             <TableCell className="font-medium">{svc.name}</TableCell>
             <TableCell className="font-mono text-xs text-muted-foreground max-w-48 truncate">
-              {svc.image}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <span className="truncate block">{svc.image}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-mono text-xs">{svc.image}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </TableCell>
             <TableCell>
               {svc.stack ? (
@@ -221,6 +238,14 @@ function ServicesTab({
               >
                 <RotateCcw className="h-3 w-3 mr-1" />
                 Restart
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSecretsClick(svc)}
+              >
+                <KeyRound className="h-3 w-3 mr-1" />
+                Secrets
               </Button>
             </TableCell>
           </TableRow>
@@ -384,6 +409,11 @@ export default function ServerManage() {
                   setSelectedService((prev) =>
                     prev?.id === svc.id ? null : svc,
                   )
+                }
+                onSecretsClick={(svc) =>
+                  navigate(`/servers/${server.id}/secrets`, {
+                    state: { server, service: svc, services },
+                  })
                 }
               />
             ) : (
