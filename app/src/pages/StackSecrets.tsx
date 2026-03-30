@@ -28,12 +28,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { api } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
+import { invoke } from "@tauri-apps/api/core";
 import type { Server } from "@/types/server";
 import type { SwarmService } from "@/types/swarm";
-
-const BASE_URL = import.meta.env.VITE_API_URL ?? "https://cac.guz-studio.dev";
 
 interface GitHubSecret {
   name: string;
@@ -41,28 +38,11 @@ interface GitHubSecret {
   updated_at: string;
 }
 
-interface GitHubSecretsResponse {
-  total_count: number;
-  secrets: GitHubSecret[];
-}
-
 interface GitHubVariable {
   name: string;
   value: string;
   created_at: string;
   updated_at: string;
-}
-
-interface GitHubVariablesResponse {
-  total_count: number;
-  variables: GitHubVariable[];
-}
-
-interface APIResponse<T> {
-  success: boolean;
-  message?: string;
-  data?: T;
-  error?: string;
 }
 
 interface LocationState {
@@ -90,41 +70,11 @@ function inferOwnerRepo(image: string): { owner: string; repo: string } | null {
   return null;
 }
 
-async function apiPut<T>(
-  path: string,
-  body: unknown,
-  token: string,
-): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json?.error ?? json?.message ?? "Request failed");
-  return json as T;
-}
-
-async function apiDelete(path: string, token: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    const json = await res.json().catch(() => ({}));
-    throw new Error(json?.error ?? json?.message ?? "Request failed");
-  }
-}
-
 export default function StackSecrets() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const locationState = state as LocationState | null;
-
-  const accessToken = useAuthStore((s) => s.accessToken) ?? "";
+  const PERSONAL_ACCESS_TOKEN_KEY = "PATK_global_usage"; // state.serverId;
 
   const server = locationState?.server ?? null;
   const service = locationState?.service ?? null;
@@ -176,7 +126,14 @@ export default function StackSecrets() {
     value: string;
     saving: boolean;
     error: string | null;
-  }>({ open: false, isNew: true, name: "", value: "", saving: false, error: null });
+  }>({
+    open: false,
+    isNew: true,
+    name: "",
+    value: "",
+    saving: false,
+    error: null,
+  });
 
   // Variable dialog
   const [varDialog, setVarDialog] = useState<{
@@ -203,7 +160,14 @@ export default function StackSecrets() {
     input: string;
     deleting: boolean;
     error: string | null;
-  }>({ open: false, type: "secret", name: "", input: "", deleting: false, error: null });
+  }>({
+    open: false,
+    type: "secret",
+    name: "",
+    input: "",
+    deleting: false,
+    error: null,
+  });
 
   useEffect(() => {
     if (!server) navigate("/dashboard", { replace: true });
@@ -212,10 +176,10 @@ export default function StackSecrets() {
   const fetchTokenStatus = useCallback(async () => {
     if (!server) return;
     try {
-      const resp = await api.get<APIResponse<{ configured: boolean }>>(
-        `/api/v1/servers/${server.id}/github/token/status`,
-      );
-      setTokenConfigured(resp.data?.configured ?? false);
+      const configured = await invoke<boolean>("github_token_configured", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+      });
+      setTokenConfigured(configured);
     } catch {
       setTokenConfigured(false);
     }
@@ -230,12 +194,14 @@ export default function StackSecrets() {
     setSecretsLoading(true);
     setSecretsError(null);
     try {
-      const resp = await api.get<APIResponse<GitHubSecretsResponse>>(
-        `/api/v1/servers/${server.id}/github/${owner}/${repo}/secrets`,
-      );
-      setSecrets(resp.data?.secrets ?? []);
+      const data = await invoke<GitHubSecret[]>("list_github_secrets", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+        owner,
+        repo,
+      });
+      setSecrets(data);
     } catch (e) {
-      setSecretsError(e instanceof Error ? e.message : "Failed to load secrets");
+      setSecretsError(e instanceof Error ? e.message : String(e));
     } finally {
       setSecretsLoading(false);
     }
@@ -246,14 +212,14 @@ export default function StackSecrets() {
     setVariablesLoading(true);
     setVariablesError(null);
     try {
-      const resp = await api.get<APIResponse<GitHubVariablesResponse>>(
-        `/api/v1/servers/${server.id}/github/${owner}/${repo}/variables`,
-      );
-      setVariables(resp.data?.variables ?? []);
+      const data = await invoke<GitHubVariable[]>("list_github_variables", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+        owner,
+        repo,
+      });
+      setVariables(data);
     } catch (e) {
-      setVariablesError(
-        e instanceof Error ? e.message : "Failed to load variables",
-      );
+      setVariablesError(e instanceof Error ? e.message : String(e));
     } finally {
       setVariablesLoading(false);
     }
@@ -271,15 +237,14 @@ export default function StackSecrets() {
     setTokenLoading(true);
     setTokenError(null);
     try {
-      await apiPut(
-        `/api/v1/servers/${server.id}/github/token`,
-        { token: tokenInput.trim() },
-        accessToken,
-      );
+      await invoke("set_github_token", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+        token: tokenInput.trim(),
+      });
       setTokenInput("");
       setTokenConfigured(true);
     } catch (e) {
-      setTokenError(e instanceof Error ? e.message : "Failed to store token");
+      setTokenError(e instanceof Error ? e.message : String(e));
     } finally {
       setTokenLoading(false);
     }
@@ -290,12 +255,14 @@ export default function StackSecrets() {
     setTokenLoading(true);
     setTokenError(null);
     try {
-      await api.delete(`/api/v1/servers/${server.id}/github/token`);
+      await invoke("delete_github_token", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+      });
       setTokenConfigured(false);
       setSecrets([]);
       setVariables([]);
     } catch (e) {
-      setTokenError(e instanceof Error ? e.message : "Failed to remove token");
+      setTokenError(e instanceof Error ? e.message : String(e));
     } finally {
       setTokenLoading(false);
     }
@@ -306,11 +273,13 @@ export default function StackSecrets() {
       return;
     setSecretDialog((d) => ({ ...d, saving: true, error: null }));
     try {
-      await apiPut(
-        `/api/v1/servers/${server.id}/github/${owner}/${repo}/secrets/${secretDialog.name.trim()}`,
-        { value: secretDialog.value },
-        accessToken,
-      );
+      await invoke("set_github_secret", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+        owner,
+        repo,
+        name: secretDialog.name.trim(),
+        value: secretDialog.value,
+      });
       setSecretDialog({
         open: false,
         isNew: true,
@@ -324,7 +293,7 @@ export default function StackSecrets() {
       setSecretDialog((d) => ({
         ...d,
         saving: false,
-        error: e instanceof Error ? e.message : "Failed to save secret",
+        error: e instanceof Error ? e.message : String(e),
       }));
     }
   };
@@ -333,11 +302,14 @@ export default function StackSecrets() {
     if (!server || !varDialog.name.trim() || !varDialog.value.trim()) return;
     setVarDialog((d) => ({ ...d, saving: true, error: null }));
     try {
-      await apiPut(
-        `/api/v1/servers/${server.id}/github/${owner}/${repo}/variables/${varDialog.name.trim()}`,
-        { value: varDialog.value, exists: varDialog.exists },
-        accessToken,
-      );
+      await invoke("set_github_variable", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+        owner,
+        repo,
+        name: varDialog.name.trim(),
+        value: varDialog.value,
+        exists: varDialog.exists,
+      });
       setVarDialog({
         open: false,
         name: "",
@@ -351,13 +323,20 @@ export default function StackSecrets() {
       setVarDialog((d) => ({
         ...d,
         saving: false,
-        error: e instanceof Error ? e.message : "Failed to save variable",
+        error: e instanceof Error ? e.message : String(e),
       }));
     }
   };
 
   const openDeleteConfirm = (type: "secret" | "variable", name: string) => {
-    setDeleteConfirm({ open: true, type, name, input: "", deleting: false, error: null });
+    setDeleteConfirm({
+      open: true,
+      type,
+      name,
+      input: "",
+      deleting: false,
+      error: null,
+    });
   };
 
   const handleConfirmDelete = async () => {
@@ -366,16 +345,20 @@ export default function StackSecrets() {
     setDeleteConfirm((d) => ({ ...d, deleting: true, error: null }));
     try {
       if (type === "secret") {
-        await apiDelete(
-          `/api/v1/servers/${server.id}/github/${owner}/${repo}/secrets/${name}`,
-          accessToken,
-        );
+        await invoke("delete_github_secret", {
+          serverId: PERSONAL_ACCESS_TOKEN_KEY,
+          owner,
+          repo,
+          name,
+        });
         setSecrets((prev) => prev.filter((s) => s.name !== name));
       } else {
-        await apiDelete(
-          `/api/v1/servers/${server.id}/github/${owner}/${repo}/variables/${name}`,
-          accessToken,
-        );
+        await invoke("delete_github_variable", {
+          serverId: PERSONAL_ACCESS_TOKEN_KEY,
+          owner,
+          repo,
+          name,
+        });
         setVariables((prev) => prev.filter((v) => v.name !== name));
       }
       setDeleteConfirm((d) => ({ ...d, open: false }));
@@ -383,7 +366,7 @@ export default function StackSecrets() {
       setDeleteConfirm((d) => ({
         ...d,
         deleting: false,
-        error: e instanceof Error ? e.message : "Failed to delete",
+        error: e instanceof Error ? e.message : String(e),
       }));
     }
   };
@@ -468,8 +451,7 @@ export default function StackSecrets() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Token requires{" "}
-              <code className="font-mono">secrets</code> and{" "}
+              Token requires <code className="font-mono">secrets</code> and{" "}
               <code className="font-mono">variables</code> scopes on the target
               repository.
             </p>
@@ -524,18 +506,19 @@ export default function StackSecrets() {
           <Card>
             <CardHeader className="pb-0">
               <div className="flex border-b -mx-6 px-6">
-                <button className={tabClass("secrets")} onClick={() => setTab("secrets")}>
+                <button
+                  className={tabClass("secrets")}
+                  onClick={() => setTab("secrets")}
+                >
                   <Shield className="h-3 w-3 inline mr-1" />
-                  Secrets{" "}
-                  {!secretsLoading && `(${secrets.length})`}
+                  Secrets {!secretsLoading && `(${secrets.length})`}
                 </button>
                 <button
                   className={tabClass("variables")}
                   onClick={() => setTab("variables")}
                 >
                   <Variable className="h-3 w-3 inline mr-1" />
-                  Variables{" "}
-                  {!variablesLoading && `(${variables.length})`}
+                  Variables {!variablesLoading && `(${variables.length})`}
                 </button>
               </div>
             </CardHeader>
@@ -618,7 +601,9 @@ export default function StackSecrets() {
                                 variant="ghost"
                                 size="sm"
                                 className="text-destructive hover:text-destructive"
-                                onClick={() => openDeleteConfirm("secret", secret.name)}
+                                onClick={() =>
+                                  openDeleteConfirm("secret", secret.name)
+                                }
                               >
                                 Delete
                               </Button>
@@ -713,7 +698,9 @@ export default function StackSecrets() {
                                 variant="ghost"
                                 size="sm"
                                 className="text-destructive hover:text-destructive"
-                                onClick={() => openDeleteConfirm("variable", v.name)}
+                                onClick={() =>
+                                  openDeleteConfirm("variable", v.name)
+                                }
                               >
                                 Delete
                               </Button>
@@ -741,7 +728,9 @@ export default function StackSecrets() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {secretDialog.isNew ? "New Secret" : `Update Secret: ${secretDialog.name}`}
+              {secretDialog.isNew
+                ? "New Secret"
+                : `Update Secret: ${secretDialog.name}`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
