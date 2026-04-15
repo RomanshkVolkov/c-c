@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import AnsiToHtml from "ansi-to-html";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Terminal, X, RotateCcw, KeyRound } from "lucide-react";
+import {
+  ArrowLeft,
+  RefreshCw,
+  Terminal,
+  X,
+  RotateCcw,
+  KeyRound,
+} from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -113,7 +120,7 @@ function LogsPanel({
   }, [logs]);
 
   return (
-    <Card className="mt-4">
+    <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Terminal className="h-4 w-4" />
@@ -134,7 +141,7 @@ function LogsPanel({
           {status === "error" &&
             "Connection failed — agent may be unreachable or endpoint not available"}
         </div>
-        <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 h-72 overflow-y-auto font-mono text-sm text-green-400">
+        <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 h-100 overflow-y-auto font-mono text-sm text-green-400">
           {logs.length === 0 ? (
             <span className="text-muted-foreground">Waiting for logs...</span>
           ) : (
@@ -174,22 +181,33 @@ function ServicesTab({
   }
   return (
     <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Image</TableHead>
-          <TableHead>Stack</TableHead>
-          <TableHead>Replicas</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Updated</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
+      <TableHeader className="block">
+        <TableRow className="flex w-full">
+          <TableHead className="flex-2 min-w-0">Name</TableHead>
+          <TableHead className="flex-3 min-w-0">Image</TableHead>
+          <TableHead className="flex-3 min-w-0">Stack</TableHead>
+          <TableHead className="flex-1 min-w-0">Replicas</TableHead>
+          <TableHead className="flex-1 min-w-0">Status</TableHead>
+          <TableHead className="flex-2 min-w-0">Updated</TableHead>
+          <TableHead className="flex-3 min-w-0 text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
-      <TableBody>
+      <TableBody className="block max-h-105 overflow-y-auto">
         {services.map((svc) => (
-          <TableRow key={svc.id}>
-            <TableCell className="font-medium">{svc.name}</TableCell>
-            <TableCell className="font-mono text-xs text-muted-foreground max-w-48 truncate">
+          <TableRow key={svc.id} className="flex w-full">
+            <TableCell className="flex-2 min-w-0 font-medium truncate">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <span className="truncate block">{svc.name}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-mono text-xs">{svc.name}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </TableCell>
+            <TableCell className="flex-3 min-w-0 font-mono text-xs text-muted-foreground truncate">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
@@ -201,23 +219,25 @@ function ServicesTab({
                 </Tooltip>
               </TooltipProvider>
             </TableCell>
-            <TableCell>
+            <TableCell className="flex-3 min-w-0">
               {svc.stack ? (
-                <Badge variant="secondary">{svc.stack}</Badge>
+                <Badge variant="secondary" className="truncate">
+                  {svc.stack}
+                </Badge>
               ) : (
                 <span className="text-muted-foreground text-xs">—</span>
               )}
             </TableCell>
-            <TableCell>
+            <TableCell className="flex-1 min-w-0">
               <ReplicasBadge replicas={svc.replicas} />
             </TableCell>
-            <TableCell>
+            <TableCell className="flex-1 min-w-0">
               <ServiceStatusBadge replicas={svc.replicas} />
             </TableCell>
-            <TableCell className="text-xs text-muted-foreground">
+            <TableCell className="flex-2 min-w-0 text-xs text-muted-foreground">
               {new Date(svc.updatedAt).toLocaleString()}
             </TableCell>
-            <TableCell className="text-right space-x-1">
+            <TableCell className="flex-3 min-w-0 text-right space-x-1">
               <Button
                 variant="ghost"
                 size="sm"
@@ -340,8 +360,8 @@ export default function ServerManage() {
     }`;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b px-6 py-3 flex items-center gap-3">
+    <div className="h-full bg-background flex flex-col overflow-hidden">
+      <header className="shrink-0 border-b px-6 py-3 flex items-center gap-3">
         <Button
           variant="ghost"
           size="sm"
@@ -371,9 +391,9 @@ export default function ServerManage() {
         </Button>
       </header>
 
-      <main className="flex-1 p-6 space-y-4">
+      <main className="flex-1 flex flex-col min-h-0 p-6 gap-4 overflow-hidden">
         {error && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <div className="shrink-0 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}
           </div>
         )}

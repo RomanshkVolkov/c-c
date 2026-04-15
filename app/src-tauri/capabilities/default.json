@@ -9,6 +9,13 @@
     {
       "identifier": "http:allow-fetch",
       "allow": [{ "url": "https://**" }, { "url": "http://**" }]
-    }
+    },
+    "dialog:allow-save",
+    {
+      "identifier": "fs:allow-write",
+      "allow": [{ "path": "$DOWNLOAD/**" }, { "path": "$HOME/**" }]
+    },
+    "updater:default",
+    "process:allow-restart"
   ]
 }

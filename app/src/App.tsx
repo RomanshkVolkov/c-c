@@ -3,7 +3,11 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import ServerManage from "@/pages/ServerManage";
 import StackSecrets from "@/pages/StackSecrets";
+import ImageTool from "@/pages/ImageTool";
+import RequestClient from "@/pages/RequestClient";
+import CryptoTools from "@/pages/CryptoTools";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AppLayout from "@/components/AppLayout";
 
 export default function App() {
   return (
@@ -11,29 +15,19 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route
-          path="/dashboard"
           element={
             <ProtectedRoute>
-              <Dashboard />
+              <AppLayout />
             </ProtectedRoute>
           }
-        />
-        <Route
-          path="/servers/:id"
-          element={
-            <ProtectedRoute>
-              <ServerManage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/servers/:id/secrets"
-          element={
-            <ProtectedRoute>
-              <StackSecrets />
-            </ProtectedRoute>
-          }
-        />
+        >
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/servers/:id" element={<ServerManage />} />
+          <Route path="/servers/:id/secrets" element={<StackSecrets />} />
+          <Route path="/image-tool" element={<ImageTool />} />
+          <Route path="/requests" element={<RequestClient />} />
+          <Route path="/crypto" element={<CryptoTools />} />
+        </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

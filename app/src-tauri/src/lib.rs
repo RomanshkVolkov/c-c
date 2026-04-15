@@ -1,3 +1,7 @@
+mod crypto_tools;
+mod http_client;
+mod image;
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -350,6 +354,150 @@ async fn delete_github_variable(
     .await
 }
 
+// ─── Image compression ───────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn compress_image(
+    data: Vec<u8>,
+    quality: Option<u8>,
+    max_width: Option<u32>,
+    format: String,
+) -> Result<image::CompressResult, String> {
+    let fmt: image::OutputFormat =
+        serde_json::from_value(serde_json::Value::String(format))
+            .map_err(|e| format!("Invalid format: {e}"))?;
+
+    let opts = image::CompressOptions {
+        quality,
+        max_width,
+        format: fmt,
+    };
+
+    tokio::task::spawn_blocking(move || image::compress(&data, &opts))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// ─── Crypto tools ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn jwt_decode(
+    token: String,
+    secret: Option<String>,
+    algorithm: Option<String>,
+) -> crypto_tools::JwtDecoded {
+    crypto_tools::jwt_decode(&token, secret.as_deref(), algorithm.as_deref())
+}
+
+#[tauri::command]
+fn generate_id(kind: String) -> Result<String, String> {
+    match kind.as_str() {
+        "uuid-v4" => Ok(crypto_tools::generate_uuid_v4()),
+        "uuid-v7" => Ok(crypto_tools::generate_uuid_v7()),
+        "cuid2" => Ok(crypto_tools::generate_cuid2()),
+        _ => Err(format!("Unknown id kind: {kind}")),
+    }
+}
+
+#[tauri::command]
+fn hash_text(input: String, algorithm: String) -> Result<crypto_tools::HashResult, String> {
+    crypto_tools::hash_text(&input, &algorithm)
+}
+
+#[tauri::command]
+fn hmac_sign(
+    input: String,
+    key: String,
+    algorithm: String,
+) -> Result<crypto_tools::HashResult, String> {
+    crypto_tools::hmac_sign(&input, &key, &algorithm)
+}
+
+#[tauri::command]
+fn bcrypt_hash(input: String, cost: Option<u32>) -> Result<String, String> {
+    crypto_tools::bcrypt_hash(&input, cost.unwrap_or(12))
+}
+
+#[tauri::command]
+fn bcrypt_verify(input: String, hash: String) -> Result<bool, String> {
+    crypto_tools::bcrypt_verify(&input, &hash)
+}
+
+#[tauri::command]
+fn argon2_hash(input: String) -> Result<String, String> {
+    crypto_tools::argon2_hash(&input)
+}
+
+#[tauri::command]
+fn argon2_verify(input: String, hash: String) -> Result<bool, String> {
+    crypto_tools::argon2_verify(&input, &hash)
+}
+
+#[tauri::command]
+fn encode_decode(input: String, codec: String, direction: String) -> Result<String, String> {
+    match (codec.as_str(), direction.as_str()) {
+        ("base64", "encode") => Ok(crypto_tools::base64_encode(&input)),
+        ("base64", "decode") => crypto_tools::base64_decode(&input),
+        ("url", "encode") => Ok(crypto_tools::url_encode(&input)),
+        ("url", "decode") => crypto_tools::url_decode(&input),
+        ("hex", "encode") => Ok(crypto_tools::hex_encode(&input)),
+        ("hex", "decode") => crypto_tools::hex_decode(&input),
+        _ => Err(format!("Unknown codec/direction: {codec}/{direction}")),
+    }
+}
+
+// ─── HTTP client ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn send_http_request(
+    method: String,
+    url: String,
+    headers: Vec<http_client::KeyValue>,
+    body: Option<String>,
+) -> Result<http_client::HttpResponse, String> {
+    let m: http_client::HttpMethod =
+        serde_json::from_value(serde_json::Value::String(method))
+            .map_err(|e| format!("Invalid method: {e}"))?;
+
+    let req = http_client::HttpRequest {
+        method: m,
+        url,
+        headers,
+        body,
+    };
+
+    http_client::execute(req).await
+}
+
+// ─── File save ───────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn save_file(
+    app: tauri::AppHandle,
+    data: Vec<u8>,
+    file_name: String,
+    filter_name: String,
+    filter_ext: String,
+) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let path = app
+        .dialog()
+        .file()
+        .set_file_name(&file_name)
+        .add_filter(&filter_name, &[&filter_ext])
+        .blocking_save_file();
+
+    let Some(path) = path else {
+        return Ok(false);
+    };
+
+    std::fs::write(path.as_path().ok_or("Invalid path")?, &data)
+        .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
 // ─── App entry ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -358,6 +506,10 @@ pub fn run() {
         .manage(TokenCache(Mutex::new(HashMap::new())))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             set_github_token,
             delete_github_token,
@@ -368,6 +520,18 @@ pub fn run() {
             set_github_variable,
             delete_github_secret,
             delete_github_variable,
+            compress_image,
+            jwt_decode,
+            generate_id,
+            hash_text,
+            hmac_sign,
+            bcrypt_hash,
+            bcrypt_verify,
+            argon2_hash,
+            argon2_verify,
+            encode_decode,
+            send_http_request,
+            save_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

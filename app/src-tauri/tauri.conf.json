@@ -25,6 +25,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzQzlEOTRGNzNFODJDNTcKUldSWExPaHpUOW5KNDdLZzhYOFB6ZXpJU0lqdHNYWE80eHdqdUxyY2k3TWo0ZEd5cklCRE0zSHAK",
+      "endpoints": [
+        "https://github.com/RomanshkVolkov/c-c/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
