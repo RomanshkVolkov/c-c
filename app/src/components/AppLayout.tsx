@@ -1,4 +1,5 @@
 import { Outlet } from "react-router-dom";
+import { Toaster } from "sonner";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
 import UpdateChecker from "@/components/UpdateChecker";
@@ -14,6 +15,7 @@ export default function AppLayout() {
         <Outlet />
       </SidebarInset>
       <UpdateChecker />
+      <Toaster richColors closeButton position="bottom-right" />
     </SidebarProvider>
   );
 }

@@ -1,63 +1,28 @@
-import { useState, useEffect, useCallback } from "react";
-import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { useEffect } from "react";
 import { Download, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useUpdaterStore } from "@/store/updater.store";
 
 export default function UpdateChecker() {
-  const [updateAvailable, setUpdateAvailable] = useState<{
-    version: string;
-    body: string;
-  } | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [progress, setProgress] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(false);
-
-  const checkForUpdate = useCallback(async () => {
-    try {
-      const update = await check();
-      if (update) {
-        setUpdateAvailable({
-          version: update.version,
-          body: update.body ?? "",
-        });
-      }
-    } catch {
-      // silent fail on check
-    }
-  }, []);
+  const available = useUpdaterStore((s) => s.available);
+  const downloading = useUpdaterStore((s) => s.downloading);
+  const progress = useUpdaterStore((s) => s.progress);
+  const dismissedVersion = useUpdaterStore((s) => s.dismissedVersion);
+  const checkForUpdate = useUpdaterStore((s) => s.checkForUpdate);
+  const installUpdate = useUpdaterStore((s) => s.installUpdate);
+  const dismiss = useUpdaterStore((s) => s.dismiss);
 
   useEffect(() => {
-    checkForUpdate();
-    const interval = setInterval(checkForUpdate, 1000 * 60 * 30);
+    checkForUpdate({ silent: true });
+    const interval = setInterval(
+      () => checkForUpdate({ silent: true }),
+      1000 * 60 * 30,
+    );
     return () => clearInterval(interval);
   }, [checkForUpdate]);
 
-  const installUpdate = async () => {
-    setDownloading(true);
-    setProgress("Downloading...");
-    try {
-      const update = await check();
-      if (!update) return;
-
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started" && event.data.contentLength) {
-          setProgress(`0 / ${(event.data.contentLength / 1024 / 1024).toFixed(1)} MB`);
-        } else if (event.event === "Progress") {
-          setProgress(`Downloading... ${(event.data.chunkLength / 1024).toFixed(0)} KB`);
-        } else if (event.event === "Finished") {
-          setProgress("Restarting...");
-        }
-      });
-
-      await relaunch();
-    } catch (e) {
-      setProgress(`Error: ${e}`);
-      setDownloading(false);
-    }
-  };
-
-  if (!updateAvailable || dismissed) return null;
+  if (!available) return null;
+  if (dismissedVersion === available.version && !downloading) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm bg-card border rounded-lg shadow-lg p-4 space-y-2">
@@ -65,23 +30,23 @@ export default function UpdateChecker() {
         <div className="flex items-center gap-2">
           <Download className="h-4 w-4 text-primary shrink-0" />
           <span className="text-sm font-medium">
-            v{updateAvailable.version} available
+            v{available.version} available
           </span>
         </div>
         <Button
           variant="ghost"
           size="sm"
           className="h-6 w-6 p-0 shrink-0"
-          onClick={() => setDismissed(true)}
+          onClick={dismiss}
           disabled={downloading}
         >
           <X className="h-3 w-3" />
         </Button>
       </div>
 
-      {updateAvailable.body && (
+      {available.body && (
         <p className="text-xs text-muted-foreground line-clamp-3">
-          {updateAvailable.body}
+          {available.body}
         </p>
       )}
 
