@@ -43,7 +43,13 @@ func DBConnection() {
 		panic("failed to connect to database: " + err.Error())
 	}
 
-	if err := db.AutoMigrate(&domain.User{}, &domain.Server{}); err != nil {
+	if err := db.AutoMigrate(
+		&domain.User{},
+		&domain.Server{},
+		&domain.Collection{},
+		&domain.CollectionNode{},
+		&domain.CollectionShare{},
+	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
 	pss, err := HashPassword("ZMWmDcnawh3CQbJjMpPKoorTZv68jYuyzUojgvQpdJCmuUQ3mMNrDXiA2EKs7Jszv6uYjao8ds96uP2VU8CTKigEYZpdTDgZ78zn")

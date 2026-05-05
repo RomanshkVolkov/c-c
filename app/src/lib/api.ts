@@ -76,6 +76,9 @@ export const api = {
   post: <T>(path: string, body: unknown, auth = false) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body), auth }),
 
+  put: <T>(path: string, body: unknown, auth = true) =>
+    request<T>(path, { method: "PUT", body: JSON.stringify(body), auth }),
+
   delete: <T>(path: string, auth = true) =>
     request<T>(path, { method: "DELETE", auth }),
 };

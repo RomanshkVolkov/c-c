@@ -25,6 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAW_TAG="${{ github.ref_name }}"
+          VERSION="${RAW_TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-].+)?$ ]]; then
+            echo "Tag '$RAW_TAG' is not a semver release tag — skipping version sync"
+            exit 0
+          fi
+          echo "Syncing version to $VERSION"
+          jq --arg v "$VERSION" '.version = $v' app/src-tauri/tauri.conf.json > app/src-tauri/tauri.conf.json.tmp
+          mv app/src-tauri/tauri.conf.json.tmp app/src-tauri/tauri.conf.json
+          sed -i.bak '0,/^version = ".*"$/s//version = "'"$VERSION"'"/' app/src-tauri/Cargo.toml
+          rm -f app/src-tauri/Cargo.toml.bak
+
       - name: Install system deps (Linux)
         if: matrix.platform == 'ubuntu-22.04'
         run: |

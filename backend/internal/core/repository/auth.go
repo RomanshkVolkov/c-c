@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"gorm.io/gorm"
@@ -35,4 +36,25 @@ func (r *AuthRepository) FindByID(id string) (*domain.User, error) {
 		return nil, err
 	}
 	return &user, nil
+}
+
+// SearchByUsername returns up to `limit` users whose username matches the query
+// (case-insensitive prefix). The caller (`excludeID`) is filtered out so users
+// don't see themselves in share autocomplete.
+func (r *AuthRepository) SearchByUsername(query, excludeID string, limit int) ([]domain.User, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	var users []domain.User
+	q := r.db.
+		Where("LOWER(username) LIKE ?", "%"+strings.ToLower(query)+"%").
+		Order("username ASC").
+		Limit(limit)
+	if excludeID != "" {
+		q = q.Where("id <> ?", excludeID)
+	}
+	if err := q.Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
 }

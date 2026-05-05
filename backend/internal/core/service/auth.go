@@ -43,6 +43,19 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 	}, nil
 }
 
+// SearchUsers exposes username autocomplete for share dialogs.
+func (s *AuthService) SearchUsers(query, excludeUserID string, limit int) ([]domain.UserSummary, error) {
+	users, err := s.repo.SearchByUsername(query, excludeUserID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.UserSummary, len(users))
+	for i, u := range users {
+		out[i] = domain.UserSummary{ID: u.ID, Username: u.Username}
+	}
+	return out, nil
+}
+
 func (s *AuthService) RefreshToken(refreshToken string) (*domain.AuthRefreshResponse, error) {
 	claims, err := repository.ValidateRefreshToken(refreshToken)
 	if err != nil {
