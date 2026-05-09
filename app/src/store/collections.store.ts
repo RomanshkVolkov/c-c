@@ -96,7 +96,7 @@ export const useCollectionsStore = create<CollectionsState>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const res = await api.get<APIResponse<CollectionMeta[]>>(
-        "/api/v1/collections",
+        "/api/v1/collections/",
         true,
       );
       if (!res.success) throw new Error(res.error ?? "Failed to load");
@@ -177,7 +177,7 @@ export const useCollectionsStore = create<CollectionsState>()((set, get) => ({
 
   createCollection: async (name, description = "") => {
     const res = await api.post<APIResponse<CollectionMeta>>(
-      "/api/v1/collections",
+      "/api/v1/collections/",
       { name, description },
       true,
     );
