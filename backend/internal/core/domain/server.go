@@ -8,8 +8,8 @@ const (
 	ServerTypeKubernetes  ServerType = "kubernetes"
 )
 
-// Server holds connection metadata for a VPS. SSH credentials are stored
-// in the OS keychain, keyed by the server ID.
+// Server holds connection metadata for a VPS. SSH credentials live on the
+// user's machine (1Password / OS SSH agent) and never reach this service.
 type Server struct {
 	BaseModel
 	Name      string     `gorm:"type:varchar(100);not null" json:"name"`
@@ -24,13 +24,12 @@ type Server struct {
 // ─── Requests / Responses ─────────────────────────────────────────────────────
 
 type CreateServerRequest struct {
-	Name           string     `json:"name"           validate:"required,min=1,max=100"`
-	Host           string     `json:"host"           validate:"required"`
-	SSHPort        int        `json:"sshPort"        validate:"required,min=1,max=65535"`
-	SSHUser        string     `json:"sshUser"        validate:"required"`
-	Type           ServerType `json:"type"           validate:"required,oneof=docker-swarm kubernetes"`
-	AgentPort      int        `json:"agentPort"      validate:"required,min=1,max=65535"`
-	SSHPrivateKey  string     `json:"sshPrivateKey"  validate:"required"` // stored in keychain, not in DB
+	Name      string     `json:"name"      validate:"required,min=1,max=100"`
+	Host      string     `json:"host"      validate:"required"`
+	SSHPort   int        `json:"sshPort"   validate:"required,min=1,max=65535"`
+	SSHUser   string     `json:"sshUser"   validate:"required"`
+	Type      ServerType `json:"type"      validate:"required,oneof=docker-swarm kubernetes"`
+	AgentPort int        `json:"agentPort" validate:"required,min=1,max=65535"`
 }
 
 type ServerResponse struct {

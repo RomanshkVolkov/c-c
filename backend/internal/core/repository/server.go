@@ -1,14 +1,9 @@
 package repository
 
 import (
-	"fmt"
-
 	"github.com/guz-studio/cac/backend/internal/core/domain"
-	"github.com/zalando/go-keyring"
 	"gorm.io/gorm"
 )
-
-const keychainService = "cac-vps"
 
 type ServerRepository struct {
 	db *gorm.DB
@@ -43,27 +38,5 @@ func (r *ServerRepository) UpdateStatus(id, status string) error {
 }
 
 func (r *ServerRepository) Delete(id string) error {
-	_ = keyring.Delete(keychainService, id)
 	return r.db.Delete(&domain.Server{}, "id = ?", id).Error
-}
-
-// ─── Keychain helpers ─────────────────────────────────────────────────────────
-
-func StoreSSHKey(serverID, privateKey string) error {
-	if err := keyring.Set(keychainService, serverID, privateKey); err != nil {
-		return fmt.Errorf("keychain set: %w", err)
-	}
-	return nil
-}
-
-func GetSSHKey(serverID string) (string, error) {
-	key, err := keyring.Get(keychainService, serverID)
-	if err != nil {
-		return "", fmt.Errorf("keychain get: %w", err)
-	}
-	return key, nil
-}
-
-func DeleteSSHKey(serverID string) error {
-	return keyring.Delete(keychainService, serverID)
 }
