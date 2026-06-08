@@ -18,5 +18,4 @@ export interface CreateServerPayload {
   sshUser: string;
   type: ServerType;
   agentPort: number;
-  sshPrivateKey: string;
 }

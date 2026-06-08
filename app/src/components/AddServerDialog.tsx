@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import type { CreateServerPayload } from "@/types/server";
 
 const schema = z.object({
@@ -26,7 +25,6 @@ const schema = z.object({
   sshUser: z.string().min(1, "Required"),
   type: z.enum(["docker-swarm", "kubernetes"]),
   agentPort: z.number().min(1).max(65535),
-  sshPrivateKey: z.string().min(1, "Required"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -73,8 +71,8 @@ export default function AddServerDialog({ onCreated }: Props) {
         <DialogHeader>
           <DialogTitle>Add Server</DialogTitle>
           <DialogDescription>
-            SSH credentials are stored securely in your OS keychain and never
-            sent to the database.
+            SSH access uses your local SSH agent (1Password recommended). No
+            keys are stored or sent by this app.
           </DialogDescription>
         </DialogHeader>
 
@@ -129,24 +127,6 @@ export default function AddServerDialog({ onCreated }: Props) {
               <option value="docker-swarm">Docker Swarm</option>
               <option value="kubernetes">Kubernetes</option>
             </select>
-          </div>
-
-          <div className="space-y-1">
-            <Label>SSH Private Key</Label>
-            <Textarea
-              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-              className="font-mono text-xs h-32 resize-none"
-              {...register("sshPrivateKey")}
-            />
-            <p className="text-xs text-muted-foreground">
-              Stored in your OS keychain (Keychain Access / Secret Service).
-              Never saved to the database.
-            </p>
-            {errors.sshPrivateKey && (
-              <p className="text-xs text-destructive">
-                {errors.sshPrivateKey.message}
-              </p>
-            )}
           </div>
 
           {error && (

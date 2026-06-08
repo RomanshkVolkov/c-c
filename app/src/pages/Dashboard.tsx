@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Activity, LogOut, Network, RefreshCw, Server, User } from "lucide-react";
+import { Activity, LogOut, Network, Server, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -30,22 +29,12 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { session, logout } = useAuth();
-  const { servers, loading, createServer, deployAgent, updateAgent } = useServers();
-  const [updating, setUpdating] = useState<string | null>(null);
+  const { servers, loading, createServer } = useServers();
 
   const handleLogout = () => { logout(); navigate("/login"); };
   const initials = session?.username?.slice(0, 2).toUpperCase() ?? "??";
   const online = servers.filter((s) => s.status === "online").length;
   const types = new Set(servers.map((s) => s.type)).size;
-
-  const handleUpdateAgent = async (id: string) => {
-    setUpdating(id);
-    try {
-      await updateAgent(id);
-    } finally {
-      setUpdating(null);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -159,27 +148,7 @@ export default function Dashboard() {
                           {server.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right space-x-1">
-                        {(server.status === "pending" || server.status === "error") && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => deployAgent(server.id)}
-                          >
-                            {server.status === "error" ? "Retry Deploy" : "Deploy Agent"}
-                          </Button>
-                        )}
-                        {server.status === "online" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={updating === server.id}
-                            onClick={() => handleUpdateAgent(server.id)}
-                          >
-                            <RefreshCw className={`h-3 w-3 mr-1 ${updating === server.id ? "animate-spin" : ""}`} />
-                            {updating === server.id ? "Updating..." : "Update"}
-                          </Button>
-                        )}
+                      <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="sm"
