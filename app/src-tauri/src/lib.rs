@@ -14,6 +14,10 @@ fn token_account(server_id: &str) -> String {
     format!("github-token:{server_id}")
 }
 
+fn ref_account(server_id: &str) -> String {
+    format!("op-reference:{server_id}")
+}
+
 // In-memory cache: survives the process lifetime, avoids repeated keychain reads
 // from async contexts where some Linux keyring backends fail.
 struct TokenCache(Mutex<HashMap<String, String>>);
@@ -57,6 +61,62 @@ fn keychain_delete(server_id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+fn keychain_get_ref(server_id: &str) -> Result<String, String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, &ref_account(server_id))
+        .map_err(|e| e.to_string())?
+        .get_password()
+        .map_err(|e| e.to_string())
+}
+
+fn keychain_set_ref(server_id: &str, reference: &str) -> Result<(), String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, &ref_account(server_id))
+        .map_err(|e| e.to_string())?
+        .set_password(reference)
+        .map_err(|e| e.to_string())
+}
+
+fn keychain_delete_ref(server_id: &str) -> Result<(), String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, &ref_account(server_id))
+        .map_err(|e| e.to_string())?
+        .delete_credential()
+        .map_err(|e| e.to_string())
+}
+
+// Runs `op read <reference>` and returns the value, with friendly error mapping.
+fn op_read(reference: &str) -> Result<String, String> {
+    use std::process::Command;
+
+    let output = Command::new("op")
+        .args(["read", "--no-newline", reference])
+        .output()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => "1Password CLI (op) not found. Install from https://developer.1password.com/docs/cli/".to_string(),
+            _ => format!("Failed to execute op: {e}"),
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let msg = if stderr.contains("not currently signed in") || stderr.contains("session expired") {
+            "1Password session expired. Run `op signin` (or open the 1Password desktop app) and try again.".to_string()
+        } else if stderr.is_empty() {
+            format!("op read exited with status {}", output.status)
+        } else {
+            stderr
+        };
+        return Err(msg);
+    }
+
+    let token = String::from_utf8(output.stdout)
+        .map_err(|e| e.to_string())?
+        .trim()
+        .to_string();
+
+    if token.is_empty() {
+        return Err("1Password returned an empty value for that reference".into());
+    }
+    Ok(token)
+}
+
 // ─── Keychain commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -73,7 +133,44 @@ fn set_github_token(
 #[tauri::command]
 fn delete_github_token(server_id: String, cache: tauri::State<TokenCache>) -> Result<(), String> {
     cache.remove(&server_id);
+    let _ = keychain_delete_ref(&server_id);
     keychain_delete(&server_id)
+}
+
+#[tauri::command]
+fn load_github_token_from_1password(
+    server_id: String,
+    op_reference: String,
+    cache: tauri::State<TokenCache>,
+) -> Result<(), String> {
+    let token = op_read(&op_reference)?;
+    keychain_set(&server_id, &token)?;
+    let _ = keychain_set_ref(&server_id, &op_reference);
+    cache.set(&server_id, &token);
+    Ok(())
+}
+
+#[tauri::command]
+fn refresh_github_token_from_1password(
+    server_id: String,
+    cache: tauri::State<TokenCache>,
+) -> Result<(), String> {
+    let reference = keychain_get_ref(&server_id)
+        .map_err(|_| "No 1Password reference saved for this server. Use 'Load from 1Password' first.".to_string())?;
+    let token = op_read(&reference)?;
+    keychain_set(&server_id, &token)?;
+    cache.set(&server_id, &token);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_op_reference(server_id: String) -> Option<String> {
+    keychain_get_ref(&server_id).ok()
+}
+
+#[tauri::command]
+fn clear_op_reference(server_id: String) -> Result<(), String> {
+    keychain_delete_ref(&server_id)
 }
 
 #[tauri::command]
@@ -514,6 +611,10 @@ pub fn run() {
             set_github_token,
             delete_github_token,
             github_token_configured,
+            load_github_token_from_1password,
+            refresh_github_token_from_1password,
+            get_op_reference,
+            clear_op_reference,
             list_github_secrets,
             list_github_variables,
             set_github_secret,

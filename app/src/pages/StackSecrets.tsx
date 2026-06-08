@@ -104,6 +104,11 @@ export default function StackSecrets() {
   const [tokenLoading, setTokenLoading] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
+  // 1Password state
+  const [opReference, setOpReference] = useState<string>("");
+  const [opLoading, setOpLoading] = useState(false);
+  const [opStored, setOpStored] = useState<boolean>(false);
+
   // Repo fields
   const [owner, setOwner] = useState(inferredRepo?.owner ?? "");
   const [repo, setRepo] = useState(inferredRepo?.repo ?? "");
@@ -183,11 +188,55 @@ export default function StackSecrets() {
     } catch {
       setTokenConfigured(false);
     }
+    try {
+      const ref = await invoke<string | null>("get_op_reference", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+      });
+      if (ref) {
+        setOpReference(ref);
+        setOpStored(true);
+      }
+    } catch {
+      // no-op: keychain lookup failure is non-fatal
+    }
   }, [server]);
 
   useEffect(() => {
     fetchTokenStatus();
   }, [fetchTokenStatus]);
+
+  const handleLoadFromOnePassword = async () => {
+    if (!opReference.trim()) return;
+    setOpLoading(true);
+    setTokenError(null);
+    try {
+      await invoke("load_github_token_from_1password", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+        opReference: opReference.trim(),
+      });
+      setTokenConfigured(true);
+      setOpStored(true);
+    } catch (e) {
+      setTokenError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOpLoading(false);
+    }
+  };
+
+  const handleRefreshFromOnePassword = async () => {
+    setOpLoading(true);
+    setTokenError(null);
+    try {
+      await invoke("refresh_github_token_from_1password", {
+        serverId: PERSONAL_ACCESS_TOKEN_KEY,
+      });
+      setTokenConfigured(true);
+    } catch (e) {
+      setTokenError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOpLoading(false);
+    }
+  };
 
   const fetchSecrets = useCallback(async () => {
     if (!server || !owner || !repo) return;
@@ -261,6 +310,8 @@ export default function StackSecrets() {
       setTokenConfigured(false);
       setSecrets([]);
       setVariables([]);
+      setOpStored(false);
+      setOpReference("");
     } catch (e) {
       setTokenError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -421,40 +472,82 @@ export default function StackSecrets() {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             {tokenError && (
               <p className="text-sm text-destructive">{tokenError}</p>
             )}
-            <div className="flex gap-2">
-              <Input
-                type="password"
-                placeholder="ghp_..."
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                className="flex-1 font-mono text-sm"
-                onKeyDown={(e) => e.key === "Enter" && handleSetToken()}
-              />
-              <Button
-                onClick={handleSetToken}
-                disabled={tokenLoading || !tokenInput.trim()}
-              >
-                {tokenConfigured ? "Update" : "Save"}
-              </Button>
-              {tokenConfigured && (
+
+            <div className="space-y-2">
+              <Label className="text-xs">1Password reference</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="op://Vault/Item/credential"
+                  value={opReference}
+                  onChange={(e) => setOpReference(e.target.value)}
+                  className="flex-1 font-mono text-sm"
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && handleLoadFromOnePassword()
+                  }
+                />
                 <Button
-                  variant="destructive"
-                  onClick={handleDeleteToken}
-                  disabled={tokenLoading}
+                  onClick={handleLoadFromOnePassword}
+                  disabled={opLoading || !opReference.trim()}
                 >
-                  Remove
+                  {opLoading ? "Loading..." : opStored ? "Update" : "Load"}
                 </Button>
-              )}
+                {opStored && (
+                  <Button
+                    variant="outline"
+                    onClick={handleRefreshFromOnePassword}
+                    disabled={opLoading}
+                  >
+                    <RefreshCw
+                      className={`h-3 w-3 mr-1 ${opLoading ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Reads the PAT from 1Password via <code className="font-mono">op read</code>.
+                Requires the 1Password CLI installed and signed in.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Token requires <code className="font-mono">secrets</code> and{" "}
-              <code className="font-mono">variables</code> scopes on the target
-              repository.
-            </p>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Or paste manually</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  placeholder="ghp_..."
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  className="flex-1 font-mono text-sm"
+                  onKeyDown={(e) => e.key === "Enter" && handleSetToken()}
+                />
+                <Button
+                  onClick={handleSetToken}
+                  disabled={tokenLoading || !tokenInput.trim()}
+                >
+                  {tokenConfigured ? "Update" : "Save"}
+                </Button>
+                {tokenConfigured && (
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteToken}
+                    disabled={tokenLoading}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Token requires <code className="font-mono">secrets</code> and{" "}
+                <code className="font-mono">variables</code> scopes on the
+                target repository.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
