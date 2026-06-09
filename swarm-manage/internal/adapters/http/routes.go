@@ -32,6 +32,7 @@ r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/services", h.ListServices)
 		r.Get("/nodes", h.ListNodes)
 		r.Get("/services/{id}/logs", h.StreamServiceLogs)
+		r.Get("/services/{id}/stats", h.ServiceStats)
 		r.Post("/services/{id}/force-update", h.ForceUpdateService)
 	})
 

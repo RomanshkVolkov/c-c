@@ -36,3 +36,23 @@ type Node struct {
 	Availability string `json:"availability"`
 	EngineVersion string `json:"engineVersion"`
 }
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
+// TaskStats is a one-shot resource snapshot for a single container backing a
+// swarm task. cpuPercent is computed from the one-shot precpu sample; net/blk
+// totals are summed across all interfaces / devices.
+type TaskStats struct {
+	TaskID      string  `json:"taskId"`
+	ContainerID string  `json:"containerId"`
+	NodeID      string  `json:"nodeId"`
+	State       string  `json:"state"`
+	CPUPercent  float64 `json:"cpuPercent"`
+	MemUsage    uint64  `json:"memUsage"`
+	MemLimit    uint64  `json:"memLimit"`
+	NetRx       uint64  `json:"netRx"`
+	NetTx       uint64  `json:"netTx"`
+	BlockRead   uint64  `json:"blockRead"`
+	BlockWrite  uint64  `json:"blockWrite"`
+	Error       string  `json:"error,omitempty"`
+}

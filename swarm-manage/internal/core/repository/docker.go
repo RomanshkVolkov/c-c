@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -136,6 +137,74 @@ func (c *DockerClient) ListServices(ctx context.Context) ([]DockerService, error
 	var services []DockerService
 	err := c.get(ctx, "/services?status=true", &services)
 	return services, err
+}
+
+type DockerTask struct {
+	ID              string `json:"ID"`
+	ServiceID       string `json:"ServiceID"`
+	NodeID          string `json:"NodeID"`
+	DesiredState    string `json:"DesiredState"`
+	Status          struct {
+		State           string `json:"State"`
+		ContainerStatus *struct {
+			ContainerID string `json:"ContainerID"`
+		} `json:"ContainerStatus,omitempty"`
+	} `json:"Status"`
+}
+
+// ListServiceTasks returns tasks for the given service. Caller filters by state.
+func (c *DockerClient) ListServiceTasks(ctx context.Context, serviceID string) ([]DockerTask, error) {
+	filters := fmt.Sprintf(`{"service":["%s"]}`, serviceID)
+	encoded := url.QueryEscape(filters)
+	var tasks []DockerTask
+	err := c.get(ctx, "/tasks?filters="+encoded, &tasks)
+	return tasks, err
+}
+
+// DockerContainerStats is the partial shape of /containers/{id}/stats?stream=false
+// we care about. Fields are only the ones used to compute summary metrics.
+type DockerContainerStats struct {
+	CPUStats struct {
+		CPUUsage struct {
+			TotalUsage uint64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+		OnlineCPUs     uint64 `json:"online_cpus"`
+	} `json:"cpu_stats"`
+	PreCPUStats struct {
+		CPUUsage struct {
+			TotalUsage uint64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+		OnlineCPUs     uint64 `json:"online_cpus"`
+	} `json:"precpu_stats"`
+	MemoryStats struct {
+		Usage uint64 `json:"usage"`
+		Limit uint64 `json:"limit"`
+		Stats struct {
+			Cache        uint64 `json:"cache"`         // cgroup v1
+			InactiveFile uint64 `json:"inactive_file"` // cgroup v2
+		} `json:"stats"`
+	} `json:"memory_stats"`
+	Networks map[string]struct {
+		RxBytes uint64 `json:"rx_bytes"`
+		TxBytes uint64 `json:"tx_bytes"`
+	} `json:"networks"`
+	BlkioStats struct {
+		IoServiceBytesRecursive []struct {
+			Op    string `json:"op"`
+			Value uint64 `json:"value"`
+		} `json:"io_service_bytes_recursive"`
+	} `json:"blkio_stats"`
+}
+
+func (c *DockerClient) ContainerStats(ctx context.Context, containerID string) (*DockerContainerStats, error) {
+	var s DockerContainerStats
+	err := c.get(ctx, "/containers/"+containerID+"/stats?stream=false&one-shot=false", &s)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 func (c *DockerClient) ListNodes(ctx context.Context) ([]DockerNode, error) {
