@@ -1,5 +1,7 @@
-import { Activity, LogOut, Network, Server, User } from "lucide-react";
+import { useState } from "react";
+import { Activity, LogOut, Network, RefreshCw, Rocket, Server, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useServers } from "@/hooks/use-servers";
 import AddServerDialog from "@/components/AddServerDialog";
+import type { Server as ServerType } from "@/types/server";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
   online: "default",
@@ -26,15 +29,50 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = 
   error: "destructive",
 };
 
+type AgentBusy = { id: string; kind: "deploy" | "update" } | null;
+
+interface AgentResult {
+  stdout: string;
+  stderr: string;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { session, logout } = useAuth();
-  const { servers, loading, createServer } = useServers();
+  const { servers, loading, createServer, refresh } = useServers();
+  const [busy, setBusy] = useState<AgentBusy>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
 
   const handleLogout = () => { logout(); navigate("/login"); };
   const initials = session?.username?.slice(0, 2).toUpperCase() ?? "??";
   const online = servers.filter((s) => s.status === "online").length;
   const types = new Set(servers.map((s) => s.type)).size;
+
+  const runAgentCommand = async (
+    server: ServerType,
+    kind: "deploy" | "update",
+  ) => {
+    setBusy({ id: server.id, kind });
+    setAgentError(null);
+    try {
+      const cmd =
+        kind === "deploy"
+          ? "deploy_swarm_manage_agent"
+          : "update_swarm_manage_agent";
+      const args: Record<string, unknown> = {
+        host: server.host,
+        sshPort: server.sshPort,
+        sshUser: server.sshUser,
+      };
+      if (kind === "deploy") args.agentPort = server.agentPort;
+      await invoke<AgentResult>(cmd, args);
+      await refresh();
+    } catch (e) {
+      setAgentError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -107,11 +145,20 @@ export default function Dashboard() {
           </Card>
         </div>
 
+        {agentError && (
+          <div className="border border-destructive/40 bg-destructive/5 text-destructive px-4 py-2 rounded-md text-sm whitespace-pre-wrap font-mono">
+            {agentError}
+          </div>
+        )}
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Servers</CardTitle>
-              <CardDescription>Registered VPS instances</CardDescription>
+              <CardDescription>
+                Registered VPS instances. Deploy/Update uses your local SSH agent
+                (1Password recommended) — no keys leave your machine.
+              </CardDescription>
             </div>
             <AddServerDialog onCreated={createServer} />
           </CardHeader>
@@ -134,31 +181,64 @@ export default function Dashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {servers.map((server) => (
-                    <TableRow key={server.id}>
-                      <TableCell className="font-medium">{server.name}</TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">
-                        {server.host}:{server.agentPort}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{server.type}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={STATUS_VARIANT[server.status] ?? "secondary"}>
-                          {server.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/servers/${server.id}`, { state: server })}
-                        >
-                          Manage
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {servers.map((server) => {
+                    const isBusy = busy?.id === server.id;
+                    return (
+                      <TableRow key={server.id}>
+                        <TableCell className="font-medium">{server.name}</TableCell>
+                        <TableCell className="font-mono text-sm text-muted-foreground">
+                          {server.host}:{server.agentPort}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{server.type}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={STATUS_VARIANT[server.status] ?? "secondary"}>
+                            {server.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right space-x-1">
+                          {(server.status === "pending" || server.status === "error") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={isBusy}
+                              onClick={() => runAgentCommand(server, "deploy")}
+                            >
+                              {isBusy && busy?.kind === "deploy" ? (
+                                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                              ) : (
+                                <Rocket className="h-3 w-3 mr-1" />
+                              )}
+                              {server.status === "error" ? "Retry Deploy" : "Deploy Agent"}
+                            </Button>
+                          )}
+                          {server.status === "online" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={isBusy}
+                              onClick={() => runAgentCommand(server, "update")}
+                            >
+                              <RefreshCw
+                                className={`h-3 w-3 mr-1 ${
+                                  isBusy && busy?.kind === "update" ? "animate-spin" : ""
+                                }`}
+                              />
+                              {isBusy && busy?.kind === "update" ? "Updating..." : "Update Agent"}
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/servers/${server.id}`, { state: server })}
+                          >
+                            Manage
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}

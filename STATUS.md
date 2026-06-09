@@ -13,26 +13,19 @@ Tracking doc — open items, in-progress work, and decisions from rolling conver
 
 | Item | Files | Notes |
 |---|---|---|
-| Rename `productName` to `CAC` (drop `&`) | `app/src-tauri/tauri.conf.json` | Works around the `tauri-action@v0.6.2` sanitizer inconsistency that was preventing `latest.json` from being uploaded. Window title in `app.windows[0].title` keeps `&` — only the bundle/binary name changes. Takes effect on the next release tag. |
+| swarm-manage per-task stats endpoint | `swarm-manage/internal/core/domain/swarm.go`, `swarm-manage/internal/core/repository/docker.go`, `swarm-manage/internal/core/service/swarm.go`, `swarm-manage/internal/adapters/handler/swarm.go`, `swarm-manage/internal/adapters/http/routes.go` | New `GET /api/v1/services/{id}/stats` proxying Docker's `/tasks` + `/containers/{id}/stats?stream=false` per running task. Computes CPU% from one-shot precpu sample; subtracts page cache from mem usage for a more RSS-like figure. Stats calls fan out concurrently (one goroutine per task). |
+| Rebuilt deploy/update agent in the desktop app via SSH | `app/src-tauri/src/lib.rs`, `app/src/pages/Dashboard.tsx` | Two new Tauri commands `deploy_swarm_manage_agent` / `update_swarm_manage_agent` shell out to `ssh` with `BatchMode=yes` + `StrictHostKeyChecking=accept-new`. Auth comes from the OS SSH agent (1Password via `SSH_AUTH_SOCK`), no keys stored anywhere. Dashboard regains the Deploy/Update buttons but now calls these local commands instead of the removed backend endpoints. |
 
 ## ⏳ Planned (next iterations)
 
-### Container resource usage per server
+### App UI for container stats
 
-Surface per-container resource usage (CPU / memory / network / disk I/O) for the containers running on each stored server.
+Backend endpoint exists (above). Now consume it from `app/src/pages/ServerManage.tsx`:
 
-- New endpoint on `swarm-manage`: `GET /api/v1/services/{id}/stats` and/or `GET /api/v1/containers/{id}/stats` that proxies Docker's `/containers/{id}/stats?stream=false` (or streams it).
-- Frontend page or section under `ServerManage.tsx`: live table per service/task with rolling stats.
-- Decide: pull-on-demand (cheap, no daemon load) vs. SSE/WebSocket streaming (smoother UI, more cost). Default to on-demand polling at ~5s intervals while the page is open.
-
-### Rebuild `deploy-agent` / `update-agent` from the app side
-
-Once the dead backend SSH path is committed, rebuild deploy/update agent in the desktop app:
-
-- App shells out to `ssh` CLI via `tauri-plugin-shell` (or `std::process::Command` for simplicity).
-- 1Password SSH agent (`SSH_AUTH_SOCK`) takes over key handling transparently — no key code in our app.
-- Per-server "Deploy Agent" / "Update Agent" actions in the dashboard, calling local SSH directly to the host stored in DB metadata.
-- Initially no host-key verification (current backend used `InsecureIgnoreHostKey`); when we rebuild it on the app side, store + verify host keys properly.
+- Per-service stats table: CPU%, RAM (used / limit), Net Rx/Tx, Block R/W per task.
+- Poll `/api/v1/services/{id}/stats` every ~5s while the panel is open. Stop polling on navigation away.
+- Show a per-row error badge when the agent returned `error` for that task (means Docker stats call failed but task exists).
+- Pre-requisite: the new `swarm-manage` image (built from the in-progress endpoint) must be rolled out to each server via the "Update Agent" button.
 
 ## 💭 Future / nice-to-have
 

@@ -117,6 +117,116 @@ fn op_read(reference: &str) -> Result<String, String> {
     Ok(token)
 }
 
+// ─── SSH agent operations ─────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct SshOutput {
+    pub stdout: String,
+    pub stderr: String,
+}
+
+const AGENT_IMAGE: &str = "ghcr.io/romanshkvolkov/c-c/swarm-manage:latest";
+
+// Runs `ssh` against the given target, executing one remote command.
+// Authentication is provided by the OS SSH agent (`SSH_AUTH_SOCK`, e.g. 1Password).
+// StrictHostKeyChecking=accept-new pins unknown hosts on first connect.
+fn ssh_run(host: &str, port: u16, user: &str, remote_cmd: &str) -> Result<SshOutput, String> {
+    use std::process::Command;
+
+    let target = format!("{user}@{host}");
+    let port_str = port.to_string();
+
+    let output = Command::new("ssh")
+        .args([
+            "-p",
+            &port_str,
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "ConnectTimeout=15",
+            &target,
+            remote_cmd,
+        ])
+        .output()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                "`ssh` binary not found on PATH.".to_string()
+            }
+            _ => format!("Failed to execute ssh: {e}"),
+        })?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if !output.status.success() {
+        let trimmed = stderr.trim();
+        let hint = if trimmed.contains("Permission denied") {
+            " (is your 1Password SSH agent unlocked and the key authorized on this server?)"
+        } else if trimmed.contains("Connection refused") || trimmed.contains("Connection timed out") {
+            " (host unreachable or SSH port closed)"
+        } else {
+            ""
+        };
+        return Err(format!(
+            "ssh exited with status {}{}\n{}",
+            output.status, hint, trimmed
+        ));
+    }
+
+    Ok(SshOutput { stdout, stderr })
+}
+
+#[tauri::command]
+fn update_swarm_manage_agent(
+    host: String,
+    ssh_port: u16,
+    ssh_user: String,
+    service: Option<String>,
+) -> Result<SshOutput, String> {
+    let service_name = service.unwrap_or_else(|| "cac_swarm-manage".to_string());
+    let remote = format!(
+        "docker service update --force --image {AGENT_IMAGE} {service_name}"
+    );
+    ssh_run(&host, ssh_port, &ssh_user, &remote)
+}
+
+#[tauri::command]
+fn deploy_swarm_manage_agent(
+    host: String,
+    ssh_port: u16,
+    ssh_user: String,
+    agent_port: u16,
+    stack: Option<String>,
+) -> Result<SshOutput, String> {
+    let stack_name = stack.unwrap_or_else(|| "cac".to_string());
+    let compose = format!(
+        "version: '3.8'
+services:
+  swarm-manage:
+    image: {AGENT_IMAGE}
+    ports:
+      - \"{agent_port}:9090\"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+"
+    );
+    let remote = format!(
+        "set -e
+cat > /tmp/swarm-manage.yml <<'EOF'
+{compose}EOF
+docker stack deploy -c /tmp/swarm-manage.yml {stack_name}
+rm -f /tmp/swarm-manage.yml"
+    );
+    ssh_run(&host, ssh_port, &ssh_user, &remote)
+}
+
 // ─── Keychain commands ────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -608,6 +718,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
+            update_swarm_manage_agent,
+            deploy_swarm_manage_agent,
             set_github_token,
             delete_github_token,
             github_token_configured,
