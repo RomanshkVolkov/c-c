@@ -38,6 +38,7 @@ export interface ContainerStats {
   stack: string;
   state: string;
   cpuPercent: number;
+  onlineCpus: number;
   memUsage: number;
   memLimit: number;
   netRx: number;

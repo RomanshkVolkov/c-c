@@ -4,6 +4,9 @@ import {
   ArrowLeft,
   Activity,
   AlertCircle,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
   Pause,
   Play,
   RefreshCw,
@@ -40,6 +43,53 @@ interface LocationState {
   nodes: SwarmNode[];
 }
 
+type SortKey =
+  | "container"
+  | "service"
+  | "stack"
+  | "state"
+  | "cpu"
+  | "mem"
+  | "netRx"
+  | "netTx"
+  | "diskR"
+  | "diskW";
+
+type SortDir = "asc" | "desc";
+
+const RUNNING_STATES = new Set(["running"]);
+
+function SortableHead({
+  label,
+  sortKey,
+  active,
+  dir,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: SortKey | null;
+  dir: SortDir;
+  onSort: (k: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const isActive = active === sortKey;
+  const Icon = isActive ? (dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={`flex items-center gap-1 select-none hover:text-foreground transition-colors ${
+        align === "right" ? "ml-auto" : ""
+      } ${isActive ? "text-foreground" : "text-muted-foreground"}`}
+    >
+      {label}
+      <Icon className="h-3 w-3" />
+    </button>
+  );
+}
+
 function MemBar({ used, limit }: { used: number; limit: number }) {
   const pct = limit > 0 ? (used / limit) * 100 : 0;
   const color =
@@ -64,16 +114,20 @@ function MemBar({ used, limit }: { used: number; limit: number }) {
   );
 }
 
-function CPUBar({ pct }: { pct: number }) {
+function CPUBar({ pct, cores }: { pct: number; cores: number }) {
+  // pct is docker-style: 100% per saturated core. Scale the bar against host max
+  // (cores * 100) so a value of 200% on a 4-core host renders as 50% filled.
+  const max = Math.max(100, cores * 100);
+  const ratio = max > 0 ? (pct / max) * 100 : 0;
   const color =
-    pct >= 75 ? "bg-destructive" : pct >= 40 ? "bg-yellow-500" : "bg-green-500";
+    ratio >= 75 ? "bg-destructive" : ratio >= 40 ? "bg-yellow-500" : "bg-green-500";
   return (
     <div className="space-y-1 min-w-[80px]">
       <div className="text-xs font-mono">{pct.toFixed(1)}%</div>
       <div className="h-1.5 w-full bg-muted rounded">
         <div
           className={`h-full rounded ${color}`}
-          style={{ width: `${Math.min(100, pct)}%` }}
+          style={{ width: `${Math.min(100, ratio)}%` }}
         />
       </div>
     </div>
@@ -117,6 +171,18 @@ export default function ServerStats() {
   const setPolling = useStatsStore((s) => s.setPolling);
 
   const [filter, setFilter] = useState("");
+  const [showStopped, setShowStopped] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("cpu");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const handleSort = (k: SortKey) => {
+    if (k === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(k);
+      setSortDir(k === "container" || k === "service" || k === "stack" || k === "state" ? "asc" : "desc");
+    }
+  };
 
   const nodeNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -151,13 +217,49 @@ export default function ServerStats() {
   const lastFetchedAt = entry?.lastFetchedAt ?? null;
 
   const needle = filter.trim().toLowerCase();
-  const filtered = needle
-    ? stats.filter((s) =>
+
+  const visible = showStopped
+    ? stats
+    : stats.filter((s) => RUNNING_STATES.has(s.state));
+  const hiddenStopped = stats.length - visible.length;
+
+  const searchFiltered = needle
+    ? visible.filter((s) =>
         `${s.containerId} ${s.serviceName} ${s.stack}`
           .toLowerCase()
           .includes(needle),
       )
-    : stats;
+    : visible;
+
+  const cmp = (a: number | string, b: number | string) => {
+    if (a < b) return sortDir === "asc" ? -1 : 1;
+    if (a > b) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  };
+  const filtered = [...searchFiltered].sort((a, b) => {
+    switch (sortKey) {
+      case "container":
+        return cmp(a.containerId, b.containerId);
+      case "service":
+        return cmp(a.serviceName, b.serviceName);
+      case "stack":
+        return cmp(a.stack, b.stack);
+      case "state":
+        return cmp(a.state, b.state);
+      case "cpu":
+        return cmp(a.cpuPercent, b.cpuPercent);
+      case "mem":
+        return cmp(a.memUsage, b.memUsage);
+      case "netRx":
+        return cmp(a.netRx, b.netRx);
+      case "netTx":
+        return cmp(a.netTx, b.netTx);
+      case "diskR":
+        return cmp(a.blockRead, b.blockRead);
+      case "diskW":
+        return cmp(a.blockWrite, b.blockWrite);
+    }
+  });
 
   return (
     <div className="h-full bg-background flex flex-col overflow-hidden">
@@ -218,12 +320,18 @@ export default function ServerStats() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Containers ({filtered.length}
-              {needle && stats.length !== filtered.length
-                ? ` of ${stats.length}`
-                : ""}
-              )
+            <CardTitle className="text-sm font-medium flex items-center justify-between">
+              <span>
+                Containers ({filtered.length} of {stats.length})
+              </span>
+              <label className="flex items-center gap-2 text-xs font-normal text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showStopped}
+                  onChange={(e) => setShowStopped(e.target.checked)}
+                />
+                Show stopped
+              </label>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -247,6 +355,16 @@ export default function ServerStats() {
               )}
             </div>
 
+            {!showStopped && hiddenStopped > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowStopped(true)}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                {hiddenStopped} stopped container{hiddenStopped > 1 ? "s" : ""} hidden — show
+              </button>
+            )}
+
             {stats.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 {loading
@@ -261,17 +379,37 @@ export default function ServerStats() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Container</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Stack</TableHead>
+                    <TableHead>
+                      <SortableHead label="Container" sortKey="container" active={sortKey} dir={sortDir} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHead label="Service" sortKey="service" active={sortKey} dir={sortDir} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHead label="Stack" sortKey="stack" active={sortKey} dir={sortDir} onSort={handleSort} />
+                    </TableHead>
                     <TableHead>Node</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead>CPU</TableHead>
-                    <TableHead>Memory</TableHead>
-                    <TableHead className="text-right">Net Rx</TableHead>
-                    <TableHead className="text-right">Net Tx</TableHead>
-                    <TableHead className="text-right">Disk R</TableHead>
-                    <TableHead className="text-right">Disk W</TableHead>
+                    <TableHead>
+                      <SortableHead label="State" sortKey="state" active={sortKey} dir={sortDir} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHead label="CPU" sortKey="cpu" active={sortKey} dir={sortDir} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead>
+                      <SortableHead label="Memory" sortKey="mem" active={sortKey} dir={sortDir} onSort={handleSort} />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <SortableHead label="Net Rx" sortKey="netRx" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <SortableHead label="Net Tx" sortKey="netTx" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <SortableHead label="Disk R" sortKey="diskR" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <SortableHead label="Disk W" sortKey="diskW" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -317,7 +455,7 @@ export default function ServerStats() {
                         <StateBadge state={row.state} />
                       </TableCell>
                       <TableCell>
-                        <CPUBar pct={row.cpuPercent} />
+                        <CPUBar pct={row.cpuPercent} cores={row.onlineCpus} />
                       </TableCell>
                       <TableCell>
                         <MemBar used={row.memUsage} limit={row.memLimit} />
