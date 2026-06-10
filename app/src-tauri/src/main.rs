@@ -2,5 +2,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // WebKitGTK's DMABUF renderer fails to allocate an EGL display on hybrid
+    // Intel+NVIDIA setups (EGL_BAD_ALLOC), aborting the process on launch.
+    // Disabling it forces a working fallback path. Linux-only; must be set
+    // before the webview initializes.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     app_lib::run()
 }
