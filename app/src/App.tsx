@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import ServerManage from "@/pages/ServerManage";
+import ServerStats from "@/pages/ServerStats";
 import StackSecrets from "@/pages/StackSecrets";
 import ImageTool from "@/pages/ImageTool";
 import RequestClient from "@/pages/RequestClient";
@@ -23,6 +24,7 @@ export default function App() {
         >
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/servers/:id" element={<ServerManage />} />
+          <Route path="/servers/:id/stats" element={<ServerStats />} />
           <Route path="/servers/:id/secrets" element={<StackSecrets />} />
           <Route path="/image-tool" element={<ImageTool />} />
           <Route path="/requests" element={<RequestClient />} />

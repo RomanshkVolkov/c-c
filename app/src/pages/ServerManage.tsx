@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import AnsiToHtml from "ansi-to-html";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
+  Activity,
   ArrowLeft,
   RefreshCw,
   Search,
@@ -448,6 +449,18 @@ export default function ServerManage() {
             {server.status}
           </Badge>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            navigate(`/servers/${server.id}/stats`, {
+              state: { server, nodes },
+            })
+          }
+        >
+          <Activity className="h-4 w-4 mr-1" />
+          Stats
+        </Button>
         <Button
           variant="outline"
           size="sm"
