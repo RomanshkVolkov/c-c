@@ -4,11 +4,13 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   RefreshCw,
+  Search,
   Terminal,
   X,
   RotateCcw,
   KeyRound,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -163,6 +165,80 @@ function ServicesTab({
   services,
   host,
   agentPort,
+  filter,
+  onFilterChange,
+  onLogsClick,
+  onSecretsClick,
+}: {
+  services: SwarmService[];
+  host: string;
+  agentPort: number;
+  filter: string;
+  onFilterChange: (v: string) => void;
+  onLogsClick: (svc: SwarmService) => void;
+  onSecretsClick: (svc: SwarmService) => void;
+}) {
+  const needle = filter.trim().toLowerCase();
+  const filtered = needle
+    ? services.filter((s) => {
+        const haystack = `${s.name} ${s.image} ${s.stack ?? ""}`.toLowerCase();
+        return haystack.includes(needle);
+      })
+    : services;
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={filter}
+          onChange={(e) => onFilterChange(e.target.value)}
+          placeholder="Filter by name, image or stack..."
+          className="pl-9 pr-9"
+        />
+        {filter && (
+          <button
+            type="button"
+            onClick={() => onFilterChange("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label="Clear filter"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {services.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          No services found.
+        </p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          No matches for "{filter}".
+        </p>
+      ) : (
+        <ServicesTable
+          services={filtered}
+          host={host}
+          agentPort={agentPort}
+          onLogsClick={onLogsClick}
+          onSecretsClick={onSecretsClick}
+        />
+      )}
+
+      {needle && (
+        <p className="text-xs text-muted-foreground text-right">
+          Showing {filtered.length} of {services.length}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ServicesTable({
+  services,
+  host,
+  agentPort,
   onLogsClick,
   onSecretsClick,
 }: {
@@ -172,13 +248,6 @@ function ServicesTab({
   onLogsClick: (svc: SwarmService) => void;
   onSecretsClick: (svc: SwarmService) => void;
 }) {
-  if (services.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-8 text-center">
-        No services found.
-      </p>
-    );
-  }
   return (
     <Table>
       <TableHeader className="block">
@@ -340,6 +409,7 @@ export default function ServerManage() {
   const [selectedService, setSelectedService] = useState<SwarmService | null>(
     null,
   );
+  const [servicesFilter, setServicesFilter] = useState("");
 
   useEffect(() => {
     if (!server) navigate("/dashboard", { replace: true });
@@ -425,6 +495,8 @@ export default function ServerManage() {
                 services={services}
                 host={server.host}
                 agentPort={server.agentPort}
+                filter={servicesFilter}
+                onFilterChange={setServicesFilter}
                 onLogsClick={(svc) =>
                   setSelectedService((prev) =>
                     prev?.id === svc.id ? null : svc,
