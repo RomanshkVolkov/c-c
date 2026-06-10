@@ -39,13 +39,16 @@ type Node struct {
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
-// TaskStats is a one-shot resource snapshot for a single container backing a
-// swarm task. cpuPercent is computed from the one-shot precpu sample; net/blk
-// totals are summed across all interfaces / devices.
-type TaskStats struct {
-	TaskID      string  `json:"taskId"`
+// ContainerStats is a one-shot resource snapshot for a single swarm-managed
+// container running on this node. cpuPercent comes from the one-shot precpu
+// sample; net/blk values are cumulative byte counters since container start.
+type ContainerStats struct {
 	ContainerID string  `json:"containerId"`
+	TaskID      string  `json:"taskId"`
 	NodeID      string  `json:"nodeId"`
+	ServiceID   string  `json:"serviceId"`
+	ServiceName string  `json:"serviceName"`
+	Stack       string  `json:"stack"`
 	State       string  `json:"state"`
 	CPUPercent  float64 `json:"cpuPercent"`
 	MemUsage    uint64  `json:"memUsage"`

@@ -74,9 +74,8 @@ func (h *SwarmHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 	ok(w, nodes)
 }
 
-func (h *SwarmHandler) ServiceStats(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	stats, err := h.svc.ServiceStats(r.Context(), id)
+func (h *SwarmHandler) NodeStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.svc.NodeStats(r.Context())
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return

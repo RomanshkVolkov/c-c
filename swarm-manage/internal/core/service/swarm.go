@@ -123,40 +123,31 @@ func (s *SwarmService) ForceUpdateService(ctx context.Context, serviceID string)
 	return s.docker.ForceUpdateService(ctx, serviceID)
 }
 
-// ServiceStats returns per-task resource usage for the running containers of a service.
-// Tasks without a container (pending/shutdown) are omitted; tasks whose stats call
-// fails are returned with an Error field set so the caller can render the row anyway.
-func (s *SwarmService) ServiceStats(ctx context.Context, serviceID string) ([]domain.TaskStats, error) {
-	tasks, err := s.docker.ListServiceTasks(ctx, serviceID)
+// NodeStats returns per-container resource usage for every swarm-managed
+// container running on this node. Containers whose stats call fails are
+// returned with an Error field set so the caller can render the row anyway.
+func (s *SwarmService) NodeStats(ctx context.Context) ([]domain.ContainerStats, error) {
+	containers, err := s.docker.ListSwarmContainers(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	type job struct {
-		task        repository.DockerTask
-		containerID string
-	}
-	var jobs []job
-	for _, t := range tasks {
-		if t.Status.ContainerStatus == nil || t.Status.ContainerStatus.ContainerID == "" {
-			continue
-		}
-		jobs = append(jobs, job{task: t, containerID: t.Status.ContainerStatus.ContainerID})
-	}
-
-	results := make([]domain.TaskStats, len(jobs))
+	results := make([]domain.ContainerStats, len(containers))
 	var wg sync.WaitGroup
-	for i, j := range jobs {
+	for i, ctr := range containers {
 		wg.Add(1)
-		go func(idx int, j job) {
+		go func(idx int, ctr repository.DockerContainer) {
 			defer wg.Done()
-			row := domain.TaskStats{
-				TaskID:      j.task.ID,
-				ContainerID: j.containerID,
-				NodeID:      j.task.NodeID,
-				State:       j.task.Status.State,
+			row := domain.ContainerStats{
+				ContainerID: ctr.ID,
+				TaskID:      ctr.Labels["com.docker.swarm.task.id"],
+				NodeID:      ctr.Labels["com.docker.swarm.node.id"],
+				ServiceID:   ctr.Labels["com.docker.swarm.service.id"],
+				ServiceName: ctr.Labels["com.docker.swarm.service.name"],
+				Stack:       ctr.Labels["com.docker.stack.namespace"],
+				State:       ctr.State,
 			}
-			stats, err := s.docker.ContainerStats(ctx, j.containerID)
+			stats, err := s.docker.ContainerStats(ctx, ctr.ID)
 			if err != nil {
 				row.Error = err.Error()
 				results[idx] = row
@@ -164,13 +155,13 @@ func (s *SwarmService) ServiceStats(ctx context.Context, serviceID string) ([]do
 			}
 			fillStats(&row, stats)
 			results[idx] = row
-		}(i, j)
+		}(i, ctr)
 	}
 	wg.Wait()
 	return results, nil
 }
 
-func fillStats(out *domain.TaskStats, s *repository.DockerContainerStats) {
+func fillStats(out *domain.ContainerStats, s *repository.DockerContainerStats) {
 	cpuDelta := float64(s.CPUStats.CPUUsage.TotalUsage) - float64(s.PreCPUStats.CPUUsage.TotalUsage)
 	sysDelta := float64(s.CPUStats.SystemCPUUsage) - float64(s.PreCPUStats.SystemCPUUsage)
 	cpus := float64(s.CPUStats.OnlineCPUs)

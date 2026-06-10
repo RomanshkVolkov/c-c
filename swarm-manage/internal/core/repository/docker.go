@@ -139,26 +139,22 @@ func (c *DockerClient) ListServices(ctx context.Context) ([]DockerService, error
 	return services, err
 }
 
-type DockerTask struct {
-	ID              string `json:"ID"`
-	ServiceID       string `json:"ServiceID"`
-	NodeID          string `json:"NodeID"`
-	DesiredState    string `json:"DesiredState"`
-	Status          struct {
-		State           string `json:"State"`
-		ContainerStatus *struct {
-			ContainerID string `json:"ContainerID"`
-		} `json:"ContainerStatus,omitempty"`
-	} `json:"Status"`
+// DockerContainer is the subset of /containers/json we care about. Swarm-managed
+// containers carry the com.docker.swarm.* labels populated below.
+type DockerContainer struct {
+	ID     string            `json:"Id"`
+	State  string            `json:"State"`
+	Labels map[string]string `json:"Labels"`
 }
 
-// ListServiceTasks returns tasks for the given service. Caller filters by state.
-func (c *DockerClient) ListServiceTasks(ctx context.Context, serviceID string) ([]DockerTask, error) {
-	filters := fmt.Sprintf(`{"service":["%s"]}`, serviceID)
+// ListSwarmContainers returns the swarm-managed containers running on this node
+// (filter on the com.docker.swarm.task.id label, which is only set by swarmkit).
+func (c *DockerClient) ListSwarmContainers(ctx context.Context) ([]DockerContainer, error) {
+	filters := `{"label":["com.docker.swarm.task.id"]}`
 	encoded := url.QueryEscape(filters)
-	var tasks []DockerTask
-	err := c.get(ctx, "/tasks?filters="+encoded, &tasks)
-	return tasks, err
+	var containers []DockerContainer
+	err := c.get(ctx, "/containers/json?all=true&filters="+encoded, &containers)
+	return containers, err
 }
 
 // DockerContainerStats is the partial shape of /containers/{id}/stats?stream=false
