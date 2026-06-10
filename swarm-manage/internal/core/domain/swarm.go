@@ -51,6 +51,7 @@ type ContainerStats struct {
 	Stack       string  `json:"stack"`
 	State       string  `json:"state"`
 	CPUPercent  float64 `json:"cpuPercent"`
+	OnlineCPUs  uint64  `json:"onlineCpus"`
 	MemUsage    uint64  `json:"memUsage"`
 	MemLimit    uint64  `json:"memLimit"`
 	NetRx       uint64  `json:"netRx"`

@@ -171,6 +171,7 @@ func fillStats(out *domain.ContainerStats, s *repository.DockerContainerStats) {
 	if sysDelta > 0 && cpuDelta > 0 && cpus > 0 {
 		out.CPUPercent = (cpuDelta / sysDelta) * cpus * 100.0
 	}
+	out.OnlineCPUs = uint64(cpus)
 
 	// Docker reports memory_stats.usage including page cache. Subtract it for a
 	// more accurate RSS-like figure. cgroup v1 exposes 'cache'; v2 exposes 'inactive_file'.
