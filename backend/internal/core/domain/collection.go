@@ -63,10 +63,10 @@ type CollectionNode struct {
 	Name         string             `gorm:"type:varchar(200);not null"         json:"name"`
 	Position     int                `gorm:"not null;default:0"                 json:"position"`
 	Expanded     bool               `gorm:"default:true"                       json:"expanded"`
-	Method       string             `gorm:"type:varchar(20)"                   json:"method,omitempty"`
-	URL          string             `gorm:"type:text"                          json:"url,omitempty"`
-	Headers      KeyValueList       `gorm:"type:jsonb"                         json:"headers,omitempty"`
-	Body         string             `gorm:"type:text"                          json:"body,omitempty"`
+	Method       string             `gorm:"type:varchar(20)"                   json:"method"`
+	URL          string             `gorm:"type:text"                          json:"url"`
+	Headers      KeyValueList       `gorm:"type:jsonb"                         json:"headers"`
+	Body         string             `gorm:"type:text"                          json:"body"`
 }
 
 type CollectionPermission string

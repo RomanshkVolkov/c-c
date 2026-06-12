@@ -21,6 +21,23 @@ const newId = (): string => {
 // so updating them doesn't trigger re-renders.
 const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
+// Backend serializes request nodes with json:",omitempty" historically, so
+// empty fields are missing in the response. Fill them in defensively so
+// renderers can safely call .url.trim() / .headers.map() etc.
+function normalizeTreeNodes(nodes: RequestTreeNode[]): RequestTreeNode[] {
+  return nodes.map((n) => {
+    if (n.type !== "request") return n;
+    const r = n as Partial<RequestNode> & RequestTreeNode;
+    return {
+      ...r,
+      method: r.method ?? "GET",
+      url: r.url ?? "",
+      headers: Array.isArray(r.headers) ? r.headers : [],
+      body: r.body ?? "",
+    } as RequestNode;
+  });
+}
+
 interface CollectionsState {
   collections: CollectionMeta[];
   loading: boolean;
@@ -121,7 +138,7 @@ export const useCollectionsStore = create<CollectionsState>()((set, get) => ({
       );
       if (!res.success || !res.data) throw new Error(res.error ?? "Failed to load tree");
       set((s) => ({
-        treeNodes: { ...s.treeNodes, [collectionId]: res.data!.nodes },
+        treeNodes: { ...s.treeNodes, [collectionId]: normalizeTreeNodes(res.data!.nodes) },
         collections: s.collections.map((c) =>
           c.id === collectionId ? { ...c, ...res.data!.collection } : c,
         ),
