@@ -45,6 +45,14 @@ func (r *OrganizationRepository) CreateWithOwner(org *domain.Organization, owner
 	})
 }
 
+// SlugByID returns an org's slug (used to build storage prefixes). Empty string
+// if the org is missing.
+func (r *OrganizationRepository) SlugByID(id string) (string, error) {
+	var slug string
+	err := r.db.Model(&domain.Organization{}).Where("id = ?", id).Select("slug").Scan(&slug).Error
+	return slug, err
+}
+
 func (r *OrganizationRepository) FindByID(id string) (*domain.Organization, error) {
 	var org domain.Organization
 	if err := r.db.First(&org, "id = ?", id).Error; err != nil {

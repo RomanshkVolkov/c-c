@@ -26,9 +26,14 @@ func Logger(next http.Handler) http.Handler {
 	})
 }
 
-// CORS adds permissive CORS headers (suitable for local Tauri app).
+// CORS adds permissive CORS headers (suitable for local Tauri app). The public
+// ingest endpoint is exempt: it does per-project CORS (allowed_origins) itself.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/ingest/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")

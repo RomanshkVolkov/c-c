@@ -172,3 +172,32 @@ type CreateReportProjectResult struct {
 	Project   ReportProjectResponse `json:"project"`
 	IngestKey string                `json:"ingestKey"`
 }
+
+// ─── Ingest (public) ──────────────────────────────────────────────────────────
+
+// IngestImage is one uploaded screenshot as received in the multipart body.
+type IngestImage struct {
+	FileName    string
+	ContentType string
+	Data        []byte
+}
+
+// IngestReportInput is the parsed public ingest payload.
+type IngestReportInput struct {
+	Title         string
+	Description   string
+	URL           string
+	UserAgent     string
+	Viewport      string
+	ReporterName  string
+	ReporterEmail string
+	Images        []IngestImage
+}
+
+// IngestReportResult is the compact confirmation returned to the widget.
+type IngestReportResult struct {
+	ID     string `json:"id"`
+	Seq    int    `json:"seq"`
+	Folio  string `json:"folio"` // <project-slug>-<seq>
+	Images int    `json:"images"`
+}
