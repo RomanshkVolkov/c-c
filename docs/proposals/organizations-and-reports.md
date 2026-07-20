@@ -1,6 +1,10 @@
 # Proposal — Organizations + módulo de reportes (bug tracker multi-tenant)
 
-**Status:** Draft / no implementado.
+**Status:** En ejecución (2026-07-20). Fases 1-5 implementadas y commiteadas;
+Fase 2 aplicada en AWS real. Pendiente: Fase 6 (portal, gated en cliente+email),
+notificaciones nativas OS (requiere `tauri-plugin-notification` + rebuild Rust),
+y la extensión del ingest para `snapshot` con columna propia (hoy va en el blob
+`telemetry`). Ver "Estado de ejecución" al final.
 **Contexto:** damos soporte a webs de clientes de dos empresas de software. Portento
 (cliente de nuke) ya tiene un módulo interno completo de bug-tickets; un segundo
 cliente pidió el mismo módulo. En vez de replicar el módulo web por web, cac se
@@ -374,3 +378,15 @@ tomadas, coherentes con lo ya construido:
    Tauri llega después.
 5. Fase 4 (consola Tauri).
 6. Fase 6 (portal) cuando el cliente lo pida explícitamente.
+
+## Estado de ejecución (2026-07-20)
+
+Commits en `main` (branch de trabajo):
+- **Fase 1** ✅ organizations + org_memberships + scoping + claims `orgs[]`; app: org switcher.
+- **Fase 2** ✅ Terraform `infra/terraform/reports-media` **aplicado en AWS** (bucket privado `guz-reports-media`, mx-central-1, usuario IAM). image-service registrado (`cac-reports`). Secrets/vars en gh + `backend.yml` los inyecta a `cac-secret`.
+- **Fase 3** ✅ 3a report_projects admin · 3b ingest público + cliente image-service · 3c triage admin (transiciones/comentarios/galería/dedup/default-assignee) · 3d proxy de imágenes (S3 directo + URL firmada/JWT) · 3e SSE org-scoped. Verificado E2E (incl. proxy vs S3 real).
+- **Fase 4** ✅ (consola Tauri) tablero + DnD con transiciones validadas · drawer de detalle · comentarios con imágenes · SSE en vivo (toasts) · timeline de telemetría · gestión de report_projects · vista calendario. Falta: **notificaciones nativas OS** (requiere `tauri-plugin-notification` + rebuild Rust).
+- **Fase 5** ✅ 5a paquete `@guz-studio/report-widget` (core telemetría + ingest) · 5b componente React + fallback vanilla (IIFE single-file) · 5c backend: ingest acepta telemetría, redacción server-side, **cifrado AES-GCM at-rest (KEK `REPORTS_KEK`)**, TTL de purga, descifrado en el detalle.
+- **Fase 6** ⏳ portal cliente (magic link + "mis reportes"). Gated en pedido del cliente + infra de email. No iniciada.
+
+**Snapshot (decisión 4):** hoy se guarda dentro del blob `reports.telemetry` (campo `snapshot`), no en columna propia; suficiente para v1. Revisitar si se quiere TTL/consulta independiente.
