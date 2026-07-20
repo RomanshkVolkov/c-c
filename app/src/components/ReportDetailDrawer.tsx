@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiUrl } from "@/lib/api";
 import { useReportsStore } from "@/store/reports.store";
 import { STATUS_LABELS, type ReportStatus } from "@/types/report";
+import TelemetryTimeline from "@/components/TelemetryTimeline";
 
 export default function ReportDetailDrawer() {
   const selectedId = useReportsStore((s) => s.selectedId);
@@ -123,6 +124,9 @@ export default function ReportDetailDrawer() {
                   ))}
                 </div>
               )}
+
+              {/* telemetry timeline (decision 7) */}
+              {detail.telemetry && <TelemetryTimeline data={detail.telemetry} />}
 
               {/* comments */}
               <div className="space-y-3">

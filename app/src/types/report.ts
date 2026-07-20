@@ -99,7 +99,46 @@ export interface ReportDetail {
   updatedAt: string;
   images: ReportImage[];
   comments: ReportComment[];
+  telemetry?: ReportTelemetry;
 }
 
 /** transitions map from GET /api/v1/reports/transitions */
 export type TransitionsMap = Record<ReportStatus, ReportStatus[]>;
+
+// ─── Telemetry (decrypted breadcrumbs, decision 7) ────────────────────────────
+
+export interface TelemetryError {
+  ts: number;
+  kind: "error" | "unhandledrejection";
+  message: string;
+  stack?: string;
+  source?: string;
+}
+export interface TelemetryConsole {
+  ts: number;
+  level: "error" | "warn";
+  text: string;
+}
+export interface TelemetryNetwork {
+  ts: number;
+  method: string;
+  url: string;
+  status: number;
+  durationMs: number;
+  body?: string;
+}
+export interface TelemetryNav {
+  ts: number;
+  from: string;
+  to: string;
+}
+export interface ReportTelemetry {
+  telemetry?: {
+    errors?: TelemetryError[];
+    console?: TelemetryConsole[];
+    network?: TelemetryNetwork[];
+    nav?: TelemetryNav[];
+  };
+  snapshot?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+}
