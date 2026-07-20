@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -39,6 +40,7 @@ type ReportService struct {
 	orgRepo  *repository.OrganizationRepository
 	authRepo *repository.AuthRepository
 	images   *imageservice.Client
+	hub      *events.Hub
 }
 
 func NewReportService(
@@ -46,8 +48,19 @@ func NewReportService(
 	orgRepo *repository.OrganizationRepository,
 	authRepo *repository.AuthRepository,
 	images *imageservice.Client,
+	hub *events.Hub,
 ) *ReportService {
-	return &ReportService{repo: repo, orgRepo: orgRepo, authRepo: authRepo, images: images}
+	return &ReportService{repo: repo, orgRepo: orgRepo, authRepo: authRepo, images: images, hub: hub}
+}
+
+// emit publishes a report event scoped to the report's org (best-effort; a
+// lookup failure just skips the notification).
+func (s *ReportService) emit(eventType, reportID string, data map[string]any) {
+	orgID, err := s.repo.OrgIDForReport(reportID)
+	if err != nil {
+		return
+	}
+	s.hub.Publish(events.Event{Type: eventType, OrgID: orgID, Data: data})
 }
 
 // ─── Ingest (public) ──────────────────────────────────────────────────────────
@@ -117,10 +130,15 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		}
 	}
 
+	folio := fmt.Sprintf("%s-%d", project.Slug, report.Seq)
+	s.hub.Publish(events.Event{Type: "report:new", OrgID: project.OrgID, Data: map[string]any{
+		"reportId": report.ID, "projectId": project.ID, "folio": folio, "title": report.Title,
+	}})
+
 	return &domain.IngestReportResult{
 		ID:     report.ID,
 		Seq:    report.Seq,
-		Folio:  fmt.Sprintf("%s-%d", project.Slug, report.Seq),
+		Folio:  folio,
 		Images: uploaded,
 	}, nil
 }
@@ -290,6 +308,9 @@ func (s *ReportService) Update(reportID string, req domain.UpdateReportRequest) 
 	if err := s.repo.Save(report); err != nil {
 		return nil, err
 	}
+	if req.Status != nil {
+		s.emit("report:status", reportID, map[string]any{"reportId": reportID, "status": report.Status})
+	}
 	return s.Detail(reportID)
 }
 
@@ -333,6 +354,7 @@ func (s *ReportService) AddComment(ctx context.Context, callerID, reportID, body
 			return nil, fmt.Errorf("%w: %v", ErrImagesUnavailable, lastErr)
 		}
 	}
+	s.emit("report:comment", reportID, map[string]any{"reportId": reportID, "commentId": c.ID})
 	return s.Detail(reportID)
 }
 
@@ -393,6 +415,7 @@ func (s *ReportService) AttachImages(ctx context.Context, reportID string, image
 	if err := s.systemComment(reportID, fmt.Sprintf("attached %d image(s)", len(persisted))); err != nil {
 		return nil, err
 	}
+	s.emit("report:attachment", reportID, map[string]any{"reportId": reportID, "attached": len(persisted)})
 	return s.Detail(reportID)
 }
 

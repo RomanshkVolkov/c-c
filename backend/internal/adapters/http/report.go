@@ -8,6 +8,7 @@ import (
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
 	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
@@ -46,13 +47,16 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 		lg.Warn("REPORTS_MEDIA_BUCKET not set — report image proxy disabled")
 	}
 
+	hub := events.NewHub()
+
 	projectSvc := service.NewReportProjectService(projectRepo, orgRepo)
-	reportSvc := service.NewReportService(reportRepo, orgRepo, authRepo, imgClient)
+	reportSvc := service.NewReportService(reportRepo, orgRepo, authRepo, imgClient, hub)
 
 	projects := handler.NewReportProjectHandler(projectSvc)
 	ingest := handler.NewIngestHandler(projectRepo, reportSvc)
 	admin := handler.NewReportAdminHandler(reportSvc)
 	imageProxy := handler.NewImageProxyHandler(reportRepo, store)
+	eventsH := handler.NewEventsHandler(hub)
 
 	// Admin API — JWT, org-scoped.
 	r.Route("/api/v1/report-projects", func(r chi.Router) {
@@ -81,6 +85,10 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 	// Image proxy — its own dual auth (signed URL OR JWT), so it lives OUTSIDE
 	// the JWT-only group: the webview's <img> can't send an Authorization header.
 	r.Get("/api/v1/reports/{id}/images/{imageId}", imageProxy.Serve)
+
+	// SSE notifications — org-scoped. Auth by ?token= (EventSource can't set
+	// headers), so it lives outside the JWT-only group.
+	r.Get("/api/v1/events", eventsH.Stream)
 
 	// Public ingest — auth by X-Ingest-Key, per-project CORS/rate limit. No JWT.
 	r.Post("/ingest/v1/reports", ingest.CreateReport)
