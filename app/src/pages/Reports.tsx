@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, ImageIcon, MessageSquare, Bug, Settings2 } from "lucide-react";
+import { RefreshCw, ImageIcon, MessageSquare, Bug, Settings2, LayoutGrid, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import ReportDetailDrawer from "@/components/ReportDetailDrawer";
 import ReportProjectsDialog from "@/components/ReportProjectsDialog";
+import ReportsCalendar from "@/components/ReportsCalendar";
 import {
   REPORT_STATUSES,
   STATUS_LABELS,
@@ -37,6 +38,7 @@ export default function Reports() {
   const updateStatus = useReportsStore((s) => s.updateStatus);
 
   const [dragOver, setDragOver] = useState<ReportStatus | null>(null);
+  const [view, setView] = useState<"board" | "calendar">("board");
 
   useEffect(() => {
     fetchProjects().then(fetchReports);
@@ -84,6 +86,20 @@ export default function Reports() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-md border border-input overflow-hidden">
+            <button
+              onClick={() => setView("board")}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-sm ${view === "board" ? "bg-accent" : "hover:bg-accent/50"}`}
+            >
+              <LayoutGrid className="h-4 w-4" /> Board
+            </button>
+            <button
+              onClick={() => setView("calendar")}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-sm border-l border-input ${view === "calendar" ? "bg-accent" : "hover:bg-accent/50"}`}
+            >
+              <CalendarDays className="h-4 w-4" /> Calendar
+            </button>
+          </div>
           <select
             value={projectFilter}
             onChange={(e) => setProjectFilter(e.target.value)}
@@ -122,6 +138,8 @@ export default function Reports() {
           <p className="text-sm text-muted-foreground py-12 text-center">
             No report projects in this organization yet.
           </p>
+        ) : view === "calendar" ? (
+          <ReportsCalendar reports={reports} onOpen={openReport} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 min-h-full">
             {REPORT_STATUSES.map((status) => {
