@@ -1,0 +1,8 @@
+# Copia a terraform.tfvars y ajusta. Las credenciales AWS mejor por env/perfil
+# (AWS_PROFILE / AWS_ACCESS_KEY_ID…), NO en este archivo.
+
+region      = "mx-central-1"
+bucket_name = "guz-reports-media" # debe ser globalmente único
+
+# Opcional: perfil de AWS CLI (si no usas env vars).
+# profile = "guz"

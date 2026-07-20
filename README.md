@@ -9,6 +9,7 @@ Monorepo for a self-hosted control plane that manages remote servers, Docker Swa
 | [`app/`](./app) | Cross-platform desktop client | Tauri 2 + React 19 + Vite | — | [README](./app/README.md) |
 | [`backend/`](./backend) | API for auth, servers, collections | Go + chi + GORM + Postgres | `8080` | [README](./backend/README.md) |
 | [`swarm-manage/`](./swarm-manage) | Per-host agent that exposes Docker Swarm state | Go + chi + Docker socket | `9090` | [README](./swarm-manage/README.md) |
+| [`infra/terraform/reports-media/`](./infra/terraform/reports-media) | Private S3 for report screenshots (no CDN) | Terraform + AWS | — | [README](./infra/terraform/reports-media/README.md) |
 
 ## Architecture
 
