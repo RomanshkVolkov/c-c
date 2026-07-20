@@ -52,6 +52,10 @@ func DBConnection() {
 		&domain.Collection{},
 		&domain.CollectionNode{},
 		&domain.CollectionShare{},
+		&domain.ReportProject{},
+		&domain.Report{},
+		&domain.ReportComment{},
+		&domain.ReportImage{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}

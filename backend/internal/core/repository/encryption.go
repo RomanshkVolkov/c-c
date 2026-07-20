@@ -1,8 +1,11 @@
 package repository
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -97,6 +100,39 @@ func findColon(s string) int {
 		}
 	}
 	return -1
+}
+
+// ─── Ingest keys ──────────────────────────────────────────────────────────────
+//
+// The public write-only key handed to the widget (Sentry-DSN model). Only its
+// HMAC is stored; the plaintext is shown to the admin exactly once. Verification
+// HMACs the presented key and constant-time compares — a DB leak never yields
+// usable keys.
+
+func ingestSecret() []byte {
+	return []byte(GetEnv("INGEST_KEY_SECRET", "change-me-ingest-hmac-secret"))
+}
+
+// HashIngestKey returns the HMAC-SHA256 of a plaintext ingest key.
+func HashIngestKey(plain string) []byte {
+	mac := hmac.New(sha256.New, ingestSecret())
+	mac.Write([]byte(plain))
+	return mac.Sum(nil)
+}
+
+// GenerateIngestKey mints a random `pk_…` key and returns (plaintext, hash).
+func GenerateIngestKey() (string, []byte, error) {
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return "", nil, fmt.Errorf("failed to generate ingest key: %w", err)
+	}
+	plain := "pk_" + base64.RawURLEncoding.EncodeToString(raw)
+	return plain, HashIngestKey(plain), nil
+}
+
+// IngestKeyMatches constant-time compares a presented key against a stored hash.
+func IngestKeyMatches(plain string, hash []byte) bool {
+	return subtle.ConstantTimeCompare(HashIngestKey(plain), hash) == 1
 }
 
 // ─── JWT ──────────────────────────────────────────────────────────────────────
