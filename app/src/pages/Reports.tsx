@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { RefreshCw, ImageIcon, MessageSquare, Bug, Settings2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,13 +32,46 @@ export default function Reports() {
   const fetchReports = useReportsStore((s) => s.fetchReports);
   const setProjectFilter = useReportsStore((s) => s.setProjectFilter);
   const openReport = useReportsStore((s) => s.openReport);
+  const transitions = useReportsStore((s) => s.transitions);
+  const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
+  const updateStatus = useReportsStore((s) => s.updateStatus);
+
+  const [dragOver, setDragOver] = useState<ReportStatus | null>(null);
 
   useEffect(() => {
     fetchProjects().then(fetchReports);
-  }, [currentOrgId, fetchProjects, fetchReports]);
+    fetchTransitions();
+  }, [currentOrgId, fetchProjects, fetchReports, fetchTransitions]);
 
   const byStatus = (status: ReportStatus) =>
     reports.filter((r) => r.status === status);
+
+  // Drop a card onto a column → transition, if the state machine allows it.
+  const handleDrop = async (e: React.DragEvent, to: ReportStatus) => {
+    e.preventDefault();
+    setDragOver(null);
+    let dragged: { id: string; status: ReportStatus };
+    try {
+      dragged = JSON.parse(e.dataTransfer.getData("application/json"));
+    } catch {
+      return;
+    }
+    if (dragged.status === to) return;
+    const allowed = transitions?.[dragged.status] ?? [];
+    if (!allowed.includes(to)) {
+      toast.error("Invalid transition", {
+        description: `${dragged.status} → ${to} is not allowed`,
+      });
+      return;
+    }
+    try {
+      await updateStatus(dragged.id, to);
+    } catch (err) {
+      toast.error("Transition failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -93,7 +127,18 @@ export default function Reports() {
             {REPORT_STATUSES.map((status) => {
               const items = byStatus(status);
               return (
-                <div key={status} className="flex flex-col gap-3">
+                <div
+                  key={status}
+                  className={`flex flex-col gap-3 rounded-lg p-1 transition-colors ${
+                    dragOver === status ? "bg-accent/60 ring-2 ring-primary/40" : ""
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOver(status);
+                  }}
+                  onDragLeave={() => setDragOver((s) => (s === status ? null : s))}
+                  onDrop={(e) => handleDrop(e, status)}
+                >
                   <div className="flex items-center justify-between px-1">
                     <span className="text-sm font-medium">
                       {STATUS_LABELS[status]}
@@ -133,8 +178,16 @@ function ReportCard({
 }) {
   return (
     <Card
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData(
+          "application/json",
+          JSON.stringify({ id: report.id, status: report.status })
+        );
+      }}
       onClick={onClick}
-      className={`p-3 border-t-2 ${accent} space-y-2 cursor-pointer hover:bg-accent/40 transition-colors`}
+      className={`p-3 border-t-2 ${accent} space-y-2 cursor-pointer hover:bg-accent/40 transition-colors active:cursor-grabbing`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-mono text-muted-foreground">{report.folio}</span>
