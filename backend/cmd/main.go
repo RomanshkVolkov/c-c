@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,12 +10,14 @@ import (
 	"time"
 
 	httpRoutes "github.com/guz-studio/cac/backend/internal/adapters/http"
+	"github.com/guz-studio/cac/backend/internal/banner"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
 func main() {
 	repository.LoadEnv()
 	port := repository.GetEnv("PORT", "8080")
+	env := repository.GetEnv("APP_ENV", "development")
 
 	repository.DBConnection()
 
@@ -34,7 +35,7 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		printBanner(port)
+		banner.Print(env, port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed: %v", err)
 		}
@@ -50,13 +51,4 @@ func main() {
 		log.Fatalf("Forced shutdown: %v", err)
 	}
 	log.Println("Server stopped")
-}
-
-func printBanner(port string) {
-	fmt.Printf(`
-╭───────────────────────────────────────╮
-│  CAC — VPS Control Plane API          │
-│  http://localhost:%s/health           │
-╰───────────────────────────────────────╯
-`, port)
 }
