@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
+import Reports from "@/pages/Reports";
 import ServerManage from "@/pages/ServerManage";
 import ServerStats from "@/pages/ServerStats";
 import StackSecrets from "@/pages/StackSecrets";
@@ -23,6 +24,7 @@ export default function App() {
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/servers/:id" element={<ServerManage />} />
           <Route path="/servers/:id/stats" element={<ServerStats />} />
           <Route path="/servers/:id/secrets" element={<StackSecrets />} />

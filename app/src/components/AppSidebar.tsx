@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
+  Bug,
   ImageDown,
   Send,
   KeyRound,
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { label: "Reports", path: "/reports", icon: Bug },
   { label: "Image Tool", path: "/image-tool", icon: ImageDown },
   { label: "Requests", path: "/requests", icon: Send },
   { label: "Crypto Tools", path: "/crypto", icon: KeyRound },

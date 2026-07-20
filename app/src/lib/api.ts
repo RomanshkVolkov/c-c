@@ -69,9 +69,35 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
   return json as T;
 }
 
+// postForm sends multipart/form-data (comments/images). Does NOT set
+// Content-Type so the browser adds the boundary; reuses the auth+refresh flow.
+async function postForm<T>(path: string, form: FormData, retry = true): Promise<T> {
+  const token = useAuthStore.getState().accessToken;
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", body: form, headers });
+  const json = await res.json();
+  if (!res.ok) {
+    const errorMsg: string = json?.error ?? json?.message ?? "Request failed";
+    if (errorMsg === "expired-token" && retry) {
+      const newToken = await tryRefresh();
+      if (newToken) return postForm<T>(path, form, false);
+      throw new Error("session-expired");
+    }
+    throw new Error(errorMsg);
+  }
+  return json as T;
+}
+
+/** Absolute URL for a backend path (e.g. signed image proxy URLs in a webview). */
+export const apiUrl = (path: string) => `${BASE_URL}${path}`;
+
 export const api = {
   get: <T>(path: string, auth = true) =>
     request<T>(path, { method: "GET", auth }),
+
+  postForm,
 
   post: <T>(path: string, body: unknown, auth = false) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body), auth }),
