@@ -7,11 +7,24 @@ import (
 )
 
 type ReportProjectService struct {
-	repo *repository.ReportProjectRepository
+	repo    *repository.ReportProjectRepository
+	orgRepo *repository.OrganizationRepository
 }
 
-func NewReportProjectService(repo *repository.ReportProjectRepository) *ReportProjectService {
-	return &ReportProjectService{repo: repo}
+func NewReportProjectService(repo *repository.ReportProjectRepository, orgRepo *repository.OrganizationRepository) *ReportProjectService {
+	return &ReportProjectService{repo: repo, orgRepo: orgRepo}
+}
+
+// validateDefaultAssignee ensures the default assignee (when set) belongs to
+// the project's org.
+func (s *ReportProjectService) validateDefaultAssignee(orgID, userID string) error {
+	if userID == "" {
+		return nil
+	}
+	if _, err := s.orgRepo.GetMembership(orgID, userID); err != nil {
+		return ErrAssigneeNotMember
+	}
+	return nil
 }
 
 func defaultRateLimit(v int) int {
@@ -32,6 +45,10 @@ func (s *ReportProjectService) Create(req domain.CreateReportProjectRequest) (*d
 		slug = uuid.NewString()[:8]
 	}
 
+	if err := s.validateDefaultAssignee(req.OrgID, req.DefaultAssigneeUserID); err != nil {
+		return nil, err
+	}
+
 	plain, hash, err := repository.GenerateIngestKey()
 	if err != nil {
 		return nil, err
@@ -45,6 +62,9 @@ func (s *ReportProjectService) Create(req domain.CreateReportProjectRequest) (*d
 		AllowedOrigins:   domain.StringList(req.AllowedOrigins),
 		RateLimitPerHour: defaultRateLimit(req.RateLimitPerHour),
 		IsActive:         true,
+	}
+	if req.DefaultAssigneeUserID != "" {
+		p.DefaultAssigneeUserID = &req.DefaultAssigneeUserID
 	}
 	p.ID = uuid.NewString()
 
@@ -78,11 +98,19 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateDefaultAssignee(p.OrgID, req.DefaultAssigneeUserID); err != nil {
+		return nil, err
+	}
 	p.Name = req.Name
 	p.AllowedOrigins = domain.StringList(req.AllowedOrigins)
 	p.RateLimitPerHour = defaultRateLimit(req.RateLimitPerHour)
 	if req.IsActive != nil {
 		p.IsActive = *req.IsActive
+	}
+	if req.DefaultAssigneeUserID == "" {
+		p.DefaultAssigneeUserID = nil
+	} else {
+		p.DefaultAssigneeUserID = &req.DefaultAssigneeUserID
 	}
 	if err := s.repo.Update(p); err != nil {
 		return nil, err
@@ -118,13 +146,14 @@ func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectRespo
 		origins = []string{}
 	}
 	return &domain.ReportProjectResponse{
-		ID:               p.ID,
-		OrgID:            p.OrgID,
-		Name:             p.Name,
-		Slug:             p.Slug,
-		AllowedOrigins:   origins,
-		RateLimitPerHour: p.RateLimitPerHour,
-		IsActive:         p.IsActive,
-		CreatedAt:        p.CreatedAt,
+		ID:                    p.ID,
+		OrgID:                 p.OrgID,
+		Name:                  p.Name,
+		Slug:                  p.Slug,
+		AllowedOrigins:        origins,
+		RateLimitPerHour:      p.RateLimitPerHour,
+		IsActive:              p.IsActive,
+		DefaultAssigneeUserID: p.DefaultAssigneeUserID,
+		CreatedAt:             p.CreatedAt,
 	}
 }

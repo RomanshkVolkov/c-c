@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"slices"
 	"sync"
@@ -11,11 +10,6 @@ import (
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
-)
-
-const (
-	maxIngestBody   = 32 << 20 // 32 MB total multipart body
-	maxIngestImages = 5
 )
 
 // ─── in-memory per-project rate limiter ───────────────────────────────────────
@@ -115,9 +109,8 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxIngestBody)
-	if err := r.ParseMultipartForm(maxIngestBody); err != nil {
-		SendErrorResponse(w, http.StatusBadRequest, "Invalid multipart body", err.Error())
+	images, ok := readMultipartImages(w, r, "images")
+	if !ok {
 		return
 	}
 
@@ -135,32 +128,8 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		Viewport:      r.FormValue("viewport"),
 		ReporterName:  r.FormValue("reporterName"),
 		ReporterEmail: r.FormValue("reporterEmail"),
-	}
-
-	if r.MultipartForm != nil {
-		files := r.MultipartForm.File["images"]
-		if len(files) > maxIngestImages {
-			SendErrorResponse(w, http.StatusBadRequest, "Too many images", "max-5-images")
-			return
-		}
-		for _, fh := range files {
-			f, err := fh.Open()
-			if err != nil {
-				SendErrorResponse(w, http.StatusBadRequest, "Cannot read image", err.Error())
-				return
-			}
-			data, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
-				SendErrorResponse(w, http.StatusBadRequest, "Cannot read image", err.Error())
-				return
-			}
-			in.Images = append(in.Images, domain.IngestImage{
-				FileName:    fh.Filename,
-				ContentType: fh.Header.Get("Content-Type"),
-				Data:        data,
-			})
-		}
+		Origin:        r.FormValue("origin"), // "system" enables title dedup
+		Images:        images,
 	}
 
 	result, err := h.svc.Ingest(r.Context(), project, in)

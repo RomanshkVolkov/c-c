@@ -131,6 +131,7 @@ report_projects                   -- una web cliente (portento, cliente-2, …)
   ingest_key_hash bytea           -- HMAC de la key write-only (se muestra 1 vez)
   allowed_origins text[]          -- CORS del ingest
   rate_limit_per_hour int default 20
+  default_assignee_user_id fk nullable  -- reportes nuevos nacen asignados a este agente
   is_active bool
   created_at, updated_at
 
@@ -220,18 +221,37 @@ heredada de portento, documentada).
     Auth por `X-Ingest-Key` (HMAC compare), CORS restringido a
     `allowed_origins`, rate limit por key (`rate_limit_per_hour`, default 20 —
     hereda el anti-spam 10/h de portento pero configurable).
+  - **Validación de imágenes (portento):** máx **5 por reporte**, mime
+    `png/jpeg/webp/gif`, ~5 MB c/u (el tope duro de 30 MB lo pone image-service).
   - Backend reenvía las imágenes a image-service (`/upload`, comprime a webp)
     y persiste los paths. Cliente jamás toca image-service ni S3.
+  - **Auto-asignación:** si el project tiene `default_assignee_user_id`, el
+    reporte nace asignado (portento auto-asigna a un `DEFAULT_ASSIGNEE_ID`).
+  - **Reportes de sistema (dedup por título)** — heredado de
+    `createSystemBugTicket`: para reportes automáticos (errores recurrentes que
+    el SDK detecte, o procesos del backend), **deduplicar por título** contra los
+    reports abiertos (`pending`/`in_progress`) del mismo project, para que los
+    reintentos no llenen el tablero. Marcarlos con un flag/origen `system`.
 - **API admin (JWT, org-scoped)**:
   - CRUD `report_projects` (crear muestra la ingest key 1 sola vez).
   - `GET /reports` (filtros: project, status, assignee, rango fechas),
     `GET/PATCH /reports/{id}` (transiciones validadas, asignar),
     comentarios CRUD (autor edita/borra lo suyo; `kind=system` inmutable),
     imágenes de galería (attach/detach deja comentario system, como portento).
+  - **Comentarios `system` como audit trail (portento):** cambios de estado y
+    attach/detach de imágenes dejan un comentario `kind=system` en el hilo
+    (inmutable), visible también en el portal del cliente. Cuerpo del comentario
+    de usuario puede ir vacío si trae imagen.
   - `GET /reports/{id}/images/{imageID}` — proxy autenticado con scoping por
     report (anti-IDOR), `Cache-Control: private, no-store`.
 - **Notificaciones**: endpoint SSE org-scoped (`/api/v1/events`) para la app;
-  eventos `report:new`, `report:comment`, `report:status`.
+  eventos `report:new`, `report:comment`, `report:status`, `report:attachment`.
+  **Ruteo (heredado de portento):**
+  - `report:new` → agentes del org (o directo al `default_assignee` si existe).
+  - `report:status` al pasar a `resolved` → **reporter** (por magic link).
+  - comentario de **agente** → reporter; comentario de **reporter** → el
+    `assignee`, o **broadcast a los agentes del project** si no hay assignee.
+  - attach/detach de galería → reporter. Preview = body o `📎 N imagen(es)`.
 - Gotcha de portento que se corrige de origen: el conteo de imágenes SIEMPRE
   filtra `comment_id IS NULL` para la galería.
 
@@ -313,6 +333,36 @@ heredada de portento, documentada).
 | Drift de la máquina de estados server/cliente (gotcha portento) | la app consume las transiciones del backend (endpoint/const generada), no copia local |
 | Reescritura Go del dominio (no se reusa el server TS de portento) | el dominio es chico y `docs/bug-tickets.md` de portento es la spec funcional; los componentes React sí se portan |
 | Dos fuentes de verdad si portento no migra | aceptado: portento es interno y autónomo; revisitar migración cuando el servicio esté estable |
+
+## Aclaraciones de implementación (2026-07-20, sesión de ejecución)
+
+Huecos detectados al ejecutar Fase 3 (la idea se formó en otra sesión); decisiones
+tomadas, coherentes con lo ya construido:
+
+1. **Roles de la consola sobre reports** (no especificado): `viewer` = solo
+   lectura; `member`+ = triage completo (transiciones, asignar, comentar,
+   imágenes); `admin` = además delete/rotate-key de report_projects.
+2. **Anti-IDOR**: un caller sin membership en la org del reporte recibe **404**
+   (no 403) para no filtrar existencia de reportes ajenos.
+3. **Paginación de `GET /reports`**: `limit` (default 50, max 200) + `offset`,
+   respuesta incluye `total`.
+4. **Endpoint de la máquina de estados**: `GET /api/v1/reports/transitions`.
+5. **Comentarios system** también para transiciones de estado y (des)asignación
+   (`status: pending → in_progress`), no solo attach/detach de galería — alimenta
+   la línea de tiempo de la consola.
+6. **`resolved_at`**: se setea en cada paso a resolved (pisa el valor anterior) y
+   NO se limpia al reabrir (decisión heredada de portento).
+7. **Assignee**: debe tener membership en la org del proyecto (400 si no).
+8. **Snapshots (decisión 4) sin columna propia en el schema**: pendiente decidir
+   si van dentro del blob `telemetry` o en columna aparte — se resuelve en Fase 5
+   cuando el widget los mande. El ingest aún no acepta `telemetry`/`snapshot`;
+   esa extensión llega con Fase 5 (cifrado AES-GCM con KEK vía env `REPORTS_KEK`).
+9. **SSE (Fase 3)**: `EventSource` no manda headers → el endpoint acepta
+   `?token=` (access token) además de `Authorization`.
+10. **Rate limit del ingest**: en memoria por pod (ventana deslizante 1h). Con
+    réplicas es límite soft por-pod; store compartido solo si aparece abuso real.
+11. **Ingest key**: formato `pk_…` (24 bytes aleatorios), almacenada solo como
+    HMAC-SHA256 con `INGEST_KEY_SECRET` (env), comparación constant-time.
 
 ## Orden de implementación sugerido
 

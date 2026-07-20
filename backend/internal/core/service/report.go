@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
@@ -11,26 +12,64 @@ import (
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
-// ErrImagesUnavailable means the report carried screenshots but image-service is
-// not configured/reachable, so none could be stored.
-var ErrImagesUnavailable = errors.New("image storage unavailable")
+var (
+	// ErrImagesUnavailable means the report carried screenshots but image-service
+	// is not configured/reachable, so none could be stored.
+	ErrImagesUnavailable = errors.New("image storage unavailable")
+	ErrInvalidTransition = errors.New("invalid status transition")
+	ErrAssigneeNotMember = errors.New("assignee is not a member of the organization")
+	ErrCommentImmutable  = errors.New("system comments are immutable")
+	ErrNotCommentAuthor  = errors.New("only the author can modify this comment")
+	ErrEmptyComment      = errors.New("comment needs a body or at least one image")
+)
 
 type ReportService struct {
-	repo    *repository.ReportRepository
-	orgRepo *repository.OrganizationRepository
-	images  *imageservice.Client
+	repo     *repository.ReportRepository
+	orgRepo  *repository.OrganizationRepository
+	authRepo *repository.AuthRepository
+	images   *imageservice.Client
 }
 
-func NewReportService(repo *repository.ReportRepository, orgRepo *repository.OrganizationRepository, images *imageservice.Client) *ReportService {
-	return &ReportService{repo: repo, orgRepo: orgRepo, images: images}
+func NewReportService(
+	repo *repository.ReportRepository,
+	orgRepo *repository.OrganizationRepository,
+	authRepo *repository.AuthRepository,
+	images *imageservice.Client,
+) *ReportService {
+	return &ReportService{repo: repo, orgRepo: orgRepo, authRepo: authRepo, images: images}
 }
+
+// ─── Ingest (public) ──────────────────────────────────────────────────────────
 
 // Ingest creates a report for a project and forwards any screenshots to
 // image-service (the web client never touches image-service or S3). The report
 // row is created first so a screenshot-upload hiccup never loses the report.
+//
+// System-origin reports dedup by title against open reports of the same project
+// (portento's createSystemBugTicket behavior) so retries don't flood the board.
 func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProject, in domain.IngestReportInput) (*domain.IngestReportResult, error) {
 	if len(in.Images) > 0 && !s.images.Enabled() {
 		return nil, ErrImagesUnavailable
+	}
+
+	origin := in.Origin
+	if origin != "system" {
+		origin = "user"
+	}
+
+	if origin == "system" {
+		existing, err := s.repo.FindOpenByTitle(project.ID, in.Title)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return &domain.IngestReportResult{
+				ID:      existing.ID,
+				Seq:     existing.Seq,
+				Folio:   fmt.Sprintf("%s-%d", project.Slug, existing.Seq),
+				Deduped: true,
+			}, nil
+		}
 	}
 
 	report := &domain.Report{
@@ -38,11 +77,15 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		Title:         in.Title,
 		Description:   in.Description,
 		Status:        domain.ReportPending,
+		Origin:        origin,
 		URL:           in.URL,
 		UserAgent:     in.UserAgent,
 		Viewport:      in.Viewport,
 		ReporterName:  in.ReporterName,
 		ReporterEmail: in.ReporterEmail,
+		// Auto-assignment: reports are born assigned to the project's default
+		// agent when configured (portento's DEFAULT_ASSIGNEE_ID).
+		AssigneeUserID: project.DefaultAssigneeUserID,
 	}
 	report.ID = uuid.NewString()
 	if err := s.repo.CreateWithSeq(report); err != nil {
@@ -52,18 +95,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	uploaded := 0
 	if len(in.Images) > 0 {
 		folder := s.storageFolder(project, report.ID)
-		var persisted []domain.ReportImage
-		var lastErr error
-		for _, img := range in.Images {
-			res, err := s.images.UploadImage(ctx, img.FileName, img.ContentType, img.Data, folder)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			ri := domain.ReportImage{ReportID: report.ID, Path: res.Key, FileName: img.FileName}
-			ri.ID = uuid.NewString()
-			persisted = append(persisted, ri)
-		}
+		persisted, lastErr := s.uploadImages(ctx, report.ID, nil, in.Images, folder)
 		if err := s.repo.AddImages(persisted); err != nil {
 			return nil, err
 		}
@@ -89,4 +121,272 @@ func (s *ReportService) storageFolder(project *domain.ReportProject, reportID st
 		orgSlug = project.OrgID
 	}
 	return fmt.Sprintf("org/%s/project/%s/%s", orgSlug, project.Slug, reportID)
+}
+
+// uploadImages pushes files to image-service and returns the rows to persist.
+func (s *ReportService) uploadImages(ctx context.Context, reportID string, commentID *string, images []domain.IngestImage, folder string) ([]domain.ReportImage, error) {
+	var persisted []domain.ReportImage
+	var lastErr error
+	for _, img := range images {
+		res, err := s.images.UploadImage(ctx, img.FileName, img.ContentType, img.Data, folder)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		ri := domain.ReportImage{ReportID: reportID, CommentID: commentID, Path: res.Key, FileName: img.FileName}
+		ri.ID = uuid.NewString()
+		persisted = append(persisted, ri)
+	}
+	return persisted, lastErr
+}
+
+// ─── Admin (console) ──────────────────────────────────────────────────────────
+
+func (s *ReportService) List(orgIDs []string, q domain.ReportListQuery) (*domain.ReportListResult, error) {
+	return s.repo.List(orgIDs, q)
+}
+
+// OrgIDForReport exposes the report→org resolution for handler authorization.
+func (s *ReportService) OrgIDForReport(reportID string) (string, error) {
+	return s.repo.OrgIDForReport(reportID)
+}
+
+// Detail assembles the full report view: gallery images + comment thread with
+// inline images.
+func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, error) {
+	report, err := s.repo.FindByID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.repo.ProjectForReport(reportID)
+	if err != nil {
+		return nil, err
+	}
+	images, err := s.repo.ListImages(reportID)
+	if err != nil {
+		return nil, err
+	}
+	comments, err := s.repo.ListComments(reportID)
+	if err != nil {
+		return nil, err
+	}
+
+	var gallery []domain.ReportImageResponse
+	byComment := make(map[string][]domain.ReportImageResponse)
+	for _, img := range images {
+		res := domain.ReportImageResponse{ID: img.ID, CommentID: img.CommentID, FileName: img.FileName, CreatedAt: img.CreatedAt}
+		if img.CommentID == nil {
+			gallery = append(gallery, res)
+		} else {
+			byComment[*img.CommentID] = append(byComment[*img.CommentID], res)
+		}
+	}
+	if gallery == nil {
+		gallery = []domain.ReportImageResponse{}
+	}
+	for i := range comments {
+		comments[i].Images = byComment[comments[i].ID]
+	}
+	if comments == nil {
+		comments = []domain.ReportCommentResponse{}
+	}
+
+	return &domain.ReportDetailResponse{
+		ID:             report.ID,
+		ProjectID:      report.ProjectID,
+		ProjectSlug:    project.Slug,
+		Seq:            report.Seq,
+		Folio:          fmt.Sprintf("%s-%d", project.Slug, report.Seq),
+		Title:          report.Title,
+		Description:    report.Description,
+		Status:         report.Status,
+		Origin:         report.Origin,
+		URL:            report.URL,
+		UserAgent:      report.UserAgent,
+		Viewport:       report.Viewport,
+		ReporterName:   report.ReporterName,
+		ReporterEmail:  report.ReporterEmail,
+		AssigneeUserID: report.AssigneeUserID,
+		ResolvedAt:     report.ResolvedAt,
+		CreatedAt:      report.CreatedAt,
+		UpdatedAt:      report.UpdatedAt,
+		Images:         gallery,
+		Comments:       comments,
+	}, nil
+}
+
+// Update applies a validated status transition and/or (un)assignment, leaving
+// kind=system audit comments (portento behavior).
+func (s *ReportService) Update(reportID string, req domain.UpdateReportRequest) (*domain.ReportDetailResponse, error) {
+	report, err := s.repo.FindByID(reportID)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Status != nil && *req.Status != report.Status {
+		if !report.Status.CanTransitionTo(*req.Status) {
+			return nil, fmt.Errorf("%w: %s → %s", ErrInvalidTransition, report.Status, *req.Status)
+		}
+		old := report.Status
+		report.Status = *req.Status
+		// resolved_at is (re)set on entering resolved and NOT cleared on reopen
+		// (decision inherited from portento).
+		if *req.Status == domain.ReportResolved {
+			now := time.Now()
+			report.ResolvedAt = &now
+		}
+		if err := s.systemComment(reportID, fmt.Sprintf("status: %s → %s", old, *req.Status)); err != nil {
+			return nil, err
+		}
+	}
+
+	if req.AssigneeUserID != nil {
+		if *req.AssigneeUserID == "" {
+			if report.AssigneeUserID != nil {
+				report.AssigneeUserID = nil
+				if err := s.systemComment(reportID, "unassigned"); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			orgID, err := s.repo.OrgIDForReport(reportID)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := s.orgRepo.GetMembership(orgID, *req.AssigneeUserID); err != nil {
+				if errors.Is(err, repository.ErrMembershipNotFound) {
+					return nil, ErrAssigneeNotMember
+				}
+				return nil, err
+			}
+			report.AssigneeUserID = req.AssigneeUserID
+			name := *req.AssigneeUserID
+			if u, err := s.authRepo.FindByID(*req.AssigneeUserID); err == nil {
+				name = u.Username
+			}
+			if err := s.systemComment(reportID, "assigned to "+name); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := s.repo.Save(report); err != nil {
+		return nil, err
+	}
+	return s.Detail(reportID)
+}
+
+// systemComment appends an immutable kind=system audit mark to the thread.
+func (s *ReportService) systemComment(reportID, body string) error {
+	c := &domain.ReportComment{ReportID: reportID, Kind: domain.CommentKindSystem, Body: body}
+	c.ID = uuid.NewString()
+	return s.repo.CreateComment(c)
+}
+
+// AddComment creates a user comment, optionally with inline images. Body may be
+// empty when images are attached (portento behavior).
+func (s *ReportService) AddComment(ctx context.Context, callerID, reportID, body string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
+	if body == "" && len(images) == 0 {
+		return nil, ErrEmptyComment
+	}
+	if len(images) > 0 && !s.images.Enabled() {
+		return nil, ErrImagesUnavailable
+	}
+	if _, err := s.repo.FindByID(reportID); err != nil {
+		return nil, err
+	}
+
+	c := &domain.ReportComment{ReportID: reportID, Kind: domain.CommentKindUser, AuthorUserID: &callerID, Body: body}
+	c.ID = uuid.NewString()
+	if err := s.repo.CreateComment(c); err != nil {
+		return nil, err
+	}
+
+	if len(images) > 0 {
+		project, err := s.repo.ProjectForReport(reportID)
+		if err != nil {
+			return nil, err
+		}
+		folder := s.storageFolder(project, reportID)
+		persisted, lastErr := s.uploadImages(ctx, reportID, &c.ID, images, folder)
+		if err := s.repo.AddImages(persisted); err != nil {
+			return nil, err
+		}
+		if len(persisted) == 0 && lastErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrImagesUnavailable, lastErr)
+		}
+	}
+	return s.Detail(reportID)
+}
+
+// EditComment updates the body of the caller's own user comment.
+func (s *ReportService) EditComment(callerID, reportID, commentID, body string) error {
+	c, err := s.repo.FindComment(reportID, commentID)
+	if err != nil {
+		return err
+	}
+	if c.Kind == domain.CommentKindSystem {
+		return ErrCommentImmutable
+	}
+	if c.AuthorUserID == nil || *c.AuthorUserID != callerID {
+		return ErrNotCommentAuthor
+	}
+	return s.repo.UpdateCommentBody(commentID, body)
+}
+
+// DeleteComment removes the caller's own user comment (and its inline images).
+func (s *ReportService) DeleteComment(callerID, reportID, commentID string) error {
+	c, err := s.repo.FindComment(reportID, commentID)
+	if err != nil {
+		return err
+	}
+	if c.Kind == domain.CommentKindSystem {
+		return ErrCommentImmutable
+	}
+	if c.AuthorUserID == nil || *c.AuthorUserID != callerID {
+		return ErrNotCommentAuthor
+	}
+	return s.repo.DeleteComment(commentID)
+}
+
+// AttachImages uploads screenshots to the report gallery, leaving a system
+// audit comment (portento behavior).
+func (s *ReportService) AttachImages(ctx context.Context, reportID string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
+	if len(images) == 0 {
+		return nil, ErrEmptyComment
+	}
+	if !s.images.Enabled() {
+		return nil, ErrImagesUnavailable
+	}
+	if _, err := s.repo.FindByID(reportID); err != nil {
+		return nil, err
+	}
+	project, err := s.repo.ProjectForReport(reportID)
+	if err != nil {
+		return nil, err
+	}
+	folder := s.storageFolder(project, reportID)
+	persisted, lastErr := s.uploadImages(ctx, reportID, nil, images, folder)
+	if err := s.repo.AddImages(persisted); err != nil {
+		return nil, err
+	}
+	if len(persisted) == 0 && lastErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrImagesUnavailable, lastErr)
+	}
+	if err := s.systemComment(reportID, fmt.Sprintf("attached %d image(s)", len(persisted))); err != nil {
+		return nil, err
+	}
+	return s.Detail(reportID)
+}
+
+// DetachImage soft-deletes a gallery image, leaving a system audit comment.
+func (s *ReportService) DetachImage(reportID, imageID string) error {
+	img, err := s.repo.FindImage(reportID, imageID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteImage(img.ID); err != nil {
+		return err
+	}
+	return s.systemComment(reportID, "removed image "+img.FileName)
 }

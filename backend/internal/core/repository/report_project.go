@@ -57,10 +57,11 @@ func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 	return r.db.Model(&domain.ReportProject{}).
 		Where("id = ?", p.ID).
 		Updates(map[string]any{
-			"name":                p.Name,
-			"allowed_origins":     p.AllowedOrigins,
-			"rate_limit_per_hour": p.RateLimitPerHour,
-			"is_active":           p.IsActive,
+			"name":                     p.Name,
+			"allowed_origins":          p.AllowedOrigins,
+			"rate_limit_per_hour":      p.RateLimitPerHour,
+			"is_active":                p.IsActive,
+			"default_assignee_user_id": p.DefaultAssigneeUserID,
 		}).Error
 }
 

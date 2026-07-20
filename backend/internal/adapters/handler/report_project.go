@@ -32,6 +32,8 @@ func mapReportProjectError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusNotFound, "Report project not found", err.Error())
 	case errors.Is(err, repository.ErrReportProjectSlugTaken):
 		SendErrorResponse(w, http.StatusConflict, "Slug already in use", err.Error())
+	case errors.Is(err, service.ErrAssigneeNotMember):
+		SendErrorResponse(w, http.StatusBadRequest, "Default assignee is not a member of the organization", err.Error())
 	default:
 		return false
 	}
