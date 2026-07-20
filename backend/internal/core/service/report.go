@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -16,6 +17,46 @@ import (
 // imageURLTTL is how long a signed image proxy URL stays valid. Short-lived so
 // a leaked URL is useless quickly; the app refetches the detail to renew.
 const imageURLTTL = 10 * time.Minute
+
+// telemetryTTL is the retention window for the encrypted telemetry blob; a purge
+// job clears it after this without deleting the report (decision 4/7).
+const telemetryTTL = 45 * 24 * time.Hour
+
+// buildTelemetryBlob combines the widget's telemetry/snapshot/context JSON into
+// one object and re-applies server-side redaction (defense in depth). Returns
+// nil when nothing was sent.
+func buildTelemetryBlob(in domain.IngestReportInput) []byte {
+	if in.TelemetryJSON == "" && in.SnapshotJSON == "" && in.ContextJSON == "" {
+		return nil
+	}
+	raw := func(s string) json.RawMessage {
+		if s == "" {
+			return nil
+		}
+		if !json.Valid([]byte(s)) {
+			return nil
+		}
+		return json.RawMessage(repository.RedactSensitive(s))
+	}
+	combined := map[string]json.RawMessage{}
+	if v := raw(in.TelemetryJSON); v != nil {
+		combined["telemetry"] = v
+	}
+	if v := raw(in.SnapshotJSON); v != nil {
+		combined["snapshot"] = v
+	}
+	if v := raw(in.ContextJSON); v != nil {
+		combined["context"] = v
+	}
+	if len(combined) == 0 {
+		return nil
+	}
+	blob, err := json.Marshal(combined)
+	if err != nil {
+		return nil
+	}
+	return blob
+}
 
 // signedImageURL builds the short-lived HMAC-signed proxy URL for an image.
 func signedImageURL(reportID, imageID string) string {
@@ -112,6 +153,17 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		AssigneeUserID: project.DefaultAssigneeUserID,
 	}
 	report.ID = uuid.NewString()
+
+	// Encrypt telemetry/snapshot/context at rest (decision 4/7). Skipped when no
+	// KEK is configured; a telemetry hiccup never blocks the report.
+	if blob := buildTelemetryBlob(in); blob != nil && repository.TelemetryEncryptionEnabled() {
+		if enc, err := repository.EncryptTelemetry(blob); err == nil {
+			report.Telemetry = enc
+			purge := time.Now().Add(telemetryTTL)
+			report.TelemetryPurgeAt = &purge
+		}
+	}
+
 	if err := s.repo.CreateWithSeq(report); err != nil {
 		return nil, err
 	}
@@ -226,6 +278,15 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 		comments = []domain.ReportCommentResponse{}
 	}
 
+	// Decrypt telemetry for the console timeline (best-effort: a purged/absent
+	// blob or missing KEK just yields no telemetry).
+	var telemetry json.RawMessage
+	if len(report.Telemetry) > 0 {
+		if plain, err := repository.DecryptTelemetry(report.Telemetry); err == nil && json.Valid(plain) {
+			telemetry = plain
+		}
+	}
+
 	return &domain.ReportDetailResponse{
 		ID:             report.ID,
 		ProjectID:      report.ProjectID,
@@ -247,6 +308,7 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 		UpdatedAt:      report.UpdatedAt,
 		Images:         gallery,
 		Comments:       comments,
+		Telemetry:      telemetry,
 	}, nil
 }
 

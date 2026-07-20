@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/handler"
@@ -46,6 +47,25 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 	} else {
 		lg.Warn("REPORTS_MEDIA_BUCKET not set — report image proxy disabled")
 	}
+
+	if repository.TelemetryEncryptionEnabled() {
+		lg.Info("telemetry encryption enabled (REPORTS_KEK set)")
+	} else {
+		lg.Warn("REPORTS_KEK not set — report telemetry will not be stored")
+	}
+
+	// Hourly purge of telemetry blobs past their TTL (decision 4/7).
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := reportRepo.PurgeExpiredTelemetry(); err != nil {
+				lg.Error("telemetry purge failed: " + err.Error())
+			} else if n > 0 {
+				lg.Info("purged expired telemetry blobs")
+			}
+		}
+	}()
 
 	hub := events.NewHub()
 

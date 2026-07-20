@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"gorm.io/gorm"
@@ -79,6 +80,15 @@ func (r *ReportRepository) FindByID(id string) (*domain.Report, error) {
 
 func (r *ReportRepository) Save(report *domain.Report) error {
 	return r.db.Save(report).Error
+}
+
+// PurgeExpiredTelemetry clears telemetry blobs past their TTL without deleting
+// the report (decision 4/7). Returns rows affected.
+func (r *ReportRepository) PurgeExpiredTelemetry() (int64, error) {
+	res := r.db.Model(&domain.Report{}).
+		Where("telemetry_purge_at IS NOT NULL AND telemetry_purge_at < ? AND telemetry IS NOT NULL", time.Now()).
+		Updates(map[string]any{"telemetry": nil, "telemetry_purge_at": nil})
+	return res.RowsAffected, res.Error
 }
 
 // OrgIDForReport resolves the owning org of a report through its project

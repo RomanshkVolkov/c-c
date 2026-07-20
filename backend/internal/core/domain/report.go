@@ -202,6 +202,11 @@ type IngestReportInput struct {
 	ReporterName  string
 	ReporterEmail string
 	Origin        string // "" / "user" | "system" (system reports dedup by title)
+	// Raw JSON strings from the widget (decision 4/7). Combined, server-redacted
+	// and AES-GCM encrypted into reports.telemetry.
+	TelemetryJSON string
+	SnapshotJSON  string
+	ContextJSON   string
 	Images        []IngestImage
 }
 
@@ -307,4 +312,7 @@ type ReportDetailResponse struct {
 	UpdatedAt      time.Time               `json:"updatedAt"`
 	Images         []ReportImageResponse   `json:"images"` // gallery (comment_id IS NULL)
 	Comments       []ReportCommentResponse `json:"comments"`
+	// Telemetry is the decrypted breadcrumbs blob ({telemetry,snapshot,context}),
+	// null when none was captured or it has been purged. Only in the detail view.
+	Telemetry json.RawMessage `json:"telemetry,omitempty"`
 }

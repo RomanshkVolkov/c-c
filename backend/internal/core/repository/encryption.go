@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -159,6 +162,88 @@ func VerifyImageSig(reportID, imageID string, expUnix int64, sig string) bool {
 	}
 	want := SignImage(reportID, imageID, expUnix)
 	return subtle.ConstantTimeCompare([]byte(want), []byte(sig)) == 1
+}
+
+// ─── Telemetry encryption (AES-GCM with KEK) ──────────────────────────────────
+//
+// Report telemetry/snapshot blobs can contain end-user PII, so they're encrypted
+// at rest with a KEK (env REPORTS_KEK, base64 of 32 bytes) — same pattern
+// image-service uses for its storage creds. No KEK → telemetry isn't stored.
+
+func reportsKEK() ([]byte, bool) {
+	raw := GetEnv("REPORTS_KEK", "")
+	if raw == "" {
+		return nil, false
+	}
+	key, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil || len(key) != 32 {
+		return nil, false
+	}
+	return key, true
+}
+
+// TelemetryEncryptionEnabled reports whether a valid KEK is configured.
+func TelemetryEncryptionEnabled() bool {
+	_, ok := reportsKEK()
+	return ok
+}
+
+// EncryptTelemetry seals plaintext with AES-256-GCM; the 12-byte nonce is
+// prepended to the ciphertext.
+func EncryptTelemetry(plaintext []byte) ([]byte, error) {
+	key, ok := reportsKEK()
+	if !ok {
+		return nil, errors.New("REPORTS_KEK not configured")
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
+}
+
+// DecryptTelemetry reverses EncryptTelemetry.
+func DecryptTelemetry(ciphertext []byte) ([]byte, error) {
+	key, ok := reportsKEK()
+	if !ok {
+		return nil, errors.New("REPORTS_KEK not configured")
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	if len(ciphertext) < gcm.NonceSize() {
+		return nil, errors.New("ciphertext too short")
+	}
+	nonce, ct := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
+	return gcm.Open(nil, nonce, ct, nil)
+}
+
+var (
+	reJWT    = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
+	reBearer = regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9._-]+`)
+	reEmail  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+)
+
+// RedactSensitive re-applies token/email redaction server-side (defense in depth;
+// the SDK already scrubs before sending).
+func RedactSensitive(s string) string {
+	s = reJWT.ReplaceAllString(s, "[jwt]")
+	s = reBearer.ReplaceAllString(s, "Bearer [redacted]")
+	s = reEmail.ReplaceAllString(s, "[email]")
+	return s
 }
 
 // ─── JWT ──────────────────────────────────────────────────────────────────────
