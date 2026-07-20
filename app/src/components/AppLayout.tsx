@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import AppSidebar from "@/components/AppSidebar";
 import UpdateChecker from "@/components/UpdateChecker";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useReportEvents } from "@/hooks/use-report-events";
 
 export default function AppLayout() {
   const fetchOrgs = useOrgsStore((s) => s.fetchOrgs);
@@ -14,6 +15,9 @@ export default function AppLayout() {
   useEffect(() => {
     fetchOrgs();
   }, [fetchOrgs]);
+
+  // Live report notifications (SSE) for the whole authenticated shell.
+  useReportEvents();
 
   return (
     <SidebarProvider>
