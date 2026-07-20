@@ -1,0 +1,256 @@
+import { useEffect, useRef, useState } from "react";
+import { Paperclip, Send, Loader2, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { apiUrl } from "@/lib/api";
+import { useReportsStore } from "@/store/reports.store";
+import { STATUS_LABELS, type ReportStatus } from "@/types/report";
+
+export default function ReportDetailDrawer() {
+  const selectedId = useReportsStore((s) => s.selectedId);
+  const detail = useReportsStore((s) => s.detail);
+  const loading = useReportsStore((s) => s.detailLoading);
+  const transitions = useReportsStore((s) => s.transitions);
+  const closeReport = useReportsStore((s) => s.closeReport);
+  const changeDetailStatus = useReportsStore((s) => s.changeDetailStatus);
+  const addComment = useReportsStore((s) => s.addComment);
+  const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
+
+  useEffect(() => {
+    fetchTransitions();
+  }, [fetchTransitions]);
+
+  const statusOptions: ReportStatus[] = detail
+    ? [detail.status, ...(transitions?.[detail.status] ?? [])]
+    : [];
+
+  return (
+    <Sheet open={!!selectedId} onOpenChange={(o) => !o && closeReport()}>
+      <SheetContent className="w-full sm:max-w-xl flex flex-col gap-0 p-0">
+        {loading && (
+          <div className="flex-1 grid place-items-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {detail && (
+          <>
+            <SheetHeader className="border-b px-5 py-4">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-muted-foreground">
+                  {detail.folio}
+                </span>
+                {detail.origin === "system" && (
+                  <Badge variant="outline" className="text-[10px] py-0">system</Badge>
+                )}
+              </div>
+              <SheetTitle className="text-base leading-snug">{detail.title}</SheetTitle>
+            </SheetHeader>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+              {/* status */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground">Status</label>
+                <select
+                  value={detail.status}
+                  onChange={async (e) => {
+                    try {
+                      await changeDetailStatus(e.target.value as ReportStatus);
+                    } catch (err) {
+                      toast.error("Transition failed", {
+                        description: err instanceof Error ? err.message : String(err),
+                      });
+                    }
+                  }}
+                  className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                >
+                  {statusOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {detail.description && (
+                <p className="text-sm whitespace-pre-wrap">{detail.description}</p>
+              )}
+
+              {/* metadata */}
+              <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-xs">
+                <Meta label="Project" value={detail.projectSlug} />
+                {detail.url && (
+                  <>
+                    <dt className="text-muted-foreground">URL</dt>
+                    <dd className="truncate">
+                      <a
+                        href={detail.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        {detail.url}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </dd>
+                  </>
+                )}
+                <Meta label="Viewport" value={detail.viewport} />
+                <Meta label="Reporter" value={detail.reporterName || detail.reporterEmail} />
+                <Meta label="User agent" value={detail.userAgent} />
+              </dl>
+
+              {/* gallery */}
+              {detail.images.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {detail.images.map((img) => (
+                    <a key={img.id} href={apiUrl(img.url)} target="_blank" rel="noreferrer">
+                      <img
+                        src={apiUrl(img.url)}
+                        alt={img.fileName}
+                        className="rounded-md border object-cover aspect-square w-full"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              {/* comments */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium">Activity</h3>
+                {detail.comments.map((c) =>
+                  c.kind === "system" ? (
+                    <p key={c.id} className="text-xs text-muted-foreground italic">
+                      {c.body}
+                    </p>
+                  ) : (
+                    <div key={c.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{c.authorName ?? "reporter"}</span>
+                        <span>{new Date(c.createdAt).toLocaleString()}</span>
+                      </div>
+                      {c.body && <p className="text-sm whitespace-pre-wrap">{c.body}</p>}
+                      {c.images && c.images.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {c.images.map((img) => (
+                            <a key={img.id} href={apiUrl(img.url)} target="_blank" rel="noreferrer">
+                              <img
+                                src={apiUrl(img.url)}
+                                alt={img.fileName}
+                                className="rounded border object-cover aspect-square w-full"
+                                loading="lazy"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+
+            <CommentComposer onSend={addComment} />
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function Meta({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="break-words">{value}</dd>
+    </>
+  );
+}
+
+function CommentComposer({
+  onSend,
+}: {
+  onSend: (body: string, files: File[]) => Promise<void>;
+}) {
+  const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [sending, setSending] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const send = async () => {
+    if (!body.trim() && files.length === 0) return;
+    setSending(true);
+    try {
+      await onSend(body.trim(), files);
+      setBody("");
+      setFiles([]);
+    } catch (e) {
+      toast.error("Failed to send", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="border-t p-3 space-y-2">
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {files.map((f, i) => (
+            <Badge key={i} variant="secondary" className="text-[10px]">
+              {f.name}
+            </Badge>
+          ))}
+        </div>
+      )}
+      <div className="flex items-end gap-2">
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Add a comment… (Enter to send, Shift+Enter for newline)"
+          rows={2}
+          className="resize-none"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          onPaste={(e) => {
+            const imgs = Array.from(e.clipboardData.files).filter((f) =>
+              f.type.startsWith("image/")
+            );
+            if (imgs.length) setFiles((prev) => [...prev, ...imgs]);
+          }}
+        />
+        <div className="flex flex-col gap-1">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          />
+          <Button size="icon" variant="outline" onClick={() => fileRef.current?.click()}>
+            <Paperclip className="h-4 w-4" />
+          </Button>
+          <Button size="icon" onClick={send} disabled={sending}>
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

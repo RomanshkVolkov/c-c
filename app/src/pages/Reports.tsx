@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import ReportDetailDrawer from "@/components/ReportDetailDrawer";
 import {
   REPORT_STATUSES,
   STATUS_LABELS,
@@ -28,6 +29,7 @@ export default function Reports() {
   const fetchProjects = useReportsStore((s) => s.fetchProjects);
   const fetchReports = useReportsStore((s) => s.fetchReports);
   const setProjectFilter = useReportsStore((s) => s.setProjectFilter);
+  const openReport = useReportsStore((s) => s.openReport);
 
   useEffect(() => {
     fetchProjects().then(fetchReports);
@@ -91,7 +93,7 @@ export default function Reports() {
                   </div>
                   <div className="flex flex-col gap-2">
                     {items.map((r) => (
-                      <ReportCard key={r.id} report={r} accent={STATUS_ACCENT[status]} />
+                      <ReportCard key={r.id} report={r} accent={STATUS_ACCENT[status]} onClick={() => openReport(r.id)} />
                     ))}
                     {items.length === 0 && (
                       <p className="text-xs text-muted-foreground px-1 py-6 text-center">
@@ -105,13 +107,26 @@ export default function Reports() {
           </div>
         )}
       </main>
+
+      <ReportDetailDrawer />
     </div>
   );
 }
 
-function ReportCard({ report, accent }: { report: ReportListItem; accent: string }) {
+function ReportCard({
+  report,
+  accent,
+  onClick,
+}: {
+  report: ReportListItem;
+  accent: string;
+  onClick: () => void;
+}) {
   return (
-    <Card className={`p-3 border-t-2 ${accent} space-y-2 cursor-pointer hover:bg-accent/40 transition-colors`}>
+    <Card
+      onClick={onClick}
+      className={`p-3 border-t-2 ${accent} space-y-2 cursor-pointer hover:bg-accent/40 transition-colors`}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-mono text-muted-foreground">{report.folio}</span>
         {report.origin === "system" && (

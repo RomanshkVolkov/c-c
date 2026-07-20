@@ -5,6 +5,7 @@ import type {
   ReportProject,
   ReportListItem,
   ReportListResult,
+  ReportDetail,
   ReportStatus,
   TransitionsMap,
 } from "@/types/report";
@@ -26,6 +27,16 @@ interface ReportsState {
   updateStatus: (id: string, status: ReportStatus) => Promise<void>;
   /** merge a single report (from SSE / after mutation) into the list */
   upsertReportFromServer: (id: string) => Promise<void>;
+
+  // ── detail drawer ──
+  selectedId: string | null;
+  detail: ReportDetail | null;
+  detailLoading: boolean;
+  openReport: (id: string) => Promise<void>;
+  closeReport: () => void;
+  refreshDetail: () => Promise<void>;
+  changeDetailStatus: (status: ReportStatus) => Promise<void>;
+  addComment: (body: string, files: File[]) => Promise<void>;
 }
 
 /** project ids belonging to the active org (reports carry projectId, not orgId). */
@@ -102,6 +113,54 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
 
   upsertReportFromServer: async () => {
     // Simplest correct behavior for now: refetch the list.
+    await get().fetchReports();
+  },
+
+  // ── detail drawer ──
+  selectedId: null,
+  detail: null,
+  detailLoading: false,
+
+  openReport: async (id) => {
+    set({ selectedId: id, detail: null, detailLoading: true });
+    try {
+      const res = await api.get<APIResponse<ReportDetail>>(`/api/v1/reports/${id}`, true);
+      if (res.success && res.data) set({ detail: res.data });
+    } finally {
+      set({ detailLoading: false });
+    }
+  },
+
+  closeReport: () => set({ selectedId: null, detail: null }),
+
+  refreshDetail: async () => {
+    const id = get().selectedId;
+    if (id) await get().openReport(id);
+  },
+
+  changeDetailStatus: async (status) => {
+    const id = get().selectedId;
+    if (!id) return;
+    const res = await api.patch<APIResponse<ReportDetail>>(
+      `/api/v1/reports/${id}`,
+      { status },
+      true
+    );
+    if (res.success && res.data) set({ detail: res.data });
+    await get().fetchReports();
+  },
+
+  addComment: async (body, files) => {
+    const id = get().selectedId;
+    if (!id) return;
+    const form = new FormData();
+    form.set("body", body);
+    for (const f of files) form.append("images", f);
+    const res = await api.postForm<APIResponse<ReportDetail>>(
+      `/api/v1/reports/${id}/comments`,
+      form
+    );
+    if (res.success && res.data) set({ detail: res.data });
     await get().fetchReports();
   },
 }));
