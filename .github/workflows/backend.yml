@@ -55,17 +55,23 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET_ACCESS: ${{ secrets.JWT_SECRET_ACCESS }}
           JWT_SECRET_REFRESH: ${{ secrets.JWT_SECRET_REFRESH }}
+          IMAGE_SERVICE_URL: ${{ vars.IMAGE_SERVICE_URL }}
+          IMAGE_SERVICE_CERT_CN: ${{ vars.IMAGE_SERVICE_CERT_CN }}
+          IMAGE_SERVICE_API_KEY: ${{ secrets.IMAGE_SERVICE_API_KEY }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH
+          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY
           script: |
             kubectl create secret generic cac-secret \
               --from-literal=DATABASE_URL="$DATABASE_URL" \
               --from-literal=JWT_SECRET_ACCESS="$JWT_SECRET_ACCESS" \
               --from-literal=JWT_SECRET_REFRESH="$JWT_SECRET_REFRESH" \
+              --from-literal=IMAGE_SERVICE_URL="$IMAGE_SERVICE_URL" \
+              --from-literal=IMAGE_SERVICE_CERT_CN="$IMAGE_SERVICE_CERT_CN" \
+              --from-literal=IMAGE_SERVICE_API_KEY="$IMAGE_SERVICE_API_KEY" \
               --dry-run=client -o yaml | kubectl apply -f -
 
             kubectl apply -f /tmp/cac-k8s/
