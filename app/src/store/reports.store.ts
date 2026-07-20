@@ -8,6 +8,7 @@ import type {
   ReportDetail,
   ReportStatus,
   TransitionsMap,
+  CreateReportProjectResult,
 } from "@/types/report";
 import { useOrgsStore } from "@/store/orgs.store";
 
@@ -20,6 +21,14 @@ interface ReportsState {
   statusFilter: ReportStatus | "";
 
   fetchProjects: () => Promise<void>;
+  createProject: (payload: {
+    name: string;
+    allowedOrigins: string[];
+    rateLimitPerHour?: number;
+  }) => Promise<string>; // returns ingest key (once)
+  rotateProjectKey: (id: string) => Promise<string>;
+  setProjectActive: (id: string, isActive: boolean) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
   fetchReports: () => Promise<void>;
   fetchTransitions: () => Promise<void>;
   setProjectFilter: (id: string) => void;
@@ -58,6 +67,44 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     const orgId = useOrgsStore.getState().currentOrgId;
     const all = res.success && res.data ? res.data : [];
     set({ projects: all.filter((p) => p.orgId === orgId) });
+  },
+
+  createProject: async ({ name, allowedOrigins, rateLimitPerHour }) => {
+    const orgId = useOrgsStore.getState().currentOrgId;
+    const res = await api.post<APIResponse<CreateReportProjectResult>>(
+      "/api/v1/report-projects/",
+      { orgId, name, allowedOrigins, rateLimitPerHour },
+      true
+    );
+    if (!res.success || !res.data) throw new Error(res.error ?? "Failed to create project");
+    await get().fetchProjects();
+    return res.data.ingestKey;
+  },
+
+  rotateProjectKey: async (id) => {
+    const res = await api.post<APIResponse<{ ingestKey: string }>>(
+      `/api/v1/report-projects/${id}/rotate-key`,
+      {},
+      true
+    );
+    if (!res.success || !res.data) throw new Error(res.error ?? "Failed to rotate key");
+    return res.data.ingestKey;
+  },
+
+  setProjectActive: async (id, isActive) => {
+    const p = get().projects.find((x) => x.id === id);
+    if (!p) return;
+    await api.patch<APIResponse<unknown>>(
+      `/api/v1/report-projects/${id}`,
+      { name: p.name, allowedOrigins: p.allowedOrigins, rateLimitPerHour: p.rateLimitPerHour, isActive },
+      true
+    );
+    await get().fetchProjects();
+  },
+
+  deleteProject: async (id) => {
+    await api.delete<APIResponse<unknown>>(`/api/v1/report-projects/${id}`);
+    await get().fetchProjects();
   },
 
   fetchReports: async () => {

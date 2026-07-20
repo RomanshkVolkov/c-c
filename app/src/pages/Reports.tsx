@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import { RefreshCw, ImageIcon, MessageSquare, Bug } from "lucide-react";
+import { RefreshCw, ImageIcon, MessageSquare, Bug, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import ReportDetailDrawer from "@/components/ReportDetailDrawer";
+import ReportProjectsDialog from "@/components/ReportProjectsDialog";
 import {
   REPORT_STATUSES,
   STATUS_LABELS,
@@ -71,6 +72,14 @@ export default function Reports() {
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
+          <ReportProjectsDialog
+            trigger={
+              <Button size="sm" variant="outline" className="gap-2">
+                <Settings2 className="h-4 w-4" />
+                Projects
+              </Button>
+            }
+          />
         </div>
       </header>
 
