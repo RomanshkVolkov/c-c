@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/text/unicode/norm"
 )
@@ -106,12 +106,13 @@ func generateToken(claims jwt.Claims, secret []byte) (string, error) {
 	return token.SignedString(secret)
 }
 
-func GenerateTokens(userID, username string) (*domain.TokenPair, error) {
+func GenerateTokens(userID, username string, orgs []domain.OrgMembershipClaim) (*domain.TokenPair, error) {
 	tokenID := uuid.NewString()
 
 	accessClaims := &domain.ClaimsJWT{
 		UserID:   userID,
 		Username: username,
+		Orgs:     orgs,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(accessExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

@@ -12,6 +12,10 @@ const (
 // user's machine (1Password / OS SSH agent) and never reach this service.
 type Server struct {
 	BaseModel
+	// OrgID scopes the server to an organization. Kept nullable at the DB level
+	// so AutoMigrate can add it to existing rows (seedDefaultOrg backfills it);
+	// the API always sets it on create. See organizations proposal, Fase 1.
+	OrgID     string     `gorm:"type:varchar(36);index" json:"orgId"`
 	Name      string     `gorm:"type:varchar(100);not null" json:"name"`
 	Host      string     `gorm:"type:varchar(255);not null" json:"host"`
 	SSHPort   int        `gorm:"default:22" json:"sshPort"`
@@ -24,6 +28,7 @@ type Server struct {
 // ─── Requests / Responses ─────────────────────────────────────────────────────
 
 type CreateServerRequest struct {
+	OrgID     string     `json:"orgId"     validate:"required"`
 	Name      string     `json:"name"      validate:"required,min=1,max=100"`
 	Host      string     `json:"host"      validate:"required"`
 	SSHPort   int        `json:"sshPort"   validate:"required,min=1,max=65535"`
@@ -34,6 +39,7 @@ type CreateServerRequest struct {
 
 type ServerResponse struct {
 	ID        string     `json:"id"`
+	OrgID     string     `json:"orgId"`
 	Name      string     `json:"name"`
 	Host      string     `json:"host"`
 	SSHPort   int        `json:"sshPort"`

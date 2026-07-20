@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -45,6 +46,8 @@ func DBConnection() {
 
 	if err := db.AutoMigrate(
 		&domain.User{},
+		&domain.Organization{},
+		&domain.OrgMembership{},
 		&domain.Server{},
 		&domain.Collection{},
 		&domain.CollectionNode{},
@@ -60,6 +63,50 @@ func DBConnection() {
 
 	DATABASE = db
 	seedAdmin(db)
+	seedDefaultOrg(db)
+}
+
+// seedDefaultOrg guarantees a "default" organization exists, enrolls every
+// user that has no membership yet as its admin, and backfills any server that
+// predates the org column. Idempotent — safe to run on every boot. This is the
+// single-tenant → multi-tenant bridge from the organizations proposal.
+func seedDefaultOrg(db *gorm.DB) {
+	const defaultSlug = "default"
+
+	var org domain.Organization
+	err := db.Where("slug = ?", defaultSlug).First(&org).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		org = domain.Organization{Name: "Default"}
+		org.Slug = defaultSlug
+		org.ID = uuid.NewString()
+		if err := db.Create(&org).Error; err != nil {
+			lg.Error("seed default org failed: " + err.Error())
+			return
+		}
+		lg.Info("default organization seeded")
+	} else if err != nil {
+		lg.Error("seed default org lookup failed: " + err.Error())
+		return
+	}
+
+	// Enroll users without any membership as admins of the default org.
+	var users []domain.User
+	if err := db.Find(&users).Error; err != nil {
+		lg.Error("seed default org: list users failed: " + err.Error())
+		return
+	}
+	for _, u := range users {
+		var count int64
+		db.Model(&domain.OrgMembership{}).Where("user_id = ?", u.ID).Count(&count)
+		if count == 0 {
+			db.Create(&domain.OrgMembership{OrgID: org.ID, UserID: u.ID, Role: domain.OrgRoleAdmin})
+		}
+	}
+
+	// Backfill servers registered before org scoping existed.
+	db.Model(&domain.Server{}).
+		Where("org_id IS NULL OR org_id = ''").
+		Update("org_id", org.ID)
 }
 
 // buildDSN constructs a DSN from individual env vars as fallback.

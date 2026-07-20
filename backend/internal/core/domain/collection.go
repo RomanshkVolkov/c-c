@@ -43,9 +43,12 @@ func (k KeyValueList) Value() (driver.Value, error) {
 
 type Collection struct {
 	BaseModel
-	OwnerID     string `gorm:"type:varchar(36);index;not null" json:"ownerId"`
-	Name        string `gorm:"type:varchar(200);not null"     json:"name"`
-	Description string `gorm:"type:text"                      json:"description"`
+	OwnerID string `gorm:"type:varchar(36);index;not null" json:"ownerId"`
+	// OrgID is nullable: null = personal collection (scoped by OwnerID); set =
+	// organization-shared collection. See groups-and-sharing proposal.
+	OrgID       *string `gorm:"type:varchar(36);index"     json:"orgId,omitempty"`
+	Name        string  `gorm:"type:varchar(200);not null" json:"name"`
+	Description string  `gorm:"type:text"                  json:"description"`
 }
 
 type CollectionNodeType string

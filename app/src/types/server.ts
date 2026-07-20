@@ -2,6 +2,7 @@ export type ServerType = "docker-swarm" | "kubernetes";
 
 export interface Server {
   id: string;
+  orgId: string;
   name: string;
   host: string;
   sshPort: number;
@@ -12,6 +13,7 @@ export interface Server {
 }
 
 export interface CreateServerPayload {
+  orgId: string;
   name: string;
   host: string;
   sshPort: number;

@@ -13,9 +13,29 @@ type User struct {
 // ─── JWT ─────────────────────────────────────────────────────────────────────
 
 type ClaimsJWT struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
+	UserID   string               `json:"user_id"`
+	Username string               `json:"username"`
+	Orgs     []OrgMembershipClaim `json:"orgs"`
 	jwt.RegisteredClaims
+}
+
+// OrgIDs returns the ids of every org the caller belongs to.
+func (c *ClaimsJWT) OrgIDs() []string {
+	ids := make([]string, 0, len(c.Orgs))
+	for _, o := range c.Orgs {
+		ids = append(ids, o.OrgID)
+	}
+	return ids
+}
+
+// RoleInOrg returns the caller's role in orgID and whether they belong to it.
+func (c *ClaimsJWT) RoleInOrg(orgID string) (OrgRole, bool) {
+	for _, o := range c.Orgs {
+		if o.OrgID == orgID {
+			return o.Role, true
+		}
+	}
+	return "", false
 }
 
 type ClaimsRefresh struct {

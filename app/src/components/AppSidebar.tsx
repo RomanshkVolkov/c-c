@@ -24,6 +24,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { toast } from "sonner";
+import OrgSwitcher from "@/components/OrgSwitcher";
 import { useAuth } from "@/hooks/use-auth";
 import { useUpdaterStore } from "@/store/updater.store";
 import { cn } from "@/lib/utils";
@@ -43,20 +44,7 @@ export default function AppSidebar() {
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              tooltip="CAC"
-              onClick={() => navigate("/dashboard")}
-            >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-                C
-              </div>
-              <span className="font-semibold truncate">CAC</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <OrgSwitcher />
       </SidebarHeader>
 
       <SidebarContent>

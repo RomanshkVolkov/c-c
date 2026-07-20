@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	ErrCollectionNotFound = errors.New("collection not found")
-	ErrShareNotFound      = errors.New("share not found")
+	ErrCollectionNotFound  = errors.New("collection not found")
+	ErrShareNotFound       = errors.New("share not found")
 	ErrCollectionForbidden = errors.New("forbidden")
 )
 

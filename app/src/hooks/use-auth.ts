@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { useOrgsStore } from "@/store/orgs.store";
 import type { APIResponse, AuthResponse } from "@/types/auth";
 
 export function useAuth() {
@@ -22,6 +23,7 @@ export function useAuth() {
 
   const logout = () => {
     clearAuth();
+    useOrgsStore.getState().reset();
   };
 
   return { session, login, logout, isAuthenticated };

@@ -27,7 +27,12 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 		return nil, errors.New("invalid credentials")
 	}
 
-	tokens, err := repository.GenerateTokens(user.ID, user.Username)
+	orgs, err := s.repo.OrgClaimsForUser(user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	tokens, err := repository.GenerateTokens(user.ID, user.Username, orgs)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +72,12 @@ func (s *AuthService) RefreshToken(refreshToken string) (*domain.AuthRefreshResp
 		return nil, errors.New("user not found")
 	}
 
-	tokens, err := repository.GenerateTokens(user.ID, user.Username)
+	orgs, err := s.repo.OrgClaimsForUser(user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	tokens, err := repository.GenerateTokens(user.ID, user.Username, orgs)
 	if err != nil {
 		return nil, err
 	}

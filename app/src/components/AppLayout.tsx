@@ -1,10 +1,20 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
 import UpdateChecker from "@/components/UpdateChecker";
+import { useOrgsStore } from "@/store/orgs.store";
 
 export default function AppLayout() {
+  const fetchOrgs = useOrgsStore((s) => s.fetchOrgs);
+
+  // Load the caller's organizations once the authenticated shell mounts so the
+  // switcher and org-scoped lists have data.
+  useEffect(() => {
+    fetchOrgs();
+  }, [fetchOrgs]);
+
   return (
     <SidebarProvider>
       <AppSidebar />

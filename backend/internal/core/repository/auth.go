@@ -27,6 +27,21 @@ func (r *AuthRepository) FindByUsername(username string) (*domain.User, error) {
 	return &user, nil
 }
 
+// OrgClaimsForUser returns the compact org memberships embedded in the access
+// token so scoping middleware can decide access without a DB round-trip.
+func (r *AuthRepository) OrgClaimsForUser(userID string) ([]domain.OrgMembershipClaim, error) {
+	var claims []domain.OrgMembershipClaim
+	err := r.db.
+		Model(&domain.OrgMembership{}).
+		Select("org_id", "role").
+		Where("user_id = ?", userID).
+		Scan(&claims).Error
+	if err != nil {
+		return nil, err
+	}
+	return claims, nil
+}
+
 func (r *AuthRepository) FindByID(id string) (*domain.User, error) {
 	var user domain.User
 	if err := r.db.First(&user, "id = ?", id).Error; err != nil {

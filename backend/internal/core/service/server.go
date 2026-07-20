@@ -16,6 +16,7 @@ func NewServerService(repo *repository.ServerRepository) *ServerService {
 
 func (s *ServerService) Create(req domain.CreateServerRequest) (*domain.ServerResponse, error) {
 	server := &domain.Server{
+		OrgID:     req.OrgID,
 		Name:      req.Name,
 		Host:      req.Host,
 		SSHPort:   req.SSHPort,
@@ -33,8 +34,8 @@ func (s *ServerService) Create(req domain.CreateServerRequest) (*domain.ServerRe
 	return toResponse(server), nil
 }
 
-func (s *ServerService) List() ([]domain.ServerResponse, error) {
-	servers, err := s.repo.List()
+func (s *ServerService) List(orgIDs []string) ([]domain.ServerResponse, error) {
+	servers, err := s.repo.ListByOrgs(orgIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +46,15 @@ func (s *ServerService) List() ([]domain.ServerResponse, error) {
 	return result, nil
 }
 
+// Find returns a single server (used for authorization before mutations).
+func (s *ServerService) Find(id string) (*domain.ServerResponse, error) {
+	srv, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	return toResponse(srv), nil
+}
+
 func (s *ServerService) Delete(id string) error {
 	return s.repo.Delete(id)
 }
@@ -52,6 +62,7 @@ func (s *ServerService) Delete(id string) error {
 func toResponse(s *domain.Server) *domain.ServerResponse {
 	return &domain.ServerResponse{
 		ID:        s.ID,
+		OrgID:     s.OrgID,
 		Name:      s.Name,
 		Host:      s.Host,
 		SSHPort:   s.SSHPort,

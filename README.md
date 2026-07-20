@@ -45,6 +45,7 @@ GitHub workflows under `.github/workflows/`:
 ## Proposals (not implemented)
 
 - [Groups & multi-user sharing](./docs/proposals/groups-and-sharing.md) — evolution of the data model from single-user to group-based resource ownership.
+- [Organizations + reports module](./docs/proposals/organizations-and-reports.md) — org scopes (separate the two companies across servers/collections) + multi-tenant bug-report tracker: Go ingest, Tauri triage console, embeddable capture widget, images via image-service, S3 via Terraform.
 
 ## Local development
 

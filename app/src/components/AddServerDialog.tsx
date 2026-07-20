@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CreateServerPayload } from "@/types/server";
+import type { NewServerInput } from "@/hooks/use-servers";
 
 const schema = z.object({
   name: z.string().min(1, "Required"),
@@ -30,7 +30,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 interface Props {
-  onCreated: (payload: CreateServerPayload) => Promise<unknown>;
+  onCreated: (payload: NewServerInput) => Promise<unknown>;
 }
 
 export default function AddServerDialog({ onCreated }: Props) {

@@ -18,6 +18,7 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	r.Use(middleware.Recovery)
 
 	InitAuthRoutes(db, r)
+	InitOrganizationRoutes(db, r)
 	InitServerRoutes(db, r)
 	InitCollectionRoutes(db, r)
 

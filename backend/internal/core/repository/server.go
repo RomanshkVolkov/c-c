@@ -17,9 +17,14 @@ func (r *ServerRepository) Create(server *domain.Server) error {
 	return r.db.Create(server).Error
 }
 
-func (r *ServerRepository) List() ([]domain.Server, error) {
+// ListByOrgs returns servers belonging to any of the given orgs. An empty slice
+// yields no rows (a caller with no memberships sees nothing).
+func (r *ServerRepository) ListByOrgs(orgIDs []string) ([]domain.Server, error) {
+	if len(orgIDs) == 0 {
+		return []domain.Server{}, nil
+	}
 	var servers []domain.Server
-	if err := r.db.Find(&servers).Error; err != nil {
+	if err := r.db.Where("org_id IN ?", orgIDs).Find(&servers).Error; err != nil {
 		return nil, err
 	}
 	return servers, nil
