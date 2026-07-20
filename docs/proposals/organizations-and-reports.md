@@ -5,6 +5,7 @@ Fase 2 aplicada en AWS real. Pendiente: Fase 6 (portal, gated en cliente+email),
 notificaciones nativas OS (requiere `tauri-plugin-notification` + rebuild Rust),
 y la extensión del ingest para `snapshot` con columna propia (hoy va en el blob
 `telemetry`). Ver "Estado de ejecución" al final.
+
 **Contexto:** damos soporte a webs de clientes de dos empresas de software. Portento
 (cliente de nuke) ya tiene un módulo interno completo de bug-tickets; un segundo
 cliente pidió el mismo módulo. En vez de replicar el módulo web por web, cac se
