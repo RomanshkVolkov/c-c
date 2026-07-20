@@ -135,6 +135,32 @@ func IngestKeyMatches(plain string, hash []byte) bool {
 	return subtle.ConstantTimeCompare(HashIngestKey(plain), hash) == 1
 }
 
+// ─── Signed image URLs ────────────────────────────────────────────────────────
+//
+// The Tauri webview can't attach an Authorization header to <img> tags, so the
+// backend emits short-lived HMAC-signed URLs (?exp=&sig=). The image proxy
+// accepts either a valid signature or a JWT. Signature binds reportID+imageID+exp.
+
+func imageURLSecret() []byte {
+	return []byte(GetEnv("IMAGE_URL_SECRET", GetEnv("JWT_SECRET_ACCESS", "change-me-access-secret")))
+}
+
+// SignImage returns the hex HMAC for a (reportID, imageID, expUnix) triple.
+func SignImage(reportID, imageID string, expUnix int64) string {
+	mac := hmac.New(sha256.New, imageURLSecret())
+	fmt.Fprintf(mac, "%s:%s:%d", reportID, imageID, expUnix)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// VerifyImageSig checks the signature and that it hasn't expired.
+func VerifyImageSig(reportID, imageID string, expUnix int64, sig string) bool {
+	if time.Now().Unix() > expUnix {
+		return false
+	}
+	want := SignImage(reportID, imageID, expUnix)
+	return subtle.ConstantTimeCompare([]byte(want), []byte(sig)) == 1
+}
+
 // ─── JWT ──────────────────────────────────────────────────────────────────────
 
 func generateToken(claims jwt.Claims, secret []byte) (string, error) {

@@ -1,9 +1,12 @@
 package http
 
 import (
+	"context"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/handler"
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
@@ -28,12 +31,28 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 		lg.Warn("IMAGE_SERVICE_API_KEY not set — report screenshots disabled")
 	}
 
+	store, err := mediastore.New(
+		context.Background(),
+		repository.GetEnv("REPORTS_MEDIA_BUCKET", ""),
+		repository.GetEnv("REPORTS_MEDIA_REGION", ""),
+		repository.GetEnv("REPORTS_MEDIA_ACCESS_KEY_ID", ""),
+		repository.GetEnv("REPORTS_MEDIA_SECRET_ACCESS_KEY", ""),
+	)
+	if err != nil {
+		lg.Error("mediastore init failed: " + err.Error())
+	} else if store.Enabled() {
+		lg.Info("report image proxy enabled → s3://" + repository.GetEnv("REPORTS_MEDIA_BUCKET", ""))
+	} else {
+		lg.Warn("REPORTS_MEDIA_BUCKET not set — report image proxy disabled")
+	}
+
 	projectSvc := service.NewReportProjectService(projectRepo, orgRepo)
 	reportSvc := service.NewReportService(reportRepo, orgRepo, authRepo, imgClient)
 
 	projects := handler.NewReportProjectHandler(projectSvc)
 	ingest := handler.NewIngestHandler(projectRepo, reportSvc)
 	admin := handler.NewReportAdminHandler(reportSvc)
+	imageProxy := handler.NewImageProxyHandler(reportRepo, store)
 
 	// Admin API — JWT, org-scoped.
 	r.Route("/api/v1/report-projects", func(r chi.Router) {
@@ -58,6 +77,10 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Post("/{id}/images", admin.AttachImages)
 		r.Delete("/{id}/images/{imageId}", admin.DetachImage)
 	})
+
+	// Image proxy — its own dual auth (signed URL OR JWT), so it lives OUTSIDE
+	// the JWT-only group: the webview's <img> can't send an Authorization header.
+	r.Get("/api/v1/reports/{id}/images/{imageId}", imageProxy.Serve)
 
 	// Public ingest — auth by X-Ingest-Key, per-project CORS/rate limit. No JWT.
 	r.Post("/ingest/v1/reports", ingest.CreateReport)

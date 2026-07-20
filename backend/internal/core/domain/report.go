@@ -282,6 +282,7 @@ type ReportImageResponse struct {
 	ID        string    `json:"id"`
 	CommentID *string   `json:"commentId,omitempty"`
 	FileName  string    `json:"fileName"`
+	URL       string    `json:"url"` // short-lived HMAC-signed proxy URL
 	CreatedAt time.Time `json:"createdAt"`
 }
 

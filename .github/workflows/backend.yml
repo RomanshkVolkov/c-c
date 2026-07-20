@@ -58,12 +58,17 @@ jobs:
           IMAGE_SERVICE_URL: ${{ vars.IMAGE_SERVICE_URL }}
           IMAGE_SERVICE_CERT_CN: ${{ vars.IMAGE_SERVICE_CERT_CN }}
           IMAGE_SERVICE_API_KEY: ${{ secrets.IMAGE_SERVICE_API_KEY }}
+          REPORTS_MEDIA_BUCKET: ${{ vars.REPORTS_MEDIA_BUCKET }}
+          REPORTS_MEDIA_REGION: ${{ vars.REPORTS_MEDIA_REGION }}
+          REPORTS_MEDIA_ACCESS_KEY_ID: ${{ secrets.REPORTS_MEDIA_ACCESS_KEY_ID }}
+          REPORTS_MEDIA_SECRET_ACCESS_KEY: ${{ secrets.REPORTS_MEDIA_SECRET_ACCESS_KEY }}
+          INGEST_KEY_SECRET: ${{ secrets.INGEST_KEY_SECRET }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY
+          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET
           script: |
             kubectl create secret generic cac-secret \
               --from-literal=DATABASE_URL="$DATABASE_URL" \
@@ -72,6 +77,11 @@ jobs:
               --from-literal=IMAGE_SERVICE_URL="$IMAGE_SERVICE_URL" \
               --from-literal=IMAGE_SERVICE_CERT_CN="$IMAGE_SERVICE_CERT_CN" \
               --from-literal=IMAGE_SERVICE_API_KEY="$IMAGE_SERVICE_API_KEY" \
+              --from-literal=REPORTS_MEDIA_BUCKET="$REPORTS_MEDIA_BUCKET" \
+              --from-literal=REPORTS_MEDIA_REGION="$REPORTS_MEDIA_REGION" \
+              --from-literal=REPORTS_MEDIA_ACCESS_KEY_ID="$REPORTS_MEDIA_ACCESS_KEY_ID" \
+              --from-literal=REPORTS_MEDIA_SECRET_ACCESS_KEY="$REPORTS_MEDIA_SECRET_ACCESS_KEY" \
+              --from-literal=INGEST_KEY_SECRET="$INGEST_KEY_SECRET" \
               --dry-run=client -o yaml | kubectl apply -f -
 
             kubectl apply -f /tmp/cac-k8s/

@@ -12,6 +12,17 @@ import (
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
+// imageURLTTL is how long a signed image proxy URL stays valid. Short-lived so
+// a leaked URL is useless quickly; the app refetches the detail to renew.
+const imageURLTTL = 10 * time.Minute
+
+// signedImageURL builds the short-lived HMAC-signed proxy URL for an image.
+func signedImageURL(reportID, imageID string) string {
+	exp := time.Now().Add(imageURLTTL).Unix()
+	sig := repository.SignImage(reportID, imageID, exp)
+	return fmt.Sprintf("/api/v1/reports/%s/images/%s?exp=%d&sig=%s", reportID, imageID, exp, sig)
+}
+
 var (
 	// ErrImagesUnavailable means the report carried screenshots but image-service
 	// is not configured/reachable, so none could be stored.
@@ -174,7 +185,13 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 	var gallery []domain.ReportImageResponse
 	byComment := make(map[string][]domain.ReportImageResponse)
 	for _, img := range images {
-		res := domain.ReportImageResponse{ID: img.ID, CommentID: img.CommentID, FileName: img.FileName, CreatedAt: img.CreatedAt}
+		res := domain.ReportImageResponse{
+			ID:        img.ID,
+			CommentID: img.CommentID,
+			FileName:  img.FileName,
+			URL:       signedImageURL(reportID, img.ID),
+			CreatedAt: img.CreatedAt,
+		}
 		if img.CommentID == nil {
 			gallery = append(gallery, res)
 		} else {
