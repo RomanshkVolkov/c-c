@@ -89,5 +89,9 @@ jobs:
               --dry-run=client -o yaml | kubectl apply -f -
 
             kubectl apply -f /tmp/cac-k8s/
+            # Force a fresh rollout so the :latest image is re-pulled and the new
+            # cac-secret is picked up (apply alone is a no-op when the tag is
+            # unchanged → the pod would keep the old image).
+            kubectl rollout restart deployment/cac-service
             kubectl rollout status deployment/cac-service --timeout=120s
             rm -rf /tmp/cac-k8s

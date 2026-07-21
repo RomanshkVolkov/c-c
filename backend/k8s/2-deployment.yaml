@@ -15,6 +15,7 @@ spec:
       containers:
         - name: cac-service-api
           image: ghcr.io/romanshkvolkov/c-c/backend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           envFrom:
