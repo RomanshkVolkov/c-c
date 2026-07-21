@@ -8,6 +8,21 @@ function base(cfg: WidgetConfig): string {
   return (cfg.endpoint ?? DEFAULT_ENDPOINT).replace(/\/$/, "");
 }
 
+// The backend returns relative image proxy URLs (/api/v1/...). The console
+// resolves those against its own origin, but the widget lives on the client's
+// site, so they must be absolutized against the ingest endpoint or the <img>
+// 404s. Applied to the report gallery and every comment's images.
+function absolutizeImages(cfg: WidgetConfig, report: ReporterReport): ReporterReport {
+  const b = base(cfg);
+  const fix = (u: string) => (u.startsWith("/") ? b + u : u);
+  report.images = (report.images ?? []).map((i) => ({ ...i, url: fix(i.url) }));
+  report.comments = (report.comments ?? []).map((c) => ({
+    ...c,
+    images: (c.images ?? []).map((i) => ({ ...i, url: fix(i.url) })),
+  }));
+  return report;
+}
+
 export async function fetchReporterView(
   cfg: WidgetConfig,
   id: string,
@@ -16,7 +31,7 @@ export async function fetchReporterView(
   const res = await fetch(`${base(cfg)}/ingest/v1/reports/${id}?token=${encodeURIComponent(token)}`);
   const json = await res.json();
   if (!res.ok || !json?.success) throw new Error(json?.error ?? `failed (${res.status})`);
-  return json.data as ReporterReport;
+  return absolutizeImages(cfg, json.data as ReporterReport);
 }
 
 export async function fetchUnreadCounts(
@@ -50,5 +65,5 @@ export async function postReporterReply(
   });
   const json = await res.json();
   if (!res.ok || !json?.success) throw new Error(json?.error ?? `failed (${res.status})`);
-  return json.data as ReporterReport;
+  return absolutizeImages(cfg, json.data as ReporterReport);
 }
