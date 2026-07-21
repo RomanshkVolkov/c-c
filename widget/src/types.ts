@@ -41,6 +41,33 @@ export interface WidgetConfig {
 
 // ─── Telemetry payload shapes ─────────────────────────────────────────────────
 
+// ─── Reporter follow-up views ─────────────────────────────────────────────────
+
+export interface ReporterImage {
+  id: string;
+  fileName: string;
+  url: string;
+}
+
+export interface ReporterComment {
+  author: "you" | "team" | "system";
+  body: string;
+  images?: ReporterImage[];
+  createdAt: string;
+}
+
+export interface ReporterReport {
+  id: string;
+  folio: string;
+  title: string;
+  description: string;
+  status: "pending" | "in_progress" | "resolved" | "closed";
+  createdAt: string;
+  updatedAt: string;
+  images: ReporterImage[];
+  comments: ReporterComment[];
+}
+
 export interface ErrorBreadcrumb {
   ts: number;
   message: string;

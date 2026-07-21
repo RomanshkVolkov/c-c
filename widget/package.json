@@ -1,6 +1,6 @@
 {
   "name": "@g-studio/report-widget",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Embeddable bug-report widget for the cac tracker — capture + telemetry breadcrumbs, POSTs to the public ingest endpoint.",
   "license": "UNLICENSED",
   "type": "module",

@@ -18,6 +18,18 @@ export interface Strings {
   send: string;
   sending: string;
   thanks: string;
+  tabReport: string;
+  tabMine: string;
+  mineEmpty: string;
+  back: string;
+  replyPlaceholder: string;
+  reply: string;
+  authorYou: string;
+  authorTeam: string;
+  status_pending: string;
+  status_in_progress: string;
+  status_resolved: string;
+  status_closed: string;
 }
 
 const es: Strings = {
@@ -38,6 +50,18 @@ const es: Strings = {
   send: "Enviar reporte",
   sending: "Enviando…",
   thanks: "¡Gracias! Tu reporte se envió.",
+  tabReport: "Reportar",
+  tabMine: "Mis reportes",
+  mineEmpty: "Aún no has enviado reportes desde este navegador.",
+  back: "← Volver",
+  replyPlaceholder: "Escribe una respuesta…",
+  reply: "Responder",
+  authorYou: "Tú",
+  authorTeam: "Equipo",
+  status_pending: "Pendiente",
+  status_in_progress: "En progreso",
+  status_resolved: "Resuelto",
+  status_closed: "Cerrado",
 };
 
 const en: Strings = {
@@ -58,6 +82,18 @@ const en: Strings = {
   send: "Send report",
   sending: "Sending…",
   thanks: "Thanks — your report was sent.",
+  tabReport: "Report",
+  tabMine: "My reports",
+  mineEmpty: "You haven't filed any reports from this browser yet.",
+  back: "← Back",
+  replyPlaceholder: "Write a reply…",
+  reply: "Reply",
+  authorYou: "You",
+  authorTeam: "Team",
+  status_pending: "Pending",
+  status_in_progress: "In progress",
+  status_resolved: "Resolved",
+  status_closed: "Closed",
 };
 
 const TABLE: Record<Locale, Strings> = { es, en };

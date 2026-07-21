@@ -17,6 +17,7 @@ export interface IngestResult {
   seq: number;
   folio: string;
   images: number;
+  token: string; // per-report reporter token (for follow-up)
 }
 
 /**

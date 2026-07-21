@@ -34,7 +34,11 @@ export function BugReporter() {
 }
 ```
 
-Render it once in a client component (e.g. the root layout).
+Render it once in a client component (e.g. the dashboard layout). The launcher
+opens a modal with two tabs: **Report** (new report) and **My reports** — where
+the reporter sees the reports they've filed, follows their status, reads the
+team's replies and **responds**. No email or login: each report gets a signed
+token stored in the browser (the only thing persisted to localStorage).
 
 ## Option 2 — Headless (any framework)
 

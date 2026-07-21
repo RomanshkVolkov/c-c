@@ -4,10 +4,14 @@ export { createReporter } from "./core";
 export type { Reporter } from "./core";
 export { submit } from "./ingest";
 export type { ReportInput, IngestResult } from "./ingest";
+export type { StoredReport } from "./storage";
 export { TelemetryCollector } from "./telemetry";
 export type {
   WidgetConfig,
   SnapshotConfig,
+  ReporterReport,
+  ReporterComment,
+  ReporterImage,
   Telemetry,
   ErrorBreadcrumb,
   ConsoleBreadcrumb,
