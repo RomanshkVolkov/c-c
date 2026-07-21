@@ -1,6 +1,6 @@
 import { submit, type ReportInput, type IngestResult } from "./ingest";
-import { fetchReporterView, postReporterReply } from "./reporter";
-import { loadReports, saveReport, type StoredReport } from "./storage";
+import { fetchReporterView, fetchUnreadCounts, postReporterReply } from "./reporter";
+import { loadReports, saveReport, markSeen, type StoredReport } from "./storage";
 import { TelemetryCollector } from "./telemetry";
 import type { ReporterReport, WidgetConfig } from "./types";
 
@@ -15,6 +15,10 @@ export interface Reporter {
   viewReport(id: string): Promise<ReporterReport>;
   /** reply to one of the reporter's reports */
   reply(id: string, body: string, images?: File[]): Promise<ReporterReport>;
+  /** total unread team replies across stored reports (one batched request) */
+  unreadCount(): Promise<number>;
+  /** mark a report's thread as seen (resets its unread count) */
+  markSeen(id: string): void;
   /** stop collecting and restore all patched globals */
   destroy(): void;
 }
@@ -54,6 +58,16 @@ export function createReporter(cfg: WidgetConfig): Reporter {
     myReports: () => loadReports(cfg.projectKey),
     viewReport: (id) => fetchReporterView(cfg, id, tokenFor(id)),
     reply: (id, body, images) => postReporterReply(cfg, id, tokenFor(id), body, images),
+    unreadCount: async () => {
+      const items = loadReports(cfg.projectKey).map((r) => ({
+        id: r.id,
+        token: r.token,
+        since: r.lastSeenAt ?? Math.floor(r.createdAt / 1000),
+      }));
+      const counts = await fetchUnreadCounts(cfg, items);
+      return Object.values(counts).reduce((a, b) => a + b, 0);
+    },
+    markSeen: (id) => markSeen(cfg.projectKey, id),
     destroy: () => collector.uninstall(),
   };
 }

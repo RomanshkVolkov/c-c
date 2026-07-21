@@ -19,6 +19,21 @@ export async function fetchReporterView(
   return json.data as ReporterReport;
 }
 
+export async function fetchUnreadCounts(
+  cfg: WidgetConfig,
+  items: { id: string; token: string; since: number }[]
+): Promise<Record<string, number>> {
+  if (items.length === 0) return {};
+  const res = await fetch(`${base(cfg)}/ingest/v1/reports/unread`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  const json = await res.json();
+  if (!res.ok || !json?.success) return {};
+  return (json.data ?? {}) as Record<string, number>;
+}
+
 export async function postReporterReply(
   cfg: WidgetConfig,
   id: string,

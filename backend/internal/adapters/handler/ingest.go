@@ -55,6 +55,7 @@ type IngestHandler interface {
 	Preflight(w http.ResponseWriter, r *http.Request)
 	ReporterView(w http.ResponseWriter, r *http.Request)
 	ReporterComment(w http.ResponseWriter, r *http.Request)
+	UnreadCounts(w http.ResponseWriter, r *http.Request)
 }
 
 type ingestHandler struct {
@@ -175,6 +176,25 @@ func (h *ingestHandler) ReporterView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReporterReportView]{Success: true, Data: view})
+}
+
+// UnreadCounts — POST /ingest/v1/reports/unread : batch unread-reply counts for
+// the reporter's stored reports (one request instead of N). Each item carries
+// its own per-report token; unverified items are skipped.
+func (h *ingestHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
+	echoCORS(w, r)
+	req, err := ValidateRequest[domain.UnreadRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	counts := make(map[string]int64, len(req.Items))
+	for _, it := range req.Items {
+		if repository.VerifyReportToken(it.ID, it.Token) {
+			counts[it.ID] = h.svc.UnreadSince(it.ID, it.Since)
+		}
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[map[string]int64]{Success: true, Data: counts})
 }
 
 // ReporterComment — POST /ingest/v1/reports/{id}/comments?token= : reporter adds

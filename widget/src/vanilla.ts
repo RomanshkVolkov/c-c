@@ -16,6 +16,9 @@ const STATUS_COLOR: Record<string, string> = {
   closed: "#9ca3af",
 };
 
+const POLL_MS = 15_000; // open-thread live refresh
+const UNREAD_POLL_MS = 60_000; // background unread-badge check (visibility-gated)
+
 function shade(hex: string, pct: number): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!m) return hex;
@@ -97,11 +100,49 @@ function mount(cfg: WidgetConfig, reporter: Reporter, t: Strings) {
     btn.style.transform = "";
     btn.style.boxShadow = "0 6px 20px rgba(0,0,0,.22)";
   };
-  btn.onclick = () => openModal(reporter, color, t);
+  const badge = el("span", {
+    position: "absolute",
+    top: "-4px",
+    right: "-4px",
+    minWidth: "20px",
+    height: "20px",
+    padding: "0 5px",
+    borderRadius: "999px",
+    background: "#ef4444",
+    color: "#fff",
+    fontSize: "11px",
+    fontWeight: "700",
+    display: "none",
+    placeItems: "center",
+    boxShadow: "0 1px 4px rgba(0,0,0,.3)",
+    boxSizing: "border-box",
+  });
+  btn.appendChild(badge);
+
+  const refreshBadge = () => {
+    reporter
+      .unreadCount()
+      .then((n) => {
+        badge.textContent = n > 99 ? "99+" : String(n);
+        badge.style.display = n > 0 ? "grid" : "none";
+      })
+      .catch(() => {});
+  };
+
+  btn.onclick = () => openModal(reporter, color, t, refreshBadge);
   document.body.appendChild(btn);
+
+  // Background unread check: infrequent + visible-only (never a background load).
+  refreshBadge();
+  setInterval(() => {
+    if (!document.hidden) refreshBadge();
+  }, UNREAD_POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshBadge();
+  });
 }
 
-function openModal(reporter: Reporter, color: string, t: Strings) {
+function openModal(reporter: Reporter, color: string, t: Strings, refreshBadge: () => void) {
   const overlay = el("div", {
     position: "fixed",
     inset: "0",
@@ -150,7 +191,7 @@ function openModal(reporter: Reporter, color: string, t: Strings) {
     Object.assign(tabMine.style, tabStyle(which === "mine"));
     body.innerHTML = "";
     if (which === "report") renderForm(body, reporter, color, t, () => show("mine"));
-    else renderMine(body, reporter, color, t);
+    else renderMine(body, reporter, color, t, refreshBadge);
   };
   tabReport.onclick = () => show("report");
   tabMine.onclick = () => show("mine");
@@ -206,7 +247,7 @@ function renderForm(root: HTMLElement, reporter: Reporter, color: string, t: Str
   title.focus();
 }
 
-function renderMine(root: HTMLElement, reporter: Reporter, color: string, t: Strings) {
+function renderMine(root: HTMLElement, reporter: Reporter, color: string, t: Strings, refreshBadge: () => void) {
   const list = reporter.myReports();
   if (list.length === 0) {
     root.appendChild(el("p", { color: "#71717a", fontSize: "13px", textAlign: "center", padding: "24px 0", margin: "0" }, { textContent: t.mineEmpty }));
@@ -218,19 +259,21 @@ function renderMine(root: HTMLElement, reporter: Reporter, color: string, t: Str
     item.innerHTML = `<div style="font-size:11px;color:#a1a1aa;font-family:monospace">${escapeHtml(r.folio)}</div><div style="font-size:14px;margin-top:2px">${escapeHtml(r.title)}</div>`;
     item.onclick = () => {
       root.innerHTML = "";
-      renderThread(root, reporter, color, t, r.id);
+      renderThread(root, reporter, color, t, r.id, refreshBadge);
     };
     wrap.appendChild(item);
   }
   root.appendChild(wrap);
 }
 
-async function renderThread(root: HTMLElement, reporter: Reporter, color: string, t: Strings, id: string) {
+async function renderThread(root: HTMLElement, reporter: Reporter, color: string, t: Strings, id: string, refreshBadge: () => void) {
   const wrap = el("div", { display: "flex", flexDirection: "column", gap: "12px" });
   const back = el("button", { alignSelf: "flex-start", border: "none", background: "none", color: "#71717a", cursor: "pointer", fontSize: "13px", padding: "0" }, { textContent: t.back });
   back.onclick = () => {
+    reporter.markSeen(id);
+    refreshBadge();
     root.innerHTML = "";
-    renderMine(root, reporter, color, t);
+    renderMine(root, reporter, color, t, refreshBadge);
   };
   wrap.appendChild(back);
   root.appendChild(wrap);
@@ -242,15 +285,14 @@ async function renderThread(root: HTMLElement, reporter: Reporter, color: string
     wrap.appendChild(el("p", { color: "#dc2626", fontSize: "13px" }, { textContent: e instanceof Error ? e.message : String(e) }));
     return;
   }
+  reporter.markSeen(id); // opening clears this report's unread
+  refreshBadge();
 
-  const statusLabel = (t as unknown as Record<string, string>)[`status_${report.status}`] ?? report.status;
   const header = el("div", {});
   header.innerHTML = `<div style="font-size:11px;color:#a1a1aa;font-family:monospace">${escapeHtml(report.folio)}</div>`;
   const titleRow = el("div", { display: "flex", alignItems: "center", gap: "8px", marginTop: "3px" });
-  titleRow.append(
-    el("span", { fontSize: "15px", fontWeight: "600" }, { textContent: report.title }),
-    el("span", { fontSize: "11px", padding: "2px 8px", borderRadius: "999px", color: "#fff", background: STATUS_COLOR[report.status] ?? "#9ca3af" }, { textContent: statusLabel })
-  );
+  const statusEl = el("span", { fontSize: "11px", padding: "2px 8px", borderRadius: "999px", color: "#fff" });
+  titleRow.append(el("span", { fontSize: "15px", fontWeight: "600" }, { textContent: report.title }), statusEl);
   header.appendChild(titleRow);
   wrap.appendChild(header);
 
@@ -263,28 +305,52 @@ async function renderThread(root: HTMLElement, reporter: Reporter, color: string
   bindZoom(wrap);
 
   const thread = el("div", { display: "flex", flexDirection: "column", gap: "8px" });
-  for (const c of report.comments) {
-    if (c.author === "system") {
-      thread.appendChild(el("p", { fontSize: "12px", color: "#a1a1aa", fontStyle: "italic", margin: "0" }, { textContent: c.body }));
-      continue;
-    }
-    const mine = c.author === "you";
-    const bubble = el("div", {
-      alignSelf: mine ? "flex-end" : "flex-start",
-      maxWidth: "85%",
-      background: mine ? color : "#f4f4f5",
-      color: mine ? "#fff" : "#18181b",
-      padding: "8px 11px",
-      borderRadius: "12px",
-      fontSize: "13px",
-    });
-    const imgsHtml = (c.images ?? []).map((im) => thumb(im.url, im.fileName)).join("");
-    bubble.innerHTML =
-      `<div style="font-size:10px;opacity:.7;margin-bottom:2px">${mine ? t.authorYou : t.authorTeam}</div>${escapeHtml(c.body)}` +
-      (imgsHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${imgsHtml}</div>` : "");
-    thread.appendChild(bubble);
-  }
   wrap.appendChild(thread);
+
+  // Repaints status + messages only (leaves the composer/typed text untouched).
+  const paint = (rep: ReporterReport) => {
+    statusEl.textContent = (t as unknown as Record<string, string>)[`status_${rep.status}`] ?? rep.status;
+    statusEl.style.background = STATUS_COLOR[rep.status] ?? "#9ca3af";
+    thread.innerHTML = "";
+    for (const c of rep.comments) {
+      if (c.author === "system") {
+        thread.appendChild(el("p", { fontSize: "12px", color: "#a1a1aa", fontStyle: "italic", margin: "0" }, { textContent: c.body }));
+        continue;
+      }
+      const mine = c.author === "you";
+      const bubble = el("div", {
+        alignSelf: mine ? "flex-end" : "flex-start",
+        maxWidth: "85%",
+        background: mine ? color : "#f4f4f5",
+        color: mine ? "#fff" : "#18181b",
+        padding: "8px 11px",
+        borderRadius: "12px",
+        fontSize: "13px",
+      });
+      const imgsHtml = (c.images ?? []).map((im) => thumb(im.url, im.fileName)).join("");
+      bubble.innerHTML =
+        `<div style="font-size:10px;opacity:.7;margin-bottom:2px">${mine ? t.authorYou : t.authorTeam}</div>${escapeHtml(c.body)}` +
+        (imgsHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${imgsHtml}</div>` : "");
+      thread.appendChild(bubble);
+    }
+  };
+  paint(report);
+
+  // Live updates without a refresh: poll messages only, visible-only, and
+  // self-clean once the thread leaves the DOM (back / modal closed).
+  const iv = setInterval(async () => {
+    if (!document.body.contains(thread)) {
+      clearInterval(iv);
+      return;
+    }
+    if (document.hidden) return;
+    try {
+      paint(await reporter.viewReport(id));
+      reporter.markSeen(id);
+    } catch {
+      /* ignore */
+    }
+  }, POLL_MS);
 
   if (report.status !== "closed") {
     const files: File[] = [];
@@ -311,7 +377,7 @@ async function renderThread(root: HTMLElement, reporter: Reporter, color: string
       try {
         await reporter.reply(id, input.value.trim(), files);
         root.innerHTML = "";
-        renderThread(root, reporter, color, t, id);
+        renderThread(root, reporter, color, t, id, refreshBadge);
       } catch {
         (send as HTMLButtonElement).disabled = false;
       }

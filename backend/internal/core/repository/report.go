@@ -209,6 +209,17 @@ func (r *ReportRepository) CreateComment(c *domain.ReportComment) error {
 	return r.db.Create(c).Error
 }
 
+// CountTeamCommentsSince counts agent replies (kind=user, author set) newer than
+// `since` — the reporter's unread count for one report.
+func (r *ReportRepository) CountTeamCommentsSince(reportID string, since time.Time) (int64, error) {
+	var n int64
+	err := r.db.Model(&domain.ReportComment{}).
+		Where("report_id = ? AND kind = ? AND author_user_id IS NOT NULL AND created_at > ? AND deleted_at IS NULL",
+			reportID, domain.CommentKindUser, since).
+		Count(&n).Error
+	return n, err
+}
+
 func (r *ReportRepository) FindComment(reportID, commentID string) (*domain.ReportComment, error) {
 	var c domain.ReportComment
 	err := r.db.Where("id = ? AND report_id = ?", commentID, reportID).First(&c).Error

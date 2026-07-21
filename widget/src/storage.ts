@@ -9,6 +9,8 @@ export interface StoredReport {
   title: string;
   token: string;
   createdAt: number;
+  /** unix seconds of the last time the reporter viewed this thread (for unread) */
+  lastSeenAt?: number;
 }
 
 const KEY = "gsrw:reports:";
@@ -33,5 +35,20 @@ export function saveReport(projectKey: string, r: StoredReport) {
     window.localStorage.setItem(storageKey(projectKey), JSON.stringify(all.slice(0, 50)));
   } catch {
     /* storage may be blocked — follow-up just won't persist */
+  }
+}
+
+/** Mark a report's thread as seen now (resets its unread count). */
+export function markSeen(projectKey: string, id: string) {
+  try {
+    const all = loadReports(projectKey);
+    const r = all.find((x) => x.id === id);
+    if (!r) return;
+    // Round UP to the next second: comments created in the current second carry a
+    // sub-second fraction, so flooring would keep them "unread" forever.
+    r.lastSeenAt = Math.ceil(Date.now() / 1000);
+    window.localStorage.setItem(storageKey(projectKey), JSON.stringify(all));
+  } catch {
+    /* ignore */
   }
 }

@@ -228,6 +228,17 @@ type IngestReportResult struct {
 	Deduped bool `json:"deduped,omitempty"`
 }
 
+// UnreadRequest is the batch unread-count check the widget polls (one request
+// for all the reporter's stored reports). since = unix seconds of last-seen.
+type UnreadRequest struct {
+	Items []UnreadItem `json:"items"`
+}
+type UnreadItem struct {
+	ID    string `json:"id"`
+	Token string `json:"token"`
+	Since int64  `json:"since"`
+}
+
 // ─── Reporter-facing views (token-scoped, no internal fields) ─────────────────
 
 type ReporterCommentView struct {

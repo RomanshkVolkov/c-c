@@ -197,6 +197,16 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	}, nil
 }
 
+// UnreadSince returns the count of team replies on a report newer than sinceUnix
+// (best-effort; errors yield 0).
+func (s *ReportService) UnreadSince(reportID string, sinceUnix int64) int64 {
+	n, err := s.repo.CountTeamCommentsSince(reportID, time.Unix(sinceUnix, 0))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 // ReporterView returns the reporter's own view of a report (status + thread),
 // omitting internal fields. Caller must already be authorized by report token.
 func (s *ReportService) ReporterView(reportID string) (*domain.ReporterReportView, error) {
