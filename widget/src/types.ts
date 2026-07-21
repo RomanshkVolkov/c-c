@@ -19,6 +19,12 @@ export interface WidgetConfig {
   endpoint?: string;
   /** curated extra context attached to every report */
   context?: () => Record<string, unknown>;
+  /**
+   * Identity of the reporter, taken from the host app's session (not asked in
+   * the form). Populates who-reported in the console and scopes the future
+   * "my reports" view. e.g. () => ({ id: session.user.id, name: session.user.name })
+   */
+  reporter?: () => { id?: string; name?: string; email?: string };
   /** opt-in localStorage/cookie snapshot (server redacts/encrypts) */
   snapshot?: SnapshotConfig;
   /**

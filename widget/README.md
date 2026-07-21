@@ -24,9 +24,11 @@ export function BugReporter() {
     <ReportWidget
       projectKey={process.env.NEXT_PUBLIC_REPORT_KEY!}
       endpoint="https://cac.guz-studio.dev"
+      locale="es"
+      reporter={() => ({ id: session.user.id, name: session.user.name })}
       snapshot={{ localStorage: ["feature-flags", "app-state"] }}
       context={() => ({ appVersion: process.env.NEXT_PUBLIC_VERSION })}
-      theme={{ color: "#2563eb", position: "bottom-right" }}
+      theme={{ color: "#4f46e5", position: "bottom-right" }}
     />
   );
 }
@@ -68,6 +70,8 @@ requirement: add the ingest origin to your site's `connect-src` CSP.
 |---|---|---|
 | `projectKey` | `string` | **required** — public write-only ingest key (`pk_…`) |
 | `endpoint` | `string` | ingest base URL (default `https://cac.guz-studio.dev`) |
+| `locale` | `'es' \| 'en'` | UI language (default `es`) |
+| `reporter` | `() => { id?; name?; email? }` | reporter identity from the host app's session — shows who reported it in the console (no email asked in the form) |
 | `context` | `() => object` | curated data attached to every report |
 | `snapshot` | `{ localStorage?: string[]; cookies?: boolean }` | opt-in allowlist (never a wholesale dump) |
 | `captureBodies` | `string[]` | path globs whose **failed** request bodies are captured (payment/auth hosts always excluded) |

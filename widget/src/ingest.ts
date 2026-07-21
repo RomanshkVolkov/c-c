@@ -40,8 +40,20 @@ export async function submit(
   form.set("url", ctx.url);
   form.set("userAgent", ctx.userAgent);
   form.set("viewport", ctx.viewport);
-  if (input.reporterName) form.set("reporterName", input.reporterName);
-  if (input.reporterEmail) form.set("reporterEmail", input.reporterEmail);
+  // Reporter identity from the host app's session (never asked in the form).
+  let who: { id?: string; name?: string; email?: string } = {};
+  if (cfg.reporter) {
+    try {
+      who = cfg.reporter() ?? {};
+    } catch {
+      /* ignore a throwing reporter callback */
+    }
+  }
+  const name = input.reporterName ?? who.name;
+  const email = input.reporterEmail ?? who.email;
+  if (who.id) form.set("reporterId", who.id);
+  if (name) form.set("reporterName", name);
+  if (email) form.set("reporterEmail", email);
 
   if (telemetry) {
     try {
