@@ -111,17 +111,20 @@ type Report struct {
 	Status      ReportStatus `gorm:"type:varchar(20);default:'pending'" json:"status"`
 	// Origin: 'user' (widget/portal) | 'system' (automated reports, deduped by
 	// title against open reports of the same project).
-	Origin           string         `gorm:"type:varchar(10);default:'user'" json:"origin"`
-	URL              string         `gorm:"type:text"                       json:"url"`
-	UserAgent        string         `gorm:"type:text"                       json:"userAgent"`
-	Viewport         string         `gorm:"type:varchar(50)"                json:"viewport"`
-	Telemetry        []byte         `gorm:"type:bytea"                      json:"-"` // AES-GCM blob (decision 7)
-	TelemetryPurgeAt *time.Time     `json:"telemetryPurgeAt,omitempty"`
-	ReporterName     string         `gorm:"type:varchar(120)"               json:"reporterName"`
-	ReporterEmail    string         `gorm:"type:varchar(255)"               json:"reporterEmail"`
-	AssigneeUserID   *string        `gorm:"type:varchar(36);index"          json:"assigneeUserId,omitempty"`
-	ResolvedAt       *time.Time     `json:"resolvedAt,omitempty"`
-	DeletedAt        gorm.DeletedAt `gorm:"index"                           json:"-"`
+	Origin           string     `gorm:"type:varchar(10);default:'user'" json:"origin"`
+	URL              string     `gorm:"type:text"                       json:"url"`
+	UserAgent        string     `gorm:"type:text"                       json:"userAgent"`
+	Viewport         string     `gorm:"type:varchar(50)"                json:"viewport"`
+	Telemetry        []byte     `gorm:"type:bytea"                      json:"-"` // AES-GCM blob (decision 7)
+	TelemetryPurgeAt *time.Time `json:"telemetryPurgeAt,omitempty"`
+	ReporterName     string     `gorm:"type:varchar(120)"               json:"reporterName"`
+	ReporterEmail    string     `gorm:"type:varchar(255)"               json:"reporterEmail"`
+	// ReporterID is the host app's own user id (from its session), passed by the
+	// widget's reporter() callback. Indexed for the future "my reports" view.
+	ReporterID     string         `gorm:"type:varchar(255);index"         json:"reporterId"`
+	AssigneeUserID *string        `gorm:"type:varchar(36);index"          json:"assigneeUserId,omitempty"`
+	ResolvedAt     *time.Time     `json:"resolvedAt,omitempty"`
+	DeletedAt      gorm.DeletedAt `gorm:"index"                           json:"-"`
 }
 
 type ReportComment struct {
@@ -201,6 +204,7 @@ type IngestReportInput struct {
 	Viewport      string
 	ReporterName  string
 	ReporterEmail string
+	ReporterID    string // host app's own user id (from reporter() callback)
 	Origin        string // "" / "user" | "system" (system reports dedup by title)
 	// Raw JSON strings from the widget (decision 4/7). Combined, server-redacted
 	// and AES-GCM encrypted into reports.telemetry.
@@ -246,6 +250,7 @@ type ReportListItem struct {
 	Origin         string       `json:"origin"`
 	ReporterName   string       `json:"reporterName"`
 	ReporterEmail  string       `json:"reporterEmail"`
+	ReporterID     string       `json:"reporterId"`
 	AssigneeUserID *string      `json:"assigneeUserId,omitempty"`
 	AssigneeName   string       `json:"assigneeName,omitempty"`
 	ImageCount     int          `json:"imageCount"` // gallery only (comment_id IS NULL)
@@ -306,6 +311,7 @@ type ReportDetailResponse struct {
 	Viewport       string                  `json:"viewport"`
 	ReporterName   string                  `json:"reporterName"`
 	ReporterEmail  string                  `json:"reporterEmail"`
+	ReporterID     string                  `json:"reporterId"`
 	AssigneeUserID *string                 `json:"assigneeUserId,omitempty"`
 	ResolvedAt     *time.Time              `json:"resolvedAt,omitempty"`
 	CreatedAt      time.Time               `json:"createdAt"`

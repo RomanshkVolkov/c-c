@@ -43,6 +43,7 @@ export interface ReportListItem {
   origin: string;
   reporterName: string;
   reporterEmail: string;
+  reporterId: string;
   assigneeUserId?: string;
   assigneeName?: string;
   imageCount: number;
@@ -93,6 +94,7 @@ export interface ReportDetail {
   viewport: string;
   reporterName: string;
   reporterEmail: string;
+  reporterId: string;
   assigneeUserId?: string;
   resolvedAt?: string;
   createdAt: string;

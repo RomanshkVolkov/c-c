@@ -148,6 +148,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		Viewport:      in.Viewport,
 		ReporterName:  in.ReporterName,
 		ReporterEmail: in.ReporterEmail,
+		ReporterID:    in.ReporterID,
 		// Auto-assignment: reports are born assigned to the project's default
 		// agent when configured (portento's DEFAULT_ASSIGNEE_ID).
 		AssigneeUserID: project.DefaultAssigneeUserID,
@@ -302,6 +303,7 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 		Viewport:       report.Viewport,
 		ReporterName:   report.ReporterName,
 		ReporterEmail:  report.ReporterEmail,
+		ReporterID:     report.ReporterID,
 		AssigneeUserID: report.AssigneeUserID,
 		ResolvedAt:     report.ResolvedAt,
 		CreatedAt:      report.CreatedAt,

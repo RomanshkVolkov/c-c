@@ -229,6 +229,11 @@ function ReportCard({
         )}
       </div>
       <p className="text-sm font-medium leading-snug line-clamp-3">{report.title}</p>
+      {(report.reporterName || report.reporterEmail || report.reporterId) && (
+        <p className="text-xs text-muted-foreground truncate">
+          by {report.reporterName || report.reporterEmail || report.reporterId}
+        </p>
+      )}
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         {report.imageCount > 0 && (
           <span className="flex items-center gap-1">

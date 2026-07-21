@@ -164,7 +164,7 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery) (*dom
 
 	err := filtered().
 		Select(`r.id, r.project_id, p.slug AS project_slug, p.name AS project_name,
-			r.seq, r.title, r.status, r.origin, r.reporter_name, r.reporter_email,
+			r.seq, r.title, r.status, r.origin, r.reporter_name, r.reporter_email, r.reporter_id,
 			r.assignee_user_id, u.username AS assignee_name,
 			(SELECT COUNT(*) FROM report_images i
 			   WHERE i.report_id = r.id AND i.comment_id IS NULL AND i.deleted_at IS NULL) AS image_count,

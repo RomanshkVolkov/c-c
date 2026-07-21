@@ -118,7 +118,11 @@ export default function ReportDetailDrawer() {
                   </>
                 )}
                 <Meta label="Viewport" value={detail.viewport} />
-                <Meta label="Reporter" value={detail.reporterName || detail.reporterEmail} />
+                <Meta
+                  label="Reporter"
+                  value={detail.reporterName || detail.reporterEmail || detail.reporterId}
+                />
+                <Meta label="Reporter ID" value={detail.reporterId} />
                 <Meta label="User agent" value={detail.userAgent} />
               </dl>
 
