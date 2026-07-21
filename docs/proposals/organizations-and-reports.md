@@ -279,7 +279,7 @@ heredada de portento, documentada).
 
 ### Fase 5 — Widget embeddable (paquete npm + script fallback)
 
-- **Paquete npm `@guz-studio/report-widget`** como integración first-class: el
+- **Paquete npm `@g-studio/report-widget`** como integración first-class: el
   stack de las webs soportadas es casi siempre React/Next. API:
 
   ```tsx
@@ -387,7 +387,7 @@ Commits en `main` (branch de trabajo):
 - **Fase 2** ✅ Terraform `infra/terraform/reports-media` **aplicado en AWS** (bucket privado `guz-reports-media`, mx-central-1, usuario IAM). image-service registrado (`cac-reports`). Secrets/vars en gh + `backend.yml` los inyecta a `cac-secret`.
 - **Fase 3** ✅ 3a report_projects admin · 3b ingest público + cliente image-service · 3c triage admin (transiciones/comentarios/galería/dedup/default-assignee) · 3d proxy de imágenes (S3 directo + URL firmada/JWT) · 3e SSE org-scoped. Verificado E2E (incl. proxy vs S3 real).
 - **Fase 4** ✅ (consola Tauri) tablero + DnD con transiciones validadas · drawer de detalle · comentarios con imágenes · SSE en vivo (toasts) · timeline de telemetría · gestión de report_projects · vista calendario. Falta: **notificaciones nativas OS** (requiere `tauri-plugin-notification` + rebuild Rust).
-- **Fase 5** ✅ 5a paquete `@guz-studio/report-widget` (core telemetría + ingest) · 5b componente React + fallback vanilla (IIFE single-file) · 5c backend: ingest acepta telemetría, redacción server-side, **cifrado AES-GCM at-rest (KEK `REPORTS_KEK`)**, TTL de purga, descifrado en el detalle.
+- **Fase 5** ✅ 5a paquete `@g-studio/report-widget` (core telemetría + ingest) · 5b componente React + fallback vanilla (IIFE single-file) · 5c backend: ingest acepta telemetría, redacción server-side, **cifrado AES-GCM at-rest (KEK `REPORTS_KEK`)**, TTL de purga, descifrado en el detalle.
 - **Fase 6** ⏳ portal cliente (magic link + "mis reportes"). Gated en pedido del cliente + infra de email. No iniciada.
 
 **Snapshot (decisión 4):** hoy se guarda dentro del blob `reports.telemetry` (campo `snapshot`), no en columna propia; suficiente para v1. Revisitar si se quiere TTL/consulta independiente.

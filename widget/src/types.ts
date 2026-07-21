@@ -8,9 +8,13 @@ export interface SnapshotConfig {
   cookies?: boolean;
 }
 
+import type { Locale } from "./i18n";
+
 export interface WidgetConfig {
   /** public write-only ingest key (pk_…) */
   projectKey: string;
+  /** UI language (default 'es') */
+  locale?: Locale;
   /** ingest base URL, e.g. https://cac.guz-studio.dev */
   endpoint?: string;
   /** curated extra context attached to every report */

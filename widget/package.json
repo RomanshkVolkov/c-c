@@ -1,8 +1,15 @@
 {
-  "name": "@guz-studio/report-widget",
-  "version": "0.1.0",
+  "name": "@g-studio/report-widget",
+  "version": "0.2.0",
   "description": "Embeddable bug-report widget for the cac tracker — capture + telemetry breadcrumbs, POSTs to the public ingest endpoint.",
+  "license": "UNLICENSED",
   "type": "module",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RomanshkVolkov/c-c.git",
+    "directory": "widget"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,16 +23,21 @@
       "import": "./dist/react.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts src/react.tsx --format esm --dts --clean && tsup src/vanilla.ts --format iife --global-name ReportWidget --minify --out-dir dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "react": ">=18"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
@@ -33,6 +45,6 @@
     "typescript": "^5.6.0"
   },
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   }
 }

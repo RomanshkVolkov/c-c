@@ -1,4 +1,4 @@
-// @guz-studio/report-widget — headless core + telemetry. The React component
+// @g-studio/report-widget — headless core + telemetry. The React component
 // (`ReportWidget`) and the vanilla auto-mount fallback build on this.
 export { createReporter } from "./core";
 export type { Reporter } from "./core";
