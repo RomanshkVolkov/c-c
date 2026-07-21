@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -80,21 +81,23 @@ export default function OrgSwitcher() {
             align="start"
             className="w-[--radix-dropdown-menu-trigger-width] min-w-56"
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Organizations
-            </DropdownMenuLabel>
-            {orgs.map((o) => (
-              <DropdownMenuItem key={o.id} onClick={() => setCurrentOrg(o.id)}>
-                <Building2 className="size-4" />
-                <span className="flex-1 truncate">{o.name}</span>
-                {o.id === currentOrgId && <Check className="size-4" />}
-              </DropdownMenuItem>
-            ))}
-            {orgs.length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                No organizations yet
-              </div>
-            )}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                Organizations
+              </DropdownMenuLabel>
+              {orgs.map((o) => (
+                <DropdownMenuItem key={o.id} onClick={() => setCurrentOrg(o.id)}>
+                  <Building2 className="size-4" />
+                  <span className="flex-1 truncate">{o.name}</span>
+                  {o.id === currentOrgId && <Check className="size-4" />}
+                </DropdownMenuItem>
+              ))}
+              {orgs.length === 0 && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  No organizations yet
+                </div>
+              )}
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setDialogOpen(true)}>
               <Plus className="size-4" />
