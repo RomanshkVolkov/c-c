@@ -130,14 +130,12 @@ export default function ReportDetailDrawer() {
               {detail.images.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {detail.images.map((img) => (
-                    <a key={img.id} href={apiUrl(img.url)} target="_blank" rel="noreferrer">
-                      <img
-                        src={apiUrl(img.url)}
-                        alt={img.fileName}
-                        className="rounded-md border object-cover aspect-square w-full"
-                        loading="lazy"
-                      />
-                    </a>
+                    <ZoomImg
+                      key={img.id}
+                      src={apiUrl(img.url)}
+                      alt={img.fileName}
+                      className="rounded-md border object-cover aspect-square w-full"
+                    />
                   ))}
                 </div>
               )}
@@ -163,14 +161,12 @@ export default function ReportDetailDrawer() {
                       {c.images && c.images.length > 0 && (
                         <div className="grid grid-cols-3 gap-2">
                           {c.images.map((img) => (
-                            <a key={img.id} href={apiUrl(img.url)} target="_blank" rel="noreferrer">
-                              <img
-                                src={apiUrl(img.url)}
-                                alt={img.fileName}
-                                className="rounded border object-cover aspect-square w-full"
-                                loading="lazy"
-                              />
-                            </a>
+                            <ZoomImg
+                              key={img.id}
+                              src={apiUrl(img.url)}
+                              alt={img.fileName}
+                              className="rounded border object-cover aspect-square w-full"
+                            />
                           ))}
                         </div>
                       )}
@@ -185,6 +181,31 @@ export default function ReportDetailDrawer() {
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** Thumbnail that opens a full-screen lightbox on click. svh/svw avoids the
+ * mobile browser-chrome jump. */
+function ZoomImg({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        onClick={() => setOpen(true)}
+        className={`cursor-zoom-in ${className ?? ""}`}
+      />
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-[9999] grid cursor-zoom-out place-items-center bg-black/85 p-6"
+        >
+          <img src={src} alt={alt} className="max-h-[95svh] max-w-[95svw] rounded-md object-contain" />
+        </div>
+      )}
+    </>
   );
 }
 
