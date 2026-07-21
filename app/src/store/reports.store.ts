@@ -27,6 +27,10 @@ interface ReportsState {
     rateLimitPerHour?: number;
   }) => Promise<string>; // returns ingest key (once)
   rotateProjectKey: (id: string) => Promise<string>;
+  updateProject: (
+    id: string,
+    patch: { name: string; allowedOrigins: string[]; rateLimitPerHour: number; isActive?: boolean }
+  ) => Promise<void>;
   setProjectActive: (id: string, isActive: boolean) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   fetchReports: () => Promise<void>;
@@ -91,15 +95,20 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     return res.data.ingestKey;
   },
 
+  updateProject: async (id, patch) => {
+    await api.patch<APIResponse<unknown>>(`/api/v1/report-projects/${id}`, patch, true);
+    await get().fetchProjects();
+  },
+
   setProjectActive: async (id, isActive) => {
     const p = get().projects.find((x) => x.id === id);
     if (!p) return;
-    await api.patch<APIResponse<unknown>>(
-      `/api/v1/report-projects/${id}`,
-      { name: p.name, allowedOrigins: p.allowedOrigins, rateLimitPerHour: p.rateLimitPerHour, isActive },
-      true
-    );
-    await get().fetchProjects();
+    await get().updateProject(id, {
+      name: p.name,
+      allowedOrigins: p.allowedOrigins,
+      rateLimitPerHour: p.rateLimitPerHour,
+      isActive,
+    });
   },
 
   deleteProject: async (id) => {
