@@ -228,6 +228,20 @@ export default function Dashboard() {
                               {isBusy && busy?.kind === "update" ? "Updating..." : "Update Agent"}
                             </Button>
                           )}
+                          {server.status === "online" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                navigate(`/servers/${server.id}/stats`, {
+                                  state: { server },
+                                })
+                              }
+                            >
+                              <Activity className="h-3 w-3 mr-1" />
+                              Stats
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
