@@ -16,6 +16,30 @@ const STATUS_COLOR: Record<string, string> = {
   closed: "#9ca3af",
 };
 
+/** A thumbnail that opens a full-screen lightbox on click (above the modal). */
+function Zoomable({ url, alt, size = 64 }: { url: string; alt: string; size?: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <img
+        src={url}
+        alt={alt}
+        onClick={() => setOpen(true)}
+        loading="lazy"
+        style={{ width: size, height: size, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(0,0,0,.1)", cursor: "zoom-in" }}
+      />
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 2147483003, background: "rgba(0,0,0,.85)", display: "grid", placeItems: "center", cursor: "zoom-out", padding: 24 }}
+        >
+          <img src={url} alt={alt} style={{ maxWidth: "95svw", maxHeight: "95svh", objectFit: "contain", borderRadius: 8 }} />
+        </div>
+      )}
+    </>
+  );
+}
+
 function BugGlyph({ size = 22 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -80,7 +104,7 @@ function Modal({ reporter, color, t, tab, setTab, onClose }: {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 2147483001, background: "rgba(15,15,20,.45)", backdropFilter: "blur(2px)", display: "grid", placeItems: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", color: "#18181b", borderRadius: 16, width: "min(440px, 92vw)", maxHeight: "86vh", display: "flex", flexDirection: "column", fontFamily: "system-ui, -apple-system, sans-serif", boxShadow: "0 20px 60px rgba(0,0,0,.35)", overflow: "hidden" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", color: "#18181b", borderRadius: 16, width: "min(440px, 92svw)", maxHeight: "86svh", display: "flex", flexDirection: "column", fontFamily: "system-ui, -apple-system, sans-serif", boxShadow: "0 20px 60px rgba(0,0,0,.35)", overflow: "hidden" }}>
         <div style={{ display: "flex", borderBottom: "1px solid #f0f0f2" }}>
           <button type="button" style={tabBtn("report")} onClick={() => setTab("report")}>{t.tabReport}</button>
           <button type="button" style={tabBtn("mine")} onClick={() => setTab("mine")}>{t.tabMine}</button>
@@ -178,18 +202,24 @@ function ReportThread({ reporter, color, t, id, onBack }: { reporter: Reporter; 
   const [report, setReport] = useState<ReporterReport | null>(null);
   const [err, setErr] = useState("");
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     reporter.viewReport(id).then(setReport).catch((e) => setErr(e instanceof Error ? e.message : String(e)));
   }, [reporter, id]);
 
+  const addFiles = (list: FileList | File[]) =>
+    setFiles((prev) => [...prev, ...Array.from(list).filter((f) => f.type.startsWith("image/"))].slice(0, 5));
+
   const sendReply = async () => {
-    if (!body.trim()) return;
+    if (!body.trim() && files.length === 0) return;
     setSending(true);
     try {
-      setReport(await reporter.reply(id, body.trim()));
+      setReport(await reporter.reply(id, body.trim(), files));
       setBody("");
+      setFiles([]);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -210,6 +240,13 @@ function ReportThread({ reporter, color, t, id, onBack }: { reporter: Reporter; 
               <StatusBadge status={report.status} t={t} />
             </div>
           </div>
+          {report.images.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {report.images.map((img) => (
+                <Zoomable key={img.id} url={img.url} alt={img.fileName} size={72} />
+              ))}
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {report.comments.map((c, i) =>
               c.author === "system" ? (
@@ -218,14 +255,28 @@ function ReportThread({ reporter, color, t, id, onBack }: { reporter: Reporter; 
                 <div key={i} style={{ alignSelf: c.author === "you" ? "flex-end" : "flex-start", maxWidth: "85%", background: c.author === "you" ? color : "#f4f4f5", color: c.author === "you" ? "#fff" : "#18181b", padding: "8px 11px", borderRadius: 12, fontSize: 13 }}>
                   <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 2 }}>{c.author === "you" ? t.authorYou : t.authorTeam}</div>
                   {c.body}
+                  {c.images && c.images.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                      {c.images.map((img) => (
+                        <Zoomable key={img.id} url={img.url} alt={img.fileName} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             )}
           </div>
           {report.status !== "closed" && (
-            <div style={{ display: "flex", gap: 8 }}>
-              <input style={field} placeholder={t.replyPlaceholder} value={body} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sendReply(); } }} />
-              <button type="button" onClick={sendReply} disabled={sending || !body.trim()} style={{ padding: "9px 15px", borderRadius: 10, border: "none", background: color, color: "#fff", cursor: "pointer", opacity: sending || !body.trim() ? 0.6 : 1 }}>{t.reply}</button>
+            <div onPaste={(e) => addFiles(e.clipboardData.files)} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {files.length > 0 && (
+                <div style={{ fontSize: 12, color: "#71717a" }}>{files.length} {t.imagesAttached}</div>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <input style={field} placeholder={t.replyPlaceholder} value={body} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sendReply(); } }} />
+                <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
+                <button type="button" onClick={() => fileRef.current?.click()} title={t.attach} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid #e4e4e7", background: "#fff", cursor: "pointer" }}>📎</button>
+                <button type="button" onClick={sendReply} disabled={sending || (!body.trim() && files.length === 0)} style={{ padding: "9px 15px", borderRadius: 10, border: "none", background: color, color: "#fff", cursor: "pointer", opacity: sending || (!body.trim() && files.length === 0) ? 0.6 : 1 }}>{t.reply}</button>
+              </div>
             </div>
           )}
         </>

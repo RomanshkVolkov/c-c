@@ -120,8 +120,8 @@ function openModal(reporter: Reporter, color: string, t: Strings) {
     background: "#fff",
     color: "#18181b",
     borderRadius: "16px",
-    width: "min(440px, 92vw)",
-    maxHeight: "86vh",
+    width: "min(440px, 92svw)",
+    maxHeight: "86svh",
     display: "flex",
     flexDirection: "column",
     boxShadow: "0 20px 60px rgba(0,0,0,.35)",
@@ -254,6 +254,14 @@ async function renderThread(root: HTMLElement, reporter: Reporter, color: string
   header.appendChild(titleRow);
   wrap.appendChild(header);
 
+  if (report.images.length > 0) {
+    const gallery = el("div", { display: "flex", flexWrap: "wrap", gap: "6px" });
+    gallery.innerHTML = report.images.map((im) => thumb(im.url, im.fileName, 72)).join("");
+    wrap.appendChild(gallery);
+  }
+
+  bindZoom(wrap);
+
   const thread = el("div", { display: "flex", flexDirection: "column", gap: "8px" });
   for (const c of report.comments) {
     if (c.author === "system") {
@@ -270,20 +278,38 @@ async function renderThread(root: HTMLElement, reporter: Reporter, color: string
       borderRadius: "12px",
       fontSize: "13px",
     });
-    bubble.innerHTML = `<div style="font-size:10px;opacity:.7;margin-bottom:2px">${mine ? t.authorYou : t.authorTeam}</div>${escapeHtml(c.body)}`;
+    const imgsHtml = (c.images ?? []).map((im) => thumb(im.url, im.fileName)).join("");
+    bubble.innerHTML =
+      `<div style="font-size:10px;opacity:.7;margin-bottom:2px">${mine ? t.authorYou : t.authorTeam}</div>${escapeHtml(c.body)}` +
+      (imgsHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${imgsHtml}</div>` : "");
     thread.appendChild(bubble);
   }
   wrap.appendChild(thread);
 
   if (report.status !== "closed") {
+    const files: File[] = [];
+    const composer = el("div", { display: "flex", flexDirection: "column", gap: "6px" });
+    composer.onpaste = (e) => {
+      const imgs = Array.from((e as ClipboardEvent).clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+      for (const f of imgs) if (files.length < 5) files.push(f);
+      if (imgs.length) info.textContent = `${files.length} ${t.imagesAttached}`;
+    };
+    const info = el("div", { fontSize: "12px", color: "#71717a" });
     const row = el("div", { display: "flex", gap: "8px" });
     const input = el("input", FIELD, { placeholder: t.replyPlaceholder });
+    const fileInput = el("input", { display: "none" }, { type: "file", accept: "image/*", multiple: true });
+    fileInput.onchange = () => {
+      for (const f of Array.from(fileInput.files ?? [])) if (files.length < 5) files.push(f);
+      info.textContent = `${files.length} ${t.imagesAttached}`;
+    };
+    const attach = el("button", { padding: "9px 12px", borderRadius: "10px", border: "1px solid #e4e4e7", background: "#fff", cursor: "pointer" }, { textContent: "📎", title: t.attach });
+    attach.onclick = () => fileInput.click();
     const send = el("button", { padding: "9px 15px", borderRadius: "10px", border: "none", background: color, color: "#fff", cursor: "pointer" }, { textContent: t.reply });
     const doReply = async () => {
-      if (!input.value.trim()) return;
+      if (!input.value.trim() && files.length === 0) return;
       (send as HTMLButtonElement).disabled = true;
       try {
-        await reporter.reply(id, input.value.trim());
+        await reporter.reply(id, input.value.trim(), files);
         root.innerHTML = "";
         renderThread(root, reporter, color, t, id);
       } catch {
@@ -297,9 +323,38 @@ async function renderThread(root: HTMLElement, reporter: Reporter, color: string
         doReply();
       }
     };
-    row.append(input, send);
-    wrap.appendChild(row);
+    row.append(input, attach, fileInput, send);
+    composer.append(info, row);
+    wrap.appendChild(composer);
   }
+}
+
+function openLightbox(url: string) {
+  const ov = el("div", {
+    position: "fixed",
+    inset: "0",
+    zIndex: "2147483003",
+    background: "rgba(0,0,0,.85)",
+    display: "grid",
+    placeItems: "center",
+    cursor: "zoom-out",
+    padding: "24px",
+  });
+  ov.appendChild(el("img", { maxWidth: "95svw", maxHeight: "95svh", objectFit: "contain", borderRadius: "8px" }, { src: url }));
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
+}
+
+// Delegated: any <img data-full> opens the lightbox.
+function bindZoom(container: HTMLElement) {
+  container.addEventListener("click", (e) => {
+    const full = (e.target as HTMLElement).dataset?.full;
+    if (full) openLightbox(full);
+  });
+}
+
+function thumb(url: string, alt: string, size = 64): string {
+  return `<img data-full="${encodeURI(url)}" src="${encodeURI(url)}" alt="${escapeHtml(alt)}" loading="lazy" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:8px;border:1px solid rgba(0,0,0,.1);cursor:zoom-in"/>`;
 }
 
 function escapeHtml(s: string): string {
