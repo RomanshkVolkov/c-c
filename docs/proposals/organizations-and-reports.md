@@ -1,10 +1,10 @@
 # Proposal — Organizations + módulo de reportes (bug tracker multi-tenant)
 
-**Status:** En ejecución (2026-07-20). Fases 1-5 implementadas y commiteadas;
-Fase 2 aplicada en AWS real. Pendiente: Fase 6 (portal, gated en cliente+email),
-notificaciones nativas OS (requiere `tauri-plugin-notification` + rebuild Rust),
-y la extensión del ingest para `snapshot` con columna propia (hoy va en el blob
-`telemetry`). Ver "Estado de ejecución" al final.
+**Status:** En ejecución (2026-07-21). Fases 1-6 implementadas y commiteadas
+(Fase 6 reimaginada sin email — ver abajo); Fase 2 aplicada en AWS real.
+Pendiente operativo: **deploy del backend** a prod (corre la migración),
+**publicar `@g-studio/report-widget` 0.4.0**, y notificaciones nativas OS
+(requiere `tauri-plugin-notification` + rebuild Rust). Ver "Estado de ejecución".
 
 **Contexto:** damos soporte a webs de clientes de dos empresas de software. Portento
 (cliente de nuke) ya tiene un módulo interno completo de bug-tickets; un segundo
@@ -387,7 +387,7 @@ Commits en `main` (branch de trabajo):
 - **Fase 2** ✅ Terraform `infra/terraform/reports-media` **aplicado en AWS** (bucket privado `guz-reports-media`, mx-central-1, usuario IAM). image-service registrado (`cac-reports`). Secrets/vars en gh + `backend.yml` los inyecta a `cac-secret`.
 - **Fase 3** ✅ 3a report_projects admin · 3b ingest público + cliente image-service · 3c triage admin (transiciones/comentarios/galería/dedup/default-assignee) · 3d proxy de imágenes (S3 directo + URL firmada/JWT) · 3e SSE org-scoped. Verificado E2E (incl. proxy vs S3 real).
 - **Fase 4** ✅ (consola Tauri) tablero + DnD con transiciones validadas · drawer de detalle · comentarios con imágenes · SSE en vivo (toasts) · timeline de telemetría · gestión de report_projects · vista calendario. Falta: **notificaciones nativas OS** (requiere `tauri-plugin-notification` + rebuild Rust).
-- **Fase 5** ✅ 5a paquete `@g-studio/report-widget` (core telemetría + ingest) · 5b componente React + fallback vanilla (IIFE single-file) · 5c backend: ingest acepta telemetría, redacción server-side, **cifrado AES-GCM at-rest (KEK `REPORTS_KEK`)**, TTL de purga, descifrado en el detalle.
-- **Fase 6** ⏳ portal cliente (magic link + "mis reportes"). Gated en pedido del cliente + infra de email. No iniciada.
+- **Fase 5** ✅ 5a paquete `@g-studio/report-widget` (core telemetría + ingest) · 5b componente React + fallback vanilla (IIFE single-file) · 5c backend: ingest acepta telemetría, redacción server-side, **cifrado AES-GCM at-rest (KEK `REPORTS_KEK`)**, TTL de purga, descifrado en el detalle · identidad del reporter (`reporter()` desde la sesión del host → `reports.reporter_id`, mostrada en la consola).
+- **Fase 6** ✅ (reimaginada, **sin email/magic-link**) — la Fase 6 original (magic link por email) se **descartó por poco práctica**. En su lugar: como el widget vive en la app autenticada del cliente, cada reporte devuelve un **token firmado por-reporte** (HMAC 90d) que el widget guarda; el SDK expone **"Mis reportes"** (React + vanilla) donde el reporter ve estado, lee respuestas del equipo y **responde** — endpoints reporter-scoped `GET/POST /ingest/v1/reports/{id}[/comments]` autenticados por ese token (`REPORT_TOKEN_SECRET`). Cero email, cero login, sin IDOR (token por-reporte). Verificado E2E.
 
 **Snapshot (decisión 4):** hoy se guarda dentro del blob `reports.telemetry` (campo `snapshot`), no en columna propia; suficiente para v1. Revisitar si se quiere TTL/consulta independiente.
