@@ -16,6 +16,7 @@
       "allow": [{ "path": "$DOWNLOAD/**" }, { "path": "$HOME/**" }]
     },
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "notification:default"
   ]
 }
