@@ -6,6 +6,7 @@ export { submit } from "./ingest";
 export type { ReportInput, IngestResult } from "./ingest";
 export type { StoredReport } from "./storage";
 export { TelemetryCollector } from "./telemetry";
+export type { Locale } from "./i18n";
 export type {
   WidgetConfig,
   SnapshotConfig,

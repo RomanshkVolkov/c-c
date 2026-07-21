@@ -47,10 +47,22 @@ Drive your own UI; the widget just collects + submits.
 ```ts
 import { createReporter } from "@g-studio/report-widget";
 
-const reporter = createReporter({ projectKey: "pk_…", endpoint: "https://cac.guz-studio.dev" });
+const reporter = createReporter({
+  projectKey: "pk_…",
+  endpoint: "https://cac.guz-studio.dev",
+  reporter: () => ({ id: currentUser.id, name: currentUser.name }),
+});
+
+// submit a report (context + telemetry + identity attached automatically)
 await reporter.submit({ title: "Checkout broke", description: "…", images: [file] });
-// reporter.telemetry() → current breadcrumbs (for a "what will be sent" preview)
-// reporter.destroy()   → stop collecting, restore patched globals
+
+// follow-up (no email/login — per-report tokens are stored in the browser)
+reporter.myReports();            // reports filed from this browser: {id,folio,title,…}
+await reporter.viewReport(id);   // status + thread (team replies included)
+await reporter.reply(id, "It still fails on mobile", [file]);
+
+reporter.telemetry();            // current breadcrumbs (for a preview)
+reporter.destroy();              // stop collecting, restore patched globals
 ```
 
 ## Option 3 — Script tag (no build step)
