@@ -219,6 +219,29 @@ function Meta({ label, value }: { label: string; value?: string }) {
   );
 }
 
+/**
+ * Extract pasted image files from a clipboard event. WebKitGTK (the Tauri
+ * webview on Linux) exposes pasted screenshots via clipboardData.items
+ * (getAsFile), leaving .files empty — so we read items first, then fall back to
+ * .files (drag/other browsers). Deduped by name+size.
+ */
+function imagesFromClipboard(e: React.ClipboardEvent): File[] {
+  const dt = e.clipboardData;
+  const out: File[] = [];
+  for (const item of Array.from(dt.items ?? [])) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const f = item.getAsFile();
+      if (f) out.push(f);
+    }
+  }
+  for (const f of Array.from(dt.files ?? [])) {
+    if (f.type.startsWith("image/") && !out.some((o) => o.name === f.name && o.size === f.size)) {
+      out.push(f);
+    }
+  }
+  return out;
+}
+
 function CommentComposer({
   onSend,
 }: {
@@ -270,10 +293,11 @@ function CommentComposer({
             }
           }}
           onPaste={(e) => {
-            const imgs = Array.from(e.clipboardData.files).filter((f) =>
-              f.type.startsWith("image/")
-            );
-            if (imgs.length) setFiles((prev) => [...prev, ...imgs]);
+            const imgs = imagesFromClipboard(e);
+            if (imgs.length) {
+              e.preventDefault(); // don't dump the image as junk text into the field
+              setFiles((prev) => [...prev, ...imgs]);
+            }
           }}
         />
         <div className="flex flex-col gap-1">

@@ -84,6 +84,10 @@ func (h *ingestHandler) Preflight(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
+	// Echo the Origin up front so EVERY response (incl. 401/403/429) carries
+	// ACAO — otherwise the browser masks the real status as an opaque CORS error.
+	echoCORS(w, r)
+
 	key := r.Header.Get("X-Ingest-Key")
 	if key == "" {
 		SendErrorResponse(w, http.StatusUnauthorized, "Missing ingest key", "no-key")
@@ -96,16 +100,12 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Origin enforcement + CORS echo (server-side, not just headers).
+	// Origin enforcement (server-side gate, independent of the CORS header).
 	origin := r.Header.Get("Origin")
 	allowed := []string(project.AllowedOrigins)
 	if origin != "" && len(allowed) > 0 && !slices.Contains(allowed, origin) {
 		SendErrorResponse(w, http.StatusForbidden, "Origin not allowed", "origin-not-allowed")
 		return
-	}
-	if origin != "" {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Vary", "Origin")
 	}
 
 	if !h.limiter.allow(project.ID, project.RateLimitPerHour) {
