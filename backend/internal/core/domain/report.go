@@ -220,9 +220,36 @@ type IngestReportResult struct {
 	Seq    int    `json:"seq"`
 	Folio  string `json:"folio"` // <project-slug>-<seq>
 	Images int    `json:"images"`
+	// Token is the per-report reporter token — the widget stores it so the
+	// reporter can follow up (see status, read replies, respond). No email/login.
+	Token string `json:"token"`
 	// Deduped: a system report matched an open report with the same title; the
 	// existing report is returned instead of creating a duplicate.
 	Deduped bool `json:"deduped,omitempty"`
+}
+
+// ─── Reporter-facing views (token-scoped, no internal fields) ─────────────────
+
+type ReporterCommentView struct {
+	Author    string                `json:"author"` // "you" | "team" | "system"
+	Body      string                `json:"body"`
+	Images    []ReportImageResponse `json:"images,omitempty"`
+	CreatedAt time.Time             `json:"createdAt"`
+}
+
+// ReporterReportView is the reporter's own view of their report: status + the
+// conversation. Deliberately omits telemetry, user agent, assignee and other
+// reporters' data.
+type ReporterReportView struct {
+	ID          string                `json:"id"`
+	Folio       string                `json:"folio"`
+	Title       string                `json:"title"`
+	Description string                `json:"description"`
+	Status      ReportStatus          `json:"status"`
+	CreatedAt   time.Time             `json:"createdAt"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
+	Images      []ReportImageResponse `json:"images"`
+	Comments    []ReporterCommentView `json:"comments"`
 }
 
 // ─── Requests / Responses (reports admin) ─────────────────────────────────────

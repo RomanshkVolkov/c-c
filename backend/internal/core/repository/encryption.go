@@ -246,6 +246,55 @@ func RedactSensitive(s string) string {
 	return s
 }
 
+// ─── Reporter report tokens ───────────────────────────────────────────────────
+//
+// Issued at ingest time, bound to a single report (HMAC of reportID+exp). The
+// widget stores them so a reporter can follow up on what THEY filed — no email,
+// no login. Scoped per-report → no IDOR (you only see reports you have a token
+// for). Token wire format: "<expUnix>.<hexsig>".
+
+func reportTokenSecret() []byte {
+	return []byte(GetEnv("REPORT_TOKEN_SECRET", GetEnv("JWT_SECRET_ACCESS", "change-me-access-secret")))
+}
+
+const reportTokenTTL = 90 * 24 * time.Hour
+
+func signReportToken(reportID string, expUnix int64) string {
+	mac := hmac.New(sha256.New, reportTokenSecret())
+	fmt.Fprintf(mac, "%s:%d", reportID, expUnix)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// MintReportToken issues a fresh reporter token for a report.
+func MintReportToken(reportID string) string {
+	exp := time.Now().Add(reportTokenTTL).Unix()
+	return fmt.Sprintf("%d.%s", exp, signReportToken(reportID, exp))
+}
+
+// VerifyReportToken checks a "<exp>.<sig>" token against a report id.
+func VerifyReportToken(reportID, token string) bool {
+	dot := -1
+	for i, c := range token {
+		if c == '.' {
+			dot = i
+			break
+		}
+	}
+	if dot < 0 {
+		return false
+	}
+	expStr, sig := token[:dot], token[dot+1:]
+	var exp int64
+	if _, err := fmt.Sscanf(expStr, "%d", &exp); err != nil {
+		return false
+	}
+	if time.Now().Unix() > exp {
+		return false
+	}
+	want := signReportToken(reportID, exp)
+	return subtle.ConstantTimeCompare([]byte(want), []byte(sig)) == 1
+}
+
 // ─── JWT ──────────────────────────────────────────────────────────────────────
 
 func generateToken(claims jwt.Claims, secret []byte) (string, error) {

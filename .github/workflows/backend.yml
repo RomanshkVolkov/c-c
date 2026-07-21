@@ -64,12 +64,13 @@ jobs:
           REPORTS_MEDIA_SECRET_ACCESS_KEY: ${{ secrets.REPORTS_MEDIA_SECRET_ACCESS_KEY }}
           INGEST_KEY_SECRET: ${{ secrets.INGEST_KEY_SECRET }}
           REPORTS_KEK: ${{ secrets.REPORTS_KEK }}
+          REPORT_TOKEN_SECRET: ${{ secrets.REPORT_TOKEN_SECRET }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK
+          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK,REPORT_TOKEN_SECRET
           script: |
             kubectl create secret generic cac-secret \
               --from-literal=DATABASE_URL="$DATABASE_URL" \
@@ -84,6 +85,7 @@ jobs:
               --from-literal=REPORTS_MEDIA_SECRET_ACCESS_KEY="$REPORTS_MEDIA_SECRET_ACCESS_KEY" \
               --from-literal=INGEST_KEY_SECRET="$INGEST_KEY_SECRET" \
               --from-literal=REPORTS_KEK="$REPORTS_KEK" \
+              --from-literal=REPORT_TOKEN_SECRET="$REPORT_TOKEN_SECRET" \
               --dry-run=client -o yaml | kubectl apply -f -
 
             kubectl apply -f /tmp/cac-k8s/

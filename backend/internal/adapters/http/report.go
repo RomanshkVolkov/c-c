@@ -113,4 +113,9 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 	// Public ingest — auth by X-Ingest-Key, per-project CORS/rate limit. No JWT.
 	r.Post("/ingest/v1/reports", ingest.CreateReport)
 	r.Options("/ingest/v1/reports", ingest.Preflight)
+
+	// Reporter follow-up — auth by the per-report token (?token=). No JWT/email.
+	r.Get("/ingest/v1/reports/{id}", ingest.ReporterView)
+	r.Post("/ingest/v1/reports/{id}/comments", ingest.ReporterComment)
+	r.Options("/ingest/v1/reports/{id}/comments", ingest.Preflight)
 }

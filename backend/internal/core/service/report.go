@@ -193,7 +193,106 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		Seq:    report.Seq,
 		Folio:  folio,
 		Images: uploaded,
+		Token:  repository.MintReportToken(report.ID),
 	}, nil
+}
+
+// ReporterView returns the reporter's own view of a report (status + thread),
+// omitting internal fields. Caller must already be authorized by report token.
+func (s *ReportService) ReporterView(reportID string) (*domain.ReporterReportView, error) {
+	report, err := s.repo.FindByID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.repo.ProjectForReport(reportID)
+	if err != nil {
+		return nil, err
+	}
+	images, err := s.repo.ListImages(reportID)
+	if err != nil {
+		return nil, err
+	}
+	comments, err := s.repo.ListComments(reportID)
+	if err != nil {
+		return nil, err
+	}
+
+	var gallery []domain.ReportImageResponse
+	byComment := make(map[string][]domain.ReportImageResponse)
+	for _, img := range images {
+		res := domain.ReportImageResponse{ID: img.ID, FileName: img.FileName, URL: signedImageURL(reportID, img.ID), CreatedAt: img.CreatedAt}
+		if img.CommentID == nil {
+			gallery = append(gallery, res)
+		} else {
+			byComment[*img.CommentID] = append(byComment[*img.CommentID], res)
+		}
+	}
+	if gallery == nil {
+		gallery = []domain.ReportImageResponse{}
+	}
+
+	out := make([]domain.ReporterCommentView, 0, len(comments))
+	for _, c := range comments {
+		author := "team"
+		if c.Kind == domain.CommentKindSystem {
+			author = "system"
+		} else if c.AuthorUserID == nil {
+			author = "you" // reporter's own comment
+		}
+		out = append(out, domain.ReporterCommentView{
+			Author:    author,
+			Body:      c.Body,
+			Images:    byComment[c.ID],
+			CreatedAt: c.CreatedAt,
+		})
+	}
+
+	return &domain.ReporterReportView{
+		ID:          report.ID,
+		Folio:       fmt.Sprintf("%s-%d", project.Slug, report.Seq),
+		Title:       report.Title,
+		Description: report.Description,
+		Status:      report.Status,
+		CreatedAt:   report.CreatedAt,
+		UpdatedAt:   report.UpdatedAt,
+		Images:      gallery,
+		Comments:    out,
+	}, nil
+}
+
+// ReporterComment adds a comment from the reporter (author nil = reporter, per
+// the model) plus optional images, and notifies the console.
+func (s *ReportService) ReporterComment(ctx context.Context, reportID, body string, images []domain.IngestImage) (*domain.ReporterReportView, error) {
+	if len(images) > 0 && !s.images.Enabled() {
+		return nil, ErrImagesUnavailable
+	}
+	c := &domain.ReportComment{ReportID: reportID, Kind: domain.CommentKindUser, Body: body}
+	c.ID = uuid.NewString()
+	if err := s.repo.CreateComment(c); err != nil {
+		return nil, err
+	}
+	if len(images) > 0 {
+		project, err := s.repo.ProjectForReport(reportID)
+		if err != nil {
+			return nil, err
+		}
+		folder := s.storageFolder(project, reportID)
+		var persisted []domain.ReportImage
+		for _, img := range images {
+			res, err := s.images.UploadImage(ctx, img.FileName, img.ContentType, img.Data, folder)
+			if err != nil {
+				continue
+			}
+			ri := domain.ReportImage{ReportID: reportID, CommentID: &c.ID, Path: res.Key, FileName: img.FileName}
+			ri.ID = uuid.NewString()
+			persisted = append(persisted, ri)
+		}
+		if err := s.repo.AddImages(persisted); err != nil {
+			return nil, err
+		}
+	}
+	s.emit("report:comment", reportID, map[string]any{"reportId": reportID, "commentId": c.ID, "from": "reporter"})
+	return s.ReporterView(reportID)
 }
 
 // storageFolder builds the private-bucket prefix: org/<slug>/project/<slug>/<reportID>.

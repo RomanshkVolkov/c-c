@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
@@ -52,6 +53,8 @@ func (l *ingestLimiter) allow(key string, perHour int) bool {
 type IngestHandler interface {
 	CreateReport(w http.ResponseWriter, r *http.Request)
 	Preflight(w http.ResponseWriter, r *http.Request)
+	ReporterView(w http.ResponseWriter, r *http.Request)
+	ReporterComment(w http.ResponseWriter, r *http.Request)
 }
 
 type ingestHandler struct {
@@ -146,4 +149,60 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.IngestReportResult]{Success: true, Data: result})
+}
+
+// echoCORS reflects the Origin so the widget (cross-origin) can read reporter
+// responses. The report token is the real auth; CORS isn't the boundary here.
+func echoCORS(w http.ResponseWriter, r *http.Request) {
+	if o := r.Header.Get("Origin"); o != "" {
+		w.Header().Set("Access-Control-Allow-Origin", o)
+		w.Header().Set("Vary", "Origin")
+	}
+}
+
+// ReporterView — GET /ingest/v1/reports/{id}?token= : the reporter's own view of
+// their report (status + thread), authorized by the per-report token.
+func (h *ingestHandler) ReporterView(w http.ResponseWriter, r *http.Request) {
+	echoCORS(w, r)
+	id := chi.URLParam(r, "id")
+	if !repository.VerifyReportToken(id, r.URL.Query().Get("token")) {
+		SendErrorResponse(w, http.StatusUnauthorized, "Invalid token", "invalid-token")
+		return
+	}
+	view, err := h.svc.ReporterView(id)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReporterReportView]{Success: true, Data: view})
+}
+
+// ReporterComment — POST /ingest/v1/reports/{id}/comments?token= : reporter adds
+// a reply (text + optional images).
+func (h *ingestHandler) ReporterComment(w http.ResponseWriter, r *http.Request) {
+	echoCORS(w, r)
+	id := chi.URLParam(r, "id")
+	if !repository.VerifyReportToken(id, r.URL.Query().Get("token")) {
+		SendErrorResponse(w, http.StatusUnauthorized, "Invalid token", "invalid-token")
+		return
+	}
+	images, ok := readMultipartImages(w, r, "images")
+	if !ok {
+		return
+	}
+	body := r.FormValue("body")
+	if body == "" && len(images) == 0 {
+		SendErrorResponse(w, http.StatusBadRequest, "Empty comment", "empty")
+		return
+	}
+	view, err := h.svc.ReporterComment(r.Context(), id, body, images)
+	if err != nil {
+		if errors.Is(err, service.ErrImagesUnavailable) {
+			SendErrorResponse(w, http.StatusServiceUnavailable, "Image storage unavailable", err.Error())
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to comment", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReporterReportView]{Success: true, Data: view})
 }
