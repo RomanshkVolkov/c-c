@@ -10,6 +10,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiUrl } from "@/lib/api";
 import { useReportsStore } from "@/store/reports.store";
 import { STATUS_LABELS, type ReportStatus } from "@/types/report";
@@ -60,25 +67,31 @@ export default function ReportDetailDrawer() {
               {/* status */}
               <div className="flex items-center gap-3">
                 <label className="text-sm text-muted-foreground">Status</label>
-                <select
+                <Select
+                  items={STATUS_LABELS}
                   value={detail.status}
-                  onChange={async (e) => {
+                  onValueChange={async (v) => {
+                    if (!v) return;
                     try {
-                      await changeDetailStatus(e.target.value as ReportStatus);
+                      await changeDetailStatus(v as ReportStatus);
                     } catch (err) {
                       toast.error("Transition failed", {
                         description: err instanceof Error ? err.message : String(err),
                       });
                     }
                   }}
-                  className="rounded-md border border-input bg-background px-2 py-1 text-sm"
                 >
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger size="sm" className="min-w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {STATUS_LABELS[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {detail.description && (

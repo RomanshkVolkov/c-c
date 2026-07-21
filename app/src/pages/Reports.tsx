@@ -4,6 +4,13 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import ReportDetailDrawer from "@/components/ReportDetailDrawer";
@@ -100,18 +107,26 @@ export default function Reports() {
               <CalendarDays className="h-4 w-4" /> Calendar
             </button>
           </div>
-          <select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+          <Select
+            items={{
+              all: "All projects",
+              ...Object.fromEntries(projects.map((p) => [p.id, p.name])),
+            }}
+            value={projectFilter || "all"}
+            onValueChange={(v) => v && setProjectFilter(v === "all" ? "" : v)}
           >
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger size="sm" className="min-w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All projects</SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             size="sm"
             variant="outline"
