@@ -3,9 +3,27 @@ import { useAuthStore } from "@/store/auth.store";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "https://cac.guz-studio.dev";
 
+const REQUEST_TIMEOUT_MS = 12_000;
+
 type RequestOptions = RequestInit & { auth?: boolean };
 
 let refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * fetch with a hard timeout. Without this, a request over a stale/dead pooled
+ * keep-alive socket (common after the app sits idle and the server closed the
+ * connection) never settles — freezing the UI until an app restart. On timeout
+ * we abort so the caller can surface an error / retry on a fresh connection.
+ */
+async function fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function tryRefresh(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
@@ -15,7 +33,7 @@ async function tryRefresh(): Promise<string | null> {
     if (!refreshToken) { clearAuth(); return null; }
 
     try {
-      const res = await fetch(`${BASE_URL}/api/v1/auth/refresh`, {
+      const res = await fetchWithTimeout(`${BASE_URL}/api/v1/auth/refresh`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -23,12 +41,14 @@ async function tryRefresh(): Promise<string | null> {
         },
       });
       const json: APIResponse<AuthRefreshResponse> = await res.json();
+      // Only a real auth failure (bad/expired refresh token) clears the session.
       if (!res.ok || !json.success || !json.data) { clearAuth(); return null; }
 
       setAuth(session!, json.data.accessToken, json.data.refreshToken);
       return json.data.accessToken;
     } catch {
-      clearAuth();
+      // Network/timeout (e.g. stale socket after idle) is transient — keep the
+      // session so a later action can retry instead of logging the user out.
       return null;
     } finally {
       refreshPromise = null;
@@ -51,7 +71,15 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${BASE_URL}${path}`, { ...init, headers });
+  } catch {
+    // Timeout/network (often a stale pooled socket after idle). Retry once on a
+    // fresh connection before surfacing an error, so the UI self-heals.
+    if (retry) return request<T>(path, options, false);
+    throw new Error("network-error");
+  }
   const json = await res.json();
 
   if (!res.ok) {
@@ -76,7 +104,13 @@ async function postForm<T>(path: string, form: FormData, retry = true): Promise<
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", body: form, headers });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${BASE_URL}${path}`, { method: "POST", body: form, headers });
+  } catch {
+    if (retry) return postForm<T>(path, form, false);
+    throw new Error("network-error");
+  }
   const json = await res.json();
   if (!res.ok) {
     const errorMsg: string = json?.error ?? json?.message ?? "Request failed";
@@ -92,6 +126,23 @@ async function postForm<T>(path: string, form: FormData, retry = true): Promise<
 
 /** Absolute URL for a backend path (e.g. signed image proxy URLs in a webview). */
 export const apiUrl = (path: string) => `${BASE_URL}${path}`;
+
+/**
+ * If the persisted access token predates the `orgs` claim (minted before the
+ * backend added organizations), force one refresh so org-scoped lists aren't
+ * silently empty until the token expires. No-op for new-format tokens.
+ */
+export async function ensureOrgClaim(): Promise<void> {
+  const token = useAuthStore.getState().accessToken;
+  if (!token) return;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1] ?? ""));
+    if (payload && "orgs" in payload) return; // already new-format
+  } catch {
+    return;
+  }
+  await tryRefresh();
+}
 
 export const api = {
   get: <T>(path: string, auth = true) =>
