@@ -125,3 +125,10 @@ func (rw *responseWriter) Flush() {
 		f.Flush()
 	}
 }
+
+// Unwrap exposes the underlying ResponseWriter so http.ResponseController
+// (SetWriteDeadline etc.) can reach it — without this the SSE handler's attempt
+// to clear the server WriteTimeout silently no-ops and the stream dies at 15s.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}

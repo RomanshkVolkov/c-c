@@ -44,6 +44,15 @@ func DBConnection() {
 		panic("failed to connect to database: " + err.Error())
 	}
 
+	// Bound connection age so pooled sockets don't go stale behind an idle LB /
+	// NAT / conntrack timeout (a half-open conn would hang the next query).
+	if sqlDB, dberr := db.DB(); dberr == nil {
+		sqlDB.SetMaxOpenConns(20)
+		sqlDB.SetMaxIdleConns(10)
+		sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	}
+
 	if err := db.AutoMigrate(
 		&domain.User{},
 		&domain.Organization{},

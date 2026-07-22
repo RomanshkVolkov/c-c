@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -45,6 +46,16 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clear the server's WriteTimeout for this long-lived stream. Without this,
+	// the http.Server's 15s WriteTimeout kills the SSE connection every 15s; over
+	// HTTP/2 the repeated stream resets destabilize the shared multiplexed
+	// connection, making unrelated API requests hang ("backend seems down").
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		// Must succeed or the server WriteTimeout kills the stream at 15s and,
+		// over HTTP/2, drops the shared connection. Surface regressions loudly.
+		lg.Warn("SSE: could not clear write deadline (WriteTimeout will kill the stream): " + err.Error())
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -54,9 +65,21 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	ch, unsubscribe := h.hub.Subscribe(claims.OrgIDs())
 	defer unsubscribe()
 
+	// write returns false if the peer is gone, so the loop exits and
+	// `defer unsubscribe()` runs promptly (no goroutine/subscriber leak on a
+	// half-open connection that never cancels the request context).
+	write := func(s string) bool {
+		if _, err := fmt.Fprint(w, s); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+
 	// Initial comment so the client's onopen fires immediately.
-	fmt.Fprint(w, ": connected\n\n")
-	flusher.Flush()
+	if !write(": connected\n\n") {
+		return
+	}
 
 	heartbeat := time.NewTicker(25 * time.Second)
 	defer heartbeat.Stop()
@@ -66,8 +89,9 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-heartbeat.C:
-			fmt.Fprint(w, ": ping\n\n")
-			flusher.Flush()
+			if !write(": ping\n\n") {
+				return
+			}
 		case ev, open := <-ch:
 			if !open {
 				return
@@ -76,8 +100,9 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, payload)
-			flusher.Flush()
+			if !write(fmt.Sprintf("event: %s\ndata: %s\n\n", ev.Type, payload)) {
+				return
+			}
 		}
 	}
 }
