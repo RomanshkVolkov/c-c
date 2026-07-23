@@ -66,6 +66,7 @@ func DBConnection() {
 		&domain.Report{},
 		&domain.ReportComment{},
 		&domain.ReportImage{},
+		&domain.TelemetryEvent{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
@@ -139,6 +140,12 @@ func seedBaseOrg(db *gorm.DB) {
 	db.Model(&domain.Server{}).
 		Where("org_id IS NULL OR org_id = ''").
 		Update("org_id", org.ID)
+
+	// Backfill the report-project platform column for projects created before it
+	// existed (all pre-existing projects are browser/widget projects).
+	db.Model(&domain.ReportProject{}).
+		Where("platform IS NULL OR platform = ''").
+		Update("platform", "web")
 }
 
 // promoteSuperadmin marks the seed admin as a platform superadmin (sees/manages

@@ -52,6 +52,7 @@ func (l *ingestLimiter) allow(key string, perHour int) bool {
 
 type IngestHandler interface {
 	CreateReport(w http.ResponseWriter, r *http.Request)
+	CreateEvent(w http.ResponseWriter, r *http.Request)
 	Preflight(w http.ResponseWriter, r *http.Request)
 	ReporterView(w http.ResponseWriter, r *http.Request)
 	ReporterComment(w http.ResponseWriter, r *http.Request)
@@ -59,13 +60,14 @@ type IngestHandler interface {
 }
 
 type ingestHandler struct {
-	projects *repository.ReportProjectRepository
-	svc      *service.ReportService
-	limiter  *ingestLimiter
+	projects  *repository.ReportProjectRepository
+	svc       *service.ReportService
+	telemetry *service.TelemetryService
+	limiter   *ingestLimiter
 }
 
-func NewIngestHandler(projects *repository.ReportProjectRepository, svc *service.ReportService) IngestHandler {
-	return &ingestHandler{projects: projects, svc: svc, limiter: newIngestLimiter()}
+func NewIngestHandler(projects *repository.ReportProjectRepository, svc *service.ReportService, telemetry *service.TelemetryService) IngestHandler {
+	return &ingestHandler{projects: projects, svc: svc, telemetry: telemetry, limiter: newIngestLimiter()}
 }
 
 // Preflight answers CORS preflight. The project isn't known yet (no key on a
@@ -150,6 +152,42 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.IngestReportResult]{Success: true, Data: result})
+}
+
+// CreateEvent — POST /ingest/v1/events : headless passive telemetry from a
+// native app. Auth by X-Ingest-Key + rate limit only; NO Origin/CORS guard
+// (native clients don't send Origin). The batch is re-redacted, encrypted at
+// rest and stored with a TTL, separate from reports.
+func (h *ingestHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
+	echoCORS(w, r) // harmless for native; lets a browser client use it too
+
+	key := r.Header.Get("X-Ingest-Key")
+	if key == "" {
+		SendErrorResponse(w, http.StatusUnauthorized, "Missing ingest key", "no-key")
+		return
+	}
+	project, err := h.projects.FindActiveByIngestKey(key)
+	if err != nil {
+		SendErrorResponse(w, http.StatusUnauthorized, "Invalid ingest key", "invalid-key")
+		return
+	}
+
+	if !h.limiter.allow(project.ID, project.RateLimitPerHour) {
+		SendErrorResponse(w, http.StatusTooManyRequests, "Rate limit exceeded", "rate-limited")
+		return
+	}
+
+	batch, err := ValidateRequest[domain.IngestEventBatch](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+
+	if err := h.telemetry.Ingest(project, batch, time.Now()); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to ingest telemetry", err.Error())
+		return
+	}
+	SendResult(w, http.StatusAccepted, domain.APIResponse[any]{Success: true, Message: "Accepted"})
 }
 
 // echoCORS reflects the Origin so the widget (cross-origin) can read reporter

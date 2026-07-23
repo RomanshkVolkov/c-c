@@ -54,12 +54,23 @@ func (s *ReportProjectService) Create(req domain.CreateReportProjectRequest) (*d
 		return nil, err
 	}
 
+	// Native "app" projects have no browser Origin; ignore any origins sent.
+	platform := req.Platform
+	if platform == "" {
+		platform = "web"
+	}
+	origins := req.AllowedOrigins
+	if platform == "app" {
+		origins = nil
+	}
+
 	p := &domain.ReportProject{
 		OrgID:            req.OrgID,
 		Name:             req.Name,
 		Slug:             slug,
+		Platform:         platform,
 		IngestKeyHash:    hash,
-		AllowedOrigins:   domain.StringList(req.AllowedOrigins),
+		AllowedOrigins:   domain.StringList(origins),
 		RateLimitPerHour: defaultRateLimit(req.RateLimitPerHour),
 		IsActive:         true,
 	}
@@ -156,6 +167,7 @@ func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectRespo
 		OrgID:                 p.OrgID,
 		Name:                  p.Name,
 		Slug:                  p.Slug,
+		Platform:              p.Platform,
 		AllowedOrigins:        origins,
 		RateLimitPerHour:      p.RateLimitPerHour,
 		IsActive:              p.IsActive,

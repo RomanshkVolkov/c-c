@@ -96,6 +96,10 @@ type ReportProject struct {
 	AllowedOrigins   StringList `gorm:"type:jsonb"                             json:"allowedOrigins"`
 	RateLimitPerHour int        `gorm:"default:20"                             json:"rateLimitPerHour"`
 	IsActive         bool       `gorm:"default:true"                           json:"isActive"`
+	// Platform distinguishes a browser project ("web": widget reports, Origin/CORS
+	// enforced) from a native app project ("app": headless telemetry, no Origin
+	// guard). Defaults to "web" for every pre-existing project.
+	Platform string `gorm:"type:varchar(10);default:'web'" json:"platform"`
 	// DefaultAssigneeUserID: new reports are born assigned to this agent
 	// (portento's DEFAULT_ASSIGNEE_ID behavior).
 	DefaultAssigneeUserID *string `gorm:"type:varchar(36)" json:"defaultAssigneeUserId,omitempty"`
@@ -153,6 +157,7 @@ type CreateReportProjectRequest struct {
 	OrgID                 string   `json:"orgId"                 validate:"required"`
 	Name                  string   `json:"name"                  validate:"required,min=1,max=120"`
 	Slug                  string   `json:"slug"                  validate:"omitempty,min=1,max=120"`
+	Platform              string   `json:"platform"              validate:"omitempty,oneof=web app"`
 	AllowedOrigins        []string `json:"allowedOrigins"        validate:"omitempty,dive,url"`
 	RateLimitPerHour      int      `json:"rateLimitPerHour"      validate:"omitempty,min=1,max=10000"`
 	DefaultAssigneeUserID string   `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
@@ -172,6 +177,7 @@ type ReportProjectResponse struct {
 	OrgID                 string    `json:"orgId"`
 	Name                  string    `json:"name"`
 	Slug                  string    `json:"slug"`
+	Platform              string    `json:"platform"`
 	AllowedOrigins        []string  `json:"allowedOrigins"`
 	RateLimitPerHour      int       `json:"rateLimitPerHour"`
 	IsActive              bool      `json:"isActive"`

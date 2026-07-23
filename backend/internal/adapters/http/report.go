@@ -54,7 +54,11 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 		lg.Warn("REPORTS_KEK not set — report telemetry will not be stored")
 	}
 
-	// Hourly purge of telemetry blobs past their TTL (decision 4/7).
+	telemetryRepo := repository.NewTelemetryRepository(db)
+	telemetrySvc := service.NewTelemetryService(telemetryRepo)
+
+	// Hourly purge of expired telemetry: report-attached blobs (decision 4/7) and
+	// the passive events store (both past their TTL).
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
@@ -63,6 +67,11 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 				lg.Error("telemetry purge failed: " + err.Error())
 			} else if n > 0 {
 				lg.Info("purged expired telemetry blobs")
+			}
+			if n, err := telemetrySvc.Purge(time.Now()); err != nil {
+				lg.Error("telemetry events purge failed: " + err.Error())
+			} else if n > 0 {
+				lg.Info("purged expired telemetry events")
 			}
 		}
 	}()
@@ -73,8 +82,9 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 	reportSvc := service.NewReportService(reportRepo, orgRepo, authRepo, imgClient, hub)
 
 	projects := handler.NewReportProjectHandler(projectSvc)
-	ingest := handler.NewIngestHandler(projectRepo, reportSvc)
+	ingest := handler.NewIngestHandler(projectRepo, reportSvc, telemetrySvc)
 	admin := handler.NewReportAdminHandler(reportSvc)
+	telemetryAdmin := handler.NewTelemetryAdminHandler(telemetrySvc)
 	imageProxy := handler.NewImageProxyHandler(reportRepo, store)
 	eventsH := handler.NewEventsHandler(hub)
 
@@ -110,9 +120,22 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 	// headers), so it lives outside the JWT-only group.
 	r.Get("/api/v1/events", eventsH.Stream)
 
+	// Diagnostics (passive telemetry) — JWT, org-scoped. Separate lane from the
+	// reports inbox; NOT streamed over SSE (volume).
+	r.Route("/api/v1/telemetry", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/devices", telemetryAdmin.ListDevices)
+		r.Get("/timeline", telemetryAdmin.Timeline)
+	})
+
 	// Public ingest — auth by X-Ingest-Key, per-project CORS/rate limit. No JWT.
 	r.Post("/ingest/v1/reports", ingest.CreateReport)
 	r.Options("/ingest/v1/reports", ingest.Preflight)
+
+	// Passive telemetry ingest (native apps) — X-Ingest-Key + rate limit, NO
+	// Origin guard. Batches of breadcrumbs + device context.
+	r.Post("/ingest/v1/events", ingest.CreateEvent)
+	r.Options("/ingest/v1/events", ingest.Preflight)
 
 	// Reporter follow-up — auth by the per-report token (?token=). No JWT/email.
 	r.Post("/ingest/v1/reports/unread", ingest.UnreadCounts) // batch unread badge
