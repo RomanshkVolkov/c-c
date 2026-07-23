@@ -65,8 +65,8 @@ interface CollectionsState {
   setActive: (collectionId: string, requestId: string) => void;
   clearActive: () => void;
 
-  // Writes — collection level
-  createCollection: (name: string, description?: string) => Promise<CollectionMeta>;
+  // Writes — collection level. orgId set → org "shared folder"; omit → personal.
+  createCollection: (name: string, description?: string, orgId?: string | null) => Promise<CollectionMeta>;
   deleteCollection: (id: string) => Promise<void>;
   renameCollection: (id: string, name: string) => Promise<void>;
 
@@ -192,10 +192,10 @@ export const useCollectionsStore = create<CollectionsState>()((set, get) => ({
 
   // ─── Collection-level writes ───────────────────────────────────────────
 
-  createCollection: async (name, description = "") => {
+  createCollection: async (name, description = "", orgId = null) => {
     const res = await api.post<APIResponse<CollectionMeta>>(
       "/api/v1/collections/",
-      { name, description },
+      { name, description, orgId: orgId || undefined },
       true,
     );
     if (!res.success || !res.data) throw new Error(res.error ?? "Create failed");

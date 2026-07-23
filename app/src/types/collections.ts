@@ -10,6 +10,10 @@ export interface CollectionMeta {
   ownerName: string;
   permission: CollectionPermission;
   isOwner: boolean;
+  // Set for org "shared folder" collections (visible to the whole org). Absent
+  // for personal collections.
+  orgId?: string | null;
+  orgName?: string;
   updatedAt: string;
 }
 

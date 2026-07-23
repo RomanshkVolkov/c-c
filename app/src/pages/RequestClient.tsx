@@ -15,6 +15,7 @@ import {
   Cloud,
   CloudUpload,
   Users,
+  Building2,
   Lock,
   AlertCircle,
   Share2,
@@ -54,6 +55,8 @@ import {
   type RequestTreeNode,
 } from "@/store/requests.store";
 import { useCollectionsStore } from "@/store/collections.store";
+import { useOrgsStore } from "@/store/orgs.store";
+import { roleAtLeast, type OrgRole } from "@/types/organization";
 import type {
   CollectionMeta,
   CollectionPermission,
@@ -185,12 +188,43 @@ function CollectionsSidebar() {
   const remoteError = useCollectionsStore((s) => s.error);
   const collections = useCollectionsStore((s) => s.collections);
 
+  const orgs = useOrgsStore((s) => s.orgs);
+  const fetchOrgs = useOrgsStore((s) => s.fetchOrgs);
+
   useEffect(() => {
     fetchCollections();
-  }, [fetchCollections]);
+    fetchOrgs();
+  }, [fetchCollections, fetchOrgs]);
 
-  const owned = collections.filter((c) => c.isOwner);
-  const shared = collections.filter((c) => !c.isOwner);
+  // Personal = owned & not org-scoped. Shared = legacy ad-hoc shares. Org
+  // "shared folders" are grouped per organization below.
+  const personal = collections.filter((c) => c.isOwner && !c.orgId);
+  const shared = collections.filter((c) => !c.isOwner && !c.orgId);
+
+  // Build one section per org the caller belongs to (so they can create there
+  // even when empty), plus a fallback for any org collection whose org isn't in
+  // the memberships list.
+  const orgMap = new Map<
+    string,
+    { id: string; name: string; role: string | null; items: CollectionMeta[] }
+  >();
+  for (const o of orgs) {
+    orgMap.set(o.id, { id: o.id, name: o.name, role: o.role, items: [] });
+  }
+  for (const c of collections) {
+    if (!c.orgId) continue;
+    const g = orgMap.get(c.orgId) ?? {
+      id: c.orgId,
+      name: c.orgName ?? "Organization",
+      role: null,
+      items: [],
+    };
+    g.items.push(c);
+    orgMap.set(c.orgId, g);
+  }
+  const orgGroups = [...orgMap.values()].filter(
+    (g) => g.items.length > 0 || (g.role !== null && roleAtLeast(g.role as OrgRole, "member")),
+  );
 
   return (
     <aside className="w-72 shrink-0 border-r flex flex-col bg-muted/10">
@@ -210,7 +244,17 @@ function CollectionsSidebar() {
       </header>
       <div className="flex-1 overflow-auto py-1">
         <LocalSection />
-        <OwnedSection items={owned} loading={remoteLoading} error={remoteError} />
+        <OwnedSection items={personal} loading={remoteLoading} error={remoteError} />
+        {orgGroups.map((g) => (
+          <OrgSection
+            key={g.id}
+            orgId={g.id}
+            orgName={g.name}
+            writable={g.role !== null && roleAtLeast(g.role as OrgRole, "member")}
+            items={g.items}
+            loading={remoteLoading}
+          />
+        ))}
         <SharedSection items={shared} loading={remoteLoading} />
       </div>
     </aside>
@@ -519,14 +563,14 @@ function OwnedSection({
   return (
     <section className="mt-2">
       <SectionHeader
-        title="My Collections"
+        title="Personal"
         icon={<Cloud className="size-3" />}
         count={items.length}
         actions={
           <Button
             size="icon-xs"
             variant="ghost"
-            title="New remote collection"
+            title="New personal collection"
             onClick={handleCreate}
           >
             <Plus className="size-3" />
@@ -542,7 +586,69 @@ function OwnedSection({
         <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
       ) : items.length === 0 ? (
         <p className="px-3 py-2 text-xs text-muted-foreground">
-          No remote collections yet.
+          No personal collections yet.
+        </p>
+      ) : (
+        items.map((c) => <RemoteCollectionItem key={c.id} collection={c} />)
+      )}
+    </section>
+  );
+}
+
+// OrgSection is an organization "shared folder" group: collections visible to
+// the whole org. Members/admins can create here; viewers see them read-only.
+function OrgSection({
+  orgId,
+  orgName,
+  writable,
+  items,
+  loading,
+}: {
+  orgId: string;
+  orgName: string;
+  writable: boolean;
+  items: CollectionMeta[];
+  loading: boolean;
+}) {
+  const createCollection = useCollectionsStore((s) => s.createCollection);
+
+  const handleCreate = async () => {
+    const name = window.prompt(`New shared collection in "${orgName}":`);
+    if (!name || !name.trim()) return;
+    try {
+      await createCollection(name.trim(), "", orgId);
+      toast.success(`Created "${name.trim()}" in ${orgName}`);
+    } catch (e) {
+      toast.error("Could not create collection", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  };
+
+  return (
+    <section className="mt-2">
+      <SectionHeader
+        title={orgName}
+        icon={<Building2 className="size-3" />}
+        count={items.length}
+        actions={
+          writable ? (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              title={`New shared collection in ${orgName}`}
+              onClick={handleCreate}
+            >
+              <Plus className="size-3" />
+            </Button>
+          ) : undefined
+        }
+      />
+      {loading && items.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          No shared collections yet.
         </p>
       ) : (
         items.map((c) => <RemoteCollectionItem key={c.id} collection={c} />)
