@@ -73,8 +73,9 @@ func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[domain.Session]{
 		Success: true,
 		Data: domain.Session{
-			ID:       claims.UserID,
-			Username: claims.Username,
+			ID:         claims.UserID,
+			Username:   claims.Username,
+			Superadmin: claims.Superadmin,
 		},
 	})
 }

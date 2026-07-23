@@ -22,13 +22,17 @@ func NewCollectionService(repo *repository.CollectionRepository, authRepo *repos
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-func (s *CollectionService) ListAccessible(userID string) ([]domain.CollectionListItem, error) {
-	return s.repo.ListAccessibleByUser(userID)
+func (s *CollectionService) ListAccessible(userID string, superadmin bool) ([]domain.CollectionListItem, error) {
+	return s.repo.ListAccessibleByUser(userID, superadmin)
 }
 
-func (s *CollectionService) Create(userID string, req domain.CreateCollectionRequest) (*domain.CollectionListItem, error) {
+// Create makes a collection. When req.OrgID is set it's an org "shared folder"
+// (caller's authorization to write in that org is enforced by the handler);
+// otherwise it's a personal collection owned by the caller.
+func (s *CollectionService) Create(userID string, req domain.CreateCollectionRequest, superadmin bool) (*domain.CollectionListItem, error) {
 	c := &domain.Collection{
 		OwnerID:     userID,
+		OrgID:       req.OrgID,
 		Name:        req.Name,
 		Description: req.Description,
 	}
@@ -36,17 +40,17 @@ func (s *CollectionService) Create(userID string, req domain.CreateCollectionReq
 	if err := s.repo.Create(c); err != nil {
 		return nil, err
 	}
-	return s.repo.FindListItem(c.ID, userID)
+	return s.repo.FindListItem(c.ID, userID, superadmin)
 }
 
-func (s *CollectionService) Get(userID, id string) (*domain.CollectionDetailResponse, error) {
-	perm, _, err := s.repo.GetUserPermission(id, userID)
+func (s *CollectionService) Get(userID, id string, superadmin bool) (*domain.CollectionDetailResponse, error) {
+	perm, _, err := s.repo.GetUserPermission(id, userID, superadmin)
 	if err != nil {
 		return nil, err
 	}
 	_ = perm // permission is used only for write paths; reads are allowed for any access
 
-	item, err := s.repo.FindListItem(id, userID)
+	item, err := s.repo.FindListItem(id, userID, superadmin)
 	if err != nil {
 		return nil, err
 	}
@@ -57,8 +61,8 @@ func (s *CollectionService) Get(userID, id string) (*domain.CollectionDetailResp
 	return &domain.CollectionDetailResponse{Collection: *item, Nodes: nodes}, nil
 }
 
-func (s *CollectionService) Update(userID, id string, req domain.UpdateCollectionRequest) (*domain.CollectionListItem, error) {
-	if err := s.requireWrite(id, userID); err != nil {
+func (s *CollectionService) Update(userID, id string, req domain.UpdateCollectionRequest, superadmin bool) (*domain.CollectionListItem, error) {
+	if err := s.requireWrite(id, userID, superadmin); err != nil {
 		return nil, err
 	}
 	c, err := s.repo.FindByID(id)
@@ -70,22 +74,30 @@ func (s *CollectionService) Update(userID, id string, req domain.UpdateCollectio
 	if err := s.repo.Update(c); err != nil {
 		return nil, err
 	}
-	return s.repo.FindListItem(id, userID)
+	return s.repo.FindListItem(id, userID, superadmin)
 }
 
-func (s *CollectionService) Delete(userID, id string) error {
-	_, isOwner, err := s.repo.GetUserPermission(id, userID)
+// Delete removes a collection. Personal collections: owner only. Org "shared
+// folders": any org member with write (admin/member) — mirrors the proposal's
+// role table — or a superadmin.
+func (s *CollectionService) Delete(userID, id string, superadmin bool) error {
+	perm, isOwner, err := s.repo.GetUserPermission(id, userID, superadmin)
 	if err != nil {
 		return err
 	}
-	if !isOwner {
+	c, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+	orgScoped := c.OrgID != nil
+	if !isOwner && !superadmin && !(orgScoped && perm == domain.PermissionWrite) {
 		return repository.ErrCollectionForbidden
 	}
 	return s.repo.Delete(id)
 }
 
-func (s *CollectionService) ReplaceTree(userID, id string, req domain.ReplaceTreeRequest) ([]domain.CollectionNode, error) {
-	if err := s.requireWrite(id, userID); err != nil {
+func (s *CollectionService) ReplaceTree(userID, id string, req domain.ReplaceTreeRequest, superadmin bool) ([]domain.CollectionNode, error) {
+	if err := s.requireWrite(id, userID, superadmin); err != nil {
 		return nil, err
 	}
 	nodes, err := buildNodes(id, req.Nodes)
@@ -98,23 +110,23 @@ func (s *CollectionService) ReplaceTree(userID, id string, req domain.ReplaceTre
 	return s.repo.ListNodes(id)
 }
 
-func (s *CollectionService) ListShares(userID, id string) ([]domain.ShareInfo, error) {
-	_, isOwner, err := s.repo.GetUserPermission(id, userID)
+func (s *CollectionService) ListShares(userID, id string, superadmin bool) ([]domain.ShareInfo, error) {
+	_, isOwner, err := s.repo.GetUserPermission(id, userID, superadmin)
 	if err != nil {
 		return nil, err
 	}
-	if !isOwner {
+	if !isOwner && !superadmin {
 		return nil, repository.ErrCollectionForbidden
 	}
 	return s.repo.ListShares(id)
 }
 
-func (s *CollectionService) Share(userID, id string, req domain.ShareCollectionRequest) (*domain.ShareInfo, error) {
-	_, isOwner, err := s.repo.GetUserPermission(id, userID)
+func (s *CollectionService) Share(userID, id string, req domain.ShareCollectionRequest, superadmin bool) (*domain.ShareInfo, error) {
+	_, isOwner, err := s.repo.GetUserPermission(id, userID, superadmin)
 	if err != nil {
 		return nil, err
 	}
-	if !isOwner {
+	if !isOwner && !superadmin {
 		return nil, repository.ErrCollectionForbidden
 	}
 	target, err := s.authRepo.FindByUsername(req.Username)
@@ -134,12 +146,12 @@ func (s *CollectionService) Share(userID, id string, req domain.ShareCollectionR
 	}, nil
 }
 
-func (s *CollectionService) Unshare(userID, id, targetUserID string) error {
-	_, isOwner, err := s.repo.GetUserPermission(id, userID)
+func (s *CollectionService) Unshare(userID, id, targetUserID string, superadmin bool) error {
+	_, isOwner, err := s.repo.GetUserPermission(id, userID, superadmin)
 	if err != nil {
 		return err
 	}
-	if !isOwner {
+	if !isOwner && !superadmin {
 		return repository.ErrCollectionForbidden
 	}
 	return s.repo.DeleteShare(id, targetUserID)
@@ -147,8 +159,8 @@ func (s *CollectionService) Unshare(userID, id, targetUserID string) error {
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
-func (s *CollectionService) requireWrite(collectionID, userID string) error {
-	perm, _, err := s.repo.GetUserPermission(collectionID, userID)
+func (s *CollectionService) requireWrite(collectionID, userID string, superadmin bool) error {
+	perm, _, err := s.repo.GetUserPermission(collectionID, userID, superadmin)
 	if err != nil {
 		return err
 	}

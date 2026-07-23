@@ -333,8 +333,8 @@ func (s *ReportService) uploadImages(ctx context.Context, reportID string, comme
 
 // ─── Admin (console) ──────────────────────────────────────────────────────────
 
-func (s *ReportService) List(orgIDs []string, q domain.ReportListQuery) (*domain.ReportListResult, error) {
-	return s.repo.List(orgIDs, q)
+func (s *ReportService) List(orgIDs []string, q domain.ReportListQuery, superadmin bool) (*domain.ReportListResult, error) {
+	return s.repo.List(orgIDs, q, superadmin)
 }
 
 // OrgIDForReport exposes the report→org resolution for handler authorization.

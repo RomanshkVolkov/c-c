@@ -91,6 +91,11 @@ type CollectionShare struct {
 type CreateCollectionRequest struct {
 	Name        string `json:"name"        validate:"required,min=1,max=200"`
 	Description string `json:"description" validate:"max=2000"`
+	// OrgID (optional): when set the collection is an organization "shared
+	// folder" — visible to every member of that org, with write for
+	// admin/member and read-only for viewer. When nil it's a personal
+	// collection (owner + ad-hoc shares, legacy path).
+	OrgID *string `json:"orgId" validate:"omitempty"`
 }
 
 type UpdateCollectionRequest struct {
@@ -124,7 +129,11 @@ type CollectionListItem struct {
 	OwnerName   string               `json:"ownerName"   gorm:"column:owner_name"`
 	Permission  CollectionPermission `json:"permission"  gorm:"column:permission"`
 	IsOwner     bool                 `json:"isOwner"     gorm:"column:is_owner"`
-	UpdatedAt   time.Time            `json:"updatedAt"   gorm:"column:updated_at"`
+	// OrgID/OrgName are set for org-scoped ("shared folder") collections so the
+	// app can segment the sidebar (Personal vs each org). Empty for personal.
+	OrgID     *string   `json:"orgId,omitempty"   gorm:"column:org_id"`
+	OrgName   string    `json:"orgName,omitempty" gorm:"column:org_name"`
+	UpdatedAt time.Time `json:"updatedAt"         gorm:"column:updated_at"`
 }
 
 type CollectionDetailResponse struct {

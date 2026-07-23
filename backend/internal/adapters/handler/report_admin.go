@@ -74,6 +74,9 @@ func (h *reportAdminHandler) authorize(w http.ResponseWriter, r *http.Request, n
 		return nil, "", false
 	}
 	role, member := user.RoleInOrg(orgID)
+	if user.Superadmin { // platform admin acts on any org's reports
+		role, member = domain.OrgRoleAdmin, true
+	}
 	if !member {
 		SendErrorResponse(w, http.StatusNotFound, "Report not found", "not-found")
 		return nil, "", false
@@ -133,7 +136,7 @@ func (h *reportAdminHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.svc.List(user.OrgIDs(), q)
+	result, err := h.svc.List(user.OrgIDs(), q, user.Superadmin)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list reports", err.Error())
 		return

@@ -14,6 +14,10 @@ func InitOrganizationRoutes(db *gorm.DB, r *chi.Mux) {
 	svc := service.NewOrganizationService(repo)
 	h := handler.NewOrganizationHandler(svc)
 
+	invRepo := repository.NewInvitationRepository(db)
+	invSvc := service.NewInvitationService(invRepo)
+	inv := handler.NewInvitationHandler(invSvc)
+
 	r.Route("/api/v1/organizations", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.List)
@@ -24,5 +28,17 @@ func InitOrganizationRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Post("/{id}/members", h.AddMember)
 		r.Patch("/{id}/members/{userId}", h.UpdateMember)
 		r.Delete("/{id}/members/{userId}", h.RemoveMember)
+		// Invitations (org-admin side).
+		r.Get("/{id}/invitations", inv.ListForOrg)
+		r.Post("/{id}/invitations", inv.Create)
+		r.Delete("/{id}/invitations/{invitationId}", inv.Revoke)
+	})
+
+	// Invitations (invitee side).
+	r.Route("/api/v1/invitations", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/", inv.ListMine)
+		r.Post("/{invitationId}/accept", inv.Accept)
+		r.Post("/{invitationId}/decline", inv.Decline)
 	})
 }

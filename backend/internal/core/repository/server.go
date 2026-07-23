@@ -30,6 +30,15 @@ func (r *ServerRepository) ListByOrgs(orgIDs []string) ([]domain.Server, error) 
 	return servers, nil
 }
 
+// ListAll returns every server (superadmin scope).
+func (r *ServerRepository) ListAll() ([]domain.Server, error) {
+	var servers []domain.Server
+	if err := r.db.Find(&servers).Error; err != nil {
+		return nil, err
+	}
+	return servers, nil
+}
+
 func (r *ServerRepository) FindByID(id string) (*domain.Server, error) {
 	var server domain.Server
 	if err := r.db.First(&server, "id = ?", id).Error; err != nil {

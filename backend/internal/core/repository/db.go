@@ -57,6 +57,7 @@ func DBConnection() {
 		&domain.User{},
 		&domain.Organization{},
 		&domain.OrgMembership{},
+		&domain.OrgInvitation{},
 		&domain.Server{},
 		&domain.Collection{},
 		&domain.CollectionNode{},
@@ -76,43 +77,61 @@ func DBConnection() {
 
 	DATABASE = db
 	seedAdmin(db)
-	seedDefaultOrg(db)
+	seedBaseOrg(db)
+	promoteSuperadmin(db)
 }
 
-// seedDefaultOrg guarantees a "default" organization exists, enrolls every
-// user that has no membership yet as its admin, and backfills any server that
-// predates the org column. Idempotent — safe to run on every boot. This is the
-// single-tenant → multi-tenant bridge from the organizations proposal.
-func seedDefaultOrg(db *gorm.DB) {
-	const defaultSlug = "default"
+const (
+	baseOrgSlug = "dwit-mexico"
+	baseOrgName = "Dwit México"
+)
 
+// seedBaseOrg guarantees the base organization "Dwit México" exists and owns any
+// pre-org data. It also migrates the legacy "default" org (from the earlier
+// single-tenant bridge) by renaming it in place — preserving its memberships,
+// servers and reports. Idempotent; safe on every boot.
+//
+// Unlike the old bridge, it does NOT auto-enroll every user: new users start
+// with zero orgs and only see what they create or are invited to. It enrolls
+// the seed admin so a fresh install has a usable owner.
+func seedBaseOrg(db *gorm.DB) {
 	var org domain.Organization
-	err := db.Where("slug = ?", defaultSlug).First(&org).Error
+
+	// Migrate the legacy "default" org in place if present.
+	if err := db.Where("slug = ?", "default").First(&org).Error; err == nil {
+		org.Name = baseOrgName
+		org.Slug = baseOrgSlug
+		if err := db.Model(&org).Updates(map[string]any{"name": baseOrgName, "slug": baseOrgSlug}).Error; err != nil {
+			lg.Error("rename default org failed: " + err.Error())
+		} else {
+			lg.Info(`legacy "default" organization renamed to "` + baseOrgName + `"`)
+		}
+	}
+
+	// Ensure the base org exists (fresh installs, or if the legacy one was gone).
+	err := db.Where("slug = ?", baseOrgSlug).First(&org).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		org = domain.Organization{Name: "Default"}
-		org.Slug = defaultSlug
+		org = domain.Organization{Name: baseOrgName}
+		org.Slug = baseOrgSlug
 		org.ID = uuid.NewString()
 		if err := db.Create(&org).Error; err != nil {
-			lg.Error("seed default org failed: " + err.Error())
+			lg.Error("seed base org failed: " + err.Error())
 			return
 		}
-		lg.Info("default organization seeded")
+		lg.Info("base organization seeded: " + baseOrgName)
 	} else if err != nil {
-		lg.Error("seed default org lookup failed: " + err.Error())
+		lg.Error("seed base org lookup failed: " + err.Error())
 		return
 	}
 
-	// Enroll users without any membership as admins of the default org.
-	var users []domain.User
-	if err := db.Find(&users).Error; err != nil {
-		lg.Error("seed default org: list users failed: " + err.Error())
-		return
-	}
-	for _, u := range users {
+	// Enroll the seed admin (only) as owner-admin so a fresh install is usable.
+	admin := GetEnv("ADMIN_USERNAME", "admin")
+	var au domain.User
+	if err := db.Where("username = ?", admin).First(&au).Error; err == nil {
 		var count int64
-		db.Model(&domain.OrgMembership{}).Where("user_id = ?", u.ID).Count(&count)
+		db.Model(&domain.OrgMembership{}).Where("user_id = ?", au.ID).Count(&count)
 		if count == 0 {
-			db.Create(&domain.OrgMembership{OrgID: org.ID, UserID: u.ID, Role: domain.OrgRoleAdmin})
+			db.Create(&domain.OrgMembership{OrgID: org.ID, UserID: au.ID, Role: domain.OrgRoleAdmin})
 		}
 	}
 
@@ -120,6 +139,17 @@ func seedDefaultOrg(db *gorm.DB) {
 	db.Model(&domain.Server{}).
 		Where("org_id IS NULL OR org_id = ''").
 		Update("org_id", org.ID)
+}
+
+// promoteSuperadmin marks the seed admin as a platform superadmin (sees/manages
+// ALL orgs). Idempotent; migrates existing installs where the flag is new.
+func promoteSuperadmin(db *gorm.DB) {
+	admin := GetEnv("ADMIN_USERNAME", "admin")
+	if err := db.Model(&domain.User{}).
+		Where("username = ?", admin).
+		Update("is_superadmin", true).Error; err != nil {
+		lg.Error("promote superadmin failed: " + err.Error())
+	}
 }
 
 // buildDSN constructs a DSN from individual env vars as fallback.

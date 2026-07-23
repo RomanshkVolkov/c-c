@@ -34,5 +34,10 @@ func InitCollectionRoutes(db *gorm.DB, r *chi.Mux) {
 	r.Route("/api/v1/users", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/search", users.Search)
+		// Platform user management (superadmin-gated inside the handlers).
+		r.Get("/", users.List)
+		r.Post("/", users.Create)
+		r.Patch("/{id}", users.Update)
+		r.Delete("/{id}", users.Delete)
 	})
 }

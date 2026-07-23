@@ -302,13 +302,14 @@ func generateToken(claims jwt.Claims, secret []byte) (string, error) {
 	return token.SignedString(secret)
 }
 
-func GenerateTokens(userID, username string, orgs []domain.OrgMembershipClaim) (*domain.TokenPair, error) {
+func GenerateTokens(userID, username string, superadmin bool, orgs []domain.OrgMembershipClaim) (*domain.TokenPair, error) {
 	tokenID := uuid.NewString()
 
 	accessClaims := &domain.ClaimsJWT{
-		UserID:   userID,
-		Username: username,
-		Orgs:     orgs,
+		UserID:     userID,
+		Username:   username,
+		Superadmin: superadmin,
+		Orgs:       orgs,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(accessExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

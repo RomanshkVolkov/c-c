@@ -21,33 +21,76 @@ func NewCollectionRepository(db *gorm.DB) *CollectionRepository {
 	return &CollectionRepository{db: db}
 }
 
-// ListAccessibleByUser returns collections owned by the user plus those shared
-// with them. Each row carries the user's effective permission ("write" for the
-// owner; the share row's permission for a shared collection) and the owner's
-// username, so the frontend can render the sidebar in one round-trip.
-func (r *CollectionRepository) ListAccessibleByUser(userID string) ([]domain.CollectionListItem, error) {
-	var items []domain.CollectionListItem
-	err := r.db.Raw(`
+// ListAccessibleByUser returns the collections the caller can see, in one query:
+//   - personal collections they own (org_id NULL),
+//   - org "shared folder" collections for every org they belong to (permission
+//     derived from their org role: viewer→read, member/admin→write),
+//   - legacy ad-hoc shares (personal collections shared with them).
+//
+// A superadmin sees every org collection regardless of membership.
+func (r *CollectionRepository) ListAccessibleByUser(userID string, superadmin bool) ([]domain.CollectionListItem, error) {
+	// Personal (owned) collections.
+	personal := `
 		SELECT c.id, c.name, c.description, c.owner_id,
 		       u.username AS owner_name,
 		       'write' AS permission,
 		       true AS is_owner,
+		       NULL AS org_id, '' AS org_name,
 		       c.updated_at
 		FROM collections c
 		JOIN users u ON u.id = c.owner_id
-		WHERE c.owner_id = ?
-		UNION ALL
+		WHERE c.owner_id = ? AND c.org_id IS NULL`
+	args := []any{userID}
+
+	// Org "shared folder" collections.
+	var orgBranch string
+	if superadmin {
+		orgBranch = `
+		SELECT c.id, c.name, c.description, c.owner_id,
+		       u.username AS owner_name,
+		       'write' AS permission,
+		       (c.owner_id = ?) AS is_owner,
+		       c.org_id, o.name AS org_name,
+		       c.updated_at
+		FROM collections c
+		JOIN users u ON u.id = c.owner_id
+		JOIN organizations o ON o.id = c.org_id
+		WHERE c.org_id IS NOT NULL`
+		args = append(args, userID)
+	} else {
+		orgBranch = `
+		SELECT c.id, c.name, c.description, c.owner_id,
+		       u.username AS owner_name,
+		       CASE WHEN m.role = 'viewer' THEN 'read' ELSE 'write' END AS permission,
+		       (c.owner_id = ?) AS is_owner,
+		       c.org_id, o.name AS org_name,
+		       c.updated_at
+		FROM collections c
+		JOIN users u ON u.id = c.owner_id
+		JOIN organizations o ON o.id = c.org_id
+		JOIN org_memberships m ON m.org_id = c.org_id AND m.user_id = ?
+		WHERE c.org_id IS NOT NULL`
+		args = append(args, userID, userID)
+	}
+
+	// Legacy ad-hoc shares (personal collections only).
+	shares := `
 		SELECT c.id, c.name, c.description, c.owner_id,
 		       u.username AS owner_name,
 		       s.permission,
 		       false AS is_owner,
+		       NULL AS org_id, '' AS org_name,
 		       c.updated_at
 		FROM collections c
 		JOIN users u ON u.id = c.owner_id
 		JOIN collection_shares s ON s.collection_id = c.id
-		WHERE s.shared_with_user_id = ?
-		ORDER BY updated_at DESC
-	`, userID, userID).Scan(&items).Error
+		WHERE s.shared_with_user_id = ? AND c.org_id IS NULL`
+	args = append(args, userID)
+
+	query := personal + "\nUNION ALL" + orgBranch + "\nUNION ALL" + shares + "\nORDER BY updated_at DESC"
+
+	var items []domain.CollectionListItem
+	err := r.db.Raw(query, args...).Scan(&items).Error
 	return items, err
 }
 
@@ -62,25 +105,36 @@ func (r *CollectionRepository) FindByID(id string) (*domain.Collection, error) {
 	return &c, nil
 }
 
-func (r *CollectionRepository) FindListItem(id, userID string) (*domain.CollectionListItem, error) {
+func (r *CollectionRepository) FindListItem(id, userID string, superadmin bool) (*domain.CollectionListItem, error) {
 	var item domain.CollectionListItem
 	err := r.db.Raw(`
 		SELECT c.id, c.name, c.description, c.owner_id,
 		       u.username AS owner_name,
-		       CASE WHEN c.owner_id = ? THEN 'write' ELSE COALESCE(s.permission, '') END AS permission,
+		       CASE
+		         WHEN c.owner_id = ? THEN 'write'
+		         WHEN c.org_id IS NOT NULL AND m.role = 'viewer' THEN 'read'
+		         WHEN c.org_id IS NOT NULL AND m.role IS NOT NULL THEN 'write'
+		         ELSE COALESCE(s.permission, '')
+		       END AS permission,
 		       (c.owner_id = ?) AS is_owner,
+		       c.org_id, COALESCE(o.name, '') AS org_name,
 		       c.updated_at
 		FROM collections c
 		JOIN users u ON u.id = c.owner_id
-		LEFT JOIN collection_shares s
-		       ON s.collection_id = c.id AND s.shared_with_user_id = ?
+		LEFT JOIN organizations o ON o.id = c.org_id
+		LEFT JOIN org_memberships m ON m.org_id = c.org_id AND m.user_id = ?
+		LEFT JOIN collection_shares s ON s.collection_id = c.id AND s.shared_with_user_id = ?
 		WHERE c.id = ?
-	`, userID, userID, userID, id).Scan(&item).Error
+	`, userID, userID, userID, userID, id).Scan(&item).Error
 	if err != nil {
 		return nil, err
 	}
 	if item.ID == "" {
 		return nil, ErrCollectionNotFound
+	}
+	// A superadmin can always manage an org collection even without membership.
+	if superadmin && item.OrgID != nil && item.Permission == "" {
+		item.Permission = domain.PermissionWrite
 	}
 	return &item, nil
 }
@@ -135,9 +189,9 @@ func (r *CollectionRepository) ReplaceNodes(collectionID string, nodes []domain.
 // GetUserPermission returns the effective permission for a user against a
 // collection. Owner always gets PermissionWrite. Returns ErrCollectionForbidden
 // when the user has no access at all.
-func (r *CollectionRepository) GetUserPermission(collectionID, userID string) (domain.CollectionPermission, bool, error) {
+func (r *CollectionRepository) GetUserPermission(collectionID, userID string, superadmin bool) (domain.CollectionPermission, bool, error) {
 	var c domain.Collection
-	if err := r.db.Select("id, owner_id").First(&c, "id = ?", collectionID).Error; err != nil {
+	if err := r.db.Select("id, owner_id, org_id").First(&c, "id = ?", collectionID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", false, ErrCollectionNotFound
 		}
@@ -146,6 +200,28 @@ func (r *CollectionRepository) GetUserPermission(collectionID, userID string) (d
 	if c.OwnerID == userID {
 		return domain.PermissionWrite, true, nil
 	}
+	// Org "shared folder": permission follows the caller's org role.
+	if c.OrgID != nil {
+		if superadmin {
+			return domain.PermissionWrite, false, nil
+		}
+		var m domain.OrgMembership
+		err := r.db.Where("org_id = ? AND user_id = ?", *c.OrgID, userID).First(&m).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", false, ErrCollectionForbidden
+		}
+		if err != nil {
+			return "", false, err
+		}
+		if m.Role == domain.OrgRoleViewer {
+			return domain.PermissionRead, false, nil
+		}
+		return domain.PermissionWrite, false, nil
+	}
+	if superadmin {
+		return domain.PermissionWrite, false, nil
+	}
+	// Personal collection: fall back to ad-hoc shares.
 	var share domain.CollectionShare
 	err := r.db.
 		Where("collection_id = ? AND shared_with_user_id = ?", collectionID, userID).

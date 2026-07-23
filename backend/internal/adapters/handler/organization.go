@@ -59,7 +59,7 @@ func (h *organizationHandler) List(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	orgs, err := h.svc.List(user.UserID)
+	orgs, err := h.svc.List(user.UserID, user.Superadmin)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list organizations", err.Error())
 		return
@@ -100,7 +100,7 @@ func (h *organizationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	org, err := h.svc.Update(user.UserID, chi.URLParam(r, "id"), req)
+	org, err := h.svc.Update(user.UserID, chi.URLParam(r, "id"), req, user.Superadmin)
 	if err != nil {
 		if mapOrgError(w, err) {
 			return
@@ -117,7 +117,7 @@ func (h *organizationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	if err := h.svc.Delete(user.UserID, chi.URLParam(r, "id")); err != nil {
+	if err := h.svc.Delete(user.UserID, chi.URLParam(r, "id"), user.Superadmin); err != nil {
 		if mapOrgError(w, err) {
 			return
 		}
@@ -133,7 +133,7 @@ func (h *organizationHandler) ListMembers(w http.ResponseWriter, r *http.Request
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	members, err := h.svc.ListMembers(user.UserID, chi.URLParam(r, "id"))
+	members, err := h.svc.ListMembers(user.UserID, chi.URLParam(r, "id"), user.Superadmin)
 	if err != nil {
 		if mapOrgError(w, err) {
 			return
@@ -155,7 +155,7 @@ func (h *organizationHandler) AddMember(w http.ResponseWriter, r *http.Request) 
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	if err := h.svc.AddMember(user.UserID, chi.URLParam(r, "id"), req); err != nil {
+	if err := h.svc.AddMember(user.UserID, chi.URLParam(r, "id"), req, user.Superadmin); err != nil {
 		if mapOrgError(w, err) {
 			return
 		}
@@ -176,7 +176,7 @@ func (h *organizationHandler) UpdateMember(w http.ResponseWriter, r *http.Reques
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	if err := h.svc.UpdateMemberRole(user.UserID, chi.URLParam(r, "id"), chi.URLParam(r, "userId"), req); err != nil {
+	if err := h.svc.UpdateMemberRole(user.UserID, chi.URLParam(r, "id"), chi.URLParam(r, "userId"), req, user.Superadmin); err != nil {
 		if mapOrgError(w, err) {
 			return
 		}
@@ -192,7 +192,7 @@ func (h *organizationHandler) RemoveMember(w http.ResponseWriter, r *http.Reques
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	if err := h.svc.RemoveMember(user.UserID, chi.URLParam(r, "id"), chi.URLParam(r, "userId")); err != nil {
+	if err := h.svc.RemoveMember(user.UserID, chi.URLParam(r, "id"), chi.URLParam(r, "userId"), user.Superadmin); err != nil {
 		if mapOrgError(w, err) {
 			return
 		}

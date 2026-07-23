@@ -52,6 +52,13 @@ func (r *ReportProjectRepository) ListByOrgs(orgIDs []string) ([]domain.ReportPr
 	return out, err
 }
 
+// ListAll returns every project (superadmin scope).
+func (r *ReportProjectRepository) ListAll() ([]domain.ReportProject, error) {
+	var out []domain.ReportProject
+	err := r.db.Order("created_at DESC").Find(&out).Error
+	return out, err
+}
+
 // Update persists the editable fields (name, origins, rate limit, active flag).
 func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 	return r.db.Model(&domain.ReportProject{}).

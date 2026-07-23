@@ -34,8 +34,14 @@ func (s *ServerService) Create(req domain.CreateServerRequest) (*domain.ServerRe
 	return toResponse(server), nil
 }
 
-func (s *ServerService) List(orgIDs []string) ([]domain.ServerResponse, error) {
-	servers, err := s.repo.ListByOrgs(orgIDs)
+func (s *ServerService) List(orgIDs []string, superadmin bool) ([]domain.ServerResponse, error) {
+	var servers []domain.Server
+	var err error
+	if superadmin {
+		servers, err = s.repo.ListAll()
+	} else {
+		servers, err = s.repo.ListByOrgs(orgIDs)
+	}
 	if err != nil {
 		return nil, err
 	}

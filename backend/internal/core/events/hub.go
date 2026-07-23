@@ -16,6 +16,7 @@ type Event struct {
 
 type subscriber struct {
 	orgs map[string]bool
+	all  bool // superadmin: receive events from every org
 	ch   chan Event
 }
 
@@ -33,11 +34,21 @@ func NewHub() *Hub {
 // an unsubscribe func. The channel is buffered; a slow consumer drops events
 // rather than blocking publishers.
 func (h *Hub) Subscribe(orgIDs []string) (<-chan Event, func()) {
+	return h.subscribe(orgIDs, false)
+}
+
+// SubscribeAll registers a listener that receives events from every org. Used by
+// superadmins, whose console spans all organizations.
+func (h *Hub) SubscribeAll() (<-chan Event, func()) {
+	return h.subscribe(nil, true)
+}
+
+func (h *Hub) subscribe(orgIDs []string, all bool) (<-chan Event, func()) {
 	orgs := make(map[string]bool, len(orgIDs))
 	for _, id := range orgIDs {
 		orgs[id] = true
 	}
-	sub := &subscriber{orgs: orgs, ch: make(chan Event, 32)}
+	sub := &subscriber{orgs: orgs, all: all, ch: make(chan Event, 32)}
 
 	h.mu.Lock()
 	id := h.next
@@ -61,7 +72,7 @@ func (h *Hub) Publish(e Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, s := range h.subs {
-		if !s.orgs[e.OrgID] {
+		if !s.all && !s.orgs[e.OrgID] {
 			continue
 		}
 		select {

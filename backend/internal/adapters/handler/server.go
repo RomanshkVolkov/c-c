@@ -28,7 +28,7 @@ func (h *serverHandler) ListServers(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	servers, err := h.svc.List(user.OrgIDs())
+	servers, err := h.svc.List(user.OrgIDs(), user.Superadmin)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list servers", err.Error())
 		return
@@ -50,7 +50,7 @@ func (h *serverHandler) CreateServer(w http.ResponseWriter, r *http.Request) {
 
 	// Must be admin/member of the target org to register a server in it.
 	role, member := user.RoleInOrg(req.OrgID)
-	if !member || !role.CanWrite() {
+	if !user.Superadmin && (!member || !role.CanWrite()) {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-writer-in-org")
 		return
 	}
@@ -79,7 +79,7 @@ func (h *serverHandler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 	}
 	// Deletion is admin-only within the server's org.
 	role, member := user.RoleInOrg(server.OrgID)
-	if !member || role != domain.OrgRoleAdmin {
+	if !user.Superadmin && (!member || role != domain.OrgRoleAdmin) {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "admin-required")
 		return
 	}

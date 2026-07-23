@@ -62,7 +62,13 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no") // disable proxy buffering
 	w.WriteHeader(http.StatusOK)
 
-	ch, unsubscribe := h.hub.Subscribe(claims.OrgIDs())
+	var ch <-chan events.Event
+	var unsubscribe func()
+	if claims.Superadmin {
+		ch, unsubscribe = h.hub.SubscribeAll()
+	} else {
+		ch, unsubscribe = h.hub.Subscribe(claims.OrgIDs())
+	}
 	defer unsubscribe()
 
 	// write returns false if the peer is gone, so the loop exits and

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
@@ -32,7 +33,7 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 		return nil, err
 	}
 
-	tokens, err := repository.GenerateTokens(user.ID, user.Username, orgs)
+	tokens, err := repository.GenerateTokens(user.ID, user.Username, user.IsSuperadmin, orgs)
 	if err != nil {
 		return nil, err
 	}
@@ -42,10 +43,82 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 		RefreshToken: tokens.RefreshToken,
 		ExpiresIn:    time.Now().Add(60 * time.Minute).Unix(),
 		Session: domain.Session{
-			ID:       user.ID,
-			Username: user.Username,
+			ID:         user.ID,
+			Username:   user.Username,
+			Superadmin: user.IsSuperadmin,
 		},
 	}, nil
+}
+
+func toUserResponse(u domain.User) domain.UserResponse {
+	return domain.UserResponse{
+		ID:           u.ID,
+		Username:     u.Username,
+		Email:        u.Email,
+		Name:         u.Name,
+		IsSuperadmin: u.IsSuperadmin,
+		CreatedAt:    u.CreatedAt,
+	}
+}
+
+// CreateUser provisions a new user (superadmin-only). New users start with zero
+// org memberships — they only see what they create or are invited to.
+func (s *AuthService) CreateUser(req domain.CreateUserRequest) (*domain.UserResponse, error) {
+	hashed, err := repository.HashPassword(req.Password)
+	if err != nil {
+		return nil, err
+	}
+	u := domain.User{
+		Username:     req.Username,
+		Password:     hashed,
+		Email:        req.Email,
+		Name:         req.Name,
+		IsSuperadmin: req.IsSuperadmin,
+	}
+	u.ID = uuid.NewString()
+	if err := s.repo.CreateUser(&u); err != nil {
+		return nil, err
+	}
+	r := toUserResponse(u)
+	return &r, nil
+}
+
+func (s *AuthService) ListUsers() ([]domain.UserResponse, error) {
+	users, err := s.repo.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.UserResponse, len(users))
+	for i, u := range users {
+		out[i] = toUserResponse(u)
+	}
+	return out, nil
+}
+
+// UpdateUser patches a user's profile / password / superadmin flag.
+func (s *AuthService) UpdateUser(id string, req domain.UpdateUserRequest) error {
+	fields := map[string]any{}
+	if req.Password != "" {
+		hashed, err := repository.HashPassword(req.Password)
+		if err != nil {
+			return err
+		}
+		fields["password"] = hashed
+	}
+	if req.Email != nil {
+		fields["email"] = *req.Email
+	}
+	if req.Name != nil {
+		fields["name"] = *req.Name
+	}
+	if req.IsSuperadmin != nil {
+		fields["is_superadmin"] = *req.IsSuperadmin
+	}
+	return s.repo.UpdateUser(id, fields)
+}
+
+func (s *AuthService) DeleteUser(id string) error {
+	return s.repo.DeleteUser(id)
 }
 
 // SearchUsers exposes username autocomplete for share dialogs.
@@ -77,7 +150,7 @@ func (s *AuthService) RefreshToken(refreshToken string) (*domain.AuthRefreshResp
 		return nil, err
 	}
 
-	tokens, err := repository.GenerateTokens(user.ID, user.Username, orgs)
+	tokens, err := repository.GenerateTokens(user.ID, user.Username, user.IsSuperadmin, orgs)
 	if err != nil {
 		return nil, err
 	}

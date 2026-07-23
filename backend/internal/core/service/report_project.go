@@ -77,8 +77,14 @@ func (s *ReportProjectService) Create(req domain.CreateReportProjectRequest) (*d
 	}, nil
 }
 
-func (s *ReportProjectService) List(orgIDs []string) ([]domain.ReportProjectResponse, error) {
-	projects, err := s.repo.ListByOrgs(orgIDs)
+func (s *ReportProjectService) List(orgIDs []string, superadmin bool) ([]domain.ReportProjectResponse, error) {
+	var projects []domain.ReportProject
+	var err error
+	if superadmin {
+		projects, err = s.repo.ListAll()
+	} else {
+		projects, err = s.repo.ListByOrgs(orgIDs)
+	}
 	if err != nil {
 		return nil, err
 	}

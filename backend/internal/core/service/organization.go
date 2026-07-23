@@ -32,7 +32,11 @@ func slugify(s string) string {
 
 // requireRole loads the caller's membership and enforces a minimum role.
 // Returns ErrForbidden when the caller lacks membership or sufficient role.
-func (s *OrganizationService) requireRole(orgID, userID string, min domain.OrgRole) (*domain.OrgMembership, error) {
+// A superadmin bypasses the check entirely (synthetic admin membership).
+func (s *OrganizationService) requireRole(orgID, userID string, min domain.OrgRole, superadmin bool) (*domain.OrgMembership, error) {
+	if superadmin {
+		return &domain.OrgMembership{OrgID: orgID, UserID: userID, Role: domain.OrgRoleAdmin}, nil
+	}
 	m, err := s.repo.GetMembership(orgID, userID)
 	if errors.Is(err, repository.ErrMembershipNotFound) {
 		return nil, ErrForbidden
@@ -78,12 +82,15 @@ func (s *OrganizationService) Create(callerID string, req domain.CreateOrganizat
 	return &domain.OrganizationResponse{ID: org.ID, Name: org.Name, Slug: org.Slug, Role: domain.OrgRoleAdmin}, nil
 }
 
-func (s *OrganizationService) List(callerID string) ([]domain.OrganizationResponse, error) {
+func (s *OrganizationService) List(callerID string, superadmin bool) ([]domain.OrganizationResponse, error) {
+	if superadmin {
+		return s.repo.ListAll()
+	}
 	return s.repo.ListForUser(callerID)
 }
 
-func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOrganizationRequest) (*domain.OrganizationResponse, error) {
-	m, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin)
+func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOrganizationRequest, superadmin bool) (*domain.OrganizationResponse, error) {
+	m, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin)
 	if err != nil {
 		return nil, err
 	}
@@ -98,29 +105,29 @@ func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOr
 	return &domain.OrganizationResponse{ID: org.ID, Name: org.Name, Slug: org.Slug, Role: m.Role}, nil
 }
 
-func (s *OrganizationService) Delete(callerID, orgID string) error {
-	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin); err != nil {
+func (s *OrganizationService) Delete(callerID, orgID string, superadmin bool) error {
+	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin); err != nil {
 		return err
 	}
 	return s.repo.Delete(orgID)
 }
 
-func (s *OrganizationService) ListMembers(callerID, orgID string) ([]domain.MemberResponse, error) {
-	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleViewer); err != nil {
+func (s *OrganizationService) ListMembers(callerID, orgID string, superadmin bool) ([]domain.MemberResponse, error) {
+	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleViewer, superadmin); err != nil {
 		return nil, err
 	}
 	return s.repo.ListMembers(orgID)
 }
 
-func (s *OrganizationService) AddMember(callerID, orgID string, req domain.AddMemberRequest) error {
-	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin); err != nil {
+func (s *OrganizationService) AddMember(callerID, orgID string, req domain.AddMemberRequest, superadmin bool) error {
+	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin); err != nil {
 		return err
 	}
 	return s.repo.UpsertMember(orgID, req.UserID, req.Role)
 }
 
-func (s *OrganizationService) UpdateMemberRole(callerID, orgID, targetID string, req domain.UpdateMemberRequest) error {
-	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin); err != nil {
+func (s *OrganizationService) UpdateMemberRole(callerID, orgID, targetID string, req domain.UpdateMemberRequest, superadmin bool) error {
+	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin); err != nil {
 		return err
 	}
 	// Don't let the last admin demote themselves out of admin.
@@ -132,10 +139,10 @@ func (s *OrganizationService) UpdateMemberRole(callerID, orgID, targetID string,
 	return s.repo.UpdateMemberRole(orgID, targetID, req.Role)
 }
 
-func (s *OrganizationService) RemoveMember(callerID, orgID, targetID string) error {
+func (s *OrganizationService) RemoveMember(callerID, orgID, targetID string, superadmin bool) error {
 	// Admins can remove anyone; any member can remove themselves (leave).
 	if callerID != targetID {
-		if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin); err != nil {
+		if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin); err != nil {
 			return err
 		}
 	}

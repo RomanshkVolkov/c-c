@@ -129,17 +129,19 @@ func (r *ReportRepository) ProjectForReport(reportID string) (*domain.ReportProj
 // List returns reports across the caller's orgs with filters + pagination.
 // image_count counts ONLY the gallery (comment_id IS NULL) — portento gotcha
 // fixed at the source.
-func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery) (*domain.ReportListResult, error) {
+func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, superadmin bool) (*domain.ReportListResult, error) {
 	result := &domain.ReportListResult{Items: []domain.ReportListItem{}, Limit: q.Limit, Offset: q.Offset}
-	if len(orgIDs) == 0 {
+	if len(orgIDs) == 0 && !superadmin {
 		return result, nil
 	}
 
 	filtered := func() *gorm.DB {
 		db := r.db.Table("reports r").
 			Joins("JOIN report_projects p ON p.id = r.project_id").
-			Where("r.deleted_at IS NULL").
-			Where("p.org_id IN ?", orgIDs)
+			Where("r.deleted_at IS NULL")
+		if !superadmin { // superadmin sees reports across all orgs
+			db = db.Where("p.org_id IN ?", orgIDs)
+		}
 		if q.ProjectID != "" {
 			db = db.Where("r.project_id = ?", q.ProjectID)
 		}

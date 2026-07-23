@@ -102,6 +102,18 @@ func (r *OrganizationRepository) ListForUser(userID string) ([]domain.Organizati
 	return out, err
 }
 
+// ListAll returns every organization, with the role fixed to admin. Used for
+// superadmins, who manage all orgs regardless of membership.
+func (r *OrganizationRepository) ListAll() ([]domain.OrganizationResponse, error) {
+	var out []domain.OrganizationResponse
+	err := r.db.Raw(`
+		SELECT o.id, o.name, o.slug, 'admin' AS role
+		FROM organizations o
+		ORDER BY o.name ASC
+	`).Scan(&out).Error
+	return out, err
+}
+
 // GetMembership returns the caller's membership in an org, or ErrMembershipNotFound.
 func (r *OrganizationRepository) GetMembership(orgID, userID string) (*domain.OrgMembership, error) {
 	var m domain.OrgMembership

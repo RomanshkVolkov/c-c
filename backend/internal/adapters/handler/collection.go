@@ -57,7 +57,7 @@ func (h *collectionHandler) List(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	items, err := h.svc.ListAccessible(user.UserID)
+	items, err := h.svc.ListAccessible(user.UserID, user.Superadmin)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list collections", err.Error())
 		return
@@ -76,7 +76,18 @@ func (h *collectionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	item, err := h.svc.Create(user.UserID, req)
+	// Creating an org "shared folder" requires write access (admin/member) in
+	// that org — or superadmin. Personal collections (no orgId) are unrestricted.
+	if req.OrgID != nil && *req.OrgID != "" {
+		role, member := user.RoleInOrg(*req.OrgID)
+		if !user.Superadmin && (!member || !role.CanWrite()) {
+			SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-writer-in-org")
+			return
+		}
+	} else {
+		req.OrgID = nil // normalize "" → personal
+	}
+	item, err := h.svc.Create(user.UserID, req, user.Superadmin)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to create collection", err.Error())
 		return
@@ -91,7 +102,7 @@ func (h *collectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	resp, err := h.svc.Get(user.UserID, id)
+	resp, err := h.svc.Get(user.UserID, id, user.Superadmin)
 	if err != nil {
 		if mapDomainError(w, err) {
 			return
@@ -114,7 +125,7 @@ func (h *collectionHandler) Update(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	item, err := h.svc.Update(user.UserID, id, req)
+	item, err := h.svc.Update(user.UserID, id, req, user.Superadmin)
 	if err != nil {
 		if mapDomainError(w, err) {
 			return
@@ -132,7 +143,7 @@ func (h *collectionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if err := h.svc.Delete(user.UserID, id); err != nil {
+	if err := h.svc.Delete(user.UserID, id, user.Superadmin); err != nil {
 		if mapDomainError(w, err) {
 			return
 		}
@@ -154,7 +165,7 @@ func (h *collectionHandler) ReplaceTree(w http.ResponseWriter, r *http.Request) 
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	nodes, err := h.svc.ReplaceTree(user.UserID, id, req)
+	nodes, err := h.svc.ReplaceTree(user.UserID, id, req, user.Superadmin)
 	if err != nil {
 		if mapDomainError(w, err) {
 			return
@@ -172,7 +183,7 @@ func (h *collectionHandler) ListShares(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	shares, err := h.svc.ListShares(user.UserID, id)
+	shares, err := h.svc.ListShares(user.UserID, id, user.Superadmin)
 	if err != nil {
 		if mapDomainError(w, err) {
 			return
@@ -195,7 +206,7 @@ func (h *collectionHandler) Share(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	share, err := h.svc.Share(user.UserID, id, req)
+	share, err := h.svc.Share(user.UserID, id, req, user.Superadmin)
 	if err != nil {
 		if mapDomainError(w, err) {
 			return
@@ -214,7 +225,7 @@ func (h *collectionHandler) Unshare(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	targetID := chi.URLParam(r, "userId")
-	if err := h.svc.Unshare(user.UserID, id, targetID); err != nil {
+	if err := h.svc.Unshare(user.UserID, id, targetID, user.Superadmin); err != nil {
 		if mapDomainError(w, err) {
 			return
 		}
@@ -228,6 +239,10 @@ func (h *collectionHandler) Unshare(w http.ResponseWriter, r *http.Request) {
 
 type UserHandler interface {
 	Search(w http.ResponseWriter, r *http.Request)
+	List(w http.ResponseWriter, r *http.Request)
+	Create(w http.ResponseWriter, r *http.Request)
+	Update(w http.ResponseWriter, r *http.Request)
+	Delete(w http.ResponseWriter, r *http.Request)
 }
 
 type userHandler struct {

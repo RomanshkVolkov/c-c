@@ -8,12 +8,58 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrUsernameTaken = errors.New("username already in use")
+
 type AuthRepository struct {
 	db *gorm.DB
 }
 
 func NewAuthRepository(db *gorm.DB) *AuthRepository {
 	return &AuthRepository{db: db}
+}
+
+// CreateUser inserts a new user, rejecting a duplicate username.
+func (r *AuthRepository) CreateUser(u *domain.User) error {
+	var count int64
+	if err := r.db.Model(&domain.User{}).Where("username = ?", u.Username).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrUsernameTaken
+	}
+	return r.db.Create(u).Error
+}
+
+// ListUsers returns all users ordered by username (superadmin console).
+func (r *AuthRepository) ListUsers() ([]domain.User, error) {
+	var users []domain.User
+	err := r.db.Order("username ASC").Find(&users).Error
+	return users, err
+}
+
+// UpdateUser applies a set of column updates to a user by id.
+func (r *AuthRepository) UpdateUser(id string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	res := r.db.Model(&domain.User{}).Where("id = ?", id).Updates(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
+// DeleteUser removes a user and all of their org memberships in one tx.
+func (r *AuthRepository) DeleteUser(id string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", id).Delete(&domain.OrgMembership{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&domain.User{}, "id = ?", id).Error
+	})
 }
 
 func (r *AuthRepository) FindByUsername(username string) (*domain.User, error) {

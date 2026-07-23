@@ -45,6 +45,28 @@ type OrgMembership struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// InvitationStatus is the lifecycle of an org invitation.
+type InvitationStatus string
+
+const (
+	InvitePending  InvitationStatus = "pending"
+	InviteAccepted InvitationStatus = "accepted"
+	InviteDeclined InvitationStatus = "declined"
+	InviteRevoked  InvitationStatus = "revoked"
+)
+
+// OrgInvitation lets an org admin invite an existing user (by user id) into
+// their org. The invitee accepts in-app (no email/link): acceptance creates the
+// membership. One pending invitation per (org, user) is enforced by the service.
+type OrgInvitation struct {
+	BaseModel
+	OrgID           string           `gorm:"type:varchar(36);index;not null" json:"orgId"`
+	InvitedUserID   string           `gorm:"type:varchar(36);index;not null" json:"invitedUserId"`
+	Role            OrgRole          `gorm:"type:varchar(20);not null"       json:"role"`
+	InvitedByUserID string           `gorm:"type:varchar(36);not null"       json:"invitedByUserId"`
+	Status          InvitationStatus `gorm:"type:varchar(20);not null;default:pending;index" json:"status"`
+}
+
 // ─── JWT claim ────────────────────────────────────────────────────────────────
 
 // OrgMembershipClaim is the compact membership embedded in the access token so
@@ -85,4 +107,22 @@ type MemberResponse struct {
 	UserID   string  `json:"userId"`
 	Username string  `json:"username"`
 	Role     OrgRole `json:"role"`
+}
+
+type CreateInvitationRequest struct {
+	UserID string  `json:"userId" validate:"required"`
+	Role   OrgRole `json:"role"   validate:"required,oneof=admin member viewer"`
+}
+
+// InvitationResponse is the invitee-facing view (org name + inviter username so
+// they know what they're accepting).
+type InvitationResponse struct {
+	ID          string           `json:"id"`
+	OrgID       string           `json:"orgId"`
+	OrgName     string           `json:"orgName"`
+	Role        OrgRole          `json:"role"`
+	Status      InvitationStatus `json:"status"`
+	InvitedBy   string           `json:"invitedBy"`   // inviter username
+	InvitedUser string           `json:"invitedUser"` // invitee username (org-side listing)
+	CreatedAt   time.Time        `json:"createdAt"`
 }

@@ -46,7 +46,7 @@ func (h *reportProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	projects, err := h.svc.List(user.OrgIDs())
+	projects, err := h.svc.List(user.OrgIDs(), user.Superadmin)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list report projects", err.Error())
 		return
@@ -66,7 +66,7 @@ func (h *reportProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role, member := user.RoleInOrg(req.OrgID)
-	if !member || !role.CanWrite() {
+	if !user.Superadmin && (!member || !role.CanWrite()) {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-writer-in-org")
 		return
 	}
@@ -97,6 +97,9 @@ func (h *reportProjectHandler) requireWriter(w http.ResponseWriter, r *http.Requ
 		return nil, false
 	}
 	role, member := user.RoleInOrg(p.OrgID)
+	if user.Superadmin { // platform admin manages any org's projects
+		role, member = domain.OrgRoleAdmin, true
+	}
 	if !member || (minAdmin && role != domain.OrgRoleAdmin) || (!minAdmin && !role.CanWrite()) {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "insufficient-role")
 		return nil, false
