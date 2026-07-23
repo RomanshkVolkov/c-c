@@ -6,17 +6,28 @@ import AppSidebar from "@/components/AppSidebar";
 import UpdateChecker from "@/components/UpdateChecker";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useReportEvents } from "@/hooks/use-report-events";
-import { ensureOrgClaim } from "@/lib/api";
+import { ensureOrgClaim, refreshSession } from "@/lib/api";
+import { useAuthStore } from "@/store/auth.store";
+import { useInvitationsStore } from "@/store/invitations.store";
 
 export default function AppLayout() {
   const fetchOrgs = useOrgsStore((s) => s.fetchOrgs);
+  const fetchInvitations = useInvitationsStore((s) => s.fetchMine);
+  const authed = useAuthStore((s) => !!s.accessToken);
 
   // Load the caller's organizations once the authenticated shell mounts. First
   // upgrade a pre-orgs token (else org-scoped lists come back empty) so the
-  // switcher and lists have data without a manual re-login.
+  // switcher and lists have data without a manual re-login. Also fetch pending
+  // invitations for the sidebar badge. Skipped for guests (no token → 401).
   useEffect(() => {
-    ensureOrgClaim().then(fetchOrgs);
-  }, [fetchOrgs]);
+    if (authed) {
+      ensureOrgClaim().then(() => {
+        refreshSession();
+        fetchOrgs();
+      });
+      fetchInvitations();
+    }
+  }, [authed, fetchOrgs, fetchInvitations]);
 
   // Live report notifications (SSE) for the whole authenticated shell.
   useReportEvents();

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/store/auth.store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,13 @@ type FormData = z.infer<typeof schema>;
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const continueAsGuest = useAuthStore((s) => s.continueAsGuest);
   const [error, setError] = useState<string | null>(null);
+
+  const enterAsGuest = () => {
+    continueAsGuest();
+    navigate("/image-tool");
+  };
 
   const {
     register,
@@ -95,6 +102,23 @@ export default function Login() {
               {isSubmitting ? "Signing in..." : "Sign in"}
             </Button>
           </form>
+
+          <div className="mt-4 flex items-center gap-2">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 w-full"
+            onClick={enterAsGuest}
+          >
+            Continue as guest
+          </Button>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Guest access is limited to the on-device tools (Image Tool, Crypto Tools).
+          </p>
         </CardContent>
       </Card>
     </div>

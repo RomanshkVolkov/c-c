@@ -5,7 +5,11 @@ import {
   ImageDown,
   Send,
   KeyRound,
+  Building2,
+  Mail,
+  Users,
   LogOut,
+  LogIn,
   RefreshCw,
   CheckCircle2,
   Download,
@@ -27,45 +31,68 @@ import {
 import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
 import { useAuth } from "@/hooks/use-auth";
+import { useAuthStore } from "@/store/auth.store";
+import { useInvitationsStore } from "@/store/invitations.store";
 import { useUpdaterStore } from "@/store/updater.store";
 import { cn } from "@/lib/utils";
 
+// guest: reachable on-device (no backend). superadmin: only for platform admins.
 const NAV_ITEMS = [
-  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-  { label: "Reports", path: "/reports", icon: Bug },
-  { label: "Image Tool", path: "/image-tool", icon: ImageDown },
-  { label: "Requests", path: "/requests", icon: Send },
-  { label: "Crypto Tools", path: "/crypto", icon: KeyRound },
+  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false },
+  { label: "Reports", path: "/reports", icon: Bug, guest: false },
+  { label: "Image Tool", path: "/image-tool", icon: ImageDown, guest: true },
+  { label: "Requests", path: "/requests", icon: Send, guest: false },
+  { label: "Crypto Tools", path: "/crypto", icon: KeyRound, guest: true },
+  { label: "Organization", path: "/organization", icon: Building2, guest: false },
+  { label: "Invitations", path: "/invitations", icon: Mail, guest: false },
+  { label: "Users", path: "/users", icon: Users, guest: false, superadmin: true },
 ];
 
 export default function AppSidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { logout } = useAuth();
+  const authed = useAuthStore((s) => !!s.accessToken);
+  const superadmin = useAuthStore((s) => !!s.session?.superadmin);
+  const pendingInvites = useInvitationsStore((s) => s.pending.length);
+  const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
+    (i) => !i.superadmin || superadmin,
+  );
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
-      <SidebarHeader>
-        <OrgSwitcher />
-      </SidebarHeader>
+      {authed && (
+        <SidebarHeader>
+          <OrgSwitcher />
+        </SidebarHeader>
+      )}
 
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map((item) => (
-                <SidebarMenuItem key={item.path}>
-                  <SidebarMenuButton
-                    isActive={pathname.startsWith(item.path)}
-                    tooltip={item.label}
-                    onClick={() => navigate(item.path)}
-                  >
-                    <item.icon className="size-4" />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {items.map((item) => {
+                const badge =
+                  item.path === "/invitations" && pendingInvites > 0 ? pendingInvites : null;
+                return (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      isActive={pathname.startsWith(item.path)}
+                      tooltip={badge ? `${item.label} (${badge})` : item.label}
+                      onClick={() => navigate(item.path)}
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                      {badge && (
+                        <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                          {badge}
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -77,16 +104,23 @@ export default function AppSidebar() {
             <UpdateCheckButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Logout"
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
-            >
-              <LogOut className="size-4" />
-              <span>Logout</span>
-            </SidebarMenuButton>
+            {authed ? (
+              <SidebarMenuButton
+                tooltip="Logout"
+                onClick={() => {
+                  logout();
+                  navigate("/login");
+                }}
+              >
+                <LogOut className="size-4" />
+                <span>Logout</span>
+              </SidebarMenuButton>
+            ) : (
+              <SidebarMenuButton tooltip="Sign in" onClick={() => navigate("/login")}>
+                <LogIn className="size-4" />
+                <span>Sign in</span>
+              </SidebarMenuButton>
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

@@ -8,8 +8,21 @@ import StackSecrets from "@/pages/StackSecrets";
 import ImageTool from "@/pages/ImageTool";
 import RequestClient from "@/pages/RequestClient";
 import CryptoTools from "@/pages/CryptoTools";
+import Users from "@/pages/Users";
+import OrganizationSettings from "@/pages/OrganizationSettings";
+import Invitations from "@/pages/Invitations";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
+import { useAuthStore } from "@/store/auth.store";
+
+// Sends unknown paths to the right landing: the board for signed-in users, the
+// on-device tools for returning guests, otherwise the login screen.
+function RootRedirect() {
+  const { isAuthenticated, isGuest } = useAuthStore();
+  if (isAuthenticated()) return <Navigate to="/dashboard" replace />;
+  if (isGuest()) return <Navigate to="/image-tool" replace />;
+  return <Navigate to="/login" replace />;
+}
 
 export default function App() {
   return (
@@ -28,11 +41,23 @@ export default function App() {
           <Route path="/servers/:id" element={<ServerManage />} />
           <Route path="/servers/:id/stats" element={<ServerStats />} />
           <Route path="/servers/:id/secrets" element={<StackSecrets />} />
-          <Route path="/image-tool" element={<ImageTool />} />
           <Route path="/requests" element={<RequestClient />} />
+          <Route path="/organization" element={<OrganizationSettings />} />
+          <Route path="/invitations" element={<Invitations />} />
+          <Route path="/users" element={<Users />} />
+        </Route>
+        {/* On-device tools — reachable as a guest (no backend/sign-in). */}
+        <Route
+          element={
+            <ProtectedRoute allowGuest>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/image-tool" element={<ImageTool />} />
           <Route path="/crypto" element={<CryptoTools />} />
         </Route>
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<RootRedirect />} />
       </Routes>
     </BrowserRouter>
   );

@@ -144,6 +144,27 @@ export async function ensureOrgClaim(): Promise<void> {
   await tryRefresh();
 }
 
+/**
+ * Refresh the persisted session from /auth/me so late-added fields (e.g. the
+ * `superadmin` flag) populate for sessions minted before they existed — without
+ * forcing a re-login. Best-effort; silent on failure.
+ */
+export async function refreshSession(): Promise<void> {
+  const token = useAuthStore.getState().accessToken;
+  if (!token) return;
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json();
+    if (res.ok && json?.success && json?.data) {
+      useAuthStore.getState().setSession(json.data);
+    }
+  } catch {
+    // best-effort
+  }
+}
+
 export const api = {
   get: <T>(path: string, auth = true) =>
     request<T>(path, { method: "GET", auth }),
