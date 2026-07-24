@@ -74,7 +74,7 @@ export default function ImageTool() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [format, setFormat] = useState("webp");
-  const [quality, setQuality] = useState(85);
+  const [quality, setQuality] = useState(90);
   const [maxWidth, setMaxWidth] = useState<string>("");
   const [results, setResults] = useState<CompressedFile[]>([]);
   const [processing, setProcessing] = useState(false);
