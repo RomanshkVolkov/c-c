@@ -11,6 +11,7 @@ import CryptoTools from "@/pages/CryptoTools";
 import Users from "@/pages/Users";
 import OrganizationSettings from "@/pages/OrganizationSettings";
 import Invitations from "@/pages/Invitations";
+import Diagnostics from "@/pages/Diagnostics";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import { useAuthStore } from "@/store/auth.store";
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/requests" element={<RequestClient />} />
           <Route path="/organization" element={<OrganizationSettings />} />
           <Route path="/invitations" element={<Invitations />} />
+          <Route path="/diagnostics" element={<Diagnostics />} />
           <Route path="/users" element={<Users />} />
         </Route>
         {/* On-device tools — reachable as a guest (no backend/sign-in). */}
