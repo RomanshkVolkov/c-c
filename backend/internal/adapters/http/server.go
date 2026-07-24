@@ -35,5 +35,12 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Patch("/{id}/integrations/{iid}", intgH.Update)
 		r.Delete("/{id}/integrations/{iid}", intgH.Delete)
 		r.Post("/{id}/integrations/{iid}/reveal", intgH.Reveal)
+		r.Post("/{id}/integrations/{iid}/launch", intgH.Launch)
 	})
+
+	// Integration proxy — authenticated by the launch token / its session cookie,
+	// NOT the JWT (a browser can't attach Authorization to navigations or assets),
+	// so it lives outside the JWT group. Same pattern as the report image proxy.
+	r.HandleFunc("/api/v1/servers/{id}/integrations/{iid}/proxy", intgH.Proxy)
+	r.HandleFunc("/api/v1/servers/{id}/integrations/{iid}/proxy/*", intgH.Proxy)
 }

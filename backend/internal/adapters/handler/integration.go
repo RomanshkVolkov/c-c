@@ -16,6 +16,8 @@ type IntegrationHandler interface {
 	Update(w http.ResponseWriter, r *http.Request)
 	Delete(w http.ResponseWriter, r *http.Request)
 	Reveal(w http.ResponseWriter, r *http.Request)
+	Launch(w http.ResponseWriter, r *http.Request)
+	Proxy(w http.ResponseWriter, r *http.Request)
 }
 
 type integrationHandler struct {

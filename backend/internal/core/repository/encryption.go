@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -138,6 +140,30 @@ func IngestKeyMatches(plain string, hash []byte) bool {
 	return subtle.ConstantTimeCompare(HashIngestKey(plain), hash) == 1
 }
 
+// ─── Personal access tokens (read-only API/MCP access) ────────────────────────
+
+// PATPrefix marks a token as a personal access token so the auth middleware can
+// route it to the PAT path instead of JWT validation.
+const PATPrefix = "cac_pat_"
+
+// HashPAT returns the HMAC-SHA256 of a plaintext token. Only the hash is stored,
+// so a DB leak never exposes usable tokens.
+func HashPAT(plain string) []byte {
+	mac := hmac.New(sha256.New, ingestSecret())
+	mac.Write([]byte("pat:" + plain))
+	return mac.Sum(nil)
+}
+
+// GeneratePAT mints a random `cac_pat_…` token and returns (plaintext, hash).
+func GeneratePAT() (string, []byte, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+	plain := PATPrefix + base64.RawURLEncoding.EncodeToString(raw)
+	return plain, HashPAT(plain), nil
+}
+
 // ─── Signed image URLs ────────────────────────────────────────────────────────
 //
 // The Tauri webview can't attach an Authorization header to <img> tags, so the
@@ -162,6 +188,46 @@ func VerifyImageSig(reportID, imageID string, expUnix int64, sig string) bool {
 	}
 	want := SignImage(reportID, imageID, expUnix)
 	return subtle.ConstantTimeCompare([]byte(want), []byte(sig)) == 1
+}
+
+// ─── Integration proxy tokens ─────────────────────────────────────────────────
+//
+// The hub proxies a tool (e.g. Grafana) on behalf of the signed-in cac user. A
+// browser/webview can't attach the JWT to navigations and asset requests, so the
+// launcher mints a short-lived signed token that the proxy exchanges for a
+// session cookie. Binds integration + username + expiry.
+
+// SignProxyToken returns "<b64user>.<exp>.<hmac>". The username travels inside
+// the token (the proxy learns who the caller is from it) and is covered by the
+// signature, so it can't be swapped.
+func SignProxyToken(integrationID, username string, expUnix int64) string {
+	u := base64.RawURLEncoding.EncodeToString([]byte(username))
+	mac := hmac.New(sha256.New, imageURLSecret())
+	fmt.Fprintf(mac, "proxy:%s:%s:%d", integrationID, username, expUnix)
+	return fmt.Sprintf("%s.%d.%s", u, expUnix, hex.EncodeToString(mac.Sum(nil)))
+}
+
+// ParseProxyToken validates a token for integrationID and returns the username
+// it carries. ok is false when malformed, expired or tampered with.
+func ParseProxyToken(integrationID, token string) (string, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return "", false
+	}
+	expUnix, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || time.Now().Unix() > expUnix {
+		return "", false
+	}
+	username := string(raw)
+	want := SignProxyToken(integrationID, username, expUnix)
+	if subtle.ConstantTimeCompare([]byte(want), []byte(token)) != 1 {
+		return "", false
+	}
+	return username, true
 }
 
 // ─── Telemetry encryption (AES-GCM with KEK) ──────────────────────────────────
