@@ -297,10 +297,17 @@ fn summarize_timeline(data: &Value) -> Value {
                 );
                 *net.entry(key).or_insert(0) += 1;
             } else {
+                // Lifecycle crumbs name the event in `name`; web-style ones use
+                // `eventName`. Key on whichever is present so the rollup is legible.
+                let label = c
+                    .get("eventName")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| c.get("name").and_then(|v| v.as_str()))
+                    .unwrap_or("-");
                 let key = format!(
                     "{}/{}",
                     c.get("category").and_then(|v| v.as_str()).unwrap_or(ctype),
-                    c.get("eventName").and_then(|v| v.as_str()).unwrap_or("-")
+                    label
                 );
                 *other.entry(key).or_insert(0) += 1;
             }

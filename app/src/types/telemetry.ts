@@ -17,6 +17,8 @@ export interface TelemetryBreadcrumb {
   type?: string;
   category?: string;
   eventName?: string;
+  /** lifecycle crumbs carry the event in `name` */
+  name?: string;
   level?: string;
   message?: string;
   method?: string;

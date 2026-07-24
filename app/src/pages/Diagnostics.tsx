@@ -135,6 +135,13 @@ export default function Diagnostics() {
 
 function BatchCard({ batch }: { batch: TelemetryEventView }) {
   const [showDevice, setShowDevice] = useState(false);
+  const [showBeats, setShowBeats] = useState(false);
+
+  // Heartbeats are a continuous liveness signal (a gap in them means tracking
+  // died). Useful in aggregate, noise in a timeline — collapse them by default.
+  const all = batch.breadcrumbs ?? [];
+  const beats = all.filter((c) => c.type === "heartbeat").length;
+  const crumbs = showBeats ? all : all.filter((c) => c.type !== "heartbeat");
   return (
     <div className="rounded-lg border">
       <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs">
@@ -171,8 +178,16 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
         </div>
       )}
 
+      {beats > 0 && (
+        <button
+          className="w-full border-b px-3 py-1 text-left text-[11px] text-muted-foreground hover:bg-accent/50"
+          onClick={() => setShowBeats((v) => !v)}
+        >
+          {showBeats ? "Hide" : "Show"} {beats} heartbeat{beats === 1 ? "" : "s"}
+        </button>
+      )}
       <ul className="divide-y">
-        {(batch.breadcrumbs ?? []).map((c, i) => (
+        {crumbs.map((c, i) => (
           <CrumbRow key={i} crumb={c} />
         ))}
       </ul>
@@ -216,7 +231,7 @@ function CrumbRow({ crumb }: { crumb: TelemetryBreadcrumb }) {
             </span>
           ) : (
             <span className={cn(isError && "text-destructive")}>
-              {crumb.message || crumb.eventName || crumb.type || "event"}
+              {crumb.message || crumb.name || crumb.eventName || crumb.type || "event"}
             </span>
           )}
           {(crumb.eventName || crumb.category) && (
