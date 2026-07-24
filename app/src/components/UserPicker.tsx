@@ -74,6 +74,9 @@ export default function UserPicker({
             setQuery(e.target.value);
           }}
           onFocus={() => results.length > 0 && !selected && setOpen(true)}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
         />
         {loading ? (
           <Loader2 className="absolute right-2 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />

@@ -68,6 +68,9 @@ export default function Login() {
                 id="username"
                 placeholder="admin"
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 {...register("username")}
               />
               {errors.username && (

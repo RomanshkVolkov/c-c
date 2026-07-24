@@ -206,7 +206,15 @@ function CreateUserDialog({
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
             <Label>Username</Label>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="jdoe" autoFocus />
+            <Input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="jdoe"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Password</Label>
@@ -219,7 +227,15 @@ function CreateUserDialog({
             </div>
             <div className="space-y-1.5">
               <Label>Email (optional)</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@x.com" />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="jane@x.com"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
@@ -300,7 +316,14 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
             </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
