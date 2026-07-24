@@ -17,6 +17,10 @@ type User struct {
 	// IsSuperadmin: platform-level admin that sees/manages ALL organizations
 	// (bypasses per-org membership scoping).
 	IsSuperadmin bool `gorm:"default:false" json:"isSuperadmin"`
+	// MustChangePassword forces a password change on next login — set when a
+	// superadmin provisions or resets the password (so admins don't retain
+	// knowledge of a working password), cleared when the user sets their own.
+	MustChangePassword bool `gorm:"default:false" json:"mustChangePassword"`
 }
 
 // ─── JWT ─────────────────────────────────────────────────────────────────────
@@ -74,9 +78,15 @@ type AuthResponse struct {
 }
 
 type Session struct {
-	ID         string `json:"id"`
-	Username   string `json:"username"`
-	Superadmin bool   `json:"superadmin"`
+	ID                 string `json:"id"`
+	Username           string `json:"username"`
+	Superadmin         bool   `json:"superadmin"`
+	MustChangePassword bool   `json:"mustChangePassword"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword" validate:"required"`
+	NewPassword     string `json:"newPassword"     validate:"required,min=8"`
 }
 
 type AuthRefreshResponse struct {

@@ -18,5 +18,6 @@ func InitAuthRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Post("/login", h.Login)
 		r.With(middleware.RefreshMiddleware).Post("/refresh", h.RefreshToken)
 		r.With(middleware.AuthMiddleware).Get("/me", h.Me)
+		r.With(middleware.AuthMiddleware).Post("/change-password", h.ChangePassword)
 	})
 }

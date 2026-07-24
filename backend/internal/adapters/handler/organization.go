@@ -43,6 +43,8 @@ func mapOrgError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusConflict, "Slug already in use", err.Error())
 	case errors.Is(err, repository.ErrOrgHasServers):
 		SendErrorResponse(w, http.StatusConflict, "Organization still has servers", err.Error())
+	case errors.Is(err, repository.ErrOrgNotEmpty):
+		SendErrorResponse(w, http.StatusConflict, "Organization still has report-projects or collections", err.Error())
 	case errors.Is(err, repository.ErrMembershipNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "Membership not found", err.Error())
 	case errors.Is(err, repository.ErrUserNotFound):

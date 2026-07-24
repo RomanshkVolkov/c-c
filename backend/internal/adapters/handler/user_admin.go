@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
+	"github.com/guz-studio/cac/backend/internal/core/service"
 )
 
 // requireSuperadmin gates the platform user-management endpoints. Returns the
@@ -67,6 +68,10 @@ func (h *userHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.authService.UpdateUser(chi.URLParam(r, "id"), req); err != nil {
+		if errors.Is(err, service.ErrLastSuperadmin) {
+			SendErrorResponse(w, http.StatusConflict, "Cannot remove the last superadmin", err.Error())
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update user", err.Error())
 		return
 	}
@@ -84,6 +89,10 @@ func (h *userHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.authService.DeleteUser(targetID); err != nil {
+		if errors.Is(err, service.ErrLastSuperadmin) || errors.Is(err, service.ErrLastOrgAdmin) {
+			SendErrorResponse(w, http.StatusConflict, "Cannot delete user", err.Error())
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to delete user", err.Error())
 		return
 	}

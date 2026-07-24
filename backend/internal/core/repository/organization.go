@@ -11,6 +11,7 @@ var (
 	ErrOrgNotFound        = errors.New("organization not found")
 	ErrOrgSlugTaken       = errors.New("organization slug already in use")
 	ErrOrgHasServers      = errors.New("organization still has servers")
+	ErrOrgNotEmpty        = errors.New("organization still has report-projects or collections")
 	ErrMembershipNotFound = errors.New("membership not found")
 	ErrUserNotFound       = errors.New("user not found")
 )
@@ -71,7 +72,8 @@ func (r *OrganizationRepository) Update(org *domain.Organization) error {
 }
 
 // Delete removes the organization and its memberships. It refuses to delete an
-// org that still owns servers so those never become orphaned/inaccessible.
+// org that still owns servers, report-projects or collections so none of them
+// become orphaned/inaccessible — the admin must reassign or delete those first.
 func (r *OrganizationRepository) Delete(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var servers int64
@@ -80,6 +82,17 @@ func (r *OrganizationRepository) Delete(id string) error {
 		}
 		if servers > 0 {
 			return ErrOrgHasServers
+		}
+		var projects int64
+		if err := tx.Model(&domain.ReportProject{}).Where("org_id = ?", id).Count(&projects).Error; err != nil {
+			return err
+		}
+		var collections int64
+		if err := tx.Model(&domain.Collection{}).Where("org_id = ?", id).Count(&collections).Error; err != nil {
+			return err
+		}
+		if projects > 0 || collections > 0 {
+			return ErrOrgNotEmpty
 		}
 		if err := tx.Where("org_id = ?", id).Delete(&domain.OrgMembership{}).Error; err != nil {
 			return err

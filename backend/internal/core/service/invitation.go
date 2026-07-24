@@ -1,10 +1,15 @@
 package service
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
+
+// invitationTTL is how long a pending invitation stays acceptable.
+const invitationTTL = 14 * 24 * time.Hour
 
 type InvitationService struct {
 	repo *repository.InvitationRepository
@@ -23,6 +28,7 @@ func (s *InvitationService) Create(orgID, invitedUserID, inviterID string, role 
 		Role:            role,
 		InvitedByUserID: inviterID,
 		Status:          domain.InvitePending,
+		ExpiresAt:       time.Now().Add(invitationTTL),
 	}
 	inv.ID = uuid.NewString()
 	return s.repo.Create(inv)
@@ -45,6 +51,9 @@ func (s *InvitationService) Accept(invitationID, callerID string) error {
 	}
 	if inv.InvitedUserID != callerID {
 		return ErrForbidden
+	}
+	if !inv.ExpiresAt.IsZero() && inv.ExpiresAt.Before(time.Now()) {
+		return repository.ErrInvitationNotFound // expired — treat as gone
 	}
 	return s.repo.Accept(inv)
 }

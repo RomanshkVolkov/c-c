@@ -52,6 +52,30 @@ func (r *AuthRepository) UpdateUser(id string, fields map[string]any) error {
 	return nil
 }
 
+// CountSuperadmins returns how many platform superadmins exist (used to block
+// removing the last one).
+func (r *AuthRepository) CountSuperadmins() (int64, error) {
+	var n int64
+	err := r.db.Model(&domain.User{}).Where("is_superadmin = ?", true).Count(&n).Error
+	return n, err
+}
+
+// SoleAdminOrgCount returns how many organizations the user is the ONLY admin
+// of — deleting them would leave those orgs adminless.
+func (r *AuthRepository) SoleAdminOrgCount(userID string) (int64, error) {
+	var n int64
+	err := r.db.Raw(`
+		SELECT COUNT(*) FROM (
+			SELECT m.org_id
+			FROM org_memberships m
+			WHERE m.role = 'admin'
+			GROUP BY m.org_id
+			HAVING COUNT(*) = 1 AND MAX(m.user_id) = ?
+		) sole
+	`, userID).Scan(&n).Error
+	return n, err
+}
+
 // DeleteUser removes a user and all of their org memberships in one tx.
 func (r *AuthRepository) DeleteUser(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {

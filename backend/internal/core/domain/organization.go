@@ -65,6 +65,7 @@ type OrgInvitation struct {
 	Role            OrgRole          `gorm:"type:varchar(20);not null"       json:"role"`
 	InvitedByUserID string           `gorm:"type:varchar(36);not null"       json:"invitedByUserId"`
 	Status          InvitationStatus `gorm:"type:varchar(20);not null;default:pending;index" json:"status"`
+	ExpiresAt       time.Time        `gorm:"index" json:"expiresAt"`
 }
 
 // ─── JWT claim ────────────────────────────────────────────────────────────────

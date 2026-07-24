@@ -74,6 +74,7 @@ func (r *InvitationRepository) ListForUser(userID string) ([]domain.InvitationRe
 		JOIN organizations o ON o.id = i.org_id
 		LEFT JOIN users inv ON inv.id = i.invited_by_user_id
 		WHERE i.invited_user_id = ? AND i.status = ?
+		  AND (i.expires_at IS NULL OR i.expires_at > NOW())
 		ORDER BY i.created_at DESC
 	`, userID, domain.InvitePending).Scan(&out).Error
 	return out, err
@@ -91,6 +92,7 @@ func (r *InvitationRepository) ListForOrg(orgID string) ([]domain.InvitationResp
 		LEFT JOIN users inv ON inv.id = i.invited_by_user_id
 		LEFT JOIN users u ON u.id = i.invited_user_id
 		WHERE i.org_id = ? AND i.status = ?
+		  AND (i.expires_at IS NULL OR i.expires_at > NOW())
 		ORDER BY i.created_at DESC
 	`, orgID, domain.InvitePending).Scan(&out).Error
 	return out, err
