@@ -9,11 +9,13 @@ import { useReportEvents } from "@/hooks/use-report-events";
 import { ensureOrgClaim, refreshSession } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
+import { ForcedChangePassword } from "@/components/ChangePassword";
 
 export default function AppLayout() {
   const fetchOrgs = useOrgsStore((s) => s.fetchOrgs);
   const fetchInvitations = useInvitationsStore((s) => s.fetchMine);
   const authed = useAuthStore((s) => !!s.accessToken);
+  const mustChangePassword = useAuthStore((s) => !!s.session?.mustChangePassword);
 
   // Load the caller's organizations once the authenticated shell mounts. First
   // upgrade a pre-orgs token (else org-scoped lists come back empty) so the
@@ -31,6 +33,11 @@ export default function AppLayout() {
 
   // Live report notifications (SSE) for the whole authenticated shell.
   useReportEvents();
+
+  // Block the whole shell until an admin-provisioned/reset password is changed.
+  if (authed && mustChangePassword) {
+    return <ForcedChangePassword />;
+  }
 
   return (
     <SidebarProvider>

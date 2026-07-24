@@ -2,6 +2,7 @@ export interface Session {
   id: string;
   username: string;
   superadmin?: boolean;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthResponse {

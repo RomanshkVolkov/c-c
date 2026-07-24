@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/sidebar";
 import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
+import { ChangePasswordDialog } from "@/components/ChangePassword";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
@@ -57,6 +59,7 @@ export default function AppSidebar() {
   const authed = useAuthStore((s) => !!s.accessToken);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const pendingInvites = useInvitationsStore((s) => s.pending.length);
+  const [pwOpen, setPwOpen] = useState(false);
   const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
     (i) => !i.superadmin || superadmin,
   );
@@ -105,6 +108,14 @@ export default function AppSidebar() {
           <SidebarMenuItem>
             <UpdateCheckButton />
           </SidebarMenuItem>
+          {authed && (
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip="Change password" onClick={() => setPwOpen(true)}>
+                <KeyRound className="size-4" />
+                <span>Change password</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             {authed ? (
               <SidebarMenuButton
@@ -128,6 +139,7 @@ export default function AppSidebar() {
       </SidebarFooter>
 
       <SidebarRail />
+      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </Sidebar>
   );
 }
