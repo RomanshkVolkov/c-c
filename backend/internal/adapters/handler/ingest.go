@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -45,7 +46,22 @@ func (l *ingestLimiter) allow(key string, perHour int) bool {
 		return false
 	}
 	l.hits[key] = append(kept, time.Now())
+	l.sweepLocked(cutoff)
 	return true
+}
+
+// sweepLocked drops keys with no hits left in the window. The events limiter is
+// keyed per device, so without this the map would grow with every device that
+// ever reported. Only runs once the map is big enough to be worth it.
+func (l *ingestLimiter) sweepLocked(cutoff time.Time) {
+	if len(l.hits) < 512 {
+		return
+	}
+	for k, hits := range l.hits {
+		if len(hits) == 0 || hits[len(hits)-1].Before(cutoff) {
+			delete(l.hits, k)
+		}
+	}
 }
 
 // ─── handler ──────────────────────────────────────────────────────────────────
@@ -59,15 +75,39 @@ type IngestHandler interface {
 	UnreadCounts(w http.ResponseWriter, r *http.Request)
 }
 
+// Passive telemetry is a different traffic shape from manual bug reports: a
+// fleet of devices heartbeats continuously, so it gets its own limiter keyed
+// per device (not per project) with a much higher ceiling, and a hard body cap.
+const (
+	maxEventBatchBytes            = 1 << 20 // 1 MiB
+	defaultEventsPerHourPerDevice = 120
+)
+
+func eventsRateLimit() int {
+	if v := repository.GetEnv("EVENTS_RATE_LIMIT_PER_DEVICE", ""); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultEventsPerHourPerDevice
+}
+
 type ingestHandler struct {
-	projects  *repository.ReportProjectRepository
-	svc       *service.ReportService
-	telemetry *service.TelemetryService
-	limiter   *ingestLimiter
+	projects     *repository.ReportProjectRepository
+	svc          *service.ReportService
+	telemetry    *service.TelemetryService
+	limiter      *ingestLimiter
+	eventLimiter *ingestLimiter
 }
 
 func NewIngestHandler(projects *repository.ReportProjectRepository, svc *service.ReportService, telemetry *service.TelemetryService) IngestHandler {
-	return &ingestHandler{projects: projects, svc: svc, telemetry: telemetry, limiter: newIngestLimiter()}
+	return &ingestHandler{
+		projects:     projects,
+		svc:          svc,
+		telemetry:    telemetry,
+		limiter:      newIngestLimiter(),
+		eventLimiter: newIngestLimiter(),
+	}
 }
 
 // Preflight answers CORS preflight. The project isn't known yet (no key on a
@@ -172,14 +212,21 @@ func (h *ingestHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.limiter.allow(project.ID, project.RateLimitPerHour) {
-		SendErrorResponse(w, http.StatusTooManyRequests, "Rate limit exceeded", "rate-limited")
-		return
-	}
+	// Cap the body before reading it: a batch is bounded, and this is an
+	// unauthenticated-by-JWT endpoint.
+	r.Body = http.MaxBytesReader(w, r.Body, maxEventBatchBytes)
 
 	batch, err := ValidateRequest[domain.IngestEventBatch](r)
 	if err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+
+	// Rate limit per DEVICE, not per project: every device in a fleet
+	// heartbeats on its own schedule, so a project-wide bucket would throttle
+	// the whole fleet at once.
+	if !h.eventLimiter.allow(project.ID+":"+batch.DeviceID, eventsRateLimit()) {
+		SendErrorResponse(w, http.StatusTooManyRequests, "Rate limit exceeded", "rate-limited")
 		return
 	}
 

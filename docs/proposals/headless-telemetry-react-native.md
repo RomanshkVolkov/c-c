@@ -1,8 +1,9 @@
 # Proposal — Integración headless de telemetría para React Native (Expo)
 
-**Status:** Borrador (2026-07-22). Diseño para conectar apps móviles RN/Expo al
-ingest de **cac** como fuente de telemetría de depuración (peticiones, respuestas
-y errores), sin UI. Primer consumidor: `tds-geolocation` (GEOCHECK).
+**Status:** En ejecución (2026-07-22). **El backend YA está implementado** en cac
+(endpoint `POST /ingest/v1/events` + almacenamiento cifrado + vistas admin
+`devices`/`timeline` + SSE). **Falta solo el lado app** (colector RN + envío). Este
+doc define esa parte. Primer consumidor: `tds-geolocation` (GEOCHECK).
 
 **Contexto:** el widget web (`@g-studio/report-widget`) ya captura breadcrumbs
 (errores, `console.error/warn`, requests fallidos, navegación) y los adjunta a un
@@ -101,19 +102,49 @@ de dispositivo + transporte al ingest de cac). Cambio acotado, no invasivo.
 Garantía intacta: el wrapper de red es **passthrough puro en try/catch** — nunca
 bloquea, demora ni muta una petición (no puede tumbar un fichaje).
 
-## Transporte al ingest de cac
+## Transporte al ingest de cac — **el backend YA existe**
 
-Hoy el backend solo ingesta telemetría **adjunta a un reporte**
-(`POST /ingest/v1/reports`, campo `telemetry`, guardado como `TelemetryJSON`,
-rate-limited por `X-Ingest-Key`). Para telemetría pasiva proponemos:
+El endpoint de telemetría pasiva **ya está implementado y montado** en cac
+(no es TODO): `POST /ingest/v1/events` (`handler/ingest.go` `CreateEvent`,
+ruta en `http/report.go`). Auth por `X-Ingest-Key` + rate-limit, **sin CORS**
+(clientes nativos), re-redactado, cifrado en reposo (AES-GCM) y con TTL, guardado
+**separado de los reportes**. También existen las vistas de consola:
+`GET /api/v1/telemetry/devices` (resumen por dispositivo con `errorCount`),
+`GET /api/v1/telemetry/timeline?deviceId=&sessionId=` (timeline desencriptado).
+Nota: los events **no** pasan por el hub SSE (`GET /api/v1/events` es el stream de
+*reportes*); se dejaron fuera a propósito por volumen.
 
-- **Opción A (stopgap, sin tocar backend):** enviar un "reporte" sintético de baja
-  prioridad por lote de breadcrumbs. Funciona ya, pero ensucia la bandeja de
-  reportes. Solo para validar el pipe.
-- **Opción B (recomendada, backend TODO):** endpoint dedicado
-  **`POST /ingest/v1/events`** que acepte lotes de breadcrumbs + contexto de
-  dispositivo, mismo `X-Ingest-Key` write-only, mismo rate-limit/cifrado/TTL, y los
-  persista separados de los reportes (para triage/diagnóstico, no bandeja).
+### Límites del endpoint (a respetar desde la app)
+- **Rate limit por dispositivo** (no por proyecto): `EVENTS_RATE_LIMIT_PER_DEVICE`,
+  default **120 req/hora/device**. El limiter de reportes (20/h por proyecto) NO
+  aplica aquí — son perfiles de tráfico distintos.
+- **Body máximo por batch: 1 MiB.**
+- Política de envío en la app: flush periódico cada **5 min**, o al llegar a 20
+  crumbs, o ante un error (con cooldown de 20 s para no tormentear). Reintento
+  solo en 5xx/429/red; en 4xx se descarta el batch.
+
+### Contrato real (`IngestEventBatch`)
+```jsonc
+POST /ingest/v1/events
+Header: X-Ingest-Key: pk_…
+{
+  "deviceId":  "…",          // required (index)
+  "sessionId": "…",
+  "platform":  "android|ios",
+  "appVersion":"1.0.0",
+  "device":    { … },        // contexto de dispositivo (se cifra)
+  "breadcrumbs": [ … ]       // se cifran; ver tipos abajo
+}
+```
+
+**Clave para que los errores cuenten como error en bk** (`Summarize()` del backend):
+- Red → `type: "network" | "request" | "fetch" | "xhr"` con `status`; **`status === 0`
+  o `>= 400` cuenta como error**.
+- Error → `type: "error" | "unhandledrejection" | "exception"`.
+
+Si el breadcrumb no usa esos `type`, el backend lo guarda pero **no lo cuenta como
+error** → ese es justo el motivo por el que "solo salen rechazados". El emisor RN
+debe respetar estos `type`.
 
 Envío desde la app: buffer en memoria → flush por tamaño/tiempo → si falla, cola
 persistente y reintento (mismo patrón que el outbox de ubicaciones). Flush
@@ -136,14 +167,57 @@ oportuno en foreground y ante error.
 1. **Contexto de dispositivo**: helper `collectDeviceContext()` sobre los módulos
    expo ya instalados. (App-only, rápido.)
 2. **Sink cac**: enganchar `apiLogger` → breadcrumbs de red enriquecidos
-   (req+resp, scrubbed) + `ErrorUtils`/rejections/console. (App-only.)
-3. **Transporte + buffer/cola** con `X-Ingest-Key`, flush y reintento offline.
-4. **Backend `POST /ingest/v1/events`** (Opción B) + persistencia/TTL/cifrado.
-5. **Consola de triage** en la app Tauri: ver por dispositivo/turno la secuencia
-   de req/resp/errores. (Reusa infra de reportes.)
+   (req+resp, scrubbed, `type:"network"`+`status`) + `ErrorUtils`/rejections/console
+   (`type:"error"/"exception"`). (App-only.)
+3. **Emitir errores del background task**: los caminos de fallo de
+   `location.task.ts` (fallback offline, `missing_upload_config`, timeout, HTTP
+   error, descartado) hoy solo hacen `addLog` local → deben producir breadcrumb de
+   error. **Este es el hueco por el que "solo salen rechazados".** (App-only.)
+4. **Transporte + buffer/cola** → `POST /ingest/v1/events` con `X-Ingest-Key`,
+   flush y reintento offline (patrón del outbox de ubicaciones).
+5. ✅ **Backend** (`/ingest/v1/events` + telemetry storage + admin + SSE) — **ya
+   implementado en cac**. Solo falta apuntar la app.
+6. **Consola de triage**: `devices`/`timeline` ya exponen los datos; conectar la
+   vista en la app Tauri (o usar el SSE) para ver req/resp/errores por dispositivo.
 
-Fases 1-3 desbloquean captura + envío sin tocar backend (vía Opción A);
-Fase 4 lo vuelve limpio y escalable.
+Fases 1-4 son app-only y desbloquean ver los errores en bk de inmediato (el backend
+ya recibe y clasifica).
+
+## Diagnóstico de cortes de tracking (señales + vista de huecos)
+
+Objetivo concreto: *por qué se corta el registro de puntos, dónde y en qué device*.
+
+### Señales que la app ya emite a cac (implementadas en `tds-geolocation`)
+- **Ubicación en cada breadcrump de red** (`lat`/`lon`) + `lastKnownLocation` en el device
+  context → *dónde* ocurrió el corte.
+- **Heartbeat** cada 120s (`type:"heartbeat"`, con `trackingActive` y última ubicación) →
+  un hueco en los heartbeats del servidor = corte, aunque nada haya fallado.
+- **Marcadores de ciclo de vida** (`type:"lifecycle"`), con última ubicación:
+  - `tracking_started` / `tracking_stopped` / `tracking_stop_failed`
+  - `tracking_stopped_permission_change` (permiso revocado a mitad de turno)
+  - `battery_protection_enabled` (low-power / optimización de batería)
+  - `airplane_mode_enabled`
+  - `mock_location_detected`
+  - `device_rebooted` (BootReceiver nativo → flag consumido en el arranque de JS)
+  - `app_active` / `app_background`
+- **Errores** (`type:"error"/"exception"`) del path de background que antes solo iban a
+  `addLog` local (fallo directo, timeout, `missing_upload_config`, descarte).
+
+Todo con `trackingActive` para saber si el seguimiento debía estar activo en cada evento.
+
+### Vista de huecos en cac (backend — pendiente)
+Para pasar de "timeline manual" a diagnóstico de 1 clic:
+1. Por device/sesión, ordenar los breadcrumbs `network`+`heartbeat` por `ts` y detectar
+   **gaps** (> umbral, p. ej. 5 min sin punto ni heartbeat).
+2. Para cada gap, adjuntar el **último `lifecycle`/`error` anterior** como *causa probable*
+   (p. ej. `battery_protection_enabled`, `device_rebooted`, `airplane_mode_enabled`) y la
+   **última ubicación conocida** (dónde).
+3. Exponerlo en la consola: lista de "cortes" por device → `{ desde, hasta, duración,
+   lugar (lat,lon), causa probable, OS/modelo }`.
+4. Opcional: alertar cuando un device activo lleva > N min sin heartbeat (corte en vivo).
+
+Con eso, cada corte queda como: *"device X (Android 14, Moto G) — corte 14:05→14:38 cerca de
+(21.23,-86.73), causa probable: batería optimizada"* → solución específica.
 
 ## Decisiones abiertas
 
