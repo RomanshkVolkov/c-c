@@ -6,6 +6,7 @@ import {
   ImageDown,
   Send,
   KeyRound,
+  Bot,
   Building2,
   Mail,
   Activity,
@@ -33,6 +34,7 @@ import {
 import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
 import { ChangePasswordDialog } from "@/components/ChangePassword";
+import ConnectMcpDialog from "@/components/ConnectMcpDialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
@@ -60,6 +62,7 @@ export default function AppSidebar() {
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const pendingInvites = useInvitationsStore((s) => s.pending.length);
   const [pwOpen, setPwOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
     (i) => !i.superadmin || superadmin,
   );
@@ -116,6 +119,14 @@ export default function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
+          {authed && (
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip="Connect Claude Code" onClick={() => setMcpOpen(true)}>
+                <Bot className="size-4" />
+                <span>Connect Claude Code</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             {authed ? (
               <SidebarMenuButton
@@ -140,6 +151,7 @@ export default function AppSidebar() {
 
       <SidebarRail />
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
+      <ConnectMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} />
     </Sidebar>
   );
 }
