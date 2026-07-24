@@ -1,0 +1,84 @@
+# Grafana configuration for access exclusively through cac's authenticated proxy.
+#
+# IMPORTANT: root_url must match the cac proxy path for this integration. Register
+# the integration in cac first (Servers → your k8s server → Integrations → Add,
+# kind "grafana", url http://grafana.observability.svc.cluster.local:3000), then
+# replace __CAC_PROXY_URL__ below with the value cac shows and restart Grafana.
+# See ../README.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-ini
+  namespace: observability
+data:
+  grafana.ini: |
+    [server]
+    # cac serves Grafana under a sub-path; Grafana must generate links to match.
+    root_url = __CAC_PROXY_URL__
+    serve_from_sub_path = true
+
+    [auth.proxy]
+    # cac terminates auth and asserts the user. Grafana is ClusterIP-only, so the
+    # only client that can set this header is the cac backend (which strips any
+    # client-supplied X-WEBAUTH-* before forwarding).
+    enabled = true
+    header_name = X-WEBAUTH-USER
+    header_property = username
+    auto_sign_up = true
+    sync_ttl = 60
+    enable_login_token = false
+
+    [users]
+    # Users provisioned through the proxy land as Editors of the default org.
+    auto_assign_org = true
+    auto_assign_org_role = Editor
+
+    [auth.basic]
+    enabled = false
+
+    [auth]
+    # Login form stays enabled as a break-glass path: reachable only via
+    # `kubectl port-forward` since the Service is ClusterIP.
+    disable_login_form = false
+
+    [analytics]
+    reporting_enabled = false
+    check_for_updates = false
+
+    [log]
+    level = info
+---
+# Datasources as code. Add blocks here instead of clicking in the UI so the
+# cluster stays reproducible. Secrets come from env vars (see the deployment).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: observability
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      # Business data (CNPG). Point at a READ-ONLY Postgres role — never the
+      # owner. Credentials are injected from the grafana-datasource-secrets
+      # Secret; leave commented until that Secret exists.
+      # - name: CNPG (cac)
+      #   type: postgres
+      #   uid: cnpg-cac
+      #   access: proxy
+      #   url: <cnpg-rw-service>.<ns>.svc.cluster.local:5432
+      #   database: cac
+      #   user: $CNPG_READONLY_USER
+      #   secureJsonData:
+      #     password: $CNPG_READONLY_PASSWORD
+      #   jsonData:
+      #     sslmode: disable
+      #     postgresVersion: 1600
+      #
+      # Metrics — uncomment once Prometheus is deployed (see README, optional step).
+      # - name: Prometheus
+      #   type: prometheus
+      #   uid: prometheus
+      #   access: proxy
+      #   url: http://prometheus.observability.svc.cluster.local:9090
+      #   isDefault: true
