@@ -14,6 +14,7 @@ import Invitations from "@/pages/Invitations";
 import Diagnostics from "@/pages/Diagnostics";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { useAuthStore } from "@/store/auth.store";
 
 // Sends unknown paths to the right landing: the board for signed-in users, the
@@ -27,8 +28,9 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
+    <ConfirmProvider>
+      <BrowserRouter>
+        <Routes>
         <Route path="/login" element={<Login />} />
         <Route
           element={
@@ -60,7 +62,8 @@ export default function App() {
           <Route path="/crypto" element={<CryptoTools />} />
         </Route>
         <Route path="*" element={<RootRedirect />} />
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </ConfirmProvider>
   );
 }

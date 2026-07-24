@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import OriginsEditor, { cleanOrigins } from "@/components/OriginsEditor";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { roleAtLeast } from "@/types/organization";
 import type { ReportProject } from "@/types/report";
 
@@ -25,6 +26,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
   const rotateProjectKey = useReportsStore((s) => s.rotateProjectKey);
   const deleteProject = useReportsStore((s) => s.deleteProject);
   const role = useOrgsStore((s) => s.currentOrg()?.role);
+  const confirm = useConfirm();
 
   const canWrite = !!role && roleAtLeast(role, "member");
   const canDelete = role === "admin";
@@ -58,11 +60,35 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
   };
 
   const handleRotate = async (id: string, pname: string) => {
+    const ok = await confirm({
+      title: `Rotate ingest key for "${pname}"?`,
+      description: "The current key stops working immediately — any client still using it will fail to ingest until updated.",
+      confirmText: "Rotate key",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       const key = await rotateProjectKey(id);
       setRevealed({ label: `New ingest key for "${pname}"`, key });
     } catch (e) {
       toast.error("Failed to rotate key", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  };
+
+  const handleDelete = async (id: string, pname: string) => {
+    const ok = await confirm({
+      title: `Delete project "${pname}"?`,
+      description: "Its ingest key stops working and the project is removed. Existing reports stay.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteProject(id);
+    } catch (e) {
+      toast.error("Failed to delete project", {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -117,7 +143,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
               canWrite={canWrite}
               canDelete={canDelete}
               onRotate={() => handleRotate(p.id, p.name)}
-              onDelete={() => deleteProject(p.id).catch((e) => toast.error(e.message))}
+              onDelete={() => handleDelete(p.id, p.name)}
             />
           ))}
         </div>

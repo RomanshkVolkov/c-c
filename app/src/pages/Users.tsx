@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { useUsersStore } from "@/store/users.store";
 import { useAuthStore } from "@/store/auth.store";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { AdminUser } from "@/types/user";
 
 export default function Users() {
@@ -32,6 +33,7 @@ export default function Users() {
   const fetchUsers = useUsersStore((s) => s.fetchUsers);
   const deleteUser = useUsersStore((s) => s.deleteUser);
   const meId = useAuthStore((s) => s.session?.id);
+  const confirm = useConfirm();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
@@ -41,7 +43,13 @@ export default function Users() {
   }, [fetchUsers]);
 
   const handleDelete = async (u: AdminUser) => {
-    if (!window.confirm(`Delete user "${u.username}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete user @${u.username}?`,
+      description: "This permanently removes the user and all their org memberships. This can't be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await deleteUser(u.id);
       toast.success(`Deleted @${u.username}`);

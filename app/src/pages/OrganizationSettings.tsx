@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import UserPicker from "@/components/UserPicker";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useAuthStore } from "@/store/auth.store";
 import type { OrgMember, OrgRole, Invitation } from "@/types/organization";
@@ -30,6 +31,7 @@ const ROLES: OrgRole[] = ["admin", "member", "viewer"];
 export default function OrganizationSettings() {
   const current = useOrgsStore((s) => s.currentOrg());
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
+  const confirm = useConfirm();
 
   const listMembers = useOrgsStore((s) => s.listMembers);
   const addMember = useOrgsStore((s) => s.addMember);
@@ -130,7 +132,13 @@ export default function OrganizationSettings() {
 
   const kick = async (m: OrgMember) => {
     if (!orgId) return;
-    if (!window.confirm(`Remove @${m.username} from ${current.name}?`)) return;
+    const ok = await confirm({
+      title: `Remove @${m.username}?`,
+      description: `They will lose access to ${current.name} and its resources.`,
+      confirmText: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await removeMember(orgId, m.userId);
       setMembers((prev) => prev.filter((x) => x.userId !== m.userId));
@@ -144,6 +152,12 @@ export default function OrganizationSettings() {
 
   const revoke = async (inv: Invitation) => {
     if (!orgId) return;
+    const ok = await confirm({
+      title: `Revoke invitation to @${inv.invitedUser}?`,
+      confirmText: "Revoke",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await revokeInvitation(orgId, inv.id);
       setInvites((prev) => prev.filter((x) => x.id !== inv.id));

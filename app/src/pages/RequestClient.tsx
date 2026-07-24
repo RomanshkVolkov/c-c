@@ -55,6 +55,7 @@ import {
   type RequestTreeNode,
 } from "@/store/requests.store";
 import { useCollectionsStore } from "@/store/collections.store";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useOrgsStore } from "@/store/orgs.store";
 import { roleAtLeast, type OrgRole } from "@/types/organization";
 import type {
@@ -369,6 +370,7 @@ function LocalSection() {
 }
 
 function LocalTreeItem({ node, depth }: { node: RequestTreeNode; depth: number }) {
+  const confirm = useConfirm();
   const nodes = useRequestsStore((s) => s.nodes);
   const activeRequestId = useRequestsStore((s) => s.activeRequestId);
   const remoteActiveCollection = useCollectionsStore((s) => s.activeCollectionId);
@@ -511,9 +513,10 @@ function LocalTreeItem({ node, depth }: { node: RequestTreeNode; depth: number }
             size="icon-xs"
             variant="ghost"
             title="Delete"
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
-              if (confirm(`Delete "${node.name}"?`)) deleteNode(node.id);
+              if (await confirm({ title: `Delete "${node.name}"?`, confirmText: "Delete", destructive: true }))
+                deleteNode(node.id);
             }}
           >
             <Trash2 className="size-3 text-destructive" />
@@ -708,6 +711,7 @@ function SaveIndicator({ collectionId }: { collectionId: string }) {
 }
 
 function RemoteCollectionItem({ collection }: { collection: CollectionMeta }) {
+  const confirm = useConfirm();
   const expanded = useCollectionsStore(
     (s) => s.expandedCollections[collection.id] ?? false,
   );
@@ -750,7 +754,13 @@ function RemoteCollectionItem({ collection }: { collection: CollectionMeta }) {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete "${collection.name}"? This removes it for everyone it's shared with.`)) return;
+    const ok = await confirm({
+      title: `Delete "${collection.name}"?`,
+      description: "This removes the collection for everyone it's shared with.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await deleteCollection(collection.id);
       toast.success("Collection deleted");
@@ -934,6 +944,7 @@ function RemoteTreeItem({
   depth: number;
   writable: boolean;
 }) {
+  const confirm = useConfirm();
   const treeNodes = useCollectionsStore((s) => s.treeNodes[collectionId] ?? []);
   const activeCollectionId = useCollectionsStore((s) => s.activeCollectionId);
   const activeRequestId = useCollectionsStore((s) => s.activeRequestId);
@@ -1079,9 +1090,9 @@ function RemoteTreeItem({
               size="icon-xs"
               variant="ghost"
               title="Delete"
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                if (confirm(`Delete "${node.name}"?`)) {
+                if (await confirm({ title: `Delete "${node.name}"?`, confirmText: "Delete", destructive: true })) {
                   deleteRemoteNode(collectionId, node.id);
                 }
               }}
@@ -1122,6 +1133,7 @@ function ShareDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const confirm = useConfirm();
   const listShares = useCollectionsStore((s) => s.listShares);
   const share = useCollectionsStore((s) => s.share);
   const unshare = useCollectionsStore((s) => s.unshare);
@@ -1218,7 +1230,12 @@ function ShareDialog({
   };
 
   const handleRevoke = async (s: ShareInfo) => {
-    if (!confirm(`Revoke access for @${s.username}?`)) return;
+    const ok = await confirm({
+      title: `Revoke access for @${s.username}?`,
+      confirmText: "Revoke",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await unshare(collection.id, s.userId);
       setShares((prev) => prev.filter((x) => x.userId !== s.userId));
