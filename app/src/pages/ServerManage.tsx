@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import type { Server } from "@/types/server";
 import type { SwarmService, SwarmNode } from "@/types/swarm";
+import K8sHub from "@/pages/K8sHub";
 import { useSwarm } from "@/hooks/use-swarm";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> =
@@ -401,10 +402,24 @@ function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
   );
 }
 
+// ServerManage routes to the right console based on the server's orchestrator:
+// docker-swarm → the swarm manager below; kubernetes → the platform hub.
 export default function ServerManage() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const server = state as Server | null;
+
+  useEffect(() => {
+    if (!server) navigate("/dashboard", { replace: true });
+  }, [server, navigate]);
+
+  if (!server) return null;
+  if (server.type === "kubernetes") return <K8sHub server={server} />;
+  return <SwarmManage server={server} />;
+}
+
+function SwarmManage({ server }: { server: Server }) {
+  const navigate = useNavigate();
 
   const [tab, setTab] = useState<"services" | "nodes">("services");
   const [selectedService, setSelectedService] = useState<SwarmService | null>(
@@ -412,16 +427,10 @@ export default function ServerManage() {
   );
   const [servicesFilter, setServicesFilter] = useState("");
 
-  useEffect(() => {
-    if (!server) navigate("/dashboard", { replace: true });
-  }, [server, navigate]);
-
   const { services, nodes, loading, error, refresh } = useSwarm(
-    server?.host ?? "",
-    server?.agentPort ?? 0,
+    server.host,
+    server.agentPort,
   );
-
-  if (!server) return null;
 
   const tabClass = (t: typeof tab) =>
     `px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
