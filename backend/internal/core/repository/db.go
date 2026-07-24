@@ -68,6 +68,7 @@ func DBConnection() {
 		&domain.ReportImage{},
 		&domain.TelemetryEvent{},
 		&domain.ServerIntegration{},
+		&domain.PersonalAccessToken{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}

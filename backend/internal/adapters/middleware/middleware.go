@@ -61,6 +61,15 @@ func Recovery(next http.Handler) http.Handler {
 }
 
 // AuthMiddleware validates the JWT access token and injects claims into context.
+// PATAuthenticator resolves a plaintext personal access token into claims. It's
+// injected at route-setup time (the middleware itself has no DB handle).
+type PATAuthenticator func(token string) (*domain.ClaimsJWT, error)
+
+var patAuth PATAuthenticator
+
+// UsePATAuthenticator wires PAT support into AuthMiddleware.
+func UsePATAuthenticator(fn PATAuthenticator) { patAuth = fn }
+
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -70,6 +79,29 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, bearerPrefix)
+
+		// Personal access tokens: read-only by construction. Anything that can
+		// mutate state is a POST/PATCH/PUT/DELETE, so a single method check
+		// covers the whole API — including minting or revoking other tokens.
+		if strings.HasPrefix(tokenString, repository.PATPrefix) {
+			if patAuth == nil {
+				handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "pat-unsupported")
+				return
+			}
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				handler.SendErrorResponse(w, http.StatusForbidden, "Read-only token", "readonly-token")
+				return
+			}
+			claims, err := patAuth(tokenString)
+			if err != nil {
+				handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-token")
+				return
+			}
+			ctx := context.WithValue(r.Context(), repository.UserContextKey, claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		claims, err := repository.ValidateAccessToken(tokenString)
 		if err != nil {
 			handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", err.Error())
