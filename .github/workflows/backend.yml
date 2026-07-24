@@ -45,7 +45,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/k8s/2-deployment.yaml,backend/k8s/3-service.yaml,backend/k8s/4-http-route.yaml"
+          source: "backend/k8s/0-rbac.yaml,backend/k8s/2-deployment.yaml,backend/k8s/3-service.yaml,backend/k8s/4-http-route.yaml"
           target: "/tmp/cac-k8s"
           strip_components: 2
 

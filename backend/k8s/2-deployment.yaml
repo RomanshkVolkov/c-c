@@ -12,6 +12,7 @@ spec:
       labels:
         app: cac-service
     spec:
+      serviceAccountName: cac-hub
       containers:
         - name: cac-service-api
           image: ghcr.io/romanshkvolkov/c-c/backend:latest

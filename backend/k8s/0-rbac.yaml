@@ -1,0 +1,43 @@
+# Read-only access for the cac "platform hub": the backend reads cluster state
+# (nodes, workloads, Gateway API routes, cert-manager certs, CNPG clusters) via
+# its in-cluster ServiceAccount. NO write verbs — the hub observes and links,
+# it never mutates the cluster.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cac-hub
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cac-hub-read
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods", "services", "events"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list"]
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters", "backups"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cac-hub-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cac-hub-read
+subjects:
+  - kind: ServiceAccount
+    name: cac-hub
+    namespace: default
