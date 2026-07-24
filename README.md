@@ -62,3 +62,14 @@ cd swarm-manage && air
 # Desktop app
 cd app && bun install && bun run tauri dev
 ```
+
+## License
+
+Copyright © 2026 Romanshk Volkov.
+
+- **Core** (`backend/`, `app/`, `swarm-manage/`, `infra/`) — [AGPL-3.0-or-later](LICENSE).
+  Copyleft that also covers network use: if you run a modified version as a
+  service, you must offer its source to its users.
+- **Widget** (`widget/`, published as `@g-studio/report-widget`) —
+  [MIT](widget/LICENSE). It is embedded into third-party sites, so it stays
+  permissive: dropping it into your page never affects your own licensing.
