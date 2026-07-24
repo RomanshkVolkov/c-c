@@ -18,6 +18,9 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 	hub := service.NewK8sHubService(k8s.New())
 	k8sH := handler.NewK8sHandler(svc, hub)
 
+	intgSvc := service.NewIntegrationService(repository.NewIntegrationRepository(db))
+	intgH := handler.NewIntegrationHandler(svc, intgSvc)
+
 	r.Route("/api/v1/servers", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.ListServers)
@@ -26,5 +29,11 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		// Platform hub (kubernetes servers): read-only cluster views.
 		r.Get("/{id}/k8s/routes", k8sH.Routes)
 		r.Get("/{id}/k8s/health", k8sH.Health)
+		// Integrations (vault + launcher).
+		r.Get("/{id}/integrations", intgH.List)
+		r.Post("/{id}/integrations", intgH.Create)
+		r.Patch("/{id}/integrations/{iid}", intgH.Update)
+		r.Delete("/{id}/integrations/{iid}", intgH.Delete)
+		r.Post("/{id}/integrations/{iid}/reveal", intgH.Reveal)
 	})
 }
