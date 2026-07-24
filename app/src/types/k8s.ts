@@ -59,3 +59,33 @@ export interface K8sHealth {
   certs: K8sCert[];
   datastores: K8sDatastore[];
 }
+
+export type IntegrationAuthMethod = "none" | "basic" | "bearer" | "header";
+
+export interface Integration {
+  id: string;
+  serverId: string;
+  kind: string;
+  name: string;
+  url: string;
+  authMethod: IntegrationAuthMethod;
+  hasSecret: boolean;
+  hidden: boolean;
+  createdAt: string;
+}
+
+export interface CreateIntegrationPayload {
+  kind: string;
+  name: string;
+  url: string;
+  authMethod?: IntegrationAuthMethod;
+  secret?: string;
+}
+
+export interface UpdateIntegrationPayload {
+  name: string;
+  url: string;
+  authMethod?: IntegrationAuthMethod;
+  hidden?: boolean;
+  secret?: string;
+}

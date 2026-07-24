@@ -18,12 +18,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import IntegrationsSection from "@/components/IntegrationsSection";
+import { useOrgsStore } from "@/store/orgs.store";
+import { useAuthStore } from "@/store/auth.store";
+import { roleAtLeast } from "@/types/organization";
 import type { APIResponse } from "@/types/auth";
 import type { Server } from "@/types/server";
 import type { K8sHealth, K8sRoutesResponse } from "@/types/k8s";
 
 export default function K8sHub({ server }: { server: Server }) {
   const navigate = useNavigate();
+  const orgs = useOrgsStore((s) => s.orgs);
+  const superadmin = useAuthStore((s) => !!s.session?.superadmin);
+  const role = orgs.find((o) => o.id === server.orgId)?.role;
+  const canAdmin = superadmin || role === "admin";
+  const canReveal = superadmin || (!!role && roleAtLeast(role, "member"));
   const [routes, setRoutes] = useState<K8sRoutesResponse | null>(null);
   const [health, setHealth] = useState<K8sHealth | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +94,8 @@ export default function K8sHub({ server }: { server: Server }) {
           </p>
         ) : (
           <>
+            <IntegrationsSection serverId={server.id} canAdmin={canAdmin} canReveal={canReveal} />
+
             {/* Gateways */}
             {routes && routes.gateways.length > 0 && (
               <Section title="Gateways" icon={<Globe className="size-4" />}>
