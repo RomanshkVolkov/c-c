@@ -1,6 +1,21 @@
 mod crypto_tools;
 mod http_client;
 mod image;
+mod mcp;
+
+/// Entry point for `cac --mcp` (stdio MCP server; see `mcp.rs`).
+pub fn serve_mcp() {
+    mcp::serve();
+}
+
+/// Absolute path of the running executable, so the "Connect Claude Code" modal
+/// can show a command that's correct on this machine.
+#[tauri::command]
+fn executable_path() -> Result<String, String> {
+    std::env::current_exe()
+        .map(|p| p.to_string_lossy().into_owned())
+        .map_err(|e| e.to_string())
+}
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -735,6 +750,7 @@ pub fn run() {
             delete_github_secret,
             delete_github_variable,
             compress_image,
+            executable_path,
             jwt_decode,
             generate_id,
             hash_text,
