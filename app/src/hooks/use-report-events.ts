@@ -21,6 +21,12 @@ async function ensureNotifyPermission(): Promise<boolean> {
 }
 
 const MAX_BACKOFF_MS = 30_000;
+// The server pings every 25s. If two go missing the stream is dead — even if
+// the browser still thinks it's open (a half-open connection never fires
+// onerror), which is precisely the state that made the app look frozen until a
+// restart. Tear it down and build a fresh connection.
+const PING_TIMEOUT_MS = 60_000;
+const WATCHDOG_TICK_MS = 15_000;
 
 /**
  * Subscribes to the backend SSE stream (org-scoped) and keeps the board live.
@@ -38,6 +44,8 @@ export function useReportEvents() {
 
     let es: EventSource | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let watchdog: ReturnType<typeof setInterval> | null = null;
+    let lastSeenAt = Date.now();
     let attempts = 0;
     let stopped = false;
     let canNotify = false;
@@ -71,11 +79,21 @@ export function useReportEvents() {
       if (!token) return;
 
       es = new EventSource(apiUrl(`/api/v1/events?token=${token}`));
+      lastSeenAt = Date.now();
       es.onopen = () => {
         attempts = 0;
+        lastSeenAt = Date.now();
       };
 
+      // Any inbound traffic proves the stream is alive.
+      const seen = () => {
+        lastSeenAt = Date.now();
+      };
+      es.addEventListener("ping", seen);
+      es.onmessage = seen;
+
       es.addEventListener("report:new", (e) => {
+        seen();
         const p = parse(e as MessageEvent);
         const desc = `${p.folio ?? ""} ${p.title ?? ""}`.trim();
         toast.info("New report", { description: desc });
@@ -83,6 +101,7 @@ export function useReportEvents() {
         refresh();
       });
       es.addEventListener("report:status", (e) => {
+        seen();
         const p = parse(e as MessageEvent);
         toast.message("Report status changed", { description: p.status });
         refresh();
@@ -92,7 +111,10 @@ export function useReportEvents() {
         notify("New reply", "A reporter replied to a report");
         refresh();
       });
-      es.addEventListener("report:attachment", refresh);
+      es.addEventListener("report:attachment", () => {
+        seen();
+        refresh();
+      });
 
       es.onerror = () => {
         es?.close();
@@ -106,11 +128,39 @@ export function useReportEvents() {
       };
     };
 
+    // Force a fresh connection: closing is what makes the browser drop the
+    // (possibly poisoned) underlying connection instead of reusing it.
+    const reconnect = () => {
+      es?.close();
+      es = null;
+      if (stopped) return;
+      attempts = 0;
+      connect();
+    };
+
     connect();
+
+    watchdog = setInterval(() => {
+      if (stopped || !es) return;
+      if (Date.now() - lastSeenAt > PING_TIMEOUT_MS) reconnect();
+    }, WATCHDOG_TICK_MS);
+
+    // Coming back to the app after it sat idle is the moment the connection is
+    // most likely stale — and the moment the user expects fresh data.
+    const onVisible = () => {
+      if (document.hidden || stopped) return;
+      if (Date.now() - lastSeenAt > PING_TIMEOUT_MS) reconnect();
+      refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
 
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      if (watchdog) clearInterval(watchdog);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
       es?.close();
     };
   }, [authed]);

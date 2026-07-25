@@ -95,7 +95,11 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-heartbeat.C:
-			if !write(": ping\n\n") {
+			// A real named event, not an SSE comment: comment lines (": ping")
+			// keep the socket warm but fire NOTHING in the browser, so a client
+			// can't tell a live stream from a half-open one. With this, the app
+			// can watchdog the connection and reconnect when pings stop.
+			if !write(fmt.Sprintf("event: ping\ndata: {\"ts\":%d}\n\n", time.Now().Unix())) {
 				return
 			}
 		case ev, open := <-ch:
