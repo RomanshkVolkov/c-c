@@ -33,6 +33,8 @@ import type { Server } from "@/types/server";
 import type { SwarmService, SwarmNode } from "@/types/swarm";
 import K8sHub from "@/pages/K8sHub";
 import { useSwarm } from "@/hooks/use-swarm";
+import { agentBase, agentFetch } from "@/lib/agent";
+import { toast } from "sonner";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> =
   {
@@ -320,12 +322,19 @@ function ServicesTable({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() =>
-                  fetch(
-                    `http://${host}:${agentPort}/api/v1/services/${svc.id}/force-update`,
-                    { method: "POST" },
-                  )
-                }
+                onClick={async () => {
+                  try {
+                    await agentFetch(
+                      `${agentBase(host, agentPort)}/api/v1/services/${svc.id}/force-update`,
+                      { method: "POST" },
+                    );
+                    toast.success(`Restarting ${svc.name}`);
+                  } catch (e) {
+                    toast.error("Restart failed", {
+                      description: e instanceof Error ? e.message : String(e),
+                    });
+                  }
+                }}
               >
                 <RotateCcw className="h-3 w-3 mr-1" />
                 Restart

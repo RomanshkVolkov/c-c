@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { agentBase, agentJson } from "@/lib/agent";
 import type { ContainerStats } from "@/types/swarm";
 
 interface APIResponse<T> {
@@ -72,9 +73,12 @@ export const useStatsStore = create<StatsState>((set, get) => ({
     }));
 
     try {
-      const res = (await fetch(
-        `http://${host}:${agentPort}/api/v1/stats`,
-      ).then((r) => r.json())) as APIResponse<ContainerStats[]>;
+      // Deadline is essential here: this runs on a poll interval and the
+      // in-flight guard above skips every later tick while `loading` is true —
+      // so a request that never settles would freeze stats permanently.
+      const res = await agentJson<APIResponse<ContainerStats[]>>(
+        `${agentBase(host, agentPort)}/api/v1/stats`,
+      );
 
       if (!res.success) {
         set((s) => ({
