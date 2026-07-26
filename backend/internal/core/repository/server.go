@@ -47,6 +47,18 @@ func (r *ServerRepository) FindByID(id string) (*domain.Server, error) {
 	return &server, nil
 }
 
+// Update persists the editable connection fields.
+func (r *ServerRepository) Update(server *domain.Server) error {
+	return r.db.Model(&domain.Server{}).Where("id = ?", server.ID).Updates(map[string]any{
+		"name":       server.Name,
+		"host":       server.Host,
+		"ssh_port":   server.SSHPort,
+		"ssh_user":   server.SSHUser,
+		"type":       server.Type,
+		"agent_port": server.AgentPort,
+	}).Error
+}
+
 func (r *ServerRepository) UpdateStatus(id, status string) error {
 	return r.db.Model(&domain.Server{}).Where("id = ?", id).Update("status", status).Error
 }

@@ -11,6 +11,7 @@ import (
 type ServerHandler interface {
 	ListServers(w http.ResponseWriter, r *http.Request)
 	CreateServer(w http.ResponseWriter, r *http.Request)
+	UpdateServer(w http.ResponseWriter, r *http.Request)
 	DeleteServer(w http.ResponseWriter, r *http.Request)
 }
 
@@ -62,6 +63,38 @@ func (h *serverHandler) CreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.ServerResponse]{Success: true, Data: server})
+}
+
+// UpdateServer edits connection metadata. Writers (admin/member) of the
+// server's org, or a superadmin.
+func (h *serverHandler) UpdateServer(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	server, err := h.svc.Find(id)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Server not found", err.Error())
+		return
+	}
+	role, member := user.RoleInOrg(server.OrgID)
+	if !user.Superadmin && (!member || !role.CanWrite()) {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-writer-in-org")
+		return
+	}
+	req, err := ValidateRequest[domain.UpdateServerRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	updated, err := h.svc.Update(id, req)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update server", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ServerResponse]{Success: true, Data: updated})
 }
 
 func (h *serverHandler) DeleteServer(w http.ResponseWriter, r *http.Request) {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, KeyRound, LogOut, Network, RefreshCw, Rocket, Server, User } from "lucide-react";
+import { Activity, KeyRound, LogOut, Network, Pencil, RefreshCw, Rocket, Server, Trash2, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -21,6 +21,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useServers } from "@/hooks/use-servers";
 import AddServerDialog from "@/components/AddServerDialog";
 import SshKeyDialog from "@/components/SshKeyDialog";
+import EditServerDialog from "@/components/EditServerDialog";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { toast } from "sonner";
 import type { Server as ServerType } from "@/types/server";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
@@ -40,7 +43,8 @@ interface AgentResult {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { session, logout } = useAuth();
-  const { servers, loading, createServer, refresh } = useServers();
+  const { servers, loading, createServer, updateServer, deleteServer, refresh } = useServers();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState<AgentBusy>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
 
@@ -50,6 +54,26 @@ export default function Dashboard() {
   const types = new Set(servers.map((s) => s.type)).size;
 
   const [keyFor, setKeyFor] = useState<ServerType | null>(null);
+  const [editing, setEditing] = useState<ServerType | null>(null);
+
+  const removeServer = async (server: ServerType) => {
+    const ok = await confirm({
+      title: `Delete "${server.name}"?`,
+      description:
+        "Removes it from cac. The machine and anything running on it are untouched.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteServer(server.id);
+      toast.success(`Removed ${server.name}`);
+    } catch (e) {
+      toast.error("Could not delete", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  };
 
   const runAgentCommand = async (
     server: ServerType,
@@ -168,7 +192,14 @@ export default function Dashboard() {
                 (1Password recommended) — no keys leave your machine.
               </CardDescription>
             </div>
-            {keyFor && (
+            {editing && (
+        <EditServerDialog
+          server={editing}
+          onSave={updateServer}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {keyFor && (
         <SshKeyDialog
           serverId={keyFor.id}
           serverName={keyFor.name}
@@ -221,6 +252,23 @@ export default function Dashboard() {
                             onClick={() => setKeyFor(server)}
                           >
                             <KeyRound className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Edit server"
+                            onClick={() => setEditing(server)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Delete server"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => removeServer(server)}
+                          >
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                           {(server.status === "pending" || server.status === "error") && (
                             <Button

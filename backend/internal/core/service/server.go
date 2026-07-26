@@ -61,6 +61,23 @@ func (s *ServerService) Find(id string) (*domain.ServerResponse, error) {
 	return toResponse(srv), nil
 }
 
+func (s *ServerService) Update(id string, req domain.UpdateServerRequest) (*domain.ServerResponse, error) {
+	srv, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	srv.Name = req.Name
+	srv.Host = req.Host
+	srv.SSHPort = req.SSHPort
+	srv.SSHUser = req.SSHUser
+	srv.Type = req.Type
+	srv.AgentPort = req.AgentPort
+	if err := s.repo.Update(srv); err != nil {
+		return nil, err
+	}
+	return toResponse(srv), nil
+}
+
 func (s *ServerService) Delete(id string) error {
 	return s.repo.Delete(id)
 }

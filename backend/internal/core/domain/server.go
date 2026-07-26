@@ -37,6 +37,18 @@ type CreateServerRequest struct {
 	AgentPort int        `json:"agentPort" validate:"required,min=1,max=65535"`
 }
 
+// UpdateServerRequest edits a registered server's connection metadata. OrgID is
+// deliberately absent: moving a server between organizations would strand its
+// integrations and telemetry, so it isn't an edit.
+type UpdateServerRequest struct {
+	Name      string     `json:"name"      validate:"required,min=1,max=100"`
+	Host      string     `json:"host"      validate:"required"`
+	SSHPort   int        `json:"sshPort"   validate:"required,min=1,max=65535"`
+	SSHUser   string     `json:"sshUser"   validate:"required"`
+	Type      ServerType `json:"type"      validate:"required,oneof=docker-swarm kubernetes"`
+	AgentPort int        `json:"agentPort" validate:"required,min=1,max=65535"`
+}
+
 type ServerResponse struct {
 	ID        string     `json:"id"`
 	OrgID     string     `json:"orgId"`

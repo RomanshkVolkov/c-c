@@ -43,10 +43,17 @@ export function useServers() {
     return res.data;
   };
 
+  const updateServer = async (id: string, input: NewServerInput) => {
+    const res = await api.patch<APIResponse<Server>>(`/api/v1/servers/${id}`, input, true);
+    if (!res.success || !res.data) throw new Error(res.error ?? "Failed to update server");
+    setAllServers((prev) => prev.map((s) => (s.id === id ? res.data! : s)));
+    return res.data;
+  };
+
   const deleteServer = async (id: string) => {
     await api.delete<unknown>(`/api/v1/servers/${id}`);
     setAllServers((prev) => prev.filter((s) => s.id !== id));
   };
 
-  return { servers, loading, createServer, deleteServer, refresh: fetch };
+  return { servers, loading, createServer, updateServer, deleteServer, refresh: fetch };
 }

@@ -25,6 +25,7 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.ListServers)
 		r.Post("/", h.CreateServer)
+		r.Patch("/{id}", h.UpdateServer)
 		r.Delete("/{id}", h.DeleteServer)
 		// Platform hub (kubernetes servers): read-only cluster views.
 		r.Get("/{id}/k8s/routes", k8sH.Routes)
