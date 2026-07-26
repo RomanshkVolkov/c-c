@@ -33,6 +33,10 @@ fn ref_account(server_id: &str) -> String {
     format!("op-reference:{server_id}")
 }
 
+fn ssh_key_account(server_id: &str) -> String {
+    format!("ssh-key-ref:{server_id}")
+}
+
 // In-memory cache: survives the process lifetime, avoids repeated keychain reads
 // from async contexts where some Linux keyring backends fail.
 struct TokenCache(Mutex<HashMap<String, String>>);
@@ -132,6 +136,140 @@ fn op_read(reference: &str) -> Result<String, String> {
     Ok(token)
 }
 
+// ─── 1Password SSH keys ───────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshKeyItem {
+    pub id: String,
+    pub title: String,
+    pub vault: String,
+    pub vault_name: String,
+    pub fingerprint: String,
+    /// Ready-to-store secret reference for this key's public half.
+    pub reference: String,
+}
+
+/// Lists the SSH keys in the user's 1Password vaults so a server can be bound to
+/// one of them. Only metadata (title/fingerprint) — no key material.
+#[tauri::command]
+fn list_1password_ssh_keys() -> Result<Vec<SshKeyItem>, String> {
+    use std::process::Command;
+
+    let output = Command::new("op")
+        .args(["item", "list", "--categories", "SSH Key", "--format", "json"])
+        .output()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => "1Password CLI (op) not found. Install from https://developer.1password.com/docs/cli/".to_string(),
+            _ => format!("Failed to execute op: {e}"),
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.contains("not currently signed in") || stderr.contains("session expired") {
+            "1Password session expired. Unlock the desktop app (or run `op signin`) and retry.".to_string()
+        } else if stderr.is_empty() {
+            format!("op exited with status {}", output.status)
+        } else {
+            stderr
+        });
+    }
+
+    let raw: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|e| format!("Unexpected op output: {e}"))?;
+
+    let items = raw.as_array().cloned().unwrap_or_default();
+    Ok(items
+        .iter()
+        .filter_map(|it| {
+            let id = it.get("id")?.as_str()?.to_string();
+            let vault = it.get("vault")?;
+            let vault_id = vault.get("id")?.as_str()?.to_string();
+            Some(SshKeyItem {
+                reference: format!("op://{vault_id}/{id}/public key"),
+                title: it.get("title").and_then(|v| v.as_str()).unwrap_or("(untitled)").to_string(),
+                vault_name: vault.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                fingerprint: it
+                    .get("additional_information")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                vault: vault_id,
+                id,
+            })
+        })
+        .collect())
+}
+
+/// A public key materialized on disk only for the lifetime of one ssh call.
+/// ssh needs an `IdentityFile` path; the file holds the PUBLIC half only (the
+/// private key never leaves 1Password — the agent does the signing) and is
+/// removed as soon as the command returns.
+struct EphemeralIdentity {
+    path: std::path::PathBuf,
+}
+
+impl Drop for EphemeralIdentity {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn resolve_op_identity(reference: &str) -> Result<EphemeralIdentity, String> {
+    let public_key = op_read(reference)?;
+    if !public_key.starts_with("ssh-") && !public_key.starts_with("ecdsa-") {
+        return Err("That 1Password reference did not return a public key".into());
+    }
+
+    let mut path = std::env::temp_dir();
+    path.push(format!("cac-ssh-{}.pub", uuid_like()));
+    std::fs::write(&path, format!("{public_key}\n"))
+        .map_err(|e| format!("Could not stage the public key: {e}"))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    Ok(EphemeralIdentity { path })
+}
+
+/// Enough entropy for a temp filename (avoids pulling in a uuid dependency).
+fn uuid_like() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{nanos:x}-{}", std::process::id())
+}
+
+#[tauri::command]
+fn set_server_ssh_key(server_id: String, reference: String) -> Result<(), String> {
+    if reference.trim().is_empty() {
+        return keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account(&server_id))
+            .map_err(|e| e.to_string())?
+            .delete_credential()
+            .or(Ok(()));
+    }
+    keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account(&server_id))
+        .map_err(|e| e.to_string())?
+        .set_password(reference.trim())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_server_ssh_key(server_id: String) -> Result<Option<String>, String> {
+    match keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account(&server_id))
+        .map_err(|e| e.to_string())?
+        .get_password()
+    {
+        Ok(v) => Ok(Some(v)),
+        Err(_) => Ok(None),
+    }
+}
+
 // ─── SSH agent operations ─────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -145,25 +283,46 @@ const AGENT_IMAGE: &str = "ghcr.io/romanshkvolkov/c-c/swarm-manage:latest";
 // Runs `ssh` against the given target, executing one remote command.
 // Authentication is provided by the OS SSH agent (`SSH_AUTH_SOCK`, e.g. 1Password).
 // StrictHostKeyChecking=accept-new pins unknown hosts on first connect.
-fn ssh_run(host: &str, port: u16, user: &str, remote_cmd: &str) -> Result<SshOutput, String> {
+fn ssh_run(
+    host: &str,
+    port: u16,
+    user: &str,
+    remote_cmd: &str,
+    identity: Option<&str>,
+) -> Result<SshOutput, String> {
     use std::process::Command;
 
     let target = format!("{user}@{host}");
     let port_str = port.to_string();
 
+    let mut args: Vec<String> = vec![
+        "-p".into(),
+        port_str,
+        "-o".into(),
+        "BatchMode=yes".into(),
+        "-o".into(),
+        "StrictHostKeyChecking=accept-new".into(),
+        "-o".into(),
+        "ConnectTimeout=15".into(),
+    ];
+
+    // Pin a single key. An agent holding many keys (1Password vaults often do)
+    // makes ssh offer them one by one until the server's MaxAuthTries (6 by
+    // default) trips "Too many authentication failures" — before it ever reaches
+    // the right one. With the 1Password agent the identity is the **public** key
+    // file: ssh then asks the agent for just that one.
+    if let Some(id) = identity.filter(|s| !s.trim().is_empty()) {
+        args.push("-i".into());
+        args.push(id.trim().to_string());
+        args.push("-o".into());
+        args.push("IdentitiesOnly=yes".into());
+    }
+
+    args.push(target);
+    args.push(remote_cmd.to_string());
+
     let output = Command::new("ssh")
-        .args([
-            "-p",
-            &port_str,
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "StrictHostKeyChecking=accept-new",
-            "-o",
-            "ConnectTimeout=15",
-            &target,
-            remote_cmd,
-        ])
+        .args(&args)
         .output()
         .map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => {
@@ -177,7 +336,9 @@ fn ssh_run(host: &str, port: u16, user: &str, remote_cmd: &str) -> Result<SshOut
 
     if !output.status.success() {
         let trimmed = stderr.trim();
-        let hint = if trimmed.contains("Permission denied") {
+        let hint = if trimmed.contains("Too many authentication failures") {
+            " (your SSH agent offered more keys than the server allows before the right one. Set an SSH identity for this server — the .pub file of its key — or add a matching Host block with `IdentitiesOnly yes` to ~/.ssh/config)"
+        } else if trimmed.contains("Permission denied") {
             " (is your 1Password SSH agent unlocked and the key authorized on this server?)"
         } else if trimmed.contains("Connection refused") || trimmed.contains("Connection timed out") {
             " (host unreachable or SSH port closed)"
@@ -199,12 +360,22 @@ fn update_swarm_manage_agent(
     ssh_port: u16,
     ssh_user: String,
     service: Option<String>,
+    // 1Password secret reference to the key's public half.
+    identity_ref: Option<String>,
 ) -> Result<SshOutput, String> {
     let service_name = service.unwrap_or_else(|| "cac_swarm-manage".to_string());
     let remote = format!(
         "docker service update --force --image {AGENT_IMAGE} {service_name}"
     );
-    ssh_run(&host, ssh_port, &ssh_user, &remote)
+    {
+        // Resolve (and stage) the key only for this call; the guard wipes it.
+        let staged = match identity_ref.as_deref().filter(|r| !r.trim().is_empty()) {
+            Some(r) => Some(resolve_op_identity(r)?),
+            None => None,
+        };
+        let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+        ssh_run(&host, ssh_port, &ssh_user, &remote, identity.as_deref())
+    }
 }
 
 #[tauri::command]
@@ -214,6 +385,8 @@ fn deploy_swarm_manage_agent(
     ssh_user: String,
     agent_port: u16,
     stack: Option<String>,
+    // 1Password secret reference to the key's public half.
+    identity_ref: Option<String>,
 ) -> Result<SshOutput, String> {
     let stack_name = stack.unwrap_or_else(|| "cac".to_string());
     let compose = format!(
@@ -239,7 +412,15 @@ cat > /tmp/swarm-manage.yml <<'EOF'
 docker stack deploy -c /tmp/swarm-manage.yml {stack_name}
 rm -f /tmp/swarm-manage.yml"
     );
-    ssh_run(&host, ssh_port, &ssh_user, &remote)
+    {
+        // Resolve (and stage) the key only for this call; the guard wipes it.
+        let staged = match identity_ref.as_deref().filter(|r| !r.trim().is_empty()) {
+            Some(r) => Some(resolve_op_identity(r)?),
+            None => None,
+        };
+        let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+        ssh_run(&host, ssh_port, &ssh_user, &remote, identity.as_deref())
+    }
 }
 
 // ─── Keychain commands ────────────────────────────────────────────────────────
@@ -751,6 +932,9 @@ pub fn run() {
             delete_github_variable,
             compress_image,
             executable_path,
+            get_server_ssh_key,
+            set_server_ssh_key,
+            list_1password_ssh_keys,
             jwt_decode,
             generate_id,
             hash_text,

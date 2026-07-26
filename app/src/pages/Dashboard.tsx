@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, LogOut, Network, RefreshCw, Rocket, Server, User } from "lucide-react";
+import { Activity, KeyRound, LogOut, Network, RefreshCw, Rocket, Server, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -20,6 +20,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useServers } from "@/hooks/use-servers";
 import AddServerDialog from "@/components/AddServerDialog";
+import SshKeyDialog from "@/components/SshKeyDialog";
 import type { Server as ServerType } from "@/types/server";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
@@ -48,6 +49,8 @@ export default function Dashboard() {
   const online = servers.filter((s) => s.status === "online").length;
   const types = new Set(servers.map((s) => s.type)).size;
 
+  const [keyFor, setKeyFor] = useState<ServerType | null>(null);
+
   const runAgentCommand = async (
     server: ServerType,
     kind: "deploy" | "update",
@@ -63,6 +66,11 @@ export default function Dashboard() {
         host: server.host,
         sshPort: server.sshPort,
         sshUser: server.sshUser,
+        // Pin ssh to the server's 1Password key when one is linked; otherwise
+        // the agent offers every key it holds and the server may cut us off.
+        identityRef: await invoke<string | null>("get_server_ssh_key", {
+          serverId: server.id,
+        }).catch(() => null),
       };
       if (kind === "deploy") args.agentPort = server.agentPort;
       await invoke<AgentResult>(cmd, args);
@@ -160,7 +168,15 @@ export default function Dashboard() {
                 (1Password recommended) — no keys leave your machine.
               </CardDescription>
             </div>
-            <AddServerDialog onCreated={createServer} />
+            {keyFor && (
+        <SshKeyDialog
+          serverId={keyFor.id}
+          serverName={keyFor.name}
+          open
+          onOpenChange={(v) => !v && setKeyFor(null)}
+        />
+      )}
+      <AddServerDialog onCreated={createServer} />
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -198,6 +214,14 @@ export default function Dashboard() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="SSH key (1Password)"
+                            onClick={() => setKeyFor(server)}
+                          >
+                            <KeyRound className="h-3 w-3" />
+                          </Button>
                           {(server.status === "pending" || server.status === "error") && (
                             <Button
                               variant="outline"
