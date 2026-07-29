@@ -138,6 +138,205 @@ fn op_read(reference: &str) -> Result<String, String> {
 
 // ─── SSH agent keys ───────────────────────────────────────────────────────────
 
+
+// ─── SSH agent discovery ─────────────────────────────────────────────────────
+//
+// A desktop-launched app does NOT inherit the shell environment, so
+// `SSH_AUTH_SOCK` is usually missing and every `ssh`/`ssh-add` call fails with
+// "Could not open a connection to your authentication agent" — even though the
+// same commands work fine in a terminal. So we locate the socket ourselves and
+// hand it to the child process explicitly.
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SshAgent {
+    /// Socket path (or Windows named pipe) to export as SSH_AUTH_SOCK.
+    pub socket: String,
+    /// Human label: which agent this is and where we found it.
+    pub label: String,
+    /// How many identities it holds right now.
+    pub key_count: usize,
+    /// "ok" (holds keys) · "empty" (answers, no keys — usually locked) ·
+    /// "refused" (socket file is there but nothing is listening).
+    pub status: String,
+}
+
+/// Outcome of asking one agent for its identities.
+enum AgentProbe {
+    Keys(usize),
+    /// The socket exists but nothing answered — the classic "1Password isn't
+    /// running (or its SSH agent is off)" case, worth reporting differently from
+    /// a socket that simply isn't there.
+    Refused,
+    Missing,
+}
+
+fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+}
+
+/// `IdentityAgent` from ~/.ssh/config — the line 1Password's own setup guide
+/// tells people to add, so it's the most reliable hint when it's there.
+fn identity_agent_from_ssh_config() -> Option<String> {
+    let cfg = home_dir()?.join(".ssh").join("config");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    parse_identity_agent(&text).map(|v| expand_tilde(&v))
+}
+
+/// First uncommented `IdentityAgent` value in an ssh_config. Split out from file
+/// access so it can be tested: real configs are full of commented-out variants
+/// (`# IdentityAgent ~/.bitwarden-ssh-agent.sock`) and picking one of those up
+/// would send us at a socket the user deliberately disabled.
+fn parse_identity_agent(text: &str) -> Option<String> {
+    for line in text.lines() {
+        let l = line.trim();
+        if l.starts_with('#') {
+            continue;
+        }
+        let lower = l.to_ascii_lowercase();
+        let Some(rest) = lower.strip_prefix("identityagent") else {
+            continue;
+        };
+        if !rest.starts_with(|c: char| c.is_whitespace() || c == '=') {
+            continue;
+        }
+        let value = l[l.len() - rest.len()..]
+            .trim_start_matches(['=', ' ', '\t'])
+            .trim()
+            .trim_matches('"');
+        if value.is_empty() || value.eq_ignore_ascii_case("none") {
+            continue;
+        }
+        return Some(value.to_string());
+    }
+    None
+}
+
+fn expand_tilde(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = home_dir() {
+            return home.join(rest).to_string_lossy().to_string();
+        }
+    }
+    path.to_string()
+}
+
+/// Every socket worth trying, most specific first. Existence is checked by the
+/// caller, which also probes each one for keys.
+fn agent_candidates() -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+
+    if let Some(sock) = std::env::var("SSH_AUTH_SOCK").ok().filter(|s| !s.is_empty()) {
+        out.push((sock, "Inherited from the environment".into()));
+    }
+    if let Some(sock) = identity_agent_from_ssh_config() {
+        out.push((sock, "IdentityAgent in ~/.ssh/config".into()));
+    }
+    if let Some(home) = home_dir() {
+        #[cfg(target_os = "macos")]
+        out.push((
+            home.join("Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock")
+                .to_string_lossy()
+                .to_string(),
+            "1Password".into(),
+        ));
+        out.push((
+            home.join(".1password/agent.sock").to_string_lossy().to_string(),
+            "1Password".into(),
+        ));
+    }
+    #[cfg(target_os = "windows")]
+    out.push((
+        r"\\.\pipe\openssh-ssh-agent".into(),
+        "Windows OpenSSH agent".into(),
+    ));
+    if let Some(run) = std::env::var_os("XDG_RUNTIME_DIR") {
+        let run = std::path::PathBuf::from(run);
+        out.push((
+            run.join("ssh-agent.socket").to_string_lossy().to_string(),
+            "systemd ssh-agent".into(),
+        ));
+        out.push((
+            run.join("keyring/ssh").to_string_lossy().to_string(),
+            "GNOME Keyring".into(),
+        ));
+        out.push((
+            run.join("gcr/ssh").to_string_lossy().to_string(),
+            "GNOME Keyring".into(),
+        ));
+    }
+
+    // Keep the first mention of each socket (earlier = more specific label).
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|(sock, _)| seen.insert(sock.clone()));
+    out
+}
+
+/// The socket to use when the caller didn't pick one: the first candidate that
+/// actually answers with at least one key, else the first that answers at all.
+fn resolve_agent_socket() -> Option<String> {
+    let mut answering: Option<String> = None;
+    for (sock, _) in agent_candidates() {
+        match probe_agent(&sock) {
+            AgentProbe::Keys(n) if n > 0 => return Some(sock),
+            AgentProbe::Keys(_) => {
+                answering.get_or_insert(sock);
+            }
+            _ => continue,
+        }
+    }
+    answering
+}
+
+fn probe_agent(socket: &str) -> AgentProbe {
+    let exists = std::path::Path::new(socket).exists() || socket.starts_with(r"\\.\pipe\");
+    let Ok(out) = std::process::Command::new("ssh-add")
+        .arg("-l")
+        .env("SSH_AUTH_SOCK", socket)
+        .output()
+    else {
+        return AgentProbe::Missing;
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stdout.contains("no identities") || stderr.contains("no identities") {
+        return AgentProbe::Keys(0);
+    }
+    if !out.status.success() {
+        return if exists { AgentProbe::Refused } else { AgentProbe::Missing };
+    }
+    AgentProbe::Keys(stdout.lines().filter(|l| !l.trim().is_empty()).count())
+}
+
+/// Agents the machine actually has, so the UI can let the user choose (a laptop
+/// with both 1Password and GNOME Keyring running has two, holding different
+/// keys). Only reachable ones are returned.
+#[tauri::command]
+fn list_ssh_agents() -> Vec<SshAgent> {
+    agent_candidates()
+        .into_iter()
+        .filter_map(|(socket, label)| match probe_agent(&socket) {
+            AgentProbe::Keys(n) => Some(SshAgent {
+                socket,
+                label,
+                key_count: n,
+                status: if n > 0 { "ok".into() } else { "empty".into() },
+            }),
+            // Surfaced on purpose: "1Password is installed but not answering" is
+            // something the user can fix, unlike a path that was never there.
+            AgentProbe::Refused => Some(SshAgent {
+                socket,
+                label,
+                key_count: 0,
+                status: "refused".into(),
+            }),
+            AgentProbe::Missing => None,
+        })
+        .collect()
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshKeyItem {
@@ -149,11 +348,17 @@ pub struct SshKeyItem {
     pub key_type: String,
 }
 
-fn run_ssh_add(flag: &str) -> Result<String, String> {
+fn run_ssh_add(flag: &str, socket: Option<&str>) -> Result<String, String> {
     use std::process::Command;
 
-    let output = Command::new("ssh-add")
-        .arg(flag)
+    let mut cmd = Command::new("ssh-add");
+    cmd.arg(flag);
+    // Explicit socket: the inherited environment can't be trusted in a
+    // desktop-launched app (see agent discovery above).
+    if let Some(sock) = socket {
+        cmd.env("SSH_AUTH_SOCK", sock);
+    }
+    let output = cmd
         .output()
         .map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => "`ssh-add` not found on PATH.".to_string(),
@@ -168,12 +373,43 @@ fn run_ssh_add(flag: &str) -> Result<String, String> {
             return Ok(String::new());
         }
         return Err(if stderr.is_empty() {
-            "No SSH agent reachable (is SSH_AUTH_SOCK set for this app?)".to_string()
+            no_agent_message()
+        } else if stderr.contains("Could not open a connection") {
+            // The generic ssh-add wording is a dead end for the user: say which
+            // sockets were tried and what to do about it.
+            format!("{stderr}\n\n{}", no_agent_message())
         } else {
             stderr
         });
     }
     Ok(stdout)
+}
+
+
+/// What to tell the user when no agent answers. Lists the sockets we tried,
+/// because "could not open a connection" alone gives them nothing to act on.
+fn no_agent_message() -> String {
+    let mut refused = Vec::new();
+    let mut tried = Vec::new();
+    for (sock, label) in agent_candidates() {
+        match probe_agent(&sock) {
+            AgentProbe::Refused => refused.push(format!("{label} ({sock})")),
+            _ => tried.push(format!("  • {sock}  ({label})")),
+        }
+    }
+    if !refused.is_empty() {
+        return format!(
+            "Found an agent socket but nothing is listening on it:\n  • {}\n\n\
+             That usually means the app that owns it isn't running — for 1Password, \
+             open it, unlock it, and check Settings → Developer → \"Use the SSH agent\".",
+            refused.join("\n  • ")
+        );
+    }
+    format!(
+        "No SSH agent answered. Tried:\n{}\n\nIf you use 1Password, turn on \
+         Settings → Developer → \"Use the SSH agent\", then reopen this dialog.",
+        tried.join("\n")
+    )
 }
 
 /// Lists the keys the SSH agent currently holds — for a 1Password agent, that's
@@ -184,9 +420,13 @@ fn run_ssh_add(flag: &str) -> Result<String, String> {
 /// from a GUI app ("connecting to desktop app: connection reset"), while the
 /// agent socket works fine from the same context — it's what ssh already uses.
 #[tauri::command]
-fn list_agent_ssh_keys() -> Result<Vec<SshKeyItem>, String> {
-    let listing = run_ssh_add("-L")?; // public key material + comment
-    let prints = run_ssh_add("-l").unwrap_or_default(); // fingerprints, same order
+fn list_agent_ssh_keys(socket: Option<String>) -> Result<Vec<SshKeyItem>, String> {
+    let sock = socket
+        .filter(|s| !s.is_empty())
+        .or_else(resolve_agent_socket)
+        .ok_or_else(no_agent_message)?;
+    let listing = run_ssh_add("-L", Some(&sock))?; // public key material + comment
+    let prints = run_ssh_add("-l", Some(&sock)).unwrap_or_default(); // same order
 
     // "256 SHA256:… comment (ED25519)" → fingerprint by position.
     let fingerprints: Vec<String> = prints
@@ -338,8 +578,14 @@ fn ssh_run(
     args.push(target);
     args.push(remote_cmd.to_string());
 
-    let output = Command::new("ssh")
-        .args(&args)
+    let mut cmd = Command::new("ssh");
+    cmd.args(&args);
+    // Same reason as ssh-add: without this the desktop-launched app has no agent
+    // and every connection fails with "Permission denied (publickey)".
+    if let Some(sock) = resolve_agent_socket() {
+        cmd.env("SSH_AUTH_SOCK", sock);
+    }
+    let output = cmd
         .output()
         .map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => {
@@ -354,7 +600,7 @@ fn ssh_run(
     if !output.status.success() {
         let trimmed = stderr.trim();
         let hint = if trimmed.contains("Too many authentication failures") {
-            " (your SSH agent offered more keys than the server allows before the right one. Set an SSH identity for this server — the .pub file of its key — or add a matching Host block with `IdentitiesOnly yes` to ~/.ssh/config)"
+            " (your SSH agent offered more keys than the server allows before the right one. Pick this server's key with the key button in the servers table so cac offers only that one)"
         } else if trimmed.contains("Permission denied") {
             " (is your 1Password SSH agent unlocked and the key authorized on this server?)"
         } else if trimmed.contains("Connection refused") || trimmed.contains("Connection timed out") {
@@ -952,6 +1198,7 @@ pub fn run() {
             get_server_ssh_key,
             set_server_ssh_key,
             list_agent_ssh_keys,
+            list_ssh_agents,
             jwt_decode,
             generate_id,
             hash_text,
@@ -966,4 +1213,42 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+
+#[cfg(test)]
+mod agent_tests {
+    use super::parse_identity_agent;
+
+    #[test]
+    fn picks_the_active_line_and_ignores_commented_ones() {
+        // Shape taken from a real config: two disabled variants around the live one.
+        let cfg = "\
+Host *
+  #  IdentityAgent ~/.bitwarden-ssh-agent.sock
+  IdentityAgent /home/rv/.1password/agent.sock
+  #IdentityAgent none
+";
+        assert_eq!(
+            parse_identity_agent(cfg).as_deref(),
+            Some("/home/rv/.1password/agent.sock")
+        );
+    }
+
+    #[test]
+    fn handles_equals_quotes_and_case() {
+        let cfg = "IdentityAgent=\"~/.1password/agent.sock\"\n";
+        assert_eq!(parse_identity_agent(cfg).as_deref(), Some("~/.1password/agent.sock"));
+        let cfg = "  identityagent   /tmp/a.sock\n";
+        assert_eq!(parse_identity_agent(cfg).as_deref(), Some("/tmp/a.sock"));
+    }
+
+    #[test]
+    fn none_and_lookalikes_are_not_sockets() {
+        // `IdentityAgent none` disables the agent — following it would be wrong.
+        assert_eq!(parse_identity_agent("IdentityAgent none\n"), None);
+        // A different keyword that merely starts the same way.
+        assert_eq!(parse_identity_agent("IdentityAgentFoo /x\n"), None);
+        assert_eq!(parse_identity_agent("IdentityFile ~/.ssh/id_ed25519\n"), None);
+    }
 }

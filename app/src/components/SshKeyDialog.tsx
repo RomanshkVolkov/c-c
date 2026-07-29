@@ -13,6 +13,14 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
+interface SshAgent {
+  socket: string;
+  label: string;
+  keyCount: number;
+  /** "ok" · "empty" (answers but holds nothing) · "refused" (socket dead). */
+  status: "ok" | "empty" | "refused";
+}
+
 interface SshKeyItem {
   /** Full public key line — what gets pinned with ssh -i. */
   publicKey: string;
@@ -47,6 +55,8 @@ export default function SshKeyDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const [agents, setAgents] = useState<SshAgent[]>([]);
+  const [agent, setAgent] = useState<string | null>(null);
   const [keys, setKeys] = useState<SshKeyItem[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -54,23 +64,35 @@ export default function SshKeyDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [items, saved] = await Promise.all([
-        invoke<SshKeyItem[]>("list_agent_ssh_keys"),
-        invoke<string | null>("get_server_ssh_key", { serverId }),
-      ]);
-      setKeys(items);
-      setCurrent(saved);
-      setSelected(saved);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [serverId]);
+  const load = useCallback(
+    async (socket?: string | null) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Which agents this machine has is a separate question from which keys
+        // one holds: a laptop can run 1Password's agent and the system one at
+        // the same time, each with different keys.
+        const found = await invoke<SshAgent[]>("list_ssh_agents");
+        setAgents(found);
+        const pick =
+          socket ?? found.find((a) => a.status === "ok")?.socket ?? found[0]?.socket ?? null;
+        setAgent(pick);
+
+        const [items, saved] = await Promise.all([
+          invoke<SshKeyItem[]>("list_agent_ssh_keys", { socket: pick }),
+          invoke<string | null>("get_server_ssh_key", { serverId }),
+        ]);
+        setKeys(items);
+        setCurrent(saved);
+        setSelected(saved);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [serverId],
+  );
 
   useEffect(() => {
     if (open) load();
@@ -103,10 +125,37 @@ export default function SshKeyDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {agents.length > 1 && (
+          <div className="space-y-1">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Agent</p>
+            <div className="flex flex-wrap gap-1">
+              {agents.map((a) => (
+                <button
+                  key={a.socket}
+                  title={a.socket}
+                  onClick={() => load(a.socket)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs",
+                    agent === a.socket ? "border-primary bg-accent" : "hover:bg-accent",
+                    a.status === "refused" && "opacity-60",
+                  )}
+                >
+                  {a.label}
+                  <span className="ml-1 text-muted-foreground">
+                    {a.status === "refused" ? "· not running" : `· ${a.keyCount} keys`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {error ? (
           <div className="space-y-2">
-            <p className="text-sm text-destructive">{error}</p>
-            <Button size="sm" variant="outline" onClick={load}>
+            {/* The message names the sockets that were tried, so it needs the
+                line breaks it was written with. */}
+            <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>
+            <Button size="sm" variant="outline" onClick={() => load(agent)}>
               <RefreshCw className="size-3 mr-1" /> Retry
             </Button>
           </div>
@@ -153,7 +202,8 @@ export default function SshKeyDialog({
 
             {keys.length === 0 && (
               <p className="py-4 text-center text-xs text-muted-foreground">
-                No keys in the SSH agent.
+                This agent holds no keys. If it's 1Password, unlock it — a locked
+                vault answers but offers nothing.
               </p>
             )}
           </div>
