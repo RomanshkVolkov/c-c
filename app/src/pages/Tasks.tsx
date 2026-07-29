@@ -34,6 +34,7 @@ import {
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { PRIORITY_META, type TaskCard } from "@/types/task";
@@ -73,16 +74,17 @@ function Navigator() {
   const error = useTasksStore((s) => s.error);
   const createSpace = useTasksStore((s) => s.createSpace);
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
+  const prompt = usePrompt();
 
   const addSpace = async () => {
     if (!currentOrgId) {
       toast.error("Pick an organization first");
       return;
     }
-    const name = window.prompt("Space name:");
-    if (!name?.trim()) return;
+    const name = await prompt({ title: "New space", label: "Name", placeholder: "Engineering", confirmText: "Create" });
+    if (!name) return;
     try {
-      await createSpace(currentOrgId, name.trim());
+      await createSpace(currentOrgId, name);
     } catch (e) {
       toast.error("Could not create space", { description: String(e) });
     }
@@ -121,10 +123,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const confirm = useConfirm();
   const { createFolder, createList, renameSpace, deleteSpace, moveSpace } = useTasksStore.getState();
 
-  const ask = async (label: string, current = "") => {
-    const v = window.prompt(label, current);
-    return v?.trim() || null;
-  };
+  const prompt = usePrompt();
 
   return (
     <div className="mb-0.5">
@@ -149,7 +148,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             <DropdownMenuGroup>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await ask("Folder name:");
+                  const n = await prompt({ title: "New folder", label: "Name", confirmText: "Create" });
                   if (n) createFolder(space.id, n).catch((e) => toast.error(String(e)));
                 }}
               >
@@ -157,7 +156,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await ask("List name:");
+                  const n = await prompt({ title: "New list", label: "Name", confirmText: "Create" });
                   if (n) createList(space.id, n).catch((e) => toast.error(String(e)));
                 }}
               >
@@ -165,7 +164,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await ask("Rename space:", space.name);
+                  const n = await prompt({ title: "Rename space", label: "Name", defaultValue: space.name });
                   if (n) renameSpace(space.id, n).catch((e) => toast.error(String(e)));
                 }}
               >
@@ -221,6 +220,7 @@ function FolderNode({
 }) {
   const [open, setOpen] = useState(true);
   const confirm = useConfirm();
+  const prompt = usePrompt();
   const { createList, renameFolder, deleteFolder, moveFolder } = useTasksStore.getState();
 
   return (
@@ -242,16 +242,16 @@ function FolderNode({
           <DropdownMenuContent align="start">
             <DropdownMenuGroup>
               <DropdownMenuItem
-                onClick={() => {
-                  const n = window.prompt("List name:")?.trim();
+                onClick={async () => {
+                  const n = await prompt({ title: "New list", label: "Name", confirmText: "Create" });
                   if (n) createList(spaceId, n, folder.id).catch((e) => toast.error(String(e)));
                 }}
               >
                 <ListChecks className="size-4" /> New list
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => {
-                  const n = window.prompt("Rename folder:", folder.name)?.trim();
+                onClick={async () => {
+                  const n = await prompt({ title: "Rename folder", label: "Name", defaultValue: folder.name });
                   if (n) renameFolder(folder.id, n).catch((e) => toast.error(String(e)));
                 }}
               >
@@ -295,6 +295,7 @@ function ListNode({ list }: { list: { id: string; name: string; taskCount: numbe
   const activeListId = useTasksStore((s) => s.activeListId);
   const selectList = useTasksStore((s) => s.selectList);
   const confirm = useConfirm();
+  const prompt = usePrompt();
   const { renameList, deleteList } = useTasksStore.getState();
   const active = activeListId === list.id;
 
@@ -326,8 +327,8 @@ function ListNode({ list }: { list: { id: string; name: string; taskCount: numbe
         <DropdownMenuContent align="start">
           <DropdownMenuGroup>
             <DropdownMenuItem
-              onClick={() => {
-                const n = window.prompt("Rename list:", list.name)?.trim();
+              onClick={async () => {
+                const n = await prompt({ title: "Rename list", label: "Name", defaultValue: list.name });
                 if (n) renameList(list.id, n).catch((e) => toast.error(String(e)));
               }}
             >
@@ -366,6 +367,7 @@ function Board() {
   const createTask = useTasksStore((s) => s.createTask);
   const openTask = useTasksStore((s) => s.openTask);
   const refreshBoard = useTasksStore((s) => s.refreshBoard);
+  const prompt = usePrompt();
 
   if (!activeListId) {
     return (
@@ -402,8 +404,8 @@ function Board() {
     footer: (
       <button
         className="flex w-full items-center gap-1 rounded px-1 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-        onClick={() => {
-          const title = window.prompt("Task title:")?.trim();
+        onClick={async () => {
+          const title = await prompt({ title: "New task", label: "Title", confirmText: "Create" });
           if (title) createTask(title, s.id).catch((e) => toast.error(String(e)));
         }}
       >
@@ -439,8 +441,8 @@ function Board() {
           size="sm"
           variant="ghost"
           className="ml-auto h-7 text-xs"
-          onClick={() => {
-            const name = window.prompt("Column name:")?.trim();
+          onClick={async () => {
+            const name = await prompt({ title: "New column", label: "Name", confirmText: "Create" });
             if (!name) return;
             // New columns default to "open": only the user knows whether a column
             // means finished, and `kind` drives the completed-at stamp.
@@ -579,6 +581,7 @@ function ColumnMenu({
   statuses: { id: string; name: string }[];
 }) {
   const confirm = useConfirm();
+  const prompt = usePrompt();
   const { updateStatus, deleteStatus } = useTasksStore.getState();
 
   const KINDS: { value: "open" | "active" | "done"; label: string }[] = [
@@ -600,8 +603,8 @@ function ColumnMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
           <DropdownMenuItem
-            onClick={() => {
-              const n = window.prompt("Rename column:", status.name)?.trim();
+            onClick={async () => {
+              const n = await prompt({ title: "Rename column", label: "Name", defaultValue: status.name });
               if (n) updateStatus(status.id, n, status.color, status.kind as "open").catch((e) => toast.error(String(e)));
             }}
           >

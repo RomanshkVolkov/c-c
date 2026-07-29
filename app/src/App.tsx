@@ -16,6 +16,7 @@ import Tasks from "@/pages/Tasks";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
+import { PromptProvider } from "@/components/PromptDialog";
 import { useAuthStore } from "@/store/auth.store";
 
 // Sends unknown paths to the right landing: the board for signed-in users, the
@@ -30,6 +31,7 @@ function RootRedirect() {
 export default function App() {
   return (
     <ConfirmProvider>
+      <PromptProvider>
       <BrowserRouter>
         <Routes>
         <Route path="/login" element={<Login />} />
@@ -66,6 +68,7 @@ export default function App() {
         <Route path="*" element={<RootRedirect />} />
         </Routes>
       </BrowserRouter>
+      </PromptProvider>
     </ConfirmProvider>
   );
 }

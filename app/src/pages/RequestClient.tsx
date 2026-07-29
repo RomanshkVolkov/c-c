@@ -56,6 +56,7 @@ import {
 } from "@/store/requests.store";
 import { useCollectionsStore } from "@/store/collections.store";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { usePrompt } from "@/components/PromptDialog";
 import { useOrgsStore } from "@/store/orgs.store";
 import { roleAtLeast, type OrgRole } from "@/types/organization";
 import type {
@@ -298,15 +299,22 @@ function LocalSection() {
 
   const rootNodes = nodes.filter((n) => n.parentId === null);
 
+  const prompt = usePrompt();
+
   const handleSyncToCloud = async () => {
     if (nodes.length === 0) {
       toast.info("Nothing to sync — local is empty");
       return;
     }
-    const name = window.prompt("Name for the new cloud collection:");
-    if (!name || !name.trim()) return;
+    const name = await prompt({
+      title: "Sync to cloud",
+      description: "Copies your local collection to a new cloud collection.",
+      label: "Collection name",
+      confirmText: "Sync",
+    });
+    if (!name) return;
 
-    const promise = promoteToRemote(name.trim(), nodes);
+    const promise = promoteToRemote(name, nodes);
     const id = toast.loading("Syncing to cloud…");
     try {
       const meta = await promise;
@@ -549,13 +557,14 @@ function OwnedSection({
   error: string | null;
 }) {
   const createCollection = useCollectionsStore((s) => s.createCollection);
+  const prompt = usePrompt();
 
   const handleCreate = async () => {
-    const name = window.prompt("Collection name:");
-    if (!name || !name.trim()) return;
+    const name = await prompt({ title: "New collection", label: "Name", confirmText: "Create" });
+    if (!name) return;
     try {
-      await createCollection(name.trim());
-      toast.success(`Created "${name.trim()}"`);
+      await createCollection(name);
+      toast.success(`Created "${name}"`);
     } catch (e) {
       toast.error("Could not create collection", {
         description: e instanceof Error ? e.message : String(e),
@@ -614,13 +623,19 @@ function OrgSection({
   loading: boolean;
 }) {
   const createCollection = useCollectionsStore((s) => s.createCollection);
+  const prompt = usePrompt();
 
   const handleCreate = async () => {
-    const name = window.prompt(`New shared collection in "${orgName}":`);
-    if (!name || !name.trim()) return;
+    const name = await prompt({
+      title: "New shared collection",
+      description: `Visible to everyone in ${orgName}.`,
+      label: "Name",
+      confirmText: "Create",
+    });
+    if (!name) return;
     try {
-      await createCollection(name.trim(), "", orgId);
-      toast.success(`Created "${name.trim()}" in ${orgName}`);
+      await createCollection(name, "", orgId);
+      toast.success(`Created "${name}" in ${orgName}`);
     } catch (e) {
       toast.error("Could not create collection", {
         description: e instanceof Error ? e.message : String(e),

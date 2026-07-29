@@ -27,6 +27,7 @@ import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
 import UserPicker from "@/components/UserPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { PRIORITIES, PRIORITY_META } from "@/types/task";
 import { cn } from "@/lib/utils";
@@ -85,6 +86,7 @@ function Content() {
   const createSubtask = useTasksStore((s) => s.createSubtask);
   const createTag = useTasksStore((s) => s.createTag);
   const confirm = useConfirm();
+  const prompt = usePrompt();
 
   const { task } = detail;
   const [title, setTitle] = useState(task.title);
@@ -282,7 +284,7 @@ function Content() {
                   ))}
                   <DropdownMenuItem
                     onClick={async () => {
-                      const name = window.prompt("New tag name:")?.trim();
+                      const name = await prompt({ title: "New tag", label: "Name", confirmText: "Create" });
                       if (!name) return;
                       const created = await createTag(task.orgId, name, "#8B5CF6");
                       if (created) {
@@ -436,8 +438,8 @@ function Content() {
               size="sm"
               variant="ghost"
               className="h-6 px-2 text-xs"
-              onClick={() => {
-                const t = window.prompt("Subtask title:")?.trim();
+              onClick={async () => {
+                const t = await prompt({ title: "New subtask", label: "Title", confirmText: "Create" });
                 if (t) createSubtask(task.id, t).catch((e) => toast.error(String(e)));
               }}
             >

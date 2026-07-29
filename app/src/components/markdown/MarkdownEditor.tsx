@@ -20,6 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePrompt } from "@/components/PromptDialog";
 
 /**
  * WYSIWYG editor whose stored value is **markdown**, not HTML or ProseMirror
@@ -171,6 +172,7 @@ function Toolbar({
   onPickFile?: (file: File) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const prompt = usePrompt();
 
   const Btn = ({
     icon: Icon,
@@ -217,11 +219,19 @@ function Toolbar({
       <Btn icon={Quote} label="Quote" active={editor.isActive("blockquote")}
         onClick={() => editor.chain().focus().toggleBlockquote().run()} />
       <Btn icon={Link2} label="Link" active={editor.isActive("link")}
-        onClick={() => {
+        onClick={async () => {
           const prev = editor.getAttributes("link").href as string | undefined;
-          const url = window.prompt("Link URL", prev ?? "https://");
+          // allowEmpty: clearing the field is how you remove an existing link,
+          // which has to stay distinguishable from cancelling (null).
+          const url = await prompt({
+            title: prev ? "Edit link" : "Add link",
+            label: "URL",
+            defaultValue: prev ?? "https://",
+            allowEmpty: true,
+            confirmText: "Apply",
+          });
           if (url === null) return;
-          if (url === "") {
+          if (url.trim() === "") {
             editor.chain().focus().unsetLink().run();
             return;
           }
