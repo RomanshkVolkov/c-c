@@ -342,6 +342,9 @@ function ListNode({ list }: { list: { id: string; name: string; taskCount: numbe
 // ─── Board ────────────────────────────────────────────────────────────────────
 
 function Board() {
+  // Board vs list is a per-user viewing preference, not shared state — keeping
+  // it local means two people can look at the same list differently.
+  const [view, setView] = useState<"board" | "list">("board");
   const board = useTasksStore((s) => s.board);
   const loading = useTasksStore((s) => s.loadingBoard);
   const activeListId = useTasksStore((s) => s.activeListId);
@@ -404,6 +407,20 @@ function Board() {
         <Badge variant="secondary" className="text-[10px]">
           {board.tasks.length} tasks
         </Badge>
+        <div className="ml-2 flex rounded-md border p-0.5">
+          {(["board", "list"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                "rounded px-2 py-0.5 text-xs capitalize",
+                view === v ? "bg-accent text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
         <Button
           size="sm"
           variant="ghost"
@@ -433,20 +450,106 @@ function Board() {
       </header>
 
       <div className="min-h-0 flex-1">
-        <KanbanBoard
-          columns={columns}
-          items={items}
-          emptyColumnHint="No tasks"
-          onMove={({ itemId, toColumnId, afterId, beforeId }) =>
-            moveTask(itemId, toColumnId, afterId, beforeId).catch((e) =>
-              toast.error("Could not move task", { description: String(e) }),
-            )
-          }
-          renderItem={(item, dragging) => (
-            <TaskCardView card={item} dragging={dragging} onOpen={() => openTask(item.id)} />
-          )}
-        />
+        {view === "board" ? (
+          <KanbanBoard
+            columns={columns}
+            items={items}
+            emptyColumnHint="No tasks"
+            onMove={({ itemId, toColumnId, afterId, beforeId }) =>
+              moveTask(itemId, toColumnId, afterId, beforeId).catch((e) =>
+                toast.error("Could not move task", { description: String(e) }),
+              )
+            }
+            renderItem={(item, dragging) => (
+              <TaskCardView card={item} dragging={dragging} onOpen={() => openTask(item.id)} />
+            )}
+          />
+        ) : (
+          <ListView board={board} onOpen={openTask} />
+        )}
       </div>
+    </div>
+  );
+}
+
+// Dense table for scanning a whole list at once — the board is for moving work,
+// this is for reading it. Grouped by column so the flow still reads top to
+// bottom, and rows carry the fields you'd otherwise have to open a card to see.
+function ListView({
+  board,
+  onOpen,
+}: {
+  board: NonNullable<ReturnType<typeof useTasksStore.getState>["board"]>;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="h-full overflow-auto p-4">
+      {board.statuses.map((status) => {
+        const rows = board.tasks.filter((t) => t.statusId === status.id);
+        return (
+          <section key={status.id} className="mb-5">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
+              <h3 className="text-xs font-semibold uppercase tracking-wide">{status.name}</h3>
+              <span className="text-xs text-muted-foreground">{rows.length}</span>
+            </div>
+            {rows.length === 0 ? (
+              <p className="px-1 py-2 text-xs text-muted-foreground">Empty</p>
+            ) : (
+              <div className="divide-y rounded-md border">
+                {rows.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => onOpen(t.id)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent/50"
+                  >
+                    <span className="w-10 shrink-0 font-mono text-[11px] text-muted-foreground">
+                      #{t.seq}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                    {t.tags.slice(0, 3).map((g) => (
+                      <span
+                        key={g.id}
+                        className="hidden rounded px-1.5 py-0.5 text-[10px] sm:inline"
+                        style={{ backgroundColor: `${g.color || "#8B5CF6"}22`, color: g.color || undefined }}
+                      >
+                        {g.name}
+                      </span>
+                    ))}
+                    {t.priority !== "none" && (
+                      <span className={cn("shrink-0 text-[11px]", PRIORITY_META[t.priority].className)}>
+                        {PRIORITY_META[t.priority].label}
+                      </span>
+                    )}
+                    {t.dueAt && (
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {new Date(t.dueAt).toLocaleDateString()}
+                      </span>
+                    )}
+                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                      {t.commentCount > 0 && (
+                        <>
+                          <MessageSquare className="size-3" />
+                          {t.commentCount}
+                        </>
+                      )}
+                      {t.assignees.slice(0, 2).map((a) => (
+                        <span
+                          key={a.id}
+                          title={a.username}
+                          className="inline-flex size-4 items-center justify-center rounded-full bg-primary/20 text-[9px] uppercase text-foreground"
+                        >
+                          {a.username.slice(0, 2)}
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
