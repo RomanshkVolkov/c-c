@@ -404,7 +404,7 @@ function Board() {
     title: s.name,
     color: s.color,
     accessory: <ColumnMenu status={s} statuses={board.statuses} />,
-    footer: (
+    action: (
       <button
         className="flex w-full items-center gap-1 rounded px-1 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
         onClick={async () => {
@@ -689,7 +689,7 @@ function TaskCardView({
     <div
       onClick={onOpen}
       className={cn(
-        "cursor-pointer rounded-md border bg-card p-2.5 shadow-sm transition-colors hover:border-primary/50",
+        "rounded-md border bg-card p-2.5 shadow-sm transition-colors hover:border-primary/50",
         dragging && "shadow-lg",
       )}
     >

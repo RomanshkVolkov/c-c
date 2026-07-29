@@ -38,7 +38,11 @@ export interface KanbanColumn {
   color?: string;
   /** Rendered at the column header's right edge (e.g. a count or menu). */
   accessory?: ReactNode;
-  footer?: ReactNode;
+  /**
+   * Rendered directly under the header, above the cards — an "add" affordance
+   * belongs where you start reading a column, not past the end of a long scroll.
+   */
+  action?: ReactNode;
 }
 
 export interface KanbanItem {
@@ -193,6 +197,8 @@ function Column<T extends KanbanItem>({
         <span className="ml-auto flex items-center">{column.accessory}</span>
       </header>
 
+      {column.action && <div className="border-b px-2 py-1.5">{column.action}</div>}
+
       <div
         ref={setNodeRef}
         className={cn(
@@ -211,8 +217,6 @@ function Column<T extends KanbanItem>({
           <p className="px-1 py-6 text-center text-xs text-muted-foreground">{emptyHint}</p>
         )}
       </div>
-
-      {column.footer && <div className="border-t p-2">{column.footer}</div>}
     </section>
   );
 }
@@ -224,10 +228,16 @@ function SortableCard({ id, children }: { id: string; children: ReactNode }) {
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        // Without this a touch/trackpad drag scrolls the column instead of
+        // lifting the card — the browser claims the gesture first.
+        touchAction: "none",
+      }}
       // The lifted card keeps its slot as a placeholder; the overlay shows the
       // card itself following the pointer.
-      className={cn(isDragging && "opacity-40")}
+      className={cn("cursor-grab active:cursor-grabbing", isDragging && "opacity-40")}
       {...attributes}
       {...listeners}
     >
