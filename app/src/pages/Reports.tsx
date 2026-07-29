@@ -44,6 +44,7 @@ export default function Reports() {
   const projects = useReportsStore((s) => s.projects);
   const reports = useReportsStore((s) => s.reports);
   const loading = useReportsStore((s) => s.loading);
+  const error = useReportsStore((s) => s.error);
   const projectFilter = useReportsStore((s) => s.projectFilter);
   const fetchProjects = useReportsStore((s) => s.fetchProjects);
   const fetchReports = useReportsStore((s) => s.fetchReports);
@@ -56,7 +57,8 @@ export default function Reports() {
   const [view, setView] = useState<"board" | "calendar">("board");
 
   useEffect(() => {
-    fetchProjects().then(fetchReports);
+    // .catch: an unhandled rejection here used to leave the page silently blank.
+    fetchProjects().then(fetchReports).catch(() => {});
     fetchTransitions();
   }, [currentOrgId, fetchProjects, fetchReports, fetchTransitions]);
 
@@ -151,7 +153,22 @@ export default function Reports() {
       </header>
 
       <main className="flex-1 overflow-x-auto p-4">
-        {projects.length === 0 ? (
+        {error && projects.length === 0 ? (
+          <div className="py-12 text-center">
+            <p className="text-sm text-error">Couldn't load reports: {error}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3 gap-2"
+              onClick={() => {
+                fetchProjects().then(fetchReports).catch(() => {});
+              }}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Retry
+            </Button>
+          </div>
+        ) : projects.length === 0 ? (
           <p className="text-sm text-muted-foreground py-12 text-center">
             No report projects in this organization yet.
           </p>

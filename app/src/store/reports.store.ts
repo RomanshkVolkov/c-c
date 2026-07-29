@@ -17,6 +17,8 @@ interface ReportsState {
   reports: ReportListItem[];
   transitions: TransitionsMap | null;
   loading: boolean;
+  /** Last load failure, so the board can say "couldn't load" instead of "empty". */
+  error: string | null;
   projectFilter: string; // "" = all projects in current org
   statusFilter: ReportStatus | "";
 
@@ -63,14 +65,22 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
   reports: [],
   transitions: null,
   loading: false,
+  error: null,
   projectFilter: "",
   statusFilter: "",
 
   fetchProjects: async () => {
-    const res = await api.get<APIResponse<ReportProject[]>>("/api/v1/report-projects/", true);
-    const orgId = useOrgsStore.getState().currentOrgId;
-    const all = res.success && res.data ? res.data : [];
-    set({ projects: all.filter((p) => p.orgId === orgId) });
+    try {
+      const res = await api.get<APIResponse<ReportProject[]>>("/api/v1/report-projects/", true);
+      const orgId = useOrgsStore.getState().currentOrgId;
+      const all = res.success && res.data ? res.data : [];
+      set({ projects: all.filter((p) => p.orgId === orgId), error: null });
+    } catch (e) {
+      // A failure here left `projects` empty, and the board then claimed the org
+      // had no projects — a wrong answer instead of an error.
+      set({ error: e instanceof Error ? e.message : "Failed to load projects" });
+      throw e;
+    }
   },
 
   createProject: async ({ name, allowedOrigins, rateLimitPerHour }) => {
@@ -133,7 +143,11 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         const ids = orgProjectIds(projects);
         items = items.filter((r) => ids.has(r.projectId));
       }
-      set({ reports: items });
+      set({ reports: items, error: null });
+    } catch (e) {
+      // Without this the failure was invisible: the list stayed empty/stale and
+      // nothing told the user (or retried), which read as a frozen app.
+      set({ error: e instanceof Error ? e.message : "Failed to load reports" });
     } finally {
       set({ loading: false });
     }

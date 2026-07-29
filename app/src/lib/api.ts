@@ -1,5 +1,6 @@
 import type { APIResponse, AuthRefreshResponse } from "@/types/auth";
 import { useAuthStore } from "@/store/auth.store";
+import { useConnectionStore } from "@/store/connection.store";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "https://cac.guz-studio.dev";
 
@@ -78,8 +79,14 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
     // Timeout/network (often a stale pooled socket after idle). Retry once on a
     // fresh connection before surfacing an error, so the UI self-heals.
     if (retry) return request<T>(path, options, false);
+    useConnectionStore.getState().markFail("Can't reach the server");
     throw new Error("network-error");
   }
+  // A 5xx is a degraded backend, not a successful round trip — a reachable
+  // gateway in front of a dead API would otherwise read as healthy.
+  if (res.status >= 500) useConnectionStore.getState().markFail(`Server error (${res.status})`);
+  else useConnectionStore.getState().markOk();
+
   const json = await res.json();
 
   if (!res.ok) {
@@ -109,8 +116,12 @@ async function postForm<T>(path: string, form: FormData, retry = true): Promise<
     res = await fetchWithTimeout(`${BASE_URL}${path}`, { method: "POST", body: form, headers });
   } catch {
     if (retry) return postForm<T>(path, form, false);
+    useConnectionStore.getState().markFail("Can't reach the server");
     throw new Error("network-error");
   }
+  if (res.status >= 500) useConnectionStore.getState().markFail(`Server error (${res.status})`);
+  else useConnectionStore.getState().markOk();
+
   const json = await res.json();
   if (!res.ok) {
     const errorMsg: string = json?.error ?? json?.message ?? "Request failed";

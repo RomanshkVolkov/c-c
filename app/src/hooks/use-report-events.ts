@@ -9,6 +9,7 @@ import { apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
+import { useConnectionStore } from "@/store/connection.store";
 
 type Payload = { reportId?: string; folio?: string; title?: string; status?: string };
 
@@ -41,7 +42,13 @@ export function useReportEvents() {
   const authed = useAuthStore((s) => !!s.accessToken);
 
   useEffect(() => {
-    if (!authed) return;
+    // Guests never subscribe, so the stream is idle rather than broken — without
+    // this the connection banner would nag them about live updates being down.
+    if (!authed) {
+      useConnectionStore.getState().setStream("idle");
+      return;
+    }
+    useConnectionStore.getState().setStream("connecting");
 
     let es: EventSource | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -84,6 +91,7 @@ export function useReportEvents() {
       es.onopen = () => {
         attempts = 0;
         lastSeenAt = Date.now();
+        useConnectionStore.getState().setStream("open");
       };
 
       // Any inbound traffic proves the stream is alive.
@@ -134,6 +142,7 @@ export function useReportEvents() {
       }
 
       es.onerror = () => {
+        useConnectionStore.getState().setStream("down");
         es?.close();
         es = null;
         if (stopped) return;
@@ -148,6 +157,7 @@ export function useReportEvents() {
     // Force a fresh connection: closing is what makes the browser drop the
     // (possibly poisoned) underlying connection instead of reusing it.
     const reconnect = () => {
+      useConnectionStore.getState().setStream("connecting");
       es?.close();
       es = null;
       if (stopped) return;
@@ -174,6 +184,7 @@ export function useReportEvents() {
 
     return () => {
       stopped = true;
+      useConnectionStore.getState().setStream("idle");
       if (timer) clearTimeout(timer);
       if (watchdog) clearInterval(watchdog);
       document.removeEventListener("visibilitychange", onVisible);

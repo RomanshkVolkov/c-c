@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
 import UpdateChecker from "@/components/UpdateChecker";
+import ConnectionBanner from "@/components/ConnectionBanner";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useReportEvents } from "@/hooks/use-report-events";
 import { ensureOrgClaim, refreshSession } from "@/lib/api";
@@ -46,6 +47,7 @@ export default function AppLayout() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
+        <ConnectionBanner />
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 md:hidden">
           <SidebarTrigger />
         </header>
