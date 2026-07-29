@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
@@ -37,14 +38,19 @@ type TaskHandler interface {
 	DeleteComment(w http.ResponseWriter, r *http.Request)
 	ListTags(w http.ResponseWriter, r *http.Request)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	UploadAttachment(w http.ResponseWriter, r *http.Request)
+	DeleteAttachment(w http.ResponseWriter, r *http.Request)
 }
 
 type taskHandler struct {
 	svc *service.TaskService
+	// images proxies attachment uploads so the API key and bucket stay
+	// server-side; nil/disabled simply turns attachments off.
+	images *imageservice.Client
 }
 
-func NewTaskHandler(svc *service.TaskService) TaskHandler {
-	return &taskHandler{svc: svc}
+func NewTaskHandler(svc *service.TaskService, images *imageservice.Client) TaskHandler {
+	return &taskHandler{svc: svc, images: images}
 }
 
 func mapTaskError(w http.ResponseWriter, err error) bool {

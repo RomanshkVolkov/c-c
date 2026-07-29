@@ -104,3 +104,65 @@ func (c *Client) UploadImage(ctx context.Context, filename, contentType string, 
 	}
 	return out, nil
 }
+
+// FileResult is the /upload/file response: the byte stream is stored intact
+// (no transcoding), so a signed PDF stays byte-identical.
+type FileResult struct {
+	Key         string `json:"id"`
+	URL         string `json:"url"`
+	Bytes       int64  `json:"bytes"`
+	ContentType string `json:"content_type"`
+	Format      string `json:"format"`
+}
+
+// UploadFile sends one file to POST /upload/file, stored as-is. image-service
+// enforces its own allowlist (pdf/png/jpg/webp today) and returns 4xx for
+// anything else — we surface that message rather than guessing here, so the
+// rule lives in one place.
+func (c *Client) UploadFile(ctx context.Context, filename, contentType string, data []byte, folder string) (FileResult, error) {
+	if !c.Enabled() {
+		return FileResult{}, ErrDisabled
+	}
+
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		return FileResult{}, err
+	}
+	if _, err := part.Write(data); err != nil {
+		return FileResult{}, err
+	}
+	opts, _ := json.Marshal(uploadOptions{Folder: folder})
+	if err := w.WriteField("options", string(opts)); err != nil {
+		return FileResult{}, err
+	}
+	if err := w.Close(); err != nil {
+		return FileResult{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/upload/file", &body)
+	if err != nil {
+		return FileResult{}, err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("X-Client-Cert-CN", c.certCN)
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return FileResult{}, err
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return FileResult{}, fmt.Errorf("image-service %d: %s", resp.StatusCode, string(raw))
+	}
+	var out FileResult
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return FileResult{}, fmt.Errorf("image-service: bad response: %w", err)
+	}
+	return out, nil
+}

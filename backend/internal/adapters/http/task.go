@@ -3,6 +3,7 @@ package http
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/handler"
+	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
@@ -13,7 +14,14 @@ import (
 // org-scoped through the space that owns each node.
 func InitTaskRoutes(db *gorm.DB, r *chi.Mux) {
 	svc := service.NewTaskService(repository.NewTaskRepository(db))
-	h := handler.NewTaskHandler(svc)
+	// Same image-service client as reports: attachments are proxied so its API
+	// key and the bucket never reach the desktop app.
+	images := imageservice.New(
+		repository.GetEnv("IMAGE_SERVICE_URL", ""),
+		repository.GetEnv("IMAGE_SERVICE_CERT_CN", ""),
+		repository.GetEnv("IMAGE_SERVICE_API_KEY", ""),
+	)
+	h := handler.NewTaskHandler(svc, images)
 
 	// The navigator: spaces → folders → lists.
 	r.Route("/api/v1/task-spaces", func(r chi.Router) {
@@ -58,6 +66,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Post("/{id}/comments", h.AddComment)
 		r.Patch("/{id}/comments/{commentId}", h.EditComment)
 		r.Delete("/{id}/comments/{commentId}", h.DeleteComment)
+		r.Post("/{id}/attachments", h.UploadAttachment)
+		r.Delete("/{id}/attachments/{attachmentId}", h.DeleteAttachment)
 	})
 
 	r.Route("/api/v1/task-tags", func(r chi.Router) {
