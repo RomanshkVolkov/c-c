@@ -2,11 +2,13 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/rank"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
@@ -298,6 +300,15 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 func (s *TaskService) FindTask(id string) (*domain.Task, error) { return s.repo.FindTask(id) }
 
 func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error {
+	// Captured before the write so a description edit can be compared against
+	// what it replaced (see dropRemovedAttachments).
+	var oldDescription string
+	if req.Description != nil {
+		if prev, err := s.repo.FindTask(id); err == nil {
+			oldDescription = prev.Description
+		}
+	}
+
 	fields := map[string]any{}
 	if req.Title != nil {
 		fields["title"] = *req.Title
@@ -334,6 +345,9 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 		if err := s.repo.SetAssignees(id, *req.AssigneeIDs); err != nil {
 			return err
 		}
+	}
+	if req.Description != nil {
+		s.dropRemovedAttachments(id, oldDescription, *req.Description)
 	}
 	if t, err := s.repo.FindTask(id); err == nil {
 		s.publish("task:update", t.OrgID, t.ListID, t.ID)
@@ -481,6 +495,44 @@ func (s *TaskService) FindComment(id string) (*domain.TaskComment, error) {
 
 func (s *TaskService) EditComment(id, body string) error { return s.repo.UpdateComment(id, body) }
 func (s *TaskService) DeleteComment(id string) error     { return s.repo.DeleteComment(id) }
+
+// dropRemovedAttachments detaches files whose inline reference the user just
+// deleted, so removing an image from the markdown doesn't leave it listed under
+// Attachments forever.
+//
+// Deliberately narrow: only ids that were in the *previous* text and are gone
+// from the new one qualify. Pruning every unreferenced attachment instead would
+// race with editing — an image pasted seconds ago has a row but isn't in any
+// saved text yet, and saving something else would delete it mid-edit.
+//
+// A file still cited by any comment stays. The blob itself is left in storage;
+// only the row (and therefore the listing) goes.
+func (s *TaskService) dropRemovedAttachments(taskID, before, after string) {
+	if before == "" || before == after {
+		return
+	}
+	atts, err := s.repo.Attachments(taskID, nil)
+	if err != nil {
+		return
+	}
+	var comments string
+	if cs, err := s.repo.Comments(taskID); err == nil {
+		for _, c := range cs {
+			comments += c.Body
+		}
+	}
+	for _, a := range atts {
+		if !strings.Contains(before, a.ID) || strings.Contains(after, a.ID) {
+			continue
+		}
+		if strings.Contains(comments, a.ID) {
+			continue
+		}
+		if err := s.repo.DeleteAttachment(a.ID); err != nil {
+			lg.Error("drop removed attachment " + a.ID + ": " + err.Error())
+		}
+	}
+}
 
 func (s *TaskService) AddAttachment(a *domain.TaskAttachment) error {
 	// Only mint when the caller didn't: the upload handler needs the id *before*
