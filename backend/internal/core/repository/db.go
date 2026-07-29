@@ -105,6 +105,8 @@ func DBConnection() {
 // the row and every markdown reference to the proxy path. Idempotent: once
 // rewritten, nothing matches the bucket-URL filter again.
 func backfillAttachmentRefs(db *gorm.DB) {
+	repairMismatchedRefs(db)
+
 	var rows []domain.TaskAttachment
 	if err := db.Where("url LIKE ?", "%amazonaws.com/%").Find(&rows).Error; err != nil {
 		lg.Error("attachment backfill: query failed: " + err.Error())
@@ -258,5 +260,48 @@ func seedAdmin(db *gorm.DB) {
 		fmt.Println("Error seeding admin user:", err)
 	} else {
 		fmt.Println("Admin user seeded successfully")
+	}
+}
+
+// repairMismatchedRefs fixes rows whose URL embeds an attachment id that does
+// not exist: the upload handler minted an id to build the URL and the service
+// then replaced it before inserting, so the proxy looked up a phantom row and
+// answered 404 for every image. The row is authoritative, so the URL — and every
+// markdown reference to it — is rewritten to the row's own id.
+func repairMismatchedRefs(db *gorm.DB) {
+	var rows []domain.TaskAttachment
+	if err := db.Where("url LIKE ?", "/api/v1/tasks/%/attachments/%/raw").Find(&rows).Error; err != nil {
+		lg.Error("attachment repair: query failed: " + err.Error())
+		return
+	}
+
+	fixed := 0
+	for _, a := range rows {
+		want := domain.AttachmentRef(a.TaskID, a.ID)
+		if a.URL == want {
+			continue
+		}
+		old := a.URL
+		if err := db.Model(&domain.TaskAttachment{}).Where("id = ?", a.ID).
+			Update("url", want).Error; err != nil {
+			lg.Error("attachment repair: row " + a.ID + ": " + err.Error())
+			continue
+		}
+		if err := db.Exec(
+			"UPDATE tasks SET description = REPLACE(description, ?, ?) WHERE id = ? AND description LIKE ?",
+			old, want, a.TaskID, "%"+old+"%",
+		).Error; err != nil {
+			lg.Error("attachment repair: description " + a.TaskID + ": " + err.Error())
+		}
+		if err := db.Exec(
+			"UPDATE task_comments SET body = REPLACE(body, ?, ?) WHERE task_id = ? AND body LIKE ?",
+			old, want, a.TaskID, "%"+old+"%",
+		).Error; err != nil {
+			lg.Error("attachment repair: comments " + a.TaskID + ": " + err.Error())
+		}
+		fixed++
+	}
+	if fixed > 0 {
+		lg.Info("attachment repair: fixed " + strconv.Itoa(fixed) + " reference(s) pointing at a phantom id")
 	}
 }

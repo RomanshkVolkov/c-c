@@ -483,7 +483,13 @@ func (s *TaskService) EditComment(id, body string) error { return s.repo.UpdateC
 func (s *TaskService) DeleteComment(id string) error     { return s.repo.DeleteComment(id) }
 
 func (s *TaskService) AddAttachment(a *domain.TaskAttachment) error {
-	a.ID = uuid.NewString()
+	// Only mint when the caller didn't: the upload handler needs the id *before*
+	// the insert because the attachment's URL embeds it. Overwriting it here
+	// stored a row whose URL pointed at an id that never existed, so every image
+	// 404'd through the proxy.
+	if a.ID == "" {
+		a.ID = uuid.NewString()
+	}
 	return s.repo.CreateAttachment(a)
 }
 
