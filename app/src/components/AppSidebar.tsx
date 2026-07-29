@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Bug,
+  KanbanSquare,
   ImageDown,
   Send,
   KeyRound,
@@ -48,6 +49,7 @@ import { cn } from "@/lib/utils";
 // guest: reachable on-device (no backend). superadmin: only for platform admins.
 const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false },
+  { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false },
   { label: "Reports", path: "/reports", icon: Bug, guest: false },
   { label: "Image Tool", path: "/image-tool", icon: ImageDown, guest: true },
   { label: "Requests", path: "/requests", icon: Send, guest: false },

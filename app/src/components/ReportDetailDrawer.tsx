@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api";
+import Markdown from "@/components/markdown/Markdown";
 import { useReportsStore } from "@/store/reports.store";
 import { STATUS_LABELS, type ReportStatus } from "@/types/report";
 import TelemetryTimeline from "@/components/TelemetryTimeline";
@@ -95,7 +96,7 @@ export default function ReportDetailDrawer() {
               </div>
 
               {detail.description && (
-                <p className="text-sm whitespace-pre-wrap">{detail.description}</p>
+                <Markdown>{detail.description}</Markdown>
               )}
 
               {/* metadata */}
@@ -157,7 +158,7 @@ export default function ReportDetailDrawer() {
                         <span>{c.authorName ?? "reporter"}</span>
                         <span>{new Date(c.createdAt).toLocaleString()}</span>
                       </div>
-                      {c.body && <p className="text-sm whitespace-pre-wrap">{c.body}</p>}
+                      {c.body && <Markdown>{c.body}</Markdown>}
                       {c.images && c.images.length > 0 && (
                         <div className="grid grid-cols-3 gap-2">
                           {c.images.map((img) => (

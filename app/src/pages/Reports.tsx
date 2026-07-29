@@ -14,6 +14,7 @@ import {
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import ReportDetailDrawer from "@/components/ReportDetailDrawer";
+import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ReportProjectsDialog from "@/components/ReportProjectsDialog";
 import ReportsCalendar from "@/components/ReportsCalendar";
 import {
@@ -24,10 +25,18 @@ import {
 } from "@/types/report";
 
 const STATUS_ACCENT: Record<ReportStatus, string> = {
-  pending: "border-t-amber-500",
-  in_progress: "border-t-blue-500",
-  resolved: "border-t-emerald-500",
+  pending: "border-t-warning",
+  in_progress: "border-t-info",
+  resolved: "border-t-success",
   closed: "border-t-muted-foreground/40",
+};
+
+// Column dot colours, from the theme tokens so both themes stay coherent.
+const STATUS_DOT: Record<ReportStatus, string> = {
+  pending: "var(--warning)",
+  in_progress: "var(--info)",
+  resolved: "var(--success)",
+  closed: "var(--muted-foreground)",
 };
 
 export default function Reports() {
@@ -44,7 +53,6 @@ export default function Reports() {
   const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
   const updateStatus = useReportsStore((s) => s.updateStatus);
 
-  const [dragOver, setDragOver] = useState<ReportStatus | null>(null);
   const [view, setView] = useState<"board" | "calendar">("board");
 
   useEffect(() => {
@@ -52,29 +60,23 @@ export default function Reports() {
     fetchTransitions();
   }, [currentOrgId, fetchProjects, fetchReports, fetchTransitions]);
 
-  const byStatus = (status: ReportStatus) =>
-    reports.filter((r) => r.status === status);
+  // Reports are governed by a server-side state machine, so a drop is a
+  // *transition request*: reject the ones the machine disallows instead of
+  // letting the board show a move the backend would refuse. Unlike tasks there
+  // is no manual ordering here, so neighbour ids are irrelevant.
+  const handleMove = async (id: string, to: ReportStatus) => {
+    const report = reports.find((r) => r.id === id);
+    if (!report || report.status === to) return;
 
-  // Drop a card onto a column → transition, if the state machine allows it.
-  const handleDrop = async (e: React.DragEvent, to: ReportStatus) => {
-    e.preventDefault();
-    setDragOver(null);
-    let dragged: { id: string; status: ReportStatus };
-    try {
-      dragged = JSON.parse(e.dataTransfer.getData("application/json"));
-    } catch {
-      return;
-    }
-    if (dragged.status === to) return;
-    const allowed = transitions?.[dragged.status] ?? [];
+    const allowed = transitions?.[report.status] ?? [];
     if (!allowed.includes(to)) {
       toast.error("Invalid transition", {
-        description: `${dragged.status} → ${to} is not allowed`,
+        description: `${STATUS_LABELS[report.status]} → ${STATUS_LABELS[to]} is not allowed`,
       });
       return;
     }
     try {
-      await updateStatus(dragged.id, to);
+      await updateStatus(id, to);
     } catch (err) {
       toast.error("Transition failed", {
         description: err instanceof Error ? err.message : String(err),
@@ -156,42 +158,24 @@ export default function Reports() {
         ) : view === "calendar" ? (
           <ReportsCalendar reports={reports} onOpen={openReport} />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 min-h-full">
-            {REPORT_STATUSES.map((status) => {
-              const items = byStatus(status);
-              return (
-                <div
-                  key={status}
-                  className={`flex flex-col gap-3 rounded-lg p-1 transition-colors ${
-                    dragOver === status ? "bg-accent/60 ring-2 ring-primary/40" : ""
-                  }`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOver(status);
-                  }}
-                  onDragLeave={() => setDragOver((s) => (s === status ? null : s))}
-                  onDrop={(e) => handleDrop(e, status)}
-                >
-                  <div className="flex items-center justify-between px-1">
-                    <span className="text-sm font-medium">
-                      {STATUS_LABELS[status]}
-                    </span>
-                    <Badge variant="secondary">{items.length}</Badge>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {items.map((r) => (
-                      <ReportCard key={r.id} report={r} accent={STATUS_ACCENT[status]} onClick={() => openReport(r.id)} />
-                    ))}
-                    {items.length === 0 && (
-                      <p className="text-xs text-muted-foreground px-1 py-6 text-center">
-                        —
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <KanbanBoard
+            className="p-0"
+            columns={REPORT_STATUSES.map((status) => ({
+              id: status,
+              title: STATUS_LABELS[status],
+              color: STATUS_DOT[status],
+            }))}
+            items={reports.map((r) => ({ ...r, columnId: r.status }))}
+            emptyColumnHint="—"
+            onMove={({ itemId, toColumnId }) => handleMove(itemId, toColumnId as ReportStatus)}
+            renderItem={(item) => (
+              <ReportCard
+                report={item}
+                accent={STATUS_ACCENT[item.status]}
+                onClick={() => openReport(item.id)}
+              />
+            )}
+          />
         )}
       </main>
 
@@ -211,14 +195,6 @@ function ReportCard({
 }) {
   return (
     <Card
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData(
-          "application/json",
-          JSON.stringify({ id: report.id, status: report.status })
-        );
-      }}
       onClick={onClick}
       className={`p-3 border-t-2 ${accent} space-y-2 cursor-pointer hover:bg-accent/40 transition-colors active:cursor-grabbing`}
     >
