@@ -67,8 +67,8 @@ func defaultStatuses() []domain.TaskStatus {
 
 // ─── Tree / spaces ────────────────────────────────────────────────────────────
 
-func (s *TaskService) Tree(orgIDs []string, superadmin bool) ([]domain.SpaceTree, error) {
-	return s.repo.Tree(orgIDs, superadmin)
+func (s *TaskService) Tree(orgIDs []string, superadmin bool, orgID string) ([]domain.SpaceTree, error) {
+	return s.repo.Tree(orgIDs, superadmin, orgID)
 }
 
 func (s *TaskService) CreateSpace(req domain.CreateSpaceRequest) (*domain.TaskSpace, error) {
@@ -448,8 +448,8 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 
 // ─── Tags ─────────────────────────────────────────────────────────────────────
 
-func (s *TaskService) ListTags(orgIDs []string, superadmin bool) ([]domain.TaskTag, error) {
-	return s.repo.ListTags(orgIDs, superadmin)
+func (s *TaskService) ListTags(orgIDs []string, superadmin bool, orgID string) ([]domain.TaskTag, error) {
+	return s.repo.ListTags(orgIDs, superadmin, orgID)
 }
 
 func (s *TaskService) CreateTag(req domain.CreateTagRequest) (*domain.TaskTag, error) {

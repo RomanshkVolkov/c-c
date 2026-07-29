@@ -46,10 +46,13 @@ export default function Tasks() {
   const activeListId = useTasksStore((s) => s.activeListId);
   const refreshBoard = useTasksStore((s) => s.refreshBoard);
 
+  // Re-scope when the org switcher changes: spaces, tags and the open board all
+  // belong to one org, so a stale selection has to be dropped, not carried over.
+  const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   useEffect(() => {
     fetchTree();
     fetchTags();
-  }, [fetchTree, fetchTags]);
+  }, [currentOrgId, fetchTree, fetchTags]);
 
   // Restore the persisted list on first mount.
   useEffect(() => {

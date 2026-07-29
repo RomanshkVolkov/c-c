@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { api, apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { useOrgsStore } from "@/store/orgs.store";
 import type { APIResponse } from "@/types/auth";
 import type {
   TaskStatusKind,
@@ -82,7 +83,13 @@ export const useTasksStore = create<TasksState>()(
       fetchTree: async () => {
         set({ loadingTree: true, error: null });
         try {
-          const res = await api.get<APIResponse<SpaceTree[]>>("/api/v1/task-spaces/");
+          // Scope to the org selected in the switcher. Without it the navigator
+          // showed every org's spaces at once (and every space on the platform
+          // for a superadmin), so switching org appeared to do nothing.
+          const orgId = useOrgsStore.getState().currentOrgId;
+          const res = await api.get<APIResponse<SpaceTree[]>>(
+            `/api/v1/task-spaces/${orgId ? `?orgId=${orgId}` : ""}`,
+          );
           const tree = res.success && res.data ? res.data : [];
           set({ tree });
 
@@ -95,7 +102,10 @@ export const useTasksStore = create<TasksState>()(
           );
           const current = get().activeListId;
           if (current && !ids.has(current)) {
-            set({ activeListId: null, board: null });
+            // The persisted selection belongs to another org (or was deleted):
+            // drop the board *and* the open drawer, which would otherwise keep
+            // showing a task the current org can't see.
+            set({ activeListId: null, board: null, openTaskId: null, detail: null });
           }
         } catch (e) {
           set({ error: msg(e) });
@@ -106,7 +116,10 @@ export const useTasksStore = create<TasksState>()(
 
       fetchTags: async () => {
         try {
-          const res = await api.get<APIResponse<TaskTag[]>>("/api/v1/task-tags/");
+          const orgId = useOrgsStore.getState().currentOrgId;
+          const res = await api.get<APIResponse<TaskTag[]>>(
+            `/api/v1/task-tags/${orgId ? `?orgId=${orgId}` : ""}`,
+          );
           set({ tags: res.success && res.data ? res.data : [] });
         } catch {
           /* tags are optional decoration; a failure shouldn't block the board */

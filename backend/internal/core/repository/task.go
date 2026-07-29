@@ -98,7 +98,11 @@ func deleteListsCascade(tx *gorm.DB, listIDs []string) error {
 
 // Tree assembles the navigator for the given orgs in a handful of queries
 // rather than one per node.
-func (r *TaskRepository) Tree(orgIDs []string, superadmin bool) ([]domain.SpaceTree, error) {
+// Tree lists spaces the caller may see. `orgID` narrows it to a single
+// organization (what the app's org switcher asks for); empty means every org the
+// caller belongs to. A superadmin sees all orgs, so without the narrowing they
+// would get every space in the platform in one list.
+func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([]domain.SpaceTree, error) {
 	var spaces []domain.TaskSpace
 	q := r.db.Order("rank ASC")
 	if !superadmin {
@@ -106,6 +110,9 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool) ([]domain.SpaceT
 			return []domain.SpaceTree{}, nil
 		}
 		q = q.Where("org_id IN ?", orgIDs)
+	}
+	if orgID != "" {
+		q = q.Where("org_id = ?", orgID)
 	}
 	if err := q.Find(&spaces).Error; err != nil {
 		return nil, err
@@ -527,7 +534,9 @@ func (r *TaskRepository) Subtasks(parentID string) ([]domain.TaskCard, error) {
 
 // ─── Tags / assignees ─────────────────────────────────────────────────────────
 
-func (r *TaskRepository) ListTags(orgIDs []string, superadmin bool) ([]domain.TaskTag, error) {
+// ListTags mirrors Tree's scoping: tags belong to an org, so the picker must not
+// offer another org's labels.
+func (r *TaskRepository) ListTags(orgIDs []string, superadmin bool, orgID string) ([]domain.TaskTag, error) {
 	var out []domain.TaskTag
 	q := r.db.Order("name ASC")
 	if !superadmin {
@@ -535,6 +544,9 @@ func (r *TaskRepository) ListTags(orgIDs []string, superadmin bool) ([]domain.Ta
 			return []domain.TaskTag{}, nil
 		}
 		q = q.Where("org_id IN ?", orgIDs)
+	}
+	if orgID != "" {
+		q = q.Where("org_id = ?", orgID)
 	}
 	err := q.Find(&out).Error
 	return out, err

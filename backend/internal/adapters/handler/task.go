@@ -155,7 +155,17 @@ func (h *taskHandler) Tree(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	tree, err := h.svc.Tree(user.OrgIDs(), user.Superadmin)
+	// ?orgId scopes the navigator to the org selected in the app. A caller can
+	// only narrow to an org they already belong to; asking for someone else's
+	// yields an empty tree rather than an error (nothing to reveal).
+	orgID := r.URL.Query().Get("orgId")
+	if orgID != "" && !user.Superadmin {
+		if _, member := user.RoleInOrg(orgID); !member {
+			SendResult(w, http.StatusOK, domain.APIResponse[[]domain.SpaceTree]{Success: true, Data: []domain.SpaceTree{}})
+			return
+		}
+	}
+	tree, err := h.svc.Tree(user.OrgIDs(), user.Superadmin, orgID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load spaces", err.Error())
 		return
@@ -664,7 +674,7 @@ func (h *taskHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	tags, err := h.svc.ListTags(user.OrgIDs(), user.Superadmin)
+	tags, err := h.svc.ListTags(user.OrgIDs(), user.Superadmin, r.URL.Query().Get("orgId"))
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list tags", err.Error())
 		return
