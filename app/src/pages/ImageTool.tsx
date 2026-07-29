@@ -228,7 +228,7 @@ export default function ImageTool() {
 
   const DownloadIcon = ({ status }: { status: DownloadStatus }) => {
     if (status === "saving") return <Loader2 className="h-3 w-3 animate-spin" />;
-    if (status === "done") return <Check className="h-3 w-3 text-green-500" />;
+    if (status === "done") return <Check className="h-3 w-3 text-success" />;
     return <Download className="h-3 w-3" />;
   };
 
@@ -333,7 +333,7 @@ export default function ImageTool() {
                       {formatBytes(totalOriginal)}
                       <ArrowRight className="h-3 w-3 mx-1 inline" />
                       {formatBytes(totalCompressed)}
-                      <span className="ml-1 text-green-500">
+                      <span className="ml-1 text-success">
                         (-{reductionPercent(totalOriginal, totalCompressed)})
                       </span>
                     </Badge>

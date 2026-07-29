@@ -68,11 +68,11 @@ import type {
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
 
 const METHOD_COLORS: Record<string, string> = {
-  GET: "text-green-500",
-  POST: "text-yellow-500",
-  PUT: "text-blue-500",
+  GET: "text-success",
+  POST: "text-warning",
+  PUT: "text-info",
   PATCH: "text-purple-500",
-  DELETE: "text-red-500",
+  DELETE: "text-error",
   HEAD: "text-muted-foreground",
   OPTIONS: "text-muted-foreground",
 };
@@ -790,9 +790,9 @@ function RemoteCollectionItem({ collection }: { collection: CollectionMeta }) {
           <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
         )}
         {expanded ? (
-          <FolderOpen className="size-3.5 shrink-0 text-blue-500/80" />
+          <FolderOpen className="size-3.5 shrink-0 text-info/80" />
         ) : (
-          <Folder className="size-3.5 shrink-0 text-blue-500/80" />
+          <Folder className="size-3.5 shrink-0 text-info/80" />
         )}
 
         {renaming ? (
@@ -1706,7 +1706,7 @@ function RequestEditor({
                   onClick={copyBody}
                 >
                   {copied ? (
-                    <Check className="h-3 w-3 text-green-500" />
+                    <Check className="h-3 w-3 text-success" />
                   ) : (
                     <Copy className="h-3 w-3" />
                   )}

@@ -32,7 +32,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
       <div className="flex items-center gap-2">
         <Label className="text-xs">{label}</Label>
         <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={copy}>
-          {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+          {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
         </Button>
       </div>
       <pre className="overflow-auto rounded bg-muted/50 px-2 py-1.5 text-[11px] whitespace-pre-wrap break-all">
@@ -155,7 +155,7 @@ export default function ConnectMcpDialog({
         <div className="max-h-[65vh] space-y-4 overflow-auto">
           {minted ? (
             <div className="space-y-3 rounded-lg border p-3">
-              <p className="flex items-start gap-1.5 text-xs text-amber-500">
+              <p className="flex items-start gap-1.5 text-xs text-warning">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
                 Copy the token now — it is shown once and cac doesn't store it.
               </p>

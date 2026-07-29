@@ -235,7 +235,7 @@ export default function K8sHub({ server }: { server: Server }) {
                         {warn ? (
                           <ShieldAlert className="size-3.5 shrink-0 text-destructive" />
                         ) : (
-                          <ShieldCheck className="size-3.5 shrink-0 text-green-500" />
+                          <ShieldCheck className="size-3.5 shrink-0 text-success" />
                         )}
                         <span className="font-medium">{c.name}</span>
                         <span className="truncate text-muted-foreground">
@@ -287,7 +287,7 @@ function CertBadge({ ready, expiry }: { ready?: boolean | null; expiry?: string 
       {warn ? (
         <ShieldAlert className="size-3.5 text-destructive" />
       ) : (
-        <ShieldCheck className="size-3.5 text-green-500" />
+        <ShieldCheck className="size-3.5 text-success" />
       )}
     </span>
   );

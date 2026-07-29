@@ -9,6 +9,7 @@ import { useReportEvents } from "@/hooks/use-report-events";
 import { ensureOrgClaim, refreshSession } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
+import { useThemeStore } from "@/store/theme.store";
 import { ForcedChangePassword } from "@/components/ChangePassword";
 
 export default function AppLayout() {
@@ -16,6 +17,8 @@ export default function AppLayout() {
   const fetchInvitations = useInvitationsStore((s) => s.fetchMine);
   const authed = useAuthStore((s) => !!s.accessToken);
   const mustChangePassword = useAuthStore((s) => !!s.session?.mustChangePassword);
+  // sonner renders in its own tree and ignores the .dark class.
+  const theme = useThemeStore((s) => s.resolved);
 
   // Load the caller's organizations once the authenticated shell mounts. First
   // upgrade a pre-orgs token (else org-scoped lists come back empty) so the
@@ -49,7 +52,7 @@ export default function AppLayout() {
         <Outlet />
       </SidebarInset>
       <UpdateChecker />
-      <Toaster richColors closeButton position="bottom-right" />
+      <Toaster richColors closeButton position="bottom-right" theme={theme} />
     </SidebarProvider>
   );
 }

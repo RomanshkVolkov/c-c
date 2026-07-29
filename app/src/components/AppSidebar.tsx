@@ -7,6 +7,9 @@ import {
   Send,
   KeyRound,
   Bot,
+  Monitor,
+  Moon,
+  Sun,
   Building2,
   Mail,
   Activity,
@@ -39,6 +42,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
 import { useUpdaterStore } from "@/store/updater.store";
+import { useThemeStore, type ThemePreference } from "@/store/theme.store";
 import { cn } from "@/lib/utils";
 
 // guest: reachable on-device (no backend). superadmin: only for platform admins.
@@ -109,6 +113,9 @@ export default function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
+            <ThemeToggle />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
             <UpdateCheckButton />
           </SidebarMenuItem>
           {authed && (
@@ -153,6 +160,36 @@ export default function AppSidebar() {
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
       <ConnectMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} />
     </Sidebar>
+  );
+}
+
+// Cycles system → light → dark. A three-way toggle beats a switch here: the
+// default should follow the OS, but an ops console is often used in conditions
+// (bright room, screen share) where you want to override it.
+function ThemeToggle() {
+  const preference = useThemeStore((s) => s.preference);
+  const setPreference = useThemeStore((s) => s.setPreference);
+
+  const next: Record<ThemePreference, ThemePreference> = {
+    system: "light",
+    light: "dark",
+    dark: "system",
+  };
+  const label: Record<ThemePreference, string> = {
+    system: "Theme: system",
+    light: "Theme: light",
+    dark: "Theme: dark",
+  };
+  const Icon = preference === "system" ? Monitor : preference === "light" ? Sun : Moon;
+
+  return (
+    <SidebarMenuButton
+      tooltip={label[preference]}
+      onClick={() => setPreference(next[preference])}
+    >
+      <Icon className="size-4" />
+      <span>{label[preference]}</span>
+    </SidebarMenuButton>
   );
 }
 
@@ -227,7 +264,7 @@ function UpdateCheckButton() {
     label = "Up to date";
     tooltip = `Up to date — checked ${formatRelativeTime(lastCheckedAt)}`;
     Icon = CheckCircle2;
-    iconClass = "text-green-500";
+    iconClass = "text-success";
   }
 
   return (

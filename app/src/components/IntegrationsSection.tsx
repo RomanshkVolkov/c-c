@@ -223,7 +223,7 @@ function IntegrationTile({
                 {revealed || "(empty)"}
               </pre>
               <Button size="icon-xs" variant="ghost" onClick={copy} title="Copy">
-                {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+                {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
               </Button>
             </div>
           )}

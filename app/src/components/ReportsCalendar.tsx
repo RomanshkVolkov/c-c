@@ -5,7 +5,7 @@ import type { ReportListItem, ReportStatus } from "@/types/report";
 
 const STATUS_DOT: Record<ReportStatus, string> = {
   pending: "bg-amber-500",
-  in_progress: "bg-blue-500",
+  in_progress: "bg-info",
   resolved: "bg-emerald-500",
   closed: "bg-muted-foreground/40",
 };

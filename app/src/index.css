@@ -6,14 +6,18 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+    /* Light keeps neutral surfaces but carries the brand accents (cyan/violet)
+       so the product looks like itself in both themes. */
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
+    /* Brand cyan darkened for light backgrounds: #20D9E8 as a fill would leave
+       any label on it unreadable (~1.4:1 against white). */
+    --primary: #0E7C88;
+    --primary-foreground: #F2F5F9;
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
@@ -23,58 +27,80 @@
     --destructive: oklch(0.577 0.245 27.325);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.809 0.105 251.813);
-    --chart-2: oklch(0.623 0.214 259.815);
-    --chart-3: oklch(0.546 0.245 262.881);
-    --chart-4: oklch(0.488 0.243 264.376);
-    --chart-5: oklch(0.424 0.199 265.638);
+    --ring: #0E7C88;
+    /* Same hues as dark, darkened to stay legible on white. */
+    --chart-1: #0E9AA7;
+    --chart-2: #7C3AED;
+    --chart-3: #2563EB;
+    --chart-4: #059669;
+    --chart-5: #D97706;
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-primary: #0E7C88;
+    --sidebar-primary-foreground: #F2F5F9;
     --sidebar-accent: oklch(0.97 0 0);
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar-ring: #0E7C88;
+
+    /* Status colors, exposed as tokens so pages stop hardcoding Tailwind
+       palette classes (text-green-500 & friends). */
+    --success: #047857;
+    --warning: #B45309;
+    --error: #BE123C;
+    --info: #0369A1;
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.809 0.105 251.813);
-    --chart-2: oklch(0.623 0.214 259.815);
-    --chart-3: oklch(0.546 0.245 262.881);
-    --chart-4: oklch(0.488 0.243 264.376);
-    --chart-5: oklch(0.424 0.199 265.638);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    /* Deep-navy control-plane palette: layered surfaces, cyan + violet accents. */
+    --background: #081225;
+    --foreground: #F2F5F9;
+    --card: #111F3A;
+    --card-foreground: #F2F5F9;
+    --popover: #111F3A;
+    --popover-foreground: #F2F5F9;
+    --primary: #20D9E8;
+    /* Dark ink ON the cyan fill — white here would be ~1.9:1 and unreadable. */
+    --primary-foreground: #081225;
+    --secondary: #0D1930;
+    --secondary-foreground: #F2F5F9;
+    --muted: #0D1930;
+    /* Nudged lighter than the source #7D8BA3: that value lands ~4.4:1 on cards
+       (#111F3A), just under AA. This clears it on every surface. */
+    --muted-foreground: #8B99B0;
+    --accent: #162747;
+    --accent-foreground: #F2F5F9;
+    --destructive: #FB7185;
+    --border: #223454;
+    --input: #223454;
+    --ring: #20D9E8;
+    /* Distinct hues — the previous set was five shades of blue. */
+    --chart-1: #20D9E8;
+    --chart-2: #8B5CF6;
+    --chart-3: #3B82F6;
+    --chart-4: #34D399;
+    --chart-5: #F59E0B;
+    --sidebar: #07101F;
+    --sidebar-foreground: #F2F5F9;
+    --sidebar-primary: #20D9E8;
+    --sidebar-primary-foreground: #081225;
+    --sidebar-accent: #111F3A;
+    --sidebar-accent-foreground: #F2F5F9;
+    --sidebar-border: #1C2C49;
+    --sidebar-ring: #20D9E8;
+
+    --success: #34D399;
+    --warning: #FBBF24;
+    --error: #FB7185;
+    --info: #38BDF8;
 }
 
 @theme inline {
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-error: var(--error);
+    --color-info: var(--info);
     --font-sans: 'Geist Variable', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);

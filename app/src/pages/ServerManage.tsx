@@ -50,8 +50,8 @@ function ReplicasBadge({ replicas }: { replicas: SwarmService["replicas"] }) {
     running === 0
       ? "text-destructive"
       : running < desired
-        ? "text-yellow-500"
-        : "text-green-500";
+        ? "text-warning"
+        : "text-success";
   return (
     <span className={`font-mono text-sm font-medium ${color}`}>
       {running}/{desired}
@@ -139,7 +139,7 @@ function LogsPanel({
       <CardContent>
         <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
           <span
-            className={`h-2 w-2 rounded-full ${status === "connected" ? "bg-green-500" : status === "error" ? "bg-destructive" : "bg-yellow-500 animate-pulse"}`}
+            className={`h-2 w-2 rounded-full ${status === "connected" ? "bg-success" : status === "error" ? "bg-destructive" : "bg-yellow-500 animate-pulse"}`}
           />
           {status === "connecting" && "Connecting..."}
           {status === "connected" && "Streaming"}

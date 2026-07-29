@@ -19,9 +19,9 @@ const ICON = {
 } as const;
 
 const COLOR = {
-  error: "text-red-500",
-  console: "text-amber-500",
-  network: "text-blue-500",
+  error: "text-error",
+  console: "text-warning",
+  network: "text-info",
   nav: "text-muted-foreground",
 } as const;
 

@@ -97,7 +97,7 @@ function MemBar({ used, limit }: { used: number; limit: number }) {
       ? "bg-destructive"
       : pct >= 60
         ? "bg-yellow-500"
-        : "bg-green-500";
+        : "bg-success";
   return (
     <div className="space-y-1 min-w-[120px]">
       <div className="flex justify-between text-xs font-mono">
@@ -120,7 +120,7 @@ function CPUBar({ pct, cores }: { pct: number; cores: number }) {
   const max = Math.max(100, cores * 100);
   const ratio = max > 0 ? (pct / max) * 100 : 0;
   const color =
-    ratio >= 75 ? "bg-destructive" : ratio >= 40 ? "bg-yellow-500" : "bg-green-500";
+    ratio >= 75 ? "bg-destructive" : ratio >= 40 ? "bg-yellow-500" : "bg-success";
   return (
     <div className="space-y-1 min-w-[80px]">
       <div className="text-xs font-mono">{pct.toFixed(1)}%</div>

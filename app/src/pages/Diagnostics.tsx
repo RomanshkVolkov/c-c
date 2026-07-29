@@ -197,9 +197,9 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
 
 function statusColor(status?: number): string {
   if (status === undefined) return "text-muted-foreground";
-  if (status === 0 || status >= 500) return "text-red-500";
-  if (status >= 400) return "text-yellow-500";
-  return "text-green-500";
+  if (status === 0 || status >= 500) return "text-error";
+  if (status >= 400) return "text-warning";
+  return "text-success";
 }
 
 function CrumbRow({ crumb }: { crumb: TelemetryBreadcrumb }) {
@@ -213,7 +213,7 @@ function CrumbRow({ crumb }: { crumb: TelemetryBreadcrumb }) {
         <span
           className={cn(
             "mt-1 size-1.5 shrink-0 rounded-full",
-            isError ? "bg-red-500" : isNetwork ? "bg-blue-500" : "bg-muted-foreground",
+            isError ? "bg-error" : isNetwork ? "bg-info" : "bg-muted-foreground",
           )}
         />
         <span className="flex-1 min-w-0">

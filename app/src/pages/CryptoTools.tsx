@@ -51,7 +51,7 @@ function CopyBtn({ text, id, copied, copy }: {
 }) {
   return (
     <Button variant="ghost" size="sm" onClick={() => copy(text, id)} className="shrink-0">
-      {copied === id ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+      {copied === id ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
     </Button>
   );
 }
