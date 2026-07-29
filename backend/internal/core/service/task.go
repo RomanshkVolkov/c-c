@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/rank"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
@@ -14,10 +15,30 @@ var ErrNoStatuses = errors.New("list has no status columns")
 
 type TaskService struct {
 	repo *repository.TaskRepository
+	// hub broadcasts board changes so every open console reflects them without
+	// polling. Optional: a nil hub simply means no live updates.
+	hub *events.Hub
 }
 
-func NewTaskService(repo *repository.TaskRepository) *TaskService {
-	return &TaskService{repo: repo}
+func NewTaskService(repo *repository.TaskRepository, hub *events.Hub) *TaskService {
+	return &TaskService{repo: repo, hub: hub}
+}
+
+// publish fans a board change out to the task's organization. Payloads stay
+// minimal — an id and enough context to decide whether to refetch — because the
+// receiver reloads authoritative state anyway.
+func (s *TaskService) publish(kind, orgID, listID, taskID string) {
+	if s.hub == nil || orgID == "" {
+		return
+	}
+	s.hub.Publish(events.Event{
+		Type:  kind,
+		OrgID: orgID,
+		Data: map[string]string{
+			"listId": listID,
+			"taskId": taskID,
+		},
+	})
 }
 
 // defaultStatuses is what a new list starts with — a board is useless with zero
@@ -208,6 +229,7 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 	if err := s.repo.CreateTask(t, list.SpaceID); err != nil {
 		return nil, err
 	}
+	s.publish("task:new", orgID, list.ID, t.ID)
 	return t, nil
 }
 
@@ -251,6 +273,9 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 			return err
 		}
 	}
+	if t, err := s.repo.FindTask(id); err == nil {
+		s.publish("task:update", t.OrgID, t.ListID, t.ID)
+	}
 	return nil
 }
 
@@ -277,10 +302,25 @@ func (s *TaskService) MoveTask(id string, req domain.MoveTaskRequest) error {
 	}
 
 	newRank := s.rankBetween("tasks", req.AfterID, req.BeforeID)
-	return s.repo.MoveTask(id, req.StatusID, newRank, completedAt)
+	if err := s.repo.MoveTask(id, req.StatusID, newRank, completedAt); err != nil {
+		return err
+	}
+	s.publish("task:move", task.OrgID, task.ListID, task.ID)
+	return nil
 }
 
-func (s *TaskService) DeleteTask(id string) error { return s.repo.DeleteTask(id) }
+func (s *TaskService) DeleteTask(id string) error {
+	// Capture the routing info before the row is gone.
+	t, err := s.repo.FindTask(id)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteTask(id); err != nil {
+		return err
+	}
+	s.publish("task:delete", t.OrgID, t.ListID, t.ID)
+	return nil
+}
 
 // Detail assembles everything the task drawer needs in one response.
 func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
@@ -344,6 +384,9 @@ func (s *TaskService) AddComment(taskID, userID, body string) (*domain.TaskComme
 	c.ID = uuid.NewString()
 	if err := s.repo.CreateComment(c); err != nil {
 		return nil, err
+	}
+	if t, err := s.repo.FindTask(taskID); err == nil {
+		s.publish("task:comment", t.OrgID, t.ListID, t.ID)
 	}
 	return c, nil
 }

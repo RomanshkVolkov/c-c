@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
+func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	projectRepo := repository.NewReportProjectRepository(db)
 	reportRepo := repository.NewReportRepository(db)
 	orgRepo := repository.NewOrganizationRepository(db)
@@ -75,8 +75,6 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux) {
 			}
 		}
 	}()
-
-	hub := events.NewHub()
 
 	projectSvc := service.NewReportProjectService(projectRepo, orgRepo)
 	reportSvc := service.NewReportService(reportRepo, orgRepo, authRepo, imgClient, hub)

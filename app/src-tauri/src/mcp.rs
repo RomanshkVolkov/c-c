@@ -136,6 +136,29 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "list_task_spaces",
+            "description": "The task navigator: spaces, folders and lists with their task counts. Use it to resolve a list name to the listId that get_board takes.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "get_board",
+            "description": "A task list's board: its columns and every card (title, priority, tags, assignees, counts), grouped by column. Use it to see what a team is working on.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "listId": { "type": "string" } },
+                "required": ["listId"]
+            }
+        },
+        {
+            "name": "get_task",
+            "description": "Full detail of one task: its markdown description, status, priority, tags, assignees, attachments and the comment thread.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"]
+            }
+        },
+        {
             "name": "list_devices",
             "description": "Devices sending passive telemetry (mobile apps), with request/error counts and last-seen. Use to find a device to investigate.",
             "inputSchema": {
@@ -220,6 +243,25 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             Ok(d)
         }
 
+        "list_task_spaces" => {
+            let data = api_get(cfg, "/api/v1/task-spaces/")?;
+            Ok(json!({ "spaces": data }))
+        }
+
+        "get_board" => {
+            let list_id = arg_str(args, "listId").ok_or("listId is required")?;
+            let data = api_get(
+                cfg,
+                &format!("/api/v1/task-lists/{}/board", urlencode(&list_id)),
+            )?;
+            Ok(summarize_board(&data))
+        }
+
+        "get_task" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))
+        }
+
         "list_devices" => {
             let mut q = vec![];
             push_q(&mut q, "projectId", arg_str(args, "projectId"));
@@ -239,6 +281,61 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
 
         other => Err(format!("unknown tool: {other}")),
     }
+}
+
+/// Group cards under their column so the shape reads like an actual board
+/// instead of a flat array the model has to correlate by id.
+fn summarize_board(data: &Value) -> Value {
+    let empty = vec![];
+    let statuses = data
+        .get("statuses")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
+    let tasks = data.get("tasks").and_then(|v| v.as_array()).unwrap_or(&empty);
+
+    let columns: Vec<Value> = statuses
+        .iter()
+        .map(|st| {
+            let id = st.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let cards: Vec<Value> = tasks
+                .iter()
+                .filter(|t| t.get("statusId").and_then(|v| v.as_str()) == Some(id))
+                .map(|t| {
+                    json!({
+                        "id": t.get("id"),
+                        "seq": t.get("seq"),
+                        "title": t.get("title"),
+                        "priority": t.get("priority"),
+                        "dueAt": t.get("dueAt"),
+                        "tags": t.get("tags").and_then(|v| v.as_array()).map(|a| {
+                            a.iter()
+                                .filter_map(|g| g.get("name").and_then(|n| n.as_str()))
+                                .collect::<Vec<_>>()
+                        }),
+                        "assignees": t.get("assignees").and_then(|v| v.as_array()).map(|a| {
+                            a.iter()
+                                .filter_map(|u| u.get("username").and_then(|n| n.as_str()))
+                                .collect::<Vec<_>>()
+                        }),
+                        "comments": t.get("commentCount"),
+                        "hasDescription": t.get("hasDescription"),
+                    })
+                })
+                .collect();
+            json!({
+                "column": st.get("name"),
+                "kind": st.get("kind"),
+                "count": cards.len(),
+                "tasks": cards,
+            })
+        })
+        .collect();
+
+    json!({
+        "list": data.get("list").and_then(|l| l.get("name")),
+        "columns": columns,
+        "note": "Call get_task with a task id for its markdown description and comments."
+    })
 }
 
 /// Compact a raw timeline so it fits a model's context: errors verbatim (that's

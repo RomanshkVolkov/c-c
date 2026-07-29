@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"gorm.io/gorm"
 )
 
@@ -21,8 +22,11 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitOrganizationRoutes(db, r)
 	InitServerRoutes(db, r)
 	InitCollectionRoutes(db, r)
-	InitReportRoutes(db, r)
-	InitTaskRoutes(db, r)
+	// One hub for the whole process: reports and tasks both broadcast on it, and
+	// a single SSE connection per client carries everything.
+	hub := events.NewHub()
+	InitReportRoutes(db, r, hub)
+	InitTaskRoutes(db, r, hub)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

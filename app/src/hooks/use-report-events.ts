@@ -8,6 +8,7 @@ import {
 import { apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
+import { useTasksStore } from "@/store/tasks.store";
 
 type Payload = { reportId?: string; folio?: string; title?: string; status?: string };
 
@@ -115,6 +116,22 @@ export function useReportEvents() {
         seen();
         refresh();
       });
+
+      // Task board changes ride the same org-scoped stream. Refetch only when
+      // the event belongs to the list currently on screen — a busy org would
+      // otherwise reload the board on every unrelated card someone touches.
+      const onTaskEvent = (e: Event) => {
+        seen();
+        const p = parse(e as MessageEvent) as { listId?: string };
+        const store = useTasksStore.getState();
+        if (!store.activeListId) return;
+        if (p.listId && p.listId !== store.activeListId) return;
+        store.refreshBoard();
+        if (store.openTaskId) store.openTask(store.openTaskId);
+      };
+      for (const kind of ["task:new", "task:update", "task:move", "task:delete", "task:comment"]) {
+        es.addEventListener(kind, onTaskEvent);
+      }
 
       es.onerror = () => {
         es?.close();
