@@ -94,7 +94,11 @@ type Task struct {
 	DueAt       *time.Time   `gorm:"index" json:"dueAt,omitempty"`
 	CompletedAt *time.Time   `json:"completedAt,omitempty"`
 	CreatedByID string       `gorm:"type:varchar(36)" json:"createdById"`
-	ArchivedAt  *time.Time   `gorm:"index" json:"archivedAt,omitempty"`
+	// ParentID makes this a subtask of another task. Subtasks live in the same
+	// list and share its columns; they're hidden from the board's top level so a
+	// parent's breakdown doesn't clutter the column it belongs to.
+	ParentID   *string    `gorm:"type:varchar(36);index" json:"parentId,omitempty"`
+	ArchivedAt *time.Time `gorm:"index" json:"archivedAt,omitempty"`
 }
 
 // TaskTag is an org-wide label pool, so tags stay consistent across spaces.
@@ -174,6 +178,8 @@ type CreateTaskRequest struct {
 	Title    string       `json:"title"    validate:"required,min=1,max=300"`
 	StatusID string       `json:"statusId"`
 	Priority TaskPriority `json:"priority" validate:"omitempty,oneof=none low normal high urgent"`
+	// ParentID creates this task as a subtask of another one.
+	ParentID string `json:"parentId"`
 }
 
 // UpdateTaskRequest patches a task; nil fields are left untouched so the client
@@ -241,18 +247,21 @@ type ListSummary struct {
 }
 
 type TaskCard struct {
-	ID              string        `json:"id"`
-	Seq             int           `json:"seq"`
-	Title           string        `json:"title"`
-	Priority        TaskPriority  `json:"priority"`
-	StatusID        string        `json:"statusId"`
-	DueAt           *time.Time    `json:"dueAt,omitempty"`
-	HasDescription  bool          `json:"hasDescription"`
-	CommentCount    int64         `json:"commentCount"`
-	AttachmentCount int64         `json:"attachmentCount"`
-	Tags            []TaskTag     `json:"tags"`
-	Assignees       []UserSummary `json:"assignees"`
-	UpdatedAt       time.Time     `json:"updatedAt"`
+	ID              string       `json:"id"`
+	Seq             int          `json:"seq"`
+	Title           string       `json:"title"`
+	Priority        TaskPriority `json:"priority"`
+	StatusID        string       `json:"statusId"`
+	DueAt           *time.Time   `json:"dueAt,omitempty"`
+	HasDescription  bool         `json:"hasDescription"`
+	CommentCount    int64        `json:"commentCount"`
+	AttachmentCount int64        `json:"attachmentCount"`
+	// Subtask progress, so a card shows its breakdown without being opened.
+	SubtaskCount int64         `json:"subtaskCount"`
+	SubtaskDone  int64         `json:"subtaskDone"`
+	Tags         []TaskTag     `json:"tags"`
+	Assignees    []UserSummary `json:"assignees"`
+	UpdatedAt    time.Time     `json:"updatedAt"`
 }
 
 type BoardResponse struct {
@@ -280,4 +289,7 @@ type TaskDetail struct {
 	Assignees   []UserSummary         `json:"assignees"`
 	Comments    []TaskCommentResponse `json:"comments"`
 	Attachments []TaskAttachment      `json:"attachments"`
+	Subtasks    []TaskCard            `json:"subtasks"`
+	/** Set when this task is itself a subtask, so the drawer can link back. */
+	Parent *TaskCard `json:"parent,omitempty"`
 }

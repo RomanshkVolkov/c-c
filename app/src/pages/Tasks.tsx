@@ -16,6 +16,8 @@ import {
   FileText,
   Flag,
   Check,
+  ArrowUp,
+  ArrowDown,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -117,7 +119,7 @@ function Navigator() {
 function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>["tree"][number] }) {
   const [open, setOpen] = useState(true);
   const confirm = useConfirm();
-  const { createFolder, createList, renameSpace, deleteSpace } = useTasksStore.getState();
+  const { createFolder, createList, renameSpace, deleteSpace, moveSpace } = useTasksStore.getState();
 
   const ask = async (label: string, current = "") => {
     const v = window.prompt(label, current);
@@ -169,6 +171,12 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               >
                 <Pencil className="size-4" /> Rename
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => moveSpace(space.id, "up").catch((e) => toast.error(String(e)))}>
+                <ArrowUp className="size-4" /> Move up
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => moveSpace(space.id, "down").catch((e) => toast.error(String(e)))}>
+                <ArrowDown className="size-4" /> Move down
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   const ok = await confirm({
@@ -213,7 +221,7 @@ function FolderNode({
 }) {
   const [open, setOpen] = useState(true);
   const confirm = useConfirm();
-  const { createList, renameFolder, deleteFolder } = useTasksStore.getState();
+  const { createList, renameFolder, deleteFolder, moveFolder } = useTasksStore.getState();
 
   return (
     <div>
@@ -248,6 +256,12 @@ function FolderNode({
                 }}
               >
                 <Pencil className="size-4" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => moveFolder(folder.id, "up").catch((e) => toast.error(String(e)))}>
+                <ArrowUp className="size-4" /> Move up
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => moveFolder(folder.id, "down").catch((e) => toast.error(String(e)))}>
+                <ArrowDown className="size-4" /> Move down
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
@@ -704,6 +718,18 @@ function TaskCardView({
           <span className="flex items-center gap-0.5">
             <Paperclip className="size-3" />
             {card.attachmentCount}
+          </span>
+        )}
+        {card.subtaskCount > 0 && (
+          <span
+            className={cn(
+              "flex items-center gap-0.5",
+              card.subtaskDone === card.subtaskCount && "text-success",
+            )}
+            title="Subtasks completed"
+          >
+            <ListChecks className="size-3" />
+            {card.subtaskDone}/{card.subtaskCount}
           </span>
         )}
         {card.priority !== "none" && (

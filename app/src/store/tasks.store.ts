@@ -43,6 +43,10 @@ interface TasksState {
   renameList: (id: string, name: string) => Promise<void>;
   deleteList: (id: string) => Promise<void>;
 
+  moveSpace: (id: string, dir: "up" | "down") => Promise<void>;
+  moveFolder: (id: string, dir: "up" | "down") => Promise<void>;
+  createSubtask: (parentId: string, title: string) => Promise<void>;
+
   createStatus: (name: string, color: string, kind: TaskStatusKind) => Promise<void>;
   updateStatus: (id: string, name: string, color: string, kind: TaskStatusKind) => Promise<void>;
   moveStatus: (id: string, afterId: string, beforeId: string) => Promise<void>;
@@ -178,6 +182,30 @@ export const useTasksStore = create<TasksState>()(
       },
 
       // ─── Tasks ──────────────────────────────────────────────────────────
+
+      // Reordering is expressed as a one-step nudge; the server resolves the
+      // neighbours and derives the rank, and ignores it at the edges.
+      moveSpace: async (id, dir) => {
+        await api.post<APIResponse<unknown>>(`/api/v1/task-spaces/${id}/move?dir=${dir}`, {}, true);
+        await get().fetchTree();
+      },
+      moveFolder: async (id, dir) => {
+        await api.post<APIResponse<unknown>>(`/api/v1/task-folders/${id}/move?dir=${dir}`, {}, true);
+        await get().fetchTree();
+      },
+
+      createSubtask: async (parentId, title) => {
+        const listId = get().activeListId;
+        if (!listId) return;
+        await api.post<APIResponse<unknown>>(
+          `/api/v1/task-lists/${listId}/tasks`,
+          { title, parentId },
+          true,
+        );
+        // Refresh both: the parent's progress counter lives on the board card.
+        if (get().openTaskId === parentId) await get().openTask(parentId);
+        await get().refreshBoard();
+      },
 
       // ─── Columns ────────────────────────────────────────────────────────
 

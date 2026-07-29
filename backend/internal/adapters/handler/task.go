@@ -23,6 +23,8 @@ type TaskHandler interface {
 	UpdateList(w http.ResponseWriter, r *http.Request)
 	DeleteList(w http.ResponseWriter, r *http.Request)
 	MoveList(w http.ResponseWriter, r *http.Request)
+	MoveSpace(w http.ResponseWriter, r *http.Request)
+	MoveFolder(w http.ResponseWriter, r *http.Request)
 	Board(w http.ResponseWriter, r *http.Request)
 	CreateStatus(w http.ResponseWriter, r *http.Request)
 	UpdateStatus(w http.ResponseWriter, r *http.Request)
@@ -64,6 +66,8 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusConflict, "A list needs at least one column", err.Error())
 	case errors.Is(err, service.ErrNoStatuses):
 		SendErrorResponse(w, http.StatusConflict, "List has no columns", err.Error())
+	case errors.Is(err, service.ErrParentOther):
+		SendErrorResponse(w, http.StatusBadRequest, "Parent task is in another list", err.Error())
 	default:
 		return false
 	}
@@ -198,6 +202,57 @@ func (h *taskHandler) DeleteSpace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Space deleted"})
+}
+
+// MoveSpace reorders a space. `?dir=up|down` shifts it one position (the server
+// resolves the neighbours); an explicit afterId/beforeId body is also accepted.
+func (h *taskHandler) MoveSpace(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), true)
+	if !ok {
+		return
+	}
+	req, move := h.moveRequest(r, "task_spaces", "org_id", sp.OrgID, sp.ID)
+	if !move {
+		SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Already in place"})
+		return
+	}
+	if err := h.svc.MoveSpace(sp.ID, req); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to move space", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Space moved"})
+}
+
+func (h *taskHandler) MoveFolder(w http.ResponseWriter, r *http.Request) {
+	f, ok := h.resolveFolder(w, r, true)
+	if !ok {
+		return
+	}
+	req, move := h.moveRequest(r, "task_folders", "space_id", f.SpaceID, f.ID)
+	if !move {
+		SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Already in place"})
+		return
+	}
+	if err := h.svc.MoveFolder(f.ID, req); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to move folder", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Folder moved"})
+}
+
+// moveRequest accepts either explicit neighbours in the body or a `dir=up|down`
+// nudge, which is what a menu-driven reorder sends. move=false means there is
+// nothing to do (already at that edge).
+func (h *taskHandler) moveRequest(r *http.Request, table, scopeCol, scopeID, id string) (domain.MoveNodeRequest, bool) {
+	if dir := r.URL.Query().Get("dir"); dir == "up" || dir == "down" {
+		after, before, ok := h.svc.Neighbours(table, scopeCol, scopeID, id, dir == "up")
+		return domain.MoveNodeRequest{AfterID: after, BeforeID: before}, ok
+	}
+	req, err := ValidateRequest[domain.MoveNodeRequest](r)
+	if err != nil {
+		return domain.MoveNodeRequest{}, false
+	}
+	return req, true
 }
 
 // ─── Folders ──────────────────────────────────────────────────────────────────

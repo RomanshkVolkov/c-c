@@ -33,12 +33,14 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Delete("/{id}", h.DeleteSpace)
 		r.Post("/{id}/folders", h.CreateFolder)
 		r.Post("/{id}/lists", h.CreateList)
+		r.Post("/{id}/move", h.MoveSpace)
 	})
 
 	r.Route("/api/v1/task-folders", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Patch("/{id}", h.UpdateFolder)
 		r.Delete("/{id}", h.DeleteFolder)
+		r.Post("/{id}/move", h.MoveFolder)
 	})
 
 	r.Route("/api/v1/task-lists", func(r chi.Router) {

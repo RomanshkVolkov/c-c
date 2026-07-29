@@ -11,7 +11,10 @@ import (
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
-var ErrNoStatuses = errors.New("list has no status columns")
+var (
+	ErrNoStatuses  = errors.New("list has no status columns")
+	ErrParentOther = errors.New("parent task belongs to another list")
+)
 
 type TaskService struct {
 	repo *repository.TaskRepository
@@ -85,6 +88,48 @@ func (s *TaskService) RenameSpace(id string, req domain.RenameRequest) error {
 
 func (s *TaskService) DeleteSpace(id string) error { return s.repo.DeleteSpace(id) }
 
+// MoveSpace reorders a space among the org's spaces.
+func (s *TaskService) MoveSpace(id string, req domain.MoveNodeRequest) error {
+	return s.repo.MoveSpace(id, s.rankBetween("task_spaces", req.AfterID, req.BeforeID))
+}
+
+// Neighbours turns a "shift one position" request into the pair of ids the rank
+// helper needs, so the client doesn't have to know about ranks at all.
+//
+// ok=false means the move is a no-op (already at that edge). This matters:
+// ("", "") on its own is ambiguous — it also describes "the only sibling" — and
+// feeding it to rank.Between would assign a fixed rank and *relocate* the row
+// instead of leaving it where it is.
+func (s *TaskService) Neighbours(table, scopeCol, scopeID, id string, up bool) (afterID, beforeID string, ok bool) {
+	ids := s.repo.Siblings(table, scopeCol, scopeID)
+	idx := -1
+	for i, v := range ids {
+		if v == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return "", "", false
+	}
+	if up {
+		if idx == 0 {
+			return "", "", false // already first
+		}
+		if idx == 1 {
+			return "", ids[0], true // becomes the new first
+		}
+		return ids[idx-2], ids[idx-1], true
+	}
+	if idx >= len(ids)-1 {
+		return "", "", false // already last
+	}
+	if idx == len(ids)-2 {
+		return ids[len(ids)-1], "", true // becomes the new last
+	}
+	return ids[idx+1], ids[idx+2], true
+}
+
 // ─── Folders / lists ──────────────────────────────────────────────────────────
 
 func (s *TaskService) CreateFolder(spaceID, name string) (*domain.TaskFolder, error) {
@@ -97,7 +142,12 @@ func (s *TaskService) CreateFolder(spaceID, name string) (*domain.TaskFolder, er
 }
 
 func (s *TaskService) RenameFolder(id, name string) error { return s.repo.RenameFolder(id, name) }
-func (s *TaskService) DeleteFolder(id string) error       { return s.repo.DeleteFolder(id) }
+
+// MoveFolder reorders a folder among its space's folders.
+func (s *TaskService) MoveFolder(id string, req domain.MoveNodeRequest) error {
+	return s.repo.MoveFolder(id, s.rankBetween("task_folders", req.AfterID, req.BeforeID))
+}
+func (s *TaskService) DeleteFolder(id string) error { return s.repo.DeleteFolder(id) }
 func (s *TaskService) FindFolder(id string) (*domain.TaskFolder, error) {
 	return s.repo.FindFolder(id)
 }
@@ -224,6 +274,18 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 		Title:       req.Title,
 		Priority:    priority,
 		CreatedByID: userID,
+	}
+	if req.ParentID != "" {
+		// Only accept a parent from the same list: a subtask that lived in another
+		// list (or org) would be unreachable from its parent's board.
+		parent, err := s.repo.FindTask(req.ParentID)
+		if err != nil {
+			return nil, err
+		}
+		if parent.ListID != list.ID {
+			return nil, ErrParentOther
+		}
+		t.ParentID = &req.ParentID
 	}
 	t.ID = uuid.NewString()
 	if err := s.repo.CreateTask(t, list.SpaceID); err != nil {
@@ -356,10 +418,23 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &domain.TaskDetail{
+	subtasks, err := s.repo.Subtasks(id)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &domain.TaskDetail{
 		Task: *t, ListName: list.Name, SpaceName: space.Name, Status: *status,
 		Tags: tags, Assignees: assignees, Comments: comments, Attachments: attachments,
-	}, nil
+		Subtasks: subtasks,
+	}
+	// When this task is a subtask, hand the drawer enough to link back up.
+	if t.ParentID != nil {
+		if p, err := s.repo.FindTask(*t.ParentID); err == nil {
+			detail.Parent = &domain.TaskCard{ID: p.ID, Seq: p.Seq, Title: p.Title, StatusID: p.StatusID}
+		}
+	}
+	return detail, nil
 }
 
 // ─── Tags ─────────────────────────────────────────────────────────────────────

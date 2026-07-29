@@ -81,6 +81,8 @@ function Content() {
   const board = useTasksStore((s) => s.board);
   const moveTask = useTasksStore((s) => s.moveTask);
   const tags = useTasksStore((s) => s.tags);
+  const openTask = useTasksStore((s) => s.openTask);
+  const createSubtask = useTasksStore((s) => s.createSubtask);
   const createTag = useTasksStore((s) => s.createTag);
   const confirm = useConfirm();
 
@@ -100,6 +102,15 @@ function Content() {
   }, [task.id, task.title, task.description]);
 
   const orgTags = useMemo(() => tags.filter((t) => t.orgId === task.orgId), [tags, task.orgId]);
+
+  // Resolve "done"/"open" through the columns' `kind`, never their names: the
+  // user is free to rename them.
+  const doneStatusIds = useMemo(
+    () => new Set((board?.statuses ?? []).filter((s) => s.kind === "done").map((s) => s.id)),
+    [board],
+  );
+  const firstDoneStatusId = (board?.statuses ?? []).find((s) => s.kind === "done")?.id ?? "";
+  const firstOpenStatusId = (board?.statuses ?? []).find((s) => s.kind !== "done")?.id ?? "";
   const tagIds = new Set(detail.tags.map((t) => t.id));
 
   const saveTitle = () => {
@@ -128,7 +139,21 @@ function Content() {
     <>
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <span className="truncate text-xs text-muted-foreground">
-          {detail.spaceName} / {detail.listName} · #{task.seq}
+          {detail.spaceName} / {detail.listName}
+          {detail.parent && (
+            <>
+              {" / "}
+              <button
+                className="underline hover:text-foreground"
+                onClick={() => openTask(detail.parent!.id)}
+                title="Open parent task"
+              >
+                #{detail.parent.seq} {detail.parent.title}
+              </button>
+            </>
+          )}
+          {" · #"}
+          {task.seq}
         </span>
         <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={closeTask} aria-label="Close">
           <X className="size-4" />
@@ -393,6 +418,74 @@ function Content() {
             </ul>
           </section>
         )}
+
+        {/* Subtasks — a breakdown of this task, sharing the list's columns.
+            They stay out of the board's columns so the work isn't counted twice. */}
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Subtasks{" "}
+              {detail.subtasks.length > 0 && (
+                <span className="normal-case">
+                  ({detail.subtasks.filter((t) => doneStatusIds.has(t.statusId)).length}/
+                  {detail.subtasks.length})
+                </span>
+              )}
+            </h3>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs"
+              onClick={() => {
+                const t = window.prompt("Subtask title:")?.trim();
+                if (t) createSubtask(task.id, t).catch((e) => toast.error(String(e)));
+              }}
+            >
+              + Add
+            </Button>
+          </div>
+          {detail.subtasks.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Break this task down into steps, or use a checklist in the description.
+            </p>
+          ) : (
+            <div className="divide-y rounded-md border">
+              {detail.subtasks.map((st) => {
+                const done = doneStatusIds.has(st.statusId);
+                return (
+                  <div key={st.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                    <button
+                      title={done ? "Reopen" : "Mark complete"}
+                      onClick={() => {
+                        // Toggle against the list's own columns, so this works
+                        // whatever the user named them.
+                        const target = done ? firstOpenStatusId : firstDoneStatusId;
+                        if (!target) {
+                          toast.error("This list has no column for that");
+                          return;
+                        }
+                        moveTask(st.id, target, "", "").catch((e) => toast.error(String(e)));
+                      }}
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded border",
+                        done && "border-success bg-success/20",
+                      )}
+                    >
+                      {done && <Check className="size-3 text-success" />}
+                    </button>
+                    <button
+                      className={cn("min-w-0 flex-1 truncate text-left", done && "text-muted-foreground line-through")}
+                      onClick={() => openTask(st.id)}
+                    >
+                      {st.title}
+                    </button>
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">#{st.seq}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         {/* Comments */}
         <section className="space-y-3">

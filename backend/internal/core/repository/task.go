@@ -247,6 +247,28 @@ func (r *TaskRepository) MoveList(id string, folderID *string, newRank string) e
 		Updates(map[string]any{"folder_id": folderID, "rank": newRank}).Error
 }
 
+// MoveSpace/MoveFolder only touch the rank: reparenting a space isn't a thing
+// (it belongs to an org) and folders always stay in their space.
+func (r *TaskRepository) MoveSpace(id, newRank string) error {
+	return r.db.Model(&domain.TaskSpace{}).Where("id = ?", id).Update("rank", newRank).Error
+}
+
+func (r *TaskRepository) MoveFolder(id, newRank string) error {
+	return r.db.Model(&domain.TaskFolder{}).Where("id = ?", id).Update("rank", newRank).Error
+}
+
+// Siblings returns the ordered ids of a set, so "move up/down" can resolve the
+// neighbours without the client tracking ranks.
+func (r *TaskRepository) Siblings(table, scopeCol, scopeID string) []string {
+	var ids []string
+	q := r.db.Table(table).Order("rank ASC")
+	if scopeCol != "" {
+		q = q.Where(scopeCol+" = ?", scopeID)
+	}
+	q.Pluck("id", &ids)
+	return ids
+}
+
 // RankOf reads one row's rank, used to compute a midpoint against a neighbour.
 func (r *TaskRepository) RankOf(table, id string) string {
 	var v string
@@ -367,7 +389,9 @@ func (r *TaskRepository) DeleteTask(id string) error {
 // three queries instead of N+1 per card.
 func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 	var tasks []domain.Task
-	if err := r.db.Where("list_id = ? AND archived_at IS NULL", listID).
+	// Subtasks belong to their parent's breakdown, not to the column: showing
+	// both would double-count the work on screen.
+	if err := r.db.Where("list_id = ? AND archived_at IS NULL AND parent_id IS NULL", listID).
 		Order("rank ASC").Find(&tasks).Error; err != nil {
 		return nil, err
 	}
@@ -410,6 +434,27 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 	r.db.Model(&domain.TaskAttachment{}).Select("task_id, COUNT(*) AS n").
 		Where("task_id IN ?", ids).Group("task_id").Scan(&attachments)
 
+	// Subtask progress, resolved through the column's `kind` so it survives
+	// someone renaming "Done".
+	type subRow struct {
+		ParentID string
+		Total    int64
+		Done     int64
+	}
+	var subs []subRow
+	r.db.Table("tasks t").
+		Select(`t.parent_id, COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE s.kind = 'done') AS done`).
+		Joins("JOIN task_statuses s ON s.id = t.status_id").
+		Where("t.parent_id IN ? AND t.archived_at IS NULL", ids).
+		Group("t.parent_id").Scan(&subs)
+	subTotal := map[string]int64{}
+	subDone := map[string]int64{}
+	for _, s := range subs {
+		subTotal[s.ParentID] = s.Total
+		subDone[s.ParentID] = s.Done
+	}
+
 	tagsBy := map[string][]domain.TaskTag{}
 	for _, t := range tagRows {
 		tagsBy[t.TaskID] = append(tagsBy[t.TaskID], t.TaskTag)
@@ -433,6 +478,8 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 			ID: t.ID, Seq: t.Seq, Title: t.Title, Priority: t.Priority,
 			StatusID: t.StatusID, DueAt: t.DueAt,
 			HasDescription:  t.Description != "",
+			SubtaskCount:    subTotal[t.ID],
+			SubtaskDone:     subDone[t.ID],
 			CommentCount:    commentsBy[t.ID],
 			AttachmentCount: attachmentsBy[t.ID],
 			Tags:            orEmptyTags(tagsBy[t.ID]),
@@ -455,6 +502,27 @@ func orEmptyUsers(v []domain.UserSummary) []domain.UserSummary {
 		return []domain.UserSummary{}
 	}
 	return v
+}
+
+// Subtasks returns a task's children as cards, ordered like the board.
+func (r *TaskRepository) Subtasks(parentID string) ([]domain.TaskCard, error) {
+	var tasks []domain.Task
+	if err := r.db.Where("parent_id = ? AND archived_at IS NULL", parentID).
+		Order("rank ASC").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	out := make([]domain.TaskCard, len(tasks))
+	for i, t := range tasks {
+		out[i] = domain.TaskCard{
+			ID: t.ID, Seq: t.Seq, Title: t.Title, Priority: t.Priority,
+			StatusID: t.StatusID, DueAt: t.DueAt,
+			HasDescription: t.Description != "",
+			Tags:           []domain.TaskTag{},
+			Assignees:      []domain.UserSummary{},
+			UpdatedAt:      t.UpdatedAt,
+		}
+	}
+	return out, nil
 }
 
 // ─── Tags / assignees ─────────────────────────────────────────────────────────

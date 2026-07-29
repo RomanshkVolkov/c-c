@@ -60,6 +60,8 @@ export interface TaskCard {
   hasDescription: boolean;
   commentCount: number;
   attachmentCount: number;
+  subtaskCount: number;
+  subtaskDone: number;
   tags: TaskTag[];
   assignees: UserSummary[];
   updatedAt: string;
@@ -104,6 +106,7 @@ export interface Task {
   dueAt?: string | null;
   completedAt?: string | null;
   createdById: string;
+  parentId?: string | null;
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -118,6 +121,8 @@ export interface TaskDetail {
   assignees: UserSummary[];
   comments: TaskComment[];
   attachments: TaskAttachment[];
+  subtasks: TaskCard[];
+  parent?: TaskCard | null;
 }
 
 export interface UpdateTaskPayload {
