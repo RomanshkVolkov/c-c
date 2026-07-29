@@ -22,7 +22,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrompt } from "@/components/PromptDialog";
-import { mediaSrc } from "@/lib/media";
+import { attachmentPath, mediaSrc } from "@/lib/media";
 
 /**
  * WYSIWYG editor whose stored value is **markdown**, not HTML or ProseMirror
@@ -46,7 +46,13 @@ function getMarkdown(editor: Editor): string {
   const storage = editor.storage as unknown as {
     markdown?: { getMarkdown: () => string };
   };
-  return (storage.markdown?.getMarkdown() ?? "").replace(LOCAL_IMAGE, "");
+  const md = (storage.markdown?.getMarkdown() ?? "").replace(LOCAL_IMAGE, "");
+  // Belt and braces: whatever route an absolute/tokenized attachment URL took to
+  // get here, it leaves as the canonical path.
+  return md.replace(/(!?\[[^\]]*\]\()([^)\s]+)/g, (whole, head: string, url: string) => {
+    const path = attachmentPath(url);
+    return path ? head + path : whole;
+  });
 }
 
 /**
@@ -189,12 +195,24 @@ export default function MarkdownEditor({
     if (!ed || !up) return;
 
     const found: string[] = [];
+    const stray: [string, string][] = [];
     ed.state.doc.descendants((node) => {
-      if (node.type.name === "image" && isLocalSrc(node.attrs.src)) {
-        const src = node.attrs.src as string;
+      if (node.type.name !== "image") return;
+      const src = node.attrs.src;
+      if (isLocalSrc(src)) {
         if (!claimed.current.has(src)) found.push(src);
+        return;
+      }
+      // renderHTML() hands the DOM an absolute, tokenized URL; a DOM round-trip
+      // can write that back into the node. Left alone it would be serialized —
+      // storing the backend host and, worse, an access token. Canonicalize.
+      if (typeof src === "string") {
+        const path = attachmentPath(src);
+        if (path && path !== src) stray.push([src, path]);
       }
     });
+
+    for (const [src, path] of stray) retargetImage(ed, src, path, null);
 
     for (const src of found) {
       claimed.current.add(src);
