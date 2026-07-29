@@ -19,6 +19,12 @@ so everything here is applied deliberately by an operator.
 
 ## Apply
 
+Pre-flight checked against the live cluster (2026-07-29), so you don't have to:
+`local-path` is the default StorageClass (the 2Gi PVC binds, `WaitForFirstConsumer`),
+and `cac-service` runs in the `default` namespace — so
+`http://grafana.observability.svc.cluster.local:3000` is reachable from the
+backend pods, which is what makes the ClusterIP-only design work.
+
 ```sh
 kubectl apply -f grafana/00-namespace.yaml
 
