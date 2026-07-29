@@ -4,6 +4,7 @@ import { api, apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import type { APIResponse } from "@/types/auth";
 import type {
+  TaskStatusKind,
   BoardResponse,
   SpaceTree,
   TaskCard,
@@ -41,6 +42,11 @@ interface TasksState {
   createList: (spaceId: string, name: string, folderId?: string) => Promise<void>;
   renameList: (id: string, name: string) => Promise<void>;
   deleteList: (id: string) => Promise<void>;
+
+  createStatus: (name: string, color: string, kind: TaskStatusKind) => Promise<void>;
+  updateStatus: (id: string, name: string, color: string, kind: TaskStatusKind) => Promise<void>;
+  moveStatus: (id: string, afterId: string, beforeId: string) => Promise<void>;
+  deleteStatus: (id: string, moveToId: string) => Promise<void>;
 
   createTask: (title: string, statusId?: string) => Promise<void>;
   moveTask: (taskId: string, statusId: string, afterId: string, beforeId: string) => Promise<void>;
@@ -172,6 +178,46 @@ export const useTasksStore = create<TasksState>()(
       },
 
       // ─── Tasks ──────────────────────────────────────────────────────────
+
+      // ─── Columns ────────────────────────────────────────────────────────
+
+      createStatus: async (name, color, kind) => {
+        const listId = get().activeListId;
+        if (!listId) return;
+        await api.post<APIResponse<unknown>>(
+          `/api/v1/task-lists/${listId}/statuses`,
+          { name, color, kind },
+          true,
+        );
+        await get().refreshBoard();
+      },
+
+      updateStatus: async (id, name, color, kind) => {
+        await api.patch<APIResponse<unknown>>(
+          `/api/v1/task-statuses/${id}`,
+          { name, color, kind },
+          true,
+        );
+        await get().refreshBoard();
+      },
+
+      moveStatus: async (id, afterId, beforeId) => {
+        await api.post<APIResponse<unknown>>(
+          `/api/v1/task-statuses/${id}/move`,
+          { afterId, beforeId },
+          true,
+        );
+        await get().refreshBoard();
+      },
+
+      // The server refuses to strand tasks, so the caller must say which column
+      // absorbs them.
+      deleteStatus: async (id, moveToId) => {
+        await api.delete<APIResponse<unknown>>(
+          `/api/v1/task-statuses/${id}?moveTo=${encodeURIComponent(moveToId)}`,
+        );
+        await get().refreshBoard();
+      },
 
       createTask: async (title, statusId) => {
         const listId = get().activeListId;

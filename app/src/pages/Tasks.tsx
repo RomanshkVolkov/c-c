@@ -15,6 +15,7 @@ import {
   Paperclip,
   FileText,
   Flag,
+  Check,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
@@ -379,6 +381,7 @@ function Board() {
     id: s.id,
     title: s.name,
     color: s.color,
+    accessory: <ColumnMenu status={s} statuses={board.statuses} />,
     footer: (
       <button
         className="flex w-full items-center gap-1 rounded px-1 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -402,9 +405,25 @@ function Board() {
           {board.tasks.length} tasks
         </Badge>
         <Button
+          size="sm"
+          variant="ghost"
+          className="ml-auto h-7 text-xs"
+          onClick={() => {
+            const name = window.prompt("Column name:")?.trim();
+            if (!name) return;
+            // New columns default to "open": only the user knows whether a column
+            // means finished, and `kind` drives the completed-at stamp.
+            useTasksStore
+              .getState()
+              .createStatus(name, "#7D8BA3", "open")
+              .catch((e) => toast.error(String(e)));
+          }}
+        >
+          <Plus className="size-3 mr-1" /> Column
+        </Button>
+        <Button
           size="icon-xs"
           variant="ghost"
-          className="ml-auto"
           title="Refresh"
           disabled={loading}
           onClick={() => refreshBoard()}
@@ -429,6 +448,107 @@ function Board() {
         />
       </div>
     </div>
+  );
+}
+
+// Per-column menu: rename, recolour, set what the column *means* (kind), and
+// delete. `kind` is separate from the name on purpose — renaming "Done" to
+// "Shipped" must not stop it counting as finished.
+function ColumnMenu({
+  status,
+  statuses,
+}: {
+  status: { id: string; name: string; color: string; kind: string };
+  statuses: { id: string; name: string }[];
+}) {
+  const confirm = useConfirm();
+  const { updateStatus, deleteStatus } = useTasksStore.getState();
+
+  const KINDS: { value: "open" | "active" | "done"; label: string }[] = [
+    { value: "open", label: "Not started" },
+    { value: "active", label: "In progress" },
+    { value: "done", label: "Completed" },
+  ];
+  const COLORS = ["#7D8BA3", "#20D9E8", "#8B5CF6", "#34D399", "#FBBF24", "#FB7185", "#38BDF8"];
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button className="text-muted-foreground hover:text-foreground" aria-label="Column menu">
+            <MoreHorizontal className="size-3.5" />
+          </button>
+        }
+      />
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            onClick={() => {
+              const n = window.prompt("Rename column:", status.name)?.trim();
+              if (n) updateStatus(status.id, n, status.color, status.kind as "open").catch((e) => toast.error(String(e)));
+            }}
+          >
+            <Pencil className="size-4" /> Rename
+          </DropdownMenuItem>
+
+          <DropdownMenuLabel className="text-[11px] text-muted-foreground">Means</DropdownMenuLabel>
+          {KINDS.map((k) => (
+            <DropdownMenuItem
+              key={k.value}
+              onClick={() =>
+                updateStatus(status.id, status.name, status.color, k.value).catch((e) =>
+                  toast.error(String(e)),
+                )
+              }
+            >
+              {k.label}
+              {status.kind === k.value && <Check className="ml-auto size-3.5" />}
+            </DropdownMenuItem>
+          ))}
+
+          <DropdownMenuLabel className="text-[11px] text-muted-foreground">Colour</DropdownMenuLabel>
+          <div className="flex gap-1 px-2 pb-1">
+            {COLORS.map((c) => (
+              <button
+                key={c}
+                aria-label={`Colour ${c}`}
+                className={cn(
+                  "size-4 rounded-full ring-offset-1",
+                  status.color === c && "ring-2 ring-ring",
+                )}
+                style={{ backgroundColor: c }}
+                onClick={() =>
+                  updateStatus(status.id, status.name, c, status.kind as "open").catch((e) =>
+                    toast.error(String(e)),
+                  )
+                }
+              />
+            ))}
+          </div>
+
+          <DropdownMenuItem
+            onClick={async () => {
+              const others = statuses.filter((s) => s.id !== status.id);
+              if (others.length === 0) {
+                toast.error("A list needs at least one column");
+                return;
+              }
+              // Tasks can't be orphaned, so ask where they go before deleting.
+              const target = others[0];
+              const ok = await confirm({
+                title: `Delete column "${status.name}"?`,
+                description: `Its tasks move to "${target.name}".`,
+                confirmText: "Delete column",
+                destructive: true,
+              });
+              if (ok) deleteStatus(status.id, target.id).catch((e) => toast.error(String(e)));
+            }}
+          >
+            <Trash2 className="size-4 text-destructive" /> Delete column
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
