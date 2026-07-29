@@ -32,12 +32,28 @@ import { mediaSrc } from "@/lib/media";
  * richer node (text colour, custom blocks) would be silently lost on the next
  * round-trip, so it isn't offered in the first place.
  */
+/**
+ * A `blob:`/`data:` image only exists inside the page that created it. Persisting
+ * one stores a reference that renders in the current editor session and nowhere
+ * ever again — which is exactly how a pasted image silently vanished. Anything
+ * local is dropped here, at the single point where markdown leaves the editor.
+ */
+const LOCAL_IMAGE = /!\[[^\]]*\]\((?:blob|data):[^)]*\)/g;
+
 /** tiptap-markdown augments `editor.storage` at runtime but ships no types. */
 function getMarkdown(editor: Editor): string {
   const storage = editor.storage as unknown as {
     markdown?: { getMarkdown: () => string };
   };
-  return storage.markdown?.getMarkdown() ?? "";
+  return (storage.markdown?.getMarkdown() ?? "").replace(LOCAL_IMAGE, "");
+}
+
+/** blob:/data: image sources inside a pasted HTML fragment. */
+function localImageURLs(html: string): string[] {
+  if (!html) return [];
+  const out: string[] = [];
+  for (const m of html.matchAll(/<img[^>]+src="((?:blob|data):[^"]+)"/g)) out.push(m[1]);
+  return out;
 }
 
 export interface MarkdownEditorProps {
@@ -73,6 +89,9 @@ export default function MarkdownEditor({
         heading: { levels: [1, 2, 3] },
         // Markdown has no notion of these, so leave them out entirely.
         horizontalRule: {},
+        // StarterKit ships Link; configuring ours below without disabling it
+        // registered the extension twice ("Duplicate extension names found").
+        link: false,
       }),
       Link.configure({ openOnClick: false, autolink: true }),
       // renderHTML only touches the DOM: `node.attrs.src` keeps the canonical
@@ -101,8 +120,8 @@ export default function MarkdownEditor({
         ),
         style: `min-height:${minHeight}`,
       },
-      handlePaste: (_view, event) => takeFiles(event.clipboardData?.files),
-      handleDrop: (_view, event) => takeFiles((event as DragEvent).dataTransfer?.files),
+      handlePaste: (_view, event) => takePasted(event.clipboardData),
+      handleDrop: (_view, event) => takePasted((event as DragEvent).dataTransfer),
     },
     onUpdate: ({ editor }) => {
       onChange(getMarkdown(editor));
@@ -127,12 +146,52 @@ export default function MarkdownEditor({
   }, []);
 
   // Returning true tells ProseMirror we handled the event, so it won't also
-  // paste the file name as plain text.
-  const takeFiles = (files?: FileList | null): boolean => {
-    if (!files?.length || !uploadRef.current) return false;
-    const list = Array.from(files);
+  // paste the file name as plain text (or, worse, an <img src="blob:…">).
+  const takePasted = (dt?: DataTransfer | null): boolean => {
+    if (!dt || !uploadRef.current) return false;
+
+    // `files` is the happy path, but pasting a screenshot in a WebKit webview
+    // often exposes the bitmap only through `items` — and then the HTML flavour
+    // carries an <img src="blob:…">, which is what ProseMirror would have
+    // inserted: a reference that dies with the page.
+    const files = [
+      ...Array.from(dt.files ?? []),
+      ...Array.from(dt.items ?? [])
+        .filter((i) => i.kind === "file")
+        .map((i) => i.getAsFile())
+        .filter((f): f is File => !!f),
+    ];
+    // De-dupe: an item and a file entry can describe the same bitmap.
+    const seen = new Set<string>();
+    const unique = files.filter((f) => {
+      const key = `${f.name}:${f.size}:${f.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (unique.length > 0) {
+      void (async () => {
+        for (const f of unique) await insertUpload(f);
+      })();
+      return true;
+    }
+
+    // Last resort: pull the bitmaps out of the pasted HTML. The blob URLs are
+    // still alive at this instant, so they can be fetched and uploaded — after
+    // the paste settles they'd be unreachable.
+    const local = localImageURLs(dt.getData("text/html"));
+    if (local.length === 0) return false;
     void (async () => {
-      for (const f of list) await insertUpload(f);
+      for (const url of local) {
+        try {
+          const blob = await (await fetch(url)).blob();
+          const ext = blob.type.split("/")[1] ?? "png";
+          await insertUpload(new File([blob], `pasted.${ext}`, { type: blob.type }));
+        } catch {
+          // Unreachable blob: better to drop it than to store a dead link.
+        }
+      }
     })();
     return true;
   };
