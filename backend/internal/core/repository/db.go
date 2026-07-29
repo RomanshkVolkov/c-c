@@ -69,6 +69,16 @@ func DBConnection() {
 		&domain.TelemetryEvent{},
 		&domain.ServerIntegration{},
 		&domain.PersonalAccessToken{},
+		&domain.TaskSpace{},
+		&domain.TaskFolder{},
+		&domain.TaskList{},
+		&domain.TaskStatus{},
+		&domain.Task{},
+		&domain.TaskTag{},
+		&domain.TaskTagLink{},
+		&domain.TaskAssignee{},
+		&domain.TaskComment{},
+		&domain.TaskAttachment{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}

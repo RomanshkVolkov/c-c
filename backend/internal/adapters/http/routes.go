@@ -22,6 +22,7 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitServerRoutes(db, r)
 	InitCollectionRoutes(db, r)
 	InitReportRoutes(db, r)
+	InitTaskRoutes(db, r)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
