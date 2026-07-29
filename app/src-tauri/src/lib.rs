@@ -136,75 +136,93 @@ fn op_read(reference: &str) -> Result<String, String> {
     Ok(token)
 }
 
-// ─── 1Password SSH keys ───────────────────────────────────────────────────────
+// ─── SSH agent keys ───────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshKeyItem {
-    pub id: String,
+    /// Full public key line, e.g. "ssh-ed25519 AAAA… title".
+    pub public_key: String,
+    /// The agent's comment — for 1Password this is the item title.
     pub title: String,
-    pub vault: String,
-    pub vault_name: String,
     pub fingerprint: String,
-    /// Ready-to-store secret reference for this key's public half.
-    pub reference: String,
+    pub key_type: String,
 }
 
-/// Lists the SSH keys in the user's 1Password vaults so a server can be bound to
-/// one of them. Only metadata (title/fingerprint) — no key material.
-#[tauri::command]
-fn list_1password_ssh_keys() -> Result<Vec<SshKeyItem>, String> {
+fn run_ssh_add(flag: &str) -> Result<String, String> {
     use std::process::Command;
 
-    let output = Command::new("op")
-        .args(["item", "list", "--categories", "SSH Key", "--format", "json"])
+    let output = Command::new("ssh-add")
+        .arg(flag)
         .output()
         .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => "1Password CLI (op) not found. Install from https://developer.1password.com/docs/cli/".to_string(),
-            _ => format!("Failed to execute op: {e}"),
+            std::io::ErrorKind::NotFound => "`ssh-add` not found on PATH.".to_string(),
+            _ => format!("Failed to execute ssh-add: {e}"),
         })?;
 
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.contains("not currently signed in") || stderr.contains("session expired") {
-            "1Password session expired. Unlock the desktop app (or run `op signin`) and retry.".to_string()
-        } else if stderr.is_empty() {
-            format!("op exited with status {}", output.status)
+        // ssh-add exits non-zero when the agent holds nothing or is unreachable.
+        if stdout.contains("no identities") || stderr.contains("no identities") {
+            return Ok(String::new());
+        }
+        return Err(if stderr.is_empty() {
+            "No SSH agent reachable (is SSH_AUTH_SOCK set for this app?)".to_string()
         } else {
             stderr
         });
     }
+    Ok(stdout)
+}
 
-    let raw: serde_json::Value =
-        serde_json::from_slice(&output.stdout).map_err(|e| format!("Unexpected op output: {e}"))?;
+/// Lists the keys the SSH agent currently holds — for a 1Password agent, that's
+/// the keys from the enabled vaults, with the item title as the comment.
+///
+/// This deliberately does NOT shell out to `op`: the 1Password CLI's desktop-app
+/// integration validates the process that invokes it and refuses when launched
+/// from a GUI app ("connecting to desktop app: connection reset"), while the
+/// agent socket works fine from the same context — it's what ssh already uses.
+#[tauri::command]
+fn list_agent_ssh_keys() -> Result<Vec<SshKeyItem>, String> {
+    let listing = run_ssh_add("-L")?; // public key material + comment
+    let prints = run_ssh_add("-l").unwrap_or_default(); // fingerprints, same order
 
-    let items = raw.as_array().cloned().unwrap_or_default();
-    Ok(items
-        .iter()
-        .filter_map(|it| {
-            let id = it.get("id")?.as_str()?.to_string();
-            let vault = it.get("vault")?;
-            let vault_id = vault.get("id")?.as_str()?.to_string();
-            Some(SshKeyItem {
-                reference: format!("op://{vault_id}/{id}/public key"),
-                title: it.get("title").and_then(|v| v.as_str()).unwrap_or("(untitled)").to_string(),
-                vault_name: vault.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                fingerprint: it
-                    .get("additional_information")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                vault: vault_id,
-                id,
-            })
+    // "256 SHA256:… comment (ED25519)" → fingerprint by position.
+    let fingerprints: Vec<String> = prints
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            l.split_whitespace()
+                .nth(1)
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+
+    Ok(listing
+        .lines()
+        .filter(|l| l.starts_with("ssh-") || l.starts_with("ecdsa-"))
+        .enumerate()
+        .map(|(i, line)| {
+            let mut parts = line.splitn(3, ' ');
+            let key_type = parts.next().unwrap_or_default().to_string();
+            let _material = parts.next().unwrap_or_default();
+            let title = parts.next().unwrap_or("(no title)").trim().to_string();
+            SshKeyItem {
+                public_key: line.to_string(),
+                title: if title.is_empty() { "(no title)".into() } else { title },
+                fingerprint: fingerprints.get(i).cloned().unwrap_or_default(),
+                key_type,
+            }
         })
         .collect())
 }
 
 /// A public key materialized on disk only for the lifetime of one ssh call.
 /// ssh needs an `IdentityFile` path; the file holds the PUBLIC half only (the
-/// private key never leaves 1Password — the agent does the signing) and is
-/// removed as soon as the command returns.
+/// private key never leaves the agent, which does the signing) and is removed as
+/// soon as the command returns.
 struct EphemeralIdentity {
     path: std::path::PathBuf,
 }
@@ -215,15 +233,15 @@ impl Drop for EphemeralIdentity {
     }
 }
 
-fn resolve_op_identity(reference: &str) -> Result<EphemeralIdentity, String> {
-    let public_key = op_read(reference)?;
-    if !public_key.starts_with("ssh-") && !public_key.starts_with("ecdsa-") {
-        return Err("That 1Password reference did not return a public key".into());
+fn stage_public_key(public_key: &str) -> Result<EphemeralIdentity, String> {
+    let key = public_key.trim();
+    if !key.starts_with("ssh-") && !key.starts_with("ecdsa-") {
+        return Err("Stored SSH identity is not a public key".into());
     }
 
     let mut path = std::env::temp_dir();
-    path.push(format!("cac-ssh-{}.pub", uuid_like()));
-    std::fs::write(&path, format!("{public_key}\n"))
+    path.push(format!("cac-ssh-{}.pub", ephemeral_suffix()));
+    std::fs::write(&path, format!("{key}\n"))
         .map_err(|e| format!("Could not stage the public key: {e}"))?;
 
     #[cfg(unix)]
@@ -235,8 +253,7 @@ fn resolve_op_identity(reference: &str) -> Result<EphemeralIdentity, String> {
     Ok(EphemeralIdentity { path })
 }
 
-/// Enough entropy for a temp filename (avoids pulling in a uuid dependency).
-fn uuid_like() -> String {
+fn ephemeral_suffix() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -246,8 +263,8 @@ fn uuid_like() -> String {
 }
 
 #[tauri::command]
-fn set_server_ssh_key(server_id: String, reference: String) -> Result<(), String> {
-    if reference.trim().is_empty() {
+fn set_server_ssh_key(server_id: String, public_key: String) -> Result<(), String> {
+    if public_key.trim().is_empty() {
         return keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account(&server_id))
             .map_err(|e| e.to_string())?
             .delete_credential()
@@ -255,7 +272,7 @@ fn set_server_ssh_key(server_id: String, reference: String) -> Result<(), String
     }
     keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account(&server_id))
         .map_err(|e| e.to_string())?
-        .set_password(reference.trim())
+        .set_password(public_key.trim())
         .map_err(|e| e.to_string())
 }
 
@@ -360,8 +377,8 @@ fn update_swarm_manage_agent(
     ssh_port: u16,
     ssh_user: String,
     service: Option<String>,
-    // 1Password secret reference to the key's public half.
-    identity_ref: Option<String>,
+    // Public key line of the agent key to pin (see list_agent_ssh_keys).
+    identity_key: Option<String>,
 ) -> Result<SshOutput, String> {
     let service_name = service.unwrap_or_else(|| "cac_swarm-manage".to_string());
     let remote = format!(
@@ -369,8 +386,8 @@ fn update_swarm_manage_agent(
     );
     {
         // Resolve (and stage) the key only for this call; the guard wipes it.
-        let staged = match identity_ref.as_deref().filter(|r| !r.trim().is_empty()) {
-            Some(r) => Some(resolve_op_identity(r)?),
+        let staged = match identity_key.as_deref().filter(|k| !k.trim().is_empty()) {
+            Some(k) => Some(stage_public_key(k)?),
             None => None,
         };
         let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
@@ -385,8 +402,8 @@ fn deploy_swarm_manage_agent(
     ssh_user: String,
     agent_port: u16,
     stack: Option<String>,
-    // 1Password secret reference to the key's public half.
-    identity_ref: Option<String>,
+    // Public key line of the agent key to pin (see list_agent_ssh_keys).
+    identity_key: Option<String>,
 ) -> Result<SshOutput, String> {
     let stack_name = stack.unwrap_or_else(|| "cac".to_string());
     let compose = format!(
@@ -414,8 +431,8 @@ rm -f /tmp/swarm-manage.yml"
     );
     {
         // Resolve (and stage) the key only for this call; the guard wipes it.
-        let staged = match identity_ref.as_deref().filter(|r| !r.trim().is_empty()) {
-            Some(r) => Some(resolve_op_identity(r)?),
+        let staged = match identity_key.as_deref().filter(|k| !k.trim().is_empty()) {
+            Some(k) => Some(stage_public_key(k)?),
             None => None,
         };
         let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
@@ -934,7 +951,7 @@ pub fn run() {
             executable_path,
             get_server_ssh_key,
             set_server_ssh_key,
-            list_1password_ssh_keys,
+            list_agent_ssh_keys,
             jwt_decode,
             generate_id,
             hash_text,

@@ -14,25 +14,27 @@ import {
 import { cn } from "@/lib/utils";
 
 interface SshKeyItem {
-  id: string;
+  /** Full public key line — what gets pinned with ssh -i. */
+  publicKey: string;
+  /** Agent comment; for 1Password keys this is the item title. */
   title: string;
-  vault: string;
-  vaultName: string;
   fingerprint: string;
-  reference: string;
+  keyType: string;
 }
 
 /**
- * Binds a server to one SSH key from 1Password.
+ * Binds a server to one key held by the SSH agent (1Password's, typically).
  *
- * Why this exists: an agent that holds many keys offers them one at a time, and
- * the server aborts at MaxAuthTries (6 by default) with "Too many
- * authentication failures" — usually before reaching the right key. Naming the
- * key pins the attempt to exactly one.
+ * Why this exists: an agent holding many keys offers them one at a time, and the
+ * server aborts at MaxAuthTries (6 by default) with "Too many authentication
+ * failures" — usually before reaching the right key. Naming the key pins the
+ * attempt to exactly one.
  *
- * Nothing is stored on disk: cac keeps only the 1Password *reference* (in the OS
- * keychain) and, at connect time, stages the key's PUBLIC half in a temp file
- * that is deleted right after. The private key never leaves 1Password.
+ * Deliberately reads the agent rather than the `op` CLI: 1Password's CLI
+ * validates the process that launches it and refuses from a GUI app
+ * ("connecting to desktop app: connection reset"), while the agent socket works
+ * — it's the same one ssh already uses. cac stores only the PUBLIC key (OS
+ * keychain); the private half never leaves the agent.
  */
 export default function SshKeyDialog({
   serverId,
@@ -57,7 +59,7 @@ export default function SshKeyDialog({
     setError(null);
     try {
       const [items, saved] = await Promise.all([
-        invoke<SshKeyItem[]>("list_1password_ssh_keys"),
+        invoke<SshKeyItem[]>("list_agent_ssh_keys"),
         invoke<string | null>("get_server_ssh_key", { serverId }),
       ]);
       setKeys(items);
@@ -77,7 +79,7 @@ export default function SshKeyDialog({
   const save = async () => {
     setSaving(true);
     try {
-      await invoke("set_server_ssh_key", { serverId, reference: selected ?? "" });
+      await invoke("set_server_ssh_key", { serverId, publicKey: selected ?? "" });
       toast.success(selected ? "SSH key linked" : "SSH key unlinked");
       onOpenChange(false);
     } catch (e) {
@@ -95,8 +97,9 @@ export default function SshKeyDialog({
             <KeyRound className="size-4" /> SSH key for {serverName}
           </DialogTitle>
           <DialogDescription>
-            Pick the 1Password key this server uses. cac stores only the reference —
-            the private key never leaves 1Password.
+            Pick the key this server uses, from the ones your SSH agent holds
+            (1Password exposes its vault keys here). The private key never leaves
+            the agent — cac only remembers which one to offer.
           </DialogDescription>
         </DialogHeader>
 
@@ -109,7 +112,7 @@ export default function SshKeyDialog({
           </div>
         ) : loading ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            <Loader2 className="inline size-4 animate-spin" /> Reading 1Password…
+            <Loader2 className="inline size-4 animate-spin" /> Reading SSH agent…
           </p>
         ) : (
           <div className="max-h-80 space-y-1 overflow-auto">
@@ -131,26 +134,26 @@ export default function SshKeyDialog({
 
             {keys.map((k) => (
               <button
-                key={k.id}
+                key={k.fingerprint || k.publicKey}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md border p-2 text-left text-sm hover:bg-accent",
-                  selected === k.reference && "border-primary bg-accent",
+                  selected === k.publicKey && "border-primary bg-accent",
                 )}
-                onClick={() => setSelected(k.reference)}
+                onClick={() => setSelected(k.publicKey)}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{k.title}</span>
                   <span className="block truncate font-mono text-[10px] text-muted-foreground">
-                    {k.vaultName} · {k.fingerprint}
+                    {k.keyType} · {k.fingerprint}
                   </span>
                 </span>
-                {selected === k.reference && <Check className="size-4 shrink-0" />}
+                {selected === k.publicKey && <Check className="size-4 shrink-0" />}
               </button>
             ))}
 
             {keys.length === 0 && (
               <p className="py-4 text-center text-xs text-muted-foreground">
-                No SSH keys found in 1Password.
+                No keys in the SSH agent.
               </p>
             )}
           </div>

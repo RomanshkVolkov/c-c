@@ -92,7 +92,7 @@ export default function Dashboard() {
         sshUser: server.sshUser,
         // Pin ssh to the server's 1Password key when one is linked; otherwise
         // the agent offers every key it holds and the server may cut us off.
-        identityRef: await invoke<string | null>("get_server_ssh_key", {
+        identityKey: await invoke<string | null>("get_server_ssh_key", {
           serverId: server.id,
         }).catch(() => null),
       };
