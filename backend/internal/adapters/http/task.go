@@ -1,11 +1,15 @@
 package http
 
 import (
+	"context"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/handler"
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 	"gorm.io/gorm"
@@ -22,7 +26,19 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		repository.GetEnv("IMAGE_SERVICE_CERT_CN", ""),
 		repository.GetEnv("IMAGE_SERVICE_API_KEY", ""),
 	)
-	h := handler.NewTaskHandler(svc, images)
+	// Same private bucket as report screenshots: attachments are streamed back
+	// through us because the bucket denies anonymous reads.
+	store, err := mediastore.New(
+		context.Background(),
+		repository.GetEnv("REPORTS_MEDIA_BUCKET", ""),
+		repository.GetEnv("REPORTS_MEDIA_REGION", ""),
+		repository.GetEnv("REPORTS_MEDIA_ACCESS_KEY_ID", ""),
+		repository.GetEnv("REPORTS_MEDIA_SECRET_ACCESS_KEY", ""),
+	)
+	if err != nil {
+		lg.Error("task attachment store init failed: " + err.Error())
+	}
+	h := handler.NewTaskHandler(svc, images, store)
 
 	// The navigator: spaces → folders → lists.
 	r.Route("/api/v1/task-spaces", func(r chi.Router) {
@@ -72,6 +88,11 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/attachments", h.UploadAttachment)
 		r.Delete("/{id}/attachments/{attachmentId}", h.DeleteAttachment)
 	})
+
+	// Outside the JWT group: a webview <img> can't send an Authorization header,
+	// so this one authorizes from `?token=` as well. Same pattern as the report
+	// image proxy.
+	r.Get("/api/v1/tasks/{id}/attachments/{attachmentId}/raw", h.RawAttachment)
 
 	r.Route("/api/v1/task-tags", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)

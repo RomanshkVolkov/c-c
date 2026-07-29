@@ -2,6 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
+import { mediaSrc } from "@/lib/media";
 
 /**
  * Read-only markdown. Used wherever stored markdown is displayed (task
@@ -31,8 +32,11 @@ export default function Markdown({
               href={href}
               onClick={(e) => {
                 e.preventDefault();
-                if (!href) return;
-                openUrl(href).catch(() => window.open(href, "_blank"));
+                // Attachment links need the resolved (credentialed) URL too —
+                // the OS browser has no session with the backend otherwise.
+                const target = mediaSrc(href);
+                if (!target) return;
+                openUrl(target).catch(() => window.open(target, "_blank"));
               }}
               className="text-primary underline decoration-primary/40 hover:decoration-primary"
             >
@@ -41,7 +45,7 @@ export default function Markdown({
           ),
           img: ({ src, alt }) => (
             <img
-              src={typeof src === "string" ? src : undefined}
+              src={mediaSrc(typeof src === "string" ? src : undefined)}
               alt={alt ?? ""}
               loading="lazy"
               className="my-2 max-h-80 rounded-md border object-contain"

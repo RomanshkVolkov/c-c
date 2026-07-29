@@ -3,11 +3,15 @@ package handler
 import (
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
 const (
@@ -76,14 +80,19 @@ func (h *taskHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The stored URL is our proxy, not image-service's bucket URL: the bucket
+	// denies anonymous reads, so a bucket URL inside a markdown <img> silently
+	// renders nothing. The id is minted here so the URL can name it.
 	att := &domain.TaskAttachment{
 		TaskID:      t.ID,
-		URL:         res.URL,
+		Path:        res.Key,
 		FileName:    header.Filename,
 		ContentType: res.ContentType,
 		Bytes:       res.Bytes,
 		UploadedBy:  user.UserID,
 	}
+	att.ID = uuid.NewString()
+	att.URL = domain.AttachmentRef(t.ID, att.ID)
 	if cid := r.FormValue("commentId"); cid != "" {
 		att.CommentID = &cid
 	}
@@ -112,4 +121,102 @@ func (h *taskHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Attachment deleted"})
+}
+
+// RawAttachment streams the bytes from the private bucket.
+//
+// Lives outside the JWT-authenticated group because a webview's <img>/<a>
+// cannot set an Authorization header — it accepts `?token=` too, exactly like
+// the report image proxy. Non-members get 404, never 403 (anti-IDOR).
+func (h *taskHandler) RawAttachment(w http.ResponseWriter, r *http.Request) {
+	att, err := h.svc.FindAttachment(chi.URLParam(r, "attachmentId"))
+	if err != nil || att.TaskID != chi.URLParam(r, "id") {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+
+	orgID, err := h.svc.OrgIDForTask(att.TaskID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	if !attachmentViewer(r, orgID) {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+
+	// Authorization comes first so a caller who shouldn't see this attachment
+	// learns nothing about our storage configuration.
+	if h.store == nil || !h.store.Enabled() {
+		SendErrorResponse(w, http.StatusServiceUnavailable, "Attachment storage unavailable", "store-disabled")
+		return
+	}
+
+	// Rows written before the proxy existed hold the bucket URL instead of a
+	// key; recover the key from it so old attachments keep working.
+	key := att.Path
+	if key == "" {
+		key = keyFromBucketURL(att.URL)
+	}
+	if key == "" {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "no-key")
+		return
+	}
+
+	obj, err := h.store.Get(r.Context(), key)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadGateway, "Failed to fetch attachment", err.Error())
+		return
+	}
+	defer obj.Body.Close()
+
+	ct := obj.ContentType
+	if ct == "" {
+		ct = att.ContentType
+	}
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "private, no-store")
+	// inline: images render in place; a browser still offers to save others.
+	w.Header().Set("Content-Disposition", "inline; filename=\""+strings.ReplaceAll(att.FileName, "\"", "")+"\"")
+	if obj.Size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(obj.Size, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, obj.Body)
+}
+
+// attachmentViewer reports whether the request carries a valid access token
+// (header or ?token=) whose bearer belongs to the attachment's org.
+func attachmentViewer(r *http.Request, orgID string) bool {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+			token = strings.TrimPrefix(h, "Bearer ")
+		}
+	}
+	if token == "" {
+		return false
+	}
+	claims, err := repository.ValidateAccessToken(token)
+	if err != nil {
+		return false
+	}
+	if claims.Superadmin {
+		return true
+	}
+	_, member := claims.RoleInOrg(orgID)
+	return member
+}
+
+// keyFromBucketURL extracts the object key from an image-service bucket URL
+// (https://<bucket>.s3.<region>.amazonaws.com/<key>).
+func keyFromBucketURL(raw string) string {
+	i := strings.Index(raw, "amazonaws.com/")
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimPrefix(raw[i+len("amazonaws.com/"):], "/")
 }

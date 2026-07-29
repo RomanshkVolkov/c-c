@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
@@ -41,6 +42,7 @@ type TaskHandler interface {
 	ListTags(w http.ResponseWriter, r *http.Request)
 	CreateTag(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
+	RawAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
 }
 
@@ -49,10 +51,13 @@ type taskHandler struct {
 	// images proxies attachment uploads so the API key and bucket stay
 	// server-side; nil/disabled simply turns attachments off.
 	images *imageservice.Client
+	// store reads the bytes back out for RawAttachment. The bucket is private,
+	// so serving attachments is our job, not the bucket's.
+	store *mediastore.Store
 }
 
-func NewTaskHandler(svc *service.TaskService, images *imageservice.Client) TaskHandler {
-	return &taskHandler{svc: svc, images: images}
+func NewTaskHandler(svc *service.TaskService, images *imageservice.Client, store *mediastore.Store) TaskHandler {
+	return &taskHandler{svc: svc, images: images, store: store}
 }
 
 func mapTaskError(w http.ResponseWriter, err error) bool {

@@ -418,6 +418,15 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	if err != nil {
 		return nil, err
 	}
+	for i := range attachments {
+		attachments[i].NormalizeURL()
+	}
+	// Comment attachments too — same reason (pre-proxy rows hold bucket URLs).
+	for i := range comments {
+		for j := range comments[i].Attachments {
+			comments[i].Attachments[j].NormalizeURL()
+		}
+	}
 	subtasks, err := s.repo.Subtasks(id)
 	if err != nil {
 		return nil, err
@@ -483,3 +492,13 @@ func (s *TaskService) FindAttachment(id string) (*domain.TaskAttachment, error) 
 }
 
 func (s *TaskService) DeleteAttachment(id string) error { return s.repo.DeleteAttachment(id) }
+
+// OrgIDForTask is what the attachment proxy authorizes against: it runs outside
+// the JWT middleware, so it resolves the owning org itself.
+func (s *TaskService) OrgIDForTask(taskID string) (string, error) {
+	t, err := s.repo.FindTask(taskID)
+	if err != nil {
+		return "", err
+	}
+	return t.OrgID, nil
+}

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrompt } from "@/components/PromptDialog";
+import { mediaSrc } from "@/lib/media";
 
 /**
  * WYSIWYG editor whose stored value is **markdown**, not HTML or ProseMirror
@@ -74,7 +75,13 @@ export default function MarkdownEditor({
         horizontalRule: {},
       }),
       Link.configure({ openOnClick: false, autolink: true }),
-      Image.configure({ inline: false }),
+      // renderHTML only touches the DOM: `node.attrs.src` keeps the canonical
+      // relative path, so serializing back to markdown never leaks a token.
+      Image.extend({
+        renderHTML({ HTMLAttributes }) {
+          return ["img", { ...HTMLAttributes, src: mediaSrc(HTMLAttributes.src as string) }];
+        },
+      }).configure({ inline: false }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Markdown.configure({

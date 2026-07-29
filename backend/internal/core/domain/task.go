@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ─── Hierarchy ────────────────────────────────────────────────────────────────
 //
@@ -131,13 +134,35 @@ type TaskComment struct {
 // inline from markdown are recorded here too, so nothing is orphaned.
 type TaskAttachment struct {
 	BaseModel
-	TaskID      string  `gorm:"type:varchar(36);index;not null" json:"taskId"`
-	CommentID   *string `gorm:"type:varchar(36);index"          json:"commentId,omitempty"`
-	URL         string  `gorm:"type:text;not null"              json:"url"`
-	FileName    string  `gorm:"type:varchar(255)"               json:"fileName"`
-	ContentType string  `gorm:"type:varchar(120)"               json:"contentType"`
-	Bytes       int64   `json:"bytes"`
-	UploadedBy  string  `gorm:"type:varchar(36)" json:"uploadedBy"`
+	TaskID    string  `gorm:"type:varchar(36);index;not null" json:"taskId"`
+	CommentID *string `gorm:"type:varchar(36);index"          json:"commentId,omitempty"`
+	// URL is the path clients fetch: our own authenticated proxy, not the
+	// bucket. The bucket denies anonymous reads, so an <img> pointed straight at
+	// it renders nothing at all (which is what happened to inline images).
+	URL string `gorm:"type:text;not null" json:"url"`
+	// Path is the object key inside the bucket. Never exposed: it is the thing
+	// the proxy needs and the client must not be able to address directly.
+	Path        string `gorm:"type:text"                       json:"-"`
+	FileName    string `gorm:"type:varchar(255)"               json:"fileName"`
+	ContentType string `gorm:"type:varchar(120)"               json:"contentType"`
+	Bytes       int64  `json:"bytes"`
+	UploadedBy  string `gorm:"type:varchar(36)" json:"uploadedBy"`
+}
+
+// AttachmentRef is the canonical reference stored in markdown and returned to
+// clients: our own proxy, relative so the same description resolves against
+// whichever backend the app is pointed at.
+func AttachmentRef(taskID, attachmentID string) string {
+	return "/api/v1/tasks/" + taskID + "/attachments/" + attachmentID + "/raw"
+}
+
+// NormalizeURL points an attachment at the proxy. Rows written before the proxy
+// existed hold the bucket URL, which no client can load (the bucket denies
+// anonymous reads) — this makes those rows serve like new ones.
+func (a *TaskAttachment) NormalizeURL() {
+	if !strings.HasPrefix(a.URL, "/api/") {
+		a.URL = AttachmentRef(a.TaskID, a.ID)
+	}
 }
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
