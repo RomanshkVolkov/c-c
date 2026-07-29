@@ -3,6 +3,8 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,6 +94,56 @@ func DBConnection() {
 	seedAdmin(db)
 	seedBaseOrg(db)
 	promoteSuperadmin(db)
+	backfillAttachmentRefs(db)
+}
+
+// backfillAttachmentRefs repoints attachments written before the proxy existed.
+//
+// They stored image-service's bucket URL, and the markdown that embeds them
+// stored it too — but the bucket denies anonymous reads, so those images never
+// rendered anywhere. This recovers the object key from the URL and rewrites both
+// the row and every markdown reference to the proxy path. Idempotent: once
+// rewritten, nothing matches the bucket-URL filter again.
+func backfillAttachmentRefs(db *gorm.DB) {
+	var rows []domain.TaskAttachment
+	if err := db.Where("url LIKE ?", "%amazonaws.com/%").Find(&rows).Error; err != nil {
+		lg.Error("attachment backfill: query failed: " + err.Error())
+		return
+	}
+	if len(rows) == 0 {
+		return
+	}
+
+	fixed := 0
+	for _, a := range rows {
+		i := strings.Index(a.URL, "amazonaws.com/")
+		key := strings.TrimPrefix(a.URL[i+len("amazonaws.com/"):], "/")
+		if key == "" {
+			continue
+		}
+		ref := domain.AttachmentRef(a.TaskID, a.ID)
+
+		if err := db.Model(&domain.TaskAttachment{}).Where("id = ?", a.ID).
+			Updates(map[string]any{"path": key, "url": ref}).Error; err != nil {
+			lg.Error("attachment backfill: row " + a.ID + ": " + err.Error())
+			continue
+		}
+		// Rewrite the exact old URL wherever the markdown embeds it.
+		if err := db.Exec(
+			"UPDATE tasks SET description = REPLACE(description, ?, ?) WHERE id = ? AND description LIKE ?",
+			a.URL, ref, a.TaskID, "%"+a.URL+"%",
+		).Error; err != nil {
+			lg.Error("attachment backfill: description " + a.TaskID + ": " + err.Error())
+		}
+		if err := db.Exec(
+			"UPDATE task_comments SET body = REPLACE(body, ?, ?) WHERE task_id = ? AND body LIKE ?",
+			a.URL, ref, a.TaskID, "%"+a.URL+"%",
+		).Error; err != nil {
+			lg.Error("attachment backfill: comments " + a.TaskID + ": " + err.Error())
+		}
+		fixed++
+	}
+	lg.Info("attachment backfill: repointed " + strconv.Itoa(fixed) + " attachment(s) at the proxy")
 }
 
 const (
