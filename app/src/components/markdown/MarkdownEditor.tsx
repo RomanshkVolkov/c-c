@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -19,6 +19,7 @@ import {
   Heading2,
   Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrompt } from "@/components/PromptDialog";
 import { mediaSrc } from "@/lib/media";
@@ -48,11 +49,22 @@ function getMarkdown(editor: Editor): string {
   return (storage.markdown?.getMarkdown() ?? "").replace(LOCAL_IMAGE, "");
 }
 
-/** blob:/data: image sources inside a pasted HTML fragment. */
+/**
+ * A source that only resolves inside this page/session. Anything matching this
+ * has to be uploaded before it can be stored, or it renders exactly once and
+ * never again.
+ */
+const LOCAL_SRC = /^(blob:|data:|file:|webkit-fake-url:)/;
+const isLocalSrc = (src: unknown): src is string =>
+  typeof src === "string" && LOCAL_SRC.test(src);
+
+/** Local image sources inside a pasted HTML fragment (either quote style). */
 function localImageURLs(html: string): string[] {
   if (!html) return [];
   const out: string[] = [];
-  for (const m of html.matchAll(/<img[^>]+src="((?:blob|data):[^"]+)"/g)) out.push(m[1]);
+  for (const m of html.matchAll(/<img[^>]*\ssrc=["']([^"']+)["']/g)) {
+    if (isLocalSrc(m[1])) out.push(m[1]);
+  }
   return out;
 }
 
@@ -65,6 +77,28 @@ export interface MarkdownEditorProps {
   className?: string;
   minHeight?: string;
   autoFocus?: boolean;
+}
+
+/**
+ * Point every image with `src` at `to`, or delete them when `to` is null.
+ * Positions are collected first: mutating while descending would invalidate them.
+ */
+function retargetImage(editor: Editor, src: string, to: string | null, alt: string | null) {
+  const hits: { pos: number; size: number; attrs: Record<string, unknown> }[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "image" && node.attrs.src === src) {
+      hits.push({ pos, size: node.nodeSize, attrs: node.attrs });
+    }
+  });
+  if (hits.length === 0) return;
+
+  const tr = editor.state.tr;
+  // Back to front so earlier edits don't shift later positions.
+  for (const h of hits.reverse()) {
+    if (to === null) tr.delete(h.pos, h.pos + h.size);
+    else tr.setNodeMarkup(h.pos, undefined, { ...h.attrs, src: to, alt: alt ?? h.attrs.alt });
+  }
+  editor.view.dispatch(tr);
 }
 
 export default function MarkdownEditor({
@@ -82,6 +116,8 @@ export default function MarkdownEditor({
   const editorRef = useRef<Editor | null>(null);
   const uploadRef = useRef<MarkdownEditorProps["onUpload"]>(onUpload);
   uploadRef.current = onUpload;
+  // onUpdate is wired before the sweep is defined, so it calls through a ref.
+  const sweepLocalImagesRef = useRef<(() => void) | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -125,10 +161,67 @@ export default function MarkdownEditor({
     },
     onUpdate: ({ editor }) => {
       onChange(getMarkdown(editor));
+      sweepLocalImagesRef.current?.();
     },
   });
 
   editorRef.current = editor ?? null;
+
+  // Every local src we've already taken charge of, so the sweep below doesn't
+  // fire twice for the same image (it runs on every update).
+  const claimed = useRef(new Set<string>());
+  const [uploading, setUploading] = useState(0);
+
+  /**
+   * Upload any local image sitting in the document and repoint it at the stored
+   * copy.
+   *
+   * This exists because the clipboard route can't be trusted: WebKitGTK (the
+   * Tauri webview on Linux) may hand a pasted screenshot over with no usable
+   * `files`/`items` and no readable HTML flavour, so `handlePaste` sees nothing
+   * and ProseMirror inserts an <img src="blob:…"> on its own. Whatever path the
+   * image took in, by the time it is a node in the document we can see it — and
+   * the blob is still alive, so it can be fetched and uploaded.
+   */
+  const sweepLocalImages = useCallback(() => {
+    const ed = editorRef.current;
+    const up = uploadRef.current;
+    if (!ed || !up) return;
+
+    const found: string[] = [];
+    ed.state.doc.descendants((node) => {
+      if (node.type.name === "image" && isLocalSrc(node.attrs.src)) {
+        const src = node.attrs.src as string;
+        if (!claimed.current.has(src)) found.push(src);
+      }
+    });
+
+    for (const src of found) {
+      claimed.current.add(src);
+      setUploading((n) => n + 1);
+      void (async () => {
+        try {
+          const blob = await (await fetch(src)).blob();
+          const type = blob.type || "image/png";
+          const ext = (type.split("/")[1] ?? "png").replace("jpeg", "jpg");
+          const res = await up(new File([blob], `pasted.${ext}`, { type }));
+          if (!res) throw new Error("upload rejected");
+          retargetImage(ed, src, res.url, res.fileName);
+        } catch {
+          // A dead reference is worse than no image: drop it and say so, instead
+          // of leaving something that looks fine until the next reload.
+          retargetImage(ed, src, null, null);
+          toast.error("Couldn't attach the pasted image", {
+            description: "Try the attach button, or paste it again.",
+          });
+        } finally {
+          setUploading((n) => n - 1);
+        }
+      })();
+    }
+  }, []);
+
+  sweepLocalImagesRef.current = sweepLocalImages;
 
   // Insert an uploaded file at the cursor: images as markdown images, anything
   // else as a link — markdown can't embed a PDF.
@@ -218,6 +311,12 @@ export default function MarkdownEditor({
   return (
     <div className={cn("rounded-md border bg-background", className)}>
       <Toolbar editor={editor} onPickFile={onUpload ? insertUpload : undefined} />
+      {uploading > 0 && (
+        <p className="flex items-center gap-1.5 border-b bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          Uploading {uploading} image{uploading > 1 ? "s" : ""}… don't save yet
+        </p>
+      )}
       <div className="px-3 py-2">
         <EditorContent editor={editor} />
         {editor.isEmpty && (
