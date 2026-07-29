@@ -61,6 +61,7 @@ interface TasksState {
   deleteTask: (id: string) => Promise<void>;
   addComment: (taskId: string, body: string) => Promise<void>;
   uploadAttachment: (taskId: string, file: File) => Promise<{ url: string; fileName: string } | null>;
+  deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
   createTag: (orgId: string, name: string, color: string) => Promise<TaskTag | null>;
 }
 
@@ -356,6 +357,15 @@ export const useTasksStore = create<TasksState>()(
           set({ error: msg(e) });
           return null;
         }
+      },
+
+      deleteAttachment: async (taskId, attachmentId) => {
+        await api.delete<APIResponse<unknown>>(
+          `/api/v1/tasks/${taskId}/attachments/${attachmentId}`,
+        );
+        // The blob stays in storage on purpose (older revisions of the markdown
+        // may still reference it); this only drops the row and the listing.
+        await get().openTask(taskId);
       },
 
       createTag: async (orgId, name, color) => {

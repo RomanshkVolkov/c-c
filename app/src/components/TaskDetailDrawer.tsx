@@ -80,6 +80,7 @@ function Content() {
   const deleteTask = useTasksStore((s) => s.deleteTask);
   const addComment = useTasksStore((s) => s.addComment);
   const uploadAttachment = useTasksStore((s) => s.uploadAttachment);
+  const deleteAttachment = useTasksStore((s) => s.deleteAttachment);
   const board = useTasksStore((s) => s.board);
   const moveTask = useTasksStore((s) => s.moveTask);
   const tags = useTasksStore((s) => s.tags);
@@ -410,12 +411,36 @@ function Content() {
             </h3>
             <ul className="space-y-1">
               {detail.attachments.map((a) => (
-                <li key={a.id} className="flex items-center gap-2 text-xs">
-                  <Paperclip className="size-3 text-muted-foreground" />
+                <li key={a.id} className="group flex items-center gap-2 text-xs">
+                  <Paperclip className="size-3 shrink-0 text-muted-foreground" />
                   <a href={mediaSrc(a.url)} target="_blank" rel="noreferrer" className="truncate text-primary underline">
                     {a.fileName}
                   </a>
-                  <span className="text-muted-foreground">{Math.round(a.bytes / 1024)} KB</span>
+                  <span className="shrink-0 text-muted-foreground">{Math.round(a.bytes / 1024)} KB</span>
+                  {task.description.includes(a.id) && (
+                    <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                      in description
+                    </span>
+                  )}
+                  <button
+                    className="ml-auto shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+                    title="Remove attachment"
+                    onClick={async () => {
+                      const inUse = task.description.includes(a.id);
+                      const ok = await confirm({
+                        title: `Remove "${a.fileName}"?`,
+                        description: inUse
+                          ? "It's still referenced from the description — that image will stop loading."
+                          : "Removes it from this task's attachment list.",
+                        confirmText: "Remove",
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      deleteAttachment(task.id, a.id).catch((e) => toast.error(String(e)));
+                    }}
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
                 </li>
               ))}
             </ul>
