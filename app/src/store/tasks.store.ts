@@ -60,6 +60,8 @@ interface TasksState {
   updateTask: (id: string, patch: UpdateTaskPayload) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   addComment: (taskId: string, body: string) => Promise<void>;
+  editComment: (taskId: string, commentId: string, body: string) => Promise<void>;
+  deleteComment: (taskId: string, commentId: string) => Promise<void>;
   uploadAttachment: (taskId: string, file: File) => Promise<{ url: string; fileName: string } | null>;
   deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
   createTag: (orgId: string, name: string, color: string) => Promise<TaskTag | null>;
@@ -339,6 +341,22 @@ export const useTasksStore = create<TasksState>()(
         );
         if (res.success && res.data && get().openTaskId === taskId) set({ detail: res.data });
         await get().refreshBoard();
+      },
+
+      editComment: async (taskId, commentId, body) => {
+        await api.patch<APIResponse<unknown>>(
+          `/api/v1/tasks/${taskId}/comments/${commentId}`,
+          { body },
+        );
+        await get().openTask(taskId);
+      },
+
+      deleteComment: async (taskId, commentId) => {
+        await api.delete<APIResponse<unknown>>(
+          `/api/v1/tasks/${taskId}/comments/${commentId}`,
+        );
+        await get().openTask(taskId);
+        await get().refreshBoard(); // the card shows a comment count
       },
 
       // Uploads go through the backend (multipart), which proxies image-service

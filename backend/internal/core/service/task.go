@@ -493,8 +493,37 @@ func (s *TaskService) FindComment(id string) (*domain.TaskComment, error) {
 	return s.repo.FindComment(id)
 }
 
-func (s *TaskService) EditComment(id, body string) error { return s.repo.UpdateComment(id, body) }
-func (s *TaskService) DeleteComment(id string) error     { return s.repo.DeleteComment(id) }
+func (s *TaskService) EditComment(id, body string) error {
+	// Same contract as a description edit: an inline image the author just removed
+	// stops being listed as an attachment.
+	before, taskID := "", ""
+	if c, err := s.repo.FindComment(id); err == nil {
+		before, taskID = c.Body, c.TaskID
+	}
+	if err := s.repo.UpdateComment(id, body); err != nil {
+		return err
+	}
+	if taskID != "" {
+		s.dropRemovedAttachments(taskID, before, body)
+	}
+	return nil
+}
+
+// DeleteComment removes the comment. Files it cited are detached with it, unless
+// the description (or another comment) still references them.
+func (s *TaskService) DeleteComment(id string) error {
+	before, taskID := "", ""
+	if c, err := s.repo.FindComment(id); err == nil {
+		before, taskID = c.Body, c.TaskID
+	}
+	if err := s.repo.DeleteComment(id); err != nil {
+		return err
+	}
+	if taskID != "" {
+		s.dropRemovedAttachments(taskID, before, "")
+	}
+	return nil
+}
 
 // dropRemovedAttachments detaches files whose inline reference the user just
 // deleted, so removing an image from the markdown doesn't leave it listed under
@@ -515,17 +544,22 @@ func (s *TaskService) dropRemovedAttachments(taskID, before, after string) {
 	if err != nil {
 		return
 	}
-	var comments string
+	// Everything that still cites the file: the task's own description plus every
+	// remaining comment. `after` covers whichever of those is being edited.
+	var elsewhere string
+	if t, err := s.repo.FindTask(taskID); err == nil {
+		elsewhere += t.Description
+	}
 	if cs, err := s.repo.Comments(taskID); err == nil {
 		for _, c := range cs {
-			comments += c.Body
+			elsewhere += c.Body
 		}
 	}
 	for _, a := range atts {
 		if !strings.Contains(before, a.ID) || strings.Contains(after, a.ID) {
 			continue
 		}
-		if strings.Contains(comments, a.ID) {
+		if strings.Contains(elsewhere, a.ID) {
 			continue
 		}
 		if err := s.repo.DeleteAttachment(a.ID); err != nil {

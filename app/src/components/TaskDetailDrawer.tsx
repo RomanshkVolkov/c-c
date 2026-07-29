@@ -10,6 +10,7 @@ import {
   Send,
   Calendar,
   Users,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,9 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { mediaSrc } from "@/lib/media";
 import { useTasksStore } from "@/store/tasks.store";
+import { useAuthStore } from "@/store/auth.store";
 import { PRIORITIES, PRIORITY_META } from "@/types/task";
+import type { TaskComment } from "@/types/task";
 import { cn } from "@/lib/utils";
 
 /**
@@ -70,6 +73,109 @@ export default function TaskDetailDrawer() {
         )}
       </aside>
     </>
+  );
+}
+
+/**
+ * One comment, editable in place by its author (or a superadmin — the same rule
+ * the backend enforces, so the affordance never appears where the call would be
+ * refused).
+ */
+function CommentItem({
+  comment: c,
+  taskId,
+  onUpload,
+}: {
+  comment: TaskComment;
+  taskId: string;
+  onUpload: (file: File) => Promise<{ url: string; fileName: string } | null>;
+}) {
+  const session = useAuthStore((s) => s.session);
+  const editComment = useTasksStore((s) => s.editComment);
+  const deleteComment = useTasksStore((s) => s.deleteComment);
+  const confirm = useConfirm();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(c.body);
+  const [saving, setSaving] = useState(false);
+
+  const mine = session?.id === c.authorUserId || !!session?.superadmin;
+  const edited = new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000;
+
+  const save = async () => {
+    const body = draft.trim();
+    if (!body) return;
+    setSaving(true);
+    try {
+      await editComment(taskId, c.id, body);
+      setEditing(false);
+    } catch (e) {
+      toast.error("Could not save the comment", { description: String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="group rounded-md border p-2.5">
+      <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{c.authorName || "unknown"}</span>
+        <span>{new Date(c.createdAt).toLocaleString()}</span>
+        {edited && <span className="italic">edited</span>}
+        {mine && !editing && (
+          <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              className="hover:text-foreground"
+              title="Edit comment"
+              onClick={() => {
+                setDraft(c.body);
+                setEditing(true);
+              }}
+            >
+              <Pencil className="size-3" />
+            </button>
+            <button
+              className="hover:text-destructive"
+              title="Delete comment"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: "Delete this comment?",
+                  description: "It's removed for everyone. This can't be undone.",
+                  confirmText: "Delete",
+                  destructive: true,
+                });
+                if (!ok) return;
+                deleteComment(taskId, c.id).catch((e) => toast.error(String(e)));
+              }}
+            >
+              <Trash2 className="size-3" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-2">
+          <MarkdownEditor
+            value={draft}
+            onChange={setDraft}
+            onUpload={onUpload}
+            minHeight="4rem"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={save} disabled={saving || !draft.trim()}>
+              {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
+              Save
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Markdown>{c.body}</Markdown>
+      )}
+    </div>
   );
 }
 
@@ -521,13 +627,7 @@ function Content() {
             Activity ({detail.comments.length})
           </h3>
           {detail.comments.map((c) => (
-            <div key={c.id} className="rounded-md border p-2.5">
-              <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{c.authorName || "unknown"}</span>
-                <span>{new Date(c.createdAt).toLocaleString()}</span>
-              </div>
-              <Markdown>{c.body}</Markdown>
-            </div>
+            <CommentItem key={c.id} comment={c} taskId={task.id} onUpload={upload} />
           ))}
 
           <div className="space-y-2">
