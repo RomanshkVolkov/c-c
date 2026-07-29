@@ -22,6 +22,7 @@ import { useServers } from "@/hooks/use-servers";
 import AddServerDialog from "@/components/AddServerDialog";
 import SshKeyDialog from "@/components/SshKeyDialog";
 import EditServerDialog from "@/components/EditServerDialog";
+import K8sStatusBadge from "@/components/K8sStatusBadge";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import type { Server as ServerType } from "@/types/server";
@@ -50,7 +51,10 @@ export default function Dashboard() {
 
   const handleLogout = () => { logout(); navigate("/login"); };
   const initials = session?.username?.slice(0, 2).toUpperCase() ?? "??";
-  const online = servers.filter((s) => s.status === "online").length;
+  // `status` only tracks the swarm-manage agent, so the count is out of swarm
+  // servers — a kubernetes row has no agent and would drag the total down.
+  const swarmServers = servers.filter((s) => s.type === "docker-swarm");
+  const online = swarmServers.filter((s) => s.status === "online").length;
   const types = new Set(servers.map((s) => s.type)).size;
 
   const [keyFor, setKeyFor] = useState<ServerType | null>(null);
@@ -156,12 +160,17 @@ export default function Dashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Online</CardTitle>
+              <CardTitle className="text-sm font-medium">Agents online</CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{online}</div>
-              <p className="text-xs text-muted-foreground">reachable</p>
+              <div className="text-2xl font-bold">
+                {online}
+                <span className="text-base font-normal text-muted-foreground">
+                  /{swarmServers.length}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">agents reachable</p>
             </CardContent>
           </Card>
 
@@ -230,19 +239,28 @@ export default function Dashboard() {
                 <TableBody>
                   {servers.map((server) => {
                     const isBusy = busy?.id === server.id;
+                    // Agent lifecycle (deploy/update/stats) is swarm-only: a
+                    // kubernetes server is driven by the platform hub, and the
+                    // swarm-manage agent has nothing to do there.
+                    const isSwarm = server.type === "docker-swarm";
                     return (
                       <TableRow key={server.id}>
                         <TableCell className="font-medium">{server.name}</TableCell>
                         <TableCell className="font-mono text-sm text-muted-foreground">
-                          {server.host}:{server.agentPort}
+                          {server.host}
+                          {isSwarm && `:${server.agentPort}`}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">{server.type}</Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={STATUS_VARIANT[server.status] ?? "secondary"}>
-                            {server.status}
-                          </Badge>
+                          {isSwarm ? (
+                            <Badge variant={STATUS_VARIANT[server.status] ?? "secondary"}>
+                              {server.status}
+                            </Badge>
+                          ) : (
+                            <K8sStatusBadge serverId={server.id} />
+                          )}
                         </TableCell>
                         <TableCell className="text-right space-x-1">
                           <Button
@@ -270,7 +288,7 @@ export default function Dashboard() {
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
-                          {(server.status === "pending" || server.status === "error") && (
+                          {isSwarm && (server.status === "pending" || server.status === "error") && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -285,7 +303,7 @@ export default function Dashboard() {
                               {server.status === "error" ? "Retry Deploy" : "Deploy Agent"}
                             </Button>
                           )}
-                          {server.status === "online" && (
+                          {isSwarm && server.status === "online" && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -300,7 +318,7 @@ export default function Dashboard() {
                               {isBusy && busy?.kind === "update" ? "Updating..." : "Update Agent"}
                             </Button>
                           )}
-                          {server.status === "online" && (
+                          {isSwarm && server.status === "online" && (
                             <Button
                               variant="ghost"
                               size="sm"
