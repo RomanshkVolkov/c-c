@@ -274,6 +274,7 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 		StatusID:    statusID,
 		OrgID:       orgID,
 		Title:       req.Title,
+		Description: req.Description,
 		Priority:    priority,
 		CreatedByID: userID,
 	}

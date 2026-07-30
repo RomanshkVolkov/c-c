@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -80,21 +81,21 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		tokenString := strings.TrimPrefix(authHeader, bearerPrefix)
 
-		// Personal access tokens: read-only by construction. Anything that can
-		// mutate state is a POST/PATCH/PUT/DELETE, so a single method check
-		// covers the whole API — including minting or revoking other tokens.
+		// Personal access tokens are read-only unless a scope says otherwise, and
+		// a scope opens exactly one endpoint — not "writes". Everything else,
+		// including minting or revoking tokens, stays refused.
 		if strings.HasPrefix(tokenString, repository.PATPrefix) {
 			if patAuth == nil {
 				handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "pat-unsupported")
 				return
 			}
-			if r.Method != http.MethodGet && r.Method != http.MethodHead {
-				handler.SendErrorResponse(w, http.StatusForbidden, "Read-only token", "readonly-token")
-				return
-			}
 			claims, err := patAuth(tokenString)
 			if err != nil {
 				handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-token")
+				return
+			}
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && !patMayWrite(r, claims) {
+				handler.SendErrorResponse(w, http.StatusForbidden, "Read-only token", "readonly-token")
 				return
 			}
 			ctx := context.WithValue(r.Context(), repository.UserContextKey, claims)
@@ -163,4 +164,19 @@ func (rw *responseWriter) Flush() {
 // to clear the server WriteTimeout silently no-ops and the stream dies at 15s.
 func (rw *responseWriter) Unwrap() http.ResponseWriter {
 	return rw.ResponseWriter
+}
+
+// createTaskPath matches only "create a task in this list". Deliberately a
+// pattern rather than a prefix: /task-lists/{id}/tasks and nothing below or
+// beside it.
+var createTaskPath = regexp.MustCompile(`^/api/v1/task-lists/[^/]+/tasks/?$`)
+
+// patMayWrite decides whether a scoped token may perform this specific mutation.
+// The allowlist is by (method, path), so granting a scope can never widen into
+// endpoints nobody reviewed.
+func patMayWrite(r *http.Request, claims *domain.ClaimsJWT) bool {
+	if r.Method == http.MethodPost && createTaskPath.MatchString(r.URL.Path) {
+		return claims.HasScope(domain.ScopeTasksWrite)
+	}
+	return false
 }

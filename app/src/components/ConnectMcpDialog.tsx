@@ -58,6 +58,8 @@ export default function ConnectMcpDialog({
   const [tokens, setTokens] = useState<AccessToken[]>([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("Claude Code");
+  // Off by default: a token that can write is a token someone can lose.
+  const [canCreateTasks, setCanCreateTasks] = useState(false);
   const [minted, setMinted] = useState<CreateTokenResult | null>(null);
   const [exePath, setExePath] = useState<string>("");
 
@@ -85,7 +87,10 @@ export default function ConnectMcpDialog({
     try {
       const res = await api.post<APIResponse<CreateTokenResult>>(
         "/api/v1/auth/tokens",
-        { name: name.trim() || "Claude Code" },
+        {
+          name: name.trim() || "Claude Code",
+          scopes: canCreateTasks ? ["tasks:write"] : [],
+        },
         true,
       );
       if (!res.success || !res.data) throw new Error(res.error ?? "Failed");
@@ -176,6 +181,21 @@ export default function ConnectMcpDialog({
                   placeholder="Claude Code"
                 />
               </div>
+              <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={canCreateTasks}
+                  onChange={(e) => setCanCreateTasks(e.target.checked)}
+                />
+                <span>
+                  <span className="text-foreground">Let it create tasks</span>
+                  <span className="block">
+                    Otherwise the token can only read. It never gains anything else:
+                    editing, deleting and minting tokens stay refused either way.
+                  </span>
+                </span>
+              </label>
               <Button onClick={mint}>
                 <Plus className="size-4 mr-1" /> Create token
               </Button>

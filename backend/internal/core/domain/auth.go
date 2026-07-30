@@ -30,7 +30,21 @@ type ClaimsJWT struct {
 	Username   string               `json:"username"`
 	Superadmin bool                 `json:"superadmin"`
 	Orgs       []OrgMembershipClaim `json:"orgs"`
+	// Scopes is set only for personal access tokens; a signed-in user's JWT
+	// carries none and is limited by their org role instead.
+	Scopes []string `json:"scopes,omitempty"`
 	jwt.RegisteredClaims
+}
+
+// HasScope reports whether a token was granted a capability. Always false for a
+// JWT, which doesn't use scopes.
+func (c *ClaimsJWT) HasScope(scope string) bool {
+	for _, s := range c.Scopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
 }
 
 // OrgIDs returns the ids of every org the caller belongs to.

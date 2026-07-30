@@ -66,6 +66,51 @@ fn api_get(cfg: &Cfg, path: &str) -> Result<Value, String> {
     })
 }
 
+/// POST a cac API path. Used by the one writing tool: the token must carry the
+/// `tasks:write` scope or the backend refuses it, which is exactly the intended
+/// failure mode for a token that was minted read-only.
+fn api_post(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
+    let url = format!("{}{}", cfg.base, path);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let res = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", cfg.token))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("request failed: {e}"))?;
+
+        let status = res.status();
+        let body: Value = res
+            .json()
+            .await
+            .map_err(|e| format!("bad response from cac: {e}"))?;
+        if !status.is_success() {
+            let msg = body
+                .get("error")
+                .and_then(|v| v.as_str())
+                .or_else(|| body.get("message").and_then(|v| v.as_str()))
+                .unwrap_or("request failed");
+            if status.as_u16() == 403 {
+                return Err(format!(
+                    "cac refused the write: {msg}. This token is read-only — mint one with the \"create tasks\" scope in cac (Settings → Connect Claude Code)."
+                ));
+            }
+            return Err(format!("cac returned {status}: {msg}"));
+        }
+        Ok(body.get("data").cloned().unwrap_or(Value::Null))
+    })
+}
+
 fn arg_str(args: &Value, key: &str) -> Option<String> {
     args.get(key)
         .and_then(|v| v.as_str())
@@ -156,6 +201,24 @@ fn tool_defs() -> Value {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "create_task",
+            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Requires a token minted with the \"create tasks\" scope; a read-only token is refused.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "listId": { "type": "string", "description": "Target list (from list_task_spaces)." },
+                    "title": { "type": "string" },
+                    "description": { "type": "string", "description": "Optional markdown body." },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["none", "low", "normal", "high", "urgent"],
+                        "description": "Optional; defaults to none."
+                    }
+                },
+                "required": ["listId", "title"]
             }
         },
         {
@@ -260,6 +323,29 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         "get_task" => {
             let id = arg_str(args, "id").ok_or("id is required")?;
             api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))
+        }
+
+        "create_task" => {
+            let list_id = arg_str(args, "listId").ok_or("listId is required")?;
+            let title = arg_str(args, "title").ok_or("title is required")?;
+            let mut body = json!({ "title": title });
+            if let Some(d) = arg_str(args, "description") {
+                body["description"] = json!(d);
+            }
+            if let Some(p) = arg_str(args, "priority") {
+                body["priority"] = json!(p);
+            }
+            let data = api_post(cfg, &format!("/api/v1/task-lists/{list_id}/tasks"), body)?;
+            // Echo back what was created, including the sequence number, so the
+            // caller can refer to the task without another round trip.
+            Ok(json!({
+                "id": data.get("id"),
+                "seq": data.get("seq"),
+                "title": data.get("title"),
+                "listId": data.get("listId"),
+                "statusId": data.get("statusId"),
+                "priority": data.get("priority"),
+            }))
         }
 
         "list_devices" => {

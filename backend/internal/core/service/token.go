@@ -1,6 +1,8 @@
 package service
 
 import (
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,10 +31,12 @@ func toTokenResponse(t *domain.PersonalAccessToken) domain.TokenResponse {
 		LastUsedAt: t.LastUsedAt,
 		ExpiresAt:  t.ExpiresAt,
 		CreatedAt:  t.CreatedAt,
+		Scopes:     splitScopes(t.Scopes),
 	}
 }
 
-// Mint creates a read-only token for the user. The plaintext is returned once.
+// Mint creates a token for the user. Read-only unless the request asks for a
+// scope we recognize. The plaintext is returned once.
 func (s *TokenService) Mint(userID string, req domain.CreateTokenRequest) (*domain.CreateTokenResult, error) {
 	plain, hash, err := repository.GeneratePAT()
 	if err != nil {
@@ -55,6 +59,7 @@ func (s *TokenService) Mint(userID string, req domain.CreateTokenRequest) (*doma
 		TokenHash: hash,
 		Preview:   repository.PATPrefix + "…" + plain[len(plain)-4:],
 		ExpiresAt: expiresAt,
+		Scopes:    sanitizeScopes(req.Scopes),
 	}
 	t.ID = uuid.NewString()
 	if err := s.repo.Create(t); err != nil {
@@ -82,6 +87,20 @@ func (s *TokenService) Revoke(id, userID string) error {
 // Authenticate resolves a plaintext PAT into claims. Memberships and the
 // superadmin flag are read fresh from the DB (unlike a JWT, which can carry a
 // stale snapshot), so revoking access takes effect on the next request.
+// sanitizeScopes keeps only scopes we actually define. An unknown string in the
+// request must never be persisted: it would read as "granted" to any future
+// check that looks for it.
+func sanitizeScopes(requested []string) string {
+	var kept []string
+	for _, sc := range requested {
+		sc = strings.TrimSpace(sc)
+		if domain.ValidScope(sc) && !slices.Contains(kept, sc) {
+			kept = append(kept, sc)
+		}
+	}
+	return strings.Join(kept, ",")
+}
+
 func (s *TokenService) Authenticate(plain string) (*domain.ClaimsJWT, error) {
 	t, err := s.repo.FindActiveByHash(repository.HashPAT(plain))
 	if err != nil {
@@ -102,5 +121,13 @@ func (s *TokenService) Authenticate(plain string) (*domain.ClaimsJWT, error) {
 		Username:   user.Username,
 		Superadmin: user.IsSuperadmin,
 		Orgs:       orgs,
+		Scopes:     splitScopes(t.Scopes),
 	}, nil
+}
+
+func splitScopes(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	return strings.Split(raw, ",")
 }

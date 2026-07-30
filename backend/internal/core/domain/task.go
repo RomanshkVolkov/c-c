@@ -265,9 +265,12 @@ type UpdateStatusRequest struct {
 }
 
 type CreateTaskRequest struct {
-	Title    string       `json:"title"    validate:"required,min=1,max=300"`
-	StatusID string       `json:"statusId"`
-	Priority TaskPriority `json:"priority" validate:"omitempty,oneof=none low normal high urgent"`
+	Title string `json:"title"    validate:"required,min=1,max=300"`
+	// Markdown body, so a task can be filed complete in one call (the MCP tool
+	// does exactly that).
+	Description string       `json:"description"`
+	StatusID    string       `json:"statusId"`
+	Priority    TaskPriority `json:"priority" validate:"omitempty,oneof=none low normal high urgent"`
 	// ParentID creates this task as a subtask of another one.
 	ParentID string `json:"parentId"`
 }
