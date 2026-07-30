@@ -58,8 +58,9 @@ export default function ConnectMcpDialog({
   const [tokens, setTokens] = useState<AccessToken[]>([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("Claude Code");
-  // Off by default: a token that can write is a token someone can lose.
+  // Both off by default: a token that can write is a token someone can lose.
   const [canCreateTasks, setCanCreateTasks] = useState(false);
+  const [canManageTasks, setCanManageTasks] = useState(false);
   const [minted, setMinted] = useState<CreateTokenResult | null>(null);
   const [exePath, setExePath] = useState<string>("");
 
@@ -89,7 +90,10 @@ export default function ConnectMcpDialog({
         "/api/v1/auth/tokens",
         {
           name: name.trim() || "Claude Code",
-          scopes: canCreateTasks ? ["tasks:write"] : [],
+          scopes: [
+            ...(canCreateTasks ? ["tasks:write"] : []),
+            ...(canManageTasks ? ["tasks:manage"] : []),
+          ],
         },
         true,
       );
@@ -181,6 +185,8 @@ export default function ConnectMcpDialog({
                   placeholder="Claude Code"
                 />
               </div>
+              {/* Two permissions, split by what they can destroy: adding a task or
+                  a comment can't overwrite anyone's work — changing one can. */}
               <label className="flex items-start gap-2 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
@@ -189,13 +195,31 @@ export default function ConnectMcpDialog({
                   onChange={(e) => setCanCreateTasks(e.target.checked)}
                 />
                 <span>
-                  <span className="text-foreground">Let it create tasks</span>
+                  <span className="text-foreground">Create tasks and comments</span>
                   <span className="block">
-                    Otherwise the token can only read. It never gains anything else:
-                    editing, deleting and minting tokens stay refused either way.
+                    Append-only: it can add, never replace what someone wrote.
                   </span>
                 </span>
               </label>
+              <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={canManageTasks}
+                  onChange={(e) => setCanManageTasks(e.target.checked)}
+                />
+                <span>
+                  <span className="text-foreground">Change existing tasks</span>
+                  <span className="block">
+                    Move them between columns, and overwrite title, description or
+                    priority. Needed to mark work as done.
+                  </span>
+                </span>
+              </label>
+              <p className="text-[11px] text-muted-foreground">
+                Without either, the token can only read. Deleting anything, and
+                minting tokens, stay refused in every case.
+              </p>
               <Button onClick={mint}>
                 <Plus className="size-4 mr-1" /> Create token
               </Button>

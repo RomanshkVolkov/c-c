@@ -92,11 +92,13 @@ type Task struct {
 	// anything (exports, the MCP server) and not just the editor that wrote it.
 	Description string       `gorm:"type:text"                        json:"description"`
 	Priority    TaskPriority `gorm:"type:varchar(20);default:'none'"  json:"priority"`
-	Rank        string       `gorm:"type:varchar(64);index"           json:"-"`
-	StartAt     *time.Time   `json:"startAt,omitempty"`
-	DueAt       *time.Time   `gorm:"index" json:"dueAt,omitempty"`
-	CompletedAt *time.Time   `json:"completedAt,omitempty"`
-	CreatedByID string       `gorm:"type:varchar(36)" json:"createdById"`
+	// Set only for tasks created with an idempotency key; unique per list.
+	IdempotencyKey string     `gorm:"type:varchar(120);index" json:"-"`
+	Rank           string     `gorm:"type:varchar(64);index"           json:"-"`
+	StartAt        *time.Time `json:"startAt,omitempty"`
+	DueAt          *time.Time `gorm:"index" json:"dueAt,omitempty"`
+	CompletedAt    *time.Time `json:"completedAt,omitempty"`
+	CreatedByID    string     `gorm:"type:varchar(36)" json:"createdById"`
 	// ParentID makes this a subtask of another task. Subtasks live in the same
 	// list and share its columns; they're hidden from the board's top level so a
 	// parent's breakdown doesn't clutter the column it belongs to.
@@ -266,6 +268,11 @@ type UpdateStatusRequest struct {
 
 type CreateTaskRequest struct {
 	Title string `json:"title"    validate:"required,min=1,max=300"`
+	// IdempotencyKey makes a retry safe: the same key in the same list returns
+	// the task that was already created instead of a second copy. An automated
+	// caller whose request times out has no other way to tell "it didn't happen"
+	// from "the reply got lost".
+	IdempotencyKey string `json:"idempotencyKey" validate:"omitempty,max=120"`
 	// Markdown body, so a task can be filed complete in one call (the MCP tool
 	// does exactly that).
 	Description string       `json:"description"`

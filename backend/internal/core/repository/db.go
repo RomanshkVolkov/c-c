@@ -86,6 +86,21 @@ func DBConnection() {
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
+	// An earlier revision of the model asked GORM for a unique index on the
+	// idempotency key alone. That collides on the second task without a key —
+	// which is every task — so drop it if a database already got it.
+	if err := db.Exec(`DROP INDEX IF EXISTS idx_task_idem`).Error; err != nil {
+		lg.Error("dropping the bad idempotency index: " + err.Error())
+	}
+
+	// A partial unique index: only rows that actually carry a key participate, so
+	// the empty value every other task has doesn't collide. GORM's tags can't
+	// express the WHERE clause, hence the raw statement.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency
+		ON tasks (list_id, idempotency_key) WHERE idempotency_key <> ''`).Error; err != nil {
+		lg.Error("idempotency index: " + err.Error())
+	}
+
 	pss, err := HashPassword("ZMWmDcnawh3CQbJjMpPKoorTZv68jYuyzUojgvQpdJCmuUQ3mMNrDXiA2EKs7Jszv6uYjao8ds96uP2VU8CTKigEYZpdTDgZ78zn")
 	if err != nil {
 		panic("failed to hash seed password: " + err.Error())

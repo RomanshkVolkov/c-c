@@ -96,6 +96,10 @@ type Session struct {
 	Username           string `json:"username"`
 	Superadmin         bool   `json:"superadmin"`
 	MustChangePassword bool   `json:"mustChangePassword"`
+	// Scopes of the token that made this call — empty for a signed-in user's JWT.
+	// Exposed so an automated caller can check what it may do *before* trying it,
+	// which is what makes a dry run possible without writing anything.
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 type ChangePasswordRequest struct {

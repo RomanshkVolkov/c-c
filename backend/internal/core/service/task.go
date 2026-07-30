@@ -253,6 +253,15 @@ func (s *TaskService) Board(listID string) (*domain.BoardResponse, error) {
 
 // CreateTask drops a task in the requested column, defaulting to the first one.
 func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, req domain.CreateTaskRequest) (*domain.Task, error) {
+	// A retry with the same key must not produce a second card. Checked before
+	// doing any work, and backed by a partial unique index for the case where two
+	// retries land at once.
+	if req.IdempotencyKey != "" {
+		if existing, err := s.repo.FindTaskByIdempotencyKey(list.ID, req.IdempotencyKey); err == nil && existing != nil {
+			return existing, nil
+		}
+	}
+
 	statusID := req.StatusID
 	if statusID == "" {
 		statuses, err := s.repo.Statuses(list.ID)
@@ -270,13 +279,14 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 	}
 
 	t := &domain.Task{
-		ListID:      list.ID,
-		StatusID:    statusID,
-		OrgID:       orgID,
-		Title:       req.Title,
-		Description: req.Description,
-		Priority:    priority,
-		CreatedByID: userID,
+		ListID:         list.ID,
+		StatusID:       statusID,
+		OrgID:          orgID,
+		Title:          req.Title,
+		Description:    req.Description,
+		IdempotencyKey: req.IdempotencyKey,
+		Priority:       priority,
+		CreatedByID:    userID,
 	}
 	if req.ParentID != "" {
 		// Only accept a parent from the same list: a subtask that lived in another

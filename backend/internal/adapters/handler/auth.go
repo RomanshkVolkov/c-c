@@ -131,6 +131,9 @@ func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "user-not-found")
 		return
 	}
+	// Tell the caller what its own credential may do, so it doesn't have to
+	// attempt a write to find out.
+	session.Scopes = claims.Scopes
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.Session]{Success: true, Data: session})
 }
 

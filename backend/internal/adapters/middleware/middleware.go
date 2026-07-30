@@ -94,9 +94,21 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-token")
 				return
 			}
-			if r.Method != http.MethodGet && r.Method != http.MethodHead && !patMayWrite(r, claims) {
-				handler.SendErrorResponse(w, http.StatusForbidden, "Read-only token", "readonly-token")
-				return
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				needed, ok := patScopeFor(r)
+				if !ok {
+					handler.SendErrorResponse(w, http.StatusForbidden,
+						"This endpoint is not available to personal access tokens", "endpoint-not-scoped")
+					return
+				}
+				if !claims.HasScope(needed) {
+					// Naming the scope is the difference between a dead end and a
+					// fix: "invalid token" and "token lacks a permission" are
+					// otherwise indistinguishable to the caller.
+					handler.SendErrorResponse(w, http.StatusForbidden,
+						"Token is missing the "+needed+" scope", "missing-scope:"+needed)
+					return
+				}
 			}
 			ctx := context.WithValue(r.Context(), repository.UserContextKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -166,17 +178,30 @@ func (rw *responseWriter) Unwrap() http.ResponseWriter {
 	return rw.ResponseWriter
 }
 
-// createTaskPath matches only "create a task in this list". Deliberately a
-// pattern rather than a prefix: /task-lists/{id}/tasks and nothing below or
-// beside it.
-var createTaskPath = regexp.MustCompile(`^/api/v1/task-lists/[^/]+/tasks/?$`)
+// Every mutation a personal access token can reach, and the scope it needs.
+// Patterns, not prefixes: each entry is one endpoint, so granting a scope can
+// never widen into something nobody reviewed. Anything absent stays refused —
+// including minting tokens, deleting, and everything outside tasks.
+var patWritable = []struct {
+	method string
+	path   *regexp.Regexp
+	scope  string
+}{
+	// Append-only.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-lists/[^/]+/tasks/?$`), domain.ScopeTasksWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/?$`), domain.ScopeTasksWrite},
+	// Changes what already exists.
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+$`), domain.ScopeTasksManage},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/move/?$`), domain.ScopeTasksManage},
+}
 
-// patMayWrite decides whether a scoped token may perform this specific mutation.
-// The allowlist is by (method, path), so granting a scope can never widen into
-// endpoints nobody reviewed.
-func patMayWrite(r *http.Request, claims *domain.ClaimsJWT) bool {
-	if r.Method == http.MethodPost && createTaskPath.MatchString(r.URL.Path) {
-		return claims.HasScope(domain.ScopeTasksWrite)
+// patScopeFor reports the scope this request needs, and whether it's reachable
+// by a token at all.
+func patScopeFor(r *http.Request) (string, bool) {
+	for _, e := range patWritable {
+		if r.Method == e.method && e.path.MatchString(r.URL.Path) {
+			return e.scope, true
+		}
 	}
-	return false
+	return "", false
 }

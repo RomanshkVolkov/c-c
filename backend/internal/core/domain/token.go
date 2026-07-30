@@ -49,9 +49,20 @@ type CreateTokenResult struct {
 
 // ─── Scopes ───────────────────────────────────────────────────────────────────
 
-// ScopeTasksWrite lets a token create tasks — and nothing else. Kept this narrow
-// on purpose: a token that can write is a token someone can lose, so it grants
-// one verb on one resource rather than "write".
-const ScopeTasksWrite = "tasks:write"
+// Scopes are split by what they can destroy, not by resource.
+//
+// ScopeTasksWrite only ever *adds*: a new task, a new comment. Nothing it can do
+// overwrites something a person wrote, which makes it the safe default for
+// automated callers.
+//
+// ScopeTasksManage changes tasks that already exist — including replacing a
+// description someone spent time on. Separate on purpose: an agent that files
+// findings shouldn't need the power to erase them.
+const (
+	ScopeTasksWrite  = "tasks:write"
+	ScopeTasksManage = "tasks:manage"
+)
 
-func ValidScope(s string) bool { return s == ScopeTasksWrite }
+func ValidScope(s string) bool {
+	return s == ScopeTasksWrite || s == ScopeTasksManage
+}

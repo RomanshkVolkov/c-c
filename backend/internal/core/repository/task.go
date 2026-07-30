@@ -355,6 +355,21 @@ func (r *TaskRepository) CreateTask(t *domain.Task, spaceID string) error {
 	})
 }
 
+// FindTaskByIdempotencyKey returns the task a previous attempt already created,
+// or nil when there is none. Scoped to the list so the same key can be reused
+// elsewhere.
+func (r *TaskRepository) FindTaskByIdempotencyKey(listID, key string) (*domain.Task, error) {
+	var t domain.Task
+	err := r.db.Where("list_id = ? AND idempotency_key = ?", listID, key).First(&t).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (r *TaskRepository) FindTask(id string) (*domain.Task, error) {
 	var t domain.Task
 	if err := r.db.First(&t, "id = ?", id).Error; err != nil {

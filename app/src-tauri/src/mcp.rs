@@ -66,10 +66,18 @@ fn api_get(cfg: &Cfg, path: &str) -> Result<Value, String> {
     })
 }
 
-/// POST a cac API path. Used by the one writing tool: the token must carry the
-/// `tasks:write` scope or the backend refuses it, which is exactly the intended
-/// failure mode for a token that was minted read-only.
 fn api_post(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
+    api_write(cfg, "POST", path, body)
+}
+
+fn api_patch(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
+    api_write(cfg, "PATCH", path, body)
+}
+
+/// Any mutating call. Writes need a scope on the token, so a refusal has to say
+/// *which* one is missing: "invalid token" and "token lacks a permission" are
+/// otherwise indistinguishable, and chasing the wrong one wastes a session.
+fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, String> {
     let url = format!("{}{}", cfg.base, path);
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -81,8 +89,11 @@ fn api_post(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
-        let res = client
-            .post(&url)
+        let req = match method {
+            "PATCH" => client.patch(&url),
+            _ => client.post(&url),
+        };
+        let res = req
             .header("Authorization", format!("Bearer {}", cfg.token))
             .json(&body)
             .send()
@@ -100,15 +111,70 @@ fn api_post(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
                 .and_then(|v| v.as_str())
                 .or_else(|| body.get("message").and_then(|v| v.as_str()))
                 .unwrap_or("request failed");
-            if status.as_u16() == 403 {
+            // The backend answers `missing-scope:<name>`; turn that into the exact
+            // remedy instead of making the caller guess.
+            if let Some(scope) = msg.strip_prefix("missing-scope:") {
                 return Err(format!(
-                    "cac refused the write: {msg}. This token is read-only — mint one with the \"create tasks\" scope in cac (Settings → Connect Claude Code)."
+                    "This token is valid but lacks the `{scope}` scope. In cac open Connect Claude Code, \
+                     mint a token with that permission checked, and replace CAC_TOKEN."
+                ));
+            }
+            if status.as_u16() == 403 {
+                return Err(format!("cac refused the write: {msg}"));
+            }
+            if status.as_u16() == 401 {
+                return Err(format!(
+                    "cac rejected the token itself ({msg}) — this is authentication, not a missing \
+                     permission. Check CAC_TOKEN is the current one and hasn't expired."
                 ));
             }
             return Err(format!("cac returned {status}: {msg}"));
         }
         Ok(body.get("data").cloned().unwrap_or(Value::Null))
     })
+}
+
+/// Reports what a write *would* do, without doing it.
+///
+/// Exists because the only way to find out whether a token may write used to be
+/// to write — which means dirtying someone's board to test a permission. The
+/// check is all reads: the token's own scopes from /auth/me, plus the target.
+fn dry_run(cfg: &Cfg, scope: &str, target: Result<Value, String>) -> Result<Value, String> {
+    let me = api_get(cfg, "/api/v1/auth/me")?;
+    let scopes: Vec<String> = me
+        .get("scopes")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let permitted = scopes.iter().any(|s| s == scope);
+    let (target_ok, target_note) = match target {
+        Ok(_) => (true, "found".to_string()),
+        Err(e) => (false, e),
+    };
+
+    Ok(json!({
+        "dryRun": true,
+        "wouldSucceed": permitted && target_ok,
+        "requiredScope": scope,
+        "tokenHasScope": permitted,
+        "tokenScopes": scopes,
+        "target": target_note,
+        "note": if permitted && target_ok {
+            "Nothing was written. Re-send without dryRun to apply it."
+        } else if !permitted {
+            "The token lacks the required scope; mint one in cac → Connect Claude Code."
+        } else {
+            "The target could not be read; check the id."
+        }
+    }))
+}
+
+fn arg_bool(args: &Value, key: &str) -> bool {
+    args.get(key).and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 fn arg_str(args: &Value, key: &str) -> Option<String> {
@@ -187,10 +253,16 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_board",
-            "description": "A task list's board: its columns and every card (title, priority, tags, assignees, counts), grouped by column. Use it to see what a team is working on.",
+            "description": "A task list's board: its columns (with the statusId update_task takes) and the cards in each, newest first. Use it to see what a team is working on.",
             "inputSchema": {
                 "type": "object",
-                "properties": { "listId": { "type": "string" } },
+                "properties": {
+                    "listId": { "type": "string" },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Cards per column, default 50. A long list would otherwise return everything at once."
+                    }
+                },
                 "required": ["listId"]
             }
         },
@@ -205,7 +277,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "create_task",
-            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Requires a token minted with the \"create tasks\" scope; a read-only token is refused.",
+            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -216,9 +288,46 @@ fn tool_defs() -> Value {
                         "type": "string",
                         "enum": ["none", "low", "normal", "high", "urgent"],
                         "description": "Optional; defaults to none."
+                    },
+                    "idempotencyKey": {
+                        "type": "string",
+                        "description": "Optional. Reusing the same key in the same list returns the task already created instead of a duplicate — send one if you might retry."
+                    },
+                    "dryRun": {
+                        "type": "boolean",
+                        "description": "Validate the target and the token's permission without creating anything."
                     }
                 },
                 "required": ["listId", "title"]
+            }
+        },
+        {
+            "name": "update_task",
+            "description": "Change an existing task: title, markdown description, priority, or which column it sits in (statusId, from get_board). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Task id (from get_board or get_task)." },
+                    "title": { "type": "string" },
+                    "description": { "type": "string", "description": "Markdown. Replaces the current body — read it with get_task first if you mean to add to it." },
+                    "priority": { "type": "string", "enum": ["none", "low", "normal", "high", "urgent"] },
+                    "statusId": { "type": "string", "description": "Move the task to this column. get_board returns a statusId per column." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "add_task_comment",
+            "description": "Append a markdown comment to a task. Append-only: it cannot overwrite anything, which makes it the right place for an agent to record findings. Needs `tasks:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "body": { "type": "string", "description": "Markdown." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "body"]
             }
         },
         {
@@ -313,11 +422,16 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
 
         "get_board" => {
             let list_id = arg_str(args, "listId").ok_or("listId is required")?;
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50)
+                .clamp(1, 500) as usize;
             let data = api_get(
                 cfg,
                 &format!("/api/v1/task-lists/{}/board", urlencode(&list_id)),
             )?;
-            Ok(summarize_board(&data))
+            Ok(summarize_board(&data, limit))
         }
 
         "get_task" => {
@@ -328,12 +442,22 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         "create_task" => {
             let list_id = arg_str(args, "listId").ok_or("listId is required")?;
             let title = arg_str(args, "title").ok_or("title is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(
+                    cfg,
+                    &format!("/api/v1/task-lists/{}/board", urlencode(&list_id)),
+                );
+                return dry_run(cfg, "tasks:write", target);
+            }
             let mut body = json!({ "title": title });
             if let Some(d) = arg_str(args, "description") {
                 body["description"] = json!(d);
             }
             if let Some(p) = arg_str(args, "priority") {
                 body["priority"] = json!(p);
+            }
+            if let Some(k) = arg_str(args, "idempotencyKey") {
+                body["idempotencyKey"] = json!(k);
             }
             let data = api_post(cfg, &format!("/api/v1/task-lists/{list_id}/tasks"), body)?;
             // Echo back what was created, including the sequence number, so the
@@ -345,6 +469,78 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "listId": data.get("listId"),
                 "statusId": data.get("statusId"),
                 "priority": data.get("priority"),
+            }))
+        }
+
+        "update_task" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)));
+                return dry_run(cfg, "tasks:manage", target);
+            }
+            let mut body = json!({});
+            for key in ["title", "description", "priority"] {
+                if let Some(v) = arg_str(args, key) {
+                    body[key] = json!(v);
+                }
+            }
+            // Moving a card is its own endpoint: the server derives the ordering
+            // rank from the neighbours, so a status change can't be a field patch.
+            let status_id = arg_str(args, "statusId");
+            if body.as_object().map(|o| o.is_empty()).unwrap_or(true) && status_id.is_none() {
+                return Err("Nothing to change: send at least one of title, description, priority or statusId".into());
+            }
+
+            let mut changed: Vec<&str> = vec![];
+            if !body.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                api_patch(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)), body.clone())?;
+                changed.extend(body.as_object().unwrap().keys().map(|k| k.as_str()));
+            }
+            if let Some(status) = status_id {
+                // Empty neighbours = drop it at the top of the target column.
+                api_post(
+                    cfg,
+                    &format!("/api/v1/tasks/{}/move", urlencode(&id)),
+                    json!({ "statusId": status, "afterId": "", "beforeId": "" }),
+                )?;
+                changed.push("statusId");
+            }
+            let after = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))?;
+            Ok(json!({
+                "updated": changed,
+                "task": {
+                    "id": after.get("task").and_then(|t| t.get("id")),
+                    "seq": after.get("task").and_then(|t| t.get("seq")),
+                    "title": after.get("task").and_then(|t| t.get("title")),
+                    "priority": after.get("task").and_then(|t| t.get("priority")),
+                    "column": after.get("status").and_then(|st| st.get("name")),
+                    "columnKind": after.get("status").and_then(|st| st.get("kind")),
+                }
+            }))
+        }
+
+        "add_task_comment" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let body_md = arg_str(args, "body").ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)));
+                return dry_run(cfg, "tasks:write", target);
+            }
+            // The endpoint answers with the whole task detail (the app uses it to
+            // refresh the drawer), so the new comment is the last of the thread.
+            let detail = api_post(
+                cfg,
+                &format!("/api/v1/tasks/{}/comments", urlencode(&id)),
+                json!({ "body": body_md }),
+            )?;
+            let comments = detail.get("comments").and_then(|v| v.as_array());
+            let added = comments.and_then(|c| c.last());
+            Ok(json!({
+                "id": added.and_then(|c| c.get("id")),
+                "author": added.and_then(|c| c.get("authorName")),
+                "createdAt": added.and_then(|c| c.get("createdAt")),
+                "taskId": id,
+                "commentsOnTask": comments.map(|c| c.len()),
             }))
         }
 
@@ -371,7 +567,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
 
 /// Group cards under their column so the shape reads like an actual board
 /// instead of a flat array the model has to correlate by id.
-fn summarize_board(data: &Value) -> Value {
+fn summarize_board(data: &Value, limit: usize) -> Value {
     let empty = vec![];
     let statuses = data
         .get("statuses")
@@ -383,9 +579,14 @@ fn summarize_board(data: &Value) -> Value {
         .iter()
         .map(|st| {
             let id = st.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let cards: Vec<Value> = tasks
+            let in_column: Vec<&Value> = tasks
                 .iter()
                 .filter(|t| t.get("statusId").and_then(|v| v.as_str()) == Some(id))
+                .collect();
+            let total = in_column.len();
+            let cards: Vec<Value> = in_column
+                .into_iter()
+                .take(limit)
                 .map(|t| {
                     json!({
                         "id": t.get("id"),
@@ -408,12 +609,21 @@ fn summarize_board(data: &Value) -> Value {
                     })
                 })
                 .collect();
-            json!({
+            let shown = cards.len();
+            let mut col = json!({
                 "column": st.get("name"),
+                // The id update_task needs to move a card here. Without it the
+                // only way to name a column was to guess its name.
+                "statusId": st.get("id"),
                 "kind": st.get("kind"),
-                "count": cards.len(),
+                "count": total,
                 "tasks": cards,
-            })
+            });
+            if shown < total {
+                // Say what was dropped: a silent truncation reads as a full board.
+                col["truncated"] = json!(format!("showing {shown} of {total}; raise limit to see more"));
+            }
+            col
         })
         .collect();
 
