@@ -1,4 +1,5 @@
 mod crypto_tools;
+mod api_client;
 mod http_client;
 mod image;
 mod mcp;
@@ -1112,7 +1113,16 @@ fn encode_decode(input: String, codec: String, direction: String) -> Result<Stri
     }
 }
 
-// ─── HTTP client ─────────────────────────────────────────────────────────────
+// ─── HTTP ────────────────────────────────────────────────────────────────────
+
+/// The app's own backend calls. Routed through Rust so they don't ride the
+/// webview's connection pool — see api_client for why that matters.
+#[tauri::command]
+async fn api_request(req: api_client::ApiRequest) -> Result<api_client::ApiResponse, String> {
+    api_client::execute(req).await
+}
+
+// ─── HTTP client (Request Client tool) ───────────────────────────────────────
 
 #[tauri::command]
 async fn send_http_request(
@@ -1209,6 +1219,7 @@ pub fn run() {
             argon2_verify,
             encode_decode,
             send_http_request,
+            api_request,
             save_file,
         ])
         .run(tauri::generate_context!())

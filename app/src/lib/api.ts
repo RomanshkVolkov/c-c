@@ -10,19 +10,61 @@ type RequestOptions = RequestInit & { auth?: boolean };
 
 let refreshPromise: Promise<string | null> | null = null;
 
+/** What every transport returns: status plus the raw body, nothing else. */
+interface Reply {
+  status: number;
+  body: string;
+}
+
 /**
- * fetch with a hard timeout. Without this, a request over a stale/dead pooled
- * keep-alive socket (common after the app sits idle and the server closed the
- * connection) never settles — freezing the UI until an app restart. On timeout
- * we abort so the caller can surface an error / retry on a fresh connection.
+ * Requests go through the Rust core, not the webview.
+ *
+ * The webview's connection pool is the reason the app could look frozen: a call
+ * over a socket the server had already closed never settled, and nothing in JS
+ * can inspect or evict that pool. Rust owns this one — idle sockets are retired
+ * on our schedule and every request has a hard deadline.
+ *
+ * The `fetch` path below is the fallback for running the UI outside Tauri (a
+ * plain browser during development), where `invoke` doesn't exist.
  */
-async function fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+async function send(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  body?: string,
+): Promise<Reply> {
+  if (inTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<Reply>("api_request", {
+      req: {
+        method,
+        url,
+        headers: Object.entries(headers),
+        body: body ?? null,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      },
+    });
+  }
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
+    const res = await fetch(url, { method, headers, body, signal: ctrl.signal });
+    return { status: res.status, body: await res.text() };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Body parsing is the caller's job everywhere; empty bodies are normal. */
+function parse(reply: Reply): any {
+  if (!reply.body) return {};
+  try {
+    return JSON.parse(reply.body);
+  } catch {
+    return { error: reply.body.slice(0, 200) };
   }
 }
 
@@ -34,16 +76,13 @@ async function tryRefresh(): Promise<string | null> {
     if (!refreshToken) { clearAuth(); return null; }
 
     try {
-      const res = await fetchWithTimeout(`${BASE_URL}/api/v1/auth/refresh`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${refreshToken}`,
-        },
+      const reply = await send(`${BASE_URL}/api/v1/auth/refresh`, "POST", {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${refreshToken}`,
       });
-      const json: APIResponse<AuthRefreshResponse> = await res.json();
+      const json = parse(reply) as APIResponse<AuthRefreshResponse>;
       // Only a real auth failure (bad/expired refresh token) clears the session.
-      if (!res.ok || !json.success || !json.data) { clearAuth(); return null; }
+      if (reply.status >= 400 || !json.success || !json.data) { clearAuth(); return null; }
 
       setAuth(session!, json.data.accessToken, json.data.refreshToken);
       return json.data.accessToken;
@@ -72,24 +111,29 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
-  let res: Response;
+  let reply: Reply;
   try {
-    res = await fetchWithTimeout(`${BASE_URL}${path}`, { ...init, headers });
+    reply = await send(
+      `${BASE_URL}${path}`,
+      (init.method as string) ?? "GET",
+      headers,
+      typeof init.body === "string" ? init.body : undefined,
+    );
   } catch {
-    // Timeout/network (often a stale pooled socket after idle). Retry once on a
-    // fresh connection before surfacing an error, so the UI self-heals.
+    // Transport failure. Retry once on a fresh connection before surfacing it,
+    // so a single dead socket heals itself instead of reaching the user.
     if (retry) return request<T>(path, options, false);
     useConnectionStore.getState().markFail("Can't reach the server");
     throw new Error("network-error");
   }
   // A 5xx is a degraded backend, not a successful round trip — a reachable
   // gateway in front of a dead API would otherwise read as healthy.
-  if (res.status >= 500) useConnectionStore.getState().markFail(`Server error (${res.status})`);
+  if (reply.status >= 500) useConnectionStore.getState().markFail(`Server error (${reply.status})`);
   else useConnectionStore.getState().markOk();
 
-  const json = await res.json();
+  const json = parse(reply);
 
-  if (!res.ok) {
+  if (reply.status >= 400) {
     const errorMsg: string = json?.error ?? json?.message ?? "Request failed";
 
     if (errorMsg === "expired-token" && auth && retry) {
@@ -104,8 +148,11 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
   return json as T;
 }
 
-// postForm sends multipart/form-data (comments/images). Does NOT set
-// Content-Type so the browser adds the boundary; reuses the auth+refresh flow.
+// postForm sends multipart/form-data (attachments). Stays on `fetch`: uploads are
+// user-initiated and short-lived, so they don't hit the stale-socket problem the
+// Rust transport exists to solve, and pushing 30 MB through the IPC bridge would
+// cost more than it buys. Does NOT set Content-Type so the browser adds the
+// boundary.
 async function postForm<T>(path: string, form: FormData, retry = true): Promise<T> {
   const token = useAuthStore.getState().accessToken;
   const headers: Record<string, string> = {};
@@ -113,7 +160,7 @@ async function postForm<T>(path: string, form: FormData, retry = true): Promise<
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${BASE_URL}${path}`, { method: "POST", body: form, headers });
+    res = await fetch(`${BASE_URL}${path}`, { method: "POST", body: form, headers });
   } catch {
     if (retry) return postForm<T>(path, form, false);
     useConnectionStore.getState().markFail("Can't reach the server");
@@ -164,11 +211,11 @@ export async function refreshSession(): Promise<void> {
   const token = useAuthStore.getState().accessToken;
   if (!token) return;
   try {
-    const res = await fetchWithTimeout(`${BASE_URL}/api/v1/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const reply = await send(`${BASE_URL}/api/v1/auth/me`, "GET", {
+      Authorization: `Bearer ${token}`,
     });
-    const json = await res.json();
-    if (res.ok && json?.success && json?.data) {
+    const json = parse(reply);
+    if (reply.status < 400 && json?.success && json?.data) {
       useAuthStore.getState().setSession(json.data);
     }
   } catch {
