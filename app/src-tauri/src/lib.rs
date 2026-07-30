@@ -1,5 +1,6 @@
 mod crypto_tools;
 mod api_client;
+mod sse;
 mod http_client;
 mod image;
 mod mcp;
@@ -1122,6 +1123,18 @@ async fn api_request(req: api_client::ApiRequest) -> Result<api_client::ApiRespo
     api_client::execute(req).await
 }
 
+/// Opens the live event stream. Idempotent: connecting again replaces the
+/// previous stream, which is what a token refresh needs.
+#[tauri::command]
+fn sse_connect(app: tauri::AppHandle, url: String, token: String) {
+    sse::spawn(app, url, token);
+}
+
+#[tauri::command]
+fn sse_disconnect() {
+    sse::stop();
+}
+
 // ─── HTTP client (Request Client tool) ───────────────────────────────────────
 
 #[tauri::command]
@@ -1220,6 +1233,8 @@ pub fn run() {
             encode_decode,
             send_http_request,
             api_request,
+            sse_connect,
+            sse_disconnect,
             save_file,
         ])
         .run(tauri::generate_context!())
