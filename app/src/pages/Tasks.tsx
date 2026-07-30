@@ -33,11 +33,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
+import DocView from "@/components/DocView";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useOrgsStore } from "@/store/orgs.store";
-import { PRIORITY_META, type TaskCard } from "@/types/task";
+import { PRIORITY_META, docKey, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
 
 export default function Tasks() {
@@ -45,6 +46,7 @@ export default function Tasks() {
   const fetchTags = useTasksStore((s) => s.fetchTags);
   const activeListId = useTasksStore((s) => s.activeListId);
   const refreshBoard = useTasksStore((s) => s.refreshBoard);
+  const fetchDocIndex = useTasksStore((s) => s.fetchDocIndex);
 
   // Re-scope when the org switcher changes: spaces, tags and the open board all
   // belong to one org, so a stale selection has to be dropped, not carried over.
@@ -52,7 +54,8 @@ export default function Tasks() {
   useEffect(() => {
     fetchTree();
     fetchTags();
-  }, [currentOrgId, fetchTree, fetchTags]);
+    fetchDocIndex();
+  }, [currentOrgId, fetchTree, fetchTags, fetchDocIndex]);
 
   // Restore the persisted list on first mount.
   useEffect(() => {
@@ -60,10 +63,15 @@ export default function Tasks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A document takes over the right pane: it belongs to a space or folder, which
+  // have no board of their own, and for a list it's an alternative view of the
+  // same node rather than something to show beside it.
+  const activeDoc = useTasksStore((s) => s.activeDoc);
+
   return (
     <div className="flex-1 flex min-h-0">
       <Navigator />
-      <Board />
+      {activeDoc ? <DocView /> : <Board />}
       <TaskDetailDrawer />
     </div>
   );
@@ -123,6 +131,9 @@ function Navigator() {
 
 function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>["tree"][number] }) {
   const [open, setOpen] = useState(true);
+  const openDoc = useTasksStore((s) => s.openDoc);
+  const activeDoc = useTasksStore((s) => s.activeDoc);
+  const docIndex = useTasksStore((s) => s.docIndex);
   const confirm = useConfirm();
   const { createFolder, createList, renameSpace, deleteSpace, moveSpace } = useTasksStore.getState();
 
@@ -138,7 +149,19 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           className="size-2 shrink-0 rounded-sm"
           style={{ backgroundColor: space.color || "var(--primary)" }}
         />
-        <span className="flex-1 truncate text-sm font-medium">{space.name}</span>
+        <button
+          className={cn(
+            "flex-1 truncate text-left text-sm font-medium hover:underline",
+            activeDoc?.kind === "space" && activeDoc.id === space.id && "text-primary",
+          )}
+          title="Open overview"
+          onClick={() => openDoc("space", space.id, space.name)}
+        >
+          {space.name}
+        </button>
+        {docIndex[docKey("space", space.id)] && (
+          <FileText className="size-3 shrink-0 text-muted-foreground" />
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -224,6 +247,9 @@ function FolderNode({
   const [open, setOpen] = useState(true);
   const confirm = useConfirm();
   const prompt = usePrompt();
+  const openDoc = useTasksStore((s) => s.openDoc);
+  const activeDoc = useTasksStore((s) => s.activeDoc);
+  const docIndex = useTasksStore((s) => s.docIndex);
   const { createList, renameFolder, deleteFolder, moveFolder } = useTasksStore.getState();
 
   return (
@@ -233,7 +259,19 @@ function FolderNode({
           {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </button>
         <Folder className="size-3.5 text-muted-foreground" />
-        <span className="flex-1 truncate text-sm">{folder.name}</span>
+        <button
+          className={cn(
+            "flex-1 truncate text-left text-sm hover:underline",
+            activeDoc?.kind === "folder" && activeDoc.id === folder.id && "text-primary",
+          )}
+          title="Open overview"
+          onClick={() => openDoc("folder", folder.id, folder.name)}
+        >
+          {folder.name}
+        </button>
+        {docIndex[docKey("folder", folder.id)] && (
+          <FileText className="size-3 shrink-0 text-muted-foreground" />
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -299,6 +337,7 @@ function ListNode({ list }: { list: { id: string; name: string; taskCount: numbe
   const selectList = useTasksStore((s) => s.selectList);
   const confirm = useConfirm();
   const prompt = usePrompt();
+  const docIndex = useTasksStore((s) => s.docIndex);
   const { renameList, deleteList } = useTasksStore.getState();
   const active = activeListId === list.id;
 
@@ -312,6 +351,9 @@ function ListNode({ list }: { list: { id: string; name: string; taskCount: numbe
     >
       <ListChecks className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="flex-1 truncate text-sm">{list.name}</span>
+      {docIndex[docKey("list", list.id)] && (
+        <FileText className="size-3 shrink-0 text-muted-foreground" />
+      )}
       {list.taskCount > 0 && (
         <span className="text-[11px] text-muted-foreground">{list.taskCount}</span>
       )}
@@ -370,6 +412,7 @@ function Board() {
   const createTask = useTasksStore((s) => s.createTask);
   const openTask = useTasksStore((s) => s.openTask);
   const refreshBoard = useTasksStore((s) => s.refreshBoard);
+  const openDoc = useTasksStore((s) => s.openDoc);
   const prompt = usePrompt();
 
   if (!activeListId) {
@@ -440,6 +483,15 @@ function Board() {
             </button>
           ))}
         </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs"
+          title="This list's overview"
+          onClick={() => openDoc("list", board.list.id, board.list.name)}
+        >
+          <FileText className="mr-1 size-3" /> Overview
+        </Button>
         <Button
           size="sm"
           variant="ghost"

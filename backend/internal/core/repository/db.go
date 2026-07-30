@@ -81,6 +81,8 @@ func DBConnection() {
 		&domain.TaskAssignee{},
 		&domain.TaskComment{},
 		&domain.TaskAttachment{},
+		&domain.Doc{},
+		&domain.DocAttachment{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}

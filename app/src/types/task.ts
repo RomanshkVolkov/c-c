@@ -135,3 +135,38 @@ export interface UpdateTaskPayload {
   assigneeIds?: string[];
   archived?: boolean;
 }
+
+// ─── Docs ─────────────────────────────────────────────────────────────────────
+
+/** The node a document describes: one overview per space, folder or list. */
+export type DocOwnerKind = "space" | "folder" | "list";
+
+export interface DocAttachment {
+  id: string;
+  docId: string;
+  url: string;
+  fileName: string;
+  contentType: string;
+  bytes: number;
+}
+
+export interface Doc {
+  id: string;
+  orgId: string;
+  ownerKind: DocOwnerKind;
+  ownerId: string;
+  body: string;
+  updatedBy: string;
+  updatedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DocResponse {
+  /** null until the node's overview is written for the first time. */
+  doc: Doc | null;
+  attachments: DocAttachment[];
+}
+
+/** Key used by the "which nodes have a document" index. */
+export const docKey = (kind: DocOwnerKind, id: string) => `${kind}:${id}`;

@@ -165,6 +165,71 @@ func (a *TaskAttachment) NormalizeURL() {
 	}
 }
 
+// ─── Docs ─────────────────────────────────────────────────────────────────────
+
+// DocOwnerKind is the node a document describes. One document per node: the
+// "overview" of a space, a folder or a list. A multi-page tree can be layered on
+// top later without moving these rows.
+type DocOwnerKind string
+
+const (
+	DocOwnerSpace  DocOwnerKind = "space"
+	DocOwnerFolder DocOwnerKind = "folder"
+	DocOwnerList   DocOwnerKind = "list"
+)
+
+func ValidDocOwnerKind(k string) bool {
+	switch DocOwnerKind(k) {
+	case DocOwnerSpace, DocOwnerFolder, DocOwnerList:
+		return true
+	}
+	return false
+}
+
+type Doc struct {
+	BaseModel
+	// Denormalized so authorization and listing don't have to walk the tree.
+	OrgID     string       `gorm:"type:varchar(36);index;not null"                json:"orgId"`
+	OwnerKind DocOwnerKind `gorm:"type:varchar(20);not null;index:idx_doc_owner,unique" json:"ownerKind"`
+	OwnerID   string       `gorm:"type:varchar(36);not null;index:idx_doc_owner,unique" json:"ownerId"`
+	// Markdown, same format tasks use, so one editor and one renderer serve both.
+	Body          string `gorm:"type:text" json:"body"`
+	UpdatedBy     string `gorm:"type:varchar(36)" json:"updatedBy"`
+	UpdatedByName string `gorm:"-" json:"updatedByName,omitempty"`
+}
+
+// DocAttachment is a file cited from a document.
+//
+// Kept apart from TaskAttachment instead of making that table polymorphic: the
+// task one is live in production with rows whose URLs are already written inside
+// saved markdown, and loosening its NOT NULL task_id is a migration this feature
+// doesn't need. The streaming and authorization code is shared.
+type DocAttachment struct {
+	BaseModel
+	DocID       string `gorm:"type:varchar(36);index;not null" json:"docId"`
+	URL         string `gorm:"type:text;not null"              json:"url"`
+	Path        string `gorm:"type:text"                       json:"-"`
+	FileName    string `gorm:"type:varchar(255)"               json:"fileName"`
+	ContentType string `gorm:"type:varchar(120)"               json:"contentType"`
+	Bytes       int64  `json:"bytes"`
+	UploadedBy  string `gorm:"type:varchar(36)" json:"uploadedBy"`
+}
+
+// DocAttachmentRef mirrors AttachmentRef: relative on purpose.
+func DocAttachmentRef(docID, attachmentID string) string {
+	return "/api/v1/docs/" + docID + "/attachments/" + attachmentID + "/raw"
+}
+
+func (a *DocAttachment) NormalizeURL() {
+	if !strings.HasPrefix(a.URL, "/api/") {
+		a.URL = DocAttachmentRef(a.DocID, a.ID)
+	}
+}
+
+type SaveDocRequest struct {
+	Body string `json:"body"`
+}
+
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
 type CreateSpaceRequest struct {

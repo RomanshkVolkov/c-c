@@ -94,6 +94,22 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// image proxy.
 	r.Get("/api/v1/tasks/{id}/attachments/{attachmentId}/raw", h.RawAttachment)
 
+	// Docs: one markdown overview per space/folder/list, sharing the task
+	// module's image-service client and media store.
+	docH := handler.NewDocHandler(
+		service.NewDocService(repository.NewDocRepository(db)), images, store,
+	)
+	r.Route("/api/v1/docs", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/", docH.Index) // ?orgId= — which nodes have a document
+		r.Get("/{kind}/{ownerId}", docH.Get)
+		r.Put("/{kind}/{ownerId}", docH.Save)
+		r.Post("/{id}/attachments", docH.UploadAttachment)
+		r.Delete("/{id}/attachments/{attachmentId}", docH.DeleteAttachment)
+	})
+	// Outside the JWT group: an <img> can't send the Authorization header.
+	r.Get("/api/v1/docs/{id}/attachments/{attachmentId}/raw", docH.RawAttachment)
+
 	r.Route("/api/v1/task-tags", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.ListTags)

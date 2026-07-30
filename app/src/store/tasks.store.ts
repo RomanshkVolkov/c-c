@@ -11,6 +11,10 @@ import type {
   TaskCard,
   TaskDetail,
   TaskTag,
+  Doc,
+  DocAttachment,
+  DocOwnerKind,
+  DocResponse,
   UpdateTaskPayload,
 } from "@/types/task";
 
@@ -65,6 +69,19 @@ interface TasksState {
   uploadAttachment: (taskId: string, file: File) => Promise<{ url: string; fileName: string } | null>;
   deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
   createTag: (orgId: string, name: string, color: string) => Promise<TaskTag | null>;
+
+  // ── Docs: one markdown overview per space/folder/list ──
+  /** Which nodes carry a document, keyed `kind:id` — drives the navigator mark. */
+  docIndex: Record<string, boolean>;
+  /** The node whose overview is on screen; null when a board is. */
+  activeDoc: { kind: DocOwnerKind; id: string; name: string } | null;
+  doc: DocResponse | null;
+  loadingDoc: boolean;
+  fetchDocIndex: () => Promise<void>;
+  openDoc: (kind: DocOwnerKind, id: string, name: string) => Promise<void>;
+  closeDoc: () => void;
+  saveDoc: (body: string) => Promise<void>;
+  uploadDocAttachment: (file: File) => Promise<{ url: string; fileName: string } | null>;
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -80,6 +97,10 @@ export const useTasksStore = create<TasksState>()(
       board: null,
       loadingBoard: false,
       openTaskId: null,
+      docIndex: {},
+      activeDoc: null,
+      doc: null,
+      loadingDoc: false,
       detail: null,
       loadingDetail: false,
 
@@ -130,7 +151,8 @@ export const useTasksStore = create<TasksState>()(
       },
 
       selectList: async (listId) => {
-        set({ activeListId: listId, board: null });
+        // Picking a list means "show me the board" — leave any open document.
+        set({ activeListId: listId, board: null, activeDoc: null, doc: null });
         await get().refreshBoard();
       },
 
@@ -386,6 +408,65 @@ export const useTasksStore = create<TasksState>()(
         await get().openTask(taskId);
       },
 
+      fetchDocIndex: async () => {
+        const orgId = useOrgsStore.getState().currentOrgId;
+        if (!orgId) return;
+        try {
+          const res = await api.get<APIResponse<Record<string, boolean>>>(
+            `/api/v1/docs/?orgId=${orgId}`,
+          );
+          set({ docIndex: res.success && res.data ? res.data : {} });
+        } catch {
+          // The mark is decoration; a failure here shouldn't break the navigator.
+        }
+      },
+
+      openDoc: async (kind, id, name) => {
+        // Showing a document replaces the board, so the open task drawer goes too.
+        set({ activeDoc: { kind, id, name }, doc: null, loadingDoc: true, openTaskId: null, detail: null });
+        try {
+          const res = await api.get<APIResponse<DocResponse>>(`/api/v1/docs/${kind}/${id}`);
+          if (get().activeDoc?.id !== id) return; // switched away mid-flight
+          set({ doc: res.success && res.data ? res.data : null });
+        } catch (e) {
+          set({ error: msg(e) });
+        } finally {
+          if (get().activeDoc?.id === id) set({ loadingDoc: false });
+        }
+      },
+
+      closeDoc: () => set({ activeDoc: null, doc: null }),
+
+      saveDoc: async (body) => {
+        const target = get().activeDoc;
+        if (!target) return;
+        await api.put<APIResponse<Doc>>(`/api/v1/docs/${target.kind}/${target.id}`, { body });
+        await get().openDoc(target.kind, target.id, target.name);
+        await get().fetchDocIndex(); // the node may have just gained (or lost) its mark
+      },
+
+      uploadDocAttachment: async (file) => {
+        const doc = get().doc?.doc;
+        if (!doc) {
+          // Attachments hang off a document row, which only exists once saved.
+          set({ error: "Save the overview once before attaching files" });
+          return null;
+        }
+        const form = new FormData();
+        form.append("file", file);
+        try {
+          const res = await api.postForm<APIResponse<DocAttachment>>(
+            `/api/v1/docs/${doc.id}/attachments`,
+            form,
+          );
+          if (!res.success || !res.data) throw new Error(res.error ?? "Upload failed");
+          return { url: res.data.url, fileName: res.data.fileName };
+        } catch (e) {
+          set({ error: msg(e) });
+          return null;
+        }
+      },
+
       createTag: async (orgId, name, color) => {
         const res = await api.post<APIResponse<TaskTag>>(
           "/api/v1/task-tags/",
@@ -400,7 +481,7 @@ export const useTasksStore = create<TasksState>()(
     {
       name: "cac-tasks",
       // Only the navigation position is worth persisting; data is always fetched.
-      partialize: (s) => ({ activeListId: s.activeListId }),
+      partialize: (s) => ({ activeListId: s.activeListId, activeDoc: s.activeDoc }),
     },
   ),
 );
