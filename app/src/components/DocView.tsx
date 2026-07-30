@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
 import { openAttachment } from "@/lib/media";
+import CopyId from "@/components/CopyId";
 import { useTasksStore } from "@/store/tasks.store";
 
 const KIND_LABEL: Record<string, string> = {
@@ -64,6 +65,7 @@ export default function DocView() {
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
           {KIND_LABEL[target.kind] ?? target.kind} overview
         </span>
+        <CopyId id={target.id} label={target.kind} />
 
         {doc?.doc?.updatedByName && !editing && (
           <span className="hidden text-xs text-muted-foreground sm:inline">

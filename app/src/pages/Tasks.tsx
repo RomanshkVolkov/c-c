@@ -34,6 +34,7 @@ import {
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import DocView from "@/components/DocView";
+import CopyId from "@/components/CopyId";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
@@ -466,6 +467,8 @@ function Board() {
     <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <h1 className="truncate text-sm font-medium">{board.list.name}</h1>
+        {/* create_task takes this listId. */}
+        <CopyId id={board.list.id} label="list" />
         <Badge variant="secondary" className="text-[10px]">
           {board.tasks.length} tasks
         </Badge>

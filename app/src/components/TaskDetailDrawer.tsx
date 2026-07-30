@@ -30,6 +30,7 @@ import UserPicker from "@/components/UserPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { openAttachment } from "@/lib/media";
+import CopyId from "@/components/CopyId";
 import { useTasksStore } from "@/store/tasks.store";
 import { useAuthStore } from "@/store/auth.store";
 import { PRIORITIES, PRIORITY_META } from "@/types/task";
@@ -265,6 +266,8 @@ function Content() {
           {" · #"}
           {task.seq}
         </span>
+        {/* The id the MCP tools take, so it can be handed to an agent. */}
+        <CopyId id={task.id} label="task" />
         <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={closeTask} aria-label="Close">
           <X className="size-4" />
         </Button>
