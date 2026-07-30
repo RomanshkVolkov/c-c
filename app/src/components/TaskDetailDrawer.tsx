@@ -29,7 +29,7 @@ import Markdown from "@/components/markdown/Markdown";
 import UserPicker from "@/components/UserPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
-import { mediaSrc } from "@/lib/media";
+import { openAttachment } from "@/lib/media";
 import { useTasksStore } from "@/store/tasks.store";
 import { useAuthStore } from "@/store/auth.store";
 import { PRIORITIES, PRIORITY_META } from "@/types/task";
@@ -519,9 +519,12 @@ function Content() {
               {detail.attachments.map((a) => (
                 <li key={a.id} className="group flex items-center gap-2 text-xs">
                   <Paperclip className="size-3 shrink-0 text-muted-foreground" />
-                  <a href={mediaSrc(a.url)} target="_blank" rel="noreferrer" className="truncate text-primary underline">
+                  <button
+                    className="truncate text-left text-primary underline"
+                    onClick={() => openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))}
+                  >
                     {a.fileName}
-                  </a>
+                  </button>
                   <span className="shrink-0 text-muted-foreground">{Math.round(a.bytes / 1024)} KB</span>
                   {task.description.includes(a.id) && (
                     <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">

@@ -1,5 +1,6 @@
 mod crypto_tools;
 mod api_client;
+mod media;
 mod sse;
 mod http_client;
 mod image;
@@ -1123,6 +1124,64 @@ async fn api_request(req: api_client::ApiRequest) -> Result<api_client::ApiRespo
     api_client::execute(req).await
 }
 
+/// Mirrors the frontend's session into Rust. The media protocol handler runs
+/// outside any UI request, so it has no other way to learn the current token.
+#[tauri::command]
+fn set_session(state: tauri::State<'_, media::Session>, token: Option<String>, base_url: Option<String>) {
+    if let Ok(mut t) = state.token.lock() {
+        *t = token;
+    }
+    if let Ok(mut b) = state.base_url.lock() {
+        *b = base_url;
+    }
+}
+
+/// Downloads an attachment to a temp file and hands it to the OS.
+///
+/// A `cacmedia://` URL is only meaningful inside this webview, so links to
+/// non-image files can't just be opened in the browser — and doing it this way
+/// keeps the token out of any URL, which is the point of the exercise.
+#[tauri::command]
+async fn open_attachment(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, media::Session>,
+    path: String,
+    file_name: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let token = state.token.lock().ok().and_then(|t| t.as_ref().cloned());
+    let base = state.base_url.lock().ok().and_then(|b| b.as_ref().cloned());
+    let (Some(token), Some(base)) = (token, base) else {
+        return Err("Not signed in".into());
+    };
+    let path = media::backend_path(&format!("cacmedia://localhost{path}"))
+        .ok_or_else(|| "Not an attachment path".to_string())?;
+
+    let res = reqwest::Client::new()
+        .get(format!("{}{}", base.trim_end_matches('/'), path))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| format!("Could not download: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("Server returned {}", res.status().as_u16()));
+    }
+    let bytes = res.bytes().await.map_err(|e| e.to_string())?;
+
+    let safe: String = file_name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' '))
+        .collect();
+    let mut target = std::env::temp_dir();
+    target.push(format!("cac-{}-{}", ephemeral_suffix(), if safe.is_empty() { "file".into() } else { safe }));
+    std::fs::write(&target, &bytes).map_err(|e| format!("Could not write the file: {e}"))?;
+
+    app.opener()
+        .open_path(target.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| format!("Could not open it: {e}"))
+}
+
 /// Opens the live event stream. Idempotent: connecting again replaces the
 /// previous stream, which is what a token refresh needs.
 #[tauri::command]
@@ -1193,6 +1252,18 @@ async fn save_file(
 pub fn run() {
     tauri::Builder::default()
         .manage(TokenCache(Mutex::new(HashMap::new())))
+        .manage(media::Session::default())
+        // Attachments are served under our own scheme so an <img> can carry
+        // credentials in a header instead of the URL. See media.rs.
+        .register_asynchronous_uri_scheme_protocol(media::SCHEME, |ctx, req, responder| {
+            use tauri::Manager;
+            let state = ctx.app_handle().state::<media::Session>();
+            let token = state.token.lock().ok().and_then(|t| t.as_ref().cloned());
+            let base = state.base_url.lock().ok().and_then(|b| b.as_ref().cloned());
+            tauri::async_runtime::spawn(async move {
+                responder.respond(media::serve(token, base, req).await);
+            });
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1233,6 +1304,8 @@ pub fn run() {
             encode_decode,
             send_http_request,
             api_request,
+            set_session,
+            open_attachment,
             sse_connect,
             sse_disconnect,
             save_file,

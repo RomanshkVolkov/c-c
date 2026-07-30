@@ -1,6 +1,22 @@
 import { apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 
+const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Must match media::SCHEME in the Rust core. */
+const MEDIA_SCHEME = "cacmedia";
+
+/**
+ * Tauri's own helper, imported lazily-ish: it builds the platform-correct URL
+ * (`cacmedia://localhost/…` on Linux and macOS, `http://cacmedia.localhost/…`
+ * on Windows), which is not something to hand-roll.
+ */
+function convertFileSrc(path: string, scheme: string): string {
+  const w = window as unknown as { __TAURI_INTERNALS__?: { convertFileSrc?: (p: string, s: string) => string } };
+  const convert = w.__TAURI_INTERNALS__?.convertFileSrc;
+  return convert ? convert(path, scheme) : path;
+}
+
 /**
  * Canonical form of an attachment reference: the backend path, no origin and no
  * credentials. This is what gets stored in markdown, so a description written
@@ -51,8 +67,38 @@ export function attachmentPath(src: string | undefined): string | null {
 export function mediaSrc(src: string | undefined): string | undefined {
   const path = attachmentPath(src);
   if (!path) return src;
+
+  // In the app the bytes come through our own URI scheme, whose handler adds the
+  // Authorization header in Rust — an <img> can't, which is why the token used
+  // to ride the query string and end up in the server's access log.
+  if (inTauri) return convertFileSrc(path, MEDIA_SCHEME);
+
+  // Browser (development): no custom scheme, so fall back to the query string.
   const token = useAuthStore.getState().accessToken;
   if (!token) return apiUrl(path);
   const sep = path.includes("?") ? "&" : "?";
   return apiUrl(path) + `${sep}token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Opens a non-image attachment.
+ *
+ * A `cacmedia://` URL only means something inside this webview, so a download
+ * can't just be handed to the OS browser: Rust fetches it with the header,
+ * writes a temp file and lets the system open it with the right app.
+ */
+export async function openAttachment(url: string, fileName: string): Promise<void> {
+  const path = attachmentPath(url);
+  if (!path) {
+    // An external link someone pasted: hand it to the browser as-is.
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+  if (!inTauri) {
+    window.open(mediaSrc(url), "_blank");
+    return;
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("open_attachment", { path, fileName });
 }

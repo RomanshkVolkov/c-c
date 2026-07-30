@@ -2,7 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
-import { mediaSrc } from "@/lib/media";
+import { mediaSrc, openAttachment } from "@/lib/media";
 
 /**
  * Read-only markdown. Used wherever stored markdown is displayed (task
@@ -32,11 +32,13 @@ export default function Markdown({
               href={href}
               onClick={(e) => {
                 e.preventDefault();
-                // Attachment links need the resolved (credentialed) URL too —
-                // the OS browser has no session with the backend otherwise.
-                const target = mediaSrc(href);
-                if (!target) return;
-                openUrl(target).catch(() => window.open(target, "_blank"));
+                if (!href) return;
+                // Attachments are downloaded by Rust (with the header) and opened
+                // by the OS; external links go straight to the browser.
+                openAttachment(href, children?.toString() ?? "file").catch(() => {
+                  const target = mediaSrc(href);
+                  if (target) openUrl(target).catch(() => window.open(target, "_blank"));
+                });
               }}
               className="text-primary underline decoration-primary/40 hover:decoration-primary"
             >

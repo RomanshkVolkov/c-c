@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
-import { mediaSrc } from "@/lib/media";
+import { openAttachment } from "@/lib/media";
 import { useTasksStore } from "@/store/tasks.store";
 
 const KIND_LABEL: Record<string, string> = {
@@ -138,14 +138,12 @@ export default function DocView() {
               <ul className="space-y-1">
                 {doc.attachments.map((a) => (
                   <li key={a.id} className="flex items-center gap-2 text-xs">
-                    <a
-                      href={mediaSrc(a.url)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="truncate text-primary underline"
+                    <button
+                      className="truncate text-left text-primary underline"
+                      onClick={() => openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))}
                     >
                       {a.fileName}
-                    </a>
+                    </button>
                     <span className="text-muted-foreground">{Math.round(a.bytes / 1024)} KB</span>
                   </li>
                 ))}
