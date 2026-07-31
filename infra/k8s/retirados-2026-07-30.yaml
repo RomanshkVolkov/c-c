@@ -1,0 +1,91 @@
+# Objetos de Gateway API retirados del cluster el 2026-07-30
+#
+# Guardados aquí como respaldo antes de borrarlos. Ninguno movía tráfico:
+#
+#   Gateway/image-service-gateway (namespace default)
+#     Pide la GatewayClass `eg`, que no existe en el cluster — `eg` es el nombre
+#     por defecto de la documentación de Envoy Gateway, así que casi seguro
+#     quedó de un primer intento de instalación anterior a crear la clase
+#     `envoy`. Nunca fue programado (Accepted=Unknown, Programmed=Unknown) y
+#     ninguna de las 14 HTTPRoutes lo referencia. image-service se sirve por
+#     `image-service-route`, que cuelga del gateway bueno (`gateway-api`).
+#
+#   GatewayClass/traefik
+#     Sin controlador corriendo (cero pods) y sin ningún Gateway que la use.
+#     Su único efecto era mostrar dos implementaciones en `kubectl get
+#     gatewayclass` y hacer dudar de cuál sirve el tráfico.
+#
+# Para restaurarlos: kubectl apply -f este archivo (la clase traefik además
+# necesitaría que su controlador estuviera instalado).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  annotations:
+      # (last-applied-configuration omitida)
+  name: image-service-gateway
+  namespace: default
+spec:
+  gatewayClassName: eg
+  listeners:
+  - allowedRoutes:
+      namespaces:
+        from: Same
+    name: https
+    port: 443
+    protocol: HTTPS
+    tls:
+      certificateRefs:
+      - group: ""
+        kind: Secret
+        name: image-service-tls-secret
+      mode: Terminate
+      options:
+        gateway.envoyproxy.io/ca-secret: image-service-ca-secret
+status:
+  conditions:
+  - lastTransitionTime: "1970-01-01T00:00:00Z"
+    message: Waiting for controller
+    reason: Pending
+    status: Unknown
+    type: Accepted
+  - lastTransitionTime: "1970-01-01T00:00:00Z"
+    message: Waiting for controller
+    reason: Pending
+    status: Unknown
+    type: Programmed
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  annotations:
+      # (last-applied-configuration omitida)
+  name: traefik
+spec:
+  controllerName: traefik.io/gateway-controller
+status:
+  conditions:
+  - lastTransitionTime: "2026-01-16T22:47:56Z"
+    message: Handled by Traefik controller
+    observedGeneration: 1
+    reason: Handled
+    status: "True"
+    type: Accepted
+  supportedFeatures:
+  - name: BackendTLSPolicy
+  - name: GRPCRoute
+  - name: Gateway
+  - name: GatewayPort8080
+  - name: HTTPRoute
+  - name: HTTPRouteBackendProtocolH2C
+  - name: HTTPRouteBackendProtocolWebSocket
+  - name: HTTPRouteDestinationPortMatching
+  - name: HTTPRouteHostRewrite
+  - name: HTTPRouteMethodMatching
+  - name: HTTPRoutePathRedirect
+  - name: HTTPRoutePathRewrite
+  - name: HTTPRoutePortRedirect
+  - name: HTTPRouteQueryParamMatching
+  - name: HTTPRouteResponseHeaderModification
+  - name: HTTPRouteSchemeRedirect
+  - name: ReferenceGrant
+  - name: TLSRoute
