@@ -12,11 +12,31 @@ spec:
     - "cac.guz-studio.dev"
 
   rules:
+    # The live event stream. Envoy's default route timeout is 15s, which cut
+    # every SSE connection at exactly 15.000s — before the server's 25s
+    # keep-alive ping could even fire. The client reconnected each time, so the
+    # board looked alive while quietly dropping any event that landed in the gap.
+    # An Exact match wins over the prefix rule below regardless of order.
+    - matches:
+        - path:
+            type: Exact
+            value: /api/v1/events
+      timeouts:
+        # Zero disables it: this response is meant to never end.
+        request: 0s
+      backendRefs:
+        - name: cac-service
+          port: 80
+
     - matches:
         - path:
             type: PathPrefix
             value: /
-
+      timeouts:
+        # A ceiling, not a policy: attachment uploads are capped at 30 MB and
+        # would also have died at 15s on a slow uplink. The client sets its own
+        # (much shorter) deadlines, so this only has to be out of their way.
+        request: 300s
       backendRefs:
         - name: cac-service
           port: 80

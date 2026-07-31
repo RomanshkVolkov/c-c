@@ -5,7 +5,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, refreshAccessToken } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -41,9 +41,14 @@ const WATCHDOG_TICK_MS = 15_000;
  * The `EventSource` path below is kept for running the UI in a plain browser.
  */
 export function useReportEvents() {
-  const authed = useAuthStore((s) => !!s.accessToken);
+  // The token itself, not a boolean: access tokens live 60 minutes, and Rust is
+  // handed the value once at connect time. Depending on `!!accessToken` meant a
+  // refresh swapped the token without anything reconnecting — the stream 401'd
+  // and stayed down until the app was restarted, roughly once an hour.
+  const token = useAuthStore((s) => s.accessToken);
 
   useEffect(() => {
+    const authed = !!token;
     // Guests never subscribe, so the stream is idle rather than broken — without
     // this the connection banner would nag them about live updates being down.
     if (!authed) {
@@ -140,16 +145,22 @@ export function useReportEvents() {
           ),
         );
         unlisten.push(
-          await listen<{ state: string }>("sse://status", (e) => {
+          await listen<{ state: string; detail?: string }>("sse://status", (e) => {
             const s = e.payload.state;
             useConnectionStore
               .getState()
               .setStream(s === "open" ? "open" : s === "connecting" ? "connecting" : "down");
+
+            // Rust stops retrying on an auth failure — retrying with the same
+            // token would just fail again. Getting a fresh one is the UI's job,
+            // and swapping it in the store re-runs this effect with the new
+            // token, which reconnects.
+            if (s === "down" && /401|403/.test(e.payload.detail ?? "")) {
+              void refreshAccessToken();
+            }
           }),
         );
 
-        const token = useAuthStore.getState().accessToken;
-        if (!token) return;
         // The token goes to Rust, which sends it as an Authorization header.
         await invoke("sse_connect", { url: apiUrl("/api/v1/events"), token });
       })();
@@ -258,5 +269,5 @@ export function useReportEvents() {
       window.removeEventListener("focus", onVisible);
       es?.close();
     };
-  }, [authed]);
+  }, [token]);
 }

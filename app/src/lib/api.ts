@@ -203,6 +203,16 @@ export async function ensureOrgClaim(): Promise<void> {
 }
 
 /**
+ * Force a new access token from the refresh token. Exported for the event
+ * stream: when the stream is rejected as unauthorized there may be no API call
+ * pending to trigger the usual refresh, and without one the app would sit with
+ * live updates off until the user did something.
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  return tryRefresh();
+}
+
+/**
  * Refresh the persisted session from /auth/me so late-added fields (e.g. the
  * `superadmin` flag) populate for sessions minted before they existed — without
  * forcing a re-login. Best-effort; silent on failure.
