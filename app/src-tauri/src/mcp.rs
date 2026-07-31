@@ -1,13 +1,13 @@
 //! MCP server mode: `cac --mcp`.
 //!
-//! Exposes cac's reports and device diagnostics as read-only tools to an MCP
-//! client (Claude Code / Desktop). Speaks JSON-RPC 2.0 over stdio — one JSON
-//! object per line — so **stdout carries protocol only**; every log goes to
-//! stderr.
+//! Exposes cac's reports, tasks, notes and device diagnostics to an MCP client
+//! (Claude Code / Desktop). Speaks JSON-RPC 2.0 over stdio — one JSON object
+//! per line — so **stdout carries protocol only**; every log goes to stderr.
 //!
-//! Auth is a read-only personal access token (`CAC_TOKEN`); the backend refuses
-//! any non-GET made with it, so this process cannot mutate state even if it
-//! tried. Data is always fetched live — freshness is the point.
+//! Auth is a personal access token (`CAC_TOKEN`), read-only by default: the
+//! backend refuses any non-GET made with it unless the token was minted with
+//! the specific scope that endpoint needs (see cac's "Connect Claude Code"
+//! dialog). Data is always fetched live — freshness is the point.
 
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
@@ -350,6 +350,48 @@ fn tool_defs() -> Value {
                 },
                 "required": ["deviceId"]
             }
+        },
+        {
+            "name": "list_notes",
+            "description": "The full page tree of your private notes, nested under their parent. Use it to resolve a title to the id the other note tools take, and to see what's already there before migrating more content in.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "get_note",
+            "description": "One note's markdown body, its attachments, and which other notes link to it (\"backlinks\"). Use list_notes first to find the id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "create_note",
+            "description": "Create a new, empty page. Use list_notes to find the parentId to nest it under (omit for a root page), then update_note to set its body. Needs a token with the `notes:write` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string" },
+                    "parentId": { "type": "string", "description": "Omit for a root-level page." },
+                    "dryRun": { "type": "boolean", "description": "Validate the parent and the token's permission without creating anything." }
+                },
+                "required": ["title"]
+            }
+        },
+        {
+            "name": "update_note",
+            "description": "Change a note's title, or replace its markdown body outright. Needs a token with the `notes:manage` scope — separate from creating, because this overwrites content that may already be there. If another device saved a different body first, cac keeps that version and puts yours in a new child page instead of overwriting silently; the response's `conflict` field says so when it happens.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "title": { "type": "string" },
+                    "body": { "type": "string", "description": "Markdown. Replaces the current body outright — read it with get_note first if you mean to add to it rather than replace it." },
+                    "baseHash": { "type": "string", "description": "The bodyHash from a prior get_note/update_note call on this note, so a real conflict is reported instead of silently overwritten. Omit for a note you just created in this session." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id"]
+            }
         }
     ])
 }
@@ -561,8 +603,99 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             Ok(summarize_timeline(&data))
         }
 
+        "list_notes" => {
+            let data = api_get(cfg, "/api/v1/notes/")?;
+            Ok(json!({ "tree": build_note_tree(&data) }))
+        }
+
+        "get_note" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            api_get(cfg, &format!("/api/v1/notes/{}", urlencode(&id)))
+        }
+
+        "create_note" => {
+            let title = arg_str(args, "title").ok_or("title is required")?;
+            let parent_id = arg_str(args, "parentId");
+            if arg_bool(args, "dryRun") {
+                let target = match &parent_id {
+                    Some(pid) => api_get(cfg, &format!("/api/v1/notes/{}", urlencode(pid))),
+                    None => Ok(Value::Null),
+                };
+                return dry_run(cfg, "notes:write", target);
+            }
+            let mut body = json!({ "title": title });
+            if let Some(pid) = parent_id {
+                body["parentId"] = json!(pid);
+            }
+            let data = api_post(cfg, "/api/v1/notes/", body)?;
+            Ok(json!({
+                "id": data.get("id"),
+                "title": data.get("title"),
+                "parentId": data.get("parentId"),
+            }))
+        }
+
+        "update_note" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/notes/{}", urlencode(&id)));
+                return dry_run(cfg, "notes:manage", target);
+            }
+            let mut body = json!({});
+            if let Some(t) = arg_str(args, "title") {
+                body["title"] = json!(t);
+            }
+            if let Some(b) = arg_str(args, "body") {
+                body["body"] = json!(b);
+            }
+            if let Some(h) = arg_str(args, "baseHash") {
+                body["baseHash"] = json!(h);
+            }
+            if body.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                return Err("Nothing to change: send title and/or body".into());
+            }
+            let data = api_patch(cfg, &format!("/api/v1/notes/{}", urlencode(&id)), body)?;
+            let note = data.get("note");
+            Ok(json!({
+                "id": note.and_then(|n| n.get("id")),
+                "title": note.and_then(|n| n.get("title")),
+                "bodyHash": note.and_then(|n| n.get("bodyHash")),
+                "conflict": data.get("conflict"),
+            }))
+        }
+
         other => Err(format!("unknown tool: {other}")),
     }
+}
+
+/// Turns the flat (id, parentId) list GET /notes returns into an actual
+/// nested tree, root pages first — so the model doesn't have to reconstruct
+/// hierarchy from parentId itself the way the app's own navigator does.
+fn build_note_tree(flat: &Value) -> Value {
+    let empty = vec![];
+    let items = flat.as_array().unwrap_or(&empty);
+
+    fn node(item: &Value, items: &[Value]) -> Value {
+        let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let children: Vec<Value> = items
+            .iter()
+            .filter(|c| c.get("parentId").and_then(|v| v.as_str()) == Some(id))
+            .map(|c| node(c, items))
+            .collect();
+        json!({
+            "id": item.get("id"),
+            "title": item.get("title"),
+            "hasBody": item.get("hasBody"),
+            "children": children,
+        })
+    }
+
+    let roots: Vec<Value> = items
+        .iter()
+        .filter(|i| i.get("parentId").is_none())
+        .map(|i| node(i, items))
+        .collect();
+    json!(roots)
 }
 
 /// Group cards under their column so the shape reads like an actual board

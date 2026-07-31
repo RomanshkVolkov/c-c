@@ -22,6 +22,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/tasks/abc/comments", domain.ScopeTasksWrite},
 		{http.MethodPatch, "/api/v1/tasks/abc", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/tasks/abc/move", domain.ScopeTasksManage},
+		{http.MethodPost, "/api/v1/notes/", domain.ScopeNotesWrite},
+		{http.MethodPatch, "/api/v1/notes/abc", domain.ScopeNotesManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -54,6 +56,9 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodPost, "/api/v1/users/"),
 		req(http.MethodPut, "/api/v1/docs/space/abc"),
 		req(http.MethodPatch, "/api/v1/tasks/abc/comments/xyz"),
+		req(http.MethodDelete, "/api/v1/notes/abc"),
+		req(http.MethodPut, "/api/v1/notes/tree"),
+		req(http.MethodPost, "/api/v1/notes/abc/attachments"),
 	}
 	for _, r := range unreachable {
 		if _, ok := patScopeFor(r); ok {

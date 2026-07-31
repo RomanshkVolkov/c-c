@@ -58,9 +58,11 @@ export default function ConnectMcpDialog({
   const [tokens, setTokens] = useState<AccessToken[]>([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("Claude Code");
-  // Both off by default: a token that can write is a token someone can lose.
+  // All off by default: a token that can write is a token someone can lose.
   const [canCreateTasks, setCanCreateTasks] = useState(false);
   const [canManageTasks, setCanManageTasks] = useState(false);
+  const [canCreateNotes, setCanCreateNotes] = useState(false);
+  const [canManageNotes, setCanManageNotes] = useState(false);
   const [minted, setMinted] = useState<CreateTokenResult | null>(null);
   const [exePath, setExePath] = useState<string>("");
 
@@ -93,6 +95,8 @@ export default function ConnectMcpDialog({
           scopes: [
             ...(canCreateTasks ? ["tasks:write"] : []),
             ...(canManageTasks ? ["tasks:manage"] : []),
+            ...(canCreateNotes ? ["notes:write"] : []),
+            ...(canManageNotes ? ["notes:manage"] : []),
           ],
         },
         true,
@@ -156,8 +160,9 @@ export default function ConnectMcpDialog({
         <DialogHeader>
           <DialogTitle>Connect Claude Code</DialogTitle>
           <DialogDescription>
-            Lets an AI assistant read your reports and device diagnostics live. Access is
-            strictly read-only — the token cannot change anything in cac.
+            Lets an AI assistant read your reports, tasks, notes and device diagnostics
+            live. Read access is always granted; it can create or change tasks and notes
+            only if you check the matching permission below.
           </DialogDescription>
         </DialogHeader>
 
@@ -176,8 +181,8 @@ export default function ConnectMcpDialog({
               </Button>
             </div>
           ) : (
-            <div className="flex items-end gap-2">
-              <div className="flex-1 space-y-1.5">
+            <div className="flex flex-col gap-3">
+              <div className="space-y-1.5">
                 <Label>Token name</Label>
                 <Input
                   value={name}
@@ -185,42 +190,74 @@ export default function ConnectMcpDialog({
                   placeholder="Claude Code"
                 />
               </div>
-              {/* Two permissions, split by what they can destroy: adding a task or
-                  a comment can't overwrite anyone's work — changing one can. */}
-              <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={canCreateTasks}
-                  onChange={(e) => setCanCreateTasks(e.target.checked)}
-                />
-                <span>
-                  <span className="text-foreground">Create tasks and comments</span>
-                  <span className="block">
-                    Append-only: it can add, never replace what someone wrote.
+              {/* Four permissions, split by what they can destroy: adding a task,
+                  comment or page can't overwrite anyone's work — changing one can. */}
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={canCreateTasks}
+                    onChange={(e) => setCanCreateTasks(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-foreground">Create tasks and comments</span>
+                    <span className="block">
+                      Append-only: it can add, never replace what someone wrote.
+                    </span>
                   </span>
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={canManageTasks}
-                  onChange={(e) => setCanManageTasks(e.target.checked)}
-                />
-                <span>
-                  <span className="text-foreground">Change existing tasks</span>
-                  <span className="block">
-                    Move them between columns, and overwrite title, description or
-                    priority. Needed to mark work as done.
+                </label>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={canManageTasks}
+                    onChange={(e) => setCanManageTasks(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-foreground">Change existing tasks</span>
+                    <span className="block">
+                      Move them between columns, and overwrite title, description or
+                      priority. Needed to mark work as done.
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={canCreateNotes}
+                    onChange={(e) => setCanCreateNotes(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-foreground">Create pages in Notes</span>
+                    <span className="block">
+                      Append-only: adds a new page, never touches one that already
+                      exists. What a migration from another notes app needs.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={canManageNotes}
+                    onChange={(e) => setCanManageNotes(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-foreground">Change existing pages</span>
+                    <span className="block">
+                      Overwrites a page's title or body outright — the note's own
+                      conflict/history safeguards still apply, but the content changes.
+                    </span>
+                  </span>
+                </label>
+              </div>
               <p className="text-[11px] text-muted-foreground">
-                Without either, the token can only read. Deleting anything, and
+                Without any of these, the token can only read. Deleting anything, and
                 minting tokens, stay refused in every case.
               </p>
-              <Button onClick={mint}>
+              <Button onClick={mint} className="self-start">
                 <Plus className="size-4 mr-1" /> Create token
               </Button>
             </div>
@@ -266,13 +303,18 @@ export default function ConnectMcpDialog({
           <div className="space-y-1 rounded-lg border p-3 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">What the assistant can do</p>
             <p>
-              Read-only: list projects and reports, open a report with its telemetry, list
-              devices and pull a device's diagnostics timeline. It cannot comment, change
-              status, or modify anything.
+              Always: list projects and reports, open a report with its telemetry, list
+              devices and pull a device's diagnostics timeline, browse tasks and read
+              notes.
+            </p>
+            <p className="pt-1">
+              With the permissions above: create tasks/comments or notes pages, and — only
+              with "change existing" checked — move tasks between columns, overwrite a
+              task's fields, or overwrite a note's title/body.
             </p>
             <p className="pt-1">
               <Badge variant="secondary" className="text-[10px]">Note</Badge> whatever it reads
-              (reports, device telemetry) is sent to your AI client.
+              (reports, device telemetry, task and note content) is sent to your AI client.
             </p>
           </div>
         </div>

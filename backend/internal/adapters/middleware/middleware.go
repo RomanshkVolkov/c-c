@@ -190,9 +190,11 @@ var patWritable = []struct {
 	// Append-only.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-lists/[^/]+/tasks/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/?$`), domain.ScopeTasksWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/?$`), domain.ScopeNotesWrite},
 	// Changes what already exists.
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/move/?$`), domain.ScopeTasksManage},
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/notes/[^/]+$`), domain.ScopeNotesManage},
 }
 
 // patScopeFor reports the scope this request needs, and whether it's reachable

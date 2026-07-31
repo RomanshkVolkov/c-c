@@ -58,11 +58,23 @@ type CreateTokenResult struct {
 // ScopeTasksManage changes tasks that already exist — including replacing a
 // description someone spent time on. Separate on purpose: an agent that files
 // findings shouldn't need the power to erase them.
+//
+// ScopeNotesWrite/ScopeNotesManage mirror that same split for notes: creating
+// a page can't touch one that already exists, so a migration script only
+// needs Write. Manage is what update_note needs, since it can overwrite a
+// page's body outright.
 const (
 	ScopeTasksWrite  = "tasks:write"
 	ScopeTasksManage = "tasks:manage"
+	ScopeNotesWrite  = "notes:write"
+	ScopeNotesManage = "notes:manage"
 )
 
 func ValidScope(s string) bool {
-	return s == ScopeTasksWrite || s == ScopeTasksManage
+	switch s {
+	case ScopeTasksWrite, ScopeTasksManage, ScopeNotesWrite, ScopeNotesManage:
+		return true
+	default:
+		return false
+	}
 }
