@@ -115,4 +115,10 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Get("/", h.ListTags)
 		r.Post("/", h.CreateTag)
 	})
+
+	// Notes: a separate, personally-owned module (see note.go's package doc).
+	// Mounted here, not given its own InitRoutes call, so it reuses the
+	// image-service client and media store already built above instead of
+	// constructing a third copy of both from the same env vars.
+	InitNoteRoutes(db, r, images, store)
 }

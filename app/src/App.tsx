@@ -13,6 +13,7 @@ import OrganizationSettings from "@/pages/OrganizationSettings";
 import Invitations from "@/pages/Invitations";
 import Diagnostics from "@/pages/Diagnostics";
 import Tasks from "@/pages/Tasks";
+import Notes from "@/pages/Notes";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -45,6 +46,8 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/notes" element={<Notes />} />
+          <Route path="/notes/:id" element={<Notes />} />
           <Route path="/servers/:id" element={<ServerManage />} />
           <Route path="/servers/:id/stats" element={<ServerStats />} />
           <Route path="/servers/:id/secrets" element={<StackSecrets />} />

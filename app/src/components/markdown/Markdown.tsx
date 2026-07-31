@@ -16,9 +16,18 @@ import { mediaSrc, openAttachment } from "@/lib/media";
 export default function Markdown({
   children,
   className,
+  onInternalLink,
 }: {
   children: string;
   className?: string;
+  /**
+   * Handles an href before it falls through to the attachment/browser paths
+   * below. Return true to say "handled, stop here". Used by notes to route a
+   * `[Title](/notes/<id>)` link to `navigate()` instead of the OS browser —
+   * kept as a prop rather than importing react-router here, since this
+   * component is shared by reports and tasks too.
+   */
+  onInternalLink?: (href: string) => boolean;
 }) {
   return (
     <div className={cn("md-body text-sm leading-relaxed", className)}>
@@ -33,6 +42,7 @@ export default function Markdown({
               onClick={(e) => {
                 e.preventDefault();
                 if (!href) return;
+                if (onInternalLink?.(href)) return;
                 // Attachments are downloaded by Rust (with the header) and opened
                 // by the OS; external links go straight to the browser.
                 openAttachment(href, children?.toString() ?? "file").catch(() => {
