@@ -31,6 +31,8 @@ export interface Note {
 export interface NoteDetail {
   note: Note;
   attachments: NoteAttachment[];
+  /** Other notes that cite this one — "linked from", derived on every read. */
+  backlinks: NoteSearchResult[];
 }
 
 export interface NoteSearchResult {

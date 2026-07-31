@@ -120,6 +120,10 @@ func (s *NoteService) Search(ownerID, query string, limit int) ([]domain.NoteSea
 	return s.repo.Search(ownerID, query, limit)
 }
 
+func (s *NoteService) Backlinks(noteID, ownerID string) ([]domain.NoteSearchResult, error) {
+	return s.repo.Backlinks(noteID, ownerID)
+}
+
 func (s *NoteService) Attachments(noteID string) ([]domain.NoteAttachment, error) {
 	atts, err := s.repo.Attachments(noteID)
 	if err != nil {

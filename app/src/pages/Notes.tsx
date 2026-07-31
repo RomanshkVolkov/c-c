@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  Link2,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -32,7 +33,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import MarkdownEditor from "@/components/markdown/MarkdownEditor";
+import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown/MarkdownEditor";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useNotesStore } from "@/store/notes.store";
@@ -296,6 +297,9 @@ function NoteEditorPane({ id }: { id: string }) {
   const saveBody = useNotesStore((s) => s.saveBody);
   const renameNote = useNotesStore((s) => s.renameNote);
   const upload = useNotesStore((s) => s.uploadAttachment);
+  const createNote = useNotesStore((s) => s.createNote);
+  const editorRef = useRef<MarkdownEditorHandle>(null);
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
 
   const note = detail?.note;
   const [title, setTitle] = useState(note?.title ?? "");
@@ -351,6 +355,27 @@ function NoteEditorPane({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Ctrl/Cmd+click on a link inside the editor — see MarkdownEditor's
+  // onLinkClick doc: a plain click keeps editing the link's text.
+  const openInternalLink = (href: string) => {
+    const path = href.match(/^\/notes\/([^/?#]+)/)?.[1];
+    if (path) navigate(`/notes/${path}`);
+  };
+
+  // Cmd/Ctrl+K opens the link picker, scoped to this pane so it doesn't
+  // collide with the notes-list search shortcut (⌘P) or any other page's use
+  // of the same combo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setLinkPickerOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (loading && !note) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -389,6 +414,14 @@ function NoteEditorPane({ id }: { id: string }) {
             </span>
           ) : null}
         </span>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          title="Link to a page (⌘K)"
+          onClick={() => setLinkPickerOpen(true)}
+        >
+          <Link2 className="size-3.5" />
+        </Button>
         <Button size="icon-xs" variant="ghost" title="Close" onClick={() => navigate("/notes")}>
           <X className="size-3.5" />
         </Button>
@@ -396,14 +429,47 @@ function NoteEditorPane({ id }: { id: string }) {
       <div className="min-h-0 flex-1 overflow-auto p-6">
         <div className="mx-auto w-full max-w-3xl">
           <MarkdownEditor
+            ref={editorRef}
             value={body}
             onChange={scheduleSave}
             onUpload={upload}
+            onLinkClick={openInternalLink}
             minHeight="24rem"
-            placeholder="Write…"
+            placeholder="Write… (⌘K to link another page)"
           />
+          {!loading && detail && detail.backlinks.length > 0 && (
+            <section className="mt-8 space-y-2 border-t pt-4">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Linked from
+              </h2>
+              <ul className="space-y-1">
+                {detail.backlinks.map((b) => (
+                  <li key={b.id}>
+                    <button
+                      className="truncate text-left text-sm text-primary underline decoration-primary/40 hover:decoration-primary"
+                      onClick={() => navigate(`/notes/${b.id}`)}
+                    >
+                      {b.title || "Untitled"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       </div>
+      <NoteLinkPicker
+        open={linkPickerOpen}
+        onOpenChange={setLinkPickerOpen}
+        excludeId={id}
+        onPick={(pickedId, pickedTitle) => {
+          editorRef.current?.insertLink(pickedTitle, `/notes/${pickedId}`);
+        }}
+        onCreate={async (newTitle) => {
+          const n = await createNote(null, newTitle);
+          if (n) editorRef.current?.insertLink(newTitle, `/notes/${n.id}`);
+        }}
+      />
     </div>
   );
 }
@@ -464,6 +530,120 @@ function SearchDialog({
             ))}
           {!searching && query.trim() && results.length === 0 && (
             <p className="px-1 py-2 text-xs text-muted-foreground">No matches.</p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Link picker ──────────────────────────────────────────────────────────
+
+/**
+ * Search-or-create, for inserting a link to another page. Local state, not
+ * the shared searchQuery/searchResults — this dialog and the ⌘P SearchDialog
+ * can each open right after the other closes, and neither should see the
+ * other's leftover query or results.
+ */
+function NoteLinkPicker({
+  open,
+  onOpenChange,
+  excludeId,
+  onPick,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  excludeId: string;
+  onPick: (id: string, title: string) => void;
+  onCreate: (title: string) => void | Promise<void>;
+}) {
+  const findNotes = useNotesStore((s) => s.findNotes);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<{ id: string; title: string; excerpt: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setResults([]);
+      return;
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!query.trim()) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    let live = true;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      const found = await findNotes(query);
+      if (live) {
+        setResults(found.filter((r) => r.id !== excludeId));
+        setSearching(false);
+      }
+    }, 200);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [query, open, excludeId, findNotes]);
+
+  const trimmed = query.trim();
+  const exactMatch = results.some((r) => r.title.toLowerCase() === trimmed.toLowerCase());
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg gap-3">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <Link2 className="size-4" /> Link to a page
+          </DialogTitle>
+        </DialogHeader>
+        <Input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by title or content…"
+        />
+        <div className="max-h-80 space-y-0.5 overflow-auto">
+          {searching && <p className="px-1 py-2 text-xs text-muted-foreground">Searching…</p>}
+          {!searching &&
+            results.map((r) => (
+              <button
+                key={r.id}
+                className="flex w-full flex-col rounded-md px-2 py-1.5 text-left hover:bg-accent"
+                onClick={() => {
+                  onPick(r.id, r.title || "Untitled");
+                  onOpenChange(false);
+                }}
+              >
+                <span className="truncate text-sm font-medium">{r.title || "Untitled"}</span>
+                {r.excerpt && (
+                  <span className="truncate text-xs text-muted-foreground">{r.excerpt}</span>
+                )}
+              </button>
+            ))}
+          {!searching && trimmed && !exactMatch && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+              onClick={() => {
+                onCreate(trimmed);
+                onOpenChange(false);
+              }}
+            >
+              <Plus className="size-3.5 text-muted-foreground" />
+              Create page: <span className="font-medium">“{trimmed}”</span>
+            </button>
+          )}
+          {!searching && !trimmed && (
+            <p className="px-1 py-2 text-xs text-muted-foreground">
+              Type to search, or enter a new title to create a page.
+            </p>
           )}
         </div>
       </DialogContent>

@@ -40,6 +40,13 @@ interface NotesState {
   moveTree: (moves: NoteTreeMove[]) => Promise<void>;
   search: (query: string) => Promise<void>;
   clearSearch: () => void;
+  /**
+   * Same query as `search`, but doesn't touch searchQuery/searchResults — the
+   * link picker needs its own results without fighting the ⌘P search dialog
+   * over shared state (they can be open one after the other, and each should
+   * start clean).
+   */
+  findNotes: (query: string) => Promise<NoteSearchResult[]>;
   uploadAttachment: (file: File) => Promise<{ url: string; fileName: string } | null>;
 }
 
@@ -206,6 +213,22 @@ export const useNotesStore = create<NotesState>()(
       },
 
       clearSearch: () => set({ searchQuery: "", searchResults: [] }),
+
+      findNotes: async (query) => {
+        if (!query.trim()) return [];
+        try {
+          const res = await api.get<APIResponse<NoteSearchResult[]>>(
+            `/api/v1/notes/search?q=${encodeURIComponent(query)}`,
+          );
+          return res.success && res.data ? res.data : [];
+        } catch {
+          const q = query.toLowerCase();
+          return get()
+            .tree.filter((n) => n.title.toLowerCase().includes(q))
+            .slice(0, 40)
+            .map((n) => ({ id: n.id, title: n.title, excerpt: "" }));
+        }
+      },
 
       uploadAttachment: async (file) => {
         const noteId = get().detail?.note.id;

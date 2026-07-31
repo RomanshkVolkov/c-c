@@ -86,12 +86,23 @@ func (h *noteHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		atts = []domain.NoteAttachment{}
 	}
-	SendResult(w, http.StatusOK, domain.APIResponse[noteDetail]{Success: true, Data: noteDetail{Note: n, Attachments: atts}})
+	// Bundled with the note rather than a separate endpoint: opening a page is
+	// exactly when "what links here" is useful, and it's one more read on an
+	// already-loaded id, not a query a client would otherwise have to schedule.
+	backlinks, err := h.svc.Backlinks(n.ID, user.UserID)
+	if err != nil {
+		backlinks = []domain.NoteSearchResult{}
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[noteDetail]{
+		Success: true,
+		Data:    noteDetail{Note: n, Attachments: atts, Backlinks: backlinks},
+	})
 }
 
 type noteDetail struct {
-	Note        *domain.Note            `json:"note"`
-	Attachments []domain.NoteAttachment `json:"attachments"`
+	Note        *domain.Note              `json:"note"`
+	Attachments []domain.NoteAttachment   `json:"attachments"`
+	Backlinks   []domain.NoteSearchResult `json:"backlinks"`
 }
 
 func (h *noteHandler) Create(w http.ResponseWriter, r *http.Request) {

@@ -175,6 +175,29 @@ func excerpt(body, term string, radius int) string {
 	return prefix + body[start:end] + suffix
 }
 
+// Backlinks finds notes whose body cites this one — a [Title](/notes/<id>)
+// link, matched by the id substring rather than parsed markdown. Cheap and
+// exact enough: a uuid is specific enough that a false match would require the
+// id to appear in someone's prose by pure coincidence. Derived on every read,
+// not stored, so a rename or an edit that removes the link can never leave a
+// stale backlink behind.
+func (r *NoteRepository) Backlinks(noteID, ownerID string) ([]domain.NoteSearchResult, error) {
+	var rows []domain.Note
+	err := r.db.Model(&domain.Note{}).
+		Where("owner_id = ? AND id <> ? AND body LIKE ?", ownerID, noteID, "%"+noteID+"%").
+		Select("id, title, body").
+		Order("updated_at DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.NoteSearchResult, len(rows))
+	for i, n := range rows {
+		out[i] = domain.NoteSearchResult{ID: n.ID, Title: n.Title, Excerpt: excerpt(n.Body, noteID, 40)}
+	}
+	return out, nil
+}
+
 func (r *NoteRepository) Attachments(noteID string) ([]domain.NoteAttachment, error) {
 	var out []domain.NoteAttachment
 	err := r.db.Where("note_id = ?", noteID).Order("created_at ASC").Find(&out).Error

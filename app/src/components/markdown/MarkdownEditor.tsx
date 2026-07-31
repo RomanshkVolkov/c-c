@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -83,6 +83,19 @@ export interface MarkdownEditorProps {
   className?: string;
   minHeight?: string;
   autoFocus?: boolean;
+  /**
+   * Ctrl/Cmd+click on a link inside the editor calls this instead of the
+   * default (do nothing while editing). Notes uses it to navigate to another
+   * page without leaving edit mode; other callers can ignore it. Plain clicks
+   * still place the cursor, same as always — a modifier key is what makes this
+   * "open" rather than "edit near".
+   */
+  onLinkClick?: (href: string) => void;
+}
+
+export interface MarkdownEditorHandle {
+  /** Inserts `[title](href)` as a real link node at the cursor, then a space. */
+  insertLink: (title: string, href: string) => void;
 }
 
 /**
@@ -107,15 +120,19 @@ function retargetImage(editor: Editor, src: string, to: string | null, alt: stri
   editor.view.dispatch(tr);
 }
 
-export default function MarkdownEditor({
-  value,
-  onChange,
-  placeholder = "Write in markdown…",
-  onUpload,
-  className,
-  minHeight = "8rem",
-  autoFocus,
-}: MarkdownEditorProps) {
+const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(function MarkdownEditor(
+  {
+    value,
+    onChange,
+    placeholder = "Write in markdown…",
+    onUpload,
+    className,
+    minHeight = "8rem",
+    autoFocus,
+    onLinkClick,
+  },
+  ref,
+) {
   // The paste/drop handlers live inside the editor's own options, so they can't
   // close over `editor` itself — that would be a circular reference (and an
   // untypeable one). They read it back through this ref instead.
@@ -124,6 +141,8 @@ export default function MarkdownEditor({
   uploadRef.current = onUpload;
   // onUpdate is wired before the sweep is defined, so it calls through a ref.
   const sweepLocalImagesRef = useRef<(() => void) | null>(null);
+  const onLinkClickRef = useRef(onLinkClick);
+  onLinkClickRef.current = onLinkClick;
 
   const editor = useEditor({
     extensions: [
@@ -164,6 +183,18 @@ export default function MarkdownEditor({
       },
       handlePaste: (_view, event) => takePasted(event.clipboardData),
       handleDrop: (_view, event) => takePasted((event as DragEvent).dataTransfer),
+      // Plain click still just places the cursor — needed constantly while
+      // editing a link's text. Only a held modifier "opens" it, mirroring how
+      // Notion and Obsidian both do this in an editable page.
+      handleClick: (_view, _pos, event) => {
+        if (!onLinkClickRef.current) return false;
+        if (!event.metaKey && !event.ctrlKey) return false;
+        const href = (event.target as HTMLElement)?.closest("a")?.getAttribute("href");
+        if (!href) return false;
+        event.preventDefault();
+        onLinkClickRef.current(href);
+        return true;
+      },
     },
     onUpdate: ({ editor }) => {
       onChange(getMarkdown(editor));
@@ -172,6 +203,24 @@ export default function MarkdownEditor({
   });
 
   editorRef.current = editor ?? null;
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      insertLink: (title, href) => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        ed.chain()
+          .focus()
+          .insertContent([
+            { type: "text", text: title, marks: [{ type: "link", attrs: { href } }] },
+            { type: "text", text: " " },
+          ])
+          .run();
+      },
+    }),
+    [],
+  );
 
   // Every local src we've already taken charge of, so the sweep below doesn't
   // fire twice for the same image (it runs on every update).
@@ -345,7 +394,9 @@ export default function MarkdownEditor({
       </div>
     </div>
   );
-}
+});
+
+export default MarkdownEditor;
 
 function Toolbar({
   editor,
