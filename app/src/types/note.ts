@@ -24,8 +24,25 @@ export interface Note {
   position: number;
   title: string;
   body: string;
+  /** sha256 of body — sent back as the next save's baseHash to detect a race. */
+  bodyHash?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface NoteConflictInfo {
+  id: string;
+  title: string;
+}
+
+/**
+ * What a body save returns. `conflict` is only set when another device saved
+ * first: `note` is unchanged and `conflict` points at the new child page that
+ * holds the write that wasn't applied.
+ */
+export interface UpdateNoteResult {
+  note: Note;
+  conflict?: NoteConflictInfo;
 }
 
 export interface NoteDetail {

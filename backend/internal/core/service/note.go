@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 
@@ -35,10 +37,39 @@ func (s *NoteService) Create(ownerID string, req domain.CreateNoteRequest) (*dom
 	return n, nil
 }
 
-func (s *NoteService) Update(id, ownerID string, req domain.UpdateNoteRequest) (*domain.Note, error) {
+func (s *NoteService) Update(id, ownerID string, req domain.UpdateNoteRequest) (*domain.UpdateNoteResult, error) {
 	prev, err := s.repo.Find(id, ownerID)
 	if err != nil {
 		return nil, err
+	}
+
+	// A body save carries the hash this device last saw. If the server's
+	// current hash has since moved, another device (or a queued offline write)
+	// saved first — applying this one anyway would silently discard that edit.
+	// `prev` was just read fresh, so its hash IS the current winner's.
+	//
+	// Gated on prev.BodyHash, not req.BaseHash: a note with no hash yet (never
+	// saved by anyone, or written before this check existed) has nothing to
+	// compare against and can't produce a false conflict. But once the server
+	// DOES have a real hash, a client sending an empty baseHash is exactly as
+	// stale as one sending a wrong one — its cached copy predates the first
+	// hash ever written, which is still a version it never saw.
+	if req.Body != nil && prev.BodyHash != "" &&
+		(req.BaseHash == nil || *req.BaseHash != prev.BodyHash) {
+		conflict := &domain.Note{
+			OwnerID:  ownerID,
+			ParentID: &prev.ID,
+			Title:    conflictTitle(prev.Title),
+			Body:     *req.Body,
+			BodyHash: hashBody(*req.Body),
+		}
+		if err := s.repo.Create(conflict); err != nil {
+			return nil, err
+		}
+		return &domain.UpdateNoteResult{
+			Note:     prev,
+			Conflict: &domain.NoteConflictInfo{ID: conflict.ID, Title: conflict.Title},
+		}, nil
 	}
 
 	fields := map[string]any{}
@@ -46,10 +77,19 @@ func (s *NoteService) Update(id, ownerID string, req domain.UpdateNoteRequest) (
 		fields["title"] = *req.Title
 	}
 	if req.Body != nil {
+		// The pre-image is kept even for an uncontested save: a revision isn't
+		// only for resolving conflicts, it's the guarantee that no save is ever
+		// the last copy of whatever text came before it.
+		if err := s.repo.CreateRevision(&domain.NoteRevision{
+			NoteID: id, OwnerID: ownerID, Title: prev.Title, Body: prev.Body,
+		}); err != nil {
+			lg.Error("note revision snapshot for " + id + ": " + err.Error())
+		}
 		fields["body"] = *req.Body
+		fields["body_hash"] = hashBody(*req.Body)
 	}
 	if len(fields) == 0 {
-		return prev, nil
+		return &domain.UpdateNoteResult{Note: prev}, nil
 	}
 	if err := s.repo.Update(id, ownerID, fields); err != nil {
 		return nil, err
@@ -57,7 +97,23 @@ func (s *NoteService) Update(id, ownerID string, req domain.UpdateNoteRequest) (
 	if req.Body != nil {
 		s.dropRemovedAttachments(id, prev.Body, *req.Body)
 	}
-	return s.repo.Find(id, ownerID)
+	updated, err := s.repo.Find(id, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.UpdateNoteResult{Note: updated}, nil
+}
+
+func hashBody(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
+}
+
+func conflictTitle(base string) string {
+	if base == "" {
+		base = "Untitled"
+	}
+	return base + " (conflicting edit)"
 }
 
 // Delete removes a page and every page below it. There are no foreign keys to

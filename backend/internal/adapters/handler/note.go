@@ -143,7 +143,7 @@ func (h *noteHandler) Update(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	n, err := h.svc.Update(chi.URLParam(r, "id"), user.UserID, req)
+	result, err := h.svc.Update(chi.URLParam(r, "id"), user.UserID, req)
 	if err != nil {
 		if mapNoteError(w, err) {
 			return
@@ -151,7 +151,7 @@ func (h *noteHandler) Update(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the note", err.Error())
 		return
 	}
-	SendResult(w, http.StatusOK, domain.APIResponse[*domain.Note]{Success: true, Data: n})
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.UpdateNoteResult]{Success: true, Data: result})
 }
 
 // Delete removes the note and every note below it. The count is returned so a

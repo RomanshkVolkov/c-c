@@ -9,6 +9,7 @@ import type {
   NoteSearchResult,
   NoteTreeItem,
   NoteTreeMove,
+  UpdateNoteResult,
 } from "@/types/note";
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -28,12 +29,32 @@ interface NotesState {
   searchResults: NoteSearchResult[];
   searching: boolean;
 
+  /**
+   * Body saves that failed on a transport error, keyed by note id — offline
+   * writing, not a full sync engine. Drained by `drainPending` once the
+   * backend is reachable again; persisted so a save started right before the
+   * app closes isn't lost.
+   */
+  pendingWrites: Record<string, { body: string; baseHash: string; queuedAt: number }>;
+  /** Set once when a save loses a race with another device — consumed (and
+   * cleared) by a toast in the UI layer. */
+  conflictNotice: { noteId: string; conflictId: string; conflictTitle: string } | null;
+
   fetchTree: () => Promise<void>;
   openNote: (id: string) => Promise<void>;
   closeNote: () => void;
   createNote: (parentId?: string | null, title?: string) => Promise<Note | null>;
   renameNote: (id: string, title: string) => Promise<void>;
   saveBody: (id: string, body: string) => Promise<void>;
+  /**
+   * Shared by `saveBody` and `drainPending` — the only difference between them
+   * is where `baseHash` comes from (the live detail vs. what was queued).
+   */
+  commitBody: (id: string, body: string, baseHash: string) => Promise<void>;
+  /** Retries every queued write; stops at the first that still fails so the
+   * rest wait for the next call rather than piling up out of order. */
+  drainPending: () => Promise<void>;
+  dismissConflict: () => void;
   deleteNote: (id: string) => Promise<number>;
   /** Descendant ids, for the "this deletes N subpages" confirm — read-only. */
   descendantsOf: (id: string) => string[];
@@ -65,6 +86,9 @@ export const useNotesStore = create<NotesState>()(
       searchQuery: "",
       searchResults: [],
       searching: false,
+
+      pendingWrites: {},
+      conflictNotice: null,
 
       fetchTree: async () => {
         set({ loadingTree: true, error: null });
@@ -131,17 +155,61 @@ export const useNotesStore = create<NotesState>()(
         if (get().activeId === id) await get().openNote(id);
       },
 
-      saveBody: async (id, body) => {
-        const res = await api.patch<APIResponse<Note>>(`/api/v1/notes/${id}`, { body });
-        if (res.success && res.data && get().activeId === id) {
-          set((s) => ({
-            detail: s.detail ? { ...s.detail, note: res.data! } : s.detail,
-            savedAt: Date.now(),
-          }));
-        }
-        // hasBody may have just flipped; keep the tree's dot in sync.
+      commitBody: async (id, body, baseHash) => {
+        const res = await api.patch<APIResponse<UpdateNoteResult>>(`/api/v1/notes/${id}`, {
+          body,
+          baseHash,
+        });
+        if (!res.success || !res.data) throw new Error(res.error ?? "Save failed");
+        const { note, conflict } = res.data;
+        set((s) => ({
+          detail: s.detail && s.detail.note.id === id ? { ...s.detail, note } : s.detail,
+          savedAt: s.activeId === id ? Date.now() : s.savedAt,
+        }));
+        set((s) => {
+          if (!(id in s.pendingWrites)) return {};
+          const rest = { ...s.pendingWrites };
+          delete rest[id];
+          return { pendingWrites: rest };
+        });
+        // hasBody may have just flipped, and a conflict adds a new child page —
+        // either way the tree's shape may no longer match what's rendered.
         await get().fetchTree();
+        if (conflict) {
+          set({ conflictNotice: { noteId: id, conflictId: conflict.id, conflictTitle: conflict.title } });
+        }
       },
+
+      saveBody: async (id, body) => {
+        const cached = get().detail;
+        const baseHash = cached?.note.id === id ? (cached.note.bodyHash ?? "") : "";
+        try {
+          await get().commitBody(id, body, baseHash);
+        } catch (e) {
+          // Transport failure only — a real error (validation, 500, a genuine
+          // conflict) is a normal 200 response here, not a thrown exception, so
+          // it always reaches the caller instead of silently queuing.
+          if (msg(e) === "network-error") {
+            set((s) => ({
+              pendingWrites: { ...s.pendingWrites, [id]: { body, baseHash, queuedAt: Date.now() } },
+            }));
+            return;
+          }
+          throw e;
+        }
+      },
+
+      drainPending: async () => {
+        for (const [id, w] of Object.entries(get().pendingWrites)) {
+          try {
+            await get().commitBody(id, w.body, w.baseHash);
+          } catch {
+            break; // still unreachable (or a fresh failure) — try the rest later
+          }
+        }
+      },
+
+      dismissConflict: () => set({ conflictNotice: null }),
 
       deleteNote: async (id) => {
         const res = await api.delete<APIResponse<{ deleted: number }>>(`/api/v1/notes/${id}`);
@@ -253,10 +321,17 @@ export const useNotesStore = create<NotesState>()(
     }),
     {
       name: "cac-notes",
-      // Only the tree and the last-open note's detail are worth persisting:
-      // that's what makes the sidebar and the open page readable without a
-      // network round trip. Search results and transient UI state are not.
-      partialize: (s) => ({ tree: s.tree, activeId: s.activeId, detail: s.detail }),
+      // Only the tree, the last-open note's detail, and any write still owed to
+      // the server are worth persisting: that's what makes the sidebar and the
+      // open page readable without a network round trip, and what lets a save
+      // started right before the app closes still go out later. Search results
+      // and other transient UI state are not persisted.
+      partialize: (s) => ({
+        tree: s.tree,
+        activeId: s.activeId,
+        detail: s.detail,
+        pendingWrites: s.pendingWrites,
+      }),
     },
   ),
 );

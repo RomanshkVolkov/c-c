@@ -22,10 +22,23 @@ type Note struct {
 	// Markdown, same format as tasks and docs — one editor and one renderer
 	// serve every module.
 	Body string `gorm:"type:text" json:"body"`
-	// Reserved for the offline/multi-device phase: lets a future sync detect
-	// that the server's copy changed since this device last saw it, without
-	// requiring every write today to compute or send one.
-	BodyHash string `gorm:"type:varchar(64)" json:"-"`
+	// sha256 of Body, recomputed on every body save. A client keeps the value it
+	// last read and sends it back as UpdateNoteRequest.BaseHash; a mismatch means
+	// another device saved first, which is what makes conflict detection
+	// possible without a merge engine.
+	BodyHash string `gorm:"type:varchar(64)" json:"bodyHash,omitempty"`
+}
+
+// NoteRevision is a snapshot of a note's body taken right before it's
+// overwritten. Append-only and never read back by the app today (no history
+// UI yet) — it exists purely so that a legitimate, non-conflicting save can
+// never be the reason a previous version is unrecoverable.
+type NoteRevision struct {
+	BaseModel
+	NoteID  string `gorm:"type:varchar(36);index;not null" json:"noteId"`
+	OwnerID string `gorm:"type:varchar(36);index;not null" json:"-"`
+	Title   string `gorm:"type:varchar(300)" json:"title"`
+	Body    string `gorm:"type:text" json:"-"`
 }
 
 type NoteAttachment struct {
@@ -85,6 +98,23 @@ type CreateNoteRequest struct {
 type UpdateNoteRequest struct {
 	Title *string `json:"title"`
 	Body  *string `json:"body"`
+	// BaseHash is the BodyHash this device last saw, only meaningful alongside
+	// Body. Omitted or empty skips the conflict check (a brand-new note has no
+	// prior hash to compare against).
+	BaseHash *string `json:"baseHash"`
+}
+
+// UpdateNoteResult is what saving a note returns. Conflict is only set when a
+// concurrent edit was detected: the note is unchanged and Conflict points at
+// the new child page holding the write that was not applied.
+type UpdateNoteResult struct {
+	Note     *Note             `json:"note"`
+	Conflict *NoteConflictInfo `json:"conflict,omitempty"`
+}
+
+type NoteConflictInfo struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 type NoteSearchResult struct {

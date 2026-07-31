@@ -51,8 +51,9 @@ import { cn } from "@/lib/utils";
  *
  * The tree is read from a persisted copy first (see notes.store's `persist`),
  * so it — and whichever note was last open — stay readable with no network.
- * Writing while offline isn't covered yet: creating, moving and deleting still
- * need a live connection.
+ * Editing the open page works offline too: a body save that can't reach the
+ * server is queued (persisted, so it survives closing the app) and retried
+ * here. Creating, moving and deleting still need a live connection.
  */
 export default function Notes() {
   const navigate = useNavigate();
@@ -61,6 +62,9 @@ export default function Notes() {
   const openNote = useNotesStore((s) => s.openNote);
   const closeNote = useNotesStore((s) => s.closeNote);
   const activeId = useNotesStore((s) => s.activeId);
+  const drainPending = useNotesStore((s) => s.drainPending);
+  const conflictNotice = useNotesStore((s) => s.conflictNotice);
+  const dismissConflict = useNotesStore((s) => s.dismissConflict);
   const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
@@ -85,6 +89,31 @@ export default function Notes() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Retries queued writes as soon as the network's back, and every few
+  // seconds regardless — an empty queue makes this a no-op, so there's no cost
+  // to leaving the interval running while there's nothing to send.
+  useEffect(() => {
+    drainPending();
+    window.addEventListener("online", drainPending);
+    const t = setInterval(drainPending, 10_000);
+    return () => {
+      window.removeEventListener("online", drainPending);
+      clearInterval(t);
+    };
+  }, [drainPending]);
+
+  useEffect(() => {
+    if (!conflictNotice) return;
+    toast.warning("Saved as a conflict copy", {
+      description: `Another device changed this page first — your edit is safe in "${conflictNotice.conflictTitle}".`,
+      action: {
+        label: "Open",
+        onClick: () => navigate(`/notes/${conflictNotice.conflictId}`),
+      },
+    });
+    dismissConflict();
+  }, [conflictNotice, dismissConflict, navigate]);
 
   return (
     <div className="flex min-h-0 flex-1">

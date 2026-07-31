@@ -49,6 +49,11 @@ func (r *NoteRepository) Find(id, ownerID string) (*domain.Note, error) {
 	return &n, nil
 }
 
+func (r *NoteRepository) CreateRevision(rev *domain.NoteRevision) error {
+	rev.ID = uuid.NewString()
+	return r.db.Create(rev).Error
+}
+
 func (r *NoteRepository) Update(id, ownerID string, fields map[string]any) error {
 	res := r.db.Model(&domain.Note{}).Where("id = ? AND owner_id = ?", id, ownerID).Updates(fields)
 	if res.Error != nil {
