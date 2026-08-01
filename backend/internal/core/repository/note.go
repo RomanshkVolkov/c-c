@@ -23,7 +23,7 @@ func NewNoteRepository(db *gorm.DB) *NoteRepository { return &NoteRepository{db:
 func (r *NoteRepository) Tree(ownerID string) ([]domain.NoteTreeItem, error) {
 	var out []domain.NoteTreeItem
 	err := r.db.Model(&domain.Note{}).
-		Select("id, parent_id, position, title, body <> '' AS has_body").
+		Select("id, parent_id, position, title, favorite, body <> '' AS has_body").
 		Where("owner_id = ?", ownerID).
 		Order("position ASC").
 		Find(&out).Error

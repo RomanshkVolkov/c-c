@@ -48,6 +48,7 @@ interface NotesState {
   closeNote: () => void;
   createNote: (parentId?: string | null, title?: string) => Promise<Note | null>;
   renameNote: (id: string, title: string) => Promise<void>;
+  toggleFavorite: (id: string) => Promise<void>;
   saveBody: (id: string, body: string) => Promise<void>;
   /**
    * Shared by `saveBody` and `drainPending` — the only difference between them
@@ -162,6 +163,23 @@ export const useNotesStore = create<NotesState>()(
         await api.patch<APIResponse<Note>>(`/api/v1/notes/${id}`, { title });
         await get().fetchTree();
         if (get().activeId === id) await get().openNote(id);
+      },
+
+      toggleFavorite: async (id) => {
+        const next = !get().tree.find((n) => n.id === id)?.favorite;
+        // Optimistic: starring is a one-bit change the user watches happen, so
+        // waiting a round trip for the icon to fill in reads as a dropped click.
+        set((s) => ({
+          tree: s.tree.map((n) => (n.id === id ? { ...n, favorite: next } : n)),
+        }));
+        try {
+          await api.patch<APIResponse<UpdateNoteResult>>(`/api/v1/notes/${id}`, { favorite: next });
+        } catch (e) {
+          set((s) => ({
+            tree: s.tree.map((n) => (n.id === id ? { ...n, favorite: !next } : n)),
+            error: msg(e),
+          }));
+        }
       },
 
       commitBody: async (id, body, baseHash) => {

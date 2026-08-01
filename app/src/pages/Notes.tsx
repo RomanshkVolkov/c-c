@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Star,
   Trash2,
   X,
   ArrowUp,
@@ -220,9 +221,18 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
   const loading = useNotesStore((s) => s.loadingTree);
   const error = useNotesStore((s) => s.error);
   const createNote = useNotesStore((s) => s.createNote);
+  const activeId = useNotesStore((s) => s.activeId);
 
   const roots = useMemo(
     () => tree.filter((n) => !n.parentId).sort((a, b) => a.position - b.position),
+    [tree],
+  );
+
+  // Favourites are a flat shortcut list, not a second tree: a starred subpage
+  // should be reachable in one click without also dragging its children up
+  // here, where they'd appear twice and be ambiguous to reorder.
+  const favorites = useMemo(
+    () => tree.filter((n) => n.favorite).sort((a, b) => a.title.localeCompare(b.title)),
     [tree],
   );
 
@@ -248,6 +258,26 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
           <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-destructive">
             <AlertCircle className="size-3" /> {error}
           </p>
+        )}
+        {favorites.length > 0 && (
+          <section className="mb-1 border-b pb-1">
+            <h2 className="px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Favorites
+            </h2>
+            {favorites.map((f) => (
+              <button
+                key={f.id}
+                className={cn(
+                  "flex w-full items-center gap-1.5 px-2 py-1 pl-3 text-left text-sm hover:bg-accent/50",
+                  activeId === f.id && "text-primary",
+                )}
+                onClick={() => navigate(`/notes/${f.id}`)}
+              >
+                <Star className="size-3 shrink-0 fill-current text-amber-500" />
+                <span className="truncate">{f.title || "Untitled"}</span>
+              </button>
+            ))}
+          </section>
         )}
         {loading && tree.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
@@ -328,6 +358,7 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
   const deleteNote = useNotesStore((s) => s.deleteNote);
   const descendantsOf = useNotesStore((s) => s.descendantsOf);
   const moveTree = useNotesStore((s) => s.moveTree);
+  const toggleFavorite = useNotesStore((s) => s.toggleFavorite);
   const [open, setOpen] = useState(true);
   const {
     setNodeRef: setDragRef,
@@ -397,6 +428,7 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
         >
           {note.title || "Untitled"}
         </button>
+        {note.favorite && <Star className="size-3 shrink-0 fill-current text-amber-500" />}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -422,6 +454,10 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
                 }}
               >
                 <Pencil className="size-4" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toggleFavorite(note.id)}>
+                <Star className={cn("size-4", note.favorite && "fill-current text-amber-500")} />
+                {note.favorite ? "Remove from favorites" : "Add to favorites"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => move("up")}>
                 <ArrowUp className="size-4" /> Move up

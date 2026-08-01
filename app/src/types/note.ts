@@ -5,6 +5,8 @@ export interface NoteTreeItem {
   position: number;
   title: string;
   hasBody: boolean;
+  /** Pinned to the Favorites section at the top of the navigator. */
+  favorite: boolean;
 }
 
 export interface NoteAttachment {
@@ -24,6 +26,7 @@ export interface Note {
   position: number;
   title: string;
   body: string;
+  favorite: boolean;
   /** sha256 of body — sent back as the next save's baseHash to detect a race. */
   bodyHash?: string;
   createdAt: string;

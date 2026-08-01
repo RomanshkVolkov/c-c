@@ -19,6 +19,10 @@ type Note struct {
 	// NoteRepository.ReplaceTree — so gaps and non-contiguous values are fine.
 	Position int    `gorm:"not null;default:0" json:"position"`
 	Title    string `gorm:"type:varchar(300);not null;default:''" json:"title"`
+	// Pinned to the top of the navigator. A flag on the page rather than a
+	// separate table: it's one bit per page, private to the same owner, and a
+	// join table would buy nothing but an extra query on every tree read.
+	Favorite bool `gorm:"not null;default:false" json:"favorite"`
 	// Markdown, same format as tasks and docs — one editor and one renderer
 	// serve every module.
 	Body string `gorm:"type:text" json:"body"`
@@ -74,6 +78,7 @@ type NoteTreeItem struct {
 	Position int     `json:"position"`
 	Title    string  `json:"title"`
 	HasBody  bool    `json:"hasBody"`
+	Favorite bool    `json:"favorite"`
 }
 
 // NoteTreeMove is one page's new placement. The client always sends the whole
@@ -96,8 +101,9 @@ type CreateNoteRequest struct {
 // UpdateNoteRequest patches a note; nil fields are left untouched so autosave
 // can send just what changed.
 type UpdateNoteRequest struct {
-	Title *string `json:"title"`
-	Body  *string `json:"body"`
+	Title    *string `json:"title"`
+	Body     *string `json:"body"`
+	Favorite *bool   `json:"favorite"`
 	// BaseHash is the BodyHash this device last saw, only meaningful alongside
 	// Body. Omitted or empty skips the conflict check (a brand-new note has no
 	// prior hash to compare against).

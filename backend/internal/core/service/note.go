@@ -76,6 +76,9 @@ func (s *NoteService) Update(id, ownerID string, req domain.UpdateNoteRequest) (
 	if req.Title != nil {
 		fields["title"] = *req.Title
 	}
+	if req.Favorite != nil {
+		fields["favorite"] = *req.Favorite
+	}
 	if req.Body != nil {
 		// The pre-image is kept even for an uncontested save: a revision isn't
 		// only for resolving conflicts, it's the guarantee that no save is ever
