@@ -122,3 +122,12 @@ type NoteSearchResult struct {
 	Title   string `json:"title"`
 	Excerpt string `json:"excerpt"`
 }
+
+// NoteExport is every page and every attachment reference the caller owns, in
+// one payload. Flat lists rather than a nested tree: the exporter has to walk
+// parents anyway to build folders, and one round trip beats one request per
+// page for something whose whole purpose is "get all of it out of here".
+type NoteExport struct {
+	Notes       []Note           `json:"notes"`
+	Attachments []NoteAttachment `json:"attachments"`
+}

@@ -180,6 +180,24 @@ func (s *NoteService) Backlinks(noteID, ownerID string) ([]domain.NoteSearchResu
 	return s.repo.Backlinks(noteID, ownerID)
 }
 
+// Export gathers everything the user owns for a local backup. Deliberately not
+// paginated: a partial export of the thing you keep *because* you don't want to
+// depend on this server is worse than no export at all.
+func (s *NoteService) Export(ownerID string) (*domain.NoteExport, error) {
+	notes, err := s.repo.All(ownerID)
+	if err != nil {
+		return nil, err
+	}
+	atts, err := s.repo.AttachmentsForOwner(ownerID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range atts {
+		atts[i].NormalizeURL()
+	}
+	return &domain.NoteExport{Notes: notes, Attachments: atts}, nil
+}
+
 func (s *NoteService) Attachments(noteID string) ([]domain.NoteAttachment, error) {
 	atts, err := s.repo.Attachments(noteID)
 	if err != nil {

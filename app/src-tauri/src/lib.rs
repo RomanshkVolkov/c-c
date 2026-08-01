@@ -5,6 +5,7 @@ mod sse;
 mod http_client;
 mod image;
 mod mcp;
+mod notes_export;
 
 /// Entry point for `cac --mcp` (stdio MCP server; see `mcp.rs`).
 pub fn serve_mcp() {
@@ -1246,6 +1247,56 @@ async fn save_file(
     Ok(true)
 }
 
+// ─── Notes export ────────────────────────────────────────────────────────────
+
+/// Asks for a folder and writes every note into it as markdown.
+///
+/// Returns `None` when the user dismissed the picker, so the UI can stay quiet
+/// instead of reporting a cancellation as a failure.
+#[tauri::command]
+async fn export_notes(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, media::Session>,
+    subfolder: String,
+) -> Result<Option<notes_export::ExportSummary>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    // Copied out before the await: the guard is not Send, and holding it across
+    // one would make this command fail to compile.
+    let token = state.token.lock().ok().and_then(|t| t.as_ref().cloned());
+    let base = state.base_url.lock().ok().and_then(|b| b.as_ref().cloned());
+    let (Some(token), Some(base)) = (token, base) else {
+        return Err("Not signed in".into());
+    };
+
+    let Some(chosen) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let chosen = chosen.into_path().map_err(|e| e.to_string())?;
+
+    // Everything lands in one new subfolder rather than loose in whatever the
+    // user picked: an export writes a whole tree, and scattering it across an
+    // existing Documents folder would be hard to undo.
+    let dest = chosen.join(sanitize_component(&subfolder, "cac-notes"));
+    std::fs::create_dir_all(&dest).map_err(|e| format!("Could not create {dest:?}: {e}"))?;
+
+    notes_export::run(&base, &token, dest).await.map(Some)
+}
+
+/// One path component, with anything that could escape it removed.
+fn sanitize_component(raw: &str, fallback: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | ' '))
+        .collect();
+    let cleaned = cleaned.trim().to_string();
+    if cleaned.is_empty() {
+        fallback.to_string()
+    } else {
+        cleaned
+    }
+}
+
 // ─── App entry ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1309,6 +1360,7 @@ pub fn run() {
             sse_connect,
             sse_disconnect,
             save_file,
+            export_notes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

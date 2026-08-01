@@ -25,6 +25,7 @@ type NoteHandler interface {
 	Delete(w http.ResponseWriter, r *http.Request)
 	MoveTree(w http.ResponseWriter, r *http.Request)
 	Search(w http.ResponseWriter, r *http.Request)
+	Export(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
 	RawAttachment(w http.ResponseWriter, r *http.Request)
@@ -220,6 +221,24 @@ func (h *noteHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.NoteSearchResult]{Success: true, Data: results})
+}
+
+// Export returns every page and attachment reference the caller owns, so the
+// desktop app can write a plain folder of .md files. The point of the feature
+// is not depending on this server, so it answers in one shot rather than
+// making the client stitch pages together.
+func (h *noteHandler) Export(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	data, err := h.svc.Export(user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to export notes", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.NoteExport]{Success: true, Data: data})
 }
 
 func (h *noteHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {

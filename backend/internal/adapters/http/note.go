@@ -22,6 +22,7 @@ func InitNoteRoutes(db *gorm.DB, r *chi.Mux, images *imageservice.Client, store 
 		r.Get("/", h.Tree)
 		r.Post("/", h.Create)
 		r.Get("/search", h.Search)
+		r.Get("/export", h.Export)
 		r.Put("/tree", h.MoveTree)
 		r.Get("/{id}", h.Get)
 		r.Patch("/{id}", h.Update)

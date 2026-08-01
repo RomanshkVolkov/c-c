@@ -11,6 +11,7 @@
       "allow": [{ "url": "https://**" }, { "url": "http://**" }]
     },
     "dialog:allow-save",
+    "dialog:allow-open",
     {
       "identifier": "fs:allow-write",
       "allow": [{ "path": "$DOWNLOAD/**" }, { "path": "$HOME/**" }]

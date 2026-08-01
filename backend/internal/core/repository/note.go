@@ -203,6 +203,28 @@ func (r *NoteRepository) Backlinks(noteID, ownerID string) ([]domain.NoteSearchR
 	return out, nil
 }
 
+// All returns every page the user owns, bodies included — the export path.
+// Ordered so a diff between two exports stays stable.
+func (r *NoteRepository) All(ownerID string) ([]domain.Note, error) {
+	var out []domain.Note
+	err := r.db.Where("owner_id = ?", ownerID).
+		Order("parent_id ASC NULLS FIRST, position ASC, created_at ASC").
+		Find(&out).Error
+	return out, err
+}
+
+// AttachmentsForOwner returns every attachment hanging off any of the user's
+// pages, in one query — the export writes them all, and doing it per page would
+// be one round trip per page for no benefit.
+func (r *NoteRepository) AttachmentsForOwner(ownerID string) ([]domain.NoteAttachment, error) {
+	var out []domain.NoteAttachment
+	err := r.db.
+		Where("note_id IN (?)", r.db.Model(&domain.Note{}).Select("id").Where("owner_id = ?", ownerID)).
+		Order("created_at ASC").
+		Find(&out).Error
+	return out, err
+}
+
 func (r *NoteRepository) Attachments(noteID string) ([]domain.NoteAttachment, error) {
 	var out []domain.NoteAttachment
 	err := r.db.Where("note_id = ?", noteID).Order("created_at ASC").Find(&out).Error

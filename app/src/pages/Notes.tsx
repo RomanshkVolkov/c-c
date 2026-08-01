@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ChevronDown,
   ChevronRight,
+  Download,
   FileText,
   Link2,
   Loader2,
@@ -137,6 +138,68 @@ function EmptyState() {
   );
 }
 
+// ─── Export ─────────────────────────────────────────────────────────────────
+
+interface ExportSummary {
+  pages: number;
+  attachments: number;
+  failedAttachments: number;
+  dir: string;
+}
+
+/**
+ * Writes the whole tree to a folder of .md files, images included.
+ *
+ * The point of this button is that leaving cac has to be as possible as
+ * leaving Notion was — otherwise "I don't depend on Notion any more" just
+ * names a different thing to depend on. Everything happens in the Rust core
+ * (see notes_export.rs); outside Tauri there's no filesystem to write to, so
+ * the button says so rather than failing halfway.
+ */
+function ExportButton() {
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      toast.error("Export needs the desktop app", {
+        description: "A browser tab can't write a folder to disk.",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const stamp = new Date().toISOString().slice(0, 10);
+      const res = await invoke<ExportSummary | null>("export_notes", {
+        subfolder: `cac-notes-${stamp}`,
+      });
+      if (!res) return; // picker dismissed
+      const failed = res.failedAttachments
+        ? ` · ${res.failedAttachments} attachment${res.failedAttachments === 1 ? "" : "s"} failed`
+        : "";
+      toast.success(`Exported ${res.pages} page${res.pages === 1 ? "" : "s"}`, {
+        description: `${res.attachments} attachment${res.attachments === 1 ? "" : "s"} · ${res.dir}${failed}`,
+      });
+    } catch (e) {
+      toast.error("Export failed", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button
+      size="icon-xs"
+      variant="ghost"
+      title="Export all pages as markdown"
+      disabled={busy}
+      onClick={run}
+    >
+      {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+    </Button>
+  );
+}
+
 // ─── Navigator ──────────────────────────────────────────────────────────────
 
 function Navigator({ onSearch }: { onSearch: () => void }) {
@@ -163,6 +226,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
         <Button size="icon-xs" variant="ghost" className="ml-auto" title="Search (⌘P)" onClick={onSearch}>
           <Search className="size-3.5" />
         </Button>
+        <ExportButton />
         <Button size="icon-xs" variant="ghost" title="New page" onClick={addRoot}>
           <Plus className="size-3.5" />
         </Button>
