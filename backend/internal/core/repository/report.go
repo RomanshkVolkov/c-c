@@ -157,6 +157,11 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 		if q.AssigneeID != "" {
 			db = db.Where("r.assignee_user_id = ?", q.AssigneeID)
 		}
+		// Narrows within what the caller can already see — the org scope above
+		// still applies, so this can't reach another tenant's reports.
+		if q.ReporterID != "" {
+			db = db.Where("r.reporter_id = ?", q.ReporterID)
+		}
 		if q.From != nil {
 			db = db.Where("r.created_at >= ?", *q.From)
 		}

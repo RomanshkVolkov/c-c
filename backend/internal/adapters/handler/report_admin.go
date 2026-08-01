@@ -100,6 +100,7 @@ func (h *reportAdminHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := domain.ReportListQuery{
 		ProjectID:  qs.Get("projectId"),
 		AssigneeID: qs.Get("assigneeUserId"),
+		ReporterID: qs.Get("reporterId"),
 		Limit:      50,
 	}
 	if s := qs.Get("status"); s != "" {

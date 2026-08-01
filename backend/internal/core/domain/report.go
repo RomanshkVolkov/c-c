@@ -399,6 +399,10 @@ type ReportListQuery struct {
 	Category   ReportCategory
 	Priority   ReportPriority
 	AssigneeID string
+	// ReporterID is the host app's own user id, as passed to ingest. It's what
+	// lets a tenant build a "my reports" view without cac keeping a per-user
+	// index: the caller already has the id from its own session.
+	ReporterID string
 	From       *time.Time
 	To         *time.Time
 	Limit      int
