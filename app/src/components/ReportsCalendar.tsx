@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import type { ReportListItem, ReportStatus } from "@/types/report";
 
 const STATUS_DOT: Record<ReportStatus, string> = {
-  pending: "bg-amber-500",
+  open: "bg-amber-500",
   in_progress: "bg-info",
-  resolved: "bg-emerald-500",
+  done: "bg-emerald-500",
   closed: "bg-muted-foreground/40",
 };
 

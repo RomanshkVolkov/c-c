@@ -6,6 +6,7 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import { apiUrl, refreshAccessToken } from "@/lib/api";
+import { STATUS_LABELS, normalizeStatus } from "@/types/report";
 import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -95,7 +96,12 @@ export function useReportEvents() {
           break;
         }
         case "report:status": {
-          toast.message("Report status changed", { description: parse(data).status });
+          // Folded through the same map as the board, so the toast can't name a
+          // state using the spelling the rest of the UI stopped using.
+          const raw = parse(data).status;
+          toast.message("Report status changed", {
+            description: raw ? STATUS_LABELS[normalizeStatus(String(raw))] : undefined,
+          });
           refresh();
           break;
         }

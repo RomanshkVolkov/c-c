@@ -10,6 +10,7 @@ import type {
   TransitionsMap,
   CreateReportProjectResult,
 } from "@/types/report";
+import { normalizeStatus } from "@/types/report";
 import { useOrgsStore } from "@/store/orgs.store";
 
 interface ReportsState {
@@ -137,7 +138,13 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         `/api/v1/reports/?${qs.toString()}`,
         true
       );
-      let items = res.success && res.data ? res.data.items : [];
+      // Fold the pre-rename spellings on the way in — see normalizeStatus.
+      // Without this a report the server still calls "pending" matches no
+      // kanban column and simply disappears from the board.
+      let items = (res.success && res.data ? res.data.items : []).map((r) => ({
+        ...r,
+        status: normalizeStatus(r.status),
+      }));
       // When not filtered to a single project, keep only the active org's.
       if (!projectFilter) {
         const ids = orgProjectIds(projects);
@@ -156,7 +163,17 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
   fetchTransitions: async () => {
     if (get().transitions) return;
     const res = await api.get<APIResponse<TransitionsMap>>("/api/v1/reports/transitions", true);
-    if (res.success && res.data) set({ transitions: res.data });
+    if (!res.success || !res.data) return;
+    // Both the keys and the values need folding: the board looks up the allowed
+    // moves by the status it holds, so a map still keyed "pending" would answer
+    // "nothing is allowed" for every card and quietly disable drag-and-drop.
+    const folded = Object.fromEntries(
+      Object.entries(res.data).map(([from, to]) => [
+        normalizeStatus(from),
+        (to as string[]).map(normalizeStatus),
+      ]),
+    ) as TransitionsMap;
+    set({ transitions: folded });
   },
 
   setProjectFilter: (id) => {
@@ -195,7 +212,9 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     set({ selectedId: id, detail: null, detailLoading: true });
     try {
       const res = await api.get<APIResponse<ReportDetail>>(`/api/v1/reports/${id}`, true);
-      if (res.success && res.data) set({ detail: res.data });
+      if (res.success && res.data) {
+        set({ detail: { ...res.data, status: normalizeStatus(res.data.status) } });
+      }
     } finally {
       set({ detailLoading: false });
     }

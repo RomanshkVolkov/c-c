@@ -1,18 +1,38 @@
-export type ReportStatus = "pending" | "in_progress" | "resolved" | "closed";
+export type ReportStatus = "open" | "in_progress" | "done" | "closed";
 
 export const REPORT_STATUSES: ReportStatus[] = [
-  "pending",
+  "open",
   "in_progress",
-  "resolved",
+  "done",
   "closed",
 ];
 
 export const STATUS_LABELS: Record<ReportStatus, string> = {
-  pending: "Pending",
+  open: "Open",
   in_progress: "In Progress",
-  resolved: "Resolved",
+  done: "Done",
   closed: "Closed",
 };
+
+/**
+ * The names the server used before the vocabulary was unified with portento's.
+ *
+ * This build has to work against a server that hasn't been renamed yet — the
+ * two ship separately, and the console is installed rather than served, so
+ * there is no moment when both sides change at once. Anything arriving in the
+ * old spelling is folded here; the server accepts the new one on input
+ * already, so nothing has to be translated on the way out.
+ *
+ * Delete this once no deployment answers `pending`/`resolved` any more.
+ */
+const LEGACY_STATUS: Record<string, ReportStatus> = {
+  pending: "open",
+  resolved: "done",
+};
+
+export function normalizeStatus(s: string): ReportStatus {
+  return LEGACY_STATUS[s] ?? (s as ReportStatus);
+}
 
 export interface ReportProject {
   id: string;

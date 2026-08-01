@@ -25,17 +25,17 @@ import {
 } from "@/types/report";
 
 const STATUS_ACCENT: Record<ReportStatus, string> = {
-  pending: "border-t-warning",
+  open: "border-t-warning",
   in_progress: "border-t-info",
-  resolved: "border-t-success",
+  done: "border-t-success",
   closed: "border-t-muted-foreground/40",
 };
 
 // Column dot colours, from the theme tokens so both themes stay coherent.
 const STATUS_DOT: Record<ReportStatus, string> = {
-  pending: "var(--warning)",
+  open: "var(--warning)",
   in_progress: "var(--info)",
-  resolved: "var(--success)",
+  done: "var(--success)",
   closed: "var(--muted-foreground)",
 };
 
