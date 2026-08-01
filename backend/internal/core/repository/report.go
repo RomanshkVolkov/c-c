@@ -93,6 +93,39 @@ func (r *ReportRepository) PurgeExpiredTelemetry() (int64, error) {
 
 // OrgIDForReport resolves the owning org of a report through its project
 // (authorization lookups).
+// EventTargetForReport resolves, in one query, everything an emitted event
+// needs — the org for the live stream, and the project's webhook, if any.
+func (r *ReportRepository) EventTargetForReport(reportID string) (*domain.ReportEventTarget, error) {
+	var row struct {
+		OrgID         string
+		ProjectID     string
+		Slug          string
+		Seq           int
+		WebhookURL    string
+		WebhookSecret string
+	}
+	err := r.db.Raw(`
+		SELECT p.org_id, p.id AS project_id, p.slug, rp.seq,
+		       p.webhook_url, p.webhook_secret
+		FROM reports rp
+		JOIN report_projects p ON p.id = rp.project_id
+		WHERE rp.id = ? AND rp.deleted_at IS NULL
+	`, reportID).Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	if row.OrgID == "" {
+		return nil, ErrReportNotFound
+	}
+	return &domain.ReportEventTarget{
+		OrgID:         row.OrgID,
+		ProjectID:     row.ProjectID,
+		Folio:         fmt.Sprintf("%s-%d", row.Slug, row.Seq),
+		WebhookURL:    row.WebhookURL,
+		WebhookSecret: row.WebhookSecret,
+	}, nil
+}
+
 func (r *ReportRepository) OrgIDForReport(reportID string) (string, error) {
 	var orgID string
 	err := r.db.Raw(`

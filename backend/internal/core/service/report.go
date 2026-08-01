@@ -97,11 +97,12 @@ func NewReportService(
 // emit publishes a report event scoped to the report's org (best-effort; a
 // lookup failure just skips the notification).
 func (s *ReportService) emit(eventType, reportID string, data map[string]any) {
-	orgID, err := s.repo.OrgIDForReport(reportID)
+	target, err := s.repo.EventTargetForReport(reportID)
 	if err != nil {
 		return
 	}
-	s.hub.Publish(events.Event{Type: eventType, OrgID: orgID, Data: data})
+	s.hub.Publish(events.Event{Type: eventType, OrgID: target.OrgID, Data: data})
+	s.dispatchWebhook(target, eventType, reportID, data)
 }
 
 // ─── Ingest (public) ──────────────────────────────────────────────────────────
@@ -189,9 +190,12 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	}
 
 	folio := fmt.Sprintf("%s-%d", project.Slug, report.Seq)
-	s.hub.Publish(events.Event{Type: "report:new", OrgID: project.OrgID, Data: map[string]any{
+	// Routed through emit() like every other event. It used to publish straight
+	// to the hub, which meant anything added to emit() covered four of the five
+	// events and quietly skipped the one a subscriber cares about most.
+	s.emit("report:new", report.ID, map[string]any{
 		"reportId": report.ID, "projectId": project.ID, "folio": folio, "title": report.Title,
-	}})
+	})
 
 	return &domain.IngestReportResult{
 		ID:     report.ID,

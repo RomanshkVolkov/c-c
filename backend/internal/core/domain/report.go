@@ -189,6 +189,17 @@ type ReportTaxonomy struct {
 	Priorities []ReportPriority `json:"priorities"`
 }
 
+// ReportEventTarget is everything an emitted event needs, in one lookup: who
+// to scope the live stream to, what to name the report, and where (if
+// anywhere) to POST it.
+type ReportEventTarget struct {
+	OrgID         string
+	ProjectID     string
+	Folio         string
+	WebhookURL    string
+	WebhookSecret string
+}
+
 type ReportCommentKind string
 
 const (
@@ -216,6 +227,10 @@ type ReportProject struct {
 	// DefaultAssigneeUserID: new reports are born assigned to this agent
 	// (portento's DEFAULT_ASSIGNEE_ID behavior).
 	DefaultAssigneeUserID *string `gorm:"type:varchar(36)" json:"defaultAssigneeUserId,omitempty"`
+	// Outbound webhook, per project so each tenant only ever receives its own
+	// events. The secret signs the body; it is write-only, like the ingest key.
+	WebhookURL    string `gorm:"type:text"          json:"webhookUrl"`
+	WebhookSecret string `gorm:"type:varchar(120)"  json:"-"`
 }
 
 // Report is a single bug report. seq is a short per-project folio (PROJ-123).
@@ -279,6 +294,8 @@ type CreateReportProjectRequest struct {
 	AllowedOrigins        []string `json:"allowedOrigins"        validate:"omitempty,dive,url"`
 	RateLimitPerHour      int      `json:"rateLimitPerHour"      validate:"omitempty,min=1,max=10000"`
 	DefaultAssigneeUserID string   `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
+	WebhookURL            string   `json:"webhookUrl"            validate:"omitempty,url"`
+	WebhookSecret         string   `json:"webhookSecret"         validate:"omitempty,min=16,max=120"`
 }
 
 type UpdateReportProjectRequest struct {
@@ -288,19 +305,26 @@ type UpdateReportProjectRequest struct {
 	IsActive         *bool    `json:"isActive"`
 	// "" clears the default assignee; a uuid sets it.
 	DefaultAssigneeUserID string `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
+	// "" clears the webhook. The secret is only replaced when a new one is
+	// sent, so an ordinary edit doesn't silently wipe it.
+	WebhookURL    string `json:"webhookUrl"    validate:"omitempty,url"`
+	WebhookSecret string `json:"webhookSecret" validate:"omitempty,min=16,max=120"`
 }
 
 type ReportProjectResponse struct {
-	ID                    string    `json:"id"`
-	OrgID                 string    `json:"orgId"`
-	Name                  string    `json:"name"`
-	Slug                  string    `json:"slug"`
-	Platform              string    `json:"platform"`
-	AllowedOrigins        []string  `json:"allowedOrigins"`
-	RateLimitPerHour      int       `json:"rateLimitPerHour"`
-	IsActive              bool      `json:"isActive"`
-	DefaultAssigneeUserID *string   `json:"defaultAssigneeUserId,omitempty"`
-	CreatedAt             time.Time `json:"createdAt"`
+	ID                    string   `json:"id"`
+	OrgID                 string   `json:"orgId"`
+	Name                  string   `json:"name"`
+	Slug                  string   `json:"slug"`
+	Platform              string   `json:"platform"`
+	AllowedOrigins        []string `json:"allowedOrigins"`
+	RateLimitPerHour      int      `json:"rateLimitPerHour"`
+	IsActive              bool     `json:"isActive"`
+	DefaultAssigneeUserID *string  `json:"defaultAssigneeUserId,omitempty"`
+	WebhookURL            string   `json:"webhookUrl"`
+	// Whether a secret is set — never the value.
+	WebhookConfigured bool      `json:"webhookConfigured"`
+	CreatedAt         time.Time `json:"createdAt"`
 }
 
 // CreateReportProjectResult carries the plaintext ingest key returned exactly

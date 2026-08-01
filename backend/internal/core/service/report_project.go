@@ -68,6 +68,8 @@ func (s *ReportProjectService) Create(req domain.CreateReportProjectRequest) (*d
 		OrgID:            req.OrgID,
 		Name:             req.Name,
 		Slug:             slug,
+		WebhookURL:       req.WebhookURL,
+		WebhookSecret:    req.WebhookSecret,
 		Platform:         platform,
 		IngestKeyHash:    hash,
 		AllowedOrigins:   domain.StringList(origins),
@@ -119,6 +121,15 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 		return nil, err
 	}
 	p.Name = req.Name
+	p.WebhookURL = req.WebhookURL
+	// Only replaced when a new one is sent: an edit that leaves the field blank
+	// means "unchanged", not "wipe the secret and silently stop signing".
+	if req.WebhookSecret != "" {
+		p.WebhookSecret = req.WebhookSecret
+	}
+	if req.WebhookURL == "" {
+		p.WebhookSecret = "" // clearing the endpoint retires its secret too
+	}
 	p.AllowedOrigins = domain.StringList(req.AllowedOrigins)
 	p.RateLimitPerHour = defaultRateLimit(req.RateLimitPerHour)
 	if req.IsActive != nil {
@@ -172,6 +183,10 @@ func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectRespo
 		RateLimitPerHour:      p.RateLimitPerHour,
 		IsActive:              p.IsActive,
 		DefaultAssigneeUserID: p.DefaultAssigneeUserID,
-		CreatedAt:             p.CreatedAt,
+		WebhookURL:            p.WebhookURL,
+		// The secret is never returned — only whether one exists, which is all
+		// the console needs to show "signed" instead of "unsigned".
+		WebhookConfigured: p.WebhookSecret != "",
+		CreatedAt:         p.CreatedAt,
 	}
 }

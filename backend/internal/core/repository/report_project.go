@@ -63,12 +63,17 @@ func (r *ReportProjectRepository) ListAll() ([]domain.ReportProject, error) {
 func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 	return r.db.Model(&domain.ReportProject{}).
 		Where("id = ?", p.ID).
+		// An explicit column list, so a new field on the struct is NOT persisted
+		// until it's named here. Easy to forget — the service and the response
+		// both look right while the row never changes.
 		Updates(map[string]any{
 			"name":                     p.Name,
 			"allowed_origins":          p.AllowedOrigins,
 			"rate_limit_per_hour":      p.RateLimitPerHour,
 			"is_active":                p.IsActive,
 			"default_assignee_user_id": p.DefaultAssigneeUserID,
+			"webhook_url":              p.WebhookURL,
+			"webhook_secret":           p.WebhookSecret,
 		}).Error
 }
 
