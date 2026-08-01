@@ -61,6 +61,14 @@ export interface NoteSearchResult {
   excerpt: string;
 }
 
+/** One recoverable page. `subpages` come back with it, so the count is shown. */
+export interface NoteTrashItem {
+  id: string;
+  title: string;
+  deletedAt: string;
+  subpages: number;
+}
+
 /** One page's new placement, sent as a batch — see NoteTreeMove in the backend. */
 export interface NoteTreeMove {
   id: string;

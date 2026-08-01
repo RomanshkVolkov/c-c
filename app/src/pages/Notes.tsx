@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   Star,
   Trash2,
@@ -151,6 +152,117 @@ function EmptyState() {
   );
 }
 
+// ─── Trash ──────────────────────────────────────────────────────────────────
+
+/**
+ * Recover pages that were deleted, or remove them for good.
+ *
+ * Deleting from the navigator is soft, so this is the only place where
+ * anything actually becomes unrecoverable — and the two actions are kept
+ * visually apart for that reason.
+ */
+function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const confirm = useConfirm();
+  const items = useNotesStore((s) => s.trash);
+  const loading = useNotesStore((s) => s.loadingTrash);
+  const fetchTrash = useNotesStore((s) => s.fetchTrash);
+  const restoreNote = useNotesStore((s) => s.restoreNote);
+  const purgeNote = useNotesStore((s) => s.purgeNote);
+  const emptyTrash = useNotesStore((s) => s.emptyTrash);
+
+  useEffect(() => {
+    if (open) fetchTrash();
+  }, [open, fetchTrash]);
+
+  const purge = async (id: string, title: string, subpages: number) => {
+    const ok = await confirm({
+      title: `Permanently delete "${title || "Untitled"}"?`,
+      description:
+        subpages > 0
+          ? `This also deletes ${subpages} subpage${subpages > 1 ? "s" : ""}. This cannot be undone.`
+          : "This cannot be undone.",
+      confirmText: "Delete forever",
+      destructive: true,
+    });
+    if (!ok) return;
+    purgeNote(id).catch((e) => toast.error("Could not delete", { description: String(e) }));
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg gap-3">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <Trash2 className="size-4" /> Trash
+          </DialogTitle>
+        </DialogHeader>
+        <div className="max-h-80 space-y-0.5 overflow-auto">
+          {loading && items.length === 0 && (
+            <p className="px-1 py-2 text-xs text-muted-foreground">Loading…</p>
+          )}
+          {!loading && items.length === 0 && (
+            <p className="px-1 py-2 text-xs text-muted-foreground">
+              Nothing deleted. Pages you delete land here first.
+            </p>
+          )}
+          {items.map((it) => (
+            <div key={it.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/50">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm">{it.title || "Untitled"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(it.deletedAt).toLocaleString()}
+                  {it.subpages > 0 && ` · ${it.subpages} subpage${it.subpages > 1 ? "s" : ""}`}
+                </p>
+              </div>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  restoreNote(it.id)
+                    .then((n) => toast.success(`Restored ${n} page${n === 1 ? "" : "s"}`))
+                    .catch((e) => toast.error("Could not restore", { description: String(e) }))
+                }
+              >
+                <RotateCcw className="size-3" /> Restore
+              </Button>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                className="text-destructive/70 hover:text-destructive"
+                title="Delete forever"
+                onClick={() => purge(it.id, it.title, it.subpages)}
+              >
+                <Trash2 className="size-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        {items.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start text-destructive"
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Empty the trash?",
+                description: `This permanently deletes everything in it. This cannot be undone.`,
+                confirmText: "Empty trash",
+                destructive: true,
+              });
+              if (!ok) return;
+              emptyTrash()
+                .then((n) => toast.success(`Deleted ${n} page${n === 1 ? "" : "s"}`))
+                .catch((e) => toast.error("Could not empty the trash", { description: String(e) }));
+            }}
+          >
+            Empty trash
+          </Button>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Export ─────────────────────────────────────────────────────────────────
 
 interface ExportSummary {
@@ -222,6 +334,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
   const error = useNotesStore((s) => s.error);
   const createNote = useNotesStore((s) => s.createNote);
   const activeId = useNotesStore((s) => s.activeId);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const roots = useMemo(
     () => tree.filter((n) => !n.parentId).sort((a, b) => a.position - b.position),
@@ -248,11 +361,15 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
         <Button size="icon-xs" variant="ghost" className="ml-auto" title="Search (⌘P)" onClick={onSearch}>
           <Search className="size-3.5" />
         </Button>
+        <Button size="icon-xs" variant="ghost" title="Trash" onClick={() => setTrashOpen(true)}>
+          <Trash2 className="size-3.5" />
+        </Button>
         <ExportButton />
         <Button size="icon-xs" variant="ghost" title="New page" onClick={addRoot}>
           <Plus className="size-3.5" />
         </Button>
       </header>
+      <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} />
       <div className="flex-1 overflow-auto py-1">
         {error && (
           <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-destructive">
@@ -473,8 +590,8 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
                     title: `Delete "${note.title || "Untitled"}"?`,
                     description:
                       count > 0
-                        ? `This also deletes ${count} subpage${count > 1 ? "s" : ""}. This can't be undone.`
-                        : "This can't be undone.",
+                        ? `This also removes ${count} subpage${count > 1 ? "s" : ""}. You can restore them from the trash.`
+                        : "You can restore it from the trash.",
                     confirmText: "Delete",
                     destructive: true,
                   });

@@ -139,6 +139,71 @@ func (s *NoteService) Descendants(id, ownerID string) ([]string, error) {
 	return s.repo.Descendants(id, ownerID)
 }
 
+func (s *NoteService) Trash(ownerID string) ([]domain.NoteTrashItem, error) {
+	return s.repo.Trash(ownerID)
+}
+
+// Restore brings a page and its trashed subtree back.
+//
+// The subtlety is where the page lands. Its parent may itself still be in the
+// trash, or have been purged since — restoring under it would put the page
+// somewhere the navigator never renders, which to the user is identical to the
+// restore having silently failed. Anything in that position is re-parented to
+// the root instead: visible and moveable beats faithful-but-lost.
+func (s *NoteService) Restore(id, ownerID string) (int, error) {
+	root, err := s.repo.FindTrashed(id, ownerID)
+	if err != nil {
+		return 0, err
+	}
+	ids, err := s.repo.TrashedDescendants(id, ownerID)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, repository.ErrNoteNotFound
+	}
+
+	// Only the restored root can be orphaned: everything below it is coming
+	// back in the same call, so its parent will exist by the time this commits.
+	var orphans []string
+	if root.ParentID != nil {
+		if _, err := s.repo.Find(*root.ParentID, ownerID); err != nil {
+			orphans = append(orphans, root.ID)
+		}
+	}
+	if err := s.repo.Restore(ids, ownerID, orphans); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
+// PurgeOne permanently removes one trashed page and its trashed subtree.
+func (s *NoteService) PurgeOne(id, ownerID string) (int, error) {
+	if _, err := s.repo.FindTrashed(id, ownerID); err != nil {
+		return 0, err
+	}
+	ids, err := s.repo.TrashedDescendants(id, ownerID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.repo.Purge(ids, ownerID); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
+// EmptyTrash permanently removes everything in the trash.
+func (s *NoteService) EmptyTrash(ownerID string) (int, error) {
+	ids, err := s.repo.TrashedIDs(ownerID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.repo.Purge(ids, ownerID); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
 // MoveTree validates the whole batch before writing any of it: a client bug
 // that tried to drop a page inside its own descendant would otherwise corrupt
 // the tree one row at a time with no way to detect it after the fact.

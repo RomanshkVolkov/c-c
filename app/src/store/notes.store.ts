@@ -7,6 +7,7 @@ import type {
   NoteAttachment,
   NoteDetail,
   NoteSearchResult,
+  NoteTrashItem,
   NoteTreeItem,
   NoteTreeMove,
   UpdateNoteResult,
@@ -60,6 +61,14 @@ interface NotesState {
   drainPending: () => Promise<void>;
   dismissConflict: () => void;
   deleteNote: (id: string) => Promise<number>;
+
+  trash: NoteTrashItem[];
+  loadingTrash: boolean;
+  fetchTrash: () => Promise<void>;
+  restoreNote: (id: string) => Promise<number>;
+  /** Irreversible: removes one trashed page and its trashed subtree for good. */
+  purgeNote: (id: string) => Promise<number>;
+  emptyTrash: () => Promise<number>;
   /** Descendant ids, for the "this deletes N subpages" confirm — read-only. */
   descendantsOf: (id: string) => string[];
   moveTree: (moves: NoteTreeMove[]) => Promise<void>;
@@ -104,7 +113,11 @@ export const useNotesStore = create<NotesState>()(
         set({ loadingTree: true, error: null });
         try {
           const res = await api.get<APIResponse<NoteTreeItem[]>>("/api/v1/notes/");
-          if (res.success && res.data) set({ tree: res.data });
+          // `?? []`, not `if (res.data)`: the envelope's Data field is
+          // `omitempty`, so an empty tree arrives as `{"success":true}` with no
+          // `data` at all. Treating that as "nothing to update" would leave the
+          // last deleted page on screen until the next non-empty fetch.
+          if (res.success) set({ tree: res.data ?? [] });
         } catch (e) {
           // The tree above is what we already had — persisted from the last
           // successful fetch — so a failed refresh still leaves it readable.
@@ -244,6 +257,45 @@ export const useNotesStore = create<NotesState>()(
           set({ activeId: null, detail: null });
         }
         await get().fetchTree();
+        return res.success && res.data ? res.data.deleted : 0;
+      },
+
+      trash: [],
+      loadingTrash: false,
+
+      fetchTrash: async () => {
+        set({ loadingTrash: true });
+        try {
+          const res = await api.get<APIResponse<NoteTrashItem[]>>("/api/v1/notes/trash");
+          // Same `omitempty` trap as fetchTree: an emptied trash comes back
+          // with no `data`, and must clear the list rather than keep it.
+          if (res.success) set({ trash: res.data ?? [] });
+        } catch (e) {
+          set({ error: msg(e) });
+        } finally {
+          set({ loadingTrash: false });
+        }
+      },
+
+      restoreNote: async (id) => {
+        const res = await api.post<APIResponse<{ restored: number }>>(
+          `/api/v1/notes/trash/${id}/restore`,
+          {},
+          true,
+        );
+        await Promise.all([get().fetchTree(), get().fetchTrash()]);
+        return res.success && res.data ? res.data.restored : 0;
+      },
+
+      purgeNote: async (id) => {
+        const res = await api.delete<APIResponse<{ deleted: number }>>(`/api/v1/notes/trash/${id}`);
+        await get().fetchTrash();
+        return res.success && res.data ? res.data.deleted : 0;
+      },
+
+      emptyTrash: async () => {
+        const res = await api.delete<APIResponse<{ deleted: number }>>("/api/v1/notes/trash");
+        await get().fetchTrash();
         return res.success && res.data ? res.data.deleted : 0;
       },
 

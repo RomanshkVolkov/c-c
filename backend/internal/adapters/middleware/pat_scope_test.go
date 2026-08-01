@@ -59,6 +59,10 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodDelete, "/api/v1/notes/abc"),
 		req(http.MethodPut, "/api/v1/notes/tree"),
 		req(http.MethodPost, "/api/v1/notes/abc/attachments"),
+		// Emptying the trash and purging are irreversible; no scope reaches them.
+		req(http.MethodDelete, "/api/v1/notes/trash"),
+		req(http.MethodDelete, "/api/v1/notes/trash/abc"),
+		req(http.MethodPost, "/api/v1/notes/trash/abc/restore"),
 	}
 	for _, r := range unreachable {
 		if _, ok := patScopeFor(r); ok {

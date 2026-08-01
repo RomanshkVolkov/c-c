@@ -26,6 +26,10 @@ type NoteHandler interface {
 	MoveTree(w http.ResponseWriter, r *http.Request)
 	Search(w http.ResponseWriter, r *http.Request)
 	Export(w http.ResponseWriter, r *http.Request)
+	Trash(w http.ResponseWriter, r *http.Request)
+	Restore(w http.ResponseWriter, r *http.Request)
+	Purge(w http.ResponseWriter, r *http.Request)
+	EmptyTrash(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
 	RawAttachment(w http.ResponseWriter, r *http.Request)
@@ -221,6 +225,70 @@ func (h *noteHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.NoteSearchResult]{Success: true, Data: results})
+}
+
+func (h *noteHandler) Trash(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	items, err := h.svc.Trash(user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load the trash", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.NoteTrashItem]{Success: true, Data: items})
+}
+
+func (h *noteHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	n, err := h.svc.Restore(chi.URLParam(r, "id"), user.UserID)
+	if err != nil {
+		if mapNoteError(w, err) {
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to restore the page", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[map[string]int]{Success: true, Data: map[string]int{"restored": n}})
+}
+
+// Purge is the irreversible one: it removes a trashed page for good. Separate
+// from DELETE /{id}, which only moves a live page into the trash.
+func (h *noteHandler) Purge(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	n, err := h.svc.PurgeOne(chi.URLParam(r, "id"), user.UserID)
+	if err != nil {
+		if mapNoteError(w, err) {
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to delete the page", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[map[string]int]{Success: true, Data: map[string]int{"deleted": n}})
+}
+
+func (h *noteHandler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	n, err := h.svc.EmptyTrash(user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to empty the trash", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[map[string]int]{Success: true, Data: map[string]int{"deleted": n}})
 }
 
 // Export returns every page and attachment reference the caller owns, so the

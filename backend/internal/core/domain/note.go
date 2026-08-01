@@ -1,5 +1,7 @@
 package domain
 
+import "gorm.io/gorm"
+
 // Note is a personal, privately-owned page in a nested tree — the "prescindir
 // de Notion" module. Deliberately its own module rather than an extension of
 // Doc (the tasks module's Overview): Doc.OrgID is NOT NULL and every check in
@@ -31,6 +33,11 @@ type Note struct {
 	// another device saved first, which is what makes conflict detection
 	// possible without a merge engine.
 	BodyHash string `gorm:"type:varchar(64)" json:"bodyHash,omitempty"`
+	// Soft delete. gorm.DeletedAt makes every ordinary query skip trashed rows
+	// automatically, which is the point: deleting a page of study notes by
+	// mis-clicking a menu item shouldn't be final. Raw SQL doesn't get that for
+	// free — the recursive CTEs below filter on it by hand.
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"deletedAt,omitempty"`
 }
 
 // NoteRevision is a snapshot of a note's body taken right before it's
@@ -136,4 +143,15 @@ type NoteSearchResult struct {
 type NoteExport struct {
 	Notes       []Note           `json:"notes"`
 	Attachments []NoteAttachment `json:"attachments"`
+}
+
+// NoteTrashItem is one page in the trash. Flat, not a tree: what matters here
+// is what you deleted and when, and rebuilding the old hierarchy for pages
+// that are on their way out would be more structure than the question needs.
+type NoteTrashItem struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	DeletedAt string `json:"deletedAt"`
+	// How many pages come back with this one — its still-trashed subtree.
+	Subpages int `json:"subpages"`
 }

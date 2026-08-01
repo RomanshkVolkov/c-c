@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -71,15 +72,150 @@ func (r *NoteRepository) Update(id, ownerID string, fields map[string]any) error
 // gets to warn "this deletes N subpages" before confirming.
 func (r *NoteRepository) Descendants(id, ownerID string) ([]string, error) {
 	var ids []string
+	// Raw SQL doesn't get GORM's soft-delete filter, so deleted_at is checked
+	// by hand here — without it, deleting a page would re-delete pages already
+	// sitting in the trash and reset how long they've been there.
 	err := r.db.Raw(`
 		WITH RECURSIVE sub AS (
-			SELECT id FROM notes WHERE id = ? AND owner_id = ?
+			SELECT id FROM notes WHERE id = ? AND owner_id = ? AND deleted_at IS NULL
 			UNION ALL
 			SELECT n.id FROM notes n JOIN sub ON n.parent_id = sub.id
+			WHERE n.deleted_at IS NULL
 		)
 		SELECT id FROM sub
 	`, id, ownerID).Scan(&ids).Error
 	return ids, err
+}
+
+// TrashedDescendants is Descendants over the trash: the page and everything
+// below it that is *also* trashed. Restoring uses it so a page comes back with
+// the subpages that went down with it, rather than alone and childless.
+func (r *NoteRepository) TrashedDescendants(id, ownerID string) ([]string, error) {
+	var ids []string
+	err := r.db.Raw(`
+		WITH RECURSIVE sub AS (
+			SELECT id FROM notes WHERE id = ? AND owner_id = ? AND deleted_at IS NOT NULL
+			UNION ALL
+			SELECT n.id FROM notes n JOIN sub ON n.parent_id = sub.id
+			WHERE n.deleted_at IS NOT NULL
+		)
+		SELECT id FROM sub
+	`, id, ownerID).Scan(&ids).Error
+	return ids, err
+}
+
+// Trash lists what's recoverable. Only the top of each deleted subtree is
+// returned — deleting a page with ten subpages is one thing the user did, and
+// showing it as eleven rows to restore individually would misrepresent it.
+func (r *NoteRepository) Trash(ownerID string) ([]domain.NoteTrashItem, error) {
+	var rows []domain.Note
+	err := r.db.Unscoped().
+		Where("owner_id = ? AND deleted_at IS NOT NULL", ownerID).
+		Order("deleted_at DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	trashed := make(map[string]bool, len(rows))
+	for _, n := range rows {
+		trashed[n.ID] = true
+	}
+	kids := make(map[string]int, len(rows))
+	for _, n := range rows {
+		if n.ParentID != nil && trashed[*n.ParentID] {
+			kids[*n.ParentID]++
+		}
+	}
+
+	out := []domain.NoteTrashItem{}
+	for _, n := range rows {
+		// A page whose parent is also in the trash went down with it; it comes
+		// back with it too, so it isn't a separate entry.
+		if n.ParentID != nil && trashed[*n.ParentID] {
+			continue
+		}
+		count, err := r.TrashedDescendants(n.ID, ownerID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.NoteTrashItem{
+			ID:        n.ID,
+			Title:     n.Title,
+			DeletedAt: n.DeletedAt.Time.Format(time.RFC3339),
+			Subpages:  len(count) - 1, // the CTE counts the page itself
+		})
+	}
+	return out, nil
+}
+
+// Restore un-deletes the given ids. `orphans` are those whose parent is gone or
+// still trashed; they're sent back to the root so a restored page can never
+// land somewhere invisible.
+func (r *NoteRepository) Restore(ids []string, ownerID string, orphans []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Model(&domain.Note{}).
+			Where("id IN ? AND owner_id = ?", ids, ownerID).
+			Update("deleted_at", nil).Error; err != nil {
+			return err
+		}
+		if len(orphans) == 0 {
+			return nil
+		}
+		return tx.Model(&domain.Note{}).
+			Where("id IN ? AND owner_id = ?", orphans, ownerID).
+			Update("parent_id", nil).Error
+	})
+}
+
+// Purge deletes for real. Attachments go with it — their rows would otherwise
+// point at a page that no longer exists.
+func (r *NoteRepository) Purge(ids []string, ownerID string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("note_id IN ?", ids).
+			Delete(&domain.NoteAttachment{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("note_id IN ?", ids).
+			Delete(&domain.NoteRevision{}).Error; err != nil {
+			return err
+		}
+		return tx.Unscoped().
+			Where("id IN ? AND owner_id = ?", ids, ownerID).
+			Delete(&domain.Note{}).Error
+	})
+}
+
+// TrashedIDs is every trashed page the user owns — what "empty the trash" acts
+// on, and what tells Restore whether a parent is still in there.
+func (r *NoteRepository) TrashedIDs(ownerID string) ([]string, error) {
+	var ids []string
+	err := r.db.Unscoped().Model(&domain.Note{}).
+		Where("owner_id = ? AND deleted_at IS NOT NULL", ownerID).
+		Pluck("id", &ids).Error
+	return ids, err
+}
+
+// FindTrashed reads a page that is in the trash — the ordinary Find can't, by
+// design, since every normal query pretends deleted pages don't exist.
+func (r *NoteRepository) FindTrashed(id, ownerID string) (*domain.Note, error) {
+	var n domain.Note
+	err := r.db.Unscoped().
+		Where("id = ? AND owner_id = ? AND deleted_at IS NOT NULL", id, ownerID).
+		First(&n).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNoteNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
 }
 
 func (r *NoteRepository) DeleteMany(ids []string, ownerID string) error {

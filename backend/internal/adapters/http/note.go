@@ -24,6 +24,12 @@ func InitNoteRoutes(db *gorm.DB, r *chi.Mux, images *imageservice.Client, store 
 		r.Get("/search", h.Search)
 		r.Get("/export", h.Export)
 		r.Put("/tree", h.MoveTree)
+		// Trash. DELETE /{id} only moves a page here; purging is a separate,
+		// explicitly-named route so nothing destroys a page by accident.
+		r.Get("/trash", h.Trash)
+		r.Delete("/trash", h.EmptyTrash)
+		r.Post("/trash/{id}/restore", h.Restore)
+		r.Delete("/trash/{id}", h.Purge)
 		r.Get("/{id}", h.Get)
 		r.Patch("/{id}", h.Update)
 		r.Delete("/{id}", h.Delete)
