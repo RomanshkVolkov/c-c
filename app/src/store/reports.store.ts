@@ -7,6 +7,9 @@ import type {
   ReportListResult,
   ReportDetail,
   ReportStatus,
+  ReportCategory,
+  ReportPriority,
+  ReportTaxonomy,
   TransitionsMap,
   CreateReportProjectResult,
 } from "@/types/report";
@@ -22,6 +25,10 @@ interface ReportsState {
   error: string | null;
   projectFilter: string; // "" = all projects in current org
   statusFilter: ReportStatus | "";
+  categoryFilter: ReportCategory | "";
+  priorityFilter: ReportPriority | "";
+  /** Valid values, fetched once — the server owns the sets, not the client. */
+  taxonomy: ReportTaxonomy | null;
 
   fetchProjects: () => Promise<void>;
   createProject: (payload: {
@@ -40,6 +47,9 @@ interface ReportsState {
   fetchTransitions: () => Promise<void>;
   setProjectFilter: (id: string) => void;
   setStatusFilter: (s: ReportStatus | "") => void;
+  setCategoryFilter: (c: ReportCategory | "") => void;
+  setPriorityFilter: (p: ReportPriority | "") => void;
+  fetchTaxonomy: () => Promise<void>;
   updateStatus: (id: string, status: ReportStatus) => Promise<void>;
   /** merge a single report (from SSE / after mutation) into the list */
   upsertReportFromServer: (id: string) => Promise<void>;
@@ -52,6 +62,13 @@ interface ReportsState {
   closeReport: () => void;
   refreshDetail: () => Promise<void>;
   changeDetailStatus: (status: ReportStatus) => Promise<void>;
+  /** Triage labels. Unlike status they have no state machine, so one setter
+   *  covers all three and any value in the set is reachable. */
+  changeDetailTaxonomy: (patch: {
+    category?: ReportCategory;
+    priority?: ReportPriority;
+    area?: string;
+  }) => Promise<void>;
   addComment: (body: string, files: File[]) => Promise<void>;
 }
 
@@ -69,6 +86,9 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
   error: null,
   projectFilter: "",
   statusFilter: "",
+  categoryFilter: "",
+  priorityFilter: "",
+  taxonomy: null,
 
   fetchProjects: async () => {
     try {
@@ -130,10 +150,12 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
   fetchReports: async () => {
     set({ loading: true });
     try {
-      const { projectFilter, statusFilter, projects } = get();
+      const { projectFilter, statusFilter, categoryFilter, priorityFilter, projects } = get();
       const qs = new URLSearchParams({ limit: "200" });
       if (projectFilter) qs.set("projectId", projectFilter);
       if (statusFilter) qs.set("status", statusFilter);
+      if (categoryFilter) qs.set("category", categoryFilter);
+      if (priorityFilter) qs.set("priority", priorityFilter);
       const res = await api.get<APIResponse<ReportListResult>>(
         `/api/v1/reports/?${qs.toString()}`,
         true
@@ -174,6 +196,22 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
       ]),
     ) as TransitionsMap;
     set({ transitions: folded });
+  },
+
+  setCategoryFilter: (c) => {
+    set({ categoryFilter: c });
+    get().fetchReports();
+  },
+
+  setPriorityFilter: (p) => {
+    set({ priorityFilter: p });
+    get().fetchReports();
+  },
+
+  fetchTaxonomy: async () => {
+    if (get().taxonomy) return;
+    const res = await api.get<APIResponse<ReportTaxonomy>>("/api/v1/reports/taxonomy", true);
+    if (res.success && res.data) set({ taxonomy: res.data });
   },
 
   setProjectFilter: (id) => {
@@ -236,6 +274,16 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
       true
     );
     if (res.success && res.data) set({ detail: res.data });
+    await get().fetchReports();
+  },
+
+  changeDetailTaxonomy: async (patch) => {
+    const id = get().selectedId;
+    if (!id) return;
+    const res = await api.patch<APIResponse<ReportDetail>>(`/api/v1/reports/${id}`, patch, true);
+    if (res.success && res.data) {
+      set({ detail: { ...res.data, status: normalizeStatus(res.data.status) } });
+    }
     await get().fetchReports();
   },
 

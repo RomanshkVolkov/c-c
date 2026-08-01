@@ -34,6 +34,35 @@ export function normalizeStatus(s: string): ReportStatus {
   return LEGACY_STATUS[s] ?? (s as ReportStatus);
 }
 
+/**
+ * Taxonomy beyond the status. The *sets* come from the server
+ * (GET /reports/taxonomy) so they can't drift; only the wording lives here,
+ * because a label is a UI concern and the server has no business holding it.
+ */
+export type ReportCategory = "bug" | "ui" | "performance" | "data" | "other";
+export type ReportPriority = "low" | "medium" | "high" | "urgent";
+
+export const CATEGORY_LABELS: Record<ReportCategory, string> = {
+  bug: "Error",
+  ui: "Interface",
+  performance: "Performance",
+  data: "Data",
+  other: "Other",
+};
+
+export const PRIORITY_LABELS: Record<ReportPriority, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
+};
+
+/** What GET /api/v1/reports/taxonomy answers. */
+export interface ReportTaxonomy {
+  categories: ReportCategory[];
+  priorities: ReportPriority[];
+}
+
 export interface ReportProject {
   id: string;
   orgId: string;
@@ -60,6 +89,9 @@ export interface ReportListItem {
   folio: string;
   title: string;
   status: ReportStatus;
+  category: ReportCategory;
+  priority: ReportPriority;
+  area: string;
   origin: string;
   reporterName: string;
   reporterEmail: string;
@@ -108,6 +140,9 @@ export interface ReportDetail {
   title: string;
   description: string;
   status: ReportStatus;
+  category: ReportCategory;
+  priority: ReportPriority;
+  area: string;
   origin: string;
   url: string;
   userAgent: string;

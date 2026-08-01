@@ -20,8 +20,47 @@ import {
 import { apiUrl } from "@/lib/api";
 import Markdown from "@/components/markdown/Markdown";
 import { useReportsStore } from "@/store/reports.store";
-import { STATUS_LABELS, type ReportStatus } from "@/types/report";
+import { Input } from "@/components/ui/input";
+import {
+  CATEGORY_LABELS,
+  PRIORITY_LABELS,
+  STATUS_LABELS,
+  type ReportStatus,
+} from "@/types/report";
 import TelemetryTimeline from "@/components/TelemetryTimeline";
+
+/** A compact dropdown over one of the server-published sets. */
+function TaxonomySelect<T extends string>({
+  value,
+  options,
+  labels,
+  onChange,
+}: {
+  value: T;
+  options: T[];
+  labels: Record<T, string>;
+  onChange: (v: T) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <Select
+      items={labels}
+      value={value}
+      onValueChange={(v) => v && v !== value && onChange(v as T)}
+    >
+      <SelectTrigger size="sm" className="h-7 min-w-28 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o} value={o}>
+            {labels[o]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 export default function ReportDetailDrawer() {
   const selectedId = useReportsStore((s) => s.selectedId);
@@ -30,6 +69,8 @@ export default function ReportDetailDrawer() {
   const transitions = useReportsStore((s) => s.transitions);
   const closeReport = useReportsStore((s) => s.closeReport);
   const changeDetailStatus = useReportsStore((s) => s.changeDetailStatus);
+  const changeDetailTaxonomy = useReportsStore((s) => s.changeDetailTaxonomy);
+  const taxonomy = useReportsStore((s) => s.taxonomy);
   const addComment = useReportsStore((s) => s.addComment);
   const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
 
@@ -93,6 +134,34 @@ export default function ReportDetailDrawer() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Triage labels. Editable inline: they carry no state machine, so
+                  there is nothing to confirm and no illegal move to guard against. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <TaxonomySelect
+                  value={detail.category}
+                  options={taxonomy?.categories ?? []}
+                  labels={CATEGORY_LABELS}
+                  onChange={(category) => changeDetailTaxonomy({ category })}
+                />
+                <TaxonomySelect
+                  value={detail.priority}
+                  options={taxonomy?.priorities ?? []}
+                  labels={PRIORITY_LABELS}
+                  onChange={(priority) => changeDetailTaxonomy({ priority })}
+                />
+                <Input
+                  defaultValue={detail.area}
+                  placeholder="Area"
+                  className="h-7 w-40 text-xs"
+                  // Committed on blur, not per keystroke: this is free text and
+                  // every character would otherwise be a PATCH.
+                  onBlur={(e) => {
+                    const next = e.target.value.trim();
+                    if (next !== detail.area) changeDetailTaxonomy({ area: next });
+                  }}
+                />
               </div>
 
               {detail.description && (

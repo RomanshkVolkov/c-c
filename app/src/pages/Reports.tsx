@@ -18,6 +18,8 @@ import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ReportProjectsDialog from "@/components/ReportProjectsDialog";
 import ReportsCalendar from "@/components/ReportsCalendar";
 import {
+  CATEGORY_LABELS,
+  PRIORITY_LABELS,
   REPORT_STATUSES,
   STATUS_LABELS,
   type ReportListItem,
@@ -49,6 +51,12 @@ export default function Reports() {
   const fetchProjects = useReportsStore((s) => s.fetchProjects);
   const fetchReports = useReportsStore((s) => s.fetchReports);
   const setProjectFilter = useReportsStore((s) => s.setProjectFilter);
+  const categoryFilter = useReportsStore((s) => s.categoryFilter);
+  const priorityFilter = useReportsStore((s) => s.priorityFilter);
+  const setCategoryFilter = useReportsStore((s) => s.setCategoryFilter);
+  const setPriorityFilter = useReportsStore((s) => s.setPriorityFilter);
+  const taxonomy = useReportsStore((s) => s.taxonomy);
+  const fetchTaxonomy = useReportsStore((s) => s.fetchTaxonomy);
   const openReport = useReportsStore((s) => s.openReport);
   const transitions = useReportsStore((s) => s.transitions);
   const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
@@ -60,7 +68,8 @@ export default function Reports() {
     // .catch: an unhandled rejection here used to leave the page silently blank.
     fetchProjects().then(fetchReports).catch(() => {});
     fetchTransitions();
-  }, [currentOrgId, fetchProjects, fetchReports, fetchTransitions]);
+    fetchTaxonomy();
+  }, [currentOrgId, fetchProjects, fetchReports, fetchTransitions, fetchTaxonomy]);
 
   // Reports are governed by a server-side state machine, so a drop is a
   // *transition request*: reject the ones the machine disallows instead of
@@ -131,6 +140,20 @@ export default function Reports() {
               ))}
             </SelectContent>
           </Select>
+          <TaxonomyFilter
+            label="All categories"
+            value={categoryFilter}
+            options={taxonomy?.categories ?? []}
+            labels={CATEGORY_LABELS}
+            onChange={setCategoryFilter}
+          />
+          <TaxonomyFilter
+            label="All priorities"
+            value={priorityFilter}
+            options={taxonomy?.priorities ?? []}
+            labels={PRIORITY_LABELS}
+            onChange={setPriorityFilter}
+          />
           <Button
             size="sm"
             variant="outline"
@@ -201,6 +224,51 @@ export default function Reports() {
   );
 }
 
+// Priority is the one label with an inherent order, so it gets colour; category
+// and area are nominal and stay neutral.
+const PRIORITY_CHIP: Record<string, string> = {
+  low: "bg-muted text-muted-foreground",
+  medium: "bg-muted text-muted-foreground",
+  high: "bg-warning/15 text-warning border-warning/30",
+  urgent: "bg-destructive/15 text-destructive border-destructive/30",
+};
+
+/** One "all X" dropdown, driven by whatever set the server published. */
+function TaxonomyFilter<T extends string>({
+  label,
+  value,
+  options,
+  labels,
+  onChange,
+}: {
+  label: string;
+  value: T | "";
+  options: T[];
+  labels: Record<T, string>;
+  onChange: (v: T | "") => void;
+}) {
+  if (options.length === 0) return null; // taxonomy not loaded yet
+  return (
+    <Select
+      items={{ all: label, ...Object.fromEntries(options.map((o) => [o, labels[o]])) }}
+      value={value || "all"}
+      onValueChange={(v) => v && onChange(v === "all" ? "" : (v as T))}
+    >
+      <SelectTrigger size="sm" className="min-w-32">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{label}</SelectItem>
+        {options.map((o) => (
+          <SelectItem key={o} value={o}>
+            {labels[o]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function ReportCard({
   report,
   accent,
@@ -222,6 +290,23 @@ function ReportCard({
         )}
       </div>
       <p className="text-sm font-medium leading-snug line-clamp-3">{report.title}</p>
+      <div className="flex flex-wrap items-center gap-1">
+        <Badge variant="outline" className="text-[10px] py-0">
+          {CATEGORY_LABELS[report.category] ?? report.category}
+        </Badge>
+        {/* Medium is the default every report is born with, so showing it
+            everywhere would be noise — only a deliberate priority is worth a chip. */}
+        {report.priority && report.priority !== "medium" && (
+          <Badge className={`text-[10px] py-0 ${PRIORITY_CHIP[report.priority] ?? ""}`}>
+            {PRIORITY_LABELS[report.priority] ?? report.priority}
+          </Badge>
+        )}
+        {report.area && (
+          <Badge variant="secondary" className="text-[10px] py-0 max-w-[10rem] truncate">
+            {report.area}
+          </Badge>
+        )}
+      </div>
       {(report.reporterName || report.reporterEmail || report.reporterId) && (
         <p className="text-xs text-muted-foreground truncate">
           by {report.reporterName || report.reporterEmail || report.reporterId}
