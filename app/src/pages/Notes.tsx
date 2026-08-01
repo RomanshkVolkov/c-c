@@ -19,6 +19,18 @@ import {
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,7 +49,7 @@ import {
 import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown/MarkdownEditor";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
-import { useNotesStore } from "@/store/notes.store";
+import { useNotesStore, type DropWhere } from "@/store/notes.store";
 import type { NoteTreeItem } from "@/types/note";
 import { cn } from "@/lib/utils";
 
@@ -244,10 +256,64 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
             No pages yet. Create one to start writing.
           </p>
         ) : (
-          roots.map((n) => <NoteRow key={n.id} note={n} depth={0} />)
+          <TreeDnd>
+            {roots.map((n) => (
+              <NoteRow key={n.id} note={n} depth={0} />
+            ))}
+          </TreeDnd>
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * Drag-and-drop for the page tree.
+ *
+ * A tree needs three drop intents per row, not one: reorder above, reorder
+ * below, or nest inside. Rather than deriving that from pointer maths, each
+ * row registers three droppables (see NoteRow) and `pointerWithin` picks
+ * whichever the cursor is actually over — the zones are laid out to tile the
+ * row, so the intent is whatever the user is visibly pointing at.
+ */
+function TreeDnd({ children }: { children: React.ReactNode }) {
+  const tree = useNotesStore((s) => s.tree);
+  const dropNote = useNotesStore((s) => s.dropNote);
+  const [dragging, setDragging] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    // Same threshold as the kanban board: below it a pointer-down is a click
+    // that opens the page, not the start of a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const draggedTitle = tree.find((n) => n.id === dragging)?.title;
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragStart={(e) => setDragging(String(e.active.id))}
+      onDragCancel={() => setDragging(null)}
+      onDragEnd={(e) => {
+        setDragging(null);
+        if (!e.over) return;
+        const [where, targetId] = String(e.over.id).split(":");
+        dropNote(String(e.active.id), targetId, where as DropWhere).catch((err) =>
+          toast.error("Could not move the page", { description: String(err) }),
+        );
+      }}
+    >
+      {children}
+      <DragOverlay dropAnimation={null}>
+        {dragging ? (
+          <div className="rounded bg-background/95 px-2 py-1 text-sm shadow ring-1 ring-border">
+            {draggedTitle || "Untitled"}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -263,6 +329,12 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
   const descendantsOf = useNotesStore((s) => s.descendantsOf);
   const moveTree = useNotesStore((s) => s.moveTree);
   const [open, setOpen] = useState(true);
+  const {
+    setNodeRef: setDragRef,
+    listeners,
+    attributes,
+    isDragging,
+  } = useDraggable({ id: note.id });
 
   const children = useMemo(
     () =>
@@ -295,9 +367,21 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
   return (
     <div>
       <div
-        className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50"
-        style={{ paddingLeft: 8 + depth * 14 }}
+        ref={setDragRef}
+        {...listeners}
+        {...attributes}
+        className={cn("relative", isDragging && "opacity-40")}
       >
+        {/* The three drop zones. They only ever need their geometry — dnd-kit
+            resolves collisions from rects, not pointer events — so they stay
+            click-through and never steal a click meant for the row. */}
+        <DropZone id={`before:${note.id}`} className="top-0 h-1/4" line="top" />
+        <DropZone id={`inside:${note.id}`} className="inset-y-1/4" nest />
+        <DropZone id={`after:${note.id}`} className="bottom-0 h-1/4" line="bottom" />
+        <div
+          className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50"
+          style={{ paddingLeft: 8 + depth * 14 }}
+        >
         <button
           onClick={() => setOpen((v) => !v)}
           className={cn("text-muted-foreground", children.length === 0 && "invisible")}
@@ -372,8 +456,40 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
       {open && children.map((c) => <NoteRow key={c.id} note={c} depth={depth + 1} />)}
+    </div>
+  );
+}
+
+/**
+ * One drop target overlaying part of a row. `line` draws an insertion bar for
+ * a reorder; `nest` tints the row to say "this becomes a subpage".
+ */
+function DropZone({
+  id,
+  className,
+  line,
+  nest,
+}: {
+  id: string;
+  className?: string;
+  line?: "top" | "bottom";
+  nest?: boolean;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={cn("pointer-events-none absolute inset-x-0 z-10", className)}>
+      {isOver && line && (
+        <div
+          className={cn(
+            "absolute inset-x-1 h-0.5 rounded bg-primary",
+            line === "top" ? "top-0" : "bottom-0",
+          )}
+        />
+      )}
+      {isOver && nest && <div className="absolute inset-0 rounded bg-primary/15 ring-1 ring-primary/40" />}
     </div>
   );
 }

@@ -14,6 +14,9 @@ import type {
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** Where a dragged page lands relative to the row it was dropped on. */
+export type DropWhere = "before" | "after" | "inside";
+
 interface NotesState {
   tree: NoteTreeItem[];
   loadingTree: boolean;
@@ -59,6 +62,12 @@ interface NotesState {
   /** Descendant ids, for the "this deletes N subpages" confirm — read-only. */
   descendantsOf: (id: string) => string[];
   moveTree: (moves: NoteTreeMove[]) => Promise<void>;
+  /**
+   * Drag-and-drop in the navigator: put `draggedId` before/after `targetId`, or
+   * inside it as its last child. Works out the resulting sibling order and
+   * hands it to `moveTree`, which is the only thing that talks to the server.
+   */
+  dropNote: (draggedId: string, targetId: string, where: DropWhere) => Promise<void>;
   search: (query: string) => Promise<void>;
   clearSearch: () => void;
   /**
@@ -251,6 +260,39 @@ export const useNotesStore = create<NotesState>()(
         } catch (e) {
           set({ tree: prev, error: msg(e) });
         }
+      },
+
+      dropNote: async (draggedId, targetId, where) => {
+        const tree = get().tree;
+        const dragged = tree.find((n) => n.id === draggedId);
+        const target = tree.find((n) => n.id === targetId);
+        if (!dragged || !target) return;
+        // descendantsOf includes the node itself, so this rejects both "onto
+        // itself" and "into its own subtree" — the server refuses the second
+        // one too, but a drop that silently bounces back is a worse way to
+        // find out than one the UI never accepts.
+        if (get().descendantsOf(draggedId).includes(targetId)) return;
+
+        const newParentId = where === "inside" ? targetId : target.parentId ?? null;
+        const siblings = tree
+          .filter((n) => (n.parentId ?? null) === newParentId && n.id !== draggedId)
+          .sort((a, b) => a.position - b.position);
+
+        let index = siblings.length; // "inside" appends as the last child
+        if (where !== "inside") {
+          const at = siblings.findIndex((n) => n.id === targetId);
+          if (at < 0) return;
+          index = where === "before" ? at : at + 1;
+        }
+        const ordered = [...siblings];
+        ordered.splice(index, 0, dragged);
+
+        // Only the destination's siblings are renumbered. The old parent keeps
+        // a gap where this page was, which sorts identically — see the comment
+        // on NoteTreeMove in the backend for why gaps are fine.
+        await get().moveTree(
+          ordered.map((n, i) => ({ id: n.id, parentId: newParentId, position: i })),
+        );
       },
 
       search: async (query) => {
