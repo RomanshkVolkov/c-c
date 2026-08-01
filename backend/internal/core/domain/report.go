@@ -57,15 +57,39 @@ var reportTransitions = map[ReportStatus][]ReportStatus{
 	ReportClosed:     {},
 }
 
+// The report vocabulary is being unified with portento's
+// (open / in_progress / done / closed). The rename can't land in one step: the
+// console is an installed desktop binary whose users update by hand, so a
+// server that suddenly answered "open" would leave every older build with
+// reports that match no kanban column — they'd silently vanish from the board.
+//
+// So the two names are accepted on input *before* the rename, and the old ones
+// stay accepted *after* it. Only this map flips direction when the rename
+// lands; every call site below keeps working untouched.
+var statusAliases = map[ReportStatus]ReportStatus{
+	"open": ReportPending,
+	"done": ReportResolved,
+}
+
+// Canonical folds an accepted alias onto the stored vocabulary. An unknown
+// value is returned unchanged so IsValid still rejects it.
+func (s ReportStatus) Canonical() ReportStatus {
+	if c, ok := statusAliases[s]; ok {
+		return c
+	}
+	return s
+}
+
 func (s ReportStatus) IsValid() bool {
-	_, ok := reportTransitions[s]
+	_, ok := reportTransitions[s.Canonical()]
 	return ok
 }
 
-// CanTransitionTo reports whether s → to is a legal transition.
+// CanTransitionTo reports whether s → to is a legal transition. Both sides are
+// folded first, so a client on either vocabulary gets the same answer.
 func (s ReportStatus) CanTransitionTo(to ReportStatus) bool {
-	for _, allowed := range reportTransitions[s] {
-		if allowed == to {
+	for _, allowed := range reportTransitions[s.Canonical()] {
+		if allowed == to.Canonical() {
 			return true
 		}
 	}
@@ -313,7 +337,10 @@ type ReportListResult struct {
 
 // UpdateReportRequest: nil field = no change. AssigneeUserID "" = unassign.
 type UpdateReportRequest struct {
-	Status         *ReportStatus `json:"status" validate:"omitempty,oneof=pending in_progress resolved closed"`
+	// Both vocabularies are listed on purpose — see statusAliases. The handler
+	// folds the value before it reaches the service, so nothing downstream has
+	// to know two names for the same state.
+	Status         *ReportStatus `json:"status" validate:"omitempty,oneof=pending in_progress resolved closed open done"`
 	AssigneeUserID *string       `json:"assigneeUserId"` // "" unassigns
 }
 

@@ -102,7 +102,7 @@ func (h *reportAdminHandler) List(w http.ResponseWriter, r *http.Request) {
 		Limit:      50,
 	}
 	if s := qs.Get("status"); s != "" {
-		status := domain.ReportStatus(s)
+		status := domain.ReportStatus(s).Canonical()
 		if !status.IsValid() {
 			SendErrorResponse(w, http.StatusBadRequest, "Invalid status filter", "invalid-status")
 			return
@@ -178,6 +178,12 @@ func (h *reportAdminHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
+	}
+	// Fold the alias here so the service, the transition check and the row all
+	// see one vocabulary regardless of which one the client speaks.
+	if req.Status != nil {
+		canonical := req.Status.Canonical()
+		req.Status = &canonical
 	}
 	detail, err := h.svc.Update(reportID, req)
 	if err != nil {
