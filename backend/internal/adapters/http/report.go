@@ -101,6 +101,7 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", admin.List)
 		r.Get("/transitions", admin.Transitions)
+		r.Get("/taxonomy", admin.Taxonomy)
 		r.Get("/{id}", admin.Get)
 		r.Patch("/{id}", admin.Update)
 		r.Post("/{id}/comments", admin.AddComment)

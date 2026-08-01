@@ -176,6 +176,9 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		ReporterEmail: r.FormValue("reporterEmail"),
 		ReporterID:    r.FormValue("reporterId"),
 		Origin:        r.FormValue("origin"), // "system" enables title dedup
+		Category:      r.FormValue("category"),
+		Priority:      r.FormValue("priority"),
+		Area:          r.FormValue("area"),
 		TelemetryJSON: r.FormValue("telemetry"),
 		SnapshotJSON:  r.FormValue("snapshot"),
 		ContextJSON:   r.FormValue("context"),

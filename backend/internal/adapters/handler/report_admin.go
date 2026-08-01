@@ -15,6 +15,7 @@ import (
 type ReportAdminHandler interface {
 	List(w http.ResponseWriter, r *http.Request)
 	Transitions(w http.ResponseWriter, r *http.Request)
+	Taxonomy(w http.ResponseWriter, r *http.Request)
 	Get(w http.ResponseWriter, r *http.Request)
 	Update(w http.ResponseWriter, r *http.Request)
 	AddComment(w http.ResponseWriter, r *http.Request)
@@ -109,6 +110,22 @@ func (h *reportAdminHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		q.Status = status
 	}
+	if c := qs.Get("category"); c != "" {
+		cat := domain.ReportCategory(c)
+		if !cat.IsValid() {
+			SendErrorResponse(w, http.StatusBadRequest, "Invalid category filter", "invalid-category")
+			return
+		}
+		q.Category = cat
+	}
+	if p := qs.Get("priority"); p != "" {
+		pri := domain.ReportPriority(p)
+		if !pri.IsValid() {
+			SendErrorResponse(w, http.StatusBadRequest, "Invalid priority filter", "invalid-priority")
+			return
+		}
+		q.Priority = pri
+	}
 	if v := qs.Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 {
@@ -150,6 +167,19 @@ func (h *reportAdminHandler) Transitions(w http.ResponseWriter, r *http.Request)
 	SendResult(w, http.StatusOK, domain.APIResponse[map[domain.ReportStatus][]domain.ReportStatus]{
 		Success: true,
 		Data:    domain.ReportTransitions(),
+	})
+}
+
+// Taxonomy exposes the closed sets a client may offer, so the console and the
+// widget don't keep their own copy of the values and drift from the server —
+// the same reasoning as Transitions above.
+func (h *reportAdminHandler) Taxonomy(w http.ResponseWriter, r *http.Request) {
+	SendResult(w, http.StatusOK, domain.APIResponse[domain.ReportTaxonomy]{
+		Success: true,
+		Data: domain.ReportTaxonomy{
+			Categories: domain.ReportCategories(),
+			Priorities: domain.ReportPriorities(),
+		},
 	})
 }
 

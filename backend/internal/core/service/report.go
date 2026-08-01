@@ -138,10 +138,15 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	}
 
 	report := &domain.Report{
-		ProjectID:     project.ID,
-		Title:         in.Title,
-		Description:   in.Description,
-		Status:        domain.ReportPending,
+		ProjectID:   project.ID,
+		Title:       in.Title,
+		Description: in.Description,
+		Status:      domain.ReportPending,
+		// Normalized rather than validated: ingest is public, and refusing a
+		// whole report over an unrecognised label would lose real bug reports.
+		Category:      domain.NormalizeCategory(in.Category),
+		Priority:      domain.NormalizePriority(in.Priority),
+		Area:          domain.NormalizeArea(in.Area),
 		Origin:        origin,
 		URL:           in.URL,
 		UserAgent:     in.UserAgent,
@@ -406,6 +411,9 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 		Title:          report.Title,
 		Description:    report.Description,
 		Status:         report.Status,
+		Category:       report.Category,
+		Priority:       report.Priority,
+		Area:           report.Area,
 		Origin:         report.Origin,
 		URL:            report.URL,
 		UserAgent:      report.UserAgent,
@@ -446,6 +454,17 @@ func (s *ReportService) Update(reportID string, req domain.UpdateReportRequest) 
 		if err := s.systemComment(reportID, fmt.Sprintf("status: %s → %s", old, *req.Status)); err != nil {
 			return nil, err
 		}
+	}
+	// Triage labels change freely — there is no illegal move between them, so
+	// they are applied without the transition check status goes through.
+	if req.Category != nil {
+		report.Category = *req.Category
+	}
+	if req.Priority != nil {
+		report.Priority = *req.Priority
+	}
+	if req.Area != nil {
+		report.Area = domain.NormalizeArea(*req.Area)
 	}
 
 	if req.AssigneeUserID != nil {

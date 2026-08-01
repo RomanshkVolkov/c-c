@@ -148,6 +148,12 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 		if q.Status != "" {
 			db = db.Where("r.status = ?", q.Status)
 		}
+		if q.Category != "" {
+			db = db.Where("r.category = ?", q.Category)
+		}
+		if q.Priority != "" {
+			db = db.Where("r.priority = ?", q.Priority)
+		}
 		if q.AssigneeID != "" {
 			db = db.Where("r.assignee_user_id = ?", q.AssigneeID)
 		}
@@ -166,7 +172,8 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 
 	err := filtered().
 		Select(`r.id, r.project_id, p.slug AS project_slug, p.name AS project_name,
-			r.seq, r.title, r.status, r.origin, r.reporter_name, r.reporter_email, r.reporter_id,
+			r.seq, r.title, r.status, r.category, r.priority, r.area,
+			r.origin, r.reporter_name, r.reporter_email, r.reporter_id,
 			r.assignee_user_id, u.username AS assignee_name,
 			(SELECT COUNT(*) FROM report_images i
 			   WHERE i.report_id = r.id AND i.comment_id IS NULL AND i.deleted_at IS NULL) AS image_count,

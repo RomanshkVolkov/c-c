@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -100,6 +101,94 @@ func (s ReportStatus) CanTransitionTo(to ReportStatus) bool {
 // shared endpoint the Tauri app consumes.
 func ReportTransitions() map[ReportStatus][]ReportStatus { return reportTransitions }
 
+// ─── Taxonomy ─────────────────────────────────────────────────────────────────
+
+// A report carries three orthogonal labels beyond its status:
+//
+//   - Category — what kind of problem it is. A closed set, asked of the person
+//     filing it, because they're the only one who knows.
+//   - Priority — how urgently it should be handled. Also a closed set, but set
+//     during triage rather than at capture: asked of a reporter, everything
+//     comes back urgent.
+//   - Area — which part of the product it belongs to. Free text on purpose:
+//     "Sala de Operaciones" means something in one tenant and nothing in
+//     another, so a global enum could never fit.
+type ReportCategory string
+
+const (
+	CategoryBug         ReportCategory = "bug"
+	CategoryUI          ReportCategory = "ui"
+	CategoryPerformance ReportCategory = "performance"
+	CategoryData        ReportCategory = "data"
+	CategoryOther       ReportCategory = "other"
+)
+
+// ReportCategories is the source of truth, exposed over the API so clients
+// don't keep their own copy and drift from it — the same reasoning as
+// ReportTransitions.
+func ReportCategories() []ReportCategory {
+	return []ReportCategory{CategoryBug, CategoryUI, CategoryPerformance, CategoryData, CategoryOther}
+}
+
+// NormalizeCategory falls back to "other" rather than rejecting. Ingest is a
+// public endpoint fed by third-party widgets; losing a real bug report over an
+// unrecognised label would be a bad trade.
+func NormalizeCategory(s string) ReportCategory {
+	for _, c := range ReportCategories() {
+		if string(c) == s {
+			return c
+		}
+	}
+	return CategoryOther
+}
+
+type ReportPriority string
+
+const (
+	ReportPriorityLow    ReportPriority = "low"
+	ReportPriorityMedium ReportPriority = "medium"
+	ReportPriorityHigh   ReportPriority = "high"
+	ReportPriorityUrgent ReportPriority = "urgent"
+)
+
+// ReportPriorities is ordered low → urgent; clients render it in this order.
+func ReportPriorities() []ReportPriority {
+	return []ReportPriority{ReportPriorityLow, ReportPriorityMedium, ReportPriorityHigh, ReportPriorityUrgent}
+}
+
+func NormalizePriority(s string) ReportPriority {
+	for _, p := range ReportPriorities() {
+		if string(p) == s {
+			return p
+		}
+	}
+	return ReportPriorityMedium
+}
+
+// IsValid is for the admin API, which — unlike ingest — should refuse a value
+// it doesn't understand instead of silently filing it as something else.
+func (c ReportCategory) IsValid() bool { return NormalizeCategory(string(c)) == c }
+func (p ReportPriority) IsValid() bool { return NormalizePriority(string(p)) == p }
+
+// maxAreaLen matches the column width; longer input is cut rather than refused,
+// for the same reason NormalizeCategory doesn't reject.
+const maxAreaLen = 60
+
+func NormalizeArea(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > maxAreaLen {
+		return strings.TrimSpace(s[:maxAreaLen])
+	}
+	return s
+}
+
+// ReportTaxonomy is what GET /reports/taxonomy answers: the closed sets a
+// client may offer, straight from the constants above.
+type ReportTaxonomy struct {
+	Categories []ReportCategory `json:"categories"`
+	Priorities []ReportPriority `json:"priorities"`
+}
+
 type ReportCommentKind string
 
 const (
@@ -137,6 +226,11 @@ type Report struct {
 	Title       string       `gorm:"type:varchar(200);not null"      json:"title"`
 	Description string       `gorm:"type:text"                       json:"description"`
 	Status      ReportStatus `gorm:"type:varchar(20);default:'pending'" json:"status"`
+	// Taxonomy — see the block above for why category/priority are closed sets
+	// and area is free text.
+	Category ReportCategory `gorm:"type:varchar(20);default:'other';index"  json:"category"`
+	Priority ReportPriority `gorm:"type:varchar(10);default:'medium';index" json:"priority"`
+	Area     string         `gorm:"type:varchar(60)"                       json:"area"`
 	// Origin: 'user' (widget/portal) | 'system' (automated reports, deduped by
 	// title against open reports of the same project).
 	Origin           string     `gorm:"type:varchar(10);default:'user'" json:"origin"`
@@ -236,6 +330,9 @@ type IngestReportInput struct {
 	ReporterEmail string
 	ReporterID    string // host app's own user id (from reporter() callback)
 	Origin        string // "" / "user" | "system" (system reports dedup by title)
+	Category      string // normalized; unknown or empty becomes "other"
+	Priority      string // normalized; unknown or empty becomes "medium"
+	Area          string // free text, trimmed to 60 chars
 	// Raw JSON strings from the widget (decision 4/7). Combined, server-redacted
 	// and AES-GCM encrypted into reports.telemetry.
 	TelemetryJSON string
@@ -299,6 +396,8 @@ type ReporterReportView struct {
 type ReportListQuery struct {
 	ProjectID  string
 	Status     ReportStatus
+	Category   ReportCategory
+	Priority   ReportPriority
 	AssigneeID string
 	From       *time.Time
 	To         *time.Time
@@ -307,25 +406,28 @@ type ReportListQuery struct {
 }
 
 type ReportListItem struct {
-	ID             string       `json:"id"`
-	ProjectID      string       `json:"projectId"`
-	ProjectSlug    string       `json:"projectSlug"`
-	ProjectName    string       `json:"projectName"`
-	Seq            int          `json:"seq"`
-	Folio          string       `json:"folio" gorm:"-"`
-	Title          string       `json:"title"`
-	Status         ReportStatus `json:"status"`
-	Origin         string       `json:"origin"`
-	ReporterName   string       `json:"reporterName"`
-	ReporterEmail  string       `json:"reporterEmail"`
-	ReporterID     string       `json:"reporterId"`
-	AssigneeUserID *string      `json:"assigneeUserId,omitempty"`
-	AssigneeName   string       `json:"assigneeName,omitempty"`
-	ImageCount     int          `json:"imageCount"` // gallery only (comment_id IS NULL)
-	CommentCount   int          `json:"commentCount"`
-	CreatedAt      time.Time    `json:"createdAt"`
-	UpdatedAt      time.Time    `json:"updatedAt"`
-	ResolvedAt     *time.Time   `json:"resolvedAt,omitempty"`
+	ID             string         `json:"id"`
+	ProjectID      string         `json:"projectId"`
+	ProjectSlug    string         `json:"projectSlug"`
+	ProjectName    string         `json:"projectName"`
+	Seq            int            `json:"seq"`
+	Folio          string         `json:"folio" gorm:"-"`
+	Title          string         `json:"title"`
+	Status         ReportStatus   `json:"status"`
+	Category       ReportCategory `json:"category"`
+	Priority       ReportPriority `json:"priority"`
+	Area           string         `json:"area"`
+	Origin         string         `json:"origin"`
+	ReporterName   string         `json:"reporterName"`
+	ReporterEmail  string         `json:"reporterEmail"`
+	ReporterID     string         `json:"reporterId"`
+	AssigneeUserID *string        `json:"assigneeUserId,omitempty"`
+	AssigneeName   string         `json:"assigneeName,omitempty"`
+	ImageCount     int            `json:"imageCount"` // gallery only (comment_id IS NULL)
+	CommentCount   int            `json:"commentCount"`
+	CreatedAt      time.Time      `json:"createdAt"`
+	UpdatedAt      time.Time      `json:"updatedAt"`
+	ResolvedAt     *time.Time     `json:"resolvedAt,omitempty"`
 }
 
 type ReportListResult struct {
@@ -342,6 +444,11 @@ type UpdateReportRequest struct {
 	// to know two names for the same state.
 	Status         *ReportStatus `json:"status" validate:"omitempty,oneof=pending in_progress resolved closed open done"`
 	AssigneeUserID *string       `json:"assigneeUserId"` // "" unassigns
+	// Triage fields. Unlike status they have no state machine — any value in
+	// the set is reachable from any other.
+	Category *ReportCategory `json:"category" validate:"omitempty,oneof=bug ui performance data other"`
+	Priority *ReportPriority `json:"priority" validate:"omitempty,oneof=low medium high urgent"`
+	Area     *string         `json:"area"`
 }
 
 type ReportCommentResponse struct {
@@ -376,6 +483,9 @@ type ReportDetailResponse struct {
 	Title          string                  `json:"title"`
 	Description    string                  `json:"description"`
 	Status         ReportStatus            `json:"status"`
+	Category       ReportCategory          `json:"category"`
+	Priority       ReportPriority          `json:"priority"`
+	Area           string                  `json:"area"`
 	Origin         string                  `json:"origin"`
 	URL            string                  `json:"url"`
 	UserAgent      string                  `json:"userAgent"`
