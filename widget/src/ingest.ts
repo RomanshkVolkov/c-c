@@ -1,6 +1,6 @@
 import { captureContext, buildSnapshot } from "./capture";
 import type { TelemetryCollector } from "./telemetry";
-import type { WidgetConfig } from "./types";
+import type { ReportCategory, ReportPriority, WidgetConfig } from "./types";
 
 const DEFAULT_ENDPOINT = "https://cac.guz-studio.dev";
 
@@ -9,6 +9,22 @@ export interface ReportInput {
   description?: string;
   reporterName?: string;
   reporterEmail?: string;
+  /**
+   * What kind of problem this is. Worth asking the person filing it — they're
+   * the only one who knows — and it's what makes triage possible later.
+   * Anything the server doesn't recognise is filed as "other" rather than
+   * rejected, so an outdated widget never loses a report.
+   */
+  category?: ReportCategory;
+  /**
+   * Deliberately NOT asked of the reporter: everyone marks their own problem
+   * urgent. It's here for automated callers that genuinely know (a failed sync
+   * is not a cosmetic issue); a human form should leave it out and let triage
+   * decide.
+   */
+  priority?: ReportPriority;
+  /** Which part of the product this belongs to. Free text — see defaultArea. */
+  area?: string;
   images?: File[];
 }
 
@@ -38,6 +54,10 @@ export async function submit(
   const form = new FormData();
   form.set("title", input.title);
   if (input.description) form.set("description", input.description);
+  if (input.category) form.set("category", input.category);
+  if (input.priority) form.set("priority", input.priority);
+  const area = input.area ?? cfg.defaultArea;
+  if (area) form.set("area", area);
   form.set("url", ctx.url);
   form.set("userAgent", ctx.userAgent);
   form.set("viewport", ctx.viewport);

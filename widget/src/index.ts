@@ -9,6 +9,8 @@ export { TelemetryCollector } from "./telemetry";
 export type { Locale } from "./i18n";
 export type {
   WidgetConfig,
+  ReportCategory,
+  ReportPriority,
   SnapshotConfig,
   ReporterReport,
   ReporterComment,

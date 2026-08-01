@@ -10,6 +10,15 @@ export interface SnapshotConfig {
 
 import type { Locale } from "./i18n";
 
+/**
+ * The closed sets the server accepts. Mirrored here so a host app gets
+ * autocomplete and a compile error for a typo; the server still normalizes
+ * anything it doesn't know, so this staying slightly behind is harmless.
+ * Source of truth: GET /api/v1/reports/taxonomy.
+ */
+export type ReportCategory = "bug" | "ui" | "performance" | "data" | "other";
+export type ReportPriority = "low" | "medium" | "high" | "urgent";
+
 export interface WidgetConfig {
   /** public write-only ingest key (pk_…) */
   projectKey: string;
@@ -25,6 +34,12 @@ export interface WidgetConfig {
    * "my reports" view. e.g. () => ({ id: session.user.id, name: session.user.name })
    */
   reporter?: () => { id?: string; name?: string; email?: string };
+  /**
+   * Area applied to every report this widget files, when the form doesn't ask.
+   * Per-app rather than global: "Sala de Operaciones" means something in one
+   * tenant and nothing in another.
+   */
+  defaultArea?: string;
   /** opt-in localStorage/cookie snapshot (server redacts/encrypts) */
   snapshot?: SnapshotConfig;
   /**
