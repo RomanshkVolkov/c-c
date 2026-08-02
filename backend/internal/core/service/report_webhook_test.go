@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -35,7 +36,53 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) bool {
 func target(url, secret string) *domain.ReportEventTarget {
 	return &domain.ReportEventTarget{
 		OrgID: "org-1", ProjectID: "proj-1", Folio: "demo-7",
+		ReporterID: "user-ana", ReporterName: "Ana",
 		WebhookURL: url, WebhookSecret: secret,
+	}
+}
+
+// Every event has to name the reporter. Without it a receiver can't answer
+// "who do I notify?" — the comment event only carries a comment id — and would
+// need either a local report → user index or a callback to cac just to send a
+// notification. This is what keeps that machinery out of the receiving app.
+func TestEveryEventNamesTheReporter(t *testing.T) {
+	var bodies [][]byte
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, b)
+		mu.Unlock()
+	}))
+	defer srv.Close()
+
+	s := &ReportService{}
+	events := []string{"report:new", "report:status", "report:comment", "report:attachment"}
+	for _, ev := range events {
+		s.dispatchWebhook(target(srv.URL, ""), ev, "rep-1", nil)
+	}
+	waitFor(t, 3*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(bodies) == len(events)
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != len(events) {
+		t.Fatalf("got %d deliveries, want %d", len(bodies), len(events))
+	}
+	for _, b := range bodies {
+		var p webhookPayload
+		if err := json.Unmarshal(b, &p); err != nil {
+			t.Fatalf("bad payload: %v", err)
+		}
+		if p.ReporterID != "user-ana" {
+			t.Errorf("%s carries reporterId %q, want the filer's id", p.Type, p.ReporterID)
+		}
+		if p.ReporterName != "Ana" {
+			t.Errorf("%s carries reporterName %q", p.Type, p.ReporterName)
+		}
 	}
 }
 

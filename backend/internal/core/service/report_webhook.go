@@ -34,12 +34,19 @@ const (
 // webhookPayload is the body receivers verify and parse. `data` is the same
 // map the live stream carries, so a receiver can treat both the same way.
 type webhookPayload struct {
-	Type      string         `json:"type"`
-	ReportID  string         `json:"reportId"`
-	ProjectID string         `json:"projectId"`
-	Folio     string         `json:"folio"`
-	Data      map[string]any `json:"data"`
-	At        time.Time      `json:"at"`
+	Type      string `json:"type"`
+	ReportID  string `json:"reportId"`
+	ProjectID string `json:"projectId"`
+	Folio     string `json:"folio"`
+	// Who filed the report, in the receiving app's own id space — it's the
+	// value that app passed to ingest. Present on every event so routing a
+	// notification is a field lookup, not a callback or a local index:
+	// "your report was answered" needs to know whose report it is, and the
+	// comment event alone can't say.
+	ReporterID   string         `json:"reporterId"`
+	ReporterName string         `json:"reporterName,omitempty"`
+	Data         map[string]any `json:"data"`
+	At           time.Time      `json:"at"`
 }
 
 // signPayload returns the value of the X-Cac-Signature header: HMAC-SHA256 of
@@ -61,7 +68,8 @@ func (s *ReportService) dispatchWebhook(t *domain.ReportEventTarget, eventType, 
 	}
 	body, err := json.Marshal(webhookPayload{
 		Type: eventType, ReportID: reportID, ProjectID: t.ProjectID,
-		Folio: t.Folio, Data: data, At: time.Now().UTC(),
+		Folio: t.Folio, ReporterID: t.ReporterID, ReporterName: t.ReporterName,
+		Data: data, At: time.Now().UTC(),
 	})
 	if err != nil {
 		lg.Error("webhook: cannot serialize " + eventType + ": " + err.Error())

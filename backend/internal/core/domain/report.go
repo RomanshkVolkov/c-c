@@ -193,9 +193,14 @@ type ReportTaxonomy struct {
 // to scope the live stream to, what to name the report, and where (if
 // anywhere) to POST it.
 type ReportEventTarget struct {
-	OrgID         string
-	ProjectID     string
-	Folio         string
+	OrgID     string
+	ProjectID string
+	Folio     string
+	// Who filed it, in the host app's own terms. Carried on every event so a
+	// receiver can route a notification without keeping its own
+	// report → user index or calling back to ask.
+	ReporterID    string
+	ReporterName  string
 	WebhookURL    string
 	WebhookSecret string
 }

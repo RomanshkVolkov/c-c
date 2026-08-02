@@ -101,11 +101,14 @@ func (r *ReportRepository) EventTargetForReport(reportID string) (*domain.Report
 		ProjectID     string
 		Slug          string
 		Seq           int
+		ReporterID    string
+		ReporterName  string
 		WebhookURL    string
 		WebhookSecret string
 	}
 	err := r.db.Raw(`
 		SELECT p.org_id, p.id AS project_id, p.slug, rp.seq,
+		       rp.reporter_id, rp.reporter_name,
 		       p.webhook_url, p.webhook_secret
 		FROM reports rp
 		JOIN report_projects p ON p.id = rp.project_id
@@ -121,6 +124,8 @@ func (r *ReportRepository) EventTargetForReport(reportID string) (*domain.Report
 		OrgID:         row.OrgID,
 		ProjectID:     row.ProjectID,
 		Folio:         fmt.Sprintf("%s-%d", row.Slug, row.Seq),
+		ReporterID:    row.ReporterID,
+		ReporterName:  row.ReporterName,
 		WebhookURL:    row.WebhookURL,
 		WebhookSecret: row.WebhookSecret,
 	}, nil
