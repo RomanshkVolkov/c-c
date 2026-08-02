@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -23,8 +24,44 @@ func Logger(next http.Handler) http.Handler {
 		start := time.Now()
 		ww := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(ww, r)
-		log.Printf("[%s] %s %d %v", r.Method, r.RequestURI, ww.statusCode, time.Since(start))
+		log.Printf("[%s] %s %d %v", r.Method, redactQuery(r.RequestURI), ww.statusCode, time.Since(start))
 	})
+}
+
+// sensitiveParams are credentials that legitimately travel in a query string,
+// because the browser API that fetches them cannot set a header: EventSource
+// for the live stream, and <img>/<a> for attachment proxies.
+//
+// They must never reach the log. Redacting here covers every current caller and
+// every future one — the alternative is remembering, at each new endpoint, that
+// the shared logger will write whatever the URL contains.
+var sensitiveParams = []string{"token", "sig"}
+
+// redactQuery replaces the value of any sensitive parameter with "REDACTED",
+// keeping the rest of the URL readable for debugging.
+func redactQuery(uri string) string {
+	i := strings.IndexByte(uri, '?')
+	if i < 0 {
+		return uri
+	}
+	path, raw := uri[:i], uri[i+1:]
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		// Unparseable query: drop it wholesale rather than risk logging a token
+		// hidden in something we failed to understand.
+		return path + "?<unparseable>"
+	}
+	touched := false
+	for _, k := range sensitiveParams {
+		if values.Has(k) {
+			values.Set(k, "REDACTED")
+			touched = true
+		}
+	}
+	if !touched {
+		return uri
+	}
+	return path + "?" + values.Encode()
 }
 
 // CORS adds permissive CORS headers (suitable for local Tauri app). The public
