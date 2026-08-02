@@ -225,11 +225,14 @@ fn tool_defs() -> Value {
         },
         {
             "name": "list_reports",
-            "description": "List bug reports, newest first. Filter by status (pending|in_progress|resolved|discarded|reopened), projectId or date range (RFC3339).",
+            "description": "List bug reports, newest first. Filter by status (open|in_progress|done|closed — the older names pending/resolved are still accepted and mean open/done), category (bug|ui|performance|data|other), priority (low|medium|high|urgent), reporterId, projectId or date range (RFC3339).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "status": { "type": "string" },
+                    "category": { "type": "string" },
+                    "priority": { "type": "string" },
+                    "reporterId": { "type": "string", "description": "The host app's own user id, as filed — lists one person's reports." },
                     "projectId": { "type": "string" },
                     "from": { "type": "string", "description": "RFC3339 lower bound" },
                     "to": { "type": "string", "description": "RFC3339 upper bound" },
@@ -420,6 +423,9 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         "list_reports" => {
             let mut q = vec![];
             push_q(&mut q, "status", arg_str(args, "status"));
+            push_q(&mut q, "category", arg_str(args, "category"));
+            push_q(&mut q, "priority", arg_str(args, "priority"));
+            push_q(&mut q, "reporterId", arg_str(args, "reporterId"));
             push_q(&mut q, "projectId", arg_str(args, "projectId"));
             push_q(&mut q, "from", arg_str(args, "from"));
             push_q(&mut q, "to", arg_str(args, "to"));
@@ -440,6 +446,9 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                         "folio": r.get("folio"),
                         "title": r.get("title"),
                         "status": r.get("status"),
+                        "category": r.get("category"),
+                        "priority": r.get("priority"),
+                        "area": r.get("area"),
                         "project": r.get("projectName"),
                         "reporter": r.get("reporterName"),
                         "comments": r.get("commentCount"),
