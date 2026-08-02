@@ -35,6 +35,7 @@ interface ReportsState {
     name: string;
     allowedOrigins: string[];
     rateLimitPerHour?: number;
+    rateLimitPerReporterPerHour?: number;
     /** "web" polices the Origin header; "app" is for server-to-server callers,
      *  which send none. Set at creation — it decides how the project is
      *  authenticated, not a display preference. */
@@ -49,6 +50,7 @@ interface ReportsState {
       name: string;
       allowedOrigins: string[];
       rateLimitPerHour: number;
+      rateLimitPerReporterPerHour?: number;
       isActive?: boolean;
       webhookUrl?: string;
       /** Omit to keep the current secret; "" alongside an empty url clears it. */
@@ -118,11 +120,11 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     }
   },
 
-  createProject: async ({ name, allowedOrigins, rateLimitPerHour, platform, webhookUrl, webhookSecret }) => {
+  createProject: async ({ name, allowedOrigins, rateLimitPerHour, rateLimitPerReporterPerHour, platform, webhookUrl, webhookSecret }) => {
     const orgId = useOrgsStore.getState().currentOrgId;
     const res = await api.post<APIResponse<CreateReportProjectResult>>(
       "/api/v1/report-projects/",
-      { orgId, name, allowedOrigins, rateLimitPerHour, platform, webhookUrl, webhookSecret },
+      { orgId, name, allowedOrigins, rateLimitPerHour, rateLimitPerReporterPerHour, platform, webhookUrl, webhookSecret },
       true
     );
     if (!res.success || !res.data) throw new Error(res.error ?? "Failed to create project");
@@ -152,6 +154,7 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
       name: p.name,
       allowedOrigins: p.allowedOrigins,
       rateLimitPerHour: p.rateLimitPerHour,
+      rateLimitPerReporterPerHour: p.rateLimitPerReporterPerHour,
       isActive,
     });
   },

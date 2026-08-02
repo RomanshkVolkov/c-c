@@ -67,13 +67,14 @@ func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 		// until it's named here. Easy to forget — the service and the response
 		// both look right while the row never changes.
 		Updates(map[string]any{
-			"name":                     p.Name,
-			"allowed_origins":          p.AllowedOrigins,
-			"rate_limit_per_hour":      p.RateLimitPerHour,
-			"is_active":                p.IsActive,
-			"default_assignee_user_id": p.DefaultAssigneeUserID,
-			"webhook_url":              p.WebhookURL,
-			"webhook_secret":           p.WebhookSecret,
+			"name":                             p.Name,
+			"allowed_origins":                  p.AllowedOrigins,
+			"rate_limit_per_hour":              p.RateLimitPerHour,
+			"rate_limit_per_reporter_per_hour": p.RateLimitPerReporterPerHour,
+			"is_active":                        p.IsActive,
+			"default_assignee_user_id":         p.DefaultAssigneeUserID,
+			"webhook_url":                      p.WebhookURL,
+			"webhook_secret":                   p.WebhookSecret,
 		}).Error
 }
 

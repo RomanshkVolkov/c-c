@@ -133,6 +133,18 @@ func (r *ReportRepository) EventTargetForReport(reportID string) (*domain.Report
 
 // ProjectIDForReport resolves which project a report belongs to, for the
 // project-key authorization gate.
+// UsernameByID resolves a display name for an assignee, empty when unset or
+// unknown. Deliberately forgiving: a report whose assignee was removed should
+// still open.
+func (r *ReportRepository) UsernameByID(userID string) string {
+	if userID == "" {
+		return ""
+	}
+	var name string
+	r.db.Raw(`SELECT username FROM users WHERE id = ?`, userID).Scan(&name)
+	return name
+}
+
 func (r *ReportRepository) ProjectIDForReport(reportID string) (string, error) {
 	var projectID string
 	err := r.db.Raw(`

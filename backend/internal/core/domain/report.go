@@ -224,7 +224,17 @@ type ReportProject struct {
 	IngestKeyHash    []byte     `gorm:"type:bytea;not null"                    json:"-"`
 	AllowedOrigins   StringList `gorm:"type:jsonb"                             json:"allowedOrigins"`
 	RateLimitPerHour int        `gorm:"default:20"                             json:"rateLimitPerHour"`
-	IsActive         bool       `gorm:"default:true"                           json:"isActive"`
+	// RateLimitPerReporterPerHour caps one person, where RateLimitPerHour caps
+	// the whole project. Without it a single reporter can spend the project's
+	// entire hourly budget and lock out everyone else — which is a worse outage
+	// than the abuse the limit exists to stop, because the people it blocks are
+	// the ones with something to report.
+	//
+	// There is no "off": it only applies to reports that carry a reporter id, so
+	// an anonymous widget is governed by the project ceiling alone and needs no
+	// switch.
+	RateLimitPerReporterPerHour int  `gorm:"default:10" json:"rateLimitPerReporterPerHour"`
+	IsActive                    bool `gorm:"default:true"                           json:"isActive"`
 	// Platform distinguishes a browser project ("web": widget reports, Origin/CORS
 	// enforced) from a native app project ("app": headless telemetry, no Origin
 	// guard). Defaults to "web" for every pre-existing project.
@@ -298,22 +308,24 @@ type ReportImage struct {
 // ─── Requests / Responses (report_projects admin) ─────────────────────────────
 
 type CreateReportProjectRequest struct {
-	OrgID                 string   `json:"orgId"                 validate:"required"`
-	Name                  string   `json:"name"                  validate:"required,min=1,max=120"`
-	Slug                  string   `json:"slug"                  validate:"omitempty,min=1,max=120"`
-	Platform              string   `json:"platform"              validate:"omitempty,oneof=web app"`
-	AllowedOrigins        []string `json:"allowedOrigins"        validate:"omitempty,dive,url"`
-	RateLimitPerHour      int      `json:"rateLimitPerHour"      validate:"omitempty,min=1,max=10000"`
-	DefaultAssigneeUserID string   `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
-	WebhookURL            string   `json:"webhookUrl"            validate:"omitempty,url"`
-	WebhookSecret         string   `json:"webhookSecret"         validate:"omitempty,min=16,max=120"`
+	OrgID                       string   `json:"orgId"                 validate:"required"`
+	Name                        string   `json:"name"                  validate:"required,min=1,max=120"`
+	Slug                        string   `json:"slug"                  validate:"omitempty,min=1,max=120"`
+	Platform                    string   `json:"platform"              validate:"omitempty,oneof=web app"`
+	AllowedOrigins              []string `json:"allowedOrigins"        validate:"omitempty,dive,url"`
+	RateLimitPerHour            int      `json:"rateLimitPerHour"      validate:"omitempty,min=1,max=10000"`
+	RateLimitPerReporterPerHour int      `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
+	DefaultAssigneeUserID       string   `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
+	WebhookURL                  string   `json:"webhookUrl"            validate:"omitempty,url"`
+	WebhookSecret               string   `json:"webhookSecret"         validate:"omitempty,min=16,max=120"`
 }
 
 type UpdateReportProjectRequest struct {
-	Name             string   `json:"name"             validate:"required,min=1,max=120"`
-	AllowedOrigins   []string `json:"allowedOrigins"   validate:"omitempty,dive,url"`
-	RateLimitPerHour int      `json:"rateLimitPerHour" validate:"omitempty,min=1,max=10000"`
-	IsActive         *bool    `json:"isActive"`
+	Name                        string   `json:"name"             validate:"required,min=1,max=120"`
+	AllowedOrigins              []string `json:"allowedOrigins"   validate:"omitempty,dive,url"`
+	RateLimitPerHour            int      `json:"rateLimitPerHour" validate:"omitempty,min=1,max=10000"`
+	RateLimitPerReporterPerHour int      `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
+	IsActive                    *bool    `json:"isActive"`
 	// "" clears the default assignee; a uuid sets it.
 	DefaultAssigneeUserID string `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
 	// "" clears the webhook. The secret is only replaced when a new one is
@@ -323,16 +335,17 @@ type UpdateReportProjectRequest struct {
 }
 
 type ReportProjectResponse struct {
-	ID                    string   `json:"id"`
-	OrgID                 string   `json:"orgId"`
-	Name                  string   `json:"name"`
-	Slug                  string   `json:"slug"`
-	Platform              string   `json:"platform"`
-	AllowedOrigins        []string `json:"allowedOrigins"`
-	RateLimitPerHour      int      `json:"rateLimitPerHour"`
-	IsActive              bool     `json:"isActive"`
-	DefaultAssigneeUserID *string  `json:"defaultAssigneeUserId,omitempty"`
-	WebhookURL            string   `json:"webhookUrl"`
+	ID                          string   `json:"id"`
+	OrgID                       string   `json:"orgId"`
+	Name                        string   `json:"name"`
+	Slug                        string   `json:"slug"`
+	Platform                    string   `json:"platform"`
+	AllowedOrigins              []string `json:"allowedOrigins"`
+	RateLimitPerHour            int      `json:"rateLimitPerHour"`
+	RateLimitPerReporterPerHour int      `json:"rateLimitPerReporterPerHour"`
+	IsActive                    bool     `json:"isActive"`
+	DefaultAssigneeUserID       *string  `json:"defaultAssigneeUserId,omitempty"`
+	WebhookURL                  string   `json:"webhookUrl"`
 	// Whether a secret is set — never the value.
 	WebhookConfigured bool      `json:"webhookConfigured"`
 	CreatedAt         time.Time `json:"createdAt"`
@@ -518,30 +531,34 @@ type ReportImageResponse struct {
 }
 
 type ReportDetailResponse struct {
-	ID             string                  `json:"id"`
-	ProjectID      string                  `json:"projectId"`
-	ProjectSlug    string                  `json:"projectSlug"`
-	Seq            int                     `json:"seq"`
-	Folio          string                  `json:"folio"`
-	Title          string                  `json:"title"`
-	Description    string                  `json:"description"`
-	Status         ReportStatus            `json:"status"`
-	Category       ReportCategory          `json:"category"`
-	Priority       ReportPriority          `json:"priority"`
-	Area           string                  `json:"area"`
-	Origin         string                  `json:"origin"`
-	URL            string                  `json:"url"`
-	UserAgent      string                  `json:"userAgent"`
-	Viewport       string                  `json:"viewport"`
-	ReporterName   string                  `json:"reporterName"`
-	ReporterEmail  string                  `json:"reporterEmail"`
-	ReporterID     string                  `json:"reporterId"`
-	AssigneeUserID *string                 `json:"assigneeUserId,omitempty"`
-	ResolvedAt     *time.Time              `json:"resolvedAt,omitempty"`
-	CreatedAt      time.Time               `json:"createdAt"`
-	UpdatedAt      time.Time               `json:"updatedAt"`
-	Images         []ReportImageResponse   `json:"images"` // gallery (comment_id IS NULL)
-	Comments       []ReportCommentResponse `json:"comments"`
+	ID             string         `json:"id"`
+	ProjectID      string         `json:"projectId"`
+	ProjectSlug    string         `json:"projectSlug"`
+	Seq            int            `json:"seq"`
+	Folio          string         `json:"folio"`
+	Title          string         `json:"title"`
+	Description    string         `json:"description"`
+	Status         ReportStatus   `json:"status"`
+	Category       ReportCategory `json:"category"`
+	Priority       ReportPriority `json:"priority"`
+	Area           string         `json:"area"`
+	Origin         string         `json:"origin"`
+	URL            string         `json:"url"`
+	UserAgent      string         `json:"userAgent"`
+	Viewport       string         `json:"viewport"`
+	ReporterName   string         `json:"reporterName"`
+	ReporterEmail  string         `json:"reporterEmail"`
+	ReporterID     string         `json:"reporterId"`
+	AssigneeUserID *string        `json:"assigneeUserId,omitempty"`
+	// AssigneeName is here because the list already carries it and the detail
+	// did not: a client showing a report had the id and no way to render a name
+	// without fetching every user.
+	AssigneeName string                  `json:"assigneeName,omitempty"`
+	ResolvedAt   *time.Time              `json:"resolvedAt,omitempty"`
+	CreatedAt    time.Time               `json:"createdAt"`
+	UpdatedAt    time.Time               `json:"updatedAt"`
+	Images       []ReportImageResponse   `json:"images"` // gallery (comment_id IS NULL)
+	Comments     []ReportCommentResponse `json:"comments"`
 	// Telemetry is the decrypted breadcrumbs blob ({telemetry,snapshot,context}),
 	// null when none was captured or it has been purged. Only in the detail view.
 	Telemetry json.RawMessage `json:"telemetry,omitempty"`

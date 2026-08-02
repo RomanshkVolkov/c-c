@@ -193,6 +193,17 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusTooManyRequests, "Rate limit exceeded", "rate-limited")
 		return
 	}
+	// Then the per-person cap, so one reporter cannot spend the project's whole
+	// budget. Checked second and keyed by the host app's own user id, which is
+	// the only stable identity here — absent for anonymous widgets, where the
+	// project ceiling is all there is.
+	if id := r.FormValue("reporterId"); id != "" && project.RateLimitPerReporterPerHour > 0 {
+		if !h.limiter.allow(project.ID+"/"+id, project.RateLimitPerReporterPerHour) {
+			SendErrorResponse(w, http.StatusTooManyRequests,
+				"You have filed too many reports in the last hour", "rate-limited-reporter")
+			return
+		}
+	}
 
 	images, ok := readMultipartImages(w, r, "images")
 	if !ok {

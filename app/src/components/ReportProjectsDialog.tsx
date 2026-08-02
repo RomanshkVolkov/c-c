@@ -107,6 +107,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
   const [name, setName] = useState("");
   const [origins, setOrigins] = useState<string[]>([""]);
   const [rate, setRate] = useState("20");
+  const [perReporter, setPerReporter] = useState("10");
   const [platform, setPlatform] = useState<"web" | "app">("web");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -121,6 +122,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
         name: name.trim(),
         allowedOrigins: cleanOrigins(origins),
         rateLimitPerHour: Number(rate) || 20,
+        rateLimitPerReporterPerHour: Number(perReporter) || 10,
         platform,
         webhookUrl: webhookUrl.trim(),
         webhookSecret: webhookSecret.trim(),
@@ -139,6 +141,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
       setName("");
       setOrigins([""]);
       setRate("20");
+      setPerReporter("10");
       setPlatform("web");
       setWebhookUrl("");
       setWebhookSecret("");
@@ -223,7 +226,23 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
                 <Label>Rate limit / hour</Label>
                 <Input type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
               </div>
+              <div className="space-y-1">
+                <Label>Max per person / hour</Label>
+                <Input
+                  type="number"
+                  value={perReporter}
+                  onChange={(e) => setPerReporter(e.target.value)}
+                />
+              </div>
             </div>
+            {/* Two limits, because one is not enough: the project ceiling alone
+                lets whoever reports first spend everyone's budget, and the people
+                it then locks out are the ones with something to say. */}
+            <p className="text-[11px] text-muted-foreground">
+              The hourly limit caps the whole project; the per-person one caps a
+              single reporter. Per-person only applies when the report says who
+              filed it.
+            </p>
             <div className="space-y-1">
               <Label>Integration</Label>
               <Select
@@ -301,6 +320,7 @@ function ProjectRow({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(p.name);
   const [rate, setRate] = useState(String(p.rateLimitPerHour));
+  const [perReporter, setPerReporter] = useState(String(p.rateLimitPerReporterPerHour));
   const [origins, setOrigins] = useState<string[]>(p.allowedOrigins.length ? p.allowedOrigins : [""]);
   const [webhookUrl, setWebhookUrl] = useState(p.webhookUrl ?? "");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -309,6 +329,7 @@ function ProjectRow({
   const startEdit = () => {
     setName(p.name);
     setRate(String(p.rateLimitPerHour));
+    setPerReporter(String(p.rateLimitPerReporterPerHour));
     setOrigins(p.allowedOrigins.length ? p.allowedOrigins : [""]);
     setWebhookUrl(p.webhookUrl ?? "");
     // Never prefilled: the server doesn't return it, and showing a placeholder
@@ -325,6 +346,7 @@ function ProjectRow({
         name: name.trim(),
         allowedOrigins: cleanOrigins(origins),
         rateLimitPerHour: Number(rate) || 20,
+        rateLimitPerReporterPerHour: Number(perReporter) || 10,
         isActive: p.isActive,
         webhookUrl: webhookUrl.trim(),
         webhookSecret: webhookSecret.trim(),
@@ -348,6 +370,14 @@ function ProjectRow({
           <div className="space-y-1">
             <Label>Rate limit / hour</Label>
             <Input type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Max per person / hour</Label>
+            <Input
+              type="number"
+              value={perReporter}
+              onChange={(e) => setPerReporter(e.target.value)}
+            />
           </div>
         </div>
         {/* Only a browser project has an Origin to police — platform itself is

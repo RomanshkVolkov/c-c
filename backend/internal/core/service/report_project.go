@@ -27,6 +27,15 @@ func (s *ReportProjectService) validateDefaultAssignee(orgID, userID string) err
 	return nil
 }
 
+// defaultReporterRateLimit mirrors portento's own anti-spam rule, which is where
+// the number comes from: ten reports per person per hour.
+func defaultReporterRateLimit(v int) int {
+	if v <= 0 {
+		return 10
+	}
+	return v
+}
+
 func defaultRateLimit(v int) int {
 	if v <= 0 {
 		return 20 // hereda el anti-spam de portento, configurable
@@ -65,16 +74,17 @@ func (s *ReportProjectService) Create(req domain.CreateReportProjectRequest) (*d
 	}
 
 	p := &domain.ReportProject{
-		OrgID:            req.OrgID,
-		Name:             req.Name,
-		Slug:             slug,
-		WebhookURL:       req.WebhookURL,
-		WebhookSecret:    req.WebhookSecret,
-		Platform:         platform,
-		IngestKeyHash:    hash,
-		AllowedOrigins:   domain.StringList(origins),
-		RateLimitPerHour: defaultRateLimit(req.RateLimitPerHour),
-		IsActive:         true,
+		OrgID:                       req.OrgID,
+		Name:                        req.Name,
+		Slug:                        slug,
+		WebhookURL:                  req.WebhookURL,
+		WebhookSecret:               req.WebhookSecret,
+		Platform:                    platform,
+		IngestKeyHash:               hash,
+		AllowedOrigins:              domain.StringList(origins),
+		RateLimitPerHour:            defaultRateLimit(req.RateLimitPerHour),
+		RateLimitPerReporterPerHour: defaultReporterRateLimit(req.RateLimitPerReporterPerHour),
+		IsActive:                    true,
 	}
 	if req.DefaultAssigneeUserID != "" {
 		p.DefaultAssigneeUserID = &req.DefaultAssigneeUserID
@@ -132,6 +142,7 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 	}
 	p.AllowedOrigins = domain.StringList(req.AllowedOrigins)
 	p.RateLimitPerHour = defaultRateLimit(req.RateLimitPerHour)
+	p.RateLimitPerReporterPerHour = defaultReporterRateLimit(req.RateLimitPerReporterPerHour)
 	if req.IsActive != nil {
 		p.IsActive = *req.IsActive
 	}
@@ -174,16 +185,17 @@ func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectRespo
 		origins = []string{}
 	}
 	return &domain.ReportProjectResponse{
-		ID:                    p.ID,
-		OrgID:                 p.OrgID,
-		Name:                  p.Name,
-		Slug:                  p.Slug,
-		Platform:              p.Platform,
-		AllowedOrigins:        origins,
-		RateLimitPerHour:      p.RateLimitPerHour,
-		IsActive:              p.IsActive,
-		DefaultAssigneeUserID: p.DefaultAssigneeUserID,
-		WebhookURL:            p.WebhookURL,
+		ID:                          p.ID,
+		OrgID:                       p.OrgID,
+		Name:                        p.Name,
+		Slug:                        p.Slug,
+		Platform:                    p.Platform,
+		AllowedOrigins:              origins,
+		RateLimitPerHour:            p.RateLimitPerHour,
+		RateLimitPerReporterPerHour: p.RateLimitPerReporterPerHour,
+		IsActive:                    p.IsActive,
+		DefaultAssigneeUserID:       p.DefaultAssigneeUserID,
+		WebhookURL:                  p.WebhookURL,
 		// The secret is never returned — only whether one exists, which is all
 		// the console needs to show "signed" instead of "unsigned".
 		WebhookConfigured: p.WebhookSecret != "",

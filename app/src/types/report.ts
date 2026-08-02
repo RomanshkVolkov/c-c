@@ -70,6 +70,7 @@ export interface ReportProject {
   slug: string;
   allowedOrigins: string[];
   rateLimitPerHour: number;
+  rateLimitPerReporterPerHour: number;
   isActive: boolean;
   defaultAssigneeUserId?: string;
   /** "web" enforces the Origin allowlist; "app" is for server-to-server. */
@@ -158,6 +159,7 @@ export interface ReportDetail {
   reporterEmail: string;
   reporterId: string;
   assigneeUserId?: string;
+  assigneeName?: string;
   resolvedAt?: string;
   createdAt: string;
   updatedAt: string;
