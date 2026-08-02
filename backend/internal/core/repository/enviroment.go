@@ -31,7 +31,12 @@ func LoadEnv() {
 			key := strings.TrimSpace(parts[0])
 			value := strings.ReplaceAll(strings.TrimSpace(parts[1]), "\"", "")
 			if os.Getenv(key) == "" {
-				lg.Info("Variable " + key + " cargada con valor " + value)
+				// The name only. This used to log the value too, which put
+				// DB_PASSWORD, the JWT secret and every key in the .env into the
+				// startup output of every environment in clear text — somewhere
+				// nobody thinks to look for a secret, and everywhere logs get
+				// shipped, tailed and pasted into a chat.
+				lg.Info("Variable " + key + " cargada")
 				err := os.Setenv(key, value)
 				if err != nil {
 					return
