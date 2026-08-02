@@ -11,11 +11,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { api, refreshSession } from "@/lib/api";
+import { api, refreshAccessToken, refreshSession } from "@/lib/api";
+import { useOrgsStore } from "@/store/orgs.store";
 import type { APIResponse } from "@/types/auth";
 
-/** The shared form. On success it refreshes the session (clearing any
- *  must-change flag) then calls onDone. */
+/** The shared form. On success it mints a fresh token, refreshes the session
+ *  (clearing any must-change flag) and reloads the organizations. */
 export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -37,7 +38,17 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
         true,
       );
       if (!res.success) throw new Error(res.error ?? "Change failed");
+
+      // A forced change is the first thing a new account does, and its token
+      // was minted before an admin added it to any organization — the `orgs`
+      // claim is empty and stays empty, so every org-scoped list comes back
+      // empty until the next sign-in. Refreshing the token re-reads the
+      // memberships; only then is it worth reloading the session and the org
+      // list. Order matters: the refresh reuses the session object it already
+      // has, so asking for /auth/me afterwards is what clears must-change.
+      await refreshAccessToken();
       await refreshSession();
+      await useOrgsStore.getState().fetchOrgs();
       toast.success("Password changed");
       onDone?.();
     } catch (e) {
