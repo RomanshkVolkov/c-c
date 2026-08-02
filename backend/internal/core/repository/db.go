@@ -169,14 +169,22 @@ func backfillAttachmentRefs(db *gorm.DB) {
 }
 
 const (
-	baseOrgSlug = "dwit-mexico"
-	baseOrgName = "Dwit México"
+	baseOrgSlug = "g-studio"
+	baseOrgName = "G Studio"
 )
 
-// seedBaseOrg guarantees the base organization "Dwit México" exists and owns any
-// pre-org data. It also migrates the legacy "default" org (from the earlier
-// single-tenant bridge) by renaming it in place — preserving its memberships,
-// servers and reports. Idempotent; safe on every boot.
+// legacyBaseOrgSlugs are names the base organization has had before, oldest
+// first. Each is renamed **in place** so its memberships, servers, reports and
+// projects follow — the row keeps its id, only the label changes.
+//
+// This list is what makes a rename safe: without it, changing the constants
+// above would leave the old row untouched and create a second organization
+// beside it, quietly splitting everything in two.
+var legacyBaseOrgSlugs = []string{"default", "dwit-mexico"}
+
+// seedBaseOrg guarantees the base organization exists and owns any pre-org
+// data, renaming it in place from whatever it used to be called (see
+// legacyBaseOrgSlugs). Idempotent; safe on every boot.
 //
 // Unlike the old bridge, it does NOT auto-enroll every user: new users start
 // with zero orgs and only see what they create or are invited to. It enrolls
@@ -184,14 +192,15 @@ const (
 func seedBaseOrg(db *gorm.DB) {
 	var org domain.Organization
 
-	// Migrate the legacy "default" org in place if present.
-	if err := db.Where("slug = ?", "default").First(&org).Error; err == nil {
-		org.Name = baseOrgName
-		org.Slug = baseOrgSlug
+	// Carry every former name forward onto the current one.
+	for _, old := range legacyBaseOrgSlugs {
+		if err := db.Where("slug = ?", old).First(&org).Error; err != nil {
+			continue
+		}
 		if err := db.Model(&org).Updates(map[string]any{"name": baseOrgName, "slug": baseOrgSlug}).Error; err != nil {
-			lg.Error("rename default org failed: " + err.Error())
+			lg.Error("rename base org from " + old + " failed: " + err.Error())
 		} else {
-			lg.Info(`legacy "default" organization renamed to "` + baseOrgName + `"`)
+			lg.Info(`organization "` + old + `" renamed to "` + baseOrgName + `"`)
 		}
 	}
 
