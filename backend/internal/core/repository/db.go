@@ -169,8 +169,8 @@ func backfillAttachmentRefs(db *gorm.DB) {
 }
 
 const (
-	baseOrgSlug = "g-studio"
-	baseOrgName = "G Studio"
+	baseOrgSlug = "dwit-mexico"
+	baseOrgName = "Dwit México"
 )
 
 // legacyBaseOrgSlugs are names the base organization has had before, oldest
@@ -180,7 +180,7 @@ const (
 // This list is what makes a rename safe: without it, changing the constants
 // above would leave the old row untouched and create a second organization
 // beside it, quietly splitting everything in two.
-var legacyBaseOrgSlugs = []string{"default", "dwit-mexico"}
+var legacyBaseOrgSlugs = []string{"default", "g-studio"}
 
 // seedBaseOrg guarantees the base organization exists and owns any pre-org
 // data, renaming it in place from whatever it used to be called (see
