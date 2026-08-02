@@ -43,6 +43,11 @@ GitHub workflows under `.github/workflows/`:
 - `backend.yml` — builds & pushes Docker image to GHCR, SSHs into k8s host to apply manifests. Triggers on `backend/**` push or manual dispatch.
 - `swarm-manage.yml` — builds & pushes agent image on `swarm-manage/**` push.
 
+## Integrations
+
+- [Server-to-server](./docs/integrations/server-to-server.md) — how a tenant app runs its own bug board in cac with its project's ingest key: credential and what it reaches, operations, reporter vs assignee, webhook, rate limits, error codes. The contract, kept next to the code that implements it.
+- [Capture widget](./widget/README.md) — the browser side: embeddable reporter, ingest key in the page, Origin allowlist.
+
 ## Proposals (not implemented)
 
 - [Groups & multi-user sharing](./docs/proposals/groups-and-sharing.md) — evolution of the data model from single-user to group-based resource ownership.
