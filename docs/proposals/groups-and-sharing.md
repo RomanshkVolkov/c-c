@@ -1,6 +1,18 @@
 # Proposal — Groups & multi-user sharing
 
-**Status:** Draft / not implemented. Single-user is the only supported model today.
+**Status:** ✅ **Superseded — shipped as organizations.** This proposal is kept
+for the reasoning; the shape that landed differs from the sketch below.
+
+What exists today (`domain/organization.go`, `service/organization.go`): an
+**organization** with `admin | member | viewer` roles, invitations, and org
+scoping on servers, collections, report projects and tasks. Non-members get a
+**404**, not a 403, everywhere — the anti-IDOR rule the sketch below did not
+consider.
+
+Personal notes are the one deliberate exception: they hang off `owner_id` with
+no org, and **not even a superadmin** can read them.
+
+Read the code, not this file, for how it actually works.
 
 This document sketches how to evolve the data model and API to support multiple users sharing servers and collections through **groups**. It is intentionally not committed to a timeline — the goal is to think through the shape before any DB migration so today's decisions don't paint us into a corner.
 
