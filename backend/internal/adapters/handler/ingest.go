@@ -125,6 +125,49 @@ func (h *ingestHandler) Preflight(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// allowedOrigin is the Origin rule, in one place because it has to mean the
+// same thing at every door.
+//
+// A native project ("app") is exempt outright: there is no browser, so there is
+// no Origin to check, and the console does not even show the field for one. Any
+// origins stored against such a project are leftovers, and must not become a
+// rule nobody can see.
+//
+// For a browser project an empty allowlist allows anything — that is what the
+// field says.
+//
+// A NON-empty allowlist is law: the request must carry an Origin, and it must
+// be one of them. The older version only checked requests that happened to send
+// one, which made the list guard browsers and nothing else — the key is printed
+// inside the widget the browser downloads, so anyone could read it and replay
+// it with curl, which sends no Origin and sailed straight through. Registering
+// an origin now means "only these", not "these, plus anyone not using a
+// browser".
+func allowedOrigin(w http.ResponseWriter, r *http.Request, project *domain.ReportProject) bool {
+	if project.Platform == "app" {
+		return true
+	}
+	allowed := []string(project.AllowedOrigins)
+	if len(allowed) == 0 {
+		return true
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Named apart from the mismatch case: "you sent none" and "yours isn't
+		// on the list" are different problems with different fixes, and the
+		// caller can't see the list to tell them apart.
+		SendErrorResponse(w, http.StatusForbidden,
+			"This project only accepts requests from its allowed origins, and this request sent no Origin header",
+			"origin-missing")
+		return false
+	}
+	if !slices.Contains(allowed, origin) {
+		SendErrorResponse(w, http.StatusForbidden, "Origin not allowed", "origin-not-allowed")
+		return false
+	}
+	return true
+}
+
 func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 	// Echo the Origin up front so EVERY response (incl. 401/403/429) carries
 	// ACAO — otherwise the browser masks the real status as an opaque CORS error.
@@ -142,11 +185,7 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Origin enforcement (server-side gate, independent of the CORS header).
-	origin := r.Header.Get("Origin")
-	allowed := []string(project.AllowedOrigins)
-	if origin != "" && len(allowed) > 0 && !slices.Contains(allowed, origin) {
-		SendErrorResponse(w, http.StatusForbidden, "Origin not allowed", "origin-not-allowed")
+	if !allowedOrigin(w, r, project) {
 		return
 	}
 
@@ -212,6 +251,9 @@ func (h *ingestHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	project, err := h.projects.FindActiveByIngestKey(key)
 	if err != nil {
 		SendErrorResponse(w, http.StatusUnauthorized, "Invalid ingest key", "invalid-key")
+		return
+	}
+	if !allowedOrigin(w, r, project) {
 		return
 	}
 

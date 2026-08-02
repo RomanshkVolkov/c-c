@@ -28,6 +28,16 @@ export default function OriginsEditor({
   return (
     <div className="space-y-1.5">
       <Label>Allowed origins (empty = allow any)</Label>
+      {/* Spelled out because the rule bites the case nobody pictures: once one
+          origin is listed, a request that sends no Origin header at all — a
+          curl replaying the key someone read out of the widget — is refused
+          too, not waved through for lacking a browser. Only shown for browser
+          projects; a native one is exempt from this entirely. */}
+      <p className="text-[11px] text-muted-foreground">
+        List one and it becomes the only way in: requests from another origin, and
+        requests that send no origin at all, are both refused. Leave it empty to
+        accept the widget from anywhere.
+      </p>
       <div className="space-y-2">
         {rows.map((origin, i) => (
           <div key={i} className="flex items-center gap-2">
