@@ -140,6 +140,70 @@ fn op_read(reference: &str) -> Result<String, String> {
     Ok(token)
 }
 
+/// One place a secret can be filed: an account and one of its vaults.
+#[derive(serde::Serialize)]
+struct OpVault {
+    account: String, // the sign-in URL, which is what `--account` takes
+    email: String,
+    vault: String,
+}
+
+/// Lists every vault the signed-in accounts can write to.
+///
+/// Exists because the vault used to be a text box defaulting to "Private", and
+/// that only exists in *some* accounts — a personal one has it, a business one
+/// typically has "Employee" and named vaults instead. Typing the wrong name
+/// failed at save time with a message from `op` that didn't say which of your
+/// accounts it had even tried.
+///
+/// Returns an empty list rather than an error when 1Password isn't reachable:
+/// the caller hides the feature instead of showing a scary message next to
+/// secrets the user still needs to copy.
+#[tauri::command]
+fn op_list_vaults() -> Vec<OpVault> {
+    use std::process::Command;
+
+    let accounts = match Command::new("op").args(["account", "list", "--format", "json"]).output() {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => return vec![],
+    };
+    let accounts: serde_json::Value = match serde_json::from_slice(&accounts) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+
+    let mut out = vec![];
+    for a in accounts.as_array().unwrap_or(&vec![]) {
+        let url = a.get("url").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let email = a.get("email").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        if url.is_empty() {
+            continue;
+        }
+        let vaults = match Command::new("op")
+            .args(["vault", "list", "--account", &url, "--format", "json"])
+            .output()
+        {
+            Ok(o) if o.status.success() => o.stdout,
+            // One unreachable account shouldn't hide the others.
+            _ => continue,
+        };
+        let vaults: serde_json::Value = match serde_json::from_slice(&vaults) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        for v in vaults.as_array().unwrap_or(&vec![]) {
+            if let Some(name) = v.get("name").and_then(|x| x.as_str()) {
+                out.push(OpVault {
+                    account: url.clone(),
+                    email: email.clone(),
+                    vault: name.to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// Stores secrets that are shown exactly once as a new 1Password item, and
 /// returns an `op://` reference per field.
 ///
@@ -156,6 +220,7 @@ fn op_read(reference: &str) -> Result<String, String> {
 #[tauri::command]
 fn op_item_create(
     title: String,
+    account: String,
     vault: String,
     fields: Vec<(String, String)>,
 ) -> Result<Vec<(String, String)>, String> {
@@ -165,7 +230,9 @@ fn op_item_create(
     if fields.is_empty() {
         return Err("Nothing to save".into());
     }
-    let vault = if vault.trim().is_empty() { "Private".to_string() } else { vault };
+    if account.trim().is_empty() || vault.trim().is_empty() {
+        return Err("Pick an account and a vault first".into());
+    }
 
     let op_err = |e: std::io::Error| match e.kind() {
         std::io::ErrorKind::NotFound => "1Password CLI (op) not found. Install from https://developer.1password.com/docs/cli/".to_string(),
@@ -183,8 +250,10 @@ fn op_item_create(
     };
 
     // Start from the real category template so the item looks native in the app.
+    // --account on every call: with more than one account signed in, letting op
+    // pick means the item can land somewhere the user never chose.
     let tpl_out = Command::new("op")
-        .args(["item", "template", "get", "API Credential"])
+        .args(["item", "template", "get", "API Credential", "--account", &account])
         .output()
         .map_err(op_err)?;
     if !tpl_out.status.success() {
@@ -218,7 +287,13 @@ fn op_item_create(
 
     // The category lives in the template; passing --category too is an error.
     let out = Command::new("op")
-        .args(["item", "create", "--vault", &vault, "--title", &title, "--format", "json"])
+        .args([
+            "item", "create",
+            "--account", &account,
+            "--vault", &vault,
+            "--title", &title,
+            "--format", "json",
+        ])
         .arg("--template")
         .arg(&path)
         .output();
@@ -1464,6 +1539,7 @@ pub fn run() {
             save_file,
             export_notes,
             op_item_create,
+            op_list_vaults,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

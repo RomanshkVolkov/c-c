@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, KeyRound, Copy, Trash2, Check, Pencil, RefreshCw, Lock } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -415,6 +415,16 @@ interface Once {
   value: string;
 }
 
+/** One account+vault pair `op` reported as writable. */
+interface OpVault {
+  account: string; // sign-in URL — what `op --account` takes
+  email: string;
+  vault: string;
+}
+
+const keyOf = (p: OpVault) => `${p.account}//${p.vault}`;
+const labelOf = (p: OpVault) => `${p.vault} · ${p.email}`;
+
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /**
@@ -435,9 +445,23 @@ function RevealedSecrets({
   onDone: () => void;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
-  const [vault, setVault] = useState("Private");
+  const [places, setPlaces] = useState<OpVault[] | null>(null);
+  const [placeKey, setPlaceKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [refs, setRefs] = useState<[string, string][] | null>(null);
+
+  // Ask 1Password where it can write. An empty list (no CLI, not signed in,
+  // integration off) simply hides the offer — the copy buttons above still work.
+  useEffect(() => {
+    if (!inTauri) return;
+    import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<OpVault[]>("op_list_vaults"))
+      .then((v) => {
+        setPlaces(v);
+        if (v.length) setPlaceKey(keyOf(v[0]));
+      })
+      .catch(() => setPlaces([]));
+  }, []);
 
   const copy = async (s: Once) => {
     await navigator.clipboard.writeText(s.value);
@@ -446,12 +470,15 @@ function RevealedSecrets({
   };
 
   const saveToOnePassword = async () => {
+    const place = (places ?? []).find((p) => keyOf(p) === placeKey);
+    if (!place) return;
     setSaving(true);
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const out = await invoke<[string, string][]>("op_item_create", {
         title: `cac · ${title}`,
-        vault,
+        account: place.account,
+        vault: place.vault,
         fields: secrets.map((s) => [s.name, s.value]),
       });
       setRefs(out);
@@ -498,15 +525,31 @@ function RevealedSecrets({
           ))}
         </div>
       ) : (
-        inTauri && (
+        inTauri &&
+        places !== null &&
+        places.length > 0 && (
           <div className="flex items-end gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">1Password vault</Label>
-              <Input
-                value={vault}
-                onChange={(e) => setVault(e.target.value)}
-                className="h-8 w-36 text-xs"
-              />
+              <Label className="text-xs">Save in</Label>
+              {/* A list, not a text box: the old default was "Private", which
+                  only exists in some accounts — a business one usually has
+                  "Employee" and named vaults, so typing it failed at save time. */}
+              <Select
+                items={Object.fromEntries(places.map((p) => [keyOf(p), labelOf(p)]))}
+                value={placeKey}
+                onValueChange={(v) => v && setPlaceKey(v)}
+              >
+                <SelectTrigger size="sm" className="h-8 min-w-56 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {places.map((p) => (
+                    <SelectItem key={keyOf(p)} value={keyOf(p)}>
+                      {labelOf(p)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <Button size="sm" variant="secondary" onClick={saveToOnePassword} disabled={saving}>
               <Lock className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save to 1Password"}
