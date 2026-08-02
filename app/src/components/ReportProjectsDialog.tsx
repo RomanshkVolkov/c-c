@@ -380,14 +380,16 @@ function ProjectRow({
           <span className="font-mono text-xs text-muted-foreground">{p.slug}</span>
           {!p.isActive && <Badge variant="destructive" className="text-[10px] py-0">inactive</Badge>}
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="block truncate text-xs text-muted-foreground">
           {PLATFORM_LABELS[p.platform] ?? p.platform} · {p.rateLimitPerHour}/h
           {p.platform !== "app" && ` · ${p.allowedOrigins.length} origin(s)`}
           {p.webhookUrl && (p.webhookConfigured ? " · webhook (signed)" : " · webhook (unsigned)")}
         </span>
       </div>
+      {/* shrink-0: the actions keep their size and the name truncates instead —
+          the other way round the name collapsed to one letter. */}
       {canWrite && (
-        <>
+        <div className="flex shrink-0 items-center gap-1">
           <Button size="icon-sm" variant="ghost" onClick={startEdit} aria-label="Edit">
             <Pencil className="h-3.5 w-3.5" />
           </Button>
@@ -397,12 +399,18 @@ function ProjectRow({
           <Button size="sm" variant="ghost" onClick={() => setProjectActive(p.id, !p.isActive)}>
             {p.isActive ? "Deactivate" : "Activate"}
           </Button>
-        </>
-      )}
-      {canDelete && (
-        <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={onDelete} aria-label="Delete">
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+          {canDelete && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="text-destructive"
+              onClick={onDelete}
+              aria-label="Delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
