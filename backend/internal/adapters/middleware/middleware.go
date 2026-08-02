@@ -191,10 +191,14 @@ var patWritable = []struct {
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-lists/[^/]+/tasks/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/?$`), domain.ScopeNotesWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`), domain.ScopeReportsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/?$`), domain.ScopeReportsWrite},
 	// Changes what already exists.
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/move/?$`), domain.ScopeTasksManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/notes/[^/]+$`), domain.ScopeNotesManage},
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+$`), domain.ScopeReportsManage},
+	{http.MethodDelete, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/[^/]+$`), domain.ScopeReportsManage},
 }
 
 // patScopeFor reports the scope this request needs, and whether it's reachable

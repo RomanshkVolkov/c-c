@@ -63,6 +63,8 @@ export default function ConnectMcpDialog({
   const [canManageTasks, setCanManageTasks] = useState(false);
   const [canCreateNotes, setCanCreateNotes] = useState(false);
   const [canManageNotes, setCanManageNotes] = useState(false);
+  const [canReplyReports, setCanReplyReports] = useState(false);
+  const [canTriageReports, setCanTriageReports] = useState(false);
   const [minted, setMinted] = useState<CreateTokenResult | null>(null);
   const [exePath, setExePath] = useState<string>("");
 
@@ -97,6 +99,8 @@ export default function ConnectMcpDialog({
             ...(canManageTasks ? ["tasks:manage"] : []),
             ...(canCreateNotes ? ["notes:write"] : []),
             ...(canManageNotes ? ["notes:manage"] : []),
+            ...(canReplyReports ? ["reports:write"] : []),
+            ...(canTriageReports ? ["reports:manage"] : []),
           ],
         },
         true,
@@ -190,8 +194,10 @@ export default function ConnectMcpDialog({
                   placeholder="Claude Code"
                 />
               </div>
-              {/* Four permissions, split by what they can destroy: adding a task,
-                  comment or page can't overwrite anyone's work — changing one can. */}
+              {/* Split by what each can destroy: adding a task, a comment or a
+                  page can't overwrite anyone's work — changing one can. Reading
+                  needs no permission at all, which is why another app can drive
+                  its own "my reports" view with a token that grants nothing. */}
               <div className="grid grid-cols-2 gap-2">
                 <label className="flex items-start gap-2 text-xs text-muted-foreground">
                   <input
@@ -252,9 +258,39 @@ export default function ConnectMcpDialog({
                     </span>
                   </span>
                 </label>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={canReplyReports}
+                    onChange={(e) => setCanReplyReports(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-foreground">Reply to reports</span>
+                    <span className="block">
+                      Append-only: add a comment or attach an image to a report.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={canTriageReports}
+                    onChange={(e) => setCanTriageReports(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-foreground">Triage reports</span>
+                    <span className="block">
+                      Change status, assignee, priority, category or area, and remove
+                      attached images. What another app needs to run its own board.
+                    </span>
+                  </span>
+                </label>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Without any of these, the token can only read. Deleting anything, and
+                Without any of these, the token can only read — which already covers
+                listing and opening reports, tasks and notes. Deleting anything, and
                 minting tokens, stay refused in every case.
               </p>
               <Button onClick={mint} className="self-start">

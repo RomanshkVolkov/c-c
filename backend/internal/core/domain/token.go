@@ -63,16 +63,24 @@ type CreateTokenResult struct {
 // a page can't touch one that already exists, so a migration script only
 // needs Write. Manage is what update_note needs, since it can overwrite a
 // page's body outright.
+// ScopeReportsWrite/ScopeReportsManage do the same for reports, and are what
+// lets a tenant app drive its own triage with a single token instead of a
+// username and password: reading is already allowed for any token, so a
+// read-only one covers "my reports" and the board with no scope at all.
 const (
-	ScopeTasksWrite  = "tasks:write"
-	ScopeTasksManage = "tasks:manage"
-	ScopeNotesWrite  = "notes:write"
-	ScopeNotesManage = "notes:manage"
+	ScopeTasksWrite    = "tasks:write"
+	ScopeTasksManage   = "tasks:manage"
+	ScopeNotesWrite    = "notes:write"
+	ScopeNotesManage   = "notes:manage"
+	ScopeReportsWrite  = "reports:write"
+	ScopeReportsManage = "reports:manage"
 )
 
 func ValidScope(s string) bool {
 	switch s {
-	case ScopeTasksWrite, ScopeTasksManage, ScopeNotesWrite, ScopeNotesManage:
+	case ScopeTasksWrite, ScopeTasksManage,
+		ScopeNotesWrite, ScopeNotesManage,
+		ScopeReportsWrite, ScopeReportsManage:
 		return true
 	default:
 		return false

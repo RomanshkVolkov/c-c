@@ -24,6 +24,10 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/tasks/abc/move", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/notes/", domain.ScopeNotesWrite},
 		{http.MethodPatch, "/api/v1/notes/abc", domain.ScopeNotesManage},
+		{http.MethodPost, "/api/v1/reports/abc/comments", domain.ScopeReportsWrite},
+		{http.MethodPost, "/api/v1/reports/abc/images", domain.ScopeReportsWrite},
+		{http.MethodPatch, "/api/v1/reports/abc", domain.ScopeReportsManage},
+		{http.MethodDelete, "/api/v1/reports/abc/images/xyz", domain.ScopeReportsManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -59,6 +63,12 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodDelete, "/api/v1/notes/abc"),
 		req(http.MethodPut, "/api/v1/notes/tree"),
 		req(http.MethodPost, "/api/v1/notes/abc/attachments"),
+		// A tenant drives its own triage with a token; it never gets to erase
+		// history or remove a report outright.
+		req(http.MethodDelete, "/api/v1/reports/abc"),
+		req(http.MethodPatch, "/api/v1/reports/abc/comments/xyz"),
+		req(http.MethodDelete, "/api/v1/reports/abc/comments/xyz"),
+		req(http.MethodPost, "/api/v1/report-projects/"),
 		// Emptying the trash and purging are irreversible; no scope reaches them.
 		req(http.MethodDelete, "/api/v1/notes/trash"),
 		req(http.MethodDelete, "/api/v1/notes/trash/abc"),
@@ -67,6 +77,23 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 	for _, r := range unreachable {
 		if _, ok := patScopeFor(r); ok {
 			t.Errorf("%s %s must not be reachable by a token", r.Method, r.URL.Path)
+		}
+	}
+}
+
+// Reading needs no scope at all — the middleware only consults the allowlist
+// for non-GET. This is the property that lets another app back its "my reports"
+// view and its board with a plain read-only token, instead of a username and a
+// password it has to store, refresh and rotate by hand.
+func TestReadingNeedsNoScope(t *testing.T) {
+	for _, path := range []string{
+		"/api/v1/reports/",
+		"/api/v1/reports/abc",
+		"/api/v1/reports/transitions",
+		"/api/v1/reports/taxonomy",
+	} {
+		if _, ok := patScopeFor(req(http.MethodGet, path)); ok {
+			t.Errorf("GET %s should not be in the write allowlist at all", path)
 		}
 	}
 }
