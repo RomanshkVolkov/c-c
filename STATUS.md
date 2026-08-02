@@ -31,13 +31,13 @@ Plan: `~/.claude/plans/compressed-cooking-pond.md`.
 | `reporterId` filter | Lets a tenant build "my reports" without cac indexing per user |
 | Outbound webhook | Per project, HMAC-signed (`X-Cac-Signature`), all five report events |
 | Provisioning | In the console (*Reports → Projects*): integration type, rate limit and webhook |
+| Widget | `@g-studio/report-widget@0.7.0` published — `ReportInput` takes `category`/`priority`/`area`, `WidgetConfig` takes `defaultArea` |
 
 **Open items:**
 
 | Item | Owner |
 |---|---|
 | Merge `a1-step3-rename` — renames what's *stored* to `open`/`done`. Gated on **v1.5.1 being installed everywhere**: an older console would show an empty board | jose confirms, then cac session |
-| Publish `@g-studio/report-widget@0.7.0` — bumped and committed, but `npm whoami` returns 401. Blocks portento's B4 | jose |
 | Create the portento tenant in the console → yields the credentials the portento repo needs | jose |
 
 ## ⏳ Planned (next iterations)
