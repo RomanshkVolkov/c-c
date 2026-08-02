@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, KeyRound, Copy, Trash2, Check, Pencil } from "lucide-react";
+import { Plus, KeyRound, Copy, Trash2, Check, Pencil, RefreshCw, Lock } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -33,6 +33,13 @@ import type { ReportProject } from "@/types/report";
  * ingest directly, which sends no Origin at all — picking the wrong one is how
  * a server-to-server integration gets refused the moment a proxy adds a header.
  */
+/** 32 bytes from the platform CSPRNG, URL-safe so it survives any env file. */
+function randomSecret(): string {
+  const b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 const PLATFORM_LABELS: Record<"web" | "app", string> = {
   web: "Browser widget",
   app: "Server-to-server",
@@ -64,13 +71,20 @@ function WebhookFields({
         onChange={(e) => onUrl(e.target.value)}
         placeholder="https://your-app/api/webhooks/cac-reports"
       />
-      <Input
-        value={secret}
-        onChange={(e) => onSecret(e.target.value)}
-        placeholder={
-          configured ? "Signing secret set — type to replace it" : "Signing secret (min 16 chars)"
-        }
-      />
+      <div className="flex items-center gap-2">
+        <Input
+          value={secret}
+          onChange={(e) => onSecret(e.target.value)}
+          placeholder={
+            configured ? "Signing secret set — type to replace it" : "Signing secret (min 16 chars)"
+          }
+        />
+        {/* A signing secret has no reason to be memorable, and one a person
+            invents is the weakest link in an otherwise fine HMAC. */}
+        <Button size="sm" variant="outline" onClick={() => onSecret(randomSecret())}>
+          <RefreshCw className="h-3.5 w-3.5" /> Generate
+        </Button>
+      </div>
       <p className="text-[11px] text-muted-foreground">
         Every report event is POSTed here, signed with{" "}
         <code className="text-[10px]">X-Cac-Signature</code>. Verify it over the raw body.
@@ -97,7 +111,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [creating, setCreating] = useState(false);
-  const [revealed, setRevealed] = useState<{ label: string; key: string } | null>(null);
+  const [revealed, setRevealed] = useState<{ title: string; secrets: Once[] } | null>(null);
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -111,7 +125,17 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
         webhookUrl: webhookUrl.trim(),
         webhookSecret: webhookSecret.trim(),
       });
-      setRevealed({ label: `Ingest key for "${name.trim()}"`, key });
+      // The webhook secret is equally unrecoverable, so it belongs in the same
+      // panel — revealing one and swallowing the other is how it gets lost.
+      setRevealed({
+        title: name.trim(),
+        secrets: [
+          { name: "ingest_key", label: "Ingest key", value: key },
+          ...(webhookSecret.trim()
+            ? [{ name: "webhook_secret", label: "Webhook signing secret", value: webhookSecret.trim() }]
+            : []),
+        ],
+      });
       setName("");
       setOrigins([""]);
       setRate("20");
@@ -137,7 +161,10 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
     if (!ok) return;
     try {
       const key = await rotateProjectKey(id);
-      setRevealed({ label: `New ingest key for "${pname}"`, key });
+      setRevealed({
+        title: pname,
+        secrets: [{ name: "ingest_key", label: "New ingest key", value: key }],
+      });
     } catch (e) {
       toast.error("Failed to rotate key", {
         description: e instanceof Error ? e.message : String(e),
@@ -175,7 +202,11 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
         </DialogHeader>
 
         {revealed && (
-          <RevealedKey label={revealed.label} value={revealed.key} onDone={() => setRevealed(null)} />
+          <RevealedSecrets
+            title={revealed.title}
+            secrets={revealed.secrets}
+            onDone={() => setRevealed(null)}
+          />
         )}
 
         {canWrite && !revealed && (
@@ -377,28 +408,117 @@ function ProjectRow({
   );
 }
 
-function RevealedKey({ label, value, onDone }: { label: string; value: string; onDone: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    toast.success("Copied to clipboard");
+/** One secret the server will never show again. */
+interface Once {
+  name: string; // also the 1Password field name
+  label: string;
+  value: string;
+}
+
+const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/**
+ * Everything created with the project that can't be read back: the ingest key
+ * (cac stores only a hash) and the webhook secret (never returned).
+ *
+ * Offering 1Password here rather than "copy and paste it somewhere" is the
+ * point — this is the one moment the values exist outside the server, and what
+ * people otherwise do is leave them in a scratch file.
+ */
+function RevealedSecrets({
+  title,
+  secrets,
+  onDone,
+}: {
+  title: string;
+  secrets: Once[];
+  onDone: () => void;
+}) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const [vault, setVault] = useState("Private");
+  const [saving, setSaving] = useState(false);
+  const [refs, setRefs] = useState<[string, string][] | null>(null);
+
+  const copy = async (s: Once) => {
+    await navigator.clipboard.writeText(s.value);
+    setCopied(s.name);
+    toast.success(`${s.label} copied`);
   };
+
+  const saveToOnePassword = async () => {
+    setSaving(true);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const out = await invoke<[string, string][]>("op_item_create", {
+        title: `cac · ${title}`,
+        vault,
+        fields: secrets.map((s) => [s.name, s.value]),
+      });
+      setRefs(out);
+      toast.success("Saved to 1Password");
+    } catch (e) {
+      toast.error("Could not save to 1Password", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
-      <p className="text-sm font-medium">{label}</p>
-      <p className="text-xs text-muted-foreground">
-        Shown once — copy it now. It can't be retrieved later (only rotated).
-      </p>
-      <div className="flex items-center gap-2">
-        <code className="flex-1 rounded bg-background px-2 py-1.5 text-xs font-mono break-all">{value}</code>
-        <Button size="icon" variant="outline" onClick={copy}>
-          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-        </Button>
+    <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 space-y-3">
+      <div>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">
+          Shown once — these can't be retrieved later, only rotated or replaced.
+        </p>
       </div>
+
+      {secrets.map((s) => (
+        <div key={s.name} className="space-y-1">
+          <Label className="text-xs">{s.label}</Label>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 rounded bg-background px-2 py-1.5 text-xs font-mono break-all">
+              {s.value}
+            </code>
+            <Button size="icon" variant="outline" onClick={() => copy(s)}>
+              {copied === s.name ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+      ))}
+
+      {refs ? (
+        <div className="space-y-1 rounded border bg-background/60 p-2">
+          <p className="text-xs font-medium">Saved. Use these references in your deploy config:</p>
+          {refs.map(([name, reference]) => (
+            <code key={name} className="block text-[11px] font-mono break-all">
+              {reference}
+            </code>
+          ))}
+        </div>
+      ) : (
+        inTauri && (
+          <div className="flex items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">1Password vault</Label>
+              <Input
+                value={vault}
+                onChange={(e) => setVault(e.target.value)}
+                className="h-8 w-36 text-xs"
+              />
+            </div>
+            <Button size="sm" variant="secondary" onClick={saveToOnePassword} disabled={saving}>
+              <Lock className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save to 1Password"}
+            </Button>
+          </div>
+        )
+      )}
+
       <Button size="sm" variant="secondary" onClick={onDone}>
         Done
       </Button>
     </div>
   );
 }
+

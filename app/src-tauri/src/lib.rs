@@ -140,6 +140,108 @@ fn op_read(reference: &str) -> Result<String, String> {
     Ok(token)
 }
 
+/// Stores secrets that are shown exactly once as a new 1Password item, and
+/// returns an `op://` reference per field.
+///
+/// The ingest key and the webhook secret are unrecoverable after the dialog
+/// closes: cac keeps only a hash of one and never returns the other. Copying
+/// them into a scratch file is what people actually do, so this offers the
+/// alternative in the same breath — and hands back references a deploy config
+/// can use directly instead of the literal values.
+///
+/// Values travel in a **0600 temp file passed with `--template`**, never in
+/// argv: 1Password's own docs warn that command arguments land in shell history
+/// and are readable by other processes. (Assignment statements and a template
+/// on stdin were both tried; stdin silently discards the values.)
+#[tauri::command]
+fn op_item_create(
+    title: String,
+    vault: String,
+    fields: Vec<(String, String)>,
+) -> Result<Vec<(String, String)>, String> {
+    use std::io::Write as _;
+    use std::process::Command;
+
+    if fields.is_empty() {
+        return Err("Nothing to save".into());
+    }
+    let vault = if vault.trim().is_empty() { "Private".to_string() } else { vault };
+
+    let op_err = |e: std::io::Error| match e.kind() {
+        std::io::ErrorKind::NotFound => "1Password CLI (op) not found. Install from https://developer.1password.com/docs/cli/".to_string(),
+        _ => format!("Failed to execute op: {e}"),
+    };
+    let friendly = |stderr: &str, status: std::process::ExitStatus| {
+        let s = stderr.trim();
+        if s.contains("not currently signed in") || s.contains("session expired") {
+            "1Password session expired. Run `op signin` (or open the desktop app) and try again.".to_string()
+        } else if s.is_empty() {
+            format!("op exited with {status}")
+        } else {
+            s.to_string()
+        }
+    };
+
+    // Start from the real category template so the item looks native in the app.
+    let tpl_out = Command::new("op")
+        .args(["item", "template", "get", "API Credential"])
+        .output()
+        .map_err(op_err)?;
+    if !tpl_out.status.success() {
+        return Err(friendly(&String::from_utf8_lossy(&tpl_out.stderr), tpl_out.status));
+    }
+    let mut tpl: serde_json::Value = serde_json::from_slice(&tpl_out.stdout)
+        .map_err(|e| format!("Unexpected op template: {e}"))?;
+
+    let arr = tpl
+        .get_mut("fields")
+        .and_then(|f| f.as_array_mut())
+        .ok_or("op template has no fields")?;
+    for (name, value) in &fields {
+        arr.push(serde_json::json!({
+            "id": name, "type": "CONCEALED", "label": name, "value": value
+        }));
+    }
+
+    // 0600 before anything is written, and removed on every path out.
+    let path = std::env::temp_dir().join(format!("cac-op-{}.json", ephemeral_suffix()));
+    let write_template = || -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
+        f.write_all(tpl.to_string().as_bytes())
+    };
+    write_template().map_err(|e| format!("Could not stage the template: {e}"))?;
+
+    // The category lives in the template; passing --category too is an error.
+    let out = Command::new("op")
+        .args(["item", "create", "--vault", &vault, "--title", &title, "--format", "json"])
+        .arg("--template")
+        .arg(&path)
+        .output();
+    let _ = std::fs::remove_file(&path);
+    let out = out.map_err(op_err)?;
+    if !out.status.success() {
+        return Err(friendly(&String::from_utf8_lossy(&out.stderr), out.status));
+    }
+
+    // Reference by item id, not title: a title with spaces or a duplicate name
+    // would make the reference ambiguous.
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&out.stdout).map_err(|e| format!("Unexpected op output: {e}"))?;
+    let id = parsed.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+    if id.is_empty() {
+        return Err("op created the item but returned no id".into());
+    }
+    Ok(fields
+        .iter()
+        .map(|(name, _)| (name.clone(), format!("op://{vault}/{id}/{name}")))
+        .collect())
+}
+
 // ─── SSH agent keys ───────────────────────────────────────────────────────────
 
 
@@ -1361,6 +1463,7 @@ pub fn run() {
             sse_disconnect,
             save_file,
             export_notes,
+            op_item_create,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
