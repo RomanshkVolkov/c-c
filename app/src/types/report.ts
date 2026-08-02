@@ -130,6 +130,8 @@ export interface ReportComment {
   kind: "user" | "system";
   authorUserId?: string;
   authorName?: string;
+  /** Set instead of authorName when a tenant app replied with its project key. */
+  authorLabel?: string;
   body: string;
   images?: ReportImage[];
   createdAt: string;

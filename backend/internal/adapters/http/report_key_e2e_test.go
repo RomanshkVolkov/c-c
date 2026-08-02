@@ -1,0 +1,328 @@
+package http_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	adapterhttp "github.com/guz-studio/cac/backend/internal/adapters/http"
+	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
+)
+
+// The property the whole project-key design rests on, checked against a real
+// Postgres and the real router: two projects live in the SAME organization, so
+// anything that authorizes by org membership passes both. Only "this report is
+// mine" separates them.
+//
+// Skips when there is no database to talk to, so `go test ./...` stays green on
+// a machine without one.
+func TestProjectKeyCannotSeeTheNeighbouringProject(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	keyA, keyB := "pk_e2e_alpha_key", "pk_e2e_beta_key"
+	projA := mkProject(t, db, "proj-a", "alpha", org.ID, keyA)
+	projB := mkProject(t, db, "proj-b", "beta", org.ID, keyB)
+	repA := mkReport(t, db, "rep-a", projA.ID, "alpha bug")
+	repB := mkReport(t, db, "rep-b", projB.ID, "beta bug")
+
+	r := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, r, events.NewHub())
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	do := func(method, path, key string) (*http.Response, []byte) {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, nil)
+		req.Header.Set("X-Ingest-Key", key)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf [1 << 16]byte
+		n, _ := resp.Body.Read(buf[:])
+		resp.Body.Close()
+		return resp, buf[:n]
+	}
+
+	// The list shows exactly one report — its own — even though both projects
+	// belong to the same organization.
+	resp, body := do(http.MethodGet, "/api/v1/reports/", keyA)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list → %d: %s", resp.StatusCode, body)
+	}
+	var list struct {
+		Data struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Data.Items) != 1 || list.Data.Items[0].ID != repA.ID {
+		t.Errorf("list with alpha's key = %+v, want only %s", list.Data.Items, repA.ID)
+	}
+
+	// Asking for the neighbour by id answers an empty list. It must not answer
+	// alpha's own reports: silently substituting data the caller did not ask
+	// for is what merely *forcing* q.ProjectID does, and it reads as a
+	// successful query for the wrong project.
+	_, body = do(http.MethodGet, "/api/v1/reports/?projectId="+projB.ID, keyA)
+	json.Unmarshal(body, &list)
+	if len(list.Data.Items) != 0 {
+		t.Errorf("?projectId=beta with alpha's key returned %d items, want 0", len(list.Data.Items))
+	}
+
+	// Reading and triaging the neighbour's report answers 404, not 403: a 403
+	// would confirm the id exists.
+	for _, c := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/reports/" + repB.ID},
+		{http.MethodPatch, "/api/v1/reports/" + repB.ID},
+	} {
+		if resp, body := do(c.method, c.path, keyA); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s neighbour → %d, want 404: %s", c.method, resp.StatusCode, body)
+		}
+	}
+
+	// And its own report is reachable, or the test above proves nothing.
+	if resp, body := do(http.MethodGet, "/api/v1/reports/"+repA.ID, keyA); resp.StatusCode != http.StatusOK {
+		t.Errorf("own report → %d, want 200: %s", resp.StatusCode, body)
+	}
+	_ = repB
+}
+
+// A tenant's reply has two audiences that need opposite things, and only one of
+// them is visible while testing from the app.
+//
+// In cac the thread must name who answered — "portento", not a blank byline.
+// For the reporter it must read as "team": never as their own words, and
+// without exposing which tenant is behind the board. And it has to raise the
+// unread badge, which used to key off author_user_id alone and so would have
+// silently skipped every reply a project key wrote.
+func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	const key = "pk_e2e_reply_key"
+	proj := mkProject(t, db, "proj-r", "portento", org.ID, key)
+	rep := mkReport(t, db, "rep-r", proj.ID, "something broke")
+	before := time.Now().Add(-time.Minute)
+
+	r := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, r, events.NewHub())
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	// The tenant replies with its project key.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	mw.WriteField("body", "we shipped a fix")
+	mw.Close()
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/reports/"+rep.ID+"/comments", &buf)
+	req.Header.Set("X-Ingest-Key", key)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("tenant reply → %d: %s", resp.StatusCode, body)
+	}
+
+	// Side one: cac names the tenant.
+	var detail struct {
+		Data struct {
+			Comments []struct {
+				AuthorName  string `json:"authorName"`
+				AuthorLabel string `json:"authorLabel"`
+				Body        string `json:"body"`
+			} `json:"comments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Data.Comments) != 1 {
+		t.Fatalf("got %d comments, want 1", len(detail.Data.Comments))
+	}
+	if got := detail.Data.Comments[0].AuthorLabel; got != proj.Name {
+		t.Errorf("cac thread author label = %q, want %q", got, proj.Name)
+	}
+
+	// Side two: the reporter sees a reply from "team", not from themselves, and
+	// is told nothing about which tenant wrote it.
+	tok := repository.MintReportToken(rep.ID)
+	resp, err = http.Get(srv.URL + "/ingest/v1/reports/" + rep.ID + "?token=" + tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reporter view → %d: %s", resp.StatusCode, body)
+	}
+	var view struct {
+		Data struct {
+			Comments []struct {
+				Author string `json:"author"`
+				Body   string `json:"body"`
+			} `json:"comments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Data.Comments) != 1 {
+		t.Fatalf("reporter sees %d comments, want 1", len(view.Data.Comments))
+	}
+	if got := view.Data.Comments[0].Author; got != "team" {
+		t.Errorf("reporter sees author %q, want \"team\" (\"you\" would show them their own words as a reply)", got)
+	}
+	// The folio legitimately carries the project slug — it is the reporter's own
+	// ticket number. What must not appear is the tenant's display name, which is
+	// the label cac signs the reply with internally.
+	if strings.Contains(string(body), proj.Name) {
+		t.Errorf("the reporter payload names the tenant %q: %s", proj.Name, body)
+	}
+
+	// And the badge fires, which is what tells the reporter to come back.
+	n, err := repository.NewReportRepository(db).CountTeamCommentsSince(rep.ID, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("unread count = %d, want 1 — a tenant reply must raise the badge", n)
+	}
+}
+
+// ─── harness ──────────────────────────────────────────────────────────────────
+
+func e2eDB(t *testing.T) (*gorm.DB, func()) {
+	t.Helper()
+	loadEnvQuietly("../../../.env")
+	if repository.GetEnv("DB_HOST", "") == "" {
+		t.Skip("no database configured")
+	}
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		repository.GetEnv("DB_HOST", "localhost"), repository.GetEnv("DB_PORT", "5432"),
+		repository.GetEnv("DB_USER", "postgres"), repository.GetEnv("DB_PASSWORD", ""),
+		repository.GetEnv("DB_NAME", "cac"), repository.GetEnv("DB_SSLMODE", "disable"))
+
+	admin, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Skipf("no database reachable: %v", err)
+	}
+	const name = "cac_e2e_projkey"
+	admin.Exec("DROP DATABASE IF EXISTS " + name)
+	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
+		t.Skipf("cannot create a throwaway database: %v", err)
+	}
+	sqlDB, _ := admin.DB()
+
+	tmpDSN := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		repository.GetEnv("DB_HOST", "localhost"), repository.GetEnv("DB_PORT", "5432"),
+		repository.GetEnv("DB_USER", "postgres"), repository.GetEnv("DB_PASSWORD", ""),
+		name, repository.GetEnv("DB_SSLMODE", "disable"))
+	db, err := gorm.Open(postgres.Open(tmpDSN), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{},
+		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{}); err != nil {
+		t.Fatal(err)
+	}
+	// The ingest key HMAC is keyed by an env secret; pin one so the hashes this
+	// test writes match what the middleware computes.
+	if os.Getenv("INGEST_KEY_SECRET") == "" {
+		os.Setenv("INGEST_KEY_SECRET", "e2e-fixed-secret")
+	}
+	return db, func() {
+		if inner, _ := db.DB(); inner != nil {
+			inner.Close()
+		}
+		admin.Exec("DROP DATABASE IF EXISTS " + name)
+		sqlDB.Close()
+	}
+}
+
+// loadEnvQuietly reads the .env by path. repository.LoadEnv opens "./.env"
+// relative to the working directory, which under `go test` is this package's
+// directory, not the module root.
+func loadEnvQuietly(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		if _, set := os.LookupEnv(strings.TrimSpace(k)); !set {
+			os.Setenv(strings.TrimSpace(k), strings.Trim(strings.TrimSpace(v), `"`))
+		}
+	}
+}
+
+func mkProject(t *testing.T, db *gorm.DB, id, slug, orgID, key string) *domain.ReportProject {
+	t.Helper()
+	// Display name deliberately unlike the slug: the folio the reporter sees is
+	// built from the slug, so a test that searched for the slug would flag the
+	// ticket number as a leak.
+	p := &domain.ReportProject{
+		OrgID: orgID, Name: strings.ToUpper(slug) + " Support", Slug: slug, Platform: "app",
+		IngestKeyHash: repository.HashIngestKey(key), IsActive: true,
+	}
+	p.ID = id
+	if err := db.Create(p).Error; err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func mkReport(t *testing.T, db *gorm.DB, id, projectID, title string) *domain.Report {
+	t.Helper()
+	rep := &domain.Report{
+		ProjectID: projectID, Title: title, Description: title,
+		Status: domain.ReportPending, ReporterID: "u1", ReporterName: "u1",
+	}
+	rep.ID = id
+	if err := db.Create(rep).Error; err != nil {
+		t.Fatal(err)
+	}
+	return rep
+}

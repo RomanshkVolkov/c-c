@@ -33,7 +33,41 @@ type ClaimsJWT struct {
 	// Scopes is set only for personal access tokens; a signed-in user's JWT
 	// carries none and is limited by their org role instead.
 	Scopes []string `json:"scopes,omitempty"`
+	// ProjectID marks a caller that authenticated with a project's ingest key
+	// rather than as a person. It is never present in a signed token — the
+	// middleware sets it — and when it is set the caller may only touch that
+	// one project. A tenant driving its own board is not a user, and inventing
+	// a fake one to represent it costs a password to store and gives it every
+	// project its organization owns.
+	ProjectID string `json:"-"`
+	// ProjectOrgID is that project's organization. Carried so the list query can
+	// still be scoped by org without granting membership in it — putting the org
+	// in Orgs instead would let RoleInOrg succeed for every *other* project the
+	// organization owns, which is the exact privilege this credential exists to
+	// avoid.
+	ProjectOrgID string `json:"-"`
+	// ProjectName is what a reply from this caller is signed with in the cac
+	// thread. A comment has to say who wrote it, and "the key" is not an answer.
+	ProjectName string `json:"-"`
+	// ProjectSlug identifies the tenant in emitted events. Stored rather than
+	// derived from Username, which only happens to be formatted that way.
+	ProjectSlug string `json:"-"`
 	jwt.RegisteredClaims
+}
+
+// IsProjectScoped reports whether this caller is a project key. Authorization
+// for these callers is "does it belong to my project", not org membership —
+// see the two gates in report_admin.go.
+func (c *ClaimsJWT) IsProjectScoped() bool { return c.ProjectID != "" }
+
+// EventActor names who caused an event, so a tenant receiving the webhook can
+// ignore what it did itself. Without it, portento changing a status gets a
+// webhook back about its own change and cannot tell it apart from ours.
+func (c *ClaimsJWT) EventActor() string {
+	if c.IsProjectScoped() {
+		return "project:" + c.ProjectSlug
+	}
+	return "team"
 }
 
 // HasScope reports whether a token was granted a capability. Always false for a

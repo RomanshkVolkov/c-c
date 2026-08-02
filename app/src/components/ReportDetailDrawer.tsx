@@ -224,7 +224,12 @@ export default function ReportDetailDrawer() {
                   ) : (
                     <div key={c.id} className="rounded-md border p-3 space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{c.authorName ?? "reporter"}</span>
+                        {/* `||`, not `??`: the API omits empty strings but a
+                            join that finds no user still yields "", which `??`
+                            would render as a blank byline. This is the side
+                            that names the tenant — the reporter's own view
+                            only ever says "team". */}
+                        <span>{c.authorName || c.authorLabel || "reporter"}</span>
                         <span>{new Date(c.createdAt).toLocaleString()}</span>
                       </div>
                       {c.body && <Markdown>{c.body}</Markdown>}

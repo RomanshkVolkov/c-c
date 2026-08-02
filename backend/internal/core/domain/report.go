@@ -274,8 +274,14 @@ type ReportComment struct {
 	ReportID     string            `gorm:"type:varchar(36);index;not null" json:"reportId"`
 	Kind         ReportCommentKind `gorm:"type:varchar(10);default:'user'" json:"kind"`
 	AuthorUserID *string           `gorm:"type:varchar(36)"                json:"authorUserId,omitempty"`
-	Body         string            `gorm:"type:text;not null"              json:"body"`
-	DeletedAt    gorm.DeletedAt    `gorm:"index"                           json:"-"`
+	// AuthorLabel names an author that is not a person: a tenant app replying
+	// with its project key. Empty for every comment written by a cac user and
+	// for every comment written by the reporter, which is why the two other
+	// places that read authorship have to consult it too — a NULL author_user_id
+	// alone used to mean "the reporter wrote this".
+	AuthorLabel string         `gorm:"type:varchar(120)" json:"authorLabel,omitempty"`
+	Body        string         `gorm:"type:text;not null" json:"body"`
+	DeletedAt   gorm.DeletedAt `gorm:"index"                           json:"-"`
 }
 
 // ReportImage is an uploaded screenshot. CommentID null = report gallery; set =
@@ -485,14 +491,18 @@ type UpdateReportRequest struct {
 }
 
 type ReportCommentResponse struct {
-	ID           string                `json:"id"`
-	Kind         ReportCommentKind     `json:"kind"`
-	AuthorUserID *string               `json:"authorUserId,omitempty"`
-	AuthorName   string                `json:"authorName,omitempty"`
-	Body         string                `json:"body"`
-	Images       []ReportImageResponse `json:"images,omitempty" gorm:"-"`
-	CreatedAt    time.Time             `json:"createdAt"`
-	UpdatedAt    time.Time             `json:"updatedAt"`
+	ID           string            `json:"id"`
+	Kind         ReportCommentKind `json:"kind"`
+	AuthorUserID *string           `json:"authorUserId,omitempty"`
+	AuthorName   string            `json:"authorName,omitempty"`
+	// AuthorLabel is kept separate from AuthorName rather than folded into it:
+	// the cac thread wants the tenant's actual name, while the reporter's view
+	// only needs to know it wasn't them.
+	AuthorLabel string                `json:"authorLabel,omitempty"`
+	Body        string                `json:"body"`
+	Images      []ReportImageResponse `json:"images,omitempty" gorm:"-"`
+	CreatedAt   time.Time             `json:"createdAt"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
 }
 
 type UpdateReportCommentRequest struct {

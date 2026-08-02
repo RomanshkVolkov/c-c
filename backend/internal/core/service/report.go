@@ -194,6 +194,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	// to the hub, which meant anything added to emit() covered four of the five
 	// events and quietly skipped the one a subscriber cares about most.
 	s.emit("report:new", report.ID, map[string]any{
+		"from":     "reporter",
 		"reportId": report.ID, "projectId": project.ID, "folio": folio, "title": report.Title,
 	})
 
@@ -255,8 +256,12 @@ func (s *ReportService) ReporterView(reportID string) (*domain.ReporterReportVie
 		author := "team"
 		if c.Kind == domain.CommentKindSystem {
 			author = "system"
-		} else if c.AuthorUserID == nil {
-			author = "you" // reporter's own comment
+		} else if c.AuthorUserID == nil && c.AuthorLabel == "" {
+			// Only when neither is set: a comment with a label was written by the
+			// tenant app, and showing the reporter their own words back as a
+			// reply is worse than saying nothing. The label itself stays inside
+			// cac — the reporter has no use for which tenant answered.
+			author = "you"
 		}
 		out = append(out, domain.ReporterCommentView{
 			Author:    author,
@@ -351,6 +356,12 @@ func (s *ReportService) OrgIDForReport(reportID string) (string, error) {
 	return s.repo.OrgIDForReport(reportID)
 }
 
+// ProjectIDForReport exposes the report→project resolution, which is how a
+// project-key caller is authorized: it belongs to my project, or it 404s.
+func (s *ReportService) ProjectIDForReport(reportID string) (string, error) {
+	return s.repo.ProjectIDForReport(reportID)
+}
+
 // Detail assembles the full report view: gallery images + comment thread with
 // inline images.
 func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, error) {
@@ -437,7 +448,7 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 
 // Update applies a validated status transition and/or (un)assignment, leaving
 // kind=system audit comments (portento behavior).
-func (s *ReportService) Update(reportID string, req domain.UpdateReportRequest) (*domain.ReportDetailResponse, error) {
+func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRequest) (*domain.ReportDetailResponse, error) {
 	report, err := s.repo.FindByID(reportID)
 	if err != nil {
 		return nil, err
@@ -505,7 +516,9 @@ func (s *ReportService) Update(reportID string, req domain.UpdateReportRequest) 
 		return nil, err
 	}
 	if req.Status != nil {
-		s.emit("report:status", reportID, map[string]any{"reportId": reportID, "status": report.Status})
+		s.emit("report:status", reportID, map[string]any{
+			"reportId": reportID, "status": report.Status, "from": actor,
+		})
 	}
 	return s.Detail(reportID)
 }
@@ -520,6 +533,26 @@ func (s *ReportService) systemComment(reportID, body string) error {
 // AddComment creates a user comment, optionally with inline images. Body may be
 // empty when images are attached (portento behavior).
 func (s *ReportService) AddComment(ctx context.Context, callerID, reportID, body string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
+	return s.addComment(ctx, commentAuthor{userID: &callerID, from: "team"}, reportID, body, images)
+}
+
+// AddProjectComment records a reply written by a tenant app through its project
+// key. It is a separate entry point rather than a nullable argument on
+// AddComment so the path people use keeps its signature, and so the one caller
+// that has no user has to say so out loud.
+func (s *ReportService) AddProjectComment(ctx context.Context, projectName, reportID, body string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
+	return s.addComment(ctx, commentAuthor{label: projectName, from: "project:" + projectName}, reportID, body, images)
+}
+
+// commentAuthor is whoever is speaking: a cac user, or a tenant app named by
+// label. Exactly one is set.
+type commentAuthor struct {
+	userID *string
+	label  string
+	from   string // what the emitted event reports as the cause
+}
+
+func (s *ReportService) addComment(ctx context.Context, author commentAuthor, reportID, body string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
 	if body == "" && len(images) == 0 {
 		return nil, ErrEmptyComment
 	}
@@ -530,7 +563,10 @@ func (s *ReportService) AddComment(ctx context.Context, callerID, reportID, body
 		return nil, err
 	}
 
-	c := &domain.ReportComment{ReportID: reportID, Kind: domain.CommentKindUser, AuthorUserID: &callerID, Body: body}
+	c := &domain.ReportComment{
+		ReportID: reportID, Kind: domain.CommentKindUser,
+		AuthorUserID: author.userID, AuthorLabel: author.label, Body: body,
+	}
 	c.ID = uuid.NewString()
 	if err := s.repo.CreateComment(c); err != nil {
 		return nil, err
@@ -550,7 +586,9 @@ func (s *ReportService) AddComment(ctx context.Context, callerID, reportID, body
 			return nil, fmt.Errorf("%w: %v", ErrImagesUnavailable, lastErr)
 		}
 	}
-	s.emit("report:comment", reportID, map[string]any{"reportId": reportID, "commentId": c.ID})
+	s.emit("report:comment", reportID, map[string]any{
+		"reportId": reportID, "commentId": c.ID, "from": author.from,
+	})
 	return s.Detail(reportID)
 }
 
@@ -586,7 +624,7 @@ func (s *ReportService) DeleteComment(callerID, reportID, commentID string) erro
 
 // AttachImages uploads screenshots to the report gallery, leaving a system
 // audit comment (portento behavior).
-func (s *ReportService) AttachImages(ctx context.Context, reportID string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
+func (s *ReportService) AttachImages(ctx context.Context, actor, reportID string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
 	if len(images) == 0 {
 		return nil, ErrEmptyComment
 	}
@@ -611,7 +649,9 @@ func (s *ReportService) AttachImages(ctx context.Context, reportID string, image
 	if err := s.systemComment(reportID, fmt.Sprintf("attached %d image(s)", len(persisted))); err != nil {
 		return nil, err
 	}
-	s.emit("report:attachment", reportID, map[string]any{"reportId": reportID, "attached": len(persisted)})
+	s.emit("report:attachment", reportID, map[string]any{
+		"reportId": reportID, "attached": len(persisted), "from": actor,
+	})
 	return s.Detail(reportID)
 }
 

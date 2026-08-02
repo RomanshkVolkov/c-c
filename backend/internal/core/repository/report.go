@@ -131,6 +131,23 @@ func (r *ReportRepository) EventTargetForReport(reportID string) (*domain.Report
 	}, nil
 }
 
+// ProjectIDForReport resolves which project a report belongs to, for the
+// project-key authorization gate.
+func (r *ReportRepository) ProjectIDForReport(reportID string) (string, error) {
+	var projectID string
+	err := r.db.Raw(`
+		SELECT rp.project_id FROM reports rp
+		WHERE rp.id = ? AND rp.deleted_at IS NULL
+	`, reportID).Scan(&projectID).Error
+	if err != nil {
+		return "", err
+	}
+	if projectID == "" {
+		return "", ErrReportNotFound
+	}
+	return projectID, nil
+}
+
 func (r *ReportRepository) OrgIDForReport(reportID string) (string, error) {
 	var orgID string
 	err := r.db.Raw(`
@@ -248,7 +265,7 @@ func (r *ReportRepository) ListComments(reportID string) ([]domain.ReportComment
 	var out []domain.ReportCommentResponse
 	err := r.db.Raw(`
 		SELECT c.id, c.kind, c.author_user_id, u.username AS author_name,
-		       c.body, c.created_at, c.updated_at
+		       c.author_label, c.body, c.created_at, c.updated_at
 		FROM report_comments c
 		LEFT JOIN users u ON u.id = c.author_user_id
 		WHERE c.report_id = ? AND c.deleted_at IS NULL
@@ -261,12 +278,16 @@ func (r *ReportRepository) CreateComment(c *domain.ReportComment) error {
 	return r.db.Create(c).Error
 }
 
-// CountTeamCommentsSince counts agent replies (kind=user, author set) newer than
-// `since` — the reporter's unread count for one report.
+// CountTeamCommentsSince counts replies from our side (kind=user, author set)
+// newer than `since` — the reporter's unread count for one report.
+//
+// A tenant app replying through its project key has no author_user_id, only a
+// label. Counting on the id alone would leave its replies out of the badge, so
+// the reporter would never be told they had an answer.
 func (r *ReportRepository) CountTeamCommentsSince(reportID string, since time.Time) (int64, error) {
 	var n int64
 	err := r.db.Model(&domain.ReportComment{}).
-		Where("report_id = ? AND kind = ? AND author_user_id IS NOT NULL AND created_at > ? AND deleted_at IS NULL",
+		Where("report_id = ? AND kind = ? AND (author_user_id IS NOT NULL OR author_label <> '') AND created_at > ? AND deleted_at IS NULL",
 			reportID, domain.CommentKindUser, since).
 		Count(&n).Error
 	return n, err

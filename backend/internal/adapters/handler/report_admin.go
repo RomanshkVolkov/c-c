@@ -69,6 +69,20 @@ func (h *reportAdminHandler) authorize(w http.ResponseWriter, r *http.Request, n
 		return nil, "", false
 	}
 	reportID := chi.URLParam(r, "id")
+
+	// Gate 1 of 2 for a project key. It authorizes by "this report is mine",
+	// never by org membership, so it can't reach a sibling project the same
+	// organization owns. Mismatch answers 404, like a non-member does, so the
+	// key can't be used to probe which report ids exist.
+	if user.IsProjectScoped() {
+		projectID, err := h.svc.ProjectIDForReport(reportID)
+		if err != nil || projectID != user.ProjectID {
+			SendErrorResponse(w, http.StatusNotFound, "Report not found", "not-found")
+			return nil, "", false
+		}
+		return user, reportID, true
+	}
+
 	orgID, err := h.svc.OrgIDForReport(reportID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusNotFound, "Report not found", "not-found")
@@ -154,7 +168,28 @@ func (h *reportAdminHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.svc.List(user.OrgIDs(), q, user.Superadmin)
+	// Gate 2 of 2. A project key sees its own project and nothing else.
+	//
+	// Asking for someone else's ?projectId= answers an empty list, not this
+	// project's reports. Overwriting the filter instead would hand the caller
+	// data it did not ask for under the id of a project it cannot see — safe,
+	// but the kind of silent substitution an integrator debugs for an hour.
+	// Empty is also what a non-member already gets, so it leaks nothing about
+	// whether that project exists.
+	orgIDs, superadmin := user.OrgIDs(), user.Superadmin
+	if user.IsProjectScoped() {
+		if q.ProjectID != "" && q.ProjectID != user.ProjectID {
+			SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReportListResult]{
+				Success: true,
+				Data:    &domain.ReportListResult{Items: []domain.ReportListItem{}, Limit: q.Limit, Offset: q.Offset},
+			})
+			return
+		}
+		q.ProjectID = user.ProjectID
+		orgIDs, superadmin = []string{user.ProjectOrgID}, false
+	}
+
+	result, err := h.svc.List(orgIDs, q, superadmin)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list reports", err.Error())
 		return
@@ -201,7 +236,7 @@ func (h *reportAdminHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *reportAdminHandler) Update(w http.ResponseWriter, r *http.Request) {
-	_, reportID, ok := h.authorize(w, r, true)
+	user, reportID, ok := h.authorize(w, r, true)
 	if !ok {
 		return
 	}
@@ -216,7 +251,7 @@ func (h *reportAdminHandler) Update(w http.ResponseWriter, r *http.Request) {
 		canonical := req.Status.Canonical()
 		req.Status = &canonical
 	}
-	detail, err := h.svc.Update(reportID, req)
+	detail, err := h.svc.Update(user.EventActor(), reportID, req)
 	if err != nil {
 		if mapReportError(w, err) {
 			return
@@ -238,7 +273,14 @@ func (h *reportAdminHandler) AddComment(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	detail, err := h.svc.AddComment(r.Context(), user.UserID, reportID, r.FormValue("body"), images)
+	body := r.FormValue("body")
+	add := func() (*domain.ReportDetailResponse, error) {
+		if user.IsProjectScoped() {
+			return h.svc.AddProjectComment(r.Context(), user.ProjectName, reportID, body, images)
+		}
+		return h.svc.AddComment(r.Context(), user.UserID, reportID, body, images)
+	}
+	detail, err := add()
 	if err != nil {
 		if mapReportError(w, err) {
 			return
@@ -285,7 +327,7 @@ func (h *reportAdminHandler) DeleteComment(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *reportAdminHandler) AttachImages(w http.ResponseWriter, r *http.Request) {
-	_, reportID, ok := h.authorize(w, r, true)
+	user, reportID, ok := h.authorize(w, r, true)
 	if !ok {
 		return
 	}
@@ -293,7 +335,7 @@ func (h *reportAdminHandler) AttachImages(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	detail, err := h.svc.AttachImages(r.Context(), reportID, images)
+	detail, err := h.svc.AttachImages(r.Context(), user.EventActor(), reportID, images)
 	if err != nil {
 		if mapReportError(w, err) {
 			return

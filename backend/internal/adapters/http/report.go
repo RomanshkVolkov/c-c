@@ -98,7 +98,9 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 
 	// Triage console API — JWT, org-scoped (non-members get 404, anti-IDOR).
 	r.Route("/api/v1/reports", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware)
+		// Either a person, or the project's own ingest key. Scoped to this group
+		// on purpose: a tenant's key must not become a way into tasks or notes.
+		r.Use(middleware.ReportKeyOrAuth(projectRepo.FindActiveByIngestKey))
 		r.Get("/", admin.List)
 		r.Get("/transitions", admin.Transitions)
 		r.Get("/taxonomy", admin.Taxonomy)
