@@ -54,6 +54,11 @@ func TestProjectKeyReadsAndTriagesItsOwnBoard(t *testing.T) {
 		{http.MethodPatch, "/api/v1/reports/abc"},
 		{http.MethodPost, "/api/v1/reports/abc/comments"},
 		{http.MethodPost, "/api/v1/reports/abc/images"},
+		// Cleaning up after itself. Ownership is enforced in the service, not
+		// here — the middleware only decides which doors exist.
+		{http.MethodPatch, "/api/v1/reports/abc/comments/xyz"},
+		{http.MethodDelete, "/api/v1/reports/abc/comments/xyz"},
+		{http.MethodDelete, "/api/v1/reports/abc/images/xyz"},
 	} {
 		code, claims := run(t, keyReq(c.method, c.path, "srv-key"))
 		if code != http.StatusOK {
@@ -114,11 +119,9 @@ func TestProjectKeyReachesNothingButReports(t *testing.T) {
 		{http.MethodPost, "/api/v1/auth/tokens"},
 		{http.MethodGet, "/api/v1/users/"},
 		{http.MethodPost, "/api/v1/report-projects/"},
-		// Erasing history. The key adds and reclassifies; it never removes.
+		// Removing a whole report is the tenant discarding a user's report, not
+		// tidying its own reply.
 		{http.MethodDelete, "/api/v1/reports/abc"},
-		{http.MethodPatch, "/api/v1/reports/abc/comments/xyz"},
-		{http.MethodDelete, "/api/v1/reports/abc/comments/xyz"},
-		{http.MethodDelete, "/api/v1/reports/abc/images/xyz"},
 	} {
 		code, claims := run(t, keyReq(c.method, c.path, "srv-key"))
 		if code != http.StatusForbidden || claims != nil {

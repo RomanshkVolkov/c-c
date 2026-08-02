@@ -301,7 +301,13 @@ func (h *reportAdminHandler) EditComment(w http.ResponseWriter, r *http.Request)
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	if err := h.svc.EditComment(user.UserID, reportID, chi.URLParam(r, "commentId"), req.Body); err != nil {
+	editErr := func() error {
+		if user.IsProjectScoped() {
+			return h.svc.EditProjectComment(user.ProjectName, reportID, chi.URLParam(r, "commentId"), req.Body)
+		}
+		return h.svc.EditComment(user.UserID, reportID, chi.URLParam(r, "commentId"), req.Body)
+	}
+	if err := editErr(); err != nil {
 		if mapReportError(w, err) {
 			return
 		}
@@ -316,7 +322,13 @@ func (h *reportAdminHandler) DeleteComment(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if err := h.svc.DeleteComment(user.UserID, reportID, chi.URLParam(r, "commentId")); err != nil {
+	delErr := func() error {
+		if user.IsProjectScoped() {
+			return h.svc.DeleteProjectComment(user.ProjectName, reportID, chi.URLParam(r, "commentId"))
+		}
+		return h.svc.DeleteComment(user.UserID, reportID, chi.URLParam(r, "commentId"))
+	}
+	if err := delErr(); err != nil {
 		if mapReportError(w, err) {
 			return
 		}

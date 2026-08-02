@@ -225,6 +225,91 @@ func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
 	}
 }
 
+// A tenant tidies its own replies and nothing else. Checked over HTTP against a
+// real database because the rule spans three layers — the middleware decides the
+// endpoint exists, the handler picks the project path, and the service owns the
+// actual comparison — and a mistake in any one of them reads as success here.
+func TestATenantEditsItsOwnReplyButNotAPersons(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	const key = "pk_e2e_own_key"
+	proj := mkProject(t, db, "proj-o", "portento", org.ID, key)
+	rep := mkReport(t, db, "rep-o", proj.ID, "broken")
+
+	// One comment from a person on cac's side, one from the tenant.
+	human := "u-someone"
+	mine := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorLabel: proj.Name, Body: "ours"}
+	mine.ID = "c-tenant"
+	theirs := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &human, Body: "theirs"}
+	theirs.ID = "c-human"
+	if err := db.Create(mine).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(theirs).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, r, events.NewHub())
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	send := func(method, path, payload string) int {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(payload))
+		req.Header.Set("X-Ingest-Key", key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	base := "/api/v1/reports/" + rep.ID + "/comments/"
+	if code := send(http.MethodPatch, base+mine.ID, `{"body":"corrected"}`); code != http.StatusOK {
+		t.Errorf("editing its own reply → %d, want 200", code)
+	}
+	if code := send(http.MethodPatch, base+theirs.ID, `{"body":"hijacked"}`); code == http.StatusOK {
+		t.Error("the tenant rewrote a person's comment")
+	}
+	if code := send(http.MethodDelete, base+theirs.ID, ""); code == http.StatusOK {
+		t.Error("the tenant deleted a person's comment")
+	}
+	// Removing a whole report is a different thing from tidying a reply, and
+	// stays shut at the middleware.
+	if code := send(http.MethodDelete, "/api/v1/reports/"+rep.ID, ""); code != http.StatusForbidden {
+		t.Errorf("deleting the report → %d, want 403", code)
+	}
+
+	// A fresh destination per lookup: GORM folds a non-zero primary key on the
+	// destination into the query, so reusing one silently ANDs the previous id
+	// into the next WHERE and finds nothing.
+	body := func(id string) string {
+		t.Helper()
+		var c domain.ReportComment
+		if err := db.Where("id = ?", id).First(&c).Error; err != nil {
+			t.Fatalf("comment %s is gone: %v", id, err)
+		}
+		return c.Body
+	}
+
+	// Refusing the request is not enough — the row itself must be untouched.
+	if got := body(theirs.ID); got != "theirs" {
+		t.Errorf("the person's comment now reads %q", got)
+	}
+	if got := body(mine.ID); got != "corrected" {
+		t.Errorf("the tenant's own edit did not persist, body is %q", got)
+	}
+}
+
 // ─── harness ──────────────────────────────────────────────────────────────────
 
 func e2eDB(t *testing.T) (*gorm.DB, func()) {

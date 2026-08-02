@@ -408,6 +408,11 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 		comments = []domain.ReportCommentResponse{}
 	}
 
+	assigneeName := ""
+	if report.AssigneeUserID != nil {
+		assigneeName = s.repo.UsernameByID(*report.AssigneeUserID)
+	}
+
 	// Decrypt telemetry for the console timeline (best-effort: a purged/absent
 	// blob or missing KEK just yields no telemetry).
 	var telemetry json.RawMessage
@@ -437,6 +442,7 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 		ReporterEmail:  report.ReporterEmail,
 		ReporterID:     report.ReporterID,
 		AssigneeUserID: report.AssigneeUserID,
+		AssigneeName:   assigneeName,
 		ResolvedAt:     report.ResolvedAt,
 		CreatedAt:      report.CreatedAt,
 		UpdatedAt:      report.UpdatedAt,
@@ -592,8 +598,42 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 	return s.Detail(reportID)
 }
 
+// ownsComment decides whether this caller may change a comment.
+//
+// For a person it is the usual "you wrote it". For a tenant app it is "my
+// project wrote it", and a non-empty label is enough to establish that: a label
+// is only ever set by AddProjectComment, and by the time we get here the report
+// itself has already been proven to belong to the caller's project. One report
+// belongs to one project, so a labelled comment on it came from that project and
+// no other.
+//
+// That inference breaks the day a person can post with a label. If that ever
+// happens, this needs a project id on the row instead.
+func ownsComment(author commentAuthor, c *domain.ReportComment) bool {
+	if author.label != "" {
+		return c.AuthorLabel != ""
+	}
+	return c.AuthorUserID != nil && author.userID != nil && *c.AuthorUserID == *author.userID
+}
+
 // EditComment updates the body of the caller's own user comment.
 func (s *ReportService) EditComment(callerID, reportID, commentID, body string) error {
+	return s.editComment(commentAuthor{userID: &callerID}, reportID, commentID, body)
+}
+
+// EditProjectComment lets a tenant app correct a reply its own key wrote.
+func (s *ReportService) EditProjectComment(projectName, reportID, commentID, body string) error {
+	return s.editComment(commentAuthor{label: projectName}, reportID, commentID, body)
+}
+
+// DeleteProjectComment removes a reply the tenant's own key wrote. Soft, like
+// every other delete here — the row keeps its deleted_at and its images go with
+// it.
+func (s *ReportService) DeleteProjectComment(projectName, reportID, commentID string) error {
+	return s.deleteComment(commentAuthor{label: projectName}, reportID, commentID)
+}
+
+func (s *ReportService) editComment(author commentAuthor, reportID, commentID, body string) error {
 	c, err := s.repo.FindComment(reportID, commentID)
 	if err != nil {
 		return err
@@ -601,14 +641,21 @@ func (s *ReportService) EditComment(callerID, reportID, commentID, body string) 
 	if c.Kind == domain.CommentKindSystem {
 		return ErrCommentImmutable
 	}
-	if c.AuthorUserID == nil || *c.AuthorUserID != callerID {
+	if !ownsComment(author, c) {
 		return ErrNotCommentAuthor
 	}
+	// The one genuinely lossy operation in this file: the old body is replaced,
+	// not superseded. Deleting a comment or an image is soft and leaves the row
+	// (and, for images, a system audit line); this does not.
 	return s.repo.UpdateCommentBody(commentID, body)
 }
 
 // DeleteComment removes the caller's own user comment (and its inline images).
 func (s *ReportService) DeleteComment(callerID, reportID, commentID string) error {
+	return s.deleteComment(commentAuthor{userID: &callerID}, reportID, commentID)
+}
+
+func (s *ReportService) deleteComment(author commentAuthor, reportID, commentID string) error {
 	c, err := s.repo.FindComment(reportID, commentID)
 	if err != nil {
 		return err
@@ -616,7 +663,7 @@ func (s *ReportService) DeleteComment(callerID, reportID, commentID string) erro
 	if c.Kind == domain.CommentKindSystem {
 		return ErrCommentImmutable
 	}
-	if c.AuthorUserID == nil || *c.AuthorUserID != callerID {
+	if !ownsComment(author, c) {
 		return ErrNotCommentAuthor
 	}
 	return s.repo.DeleteComment(commentID)

@@ -78,13 +78,20 @@ func ReportKeyOrAuth(resolve ProjectKeyResolver) func(http.Handler) http.Handler
 	}
 }
 
-// projectKeyMayReach allows reading, triage (PATCH on the report), and replying
-// — the three things running your own board consists of.
+// projectKeyMayReach allows a tenant everything it needs to run its own board:
+// read, triage, reply, and clean up after itself.
 //
-// Every delete stays refused, including removing an attached image: the key
-// adds and reclassifies, it never erases history. Editing or deleting a comment
-// is refused twice over, since the service also requires the caller to be the
-// comment's author and a project key never is.
+// The earlier version refused every delete on the grounds that the key must not
+// erase history. That was stricter than cac's own model and wrong about three of
+// the four cases — removing a comment soft-deletes the row and its images, and
+// detaching an image soft-deletes it and leaves a system comment saying so.
+// Nothing is actually erased. Only editing a comment replaces content outright,
+// and that is exactly what a person can already do to their own.
+//
+// What still holds the line is ownership, and it lives in the service: a caller
+// may only change a comment its own project wrote, and system comments are
+// immutable for everyone. Deleting a whole report stays out — that one is the
+// tenant discarding a user's report, not tidying its own reply.
 func projectKeyMayReach(r *http.Request) bool {
 	if !strings.HasPrefix(r.URL.Path, "/api/v1/reports") {
 		return false
@@ -93,10 +100,13 @@ func projectKeyMayReach(r *http.Request) bool {
 	case http.MethodGet, http.MethodHead:
 		return true
 	case http.MethodPatch:
-		// PATCH /reports/{id} — status, assignee, taxonomy. Not comments.
-		return patchReport.MatchString(r.URL.Path)
+		return patchReport.MatchString(r.URL.Path) || commentByID.MatchString(r.URL.Path)
 	case http.MethodPost:
 		return postComment.MatchString(r.URL.Path) || postImages.MatchString(r.URL.Path)
+	case http.MethodDelete:
+		// Note the absence of `^/api/v1/reports/[^/]+$`: a tenant tidies its own
+		// replies, it does not remove someone's report.
+		return commentByID.MatchString(r.URL.Path) || imageByID.MatchString(r.URL.Path)
 	}
 	return false
 }
@@ -105,4 +115,6 @@ var (
 	patchReport = regexp.MustCompile(`^/api/v1/reports/[^/]+$`)
 	postComment = regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`)
 	postImages  = regexp.MustCompile(`^/api/v1/reports/[^/]+/images/?$`)
+	commentByID = regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/[^/]+$`)
+	imageByID   = regexp.MustCompile(`^/api/v1/reports/[^/]+/images/[^/]+$`)
 )
