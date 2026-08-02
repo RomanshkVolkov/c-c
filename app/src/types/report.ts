@@ -72,6 +72,11 @@ export interface ReportProject {
   rateLimitPerHour: number;
   isActive: boolean;
   defaultAssigneeUserId?: string;
+  /** "web" enforces the Origin allowlist; "app" is for server-to-server. */
+  platform: "web" | "app";
+  webhookUrl: string;
+  /** Whether a signing secret exists — the value itself is never returned. */
+  webhookConfigured: boolean;
   createdAt: string;
 }
 

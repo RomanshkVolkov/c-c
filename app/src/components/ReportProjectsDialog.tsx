@@ -13,12 +13,71 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import OriginsEditor, { cleanOrigins } from "@/components/OriginsEditor";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { roleAtLeast } from "@/types/organization";
 import type { ReportProject } from "@/types/report";
+
+/**
+ * How a project is authenticated, not how it looks. "web" is a browser widget
+ * whose Origin is checked against an allowlist; "app" is a server calling the
+ * ingest directly, which sends no Origin at all — picking the wrong one is how
+ * a server-to-server integration gets refused the moment a proxy adds a header.
+ */
+const PLATFORM_LABELS: Record<"web" | "app", string> = {
+  web: "Browser widget",
+  app: "Server-to-server",
+};
+
+/**
+ * Outbound webhook. Optional, and the secret is write-only: the server never
+ * returns it, so an edit that leaves the field blank means "keep the current
+ * one" rather than "stop signing".
+ */
+function WebhookFields({
+  url,
+  secret,
+  onUrl,
+  onSecret,
+  configured,
+}: {
+  url: string;
+  secret: string;
+  onUrl: (v: string) => void;
+  onSecret: (v: string) => void;
+  configured?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label>Webhook (optional)</Label>
+      <Input
+        value={url}
+        onChange={(e) => onUrl(e.target.value)}
+        placeholder="https://your-app/api/webhooks/cac-reports"
+      />
+      <Input
+        value={secret}
+        onChange={(e) => onSecret(e.target.value)}
+        placeholder={
+          configured ? "Signing secret set — type to replace it" : "Signing secret (min 16 chars)"
+        }
+      />
+      <p className="text-[11px] text-muted-foreground">
+        Every report event is POSTed here, signed with{" "}
+        <code className="text-[10px]">X-Cac-Signature</code>. Verify it over the raw body.
+      </p>
+    </div>
+  );
+}
 
 export default function ReportProjectsDialog({ trigger }: { trigger: React.ReactNode }) {
   const projects = useReportsStore((s) => s.projects);
@@ -34,6 +93,9 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
   const [name, setName] = useState("");
   const [origins, setOrigins] = useState<string[]>([""]);
   const [rate, setRate] = useState("20");
+  const [platform, setPlatform] = useState<"web" | "app">("web");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const [creating, setCreating] = useState(false);
   const [revealed, setRevealed] = useState<{ label: string; key: string } | null>(null);
 
@@ -45,11 +107,17 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
         name: name.trim(),
         allowedOrigins: cleanOrigins(origins),
         rateLimitPerHour: Number(rate) || 20,
+        platform,
+        webhookUrl: webhookUrl.trim(),
+        webhookSecret: webhookSecret.trim(),
       });
       setRevealed({ label: `Ingest key for "${name.trim()}"`, key });
       setName("");
       setOrigins([""]);
       setRate("20");
+      setPlatform("web");
+      setWebhookUrl("");
+      setWebhookSecret("");
     } catch (e) {
       toast.error("Failed to create project", {
         description: e instanceof Error ? e.message : String(e),
@@ -125,7 +193,38 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
                 <Input type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
               </div>
             </div>
-            <OriginsEditor value={origins} onChange={setOrigins} />
+            <div className="space-y-1">
+              <Label>Integration</Label>
+              <Select
+                items={PLATFORM_LABELS}
+                value={platform}
+                onValueChange={(v) => v && setPlatform(v as "web" | "app")}
+              >
+                <SelectTrigger size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(PLATFORM_LABELS) as ("web" | "app")[]).map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {PLATFORM_LABELS[k]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {platform === "web"
+                  ? "Reports come from a browser, so the Origin allowlist below is enforced."
+                  : "Reports come from a server, which sends no Origin — the allowlist doesn't apply."}
+              </p>
+            </div>
+            {/* Only a browser project has an Origin to police. */}
+            {platform === "web" && <OriginsEditor value={origins} onChange={setOrigins} />}
+            <WebhookFields
+              url={webhookUrl}
+              secret={webhookSecret}
+              onUrl={setWebhookUrl}
+              onSecret={setWebhookSecret}
+            />
             <Button size="sm" onClick={handleCreate} disabled={creating || !name.trim()}>
               {creating ? "Creating…" : "Create project"}
             </Button>
@@ -172,12 +271,18 @@ function ProjectRow({
   const [name, setName] = useState(p.name);
   const [rate, setRate] = useState(String(p.rateLimitPerHour));
   const [origins, setOrigins] = useState<string[]>(p.allowedOrigins.length ? p.allowedOrigins : [""]);
+  const [webhookUrl, setWebhookUrl] = useState(p.webhookUrl ?? "");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const [saving, setSaving] = useState(false);
 
   const startEdit = () => {
     setName(p.name);
     setRate(String(p.rateLimitPerHour));
     setOrigins(p.allowedOrigins.length ? p.allowedOrigins : [""]);
+    setWebhookUrl(p.webhookUrl ?? "");
+    // Never prefilled: the server doesn't return it, and showing a placeholder
+    // secret would make "leave it alone" look like "here it is".
+    setWebhookSecret("");
     setEditing(true);
   };
 
@@ -190,6 +295,8 @@ function ProjectRow({
         allowedOrigins: cleanOrigins(origins),
         rateLimitPerHour: Number(rate) || 20,
         isActive: p.isActive,
+        webhookUrl: webhookUrl.trim(),
+        webhookSecret: webhookSecret.trim(),
       });
       setEditing(false);
     } catch (e) {
@@ -212,7 +319,16 @@ function ProjectRow({
             <Input type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
           </div>
         </div>
-        <OriginsEditor value={origins} onChange={setOrigins} />
+        {/* Only a browser project has an Origin to police — platform itself is
+            fixed at creation, since it decides how the project authenticates. */}
+        {p.platform !== "app" && <OriginsEditor value={origins} onChange={setOrigins} />}
+        <WebhookFields
+          url={webhookUrl}
+          secret={webhookSecret}
+          onUrl={setWebhookUrl}
+          onSecret={setWebhookSecret}
+          configured={p.webhookConfigured}
+        />
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
             Cancel
@@ -234,7 +350,9 @@ function ProjectRow({
           {!p.isActive && <Badge variant="destructive" className="text-[10px] py-0">inactive</Badge>}
         </div>
         <span className="text-xs text-muted-foreground">
-          {p.rateLimitPerHour}/h · {p.allowedOrigins.length} origin(s)
+          {PLATFORM_LABELS[p.platform] ?? p.platform} · {p.rateLimitPerHour}/h
+          {p.platform !== "app" && ` · ${p.allowedOrigins.length} origin(s)`}
+          {p.webhookUrl && (p.webhookConfigured ? " · webhook (signed)" : " · webhook (unsigned)")}
         </span>
       </div>
       {canWrite && (
