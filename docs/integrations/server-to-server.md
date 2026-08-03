@@ -141,6 +141,11 @@ campo `author` en vez de dejar que la deduzcas de qué campos vienen nulos:
 
 Ausente en los comentarios de sistema: el `kind` del propio comentario ya lo dice.
 
+`name` viene relleno en los tres casos —también en `reporter`, con el nombre que la
+persona dio al abrir el reporte—, así que para pintar la firma basta `author.name`.
+Los campos planos `authorName` / `authorLabel` / `authorUserId` siguen viajando por
+compatibilidad, pero no los uses en código nuevo: no distinguen las tres clases.
+
 ### Firma tus respuestas con la persona, no con la app
 
 `POST /api/v1/reports/{id}/comments` acepta dos campos opcionales:
@@ -206,6 +211,23 @@ sesión.
 No las de una persona del equipo de cac, no las del reporter, y los comentarios de
 sistema son inmutables para todos. Borrar el reporte entero queda fuera: eso es
 descartar el reporte de un usuario, no ordenar tu propia conversación.
+
+> **Enseña el botón sólo donde funciona.** El hilo mezcla comentarios de tu app, del
+> equipo de cac y del reporter, así que un botón de editar en todos falla en la
+> mayoría:
+>
+> ```js
+> const editable = c.author?.kind === "tenant"
+> ```
+>
+> Sin ese filtro, editar el comentario de otro responde
+> **403 `only the author can modify this comment`**, y uno de sistema
+> **403 `system comments are immutable`**. El servidor está haciendo lo correcto;
+> es la interfaz la que ofreció algo que no existía.
+>
+> Si además quieres que sólo el autor real edite lo suyo, compara
+> `c.author.externalId` con el id de tu sesión — cac no puede hacerlo por ti,
+> porque la key es del proyecto y no de la persona.
 
 Los borrados no destruyen: quitar un comentario lo marca junto con sus imágenes, y
 quitar una imagen la marca **y deja un comentario de sistema** que lo registra. La
