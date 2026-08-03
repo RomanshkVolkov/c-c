@@ -279,8 +279,10 @@ func (r *ReportRepository) ListComments(reportID string) ([]domain.ReportComment
 		SELECT c.id, c.kind, c.author_user_id, u.username AS author_name,
 		       c.author_project_id, p.name AS author_project_name,
 		       c.author_external_id, c.author_external_name,
+		       r.reporter_name,
 		       c.body, c.created_at, c.updated_at
 		FROM report_comments c
+		JOIN reports r ON r.id = c.report_id
 		LEFT JOIN users u ON u.id = c.author_user_id
 		LEFT JOIN report_projects p ON p.id = c.author_project_id
 		WHERE c.report_id = ? AND c.deleted_at IS NULL
@@ -325,7 +327,13 @@ func tagAuthor(c *domain.ReportCommentResponse) {
 		// is the safe half of the answer.
 		c.AuthorLabel = c.AuthorProjectName
 	default:
-		c.Author = &domain.CommentAuthor{Kind: domain.AuthorKindReporter}
+		// Name the reporter. The report has carried reporterName all along, so
+		// printing the word "reporter" over five messages from a named person
+		// was throwing away something we already knew.
+		c.Author = &domain.CommentAuthor{Kind: domain.AuthorKindReporter, Name: c.ReporterName}
+		// Also on the flat field, so a build that predates `author` shows the
+		// name too instead of the placeholder.
+		c.AuthorName = c.ReporterName
 	}
 }
 

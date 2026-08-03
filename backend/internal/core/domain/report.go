@@ -567,6 +567,7 @@ type ReportCommentResponse struct {
 	AuthorProjectName  string `json:"-"`
 	AuthorExternalID   string `json:"-"`
 	AuthorExternalName string `json:"-"`
+	ReporterName       string `json:"-"`
 }
 
 // TenantAuthor is who a tenant says is speaking, plus the project that proves

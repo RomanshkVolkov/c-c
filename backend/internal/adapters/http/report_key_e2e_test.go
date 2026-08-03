@@ -425,6 +425,76 @@ func TestAPersonCannotRenameThemselvesOnAComment(t *testing.T) {
 	}
 }
 
+// The reporter's own comments must carry their name. The report has held
+// reporterName since it was filed, so rendering the literal word "reporter" over
+// a thread of messages from a named person discards something already known —
+// and it is what the console actually showed.
+func TestTheReporterIsNamedOnTheirOwnComments(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	proj := mkProject(t, db, "proj-n", "portento", org.ID, "pk_e2e_named")
+	rep := mkReport(t, db, "rep-n", proj.ID, "broken")
+	// mkReport files it as "u1"; give it a human name like a real widget does.
+	if err := db.Model(rep).Update("reporter_name", "Romanshk Volkov").Error; err != nil {
+		t.Fatal(err)
+	}
+	c := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, Body: "muchas gracias"}
+	c.ID = "c-reporter"
+	if err := db.Create(c).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, r, events.NewHub())
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/reports/"+rep.ID, nil)
+	req.Header.Set("X-Ingest-Key", "pk_e2e_named")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	var detail struct {
+		Data struct {
+			Comments []struct {
+				Author *struct {
+					Kind string `json:"kind"`
+					Name string `json:"name"`
+				} `json:"author"`
+				AuthorName string `json:"authorName"`
+			} `json:"comments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Data.Comments) != 1 || detail.Data.Comments[0].Author == nil {
+		t.Fatalf("unexpected thread: %s", body)
+	}
+	got := detail.Data.Comments[0]
+	if got.Author.Kind != "reporter" {
+		t.Errorf("author kind = %q, want \"reporter\"", got.Author.Kind)
+	}
+	if got.Author.Name != "Romanshk Volkov" {
+		t.Errorf("author name = %q, want the reporter's name", got.Author.Name)
+	}
+	// The flat field too, or a build that predates `author` keeps printing the
+	// placeholder.
+	if got.AuthorName != "Romanshk Volkov" {
+		t.Errorf("flat authorName = %q, want the reporter's name for older builds", got.AuthorName)
+	}
+}
+
 // ─── harness ──────────────────────────────────────────────────────────────────
 
 func e2eDB(t *testing.T) (*gorm.DB, func()) {

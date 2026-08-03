@@ -85,7 +85,8 @@ function commentByline(c: ReportComment): string {
         ? `${a.name} · ${a.projectName}`
         : a.projectName || "tenant";
     default:
-      return "reporter";
+      // The report knows who filed it, so use the name rather than the role.
+      return a.name || "reporter";
   }
 }
 
