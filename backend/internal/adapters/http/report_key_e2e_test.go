@@ -423,6 +423,60 @@ func TestAPersonCannotRenameThemselvesOnAComment(t *testing.T) {
 	if a.Name != user.Username {
 		t.Errorf("author name = %q, want %q — the request must not rename the caller", a.Name, user.Username)
 	}
+
+	// And the two things the console's new pencil and bin actually call. This
+	// path existed before any UI reached it, so it had never been exercised
+	// end to end.
+	var thread struct {
+		Data struct {
+			Comments []struct {
+				ID   string `json:"id"`
+				Body string `json:"body"`
+			} `json:"comments"`
+		} `json:"data"`
+	}
+	json.Unmarshal(body, &thread)
+	commentID := thread.Data.Comments[0].ID
+
+	send := func(method, payload string) int {
+		t.Helper()
+		req, _ := http.NewRequest(method,
+			srv.URL+"/api/v1/reports/"+rep.ID+"/comments/"+commentID, strings.NewReader(payload))
+		req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if code := send(http.MethodPatch, `{"body":"on it, fixed"}`); code != http.StatusOK {
+		t.Errorf("editing own comment → %d, want 200", code)
+	}
+	var after domain.ReportComment
+	if err := db.Where("id = ?", commentID).First(&after).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.Body != "on it, fixed" {
+		t.Errorf("the edit did not persist, body is %q", after.Body)
+	}
+
+	if code := send(http.MethodDelete, ""); code != http.StatusOK {
+		t.Errorf("deleting own comment → %d, want 200", code)
+	}
+	// Soft delete: gone from the thread, still on disk.
+	var live int64
+	db.Model(&domain.ReportComment{}).Where("id = ?", commentID).Count(&live)
+	if live != 0 {
+		t.Error("the comment is still in the thread after being deleted")
+	}
+	var kept int64
+	db.Unscoped().Model(&domain.ReportComment{}).Where("id = ?", commentID).Count(&kept)
+	if kept != 1 {
+		t.Error("the row was destroyed; deletes here are meant to be recoverable")
+	}
 }
 
 // The reporter's own comments must carry their name. The report has held

@@ -86,6 +86,8 @@ interface ReportsState {
     area?: string;
   }) => Promise<void>;
   addComment: (body: string, files: File[]) => Promise<void>;
+  editComment: (commentId: string, body: string) => Promise<void>;
+  deleteComment: (commentId: string) => Promise<void>;
 }
 
 /** project ids belonging to the active org (reports carry projectId, not orgId). */
@@ -291,6 +293,27 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
       true
     );
     if (res.success && res.data) set({ detail: res.data });
+    await get().fetchReports();
+  },
+
+  editComment: async (commentId, body) => {
+    const id = get().selectedId;
+    if (!id) return;
+    await api.patch<APIResponse<unknown>>(
+      `/api/v1/reports/${id}/comments/${commentId}`,
+      { body },
+      true
+    );
+    // These two answer with the comment, not the thread, so the drawer has to
+    // refetch — and the count in the list changes on delete.
+    await get().refreshDetail();
+  },
+
+  deleteComment: async (commentId) => {
+    const id = get().selectedId;
+    if (!id) return;
+    await api.delete<APIResponse<unknown>>(`/api/v1/reports/${id}/comments/${commentId}`);
+    await get().refreshDetail();
     await get().fetchReports();
   },
 

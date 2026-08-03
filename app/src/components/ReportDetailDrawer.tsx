@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, Send, Loader2, ExternalLink } from "lucide-react";
+import { Paperclip, Send, Loader2, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -20,6 +20,8 @@ import {
 import { apiUrl } from "@/lib/api";
 import Markdown from "@/components/markdown/Markdown";
 import { useReportsStore } from "@/store/reports.store";
+import { useAuthStore } from "@/store/auth.store";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 import {
   CATEGORY_LABELS,
@@ -88,6 +90,122 @@ function commentByline(c: ReportComment): string {
       // The report knows who filed it, so use the name rather than the role.
       return a.name || "reporter";
   }
+}
+
+/** One reply in the thread, with the author's own edit and delete. */
+function CommentRow({ c }: { c: ReportComment }) {
+  const session = useAuthStore((s) => s.session);
+  const editComment = useReportsStore((s) => s.editComment);
+  const deleteComment = useReportsStore((s) => s.deleteComment);
+  const confirm = useConfirm();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(c.body);
+  const [saving, setSaving] = useState(false);
+
+  // Author only — no superadmin override, unlike tasks. The server refuses
+  // anyone else outright, so the button would 403; and this thread is read by
+  // the person who filed the report, where rewriting someone else's reply
+  // changes what a customer sees attributed to them.
+  const mine = !!session?.id && session.id === c.author?.userId;
+  const edited =
+    new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000;
+
+  const save = async () => {
+    const body = draft.trim();
+    if (!body) return;
+    setSaving(true);
+    try {
+      await editComment(c.id, body);
+      setEditing(false);
+    } catch (e) {
+      toast.error("Could not save the comment", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="group rounded-md border p-3 space-y-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span>{commentByline(c)}</span>
+        {edited && <span className="italic">edited</span>}
+        <span className="ml-auto">{new Date(c.createdAt).toLocaleString()}</span>
+        {mine && !editing && (
+          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              className="hover:text-foreground"
+              title="Edit comment"
+              onClick={() => {
+                setDraft(c.body);
+                setEditing(true);
+              }}
+            >
+              <Pencil className="size-3" />
+            </button>
+            <button
+              className="hover:text-destructive"
+              title="Delete comment"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: "Delete this comment?",
+                  description:
+                    "It disappears from the thread for everyone, including the person who filed the report.",
+                  confirmText: "Delete",
+                  destructive: true,
+                });
+                if (!ok) return;
+                deleteComment(c.id).catch((e) =>
+                  toast.error("Could not delete the comment", {
+                    description: e instanceof Error ? e.message : String(e),
+                  })
+                );
+              }}
+            >
+              <Trash2 className="size-3" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-2">
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="min-h-16 text-sm"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={save} disabled={saving || !draft.trim()}>
+              {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
+              Save
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {c.body && <Markdown>{c.body}</Markdown>}
+          {c.images && c.images.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {c.images.map((img) => (
+                <ZoomImg
+                  key={img.id}
+                  src={apiUrl(img.url)}
+                  alt={img.fileName}
+                  className="rounded border object-cover aspect-square w-full"
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function ReportDetailDrawer() {
@@ -250,25 +368,7 @@ export default function ReportDetailDrawer() {
                       {c.body}
                     </p>
                   ) : (
-                    <div key={c.id} className="rounded-md border p-3 space-y-2">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{commentByline(c)}</span>
-                        <span>{new Date(c.createdAt).toLocaleString()}</span>
-                      </div>
-                      {c.body && <Markdown>{c.body}</Markdown>}
-                      {c.images && c.images.length > 0 && (
-                        <div className="grid grid-cols-3 gap-2">
-                          {c.images.map((img) => (
-                            <ZoomImg
-                              key={img.id}
-                              src={apiUrl(img.url)}
-                              alt={img.fileName}
-                              className="rounded border object-cover aspect-square w-full"
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <CommentRow key={c.id} c={c} />
                   )
                 )}
               </div>
