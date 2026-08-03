@@ -277,13 +277,56 @@ func (r *ReportRepository) ListComments(reportID string) ([]domain.ReportComment
 	var out []domain.ReportCommentResponse
 	err := r.db.Raw(`
 		SELECT c.id, c.kind, c.author_user_id, u.username AS author_name,
-		       c.author_label, c.body, c.created_at, c.updated_at
+		       c.author_project_id, p.name AS author_project_name,
+		       c.author_external_id, c.author_external_name,
+		       c.body, c.created_at, c.updated_at
 		FROM report_comments c
 		LEFT JOIN users u ON u.id = c.author_user_id
+		LEFT JOIN report_projects p ON p.id = c.author_project_id
 		WHERE c.report_id = ? AND c.deleted_at IS NULL
 		ORDER BY c.created_at ASC
 	`, reportID).Scan(&out).Error
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		tagAuthor(&out[i])
+	}
+	return out, nil
+}
+
+// tagAuthor turns the scanned columns into the tagged author the API returns,
+// and fills the flat fields the installed app still reads.
+//
+// One place decides what kind of author a comment has. Every reader that used to
+// work it out from null-ness got it wrong at least once.
+func tagAuthor(c *domain.ReportCommentResponse) {
+	switch {
+	case c.Kind == domain.CommentKindSystem:
+		return // the comment's own kind already says it; no author to name
+	case c.AuthorUserID != nil && *c.AuthorUserID != "":
+		c.Author = &domain.CommentAuthor{
+			Kind: domain.AuthorKindUser, Name: c.AuthorName, UserID: *c.AuthorUserID,
+		}
+	case c.AuthorProjectID != "":
+		// Name falls back to the project when the tenant didn't say who: a reply
+		// signed "portento" is worse than one signed "José · portento", and much
+		// better than one signed with nothing.
+		name := c.AuthorExternalName
+		if name == "" {
+			name = c.AuthorProjectName
+		}
+		c.Author = &domain.CommentAuthor{
+			Kind: domain.AuthorKindTenant, Name: name,
+			ProjectID: c.AuthorProjectID, ProjectName: c.AuthorProjectName,
+			ExternalID: c.AuthorExternalID,
+		}
+		// What a build that predates `author` renders. It shows the tenant, which
+		// is the safe half of the answer.
+		c.AuthorLabel = c.AuthorProjectName
+	default:
+		c.Author = &domain.CommentAuthor{Kind: domain.AuthorKindReporter}
+	}
 }
 
 func (r *ReportRepository) CreateComment(c *domain.ReportComment) error {
@@ -293,13 +336,13 @@ func (r *ReportRepository) CreateComment(c *domain.ReportComment) error {
 // CountTeamCommentsSince counts replies from our side (kind=user, author set)
 // newer than `since` — the reporter's unread count for one report.
 //
-// A tenant app replying through its project key has no author_user_id, only a
-// label. Counting on the id alone would leave its replies out of the badge, so
-// the reporter would never be told they had an answer.
+// A tenant app replying through its project key has no author_user_id, only the
+// project it belongs to. Counting on the user id alone would leave its replies
+// out of the badge, so the reporter would never be told they had an answer.
 func (r *ReportRepository) CountTeamCommentsSince(reportID string, since time.Time) (int64, error) {
 	var n int64
 	err := r.db.Model(&domain.ReportComment{}).
-		Where("report_id = ? AND kind = ? AND (author_user_id IS NOT NULL OR author_label <> '') AND created_at > ? AND deleted_at IS NULL",
+		Where("report_id = ? AND kind = ? AND (author_user_id IS NOT NULL OR author_project_id IS NOT NULL) AND created_at > ? AND deleted_at IS NULL",
 			reportID, domain.CommentKindUser, since).
 		Count(&n).Error
 	return n, err

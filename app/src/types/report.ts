@@ -126,12 +126,33 @@ export interface ReportImage {
   createdAt: string;
 }
 
+/**
+ * Who wrote a comment, tagged by the server so the UI doesn't infer it from
+ * which fields are null — that inference is what made a tenant's reply show up
+ * to the reporter as their own words.
+ *
+ * For `tenant`, `name` is asserted by that tenant and verified by nobody: the
+ * project key proves which app is speaking, not who at that app. Render it with
+ * `projectName`, never alone.
+ */
+export interface CommentAuthor {
+  kind: "user" | "reporter" | "tenant";
+  name?: string;
+  userId?: string;
+  projectId?: string;
+  projectName?: string;
+  externalId?: string;
+}
+
 export interface ReportComment {
   id: string;
   kind: "user" | "system";
+  author?: CommentAuthor;
+  /** @deprecated superseded by `author`; still sent for older builds. */
   authorUserId?: string;
+  /** @deprecated superseded by `author`. */
   authorName?: string;
-  /** Set instead of authorName when a tenant app replied with its project key. */
+  /** @deprecated superseded by `author`. */
   authorLabel?: string;
   body: string;
   images?: ReportImage[];

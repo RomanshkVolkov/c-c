@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -276,7 +277,17 @@ func (h *reportAdminHandler) AddComment(w http.ResponseWriter, r *http.Request) 
 	body := r.FormValue("body")
 	add := func() (*domain.ReportDetailResponse, error) {
 		if user.IsProjectScoped() {
-			return h.svc.AddProjectComment(r.Context(), user.ProjectName, reportID, body, images)
+			// authorName/authorId are read only here, for a project key. A cac
+			// user's identity is already proven by their token, so honouring
+			// these for them would be an impersonation feature; they're ignored
+			// rather than rejected, the way an unknown field would be.
+			return h.svc.AddProjectComment(r.Context(), domain.TenantAuthor{
+				ProjectID:    user.ProjectID,
+				ProjectSlug:  user.ProjectSlug,
+				ProjectName:  user.ProjectName,
+				ExternalID:   strings.TrimSpace(r.FormValue("authorId")),
+				ExternalName: strings.TrimSpace(r.FormValue("authorName")),
+			}, reportID, body, images)
 		}
 		return h.svc.AddComment(r.Context(), user.UserID, reportID, body, images)
 	}
@@ -303,7 +314,7 @@ func (h *reportAdminHandler) EditComment(w http.ResponseWriter, r *http.Request)
 	}
 	editErr := func() error {
 		if user.IsProjectScoped() {
-			return h.svc.EditProjectComment(user.ProjectName, reportID, chi.URLParam(r, "commentId"), req.Body)
+			return h.svc.EditProjectComment(user.ProjectID, reportID, chi.URLParam(r, "commentId"), req.Body)
 		}
 		return h.svc.EditComment(user.UserID, reportID, chi.URLParam(r, "commentId"), req.Body)
 	}
@@ -324,7 +335,7 @@ func (h *reportAdminHandler) DeleteComment(w http.ResponseWriter, r *http.Reques
 	}
 	delErr := func() error {
 		if user.IsProjectScoped() {
-			return h.svc.DeleteProjectComment(user.ProjectName, reportID, chi.URLParam(r, "commentId"))
+			return h.svc.DeleteProjectComment(user.ProjectID, reportID, chi.URLParam(r, "commentId"))
 		}
 		return h.svc.DeleteComment(user.UserID, reportID, chi.URLParam(r, "commentId"))
 	}

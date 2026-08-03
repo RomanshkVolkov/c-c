@@ -13,10 +13,16 @@ func userComment(userID string) *domain.ReportComment {
 // A tenant may correct or withdraw what its own key wrote, and nothing else.
 // The middleware opens the door; this is the lock.
 func TestATenantCanOnlyChangeItsOwnReplies(t *testing.T) {
-	tenant := commentAuthor{label: "portento"}
+	mine, neighbour := "proj-1", "proj-2"
+	tenant := commentAuthor{projectID: &mine}
 
-	if !ownsComment(tenant, &domain.ReportComment{AuthorLabel: "portento"}) {
+	if !ownsComment(tenant, &domain.ReportComment{AuthorProjectID: &mine}) {
 		t.Error("a tenant cannot change the reply it wrote itself")
+	}
+	// Belt and braces: the report gate already keeps a tenant off another
+	// project's reports, but ownership must not depend on that being right.
+	if ownsComment(tenant, &domain.ReportComment{AuthorProjectID: &neighbour}) {
+		t.Error("a tenant reached another project's comment")
 	}
 	// A person's comment on the tenant's own board stays off limits: the board
 	// is shared with the cac team, and a key is not a licence to rewrite them.
@@ -40,7 +46,8 @@ func TestAPersonStillOnlyChangesTheirOwn(t *testing.T) {
 	if ownsComment(author, userComment("u-2")) {
 		t.Error("a person reached someone else's comment")
 	}
-	if ownsComment(author, &domain.ReportComment{AuthorLabel: "portento"}) {
+	other := "proj-1"
+	if ownsComment(author, &domain.ReportComment{AuthorProjectID: &other}) {
 		t.Error("a person reached a tenant's comment")
 	}
 	// The reporter's comment has a nil author. Comparing two nils, or

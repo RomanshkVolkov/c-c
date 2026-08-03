@@ -230,39 +230,24 @@ func TestEveryReportEventGoesThroughEmit(t *testing.T) {
 	}
 }
 
-// Every emitted event must say who caused it.
+// Every emitted event says who caused it, and emit() is what guarantees it.
 //
-// A tenant driving its own board receives the webhook for the change it just
-// made itself. Without "from" it cannot tell its own action apart from ours, so
-// it either re-applies its own change in a loop or ignores real ones. Checked
-// against the source because the failure is invisible at runtime — the webhook
-// still fires, it just can't be filtered — and because the next event someone
-// adds is exactly where this gets forgotten.
-func TestEveryEmittedEventSaysWhoCausedIt(t *testing.T) {
+// This used to scan the source for the string "from" inside each s.emit(...)
+// call, which silently stopped working the first time a payload was built on
+// the line above — the check passed on a file it could no longer see into. Now
+// `from` is a parameter, so omitting it doesn't compile, and what's left worth
+// testing is that emit actually puts it on the wire.
+func TestEmitStampsWhoCausedTheEvent(t *testing.T) {
 	src, err := os.ReadFile("report.go")
 	if err != nil {
 		t.Fatalf("read report.go: %v", err)
 	}
 	code := string(src)
 
-	for i := 0; ; {
-		j := strings.Index(code[i:], `s.emit(`)
-		if j < 0 {
-			break
-		}
-		start := i + j
-		// The call spans to the closing brace of its payload literal; the next
-		// emit (or end of file) bounds the search cheaply and without a parser.
-		end := len(code)
-		if k := strings.Index(code[start+7:], `s.emit(`); k >= 0 {
-			end = start + 7 + k
-		}
-		call := code[start:end]
-		if !strings.Contains(call, `"from"`) {
-			line := strings.Count(code[:start], "\n") + 1
-			name := call[:strings.Index(call, ",")]
-			t.Errorf("report.go:%d %s has no \"from\" — a tenant cannot filter out its own action", line, name)
-		}
-		i = start + 7
+	if !strings.Contains(code, `func (s *ReportService) emit(eventType, reportID, from string, data map[string]any)`) {
+		t.Error("emit no longer takes `from` as a parameter — omitting it must not compile")
+	}
+	if !strings.Contains(code, `data["from"] = from`) {
+		t.Error("emit accepts `from` but never puts it in the payload, so no receiver can filter on it")
 	}
 }

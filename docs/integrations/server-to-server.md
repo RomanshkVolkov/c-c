@@ -103,6 +103,9 @@ diferencia entre una fuente y dos que se separan.
 `telemetry` · `snapshot` · `context` · `images` (hasta 5, 5 MB cada una,
 `png`/`jpeg`/`webp`/`gif`)
 
+Y en `POST /api/v1/reports/{id}/comments`: `body`, `images`, más `authorName` y
+`authorId` (§3).
+
 `category` y `priority` se normalizan: lo desconocido cae en `other` y `medium`, así
 que un valor nuevo nunca rompe el alta. `origin=system` activa el dedup por título
 contra los reportes abiertos del proyecto, para que un proceso automático que
@@ -122,8 +125,48 @@ un reporte existente en vez de crear uno nuevo.
 
 ## 3. Quién es quién
 
-**reporter y assignee no son la misma clase de cosa**, y conviene tenerlo claro antes
-de integrar porque la asimetría parece un descuido y no lo es:
+Un comentario tiene **una de tres** clases de autor, y el servidor la declara en el
+campo `author` en vez de dejar que la deduzcas de qué campos vienen nulos:
+
+| `author.kind` | Quién es | Quién lo garantiza |
+|---|---|---|
+| `user` | una persona con cuenta en cac | su sesión o su token |
+| `reporter` | quien abrió el reporte | el token del reporte |
+| `tenant` | una persona **de tu app** | la key **avala** al proyecto; el nombre lo **afirmas tú** |
+
+```json
+"author": { "kind": "tenant", "name": "José",
+            "projectId": "…", "projectName": "portento", "externalId": "42" }
+```
+
+Ausente en los comentarios de sistema: el `kind` del propio comentario ya lo dice.
+
+### Firma tus respuestas con la persona, no con la app
+
+`POST /api/v1/reports/{id}/comments` acepta dos campos opcionales:
+
+| Campo | Qué es |
+|---|---|
+| `authorName` | Cómo se llama quien responde. Es lo que se muestra |
+| `authorId` | El id de esa persona **en tu app**, para que puedas atribuirla luego |
+
+Sin ellos la respuesta se firma con el nombre del proyecto, y todo tu equipo aparece
+como una sola voz. **No metas el nombre dentro del cuerpo**: mezcla metadato con
+contenido y obliga a cada consumidor —cac, el hilo del reporter, el webhook— a
+parsear prosa.
+
+Es el mismo trato que `reporterId`/`reporterName` en el alta, y por la misma razón:
+esa persona no tiene cuenta en cac. Lo que se guarda es **quién avala** (tu
+proyecto, probado por la key) y **quién dices que fue** (texto libre).
+
+> **Autodeclarado.** cac no puede verificar ese nombre, así que nunca lo muestra
+> solo: en el tablero se lee **"José · portento"**. Un inquilino que mandara
+> `authorName: "admin"` no puede pasar por el usuario `admin` de cac.
+
+De un usuario de cac estos campos se **ignoran**: su identidad ya está probada por
+su token, y dejarle sobrescribirla sería una función de suplantación.
+
+### reporter y assignee no son la misma clase de cosa
 
 | | reporter | assignee |
 |---|---|---|
@@ -139,24 +182,30 @@ Cambiarlo desde fuera es otra cosa: necesitarías los uuid válidos, y la key no
 listar usuarios. Hoy no hay endpoint para eso porque ninguna integración lo ha
 pedido. Si lo necesitas, pídelo — es pequeño.
 
-### Cómo se ve tu respuesta
-
-Cuando respondes con la key, el comentario no lo firma una persona. Los dos lados ven
-cosas distintas, a propósito:
+### Cómo ve tu respuesta cada lado
 
 | Quién mira | Qué ve |
 |---|---|
-| El equipo, en cac | El comentario firmado con **el nombre de tu proyecto** |
-| El reporter, en tu app | `"team"` — sin saber qué inquilino contestó |
+| El equipo, en cac | **"José · portento"** — la persona y el inquilino que la avala |
+| El reporter, en tu app | `author: "team"` y `authorName: "José"` |
 
-Y **cuenta como respuesta sin leer**: el contador de no leídos del reporter sube.
+El reporter **no** recibe el nombre del proyecto: es usuario de tu app y no tiene por
+qué saber que cac existe. Y `author` sigue siendo `"you" | "team" | "system"` — el
+nombre va en un campo aparte para no romper a quien haga `switch` sobre ese valor.
+
+Una respuesta del inquilino **cuenta como no leída** para el reporter, igual que la
+de una persona.
 
 ### Qué puedes tocar y qué no
 
-Puedes corregir y retirar **tus** respuestas. No las de una persona del equipo de
-cac, no las del reporter, y los comentarios de sistema son inmutables para todos.
-Borrar el reporte entero queda fuera: eso es descartar el reporte de un usuario, no
-ordenar tu propia conversación.
+Puedes corregir y retirar **las respuestas de tu proyecto** — cualquiera de ellas, no
+sólo las que mandó una persona concreta: la key es del proyecto, así que si quieres
+que sólo el autor real pueda editar, esa comprobación va en tu app, donde sí hay
+sesión.
+
+No las de una persona del equipo de cac, no las del reporter, y los comentarios de
+sistema son inmutables para todos. Borrar el reporte entero queda fuera: eso es
+descartar el reporte de un usuario, no ordenar tu propia conversación.
 
 Los borrados no destruyen: quitar un comentario lo marca junto con sus imágenes, y
 quitar una imagen la marca **y deja un comentario de sistema** que lo registra. La
@@ -164,6 +213,7 @@ quitar una imagen la marca **y deja un comentario de sistema** que lo registra. 
 — igual que para una persona.
 
 ---
+
 
 ## 4. Webhook
 
@@ -192,6 +242,9 @@ Payload:
 ```
 
 Eventos: `report:new`, `report:status`, `report:comment`, `report:attachment`.
+
+`report:comment` lleva además `authorName` y `authorId` en `data` cuando quien
+respondió fue una persona de tu app, para que puedas atribuirla sin pedir el detalle.
 
 Que `reporterId` venga en **todos** es deliberado: enrutar un aviso ("te
 respondieron") es leer un campo, no mantener un índice local ni llamar de vuelta.

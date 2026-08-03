@@ -96,7 +96,18 @@ func NewReportService(
 
 // emit publishes a report event scoped to the report's org (best-effort; a
 // lookup failure just skips the notification).
-func (s *ReportService) emit(eventType, reportID string, data map[string]any) {
+// emit publishes an event to the live stream and the project's webhook.
+//
+// `from` is a parameter and not just another map key so it cannot be forgotten:
+// a tenant receives the webhook for the change it just made itself, and without
+// this it cannot tell its own action from ours. It used to be guarded by a test
+// that scanned this file for the string, which stopped working the moment a
+// payload was built on the line above. The compiler doesn't have that problem.
+func (s *ReportService) emit(eventType, reportID, from string, data map[string]any) {
+	if data == nil {
+		data = map[string]any{}
+	}
+	data["from"] = from
 	target, err := s.repo.EventTargetForReport(reportID)
 	if err != nil {
 		return
@@ -193,8 +204,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	// Routed through emit() like every other event. It used to publish straight
 	// to the hub, which meant anything added to emit() covered four of the five
 	// events and quietly skipped the one a subscriber cares about most.
-	s.emit("report:new", report.ID, map[string]any{
-		"from":     "reporter",
+	s.emit("report:new", report.ID, "reporter", map[string]any{
 		"reportId": report.ID, "projectId": project.ID, "folio": folio, "title": report.Title,
 	})
 
@@ -253,21 +263,29 @@ func (s *ReportService) ReporterView(reportID string) (*domain.ReporterReportVie
 
 	out := make([]domain.ReporterCommentView, 0, len(comments))
 	for _, c := range comments {
-		author := "team"
-		if c.Kind == domain.CommentKindSystem {
+		// Read off the tagged author rather than re-deriving it. Showing the
+		// reporter their own words back as a reply — which is what deducing
+		// "you" from a null user id did — is the failure this guards.
+		author, name := "team", ""
+		switch {
+		case c.Kind == domain.CommentKindSystem:
 			author = "system"
-		} else if c.AuthorUserID == nil && c.AuthorLabel == "" {
-			// Only when neither is set: a comment with a label was written by the
-			// tenant app, and showing the reporter their own words back as a
-			// reply is worse than saying nothing. The label itself stays inside
-			// cac — the reporter has no use for which tenant answered.
+		case c.Author == nil || c.Author.Kind == domain.AuthorKindReporter:
 			author = "you"
+		default:
+			// Who answered, when we know it. Not which tenant: the reporter is a
+			// user of that app and has no idea cac exists.
+			name = c.Author.Name
+			if c.Author.Kind == domain.AuthorKindTenant && c.Author.ExternalID == "" && c.Author.Name == c.Author.ProjectName {
+				name = "" // only the project name was available; that isn't a person
+			}
 		}
 		out = append(out, domain.ReporterCommentView{
-			Author:    author,
-			Body:      c.Body,
-			Images:    byComment[c.ID],
-			CreatedAt: c.CreatedAt,
+			Author:     author,
+			AuthorName: name,
+			Body:       c.Body,
+			Images:     byComment[c.ID],
+			CreatedAt:  c.CreatedAt,
 		})
 	}
 
@@ -315,7 +333,7 @@ func (s *ReportService) ReporterComment(ctx context.Context, reportID, body stri
 			return nil, err
 		}
 	}
-	s.emit("report:comment", reportID, map[string]any{"reportId": reportID, "commentId": c.ID, "from": "reporter"})
+	s.emit("report:comment", reportID, "reporter", map[string]any{"reportId": reportID, "commentId": c.ID})
 	return s.ReporterView(reportID)
 }
 
@@ -522,8 +540,8 @@ func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRe
 		return nil, err
 	}
 	if req.Status != nil {
-		s.emit("report:status", reportID, map[string]any{
-			"reportId": reportID, "status": report.Status, "from": actor,
+		s.emit("report:status", reportID, actor, map[string]any{
+			"reportId": reportID, "status": report.Status,
 		})
 	}
 	return s.Detail(reportID)
@@ -546,16 +564,25 @@ func (s *ReportService) AddComment(ctx context.Context, callerID, reportID, body
 // key. It is a separate entry point rather than a nullable argument on
 // AddComment so the path people use keeps its signature, and so the one caller
 // that has no user has to say so out loud.
-func (s *ReportService) AddProjectComment(ctx context.Context, projectName, reportID, body string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
-	return s.addComment(ctx, commentAuthor{label: projectName, from: "project:" + projectName}, reportID, body, images)
+func (s *ReportService) AddProjectComment(ctx context.Context, p domain.TenantAuthor, reportID, body string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
+	return s.addComment(ctx, commentAuthor{
+		projectID:    &p.ProjectID,
+		externalID:   p.ExternalID,
+		externalName: p.ExternalName,
+		from:         "project:" + p.ProjectSlug,
+	}, reportID, body, images)
 }
 
-// commentAuthor is whoever is speaking: a cac user, or a tenant app named by
-// label. Exactly one is set.
+// commentAuthor is whoever is speaking: a cac user, or a person at a tenant app
+// vouched for by that tenant's project. Exactly one of userID / projectID is set.
 type commentAuthor struct {
 	userID *string
-	label  string
-	from   string // what the emitted event reports as the cause
+	// projectID is the tenant that vouched; externalID/externalName are who it
+	// says wrote this. The tenant is proven, the person is asserted.
+	projectID    *string
+	externalID   string
+	externalName string
+	from         string // what the emitted event reports as the cause
 }
 
 func (s *ReportService) addComment(ctx context.Context, author commentAuthor, reportID, body string, images []domain.IngestImage) (*domain.ReportDetailResponse, error) {
@@ -571,7 +598,9 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 
 	c := &domain.ReportComment{
 		ReportID: reportID, Kind: domain.CommentKindUser,
-		AuthorUserID: author.userID, AuthorLabel: author.label, Body: body,
+		AuthorUserID: author.userID, AuthorProjectID: author.projectID,
+		AuthorExternalID: author.externalID, AuthorExternalName: author.externalName,
+		Body: body,
 	}
 	c.ID = uuid.NewString()
 	if err := s.repo.CreateComment(c); err != nil {
@@ -592,9 +621,16 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 			return nil, fmt.Errorf("%w: %v", ErrImagesUnavailable, lastErr)
 		}
 	}
-	s.emit("report:comment", reportID, map[string]any{
-		"reportId": reportID, "commentId": c.ID, "from": author.from,
-	})
+	// The author rides along so a receiver can attribute the reply without
+	// fetching the report back. `from` stays what it is — the echo filter.
+	data := map[string]any{"reportId": reportID, "commentId": c.ID}
+	if author.externalName != "" {
+		data["authorName"] = author.externalName
+	}
+	if author.externalID != "" {
+		data["authorId"] = author.externalID
+	}
+	s.emit("report:comment", reportID, author.from, data)
 	return s.Detail(reportID)
 }
 
@@ -610,8 +646,8 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 // That inference breaks the day a person can post with a label. If that ever
 // happens, this needs a project id on the row instead.
 func ownsComment(author commentAuthor, c *domain.ReportComment) bool {
-	if author.label != "" {
-		return c.AuthorLabel != ""
+	if author.projectID != nil {
+		return c.AuthorProjectID != nil && *c.AuthorProjectID == *author.projectID
 	}
 	return c.AuthorUserID != nil && author.userID != nil && *c.AuthorUserID == *author.userID
 }
@@ -622,15 +658,15 @@ func (s *ReportService) EditComment(callerID, reportID, commentID, body string) 
 }
 
 // EditProjectComment lets a tenant app correct a reply its own key wrote.
-func (s *ReportService) EditProjectComment(projectName, reportID, commentID, body string) error {
-	return s.editComment(commentAuthor{label: projectName}, reportID, commentID, body)
+func (s *ReportService) EditProjectComment(projectID, reportID, commentID, body string) error {
+	return s.editComment(commentAuthor{projectID: &projectID}, reportID, commentID, body)
 }
 
 // DeleteProjectComment removes a reply the tenant's own key wrote. Soft, like
 // every other delete here — the row keeps its deleted_at and its images go with
 // it.
-func (s *ReportService) DeleteProjectComment(projectName, reportID, commentID string) error {
-	return s.deleteComment(commentAuthor{label: projectName}, reportID, commentID)
+func (s *ReportService) DeleteProjectComment(projectID, reportID, commentID string) error {
+	return s.deleteComment(commentAuthor{projectID: &projectID}, reportID, commentID)
 }
 
 func (s *ReportService) editComment(author commentAuthor, reportID, commentID, body string) error {
@@ -696,8 +732,8 @@ func (s *ReportService) AttachImages(ctx context.Context, actor, reportID string
 	if err := s.systemComment(reportID, fmt.Sprintf("attached %d image(s)", len(persisted))); err != nil {
 		return nil, err
 	}
-	s.emit("report:attachment", reportID, map[string]any{
-		"reportId": reportID, "attached": len(persisted), "from": actor,
+	s.emit("report:attachment", reportID, actor, map[string]any{
+		"reportId": reportID, "attached": len(persisted),
 	})
 	return s.Detail(reportID)
 }

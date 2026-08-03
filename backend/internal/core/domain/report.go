@@ -281,17 +281,29 @@ type Report struct {
 
 type ReportComment struct {
 	BaseModel
-	ReportID     string            `gorm:"type:varchar(36);index;not null" json:"reportId"`
-	Kind         ReportCommentKind `gorm:"type:varchar(10);default:'user'" json:"kind"`
-	AuthorUserID *string           `gorm:"type:varchar(36)"                json:"authorUserId,omitempty"`
-	// AuthorLabel names an author that is not a person: a tenant app replying
-	// with its project key. Empty for every comment written by a cac user and
-	// for every comment written by the reporter, which is why the two other
-	// places that read authorship have to consult it too — a NULL author_user_id
-	// alone used to mean "the reporter wrote this".
-	AuthorLabel string         `gorm:"type:varchar(120)" json:"authorLabel,omitempty"`
-	Body        string         `gorm:"type:text;not null" json:"body"`
-	DeletedAt   gorm.DeletedAt `gorm:"index"                           json:"-"`
+	ReportID string            `gorm:"type:varchar(36);index;not null" json:"reportId"`
+	Kind     ReportCommentKind `gorm:"type:varchar(10);default:'user'" json:"kind"`
+	// Authorship is three cases, and each has its own column rather than being
+	// inferred from which of the others is null. That inference — "no user id
+	// means the reporter wrote it" — silently broke three separate readers the
+	// first time a fourth kind of author appeared.
+	//
+	//	AuthorUserID set                     → a person with a cac account
+	//	AuthorProjectID set                  → a person at a tenant app
+	//	neither                              → the reporter
+	AuthorUserID *string `gorm:"type:varchar(36)" json:"authorUserId,omitempty"`
+	// AuthorProjectID is which tenant vouched for this comment, proven by the
+	// project key it was posted with. An id and not a name, so ownership is an
+	// id comparison and a renamed project doesn't orphan its own replies.
+	AuthorProjectID *string `gorm:"type:varchar(36);index" json:"-"`
+	// AuthorExternalID / AuthorExternalName are the tenant's own user, copied
+	// from what it asserted — the same free text, the same trust level and the
+	// same reason as Report.ReporterID/ReporterName: that person has no cac
+	// account either. Never rendered without naming the tenant that asserted it.
+	AuthorExternalID   string         `gorm:"type:varchar(255)"  json:"-"`
+	AuthorExternalName string         `gorm:"type:varchar(120)"  json:"-"`
+	Body               string         `gorm:"type:text;not null" json:"body"`
+	DeletedAt          gorm.DeletedAt `gorm:"index"              json:"-"`
 }
 
 // ReportImage is an uploaded screenshot. CommentID null = report gallery; set =
@@ -417,10 +429,16 @@ type UnreadItem struct {
 // ─── Reporter-facing views (token-scoped, no internal fields) ─────────────────
 
 type ReporterCommentView struct {
-	Author    string                `json:"author"` // "you" | "team" | "system"
-	Body      string                `json:"body"`
-	Images    []ReportImageResponse `json:"images,omitempty"`
-	CreatedAt time.Time             `json:"createdAt"`
+	Author string `json:"author"` // "you" | "team" | "system"
+	// AuthorName is the person who answered, when we know it. Added alongside
+	// Author rather than folded into it: the published widget types Author as
+	// that closed union and switches on the literal, so a name there would be
+	// rendered as "Team" and lost. Empty for "you" and "system", and never the
+	// tenant's name — the reporter has no use for which app runs the board.
+	AuthorName string                `json:"authorName,omitempty"`
+	Body       string                `json:"body"`
+	Images     []ReportImageResponse `json:"images,omitempty"`
+	CreatedAt  time.Time             `json:"createdAt"`
 }
 
 // ReporterReportView is the reporter's own view of their report: status + the
@@ -503,19 +521,66 @@ type UpdateReportRequest struct {
 	Area     *string         `json:"area"`
 }
 
+// CommentAuthorKind tags who wrote a comment, so a client renders it instead of
+// deducing it. Absent on system comments, which the comment's own Kind covers.
+type CommentAuthorKind string
+
+const (
+	AuthorKindUser     CommentAuthorKind = "user"     // a cac account
+	AuthorKindReporter CommentAuthorKind = "reporter" // whoever filed the report
+	AuthorKindTenant   CommentAuthorKind = "tenant"   // a person at a tenant app
+)
+
+// CommentAuthor is the author of a comment, tagged.
+//
+// For a tenant, Name is asserted by that tenant and verified by nobody — the
+// project key proves which app is speaking, not who at that app. So Name must
+// never be rendered on its own: show it with ProjectName, or a tenant sending
+// "admin" reads like the cac user of the same name.
+type CommentAuthor struct {
+	Kind CommentAuthorKind `json:"kind"`
+	Name string            `json:"name,omitempty"`
+	// Kind == user
+	UserID string `json:"userId,omitempty"`
+	// Kind == tenant
+	ProjectID   string `json:"projectId,omitempty"`
+	ProjectName string `json:"projectName,omitempty"`
+	ExternalID  string `json:"externalId,omitempty"`
+}
+
 type ReportCommentResponse struct {
-	ID           string            `json:"id"`
-	Kind         ReportCommentKind `json:"kind"`
-	AuthorUserID *string           `json:"authorUserId,omitempty"`
-	AuthorName   string            `json:"authorName,omitempty"`
-	// AuthorLabel is kept separate from AuthorName rather than folded into it:
-	// the cac thread wants the tenant's actual name, while the reporter's view
-	// only needs to know it wasn't them.
-	AuthorLabel string                `json:"authorLabel,omitempty"`
-	Body        string                `json:"body"`
-	Images      []ReportImageResponse `json:"images,omitempty" gorm:"-"`
-	CreatedAt   time.Time             `json:"createdAt"`
-	UpdatedAt   time.Time             `json:"updatedAt"`
+	ID     string            `json:"id"`
+	Kind   ReportCommentKind `json:"kind"`
+	Author *CommentAuthor    `json:"author,omitempty" gorm:"-"`
+	// The flat fields below are what the installed app reads, and an installed
+	// binary does not update itself. They stay until no deployment is on a build
+	// that predates `author`.
+	AuthorUserID *string               `json:"authorUserId,omitempty"`
+	AuthorName   string                `json:"authorName,omitempty"`
+	AuthorLabel  string                `json:"authorLabel,omitempty" gorm:"-"`
+	Body         string                `json:"body"`
+	Images       []ReportImageResponse `json:"images,omitempty" gorm:"-"`
+	CreatedAt    time.Time             `json:"createdAt"`
+	UpdatedAt    time.Time             `json:"updatedAt"`
+	// Scan targets, folded into Author by the repository.
+	AuthorProjectID    string `json:"-"`
+	AuthorProjectName  string `json:"-"`
+	AuthorExternalID   string `json:"-"`
+	AuthorExternalName string `json:"-"`
+}
+
+// TenantAuthor is who a tenant says is speaking, plus the project that proves
+// which tenant it is. Grouped so the four values travel together and can't be
+// passed in the wrong order.
+type TenantAuthor struct {
+	ProjectID   string
+	ProjectSlug string
+	ProjectName string
+	// ExternalID / ExternalName come from the request and are asserted, not
+	// verified. Empty means the tenant didn't say, and the reply is signed with
+	// the project alone.
+	ExternalID   string
+	ExternalName string
 }
 
 type UpdateReportCommentRequest struct {

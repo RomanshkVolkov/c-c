@@ -145,6 +145,8 @@ func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	mw.WriteField("body", "we shipped a fix")
+	mw.WriteField("authorName", "José")
+	mw.WriteField("authorId", "42")
 	mw.Close()
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/reports/"+rep.ID+"/comments", &buf)
 	req.Header.Set("X-Ingest-Key", key)
@@ -163,6 +165,12 @@ func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
 	var detail struct {
 		Data struct {
 			Comments []struct {
+				Author *struct {
+					Kind        string `json:"kind"`
+					Name        string `json:"name"`
+					ProjectName string `json:"projectName"`
+					ExternalID  string `json:"externalId"`
+				} `json:"author"`
 				AuthorName  string `json:"authorName"`
 				AuthorLabel string `json:"authorLabel"`
 				Body        string `json:"body"`
@@ -175,8 +183,28 @@ func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
 	if len(detail.Data.Comments) != 1 {
 		t.Fatalf("got %d comments, want 1", len(detail.Data.Comments))
 	}
-	if got := detail.Data.Comments[0].AuthorLabel; got != proj.Name {
-		t.Errorf("cac thread author label = %q, want %q", got, proj.Name)
+	c := detail.Data.Comments[0]
+	if c.Author == nil {
+		t.Fatalf("the comment came back with no author: %s", body)
+	}
+	if c.Author.Kind != "tenant" {
+		t.Errorf("author kind = %q, want \"tenant\"", c.Author.Kind)
+	}
+	// Both halves: who wrote it, and which tenant vouches for that name. The
+	// name alone would let a tenant sending "admin" pass for the cac user.
+	if c.Author.Name != "José" {
+		t.Errorf("author name = %q, want the person the tenant named", c.Author.Name)
+	}
+	if c.Author.ProjectName != proj.Name {
+		t.Errorf("author projectName = %q, want %q", c.Author.ProjectName, proj.Name)
+	}
+	if c.Author.ExternalID != "42" {
+		t.Errorf("author externalId = %q, want the tenant's own user id", c.Author.ExternalID)
+	}
+	// The installed app predates `author` and reads these; dropping them blanks
+	// out every tenant byline until everyone updates.
+	if c.AuthorLabel != proj.Name {
+		t.Errorf("flat authorLabel = %q, want %q for older builds", c.AuthorLabel, proj.Name)
 	}
 
 	// Side two: the reporter sees a reply from "team", not from themselves, and
@@ -194,8 +222,9 @@ func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
 	var view struct {
 		Data struct {
 			Comments []struct {
-				Author string `json:"author"`
-				Body   string `json:"body"`
+				Author     string `json:"author"`
+				AuthorName string `json:"authorName"`
+				Body       string `json:"body"`
 			} `json:"comments"`
 		} `json:"data"`
 	}
@@ -207,6 +236,11 @@ func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
 	}
 	if got := view.Data.Comments[0].Author; got != "team" {
 		t.Errorf("reporter sees author %q, want \"team\" (\"you\" would show them their own words as a reply)", got)
+	}
+	// The discriminator stays a closed union for the published widget, and the
+	// name rides alongside it — that is the whole reason for the second field.
+	if got := view.Data.Comments[0].AuthorName; got != "José" {
+		t.Errorf("reporter sees authorName %q, want the person who answered", got)
 	}
 	// The folio legitimately carries the project slug — it is the reporter's own
 	// ticket number. What must not appear is the tenant's display name, which is
@@ -244,7 +278,7 @@ func TestATenantEditsItsOwnReplyButNotAPersons(t *testing.T) {
 
 	// One comment from a person on cac's side, one from the tenant.
 	human := "u-someone"
-	mine := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorLabel: proj.Name, Body: "ours"}
+	mine := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorProjectID: &proj.ID, Body: "ours"}
 	mine.ID = "c-tenant"
 	theirs := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &human, Body: "theirs"}
 	theirs.ID = "c-human"
@@ -310,6 +344,87 @@ func TestATenantEditsItsOwnReplyButNotAPersons(t *testing.T) {
 	}
 }
 
+// A cac user's identity comes from their token, so a comment they post must be
+// signed with their own name even if the request says otherwise. Reading
+// authorName for them would not be a feature, it would be an impersonation
+// endpoint — and the same field is legitimate for a project key, which is
+// exactly the kind of asymmetry that gets lost in a refactor.
+func TestAPersonCannotRenameThemselvesOnAComment(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	user := &domain.User{Username: "realname", Email: "u@example.com", Password: "x"}
+	user.ID = "user-e2e"
+	if err := db.Create(user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.OrgMembership{
+		OrgID: org.ID, UserID: user.ID, Role: domain.OrgRoleAdmin,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	proj := mkProject(t, db, "proj-p", "portento", org.ID, "pk_e2e_person")
+	rep := mkReport(t, db, "rep-p", proj.ID, "broken")
+
+	pair, err := repository.GenerateTokens(user.ID, user.Username, false,
+		[]domain.OrgMembershipClaim{{OrgID: org.ID, Role: domain.OrgRoleAdmin}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, r, events.NewHub())
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	mw.WriteField("body", "on it")
+	mw.WriteField("authorName", "somebody else")
+	mw.Close()
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/reports/"+rep.ID+"/comments", &buf)
+	req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("person reply → %d: %s", resp.StatusCode, body)
+	}
+
+	var detail struct {
+		Data struct {
+			Comments []struct {
+				Author *struct {
+					Kind string `json:"kind"`
+					Name string `json:"name"`
+				} `json:"author"`
+			} `json:"comments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Data.Comments) != 1 || detail.Data.Comments[0].Author == nil {
+		t.Fatalf("unexpected thread: %s", body)
+	}
+	a := detail.Data.Comments[0].Author
+	if a.Kind != "user" {
+		t.Errorf("author kind = %q, want \"user\"", a.Kind)
+	}
+	if a.Name != user.Username {
+		t.Errorf("author name = %q, want %q — the request must not rename the caller", a.Name, user.Username)
+	}
+}
+
 // ─── harness ──────────────────────────────────────────────────────────────────
 
 func e2eDB(t *testing.T) (*gorm.DB, func()) {
@@ -342,7 +457,7 @@ func e2eDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{},
+	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.OrgMembership{},
 		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{}); err != nil {
 		t.Fatal(err)
 	}

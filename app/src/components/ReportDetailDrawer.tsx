@@ -25,6 +25,7 @@ import {
   CATEGORY_LABELS,
   PRIORITY_LABELS,
   STATUS_LABELS,
+  type ReportComment,
   type ReportStatus,
 } from "@/types/report";
 import TelemetryTimeline from "@/components/TelemetryTimeline";
@@ -60,6 +61,32 @@ function TaxonomySelect<T extends string>({
       </SelectContent>
     </Select>
   );
+}
+
+/**
+ * Who to show as having written a comment.
+ *
+ * A tenant's reply always names the tenant next to the person, and that is the
+ * point rather than decoration: the person's name is asserted by the tenant and
+ * verified by nobody, so one sending `authorName: "admin"` must not read like
+ * the cac user of the same name.
+ *
+ * Falls back to the flat fields for a server that predates `author`; the two
+ * ship separately and this app is installed, not served.
+ */
+function commentByline(c: ReportComment): string {
+  const a = c.author;
+  if (!a) return c.authorName || c.authorLabel || "reporter";
+  switch (a.kind) {
+    case "user":
+      return a.name || "unknown";
+    case "tenant":
+      return a.name && a.name !== a.projectName
+        ? `${a.name} · ${a.projectName}`
+        : a.projectName || "tenant";
+    default:
+      return "reporter";
+  }
 }
 
 export default function ReportDetailDrawer() {
@@ -224,12 +251,7 @@ export default function ReportDetailDrawer() {
                   ) : (
                     <div key={c.id} className="rounded-md border p-3 space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        {/* `||`, not `??`: the API omits empty strings but a
-                            join that finds no user still yields "", which `??`
-                            would render as a blank byline. This is the side
-                            that names the tenant — the reporter's own view
-                            only ever says "team". */}
-                        <span>{c.authorName || c.authorLabel || "reporter"}</span>
+                        <span>{commentByline(c)}</span>
                         <span>{new Date(c.createdAt).toLocaleString()}</span>
                       </div>
                       {c.body && <Markdown>{c.body}</Markdown>}
