@@ -11,6 +11,21 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      # One platform at a time, and this is not about resources.
+      #
+      # Each job uploads `latest.json` — the updater's index — by reading the
+      # one already on the release, adding its own platform and putting it
+      # back. Run in parallel, two jobs read the same version and the slower
+      # write wins, silently dropping the other's platform. v1.6.7 shipped with
+      # only the Windows entries that way, and every Linux client got "none of
+      # the fallback platforms were found" with a perfectly good AppImage
+      # sitting in the same release.
+      #
+      # Serialising costs roughly 13 minutes per release (macOS universal is
+      # the slow one). The alternative that keeps them parallel is generating
+      # latest.json ourselves in a final job with includeUpdaterJson: false,
+      # which trades the wait for owning the format.
+      max-parallel: 1
       matrix:
         include:
           - platform: ubuntu-22.04
@@ -85,3 +100,35 @@ jobs:
           prerelease: false
           updaterJsonKeepUniversal: true
           args: ${{ matrix.args }}
+
+  # A release whose updater index is incomplete looks exactly like a good one:
+  # every build green, every installer published, and the failure only shows up
+  # as a toast on someone's machine days later. This turns that into a red run.
+  verify-updater:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every platform must be in latest.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/latest.json"
+          # Cache-buster: the CDN happily serves a stale copy right after upload.
+          curl -fsSL -H 'Cache-Control: no-cache' "${url}?ci=${GITHUB_RUN_ID}" -o latest.json
+          python3 - <<'PY'
+          import json, sys
+          want = {
+              "linux-x86_64", "linux-x86_64-appimage", "linux-x86_64-deb", "linux-x86_64-rpm",
+              "windows-x86_64", "windows-x86_64-nsis",
+              "darwin-aarch64", "darwin-x86_64", "darwin-universal",
+          }
+          got = set(json.load(open("latest.json"))["platforms"])
+          missing = sorted(want - got)
+          if missing:
+              print("latest.json is missing:", ", ".join(missing))
+              print("present:", ", ".join(sorted(got)) or "(none)")
+              print("\nThe installers are probably fine — it's the index that lost them.")
+              sys.exit(1)
+          print("all", len(want), "platforms present")
+          PY
