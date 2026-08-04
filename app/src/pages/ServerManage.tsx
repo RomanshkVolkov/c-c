@@ -147,7 +147,11 @@ function LogsPanel({
           {status === "error" &&
             "Connection failed — agent may be unreachable or endpoint not available"}
         </div>
-        <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 h-100 overflow-y-auto font-mono text-sm text-green-400">
+        {/* overflow-auto, not just -y: server logs are column-aligned tables and
+            a long row has to scroll here rather than widen the page. And
+            whitespace-pre so those columns stay lined up — wrapping turns a
+            readable table into rubble. */}
+        <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 h-100 overflow-auto whitespace-pre font-mono text-sm text-green-400">
           {logs.length === 0 ? (
             <span className="text-muted-foreground">Waiting for logs...</span>
           ) : (
