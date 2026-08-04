@@ -602,9 +602,11 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 	if len(images) > 0 && !s.images.Enabled() {
 		return nil, ErrImagesUnavailable
 	}
-	if _, err := s.repo.FindByID(reportID); err != nil {
+	report, err := s.repo.FindByID(reportID)
+	if err != nil {
 		return nil, err
 	}
+	author.from = causedBy(author, report.ReporterID)
 
 	c := &domain.ReportComment{
 		ReportID: reportID, Kind: domain.CommentKindUser,
@@ -658,6 +660,19 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 // actorIsPerson reads the same string the events carry, so Update and
 // AttachImages don't need a second parameter saying what they already know.
 func actorIsPerson(actor string) bool { return !strings.HasPrefix(actor, "project:") }
+
+// causedBy names who an event should be attributed to.
+//
+// A tenant relays comments from all of its people, and one of them is whoever
+// filed the report. Attributing that person's own reply to the project is what
+// makes the tenant's echo filter discard it, so nobody on their side learns a
+// user answered. The author's id decides, not the credential that carried it.
+func causedBy(author commentAuthor, reporterID string) string {
+	if author.projectID != nil && author.externalID != "" && author.externalID == reporterID {
+		return "reporter"
+	}
+	return author.from
+}
 
 func ownsComment(author commentAuthor, c *domain.ReportComment) bool {
 	if author.projectID != nil {
@@ -754,7 +769,13 @@ func (s *ReportService) editComment(ctx context.Context, author commentAuthor, r
 		return nil, err
 	}
 
-	s.emit("report:comment", reportID, author.from, map[string]any{
+	// Same rule as posting: an edit to the reporter's own reply is caused by the
+	// reporter, whichever credential carried it.
+	from := author.from
+	if rep, err := s.repo.FindByID(reportID); err == nil {
+		from = causedBy(author, rep.ReporterID)
+	}
+	s.emit("report:comment", reportID, from, map[string]any{
 		"reportId": reportID, "commentId": commentID, "edited": true,
 	})
 	return s.Detail(reportID, author.projectID == nil)

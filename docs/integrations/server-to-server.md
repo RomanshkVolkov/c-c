@@ -140,11 +140,23 @@ un reporte existente en vez de crear uno nuevo.
 Un comentario tiene **una de tres** clases de autor, y el servidor la declara en el
 campo `author` en vez de dejar que la deduzcas de qué campos vienen nulos:
 
-| `author.kind` | Quién es | Quién lo garantiza |
-|---|---|---|
-| `user` | una persona con cuenta en cac | su sesión o su token |
-| `reporter` | quien abrió el reporte | el token del reporte |
-| `tenant` | una persona **de tu app** | la key **avala** al proyecto; el nombre lo **afirmas tú** |
+| `author.kind` | Quién es |
+|---|---|
+| `user` | una persona con cuenta en cac |
+| `reporter` | la persona que abrió **este** reporte |
+| `tenant` | una persona de tu app que **no** abrió este reporte |
+
+**La clase sale de quién escribió, no de por dónde entró.** Manda `authorId` en
+todos tus comentarios: si coincide con el `reporterId` de ese reporte, cac lo lee
+como del reporter; si no, como de tu equipo. Una sola credencial y un solo
+endpoint para los dos casos.
+
+Esto importa porque lo contrario te obligaba a elegir. Cuando la clase dependía
+del endpoint, un comentario del reporter tenía que entrar por la vía del token —y
+esa vía no guarda proyecto, así que **nadie podía editarlo después**—, mientras que
+mandarlo por la key lo atribuía a tu proyecto y hacía que tu propio filtro de eco
+lo descartara, dejando a tu equipo sin enterarse de que un usuario había
+respondido.
 
 ```json
 "author": { "kind": "tenant", "name": "José",
@@ -153,8 +165,9 @@ campo `author` en vez de dejar que la deduzcas de qué campos vienen nulos:
 
 Ausente en los comentarios de sistema: el `kind` del propio comentario ya lo dice.
 
-`name` viene relleno en los tres casos —también en `reporter`, con el nombre que la
-persona dio al abrir el reporte—, así que para pintar la firma basta `author.name`.
+`name` viene relleno en los tres casos, así que para pintar la firma basta
+`author.name`: el que mandaste en `authorName`, o el que dio la persona al abrir el
+reporte si vino por el widget.
 Los campos planos `authorName` / `authorLabel` / `authorUserId` siguen viajando por
 compatibilidad, pero no los uses en código nuevo: no distinguen las tres clases.
 
@@ -201,10 +214,19 @@ pedido. Si lo necesitas, pídelo — es pequeño.
 
 ### Cómo ve tu respuesta cada lado
 
-| Quién mira | Qué ve |
-|---|---|
-| El equipo, en cac | **"José · portento"** — la persona y el inquilino que la avala |
-| El reporter, en tu app | `author: "team"` y `authorName: "José"` |
+| Quién escribió | En cac | En tu app | En la vista del reporter |
+|---|---|---|---|
+| Una persona con cuenta en cac | `admin` | — | `team` |
+| Alguien tuyo que no abrió el reporte | **`José · portento`** | `José` | `team`, con `authorName` |
+| La persona que abrió el reporte | `Ana` | `Ana` | **`you`** |
+
+El sufijo `· portento` sólo aparece en la consola de cac, y sólo en la fila del
+medio: ese nombre lo afirmas tú y no lo verifica nadie, así que sin él uno que
+mandara `admin` se leería igual que el usuario `admin` de cac. En un comentario
+del reporter no aparece — ahí la identidad ya es la del reporte.
+
+Y el comentario del reporter **sigue siendo tuyo para editar y retirar**, porque
+lo escribiste con tu key. Eso es lo que antes era imposible.
 
 El reporter **no** recibe el nombre del proyecto: es usuario de tu app y no tiene por
 qué saber que cac existe. Y `author` sigue siendo `"you" | "team" | "system"` — el
@@ -269,7 +291,12 @@ como respuesta sin leer para el reporter.
 > mayoría:
 >
 > ```js
-> const editable = c.author?.kind === "tenant"
+> // Tuyo es lo que escribiste con tu key — incluido lo que relayaste del
+> // reporter. Un comentario del reporter que llegó por el widget público no
+> // trae externalId, y ése no es tuyo.
+> const editable =
+>   c.author?.kind === "tenant" ||
+>   (c.author?.kind === "reporter" && !!c.author.externalId)
 > ```
 >
 > Sin ese filtro, editar el comentario de otro responde
@@ -320,6 +347,11 @@ Eventos: `report:new`, `report:status`, `report:comment`, `report:attachment`.
 `report:comment` lleva además `authorName` y `authorId` en `data` cuando quien
 respondió fue una persona de tu app, para que puedas atribuirla sin pedir el detalle.
 
+Y su `from` sigue la misma regla que la clase de autor: **`"reporter"` cuando lo
+escribió quien abrió el reporte**, aunque lo hayas relayado tú con la key. Por eso
+descartar `project:<slug>` sigue siendo correcto y no te deja sordo a las
+respuestas de tus usuarios.
+
 Que `reporterId` venga en **todos** es deliberado: enrutar un aviso ("te
 respondieron") es leer un campo, no mantener un índice local ni llamar de vuelta.
 
@@ -344,6 +376,11 @@ alta devuelve un `token` por reporte: una firma HMAC, no una fila en ninguna tab
 Guárdalo junto al id del reporte. Con él, y solo para **ese** reporte, el reporter
 consulta su estado, lee el hilo y responde — sus comentarios aparecen como suyos y no
 como del equipo.
+
+> **Si integras desde tu servidor, no lo necesitas para comentar.** Manda el
+> comentario por la key con `authorId` igual al `reporterId` y sale igual de
+> atribuido, con la ventaja de que después puedes editarlo o retirarlo. El token
+> queda para el widget público, donde reporta alguien sin cuenta.
 
 **Dura 90 días y no se renueva.** Cuando expire, degrada a solo lectura con un aviso
 honesto; no falles. (Renovación deslizante y aceptar el token por cabecera están

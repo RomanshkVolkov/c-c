@@ -804,6 +804,187 @@ func TestAWithdrawnCommentIsVisibleOnlyInsideCac(t *testing.T) {
 	}
 }
 
+// The same endpoint, the same credential, two different people — and cac has to
+// tell them apart by *who wrote it*, not by how it arrived. A tenant relays both
+// its staff and the person who filed the report; deciding by endpoint forced it
+// to choose between attributing a reply correctly and being able to edit it.
+func TestATenantRelayingTheReporterIsReadAsTheReporter(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	const key = "pk_e2e_relay"
+	proj := mkProject(t, db, "proj-rl", "portento", org.ID, key)
+	rep := mkReport(t, db, "rep-rl", proj.ID, "broken")
+	// mkReport files it as "u1"; that id is what identifies the reporter.
+	if err := db.Model(rep).Updates(map[string]any{
+		"reporter_id": "u1", "reporter_name": "Ana",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().Add(-time.Minute)
+
+	router := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, router, events.NewHub())
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	post := func(body, authorID, authorName string) []byte {
+		t.Helper()
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		mw.WriteField("body", body)
+		mw.WriteField("authorId", authorID)
+		mw.WriteField("authorName", authorName)
+		mw.Close()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/reports/"+rep.ID+"/comments", &buf)
+		req.Header.Set("X-Ingest-Key", key)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("post → %d: %s", resp.StatusCode, raw)
+		}
+		return raw
+	}
+
+	type authored struct {
+		ID     string `json:"id"`
+		Author *struct {
+			Kind        string `json:"kind"`
+			Name        string `json:"name"`
+			ProjectName string `json:"projectName"`
+		} `json:"author"`
+	}
+	thread := func(raw []byte) []authored {
+		t.Helper()
+		var d struct {
+			Data struct {
+				Comments []authored `json:"comments"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &d); err != nil {
+			t.Fatal(err)
+		}
+		return d.Data.Comments
+	}
+
+	// The person who filed it, relayed by the tenant.
+	mine := thread(post("any news?", "u1", "Ana"))
+	if len(mine) != 1 || mine[0].Author == nil {
+		t.Fatalf("unexpected thread: %+v", mine)
+	}
+	if mine[0].Author.Kind != "reporter" {
+		t.Errorf("the reporter's own comment came back as %q", mine[0].Author.Kind)
+	}
+	if mine[0].Author.ProjectName != "" {
+		t.Errorf("the reporter's comment is signed with the tenant (%q)", mine[0].Author.ProjectName)
+	}
+	reporterCommentID := mine[0].ID
+
+	// Somebody else at the same tenant.
+	all := thread(post("looking into it", "u9", "José"))
+	var staff *authored
+	for i := range all {
+		if all[i].ID != reporterCommentID {
+			staff = &all[i]
+		}
+	}
+	if staff == nil || staff.Author == nil {
+		t.Fatalf("unexpected thread: %+v", all)
+	}
+	if staff.Author.Kind != "tenant" {
+		t.Errorf("a staff reply came back as %q, want \"tenant\"", staff.Author.Kind)
+	}
+	if staff.Author.ProjectName != proj.Name {
+		t.Errorf("the staff reply lost its tenant: %q", staff.Author.ProjectName)
+	}
+
+	// The reporter sees their own words as theirs, and the other one as the team.
+	resp, err := http.Get(srv.URL + "/ingest/v1/reports/" + rep.ID + "?token=" + repository.MintReportToken(rep.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var view struct {
+		Data struct {
+			Comments []struct {
+				Author string `json:"author"`
+				Body   string `json:"body"`
+			} `json:"comments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &view); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]string{}
+	for _, c := range view.Data.Comments {
+		seen[c.Body] = c.Author
+	}
+	if seen["any news?"] != "you" {
+		t.Errorf("the reporter sees their own comment as %q, want \"you\"", seen["any news?"])
+	}
+	if seen["looking into it"] != "team" {
+		t.Errorf("the staff reply reads as %q, want \"team\"", seen["looking into it"])
+	}
+
+	// One unread reply, not two: their own message isn't an answer to them.
+	n, err := repository.NewReportRepository(db).CountTeamCommentsSince(rep.ID, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("unread count = %d, want 1 — the reporter's own comment must not count", n)
+	}
+
+	// And the whole point: the tenant can still edit what it relayed.
+	form, ct := editForm(text("any news? (bump)"))
+	req, _ := http.NewRequest(http.MethodPatch,
+		srv.URL+"/api/v1/reports/"+rep.ID+"/comments/"+reporterCommentID, form)
+	req.Header.Set("X-Ingest-Key", key)
+	req.Header.Set("Content-Type", ct)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("editing the reporter's relayed comment → %d, want 200 — this is what was impossible", resp.StatusCode)
+	}
+
+	// The other half of the rule the contract hands integrators: a reporter
+	// comment that came through the public widget carries no externalId and is
+	// nobody's to edit. Without this the documented predicate would be half
+	// true, and they'd show a button that 403s.
+	widget := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, Body: "from the widget"}
+	widget.ID = "c-widget"
+	if err := db.Create(widget).Error; err != nil {
+		t.Fatal(err)
+	}
+	form, ct = editForm(text("not yours"))
+	req, _ = http.NewRequest(http.MethodPatch,
+		srv.URL+"/api/v1/reports/"+rep.ID+"/comments/"+widget.ID, form)
+	req.Header.Set("X-Ingest-Key", key)
+	req.Header.Set("Content-Type", ct)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("editing a widget-filed comment → %d, want 403", resp.StatusCode)
+	}
+}
+
 // editForm builds the multipart body an edit takes: optional text, optional ids
 // to drop. Files go through the same "images" field as posting one.
 func editForm(body *string, removeIDs ...string) (io.Reader, string) {

@@ -284,7 +284,7 @@ func (r *ReportRepository) ListComments(reportID string, includeDeleted bool) ([
 		SELECT c.id, c.kind, c.author_user_id, u.username AS author_name,
 		       c.author_project_id, p.name AS author_project_name,
 		       c.author_external_id, c.author_external_name,
-		       r.reporter_name, c.deleted_at,
+		       r.reporter_name, r.reporter_id, c.deleted_at,
 		       c.body, c.created_at, c.updated_at
 		FROM report_comments c
 		JOIN reports r ON r.id = c.report_id
@@ -316,12 +316,26 @@ func tagAuthor(c *domain.ReportCommentResponse) {
 			Kind: domain.AuthorKindUser, Name: c.AuthorName, UserID: *c.AuthorUserID,
 		}
 	case c.AuthorProjectID != "":
-		// Name falls back to the project when the tenant didn't say who: a reply
-		// signed "portento" is worse than one signed "José · portento", and much
-		// better than one signed with nothing.
 		name := c.AuthorExternalName
 		if name == "" {
 			name = c.AuthorProjectName
+		}
+		// Whether this is the reporter speaking is a fact about *who wrote it*,
+		// not about which endpoint it arrived through. The tenant already told us
+		// the report's reporterId when it filed the report, and tells us the
+		// author's id on every comment — both in its own id space, so comparing
+		// them answers the question without the transport having an opinion.
+		//
+		// Deciding it by endpoint is what forced a tenant to choose between
+		// attributing a reply correctly and being able to edit it: the reporter
+		// route stores no project, so ownsComment can never match.
+		if c.AuthorExternalID != "" && c.AuthorExternalID == c.ReporterID {
+			c.Author = &domain.CommentAuthor{
+				Kind: domain.AuthorKindReporter, Name: name,
+				ExternalID: c.AuthorExternalID,
+			}
+			c.AuthorName = name
+			break
 		}
 		c.Author = &domain.CommentAuthor{
 			Kind: domain.AuthorKindTenant, Name: name,
@@ -352,11 +366,18 @@ func (r *ReportRepository) CreateComment(c *domain.ReportComment) error {
 // A tenant app replying through its project key has no author_user_id, only the
 // project it belongs to. Counting on the user id alone would leave its replies
 // out of the badge, so the reporter would never be told they had an answer.
+//
+// But the tenant also relays the reporter's *own* comments, and those must not
+// count: telling someone they have an unread reply, when the reply is the
+// message they just wrote, is worse than not telling them anything.
 func (r *ReportRepository) CountTeamCommentsSince(reportID string, since time.Time) (int64, error) {
 	var n int64
-	err := r.db.Model(&domain.ReportComment{}).
-		Where("report_id = ? AND kind = ? AND (author_user_id IS NOT NULL OR author_project_id IS NOT NULL) AND created_at > ? AND deleted_at IS NULL",
+	err := r.db.Table("report_comments c").
+		Joins("JOIN reports r ON r.id = c.report_id").
+		Where("c.report_id = ? AND c.kind = ? AND c.created_at > ? AND c.deleted_at IS NULL",
 			reportID, domain.CommentKindUser, since).
+		Where("(c.author_user_id IS NOT NULL OR c.author_project_id IS NOT NULL)").
+		Where("NOT (c.author_external_id <> '' AND c.author_external_id = r.reporter_id)").
 		Count(&n).Error
 	return n, err
 }
