@@ -24,6 +24,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPatch, "/api/v1/tasks/abc", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/tasks/abc/move", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/notes/", domain.ScopeNotesWrite},
+		// Append-only, like creating the page it hangs off.
+		{http.MethodPost, "/api/v1/notes/abc/attachments", domain.ScopeNotesWrite},
 		{http.MethodPatch, "/api/v1/notes/abc", domain.ScopeNotesManage},
 		{http.MethodPost, "/api/v1/reports/abc/comments", domain.ScopeReportsWrite},
 		{http.MethodPost, "/api/v1/reports/abc/images", domain.ScopeReportsWrite},
@@ -67,7 +69,6 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodPatch, "/api/v1/tasks/abc/comments/xyz"),
 		req(http.MethodDelete, "/api/v1/notes/abc"),
 		req(http.MethodPut, "/api/v1/notes/tree"),
-		req(http.MethodPost, "/api/v1/notes/abc/attachments"),
 		// Removing someone's report outright is still nobody's to do with a
 		// token — unlike a comment, which the author may withdraw.
 		req(http.MethodDelete, "/api/v1/reports/abc"),

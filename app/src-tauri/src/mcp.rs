@@ -115,6 +115,77 @@ fn api_form(cfg: &Cfg, method: &str, path: &str, fields: Vec<(&str, String)>) ->
     })
 }
 
+/// Downloads a file, returning its bytes and content type.
+fn fetch_bytes(url: &str) -> Result<(Vec<u8>, String), String> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let res = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("could not fetch {url}: {e}"))?;
+        if !res.status().is_success() {
+            return Err(format!("could not fetch {url}: {}", res.status()));
+        }
+        let ctype = res
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = res.bytes().await.map_err(|e| e.to_string())?;
+        Ok((bytes.to_vec(), ctype))
+    })
+}
+
+/// Multipart upload of one file under the field name cac expects.
+fn api_upload(
+    cfg: &Cfg,
+    path: &str,
+    file_name: &str,
+    content_type: &str,
+    bytes: Vec<u8>,
+) -> Result<Value, String> {
+    let url = format!("{}{}", cfg.base, path);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(file_name.to_string())
+            .mime_str(content_type)
+            .map_err(|e| e.to_string())?;
+        let res = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", cfg.token))
+            .multipart(reqwest::multipart::Form::new().part("file", part))
+            .send()
+            .await
+            .map_err(|e| format!("request failed: {e}"))?;
+        let status = res.status();
+        let body: Value = res
+            .json()
+            .await
+            .map_err(|e| format!("bad response from cac: {e}"))?;
+        if !status.is_success() {
+            return Err(explain_write_failure(status, &body));
+        }
+        Ok(body.get("data").cloned().unwrap_or(Value::Null))
+    })
+}
+
 fn api_delete(cfg: &Cfg, path: &str) -> Result<Value, String> {
     let url = format!("{}{}", cfg.base, path);
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -380,6 +451,20 @@ fn tool_defs() -> Value {
                     "dryRun": { "type": "boolean", "description": "Validate without writing." }
                 },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "add_note_attachment",
+            "description": "Attach a file to a note by giving its URL: cac downloads it and stores its own copy, then returns the markdown to paste into the body. Use it when migrating content in, so images stop being served by wherever they came from. Needs `notes:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Note id, from list_notes." },
+                    "url": { "type": "string", "description": "Where to fetch the file from." },
+                    "fileName": { "type": "string", "description": "Name to store it under. Defaults to the last path segment of the URL." },
+                    "dryRun": { "type": "boolean", "description": "Validate the note and the token's permission without downloading or writing." }
+                },
+                "required": ["id", "url"]
             }
         },
         {
@@ -706,6 +791,42 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "category": detail.get("category"),
                 "area": detail.get("area"),
                 "assignee": detail.get("assigneeName"),
+            }))
+        }
+
+        "add_note_attachment" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let url = arg_str(args, "url").ok_or("url is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/notes/{}", urlencode(&id)));
+                return dry_run(cfg, "notes:write", target);
+            }
+            let name = arg_str(args, "fileName").unwrap_or_else(|| {
+                url.rsplit('/')
+                    .next()
+                    .map(|s| s.split(['?', '#']).next().unwrap_or(s).to_string())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "attachment".to_string())
+            });
+            // Fetched here rather than handed over as base64: a 30 MB image
+            // through the MCP protocol would be encoded, buffered and logged as
+            // one enormous tool argument.
+            let (bytes, ctype) = fetch_bytes(&url)?;
+            let att = api_upload(
+                cfg,
+                &format!("/api/v1/notes/{}/attachments", urlencode(&id)),
+                &name,
+                &ctype,
+                bytes,
+            )?;
+            let rel = att.get("url").and_then(|v| v.as_str()).unwrap_or_default();
+            Ok(json!({
+                "id": att.get("id"),
+                "fileName": att.get("fileName"),
+                "bytes": att.get("bytes"),
+                // Ready to paste: the caller shouldn't have to know how cac
+                // spells an attachment reference.
+                "markdown": format!("![{}]({})", name, rel),
             }))
         }
 

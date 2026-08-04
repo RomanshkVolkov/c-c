@@ -228,6 +228,11 @@ var patWritable = []struct {
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-lists/[^/]+/tasks/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/?$`), domain.ScopeNotesWrite},
+	// Attaching a file to a page is adding, not overwriting — the same append
+	// that creating the page is, so the same scope. Needed for a migration to
+	// bring images across instead of leaving them served by the tool being
+	// abandoned, which is the whole point of migrating.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/[^/]+/attachments/?$`), domain.ScopeNotesWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`), domain.ScopeReportsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/?$`), domain.ScopeReportsWrite},
 	// Changes what already exists.
