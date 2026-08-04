@@ -103,8 +103,20 @@ diferencia entre una fuente y dos que se separan.
 `telemetry` · `snapshot` · `context` · `images` (hasta 5, 5 MB cada una,
 `png`/`jpeg`/`webp`/`gif`)
 
-Y en `POST /api/v1/reports/{id}/comments`: `body`, `images`, más `authorName` y
-`authorId` (§3).
+### El cuerpo de cada llamada
+
+Todo lo que escribe comentarios es `multipart/form-data`. **También el PATCH** —
+es la asimetría que más tiempo cuesta si no se dice:
+
+| Operación | Cuerpo |
+|---|---|
+| `POST …/comments` | `body`, `images`, `authorName`, `authorId` (§3) |
+| `PATCH …/comments/{id}` | `body`, `images`, `removeImageIds` — ver §3 |
+| `DELETE …/comments/{id}` | sin cuerpo |
+| `DELETE …/images/{id}` | sin cuerpo, y **sólo galería** (§3) |
+
+`POST` y `PATCH` de comentario devuelven **el hilo entero ya actualizado**, así que
+no hace falta volver a pedir el detalle.
 
 `category` y `priority` se normalizan: lo desconocido cae en `other` y `medium`, así
 que un valor nuevo nunca rompe el alta. `origin=system` activa el dedup por título
@@ -211,6 +223,46 @@ sesión.
 No las de una persona del equipo de cac, no las del reporter, y los comentarios de
 sistema son inmutables para todos. Borrar el reporte entero queda fuera: eso es
 descartar el reporte de un usuario, no ordenar tu propia conversación.
+
+### Editar es una operación, no tres
+
+`PATCH /api/v1/reports/{id}/comments/{commentId}`, multipart:
+
+| Campo | Qué hace |
+|---|---|
+| `body` | **Ausente = no se toca.** Presente = reemplaza el texto |
+| `images` | Ficheros a añadir, mismos límites que al crear |
+| `removeImageIds` | Ids a quitar; repetido, o uno separado por comas |
+
+Las tres cosas viajan juntas y se aplican **o todas o ninguna**. Si nombras una
+imagen que no es de ese comentario, la petición se rechaza entera y el texto
+tampoco cambia — no queda media edición aplicada.
+
+Dos reglas que te van a responder con error:
+
+- Un comentario no puede quedarse **sin texto y sin imágenes**: `400`, la misma
+  regla que impide publicar uno vacío.
+- Cada id de `removeImageIds` tiene que ser **de ese comentario**: `400`. Ni de la
+  galería ni de otra respuesta.
+
+Y por eso `DELETE …/images/{id}` **sólo sirve para la galería**. Si la imagen
+pertenece a un comentario responde `403` y te remite aquí: las imágenes de un
+comentario se gobiernan por el comentario, igual que su texto.
+
+> **Quitar una imagen no borra el fichero.** Se desprende del reporte y deja de
+> servirse, pero el objeto sigue en el almacenamiento: image-service aún no expone
+> un borrado. Es una fuga conocida y no un descuido — el borrado real necesita su
+> propia política de retención, más ahora que cac conserva visibles los comentarios
+> retirados, y sus imágenes con ellos.
+
+### Los comentarios retirados no te llegan
+
+Cuando alguien del equipo retira un comentario en cac, **desaparece de tu hilo por
+completo** — ni el contenido ni un hueco donde estaba. Dentro de cac el equipo
+sigue viéndolo, marcado, porque para ellos es parte del registro.
+
+No tienes que filtrar nada: lo que no debes mostrar no te llega. Y tampoco cuenta
+como respuesta sin leer para el reporter.
 
 > **Enseña el botón sólo donde funciona.** El hilo mezcla comentarios de tu app, del
 > equipo de cac y del reporter, así que un botón de editar en todos falla en la
@@ -353,7 +405,9 @@ Los que vas a ver de verdad, con lo que significan:
 | Transición inválida | 409 | Ese cambio de estado no lo permite la máquina de estados; consulta `transitions` |
 | Solo el autor | 403 | Intentaste editar o borrar un comentario que no escribió tu proyecto |
 | Comentario de sistema | 403 | Los comentarios de sistema son inmutables |
-| Comentario vacío | 400 | Un comentario necesita cuerpo o al menos una imagen |
+| Comentario vacío | 400 | Un comentario necesita cuerpo o al menos una imagen, también después de editarlo |
+| `That image does not belong to this comment` | 400 | Un id de `removeImageIds` es de la galería o de otro comentario; no se aplicó nada |
+| `This image belongs to a comment` | 403 | Usa el `PATCH` del comentario, no el `DELETE` de imagen |
 | Almacenamiento de imágenes | 503 | image-service no está disponible; el texto sí se pudo guardar |
 
 ---

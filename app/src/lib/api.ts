@@ -154,15 +154,29 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
 // cost more than it buys. Does NOT set Content-Type so the browser adds the
 // boundary.
 async function postForm<T>(path: string, form: FormData, retry = true): Promise<T> {
+  return sendForm<T>("POST", path, form, retry);
+}
+
+/** Same transport, for endpoints that edit rather than create. */
+async function patchForm<T>(path: string, form: FormData, retry = true): Promise<T> {
+  return sendForm<T>("PATCH", path, form, retry);
+}
+
+async function sendForm<T>(
+  method: "POST" | "PATCH",
+  path: string,
+  form: FormData,
+  retry: boolean
+): Promise<T> {
   const token = useAuthStore.getState().accessToken;
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   let res: Response;
   try {
-    res = await fetch(`${BASE_URL}${path}`, { method: "POST", body: form, headers });
+    res = await fetch(`${BASE_URL}${path}`, { method, body: form, headers });
   } catch {
-    if (retry) return postForm<T>(path, form, false);
+    if (retry) return sendForm<T>(method, path, form, false);
     useConnectionStore.getState().markFail("Can't reach the server");
     throw new Error("network-error");
   }
@@ -174,7 +188,7 @@ async function postForm<T>(path: string, form: FormData, retry = true): Promise<
     const errorMsg: string = json?.error ?? json?.message ?? "Request failed";
     if (errorMsg === "expired-token" && retry) {
       const newToken = await tryRefresh();
-      if (newToken) return postForm<T>(path, form, false);
+      if (newToken) return sendForm<T>(method, path, form, false);
       throw new Error("session-expired");
     }
     throw new Error(errorMsg);
@@ -238,6 +252,7 @@ export const api = {
     request<T>(path, { method: "GET", auth }),
 
   postForm,
+  patchForm,
 
   post: <T>(path: string, body: unknown, auth = false) =>
     request<T>(path, { method: "POST", body: JSON.stringify(body), auth }),

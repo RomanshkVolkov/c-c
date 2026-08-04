@@ -273,21 +273,26 @@ func (r *ReportRepository) ListImages(reportID string) ([]domain.ReportImage, er
 }
 
 // ListComments returns the comment thread with author usernames.
-func (r *ReportRepository) ListComments(reportID string) ([]domain.ReportCommentResponse, error) {
+//
+// includeDeleted is for cac's own console only. A withdrawn comment stays part
+// of the record the team can consult, but the tenant and the reporter must not
+// receive it — not even a gap where it was. The caller decides; see the two
+// gates in report_admin.go.
+func (r *ReportRepository) ListComments(reportID string, includeDeleted bool) ([]domain.ReportCommentResponse, error) {
 	var out []domain.ReportCommentResponse
 	err := r.db.Raw(`
 		SELECT c.id, c.kind, c.author_user_id, u.username AS author_name,
 		       c.author_project_id, p.name AS author_project_name,
 		       c.author_external_id, c.author_external_name,
-		       r.reporter_name,
+		       r.reporter_name, c.deleted_at,
 		       c.body, c.created_at, c.updated_at
 		FROM report_comments c
 		JOIN reports r ON r.id = c.report_id
 		LEFT JOIN users u ON u.id = c.author_user_id
 		LEFT JOIN report_projects p ON p.id = c.author_project_id
-		WHERE c.report_id = ? AND c.deleted_at IS NULL
+		WHERE c.report_id = ? AND (c.deleted_at IS NULL OR ?)
 		ORDER BY c.created_at ASC
-	`, reportID).Scan(&out).Error
+	`, reportID, includeDeleted).Scan(&out).Error
 	if err != nil {
 		return nil, err
 	}
@@ -392,6 +397,39 @@ func (r *ReportRepository) FindImage(reportID, imageID string) (*domain.ReportIm
 		return nil, err
 	}
 	return &img, nil
+}
+
+// ListCommentImages returns the images currently attached to one comment, which
+// is what tells an edit whether an id it was asked to remove is actually its own.
+func (r *ReportRepository) ListCommentImages(commentID string) ([]domain.ReportImage, error) {
+	var out []domain.ReportImage
+	err := r.db.Where("comment_id = ?", commentID).Order("created_at ASC").Find(&out).Error
+	return out, err
+}
+
+// ApplyCommentEdit writes the whole edit in one transaction: the new text, the
+// images that arrived and the ones that left. Separately they could half-apply,
+// and a reply whose text says "see the screenshot" without the screenshot is
+// worse than an edit that was refused.
+func (r *ReportRepository) ApplyCommentEdit(commentID, body string, add []domain.ReportImage, removeIDs []string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&domain.ReportComment{}).
+			Where("id = ?", commentID).Update("body", body).Error; err != nil {
+			return err
+		}
+		if len(removeIDs) > 0 {
+			if err := tx.Where("id IN ? AND comment_id = ?", removeIDs, commentID).
+				Delete(&domain.ReportImage{}).Error; err != nil {
+				return err
+			}
+		}
+		if len(add) > 0 {
+			if err := tx.Create(&add).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *ReportRepository) DeleteImage(id string) error {

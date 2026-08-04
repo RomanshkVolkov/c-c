@@ -101,6 +101,14 @@ function CommentRow({ c }: { c: ReportComment }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(c.body);
   const [saving, setSaving] = useState(false);
+  // Staged while editing: nothing leaves the client until Save, so the edit
+  // lands as one operation on the server too.
+  const [dropped, setDropped] = useState<string[]>([]);
+  const [added, setAdded] = useState<File[]>([]);
+  const pickFile = useRef<HTMLInputElement>(null);
+
+  const withdrawn = !!c.deletedAt;
+  const keptImages = (c.images ?? []).filter((i) => !dropped.includes(i.id));
 
   // Author only — no superadmin override, unlike tasks. The server refuses
   // anyone else outright, so the button would 403; and this thread is read by
@@ -110,12 +118,20 @@ function CommentRow({ c }: { c: ReportComment }) {
   const edited =
     new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000;
 
+  const startEdit = () => {
+    setDraft(c.body);
+    setDropped([]);
+    setAdded([]);
+    setEditing(true);
+  };
+
   const save = async () => {
     const body = draft.trim();
-    if (!body) return;
+    // The server refuses a comment left with neither, so don't send it.
+    if (!body && keptImages.length + added.length === 0) return;
     setSaving(true);
     try {
-      await editComment(c.id, body);
+      await editComment(c.id, { body, add: added, removeImageIds: dropped });
       setEditing(false);
     } catch (e) {
       toast.error("Could not save the comment", {
@@ -127,20 +143,25 @@ function CommentRow({ c }: { c: ReportComment }) {
   };
 
   return (
-    <div className="group rounded-md border p-3 space-y-2">
+    <div
+      className={
+        "group rounded-md border p-3 space-y-2" +
+        // Withdrawn comments only reach cac; the tenant and the reporter never
+        // receive them. Dimmed rather than hidden so the team keeps the record.
+        (withdrawn ? " border-dashed opacity-60" : "")
+      }
+    >
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span>{commentByline(c)}</span>
-        {edited && <span className="italic">edited</span>}
+        {withdrawn && <span className="italic">withdrawn · only visible here</span>}
+        {edited && !withdrawn && <span className="italic">edited</span>}
         <span className="ml-auto">{new Date(c.createdAt).toLocaleString()}</span>
-        {mine && !editing && (
+        {mine && !editing && !withdrawn && (
           <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               className="hover:text-foreground"
               title="Edit comment"
-              onClick={() => {
-                setDraft(c.body);
-                setEditing(true);
-              }}
+              onClick={startEdit}
             >
               <Pencil className="size-3" />
             </button>
@@ -177,12 +198,66 @@ function CommentRow({ c }: { c: ReportComment }) {
             className="min-h-16 text-sm"
             autoFocus
           />
+          {/* Existing attachments, each removable. Staged: the image stays on
+              the server until Save, so cancelling really cancels. */}
+          {(keptImages.length > 0 || added.length > 0) && (
+            <div className="grid grid-cols-3 gap-2">
+              {keptImages.map((img) => (
+                <div key={img.id} className="relative">
+                  <ZoomImg
+                    src={apiUrl(img.url)}
+                    alt={img.fileName}
+                    className="rounded border object-cover aspect-square w-full"
+                  />
+                  <button
+                    className="absolute right-1 top-1 rounded bg-background/90 p-0.5 text-destructive"
+                    title="Remove this image"
+                    onClick={() => setDropped((d) => [...d, img.id])}
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </div>
+              ))}
+              {added.map((f, i) => (
+                <div
+                  key={`${f.name}-${i}`}
+                  className="grid aspect-square place-items-center rounded border border-dashed p-1 text-center text-[10px] text-muted-foreground"
+                >
+                  <span className="truncate">{f.name}</span>
+                  <button
+                    className="text-destructive"
+                    onClick={() => setAdded((a) => a.filter((_, j) => j !== i))}
+                  >
+                    remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <input
+            ref={pickFile}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            hidden
+            onChange={(e) => {
+              setAdded((a) => [...a, ...Array.from(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
           <div className="flex gap-2">
-            <Button size="sm" onClick={save} disabled={saving || !draft.trim()}>
+            <Button
+              size="sm"
+              onClick={save}
+              disabled={saving || (!draft.trim() && keptImages.length + added.length === 0)}
+            >
               {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
               Save
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+            <Button size="sm" variant="outline" onClick={() => pickFile.current?.click()}>
+              <Paperclip className="mr-1 size-3" /> Add image
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
               Cancel
             </Button>
           </div>

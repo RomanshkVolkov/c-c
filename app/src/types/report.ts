@@ -158,6 +158,12 @@ export interface ReportComment {
   images?: ReportImage[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * Set when the comment was withdrawn. Only ever arrives in cac's own console —
+   * a tenant and the reporter never receive these rows at all — so it's safe to
+   * render the body next to the mark.
+   */
+  deletedAt?: string;
 }
 
 export interface ReportDetail {

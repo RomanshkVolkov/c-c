@@ -86,7 +86,10 @@ interface ReportsState {
     area?: string;
   }) => Promise<void>;
   addComment: (body: string, files: File[]) => Promise<void>;
-  editComment: (commentId: string, body: string) => Promise<void>;
+  editComment: (
+    commentId: string,
+    edit: { body?: string; add?: File[]; removeImageIds?: string[] }
+  ) => Promise<void>;
   deleteComment: (commentId: string) => Promise<void>;
 }
 
@@ -296,23 +299,27 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     await get().fetchReports();
   },
 
-  editComment: async (commentId, body) => {
+  editComment: async (commentId, edit) => {
     const id = get().selectedId;
     if (!id) return;
-    await api.patch<APIResponse<unknown>>(
+    // multipart, because one edit carries text and files together — sending
+    // them as separate requests is how half of an edit lands.
+    const form = new FormData();
+    if (edit.body !== undefined) form.set("body", edit.body);
+    for (const f of edit.add ?? []) form.append("images", f);
+    for (const rid of edit.removeImageIds ?? []) form.append("removeImageIds", rid);
+    const res = await api.patchForm<APIResponse<ReportDetail>>(
       `/api/v1/reports/${id}/comments/${commentId}`,
-      { body },
-      true
+      form
     );
-    // These two answer with the comment, not the thread, so the drawer has to
-    // refetch — and the count in the list changes on delete.
-    await get().refreshDetail();
+    if (res.success && res.data) set({ detail: res.data });
   },
 
   deleteComment: async (commentId) => {
     const id = get().selectedId;
     if (!id) return;
     await api.delete<APIResponse<unknown>>(`/api/v1/reports/${id}/comments/${commentId}`);
+    // Delete still answers with a message, and the list's comment count moves.
     await get().refreshDetail();
     await get().fetchReports();
   },

@@ -294,11 +294,13 @@ func TestATenantEditsItsOwnReplyButNotAPersons(t *testing.T) {
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
-	send := func(method, path, payload string) int {
+	send := func(method, path string, body io.Reader, ctype string) int {
 		t.Helper()
-		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(payload))
+		req, _ := http.NewRequest(method, srv.URL+path, body)
 		req.Header.Set("X-Ingest-Key", key)
-		req.Header.Set("Content-Type", "application/json")
+		if ctype != "" {
+			req.Header.Set("Content-Type", ctype)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -306,20 +308,24 @@ func TestATenantEditsItsOwnReplyButNotAPersons(t *testing.T) {
 		resp.Body.Close()
 		return resp.StatusCode
 	}
-
 	base := "/api/v1/reports/" + rep.ID + "/comments/"
-	if code := send(http.MethodPatch, base+mine.ID, `{"body":"corrected"}`); code != http.StatusOK {
+	patch := func(id string, body *string, rm ...string) int {
+		form, ct := editForm(body, rm...)
+		return send(http.MethodPatch, base+id, form, ct)
+	}
+
+	if code := patch(mine.ID, text("corrected")); code != http.StatusOK {
 		t.Errorf("editing its own reply → %d, want 200", code)
 	}
-	if code := send(http.MethodPatch, base+theirs.ID, `{"body":"hijacked"}`); code == http.StatusOK {
+	if code := patch(theirs.ID, text("hijacked")); code == http.StatusOK {
 		t.Error("the tenant rewrote a person's comment")
 	}
-	if code := send(http.MethodDelete, base+theirs.ID, ""); code == http.StatusOK {
+	if code := send(http.MethodDelete, base+theirs.ID, nil, ""); code == http.StatusOK {
 		t.Error("the tenant deleted a person's comment")
 	}
 	// Removing a whole report is a different thing from tidying a reply, and
 	// stays shut at the middleware.
-	if code := send(http.MethodDelete, "/api/v1/reports/"+rep.ID, ""); code != http.StatusForbidden {
+	if code := send(http.MethodDelete, "/api/v1/reports/"+rep.ID, nil, ""); code != http.StatusForbidden {
 		t.Errorf("deleting the report → %d, want 403", code)
 	}
 
@@ -438,12 +444,14 @@ func TestAPersonCannotRenameThemselvesOnAComment(t *testing.T) {
 	json.Unmarshal(body, &thread)
 	commentID := thread.Data.Comments[0].ID
 
-	send := func(method, payload string) int {
+	send := func(method string, body io.Reader, ctype string) int {
 		t.Helper()
 		req, _ := http.NewRequest(method,
-			srv.URL+"/api/v1/reports/"+rep.ID+"/comments/"+commentID, strings.NewReader(payload))
+			srv.URL+"/api/v1/reports/"+rep.ID+"/comments/"+commentID, body)
 		req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
-		req.Header.Set("Content-Type", "application/json")
+		if ctype != "" {
+			req.Header.Set("Content-Type", ctype)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -452,7 +460,8 @@ func TestAPersonCannotRenameThemselvesOnAComment(t *testing.T) {
 		return resp.StatusCode
 	}
 
-	if code := send(http.MethodPatch, `{"body":"on it, fixed"}`); code != http.StatusOK {
+	form, ct := editForm(text("on it, fixed"))
+	if code := send(http.MethodPatch, form, ct); code != http.StatusOK {
 		t.Errorf("editing own comment → %d, want 200", code)
 	}
 	var after domain.ReportComment
@@ -463,7 +472,7 @@ func TestAPersonCannotRenameThemselvesOnAComment(t *testing.T) {
 		t.Errorf("the edit did not persist, body is %q", after.Body)
 	}
 
-	if code := send(http.MethodDelete, ""); code != http.StatusOK {
+	if code := send(http.MethodDelete, nil, ""); code != http.StatusOK {
 		t.Errorf("deleting own comment → %d, want 200", code)
 	}
 	// Soft delete: gone from the thread, still on disk.
@@ -548,6 +557,269 @@ func TestTheReporterIsNamedOnTheirOwnComments(t *testing.T) {
 		t.Errorf("flat authorName = %q, want the reporter's name for older builds", got.AuthorName)
 	}
 }
+
+// An edit is one operation: text and images move together or not at all, and a
+// request that names an image it doesn't own changes nothing — not even the part
+// that was valid on its own.
+func TestEditingACommentIsAtomic(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	const key = "pk_e2e_atomic"
+	proj := mkProject(t, db, "proj-a", "portento", org.ID, key)
+	rep := mkReport(t, db, "rep-a", proj.ID, "broken")
+
+	mine := &domain.ReportComment{
+		ReportID: rep.ID, Kind: domain.CommentKindUser,
+		AuthorProjectID: &proj.ID, Body: "see the screenshot",
+	}
+	mine.ID = "c-mine"
+	other := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, Body: "reporter said"}
+	other.ID = "c-other"
+	gallery := &domain.ReportImage{ReportID: rep.ID, FileName: "shot.png", Path: "p/1"}
+	gallery.ID = "img-gallery"
+	onMine := &domain.ReportImage{ReportID: rep.ID, CommentID: &mine.ID, FileName: "mine.png", Path: "p/2"}
+	onMine.ID = "img-mine"
+	onOther := &domain.ReportImage{ReportID: rep.ID, CommentID: &other.ID, FileName: "theirs.png", Path: "p/3"}
+	onOther.ID = "img-other"
+	for _, row := range []any{mine, other, gallery, onMine, onOther} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	router := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, router, events.NewHub())
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	do := func(method, path string, body io.Reader, ctype string) int {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, body)
+		req.Header.Set("X-Ingest-Key", key)
+		if ctype != "" {
+			req.Header.Set("Content-Type", ctype)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	patch := func(body *string, rm ...string) int {
+		form, ct := editForm(body, rm...)
+		return do(http.MethodPatch, "/api/v1/reports/"+rep.ID+"/comments/"+mine.ID, form, ct)
+	}
+	bodyOf := func(id string) string {
+		t.Helper()
+		var c domain.ReportComment
+		if err := db.Where("id = ?", id).First(&c).Error; err != nil {
+			t.Fatal(err)
+		}
+		return c.Body
+	}
+	imageLives := func(id string) bool {
+		var n int64
+		db.Model(&domain.ReportImage{}).Where("id = ?", id).Count(&n)
+		return n == 1
+	}
+
+	// Naming an image that belongs to someone else's reply must fail, and must
+	// not let the text change through on its way out.
+	if code := patch(text("hijacked"), onOther.ID); code == http.StatusOK {
+		t.Error("removing an image from another comment was accepted")
+	}
+	if got := bodyOf(mine.ID); got != "see the screenshot" {
+		t.Errorf("the rejected edit still changed the text to %q", got)
+	}
+	if !imageLives(onOther.ID) {
+		t.Error("the other comment's image was removed anyway")
+	}
+
+	// Same for a gallery image: it isn't this comment's to drop.
+	if code := patch(nil, gallery.ID); code == http.StatusOK {
+		t.Error("a gallery image was removed through a comment edit")
+	}
+
+	// Text and image in one call.
+	if code := patch(text("fixed, screenshot no longer relevant"), onMine.ID); code != http.StatusOK {
+		t.Fatalf("the valid edit → %d, want 200", code)
+	}
+	if got := bodyOf(mine.ID); got != "fixed, screenshot no longer relevant" {
+		t.Errorf("body is %q", got)
+	}
+	if imageLives(onMine.ID) {
+		t.Error("the image the edit removed is still attached")
+	}
+
+	// Leaving a comment with neither text nor images is the one state it can't
+	// be edited into — the same rule that stops an empty one being posted.
+	empty := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorProjectID: &proj.ID, Body: "last words"}
+	empty.ID = "c-empty"
+	if err := db.Create(empty).Error; err != nil {
+		t.Fatal(err)
+	}
+	form, ct := editForm(text(""))
+	if code := do(http.MethodPatch, "/api/v1/reports/"+rep.ID+"/comments/"+empty.ID, form, ct); code == http.StatusOK {
+		t.Error("a comment was edited down to nothing")
+	}
+
+	// The gallery stays detachable on its own; a comment's images do not.
+	if code := do(http.MethodDelete, "/api/v1/reports/"+rep.ID+"/images/"+gallery.ID, nil, ""); code != http.StatusOK {
+		t.Errorf("detaching a gallery image → %d, want 200", code)
+	}
+	if code := do(http.MethodDelete, "/api/v1/reports/"+rep.ID+"/images/"+onOther.ID, nil, ""); code != http.StatusForbidden {
+		t.Errorf("detaching a comment's image → %d, want 403 pointing at the edit", code)
+	}
+}
+
+// A withdrawn comment stays part of the record the cac team can consult, and
+// stops existing for everyone else. Three audiences, three answers, and the
+// tenant's is the one that matters: for portento the comment never happened.
+func TestAWithdrawnCommentIsVisibleOnlyInsideCac(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "E2E Org", Slug: "e2e-org"}
+	org.ID = "org-e2e"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	person := &domain.User{Username: "someone", Email: "s@example.com", Password: "x"}
+	person.ID = "user-w"
+	if err := db.Create(person).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.OrgMembership{OrgID: org.ID, UserID: person.ID, Role: domain.OrgRoleAdmin}).Error; err != nil {
+		t.Fatal(err)
+	}
+	const key = "pk_e2e_withdrawn"
+	proj := mkProject(t, db, "proj-w", "portento", org.ID, key)
+	rep := mkReport(t, db, "rep-w", proj.ID, "broken")
+
+	kept := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &person.ID, Body: "still here"}
+	kept.ID = "c-kept"
+	gone := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &person.ID, Body: "said too soon"}
+	gone.ID = "c-gone"
+	if err := db.Create(kept).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(gone).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().Add(-time.Minute)
+	if err := db.Delete(gone).Error; err != nil { // soft delete, the real path
+		t.Fatal(err)
+	}
+
+	router := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, router, events.NewHub())
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	bodies := func(req *http.Request) (map[string]bool, map[string]string) {
+		t.Helper()
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s → %d: %s", req.URL.Path, resp.StatusCode, raw)
+		}
+		var d struct {
+			Data struct {
+				// Only the two fields both shapes share: the console and the
+				// reporter view disagree on `author`, and this test is about
+				// which comments arrive, not who wrote them.
+				Comments []struct {
+					Body      string `json:"body"`
+					DeletedAt string `json:"deletedAt"`
+				} `json:"comments"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &d); err != nil {
+			t.Fatal(err)
+		}
+		seen, deleted := map[string]bool{}, map[string]string{}
+		for _, c := range d.Data.Comments {
+			seen[c.Body] = true
+			deleted[c.Body] = c.DeletedAt
+		}
+		return seen, deleted
+	}
+
+	// A person in cac: both, and the withdrawn one carries its mark.
+	pair, err := repository.GenerateTokens(person.ID, person.Username, false,
+		[]domain.OrgMembershipClaim{{OrgID: org.ID, Role: domain.OrgRoleAdmin}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/reports/"+rep.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
+	seen, deleted := bodies(req)
+	if !seen["said too soon"] {
+		t.Error("cac lost the withdrawn comment; the team keeps the record")
+	}
+	if deleted["said too soon"] == "" {
+		t.Error("the withdrawn comment came back without deletedAt, so it reads as live")
+	}
+	if deleted["still here"] != "" {
+		t.Error("a live comment was marked as withdrawn")
+	}
+
+	// The tenant: it never happened.
+	req, _ = http.NewRequest(http.MethodGet, srv.URL+"/api/v1/reports/"+rep.ID, nil)
+	req.Header.Set("X-Ingest-Key", key)
+	seen, _ = bodies(req)
+	if seen["said too soon"] {
+		t.Error("the tenant received a comment the team withdrew")
+	}
+	if !seen["still here"] {
+		t.Error("the tenant lost a live comment")
+	}
+
+	// Neither does the reporter.
+	req, _ = http.NewRequest(http.MethodGet,
+		srv.URL+"/ingest/v1/reports/"+rep.ID+"?token="+repository.MintReportToken(rep.ID), nil)
+	seen, _ = bodies(req)
+	if seen["said too soon"] {
+		t.Error("the reporter received a withdrawn comment")
+	}
+
+	// And it is not an unread reply waiting for them.
+	n, err := repository.NewReportRepository(db).CountTeamCommentsSince(rep.ID, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("unread count = %d, want 1 — the withdrawn one must not count", n)
+	}
+}
+
+// editForm builds the multipart body an edit takes: optional text, optional ids
+// to drop. Files go through the same "images" field as posting one.
+func editForm(body *string, removeIDs ...string) (io.Reader, string) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	if body != nil {
+		mw.WriteField("body", *body)
+	}
+	for _, id := range removeIDs {
+		mw.WriteField("removeImageIds", id)
+	}
+	mw.Close()
+	return &buf, mw.FormDataContentType()
+}
+
+func text(v string) *string { return &v }
 
 // ─── harness ──────────────────────────────────────────────────────────────────
 

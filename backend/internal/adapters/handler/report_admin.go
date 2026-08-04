@@ -50,6 +50,12 @@ func mapReportError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusForbidden, "System comments are immutable", err.Error())
 	case errors.Is(err, service.ErrNotCommentAuthor):
 		SendErrorResponse(w, http.StatusForbidden, "Only the author can modify this comment", err.Error())
+	case errors.Is(err, service.ErrImageInComment):
+		SendErrorResponse(w, http.StatusForbidden,
+			"This image belongs to a comment; edit the comment to remove it", err.Error())
+	case errors.Is(err, service.ErrImageNotInComment):
+		SendErrorResponse(w, http.StatusBadRequest,
+			"That image does not belong to this comment", err.Error())
 	case errors.Is(err, service.ErrEmptyComment):
 		SendErrorResponse(w, http.StatusBadRequest, "Comment needs a body or at least one image", err.Error())
 	case errors.Is(err, service.ErrImagesUnavailable):
@@ -221,11 +227,11 @@ func (h *reportAdminHandler) Taxonomy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *reportAdminHandler) Get(w http.ResponseWriter, r *http.Request) {
-	_, reportID, ok := h.authorize(w, r, false)
+	user, reportID, ok := h.authorize(w, r, false)
 	if !ok {
 		return
 	}
-	detail, err := h.svc.Detail(reportID)
+	detail, err := h.svc.Detail(reportID, !user.IsProjectScoped())
 	if err != nil {
 		if mapReportError(w, err) {
 			return
@@ -307,25 +313,58 @@ func (h *reportAdminHandler) EditComment(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	req, err := ValidateRequest[domain.UpdateReportCommentRequest](r)
-	if err != nil {
-		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+	// multipart, like posting one: an edit can carry files, and having the two
+	// halves of the same thought speak different formats is how an integrator
+	// ends up with 400s on a request that looks right.
+	images, ok := readMultipartImages(w, r, "images")
+	if !ok {
 		return
 	}
-	editErr := func() error {
-		if user.IsProjectScoped() {
-			return h.svc.EditProjectComment(user.ProjectID, reportID, chi.URLParam(r, "commentId"), req.Body)
-		}
-		return h.svc.EditComment(user.UserID, reportID, chi.URLParam(r, "commentId"), req.Body)
+	edit := service.CommentEdit{Add: images, RemoveID: removeImageIDs(r)}
+	// Absent means "leave the text alone", which is what makes "just drop that
+	// screenshot" an edit. Present and empty is a real attempt to blank it, and
+	// the service refuses if nothing would be left.
+	if r.MultipartForm != nil && len(r.MultipartForm.Value["body"]) > 0 {
+		body := r.FormValue("body")
+		edit.Body = &body
 	}
-	if err := editErr(); err != nil {
+
+	commentID := chi.URLParam(r, "commentId")
+	apply := func() (*domain.ReportDetailResponse, error) {
+		if user.IsProjectScoped() {
+			return h.svc.EditProjectComment(r.Context(), domain.TenantAuthor{
+				ProjectID: user.ProjectID, ProjectSlug: user.ProjectSlug,
+			}, reportID, commentID, edit)
+		}
+		return h.svc.EditComment(r.Context(), user.UserID, reportID, commentID, edit)
+	}
+	detail, err := apply()
+	if err != nil {
 		if mapReportError(w, err) {
 			return
 		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to edit comment", err.Error())
 		return
 	}
-	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Comment updated"})
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReportDetailResponse]{Success: true, Data: detail})
+}
+
+// removeImageIDs reads the ids an edit wants gone, accepting either repeated
+// fields or one comma-separated value — a form encoder that can't repeat a key
+// shouldn't be a reason the feature is out of reach.
+func removeImageIDs(r *http.Request) []string {
+	if r.MultipartForm == nil {
+		return nil
+	}
+	var out []string
+	for _, v := range r.MultipartForm.Value["removeImageIds"] {
+		for _, id := range strings.Split(v, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 func (h *reportAdminHandler) DeleteComment(w http.ResponseWriter, r *http.Request) {

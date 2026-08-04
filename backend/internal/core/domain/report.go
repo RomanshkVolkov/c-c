@@ -562,6 +562,9 @@ type ReportCommentResponse struct {
 	Images       []ReportImageResponse `json:"images,omitempty" gorm:"-"`
 	CreatedAt    time.Time             `json:"createdAt"`
 	UpdatedAt    time.Time             `json:"updatedAt"`
+	// DeletedAt marks a withdrawn comment. Only ever set in cac's own console:
+	// the tenant and the reporter never receive these rows at all.
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 	// Scan targets, folded into Author by the repository.
 	AuthorProjectID    string `json:"-"`
 	AuthorProjectName  string `json:"-"`

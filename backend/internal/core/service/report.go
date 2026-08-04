@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -74,6 +75,12 @@ var (
 	ErrCommentImmutable  = errors.New("system comments are immutable")
 	ErrNotCommentAuthor  = errors.New("only the author can modify this comment")
 	ErrEmptyComment      = errors.New("comment needs a body or at least one image")
+	// ErrImageNotInComment guards the edit endpoint from being used to delete an
+	// image that belongs to the gallery or to somebody else's reply.
+	ErrImageNotInComment = errors.New("that image does not belong to this comment")
+	// ErrImageInComment sends the caller to the edit endpoint: a comment's
+	// images are governed by the comment, not detachable on their own.
+	ErrImageInComment = errors.New("this image belongs to a comment; edit the comment to remove it")
 )
 
 type ReportService struct {
@@ -242,7 +249,7 @@ func (s *ReportService) ReporterView(reportID string) (*domain.ReporterReportVie
 	if err != nil {
 		return nil, err
 	}
-	comments, err := s.repo.ListComments(reportID)
+	comments, err := s.repo.ListComments(reportID, false) // the reporter never sees a withdrawn reply
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +389,10 @@ func (s *ReportService) ProjectIDForReport(reportID string) (string, error) {
 
 // Detail assembles the full report view: gallery images + comment thread with
 // inline images.
-func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, error) {
+// Detail assembles the console view. includeWithdrawn is true only for a cac
+// user: a tenant driving its own board must not receive comments the team
+// retired, not even as a gap.
+func (s *ReportService) Detail(reportID string, includeWithdrawn bool) (*domain.ReportDetailResponse, error) {
 	report, err := s.repo.FindByID(reportID)
 	if err != nil {
 		return nil, err
@@ -395,7 +405,7 @@ func (s *ReportService) Detail(reportID string) (*domain.ReportDetailResponse, e
 	if err != nil {
 		return nil, err
 	}
-	comments, err := s.repo.ListComments(reportID)
+	comments, err := s.repo.ListComments(reportID, includeWithdrawn)
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +554,7 @@ func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRe
 			"reportId": reportID, "status": report.Status,
 		})
 	}
-	return s.Detail(reportID)
+	return s.Detail(reportID, actorIsPerson(actor))
 }
 
 // systemComment appends an immutable kind=system audit mark to the thread.
@@ -631,7 +641,7 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 		data["authorId"] = author.externalID
 	}
 	s.emit("report:comment", reportID, author.from, data)
-	return s.Detail(reportID)
+	return s.Detail(reportID, author.projectID == nil)
 }
 
 // ownsComment decides whether this caller may change a comment.
@@ -645,6 +655,10 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 //
 // That inference breaks the day a person can post with a label. If that ever
 // happens, this needs a project id on the row instead.
+// actorIsPerson reads the same string the events carry, so Update and
+// AttachImages don't need a second parameter saying what they already know.
+func actorIsPerson(actor string) bool { return !strings.HasPrefix(actor, "project:") }
+
 func ownsComment(author commentAuthor, c *domain.ReportComment) bool {
 	if author.projectID != nil {
 		return c.AuthorProjectID != nil && *c.AuthorProjectID == *author.projectID
@@ -653,13 +667,13 @@ func ownsComment(author commentAuthor, c *domain.ReportComment) bool {
 }
 
 // EditComment updates the body of the caller's own user comment.
-func (s *ReportService) EditComment(callerID, reportID, commentID, body string) error {
-	return s.editComment(commentAuthor{userID: &callerID}, reportID, commentID, body)
+func (s *ReportService) EditComment(ctx context.Context, callerID, reportID, commentID string, edit CommentEdit) (*domain.ReportDetailResponse, error) {
+	return s.editComment(ctx, commentAuthor{userID: &callerID, from: "team"}, reportID, commentID, edit)
 }
 
 // EditProjectComment lets a tenant app correct a reply its own key wrote.
-func (s *ReportService) EditProjectComment(projectID, reportID, commentID, body string) error {
-	return s.editComment(commentAuthor{projectID: &projectID}, reportID, commentID, body)
+func (s *ReportService) EditProjectComment(ctx context.Context, p domain.TenantAuthor, reportID, commentID string, edit CommentEdit) (*domain.ReportDetailResponse, error) {
+	return s.editComment(ctx, commentAuthor{projectID: &p.ProjectID, from: "project:" + p.ProjectSlug}, reportID, commentID, edit)
 }
 
 // DeleteProjectComment removes a reply the tenant's own key wrote. Soft, like
@@ -669,21 +683,81 @@ func (s *ReportService) DeleteProjectComment(projectID, reportID, commentID stri
 	return s.deleteComment(commentAuthor{projectID: &projectID}, reportID, commentID)
 }
 
-func (s *ReportService) editComment(author commentAuthor, reportID, commentID, body string) error {
+// CommentEdit is everything one edit can change. A nil Body leaves the text
+// alone, which is what lets "just remove that screenshot" be an edit too.
+type CommentEdit struct {
+	Body     *string
+	Add      []domain.IngestImage
+	RemoveID []string
+}
+
+func (s *ReportService) editComment(ctx context.Context, author commentAuthor, reportID, commentID string, edit CommentEdit) (*domain.ReportDetailResponse, error) {
 	c, err := s.repo.FindComment(reportID, commentID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if c.Kind == domain.CommentKindSystem {
-		return ErrCommentImmutable
+		return nil, ErrCommentImmutable
 	}
 	if !ownsComment(author, c) {
-		return ErrNotCommentAuthor
+		return nil, ErrNotCommentAuthor
 	}
-	// The one genuinely lossy operation in this file: the old body is replaced,
-	// not superseded. Deleting a comment or an image is soft and leaves the row
-	// (and, for images, a system audit line); this does not.
-	return s.repo.UpdateCommentBody(commentID, body)
+	if len(edit.Add) > 0 && !s.images.Enabled() {
+		return nil, ErrImagesUnavailable
+	}
+
+	// Every id has to belong to *this* comment. Without it the endpoint would be
+	// a way to delete any image on the report — including the gallery and other
+	// people's replies — just by naming it here.
+	current, err := s.repo.ListCommentImages(commentID)
+	if err != nil {
+		return nil, err
+	}
+	owned := make(map[string]bool, len(current))
+	for _, img := range current {
+		owned[img.ID] = true
+	}
+	for _, id := range edit.RemoveID {
+		if !owned[id] {
+			return nil, ErrImageNotInComment
+		}
+	}
+
+	// Refuse before touching anything if the edit would leave the comment with
+	// neither text nor images — the same rule that stops an empty one being
+	// created, applied to the state the edit would produce.
+	body := c.Body
+	if edit.Body != nil {
+		body = strings.TrimSpace(*edit.Body)
+	}
+	if body == "" && len(current)-len(edit.RemoveID)+len(edit.Add) == 0 {
+		return nil, ErrEmptyComment
+	}
+
+	// Upload before the transaction: it talks to image-service, which is slow
+	// and can fail, and a half-written comment is worse than a rejected edit.
+	var persisted []domain.ReportImage
+	if len(edit.Add) > 0 {
+		project, err := s.repo.ProjectForReport(reportID)
+		if err != nil {
+			return nil, err
+		}
+		up, lastErr := s.uploadImages(ctx, reportID, &commentID, edit.Add, s.storageFolder(project, reportID))
+		if len(up) == 0 && lastErr != nil {
+			return nil, fmt.Errorf("%w: %v", ErrImagesUnavailable, lastErr)
+		}
+		persisted = up
+	}
+
+	// One edit, one write. Text and images move together or not at all.
+	if err := s.repo.ApplyCommentEdit(commentID, body, persisted, edit.RemoveID); err != nil {
+		return nil, err
+	}
+
+	s.emit("report:comment", reportID, author.from, map[string]any{
+		"reportId": reportID, "commentId": commentID, "edited": true,
+	})
+	return s.Detail(reportID, author.projectID == nil)
 }
 
 // DeleteComment removes the caller's own user comment (and its inline images).
@@ -735,7 +809,7 @@ func (s *ReportService) AttachImages(ctx context.Context, actor, reportID string
 	s.emit("report:attachment", reportID, actor, map[string]any{
 		"reportId": reportID, "attached": len(persisted),
 	})
-	return s.Detail(reportID)
+	return s.Detail(reportID, actorIsPerson(actor))
 }
 
 // DetachImage soft-deletes a gallery image, leaving a system audit comment.
@@ -743,6 +817,13 @@ func (s *ReportService) DetachImage(reportID, imageID string) error {
 	img, err := s.repo.FindImage(reportID, imageID)
 	if err != nil {
 		return err
+	}
+	// The gallery is triage material and anyone triaging may prune it. An image
+	// inside a comment belongs to that comment, and so does the right to remove
+	// it — otherwise this endpoint quietly reopens what comment ownership
+	// closes, letting a tenant strip a screenshot off a colleague's reply.
+	if img.CommentID != nil {
+		return ErrImageInComment
 	}
 	if err := s.repo.DeleteImage(img.ID); err != nil {
 		return err
