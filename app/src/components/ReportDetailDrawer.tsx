@@ -493,26 +493,34 @@ function Meta({ label, value }: { label: string; value?: string }) {
 }
 
 /**
- * Extract pasted image files from a clipboard event. WebKitGTK (the Tauri
- * webview on Linux) exposes pasted screenshots via clipboardData.items
- * (getAsFile), leaving .files empty — so we read items first, then fall back to
- * .files (drag/other browsers). Deduped by name+size.
+ * Extract pasted files from a clipboard event. WebKitGTK (the Tauri webview on
+ * Linux) exposes a pasted screenshot through `items`, leaving `.files` empty —
+ * so read items first and fall back to files for drag and other browsers.
+ *
+ * Deliberately does NOT require `type` to start with `image/`. That check was
+ * here and it is why pasting a screenshot did nothing while the very same paste
+ * worked in tasks: the item arrives as `kind: "file"` with an empty or generic
+ * type, so the filter threw away exactly what the user meant to attach. The
+ * picker and the server both constrain the format; this only has to hand over
+ * whatever was pasted. See takePasted in MarkdownEditor, which had it right.
  */
 function imagesFromClipboard(e: React.ClipboardEvent): File[] {
   const dt = e.clipboardData;
-  const out: File[] = [];
-  for (const item of Array.from(dt.items ?? [])) {
-    if (item.kind === "file" && item.type.startsWith("image/")) {
-      const f = item.getAsFile();
-      if (f) out.push(f);
-    }
-  }
-  for (const f of Array.from(dt.files ?? [])) {
-    if (f.type.startsWith("image/") && !out.some((o) => o.name === f.name && o.size === f.size)) {
-      out.push(f);
-    }
-  }
-  return out;
+  const found = [
+    ...Array.from(dt.items ?? [])
+      .filter((i) => i.kind === "file")
+      .map((i) => i.getAsFile()),
+    ...Array.from(dt.files ?? []),
+  ].filter((f): f is File => !!f);
+
+  const seen = new Set<string>();
+  return found.filter((f) => {
+    // A screenshot can appear both as an item and as a file entry.
+    const key = `${f.name}:${f.size}:${f.type}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function CommentComposer({
