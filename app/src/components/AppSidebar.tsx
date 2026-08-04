@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -215,6 +215,16 @@ function UpdateCheckButton() {
   const lastError = useUpdaterStore((s) => s.lastError);
   const checkForUpdate = useUpdaterStore((s) => s.checkForUpdate);
   const installUpdate = useUpdaterStore((s) => s.installUpdate);
+  // Which build am I actually running? Without this the only answer was the
+  // release notes on GitHub, and an installed app that updates on its own is
+  // exactly where that question comes up.
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    void import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then(setVersion)
+      .catch(() => {}); // running in a plain browser
+  }, []);
 
   const handleClick = async () => {
     const id = toast.loading("Checking for updates…");
@@ -240,8 +250,8 @@ function UpdateCheckButton() {
     }
   };
 
-  let label = "Check updates";
-  let tooltip = "Check for updates";
+  let label = version ? `v${version}` : "Check updates";
+  let tooltip = version ? `Running v${version} — check for updates` : "Check for updates";
   let Icon = RefreshCw;
   let iconClass = "";
 
@@ -255,8 +265,8 @@ function UpdateCheckButton() {
     Icon = RefreshCw;
     iconClass = "animate-spin";
   } else if (available) {
-    label = `Update v${available.version}`;
-    tooltip = `Update v${available.version} available`;
+    label = `Update to v${available.version}`;
+    tooltip = `Running v${version || "?"} — v${available.version} is available`;
     Icon = Download;
     iconClass = "text-primary";
   } else if (lastError) {
@@ -265,8 +275,8 @@ function UpdateCheckButton() {
     Icon = AlertCircle;
     iconClass = "text-destructive";
   } else if (lastCheckedAt) {
-    label = "Up to date";
-    tooltip = `Up to date — checked ${formatRelativeTime(lastCheckedAt)}`;
+    label = version ? `v${version} · up to date` : "Up to date";
+    tooltip = `${version ? `Running v${version}. ` : ""}Up to date — checked ${formatRelativeTime(lastCheckedAt)}`;
     Icon = CheckCircle2;
     iconClass = "text-success";
   }
