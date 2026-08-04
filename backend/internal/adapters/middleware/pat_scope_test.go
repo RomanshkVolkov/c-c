@@ -29,6 +29,10 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/reports/abc/images", domain.ScopeReportsWrite},
 		{http.MethodPatch, "/api/v1/reports/abc", domain.ScopeReportsManage},
 		{http.MethodDelete, "/api/v1/reports/abc/images/xyz", domain.ScopeReportsManage},
+		// Overwriting what was said, so manage and not write. The author check
+		// in the service is what keeps this to the token holder's own words.
+		{http.MethodPatch, "/api/v1/reports/abc/comments/xyz", domain.ScopeReportsManage},
+		{http.MethodDelete, "/api/v1/reports/abc/comments/xyz", domain.ScopeReportsManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -64,11 +68,9 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodDelete, "/api/v1/notes/abc"),
 		req(http.MethodPut, "/api/v1/notes/tree"),
 		req(http.MethodPost, "/api/v1/notes/abc/attachments"),
-		// A tenant drives its own triage with a token; it never gets to erase
-		// history or remove a report outright.
+		// Removing someone's report outright is still nobody's to do with a
+		// token — unlike a comment, which the author may withdraw.
 		req(http.MethodDelete, "/api/v1/reports/abc"),
-		req(http.MethodPatch, "/api/v1/reports/abc/comments/xyz"),
-		req(http.MethodDelete, "/api/v1/reports/abc/comments/xyz"),
 		req(http.MethodPost, "/api/v1/report-projects/"),
 		// Emptying the trash and purging are irreversible; no scope reaches them.
 		req(http.MethodDelete, "/api/v1/notes/trash"),

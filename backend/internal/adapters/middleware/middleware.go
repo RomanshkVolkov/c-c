@@ -236,6 +236,13 @@ var patWritable = []struct {
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/notes/[^/]+$`), domain.ScopeNotesManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+$`), domain.ScopeReportsManage},
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/[^/]+$`), domain.ScopeReportsManage},
+	// Correcting or withdrawing a comment. Under manage rather than write
+	// because both overwrite what was already said, and reachable at all
+	// because the service still only lets the author touch their own: a token
+	// is the person, so refusing here left them able to fix a typo in the app
+	// and not through their own token.
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/[^/]+$`), domain.ScopeReportsManage},
+	{http.MethodDelete, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/[^/]+$`), domain.ScopeReportsManage},
 }
 
 // patScopeFor reports the scope this request needs, and whether it's reachable

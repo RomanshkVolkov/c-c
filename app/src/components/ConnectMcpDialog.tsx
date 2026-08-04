@@ -282,8 +282,10 @@ export default function ConnectMcpDialog({
                   <span>
                     <span className="text-foreground">Triage reports</span>
                     <span className="block">
-                      Change status, assignee, priority, category or area, and remove
-                      attached images. What another app needs to run its own board.
+                      Change status, assignee, priority, category or area, remove a
+                      report's screenshots, and correct or withdraw comments{" "}
+                      <span className="text-foreground">you</span> wrote — never
+                      anyone else's, which cac refuses outright.
                     </span>
                   </span>
                 </label>
@@ -344,9 +346,10 @@ export default function ConnectMcpDialog({
               notes.
             </p>
             <p className="pt-1">
-              With the permissions above: create tasks/comments or notes pages, and — only
-              with "change existing" checked — move tasks between columns, overwrite a
-              task's fields, or overwrite a note's title/body.
+              With the permissions above: reply to reports, create tasks/comments or
+              notes pages, and — only with "change existing" or "triage" checked —
+              move tasks between columns, overwrite a task's fields or a note's
+              title/body, triage a report, and correct or withdraw your own replies.
             </p>
             <p className="pt-1">
               <Badge variant="secondary" className="text-[10px]">Note</Badge> whatever it reads

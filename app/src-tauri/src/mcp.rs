@@ -74,6 +74,77 @@ fn api_patch(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
     api_write(cfg, "PATCH", path, body)
 }
 
+/// Multipart write, for the endpoints that accept files. Comments take
+/// multipart even when they carry only text — one format for the whole family,
+/// rather than JSON here and multipart there depending on attachments.
+fn api_form(cfg: &Cfg, method: &str, path: &str, fields: Vec<(&str, String)>) -> Result<Value, String> {
+    let url = format!("{}{}", cfg.base, path);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let mut form = reqwest::multipart::Form::new();
+        for (k, v) in fields {
+            form = form.text(k.to_string(), v);
+        }
+        let req = match method {
+            "PATCH" => client.patch(&url),
+            _ => client.post(&url),
+        };
+        let res = req
+            .header("Authorization", format!("Bearer {}", cfg.token))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| format!("request failed: {e}"))?;
+        let status = res.status();
+        let body: Value = res
+            .json()
+            .await
+            .map_err(|e| format!("bad response from cac: {e}"))?;
+        if !status.is_success() {
+            return Err(explain_write_failure(status, &body));
+        }
+        Ok(body.get("data").cloned().unwrap_or(Value::Null))
+    })
+}
+
+fn api_delete(cfg: &Cfg, path: &str) -> Result<Value, String> {
+    let url = format!("{}{}", cfg.base, path);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let res = client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", cfg.token))
+            .send()
+            .await
+            .map_err(|e| format!("request failed: {e}"))?;
+        let status = res.status();
+        let body: Value = res
+            .json()
+            .await
+            .map_err(|e| format!("bad response from cac: {e}"))?;
+        if !status.is_success() {
+            return Err(explain_write_failure(status, &body));
+        }
+        Ok(body.get("data").cloned().unwrap_or(Value::Null))
+    })
+}
+
 /// Any mutating call. Writes need a scope on the token, so a refusal has to say
 /// *which* one is missing: "invalid token" and "token lacks a permission" are
 /// otherwise indistinguishable, and chasing the wrong one wastes a session.
@@ -106,32 +177,37 @@ fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, 
             .await
             .map_err(|e| format!("bad response from cac: {e}"))?;
         if !status.is_success() {
-            let msg = body
-                .get("error")
-                .and_then(|v| v.as_str())
-                .or_else(|| body.get("message").and_then(|v| v.as_str()))
-                .unwrap_or("request failed");
-            // The backend answers `missing-scope:<name>`; turn that into the exact
-            // remedy instead of making the caller guess.
-            if let Some(scope) = msg.strip_prefix("missing-scope:") {
-                return Err(format!(
-                    "This token is valid but lacks the `{scope}` scope. In cac open Connect Claude Code, \
-                     mint a token with that permission checked, and replace CAC_TOKEN."
-                ));
-            }
-            if status.as_u16() == 403 {
-                return Err(format!("cac refused the write: {msg}"));
-            }
-            if status.as_u16() == 401 {
-                return Err(format!(
-                    "cac rejected the token itself ({msg}) — this is authentication, not a missing \
-                     permission. Check CAC_TOKEN is the current one and hasn't expired."
-                ));
-            }
-            return Err(format!("cac returned {status}: {msg}"));
+            return Err(explain_write_failure(status, &body));
         }
         Ok(body.get("data").cloned().unwrap_or(Value::Null))
     })
+}
+
+/// Turns a refused write into something the caller can act on. Shared by all
+/// three transports so a multipart write doesn't explain itself worse than a
+/// JSON one.
+fn explain_write_failure(status: reqwest::StatusCode, body: &Value) -> String {
+    let msg = body
+        .get("error")
+        .and_then(|v| v.as_str())
+        .or_else(|| body.get("message").and_then(|v| v.as_str()))
+        .unwrap_or("request failed");
+    // The backend answers `missing-scope:<name>`; turn that into the exact
+    // remedy instead of making the caller guess.
+    if let Some(scope) = msg.strip_prefix("missing-scope:") {
+        return format!(
+            "This token is valid but lacks the `{scope}` scope. In cac open Connect Claude Code, \
+             mint a token with that permission checked, and replace CAC_TOKEN."
+        );
+    }
+    match status.as_u16() {
+        403 => format!("cac refused the write: {msg}"),
+        401 => format!(
+            "cac rejected the token itself ({msg}) — this is authentication, not a missing \
+             permission. Check CAC_TOKEN is the current one and hasn't expired."
+        ),
+        _ => format!("cac returned {status}: {msg}"),
+    }
 }
 
 /// Reports what a write *would* do, without doing it.
@@ -246,6 +322,63 @@ fn tool_defs() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "add_report_comment",
+            "description": "Reply to a bug report. Append-only: it cannot overwrite what anyone else wrote, and the reply is signed with the token owner's name — whoever filed the report sees it as an answer from the team. Needs `reports:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Report id, from list_reports." },
+                    "body": { "type": "string", "description": "Markdown." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "body"]
+            }
+        },
+        {
+            "name": "edit_report_comment",
+            "description": "Correct a comment you wrote. Only your own: cac refuses anyone else's, the reporter's and system notes. Replaces the text outright — there is no history. Needs `reports:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Report id." },
+                    "commentId": { "type": "string" },
+                    "body": { "type": "string", "description": "The replacement text, markdown." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "commentId", "body"]
+            }
+        },
+        {
+            "name": "delete_report_comment",
+            "description": "Withdraw a comment you wrote. It disappears for the reporter and for any tenant app, while staying visible inside cac marked as withdrawn — the team keeps the record. Only your own. Needs `reports:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Report id." },
+                    "commentId": { "type": "string" },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "commentId"]
+            }
+        },
+        {
+            "name": "update_report",
+            "description": "Triage a report: status, priority, category, area or assignee. Status moves must follow the state machine — read GET /reports/transitions, or an illegal move answers 409. Needs `reports:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "status": { "type": "string", "description": "open | in_progress | done | closed" },
+                    "priority": { "type": "string", "description": "low | medium | high | urgent" },
+                    "category": { "type": "string", "description": "bug | ui | performance | data | other" },
+                    "area": { "type": "string", "description": "Free text, trimmed to 60 chars." },
+                    "assigneeUserId": { "type": "string", "description": "A cac user in the report's org; \"\" unassigns." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
                 "required": ["id"]
             }
         },
@@ -464,6 +597,116 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             let id = arg_str(args, "id").ok_or("id is required")?;
             let d = api_get(cfg, &format!("/api/v1/reports/{}", urlencode(&id)))?;
             Ok(d)
+        }
+
+        "add_report_comment" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let body_md = arg_str(args, "body").ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/reports/{}", urlencode(&id)));
+                return dry_run(cfg, "reports:write", target);
+            }
+            // multipart even without files: it's what the endpoint takes, so a
+            // reply with a screenshot and one without go the same way.
+            let detail = api_form(
+                cfg,
+                "POST",
+                &format!("/api/v1/reports/{}/comments", urlencode(&id)),
+                vec![("body", body_md)],
+            )?;
+            let comments = detail.get("comments").and_then(|v| v.as_array());
+            let added = comments.and_then(|c| c.last());
+            Ok(json!({
+                "id": added.and_then(|c| c.get("id")),
+                "author": added.and_then(|c| c.get("author")),
+                "createdAt": added.and_then(|c| c.get("createdAt")),
+                "reportId": id,
+                "commentsOnReport": comments.map(|c| c.len()),
+            }))
+        }
+
+        "edit_report_comment" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let comment_id = arg_str(args, "commentId").ok_or("commentId is required")?;
+            let body_md = arg_str(args, "body").ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/reports/{}", urlencode(&id)));
+                return dry_run(cfg, "reports:manage", target);
+            }
+            let detail = api_form(
+                cfg,
+                "PATCH",
+                &format!(
+                    "/api/v1/reports/{}/comments/{}",
+                    urlencode(&id),
+                    urlencode(&comment_id)
+                ),
+                vec![("body", body_md)],
+            )?;
+            Ok(json!({
+                "commentId": comment_id,
+                "reportId": id,
+                "commentsOnReport": detail.get("comments").and_then(|v| v.as_array()).map(|c| c.len()),
+            }))
+        }
+
+        "delete_report_comment" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let comment_id = arg_str(args, "commentId").ok_or("commentId is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/reports/{}", urlencode(&id)));
+                return dry_run(cfg, "reports:manage", target);
+            }
+            api_delete(
+                cfg,
+                &format!(
+                    "/api/v1/reports/{}/comments/{}",
+                    urlencode(&id),
+                    urlencode(&comment_id)
+                ),
+            )?;
+            Ok(json!({
+                "commentId": comment_id,
+                "reportId": id,
+                "withdrawn": true,
+                "note": "Gone for the reporter and any tenant app; still visible inside cac, marked."
+            }))
+        }
+
+        "update_report" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/reports/{}", urlencode(&id)));
+                return dry_run(cfg, "reports:manage", target);
+            }
+            let mut patch = serde_json::Map::new();
+            for key in ["status", "priority", "category", "area"] {
+                if let Some(v) = arg_str(args, key) {
+                    patch.insert(key.to_string(), json!(v));
+                }
+            }
+            // Present-and-empty means unassign, so this one can't use arg_str's
+            // "missing or empty" shape.
+            if let Some(v) = args.get("assigneeUserId").and_then(|v| v.as_str()) {
+                patch.insert("assigneeUserId".to_string(), json!(v));
+            }
+            if patch.is_empty() {
+                return Err("nothing to change: pass status, priority, category, area or assigneeUserId".into());
+            }
+            let detail = api_patch(
+                cfg,
+                &format!("/api/v1/reports/{}", urlencode(&id)),
+                Value::Object(patch),
+            )?;
+            Ok(json!({
+                "id": id,
+                "folio": detail.get("folio"),
+                "status": detail.get("status"),
+                "priority": detail.get("priority"),
+                "category": detail.get("category"),
+                "area": detail.get("area"),
+                "assignee": detail.get("assigneeName"),
+            }))
         }
 
         "list_task_spaces" => {
