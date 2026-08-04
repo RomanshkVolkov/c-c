@@ -284,7 +284,21 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
 
   refreshDetail: async () => {
     const id = get().selectedId;
-    if (id) await get().openReport(id);
+    if (!id) return;
+    // Deliberately NOT openReport: that blanks `detail` before fetching, and the
+    // drawer renders its comment box inside `{detail && …}`. Blanking unmounts
+    // the box, so a live event arriving while you type throws away the text and
+    // any screenshot you had pasted. Refetch and swap in place instead — no
+    // flash, no lost draft.
+    try {
+      const res = await api.get<APIResponse<ReportDetail>>(`/api/v1/reports/${id}`, true);
+      if (res.success && res.data && get().selectedId === id) {
+        set({ detail: { ...res.data, status: normalizeStatus(res.data.status) } });
+      }
+    } catch {
+      // A failed background refresh keeps whatever is on screen; the connection
+      // banner already tells the user the stream is unhappy.
+    }
   },
 
   changeDetailStatus: async (status) => {
