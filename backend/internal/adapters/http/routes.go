@@ -8,6 +8,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"gorm.io/gorm"
 )
 
@@ -25,6 +27,15 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	// One hub for the whole process: reports and tasks both broadcast on it, and
 	// a single SSE connection per client carries everything.
 	hub := events.NewHub()
+	// Without a shared bus the hub only reaches subscribers on this pod, and the
+	// deployment runs more than one — see the package comment. Unset in dev and
+	// in tests, where one process is the whole world.
+	if addr := repository.GetEnv("VALKEY_ADDR", ""); addr != "" {
+		hub.UseBus(addr, repository.GetEnv("VALKEY_PASSWORD", ""))
+	} else {
+		lg.Warn("events: VALKEY_ADDR not set — live notifications only reach clients " +
+			"connected to this pod, which is wrong with more than one replica")
+	}
 	InitReportRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub)
 

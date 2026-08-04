@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   name: cac-service
 spec:
+  # More than one replica needs the shared event bus (VALKEY_ADDR, see
+  # 1-secrets.yaml), or SSE notifications only reach whichever pod the client
+  # happens to be connected to. See the comment on the events package.
   replicas: 2
   selector:
     matchLabels:
@@ -22,3 +25,9 @@ spec:
           envFrom:
             - secretRef:
                 name: cac-secret
+            # Created out of band from the `valkey-auth` secret in the `data`
+            # namespace — see 1-secrets.yaml. Optional so a cluster without it
+            # still starts, just without cross-pod notifications.
+            - secretRef:
+                name: cac-valkey
+                optional: true

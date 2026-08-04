@@ -1,8 +1,18 @@
-// Package events is an in-memory pub/sub hub for org-scoped SSE notifications.
-// Subscribers (the Tauri console) receive only events for orgs they belong to.
-// In-memory means events are per-pod: with multiple replicas a client connected
-// to pod A won't see events published on pod B. Fine for the console at this
-// scale; revisit with a shared bus (Valkey/NATS) if it becomes a problem.
+// Package events is a pub/sub hub for org-scoped SSE notifications. Subscribers
+// (the cac app) receive only events for orgs they belong to.
+//
+// Delivery is in-memory per process, which was silently wrong the moment the
+// deployment ran more than one replica: a console connected to pod A never saw
+// anything published on pod B, so new reports arrived with no notification and
+// no refresh. With two replicas and a tenant posting over a keep-alive
+// connection — always landing on the same pod — that isn't half the events, it
+// is all of them.
+//
+// So a Hub can be given a shared bus (Valkey). When it has one, every event
+// goes out over the bus and comes back in through the subscription loop, on
+// every pod including the one that published it. One path, so nothing is
+// delivered twice. Without a bus, or while it is unreachable, Publish delivers
+// locally — which is exactly the old behaviour, and the right way to degrade.
 package events
 
 import "sync"
@@ -24,6 +34,7 @@ type Hub struct {
 	mu   sync.RWMutex
 	subs map[int]*subscriber
 	next int
+	bus  *bus // nil until UseBus succeeds; nil means per-pod delivery
 }
 
 func NewHub() *Hub {
@@ -68,7 +79,20 @@ func (h *Hub) subscribe(orgIDs []string, all bool) (<-chan Event, func()) {
 
 // Publish fans an event out to every subscriber of its org. Non-blocking: if a
 // subscriber's buffer is full the event is dropped for that subscriber only.
+// Publish sends an event to every subscriber that should see it, on this pod
+// and on the others.
 func (h *Hub) Publish(e Event) {
+	if h.bus != nil && h.bus.ready() {
+		if err := h.bus.publish(e); err == nil {
+			return // comes back through the subscription loop, here too
+		}
+		// Bus hiccup: fall through and at least reach this pod's subscribers.
+	}
+	h.deliver(e)
+}
+
+// deliver fans an event out to this process's subscribers.
+func (h *Hub) deliver(e Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, s := range h.subs {
