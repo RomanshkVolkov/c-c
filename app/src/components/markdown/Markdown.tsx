@@ -1,5 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 import { mediaSrc, openAttachment } from "@/lib/media";
@@ -9,17 +11,34 @@ import { mediaSrc, openAttachment } from "@/lib/media";
  * descriptions, comments, report bodies) so authoring and reading agree on one
  * format.
  *
- * Raw HTML is not enabled: the content comes from users and rendering their HTML
- * inside the app's own webview would be an XSS foothold with access to Tauri's
- * IPC. GFM covers what the editor can produce anyway.
+ * Raw HTML is off by default, and that default is load-bearing: a report's
+ * description and comments are written by whoever hits the widget — people
+ * outside the company — and rendering their HTML inside the app's own webview
+ * would be an XSS foothold next to Tauri's IPC.
+ *
+ * `allowHtml` opts in, and only notes use it: they are private and written by
+ * their owner. Even there the HTML goes through a sanitizer, because "I wrote
+ * it" stops being true the moment content is pasted in from somewhere else —
+ * a migration from another tool, for instance.
  */
+
+// Collapsible sections are the reason allowHtml exists: markdown has no toggle,
+// but <details>/<summary> is the standard way to write one and survives a round
+// trip through the file, so exporting a note to .md keeps them.
+const noteSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), "details", "summary"],
+};
 export default function Markdown({
   children,
   className,
   onInternalLink,
+  allowHtml = false,
 }: {
   children: string;
   className?: string;
+  /** Render a sanitized subset of raw HTML — collapsible sections. Notes only. */
+  allowHtml?: boolean;
   /**
    * Handles an href before it falls through to the attachment/browser paths
    * below. Return true to say "handled, stop here". Used by notes to route a
@@ -33,6 +52,10 @@ export default function Markdown({
     <div className={cn("md-body text-sm leading-relaxed", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        // Order matters: raw HTML is parsed first, then stripped down to the
+        // allowlist. Skipping the sanitizer would hand every pasted <script> a
+        // home.
+        rehypePlugins={allowHtml ? [rehypeRaw, [rehypeSanitize, noteSchema]] : []}
         components={{
           // Links must not navigate the webview away from the app; hand them to
           // the OS browser instead.
