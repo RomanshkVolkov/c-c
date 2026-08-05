@@ -50,6 +50,26 @@ export interface SpaceTree {
   lists: ListSummary[];
 }
 
+/**
+ * One line of the dashboard's pending list. Comes from `GET /api/v1/tasks`,
+ * which crosses every list in the org — unlike a board, which is one list — so
+ * a row has to say where it came from.
+ */
+export interface OpenTask {
+  id: string;
+  seq: number;
+  title: string;
+  priority: TaskPriority;
+  dueAt?: string | null;
+  statusName: string;
+  statusKind: TaskStatusKind;
+  listId: string;
+  listName: string;
+  spaceId: string;
+  spaceName: string;
+  updatedAt: string;
+}
+
 export interface TaskCard {
   id: string;
   seq: number;

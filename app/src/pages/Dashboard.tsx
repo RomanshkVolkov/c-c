@@ -23,6 +23,7 @@ import AddServerDialog from "@/components/AddServerDialog";
 import SshKeyDialog from "@/components/SshKeyDialog";
 import EditServerDialog from "@/components/EditServerDialog";
 import K8sStatusBadge from "@/components/K8sStatusBadge";
+import PendingSummary from "@/components/PendingSummary";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import type { Server as ServerType } from "@/types/server";
@@ -146,6 +147,11 @@ export default function Dashboard() {
       </header>
 
       <main className="flex-1 p-6 space-y-6">
+        {/* First thing on the first screen. Servers are what this app started
+            as, but they're the part you touch least — pending work is the
+            reason to open cac on an ordinary day. */}
+        <PendingSummary />
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">

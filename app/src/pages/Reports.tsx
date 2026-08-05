@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { RefreshCw, ImageIcon, MessageSquare, Bug, Settings2, LayoutGrid, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +71,17 @@ export default function Reports() {
     fetchTransitions();
     fetchTaxonomy();
   }, [currentOrgId, fetchProjects, fetchReports, fetchTransitions, fetchTaxonomy]);
+
+  // ?open=<id> — how the dashboard's pending list gets you straight into a
+  // report. Consumed once: without clearing it, closing the drawer and coming
+  // back to this page would reopen the same report forever.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = params.get("open");
+    if (!id) return;
+    setParams({}, { replace: true });
+    openReport(id).catch(() => {});
+  }, [params, setParams, openReport]);
 
   // Reports are governed by a server-side state machine, so a drop is a
   // *transition request*: reject the ones the machine disallows instead of

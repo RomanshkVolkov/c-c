@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ChevronDown,
   ChevronRight,
@@ -63,6 +64,20 @@ export default function Tasks() {
     if (activeListId) refreshBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ?task=<id> — the dashboard's pending list jumps straight into the drawer.
+  // The board behind it stays on whatever list was last open: the task may
+  // live somewhere else entirely, and yanking the board around underneath
+  // would lose the place the user was actually working in.
+  const openTask = useTasksStore((s) => s.openTask);
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = params.get("task");
+    if (!id) return;
+    // Consumed once, or closing the drawer here would reopen it immediately.
+    setParams({}, { replace: true });
+    openTask(id).catch(() => {});
+  }, [params, setParams, openTask]);
 
   // A document takes over the right pane: it belongs to a space or folder, which
   // have no board of their own, and for a list it's an alternative view of the
