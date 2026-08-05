@@ -80,6 +80,17 @@ export interface MarkdownEditorProps {
   placeholder?: string;
   /** Uploads a pasted/dropped file and returns its public URL. */
   onUpload?: (file: File) => Promise<{ url: string; fileName: string } | null>;
+  /**
+   * Hands pasted or dropped files to the caller instead of uploading them and
+   * embedding a URL. Takes precedence over onUpload.
+   *
+   * Reports need this: their images are served through short-lived signed URLs
+   * — the person who filed the report has no account, so a signature stands in
+   * for auth — and a signed URL baked into a stored markdown body would expire.
+   * They keep the files as rows attached to the comment, so the composer wants
+   * the File, not a link.
+   */
+  onFiles?: (files: File[]) => void;
   className?: string;
   minHeight?: string;
   autoFocus?: boolean;
@@ -126,6 +137,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     onChange,
     placeholder = "Write in markdown…",
     onUpload,
+    onFiles,
     className,
     minHeight = "8rem",
     autoFocus,
@@ -139,6 +151,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   const editorRef = useRef<Editor | null>(null);
   const uploadRef = useRef<MarkdownEditorProps["onUpload"]>(onUpload);
   uploadRef.current = onUpload;
+  const filesRef = useRef<MarkdownEditorProps["onFiles"]>(onFiles);
+  filesRef.current = onFiles;
   // onUpdate is wired before the sweep is defined, so it calls through a ref.
   const sweepLocalImagesRef = useRef<(() => void) | null>(null);
   const onLinkClickRef = useRef(onLinkClick);
@@ -308,7 +322,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   // Returning true tells ProseMirror we handled the event, so it won't also
   // paste the file name as plain text (or, worse, an <img src="blob:…">).
   const takePasted = (dt?: DataTransfer | null): boolean => {
-    if (!dt || !uploadRef.current) return false;
+    if (!dt || (!uploadRef.current && !filesRef.current)) return false;
 
     // `files` is the happy path, but pasting a screenshot in a WebKit webview
     // often exposes the bitmap only through `items` — and then the HTML flavour
@@ -331,9 +345,13 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     });
 
     if (unique.length > 0) {
-      void (async () => {
-        for (const f of unique) await insertUpload(f);
-      })();
+      if (filesRef.current) {
+        filesRef.current(unique);
+      } else {
+        void (async () => {
+          for (const f of unique) await insertUpload(f);
+        })();
+      }
       return true;
     }
 

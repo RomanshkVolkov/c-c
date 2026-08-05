@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -19,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { apiUrl } from "@/lib/api";
 import Markdown from "@/components/markdown/Markdown";
+import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import { useReportsStore } from "@/store/reports.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -192,10 +192,11 @@ function CommentRow({ c }: { c: ReportComment }) {
 
       {editing ? (
         <div className="space-y-2">
-          <Textarea
+          <MarkdownEditor
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            className="min-h-16 text-sm"
+            onChange={setDraft}
+            onFiles={(fs) => setAdded((prev) => [...prev, ...fs])}
+            minHeight="4rem"
             autoFocus
           />
           {/* Existing attachments, each removable. Staged: the image stays on
@@ -492,37 +493,6 @@ function Meta({ label, value }: { label: string; value?: string }) {
   );
 }
 
-/**
- * Extract pasted files from a clipboard event. WebKitGTK (the Tauri webview on
- * Linux) exposes a pasted screenshot through `items`, leaving `.files` empty —
- * so read items first and fall back to files for drag and other browsers.
- *
- * Deliberately does NOT require `type` to start with `image/`. That check was
- * here and it is why pasting a screenshot did nothing while the very same paste
- * worked in tasks: the item arrives as `kind: "file"` with an empty or generic
- * type, so the filter threw away exactly what the user meant to attach. The
- * picker and the server both constrain the format; this only has to hand over
- * whatever was pasted. See takePasted in MarkdownEditor, which had it right.
- */
-function imagesFromClipboard(e: React.ClipboardEvent): File[] {
-  const dt = e.clipboardData;
-  const found = [
-    ...Array.from(dt.items ?? [])
-      .filter((i) => i.kind === "file")
-      .map((i) => i.getAsFile()),
-    ...Array.from(dt.files ?? []),
-  ].filter((f): f is File => !!f);
-
-  const seen = new Set<string>();
-  return found.filter((f) => {
-    // A screenshot can appear both as an item and as a file entry.
-    const key = `${f.name}:${f.size}:${f.type}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function CommentComposer({
   onSend,
 }: {
@@ -561,26 +531,26 @@ function CommentComposer({
         </div>
       )}
       <div className="flex items-end gap-2">
-        <Textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Add a comment… (Enter to send, Shift+Enter for newline)"
-          rows={2}
-          className="resize-none"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          onPaste={(e) => {
-            const imgs = imagesFromClipboard(e);
-            if (imgs.length) {
-              e.preventDefault(); // don't dump the image as junk text into the field
-              setFiles((prev) => [...prev, ...imgs]);
-            }
-          }}
-        />
+        {/* A contenteditable, not a textarea, and that is the whole reason.
+            WebKit hands the clipboard to a target that can hold it: paste a
+            screenshot into a <textarea> and the event arrives with types: [],
+            items: [], files: 0 — nothing to read, however the handler is
+            written. The same paste into this editor works, which is why it
+            always worked in tasks and never here.
+
+            onFiles instead of onUpload: the files are staged and sent with the
+            comment, so the images stay rows with signed URLs the reporter can
+            open. Uploading and embedding a link would bake in a URL that
+            expires. */}
+        <div className="flex-1">
+          <MarkdownEditor
+            value={body}
+            onChange={setBody}
+            onFiles={(fs) => setFiles((prev) => [...prev, ...fs])}
+            placeholder="Add a comment… (paste or drop a screenshot)"
+            minHeight="3.5rem"
+          />
+        </div>
         <div className="flex flex-col gap-1">
           <input
             ref={fileRef}
