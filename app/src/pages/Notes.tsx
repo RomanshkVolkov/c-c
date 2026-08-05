@@ -796,6 +796,8 @@ function NoteEditorPane({ id }: { id: string }) {
             onChange={scheduleSave}
             onUpload={upload}
             onLinkClick={openInternalLink}
+            collapsible
+            blockTools
             minHeight="24rem"
             placeholder="Write… (⌘K to link another page)"
           />

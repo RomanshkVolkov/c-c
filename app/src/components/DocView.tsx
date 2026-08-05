@@ -98,6 +98,8 @@ export default function DocView() {
                 value={draft}
                 onChange={setDraft}
                 onUpload={upload}
+                collapsible
+                blockTools
                 minHeight="24rem"
                 placeholder="What is this for? Links, decisions, how to run it…"
                 autoFocus
@@ -120,7 +122,9 @@ export default function DocView() {
               </div>
             </div>
           ) : body ? (
-            <Markdown>{body}</Markdown>
+            // Written by the team, unlike a report's description — so the
+            // sanitized <details>/<summary> subset is safe to render here.
+            <Markdown allowHtml>{body}</Markdown>
           ) : (
             <div className="py-16 text-center">
               <p className="text-sm text-muted-foreground">

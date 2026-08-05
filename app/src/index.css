@@ -250,6 +250,37 @@
   }
   .md-body th, .prose-editor th { @apply bg-muted/50 font-medium; }
   .md-body hr, .prose-editor hr { @apply my-4 border-border; }
+
+  /* Collapsible sections. In .md-body they're real <details>, so the browser
+     does the folding; in the editor they're a div the node view drives, and
+     `is-open` is the class @tiptap/extension-details toggles. */
+  .md-body details,
+  .prose-editor [data-type="details"] {
+    @apply my-2 rounded-md border border-border/70 px-3 py-2;
+  }
+  .md-body summary {
+    @apply cursor-pointer font-medium marker:text-muted-foreground;
+  }
+  .prose-editor [data-type="details"] {
+    @apply grid grid-cols-[1rem_1fr] gap-x-1;
+  }
+  /* The toggle the node view inserts as the wrapper's first child. */
+  .prose-editor [data-type="details"] > button {
+    @apply mt-0.5 flex size-4 items-center justify-center rounded text-muted-foreground
+           transition-transform hover:bg-accent hover:text-foreground;
+  }
+  .prose-editor [data-type="details"] > button::before {
+    content: "▸";
+  }
+  .prose-editor [data-type="details"].is-open > button {
+    @apply rotate-90;
+  }
+  .prose-editor [data-type="details"] > div { @apply min-w-0; }
+  .prose-editor [data-type="details"] summary {
+    @apply font-medium;
+  }
+  .prose-editor [data-type="detailsContent"] { @apply mt-1; }
+
   /* ProseMirror needs an explicit caret colour when the host sets none. */
   .prose-editor { caret-color: var(--foreground); }
 }

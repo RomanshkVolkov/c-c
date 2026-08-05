@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import DragHandle from "@tiptap/extension-drag-handle-react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
@@ -17,12 +18,16 @@ import {
   Link2,
   Paperclip,
   Heading2,
+  ChevronRight,
+  GripVertical,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrompt } from "@/components/PromptDialog";
 import { attachmentPath, mediaSrc } from "@/lib/media";
+import { collapsibleExtensions } from "./details";
+import { SlashMenu } from "./slash-menu";
 
 /**
  * WYSIWYG editor whose stored value is **markdown**, not HTML or ProseMirror
@@ -91,6 +96,29 @@ export interface MarkdownEditorProps {
    * the File, not a link.
    */
   onFiles?: (files: File[]) => void;
+  /**
+   * Offers collapsible sections, stored as `<details>`/`<summary>` — see
+   * ./details.ts.
+   *
+   * Off by default, and that default is the security boundary: reports are
+   * written by whoever hits the widget, and their markdown is rendered inside
+   * this app's webview next to Tauri's IPC. Only content written by the team
+   * (notes, the docs on spaces and lists) turns this on.
+   *
+   * Read once, when the editor is built — like every other option here, it
+   * can't be flipped on a mounted editor.
+   */
+  collapsible?: boolean;
+  /**
+   * Block-level editing affordances: the `/` command menu and a handle to drag
+   * blocks around.
+   *
+   * Kept apart from `collapsible` because they answer different questions.
+   * `collapsible` changes what can end up in the stored markdown; this one is
+   * only about how it's typed, so it can be turned on anywhere without
+   * widening what the document may contain.
+   */
+  blockTools?: boolean;
   className?: string;
   minHeight?: string;
   autoFocus?: boolean;
@@ -138,6 +166,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     placeholder = "Write in markdown…",
     onUpload,
     onFiles,
+    collapsible = false,
+    blockTools = false,
     className,
     minHeight = "8rem",
     autoFocus,
@@ -178,6 +208,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       }).configure({ inline: false }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      ...(collapsible ? collapsibleExtensions : []),
+      ...(blockTools ? [SlashMenu] : []),
       Markdown.configure({
         html: false, // never smuggle raw HTML into the stored markdown
         transformPastedText: true,
@@ -395,7 +427,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
 
   return (
     <div className={cn("rounded-md border bg-background", className)}>
-      <Toolbar editor={editor} onPickFile={onUpload ? insertUpload : undefined} />
+      <Toolbar
+        editor={editor}
+        onPickFile={onUpload ? insertUpload : undefined}
+        collapsible={collapsible}
+      />
       {uploading > 0 && (
         <p className="flex items-center gap-1.5 border-b bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" />
@@ -403,6 +439,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         </p>
       )}
       <div className="px-3 py-2">
+        {blockTools && (
+          <DragHandle editor={editor}>
+            <div
+              className="flex size-5 cursor-grab items-center justify-center rounded
+                         text-muted-foreground/60 hover:bg-accent hover:text-foreground
+                         active:cursor-grabbing"
+              title="Drag to move this block"
+            >
+              <GripVertical className="size-3.5" />
+            </div>
+          </DragHandle>
+        )}
         <EditorContent editor={editor} />
         {editor.isEmpty && (
           <p className="pointer-events-none -mt-[1.6rem] text-sm text-muted-foreground/60">
@@ -419,9 +467,11 @@ export default MarkdownEditor;
 function Toolbar({
   editor,
   onPickFile,
+  collapsible,
 }: {
   editor: Editor;
   onPickFile?: (file: File) => void;
+  collapsible?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const prompt = usePrompt();
@@ -470,6 +520,17 @@ function Toolbar({
         onClick={() => editor.chain().focus().toggleTaskList().run()} />
       <Btn icon={Quote} label="Quote" active={editor.isActive("blockquote")}
         onClick={() => editor.chain().focus().toggleBlockquote().run()} />
+      {collapsible && (
+        <Btn
+          icon={ChevronRight}
+          label="Collapsible section"
+          active={editor.isActive("details")}
+          onClick={() => {
+            if (editor.isActive("details")) editor.chain().focus().unsetDetails().run();
+            else editor.chain().focus().setDetails().run();
+          }}
+        />
+      )}
       <Btn icon={Link2} label="Link" active={editor.isActive("link")}
         onClick={async () => {
           const prev = editor.getAttributes("link").href as string | undefined;
