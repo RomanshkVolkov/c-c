@@ -78,6 +78,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 
 	r.Route("/api/v1/tasks", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
+		// Across every list, unlike the board. The dashboard's pending list.
+		r.Get("/", h.ListOpen)
 		r.Get("/{id}", h.GetTask)
 		r.Patch("/{id}", h.UpdateTask)
 		r.Delete("/{id}", h.DeleteTask)

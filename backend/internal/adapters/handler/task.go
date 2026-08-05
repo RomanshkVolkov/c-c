@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
@@ -14,6 +15,7 @@ import (
 
 type TaskHandler interface {
 	Tree(w http.ResponseWriter, r *http.Request)
+	ListOpen(w http.ResponseWriter, r *http.Request)
 	CreateSpace(w http.ResponseWriter, r *http.Request)
 	UpdateSpace(w http.ResponseWriter, r *http.Request)
 	DeleteSpace(w http.ResponseWriter, r *http.Request)
@@ -171,6 +173,34 @@ func (h *taskHandler) Tree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.SpaceTree]{Success: true, Data: tree})
+}
+
+// ListOpen answers the dashboard's pending list. Same scoping rules as Tree:
+// ?orgId can only narrow to an org the caller already belongs to, and asking
+// for someone else's yields an empty list rather than an error — a 403 here
+// would confirm the org exists.
+func (h *taskHandler) ListOpen(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	orgID := r.URL.Query().Get("orgId")
+	if orgID != "" && !user.Superadmin {
+		if _, member := user.RoleInOrg(orgID); !member {
+			SendResult(w, http.StatusOK, domain.APIResponse[[]domain.OpenTask]{
+				Success: true, Data: []domain.OpenTask{},
+			})
+			return
+		}
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	tasks, err := h.svc.ListOpen(user.OrgIDs(), user.Superadmin, orgID, limit)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load tasks", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.OpenTask]{Success: true, Data: tasks})
 }
 
 func (h *taskHandler) CreateSpace(w http.ResponseWriter, r *http.Request) {

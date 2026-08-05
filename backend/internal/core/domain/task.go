@@ -370,6 +370,29 @@ type BoardResponse struct {
 	Tasks    []TaskCard   `json:"tasks"`
 }
 
+// OpenTask is one line of the dashboard's "what's pending" list: enough to
+// recognise a task and jump to it, and no more.
+//
+// Deliberately not a TaskCard. That one carries tags, comment and attachment
+// counts and subtask progress — four extra queries per board — which is right
+// for a board you work in and wasteful for a summary you glance at. It also
+// crosses lists, which the board never does, so it names the list and space a
+// task came from.
+type OpenTask struct {
+	ID         string         `json:"id"`
+	Seq        int            `json:"seq"`
+	Title      string         `json:"title"`
+	Priority   TaskPriority   `json:"priority"`
+	DueAt      *time.Time     `json:"dueAt,omitempty"`
+	StatusName string         `json:"statusName"`
+	StatusKind TaskStatusKind `json:"statusKind"`
+	ListID     string         `json:"listId"`
+	ListName   string         `json:"listName"`
+	SpaceID    string         `json:"spaceId"`
+	SpaceName  string         `json:"spaceName"`
+	UpdatedAt  time.Time      `json:"updatedAt"`
+}
+
 type TaskCommentResponse struct {
 	ID           string           `json:"id"`
 	AuthorUserID string           `json:"authorUserId"`

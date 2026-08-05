@@ -73,6 +73,10 @@ func (s *TaskService) Tree(orgIDs []string, superadmin bool, orgID string) ([]do
 	return s.repo.Tree(orgIDs, superadmin, orgID)
 }
 
+func (s *TaskService) ListOpen(orgIDs []string, superadmin bool, orgID string, limit int) ([]domain.OpenTask, error) {
+	return s.repo.ListOpen(orgIDs, superadmin, orgID, limit)
+}
+
 func (s *TaskService) CreateSpace(req domain.CreateSpaceRequest) (*domain.TaskSpace, error) {
 	sp := &domain.TaskSpace{OrgID: req.OrgID, Name: req.Name, Color: req.Color}
 	sp.ID = uuid.NewString()

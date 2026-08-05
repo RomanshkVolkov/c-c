@@ -407,6 +407,59 @@ func (r *TaskRepository) DeleteTask(id string) error {
 	})
 }
 
+// ListOpen returns unfinished tasks across every list in the given orgs, worst
+// priority and soonest due date first.
+//
+// One query, joined rather than walked: the board is per-list, and the only
+// other way to answer "what is pending" would be to fetch every list's board
+// and add them up — which is a request per list on every dashboard load.
+//
+// "Unfinished" is read off the column's `kind`, never its name, so a team that
+// renames "Done" to "Shipped" doesn't silently start seeing finished work here.
+// Subtasks are left out for the same reason the board leaves them out: they're
+// part of their parent's breakdown, and listing both double-counts the work.
+func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string, limit int) ([]domain.OpenTask, error) {
+	if !superadmin && len(orgIDs) == 0 {
+		return []domain.OpenTask{}, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	q := r.db.Table("tasks t").
+		Select(`t.id, t.seq, t.title, t.priority, t.due_at, t.updated_at,
+			s.name AS status_name, s.kind AS status_kind,
+			l.id AS list_id, l.name AS list_name,
+			sp.id AS space_id, sp.name AS space_name`).
+		Joins("JOIN task_statuses s ON s.id = t.status_id").
+		Joins("JOIN task_lists l ON l.id = t.list_id").
+		Joins("JOIN task_spaces sp ON sp.id = l.space_id").
+		Where("t.archived_at IS NULL AND t.parent_id IS NULL").
+		Where("s.kind <> 'done'")
+
+	if !superadmin {
+		q = q.Where("t.org_id IN ?", orgIDs)
+	}
+	if orgID != "" {
+		q = q.Where("t.org_id = ?", orgID)
+	}
+
+	// Priority is stored as its name, so sorting has to spell out the order —
+	// alphabetically 'urgent' would come last. NULLS LAST only restates what
+	// Postgres already does for ASC, but the intent is worth writing down: a
+	// task with no due date belongs after the dated ones, because no date is
+	// not the same as due right now.
+	out := []domain.OpenTask{}
+	err := q.Order(`CASE t.priority
+			WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
+			WHEN 'low' THEN 3 ELSE 4 END`).
+		Order("t.due_at ASC NULLS LAST").
+		Order("t.updated_at DESC").
+		Limit(limit).
+		Scan(&out).Error
+	return out, err
+}
+
 // Board returns every card in a list along with its tags and assignees, using
 // three queries instead of N+1 per card.
 func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
