@@ -1499,6 +1499,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
+        // Reads the clipboard from the OS instead of the webview. WebKitGTK
+        // hands a pasted bitmap to the page as an <img> with no src — see
+        // readClipboardImage() in the frontend for the whole story.
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             update_swarm_manage_agent,
             deploy_swarm_manage_agent,

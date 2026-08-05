@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrompt } from "@/components/PromptDialog";
 import { attachmentPath, mediaSrc } from "@/lib/media";
+import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
 import { collapsibleExtensions } from "./details";
 import { SlashMenu } from "./slash-menu";
 
@@ -227,8 +228,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         ),
         style: `min-height:${minHeight}`,
       },
-      handlePaste: (_view, event) => takePasted(event.clipboardData),
-      handleDrop: (_view, event) => takePasted((event as DragEvent).dataTransfer),
+      handlePaste: (_view, event) => takePasted(event.clipboardData, true),
+      handleDrop: (_view, event) => takePasted((event as DragEvent).dataTransfer, false),
       // Plain click still just places the cursor — needed constantly while
       // editing a link's text. Only a held modifier "opens" it, mirroring how
       // Notion and Obsidian both do this in an editable page.
@@ -351,9 +352,19 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     }
   }, []);
 
+  /** Sends one recovered image down whichever route the caller asked for. */
+  const acceptFile = useCallback(async (file: File) => {
+    if (filesRef.current) filesRef.current([file]);
+    else await insertUpload(file);
+  }, [insertUpload]);
+
   // Returning true tells ProseMirror we handled the event, so it won't also
   // paste the file name as plain text (or, worse, an <img src="blob:…">).
-  const takePasted = (dt?: DataTransfer | null): boolean => {
+  //
+  // `fromClipboard` separates a paste from a drop: only a paste may fall
+  // through to reading the OS clipboard, since on a drop that would attach
+  // whatever the user happened to copy earlier.
+  const takePasted = (dt?: DataTransfer | null, fromClipboard = false): boolean => {
     if (!dt || (!uploadRef.current && !filesRef.current)) return false;
 
     // `files` is the happy path, but pasting a screenshot in a WebKit webview
@@ -387,23 +398,44 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       return true;
     }
 
-    // Last resort: pull the bitmaps out of the pasted HTML. The blob URLs are
-    // still alive at this instant, so they can be fetched and uploaded — after
-    // the paste settles they'd be unreachable.
+    // Next: pull the bitmaps out of the pasted HTML. The blob URLs are still
+    // alive at this instant, so they can be fetched and uploaded — after the
+    // paste settles they'd be unreachable.
     const local = localImageURLs(dt.getData("text/html"));
-    if (local.length === 0) return false;
-    void (async () => {
-      for (const url of local) {
-        try {
-          const blob = await (await fetch(url)).blob();
-          const ext = blob.type.split("/")[1] ?? "png";
-          await insertUpload(new File([blob], `pasted.${ext}`, { type: blob.type }));
-        } catch {
-          // Unreachable blob: better to drop it than to store a dead link.
+    if (local.length > 0) {
+      void (async () => {
+        for (const url of local) {
+          try {
+            const blob = await (await fetch(url)).blob();
+            const ext = blob.type.split("/")[1] ?? "png";
+            await insertUpload(new File([blob], `pasted.${ext}`, { type: blob.type }));
+          } catch {
+            // Unreachable blob: better to drop it than to store a dead link.
+          }
         }
-      }
-    })();
-    return true;
+      })();
+      return true;
+    }
+
+    // Last resort: the event carries an image the webview refused to hand
+    // over — an <img> with its src stripped, or nothing at all. Ask the OS.
+    // Swallowing the paste costs nothing here: neither shape would have
+    // produced anything, since Tiptap only parses `img[src]`.
+    if (fromClipboard && looksLikeStrippedImage(dt)) {
+      void (async () => {
+        const file = await readClipboardImage();
+        if (!file) {
+          toast.error("Couldn't read the image from the clipboard", {
+            description: "Try the attach button, or save it to a file and drop it in.",
+          });
+          return;
+        }
+        await acceptFile(file);
+      })();
+      return true;
+    }
+
+    return false;
   };
 
   // Adopt external changes (e.g. the drawer switched to another task) without

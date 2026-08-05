@@ -18,6 +18,7 @@
     },
     "updater:default",
     "process:allow-restart",
-    "notification:default"
+    "notification:default",
+    "clipboard-manager:allow-read-image"
   ]
 }
