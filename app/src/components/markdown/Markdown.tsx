@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -48,8 +50,11 @@ export default function Markdown({
    */
   onInternalLink?: (href: string) => boolean;
 }) {
+  const [zoomed, setZoomed] = useState<{ src: string; alt: string } | null>(null);
+
   return (
     <div className={cn("md-body text-sm leading-relaxed", className)}>
+      {zoomed && <Lightbox {...zoomed} onClose={() => setZoomed(null)} />}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         // Order matters: raw HTML is parsed first, then stripped down to the
@@ -78,18 +83,59 @@ export default function Markdown({
               {children}
             </a>
           ),
-          img: ({ src, alt }) => (
-            <img
-              src={mediaSrc(typeof src === "string" ? src : undefined)}
-              alt={alt ?? ""}
-              loading="lazy"
-              className="my-2 max-h-80 rounded-md border object-contain"
-            />
-          ),
+          // Capped at max-h-80 so a screenshot doesn't push the rest of the
+          // comment off the screen; clicking it lifts that cap.
+          img: ({ src, alt }) => {
+            const resolved = mediaSrc(typeof src === "string" ? src : undefined);
+            return (
+              <img
+                src={resolved}
+                alt={alt ?? ""}
+                loading="lazy"
+                onClick={() => resolved && setZoomed({ src: resolved, alt: alt ?? "" })}
+                className="my-2 max-h-80 cursor-zoom-in rounded-md border object-contain"
+              />
+            );
+          },
         }}
       >
         {children}
       </ReactMarkdown>
     </div>
+  );
+}
+
+/**
+ * The full-size view of one image.
+ *
+ * Portalled to `document.body` on purpose: a `fixed` overlay rendered in place
+ * would be trapped by any ancestor with a transform or its own scroll — and
+ * comments live inside exactly that kind of drawer.
+ */
+function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Stop the drawer underneath from closing on the same keystroke.
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      role="presentation"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
+    >
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
+      />
+    </div>,
+    document.body,
   );
 }
