@@ -220,18 +220,11 @@ function CommentRow({ c }: { c: ReportComment }) {
                 </div>
               ))}
               {added.map((f, i) => (
-                <div
-                  key={`${f.name}-${i}`}
-                  className="grid aspect-square place-items-center rounded border border-dashed p-1 text-center text-[10px] text-muted-foreground"
-                >
-                  <span className="truncate">{f.name}</span>
-                  <button
-                    className="text-destructive"
-                    onClick={() => setAdded((a) => a.filter((_, j) => j !== i))}
-                  >
-                    remove
-                  </button>
-                </div>
+                <StagedFile
+                  key={`${f.name}-${f.size}-${i}`}
+                  file={f}
+                  onRemove={() => setAdded((a) => a.filter((_, j) => j !== i))}
+                />
               ))}
             </div>
           )}
@@ -483,6 +476,61 @@ function ZoomImg({ src, alt, className }: { src: string; alt: string; className?
   );
 }
 
+/**
+ * One file that's been staged but not sent yet.
+ *
+ * These used to be name-only chips, which said nothing: every image the
+ * clipboard hands over arrives called `pasted.png`, so two screenshots looked
+ * identical and there was no way to tell which one to take back out — or to
+ * check you'd pasted the right thing at all.
+ */
+function StagedFile({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  // Created inside the effect, not beside it. Object URLs pin the bitmap in
+  // memory until released — a drawer left open across a dozen pastes would
+  // hold every one — but releasing a URL built outside the effect breaks under
+  // StrictMode: React mounts, unmounts and remounts, the cleanup revokes the
+  // URL, and nothing creates a replacement. The thumbnail survives on the
+  // already-decoded bitmap while the zoom, a fresh <img>, loads nothing.
+  useEffect(() => {
+    if (!file.type.startsWith("image/")) return;
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+      setUrl(null);
+    };
+  }, [file]);
+
+  return (
+    <div className="relative w-16">
+      {url ? (
+        <ZoomImg
+          src={url}
+          alt={file.name}
+          className="aspect-square w-full rounded border object-cover"
+        />
+      ) : (
+        <div
+          title={file.name}
+          className="grid aspect-square w-full place-items-center rounded border border-dashed p-1 text-center text-[10px] text-muted-foreground"
+        >
+          <span className="truncate">{file.name}</span>
+        </div>
+      )}
+      <button
+        type="button"
+        title={`Remove ${file.name}`}
+        onClick={onRemove}
+        className="absolute right-0.5 top-0.5 rounded bg-background/90 p-0.5 text-destructive hover:bg-background"
+      >
+        <Trash2 className="size-3" />
+      </button>
+    </div>
+  );
+}
+
 function Meta({ label, value }: { label: string; value?: string }) {
   if (!value) return null;
   return (
@@ -522,11 +570,13 @@ function CommentComposer({
   return (
     <div className="border-t p-3 space-y-2">
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-2">
           {files.map((f, i) => (
-            <Badge key={i} variant="secondary" className="text-[10px]">
-              {f.name}
-            </Badge>
+            <StagedFile
+              key={`${f.name}-${f.size}-${i}`}
+              file={f}
+              onRemove={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+            />
           ))}
         </div>
       )}
@@ -558,7 +608,12 @@ function CommentComposer({
             accept="image/*"
             multiple
             hidden
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+            // Append, like pasting does — picking a second file used to throw
+            // away whatever was already staged.
+            onChange={(e) => {
+              setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
           />
           <Button size="icon" variant="outline" onClick={() => fileRef.current?.click()}>
             <Paperclip className="h-4 w-4" />
