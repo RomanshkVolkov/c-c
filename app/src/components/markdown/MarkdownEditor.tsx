@@ -272,7 +272,22 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   // Every local src we've already taken charge of, so the sweep below doesn't
   // fire twice for the same image (it runs on every update).
   const claimed = useRef(new Set<string>());
-  const [uploading, setUploading] = useState(0);
+
+  /**
+   * Uploads in flight, by name.
+   *
+   * A count was the first attempt and it wasn't enough: attaching a big PDF sat
+   * there with nothing on screen, so the button read as broken and got pressed
+   * again — five copies of the same file. Naming each one makes a second press
+   * a decision instead of a guess, which is why the button stays enabled.
+   */
+  const [uploads, setUploads] = useState<{ id: number; name: string }[]>([]);
+  const nextUploadId = useRef(0);
+  const startUpload = useCallback((name: string) => {
+    const id = nextUploadId.current++;
+    setUploads((u) => [...u, { id, name }]);
+    return () => setUploads((u) => u.filter((x) => x.id !== id));
+  }, []);
 
   /**
    * Upload any local image sitting in the document and repoint it at the stored
@@ -312,7 +327,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
 
     for (const src of found) {
       claimed.current.add(src);
-      setUploading((n) => n + 1);
+      const done = startUpload("pasted image");
       void (async () => {
         try {
           const blob = await (await fetch(src)).blob();
@@ -329,28 +344,42 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
             description: "Try the attach button, or paste it again.",
           });
         } finally {
-          setUploading((n) => n - 1);
+          done();
         }
       })();
     }
-  }, []);
+  }, [startUpload]);
 
   sweepLocalImagesRef.current = sweepLocalImages;
 
   // Insert an uploaded file at the cursor: images as markdown images, anything
   // else as a link — markdown can't embed a PDF.
+  //
+  // The counter is the whole point of this being here and not inline: a big
+  // file took seconds with nothing on screen, so it read as "the button does
+  // nothing" and got clicked again. Five copies of the same PDF is what that
+  // looks like from the other side.
   const insertUpload = useCallback(async (file: File) => {
     const upload = uploadRef.current;
     const ed = editorRef.current;
     if (!upload || !ed) return;
-    const res = await upload(file);
-    if (!res) return;
-    if (file.type.startsWith("image/")) {
-      ed.chain().focus().setImage({ src: res.url, alt: res.fileName }).run();
-    } else {
-      ed.chain().focus().insertContent(`[${res.fileName}](${res.url})`).run();
+    const done = startUpload(file.name);
+    try {
+      const res = await upload(file);
+      if (!res) throw new Error("upload rejected");
+      if (file.type.startsWith("image/")) {
+        ed.chain().focus().setImage({ src: res.url, alt: res.fileName }).run();
+      } else {
+        ed.chain().focus().insertContent(`[${res.fileName}](${res.url})`).run();
+      }
+    } catch {
+      toast.error(`Couldn't attach ${file.name}`, {
+        description: "Nothing was added. Try again.",
+      });
+    } finally {
+      done();
     }
-  }, []);
+  }, [startUpload]);
 
   /** Sends one recovered image down whichever route the caller asked for. */
   const acceptFile = useCallback(async (file: File) => {
@@ -464,11 +493,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         onPickFile={onUpload ? insertUpload : undefined}
         collapsible={collapsible}
       />
-      {uploading > 0 && (
-        <p className="flex items-center gap-1.5 border-b bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" />
-          Uploading {uploading} image{uploading > 1 ? "s" : ""}… don't save yet
-        </p>
+      {uploads.length > 0 && (
+        <ul className="border-b bg-muted/40 px-3 py-1">
+          {uploads.map((u) => (
+            <li key={u.id} className="flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3 shrink-0 animate-spin" />
+              <span className="truncate">{u.name}</span>
+              <span className="ml-auto shrink-0">uploading… don't save yet</span>
+            </li>
+          ))}
+        </ul>
       )}
       <div className="px-3 py-2">
         {blockTools && (

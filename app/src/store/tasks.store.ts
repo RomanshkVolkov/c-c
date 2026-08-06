@@ -414,6 +414,10 @@ export const useTasksStore = create<TasksState>()(
             form,
           );
           if (!res.success || !res.data) throw new Error(res.error ?? "Upload failed");
+          // The Attachments section reads `detail`, so without this the file
+          // was on the server and nowhere on screen — which is most of why
+          // attaching one looked like it had failed.
+          if (get().openTaskId === taskId) void get().refreshOpenTask();
           return { url: absoluteUrl(res.data.url), fileName: res.data.fileName };
         } catch (e) {
           set({ error: msg(e) });
