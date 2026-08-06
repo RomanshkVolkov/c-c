@@ -60,6 +60,8 @@ interface TasksState {
   createTask: (title: string, statusId?: string) => Promise<void>;
   moveTask: (taskId: string, statusId: string, afterId: string, beforeId: string) => Promise<void>;
   openTask: (id: string) => Promise<void>;
+  /** Re-read the open task without unmounting the drawer. See the impl. */
+  refreshOpenTask: () => Promise<void>;
   closeTask: () => void;
   updateTask: (id: string, patch: UpdateTaskPayload) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
@@ -241,7 +243,7 @@ export const useTasksStore = create<TasksState>()(
           true,
         );
         // Refresh both: the parent's progress counter lives on the board card.
-        if (get().openTaskId === parentId) await get().openTask(parentId);
+        if (get().openTaskId === parentId) await get().refreshOpenTask();
         await get().refreshBoard();
       },
 
@@ -340,6 +342,26 @@ export const useTasksStore = create<TasksState>()(
         }
       },
 
+      /**
+       * Re-read the open task and swap it in place.
+       *
+       * Deliberately NOT openTask: that one blanks `detail` before fetching,
+       * which unmounts the drawer's whole body — and with it any description
+       * or comment being written. A subtask created mid-sentence used to take
+       * the sentence with it.
+       */
+      refreshOpenTask: async () => {
+        const id = get().openTaskId;
+        if (!id) return;
+        try {
+          const res = await api.get<APIResponse<TaskDetail>>(`/api/v1/tasks/${id}`);
+          if (get().openTaskId !== id) return;
+          if (res.success && res.data) set({ detail: res.data });
+        } catch (e) {
+          set({ error: msg(e) });
+        }
+      },
+
       closeTask: () => set({ openTaskId: null, detail: null }),
 
       updateTask: async (id, patch) => {
@@ -370,14 +392,14 @@ export const useTasksStore = create<TasksState>()(
           `/api/v1/tasks/${taskId}/comments/${commentId}`,
           { body },
         );
-        await get().openTask(taskId);
+        await get().refreshOpenTask();
       },
 
       deleteComment: async (taskId, commentId) => {
         await api.delete<APIResponse<unknown>>(
           `/api/v1/tasks/${taskId}/comments/${commentId}`,
         );
-        await get().openTask(taskId);
+        await get().refreshOpenTask();
         await get().refreshBoard(); // the card shows a comment count
       },
 
@@ -405,7 +427,7 @@ export const useTasksStore = create<TasksState>()(
         );
         // The blob stays in storage on purpose (older revisions of the markdown
         // may still reference it); this only drops the row and the listing.
-        await get().openTask(taskId);
+        await get().refreshOpenTask();
       },
 
       fetchDocIndex: async () => {

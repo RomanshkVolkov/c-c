@@ -204,13 +204,21 @@ function Content() {
   const [comment, setComment] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Re-sync when the drawer switches to another task.
+  // Re-sync only when the drawer switches to *another* task.
+  //
+  // The id alone, on purpose. With `task.title` and `task.description` in here
+  // too, any refetch of the same task — adding a subtask, a comment, an
+  // attachment, a live update from someone else — overwrote whatever was being
+  // typed with the copy the server had. Losing a half-written description to a
+  // background refresh is far worse than showing a slightly stale title while
+  // the field is focused.
   useEffect(() => {
     setTitle(task.title);
     setDraft(task.description);
     setEditingDesc(false);
     setComment("");
-  }, [task.id, task.title, task.description]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id]);
 
   const orgTags = useMemo(() => tags.filter((t) => t.orgId === task.orgId), [tags, task.orgId]);
 

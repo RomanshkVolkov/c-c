@@ -127,7 +127,11 @@ export function useReportEvents() {
           if (!store.activeListId) return;
           if (p.listId && p.listId !== store.activeListId) return;
           store.refreshBoard();
-          if (store.openTaskId) store.openTask(store.openTaskId);
+          // refreshOpenTask, never openTask: this fires on anyone's edit to any
+          // card in the list, so blanking `detail` here would unmount the open
+          // drawer — and the description someone is writing in it — because a
+          // colleague moved an unrelated card.
+          if (store.openTaskId) store.refreshOpenTask();
           break;
         }
         default:

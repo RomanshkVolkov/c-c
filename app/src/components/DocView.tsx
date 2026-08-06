@@ -39,9 +39,20 @@ export default function DocView() {
 
   // Switching nodes must not carry a half-written draft over to another doc.
   useEffect(() => {
-    setDraft(body);
     setEditing(false);
-  }, [target?.kind, target?.id, body]);
+  }, [target?.kind, target?.id]);
+
+  // Adopt the stored body — but never on top of something being written.
+  //
+  // `body` has to stay a dependency here, unlike the task drawer's equivalent:
+  // this pane renders before its document has loaded, so the first value is
+  // always "" and the real one arrives later. Dropping the dependency would
+  // open the editor empty on a document that has content. The `editing` guard
+  // is what makes that safe.
+  useEffect(() => {
+    if (editing) return;
+    setDraft(body);
+  }, [body, editing]);
 
   if (!target) return null;
 
