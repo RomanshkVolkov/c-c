@@ -209,6 +209,11 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 		if !superadmin { // superadmin sees reports across all orgs
 			db = db.Where("p.org_id IN ?", orgIDs)
 		}
+		// Applied on top of the membership scope above, never instead of it —
+		// so this narrows and can't be used to reach another tenant.
+		if q.OrgID != "" {
+			db = db.Where("p.org_id = ?", q.OrgID)
+		}
 		if q.ProjectID != "" {
 			db = db.Where("r.project_id = ?", q.ProjectID)
 		}

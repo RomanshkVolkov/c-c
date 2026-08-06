@@ -119,6 +119,7 @@ func (h *reportAdminHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	qs := r.URL.Query()
 	q := domain.ReportListQuery{
+		OrgID:      qs.Get("orgId"),
 		ProjectID:  qs.Get("projectId"),
 		AssigneeID: qs.Get("assigneeUserId"),
 		ReporterID: qs.Get("reporterId"),

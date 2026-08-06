@@ -460,6 +460,12 @@ type ReporterReportView struct {
 
 // ReportListQuery holds the GET /reports filters (all optional).
 type ReportListQuery struct {
+	// OrgID narrows to a single organization. It can only ever *narrow*: the
+	// caller's membership is applied on top, so asking for an org you don't
+	// belong to answers nothing. A superadmin belongs to none and sees all,
+	// which is exactly the case this exists for — without it the dashboard
+	// showed one tenant's reports while another tenant was selected.
+	OrgID      string
 	ProjectID  string
 	Status     ReportStatus
 	Category   ReportCategory
