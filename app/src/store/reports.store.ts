@@ -174,6 +174,12 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     try {
       const { projectFilter, statusFilter, categoryFilter, priorityFilter, projects } = get();
       const qs = new URLSearchParams({ limit: "200" });
+      // Scope at the source. The narrowing below still runs, because the app
+      // ships separately from the server and may be talking to one that
+      // doesn't know this parameter yet — but on a current server another
+      // tenant's reports no longer cross the wire at all.
+      const orgId = useOrgsStore.getState().currentOrgId;
+      if (orgId) qs.set("orgId", orgId);
       if (projectFilter) qs.set("projectId", projectFilter);
       if (statusFilter) qs.set("status", statusFilter);
       if (categoryFilter) qs.set("category", categoryFilter);

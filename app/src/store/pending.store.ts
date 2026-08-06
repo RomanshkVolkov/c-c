@@ -53,11 +53,15 @@ export const usePendingStore = create<PendingState>()((set, get) => ({
     // better company than a spinner.
     set(changedOrg ? { orgId, tasks: null, reports: null, failed: false } : { failed: false });
 
-    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}&limit=8` : "?limit=8";
+    // Both take ?orgId, and both need it: a superadmin belongs to no
+    // organization, so unfiltered they answer with every tenant's work. That
+    // is right on the reports board and wrong here, where the whole claim is
+    // "this is what's pending for the org you have selected".
+    const org = orgId ? `orgId=${encodeURIComponent(orgId)}&` : "";
     try {
       const [t, r] = await Promise.all([
-        api.get<APIResponse<OpenTask[]>>(`/api/v1/tasks/${qs}`, true),
-        api.get<APIResponse<{ items: ReportListItem[] }>>("/api/v1/reports/?limit=100", true),
+        api.get<APIResponse<OpenTask[]>>(`/api/v1/tasks/?${org}limit=8`, true),
+        api.get<APIResponse<{ items: ReportListItem[] }>>(`/api/v1/reports/?${org}limit=100`, true),
       ]);
       // A late response for an org the user already switched away from.
       if (get().orgId !== orgId) return;
