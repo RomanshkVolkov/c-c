@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowRight, Bug, CheckSquare, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -6,16 +6,10 @@ import { Button } from "@/components/ui/button";
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
-import { api } from "@/lib/api";
-import type { APIResponse } from "@/types/auth";
 import { useOrgsStore } from "@/store/orgs.store";
-import { PRIORITY_META, type OpenTask } from "@/types/task";
-import {
-  PRIORITY_LABELS,
-  STATUS_LABELS,
-  normalizeStatus,
-  type ReportListItem,
-} from "@/types/report";
+import { usePendingStore } from "@/store/pending.store";
+import { PRIORITY_META } from "@/types/task";
+import { PRIORITY_LABELS, STATUS_LABELS } from "@/types/report";
 
 /**
  * What's still on the table, on the first screen of the app.
@@ -25,53 +19,19 @@ import {
  * mean two implementations of the same editing rules.
  */
 
-/** Worst first, so the top of the list is the part that matters. */
-const REPORT_PRIORITY_RANK: Record<string, number> = {
-  urgent: 0, high: 1, medium: 2, low: 3,
-};
-
 export default function PendingSummary() {
   const navigate = useNavigate();
   const orgId = useOrgsStore((s) => s.currentOrgId);
-  const [tasks, setTasks] = useState<OpenTask[] | null>(null);
-  const [reports, setReports] = useState<ReportListItem[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const tasks = usePendingStore((s) => s.tasks);
+  const reports = usePendingStore((s) => s.reports);
+  const failed = usePendingStore((s) => s.failed);
+  const load = usePendingStore((s) => s.load);
 
+  // Live updates arrive through the event stream, which calls markStale() — see
+  // the store. This only covers opening the page and switching org.
   useEffect(() => {
-    let cancelled = false;
-    setTasks(null);
-    setReports(null);
-    setFailed(false);
-
-    // Reports come back for the whole org and get narrowed here; tasks are
-    // narrowed by the server, which is why only one of the two takes ?orgId.
-    const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}&limit=8` : "?limit=8";
-    void Promise.all([
-      api.get<APIResponse<OpenTask[]>>(`/api/v1/tasks/${qs}`, true),
-      api.get<APIResponse<{ items: ReportListItem[] }>>("/api/v1/reports/?limit=100", true),
-    ])
-      .then(([t, r]) => {
-        if (cancelled) return;
-        setTasks(t.success && t.data ? t.data : []);
-        const open = (r.success && r.data ? r.data.items : [])
-          .map((x) => ({ ...x, status: normalizeStatus(x.status) }))
-          .filter((x) => x.status === "open" || x.status === "in_progress")
-          .sort(
-            (a, b) =>
-              (REPORT_PRIORITY_RANK[a.priority] ?? 9) - (REPORT_PRIORITY_RANK[b.priority] ?? 9) ||
-              +new Date(b.createdAt) - +new Date(a.createdAt),
-          );
-        setReports(open);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // Saying so beats an empty card that reads as "nothing pending" —
-        // which is the one wrong answer this card can give.
-        setFailed(true);
-      });
-
-    return () => { cancelled = true; };
-  }, [orgId]);
+    void load(orgId);
+  }, [orgId, load]);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

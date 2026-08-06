@@ -11,6 +11,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useConnectionStore } from "@/store/connection.store";
+import { usePendingStore } from "@/store/pending.store";
 
 type Payload = { reportId?: string; folio?: string; title?: string; status?: string };
 
@@ -86,6 +87,13 @@ export function useReportEvents() {
 
     /** One frame → toasts, notifications and refetches. Transport-agnostic. */
     const handle = (event: string, data: string) => {
+      // The dashboard's pending lists go stale on anything that changes a
+      // report or a task, whichever branch below handles it. The store
+      // debounces and ignores this until the dashboard has been opened once,
+      // so a user who never goes there pays nothing.
+      if (event.startsWith("report:") || event.startsWith("task:")) {
+        usePendingStore.getState().markStale();
+      }
       switch (event) {
         case "report:new": {
           const p = parse(data);
