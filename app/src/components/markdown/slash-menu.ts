@@ -73,6 +73,15 @@ const COMMANDS: Command[] = [
     run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run(),
   },
   {
+    title: "Table",
+    hint: "3×3",
+    keywords: ["grid", "rows", "columns"],
+    needs: "table",
+    run: (e, r) =>
+      e.chain().focus().deleteRange(r)
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  },
+  {
     title: "Collapsible section",
     hint: "<details>",
     keywords: ["toggle", "fold", "expand", "accordion"],

@@ -249,6 +249,10 @@
     @apply border border-border px-2 py-1 text-left;
   }
   .md-body th, .prose-editor th { @apply bg-muted/50 font-medium; }
+  /* ProseMirror marks the cells covered by a cell selection; without this,
+     selecting a row or column gives no feedback at all. */
+  .prose-editor .selectedCell { @apply bg-accent/60; }
+  .prose-editor td > *:only-child, .prose-editor th > *:only-child { @apply my-0; }
   .md-body hr, .prose-editor hr { @apply my-4 border-border; }
 
   /* Collapsible sections. In .md-body they're real <details>, so the browser
