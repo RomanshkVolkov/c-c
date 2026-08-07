@@ -35,6 +35,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		// in the service is what keeps this to the token holder's own words.
 		{http.MethodPatch, "/api/v1/reports/abc/comments/xyz", domain.ScopeReportsManage},
 		{http.MethodDelete, "/api/v1/reports/abc/comments/xyz", domain.ScopeReportsManage},
+		{http.MethodPatch, "/api/v1/tasks/abc/comments/xyz", domain.ScopeTasksManage},
+		{http.MethodDelete, "/api/v1/tasks/abc/comments/xyz", domain.ScopeTasksManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -46,7 +48,9 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 
 // A token that can add things must not be able to change or destroy them.
 func TestAppendScopeCannotChangeExistingWork(t *testing.T) {
-	for _, path := range []string{"/api/v1/tasks/abc", "/api/v1/tasks/abc/move"} {
+	for _, path := range []string{
+		"/api/v1/tasks/abc", "/api/v1/tasks/abc/move", "/api/v1/tasks/abc/comments/xyz",
+	} {
 		scope, _ := patScopeFor(req(http.MethodPatch, path))
 		if scope == domain.ScopeTasksWrite {
 			t.Errorf("%s must not be reachable with the append-only scope", path)
@@ -56,6 +60,11 @@ func TestAppendScopeCannotChangeExistingWork(t *testing.T) {
 
 // Everything not on the allowlist stays out of reach for any token, scoped or
 // not — deleting, minting tokens, creating users, touching the hierarchy.
+//
+// `PATCH /tasks/{id}/comments/{id}` used to be on this list and deliberately
+// so. It moved out for the same reason the report one did: a token is the
+// person, the handler still refuses anyone else's comment, and leaving it here
+// meant someone could fix a typo in the app but not through their own token.
 func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 	unreachable := []*http.Request{
 		req(http.MethodPost, "/api/v1/auth/tokens"),
@@ -66,7 +75,6 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodPost, "/api/v1/task-spaces/"),
 		req(http.MethodPost, "/api/v1/users/"),
 		req(http.MethodPut, "/api/v1/docs/space/abc"),
-		req(http.MethodPatch, "/api/v1/tasks/abc/comments/xyz"),
 		req(http.MethodDelete, "/api/v1/notes/abc"),
 		req(http.MethodPut, "/api/v1/notes/tree"),
 		// Removing someone's report outright is still nobody's to do with a

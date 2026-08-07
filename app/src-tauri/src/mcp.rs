@@ -552,6 +552,33 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "edit_task_comment",
+            "description": "Correct a comment you wrote on a task. Only your own: cac refuses anyone else's. Replaces the text outright — there is no history. Needs `tasks:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Task id." },
+                    "commentId": { "type": "string", "description": "From get_task." },
+                    "body": { "type": "string", "description": "The replacement text, markdown." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "commentId", "body"]
+            }
+        },
+        {
+            "name": "delete_task_comment",
+            "description": "Remove a comment you wrote on a task. Only your own. Unlike a report comment this leaves no trace, and images it cited are detached with it unless something else still references them. Needs `tasks:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Task id." },
+                    "commentId": { "type": "string", "description": "From get_task." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "commentId"]
+            }
+        },
+        {
             "name": "list_devices",
             "description": "Devices sending passive telemetry (mobile apps), with request/error counts and last-seen. Use to find a device to investigate.",
             "inputSchema": {
@@ -956,6 +983,51 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "createdAt": added.and_then(|c| c.get("createdAt")),
                 "taskId": id,
                 "commentsOnTask": comments.map(|c| c.len()),
+            }))
+        }
+
+        "edit_task_comment" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let comment_id = arg_str(args, "commentId").ok_or("commentId is required")?;
+            let body_md = arg_str(args, "body").ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)));
+                return dry_run(cfg, "tasks:manage", target);
+            }
+            // JSON, not multipart: unlike a report comment, a task comment has no
+            // images of its own — files hang off the task, and the body cites them.
+            api_patch(
+                cfg,
+                &format!(
+                    "/api/v1/tasks/{}/comments/{}",
+                    urlencode(&id),
+                    urlencode(&comment_id)
+                ),
+                json!({ "body": body_md }),
+            )?;
+            Ok(json!({ "commentId": comment_id, "taskId": id, "updated": true }))
+        }
+
+        "delete_task_comment" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let comment_id = arg_str(args, "commentId").ok_or("commentId is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)));
+                return dry_run(cfg, "tasks:manage", target);
+            }
+            api_delete(
+                cfg,
+                &format!(
+                    "/api/v1/tasks/{}/comments/{}",
+                    urlencode(&id),
+                    urlencode(&comment_id)
+                ),
+            )?;
+            Ok(json!({
+                "commentId": comment_id,
+                "taskId": id,
+                "deleted": true,
+                "note": "Gone for everyone. Files it cited are detached unless something else still uses them."
             }))
         }
 

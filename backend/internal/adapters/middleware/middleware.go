@@ -248,6 +248,12 @@ var patWritable = []struct {
 	// and not through their own token.
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/[^/]+$`), domain.ScopeReportsManage},
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/[^/]+$`), domain.ScopeReportsManage},
+	// Task comments, for the same reason and with the same guard: the handler
+	// still only lets the author touch their own (commentScope), so a token —
+	// which *is* the person — could correct a typo through the app but not
+	// through itself.
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/[^/]+$`), domain.ScopeTasksManage},
+	{http.MethodDelete, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/[^/]+$`), domain.ScopeTasksManage},
 }
 
 // patScopeFor reports the scope this request needs, and whether it's reachable
