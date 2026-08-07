@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrompt } from "@/components/PromptDialog";
-import { attachmentPath, mediaSrc } from "@/lib/media";
+import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
 import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
 import { collapsibleExtensions } from "./details";
 import { SlashMenu } from "./slash-menu";
@@ -252,12 +252,19 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       // editing a link's text. Only a held modifier "opens" it, mirroring how
       // Notion and Obsidian both do this in an editable page.
       handleClick: (_view, _pos, event) => {
-        if (!onLinkClickRef.current) return false;
         if (!event.metaKey && !event.ctrlKey) return false;
-        const href = (event.target as HTMLElement)?.closest("a")?.getAttribute("href");
+        const anchor = (event.target as HTMLElement)?.closest("a");
+        const href = anchor?.getAttribute("href");
         if (!href) return false;
         event.preventDefault();
-        onLinkClickRef.current(href);
+        if (onLinkClickRef.current) {
+          onLinkClickRef.current(href);
+          return true;
+        }
+        // No handler: open it anyway. Attaching a PDF puts a link in the body,
+        // and only Notes ever wired one — so in a task description that link
+        // did nothing on any click, which made the file decoration.
+        void openAttachment(href, anchor?.textContent?.trim() || "file").catch(() => {});
         return true;
       },
     },

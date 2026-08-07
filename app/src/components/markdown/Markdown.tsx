@@ -5,8 +5,9 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { mediaSrc, openAttachment } from "@/lib/media";
+import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
 
 /**
  * Read-only markdown. Used wherever stored markdown is displayed (task
@@ -64,25 +65,33 @@ export default function Markdown({
         components={{
           // Links must not navigate the webview away from the app; hand them to
           // the OS browser instead.
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              onClick={(e) => {
-                e.preventDefault();
-                if (!href) return;
-                if (onInternalLink?.(href)) return;
-                // Attachments are downloaded by Rust (with the header) and opened
-                // by the OS; external links go straight to the browser.
-                openAttachment(href, children?.toString() ?? "file").catch(() => {
-                  const target = mediaSrc(href);
-                  if (target) openUrl(target).catch(() => window.open(target, "_blank"));
-                });
-              }}
-              className="text-primary underline decoration-primary/40 hover:decoration-primary"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            // A file reads differently from a link to somewhere: it downloads
+            // and opens in another program. Marking it says so before it's
+            // clicked, instead of leaving a PDF looking like a web address.
+            const isFile = !!href && !!attachmentPath(href);
+            return (
+              <a
+                href={href}
+                title={isFile ? "Open with your system" : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!href) return;
+                  if (onInternalLink?.(href)) return;
+                  // Attachments are downloaded by Rust (with the header) and opened
+                  // by the OS; external links go straight to the browser.
+                  openAttachment(href, children?.toString() ?? "file").catch(() => {
+                    const target = mediaSrc(href);
+                    if (target) openUrl(target).catch(() => window.open(target, "_blank"));
+                  });
+                }}
+                className="text-primary underline decoration-primary/40 hover:decoration-primary"
+              >
+                {isFile && <Paperclip className="mr-0.5 inline size-3 align-[-0.1em]" />}
+                {children}
+              </a>
+            );
+          },
           // Capped at max-h-80 so a screenshot doesn't push the rest of the
           // comment off the screen; clicking it lifts that cap.
           img: ({ src, alt }) => {
