@@ -30,6 +30,7 @@ import UserPicker from "@/components/UserPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { openAttachment } from "@/lib/media";
+import PdfPreview from "@/components/PdfPreview";
 import CopyId from "@/components/CopyId";
 import { useTasksStore } from "@/store/tasks.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -200,6 +201,7 @@ function Content() {
   const { task } = detail;
   const [title, setTitle] = useState(task.title);
   const [editingDesc, setEditingDesc] = useState(false);
+  const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
   const [draft, setDraft] = useState(task.description);
   const [comment, setComment] = useState("");
   const [sending, setSending] = useState(false);
@@ -256,6 +258,7 @@ function Content() {
 
   return (
     <>
+      {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <span className="truncate text-xs text-muted-foreground">
           {detail.spaceName} / {detail.listName}
@@ -532,7 +535,15 @@ function Content() {
                   <Paperclip className="size-3 shrink-0 text-muted-foreground" />
                   <button
                     className="truncate text-left text-primary underline"
-                    onClick={() => openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))}
+                    // Same rule as a link in the body: a PDF stays in the app,
+                    // anything else goes to the program that understands it.
+                    onClick={() => {
+                      if (/\.pdf$/i.test(a.fileName)) {
+                        setPdf({ url: a.url, fileName: a.fileName });
+                        return;
+                      }
+                      openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)));
+                    }}
                   >
                     {a.fileName}
                   </button>
