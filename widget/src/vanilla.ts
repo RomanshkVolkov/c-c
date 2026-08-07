@@ -328,8 +328,12 @@ async function renderThread(root: HTMLElement, reporter: Reporter, color: string
         fontSize: "13px",
       });
       const imgsHtml = (c.images ?? []).map((im) => thumb(im.url, im.fileName)).join("");
+      // `author` first, `authorName` only as a label for someone else's reply
+      // — see the type. And escaped: the name is asserted by the tenant app,
+      // so it arrives from outside and lands in innerHTML.
+      const who = mine ? t.authorYou : escapeHtml(c.authorName || t.authorTeam);
       bubble.innerHTML =
-        `<div style="font-size:10px;opacity:.7;margin-bottom:2px">${mine ? t.authorYou : t.authorTeam}</div>${escapeHtml(c.body)}` +
+        `<div style="font-size:10px;opacity:.7;margin-bottom:2px">${who}</div>${escapeHtml(c.body)}` +
         (imgsHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${imgsHtml}</div>` : "");
       thread.appendChild(bubble);
     }

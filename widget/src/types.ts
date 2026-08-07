@@ -65,7 +65,23 @@ export interface ReporterImage {
 }
 
 export interface ReporterComment {
+  /**
+   * Who wrote it. Stays a closed union on purpose: it drives the layout — your
+   * own replies sit on the right in the accent colour, everyone else's on the
+   * left — and widening it would change what every existing `switch` means.
+   */
   author: "you" | "team" | "system";
+  /**
+   * The person's name, when the server knows it. Sent alongside `author`
+   * rather than folded into it, for the reason above.
+   *
+   * Empty for your own replies and for system notes, and never the name of the
+   * app running the board: you have no reason to know which tracker is behind
+   * the form you filled in.
+   *
+   * `author` wins where they disagree — you are told "You", not your own name.
+   */
+  authorName?: string;
   body: string;
   images?: ReporterImage[];
   createdAt: string;

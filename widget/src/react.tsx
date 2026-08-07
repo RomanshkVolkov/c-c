@@ -322,7 +322,12 @@ function ReportThread({ reporter, color, t, id, onSeen, onBack }: { reporter: Re
                 <p key={i} style={{ fontSize: 12, color: "#a1a1aa", fontStyle: "italic", margin: 0 }}>{c.body}</p>
               ) : (
                 <div key={i} style={{ alignSelf: c.author === "you" ? "flex-end" : "flex-start", maxWidth: "85%", background: c.author === "you" ? color : "#f4f4f5", color: c.author === "you" ? "#fff" : "#18181b", padding: "8px 11px", borderRadius: 12, fontSize: 13 }}>
-                  <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 2 }}>{c.author === "you" ? t.authorYou : t.authorTeam}</div>
+                  {/* `author` first, `authorName` only as a label for someone
+                      else's reply — see the type. Reversing the two would
+                      greet the reporter with their own name. */}
+                  <div style={{ fontSize: 10, opacity: 0.7, marginBottom: 2 }}>
+                    {c.author === "you" ? t.authorYou : c.authorName || t.authorTeam}
+                  </div>
                   {c.body}
                   {c.images && c.images.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
