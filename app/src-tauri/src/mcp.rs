@@ -648,6 +648,26 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "compress_image",
+            "description": "Convert and shrink an image on this machine: webp, avif, jpeg, png, gif or bmp, with optional quality and a maximum width. Reads and writes files by path — nothing is uploaded and no server is involved. Needs no scope; it never touches cac.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Absolute path of the image to read." },
+                    "outPath": { "type": "string", "description": "Where to write it. Omit to write beside the original with the new extension." },
+                    "format": {
+                        "type": "string",
+                        "enum": ["webp", "avif", "jpeg", "png", "gif", "bmp"],
+                        "description": "Defaults to webp."
+                    },
+                    "quality": { "type": "integer", "description": "1-100, for the lossy formats. Ignored by png, gif and bmp." },
+                    "maxWidth": { "type": "integer", "description": "Scale down so the width is at most this. Never scales up." },
+                    "dryRun": { "type": "boolean", "description": "Report what would be written without writing it." }
+                },
+                "required": ["path"]
+            }
+        },
+        {
             "name": "list_devices",
             "description": "Devices sending passive telemetry (mobile apps), with request/error counts and last-seen. Use to find a device to investigate.",
             "inputSchema": {
@@ -1511,13 +1531,81 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
             let params = req.get("params").cloned().unwrap_or(json!({}));
             let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            let res = match cfg {
-                Ok(c) => call_tool(c, name, &args),
-                Err(e) => Err(e.clone()),
+            // A tool that never calls cac must work without a token. Every
+            // other one needs the config, so the check stays where it was.
+            let res = if LOCAL_TOOLS.contains(&name) {
+                call_local_tool(name, &args)
+            } else {
+                match cfg {
+                    Ok(c) => call_tool(c, name, &args),
+                    Err(e) => Err(e.clone()),
+                }
             };
             Some(ok(id, tool_result(res)))
         }
         other => Some(err(id, -32601, format!("method not found: {other}"))),
+    }
+}
+
+/// Tools that run entirely on this machine and never call cac, so they work
+/// with no token configured at all.
+const LOCAL_TOOLS: &[&str] = &["compress_image"];
+
+fn call_local_tool(name: &str, args: &Value) -> Result<Value, String> {
+    match name {
+        // The only tool here that is not an HTTP call. The MCP server *is* the
+        // app binary, so the compressor the image page uses is already linked
+        // in — there is no endpoint to add and nothing leaves the machine.
+        //
+        // Paths in and out, never base64: a 2 MB screenshot is ~2.7 MB of text,
+        // and an agent that converts a folder would spend its whole context on
+        // bytes it never reads.
+        "compress_image" => {
+            let path = arg_str(args, "path").ok_or("path is required")?;
+            let format = arg_str(args, "format").unwrap_or_else(|| "webp".into());
+            let fmt: crate::image::OutputFormat =
+                serde_json::from_value(json!(format)).map_err(|e| format!("Invalid format: {e}"))?;
+
+            let out_path = arg_str(args, "outPath").unwrap_or_else(|| {
+                let p = std::path::Path::new(&path);
+                p.with_extension(fmt.extension()).to_string_lossy().into_owned()
+            });
+
+            let quality = arg_i64(args, "quality").map(|q| q.clamp(1, 100) as u8);
+            let max_width = arg_i64(args, "maxWidth").filter(|w| *w > 0).map(|w| w as u32);
+
+            if arg_bool(args, "dryRun") {
+                let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                return Ok(json!({
+                    "wouldRead": path,
+                    "wouldWrite": out_path,
+                    "format": fmt.extension(),
+                    "originalBytes": size,
+                    "dryRun": true,
+                }));
+            }
+
+            let raw = std::fs::read(&path).map_err(|e| format!("Could not read {path}: {e}"))?;
+            let opts = crate::image::CompressOptions { quality, max_width, format: fmt };
+            let result = crate::image::compress(&raw, &opts)?;
+            std::fs::write(&out_path, &result.data)
+                .map_err(|e| format!("Could not write {out_path}: {e}"))?;
+
+            let saved = result.original_bytes.saturating_sub(result.compressed_bytes);
+            Ok(json!({
+                "path": out_path,
+                "format": result.format,
+                "width": result.width,
+                "height": result.height,
+                "originalBytes": result.original_bytes,
+                "bytes": result.compressed_bytes,
+                "savedPercent": if result.original_bytes > 0 {
+                    (saved as f64 / result.original_bytes as f64 * 100.0).round()
+                } else { 0.0 },
+            }))
+        }
+
+        other => Err(format!("unknown tool: {other}")),
     }
 }
 
