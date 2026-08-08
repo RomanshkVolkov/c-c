@@ -12,6 +12,7 @@ import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { usePendingStore } from "@/store/pending.store";
+import { useNotificationsStore } from "@/store/notifications.store";
 
 type Payload = { reportId?: string; folio?: string; title?: string; status?: string };
 
@@ -25,6 +26,28 @@ async function ensureNotifyPermission(): Promise<boolean> {
 }
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/**
+ * Is the window in front of the user right now?
+ *
+ * Not `document.hidden`, which is what this used to ask. The Page Visibility
+ * API is driven by the compositor, and on WebKitGTK — the webview on Linux — a
+ * window that's minimised or on another workspace can still report itself
+ * visible. The gate never opened, so no notification was ever sent, and nothing
+ * anywhere recorded that a decision had been made.
+ *
+ * Tauri knows, because it owns the window. In a plain browser there is no
+ * window to ask, so fall back to the old question.
+ */
+async function windowIsFocused(): Promise<boolean> {
+  if (!inTauri) return !document.hidden;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    return await getCurrentWindow().isFocused();
+  } catch {
+    return false; // can't tell → notify, rather than swallow it
+  }
+}
 
 // Fallback (browser, no Tauri) only — in the app the stream lives in Rust.
 const MAX_BACKOFF_MS = 30_000;
@@ -63,12 +86,35 @@ export function useReportEvents() {
     let canNotify = false;
     ensureNotifyPermission().then((ok) => (canNotify = ok));
 
-    const notify = (title: string, body: string) => {
-      if (canNotify && document.hidden) {
-        void Promise.resolve()
-          .then(() => sendNotification({ title, body }))
-          .catch(() => {});
-      }
+    /**
+     * Record it, and tell the OS unless the user is already looking at us.
+     *
+     * The record happens either way. An OS notification that never fires
+     * leaves no trace at all, which is exactly what made "it didn't arrive"
+     * indistinguishable from "nothing happened" — see the notifications store.
+     */
+    const notify = (kind: string, title: string, body: string, reportId?: string) => {
+      void (async () => {
+        const log = useNotificationsStore.getState().add;
+        if (await windowIsFocused()) {
+          log({ kind, title, body, delivery: "focused", reportId });
+          return;
+        }
+        if (!canNotify) {
+          log({ kind, title, body, reportId, delivery: "failed", error: "permission not granted" });
+          return;
+        }
+        try {
+          await Promise.resolve(sendNotification({ title, body }));
+          log({ kind, title, body, delivery: "os", reportId });
+        } catch (e) {
+          log({
+            kind, title, body, reportId,
+            delivery: "failed",
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      })();
     };
 
     const refresh = () => {
@@ -99,7 +145,7 @@ export function useReportEvents() {
           const p = parse(data);
           const desc = `${p.folio ?? ""} ${p.title ?? ""}`.trim();
           toast.info("New report", { description: desc });
-          notify("New report", desc || "A new report was filed");
+          notify("report:new", "New report", desc || "A new report was filed", p.reportId);
           refresh();
           break;
         }
@@ -115,7 +161,7 @@ export function useReportEvents() {
         }
         case "report:comment": {
           toast.message("New comment on a report");
-          notify("New reply", "A reporter replied to a report");
+          notify("report:comment", "New reply", "A reporter replied to a report", parse(data).reportId);
           refresh();
           break;
         }

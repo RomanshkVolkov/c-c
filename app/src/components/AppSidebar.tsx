@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
+  Bell,
   LayoutDashboard,
   Bug,
   KanbanSquare,
@@ -40,10 +41,12 @@ import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
 import { ChangePasswordDialog } from "@/components/ChangePassword";
 import ConnectMcpDialog from "@/components/ConnectMcpDialog";
+import NotificationsPanel from "@/components/NotificationsPanel";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
 import { useUpdaterStore } from "@/store/updater.store";
+import { useNotificationsStore } from "@/store/notifications.store";
 import { useThemeStore, type ThemePreference } from "@/store/theme.store";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +74,8 @@ export default function AppSidebar() {
   const pendingInvites = useInvitationsStore((s) => s.pending.length);
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const unreadNotifications = useNotificationsStore((s) => s.items.filter((i) => !i.read).length);
   const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
     (i) => !i.superadmin || superadmin,
   );
@@ -124,6 +129,19 @@ export default function AppSidebar() {
           </SidebarMenuItem>
           {authed && (
             <SidebarMenuItem>
+              <SidebarMenuButton tooltip="Notifications" onClick={() => setNotifOpen(true)}>
+                <Bell className="size-4" />
+                <span>Notifications</span>
+                {unreadNotifications > 0 && (
+                  <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
+                    {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                  </span>
+                )}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+          {authed && (
+            <SidebarMenuItem>
               <SidebarMenuButton tooltip="Change password" onClick={() => setPwOpen(true)}>
                 <KeyRound className="size-4" />
                 <span>Change password</span>
@@ -163,6 +181,7 @@ export default function AppSidebar() {
       <SidebarRail />
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
       <ConnectMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} />
+      <NotificationsPanel open={notifOpen} onOpenChange={setNotifOpen} />
     </Sidebar>
   );
 }
