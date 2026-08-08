@@ -65,6 +65,7 @@ export default function ConnectMcpDialog({
   const [canManageNotes, setCanManageNotes] = useState(false);
   const [canReplyReports, setCanReplyReports] = useState(false);
   const [canTriageReports, setCanTriageReports] = useState(false);
+  const [canCreateCollections, setCanCreateCollections] = useState(false);
   const [minted, setMinted] = useState<CreateTokenResult | null>(null);
   const [exePath, setExePath] = useState<string>("");
 
@@ -101,6 +102,7 @@ export default function ConnectMcpDialog({
             ...(canManageNotes ? ["notes:manage"] : []),
             ...(canReplyReports ? ["reports:write"] : []),
             ...(canTriageReports ? ["reports:manage"] : []),
+            ...(canCreateCollections ? ["collections:write"] : []),
           ],
         },
         true,
@@ -286,6 +288,22 @@ export default function ConnectMcpDialog({
                       report's screenshots, and correct or withdraw comments{" "}
                       <span className="text-foreground">you</span> wrote — never
                       anyone else's, which cac refuses outright.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={canCreateCollections}
+                    onChange={(e) => setCanCreateCollections(e.target.checked)}
+                  />
+                  <span>
+                    <span className="text-foreground">Create request collections</span>
+                    <span className="block">
+                      Leaves a described API ready to run. Creating only — editing,
+                      deleting and sharing one stay out of reach, sharing because it
+                      reaches other people.
                     </span>
                   </span>
                 </label>

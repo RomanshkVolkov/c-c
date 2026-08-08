@@ -620,6 +620,34 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "list_collections",
+            "description": "Request collections you can reach, personal and org-shared, with your permission on each. Use it to resolve a name to the id get_collection takes.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "get_collection",
+            "description": "One collection's tree: its folders and saved requests, with method, URL, headers and body. Read it to learn how an API is called before writing code against it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string", "description": "From list_collections." } },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "create_collection",
+            "description": "Create a request collection — somewhere to leave an API you just described, ready to run. Personal unless you pass orgId, which shares it with that organization. Needs `collections:write`. Editing, deleting and sharing are not available to a token.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "description": { "type": "string", "description": "Optional." },
+                    "orgId": { "type": "string", "description": "Optional. Omit for a personal collection; set it to share with an organization you belong to." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["name"]
+            }
+        },
+        {
             "name": "list_devices",
             "description": "Devices sending passive telemetry (mobile apps), with request/error counts and last-seen. Use to find a device to investigate.",
             "inputSchema": {
@@ -1129,6 +1157,39 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "taskId": id,
                 "deleted": true,
                 "note": "Gone for everyone. Files it cited are detached unless something else still uses them."
+            }))
+        }
+
+        "list_collections" => {
+            let data = api_get(cfg, "/api/v1/collections/")?;
+            Ok(json!({ "collections": data }))
+        }
+
+        "get_collection" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            api_get(cfg, &format!("/api/v1/collections/{}", urlencode(&id)))
+        }
+
+        "create_collection" => {
+            let name = arg_str(args, "name").ok_or("name is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, "/api/v1/collections/");
+                return dry_run(cfg, "collections:write", target);
+            }
+            let mut body = json!({ "name": name });
+            if let Some(description) = arg_str(args, "description") {
+                body["description"] = json!(description);
+            }
+            // Absent, not null: the field is a nullable pointer server-side and
+            // null is what marks a collection personal.
+            if let Some(org_id) = arg_str(args, "orgId") {
+                body["orgId"] = json!(org_id);
+            }
+            let created = api_post(cfg, "/api/v1/collections/", body)?;
+            Ok(json!({
+                "collectionId": created.get("id"),
+                "name": created.get("name"),
+                "shared": created.get("orgId").map(|v| !v.is_null()),
             }))
         }
 

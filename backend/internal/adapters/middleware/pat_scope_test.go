@@ -42,6 +42,7 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodDelete, "/api/v1/reports/abc/comments/xyz", domain.ScopeReportsManage},
 		{http.MethodPatch, "/api/v1/tasks/abc/comments/xyz", domain.ScopeTasksManage},
 		{http.MethodDelete, "/api/v1/tasks/abc/comments/xyz", domain.ScopeTasksManage},
+		{http.MethodPost, "/api/v1/collections/", domain.ScopeCollectionsWrite},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -81,6 +82,11 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodPost, "/api/v1/task-lists/abc/tasks/extra"),
 		req(http.MethodPost, "/api/v1/task-lists/abc/statuses"),
 		req(http.MethodPost, "/api/v1/users/"),
+		// Creating a collection is allowed; everything that touches one that
+		// already exists — or hands it to someone else — is not.
+		req(http.MethodDelete, "/api/v1/collections/abc"),
+		req(http.MethodPost, "/api/v1/collections/abc/shares"),
+		req(http.MethodDelete, "/api/v1/collections/abc/shares/u1"),
 		req(http.MethodPut, "/api/v1/docs/space/abc"),
 		req(http.MethodDelete, "/api/v1/notes/abc"),
 		req(http.MethodPut, "/api/v1/notes/tree"),

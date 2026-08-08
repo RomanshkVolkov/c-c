@@ -240,6 +240,10 @@ var patWritable = []struct {
 	// bring images across instead of leaving them served by the tool being
 	// abandoned, which is the whole point of migrating.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/[^/]+/attachments/?$`), domain.ScopeNotesWrite},
+	// Creating a collection, so an agent that just described an API can leave it
+	// ready to run. Sharing one is not here on purpose: that reaches other
+	// people, and it should take a person to decide.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/collections/?$`), domain.ScopeCollectionsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`), domain.ScopeReportsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/?$`), domain.ScopeReportsWrite},
 	// Changes what already exists.

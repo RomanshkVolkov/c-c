@@ -74,13 +74,18 @@ const (
 	ScopeNotesManage   = "notes:manage"
 	ScopeReportsWrite  = "reports:write"
 	ScopeReportsManage = "reports:manage"
+	// No matching Manage: a token may create a collection and nothing else.
+	// Editing, deleting and sharing one all reach work a person already owns,
+	// and sharing reaches other people — that stays a human decision.
+	ScopeCollectionsWrite = "collections:write"
 )
 
 func ValidScope(s string) bool {
 	switch s {
 	case ScopeTasksWrite, ScopeTasksManage,
 		ScopeNotesWrite, ScopeNotesManage,
-		ScopeReportsWrite, ScopeReportsManage:
+		ScopeReportsWrite, ScopeReportsManage,
+		ScopeCollectionsWrite:
 		return true
 	default:
 		return false
