@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Check, Plus, Trash2, Loader2, TriangleAlert } from "lucide-react";
+import { Copy, Check, Plus, Trash2, Pencil, Loader2, TriangleAlert } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScopeChecklist, describeScopes } from "@/components/mcp-scopes";
 import {
   Dialog,
   DialogContent,
@@ -59,13 +60,12 @@ export default function ConnectMcpDialog({
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("Claude Code");
   // All off by default: a token that can write is a token someone can lose.
-  const [canCreateTasks, setCanCreateTasks] = useState(false);
-  const [canManageTasks, setCanManageTasks] = useState(false);
-  const [canCreateNotes, setCanCreateNotes] = useState(false);
-  const [canManageNotes, setCanManageNotes] = useState(false);
-  const [canReplyReports, setCanReplyReports] = useState(false);
-  const [canTriageReports, setCanTriageReports] = useState(false);
-  const [canCreateCollections, setCanCreateCollections] = useState(false);
+  const [scopes, setScopes] = useState<string[]>([]);
+  const toggleScope = (id: string, on: boolean) =>
+    setScopes((prev) => (on ? [...prev, id] : prev.filter((s) => s !== id)));
+  // Which token is being re-permissioned, and the set being edited.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editScopes, setEditScopes] = useState<string[]>([]);
   const [minted, setMinted] = useState<CreateTokenResult | null>(null);
   const [exePath, setExePath] = useState<string>("");
 
@@ -95,15 +95,7 @@ export default function ConnectMcpDialog({
         "/api/v1/auth/tokens",
         {
           name: name.trim() || "Claude Code",
-          scopes: [
-            ...(canCreateTasks ? ["tasks:write"] : []),
-            ...(canManageTasks ? ["tasks:manage"] : []),
-            ...(canCreateNotes ? ["notes:write"] : []),
-            ...(canManageNotes ? ["notes:manage"] : []),
-            ...(canReplyReports ? ["reports:write"] : []),
-            ...(canTriageReports ? ["reports:manage"] : []),
-            ...(canCreateCollections ? ["collections:write"] : []),
-          ],
+          scopes,
         },
         true,
       );
@@ -112,6 +104,25 @@ export default function ConnectMcpDialog({
       load();
     } catch (e) {
       toast.error("Could not create token", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  };
+
+  const saveScopes = async (t: AccessToken) => {
+    try {
+      // The secret is untouched — this is what the token may do, not who it is,
+      // so nothing anywhere has to be re-pasted.
+      const res = await api.patch<APIResponse<AccessToken>>(
+        `/api/v1/auth/tokens/${t.id}`,
+        { scopes: editScopes },
+      );
+      if (!res.success) throw new Error(res.error ?? "Failed");
+      setEditing(null);
+      load();
+      toast.success(`Permissions updated for "${t.name}"`);
+    } catch (e) {
+      toast.error("Could not update permissions", {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -200,114 +211,7 @@ export default function ConnectMcpDialog({
                   page can't overwrite anyone's work — changing one can. Reading
                   needs no permission at all, which is why another app can drive
                   its own "my reports" view with a token that grants nothing. */}
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canCreateTasks}
-                    onChange={(e) => setCanCreateTasks(e.target.checked)}
-                  />
-                  <span>
-                    <span className="text-foreground">Create tasks and comments</span>
-                    <span className="block">
-                      Append-only: it can add, never replace what someone wrote.
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canManageTasks}
-                    onChange={(e) => setCanManageTasks(e.target.checked)}
-                  />
-                  <span>
-                    <span className="text-foreground">Change existing tasks</span>
-                    <span className="block">
-                      Move them between columns, and overwrite title, description or
-                      priority. Needed to mark work as done.
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canCreateNotes}
-                    onChange={(e) => setCanCreateNotes(e.target.checked)}
-                  />
-                  <span>
-                    <span className="text-foreground">Create pages in Notes</span>
-                    <span className="block">
-                      Append-only: adds a new page, never touches one that already
-                      exists. What a migration from another notes app needs.
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canManageNotes}
-                    onChange={(e) => setCanManageNotes(e.target.checked)}
-                  />
-                  <span>
-                    <span className="text-foreground">Change existing pages</span>
-                    <span className="block">
-                      Overwrites a page's title or body outright — the note's own
-                      conflict/history safeguards still apply, but the content changes.
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canReplyReports}
-                    onChange={(e) => setCanReplyReports(e.target.checked)}
-                  />
-                  <span>
-                    <span className="text-foreground">Reply to reports</span>
-                    <span className="block">
-                      Append-only: add a comment or attach an image to a report.
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canTriageReports}
-                    onChange={(e) => setCanTriageReports(e.target.checked)}
-                  />
-                  <span>
-                    <span className="text-foreground">Triage reports</span>
-                    <span className="block">
-                      Change status, assignee, priority, category or area, remove a
-                      report's screenshots, and correct or withdraw comments{" "}
-                      <span className="text-foreground">you</span> wrote — never
-                      anyone else's, which cac refuses outright.
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={canCreateCollections}
-                    onChange={(e) => setCanCreateCollections(e.target.checked)}
-                  />
-                  <span>
-                    <span className="text-foreground">Create request collections</span>
-                    <span className="block">
-                      Leaves a described API ready to run. Creating only — editing,
-                      deleting and sharing one stay out of reach, sharing because it
-                      reaches other people.
-                    </span>
-                  </span>
-                </label>
-              </div>
+              <ScopeChecklist selected={scopes} onToggle={toggleScope} />
               <p className="text-[11px] text-muted-foreground">
                 Without any of these, the token can only read — which already covers
                 listing and opening reports, tasks and notes. Deleting anything, and
@@ -332,24 +236,64 @@ export default function ConnectMcpDialog({
             ) : (
               <div className="divide-y rounded-lg border">
                 {tokens.map((t) => (
-                  <div key={t.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                    <span className="truncate font-medium">{t.name}</span>
-                    <code className="text-[11px] text-muted-foreground">{t.preview}</code>
-                    <span className="ml-auto text-[11px] text-muted-foreground">
-                      {t.lastUsedAt
-                        ? `used ${new Date(t.lastUsedAt).toLocaleDateString()}`
-                        : "never used"}
-                      {t.expiresAt && ` · expires ${new Date(t.expiresAt).toLocaleDateString()}`}
-                    </span>
-                    <Button
-                      size="icon-xs"
-                      variant="ghost"
-                      className="text-destructive/70 hover:text-destructive"
-                      onClick={() => revoke(t)}
-                      title="Revoke"
-                    >
-                      <Trash2 className="size-3" />
-                    </Button>
+                  <div key={t.id} className="px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{t.name}</span>
+                      <code className="text-[11px] text-muted-foreground">{t.preview}</code>
+                      <span className="ml-auto text-[11px] text-muted-foreground">
+                        {t.lastUsedAt
+                          ? `used ${new Date(t.lastUsedAt).toLocaleDateString()}`
+                          : "never used"}
+                        {t.expiresAt && ` · expires ${new Date(t.expiresAt).toLocaleDateString()}`}
+                      </span>
+                      <Button
+                        size="icon-xs"
+                        variant="ghost"
+                        title="Change permissions"
+                        onClick={() => {
+                          setEditing(editing === t.id ? null : t.id);
+                          setEditScopes(t.scopes ?? []);
+                        }}
+                      >
+                        <Pencil className="size-3" />
+                      </Button>
+                      <Button
+                        size="icon-xs"
+                        variant="ghost"
+                        className="text-destructive/70 hover:text-destructive"
+                        onClick={() => revoke(t)}
+                        title="Revoke"
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                    {editing === t.id ? (
+                      <div className="mt-2 space-y-2 rounded border bg-muted/30 p-2">
+                        <ScopeChecklist
+                          selected={editScopes}
+                          onToggle={(id, on) =>
+                            setEditScopes((prev) =>
+                              on ? [...prev, id] : prev.filter((s) => s !== id),
+                            )
+                          }
+                          compact
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          The token itself doesn't change — nothing holding it has to be
+                          updated.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => saveScopes(t)}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {describeScopes(t.scopes)}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

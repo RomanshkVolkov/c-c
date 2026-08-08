@@ -77,6 +77,10 @@ func TestAppendScopeCannotChangeExistingWork(t *testing.T) {
 func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 	unreachable := []*http.Request{
 		req(http.MethodPost, "/api/v1/auth/tokens"),
+		// The one that matters most: a token must not be able to widen its own
+		// permissions. Re-permissioning takes a real session.
+		req(http.MethodPatch, "/api/v1/auth/tokens/abc"),
+		req(http.MethodDelete, "/api/v1/auth/tokens/abc"),
 		req(http.MethodDelete, "/api/v1/tasks/abc"),
 		req(http.MethodDelete, "/api/v1/task-lists/abc/tasks"),
 		req(http.MethodPost, "/api/v1/task-lists/abc/tasks/extra"),

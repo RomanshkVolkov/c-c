@@ -80,6 +80,35 @@ func (s *TokenService) List(userID string) ([]domain.TokenResponse, error) {
 	return out, nil
 }
 
+// Update re-permissions a token in place. The secret never changes: what a
+// credential may do and what proves it is the holder are different questions,
+// and rotating the second to answer the first is what makes people over-grant
+// on the first try.
+//
+// Unknown scopes are dropped here exactly as they are at mint — the same
+// sanitizer, so a string that would read as "granted" to some future check can
+// never be stored by either path.
+func (s *TokenService) Update(id, userID string, req domain.UpdateTokenRequest) (*domain.TokenResponse, error) {
+	fields := map[string]any{}
+	if req.Name != nil {
+		fields["name"] = strings.TrimSpace(*req.Name)
+	}
+	if req.Scopes != nil {
+		fields["scopes"] = sanitizeScopes(*req.Scopes)
+	}
+	if err := s.repo.Update(id, userID, fields); err != nil {
+		return nil, err
+	}
+	t, err := s.repo.FindByIDForUser(id, userID)
+	if err != nil {
+		return nil, err
+	}
+	// Read back rather than echo the request: sanitizeScopes may have dropped
+	// something, and the caller should see what was actually stored.
+	out := toTokenResponse(t)
+	return &out, nil
+}
+
 func (s *TokenService) Revoke(id, userID string) error {
 	return s.repo.Delete(id, userID)
 }

@@ -13,6 +13,7 @@ import (
 type TokenHandler interface {
 	List(w http.ResponseWriter, r *http.Request)
 	Create(w http.ResponseWriter, r *http.Request)
+	Update(w http.ResponseWriter, r *http.Request)
 	Revoke(w http.ResponseWriter, r *http.Request)
 }
 
@@ -57,6 +58,32 @@ func (h *tokenHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.CreateTokenResult]{Success: true, Data: result})
+}
+
+// Update changes a token's name or scopes without rotating its secret. Like
+// Create, reachable only with a JWT — a token must not be able to widen its own
+// permissions, which is why this is not on the PAT allowlist.
+func (h *tokenHandler) Update(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	req, err := ValidateRequest[domain.UpdateTokenRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	updated, err := h.svc.Update(chi.URLParam(r, "id"), user.UserID, req)
+	if err != nil {
+		if errors.Is(err, repository.ErrTokenNotFound) {
+			SendErrorResponse(w, http.StatusNotFound, "Token not found", "not-found")
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update token", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.TokenResponse]{Success: true, Data: updated})
 }
 
 func (h *tokenHandler) Revoke(w http.ResponseWriter, r *http.Request) {

@@ -30,6 +30,26 @@ type CreateTokenRequest struct {
 	ExpiresInDays int `json:"expiresInDays" validate:"omitempty,min=-1,max=3650"`
 }
 
+// UpdateTokenRequest changes what an existing token may do, without minting a
+// new one.
+//
+// Rotating the secret to change a permission was the alternative, and it costs
+// more than it looks: the value is shown once, so every place holding it has to
+// be found and updated. The predictable outcome is asking for more scopes than
+// needed the first time, to avoid ever doing it again — which is the opposite
+// of what a scoped token is for.
+//
+// The secret is untouched: this is authorization, not authentication.
+type UpdateTokenRequest struct {
+	// Name renames the token. Omitted (nil) leaves it alone.
+	Name *string `json:"name" validate:"omitempty,min=1,max=120"`
+	// Scopes replaces the set outright — the same all-or-nothing shape as
+	// minting, so "what this token may do" is always the whole answer and never
+	// a diff someone has to reconstruct. Omitted (nil) leaves them alone; an
+	// empty array is meaningful and makes the token read-only.
+	Scopes *[]string `json:"scopes"`
+}
+
 type TokenResponse struct {
 	ID         string     `json:"id"`
 	Name       string     `json:"name"`

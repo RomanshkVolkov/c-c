@@ -56,6 +56,37 @@ func (r *TokenRepository) Delete(id, userID string) error {
 	return nil
 }
 
+// Update changes a token's name and scopes, scoped to its owner for the same
+// reason Delete is: one user must not be able to re-permission another's token.
+//
+// Takes a map rather than a struct so an empty scope string — "make this
+// read-only" — actually gets written. GORM's struct updates skip zero values,
+// which would silently turn the most security-relevant edit into a no-op.
+func (r *TokenRepository) Update(id, userID string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	res := r.db.Model(&domain.PersonalAccessToken{}).
+		Where("id = ? AND user_id = ?", id, userID).
+		Updates(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrTokenNotFound
+	}
+	return nil
+}
+
+// FindByIDForUser reads one of the caller's own tokens.
+func (r *TokenRepository) FindByIDForUser(id, userID string) (*domain.PersonalAccessToken, error) {
+	var t domain.PersonalAccessToken
+	if err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&t).Error; err != nil {
+		return nil, ErrTokenNotFound
+	}
+	return &t, nil
+}
+
 // TouchLastUsed records usage, throttled to at most one write per minute so a
 // busy client doesn't add a DB write to every request.
 func (r *TokenRepository) TouchLastUsed(id string, now time.Time) {

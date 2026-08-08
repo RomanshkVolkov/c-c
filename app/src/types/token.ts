@@ -5,6 +5,8 @@ export interface AccessToken {
   lastUsedAt?: string | null;
   expiresAt?: string | null;
   createdAt: string;
+  /** Empty or absent means read-only. */
+  scopes?: string[];
 }
 
 export interface CreateTokenResult {

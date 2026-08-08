@@ -28,6 +28,7 @@ func InitAuthRoutes(db *gorm.DB, r *chi.Mux) {
 		// which the middleware refuses for PATs.
 		r.With(middleware.AuthMiddleware).Get("/tokens", tokens.List)
 		r.With(middleware.AuthMiddleware).Post("/tokens", tokens.Create)
+		r.With(middleware.AuthMiddleware).Patch("/tokens/{id}", tokens.Update)
 		r.With(middleware.AuthMiddleware).Delete("/tokens/{id}", tokens.Revoke)
 	})
 }
