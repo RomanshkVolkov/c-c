@@ -20,6 +20,11 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		method, path, want string
 	}{
 		{http.MethodPost, "/api/v1/task-lists/abc-123/tasks", domain.ScopeTasksWrite},
+		// The tree a task lives in. Adding to it is append-only; removing from
+		// it is not on the allowlist at all.
+		{http.MethodPost, "/api/v1/task-spaces/", domain.ScopeTasksWrite},
+		{http.MethodPost, "/api/v1/task-spaces/abc/folders", domain.ScopeTasksWrite},
+		{http.MethodPost, "/api/v1/task-spaces/abc/lists", domain.ScopeTasksWrite},
 		{http.MethodPost, "/api/v1/tasks/abc/comments", domain.ScopeTasksWrite},
 		{http.MethodPatch, "/api/v1/tasks/abc", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/tasks/abc/move", domain.ScopeTasksManage},
@@ -61,6 +66,9 @@ func TestAppendScopeCannotChangeExistingWork(t *testing.T) {
 // Everything not on the allowlist stays out of reach for any token, scoped or
 // not — deleting, minting tokens, creating users, touching the hierarchy.
 //
+// `POST /task-spaces/` moved out too: building the tree is adding, and an
+// agent that can write tasks but not the list to put them in is half a tool.
+//
 // `PATCH /tasks/{id}/comments/{id}` used to be on this list and deliberately
 // so. It moved out for the same reason the report one did: a token is the
 // person, the handler still refuses anyone else's comment, and leaving it here
@@ -72,7 +80,6 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodDelete, "/api/v1/task-lists/abc/tasks"),
 		req(http.MethodPost, "/api/v1/task-lists/abc/tasks/extra"),
 		req(http.MethodPost, "/api/v1/task-lists/abc/statuses"),
-		req(http.MethodPost, "/api/v1/task-spaces/"),
 		req(http.MethodPost, "/api/v1/users/"),
 		req(http.MethodPut, "/api/v1/docs/space/abc"),
 		req(http.MethodDelete, "/api/v1/notes/abc"),

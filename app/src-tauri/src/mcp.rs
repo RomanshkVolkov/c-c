@@ -539,6 +539,47 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "create_task_space",
+            "description": "Create a space: the top of the task tree, one per project or area. Needs `tasks:write`. Deleting one is not available to a token at all.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "orgId": { "type": "string", "description": "Organization the space belongs to." },
+                    "name": { "type": "string" },
+                    "color": { "type": "string", "description": "Optional." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["orgId", "name"]
+            }
+        },
+        {
+            "name": "create_task_folder",
+            "description": "Create a folder inside a space, to group its lists. Optional — a list can hang straight off the space. Needs `tasks:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spaceId": { "type": "string", "description": "From list_task_spaces." },
+                    "name": { "type": "string" },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["spaceId", "name"]
+            }
+        },
+        {
+            "name": "create_task_list",
+            "description": "Create a list — the board tasks actually live on. It comes with its three default columns, so create_task works against it immediately. Needs `tasks:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spaceId": { "type": "string", "description": "From list_task_spaces." },
+                    "name": { "type": "string" },
+                    "folderId": { "type": "string", "description": "Optional; omit to hang the list straight off the space." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["spaceId", "name"]
+            }
+        },
+        {
             "name": "add_task_comment",
             "description": "Append a markdown comment to a task. Append-only: it cannot overwrite anything, which makes it the right place for an agent to record findings. Needs `tasks:write`.",
             "inputSchema": {
@@ -958,6 +999,66 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     "column": after.get("status").and_then(|st| st.get("name")),
                     "columnKind": after.get("status").and_then(|st| st.get("kind")),
                 }
+            }))
+        }
+
+        "create_task_space" => {
+            let org_id = arg_str(args, "orgId").ok_or("orgId is required")?;
+            let name = arg_str(args, "name").ok_or("name is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, "/api/v1/task-spaces/");
+                return dry_run(cfg, "tasks:write", target);
+            }
+            let mut body = json!({ "orgId": org_id, "name": name });
+            if let Some(color) = arg_str(args, "color") {
+                body["color"] = json!(color);
+            }
+            let space = api_post(cfg, "/api/v1/task-spaces/", body)?;
+            Ok(json!({
+                "spaceId": space.get("id"),
+                "name": space.get("name"),
+                "note": "A space holds no tasks directly — create a list in it next."
+            }))
+        }
+
+        "create_task_folder" => {
+            let space_id = arg_str(args, "spaceId").ok_or("spaceId is required")?;
+            let name = arg_str(args, "name").ok_or("name is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, "/api/v1/task-spaces/");
+                return dry_run(cfg, "tasks:write", target);
+            }
+            let folder = api_post(
+                cfg,
+                &format!("/api/v1/task-spaces/{}/folders", urlencode(&space_id)),
+                json!({ "name": name }),
+            )?;
+            Ok(json!({ "folderId": folder.get("id"), "name": folder.get("name"), "spaceId": space_id }))
+        }
+
+        "create_task_list" => {
+            let space_id = arg_str(args, "spaceId").ok_or("spaceId is required")?;
+            let name = arg_str(args, "name").ok_or("name is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, "/api/v1/task-spaces/");
+                return dry_run(cfg, "tasks:write", target);
+            }
+            let mut body = json!({ "name": name });
+            // The route lives under the space even when the list goes in a
+            // folder — the folder is where it hangs, not who owns it.
+            if let Some(folder_id) = arg_str(args, "folderId") {
+                body["folderId"] = json!(folder_id);
+            }
+            let list = api_post(
+                cfg,
+                &format!("/api/v1/task-spaces/{}/lists", urlencode(&space_id)),
+                body,
+            )?;
+            Ok(json!({
+                "listId": list.get("id"),
+                "name": list.get("name"),
+                "spaceId": space_id,
+                "note": "Ready for create_task; get_board returns its columns."
             }))
         }
 

@@ -225,6 +225,13 @@ var patWritable = []struct {
 	scope  string
 }{
 	// Append-only.
+	// The scaffolding a task needs to exist in. Creating a space, folder or
+	// list adds and destroys nothing — deleting one stays off this list — and
+	// without it an agent could write tasks but not the list to hold them, so
+	// setting up a new project meant stopping to build the tree by hand.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-spaces/?$`), domain.ScopeTasksWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-spaces/[^/]+/folders/?$`), domain.ScopeTasksWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-spaces/[^/]+/lists/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-lists/[^/]+/tasks/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/?$`), domain.ScopeTasksWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/?$`), domain.ScopeNotesWrite},
