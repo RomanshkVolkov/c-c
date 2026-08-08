@@ -84,7 +84,24 @@ export default function AppSidebar() {
     <Sidebar collapsible="icon" variant="sidebar">
       {authed && (
         <SidebarHeader>
-          <OrgSwitcher />
+          <div className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <OrgSwitcher />
+            </div>
+            <button
+              type="button"
+              title="Notifications"
+              onClick={() => setNotifOpen(true)}
+              className="relative shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Bell className="size-4" />
+              {unreadNotifications > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                </span>
+              )}
+            </button>
+          </div>
         </SidebarHeader>
       )}
 
@@ -127,19 +144,6 @@ export default function AppSidebar() {
           <SidebarMenuItem>
             <UpdateCheckButton />
           </SidebarMenuItem>
-          {authed && (
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Notifications" onClick={() => setNotifOpen(true)}>
-                <Bell className="size-4" />
-                <span>Notifications</span>
-                {unreadNotifications > 0 && (
-                  <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
-                    {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                  </span>
-                )}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
           {authed && (
             <SidebarMenuItem>
               <SidebarMenuButton tooltip="Change password" onClick={() => setPwOpen(true)}>
