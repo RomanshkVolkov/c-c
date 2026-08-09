@@ -54,18 +54,22 @@
     --popover-foreground: oklch(0.145 0 0);
     /* Brand cyan darkened for light backgrounds: #20D9E8 as a fill would leave
        any label on it unreadable (~1.4:1 against white). */
-    --primary: #0E7C88;
+    --primary: #00717D;
     --primary-foreground: #F2F5F9;
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
+    /* Darkened from oklch(0.556): that value cleared AA by 0.03 against the
+       sidebar — passing, with no room. Every light token below is set to
+       5.5:1 on the lightest surface instead, so a later tweak to a surface
+       can't drop it under 4.5 without anyone noticing. */
+    --muted-foreground: oklch(0.5103 0 0);
     --accent: oklch(0.97 0 0);
     --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
+    --destructive: oklch(0.5186 0.2388 28.49);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
-    --ring: #0E7C88;
+    --ring: #00717D;
     /* Same hues as dark, darkened to stay legible on white. */
     --chart-1: #0E9AA7;
     --chart-2: #7C3AED;
@@ -75,17 +79,17 @@
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: #0E7C88;
+    --sidebar-primary: #00717D;
     --sidebar-primary-foreground: #F2F5F9;
     --sidebar-accent: oklch(0.97 0 0);
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: #0E7C88;
+    --sidebar-ring: #00717D;
 
     /* Status colors, exposed as tokens so pages stop hardcoding Tailwind
        palette classes (text-green-500 & friends). */
-    --success: #047857;
-    --warning: #B45309;
+    --success: #007554;
+    --warning: #A94900;
     --error: #BE123C;
     --info: #0369A1;
 }
