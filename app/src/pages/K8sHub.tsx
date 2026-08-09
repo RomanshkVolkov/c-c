@@ -113,7 +113,7 @@ export default function K8sHub({ server }: { server: Server }) {
                         <span className="text-xs text-muted-foreground">{g.namespace}</span>
                         <Badge
                           variant={g.programmed ? "default" : "destructive"}
-                          className="ml-auto text-[0.625rem]"
+                          className="ml-auto text-xs"
                         >
                           {g.programmed ? "programmed" : "not programmed"}
                         </Badge>
@@ -141,7 +141,7 @@ export default function K8sHub({ server }: { server: Server }) {
                         <Globe className="size-4 shrink-0 text-muted-foreground" />
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-medium">{host}</div>
-                          <div className="truncate text-[0.6875rem] text-muted-foreground">
+                          <div className="truncate text-xs text-muted-foreground">
                             {r.name} · {r.gateway || "no gateway"}
                           </div>
                         </div>

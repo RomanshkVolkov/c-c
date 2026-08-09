@@ -138,7 +138,7 @@ class Popup {
       const title = document.createElement("span");
       title.textContent = item.title;
       const hint = document.createElement("span");
-      hint.className = "font-mono text-[0.625rem] text-muted-foreground";
+      hint.className = "font-mono text-xs text-muted-foreground";
       hint.textContent = item.hint;
       row.append(title, hint);
       // mousedown, not click: a click would first blur the editor and lose the

@@ -373,7 +373,7 @@ function Content() {
             {detail.tags.map((t) => (
               <span
                 key={t.id}
-                className="rounded px-1.5 py-0.5 text-[0.6875rem]"
+                className="rounded px-1.5 py-0.5 text-xs"
                 style={{ backgroundColor: `${t.color || "#8B5CF6"}22`, color: t.color || undefined }}
               >
                 {t.name}
@@ -382,7 +382,7 @@ function Content() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className="rounded border border-dashed px-1.5 py-0.5 text-[0.6875rem] text-muted-foreground hover:text-foreground">
+                  <button className="rounded border border-dashed px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground">
                     + tag
                   </button>
                 }
@@ -428,7 +428,7 @@ function Content() {
           </span>
           <div className="flex flex-wrap items-center gap-1">
             {detail.assignees.map((a) => (
-              <Badge key={a.id} variant="secondary" className="gap-1 text-[0.6875rem]">
+              <Badge key={a.id} variant="secondary" className="gap-1 text-xs">
                 {a.username}
                 <button
                   onClick={() =>
@@ -549,7 +549,7 @@ function Content() {
                   </button>
                   <span className="shrink-0 text-muted-foreground">{Math.round(a.bytes / 1024)} KB</span>
                   {task.description.includes(a.id) && (
-                    <span className="shrink-0 rounded bg-muted px-1 text-[0.625rem] text-muted-foreground">
+                    <span className="shrink-0 rounded bg-muted px-1 text-xs text-muted-foreground">
                       in description
                     </span>
                   )}
@@ -638,7 +638,7 @@ function Content() {
                     >
                       {st.title}
                     </button>
-                    <span className="shrink-0 font-mono text-[0.625rem] text-muted-foreground">#{st.seq}</span>
+                    <span className="shrink-0 font-mono text-xs text-muted-foreground">#{st.seq}</span>
                   </div>
                 );
               })}
@@ -688,7 +688,7 @@ function Content() {
         >
           <Trash2 className="size-3 mr-1" /> Delete task
         </Button>
-        <span className="ml-auto text-[0.6875rem] text-muted-foreground">
+        <span className="ml-auto text-xs text-muted-foreground">
           Updated {new Date(task.updatedAt).toLocaleString()}
         </span>
       </footer>

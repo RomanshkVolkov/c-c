@@ -51,10 +51,10 @@ export default function PendingSummary() {
             meta={`${r.folio} · ${r.projectName}`}
             right={
               <>
-                <Badge variant="outline" className="py-0 text-[0.625rem]">
+                <Badge variant="outline" className="py-0 text-xs">
                   {STATUS_LABELS[r.status]}
                 </Badge>
-                <span className="text-[0.625rem] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {PRIORITY_LABELS[r.priority] ?? r.priority}
                 </span>
               </>
@@ -79,10 +79,10 @@ export default function PendingSummary() {
             meta={`${t.spaceName} · ${t.listName}`}
             right={
               <>
-                <Badge variant="outline" className="py-0 text-[0.625rem]">
+                <Badge variant="outline" className="py-0 text-xs">
                   {t.statusName}
                 </Badge>
-                <span className={`text-[0.625rem] ${PRIORITY_META[t.priority]?.className ?? ""}`}>
+                <span className={`text-xs ${PRIORITY_META[t.priority]?.className ?? ""}`}>
                   {t.dueAt ? formatDue(t.dueAt) : PRIORITY_META[t.priority]?.label}
                 </span>
               </>

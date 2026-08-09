@@ -73,7 +73,7 @@ export default function DocView() {
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <FileText className="size-4 shrink-0 text-muted-foreground" />
         <h1 className="truncate text-sm font-medium">{target.name}</h1>
-        <span className="rounded bg-muted px-1.5 py-0.5 text-[0.625rem] uppercase tracking-wide text-muted-foreground">
+        <span className="rounded bg-muted px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted-foreground">
           {KIND_LABEL[target.kind] ?? target.kind} overview
         </span>
         <CopyId id={target.id} label={target.kind} />

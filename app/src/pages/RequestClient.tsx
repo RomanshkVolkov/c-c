@@ -275,7 +275,7 @@ function SectionHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1.5 px-3 py-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-muted-foreground sticky top-0 bg-muted/10 backdrop-blur-sm z-10">
+    <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground sticky top-0 bg-muted/10 backdrop-blur-sm z-10">
       {icon}
       <span className="flex-1 truncate">{title}</span>
       {count !== undefined && (
@@ -449,7 +449,7 @@ function LocalTreeItem({ node, depth }: { node: RequestTreeNode; depth: number }
         ) : (
           <span
             className={cn(
-              "text-[0.625rem] font-bold w-10 shrink-0 text-left font-mono",
+              "text-xs font-bold w-10 shrink-0 text-left font-mono",
               METHOD_COLORS[node.method],
             )}
           >
@@ -835,7 +835,7 @@ function RemoteCollectionItem({ collection }: { collection: CollectionMeta }) {
         {!collection.isOwner && (
           <Badge
             variant={writable ? "default" : "secondary"}
-            className="h-4 text-[0.5625rem] px-1 font-normal"
+            className="h-4 text-xs px-1 font-normal"
           >
             {collection.permission}
           </Badge>
@@ -1032,7 +1032,7 @@ function RemoteTreeItem({
         ) : (
           <span
             className={cn(
-              "text-[0.625rem] font-bold w-10 shrink-0 text-left font-mono",
+              "text-xs font-bold w-10 shrink-0 text-left font-mono",
               METHOD_COLORS[node.method],
             )}
           >
@@ -1366,7 +1366,7 @@ function ShareDialog({
                     </span>
                     <Badge
                       variant={s.permission === "write" ? "default" : "secondary"}
-                      className="text-[0.625rem] h-4 px-1.5"
+                      className="text-xs h-4 px-1.5"
                     >
                       {s.permission}
                     </Badge>
@@ -1511,7 +1511,7 @@ function RequestEditor({
             {writable ? "Remote — autosaving" : "Remote — read-only"}
           </span>
           {writable && (
-            <span className="font-mono text-[0.625rem]">
+            <span className="font-mono text-xs">
               {saveError ? (
                 <span className="text-destructive">save failed</span>
               ) : saving ? (

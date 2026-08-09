@@ -102,7 +102,7 @@ export default function UserPicker({
                 onClick={() => pick(u)}
               >
                 <span className="flex-1 truncate">{u.username}</span>
-                <span className="font-mono text-[0.625rem] text-muted-foreground">
+                <span className="font-mono text-xs text-muted-foreground">
                   {u.id.slice(0, 8)}
                 </span>
               </button>

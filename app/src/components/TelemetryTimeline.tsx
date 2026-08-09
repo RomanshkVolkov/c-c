@@ -64,7 +64,7 @@ export default function TelemetryTimeline({ data }: { data: ReportTelemetry }) {
                 <div className="min-w-0 flex-1">
                   <span className="break-words">{e.label}</span>
                   {e.detail && (
-                    <pre className="mt-0.5 whitespace-pre-wrap break-words font-mono text-[0.6875rem] text-muted-foreground">
+                    <pre className="mt-0.5 whitespace-pre-wrap break-words font-mono text-xs text-muted-foreground">
                       {e.detail}
                     </pre>
                   )}

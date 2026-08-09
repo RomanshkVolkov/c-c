@@ -245,7 +245,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             <ListNode key={list.id} list={list} />
           ))}
           {space.folders.length === 0 && space.lists.length === 0 && (
-            <p className="px-2 py-1 text-[0.6875rem] text-muted-foreground">Empty</p>
+            <p className="px-2 py-1 text-xs text-muted-foreground">Empty</p>
           )}
         </div>
       )}
@@ -371,7 +371,7 @@ function ListNode({ list }: { list: { id: string; name: string; taskCount: numbe
         <FileText className="size-3 shrink-0 text-muted-foreground" />
       )}
       {list.taskCount > 0 && (
-        <span className="text-[0.6875rem] text-muted-foreground">{list.taskCount}</span>
+        <span className="text-xs text-muted-foreground">{list.taskCount}</span>
       )}
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -484,7 +484,7 @@ function Board() {
         <h1 className="truncate text-sm font-medium">{board.list.name}</h1>
         {/* create_task takes this listId. */}
         <CopyId id={board.list.id} label="list" />
-        <Badge variant="secondary" className="text-[0.625rem]">
+        <Badge variant="secondary" className="text-xs">
           {board.tasks.length} tasks
         </Badge>
         <div className="ml-2 flex rounded-md border p-0.5">
@@ -592,30 +592,30 @@ function ListView({
                     onClick={() => onOpen(t.id)}
                     className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-accent/50"
                   >
-                    <span className="w-10 shrink-0 font-mono text-[0.6875rem] text-muted-foreground">
+                    <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">
                       #{t.seq}
                     </span>
                     <span className="min-w-0 flex-1 truncate">{t.title}</span>
                     {t.tags.slice(0, 3).map((g) => (
                       <span
                         key={g.id}
-                        className="hidden rounded px-1.5 py-0.5 text-[0.625rem] sm:inline"
+                        className="hidden rounded px-1.5 py-0.5 text-xs sm:inline"
                         style={{ backgroundColor: `${g.color || "#8B5CF6"}22`, color: g.color || undefined }}
                       >
                         {g.name}
                       </span>
                     ))}
                     {t.priority !== "none" && (
-                      <span className={cn("shrink-0 text-[0.6875rem]", PRIORITY_META[t.priority].className)}>
+                      <span className={cn("shrink-0 text-xs", PRIORITY_META[t.priority].className)}>
                         {PRIORITY_META[t.priority].label}
                       </span>
                     )}
                     {t.dueAt && (
-                      <span className="shrink-0 text-[0.6875rem] text-muted-foreground">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {new Date(t.dueAt).toLocaleDateString()}
                       </span>
                     )}
-                    <span className="flex shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground">
+                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                       {t.commentCount > 0 && (
                         <>
                           <MessageSquare className="size-3" />
@@ -626,7 +626,7 @@ function ListView({
                         <span
                           key={a.id}
                           title={a.username}
-                          className="inline-flex size-4 items-center justify-center rounded-full bg-primary/20 text-[0.5625rem] uppercase text-foreground"
+                          className="inline-flex size-4 items-center justify-center rounded-full bg-primary/20 text-xs uppercase text-foreground"
                         >
                           {a.username.slice(0, 2)}
                         </span>
@@ -684,7 +684,7 @@ function ColumnMenu({
             <Pencil className="size-4" /> Rename
           </DropdownMenuItem>
 
-          <DropdownMenuLabel className="text-[0.6875rem] text-muted-foreground">Means</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-xs text-muted-foreground">Means</DropdownMenuLabel>
           {KINDS.map((k) => (
             <DropdownMenuItem
               key={k.value}
@@ -699,7 +699,7 @@ function ColumnMenu({
             </DropdownMenuItem>
           ))}
 
-          <DropdownMenuLabel className="text-[0.6875rem] text-muted-foreground">Colour</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-xs text-muted-foreground">Colour</DropdownMenuLabel>
           <div className="flex gap-1 px-2 pb-1">
             {COLORS.map((c) => (
               <button
@@ -770,7 +770,7 @@ function TaskCardView({
           {card.tags.map((t) => (
             <span
               key={t.id}
-              className="rounded px-1.5 py-0.5 text-[0.625rem]"
+              className="rounded px-1.5 py-0.5 text-xs"
               style={{
                 backgroundColor: `${t.color || "#8B5CF6"}22`,
                 color: t.color || "var(--foreground)",
@@ -782,7 +782,7 @@ function TaskCardView({
         </div>
       )}
 
-      <div className="mt-2 flex items-center gap-2 text-[0.6875rem] text-muted-foreground">
+      <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
         {card.hasDescription && <FileText className="size-3" />}
         {card.commentCount > 0 && (
           <span className="flex items-center gap-0.5">
@@ -821,7 +821,7 @@ function TaskCardView({
               <span
                 key={a.id}
                 title={a.username}
-                className="inline-flex size-4 items-center justify-center rounded-full bg-primary/20 text-[0.5625rem] uppercase text-foreground"
+                className="inline-flex size-4 items-center justify-center rounded-full bg-primary/20 text-xs uppercase text-foreground"
               >
                 {a.username.slice(0, 2)}
               </span>

@@ -194,9 +194,9 @@ function IntegrationTile({
           <span className="truncate font-medium">{it.name}</span>
           <ExternalLink className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
         </button>
-        <Badge variant="secondary" className="text-[0.625rem]">{it.kind}</Badge>
+        <Badge variant="secondary" className="text-xs">{it.kind}</Badge>
         {it.authMethod === "header" && (
-          <Badge className="text-[0.625rem]" title="Opens signed in through cac">SSO</Badge>
+          <Badge className="text-xs" title="Opens signed in through cac">SSO</Badge>
         )}
         {canAdmin && (
           <>
@@ -209,7 +209,7 @@ function IntegrationTile({
           </>
         )}
       </div>
-      <p className="mt-1 truncate font-mono text-[0.6875rem] text-muted-foreground">{it.url}</p>
+      <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{it.url}</p>
 
       {it.hasSecret && canReveal && (
         <div className="mt-2">
@@ -219,7 +219,7 @@ function IntegrationTile({
             </Button>
           ) : (
             <div className="flex items-center gap-1.5">
-              <pre className="flex-1 overflow-auto rounded bg-muted/50 px-2 py-1 text-[0.6875rem] whitespace-pre-wrap break-all">
+              <pre className="flex-1 overflow-auto rounded bg-muted/50 px-2 py-1 text-xs whitespace-pre-wrap break-all">
                 {revealed || "(empty)"}
               </pre>
               <Button size="icon-xs" variant="ghost" onClick={copy} title="Copy">
@@ -330,7 +330,7 @@ function IntegrationDialog({
             />
             <span>
               Open through cac (SSO)
-              <span className="block text-[0.6875rem] text-muted-foreground">
+              <span className="block text-xs text-muted-foreground">
                 cac proxies the tool and signs you in as your cac user. Requires the
                 tool to trust proxy auth (Grafana <code>auth.proxy</code>). Use an
                 in-cluster URL — it needs no public exposure.
@@ -345,7 +345,7 @@ function IntegrationDialog({
               onChange={(e) => setSecret(e.target.value)}
               placeholder={editing?.hasSecret ? "•••• (unchanged)" : "user/pass or token"}
             />
-            <p className="text-[0.6875rem] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Stored encrypted. {editing?.hasSecret && "Leave blank to keep the current one."}
             </p>
           </div>

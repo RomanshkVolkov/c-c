@@ -665,7 +665,7 @@ function Toolbar({
           />
         </>
       )}
-      <span className="ml-auto text-[0.625rem] text-muted-foreground">
+      <span className="ml-auto text-xs text-muted-foreground">
         markdown · paste or drop files
       </span>
     </div>

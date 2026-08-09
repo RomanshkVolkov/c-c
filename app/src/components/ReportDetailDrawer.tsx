@@ -314,7 +314,7 @@ export default function ReportDetailDrawer() {
                   {detail.folio}
                 </span>
                 {detail.origin === "system" && (
-                  <Badge variant="outline" className="text-[0.625rem] py-0">system</Badge>
+                  <Badge variant="outline" className="text-xs py-0">system</Badge>
                 )}
               </div>
               <SheetTitle className="text-base leading-snug">{detail.title}</SheetTitle>
@@ -514,7 +514,7 @@ function StagedFile({ file, onRemove }: { file: File; onRemove: () => void }) {
       ) : (
         <div
           title={file.name}
-          className="grid aspect-square w-full place-items-center rounded border border-dashed p-1 text-center text-[0.625rem] text-muted-foreground"
+          className="grid aspect-square w-full place-items-center rounded border border-dashed p-1 text-center text-xs text-muted-foreground"
         >
           <span className="truncate">{file.name}</span>
         </div>

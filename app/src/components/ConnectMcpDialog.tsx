@@ -36,7 +36,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
           {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
         </Button>
       </div>
-      <pre className="overflow-auto rounded bg-muted/50 px-2 py-1.5 text-[0.6875rem] whitespace-pre-wrap break-all">
+      <pre className="overflow-auto rounded bg-muted/50 px-2 py-1.5 text-xs whitespace-pre-wrap break-all">
         {value}
       </pre>
     </div>
@@ -212,7 +212,7 @@ export default function ConnectMcpDialog({
                   needs no permission at all, which is why another app can drive
                   its own "my reports" view with a token that grants nothing. */}
               <ScopeChecklist selected={scopes} onToggle={toggleScope} />
-              <p className="text-[0.6875rem] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Without any of these, the token can only read — which already covers
                 listing and opening reports, tasks and notes. Deleting anything, and
                 minting tokens, stay refused in every case.
@@ -239,8 +239,8 @@ export default function ConnectMcpDialog({
                   <div key={t.id} className="px-3 py-2 text-sm">
                     <div className="flex items-center gap-2">
                       <span className="truncate font-medium">{t.name}</span>
-                      <code className="text-[0.6875rem] text-muted-foreground">{t.preview}</code>
-                      <span className="ml-auto text-[0.6875rem] text-muted-foreground">
+                      <code className="text-xs text-muted-foreground">{t.preview}</code>
+                      <span className="ml-auto text-xs text-muted-foreground">
                         {t.lastUsedAt
                           ? `used ${new Date(t.lastUsedAt).toLocaleDateString()}`
                           : "never used"}
@@ -278,7 +278,7 @@ export default function ConnectMcpDialog({
                           }
                           compact
                         />
-                        <p className="text-[0.6875rem] text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           The token itself doesn't change — nothing holding it has to be
                           updated.
                         </p>
@@ -290,7 +290,7 @@ export default function ConnectMcpDialog({
                         </div>
                       </div>
                     ) : (
-                      <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {describeScopes(t.scopes)}
                       </p>
                     )}
@@ -314,7 +314,7 @@ export default function ConnectMcpDialog({
               title/body, triage a report, and correct or withdraw your own replies.
             </p>
             <p className="pt-1">
-              <Badge variant="secondary" className="text-[0.625rem]">Note</Badge> whatever it reads
+              <Badge variant="secondary" className="text-xs">Note</Badge> whatever it reads
               (reports, device telemetry, task and note content) is sent to your AI client.
             </p>
           </div>

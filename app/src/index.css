@@ -135,6 +135,20 @@
 }
 
 @theme inline {
+    /* One step in the scale, not a zoom.
+     *
+     * `text-xs` is this app's workhorse — 326 uses against 199 of `text-sm` —
+     * so in practice 12px was the body size. Desktop UIs sit at 13-14px for
+     * that job (macOS, GitHub's secondary text, Linear all land there), and
+     * 12px is a size for metadata, not for what you read.
+     *
+     * 13px moves the one that matters and leaves everything else alone:
+     * `text-sm` stays 14, `text-base` stays 16, spacing doesn't move, and no
+     * call site changes. Delete these two lines to go back to stock Tailwind.
+     */
+    --text-xs: 0.8125rem;
+    --text-xs--line-height: 1.125rem;
+
     --color-success: var(--success);
     --color-warning: var(--warning);
     --color-error: var(--error);
@@ -194,20 +208,6 @@
     }
   html {
     @apply font-sans;
-    /* The whole scale, up one notch: 16px → 17px.
-     *
-     * Tailwind's sizes and spacing are both in rem, so this lifts type and
-     * layout together and keeps every proportion the design already has —
-     * unlike editing 480 class names, which would drift the first time someone
-     * added a component.
-     *
-     * It's here because the app leaned on 12px for body text and 10-11px for
-     * anything secondary. That reads as dense next to a browser at 14px, and
-     * on a desktop set to grayscale antialiasing — no subpixel — small text is
-     * exactly what falls apart first.
-     *
-     * One number to tune. 100% puts it back where it was. */
-    font-size: 106.25%;
     /* Use the variable font's real weights instead of letting the engine fake
        bold/italic by smearing glyphs, and keep the optical size axis honest. */
     font-synthesis: none;

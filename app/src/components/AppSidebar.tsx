@@ -96,7 +96,7 @@ export default function AppSidebar() {
             >
               <Bell className="size-4" />
               {unreadNotifications > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.5625rem] font-medium text-primary-foreground">
+                <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground">
                   {unreadNotifications > 9 ? "9+" : unreadNotifications}
                 </span>
               )}
