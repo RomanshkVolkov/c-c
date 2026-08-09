@@ -212,6 +212,14 @@
     }
   body {
     @apply bg-background text-foreground;
+    /* Geist sets its glyphs tight — it's drawn for display sizes, and at 13-14px
+     * in a dense UI the words run together. A touch of tracking opens them
+     * without touching the typeface or the size.
+     *
+     * 0.012em is ~0.16px at 13px: below the threshold where you'd notice
+     * letters being pushed apart, above the one where the text stops reading as
+     * a single blur. One number to tune; 0 is stock Geist. */
+    letter-spacing: 0.012em;
     }
   html {
     @apply font-sans;
