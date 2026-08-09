@@ -127,7 +127,7 @@ export default function SshKeyDialog({
 
         {agents.length > 1 && (
           <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Agent</p>
+            <p className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">Agent</p>
             <div className="flex flex-wrap gap-1">
               {agents.map((a) => (
                 <button
@@ -174,7 +174,7 @@ export default function SshKeyDialog({
             >
               <span className="flex-1">
                 Let the agent decide
-                <span className="block text-[11px] text-muted-foreground">
+                <span className="block text-[0.6875rem] text-muted-foreground">
                   Default. Fails on servers that cut off after a few key attempts.
                 </span>
               </span>
@@ -192,7 +192,7 @@ export default function SshKeyDialog({
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{k.title}</span>
-                  <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                  <span className="block truncate font-mono text-[0.625rem] text-muted-foreground">
                     {k.keyType} · {k.fingerprint}
                   </span>
                 </span>

@@ -83,18 +83,18 @@ export default function Diagnostics() {
                   <Smartphone className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="flex-1 truncate font-mono text-xs">{d.deviceId}</span>
                   {d.errorCount > 0 && (
-                    <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                    <Badge variant="destructive" className="h-4 px-1 text-[0.625rem]">
                       {d.errorCount}
                     </Badge>
                   )}
                 </div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <div className="mt-1 flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
                   <span className="truncate">{d.projectName}</span>
                   <span>·</span>
                   <span>{d.platform || "?"}</span>
                   {d.appVersion && <span>· v{d.appVersion}</span>}
                 </div>
-                <div className="mt-0.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                <div className="mt-0.5 flex items-center justify-between text-[0.6875rem] text-muted-foreground">
                   <span>{d.batches} batches · {d.reqCount} req</span>
                   <span>{relativeTime(d.lastSeen)}</span>
                 </div>
@@ -150,11 +150,11 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
         </span>
         <span className="text-muted-foreground">· {relativeTime(batch.receivedAt)}</span>
         <span className="ml-auto flex items-center gap-2">
-          <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+          <Badge variant="secondary" className="h-4 px-1 text-[0.625rem]">
             {batch.reqCount} req
           </Badge>
           {batch.errorCount > 0 && (
-            <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+            <Badge variant="destructive" className="h-4 px-1 text-[0.625rem]">
               {batch.errorCount} err
             </Badge>
           )}
@@ -164,14 +164,14 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
       {batch.device && (
         <div className="border-b">
           <button
-            className="flex w-full items-center gap-1 px-3 py-1 text-[11px] text-muted-foreground hover:bg-accent/50"
+            className="flex w-full items-center gap-1 px-3 py-1 text-[0.6875rem] text-muted-foreground hover:bg-accent/50"
             onClick={() => setShowDevice((v) => !v)}
           >
             {showDevice ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
             Device context
           </button>
           {showDevice && (
-            <pre className="max-h-56 overflow-auto bg-muted/40 px-3 py-2 text-[11px] whitespace-pre-wrap break-all">
+            <pre className="max-h-56 overflow-auto bg-muted/40 px-3 py-2 text-[0.6875rem] whitespace-pre-wrap break-all">
               {JSON.stringify(batch.device, null, 2)}
             </pre>
           )}
@@ -180,7 +180,7 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
 
       {beats > 0 && (
         <button
-          className="w-full border-b px-3 py-1 text-left text-[11px] text-muted-foreground hover:bg-accent/50"
+          className="w-full border-b px-3 py-1 text-left text-[0.6875rem] text-muted-foreground hover:bg-accent/50"
           onClick={() => setShowBeats((v) => !v)}
         >
           {showBeats ? "Hide" : "Show"} {beats} heartbeat{beats === 1 ? "" : "s"}
@@ -220,7 +220,7 @@ function CrumbRow({ crumb }: { crumb: TelemetryBreadcrumb }) {
           {isNetwork ? (
             <span className="flex items-center gap-1.5">
               <span className="font-medium">{String(crumb.method ?? "")}</span>
-              <span className="truncate font-mono text-[11px] text-muted-foreground">
+              <span className="truncate font-mono text-[0.6875rem] text-muted-foreground">
                 {String(crumb.url ?? "")}
               </span>
               {crumb.status !== undefined && (
@@ -235,14 +235,14 @@ function CrumbRow({ crumb }: { crumb: TelemetryBreadcrumb }) {
             </span>
           )}
           {(crumb.eventName || crumb.category) && (
-            <span className="ml-1 text-[10px] text-muted-foreground">
+            <span className="ml-1 text-[0.625rem] text-muted-foreground">
               {crumb.category}/{crumb.eventName}
             </span>
           )}
         </span>
       </button>
       {open && (
-        <pre className="mt-1 ml-3.5 max-h-56 overflow-auto rounded bg-muted/40 px-2 py-1.5 text-[11px] whitespace-pre-wrap break-all">
+        <pre className="mt-1 ml-3.5 max-h-56 overflow-auto rounded bg-muted/40 px-2 py-1.5 text-[0.6875rem] whitespace-pre-wrap break-all">
           {JSON.stringify(crumb, null, 2)}
         </pre>
       )}

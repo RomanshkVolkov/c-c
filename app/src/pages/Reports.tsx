@@ -298,23 +298,23 @@ function ReportCard({
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-mono text-muted-foreground">{report.folio}</span>
         {report.origin === "system" && (
-          <Badge variant="outline" className="text-[10px] py-0">system</Badge>
+          <Badge variant="outline" className="text-[0.625rem] py-0">system</Badge>
         )}
       </div>
       <p className="text-sm font-medium leading-snug line-clamp-3">{report.title}</p>
       <div className="flex flex-wrap items-center gap-1">
-        <Badge variant="outline" className="text-[10px] py-0">
+        <Badge variant="outline" className="text-[0.625rem] py-0">
           {CATEGORY_LABELS[report.category] ?? report.category}
         </Badge>
         {/* Medium is the default every report is born with, so showing it
             everywhere would be noise — only a deliberate priority is worth a chip. */}
         {report.priority && report.priority !== "medium" && (
-          <Badge className={`text-[10px] py-0 ${PRIORITY_CHIP[report.priority] ?? ""}`}>
+          <Badge className={`text-[0.625rem] py-0 ${PRIORITY_CHIP[report.priority] ?? ""}`}>
             {PRIORITY_LABELS[report.priority] ?? report.priority}
           </Badge>
         )}
         {report.area && (
-          <Badge variant="secondary" className="text-[10px] py-0 max-w-[10rem] truncate">
+          <Badge variant="secondary" className="text-[0.625rem] py-0 max-w-[10rem] truncate">
             {report.area}
           </Badge>
         )}

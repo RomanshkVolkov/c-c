@@ -116,12 +116,12 @@ export default function NotificationsPanel({
                     >
                       <div className="flex w-full items-center gap-2">
                         <span className="truncate text-sm font-medium">{n.title}</span>
-                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                        <span className="ml-auto shrink-0 text-[0.625rem] text-muted-foreground">
                           {new Date(n.at).toLocaleString()}
                         </span>
                       </div>
                       <p className="truncate text-xs text-muted-foreground">{n.body}</p>
-                      <p className={cn("flex items-center gap-1 text-[10px]", d.className)}>
+                      <p className={cn("flex items-center gap-1 text-[0.625rem]", d.className)}>
                         <Icon className="size-3" />
                         {d.label}
                         {n.error && <span>· {n.error}</span>}
@@ -136,7 +136,7 @@ export default function NotificationsPanel({
         </div>
 
         {items.some((i) => i.delivery === "focused") && (
-          <p className="flex items-start gap-1.5 border-t px-4 py-2 text-[11px] text-muted-foreground">
+          <p className="flex items-start gap-1.5 border-t px-4 py-2 text-[0.6875rem] text-muted-foreground">
             <Check className="mt-0.5 size-3 shrink-0" />
             «You were here» means the window had focus, so it wasn't sent — you'd already
             have seen the toast.

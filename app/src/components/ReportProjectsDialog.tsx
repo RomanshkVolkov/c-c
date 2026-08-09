@@ -85,9 +85,9 @@ function WebhookFields({
           <RefreshCw className="h-3.5 w-3.5" /> Generate
         </Button>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[0.6875rem] text-muted-foreground">
         Every report event is POSTed here, signed with{" "}
-        <code className="text-[10px]">X-Cac-Signature</code>. Verify it over the raw body.
+        <code className="text-[0.625rem]">X-Cac-Signature</code>. Verify it over the raw body.
       </p>
     </div>
   );
@@ -238,7 +238,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
             {/* Two limits, because one is not enough: the project ceiling alone
                 lets whoever reports first spend everyone's budget, and the people
                 it then locks out are the ones with something to say. */}
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[0.6875rem] text-muted-foreground">
               The hourly limit caps the whole project; the per-person one caps a
               single reporter. Per-person only applies when the report says who
               filed it.
@@ -261,7 +261,7 @@ export default function ReportProjectsDialog({ trigger }: { trigger: React.React
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[0.6875rem] text-muted-foreground">
                 {platform === "web"
                   ? "Reports come from a browser, so the Origin allowlist below is enforced."
                   : "Reports come from a server, which sends no Origin — the allowlist doesn't apply."}
@@ -408,7 +408,7 @@ function ProjectRow({
         <div className="flex items-center gap-2">
           <span className="font-medium truncate">{p.name}</span>
           <span className="font-mono text-xs text-muted-foreground">{p.slug}</span>
-          {!p.isActive && <Badge variant="destructive" className="text-[10px] py-0">inactive</Badge>}
+          {!p.isActive && <Badge variant="destructive" className="text-[0.625rem] py-0">inactive</Badge>}
         </div>
         <span className="block truncate text-xs text-muted-foreground">
           {PLATFORM_LABELS[p.platform] ?? p.platform} · {p.rateLimitPerHour}/h
@@ -557,7 +557,7 @@ function RevealedSecrets({
         <div className="space-y-1 rounded border bg-background/60 p-2">
           <p className="text-xs font-medium">Saved. Use these references in your deploy config:</p>
           {refs.map(([name, reference]) => (
-            <code key={name} className="block text-[11px] font-mono break-all">
+            <code key={name} className="block text-[0.6875rem] font-mono break-all">
               {reference}
             </code>
           ))}

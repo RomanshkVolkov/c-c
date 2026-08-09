@@ -378,7 +378,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
         )}
         {favorites.length > 0 && (
           <section className="mb-1 border-b pb-1">
-            <h2 className="px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <h2 className="px-3 py-1 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
               Favorites
             </h2>
             {favorites.map((f) => (

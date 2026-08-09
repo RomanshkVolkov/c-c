@@ -33,7 +33,7 @@ export default function OriginsEditor({
           curl replaying the key someone read out of the widget — is refused
           too, not waved through for lacking a browser. Only shown for browser
           projects; a native one is exempt from this entirely. */}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[0.6875rem] text-muted-foreground">
         List one and it becomes the only way in: requests from another origin, and
         requests that send no origin at all, are both refused. Leave it empty to
         accept the widget from anywhere.

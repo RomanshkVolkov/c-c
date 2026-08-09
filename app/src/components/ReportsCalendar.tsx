@@ -93,7 +93,7 @@ export default function ReportsCalendar({
                 <span className={`text-xs ${k === today ? "font-bold text-primary" : "text-muted-foreground"}`}>
                   {d.getDate()}
                 </span>
-                {items.length > 0 && <span className="text-[10px] text-muted-foreground">{items.length}</span>}
+                {items.length > 0 && <span className="text-[0.625rem] text-muted-foreground">{items.length}</span>}
               </div>
               <div className="mt-1 flex flex-wrap gap-0.5">
                 {items.slice(0, 8).map((r) => (
