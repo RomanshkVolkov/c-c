@@ -135,16 +135,19 @@
 }
 
 @theme inline {
-    /* One step in the scale, not a zoom.
+    /* The scale, and where it does and doesn't follow the industry.
      *
-     * `text-xs` is this app's workhorse — 326 uses against 199 of `text-sm` —
-     * so in practice 12px was the body size. Desktop UIs sit at 13-14px for
-     * that job (macOS, GitHub's secondary text, Linear all land there), and
-     * 12px is a size for metadata, not for what you read.
+     * Standard, and kept: body/UI at 14px (`text-sm`) and 16px (`text-base`),
+     * which is where Primer, Material and the macOS HIG all put them. And a
+     * floor of 12px — no system goes below 11, and this app had 79 places at
+     * 10-11px, which is the one thing here that was plainly wrong.
      *
-     * 13px moves the one that matters and leaves everything else alone:
-     * `text-sm` stays 14, `text-base` stays 16, spacing doesn't move, and no
-     * call site changes. Delete these two lines to go back to stock Tailwind.
+     * A choice, not a standard: `text-xs` at 13 instead of 12. Counted, 172 of
+     * its 299 uses are muted metadata, and 12px is correct for that everywhere.
+     * 13px is a real UI size (macOS body, Linear) and buys legibility on a
+     * display doing grayscale antialiasing — but it is a preference, so it's
+     * labelled as one. These two lines are the whole of it; delete them for
+     * stock Tailwind.
      */
     --text-xs: 0.8125rem;
     --text-xs--line-height: 1.125rem;
