@@ -3,42 +3,72 @@
 @import "shadcn/tailwind.css";
 
 
-/* Geist, self-hosted (files vendored under src/assets/fonts, SIL OFL 1.1).
+/* Self-hosted, vendored under src/assets/fonts with their OFL licences.
  *
- * Declared here instead of importing @fontsource-variable/geist's stylesheet
- * because that one ships only `format("woff2-variations")` — the legacy syntax.
- * A engine that doesn't recognise a format hint skips that `src` entirely, and
- * with no other src the @font-face never loads: WebKitGTK (the Tauri webview on
- * Linux) then falls back to a system face and the text looks cramped. The plain
- * `format("woff2")` hint is understood everywhere and loads the variable file
- * just the same. */
+ * Two faces, two jobs.
+ *
+ * **Inter** for the interface. Almost all of this app's text is 13-14px, and
+ * Inter is drawn for exactly that: tall x-height, open apertures, spacing that
+ * doesn't need a tracking patch to read. It replaces Geist, which arrived with
+ * the initial scaffold rather than by anyone's decision — Geist is Vercel's
+ * display face, drawn for headings, and at UI sizes its words run together.
+ *
+ * **Iosevka Term Slab** for the 81 places showing ids, keys, hosts, logs and
+ * code. `--font-mono` was never set, so all of that landed on whatever
+ * fontconfig picked. Term is the narrow build, which for columns of hashes is
+ * the point: more fits, and they line up.
+ *
+ * Subset to latin, and that isn't optional here — Iosevka ships full Unicode
+ * coverage and the stock woff2 is 1.6 MB per weight. Latin-only is 21 KB.
+ *
+ * `format("woff2")`, not `woff2-variations`: an engine that doesn't know a
+ * format hint skips that `src` entirely, and with no other source the face
+ * never loads. WebKitGTK does exactly that, which is how the text ended up
+ * rendering in a system fallback. */
 @font-face {
-  font-family: 'Geist Variable';
+  font-family: 'Inter Variable';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('./assets/fonts/geist-latin-wght-normal.woff2') format('woff2');
+  src: url('./assets/fonts/inter-latin-wght-normal.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: 'Geist Variable';
+  font-family: 'Inter Variable';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('./assets/fonts/geist-latin-ext-wght-normal.woff2') format('woff2');
+  src: url('./assets/fonts/inter-latin-ext-wght-normal.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
     U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
     U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-  font-family: 'Geist Variable';
+  font-family: 'Inter Variable';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('./assets/fonts/geist-cyrillic-wght-normal.woff2') format('woff2');
+  src: url('./assets/fonts/inter-cyrillic-wght-normal.woff2') format('woff2');
   unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* Two real weights rather than one: `font-synthesis: none` is set below, so
+   without a Bold the engine would render bold monospace at regular weight
+   instead of faking it — silently, and it's used in four places. */
+@font-face {
+  font-family: 'Iosevka Term Slab';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/iosevka-term-slab-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Iosevka Term Slab';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/iosevka-term-slab-bold.woff2') format('woff2');
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -164,8 +194,12 @@
        fontconfig and can land on a condensed face (DejaVu Sans Condensed and
        friends), which is what makes text look jammed together while the webfont
        is still loading — or forever, if it fails to load. */
-    --font-sans: 'Geist Variable', system-ui, -apple-system, 'Segoe UI', Roboto,
+    --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto,
         'Helvetica Neue', 'Noto Sans', Arial, sans-serif;
+    /* Never set before, so every id, key, host and log fell back to whatever
+       fontconfig resolved — different on each machine, chosen by nobody. */
+    --font-mono: 'Iosevka Term Slab', ui-monospace, 'SF Mono', Menlo, Consolas,
+        'DejaVu Sans Mono', monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -212,14 +246,6 @@
     }
   body {
     @apply bg-background text-foreground;
-    /* Geist sets its glyphs tight — it's drawn for display sizes, and at 13-14px
-     * in a dense UI the words run together. A touch of tracking opens them
-     * without touching the typeface or the size.
-     *
-     * 0.012em is ~0.16px at 13px: below the threshold where you'd notice
-     * letters being pushed apart, above the one where the text stops reading as
-     * a single blur. One number to tune; 0 is stock Geist. */
-    letter-spacing: 0.012em;
     }
   html {
     @apply font-sans;
