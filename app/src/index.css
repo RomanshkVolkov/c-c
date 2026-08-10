@@ -271,6 +271,17 @@
   .md-body,
   .prose-editor {
     @apply text-foreground;
+    /* `anywhere`, not `break-word`, and that distinction is the whole fix.
+     *
+     * A URL pasted into a description has no break opportunity, so it sets the
+     * container's min-content width and pushes the panel wider than the window
+     * — which is where the horizontal scrollbar came from. Only `anywhere`
+     * shrinks that intrinsic minimum; `break-word` wraps the text but leaves
+     * the container just as wide.
+     *
+     * Code blocks are unaffected: `white-space: pre` forbids wrapping, so they
+     * keep their own scrollbar, which is what you want for code. */
+    overflow-wrap: anywhere;
   }
   .md-body :where(h1, h2, h3),
   .prose-editor :where(h1, h2, h3) {
@@ -299,7 +310,11 @@
     @apply my-2 overflow-auto rounded-md bg-muted p-3 font-mono text-xs;
   }
   .md-body pre code, .prose-editor pre code { @apply bg-transparent p-0; }
+  /* A table with more columns than fit scrolls on its own rather than widening
+     the panel — the same reason the wrapping above exists, for the one piece of
+     content that legitimately can't be narrowed. */
   .md-body table, .prose-editor table { @apply my-2 w-full border-collapse text-xs; }
+  .md-body table { @apply block max-w-full overflow-x-auto; }
   .md-body :where(th, td), .prose-editor :where(th, td) {
     @apply border border-border px-2 py-1 text-left;
   }
