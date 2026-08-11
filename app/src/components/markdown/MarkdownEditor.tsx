@@ -6,7 +6,6 @@ import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { Markdown } from "tiptap-markdown";
 import {
   Bold,
@@ -30,6 +29,7 @@ import { usePrompt } from "@/components/PromptDialog";
 import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
 import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
 import { collapsibleExtensions } from "./details";
+import { tableExtensions } from "./table";
 import { SlashMenu } from "./slash-menu";
 
 /**
@@ -216,17 +216,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       // nodes the schema has nowhere to put a table it was handed, so opening
       // a description that already had one and saving flattened it to
       // "ColumnaOtraunodostrescuatro". Every editor needs them for that reason
-      // alone, whether or not anyone types a table into it.
-      Table,
-      TableRow,
-      // One paragraph per cell, not `block+`. A markdown table row is one line,
-      // so a cell holding two blocks can't be written down — and tiptap-markdown
-      // answers that by serializing the whole table as the literal `[table]`.
-      // Pressing Enter inside a cell was enough to trigger it. Narrowing the
-      // schema is the same rule this file already follows: don't offer what the
-      // storage can't hold.
-      TableHeader.extend({ content: "paragraph" }),
-      TableCell.extend({ content: "paragraph" }),
+      // alone, whether or not anyone types a table into it. See ./table.ts.
+      ...tableExtensions,
       ...(collapsible ? collapsibleExtensions : []),
       ...(blockTools ? [SlashMenu] : []),
       Markdown.configure({
