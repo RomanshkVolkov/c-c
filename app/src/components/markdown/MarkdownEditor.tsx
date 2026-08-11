@@ -30,6 +30,7 @@ import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
 import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
 import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
+import TableToolbar from "./TableToolbar";
 import { SlashMenu } from "./slash-menu";
 
 /**
@@ -521,6 +522,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         </ul>
       )}
       <div className="px-3 py-2">
+        <TableToolbar editor={editor} />
         {blockTools && (
           <DragHandle editor={editor}>
             <div
