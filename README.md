@@ -45,6 +45,8 @@ GitHub workflows under `.github/workflows/`:
 
 ## Integrations
 
+- [Adopting cac](./docs/integrations/adopting-cac.md) — how an app connects, and how one already using the widget moves across: which platform to pick and why the key's reach depends on it, the migration order (there is a step that must not be brought forward), what to register.
+- [Tenant UI reference](./docs/integrations/tenant-ui-reference.md) — the screens to build when you replace the widget: the two audiences, the board, the image proxy, the webhook receiver. Structure and decisions, taken from portento.
 - [Server-to-server](./docs/integrations/server-to-server.md) — how a tenant app runs its own bug board in cac with its project's ingest key: credential and what it reaches, operations, reporter vs assignee, webhook, rate limits, error codes. The contract, kept next to the code that implements it.
 - [Capture widget](./widget/README.md) — the browser side: embeddable reporter, ingest key in the page, Origin allowlist.
 
