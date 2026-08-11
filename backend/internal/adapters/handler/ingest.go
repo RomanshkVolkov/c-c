@@ -12,6 +12,7 @@ import (
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
+	"strings"
 )
 
 // ─── in-memory per-project rate limiter ───────────────────────────────────────
@@ -302,12 +303,32 @@ func echoCORS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// reportToken reads the per-report token from the Authorization header, falling
+// back to ?token=.
+//
+// The query string was the only way for a long time, and it is where the widget
+// still puts it — an <img> or a link can't set a header. But every request that
+// carries it lands in the server's access log with the credential in the URL,
+// so anything that *can* send a header should, and now can. The query stays
+// because the widget ships separately and older copies are in other people's
+// pages; dropping it would lock them out.
+func reportToken(r *http.Request) string {
+	if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
+		return strings.TrimPrefix(a, "Bearer ")
+	}
+	if t := r.Header.Get("X-Report-Token"); t != "" {
+		return t
+	}
+	return r.URL.Query().Get("token")
+}
+
 // ReporterView — GET /ingest/v1/reports/{id}?token= : the reporter's own view of
 // their report (status + thread), authorized by the per-report token.
 func (h *ingestHandler) ReporterView(w http.ResponseWriter, r *http.Request) {
 	echoCORS(w, r)
 	id := chi.URLParam(r, "id")
-	if !repository.VerifyReportToken(id, r.URL.Query().Get("token")) {
+	token := reportToken(r)
+	if !repository.VerifyReportToken(id, token) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Invalid token", "invalid-token")
 		return
 	}
@@ -316,6 +337,10 @@ func (h *ingestHandler) ReporterView(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return
 	}
+	// Renewed only when it's close to expiring, and only here: this is the call
+	// a reporter makes every time they look at their report, so it's where a
+	// fresh token reaches them without inventing a separate refresh endpoint.
+	view.Token = repository.RenewReportTokenIfStale(id, token)
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReporterReportView]{Success: true, Data: view})
 }
 
@@ -343,7 +368,7 @@ func (h *ingestHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
 func (h *ingestHandler) ReporterComment(w http.ResponseWriter, r *http.Request) {
 	echoCORS(w, r)
 	id := chi.URLParam(r, "id")
-	if !repository.VerifyReportToken(id, r.URL.Query().Get("token")) {
+	if !repository.VerifyReportToken(id, reportToken(r)) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Invalid token", "invalid-token")
 		return
 	}

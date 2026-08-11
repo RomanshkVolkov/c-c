@@ -454,6 +454,11 @@ type ReporterReportView struct {
 	UpdatedAt   time.Time             `json:"updatedAt"`
 	Images      []ReportImageResponse `json:"images"`
 	Comments    []ReporterCommentView `json:"comments"`
+	// Token is set only when the one used to fetch this was near expiry: a
+	// replacement, for the client to store in place of the old one. Empty the
+	// rest of the time, so a client that ignores it simply keeps working until
+	// its token actually runs out.
+	Token string `json:"token,omitempty"`
 }
 
 // ─── Requests / Responses (reports admin) ─────────────────────────────────────

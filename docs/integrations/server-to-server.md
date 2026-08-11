@@ -382,9 +382,34 @@ como del equipo.
 > atribuido, con la ventaja de que después puedes editarlo o retirarlo. El token
 > queda para el widget público, donde reporta alguien sin cuenta.
 
-**Dura 90 días y no se renueva.** Cuando expire, degrada a solo lectura con un aviso
-honesto; no falles. (Renovación deslizante y aceptar el token por cabecera están
-pendientes; si te bloquea, pídelo.)
+### Cómo mandarlo
+
+Tres formas, en este orden de preferencia:
+
+| | |
+|---|---|
+| `Authorization: Bearer <token>` | lo que deberías usar |
+| `X-Report-Token: <token>` | si ya usas `Authorization` para otra cosa |
+| `?token=<token>` | sigue funcionando, y es lo que puede hacer un `<img>` |
+
+**Prefiere la cabecera.** La query acaba escrita en el log de accesos del servidor
+y en cualquier proxy por el que pase, con la credencial dentro. Sigue aceptada
+porque el widget se publica aparte y hay copias antiguas en páginas de terceros:
+quitarla las dejaría fuera.
+
+### Dura 90 días y se renueva sola
+
+Cuando el token que usas está **a menos de 30 días de expirar**, `GET /ingest/v1/reports/{id}`
+devuelve uno nuevo en el campo `token` de la respuesta. Guárdalo en lugar del viejo
+y sigue.
+
+Fuera de esa ventana el campo **no viene**, así que no lo trates como obligatorio.
+Renovarlo en cada lectura sería emitir un token por recarga de página.
+
+**El viejo sigue valiendo hasta que expire de verdad.** Renovar no revoca: un cliente
+que ignore el campo no se queda fuera a media sesión — sencillamente se le agotará el
+plazo algún día, y ahí sí toca degradar a solo lectura con un aviso honesto en vez de
+fallar.
 
 ---
 

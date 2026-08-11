@@ -337,6 +337,50 @@ func MintReportToken(reportID string) string {
 	return fmt.Sprintf("%d.%s", exp, signReportToken(reportID, exp))
 }
 
+// renewReportTokenWithin is how close to expiry a token has to be before it's
+// worth handing the reporter a fresh one. A third of its life: often enough
+// that anyone still following their report keeps a live token, rare enough that
+// a reload doesn't mint a new one every time.
+const renewReportTokenWithin = reportTokenTTL / 3
+
+// ReportTokenExpiry validates a token and reports when it expires.
+//
+// Split out from VerifyReportToken because renewal needs the deadline, not just
+// a yes/no: a token that's valid today but dies next week should be replaced
+// while the reporter is here to receive the replacement.
+func ReportTokenExpiry(reportID, token string) (time.Time, bool) {
+	expStr, sig, ok := strings.Cut(token, ".")
+	if !ok {
+		return time.Time{}, false
+	}
+	var exp int64
+	if _, err := fmt.Sscanf(expStr, "%d", &exp); err != nil {
+		return time.Time{}, false
+	}
+	if time.Now().Unix() > exp {
+		return time.Time{}, false
+	}
+	want := signReportToken(reportID, exp)
+	if subtle.ConstantTimeCompare([]byte(want), []byte(sig)) != 1 {
+		return time.Time{}, false
+	}
+	return time.Unix(exp, 0), true
+}
+
+// RenewReportTokenIfStale returns a fresh token when the current one is close
+// enough to expiry to be worth replacing, and "" when it isn't.
+//
+// The caller hands it back in the response rather than in a Set-Cookie or a
+// header: the widget stores these itself, in whatever a host app gives it, and
+// a body field is the one place every client already reads.
+func RenewReportTokenIfStale(reportID, token string) string {
+	exp, ok := ReportTokenExpiry(reportID, token)
+	if !ok || time.Until(exp) > renewReportTokenWithin {
+		return ""
+	}
+	return MintReportToken(reportID)
+}
+
 // VerifyReportToken checks a "<exp>.<sig>" token against a report id.
 func VerifyReportToken(reportID, token string) bool {
 	dot := -1
