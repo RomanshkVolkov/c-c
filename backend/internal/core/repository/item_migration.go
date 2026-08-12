@@ -59,7 +59,7 @@ func migrateItems(db *gorm.DB) {
 	}
 	defer db.Exec(`SELECT pg_advisory_unlock(?)`, lockKey)
 
-	if err := ensureItemIndexes(db); err != nil {
+	if err := ensureItemHelperIndexes(db); err != nil {
 		panic("items migration: indexes: " + err.Error())
 	}
 	if err := checkNoIDCollisions(db); err != nil {
@@ -91,6 +91,11 @@ func migrateItems(db *gorm.DB) {
 		panic("items migration: " + err.Error())
 	}
 
+	// The unique constraints go on **after** the rows, not before: applied first
+	// they would reject the very data they are meant to describe, and the copy
+	// would die on an insert instead of reporting what it found.
+	ensureItemUniqueIndexes(db)
+
 	now := "now()"
 	db.Exec(`INSERT INTO schema_backfills (name, completed_at, detail)
 	         VALUES (?, `+now+`, ?)
@@ -99,29 +104,11 @@ func migrateItems(db *gorm.DB) {
 	lg.Info("items migration: up to date")
 }
 
-// ensureItemIndexes creates what GORM's tags cannot express.
-func ensureItemIndexes(db *gorm.DB) error {
+// ensureItemHelperIndexes creates the plain lookup indexes. Safe at any point:
+// they describe nothing that data can violate.
+func ensureItemHelperIndexes(db *gorm.DB) error {
 	stmts := []string{
-		// The empty string is "no key supplied", and every item without one
-		// carries it — so only rows that really have a key may participate.
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_idempotency
-			ON items (list_id, idempotency_key) WHERE idempotency_key <> ''`,
-
-		// Numbering has two scopes, and the predicates are disjoint so a row is
-		// only ever subject to one of them: per project for a channel item (that
-		// number is its public folio) and per space for an internal one.
-		//
-		// These see soft-deleted rows, which is the intent — a number, once given
-		// out, is spent. It is also why the old MAX(seq) had to stop being scoped
-		// before this index could exist: it was handing numbers out twice, and
-		// under a unique index that stops being a silent duplicate and becomes a
-		// failed insert.
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_seq_project
-			ON items (project_id, seq) WHERE project_id <> ''`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_seq_space
-			ON items (space_id, seq) WHERE project_id = '' AND space_id <> ''`,
-
-		// Reading a thread, and counting what the reporter has not seen.
+		// Reading a thread, and counting what the reporter hasn't seen.
 		`CREATE INDEX IF NOT EXISTS idx_item_comments_thread
 			ON item_comments (item_id, created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_item_comments_public
@@ -133,6 +120,57 @@ func ensureItemIndexes(db *gorm.DB) error {
 		}
 	}
 	return nil
+}
+
+// ensureItemUniqueIndexes applies the constraints that make numbering trustworthy
+// going forward — and does not bring the service down over data that was already
+// wrong before any of this existed.
+//
+// The seq-reuse bug shipped: a production database may well hold two reports of
+// one project sharing a number. A unique index cannot be built over that. The
+// choice here is to say so, loudly and specifically, and carry on — nothing reads
+// these tables yet, so the missing constraint costs nothing today, whereas a
+// crash loop would take the whole backend down without helping anyone repair the
+// rows. Once the duplicates are resolved, the next boot creates the index.
+func ensureItemUniqueIndexes(db *gorm.DB) {
+	unique := []struct {
+		name string
+		stmt string
+		hint string
+	}{
+		{
+			"idx_items_idempotency",
+			// The empty string is "no key supplied", and every item without one
+			// carries it — so only rows that really have a key participate.
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_idempotency
+				ON items (list_id, idempotency_key) WHERE idempotency_key <> ''`,
+			"two items in one list share an idempotency key",
+		},
+		{
+			// Numbering has two scopes with disjoint predicates, so a row is only
+			// ever subject to one: per project for a channel item (that number is
+			// its public folio) and per space for an internal one.
+			//
+			// These see soft-deleted rows on purpose — a number, once handed out,
+			// is spent.
+			"idx_items_seq_project",
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_seq_project
+				ON items (project_id, seq) WHERE project_id <> ''`,
+			"two reports of one project share a folio",
+		},
+		{
+			"idx_items_seq_space",
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_seq_space
+				ON items (space_id, seq) WHERE project_id = '' AND space_id <> ''`,
+			"two items in one space share a number",
+		},
+	}
+	for _, u := range unique {
+		if err := db.Exec(u.stmt).Error; err != nil {
+			lg.Error("items migration: cannot create " + u.name + " (" + u.hint +
+				"); the data needs repairing before this constraint can exist: " + err.Error())
+		}
+	}
 }
 
 // checkNoIDCollisions is cheap paranoia with a catastrophic downside if skipped.
@@ -223,14 +261,19 @@ func copyReportsToItems(db *gorm.DB) error {
 			rank, idempotency_key, resolved_at, created_by_id, deleted_at
 		)
 		SELECT
-			r.id, r.created_at, r.updated_at, p.org_id,
+			r.id, r.created_at, r.updated_at, COALESCE(p.org_id, ''),
 			COALESCE(p.list_id, ''), COALESCE(l.space_id, ''), r.project_id, r.seq,
 			r.title, r.description, r.status, r.category, r.priority, r.area, r.origin,
 			r.url, r.user_agent, r.viewport, r.telemetry, r.telemetry_purge_at,
 			r.reporter_name, r.reporter_email, r.reporter_id,
 			'', '', r.resolved_at, '', r.deleted_at
 		FROM reports r
-		JOIN report_projects p ON p.id = r.project_id
+		-- LEFT, not INNER. ReportProject has no soft-delete, so a deleted project
+		-- leaves its reports pointing at nothing. Those rows are already
+		-- half-broken, but dropping them here would make the copy come up short
+		-- and the verification refuse to start the pod — a backend that won't
+		-- boot because of data that predates this whole feature.
+		LEFT JOIN report_projects p ON p.id = r.project_id
 		LEFT JOIN task_lists l ON l.id = p.list_id
 		ON CONFLICT (id) DO UPDATE SET
 			updated_at = excluded.updated_at,
@@ -264,7 +307,7 @@ func copyTasksToItems(db *gorm.DB) error {
 			created_by_id, archived_at
 		)
 		SELECT
-			t.id, t.created_at, t.updated_at, t.org_id, t.list_id, l.space_id, '', t.seq,
+			t.id, t.created_at, t.updated_at, t.org_id, t.list_id, COALESCE(l.space_id, ''), '', t.seq,
 			t.title, t.description,
 			CASE s.kind
 				WHEN 'done'   THEN 'resolved'
@@ -277,7 +320,9 @@ func copyTasksToItems(db *gorm.DB) error {
 			t.rank, t.idempotency_key, t.parent_id, t.start_at, t.due_at, t.completed_at,
 			t.created_by_id, t.archived_at
 		FROM tasks t
-		JOIN task_lists l ON l.id = t.list_id
+		-- Same reasoning as above: a stray row must be carried, not silently
+		-- dropped into a failed boot.
+		LEFT JOIN task_lists l ON l.id = t.list_id
 		LEFT JOIN task_statuses s ON s.id = t.status_id
 		ON CONFLICT (id) DO UPDATE SET
 			updated_at = excluded.updated_at,
@@ -419,8 +464,13 @@ func verifyItemCounts(db *gorm.DB) error {
 		{"tasks", `SELECT COUNT(*) FROM tasks`, `SELECT COUNT(*) FROM items WHERE project_id = ''`},
 		{"report comments", `SELECT COUNT(*) FROM report_comments`, `SELECT COUNT(*) FROM item_comments WHERE visibility = 'public'`},
 		{"task comments", `SELECT COUNT(*) FROM task_comments`, `SELECT COUNT(*) FROM item_comments WHERE visibility = 'internal'`},
-		{"report images", `SELECT COUNT(*) FROM report_images`, `SELECT COUNT(*) FROM item_attachments WHERE url = ''`},
-		{"task attachments", `SELECT COUNT(*) FROM task_attachments`, `SELECT COUNT(*) FROM item_attachments WHERE url <> ''`},
+		// Counted by which side the item came from, not by whether a url is set:
+		// an older task attachment with an empty url would otherwise be tallied as
+		// a report image, passing one check and failing the other.
+		{"report images", `SELECT COUNT(*) FROM report_images`,
+			`SELECT COUNT(*) FROM item_attachments a JOIN items i ON i.id = a.item_id WHERE i.project_id <> ''`},
+		{"task attachments", `SELECT COUNT(*) FROM task_attachments`,
+			`SELECT COUNT(*) FROM item_attachments a JOIN items i ON i.id = a.item_id WHERE i.project_id = ''`},
 	}
 	for _, c := range checks {
 		var before, after int64
@@ -448,17 +498,32 @@ func verifyItemCounts(db *gorm.DB) error {
 		return fmt.Errorf("%d channel item(s) carry a status outside the state machine", stray)
 	}
 
-	// The folio has to keep naming one thing. The unique index enforces this
-	// going forward; this catches a copy that brought duplicates with it.
-	var dupes int64
+	// The folio has to keep naming one thing — but *who* broke it decides what to
+	// do about it. A duplicate the copy invented is a bug in this code and stops
+	// the deploy. A duplicate the copy found was already live, sits in the old
+	// table too, and gets reported instead: refusing to boot would take the
+	// service down over something that has been true for weeks.
+	var copied, existing int64
 	if err := db.Raw(`SELECT COUNT(*) FROM (
 			SELECT project_id, seq FROM items WHERE project_id <> ''
 			GROUP BY project_id, seq HAVING COUNT(*) > 1
-		) d`).Scan(&dupes).Error; err != nil {
+		) d`).Scan(&copied).Error; err != nil {
 		return err
 	}
-	if dupes > 0 {
-		return fmt.Errorf("%d folio(s) name more than one item", dupes)
+	if copied == 0 {
+		return nil
 	}
+	if err := db.Raw(`SELECT COUNT(*) FROM (
+			SELECT project_id, seq FROM reports
+			GROUP BY project_id, seq HAVING COUNT(*) > 1
+		) d`).Scan(&existing).Error; err != nil {
+		return err
+	}
+	if copied > existing {
+		return fmt.Errorf("the copy created %d duplicate folio(s) that the old table doesn't have",
+			copied-existing)
+	}
+	lg.Error(fmt.Sprintf("items migration: %d folio(s) already named more than one report before this ran; "+
+		"they need repairing, and the uniqueness constraint can't exist until they are", existing))
 	return nil
 }

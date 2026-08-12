@@ -366,3 +366,99 @@ func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
 		adminSQL.Close()
 	}
 }
+
+// A report whose project was deleted must still be copied.
+//
+// ReportProject has no soft-delete, so deleting one leaves its reports behind
+// with a project_id pointing at nothing. Those rows are already half-broken —
+// but an inner join would drop them from the copy, the count would come up
+// short, and the verification would panic. That is a backend refusing to start
+// because of data that was already there before this feature existed.
+func TestAReportWhoseProjectIsGoneIsStillCopied(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	orphan := &domain.Report{
+		ProjectID: "proj-vanished", Seq: 1, Title: "de un proyecto borrado",
+		Status: domain.ReportPending,
+	}
+	orphan.ID = "rep-orphan"
+	if err := db.Create(orphan).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	migrateItems(db) // must not panic
+
+	var got domain.Item
+	if err := db.First(&got, "id = ?", "rep-orphan").Error; err != nil {
+		t.Fatalf("the orphaned report was dropped instead of copied: %v", err)
+	}
+	if got.ProjectID != "proj-vanished" {
+		t.Errorf("its channel id is kept as-is, broken or not; got %q", got.ProjectID)
+	}
+}
+
+// Same shape on the internal side: a task whose list is gone.
+func TestATaskWhoseListIsGoneIsStillCopied(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	stray := &domain.Task{
+		ListID: "list-vanished", StatusID: "st-gone", OrgID: "org-1", Seq: 99,
+		Title: "de una lista borrada",
+	}
+	stray.ID = "task-orphan"
+	if err := db.Create(stray).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	migrateItems(db) // must not panic
+
+	var got domain.Item
+	if err := db.First(&got, "id = ?", "task-orphan").Error; err != nil {
+		t.Fatalf("the orphaned task was dropped instead of copied: %v", err)
+	}
+	// No column to read a kind from, so it lands in the first state rather than
+	// being guessed into a finished one.
+	if got.Status != domain.ReportPending {
+		t.Errorf("with no column to read, the safe landing state is pending; got %q", got.Status)
+	}
+}
+
+// Folios that were already duplicated must not stop the backend from starting.
+//
+// The seq-reuse bug shipped, so a production database may already hold two
+// reports with the same number. Creating a unique index over that data is
+// impossible — and panicking on it would mean a crash loop over data that has
+// been sitting there for weeks, taking the service down without helping anyone
+// fix it.
+//
+// The rule this encodes: a problem the copy *created* stops the deploy; a problem
+// the copy *found* gets reported loudly and the service keeps running. Nothing
+// reads these tables yet, so a missing index costs nothing today.
+func TestPreexistingDuplicateFoliosDoNotBlockTheBoot(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	// Two reports of the same project sharing number 7 — exactly what the old
+	// MAX(seq) produced after a withdrawal.
+	twin := &domain.Report{
+		ProjectID: "proj-1", Seq: 7, Title: "el gemelo", Status: domain.ReportPending,
+	}
+	twin.ID = "rep-twin"
+	if err := db.Create(twin).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	migrateItems(db) // must not panic
+
+	// Both arrived: nothing was quietly dropped to make the index possible.
+	var n int64
+	db.Model(&domain.Item{}).Where("project_id = ? AND seq = ?", "proj-1", 7).Count(&n)
+	if n != 2 {
+		t.Errorf("both twins should be copied, found %d", n)
+	}
+}
