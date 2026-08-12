@@ -17,8 +17,13 @@ import (
 
 // What the dashboard's pending list rests on, checked against a real Postgres
 // because every interesting part of ListOpen is SQL: the join across lists, the
-// `kind` filter, and an ORDER BY that has to spell out a priority order the
-// database can't infer from the stored strings.
+// filter that decides what counts as unfinished, and an ORDER BY that has to
+// spell out a priority order the database can't infer from the stored strings.
+//
+// The columns it used to join through are gone — a board's columns are the
+// states themselves now — so "Shipped" is expressed as the state a card in a
+// renamed done column ends up in. What the test protects is unchanged: finished
+// work, archived work and subtasks stay off the dashboard.
 //
 // Skips when there's no database, so `go test ./...` stays green without one.
 func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
@@ -30,11 +35,7 @@ func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
 	space.ID = "sp-1"
 	list := &domain.TaskList{SpaceID: space.ID, Name: "Backlog"}
 	list.ID = "li-1"
-	todo := &domain.TaskStatus{ListID: list.ID, Name: "To do", Kind: domain.StatusKindOpen}
-	todo.ID = "st-todo"
-	shipped := &domain.TaskStatus{ListID: list.ID, Name: "Shipped", Kind: domain.StatusKindDone}
-	shipped.ID = "st-done"
-	for _, m := range []any{space, list, todo, shipped} {
+	for _, m := range []any{space, list} {
 		if err := db.Create(m).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -43,9 +44,9 @@ func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
 	soon := time.Now().Add(24 * time.Hour)
 	later := time.Now().Add(240 * time.Hour)
 	gone := time.Now()
-	mk := func(id, title string, p domain.TaskPriority, status string, due *time.Time, mutate func(*domain.Task)) {
+	mk := func(id, title string, p domain.ItemPriority, status domain.ReportStatus, due *time.Time, mutate func(*domain.Task)) {
 		task := &domain.Task{
-			ListID: list.ID, StatusID: status, OrgID: org, Seq: 1,
+			ListID: list.ID, SpaceID: space.ID, Status: status, OrgID: org, Seq: 1,
 			Title: title, Priority: p, DueAt: due,
 		}
 		task.ID = id
@@ -57,15 +58,15 @@ func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
 		}
 	}
 
-	mk("t-normal", "normal sin fecha", domain.PriorityNormal, todo.ID, nil, nil)
-	mk("t-urgent", "urgente", domain.PriorityUrgent, todo.ID, &later, nil)
-	mk("t-normal-soon", "normal que vence pronto", domain.PriorityNormal, todo.ID, &soon, nil)
+	mk("t-normal", "normal sin fecha", domain.ItemPriorityMedium, domain.ReportPending, nil, nil)
+	mk("t-urgent", "urgente", domain.ItemPriorityUrgent, domain.ReportPending, &later, nil)
+	mk("t-normal-soon", "normal que vence pronto", domain.ItemPriorityMedium, domain.ReportPending, &soon, nil)
 	// None of these three may appear.
-	mk("t-done", "terminada", domain.PriorityUrgent, shipped.ID, nil, nil)
-	mk("t-archived", "archivada", domain.PriorityUrgent, todo.ID, nil, func(x *domain.Task) {
+	mk("t-done", "terminada", domain.ItemPriorityUrgent, domain.ReportResolved, nil, nil)
+	mk("t-archived", "archivada", domain.ItemPriorityUrgent, domain.ReportPending, nil, func(x *domain.Task) {
 		x.ArchivedAt = &gone
 	})
-	mk("t-subtask", "subtarea", domain.PriorityUrgent, todo.ID, nil, func(x *domain.Task) {
+	mk("t-subtask", "subtarea", domain.ItemPriorityUrgent, domain.ReportPending, nil, func(x *domain.Task) {
 		parent := "t-normal"
 		x.ParentID = &parent
 	})
@@ -74,14 +75,12 @@ func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
 	otherSpace.ID = "sp-2"
 	otherList := &domain.TaskList{SpaceID: otherSpace.ID, Name: "Suyo"}
 	otherList.ID = "li-2"
-	otherStatus := &domain.TaskStatus{ListID: otherList.ID, Name: "To do", Kind: domain.StatusKindOpen}
-	otherStatus.ID = "st-other"
 	foreign := &domain.Task{
-		ListID: otherList.ID, StatusID: otherStatus.ID, OrgID: other, Seq: 1,
-		Title: "de otra org", Priority: domain.PriorityUrgent,
+		ListID: otherList.ID, SpaceID: otherSpace.ID, Status: domain.ReportPending, OrgID: other, Seq: 1,
+		Title: "de otra org", Priority: domain.ItemPriorityUrgent,
 	}
 	foreign.ID = "t-foreign"
-	for _, m := range []any{otherSpace, otherList, otherStatus, foreign} {
+	for _, m := range []any{otherSpace, otherList, foreign} {
 		if err := db.Create(m).Error; err != nil {
 			t.Fatal(err)
 		}

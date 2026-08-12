@@ -28,13 +28,13 @@ func TestAttachmentRef(t *testing.T) {
 
 // A pre-proxy row (bucket URL, no key) must come back pointing at the proxy.
 func TestNormalizeURL(t *testing.T) {
-	a := domain.TaskAttachment{TaskID: "t1", URL: "https://b.s3.mx-central-1.amazonaws.com/tasks/t1/p.png"}
+	a := domain.TaskAttachment{ItemID: "t1", URL: "https://b.s3.mx-central-1.amazonaws.com/tasks/t1/p.png"}
 	a.ID = "a1"
 	a.NormalizeURL()
 	if a.URL != "/api/v1/tasks/t1/attachments/a1/raw" {
 		t.Fatalf("not normalized: %q", a.URL)
 	}
-	already := domain.TaskAttachment{TaskID: "t1", URL: "/api/v1/tasks/t1/attachments/a1/raw"}
+	already := domain.TaskAttachment{ItemID: "t1", URL: "/api/v1/tasks/t1/attachments/a1/raw"}
 	already.NormalizeURL()
 	if already.URL != "/api/v1/tasks/t1/attachments/a1/raw" {
 		t.Fatalf("rewrote an already-proxied URL: %q", already.URL)

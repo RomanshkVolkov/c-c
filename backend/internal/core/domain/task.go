@@ -89,33 +89,16 @@ func (p TaskPriority) IsValid() bool {
 	return false
 }
 
-type Task struct {
-	BaseModel
-	ListID   string `gorm:"type:varchar(36);index;not null" json:"listId"`
-	StatusID string `gorm:"type:varchar(36);index;not null" json:"statusId"`
-	// OrgID is denormalized from the list's space so every scoping query and the
-	// board filters stay single-table.
-	OrgID string `gorm:"type:varchar(36);index;not null" json:"orgId"`
-	// Seq is a short human folio within the space (SPACE-12).
-	Seq   int    `gorm:"not null"                    json:"seq"`
-	Title string `gorm:"type:varchar(300);not null"  json:"title"`
-	// Description is markdown — the source of truth, so it stays readable by
-	// anything (exports, the MCP server) and not just the editor that wrote it.
-	Description string       `gorm:"type:text"                        json:"description"`
-	Priority    TaskPriority `gorm:"type:varchar(20);default:'none'"  json:"priority"`
-	// Set only for tasks created with an idempotency key; unique per list.
-	IdempotencyKey string     `gorm:"type:varchar(120);index" json:"-"`
-	Rank           string     `gorm:"type:varchar(64);index"           json:"-"`
-	StartAt        *time.Time `json:"startAt,omitempty"`
-	DueAt          *time.Time `gorm:"index" json:"dueAt,omitempty"`
-	CompletedAt    *time.Time `json:"completedAt,omitempty"`
-	CreatedByID    string     `gorm:"type:varchar(36)" json:"createdById"`
-	// ParentID makes this a subtask of another task. Subtasks live in the same
-	// list and share its columns; they're hidden from the board's top level so a
-	// parent's breakdown doesn't clutter the column it belongs to.
-	ParentID   *string    `gorm:"type:varchar(36);index" json:"parentId,omitempty"`
-	ArchivedAt *time.Time `gorm:"index" json:"archivedAt,omitempty"`
-}
+// Task is an Item with no channel — work raised inside cac.
+//
+// An alias rather than a struct of its own: one row, one set of rules. Two
+// structs over one table drift, and the drift shows up as a default that applies
+// on one write path and not the other.
+//
+// StatusID is gone with it. The configurable columns it pointed at don't exist
+// any more, and every board that asked for one now gets a synthesised column —
+// see domain.BoardStatuses.
+type Task = Item
 
 // TaskTag is an org-wide label pool, so tags stay consistent across spaces.
 type TaskTag struct {
@@ -135,32 +118,13 @@ type TaskAssignee struct {
 	UserID string `gorm:"type:varchar(36);primaryKey" json:"userId"`
 }
 
-type TaskComment struct {
-	BaseModel
-	TaskID       string `gorm:"type:varchar(36);index;not null" json:"taskId"`
-	AuthorUserID string `gorm:"type:varchar(36)"                json:"authorUserId"`
-	Body         string `gorm:"type:text"                       json:"body"` // markdown
-}
+// TaskComment is an internal ItemComment: nobody outside cac ever reads one.
+type TaskComment = ItemComment
 
-// TaskAttachment points at a file stored through image-service. CommentID set =
-// attached to a comment; nil = attached to the task itself. Files referenced
-// inline from markdown are recorded here too, so nothing is orphaned.
-type TaskAttachment struct {
-	BaseModel
-	TaskID    string  `gorm:"type:varchar(36);index;not null" json:"taskId"`
-	CommentID *string `gorm:"type:varchar(36);index"          json:"commentId,omitempty"`
-	// URL is the path clients fetch: our own authenticated proxy, not the
-	// bucket. The bucket denies anonymous reads, so an <img> pointed straight at
-	// it renders nothing at all (which is what happened to inline images).
-	URL string `gorm:"type:text;not null" json:"url"`
-	// Path is the object key inside the bucket. Never exposed: it is the thing
-	// the proxy needs and the client must not be able to address directly.
-	Path        string `gorm:"type:text"                       json:"-"`
-	FileName    string `gorm:"type:varchar(255)"               json:"fileName"`
-	ContentType string `gorm:"type:varchar(120)"               json:"contentType"`
-	Bytes       int64  `json:"bytes"`
-	UploadedBy  string `gorm:"type:varchar(36)" json:"uploadedBy"`
-}
+// TaskAttachment is an ItemAttachment on the internal side: served through the
+// authenticated proxy rather than a signed link. CommentID set = attached to a
+// comment; nil = attached to the item itself.
+type TaskAttachment = ItemAttachment
 
 // AttachmentRef is the canonical reference stored in markdown and returned to
 // clients: our own proxy, relative so the same description resolves against
@@ -174,7 +138,7 @@ func AttachmentRef(taskID, attachmentID string) string {
 // anonymous reads) — this makes those rows serve like new ones.
 func (a *TaskAttachment) NormalizeURL() {
 	if !strings.HasPrefix(a.URL, "/api/") {
-		a.URL = AttachmentRef(a.TaskID, a.ID)
+		a.URL = AttachmentRef(a.ItemID, a.ID)
 	}
 }
 
@@ -293,7 +257,7 @@ type CreateTaskRequest struct {
 	// does exactly that).
 	Description string       `json:"description"`
 	StatusID    string       `json:"statusId"`
-	Priority    TaskPriority `json:"priority" validate:"omitempty,oneof=none low normal high urgent"`
+	Priority    ItemPriority `json:"priority" validate:"omitempty,oneof=none low normal high urgent"`
 	// ParentID creates this task as a subtask of another one.
 	ParentID string `json:"parentId"`
 }
@@ -371,7 +335,7 @@ type TaskCard struct {
 	ID              string       `json:"id"`
 	Seq             int          `json:"seq"`
 	Title           string       `json:"title"`
-	Priority        TaskPriority `json:"priority"`
+	Priority        ItemPriority `json:"priority"`
 	StatusID        string       `json:"statusId"`
 	DueAt           *time.Time   `json:"dueAt,omitempty"`
 	HasDescription  bool         `json:"hasDescription"`
@@ -400,11 +364,14 @@ type BoardResponse struct {
 // crosses lists, which the board never does, so it names the list and space a
 // task came from.
 type OpenTask struct {
-	ID         string         `json:"id"`
-	Seq        int            `json:"seq"`
-	Title      string         `json:"title"`
-	Priority   TaskPriority   `json:"priority"`
-	DueAt      *time.Time     `json:"dueAt,omitempty"`
+	ID       string       `json:"id"`
+	Seq      int          `json:"seq"`
+	Title    string       `json:"title"`
+	Priority ItemPriority `json:"priority"`
+	DueAt    *time.Time   `json:"dueAt,omitempty"`
+	// Status is the raw state, scanned from the row; the two fields under it are
+	// rendered from it for clients that still read column names.
+	Status     ReportStatus   `json:"-"`
 	StatusName string         `json:"statusName"`
 	StatusKind TaskStatusKind `json:"statusKind"`
 	ListID     string         `json:"listId"`

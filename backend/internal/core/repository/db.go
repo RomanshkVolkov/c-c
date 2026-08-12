@@ -149,7 +149,7 @@ func backfillAttachmentRefs(db *gorm.DB) {
 		if key == "" {
 			continue
 		}
-		ref := domain.AttachmentRef(a.TaskID, a.ID)
+		ref := domain.AttachmentRef(a.ItemID, a.ID)
 
 		if err := db.Model(&domain.TaskAttachment{}).Where("id = ?", a.ID).
 			Updates(map[string]any{"path": key, "url": ref}).Error; err != nil {
@@ -159,15 +159,15 @@ func backfillAttachmentRefs(db *gorm.DB) {
 		// Rewrite the exact old URL wherever the markdown embeds it.
 		if err := db.Exec(
 			"UPDATE tasks SET description = REPLACE(description, ?, ?) WHERE id = ? AND description LIKE ?",
-			a.URL, ref, a.TaskID, "%"+a.URL+"%",
+			a.URL, ref, a.ItemID, "%"+a.URL+"%",
 		).Error; err != nil {
-			lg.Error("attachment backfill: description " + a.TaskID + ": " + err.Error())
+			lg.Error("attachment backfill: description " + a.ItemID + ": " + err.Error())
 		}
 		if err := db.Exec(
 			"UPDATE task_comments SET body = REPLACE(body, ?, ?) WHERE task_id = ? AND body LIKE ?",
-			a.URL, ref, a.TaskID, "%"+a.URL+"%",
+			a.URL, ref, a.ItemID, "%"+a.URL+"%",
 		).Error; err != nil {
-			lg.Error("attachment backfill: comments " + a.TaskID + ": " + err.Error())
+			lg.Error("attachment backfill: comments " + a.ItemID + ": " + err.Error())
 		}
 		fixed++
 	}
@@ -312,7 +312,7 @@ func repairMismatchedRefs(db *gorm.DB) {
 
 	fixed := 0
 	for _, a := range rows {
-		want := domain.AttachmentRef(a.TaskID, a.ID)
+		want := domain.AttachmentRef(a.ItemID, a.ID)
 		if a.URL == want {
 			continue
 		}
@@ -324,15 +324,15 @@ func repairMismatchedRefs(db *gorm.DB) {
 		}
 		if err := db.Exec(
 			"UPDATE tasks SET description = REPLACE(description, ?, ?) WHERE id = ? AND description LIKE ?",
-			old, want, a.TaskID, "%"+old+"%",
+			old, want, a.ItemID, "%"+old+"%",
 		).Error; err != nil {
-			lg.Error("attachment repair: description " + a.TaskID + ": " + err.Error())
+			lg.Error("attachment repair: description " + a.ItemID + ": " + err.Error())
 		}
 		if err := db.Exec(
 			"UPDATE task_comments SET body = REPLACE(body, ?, ?) WHERE task_id = ? AND body LIKE ?",
-			old, want, a.TaskID, "%"+old+"%",
+			old, want, a.ItemID, "%"+old+"%",
 		).Error; err != nil {
-			lg.Error("attachment repair: comments " + a.TaskID + ": " + err.Error())
+			lg.Error("attachment repair: comments " + a.ItemID + ": " + err.Error())
 		}
 		fixed++
 	}

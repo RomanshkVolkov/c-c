@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -23,6 +24,8 @@ var (
 	// ErrChannelOtherOrg: binding to a channel of another organization would be a
 	// way to push work onto a tenant nobody here is supposed to reach.
 	ErrChannelOtherOrg = errors.New("that channel belongs to another organization")
+	// ErrListHoldsChannelWork: there is a client's ticket in here.
+	ErrListHoldsChannelWork = errors.New("this list holds work that belongs to a client's channel")
 )
 
 type TaskRepository struct {
@@ -94,23 +97,40 @@ func deleteListsCascade(tx *gorm.DB, listIDs []string) error {
 		return ErrListInUseByChannel
 	}
 
-	var taskIDs []string
-	tx.Model(&domain.Task{}).Where("list_id IN ?", listIDs).Pluck("id", &taskIDs)
-	if len(taskIDs) > 0 {
-		for _, m := range []any{
-			&domain.TaskTagLink{}, &domain.TaskAssignee{},
-			&domain.TaskComment{}, &domain.TaskAttachment{},
-		} {
-			if err := tx.Where("task_id IN ?", taskIDs).Delete(m).Error; err != nil {
+	// A channel item in here is a client's ticket, with a folio they may have
+	// quoted and a url they may have stored. Deleting the list around it is not
+	// an intent anyone can have expressed by clicking "delete list", so it is
+	// refused rather than interpreted.
+	var channelItems int64
+	if err := tx.Model(&domain.Item{}).
+		Where("list_id IN ? AND project_id <> ''", listIDs).Count(&channelItems).Error; err != nil {
+		return err
+	}
+	if channelItems > 0 {
+		return ErrListHoldsChannelWork
+	}
+
+	var itemIDs []string
+	tx.Model(&domain.Item{}).Where("list_id IN ?", listIDs).Pluck("id", &itemIDs)
+	if len(itemIDs) > 0 {
+		// Links carry no content of their own, so they go for real.
+		for _, m := range []any{&domain.TaskTagLink{}, &domain.TaskAssignee{}} {
+			if err := tx.Where("task_id IN ?", itemIDs).Delete(m).Error; err != nil {
 				return err
 			}
 		}
-		if err := tx.Where("id IN ?", taskIDs).Delete(&domain.Task{}).Error; err != nil {
+		// The work itself is only hidden. Deleting a list used to destroy every
+		// task in it outright — no undo, no trace, and no way to tell afterwards
+		// whether anything had been in there. Soft-deleting costs nothing and
+		// makes the mistake survivable.
+		for _, m := range []any{&domain.ItemComment{}, &domain.ItemAttachment{}} {
+			if err := tx.Where("item_id IN ?", itemIDs).Delete(m).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("id IN ?", itemIDs).Delete(&domain.Item{}).Error; err != nil {
 			return err
 		}
-	}
-	if err := tx.Where("list_id IN ?", listIDs).Delete(&domain.TaskStatus{}).Error; err != nil {
-		return err
 	}
 	return tx.Where("id IN ?", listIDs).Delete(&domain.TaskList{}).Error
 }
@@ -160,9 +180,9 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		N      int64
 	}
 	var counts []countRow
-	r.db.Model(&domain.Task{}).
+	r.db.Model(&domain.Item{}).
 		Select("list_id, COUNT(*) AS n").
-		Where("archived_at IS NULL").
+		Where("archived_at IS NULL AND project_id = ''").
 		Group("list_id").Scan(&counts)
 	countBy := make(map[string]int64, len(counts))
 	for _, c := range counts {
@@ -320,55 +340,31 @@ func (r *TaskRepository) RankOf(table, id string) string {
 }
 
 // ─── Statuses ─────────────────────────────────────────────────────────────────
+//
+// There is no table any more. A board's columns are a rendering of the shared
+// state machine, so they are computed rather than stored — which is why the
+// endpoints that used to create, rename and delete them now answer 410 instead
+// of pretending.
+//
+// What those rows really carried was their `kind`, and that survives: the four
+// states map onto open / active / done exactly as before.
 
 func (r *TaskRepository) Statuses(listID string) ([]domain.TaskStatus, error) {
-	var out []domain.TaskStatus
-	err := r.db.Where("list_id = ?", listID).Order("rank ASC").Find(&out).Error
-	return out, err
+	return domain.BoardStatuses(listID), nil
 }
 
-func (r *TaskRepository) CreateStatus(s *domain.TaskStatus) error {
-	s.Rank = r.nextRank("task_statuses", "list_id = ?", s.ListID)
-	return r.db.Create(s).Error
-}
-
+// FindStatus resolves a synthetic column id back to the column it names.
 func (r *TaskRepository) FindStatus(id string) (*domain.TaskStatus, error) {
-	var s domain.TaskStatus
-	if err := r.db.First(&s, "id = ?", id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrStatusNotFound
-		}
-		return nil, err
+	status, ok := domain.SplitSyntheticStatusID(id)
+	if !ok {
+		return nil, ErrStatusNotFound
 	}
-	return &s, nil
-}
-
-func (r *TaskRepository) UpdateStatus(id string, fields map[string]any) error {
-	return r.db.Model(&domain.TaskStatus{}).Where("id = ?", id).Updates(fields).Error
-}
-
-// DeleteStatus refuses to strand tasks: the caller must pass a column to move
-// them into, and a list can never be left without columns.
-func (r *TaskRepository) DeleteStatus(id, moveToID string) error {
-	st, err := r.FindStatus(id)
-	if err != nil {
-		return err
+	listID := ""
+	if i := strings.LastIndex(id, "/"); i >= 0 {
+		listID = id[:i]
 	}
-	var n int64
-	r.db.Model(&domain.TaskStatus{}).Where("list_id = ?", st.ListID).Count(&n)
-	if n <= 1 {
-		return ErrLastStatus
-	}
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		if moveToID == "" {
-			return errors.New("a target column is required to absorb the tasks")
-		}
-		if err := tx.Model(&domain.Task{}).Where("status_id = ?", id).
-			Update("status_id", moveToID).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&domain.TaskStatus{}, "id = ?", id).Error
-	})
+	st := domain.BoardStatusFor(listID, status)
+	return &st, nil
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
@@ -376,14 +372,18 @@ func (r *TaskRepository) DeleteStatus(id, moveToID string) error {
 // CreateTask assigns the next per-space folio and appends to its column.
 func (r *TaskRepository) CreateTask(t *domain.Task, spaceID string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Unscoped, and no join: space_id lives on the row now. Unscoped for the
+		// same reason the folio needs it — a number handed out once is spent, and
+		// a soft-deleted row still owns its own.
 		var maxSeq int
-		tx.Raw(`SELECT COALESCE(MAX(t.seq),0) FROM tasks t
-		        JOIN task_lists l ON l.id = t.list_id
-		        WHERE l.space_id = ?`, spaceID).Scan(&maxSeq)
+		tx.Unscoped().Raw(
+			`SELECT COALESCE(MAX(seq),0) FROM items WHERE space_id = ? AND project_id = ''`,
+			spaceID).Scan(&maxSeq)
 		t.Seq = maxSeq + 1
+		t.SpaceID = spaceID
 
 		var last string
-		tx.Model(&domain.Task{}).Where("status_id = ?", t.StatusID).
+		tx.Model(&domain.Item{}).Where("list_id = ? AND status = ? AND project_id = ''", t.ListID, t.Status).
 			Order("rank DESC").Limit(1).Pluck("rank", &last)
 		t.Rank = rank.Between(last, "")
 
@@ -424,9 +424,9 @@ func (r *TaskRepository) UpdateTask(id string, fields map[string]any) error {
 	return r.db.Model(&domain.Task{}).Where("id = ?", id).Updates(fields).Error
 }
 
-func (r *TaskRepository) MoveTask(id, statusID, newRank string, completedAt *time.Time) error {
-	fields := map[string]any{"status_id": statusID, "rank": newRank, "completed_at": completedAt}
-	return r.db.Model(&domain.Task{}).Where("id = ?", id).Updates(fields).Error
+func (r *TaskRepository) MoveTask(id string, status domain.ReportStatus, newRank string, resolvedAt *time.Time) error {
+	fields := map[string]any{"status": status, "rank": newRank, "resolved_at": resolvedAt}
+	return r.db.Model(&domain.Item{}).Where("id = ?", id).Updates(fields).Error
 }
 
 func (r *TaskRepository) DeleteTask(id string) error {
@@ -462,16 +462,19 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 		limit = 50
 	}
 
-	q := r.db.Table("tasks t").
-		Select(`t.id, t.seq, t.title, t.priority, t.due_at, t.updated_at,
-			s.name AS status_name, s.kind AS status_kind,
+	// The column names are rendered from the state now, so the SQL only has to
+	// know which states are unfinished. Channel items stay out: they are served
+	// by the report path and are somebody's client-facing ticket, not a line on
+	// our dashboard.
+	q := r.db.Table("items t").
+		Select(`t.id, t.seq, t.title, t.priority, t.due_at, t.updated_at, t.status,
 			l.id AS list_id, l.name AS list_name,
 			sp.id AS space_id, sp.name AS space_name`).
-		Joins("JOIN task_statuses s ON s.id = t.status_id").
 		Joins("JOIN task_lists l ON l.id = t.list_id").
 		Joins("JOIN task_spaces sp ON sp.id = l.space_id").
-		Where("t.archived_at IS NULL AND t.parent_id IS NULL").
-		Where("s.kind <> 'done'")
+		Where("t.archived_at IS NULL AND t.parent_id IS NULL AND t.deleted_at IS NULL").
+		Where("t.project_id = ''").
+		Where("t.status NOT IN ('resolved','closed')")
 
 	if !superadmin {
 		q = q.Where("t.org_id IN ?", orgIDs)
@@ -493,7 +496,16 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 		Order("t.updated_at DESC").
 		Limit(limit).
 		Scan(&out).Error
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	// Spelt the way an installed app expects to read them.
+	for i := range out {
+		st := domain.BoardStatusFor(out[i].ListID, out[i].Status)
+		out[i].StatusName, out[i].StatusKind = st.Name, st.Kind
+		out[i].Priority = out[i].Priority.TaskWire()
+	}
+	return out, nil
 }
 
 // Board returns every card in a list along with its tags and assignees, using
@@ -502,7 +514,12 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 	var tasks []domain.Task
 	// Subtasks belong to their parent's breakdown, not to the column: showing
 	// both would double-count the work on screen.
-	if err := r.db.Where("list_id = ? AND archived_at IS NULL AND parent_id IS NULL", listID).
+	//
+	// project_id = '' keeps channel items off this board. They live in the same
+	// table now, but the report side is still served from its own tables — so a
+	// card dragged here would change one copy and not the other, and no webhook
+	// would fire. They arrive on boards when that path moves too.
+	if err := r.db.Where("list_id = ? AND project_id = '' AND archived_at IS NULL AND parent_id IS NULL", listID).
 		Order("rank ASC").Find(&tasks).Error; err != nil {
 		return nil, err
 	}
@@ -553,11 +570,12 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 		Done     int64
 	}
 	var subs []subRow
-	r.db.Table("tasks t").
+	// "Done" is still not a name: it is the set of states that mean finished, and
+	// closed counts — a subtask nobody is going to do is not outstanding work.
+	r.db.Table("items t").
 		Select(`t.parent_id, COUNT(*) AS total,
-			COUNT(*) FILTER (WHERE s.kind = 'done') AS done`).
-		Joins("JOIN task_statuses s ON s.id = t.status_id").
-		Where("t.parent_id IN ? AND t.archived_at IS NULL", ids).
+			COUNT(*) FILTER (WHERE t.status IN ('resolved','closed')) AS done`).
+		Where("t.parent_id IN ? AND t.archived_at IS NULL AND t.deleted_at IS NULL", ids).
 		Group("t.parent_id").Scan(&subs)
 	subTotal := map[string]int64{}
 	subDone := map[string]int64{}
@@ -586,8 +604,8 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 	cards := make([]domain.TaskCard, len(tasks))
 	for i, t := range tasks {
 		cards[i] = domain.TaskCard{
-			ID: t.ID, Seq: t.Seq, Title: t.Title, Priority: t.Priority,
-			StatusID: t.StatusID, DueAt: t.DueAt,
+			ID: t.ID, Seq: t.Seq, Title: t.Title, Priority: t.Priority.TaskWire(),
+			StatusID: domain.SyntheticStatusID(t.ListID, t.Status), DueAt: t.DueAt,
 			HasDescription:  t.Description != "",
 			SubtaskCount:    subTotal[t.ID],
 			SubtaskDone:     subDone[t.ID],
@@ -618,15 +636,15 @@ func orEmptyUsers(v []domain.UserSummary) []domain.UserSummary {
 // Subtasks returns a task's children as cards, ordered like the board.
 func (r *TaskRepository) Subtasks(parentID string) ([]domain.TaskCard, error) {
 	var tasks []domain.Task
-	if err := r.db.Where("parent_id = ? AND archived_at IS NULL", parentID).
+	if err := r.db.Where("parent_id = ? AND project_id = '' AND archived_at IS NULL", parentID).
 		Order("rank ASC").Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 	out := make([]domain.TaskCard, len(tasks))
 	for i, t := range tasks {
 		out[i] = domain.TaskCard{
-			ID: t.ID, Seq: t.Seq, Title: t.Title, Priority: t.Priority,
-			StatusID: t.StatusID, DueAt: t.DueAt,
+			ID: t.ID, Seq: t.Seq, Title: t.Title, Priority: t.Priority.TaskWire(),
+			StatusID: domain.SyntheticStatusID(t.ListID, t.Status), DueAt: t.DueAt,
 			HasDescription: t.Description != "",
 			Tags:           []domain.TaskTag{},
 			Assignees:      []domain.UserSummary{},

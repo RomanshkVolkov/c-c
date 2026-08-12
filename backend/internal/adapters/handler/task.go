@@ -69,9 +69,18 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		errors.Is(err, repository.ErrTaskNotFound),
 		errors.Is(err, repository.ErrStatusNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "Not found", err.Error())
+	case errors.Is(err, service.ErrColumnsAreFixed):
+		SendErrorResponse(w, http.StatusGone,
+			"Board columns are fixed: To do, In progress, Done and Closed. "+
+				"They are the states themselves now, so there is nothing to add or rename.",
+			"columns-are-fixed")
 	case errors.Is(err, repository.ErrChannelOtherOrg):
 		SendErrorResponse(w, http.StatusForbidden,
 			"That channel belongs to another organization.", "channel-other-org")
+	case errors.Is(err, repository.ErrListHoldsChannelWork):
+		SendErrorResponse(w, http.StatusConflict,
+			"This list holds reports that belong to a client. Move them out before deleting it.",
+			"list-holds-channel-work")
 	case errors.Is(err, repository.ErrListInUseByChannel):
 		SendErrorResponse(w, http.StatusConflict,
 			"A report project delivers into this list, so deleting it would take that project's reports with it. "+
@@ -474,6 +483,9 @@ func (h *taskHandler) CreateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	st, err := h.svc.CreateStatus(l.ID, req)
 	if err != nil {
+		if mapTaskError(w, err) {
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to create column", err.Error())
 		return
 	}
@@ -504,6 +516,9 @@ func (h *taskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.UpdateStatus(st.ID, req); err != nil {
+		if mapTaskError(w, err) {
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update column", err.Error())
 		return
 	}
@@ -521,6 +536,9 @@ func (h *taskHandler) MoveStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.MoveStatus(st.ID, req.AfterID, req.BeforeID); err != nil {
+		if mapTaskError(w, err) {
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to move column", err.Error())
 		return
 	}
@@ -675,11 +693,15 @@ func (h *taskHandler) commentScope(w http.ResponseWriter, r *http.Request) (*dom
 		SendErrorResponse(w, http.StatusNotFound, "Comment not found", "not-found")
 		return nil, false
 	}
-	if _, ok := h.resolveTask(w, r, c.TaskID, true); !ok {
+	if _, ok := h.resolveTask(w, r, c.ItemID, true); !ok {
 		return nil, false
 	}
 	user, _ := currentUser(r)
-	if c.AuthorUserID != user.UserID && !user.Superadmin {
+	// A nil author is not a match for anybody. Editing someone else's words isn't
+	// a permission an org role should grant, and an unattributed comment has no
+	// owner to be — so it can only be touched by a superadmin.
+	mine := c.AuthorUserID != nil && *c.AuthorUserID == user.UserID
+	if !mine && !user.Superadmin {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-the-author")
 		return nil, false
 	}

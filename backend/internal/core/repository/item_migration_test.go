@@ -295,30 +295,36 @@ func seedOldWorld(t *testing.T, db *gorm.DB) {
 	mk(shipped)
 
 	completed := time.Now().Add(-24 * time.Hour)
-	task := &domain.Task{
-		ListID: "list-1", StatusID: "st-done", OrgID: "org-1", Seq: 3,
-		Title: "ya salió", Priority: domain.TaskPriority("normal"), CompletedAt: &completed,
-		CreatedByID: "u-1",
-	}
+	// Built as the OLD world had it: raw SQL, because domain.Task now describes
+	// the unified row and this fixture has to look like what production is being
+	// migrated *from*.
+	task := &domain.Task{}
 	task.ID = "task-done"
-	mk(task)
-
-	tc := &domain.TaskComment{TaskID: "task-done", AuthorUserID: "u-1", Body: "nota del equipo"}
-	tc.ID = "cmt-task"
-	mk(tc)
+	if err := db.Exec(`INSERT INTO tasks
+		(id, created_at, updated_at, list_id, status_id, org_id, seq, title, priority, completed_at, created_by_id)
+		VALUES ('task-done', now(), now(), 'list-1', 'st-done', 'org-1', 3, 'ya salió', 'normal', ?, 'u-1')`,
+		completed).Error; err != nil {
+		t.Fatal(err)
+	}
+	_ = task
+	if err := db.Exec(`INSERT INTO task_comments (id, created_at, updated_at, task_id, author_user_id, body)
+		VALUES ('cmt-task', now(), now(), 'task-done', 'u-1', 'nota del equipo')`).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	// An author id that was never filled in — on the channel side that shape
 	// means "the reporter", so it must not travel as an empty string.
-	orphan := &domain.TaskComment{TaskID: "task-done", AuthorUserID: "", Body: "sin autor"}
-	orphan.ID = "cmt-task-noauthor"
-	mk(orphan)
-
-	att := &domain.TaskAttachment{
-		TaskID: "task-done", Path: "t/spec.pdf", FileName: "spec.pdf",
-		URL: domain.AttachmentRef("task-done", "att-1"), ContentType: "application/pdf", Bytes: 10,
+	if err := db.Exec(`INSERT INTO task_comments (id, created_at, updated_at, task_id, author_user_id, body)
+		VALUES ('cmt-task-noauthor', now(), now(), 'task-done', '', 'sin autor')`).Error; err != nil {
+		t.Fatal(err)
 	}
-	att.ID = "att-1"
-	mk(att)
+
+	if err := db.Exec(`INSERT INTO task_attachments
+		(id, created_at, updated_at, task_id, path, file_name, url, content_type, bytes)
+		VALUES ('att-1', now(), now(), 'task-done', 't/spec.pdf', 'spec.pdf', ?, 'application/pdf', 10)`,
+		domain.AttachmentRef("task-done", "att-1")).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	mk(&domain.TaskAssignee{TaskID: "task-done", UserID: "u-1"})
 }
@@ -352,11 +358,13 @@ func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
 	if err := db.AutoMigrate(
 		&domain.User{}, &domain.Organization{},
 		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{},
-		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.TaskStatus{},
-		&domain.Task{}, &domain.TaskComment{}, &domain.TaskAttachment{}, &domain.TaskAssignee{},
+		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.TaskAssignee{},
 		&domain.TaskTag{}, &domain.TaskTagLink{},
 		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{}, &domain.ItemAssignee{},
 	); err != nil {
+		t.Fatal(err)
+	}
+	if err := createLegacyTaskTables(db); err != nil {
 		t.Fatal(err)
 	}
 	return db, func() {
@@ -406,12 +414,9 @@ func TestATaskWhoseListIsGoneIsStillCopied(t *testing.T) {
 	defer cleanup()
 	seedOldWorld(t, db)
 
-	stray := &domain.Task{
-		ListID: "list-vanished", StatusID: "st-gone", OrgID: "org-1", Seq: 99,
-		Title: "de una lista borrada",
-	}
-	stray.ID = "task-orphan"
-	if err := db.Create(stray).Error; err != nil {
+	if err := db.Exec(`INSERT INTO tasks (id, created_at, updated_at, list_id, status_id, org_id, seq, title, priority)
+		VALUES ('task-orphan', now(), now(), 'list-vanished', 'st-gone', 'org-1', 99, 'de una lista borrada', 'none')`).
+		Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -640,5 +645,222 @@ func TestBindingAListAlsoMovesTheInbox(t *testing.T) {
 	// And the list a channel now delivers into is protected, wherever it moved to.
 	if err := repo.DeleteList("list-1"); err != ErrListInUseByChannel {
 		t.Errorf("the new inbox has to be guarded too, got %v", err)
+	}
+}
+
+// createLegacyTaskTables builds the schema this migration reads *from*.
+//
+// Written as DDL rather than AutoMigrate because there are no Go structs left to
+// describe it: domain.Task now names the unified row, and the types that
+// described the old shape were replaced by aliases. Which is the honest thing —
+// a fixture for a migration should look like the database being migrated, not
+// like today's model with a few fields ignored.
+func createLegacyTaskTables(db *gorm.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS task_statuses (
+			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
+			list_id varchar(36) NOT NULL, name varchar(60) NOT NULL,
+			color varchar(20), kind varchar(20) DEFAULT 'open', rank varchar(64))`,
+		`CREATE TABLE IF NOT EXISTS tasks (
+			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
+			list_id varchar(36), status_id varchar(36), org_id varchar(36), seq int,
+			title varchar(300), description text, priority varchar(10) DEFAULT 'none',
+			idempotency_key varchar(120) DEFAULT '', rank varchar(64),
+			start_at timestamptz, due_at timestamptz, completed_at timestamptz,
+			created_by_id varchar(36), parent_id varchar(36), archived_at timestamptz)`,
+		`CREATE TABLE IF NOT EXISTS task_comments (
+			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
+			task_id varchar(36) NOT NULL, author_user_id varchar(36), body text NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS task_attachments (
+			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
+			task_id varchar(36) NOT NULL, comment_id varchar(36), url text, path text,
+			file_name varchar(255), content_type varchar(120), bytes bigint,
+			uploaded_by varchar(36))`,
+	}
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Deleting a list hides its work; it doesn't destroy it.
+//
+// It used to be a hard delete: tasks, comments and attachments gone, no undo, no
+// trace, and no way to tell afterwards whether anything had been in there. The
+// row costs nothing to keep and the mistake stops being permanent.
+func TestDeletingAListHidesItsWorkInsteadOfDestroyingIt(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	if err := repo.DeleteList("list-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Gone from every ordinary read…
+	var visible int64
+	db.Model(&domain.Item{}).Where("id = ?", "task-done").Count(&visible)
+	if visible != 0 {
+		t.Error("the task should be out of sight after its list is deleted")
+	}
+	// …and still there.
+	var kept int64
+	db.Unscoped().Model(&domain.Item{}).Where("id = ? AND deleted_at IS NOT NULL", "task-done").Count(&kept)
+	if kept != 1 {
+		t.Error("the task should still exist, marked deleted — losing it outright was the old behaviour")
+	}
+	var comments int64
+	db.Unscoped().Model(&domain.ItemComment{}).
+		Where("item_id = ? AND deleted_at IS NOT NULL", "task-done").Count(&comments)
+	if comments == 0 {
+		t.Error("its comments go the same way: hidden, not destroyed")
+	}
+}
+
+// A client's ticket is not collateral damage of tidying up the tree.
+func TestAListHoldingAClientsWorkIsNotDeleted(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	// Move the report into an ordinary list, and point the channel elsewhere so
+	// the other guard isn't what answers.
+	if err := db.Model(&domain.Item{}).Where("id = ?", "rep-1").
+		Update("list_id", "list-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&domain.ReportProject{}).Where("id = ?", "proj-1").
+		Update("list_id", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.DeleteList("list-1"); err != ErrListHoldsChannelWork {
+		t.Errorf("a list holding a client's report must not be deleted, got %v", err)
+	}
+	var still int64
+	db.Model(&domain.Item{}).Where("id = ?", "rep-1").Count(&still)
+	if still != 1 {
+		t.Error("and nothing may have been hidden on the way to refusing")
+	}
+}
+
+// The board, end to end, on the unified table.
+//
+// This is what an installed app asks for and what it sends back, so it is the
+// thing the cutover can most easily break in a way nobody notices until a card
+// won't move.
+func TestABoardWorksOnTheUnifiedTable(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	// The columns are computed, and every state has one.
+	cols, err := repo.Statuses("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cols) != 4 {
+		t.Fatalf("four fixed columns, got %d", len(cols))
+	}
+
+	// A card created through the normal path lands in the first column and gets
+	// a number of its own.
+	fresh := &domain.Task{ListID: "list-1", OrgID: "org-1", Title: "algo nuevo", Status: domain.ReportPending}
+	if err := repo.CreateTask(fresh, "space-1"); err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Seq == 0 {
+		t.Error("a new item should be numbered within its space")
+	}
+	if fresh.Rank == "" {
+		t.Error("and ranked, or the board has no order to render")
+	}
+
+	cards, err := repo.Board("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *domain.TaskCard
+	for i := range cards {
+		if cards[i].ID == fresh.ID {
+			found = &cards[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("the card we just made is not on its own board")
+	}
+	// The status id has to round-trip: the client reads it here and sends it back
+	// to move the card. An id it can't return is a board where nothing moves.
+	back, ok := domain.SplitSyntheticStatusID(found.StatusID)
+	if !ok || back != domain.ReportPending {
+		t.Errorf("status id %q does not name the state it is in", found.StatusID)
+	}
+
+	// Moving it: through the repository the way the service does.
+	done := domain.ReportResolved
+	now := time.Now()
+	if err := repo.MoveTask(fresh.ID, done, "V", &now); err != nil {
+		t.Fatal(err)
+	}
+	var moved domain.Item
+	if err := db.First(&moved, "id = ?", fresh.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if moved.Status != done || moved.ResolvedAt == nil {
+		t.Errorf("after moving to a finished column: status=%q resolvedAt=%v", moved.Status, moved.ResolvedAt)
+	}
+
+	// And the dashboard stops listing it, because finished is read off the state.
+	open, err := repo.ListOpen([]string{"org-1"}, false, "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range open {
+		if o.ID == fresh.ID {
+			t.Error("a finished item must not be on the pending list")
+		}
+	}
+}
+
+// A client's report never appears on a task board while the report path is still
+// the one serving it: two copies, one of them silently stale, is worse than not
+// showing it at all.
+func TestAClientsReportStaysOffTheTaskBoard(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	// Put the migrated report in an ordinary list and look at that board.
+	if err := db.Model(&domain.Item{}).Where("id = ?", "rep-1").
+		Update("list_id", "list-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	cards, err := repo.Board("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cards {
+		if c.ID == "rep-1" {
+			t.Error("a channel item must not be draggable on a task board yet — the report path still owns it")
+		}
+	}
+	open, err := repo.ListOpen([]string{"org-1"}, false, "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range open {
+		if o.ID == "rep-1" {
+			t.Error("nor on the pending dashboard: it is a client's ticket, not our line item")
+		}
 	}
 }

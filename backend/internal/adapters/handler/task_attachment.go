@@ -84,7 +84,7 @@ func (h *taskHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {
 	// denies anonymous reads, so a bucket URL inside a markdown <img> silently
 	// renders nothing. The id is minted here so the URL can name it.
 	att := &domain.TaskAttachment{
-		TaskID:      t.ID,
+		ItemID:      t.ID,
 		Path:        res.Key,
 		FileName:    header.Filename,
 		ContentType: res.ContentType,
@@ -112,7 +112,7 @@ func (h *taskHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	att, err := h.svc.FindAttachment(chi.URLParam(r, "attachmentId"))
-	if err != nil || att.TaskID != t.ID {
+	if err != nil || att.ItemID != t.ID {
 		SendErrorResponse(w, http.StatusNotFound, "Attachment not found", "not-found")
 		return
 	}
@@ -130,12 +130,12 @@ func (h *taskHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 // the report image proxy. Non-members get 404, never 403 (anti-IDOR).
 func (h *taskHandler) RawAttachment(w http.ResponseWriter, r *http.Request) {
 	att, err := h.svc.FindAttachment(chi.URLParam(r, "attachmentId"))
-	if err != nil || att.TaskID != chi.URLParam(r, "id") {
+	if err != nil || att.ItemID != chi.URLParam(r, "id") {
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return
 	}
 
-	orgID, err := h.svc.OrgIDForTask(att.TaskID)
+	orgID, err := h.svc.OrgIDForTask(att.ItemID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return

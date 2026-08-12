@@ -16,6 +16,10 @@ import (
 var (
 	ErrNoStatuses  = errors.New("list has no status columns")
 	ErrParentOther = errors.New("parent task belongs to another list")
+	// ErrBadStatus: the status id doesn't name a column on this board.
+	ErrBadStatus = errors.New("unknown status")
+	// ErrBadTransition: the move is one the shared state machine refuses.
+	ErrBadTransition = errors.New("that move is not allowed from the current state")
 )
 
 type TaskService struct {
@@ -219,43 +223,29 @@ func (s *TaskService) Statuses(listID string) ([]domain.TaskStatus, error) {
 	return s.repo.Statuses(listID)
 }
 
-func (s *TaskService) CreateStatus(listID string, req domain.CreateStatusRequest) (*domain.TaskStatus, error) {
-	kind := req.Kind
-	if kind == "" {
-		kind = domain.StatusKindOpen
-	}
-	st := &domain.TaskStatus{ListID: listID, Name: req.Name, Color: req.Color, Kind: kind}
-	st.ID = uuid.NewString()
-	if err := s.repo.CreateStatus(st); err != nil {
-		return nil, err
-	}
-	return st, nil
+// ErrColumnsAreFixed: the four columns are a rendering of the shared state
+// machine, so there is nothing to create, rename, reorder or delete.
+//
+// Answered rather than quietly ignored. An older build of the app still offers
+// these buttons, and a 200 that did nothing would let someone rename a column,
+// see it snap back, and go looking for a bug that isn't there.
+var ErrColumnsAreFixed = errors.New("board columns are fixed and cannot be changed")
+
+func (s *TaskService) CreateStatus(string, domain.CreateStatusRequest) (*domain.TaskStatus, error) {
+	return nil, ErrColumnsAreFixed
 }
 
 func (s *TaskService) FindStatus(id string) (*domain.TaskStatus, error) {
 	return s.repo.FindStatus(id)
 }
 
-func (s *TaskService) UpdateStatus(id string, req domain.UpdateStatusRequest) error {
-	fields := map[string]any{"name": req.Name}
-	if req.Color != "" {
-		fields["color"] = req.Color
-	}
-	if req.Kind != "" {
-		fields["kind"] = req.Kind
-	}
-	return s.repo.UpdateStatus(id, fields)
+func (s *TaskService) UpdateStatus(string, domain.UpdateStatusRequest) error {
+	return ErrColumnsAreFixed
 }
 
-func (s *TaskService) MoveStatus(id, afterID, beforeID string) error {
-	return s.repo.UpdateStatus(id, map[string]any{
-		"rank": s.rankBetween("task_statuses", afterID, beforeID),
-	})
-}
+func (s *TaskService) MoveStatus(string, string, string) error { return ErrColumnsAreFixed }
 
-func (s *TaskService) DeleteStatus(id, moveToID string) error {
-	return s.repo.DeleteStatus(id, moveToID)
-}
+func (s *TaskService) DeleteStatus(string, string) error { return ErrColumnsAreFixed }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
@@ -290,25 +280,25 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 		}
 	}
 
-	statusID := req.StatusID
-	if statusID == "" {
-		statuses, err := s.repo.Statuses(list.ID)
-		if err != nil {
-			return nil, err
+	// A status id off the board, or nothing at all: new work starts in the first
+	// column either way.
+	status := domain.ReportPending
+	if req.StatusID != "" {
+		parsed, ok := domain.SplitSyntheticStatusID(req.StatusID)
+		if !ok {
+			return nil, ErrBadStatus
 		}
-		if len(statuses) == 0 {
-			return nil, ErrNoStatuses
-		}
-		statusID = statuses[0].ID
+		status = parsed
 	}
-	priority := req.Priority
+	priority := domain.ItemPriority(req.Priority).Canonical()
 	if priority == "" {
-		priority = domain.PriorityNone
+		priority = domain.ItemPriorityNone
 	}
 
 	t := &domain.Task{
 		ListID:         list.ID,
-		StatusID:       statusID,
+		Status:         status,
+		Origin:         "internal",
 		OrgID:          orgID,
 		Title:          req.Title,
 		Description:    req.Description,
@@ -397,27 +387,33 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 // MoveTask places a task between two neighbours, stamping completed_at when it
 // lands in (or leaves) a "done" column so reporting doesn't depend on names.
 func (s *TaskService) MoveTask(id string, req domain.MoveTaskRequest) error {
-	status, err := s.repo.FindStatus(req.StatusID)
-	if err != nil {
-		return err
+	next, ok := domain.SplitSyntheticStatusID(req.StatusID)
+	if !ok {
+		return ErrBadStatus
 	}
 	task, err := s.repo.FindTask(id)
 	if err != nil {
 		return err
 	}
-
-	var completedAt *time.Time
-	if status.Kind == domain.StatusKindDone {
-		if task.CompletedAt != nil {
-			completedAt = task.CompletedAt // already closed; keep the original date
-		} else {
-			now := time.Now()
-			completedAt = &now
-		}
+	// The same machine the report side has always used. A board that let a card
+	// take a route the API refuses would show a state the server disagrees with
+	// until the next refresh.
+	if task.Status != next && !task.Status.CanTransitionTo(next) {
+		return ErrBadTransition
 	}
 
-	newRank := s.rankBetween("tasks", req.AfterID, req.BeforeID)
-	if err := s.repo.MoveTask(id, req.StatusID, newRank, completedAt); err != nil {
+	// Sticky, which is the report semantics rather than the task one: the date
+	// something was first finished is a fact, and reopening a card doesn't unmake
+	// it. Tasks used to clear this on the way out of a done column, so "when did
+	// we finish it" was lost the moment anyone reopened anything.
+	resolvedAt := task.ResolvedAt
+	if domain.IsFinished(next) && resolvedAt == nil {
+		now := time.Now()
+		resolvedAt = &now
+	}
+
+	newRank := s.rankBetween("items", req.AfterID, req.BeforeID)
+	if err := s.repo.MoveTask(id, next, newRank, resolvedAt); err != nil {
 		return err
 	}
 	s.publish("task:move", task.OrgID, task.ListID, task.ID)
@@ -451,10 +447,8 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	status, err := s.repo.FindStatus(t.StatusID)
-	if err != nil {
-		return nil, err
-	}
+	// Synthesised, not looked up: the column is a rendering of the state now.
+	status := domain.BoardStatusFor(t.ListID, t.Status)
 	tags, err := s.repo.TagsOf(id)
 	if err != nil {
 		return nil, err
@@ -486,14 +480,15 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	}
 
 	detail := &domain.TaskDetail{
-		Task: *t, ListName: list.Name, SpaceName: space.Name, Status: *status,
+		Task: *t, ListName: list.Name, SpaceName: space.Name, Status: status,
 		Tags: tags, Assignees: assignees, Comments: comments, Attachments: attachments,
 		Subtasks: subtasks,
 	}
 	// When this task is a subtask, hand the drawer enough to link back up.
 	if t.ParentID != nil {
 		if p, err := s.repo.FindTask(*t.ParentID); err == nil {
-			detail.Parent = &domain.TaskCard{ID: p.ID, Seq: p.Seq, Title: p.Title, StatusID: p.StatusID}
+			detail.Parent = &domain.TaskCard{ID: p.ID, Seq: p.Seq, Title: p.Title,
+				StatusID: domain.SyntheticStatusID(p.ListID, p.Status)}
 		}
 	}
 	return detail, nil
@@ -516,9 +511,34 @@ func (s *TaskService) CreateTag(req domain.CreateTagRequest) (*domain.TaskTag, e
 
 // ─── Comments / attachments ───────────────────────────────────────────────────
 
-func (s *TaskService) AddComment(taskID, userID, body string) (*domain.TaskComment, error) {
-	c := &domain.TaskComment{TaskID: taskID, AuthorUserID: userID, Body: body}
+// newInternalComment builds a comment nobody outside cac will ever read.
+//
+// A constructor rather than a struct literal at each call site: `visibility`
+// defaults to public at the column level — that is what lets the contract test
+// insert bare rows and still have the reporter see them — so leaving it unset
+// here would quietly publish a team note. Making it a parameter of construction
+// means it cannot be forgotten.
+func newInternalComment(itemID, authorUserID, body string) *domain.ItemComment {
+	var author *string
+	if authorUserID != "" {
+		author = &authorUserID
+	}
+	c := &domain.ItemComment{
+		ItemID:       itemID,
+		Kind:         domain.CommentKindUser,
+		Visibility:   domain.VisibilityInternal,
+		AuthorUserID: author,
+		Body:         body,
+	}
 	c.ID = uuid.NewString()
+	return c
+}
+
+func (s *TaskService) AddComment(taskID, userID, body string) (*domain.TaskComment, error) {
+	// Through the constructor, always: visibility is the one field on a comment
+	// that can leak, and the column default is the permissive one so the contract
+	// test keeps working. Nothing writes this table around it.
+	c := newInternalComment(taskID, userID, body)
 	if err := s.repo.CreateComment(c); err != nil {
 		return nil, err
 	}
@@ -537,7 +557,7 @@ func (s *TaskService) EditComment(id, body string) error {
 	// stops being listed as an attachment.
 	before, taskID := "", ""
 	if c, err := s.repo.FindComment(id); err == nil {
-		before, taskID = c.Body, c.TaskID
+		before, taskID = c.Body, c.ItemID
 	}
 	if err := s.repo.UpdateComment(id, body); err != nil {
 		return err
@@ -553,7 +573,7 @@ func (s *TaskService) EditComment(id, body string) error {
 func (s *TaskService) DeleteComment(id string) error {
 	before, taskID := "", ""
 	if c, err := s.repo.FindComment(id); err == nil {
-		before, taskID = c.Body, c.TaskID
+		before, taskID = c.Body, c.ItemID
 	}
 	if err := s.repo.DeleteComment(id); err != nil {
 		return err
