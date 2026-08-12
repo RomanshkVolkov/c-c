@@ -7,6 +7,19 @@ spec:
   # 1-secrets.yaml), or SSE notifications only reach whichever pod the client
   # happens to be connected to. See the comment on the events package.
   replicas: 2
+  # Recreate, not the default rolling update, for as long as work is moving
+  # between the old tables and the unified ones.
+  #
+  # A rolling update runs both versions at once, and during that overlap the old
+  # pod keeps writing to the tables the new one has stopped reading. The boot
+  # backfill reabsorbs most of that on the next start, but not a delete, and not
+  # an edit that crossed in the other direction. With a few dozen items a day,
+  # half a minute of downtime is the cheaper mistake.
+  #
+  # Worth taking back out once nothing writes the old tables — it costs
+  # availability the rest of the time.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: cac-service
