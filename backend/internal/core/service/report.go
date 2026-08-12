@@ -150,7 +150,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 			return &domain.IngestReportResult{
 				ID:      existing.ID,
 				Seq:     existing.Seq,
-				Folio:   fmt.Sprintf("%s-%d", project.Slug, existing.Seq),
+				Folio:   domain.Folio(project.Slug, existing.Seq),
 				Deduped: true,
 			}, nil
 		}
@@ -207,7 +207,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		}
 	}
 
-	folio := fmt.Sprintf("%s-%d", project.Slug, report.Seq)
+	folio := domain.Folio(project.Slug, report.Seq)
 	// Routed through emit() like every other event. It used to publish straight
 	// to the hub, which meant anything added to emit() covered four of the five
 	// events and quietly skipped the one a subscriber cares about most.
@@ -298,7 +298,7 @@ func (s *ReportService) ReporterView(reportID string) (*domain.ReporterReportVie
 
 	return &domain.ReporterReportView{
 		ID:          report.ID,
-		Folio:       fmt.Sprintf("%s-%d", project.Slug, report.Seq),
+		Folio:       domain.Folio(project.Slug, report.Seq),
 		Title:       report.Title,
 		Description: report.Description,
 		Status:      report.Status,
@@ -455,7 +455,7 @@ func (s *ReportService) Detail(reportID string, includeWithdrawn bool) (*domain.
 		ProjectID:      report.ProjectID,
 		ProjectSlug:    project.Slug,
 		Seq:            report.Seq,
-		Folio:          fmt.Sprintf("%s-%d", project.Slug, report.Seq),
+		Folio:          domain.Folio(project.Slug, report.Seq),
 		Title:          report.Title,
 		Description:    report.Description,
 		Status:         report.Status,

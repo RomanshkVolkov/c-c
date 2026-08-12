@@ -2,7 +2,6 @@ package repository
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -26,10 +25,16 @@ func NewReportRepository(db *gorm.DB) *ReportRepository {
 // CreateWithSeq assigns the next per-project folio (seq) and inserts the report
 // in a single transaction so PROJ-123 numbering stays gap-consistent under
 // normal load.
+//
+// Unscoped is load-bearing. The folio is the report's public name — what a
+// reporter quotes and a tenant stores — so a number, once given out, is spent
+// forever. GORM's default scope hides soft-deleted rows, so withdrawing the
+// newest report of a project handed its number to the next one and two reports
+// ended up called the same thing, with nothing to signal it.
 func (r *ReportRepository) CreateWithSeq(report *domain.Report) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var maxSeq int
-		if err := tx.Model(&domain.Report{}).
+		if err := tx.Unscoped().Model(&domain.Report{}).
 			Where("project_id = ?", report.ProjectID).
 			Select("COALESCE(MAX(seq), 0)").
 			Scan(&maxSeq).Error; err != nil {
@@ -123,7 +128,7 @@ func (r *ReportRepository) EventTargetForReport(reportID string) (*domain.Report
 	return &domain.ReportEventTarget{
 		OrgID:         row.OrgID,
 		ProjectID:     row.ProjectID,
-		Folio:         fmt.Sprintf("%s-%d", row.Slug, row.Seq),
+		Folio:         domain.Folio(row.Slug, row.Seq),
 		ReporterID:    row.ReporterID,
 		ReporterName:  row.ReporterName,
 		WebhookURL:    row.WebhookURL,
@@ -265,7 +270,7 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 		return nil, err
 	}
 	for i := range result.Items {
-		result.Items[i].Folio = fmt.Sprintf("%s-%d", result.Items[i].ProjectSlug, result.Items[i].Seq)
+		result.Items[i].Folio = domain.Folio(result.Items[i].ProjectSlug, result.Items[i].Seq)
 	}
 	return result, nil
 }

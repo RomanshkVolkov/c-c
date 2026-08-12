@@ -101,6 +101,19 @@ func (s ReportStatus) CanTransitionTo(to ReportStatus) bool {
 // shared endpoint the Tauri app consumes.
 func ReportTransitions() map[ReportStatus][]ReportStatus { return reportTransitions }
 
+// ─── Folio ────────────────────────────────────────────────────────────────────
+
+// Folio is a report's public name: `acme-7`, the project's slug and its
+// per-project number. It's what a reporter quotes back, what a tenant stores
+// alongside its own record, and what ends up in an email — so the way it's spelt
+// is a contract, not a formatting choice.
+//
+// Here rather than at each call site because it was built by hand in six of
+// them; six copies of a name that has to match forever is five too many.
+func Folio(projectSlug string, seq int) string {
+	return fmt.Sprintf("%s-%d", projectSlug, seq)
+}
+
 // ─── Taxonomy ─────────────────────────────────────────────────────────────────
 
 // A report carries three orthogonal labels beyond its status:
