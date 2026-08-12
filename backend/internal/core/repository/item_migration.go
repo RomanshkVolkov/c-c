@@ -1,0 +1,464 @@
+package repository
+
+import (
+	"fmt"
+
+	"gorm.io/gorm"
+
+	"github.com/guz-studio/cac/backend/internal/core/domain"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
+)
+
+// Filling the unified `items` tables from the two they replace.
+//
+// This runs on every boot, and it runs in the dark: for the whole of this phase
+// nothing reads what it writes. That is the point. The copy can be checked
+// against production data for as long as it takes to trust it, and if it is
+// wrong the answer is to fix it and deploy again — there is no cutover to undo,
+// because there has not been one.
+//
+// It is written as an upsert guarded on updated_at rather than a one-shot import,
+// which buys two things. It is idempotent, so a restart is free. And it is a
+// *delta*: during a rolling deploy the pod still running the old code keeps
+// writing to the old tables, and the next boot picks those rows up. That is what
+// makes the eventual switch-over survivable rather than a held breath.
+//
+// Deliberately unlike backfillAttachmentRefs, which logs its failures and
+// carries on. Here a half-finished copy would be worse than a crash: the tables
+// would look populated, and a later phase would serve short lists with a 200 and
+// no sign that anything was missing. So verification failure panics, the pod
+// never becomes ready, and the deploy stops.
+
+const itemBackfillName = "unify-items-v1"
+
+// schemaBackfill records what has already been done, so a completed one-off step
+// is skipped instead of re-derived. Delta steps look at it but keep running.
+type schemaBackfill struct {
+	Name        string `gorm:"primaryKey;type:varchar(120)"`
+	CompletedAt *string
+	Detail      string `gorm:"type:text"`
+}
+
+func (schemaBackfill) TableName() string { return "schema_backfills" }
+
+// migrateItems copies reports and tasks into the unified tables.
+//
+// The advisory lock is what makes two pods starting at once safe: the second one
+// waits, sees the work already done, and moves on. A unique-index race would
+// mostly have been harmless, but "mostly" is not a thing to rely on during a
+// deploy.
+func migrateItems(db *gorm.DB) {
+	if err := db.AutoMigrate(&schemaBackfill{}); err != nil {
+		panic("items migration: cannot record progress: " + err.Error())
+	}
+
+	// A constant, arbitrary key — it only has to be the same in every pod.
+	const lockKey = 0x17E4_9021
+	if err := db.Exec(`SELECT pg_advisory_lock(?)`, lockKey).Error; err != nil {
+		panic("items migration: cannot take the lock: " + err.Error())
+	}
+	defer db.Exec(`SELECT pg_advisory_unlock(?)`, lockKey)
+
+	if err := ensureItemIndexes(db); err != nil {
+		panic("items migration: indexes: " + err.Error())
+	}
+	if err := checkNoIDCollisions(db); err != nil {
+		panic("items migration: " + err.Error())
+	}
+
+	steps := []struct {
+		what string
+		run  func(*gorm.DB) error
+	}{
+		{"channels", backfillProjectLists},
+		{"reports", copyReportsToItems},
+		{"tasks", copyTasksToItems},
+		{"report comments", copyReportCommentsToItems},
+		{"task comments", copyTaskCommentsToItems},
+		{"report images", copyReportImagesToItems},
+		{"task attachments", copyTaskAttachmentsToItems},
+		{"assignees", copyAssigneesToItems},
+	}
+	for _, s := range steps {
+		if err := s.run(db); err != nil {
+			panic("items migration: copying " + s.what + ": " + err.Error())
+		}
+	}
+
+	if err := verifyItemCounts(db); err != nil {
+		// No mark, no readiness: whatever is wrong gets looked at before this
+		// build serves a request.
+		panic("items migration: " + err.Error())
+	}
+
+	now := "now()"
+	db.Exec(`INSERT INTO schema_backfills (name, completed_at, detail)
+	         VALUES (?, `+now+`, ?)
+	         ON CONFLICT (name) DO UPDATE SET completed_at = `+now+`, detail = excluded.detail`,
+		itemBackfillName, "delta upsert; old tables still authoritative")
+	lg.Info("items migration: up to date")
+}
+
+// ensureItemIndexes creates what GORM's tags cannot express.
+func ensureItemIndexes(db *gorm.DB) error {
+	stmts := []string{
+		// The empty string is "no key supplied", and every item without one
+		// carries it — so only rows that really have a key may participate.
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_idempotency
+			ON items (list_id, idempotency_key) WHERE idempotency_key <> ''`,
+
+		// Numbering has two scopes, and the predicates are disjoint so a row is
+		// only ever subject to one of them: per project for a channel item (that
+		// number is its public folio) and per space for an internal one.
+		//
+		// These see soft-deleted rows, which is the intent — a number, once given
+		// out, is spent. It is also why the old MAX(seq) had to stop being scoped
+		// before this index could exist: it was handing numbers out twice, and
+		// under a unique index that stops being a silent duplicate and becomes a
+		// failed insert.
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_seq_project
+			ON items (project_id, seq) WHERE project_id <> ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_items_seq_space
+			ON items (space_id, seq) WHERE project_id = '' AND space_id <> ''`,
+
+		// Reading a thread, and counting what the reporter has not seen.
+		`CREATE INDEX IF NOT EXISTS idx_item_comments_thread
+			ON item_comments (item_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_item_comments_public
+			ON item_comments (item_id) WHERE deleted_at IS NULL AND visibility = 'public'`,
+	}
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkNoIDCollisions is cheap paranoia with a catastrophic downside if skipped.
+//
+// Both sides mint UUIDs, so an overlap is not going to happen. But ids are
+// carried over unchanged — that is what keeps saved links and the tenant's own
+// records working — so if one ever did, two unrelated pieces of work would merge
+// into one row and the loss would be silent.
+func checkNoIDCollisions(db *gorm.DB) error {
+	var n int64
+	if err := db.Raw(`SELECT COUNT(*) FROM reports r JOIN tasks t ON t.id = r.id`).Scan(&n).Error; err != nil {
+		return err
+	}
+	if n > 0 {
+		return fmt.Errorf("%d id(s) exist as both a report and a task; copying them would merge two things into one", n)
+	}
+	return nil
+}
+
+// backfillProjectLists gives every channel somewhere on the board to land.
+//
+// One space per organization holding a list per project, rather than a space
+// each: the number that identifies a report is scoped to its project, so a space
+// per project would buy nothing and leave the navigator full of near-empty
+// trees.
+func backfillProjectLists(db *gorm.DB) error {
+	var projects []domain.ReportProject
+	if err := db.Where("list_id IS NULL OR list_id = ''").Find(&projects).Error; err != nil {
+		return err
+	}
+	for i := range projects {
+		p := &projects[i]
+		spaceID, err := reportsSpaceFor(db, p.OrgID)
+		if err != nil {
+			return err
+		}
+		list := &domain.TaskList{SpaceID: spaceID, Name: p.Name}
+		if err := db.Where("space_id = ? AND name = ?", spaceID, p.Name).First(&domain.TaskList{}).Error; err == nil {
+			// Already made on an earlier boot; find it rather than making a second.
+			var found domain.TaskList
+			if err := db.Where("space_id = ? AND name = ?", spaceID, p.Name).First(&found).Error; err != nil {
+				return err
+			}
+			list = &found
+		} else {
+			list.Rank = "U"
+			if err := db.Create(list).Error; err != nil {
+				return err
+			}
+		}
+		if err := db.Model(&domain.ReportProject{}).Where("id = ?", p.ID).
+			Update("list_id", list.ID).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// reportsSpaceFor finds or creates the one space an organization's channels land in.
+func reportsSpaceFor(db *gorm.DB, orgID string) (string, error) {
+	const name = "Reportes"
+	var space domain.TaskSpace
+	err := db.Where("org_id = ? AND name = ?", orgID, name).First(&space).Error
+	if err == nil {
+		return space.ID, nil
+	}
+	if !isNotFound(err) {
+		return "", err
+	}
+	space = domain.TaskSpace{OrgID: orgID, Name: name, Rank: "U"}
+	if err := db.Create(&space).Error; err != nil {
+		return "", err
+	}
+	return space.ID, nil
+}
+
+func isNotFound(err error) bool { return err == gorm.ErrRecordNotFound }
+
+// copyReportsToItems brings the channel side across, soft-deleted rows included:
+// a withdrawn report is still part of the record, and its number is still spent.
+func copyReportsToItems(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO items (
+			id, created_at, updated_at, org_id, list_id, space_id, project_id, seq,
+			title, description, status, category, priority, area, origin,
+			url, user_agent, viewport, telemetry, telemetry_purge_at,
+			reporter_name, reporter_email, reporter_id,
+			rank, idempotency_key, resolved_at, created_by_id, deleted_at
+		)
+		SELECT
+			r.id, r.created_at, r.updated_at, p.org_id,
+			COALESCE(p.list_id, ''), COALESCE(l.space_id, ''), r.project_id, r.seq,
+			r.title, r.description, r.status, r.category, r.priority, r.area, r.origin,
+			r.url, r.user_agent, r.viewport, r.telemetry, r.telemetry_purge_at,
+			r.reporter_name, r.reporter_email, r.reporter_id,
+			'', '', r.resolved_at, '', r.deleted_at
+		FROM reports r
+		JOIN report_projects p ON p.id = r.project_id
+		LEFT JOIN task_lists l ON l.id = p.list_id
+		ON CONFLICT (id) DO UPDATE SET
+			updated_at = excluded.updated_at,
+			org_id = excluded.org_id,
+			list_id = excluded.list_id,
+			space_id = excluded.space_id,
+			title = excluded.title,
+			description = excluded.description,
+			status = excluded.status,
+			category = excluded.category,
+			priority = excluded.priority,
+			area = excluded.area,
+			resolved_at = excluded.resolved_at,
+			deleted_at = excluded.deleted_at
+		WHERE excluded.updated_at > items.updated_at`).Error
+	// telemetry is left out of the update on purpose: the old code may purge a
+	// blob after this row was copied, and re-copying would put it back.
+}
+
+// copyTasksToItems folds the configurable columns onto the shared state machine.
+//
+// The mapping reads the column's `kind`, never its name — the whole reason kind
+// exists is that someone renaming "Done" to "Shipped" must not change what the
+// column means.
+func copyTasksToItems(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO items (
+			id, created_at, updated_at, org_id, list_id, space_id, project_id, seq,
+			title, description, status, category, priority, area, origin,
+			rank, idempotency_key, parent_id, start_at, due_at, resolved_at,
+			created_by_id, archived_at
+		)
+		SELECT
+			t.id, t.created_at, t.updated_at, t.org_id, t.list_id, l.space_id, '', t.seq,
+			t.title, t.description,
+			CASE s.kind
+				WHEN 'done'   THEN 'resolved'
+				WHEN 'active' THEN 'in_progress'
+				ELSE 'pending'
+			END,
+			'other',
+			CASE t.priority WHEN 'normal' THEN 'medium' ELSE t.priority END,
+			'', 'internal',
+			t.rank, t.idempotency_key, t.parent_id, t.start_at, t.due_at, t.completed_at,
+			t.created_by_id, t.archived_at
+		FROM tasks t
+		JOIN task_lists l ON l.id = t.list_id
+		LEFT JOIN task_statuses s ON s.id = t.status_id
+		ON CONFLICT (id) DO UPDATE SET
+			updated_at = excluded.updated_at,
+			org_id = excluded.org_id,
+			list_id = excluded.list_id,
+			space_id = excluded.space_id,
+			title = excluded.title,
+			description = excluded.description,
+			status = excluded.status,
+			priority = excluded.priority,
+			rank = excluded.rank,
+			parent_id = excluded.parent_id,
+			start_at = excluded.start_at,
+			due_at = excluded.due_at,
+			resolved_at = excluded.resolved_at,
+			archived_at = excluded.archived_at
+		WHERE excluded.updated_at > items.updated_at`).Error
+}
+
+// copyReportCommentsToItems: everything on a report's thread is public.
+//
+// Including the 'system' ones. The reporter is shown "status: pending →
+// in_progress" today, so filing those as internal would quietly take away
+// something they can already see.
+func copyReportCommentsToItems(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO item_comments (
+			id, created_at, updated_at, item_id, kind, visibility,
+			author_user_id, author_project_id, author_external_id, author_external_name,
+			body, deleted_at
+		)
+		SELECT
+			c.id, c.created_at, c.updated_at, c.report_id, c.kind, 'public',
+			c.author_user_id, c.author_project_id, c.author_external_id, c.author_external_name,
+			c.body, c.deleted_at
+		FROM report_comments c
+		ON CONFLICT (id) DO UPDATE SET
+			updated_at = excluded.updated_at,
+			body = excluded.body,
+			deleted_at = excluded.deleted_at
+		WHERE excluded.updated_at > item_comments.updated_at`).Error
+}
+
+// copyTaskCommentsToItems: everything on a task's thread is internal — that is
+// what it always was; there was nobody outside to show it to.
+//
+// The empty author id becomes NULL, and only here. On the channel side "no
+// author" is how the reporter is recognised, so an empty string arriving there
+// would read as a message from a reporter who doesn't exist.
+func copyTaskCommentsToItems(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO item_comments (
+			id, created_at, updated_at, item_id, kind, visibility,
+			author_user_id, body
+		)
+		SELECT
+			c.id, c.created_at, c.updated_at, c.task_id, 'user', 'internal',
+			NULLIF(c.author_user_id, ''), c.body
+		FROM task_comments c
+		ON CONFLICT (id) DO UPDATE SET
+			updated_at = excluded.updated_at,
+			body = excluded.body
+		WHERE excluded.updated_at > item_comments.updated_at`).Error
+}
+
+// copyReportImagesToItems. No url: a report's bytes are served through a signed,
+// short-lived link computed at read time, and writing one down here would move
+// them onto a route with different authorization.
+func copyReportImagesToItems(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO item_attachments (
+			id, created_at, updated_at, item_id, comment_id, path, url, file_name, deleted_at
+		)
+		SELECT
+			i.id, i.created_at, i.updated_at, i.report_id, i.comment_id,
+			i.path, '', i.file_name, i.deleted_at
+		FROM report_images i
+		ON CONFLICT (id) DO UPDATE SET
+			updated_at = excluded.updated_at,
+			deleted_at = excluded.deleted_at
+		WHERE excluded.updated_at > item_attachments.updated_at`).Error
+}
+
+func copyTaskAttachmentsToItems(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO item_attachments (
+			id, created_at, updated_at, item_id, comment_id, path, url,
+			file_name, content_type, bytes, uploaded_by
+		)
+		SELECT
+			a.id, a.created_at, a.updated_at, a.task_id, a.comment_id, a.path, a.url,
+			a.file_name, a.content_type, a.bytes, a.uploaded_by
+		FROM task_attachments a
+		ON CONFLICT (id) DO UPDATE SET
+			updated_at = excluded.updated_at,
+			url = excluded.url,
+			path = excluded.path
+		WHERE excluded.updated_at > item_attachments.updated_at`).Error
+}
+
+// copyAssigneesToItems. A report had exactly one assignee, so it becomes the
+// primary row. A task could have several and had no order at all, so only an
+// unambiguous case — a single assignee — is marked primary; the rest stay a plain
+// set, which is what they were.
+func copyAssigneesToItems(db *gorm.DB) error {
+	if err := db.Exec(`
+		INSERT INTO item_assignees (item_id, user_id, "primary", created_at)
+		SELECT r.id, r.assignee_user_id, true, r.updated_at
+		FROM reports r
+		WHERE r.assignee_user_id IS NOT NULL AND r.assignee_user_id <> ''
+		ON CONFLICT (item_id, user_id) DO NOTHING`).Error; err != nil {
+		return err
+	}
+	// now() because task_assignees has no timestamp of any kind — which is the
+	// same reason `primary` can only be inferred for the unambiguous case. There
+	// is no record of who was assigned first, and inventing an order would be
+	// worse than admitting there isn't one.
+	return db.Exec(`
+		INSERT INTO item_assignees (item_id, user_id, "primary", created_at)
+		SELECT a.task_id, a.user_id,
+		       (SELECT COUNT(*) FROM task_assignees x WHERE x.task_id = a.task_id) = 1,
+		       now()
+		FROM task_assignees a
+		ON CONFLICT (item_id, user_id) DO NOTHING`).Error
+}
+
+// verifyItemCounts is the gate. Every old row has to have a new one.
+//
+// Counting is a weak check on its own — it says nothing about whether the fields
+// arrived intact — but it catches the failure that matters here, which is a copy
+// that stopped early, and it catches it before anything reads the result.
+func verifyItemCounts(db *gorm.DB) error {
+	checks := []struct {
+		what string
+		old  string
+		new  string
+	}{
+		{"reports", `SELECT COUNT(*) FROM reports`, `SELECT COUNT(*) FROM items WHERE project_id <> ''`},
+		{"tasks", `SELECT COUNT(*) FROM tasks`, `SELECT COUNT(*) FROM items WHERE project_id = ''`},
+		{"report comments", `SELECT COUNT(*) FROM report_comments`, `SELECT COUNT(*) FROM item_comments WHERE visibility = 'public'`},
+		{"task comments", `SELECT COUNT(*) FROM task_comments`, `SELECT COUNT(*) FROM item_comments WHERE visibility = 'internal'`},
+		{"report images", `SELECT COUNT(*) FROM report_images`, `SELECT COUNT(*) FROM item_attachments WHERE url = ''`},
+		{"task attachments", `SELECT COUNT(*) FROM task_attachments`, `SELECT COUNT(*) FROM item_attachments WHERE url <> ''`},
+	}
+	for _, c := range checks {
+		var before, after int64
+		if err := db.Raw(c.old).Scan(&before).Error; err != nil {
+			return fmt.Errorf("counting %s: %w", c.what, err)
+		}
+		if err := db.Raw(c.new).Scan(&after).Error; err != nil {
+			return fmt.Errorf("counting copied %s: %w", c.what, err)
+		}
+		if after < before {
+			return fmt.Errorf("%s: %d in the old table, %d copied — the copy is short, refusing to serve",
+				c.what, before, after)
+		}
+	}
+
+	// A channel item outside the state machine would be a card no board can
+	// place, and a status a tenant can't move.
+	var stray int64
+	if err := db.Raw(`SELECT COUNT(*) FROM items
+		WHERE project_id <> '' AND status NOT IN ('pending','in_progress','resolved','closed')`).
+		Scan(&stray).Error; err != nil {
+		return err
+	}
+	if stray > 0 {
+		return fmt.Errorf("%d channel item(s) carry a status outside the state machine", stray)
+	}
+
+	// The folio has to keep naming one thing. The unique index enforces this
+	// going forward; this catches a copy that brought duplicates with it.
+	var dupes int64
+	if err := db.Raw(`SELECT COUNT(*) FROM (
+			SELECT project_id, seq FROM items WHERE project_id <> ''
+			GROUP BY project_id, seq HAVING COUNT(*) > 1
+		) d`).Scan(&dupes).Error; err != nil {
+		return err
+	}
+	if dupes > 0 {
+		return fmt.Errorf("%d folio(s) name more than one item", dupes)
+	}
+	return nil
+}

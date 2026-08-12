@@ -86,6 +86,11 @@ func DBConnection() {
 		&domain.Note{},
 		&domain.NoteAttachment{},
 		&domain.NoteRevision{},
+		// The unified model. Nothing reads these yet — see item_migration.go.
+		&domain.Item{},
+		&domain.ItemComment{},
+		&domain.ItemAttachment{},
+		&domain.ItemAssignee{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
@@ -115,6 +120,7 @@ func DBConnection() {
 	seedBaseOrg(db)
 	promoteSuperadmin(db)
 	backfillAttachmentRefs(db)
+	migrateItems(db)
 }
 
 // backfillAttachmentRefs repoints attachments written before the proxy existed.

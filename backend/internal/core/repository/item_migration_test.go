@@ -1,0 +1,368 @@
+package repository
+
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+
+	"github.com/guz-studio/cac/backend/internal/core/domain"
+)
+
+// Does the copy actually carry everything across, and does it say so honestly?
+//
+// The promise made about this migration was no data loss and no change to what
+// anyone outside can see. Both of those are properties of the copy, so they get
+// checked against a real database with a real old-world dataset in it — the two
+// modules as they exist today, including the awkward rows: a renamed column, a
+// withdrawn comment, an image inside a comment.
+
+func TestTheCopyCarriesBothModulesAcross(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	migrateItems(db)
+
+	// ── The channel side ──
+	var rep domain.Item
+	if err := db.First(&rep, "id = ?", "rep-1").Error; err != nil {
+		t.Fatalf("the report didn't arrive: %v", err)
+	}
+	if rep.ProjectID != "proj-1" {
+		t.Errorf("a report is an item with a channel; project_id = %q", rep.ProjectID)
+	}
+	if rep.Seq != 7 {
+		t.Errorf("seq is the public name of the report: want 7, got %d", rep.Seq)
+	}
+	if rep.OrgID != "org-1" {
+		t.Errorf("org_id comes from the project: want org-1, got %q", rep.OrgID)
+	}
+	if rep.ListID == "" || rep.SpaceID == "" {
+		t.Errorf("a channel item needs somewhere on the board: list=%q space=%q", rep.ListID, rep.SpaceID)
+	}
+
+	// ── The internal side, and the column that got renamed ──
+	var task domain.Item
+	if err := db.First(&task, "id = ?", "task-done").Error; err != nil {
+		t.Fatalf("the task didn't arrive: %v", err)
+	}
+	if task.ProjectID != "" {
+		t.Errorf("a task has no channel; got project_id %q", task.ProjectID)
+	}
+	// The column was called "Shipped", not "Done". Reading the name would have
+	// filed this as unfinished — the kind is what carries the meaning.
+	if task.Status != domain.ReportResolved {
+		t.Errorf("a card in a done-kind column is resolved whatever the column is called; got %q", task.Status)
+	}
+	if task.ResolvedAt == nil {
+		t.Error("completed_at should have become resolved_at")
+	}
+	if task.Priority != domain.ItemPriorityMedium {
+		t.Errorf("`normal` and `medium` were the same rung: want medium, got %q", task.Priority)
+	}
+	if task.Origin != "internal" {
+		t.Errorf("work raised inside cac is internal in origin, got %q", task.Origin)
+	}
+
+	// ── The whole point of the merge: two audiences, one table ──
+	var pub, internal domain.ItemComment
+	if err := db.First(&pub, "id = ?", "cmt-report").Error; err != nil {
+		t.Fatal(err)
+	}
+	if pub.Visibility != domain.VisibilityPublic {
+		t.Errorf("a report comment is part of the conversation with the reporter; got %q", pub.Visibility)
+	}
+	if err := db.First(&internal, "id = ?", "cmt-task").Error; err != nil {
+		t.Fatal(err)
+	}
+	if internal.Visibility != domain.VisibilityInternal {
+		t.Errorf("a task comment never had anyone outside to show it to; got %q", internal.Visibility)
+	}
+	// The system note the reporter can already read stays readable.
+	var sys domain.ItemComment
+	if err := db.First(&sys, "id = ?", "cmt-system").Error; err != nil {
+		t.Fatal(err)
+	}
+	if sys.Visibility != domain.VisibilityPublic {
+		t.Error("the reporter is shown 'status: x → y' today; filing it internal would take that away")
+	}
+	// A withdrawn comment is hidden, not destroyed.
+	var withdrawn int64
+	db.Unscoped().Model(&domain.ItemComment{}).Where("id = ? AND deleted_at IS NOT NULL", "cmt-withdrawn").Count(&withdrawn)
+	if withdrawn != 1 {
+		t.Error("a withdrawn comment should arrive still withdrawn, not missing and not restored")
+	}
+	// And an empty author id must not become "the reporter" on the internal side.
+	if internal.AuthorUserID == nil || *internal.AuthorUserID != "u-1" {
+		t.Errorf("task comment author lost: %v", internal.AuthorUserID)
+	}
+	var orphan domain.ItemComment
+	if err := db.First(&orphan, "id = ?", "cmt-task-noauthor").Error; err != nil {
+		t.Fatal(err)
+	}
+	if orphan.AuthorUserID != nil {
+		t.Errorf("an empty author id becomes NULL, not \"\": got %v", *orphan.AuthorUserID)
+	}
+
+	// ── Attachments, and which route serves them ──
+	var img domain.ItemAttachment
+	if err := db.First(&img, "id = ?", "img-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if img.URL != "" {
+		t.Errorf("a report's bytes are served through a signed link computed on read; a stored url moves them onto another route with different auth. got %q", img.URL)
+	}
+	if img.CommentID == nil || *img.CommentID != "cmt-report" {
+		t.Error("an image posted inside a comment stays inside that comment")
+	}
+	var att domain.ItemAttachment
+	if err := db.First(&att, "id = ?", "att-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if att.URL == "" {
+		t.Error("an internal attachment keeps its proxy reference — the markdown that embeds it points there")
+	}
+
+	// ── Assignees ──
+	var primary domain.ItemAssignee
+	if err := db.First(&primary, "item_id = ?", "rep-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if !primary.Primary {
+		t.Error("a report had exactly one assignee, so it is the primary one — the contract reads a single id")
+	}
+}
+
+// Running it again must be free. It runs on every boot, so anything else would
+// duplicate rows or undo work each time a pod restarts.
+func TestRunningTheCopyTwiceChangesNothing(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	migrateItems(db)
+	snapshot := countEverything(t, db)
+
+	migrateItems(db)
+	again := countEverything(t, db)
+
+	for what, before := range snapshot {
+		if again[what] != before {
+			t.Errorf("%s: %d after one run, %d after two", what, before, again[what])
+		}
+	}
+
+	// And the channel didn't get a second list to land in.
+	var lists int64
+	db.Model(&domain.TaskList{}).Where("name = ?", "Acme Support").Count(&lists)
+	if lists != 1 {
+		t.Errorf("the project's landing list was created %d times", lists)
+	}
+}
+
+// The gate has to actually refuse. A copy that stopped early looks like a
+// populated table, and the phase that reads it would serve short lists with a
+// 200 — the failure nobody notices.
+func TestVerificationRefusesAShortCopy(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	migrateItems(db)
+	if err := verifyItemCounts(db); err != nil {
+		t.Fatalf("a complete copy should verify: %v", err)
+	}
+
+	// Lose one row, the way a copy interrupted halfway would.
+	if err := db.Exec(`DELETE FROM items WHERE id = 'rep-1'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyItemCounts(db); err == nil {
+		t.Fatal("a short copy has to be refused, not served")
+	}
+}
+
+// Two things sharing a folio makes the public name of a report ambiguous, and
+// there is no fixing it afterwards.
+func TestVerificationRefusesADuplicateFolio(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+
+	// Reach around the unique index to plant what a bad copy would have made.
+	if err := db.Exec(`DROP INDEX IF EXISTS idx_items_seq_project`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO items (id, created_at, updated_at, project_id, seq, title, status, priority)
+		VALUES ('rep-dupe', now(), now(), 'proj-1', 7, 'el mismo número', 'pending', 'medium')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyItemCounts(db); err == nil {
+		t.Fatal("two items called acme-7 has to be refused")
+	}
+}
+
+func countEverything(t *testing.T, db *gorm.DB) map[string]int64 {
+	t.Helper()
+	out := map[string]int64{}
+	for what, q := range map[string]string{
+		"items":       `SELECT COUNT(*) FROM items`,
+		"comments":    `SELECT COUNT(*) FROM item_comments`,
+		"attachments": `SELECT COUNT(*) FROM item_attachments`,
+		"assignees":   `SELECT COUNT(*) FROM item_assignees`,
+		"spaces":      `SELECT COUNT(*) FROM task_spaces`,
+		"lists":       `SELECT COUNT(*) FROM task_lists`,
+	} {
+		var n int64
+		if err := db.Raw(q).Scan(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		out[what] = n
+	}
+	return out
+}
+
+// seedOldWorld builds the two modules as they are today, including the rows that
+// are easy to get wrong.
+func seedOldWorld(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	mk := func(v any) {
+		if err := db.Create(v).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	org := &domain.Organization{Name: "Org One", Slug: "org-one"}
+	org.ID = "org-1"
+	mk(org)
+
+	user := &domain.User{Username: "ana", Email: "ana@example.com", Password: "x"}
+	user.ID = "u-1"
+	mk(user)
+
+	assignee := "u-1"
+	proj := &domain.ReportProject{
+		OrgID: "org-1", Name: "Acme Support", Slug: "acme",
+		IngestKeyHash: []byte("h"), IsActive: true, Platform: "app",
+	}
+	proj.ID = "proj-1"
+	mk(proj)
+
+	rep := &domain.Report{
+		ProjectID: "proj-1", Seq: 7, Title: "algo se rompió", Description: "detalle",
+		Status: domain.ReportPending, ReporterID: "ext-9", ReporterName: "Quien reporta",
+		AssigneeUserID: &assignee,
+	}
+	rep.ID = "rep-1"
+	mk(rep)
+
+	cmt := &domain.ReportComment{ReportID: "rep-1", Body: "respuesta", Kind: domain.CommentKindUser}
+	cmt.ID = "cmt-report"
+	cmt.AuthorUserID = &assignee
+	mk(cmt)
+
+	sys := &domain.ReportComment{ReportID: "rep-1", Body: "status: pending → in_progress", Kind: domain.CommentKindSystem}
+	sys.ID = "cmt-system"
+	mk(sys)
+
+	gone := &domain.ReportComment{ReportID: "rep-1", Body: "esto se retiró", Kind: domain.CommentKindUser}
+	gone.ID = "cmt-withdrawn"
+	gone.AuthorUserID = &assignee
+	mk(gone)
+	if err := db.Delete(&domain.ReportComment{}, "id = ?", "cmt-withdrawn").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	inComment := "cmt-report"
+	img := &domain.ReportImage{ReportID: "rep-1", CommentID: &inComment, Path: "r/one.png", FileName: "one.png"}
+	img.ID = "img-1"
+	mk(img)
+
+	// ── The task side, with a renamed column ──
+	space := &domain.TaskSpace{OrgID: "org-1", Name: "Producto", Rank: "U"}
+	space.ID = "space-1"
+	mk(space)
+	list := &domain.TaskList{SpaceID: "space-1", Name: "Sprint", Rank: "U"}
+	list.ID = "list-1"
+	mk(list)
+	shipped := &domain.TaskStatus{ListID: "list-1", Name: "Shipped", Kind: domain.StatusKindDone, Rank: "U"}
+	shipped.ID = "st-done"
+	mk(shipped)
+
+	completed := time.Now().Add(-24 * time.Hour)
+	task := &domain.Task{
+		ListID: "list-1", StatusID: "st-done", OrgID: "org-1", Seq: 3,
+		Title: "ya salió", Priority: domain.TaskPriority("normal"), CompletedAt: &completed,
+		CreatedByID: "u-1",
+	}
+	task.ID = "task-done"
+	mk(task)
+
+	tc := &domain.TaskComment{TaskID: "task-done", AuthorUserID: "u-1", Body: "nota del equipo"}
+	tc.ID = "cmt-task"
+	mk(tc)
+
+	// An author id that was never filled in — on the channel side that shape
+	// means "the reporter", so it must not travel as an empty string.
+	orphan := &domain.TaskComment{TaskID: "task-done", AuthorUserID: "", Body: "sin autor"}
+	orphan.ID = "cmt-task-noauthor"
+	mk(orphan)
+
+	att := &domain.TaskAttachment{
+		TaskID: "task-done", Path: "t/spec.pdf", FileName: "spec.pdf",
+		URL: domain.AttachmentRef("task-done", "att-1"), ContentType: "application/pdf", Bytes: 10,
+	}
+	att.ID = "att-1"
+	mk(att)
+
+	mk(&domain.TaskAssignee{TaskID: "task-done", UserID: "u-1"})
+}
+
+func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
+	t.Helper()
+	if GetEnv("DB_HOST", "") == "" {
+		t.Skip("no database configured")
+	}
+	dsn := func(name string) string {
+		return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+			GetEnv("DB_HOST", "localhost"), GetEnv("DB_PORT", "5432"),
+			GetEnv("DB_USER", "postgres"), GetEnv("DB_PASSWORD", ""),
+			name, GetEnv("DB_SSLMODE", "disable"))
+	}
+	admin, err := gorm.Open(postgres.Open(dsn(GetEnv("DB_NAME", "cac"))), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Skipf("no database reachable: %v", err)
+	}
+	const name = "cac_test_item_migration"
+	admin.Exec("DROP DATABASE IF EXISTS " + name)
+	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
+		t.Skipf("cannot create a throwaway database: %v", err)
+	}
+	adminSQL, _ := admin.DB()
+
+	db, err := gorm.Open(postgres.Open(dsn(name)), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(
+		&domain.User{}, &domain.Organization{},
+		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{},
+		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.TaskStatus{},
+		&domain.Task{}, &domain.TaskComment{}, &domain.TaskAttachment{}, &domain.TaskAssignee{},
+		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{}, &domain.ItemAssignee{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	return db, func() {
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
+		admin.Exec("DROP DATABASE IF EXISTS " + name)
+		adminSQL.Close()
+	}
+}

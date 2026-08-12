@@ -255,6 +255,10 @@ type ReportProject struct {
 	// DefaultAssigneeUserID: new reports are born assigned to this agent
 	// (portento's DEFAULT_ASSIGNEE_ID behavior).
 	DefaultAssigneeUserID *string `gorm:"type:varchar(36)" json:"defaultAssigneeUserId,omitempty"`
+	// ListID is where this channel's items land on the board, once everything is
+	// one kind of thing. Nullable: a project can exist before it has one, and the
+	// contract test makes them that way.
+	ListID *string `gorm:"type:varchar(36);index" json:"listId,omitempty"`
 	// Outbound webhook, per project so each tenant only ever receives its own
 	// events. The secret signs the body; it is write-only, like the ingest key.
 	WebhookURL    string `gorm:"type:text"          json:"webhookUrl"`
