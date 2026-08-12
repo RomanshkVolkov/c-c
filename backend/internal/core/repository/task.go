@@ -431,15 +431,19 @@ func (r *TaskRepository) MoveTask(id string, status domain.ReportStatus, newRank
 
 func (r *TaskRepository) DeleteTask(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		for _, m := range []any{
-			&domain.TaskTagLink{}, &domain.TaskAssignee{},
-			&domain.TaskComment{}, &domain.TaskAttachment{},
-		} {
+		// Tag links and assignees are pure links, so they go for real.
+		for _, m := range []any{&domain.TaskTagLink{}, &domain.TaskAssignee{}} {
 			if err := tx.Where("task_id = ?", id).Delete(m).Error; err != nil {
 				return err
 			}
 		}
-		return tx.Delete(&domain.Task{}, "id = ?", id).Error
+		// What somebody wrote is only hidden — see deleteListsCascade.
+		for _, m := range []any{&domain.ItemComment{}, &domain.ItemAttachment{}} {
+			if err := tx.Where("item_id = ?", id).Delete(m).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Delete(&domain.Item{}, "id = ?", id).Error
 	})
 }
 
@@ -557,10 +561,18 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 		N      int64
 	}
 	var comments, attachments []countRow
-	r.db.Model(&domain.TaskComment{}).Select("task_id, COUNT(*) AS n").
-		Where("task_id IN ?", ids).Group("task_id").Scan(&comments)
-	r.db.Model(&domain.TaskAttachment{}).Select("task_id, COUNT(*) AS n").
-		Where("task_id IN ?", ids).Group("task_id").Scan(&attachments)
+	// The error is checked. It wasn't, and when the column behind these queries
+	// was renamed every card quietly came back saying it had no comments — a
+	// wrong answer served with a 200, which is the kind this codebase keeps
+	// having to learn to refuse.
+	if err := r.db.Model(&domain.ItemComment{}).Select("item_id AS task_id, COUNT(*) AS n").
+		Where("item_id IN ?", ids).Group("item_id").Scan(&comments).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.Model(&domain.ItemAttachment{}).Select("item_id AS task_id, COUNT(*) AS n").
+		Where("item_id IN ?", ids).Group("item_id").Scan(&attachments).Error; err != nil {
+		return nil, err
+	}
 
 	// Subtask progress, resolved through the column's `kind` so it survives
 	// someone renaming "Done".
@@ -762,10 +774,10 @@ func (r *TaskRepository) Comments(taskID string) ([]domain.TaskCommentResponse, 
 		UpdatedAt    time.Time
 	}
 	var rows []commentRow
-	err := r.db.Table("task_comments c").
+	err := r.db.Table("item_comments c").
 		Select("c.id, c.author_user_id, COALESCE(u.username,'') AS author_name, c.body, c.created_at, c.updated_at").
 		Joins("LEFT JOIN users u ON u.id = c.author_user_id").
-		Where("c.task_id = ?", taskID).Order("c.created_at ASC").Scan(&rows).Error
+		Where("c.item_id = ?", taskID).Order("c.created_at ASC").Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -806,7 +818,7 @@ func (r *TaskRepository) CreateAttachment(a *domain.TaskAttachment) error {
 
 func (r *TaskRepository) Attachments(taskID string, commentID *string) ([]domain.TaskAttachment, error) {
 	var out []domain.TaskAttachment
-	q := r.db.Where("task_id = ?", taskID)
+	q := r.db.Where("item_id = ?", taskID)
 	if commentID == nil {
 		q = q.Where("comment_id IS NULL")
 	}

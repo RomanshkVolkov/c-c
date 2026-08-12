@@ -864,3 +864,91 @@ func TestAClientsReportStaysOffTheTaskBoard(t *testing.T) {
 		}
 	}
 }
+
+// Comments and attachments, after the move.
+//
+// This test exists because they were the part the cutover missed. Every read
+// still asked for a column called task_id, and the board's counting queries
+// threw the error away — so every card came back saying it had no comments, with
+// a 200 and no sign anything was wrong. A wrong answer served confidently is the
+// failure mode this codebase keeps having to relearn.
+func TestCommentsAndAttachmentsSurviveTheMove(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	// Reading a thread.
+	comments, err := repo.Comments("task-done")
+	if err != nil {
+		t.Fatalf("reading comments: %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected the two migrated comments, got %d", len(comments))
+	}
+
+	// Adding one, the way the service does.
+	fresh := &domain.ItemComment{
+		ItemID: "task-done", Kind: domain.CommentKindUser,
+		Visibility: domain.VisibilityInternal, Body: "otra nota",
+	}
+	fresh.ID = "cmt-new"
+	if err := repo.CreateComment(fresh); err != nil {
+		t.Fatal(err)
+	}
+
+	// Attachments, both scopes.
+	all, err := repo.Attachments("task-done", nil)
+	if err != nil {
+		t.Fatalf("reading attachments: %v", err)
+	}
+	if len(all) != 1 {
+		t.Errorf("expected the migrated attachment, got %d", len(all))
+	}
+
+	// And the counts the board puts on a card. These are what silently read zero.
+	cards, err := repo.Board("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var card *domain.TaskCard
+	for i := range cards {
+		if cards[i].ID == "task-done" {
+			card = &cards[i]
+		}
+	}
+	if card == nil {
+		t.Fatal("the task is missing from its own board")
+	}
+	if card.CommentCount != 3 {
+		t.Errorf("the card should count its three comments, got %d", card.CommentCount)
+	}
+	if card.AttachmentCount != 1 {
+		t.Errorf("and its one attachment, got %d", card.AttachmentCount)
+	}
+}
+
+// Deleting a task hides what was written on it rather than destroying it.
+func TestDeletingATaskHidesItsThread(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	if err := repo.DeleteTask("task-done"); err != nil {
+		t.Fatal(err)
+	}
+	var visible int64
+	db.Model(&domain.ItemComment{}).Where("item_id = ?", "task-done").Count(&visible)
+	if visible != 0 {
+		t.Error("its comments should be out of sight")
+	}
+	var kept int64
+	db.Unscoped().Model(&domain.ItemComment{}).
+		Where("item_id = ? AND deleted_at IS NOT NULL", "task-done").Count(&kept)
+	if kept == 0 {
+		t.Error("and still on record — the old behaviour destroyed them")
+	}
+}
