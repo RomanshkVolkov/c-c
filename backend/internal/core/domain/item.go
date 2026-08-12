@@ -174,6 +174,13 @@ type Item struct {
 	// ReporterID is the host app's own user id, asserted by the tenant. Indexed
 	// for "my reports".
 	ReporterID string `gorm:"type:varchar(255);index" json:"reporterId"`
+	// AssigneeUserID is who is responsible. One person, because that is what the
+	// report contract has always exposed and what a tenant reads.
+	//
+	// Tasks keep their own many-to-many table, unchanged: it works, and nobody
+	// asked for several owners on a report. An extra "assignees" table here would
+	// have been a third place the same fact lives.
+	AssigneeUserID *string `gorm:"type:varchar(36);index" json:"assigneeUserId,omitempty"`
 
 	// ── From the task side, now available to everything ──
 	// Rank orders the board by hand. Fractional, so moving one card is one
@@ -266,21 +273,6 @@ type ItemAttachment struct {
 	UploadedBy  string         `gorm:"type:varchar(36)" json:"uploadedBy,omitempty"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 }
-
-// ItemAssignee lets anything carry several assignees, which is what tasks
-// already did.
-//
-// Primary exists because the report contract is single-assignee: it reads and
-// writes one `assigneeUserId`. "The first one" is not a thing a set has, so
-// without this flag the answer would be whatever order Postgres felt like.
-type ItemAssignee struct {
-	ItemID    string    `gorm:"type:varchar(36);primaryKey" json:"itemId"`
-	UserID    string    `gorm:"type:varchar(36);primaryKey" json:"userId"`
-	Primary   bool      `gorm:"default:false;index"         json:"primary"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-func (ItemAssignee) TableName() string { return "item_assignees" }
 
 // ─── The board an older app still expects ─────────────────────────────────────
 //

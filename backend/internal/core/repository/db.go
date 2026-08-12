@@ -90,7 +90,6 @@ func DBConnection() {
 		&domain.Item{},
 		&domain.ItemComment{},
 		&domain.ItemAttachment{},
-		&domain.ItemAssignee{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}

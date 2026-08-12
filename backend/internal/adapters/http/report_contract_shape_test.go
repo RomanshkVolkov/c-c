@@ -53,7 +53,7 @@ func TestTheReportListAndDetailKeepTheirShape(t *testing.T) {
 
 	// A comment and an image, so their shapes are pinned too — the empty case
 	// would prove nothing about the fields inside them.
-	c := &domain.ReportComment{ReportID: rep.ID, Body: "una respuesta", Kind: domain.CommentKindUser}
+	c := &domain.ReportComment{ItemID: rep.ID, Body: "una respuesta", Kind: domain.CommentKindUser}
 	c.ID = "cmt-shape"
 	c.AuthorProjectID = &proj.ID
 	c.AuthorExternalID = "u-other"
@@ -61,7 +61,7 @@ func TestTheReportListAndDetailKeepTheirShape(t *testing.T) {
 	if err := db.Create(c).Error; err != nil {
 		t.Fatal(err)
 	}
-	img := &domain.ReportImage{ReportID: rep.ID, Path: "shape/one.png", FileName: "one.png"}
+	img := &domain.ReportImage{ItemID: rep.ID, Path: "shape/one.png", FileName: "one.png"}
 	img.ID = "img-shape"
 	if err := db.Create(img).Error; err != nil {
 		t.Fatal(err)

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // ─── JSON column type ─────────────────────────────────────────────────────────
@@ -266,73 +264,23 @@ type ReportProject struct {
 }
 
 // Report is a single bug report. seq is a short per-project folio (PROJ-123).
-type Report struct {
-	BaseModel
-	ProjectID   string       `gorm:"type:varchar(36);index;not null" json:"projectId"`
-	Seq         int          `gorm:"not null"                        json:"seq"`
-	Title       string       `gorm:"type:varchar(200);not null"      json:"title"`
-	Description string       `gorm:"type:text"                       json:"description"`
-	Status      ReportStatus `gorm:"type:varchar(20);default:'pending'" json:"status"`
-	// Taxonomy — see the block above for why category/priority are closed sets
-	// and area is free text.
-	Category ReportCategory `gorm:"type:varchar(20);default:'other';index"  json:"category"`
-	Priority ReportPriority `gorm:"type:varchar(10);default:'medium';index" json:"priority"`
-	Area     string         `gorm:"type:varchar(60)"                       json:"area"`
-	// Origin: 'user' (widget/portal) | 'system' (automated reports, deduped by
-	// title against open reports of the same project).
-	Origin           string     `gorm:"type:varchar(10);default:'user'" json:"origin"`
-	URL              string     `gorm:"type:text"                       json:"url"`
-	UserAgent        string     `gorm:"type:text"                       json:"userAgent"`
-	Viewport         string     `gorm:"type:varchar(50)"                json:"viewport"`
-	Telemetry        []byte     `gorm:"type:bytea"                      json:"-"` // AES-GCM blob (decision 7)
-	TelemetryPurgeAt *time.Time `json:"telemetryPurgeAt,omitempty"`
-	ReporterName     string     `gorm:"type:varchar(120)"               json:"reporterName"`
-	ReporterEmail    string     `gorm:"type:varchar(255)"               json:"reporterEmail"`
-	// ReporterID is the host app's own user id (from its session), passed by the
-	// widget's reporter() callback. Indexed for the future "my reports" view.
-	ReporterID     string         `gorm:"type:varchar(255);index"         json:"reporterId"`
-	AssigneeUserID *string        `gorm:"type:varchar(36);index"          json:"assigneeUserId,omitempty"`
-	ResolvedAt     *time.Time     `json:"resolvedAt,omitempty"`
-	DeletedAt      gorm.DeletedAt `gorm:"index"                           json:"-"`
-}
+// Report is an Item that came in through a tenant's channel: it has a reporter,
+// a public folio, and a webhook watching it.
+//
+// An alias, so there is one row and one set of rules. The contract test builds
+// these structs directly and must keep compiling untouched — it is the proof
+// that nothing outside noticed this move.
+type Report = Item
 
-type ReportComment struct {
-	BaseModel
-	ReportID string            `gorm:"type:varchar(36);index;not null" json:"reportId"`
-	Kind     ReportCommentKind `gorm:"type:varchar(10);default:'user'" json:"kind"`
-	// Authorship is three cases, and each has its own column rather than being
-	// inferred from which of the others is null. That inference — "no user id
-	// means the reporter wrote it" — silently broke three separate readers the
-	// first time a fourth kind of author appeared.
-	//
-	//	AuthorUserID set                     → a person with a cac account
-	//	AuthorProjectID set                  → a person at a tenant app
-	//	neither                              → the reporter
-	AuthorUserID *string `gorm:"type:varchar(36)" json:"authorUserId,omitempty"`
-	// AuthorProjectID is which tenant vouched for this comment, proven by the
-	// project key it was posted with. An id and not a name, so ownership is an
-	// id comparison and a renamed project doesn't orphan its own replies.
-	AuthorProjectID *string `gorm:"type:varchar(36);index" json:"-"`
-	// AuthorExternalID / AuthorExternalName are the tenant's own user, copied
-	// from what it asserted — the same free text, the same trust level and the
-	// same reason as Report.ReporterID/ReporterName: that person has no cac
-	// account either. Never rendered without naming the tenant that asserted it.
-	AuthorExternalID   string         `gorm:"type:varchar(255)"  json:"-"`
-	AuthorExternalName string         `gorm:"type:varchar(120)"  json:"-"`
-	Body               string         `gorm:"type:text;not null" json:"body"`
-	DeletedAt          gorm.DeletedAt `gorm:"index"              json:"-"`
-}
+// ReportComment is a public ItemComment: part of the conversation with whoever
+// filed the report.
+type ReportComment = ItemComment
 
 // ReportImage is an uploaded screenshot. CommentID null = report gallery; set =
 // inline in a comment. The `path` is the storage key returned by image-service.
-type ReportImage struct {
-	BaseModel
-	ReportID  string         `gorm:"type:varchar(36);index;not null" json:"reportId"`
-	CommentID *string        `gorm:"type:varchar(36);index"          json:"commentId,omitempty"`
-	Path      string         `gorm:"type:text;not null"              json:"-"` // internal storage key
-	FileName  string         `gorm:"type:varchar(255)"               json:"fileName"`
-	DeletedAt gorm.DeletedAt `gorm:"index"                           json:"-"`
-}
+// ReportImage is an ItemAttachment served through a signed, short-lived link —
+// what a reporter with no account can open.
+type ReportImage = ItemAttachment
 
 // ─── Requests / Responses (report_projects admin) ─────────────────────────────
 

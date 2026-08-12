@@ -115,7 +115,7 @@ func (r *ReportRepository) EventTargetForReport(reportID string) (*domain.Report
 		SELECT p.org_id, p.id AS project_id, p.slug, rp.seq,
 		       rp.reporter_id, rp.reporter_name,
 		       p.webhook_url, p.webhook_secret
-		FROM reports rp
+		FROM items rp
 		JOIN report_projects p ON p.id = rp.project_id
 		WHERE rp.id = ? AND rp.deleted_at IS NULL
 	`, reportID).Scan(&row).Error
@@ -153,7 +153,7 @@ func (r *ReportRepository) UsernameByID(userID string) string {
 func (r *ReportRepository) ProjectIDForReport(reportID string) (string, error) {
 	var projectID string
 	err := r.db.Raw(`
-		SELECT rp.project_id FROM reports rp
+		SELECT rp.project_id FROM items rp
 		WHERE rp.id = ? AND rp.deleted_at IS NULL
 	`, reportID).Scan(&projectID).Error
 	if err != nil {
@@ -168,7 +168,7 @@ func (r *ReportRepository) ProjectIDForReport(reportID string) (string, error) {
 func (r *ReportRepository) OrgIDForReport(reportID string) (string, error) {
 	var orgID string
 	err := r.db.Raw(`
-		SELECT p.org_id FROM reports rp
+		SELECT p.org_id FROM items rp
 		JOIN report_projects p ON p.id = rp.project_id
 		WHERE rp.id = ? AND rp.deleted_at IS NULL
 	`, reportID).Scan(&orgID).Error
@@ -186,7 +186,7 @@ func (r *ReportRepository) ProjectForReport(reportID string) (*domain.ReportProj
 	var p domain.ReportProject
 	err := r.db.Raw(`
 		SELECT p.* FROM report_projects p
-		JOIN reports rp ON rp.project_id = p.id
+		JOIN items rp ON rp.project_id = p.id
 		WHERE rp.id = ?
 	`, reportID).Scan(&p).Error
 	if err != nil {
@@ -208,7 +208,7 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 	}
 
 	filtered := func() *gorm.DB {
-		db := r.db.Table("reports r").
+		db := r.db.Table("items r").
 			Joins("JOIN report_projects p ON p.id = r.project_id").
 			Where("r.deleted_at IS NULL")
 		if !superadmin { // superadmin sees reports across all orgs
@@ -229,7 +229,14 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 			db = db.Where("r.category = ?", q.Category)
 		}
 		if q.Priority != "" {
-			db = db.Where("r.priority = ?", q.Priority)
+			// `none` only exists on the inside; the facade answers `medium` for it,
+			// so a filter for medium that skipped those would contradict the list it
+			// is filtering.
+			if q.Priority == domain.ReportPriorityMedium {
+				db = db.Where("r.priority IN ?", []string{"medium", "none"})
+			} else {
+				db = db.Where("r.priority = ?", q.Priority)
+			}
 		}
 		if q.AssigneeID != "" {
 			db = db.Where("r.assignee_user_id = ?", q.AssigneeID)
@@ -257,10 +264,11 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 			r.seq, r.title, r.status, r.category, r.priority, r.area,
 			r.origin, r.reporter_name, r.reporter_email, r.reporter_id,
 			r.assignee_user_id, u.username AS assignee_name,
-			(SELECT COUNT(*) FROM report_images i
-			   WHERE i.report_id = r.id AND i.comment_id IS NULL AND i.deleted_at IS NULL) AS image_count,
-			(SELECT COUNT(*) FROM report_comments c
-			   WHERE c.report_id = r.id AND c.deleted_at IS NULL) AS comment_count,
+			(SELECT COUNT(*) FROM item_attachments i
+			   WHERE i.item_id = r.id AND i.comment_id IS NULL AND i.deleted_at IS NULL) AS image_count,
+			(SELECT COUNT(*) FROM item_comments c
+			   WHERE c.item_id = r.id AND c.deleted_at IS NULL
+			     AND c.visibility = 'public') AS comment_count,
 			r.created_at, r.updated_at, r.resolved_at`).
 		Joins("LEFT JOIN users u ON u.id = r.assignee_user_id").
 		Order("r.created_at DESC").
@@ -278,17 +286,25 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 // ListImages returns all live images of a report (gallery + comment-inline).
 func (r *ReportRepository) ListImages(reportID string) ([]domain.ReportImage, error) {
 	var images []domain.ReportImage
-	err := r.db.Where("report_id = ?", reportID).Order("created_at ASC").Find(&images).Error
+	err := r.db.Where("item_id = ?", reportID).Order("created_at ASC").Find(&images).Error
 	return images, err
 }
 
 // ListComments returns the comment thread with author usernames.
 //
-// includeDeleted is for cac's own console only. A withdrawn comment stays part
-// of the record the team can consult, but the tenant and the reporter must not
-// receive it — not even a gap where it was. The caller decides; see the two
-// gates in report_admin.go.
-func (r *ReportRepository) ListComments(reportID string, includeDeleted bool) ([]domain.ReportCommentResponse, error) {
+// insideCac is the only question that matters here, and it answers two things at
+// once because they are the same thing: whether the reader is the team.
+//
+//   - A withdrawn comment stays part of the record the team can consult, and the
+//     tenant and the reporter must not receive it — not even a gap where it was.
+//   - An internal comment is a note between us. It never leaves: not to the
+//     tenant's API, not to the reporter, not down the webhook, not into the
+//     unread count. This is the one filter in the codebase whose failure is a
+//     leak rather than a bug, which is why it lives in a single query instead of
+//     being reapplied by each caller.
+//
+// The caller decides; see the two gates in report_admin.go.
+func (r *ReportRepository) ListComments(reportID string, insideCac bool) ([]domain.ReportCommentResponse, error) {
 	var out []domain.ReportCommentResponse
 	err := r.db.Raw(`
 		SELECT c.id, c.kind, c.author_user_id, u.username AS author_name,
@@ -296,13 +312,15 @@ func (r *ReportRepository) ListComments(reportID string, includeDeleted bool) ([
 		       c.author_external_id, c.author_external_name,
 		       r.reporter_name, r.reporter_id, c.deleted_at,
 		       c.body, c.created_at, c.updated_at
-		FROM report_comments c
-		JOIN reports r ON r.id = c.report_id
+		FROM item_comments c
+		JOIN items r ON r.id = c.item_id
 		LEFT JOIN users u ON u.id = c.author_user_id
 		LEFT JOIN report_projects p ON p.id = c.author_project_id
-		WHERE c.report_id = ? AND (c.deleted_at IS NULL OR ?)
+		WHERE c.item_id = ?
+		  AND (c.deleted_at IS NULL OR ?)
+		  AND (c.visibility = 'public' OR ?)
 		ORDER BY c.created_at ASC
-	`, reportID, includeDeleted).Scan(&out).Error
+	`, reportID, insideCac, insideCac).Scan(&out).Error
 	if err != nil {
 		return nil, err
 	}
@@ -382,9 +400,10 @@ func (r *ReportRepository) CreateComment(c *domain.ReportComment) error {
 // message they just wrote, is worse than not telling them anything.
 func (r *ReportRepository) CountTeamCommentsSince(reportID string, since time.Time) (int64, error) {
 	var n int64
-	err := r.db.Table("report_comments c").
-		Joins("JOIN reports r ON r.id = c.report_id").
-		Where("c.report_id = ? AND c.kind = ? AND c.created_at > ? AND c.deleted_at IS NULL",
+	err := r.db.Table("item_comments c").
+		Joins("JOIN items r ON r.id = c.item_id").
+		Where("c.visibility = 'public'").
+		Where("c.item_id = ? AND c.kind = ? AND c.created_at > ? AND c.deleted_at IS NULL",
 			reportID, domain.CommentKindUser, since).
 		Where("(c.author_user_id IS NOT NULL OR c.author_project_id IS NOT NULL)").
 		Where("NOT (c.author_external_id <> '' AND c.author_external_id = r.reporter_id)").
@@ -394,7 +413,7 @@ func (r *ReportRepository) CountTeamCommentsSince(reportID string, since time.Ti
 
 func (r *ReportRepository) FindComment(reportID, commentID string) (*domain.ReportComment, error) {
 	var c domain.ReportComment
-	err := r.db.Where("id = ? AND report_id = ?", commentID, reportID).First(&c).Error
+	err := r.db.Where("id = ? AND item_id = ?", commentID, reportID).First(&c).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrCommentNotFound
 	}
@@ -420,7 +439,7 @@ func (r *ReportRepository) DeleteComment(id string) error {
 
 func (r *ReportRepository) FindImage(reportID, imageID string) (*domain.ReportImage, error) {
 	var img domain.ReportImage
-	err := r.db.Where("id = ? AND report_id = ?", imageID, reportID).First(&img).Error
+	err := r.db.Where("id = ? AND item_id = ?", imageID, reportID).First(&img).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrImageNotFound
 	}

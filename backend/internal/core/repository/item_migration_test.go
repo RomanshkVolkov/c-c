@@ -127,14 +127,6 @@ func TestTheCopyCarriesBothModulesAcross(t *testing.T) {
 		t.Error("an internal attachment keeps its proxy reference — the markdown that embeds it points there")
 	}
 
-	// ── Assignees ──
-	var primary domain.ItemAssignee
-	if err := db.First(&primary, "item_id = ?", "rep-1").Error; err != nil {
-		t.Fatal(err)
-	}
-	if !primary.Primary {
-		t.Error("a report had exactly one assignee, so it is the primary one — the contract reads a single id")
-	}
 }
 
 // Running it again must be free. It runs on every boot, so anything else would
@@ -214,7 +206,6 @@ func countEverything(t *testing.T, db *gorm.DB) map[string]int64 {
 		"items":       `SELECT COUNT(*) FROM items`,
 		"comments":    `SELECT COUNT(*) FROM item_comments`,
 		"attachments": `SELECT COUNT(*) FROM item_attachments`,
-		"assignees":   `SELECT COUNT(*) FROM item_assignees`,
 		"spaces":      `SELECT COUNT(*) FROM task_spaces`,
 		"lists":       `SELECT COUNT(*) FROM task_lists`,
 	} {
@@ -245,7 +236,6 @@ func seedOldWorld(t *testing.T, db *gorm.DB) {
 	user.ID = "u-1"
 	mk(user)
 
-	assignee := "u-1"
 	proj := &domain.ReportProject{
 		OrgID: "org-1", Name: "Acme Support", Slug: "acme",
 		IngestKeyHash: []byte("h"), IsActive: true, Platform: "app",
@@ -253,35 +243,31 @@ func seedOldWorld(t *testing.T, db *gorm.DB) {
 	proj.ID = "proj-1"
 	mk(proj)
 
-	rep := &domain.Report{
-		ProjectID: "proj-1", Seq: 7, Title: "algo se rompió", Description: "detalle",
-		Status: domain.ReportPending, ReporterID: "ext-9", ReporterName: "Quien reporta",
-		AssigneeUserID: &assignee,
-	}
-	rep.ID = "rep-1"
-	mk(rep)
-
-	cmt := &domain.ReportComment{ReportID: "rep-1", Body: "respuesta", Kind: domain.CommentKindUser}
-	cmt.ID = "cmt-report"
-	cmt.AuthorUserID = &assignee
-	mk(cmt)
-
-	sys := &domain.ReportComment{ReportID: "rep-1", Body: "status: pending → in_progress", Kind: domain.CommentKindSystem}
-	sys.ID = "cmt-system"
-	mk(sys)
-
-	gone := &domain.ReportComment{ReportID: "rep-1", Body: "esto se retiró", Kind: domain.CommentKindUser}
-	gone.ID = "cmt-withdrawn"
-	gone.AuthorUserID = &assignee
-	mk(gone)
-	if err := db.Delete(&domain.ReportComment{}, "id = ?", "cmt-withdrawn").Error; err != nil {
+	if err := db.Exec(`INSERT INTO reports
+		(id, created_at, updated_at, project_id, seq, title, description, status,
+		 reporter_id, reporter_name, assignee_user_id)
+		VALUES ('rep-1', now(), now(), 'proj-1', 7, 'algo se rompió', 'detalle', 'pending',
+		        'ext-9', 'Quien reporta', 'u-1')`).Error; err != nil {
 		t.Fatal(err)
 	}
-
-	inComment := "cmt-report"
-	img := &domain.ReportImage{ReportID: "rep-1", CommentID: &inComment, Path: "r/one.png", FileName: "one.png"}
-	img.ID = "img-1"
-	mk(img)
+	for _, c := range []struct{ id, kind, body, deleted string }{
+		{"cmt-report", "user", "respuesta", "NULL"},
+		{"cmt-system", "system", "status: pending → in_progress", "NULL"},
+		{"cmt-withdrawn", "user", "esto se retiró", "now()"},
+	} {
+		if err := db.Exec(`INSERT INTO report_comments
+			(id, created_at, updated_at, report_id, kind, author_user_id, body, deleted_at)
+			VALUES (?, now(), now(), 'rep-1', ?, 'u-1', ?, `+c.deleted+`)`,
+			c.id, c.kind, c.body).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec(`INSERT INTO report_images
+		(id, created_at, updated_at, report_id, comment_id, path, file_name)
+		VALUES ('img-1', now(), now(), 'rep-1', 'cmt-report', 'r/one.png', 'one.png')`).
+		Error; err != nil {
+		t.Fatal(err)
+	}
 
 	// ── The task side, with a renamed column ──
 	space := &domain.TaskSpace{OrgID: "org-1", Name: "Producto", Rank: "U"}
@@ -357,14 +343,14 @@ func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	if err := db.AutoMigrate(
 		&domain.User{}, &domain.Organization{},
-		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{},
+		&domain.ReportProject{},
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.TaskAssignee{},
 		&domain.TaskTag{}, &domain.TaskTagLink{},
-		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{}, &domain.ItemAssignee{},
+		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{},
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := createLegacyTaskTables(db); err != nil {
+	if err := createLegacyTables(db); err != nil {
 		t.Fatal(err)
 	}
 	return db, func() {
@@ -450,12 +436,11 @@ func TestPreexistingDuplicateFoliosDoNotBlockTheBoot(t *testing.T) {
 	seedOldWorld(t, db)
 
 	// Two reports of the same project sharing number 7 — exactly what the old
-	// MAX(seq) produced after a withdrawal.
-	twin := &domain.Report{
-		ProjectID: "proj-1", Seq: 7, Title: "el gemelo", Status: domain.ReportPending,
-	}
-	twin.ID = "rep-twin"
-	if err := db.Create(twin).Error; err != nil {
+	// MAX(seq) produced after a withdrawal. Inserted into the table being migrated
+	// *from*: a duplicate that only exists in the destination would mean the copy
+	// invented it, which is the case that must still stop the deploy.
+	if err := db.Exec(`INSERT INTO reports (id, created_at, updated_at, project_id, seq, title, status)
+		VALUES ('rep-twin', now(), now(), 'proj-1', 7, 'el gemelo', 'pending')`).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -655,7 +640,7 @@ func TestBindingAListAlsoMovesTheInbox(t *testing.T) {
 // described the old shape were replaced by aliases. Which is the honest thing —
 // a fixture for a migration should look like the database being migrated, not
 // like today's model with a few fields ignored.
-func createLegacyTaskTables(db *gorm.DB) error {
+func createLegacyTables(db *gorm.DB) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS task_statuses (
 			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
@@ -671,6 +656,26 @@ func createLegacyTaskTables(db *gorm.DB) error {
 		`CREATE TABLE IF NOT EXISTS task_comments (
 			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
 			task_id varchar(36) NOT NULL, author_user_id varchar(36), body text NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS reports (
+			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
+			project_id varchar(36) NOT NULL, seq int NOT NULL DEFAULT 0,
+			title varchar(200) NOT NULL, description text,
+			status varchar(20) DEFAULT 'pending', category varchar(20) DEFAULT 'other',
+			priority varchar(10) DEFAULT 'medium', area varchar(60),
+			origin varchar(10) DEFAULT 'user', url text, user_agent text, viewport varchar(50),
+			telemetry bytea, telemetry_purge_at timestamptz,
+			reporter_name varchar(120), reporter_email varchar(255), reporter_id varchar(255),
+			assignee_user_id varchar(36), resolved_at timestamptz, deleted_at timestamptz)`,
+		`CREATE TABLE IF NOT EXISTS report_comments (
+			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
+			report_id varchar(36) NOT NULL, kind varchar(10) DEFAULT 'user',
+			author_user_id varchar(36), author_project_id varchar(36),
+			author_external_id varchar(255), author_external_name varchar(120),
+			body text NOT NULL, deleted_at timestamptz)`,
+		`CREATE TABLE IF NOT EXISTS report_images (
+			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
+			report_id varchar(36) NOT NULL, comment_id varchar(36),
+			path text NOT NULL, file_name varchar(255), deleted_at timestamptz)`,
 		`CREATE TABLE IF NOT EXISTS task_attachments (
 			id varchar(36) PRIMARY KEY, created_at timestamptz, updated_at timestamptz,
 			task_id varchar(36) NOT NULL, comment_id varchar(36), url text, path text,

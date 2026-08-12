@@ -77,7 +77,6 @@ func migrateItems(db *gorm.DB) {
 		{"task comments", copyTaskCommentsToItems},
 		{"report images", copyReportImagesToItems},
 		{"task attachments", copyTaskAttachmentsToItems},
-		{"assignees", copyAssigneesToItems},
 	}
 	for _, s := range steps {
 		if err := s.run(db); err != nil {
@@ -421,32 +420,6 @@ func copyTaskAttachmentsToItems(db *gorm.DB) error {
 			url = excluded.url,
 			path = excluded.path
 		WHERE excluded.updated_at > item_attachments.updated_at`).Error
-}
-
-// copyAssigneesToItems. A report had exactly one assignee, so it becomes the
-// primary row. A task could have several and had no order at all, so only an
-// unambiguous case — a single assignee — is marked primary; the rest stay a plain
-// set, which is what they were.
-func copyAssigneesToItems(db *gorm.DB) error {
-	if err := db.Exec(`
-		INSERT INTO item_assignees (item_id, user_id, "primary", created_at)
-		SELECT r.id, r.assignee_user_id, true, r.updated_at
-		FROM reports r
-		WHERE r.assignee_user_id IS NOT NULL AND r.assignee_user_id <> ''
-		ON CONFLICT (item_id, user_id) DO NOTHING`).Error; err != nil {
-		return err
-	}
-	// now() because task_assignees has no timestamp of any kind — which is the
-	// same reason `primary` can only be inferred for the unambiguous case. There
-	// is no record of who was assigned first, and inventing an order would be
-	// worse than admitting there isn't one.
-	return db.Exec(`
-		INSERT INTO item_assignees (item_id, user_id, "primary", created_at)
-		SELECT a.task_id, a.user_id,
-		       (SELECT COUNT(*) FROM task_assignees x WHERE x.task_id = a.task_id) = 1,
-		       now()
-		FROM task_assignees a
-		ON CONFLICT (item_id, user_id) DO NOTHING`).Error
 }
 
 // verifyItemCounts is the gate. Every old row has to have a new one.

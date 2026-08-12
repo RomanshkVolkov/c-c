@@ -164,7 +164,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		// Normalized rather than validated: ingest is public, and refusing a
 		// whole report over an unrecognised label would lose real bug reports.
 		Category:      domain.NormalizeCategory(in.Category),
-		Priority:      domain.NormalizePriority(in.Priority),
+		Priority:      domain.ItemPriority(domain.NormalizePriority(in.Priority)),
 		Area:          domain.NormalizeArea(in.Area),
 		Origin:        origin,
 		URL:           in.URL,
@@ -315,7 +315,7 @@ func (s *ReportService) ReporterComment(ctx context.Context, reportID, body stri
 	if len(images) > 0 && !s.images.Enabled() {
 		return nil, ErrImagesUnavailable
 	}
-	c := &domain.ReportComment{ReportID: reportID, Kind: domain.CommentKindUser, Body: body}
+	c := &domain.ReportComment{ItemID: reportID, Kind: domain.CommentKindUser, Body: body}
 	c.ID = uuid.NewString()
 	if err := s.repo.CreateComment(c); err != nil {
 		return nil, err
@@ -332,7 +332,7 @@ func (s *ReportService) ReporterComment(ctx context.Context, reportID, body stri
 			if err != nil {
 				continue
 			}
-			ri := domain.ReportImage{ReportID: reportID, CommentID: &c.ID, Path: res.Key, FileName: img.FileName}
+			ri := domain.ReportImage{ItemID: reportID, CommentID: &c.ID, Path: res.Key, FileName: img.FileName}
 			ri.ID = uuid.NewString()
 			persisted = append(persisted, ri)
 		}
@@ -363,7 +363,7 @@ func (s *ReportService) uploadImages(ctx context.Context, reportID string, comme
 			lastErr = err
 			continue
 		}
-		ri := domain.ReportImage{ReportID: reportID, CommentID: commentID, Path: res.Key, FileName: img.FileName}
+		ri := domain.ReportImage{ItemID: reportID, CommentID: commentID, Path: res.Key, FileName: img.FileName}
 		ri.ID = uuid.NewString()
 		persisted = append(persisted, ri)
 	}
@@ -460,7 +460,7 @@ func (s *ReportService) Detail(reportID string, includeWithdrawn bool) (*domain.
 		Description:    report.Description,
 		Status:         report.Status,
 		Category:       report.Category,
-		Priority:       report.Priority,
+		Priority:       domain.ReportPriority(report.Priority.ReportWire()),
 		Area:           report.Area,
 		Origin:         report.Origin,
 		URL:            report.URL,
@@ -510,7 +510,7 @@ func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRe
 		report.Category = *req.Category
 	}
 	if req.Priority != nil {
-		report.Priority = *req.Priority
+		report.Priority = domain.ItemPriority(*req.Priority)
 	}
 	if req.Area != nil {
 		report.Area = domain.NormalizeArea(*req.Area)
@@ -559,7 +559,7 @@ func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRe
 
 // systemComment appends an immutable kind=system audit mark to the thread.
 func (s *ReportService) systemComment(reportID, body string) error {
-	c := &domain.ReportComment{ReportID: reportID, Kind: domain.CommentKindSystem, Body: body}
+	c := &domain.ReportComment{ItemID: reportID, Kind: domain.CommentKindSystem, Body: body}
 	c.ID = uuid.NewString()
 	return s.repo.CreateComment(c)
 }
@@ -609,7 +609,7 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 	author.from = causedBy(author, report.ReporterID)
 
 	c := &domain.ReportComment{
-		ReportID: reportID, Kind: domain.CommentKindUser,
+		ItemID: reportID, Kind: domain.CommentKindUser,
 		AuthorUserID: author.userID, AuthorProjectID: author.projectID,
 		AuthorExternalID: author.externalID, AuthorExternalName: author.externalName,
 		Body: body,

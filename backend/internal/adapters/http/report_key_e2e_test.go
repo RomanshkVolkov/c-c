@@ -278,9 +278,9 @@ func TestATenantEditsItsOwnReplyButNotAPersons(t *testing.T) {
 
 	// One comment from a person on cac's side, one from the tenant.
 	human := "u-someone"
-	mine := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorProjectID: &proj.ID, Body: "ours"}
+	mine := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, AuthorProjectID: &proj.ID, Body: "ours"}
 	mine.ID = "c-tenant"
-	theirs := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &human, Body: "theirs"}
+	theirs := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &human, Body: "theirs"}
 	theirs.ID = "c-human"
 	if err := db.Create(mine).Error; err != nil {
 		t.Fatal(err)
@@ -507,7 +507,7 @@ func TestTheReporterIsNamedOnTheirOwnComments(t *testing.T) {
 	if err := db.Model(rep).Update("reporter_name", "Romanshk Volkov").Error; err != nil {
 		t.Fatal(err)
 	}
-	c := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, Body: "muchas gracias"}
+	c := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, Body: "muchas gracias"}
 	c.ID = "c-reporter"
 	if err := db.Create(c).Error; err != nil {
 		t.Fatal(err)
@@ -575,17 +575,17 @@ func TestEditingACommentIsAtomic(t *testing.T) {
 	rep := mkReport(t, db, "rep-a", proj.ID, "broken")
 
 	mine := &domain.ReportComment{
-		ReportID: rep.ID, Kind: domain.CommentKindUser,
+		ItemID: rep.ID, Kind: domain.CommentKindUser,
 		AuthorProjectID: &proj.ID, Body: "see the screenshot",
 	}
 	mine.ID = "c-mine"
-	other := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, Body: "reporter said"}
+	other := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, Body: "reporter said"}
 	other.ID = "c-other"
-	gallery := &domain.ReportImage{ReportID: rep.ID, FileName: "shot.png", Path: "p/1"}
+	gallery := &domain.ReportImage{ItemID: rep.ID, FileName: "shot.png", Path: "p/1"}
 	gallery.ID = "img-gallery"
-	onMine := &domain.ReportImage{ReportID: rep.ID, CommentID: &mine.ID, FileName: "mine.png", Path: "p/2"}
+	onMine := &domain.ReportImage{ItemID: rep.ID, CommentID: &mine.ID, FileName: "mine.png", Path: "p/2"}
 	onMine.ID = "img-mine"
-	onOther := &domain.ReportImage{ReportID: rep.ID, CommentID: &other.ID, FileName: "theirs.png", Path: "p/3"}
+	onOther := &domain.ReportImage{ItemID: rep.ID, CommentID: &other.ID, FileName: "theirs.png", Path: "p/3"}
 	onOther.ID = "img-other"
 	for _, row := range []any{mine, other, gallery, onMine, onOther} {
 		if err := db.Create(row).Error; err != nil {
@@ -660,7 +660,7 @@ func TestEditingACommentIsAtomic(t *testing.T) {
 
 	// Leaving a comment with neither text nor images is the one state it can't
 	// be edited into — the same rule that stops an empty one being posted.
-	empty := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorProjectID: &proj.ID, Body: "last words"}
+	empty := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, AuthorProjectID: &proj.ID, Body: "last words"}
 	empty.ID = "c-empty"
 	if err := db.Create(empty).Error; err != nil {
 		t.Fatal(err)
@@ -703,9 +703,9 @@ func TestAWithdrawnCommentIsVisibleOnlyInsideCac(t *testing.T) {
 	proj := mkProject(t, db, "proj-w", "portento", org.ID, key)
 	rep := mkReport(t, db, "rep-w", proj.ID, "broken")
 
-	kept := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &person.ID, Body: "still here"}
+	kept := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &person.ID, Body: "still here"}
 	kept.ID = "c-kept"
-	gone := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &person.ID, Body: "said too soon"}
+	gone := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, AuthorUserID: &person.ID, Body: "said too soon"}
 	gone.ID = "c-gone"
 	if err := db.Create(kept).Error; err != nil {
 		t.Fatal(err)
@@ -965,7 +965,7 @@ func TestATenantRelayingTheReporterIsReadAsTheReporter(t *testing.T) {
 	// comment that came through the public widget carries no externalId and is
 	// nobody's to edit. Without this the documented predicate would be half
 	// true, and they'd show a button that 403s.
-	widget := &domain.ReportComment{ReportID: rep.ID, Kind: domain.CommentKindUser, Body: "from the widget"}
+	widget := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, Body: "from the widget"}
 	widget.ID = "c-widget"
 	if err := db.Create(widget).Error; err != nil {
 		t.Fatal(err)

@@ -79,7 +79,7 @@ func TestAnArchivedReportKeepsItsNumber(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reach past the model: whatever hides a row later, the number must hold.
-	if err := db.Exec("UPDATE reports SET status = 'closed' WHERE id = ?", first.ID).Error; err != nil {
+	if err := db.Exec("UPDATE items SET status = 'closed' WHERE id = ?", first.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 
