@@ -508,3 +508,97 @@ func TestTheListAChannelDeliversIntoCannotBeDeleted(t *testing.T) {
 		t.Errorf("a list no channel delivers into should still delete: %v", err)
 	}
 }
+
+// Which board does work created here reach?
+//
+// The rule the owner chose: what the team is working on should be visible to the
+// client by default, with a deliberate way to keep something private. So the
+// binding lives on the node you are looking at — the list, or the space above
+// it — and the answer has to be unambiguous, because getting it wrong either
+// leaks internal work or silently hides work a client is paying for.
+func TestWhichChannelALisReaches(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	repo := NewTaskRepository(db)
+
+	// Unbound: nothing outside cac ever sees it. This is most lists.
+	if got, err := repo.EffectiveChannel("list-1"); err != nil || got != "" {
+		t.Errorf("an unbound list reaches nobody; got %q (%v)", got, err)
+	}
+
+	// Bound at the space: everything underneath inherits it, which is the point
+	// of binding there — one setting for a client's whole space.
+	if err := repo.BindSpaceToChannel("space-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := repo.EffectiveChannel("list-1"); got != "proj-1" {
+		t.Errorf("a list under a bound space inherits it; got %q", got)
+	}
+
+	// The list wins over the space: one list of internal work inside a client's
+	// space has to be possible, or the space-level setting is a trap.
+	if err := repo.BindListToChannel("list-1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := repo.EffectiveChannel("list-1"); got != "proj-1" {
+		t.Errorf("clearing a list that never had its own binding leaves the space's; got %q", got)
+	}
+
+	// And a list can name a different channel than its space.
+	other := &domain.ReportProject{OrgID: "org-1", Name: "Otro", Slug: "otro", IngestKeyHash: []byte("h2")}
+	other.ID = "proj-2"
+	if err := db.Create(other).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.BindListToChannel("list-1", "proj-2"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := repo.EffectiveChannel("list-1"); got != "proj-2" {
+		t.Errorf("the list's own binding wins; got %q", got)
+	}
+}
+
+// Binding across organizations would be a way to push work onto a tenant nobody
+// here is meant to reach — and the person doing it would have no reason to think
+// that was even possible.
+func TestAChannelOfAnotherOrgCannotBeBound(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	repo := NewTaskRepository(db)
+
+	elsewhere := &domain.Organization{Name: "Otra", Slug: "otra"}
+	elsewhere.ID = "org-2"
+	if err := db.Create(elsewhere).Error; err != nil {
+		t.Fatal(err)
+	}
+	theirs := &domain.ReportProject{OrgID: "org-2", Name: "Suyo", Slug: "suyo", IngestKeyHash: []byte("h3")}
+	theirs.ID = "proj-theirs"
+	if err := db.Create(theirs).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.BindListToChannel("list-1", "proj-theirs"); err != ErrChannelOtherOrg {
+		t.Errorf("binding a list to another org's channel must be refused, got %v", err)
+	}
+	if err := repo.BindSpaceToChannel("space-1", "proj-theirs"); err != ErrChannelOtherOrg {
+		t.Errorf("same at the space level, got %v", err)
+	}
+	if got, _ := repo.EffectiveChannel("list-1"); got != "" {
+		t.Errorf("a refused binding must not have been written; got %q", got)
+	}
+}
+
+// An unknown list reaches nobody. A missing row is not a reason to publish
+// something to a tenant.
+func TestAnUnknownListReachesNobody(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	repo := NewTaskRepository(db)
+
+	if got, err := repo.EffectiveChannel("list-that-never-existed"); err != nil || got != "" {
+		t.Errorf("want no channel and no error, got %q (%v)", got, err)
+	}
+}

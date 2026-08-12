@@ -17,6 +17,9 @@ type TaskSpace struct {
 	Name  string `gorm:"type:varchar(120);not null"      json:"name"`
 	Color string `gorm:"type:varchar(20)"                json:"color"`
 	Rank  string `gorm:"type:varchar(64);index"          json:"-"`
+	// ProjectID binds everything under this space to a tenant's channel, unless a
+	// list below says otherwise. Set here when a whole space is one client's work.
+	ProjectID *string `gorm:"type:varchar(36);index" json:"projectId,omitempty"`
 }
 
 type TaskFolder struct {
@@ -33,6 +36,14 @@ type TaskList struct {
 	FolderID *string `gorm:"type:varchar(36);index" json:"folderId,omitempty"`
 	Name     string  `gorm:"type:varchar(120);not null" json:"name"`
 	Rank     string  `gorm:"type:varchar(64);index"     json:"-"`
+	// ProjectID binds this list to a tenant's channel and overrides the space's.
+	//
+	// Which way this points matters. It used to be the project that named its
+	// list, and the migration had to guess one — it invented a "Reportes" space
+	// per organization when portento already had a home of its own. Naming the
+	// channel from the node you are looking at puts that choice where the person
+	// making it can see the tree.
+	ProjectID *string `gorm:"type:varchar(36);index" json:"projectId,omitempty"`
 }
 
 // ─── Board columns ────────────────────────────────────────────────────────────

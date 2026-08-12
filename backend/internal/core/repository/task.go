@@ -20,6 +20,9 @@ var (
 	// same cascade would take a tenant's whole history with it, and the tenant
 	// would start getting 404s on urls it has stored.
 	ErrListInUseByChannel = errors.New("a report project delivers into this list")
+	// ErrChannelOtherOrg: binding to a channel of another organization would be a
+	// way to push work onto a tenant nobody here is supposed to reach.
+	ErrChannelOtherOrg = errors.New("that channel belongs to another organization")
 )
 
 type TaskRepository struct {

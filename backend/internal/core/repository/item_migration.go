@@ -527,3 +527,80 @@ func verifyItemCounts(db *gorm.DB) error {
 		"they need repairing, and the uniqueness constraint can't exist until they are", existing))
 	return nil
 }
+
+// EffectiveChannel answers "if I create something in this list, whose board does
+// it reach?" — the list's own binding, falling back to the space above it.
+//
+// "" means nothing outside cac sees it. That is the answer for most lists, and
+// it is the answer the caller gets if the list has vanished: an unknown list is
+// not a reason to publish something to a tenant.
+func (r *TaskRepository) EffectiveChannel(listID string) (string, error) {
+	var row struct {
+		ListProject  *string
+		SpaceProject *string
+	}
+	err := r.db.Raw(`
+		SELECT l.project_id AS list_project, s.project_id AS space_project
+		FROM task_lists l
+		JOIN task_spaces s ON s.id = l.space_id
+		WHERE l.id = ?`, listID).Scan(&row).Error
+	if err != nil {
+		return "", err
+	}
+	if row.ListProject != nil && *row.ListProject != "" {
+		return *row.ListProject, nil
+	}
+	if row.SpaceProject != nil && *row.SpaceProject != "" {
+		return *row.SpaceProject, nil
+	}
+	return "", nil
+}
+
+// BindListToChannel points a list at a tenant's channel, or clears it with "".
+//
+// The project has to belong to the same organization as the list. Without that
+// check, binding would be a way to push work onto another tenant's board — and
+// the person doing it would have no reason to think that was possible.
+func (r *TaskRepository) BindListToChannel(listID, projectID string) error {
+	if projectID == "" {
+		return r.db.Model(&domain.TaskList{}).Where("id = ?", listID).
+			Update("project_id", nil).Error
+	}
+	ok, err := r.channelSharesOrgWithList(listID, projectID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrChannelOtherOrg
+	}
+	return r.db.Model(&domain.TaskList{}).Where("id = ?", listID).
+		Update("project_id", projectID).Error
+}
+
+// BindSpaceToChannel does the same for a whole space.
+func (r *TaskRepository) BindSpaceToChannel(spaceID, projectID string) error {
+	if projectID == "" {
+		return r.db.Model(&domain.TaskSpace{}).Where("id = ?", spaceID).
+			Update("project_id", nil).Error
+	}
+	var same int64
+	if err := r.db.Raw(`SELECT COUNT(*) FROM task_spaces s
+		JOIN report_projects p ON p.id = ?
+		WHERE s.id = ? AND s.org_id = p.org_id`, projectID, spaceID).Scan(&same).Error; err != nil {
+		return err
+	}
+	if same == 0 {
+		return ErrChannelOtherOrg
+	}
+	return r.db.Model(&domain.TaskSpace{}).Where("id = ?", spaceID).
+		Update("project_id", projectID).Error
+}
+
+func (r *TaskRepository) channelSharesOrgWithList(listID, projectID string) (bool, error) {
+	var n int64
+	err := r.db.Raw(`SELECT COUNT(*) FROM task_lists l
+		JOIN task_spaces s ON s.id = l.space_id
+		JOIN report_projects p ON p.id = ?
+		WHERE l.id = ? AND s.org_id = p.org_id`, projectID, listID).Scan(&n).Error
+	return n > 0, err
+}
