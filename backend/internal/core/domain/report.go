@@ -374,7 +374,9 @@ type ReportProjectResponse struct {
 	RateLimitPerReporterPerHour int      `json:"rateLimitPerReporterPerHour"`
 	IsActive                    bool     `json:"isActive"`
 	DefaultAssigneeUserID       *string  `json:"defaultAssigneeUserId,omitempty"`
-	WebhookURL                  string   `json:"webhookUrl"`
+	// ListID is where this channel's incoming reports land.
+	ListID     *string `json:"listId,omitempty"`
+	WebhookURL string  `json:"webhookUrl"`
 	// Whether a secret is set — never the value.
 	WebhookConfigured bool      `json:"webhookConfigured"`
 	CreatedAt         time.Time `json:"createdAt"`

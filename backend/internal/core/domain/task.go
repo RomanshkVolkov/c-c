@@ -342,12 +342,13 @@ type TaskCommentRequest struct {
 
 // SpaceTree is the whole left-hand navigator in one round-trip.
 type SpaceTree struct {
-	ID      string        `json:"id"`
-	OrgID   string        `json:"orgId"`
-	Name    string        `json:"name"`
-	Color   string        `json:"color"`
-	Folders []FolderTree  `json:"folders"`
-	Lists   []ListSummary `json:"lists"` // lists directly under the space
+	ID        string        `json:"id"`
+	OrgID     string        `json:"orgId"`
+	Name      string        `json:"name"`
+	Color     string        `json:"color"`
+	ProjectID string        `json:"projectId,omitempty"`
+	Folders   []FolderTree  `json:"folders"`
+	Lists     []ListSummary `json:"lists"` // lists directly under the space
 }
 
 type FolderTree struct {
@@ -357,8 +358,12 @@ type FolderTree struct {
 }
 
 type ListSummary struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// ProjectID is the channel this list belongs to, if any — either its own
+	// binding or the one it inherits from its space. Sent so the navigator can
+	// say which lists a client can see into, rather than leaving that invisible.
+	ProjectID string `json:"projectId,omitempty"`
 	TaskCount int64  `json:"taskCount"`
 }
 

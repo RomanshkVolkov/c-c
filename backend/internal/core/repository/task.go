@@ -169,14 +169,31 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		countBy[c.ListID] = c.N
 	}
 
+	// Space bindings, so a list can inherit one without a query per list.
+	spaceProject := make(map[string]string, len(spaces))
+	for _, sp := range spaces {
+		if sp.ProjectID != nil {
+			spaceProject[sp.ID] = *sp.ProjectID
+		}
+	}
+
 	summary := func(l domain.TaskList) domain.ListSummary {
-		return domain.ListSummary{ID: l.ID, Name: l.Name, TaskCount: countBy[l.ID]}
+		// The channel a list belongs to: its own, or the one it inherits. Resolved
+		// here so the navigator can mark which lists a client can see into —
+		// invisible is exactly what that must not be.
+		channel := ""
+		if l.ProjectID != nil {
+			channel = *l.ProjectID
+		} else if sp := spaceProject[l.SpaceID]; sp != "" {
+			channel = sp
+		}
+		return domain.ListSummary{ID: l.ID, Name: l.Name, ProjectID: channel, TaskCount: countBy[l.ID]}
 	}
 
 	out := make([]domain.SpaceTree, 0, len(spaces))
 	for _, s := range spaces {
 		tree := domain.SpaceTree{
-			ID: s.ID, OrgID: s.OrgID, Name: s.Name, Color: s.Color,
+			ID: s.ID, OrgID: s.OrgID, Name: s.Name, Color: s.Color, ProjectID: spaceProject[s.ID],
 			Folders: []domain.FolderTree{}, Lists: []domain.ListSummary{},
 		}
 		for _, f := range folders {

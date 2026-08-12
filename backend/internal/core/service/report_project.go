@@ -195,6 +195,7 @@ func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectRespo
 		RateLimitPerReporterPerHour: p.RateLimitPerReporterPerHour,
 		IsActive:                    p.IsActive,
 		DefaultAssigneeUserID:       p.DefaultAssigneeUserID,
+		ListID:                      p.ListID,
 		WebhookURL:                  p.WebhookURL,
 		// The secret is never returned — only whether one exists, which is all
 		// the console needs to show "signed" instead of "unsigned".
