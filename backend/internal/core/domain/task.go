@@ -254,6 +254,10 @@ type CreateSpaceRequest struct {
 type RenameRequest struct {
 	Name  string `json:"name"  validate:"required,min=1,max=120"`
 	Color string `json:"color" validate:"omitempty,max=20"`
+	// ProjectID binds the node to a tenant's channel. A pointer because absent
+	// and empty mean different things: leaving it out renames without touching
+	// the binding, sending "" clears it.
+	ProjectID *string `json:"projectId" validate:"omitempty,max=36"`
 }
 
 type CreateFolderRequest struct {
@@ -261,8 +265,9 @@ type CreateFolderRequest struct {
 }
 
 type CreateListRequest struct {
-	Name     string  `json:"name"     validate:"required,min=1,max=120"`
-	FolderID *string `json:"folderId"`
+	Name      string  `json:"name"     validate:"required,min=1,max=120"`
+	FolderID  *string `json:"folderId"`
+	ProjectID *string `json:"projectId" validate:"omitempty,max=36"`
 }
 
 type CreateStatusRequest struct {

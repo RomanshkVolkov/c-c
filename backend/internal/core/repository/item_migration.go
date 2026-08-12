@@ -604,3 +604,9 @@ func (r *TaskRepository) channelSharesOrgWithList(listID, projectID string) (boo
 		WHERE l.id = ? AND s.org_id = p.org_id`, projectID, listID).Scan(&n).Error
 	return n > 0, err
 }
+
+// SetChannelInbox is where a channel's incoming reports land.
+func (r *TaskRepository) SetChannelInbox(projectID, listID string) error {
+	return r.db.Model(&domain.ReportProject{}).Where("id = ?", projectID).
+		Update("list_id", listID).Error
+}

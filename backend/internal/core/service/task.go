@@ -169,7 +169,31 @@ func (s *TaskService) CreateList(spaceID string, req domain.CreateListRequest) (
 
 func (s *TaskService) FindList(id string) (*domain.TaskList, error) { return s.repo.FindList(id) }
 func (s *TaskService) RenameList(id, name string) error             { return s.repo.RenameList(id, name) }
-func (s *TaskService) DeleteList(id string) error                   { return s.repo.DeleteList(id) }
+
+// BindList points a list at a tenant's channel, and makes it where that
+// channel's incoming reports land.
+//
+// Those two go together on purpose. Saying "this list is portento's" and then
+// having portento's reports arrive somewhere else would be a setting that lies.
+// Binding a second list moves the inbox to it — the last explicit choice wins,
+// which is the only rule that doesn't need a second control to explain it.
+func (s *TaskService) BindList(listID, projectID string) error {
+	if err := s.repo.BindListToChannel(listID, projectID); err != nil {
+		return err
+	}
+	if projectID == "" {
+		return nil
+	}
+	return s.repo.SetChannelInbox(projectID, listID)
+}
+
+// BindSpace binds a whole space. It does not move any inbox: a space-level
+// setting is about what belongs where, and quietly redirecting a tenant's
+// incoming reports from two levels up would be too far from the action.
+func (s *TaskService) BindSpace(spaceID, projectID string) error {
+	return s.repo.BindSpaceToChannel(spaceID, projectID)
+}
+func (s *TaskService) DeleteList(id string) error { return s.repo.DeleteList(id) }
 
 // MoveList reorders a list among its siblings, optionally into another folder.
 func (s *TaskService) MoveList(id string, req domain.MoveNodeRequest) error {

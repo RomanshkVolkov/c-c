@@ -602,3 +602,43 @@ func TestAnUnknownListReachesNobody(t *testing.T) {
 		t.Errorf("want no channel and no error, got %q (%v)", got, err)
 	}
 }
+
+// Binding a list moves the channel's inbox to it.
+//
+// Saying "this list is portento's" and then having portento's reports keep
+// arriving somewhere else would be a setting that lies. The migration had to
+// guess an inbox; this is how that guess gets corrected.
+func TestBindingAListAlsoMovesTheInbox(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db) // guesses an inbox
+	repo := NewTaskRepository(db)
+
+	var before domain.ReportProject
+	if err := db.First(&before, "id = ?", "proj-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if before.ListID == nil || *before.ListID == "list-1" {
+		t.Fatalf("precondition: the guessed inbox should not already be list-1, got %v", before.ListID)
+	}
+
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetChannelInbox("proj-1", "list-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	var after domain.ReportProject
+	if err := db.First(&after, "id = ?", "proj-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.ListID == nil || *after.ListID != "list-1" {
+		t.Errorf("the inbox should follow the binding, got %v", after.ListID)
+	}
+	// And the list a channel now delivers into is protected, wherever it moved to.
+	if err := repo.DeleteList("list-1"); err != ErrListInUseByChannel {
+		t.Errorf("the new inbox has to be guarded too, got %v", err)
+	}
+}

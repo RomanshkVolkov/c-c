@@ -69,6 +69,9 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		errors.Is(err, repository.ErrTaskNotFound),
 		errors.Is(err, repository.ErrStatusNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "Not found", err.Error())
+	case errors.Is(err, repository.ErrChannelOtherOrg):
+		SendErrorResponse(w, http.StatusForbidden,
+			"That channel belongs to another organization.", "channel-other-org")
 	case errors.Is(err, repository.ErrListInUseByChannel):
 		SendErrorResponse(w, http.StatusConflict,
 			"A report project delivers into this list, so deleting it would take that project's reports with it. "+
@@ -238,6 +241,12 @@ func (h *taskHandler) UpdateSpace(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update space", err.Error())
 		return
 	}
+	if req.ProjectID != nil {
+		if err := h.svc.BindSpace(sp.ID, *req.ProjectID); err != nil {
+			mapTaskError(w, err)
+			return
+		}
+	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Space updated"})
 }
 
@@ -399,6 +408,12 @@ func (h *taskHandler) UpdateList(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.RenameList(l.ID, req.Name); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update list", err.Error())
 		return
+	}
+	if req.ProjectID != nil {
+		if err := h.svc.BindList(l.ID, *req.ProjectID); err != nil {
+			mapTaskError(w, err)
+			return
+		}
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "List updated"})
 }
