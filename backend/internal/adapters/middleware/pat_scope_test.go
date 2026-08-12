@@ -27,6 +27,13 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/task-spaces/abc/lists", domain.ScopeTasksWrite},
 		{http.MethodPost, "/api/v1/tasks/abc/comments", domain.ScopeTasksWrite},
 		{http.MethodPatch, "/api/v1/tasks/abc", domain.ScopeTasksManage},
+		// Renaming a list or a space, and pointing one at a tenant's channel.
+		// Manage rather than write: the binding decides whether work created there
+		// shows up on a client's board, which is changing something, not adding to
+		// it. The same-organization check in the repository is what stops it
+		// reaching a tenant nobody here works with.
+		{http.MethodPatch, "/api/v1/task-lists/abc", domain.ScopeTasksManage},
+		{http.MethodPatch, "/api/v1/task-spaces/abc", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/tasks/abc/move", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/notes/", domain.ScopeNotesWrite},
 		// Append-only, like creating the page it hangs off.
@@ -56,6 +63,9 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 func TestAppendScopeCannotChangeExistingWork(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/tasks/abc", "/api/v1/tasks/abc/move", "/api/v1/tasks/abc/comments/xyz",
+		// An append-only token must not be able to point a list at a client's
+		// board: that publishes work, it doesn't add any.
+		"/api/v1/task-lists/abc", "/api/v1/task-spaces/abc",
 	} {
 		scope, _ := patScopeFor(req(http.MethodPatch, path))
 		if scope == domain.ScopeTasksWrite {

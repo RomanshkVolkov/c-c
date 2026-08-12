@@ -247,6 +247,18 @@ var patWritable = []struct {
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`), domain.ScopeReportsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/?$`), domain.ScopeReportsWrite},
 	// Changes what already exists.
+	// Renaming a list or a space, and pointing one at a tenant's channel.
+	//
+	// The binding is the part worth pausing on: it decides whether work created
+	// in that list shows up on a client's board. A token with tasks:manage can
+	// now do that — bounded to channels of the same organization, which the
+	// repository enforces, so it can't reach a tenant nobody here works with.
+	//
+	// It is here because the alternative was worse: the setting existed and
+	// nothing could reach it. No console screen, no token — a feature that could
+	// only be changed by editing the database.
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/task-lists/[^/]+$`), domain.ScopeTasksManage},
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/task-spaces/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/move/?$`), domain.ScopeTasksManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/notes/[^/]+$`), domain.ScopeNotesManage},
