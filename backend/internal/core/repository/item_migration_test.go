@@ -354,6 +354,7 @@ func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
 		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{},
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.TaskStatus{},
 		&domain.Task{}, &domain.TaskComment{}, &domain.TaskAttachment{}, &domain.TaskAssignee{},
+		&domain.TaskTag{}, &domain.TaskTagLink{},
 		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{}, &domain.ItemAssignee{},
 	); err != nil {
 		t.Fatal(err)
@@ -460,5 +461,50 @@ func TestPreexistingDuplicateFoliosDoNotBlockTheBoot(t *testing.T) {
 	db.Model(&domain.Item{}).Where("project_id = ? AND seq = ?", "proj-1", 7).Count(&n)
 	if n != 2 {
 		t.Errorf("both twins should be copied, found %d", n)
+	}
+}
+
+// The list a channel delivers into cannot be deleted out from under it.
+//
+// Today that would leave the project pointing at nothing. After the switch-over
+// the same cascade would physically destroy every report of that tenant, and the
+// urls they have stored would start answering 404. The guard goes in before the
+// data is there to lose.
+func TestTheListAChannelDeliversIntoCannotBeDeleted(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db) // gives proj-1 its landing list
+
+	var proj domain.ReportProject
+	if err := db.First(&proj, "id = ?", "proj-1").Error; err != nil {
+		t.Fatal(err)
+	}
+	if proj.ListID == nil || *proj.ListID == "" {
+		t.Fatal("the migration should have given the project a list to deliver into")
+	}
+	repo := NewTaskRepository(db)
+
+	if err := repo.DeleteList(*proj.ListID); err != ErrListInUseByChannel {
+		t.Errorf("deleting the landing list must be refused, got %v", err)
+	}
+	var still int64
+	db.Model(&domain.TaskList{}).Where("id = ?", *proj.ListID).Count(&still)
+	if still != 1 {
+		t.Error("the list is still there — a refused delete must not delete anything")
+	}
+
+	// The other door into the same cascade.
+	var list domain.TaskList
+	if err := db.First(&list, "id = ?", *proj.ListID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteSpace(list.SpaceID); err != ErrListInUseByChannel {
+		t.Errorf("deleting the space above it must be refused too, got %v", err)
+	}
+
+	// And an ordinary list is still deletable: the guard is narrow.
+	if err := repo.DeleteList("list-1"); err != nil {
+		t.Errorf("a list no channel delivers into should still delete: %v", err)
 	}
 }

@@ -15,6 +15,11 @@ var (
 	ErrTaskNotFound   = errors.New("task not found")
 	ErrStatusNotFound = errors.New("status not found")
 	ErrLastStatus     = errors.New("a list needs at least one status column")
+	// ErrListInUseByChannel guards the list a report project's items land in.
+	// Deleting it used to be a plain cascade; once reports live on the board that
+	// same cascade would take a tenant's whole history with it, and the tenant
+	// would start getting 404s on urls it has stored.
+	ErrListInUseByChannel = errors.New("a report project delivers into this list")
 )
 
 type TaskRepository struct {
@@ -75,6 +80,17 @@ func (r *TaskRepository) DeleteSpace(id string) error {
 }
 
 func deleteListsCascade(tx *gorm.DB, listIDs []string) error {
+	// Checked here rather than in each caller: DeleteList and DeleteSpace both
+	// come through, and a guard that only covers one of two doors isn't a guard.
+	var claimed int64
+	if err := tx.Model(&domain.ReportProject{}).
+		Where("list_id IN ?", listIDs).Count(&claimed).Error; err != nil {
+		return err
+	}
+	if claimed > 0 {
+		return ErrListInUseByChannel
+	}
+
 	var taskIDs []string
 	tx.Model(&domain.Task{}).Where("list_id IN ?", listIDs).Pluck("id", &taskIDs)
 	if len(taskIDs) > 0 {

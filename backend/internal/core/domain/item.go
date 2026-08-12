@@ -281,3 +281,92 @@ type ItemAssignee struct {
 }
 
 func (ItemAssignee) TableName() string { return "item_assignees" }
+
+// ─── The board an older app still expects ─────────────────────────────────────
+//
+// The desktop client is installed and updated by hand, so a build from last
+// month is still asking for `BoardResponse.Statuses` and still sending the
+// `statusId` it read from there. The configurable columns those rows described
+// are gone; what they actually carried was their `kind`, and that maps onto the
+// shared state machine.
+//
+// So the columns are synthesised from the four states. The client treats a
+// status id as opaque — it reads one and hands it back — which is what makes a
+// derived id safe here. It's the same trick statusAliases plays with the report
+// vocabulary, for the same reason: the parc of installed builds is the thing
+// that can't be migrated on our schedule.
+
+// SyntheticStatusID names a column derived from a state. Prefixed with the list
+// so two boards never trade ids, and parseable back with SplitSyntheticStatusID.
+func SyntheticStatusID(listID string, status ReportStatus) string {
+	return listID + "/" + string(status)
+}
+
+// SplitSyntheticStatusID reads a state back out of a synthetic id.
+//
+// Also accepts a bare state name, because a client that learns the new
+// vocabulary shouldn't have to fabricate a list prefix to use it.
+func SplitSyntheticStatusID(id string) (ReportStatus, bool) {
+	raw := id
+	if i := lastIndexByte(id, '/'); i >= 0 {
+		raw = id[i+1:]
+	}
+	s := ReportStatus(raw).Canonical()
+	if !s.IsValid() {
+		return "", false
+	}
+	return s, true
+}
+
+func lastIndexByte(s string, b byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == b {
+			return i
+		}
+	}
+	return -1
+}
+
+// boardColumns is the fixed set, in board order, with the kind an older client
+// reads to decide what "done" means. Colours match what the previous defaults
+// used, so a board doesn't change appearance on the day of the switch.
+var boardColumns = []struct {
+	Status ReportStatus
+	Name   string
+	Color  string
+	Kind   TaskStatusKind
+}{
+	{ReportPending, "To do", "#7D8BA3", StatusKindOpen},
+	{ReportInProgress, "In progress", "#20D9E8", StatusKindActive},
+	{ReportResolved, "Done", "#34D399", StatusKindDone},
+	// Closed is a real state — a report can be closed without being fixed — and
+	// it reads as finished to anything that groups by kind.
+	{ReportClosed, "Closed", "#8B8B8B", StatusKindDone},
+}
+
+// BoardStatuses renders the fixed states as the column rows a client expects.
+func BoardStatuses(listID string) []TaskStatus {
+	out := make([]TaskStatus, 0, len(boardColumns))
+	for _, c := range boardColumns {
+		s := TaskStatus{ListID: listID, Name: c.Name, Color: c.Color, Kind: c.Kind}
+		s.ID = SyntheticStatusID(listID, c.Status)
+		out = append(out, s)
+	}
+	return out
+}
+
+// StatusKindOf answers "is this finished?" without anyone parsing a column name.
+// Renaming a column was always allowed, which is why the kind existed at all.
+func StatusKindOf(status ReportStatus) TaskStatusKind {
+	for _, c := range boardColumns {
+		if c.Status == status.Canonical() {
+			return c.Kind
+		}
+	}
+	return StatusKindOpen
+}
+
+// IsFinished is the one question most callers actually have.
+func IsFinished(status ReportStatus) bool {
+	return StatusKindOf(status) == StatusKindDone
+}

@@ -69,6 +69,10 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		errors.Is(err, repository.ErrTaskNotFound),
 		errors.Is(err, repository.ErrStatusNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "Not found", err.Error())
+	case errors.Is(err, repository.ErrListInUseByChannel):
+		SendErrorResponse(w, http.StatusConflict,
+			"A report project delivers into this list, so deleting it would take that project's reports with it. "+
+				"Point the project somewhere else first.", "list-in-use-by-channel")
 	case errors.Is(err, repository.ErrLastStatus):
 		SendErrorResponse(w, http.StatusConflict, "A list needs at least one column", err.Error())
 	case errors.Is(err, service.ErrNoStatuses):
