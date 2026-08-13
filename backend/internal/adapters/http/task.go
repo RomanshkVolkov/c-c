@@ -80,6 +80,10 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Get("/{id}/board", h.Board)
 		r.Post("/{id}/statuses", h.CreateStatus)
 		r.Post("/{id}/tasks", h.CreateTask)
+		// A list can carry its own binding, so it can configure it too.
+		r.Get("/{id}/channel", h.GetListChannel)
+		r.Patch("/{id}/channel", h.UpdateListChannel)
+		r.Post("/{id}/channel/rotate-key", h.RotateListChannelKey)
 	})
 
 	r.Route("/api/v1/task-statuses", func(r chi.Router) {

@@ -27,6 +27,9 @@ type TaskHandler interface {
 	DeleteList(w http.ResponseWriter, r *http.Request)
 	MoveList(w http.ResponseWriter, r *http.Request)
 	MoveSpace(w http.ResponseWriter, r *http.Request)
+	RotateListChannelKey(w http.ResponseWriter, r *http.Request)
+	UpdateListChannel(w http.ResponseWriter, r *http.Request)
+	GetListChannel(w http.ResponseWriter, r *http.Request)
 	RotateChannelKey(w http.ResponseWriter, r *http.Request)
 	UpdateChannel(w http.ResponseWriter, r *http.Request)
 	CreateChannel(w http.ResponseWriter, r *http.Request)
@@ -797,6 +800,84 @@ func (h *taskHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
 //
 // The row underneath is unchanged, so every key already issued keeps working and
 // nothing a tenant integrated against moves.
+
+// channelOfList authorizes through the list and returns the channel it reaches —
+// its own binding or the one it inherits.
+//
+// Wherever a channel can be bound it can be configured. A binding you can create
+// and then cannot reach is half a feature, and the half that is missing is the
+// one with the credential in it.
+func (h *taskHandler) channelOfList(
+	w http.ResponseWriter, r *http.Request, needWrite bool,
+) (*domain.TaskList, *domain.ReportProject, bool) {
+	l, _, ok := h.resolveList(w, r, chi.URLParam(r, "id"), needWrite)
+	if !ok {
+		return nil, nil, false
+	}
+	id, err := h.repo.EffectiveChannel(l.ID)
+	if err != nil || id == "" {
+		return l, nil, true
+	}
+	p, err := h.channels.Find(id)
+	if err != nil {
+		return l, nil, true
+	}
+	return l, p, true
+}
+
+func (h *taskHandler) GetListChannel(w http.ResponseWriter, r *http.Request) {
+	_, p, ok := h.channelOfList(w, r, false)
+	if !ok {
+		return
+	}
+	var data *domain.ReportProjectResponse
+	if p != nil {
+		data = service.ProjectResponse(p)
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReportProjectResponse]{Success: true, Data: data})
+}
+
+func (h *taskHandler) UpdateListChannel(w http.ResponseWriter, r *http.Request) {
+	_, p, ok := h.channelOfList(w, r, true)
+	if !ok {
+		return
+	}
+	if p == nil {
+		SendErrorResponse(w, http.StatusNotFound, "This list reaches no channel", "no-channel")
+		return
+	}
+	req, err := ValidateRequest[domain.UpdateReportProjectRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.channels.Update(p.ID, req)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update the channel", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReportProjectResponse]{Success: true, Data: out})
+}
+
+func (h *taskHandler) RotateListChannelKey(w http.ResponseWriter, r *http.Request) {
+	_, p, ok := h.channelOfList(w, r, true)
+	if !ok {
+		return
+	}
+	if p == nil {
+		SendErrorResponse(w, http.StatusNotFound, "This list reaches no channel", "no-channel")
+		return
+	}
+	key, err := h.channels.RotateKey(p.ID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to rotate the key", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[map[string]string]{
+		Success: true, Data: map[string]string{"ingestKey": key},
+		Message: "Anything still using the old key stops working now.",
+	})
+}
 
 // channelOfSpace authorizes through the space and returns its channel, or nil.
 func (h *taskHandler) channelOfSpace(
