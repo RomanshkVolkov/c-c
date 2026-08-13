@@ -413,6 +413,32 @@ fallar.
 
 ---
 
+## 5.b Reportes que levantamos nosotros
+
+Un reporte puede nacer de tu lado —alguien lo reporta— o **del nuestro**: el
+equipo abre trabajo sobre tu producto y lo pone en tu tablero para que sepas qué
+se está haciendo.
+
+Se ven y se comportan como cualquier otro reporte: tienen folio, estado, hilo y
+te llega el webhook `report:new`. Dos diferencias que conviene que tu interfaz
+contemple:
+
+**`origin` puede venir como `internal`.** Antes sólo había `user` y `system`.
+Es aditivo: si comparas contra `"system"` para una insignia, `internal`
+simplemente no coincide y no rompe nada. Si quieres distinguirlo, ya tienes por
+dónde.
+
+**No hay reporter.** Nadie lo reportó, así que `reporterId` y `reporterName`
+vienen vacíos, también en el webhook. Si tu receptor enruta las notificaciones
+por `reporterId` —como hace el de portento—, **este evento no notificará a
+nadie**. El reporte aparece en tu tablero igual; lo que puede faltar es el aviso.
+Si quieres que llegue a alguien, enrútalo por proyecto cuando no haya reporter.
+
+> Lo que **no** verás nunca es el trabajo que marcamos como interno: no aparece
+> en tu listado, ni en tu webhook, ni en el hilo. Para ti no existe.
+
+---
+
 ## 6. Límites de tasa
 
 Dos, y hacen falta los dos:

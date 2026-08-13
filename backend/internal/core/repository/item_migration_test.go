@@ -957,3 +957,122 @@ func TestDeletingATaskHidesItsThread(t *testing.T) {
 		t.Error("and still on record — the old behaviour destroyed them")
 	}
 }
+
+// Raising work in a list that belongs to a client.
+//
+// The rule the owner chose: what the team is working on should be visible to
+// them, and keeping something private is a decision made on purpose. So the
+// default is visible — and visible is expensive in a way that is easy to miss.
+// It spends one of that client's folio numbers, forever, and puts the item on
+// their board.
+func TestWorkRaisedInAClientsListIsVisibleByDefault(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Default: no choice expressed.
+	visible := &domain.Task{ListID: "list-1", OrgID: "org-1", Title: "lo estamos arreglando",
+		Status: domain.ReportPending, ProjectID: "proj-1"}
+	if err := repo.CreateTask(visible, "space-1"); err != nil {
+		t.Fatal(err)
+	}
+	if !visible.IsChannel() {
+		t.Fatal("work in a bound list should reach the client by default")
+	}
+	// Its number comes from the client's sequence, because that number is the
+	// name they will quote back. The seeded report is 7, so this is 8 — not 4,
+	// which is where the space's own numbering was.
+	if visible.Seq != 8 {
+		t.Errorf("a client-visible item takes the next folio of their project: want 8, got %d", visible.Seq)
+	}
+
+	// And the opposite choice keeps it to us.
+	private := &domain.Task{ListID: "list-1", OrgID: "org-1", Title: "hablar del contrato",
+		Status: domain.ReportPending}
+	if err := repo.CreateTask(private, "space-1"); err != nil {
+		t.Fatal(err)
+	}
+	if private.IsChannel() {
+		t.Fatal("an item marked internal must not reach the client")
+	}
+	if private.Seq == visible.Seq {
+		t.Error("the two numbering scopes must not collide")
+	}
+
+	// The client's own view lists one and not the other.
+	rr := NewReportRepository(db)
+	list, err := rr.List([]string{"org-1"}, domain.ReportListQuery{ProjectID: "proj-1", Limit: 50}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawVisible, sawPrivate bool
+	for _, it := range list.Items {
+		if it.ID == visible.ID {
+			sawVisible = true
+		}
+		if it.ID == private.ID {
+			sawPrivate = true
+		}
+	}
+	if !sawVisible {
+		t.Error("the visible item should be on the client's board")
+	}
+	if sawPrivate {
+		t.Error("the internal one must not be — this is the leak the choice exists to prevent")
+	}
+}
+
+// A subtask of a client-visible item stays ours.
+//
+// Inheriting the channel would spend one of their numbers on a checklist line
+// and show it on their board as a ticket of its own.
+func TestASubtaskOfAVisibleItemStaysInternal(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+
+	parent := &domain.Task{ListID: "list-1", OrgID: "org-1", Title: "el trabajo visible",
+		Status: domain.ReportPending, ProjectID: "proj-1"}
+	if err := repo.CreateTask(parent, "space-1"); err != nil {
+		t.Fatal(err)
+	}
+	pid := parent.ID
+	child := &domain.Task{ListID: "list-1", OrgID: "org-1", Title: "un paso interno",
+		Status: domain.ReportPending, ParentID: &pid}
+	if err := repo.CreateTask(child, "space-1"); err != nil {
+		t.Fatal(err)
+	}
+	if child.IsChannel() {
+		t.Error("a subtask must not become a ticket on the client's board")
+	}
+}
+
+// The choice, through the service — which is where the default lives and where
+// the client gets told.
+func TestTheChoiceAtCreationTime(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	migrateItems(db)
+	repo := NewTaskRepository(db)
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unbound lists are unaffected: asking for "public" where there is no channel
+	// cannot invent one.
+	if err := repo.BindListToChannel("list-1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if ch, _ := repo.EffectiveChannel("list-1"); ch != "" {
+		t.Fatalf("precondition failed: list-1 still reaches %q", ch)
+	}
+}

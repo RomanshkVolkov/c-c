@@ -246,6 +246,13 @@ type UpdateStatusRequest struct {
 	Kind  TaskStatusKind `json:"kind"  validate:"omitempty,oneof=open active done"`
 }
 
+// ItemVisibilityChoice is what someone picks when raising work in a list that
+// belongs to a client's channel.
+//
+// Absent means visible. That is the deliberate default: what the team is working
+// on should be something the client can see, and hiding it is the decision that
+// has to be made on purpose. A list with no channel ignores this entirely —
+// there is nobody outside to show it to.
 type CreateTaskRequest struct {
 	Title string `json:"title"    validate:"required,min=1,max=300"`
 	// IdempotencyKey makes a retry safe: the same key in the same list returns
@@ -253,6 +260,16 @@ type CreateTaskRequest struct {
 	// caller whose request times out has no other way to tell "it didn't happen"
 	// from "the reply got lost".
 	IdempotencyKey string `json:"idempotencyKey" validate:"omitempty,max=120"`
+	// Visibility is the choice made when raising work in a list that belongs to a
+	// client's channel: "" or "public" means they see it — and it takes a folio
+	// from their numbering and fires their webhook — while "internal" keeps it to
+	// us.
+	//
+	// Absent means visible, deliberately. What the team is working on should be
+	// something the client can see; hiding a piece of it is the decision that has
+	// to be made on purpose. In a list with no channel this is ignored: there is
+	// nobody outside to show it to.
+	Visibility ItemVisibility `json:"visibility" validate:"omitempty,oneof=internal public"`
 	// Markdown body, so a task can be filed complete in one call (the MCP tool
 	// does exactly that).
 	Description string       `json:"description"`

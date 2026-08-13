@@ -56,10 +56,9 @@ func TestEveryEventNamesTheReporter(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := &ReportService{}
 	events := []string{"report:new", "report:status", "report:comment", "report:attachment"}
 	for _, ev := range events {
-		s.dispatchWebhook(target(srv.URL, ""), ev, "rep-1", nil)
+		dispatchWebhook(target(srv.URL, ""), ev, "rep-1", nil)
 	}
 	waitFor(t, 3*time.Second, func() bool {
 		mu.Lock()
@@ -98,8 +97,7 @@ func TestReceiverCanVerifyTheSignatureOverTheExactBytes(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := &ReportService{}
-	s.dispatchWebhook(target(srv.URL, secret), "report:status", "rep-1",
+	dispatchWebhook(target(srv.URL, secret), "report:status", "rep-1",
 		map[string]any{"status": "done"})
 
 	if !waitFor(t, 2*time.Second, func() bool { return gotSig != "" }) {
@@ -154,8 +152,7 @@ func TestNoSecretMeansNoSignatureHeader(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := &ReportService{}
-	s.dispatchWebhook(target(srv.URL, ""), "report:new", "rep-1", nil)
+	dispatchWebhook(target(srv.URL, ""), "report:new", "rep-1", nil)
 	if !waitFor(t, 2*time.Second, arrived.Load) {
 		t.Fatal("webhook never arrived")
 	}
@@ -180,9 +177,8 @@ func TestRetriesServerErrorsButNotRejections(t *testing.T) {
 	}))
 	defer srvReject.Close()
 
-	s := &ReportService{}
-	s.dispatchWebhook(target(srvFail.URL, ""), "report:new", "r", nil)
-	s.dispatchWebhook(target(srvReject.URL, ""), "report:new", "r", nil)
+	dispatchWebhook(target(srvFail.URL, ""), "report:new", "r", nil)
+	dispatchWebhook(target(srvReject.URL, ""), "report:new", "r", nil)
 
 	waitFor(t, 12*time.Second, func() bool { return fiveHundreds.Load() >= int32(webhookAttempts) })
 	if got := fiveHundreds.Load(); got != int32(webhookAttempts) {
@@ -199,9 +195,8 @@ func TestNoEndpointMeansNoRequest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hit.Store(true) }))
 	defer srv.Close()
 
-	s := &ReportService{}
-	s.dispatchWebhook(target("", "secret-at-least-16-chars"), "report:new", "r", nil)
-	s.dispatchWebhook(nil, "report:new", "r", nil)
+	dispatchWebhook(target("", "secret-at-least-16-chars"), "report:new", "r", nil)
+	dispatchWebhook(nil, "report:new", "r", nil)
 	time.Sleep(200 * time.Millisecond)
 	if hit.Load() {
 		t.Error("a project without a webhook must not generate traffic")

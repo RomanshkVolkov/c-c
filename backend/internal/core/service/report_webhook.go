@@ -62,7 +62,7 @@ func signPayload(secret string, body []byte) string {
 // dispatchWebhook fires the event at the project's endpoint, off the request's
 // goroutine — an ingest must not wait on, or fail because of, a third party's
 // server.
-func (s *ReportService) dispatchWebhook(t *domain.ReportEventTarget, eventType, reportID string, data map[string]any) {
+func dispatchWebhook(t *domain.ReportEventTarget, eventType, reportID string, data map[string]any) {
 	if t == nil || t.WebhookURL == "" {
 		return
 	}

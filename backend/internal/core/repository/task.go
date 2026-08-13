@@ -372,13 +372,22 @@ func (r *TaskRepository) FindStatus(id string) (*domain.TaskStatus, error) {
 // CreateTask assigns the next per-space folio and appends to its column.
 func (r *TaskRepository) CreateTask(t *domain.Task, spaceID string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Unscoped, and no join: space_id lives on the row now. Unscoped for the
-		// same reason the folio needs it — a number handed out once is spent, and
-		// a soft-deleted row still owns its own.
+		// Two numbering scopes, and which one applies is the same question as who
+		// can see the item. A client-visible one takes the next folio of their
+		// project — that number becomes its public name — and an internal one is
+		// numbered within its space.
+		//
+		// Unscoped either way: a number handed out once is spent, and a
+		// soft-deleted row still owns its own.
 		var maxSeq int
-		tx.Unscoped().Raw(
-			`SELECT COALESCE(MAX(seq),0) FROM items WHERE space_id = ? AND project_id = ''`,
-			spaceID).Scan(&maxSeq)
+		scope := tx.Unscoped()
+		if t.ProjectID != "" {
+			scope.Raw(`SELECT COALESCE(MAX(seq),0) FROM items WHERE project_id = ?`,
+				t.ProjectID).Scan(&maxSeq)
+		} else {
+			scope.Raw(`SELECT COALESCE(MAX(seq),0) FROM items WHERE space_id = ? AND project_id = ''`,
+				spaceID).Scan(&maxSeq)
+		}
 		t.Seq = maxSeq + 1
 		t.SpaceID = spaceID
 

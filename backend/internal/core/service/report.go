@@ -111,16 +111,35 @@ func NewReportService(
 // that scanned this file for the string, which stopped working the moment a
 // payload was built on the line above. The compiler doesn't have that problem.
 func (s *ReportService) emit(eventType, reportID, from string, data map[string]any) {
+	emitItemEvent(s.hub, s.repo, eventType, reportID, from, data)
+}
+
+// emitItemEvent tells everyone who is owed the news that a channel item changed:
+// the live stream inside cac, and the tenant's webhook.
+//
+// Package-level rather than a method, because the task side raises channel items
+// too now — someone on the team filing a bug on a client's board — and a second
+// copy of "who has to hear about this" is exactly how one of them ends up
+// missing a case.
+//
+// `from` is a positional argument on purpose. A tenant receives the webhook for
+// the change it just made itself, and without this it cannot tell its own action
+// from ours. Burying it in the data map made it forgettable; the compiler
+// doesn't forget.
+func emitItemEvent(hub *events.Hub, repo *repository.ReportRepository,
+	eventType, itemID, from string, data map[string]any) {
 	if data == nil {
 		data = map[string]any{}
 	}
 	data["from"] = from
-	target, err := s.repo.EventTargetForReport(reportID)
+	target, err := repo.EventTargetForReport(itemID)
 	if err != nil {
 		return
 	}
-	s.hub.Publish(events.Event{Type: eventType, OrgID: target.OrgID, Data: data})
-	s.dispatchWebhook(target, eventType, reportID, data)
+	if hub != nil {
+		hub.Publish(events.Event{Type: eventType, OrgID: target.OrgID, Data: data})
+	}
+	dispatchWebhook(target, eventType, itemID, data)
 }
 
 // ─── Ingest (public) ──────────────────────────────────────────────────────────

@@ -31,8 +31,7 @@ func TestTheWebhookPayloadKeepsItsShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	svc := &ReportService{}
-	svc.dispatchWebhook(target(srv.URL, "s3cret"), "report:comment", "rep-1", map[string]any{
+	dispatchWebhook(target(srv.URL, "s3cret"), "report:comment", "rep-1", map[string]any{
 		"reportId":  "rep-1",
 		"commentId": "cmt-1",
 		"from":      "team",
@@ -95,8 +94,7 @@ func TestTheWebhookHeadersKeepTheirNames(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	svc := &ReportService{}
-	svc.dispatchWebhook(target(srv.URL, "s3cret"), "report:status", "rep-1", map[string]any{
+	dispatchWebhook(target(srv.URL, "s3cret"), "report:status", "rep-1", map[string]any{
 		"reportId": "rep-1", "status": "in_progress", "from": "team",
 	})
 

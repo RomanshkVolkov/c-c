@@ -18,7 +18,7 @@ import (
 // InitTaskRoutes mounts the task module. Everything is JWT-authenticated and
 // org-scoped through the space that owns each node.
 func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
-	svc := service.NewTaskService(repository.NewTaskRepository(db), hub)
+	svc := service.NewTaskService(repository.NewTaskRepository(db), repository.NewReportRepository(db), hub)
 	// Same image-service client as reports: attachments are proxied so its API
 	// key and the bucket never reach the desktop app.
 	images := imageservice.New(

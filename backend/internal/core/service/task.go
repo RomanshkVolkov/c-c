@@ -24,13 +24,19 @@ var (
 
 type TaskService struct {
 	repo *repository.TaskRepository
+	// reports resolves who to notify when work lands on a client's board. A list
+	// can belong to a channel now, so raising a task there is raising a report.
+	reports *repository.ReportRepository
 	// hub broadcasts board changes so every open console reflects them without
 	// polling. Optional: a nil hub simply means no live updates.
 	hub *events.Hub
 }
 
-func NewTaskService(repo *repository.TaskRepository, hub *events.Hub) *TaskService {
-	return &TaskService{repo: repo, hub: hub}
+// NewTaskService takes the report repository as well, because a list can belong
+// to a client's channel: work raised there is a report on their board, and it
+// has to be numbered and announced like one.
+func NewTaskService(repo *repository.TaskRepository, reports *repository.ReportRepository, hub *events.Hub) *TaskService {
+	return &TaskService{repo: repo, reports: reports, hub: hub}
 }
 
 // publish fans a board change out to the task's organization. Payloads stay
@@ -295,8 +301,19 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 		priority = domain.ItemPriorityNone
 	}
 
+	// Whose board does this reach? The list's channel, or the space's above it.
+	// Empty means nobody outside, and then the choice below doesn't apply.
+	channel, err := s.repo.EffectiveChannel(list.ID)
+	if err != nil {
+		return nil, err
+	}
+	if channel != "" && req.Visibility == domain.VisibilityInternal {
+		channel = "" // kept to us, on purpose
+	}
+
 	t := &domain.Task{
 		ListID:         list.ID,
+		ProjectID:      channel,
 		Status:         status,
 		Origin:         "internal",
 		OrgID:          orgID,
@@ -306,7 +323,11 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 		Priority:       priority,
 		CreatedByID:    userID,
 	}
+	// A subtask of a client-visible item stays internal: inheriting the channel
+	// would spend one of their folio numbers on a checklist line and put it on
+	// their board as if it were a ticket of its own.
 	if req.ParentID != "" {
+		t.ProjectID = ""
 		// Only accept a parent from the same list: a subtask that lived in another
 		// list (or org) would be unreachable from its parent's board.
 		parent, err := s.repo.FindTask(req.ParentID)
