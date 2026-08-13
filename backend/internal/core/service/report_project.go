@@ -179,6 +179,13 @@ func (s *ReportProjectService) RotateKey(id string) (string, error) {
 	return plain, nil
 }
 
+// ProjectResponse renders a channel for a client. Exported because the space
+// endpoints answer with the same shape — one channel, described one way,
+// wherever it is configured from.
+func ProjectResponse(p *domain.ReportProject) *domain.ReportProjectResponse {
+	return toReportProjectResponse(p)
+}
+
 func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectResponse {
 	origins := []string(p.AllowedOrigins)
 	if origins == nil {

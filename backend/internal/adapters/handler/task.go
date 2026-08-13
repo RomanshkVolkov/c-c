@@ -27,6 +27,10 @@ type TaskHandler interface {
 	DeleteList(w http.ResponseWriter, r *http.Request)
 	MoveList(w http.ResponseWriter, r *http.Request)
 	MoveSpace(w http.ResponseWriter, r *http.Request)
+	RotateChannelKey(w http.ResponseWriter, r *http.Request)
+	UpdateChannel(w http.ResponseWriter, r *http.Request)
+	CreateChannel(w http.ResponseWriter, r *http.Request)
+	GetChannel(w http.ResponseWriter, r *http.Request)
 	MoveFolder(w http.ResponseWriter, r *http.Request)
 	Board(w http.ResponseWriter, r *http.Request)
 	CreateStatus(w http.ResponseWriter, r *http.Request)
@@ -50,6 +54,11 @@ type TaskHandler interface {
 
 type taskHandler struct {
 	svc *service.TaskService
+	// channels configures how work gets in from outside. The settings live on the
+	// space now rather than on a screen of their own, because the module that
+	// screen belonged to is being folded into this one.
+	channels *service.ReportProjectService
+	repo     *repository.TaskRepository
 	// images proxies attachment uploads so the API key and bucket stay
 	// server-side; nil/disabled simply turns attachments off.
 	images *imageservice.Client
@@ -58,8 +67,14 @@ type taskHandler struct {
 	store *mediastore.Store
 }
 
-func NewTaskHandler(svc *service.TaskService, images *imageservice.Client, store *mediastore.Store) TaskHandler {
-	return &taskHandler{svc: svc, images: images, store: store}
+func NewTaskHandler(
+	svc *service.TaskService,
+	channels *service.ReportProjectService,
+	repo *repository.TaskRepository,
+	images *imageservice.Client,
+	store *mediastore.Store,
+) TaskHandler {
+	return &taskHandler{svc: svc, channels: channels, repo: repo, images: images, store: store}
 }
 
 func mapTaskError(w http.ResponseWriter, err error) bool {
@@ -768,4 +783,127 @@ func (h *taskHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.TaskTag]{Success: true, Data: tag})
+}
+
+// ─── The channel into a space ─────────────────────────────────────────────────
+//
+// How work from outside gets in, configured where the work lives.
+//
+// None of these settings are new — a credential, allowed origins, rate limits, a
+// webhook. They lived on a screen of their own, called "report projects",
+// belonging to a module that is being folded into this one. Leaving them there
+// would mean a space you can see belongs to a client, whose configuration is
+// somewhere you have to remember exists.
+//
+// The row underneath is unchanged, so every key already issued keeps working and
+// nothing a tenant integrated against moves.
+
+// channelOfSpace authorizes through the space and returns its channel, or nil.
+func (h *taskHandler) channelOfSpace(
+	w http.ResponseWriter, r *http.Request, needWrite bool,
+) (*domain.TaskSpace, *domain.ReportProject, bool) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), needWrite)
+	if !ok {
+		return nil, nil, false
+	}
+	if sp.ProjectID == nil || *sp.ProjectID == "" {
+		return sp, nil, true
+	}
+	p, err := h.channels.Find(*sp.ProjectID)
+	if err != nil {
+		// The binding points at a channel that is gone. "No channel" is the
+		// truthful answer and leaves opening a new one as the obvious next step.
+		return sp, nil, true
+	}
+	return sp, p, true
+}
+
+func (h *taskHandler) GetChannel(w http.ResponseWriter, r *http.Request) {
+	_, p, ok := h.channelOfSpace(w, r, false)
+	if !ok {
+		return
+	}
+	var data *domain.ReportProjectResponse
+	if p != nil {
+		data = service.ProjectResponse(p)
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReportProjectResponse]{Success: true, Data: data})
+}
+
+// CreateChannel opens a way in and returns the key exactly once.
+func (h *taskHandler) CreateChannel(w http.ResponseWriter, r *http.Request) {
+	sp, existing, ok := h.channelOfSpace(w, r, true)
+	if !ok {
+		return
+	}
+	if existing != nil {
+		SendErrorResponse(w, http.StatusConflict,
+			"This space already has a channel. Rotate its key rather than opening a second one.",
+			"channel-exists")
+		return
+	}
+	req, err := ValidateRequest[domain.CreateReportProjectRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	// The space decides the organization and, unless told otherwise, the name:
+	// two fields nobody should have to retype about the thing they are looking at.
+	req.OrgID = sp.OrgID
+	if req.Name == "" {
+		req.Name = sp.Name
+	}
+	out, err := h.channels.Create(req)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to open the channel", err.Error())
+		return
+	}
+	if err := h.repo.BindSpaceToChannel(sp.ID, out.Project.ID); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to bind the channel", err.Error())
+		return
+	}
+	// Shown here and never again: only its HMAC is stored.
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.CreateReportProjectResult]{Success: true, Data: out})
+}
+
+func (h *taskHandler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
+	_, p, ok := h.channelOfSpace(w, r, true)
+	if !ok {
+		return
+	}
+	if p == nil {
+		SendErrorResponse(w, http.StatusNotFound, "This space has no channel", "no-channel")
+		return
+	}
+	req, err := ValidateRequest[domain.UpdateReportProjectRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.channels.Update(p.ID, req)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update the channel", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ReportProjectResponse]{Success: true, Data: out})
+}
+
+func (h *taskHandler) RotateChannelKey(w http.ResponseWriter, r *http.Request) {
+	_, p, ok := h.channelOfSpace(w, r, true)
+	if !ok {
+		return
+	}
+	if p == nil {
+		SendErrorResponse(w, http.StatusNotFound, "This space has no channel", "no-channel")
+		return
+	}
+	key, err := h.channels.RotateKey(p.ID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to rotate the key", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[map[string]string]{
+		Success: true, Data: map[string]string{"ingestKey": key},
+		Message: "Anything still using the old key stops working now.",
+	})
 }

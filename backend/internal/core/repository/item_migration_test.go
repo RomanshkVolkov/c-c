@@ -1090,3 +1090,41 @@ func TestTheChoiceAtCreationTime(t *testing.T) {
 		t.Fatalf("precondition failed: list-1 still reaches %q", ch)
 	}
 }
+
+// Opening a channel on a space binds it to that space, in that organization.
+//
+// The settings are the same ones the reports screen has always had; what changes
+// is where they are reached from. Which makes the organization the thing to be
+// careful about: a channel is a credential that writes onto a board, and binding
+// one across that line would let work be posted where nobody expected it.
+func TestASpaceChannelStaysInItsOwnOrganization(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+	repo := NewTaskRepository(db)
+
+	// Binding this org's channel to this org's space is the ordinary case.
+	if err := repo.BindSpaceToChannel("space-1", "proj-1"); err != nil {
+		t.Fatalf("a channel of the same org should bind: %v", err)
+	}
+	if ch, _ := repo.EffectiveChannel("list-1"); ch != "proj-1" {
+		t.Errorf("lists under it should inherit the channel, got %q", ch)
+	}
+
+	// Another organization's channel is refused, and nothing is written.
+	other := &domain.Organization{Name: "Ajena", Slug: "ajena"}
+	other.ID = "org-9"
+	theirs := &domain.ReportProject{OrgID: "org-9", Name: "Suyo", Slug: "suyo", IngestKeyHash: []byte("k")}
+	theirs.ID = "proj-9"
+	for _, m := range []any{other, theirs} {
+		if err := db.Create(m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.BindSpaceToChannel("space-1", "proj-9"); err != ErrChannelOtherOrg {
+		t.Errorf("binding across organizations must be refused, got %v", err)
+	}
+	if ch, _ := repo.EffectiveChannel("list-1"); ch != "proj-1" {
+		t.Errorf("a refused binding must leave the previous one alone, got %q", ch)
+	}
+}

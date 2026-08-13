@@ -18,7 +18,14 @@ import (
 // InitTaskRoutes mounts the task module. Everything is JWT-authenticated and
 // org-scoped through the space that owns each node.
 func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
-	svc := service.NewTaskService(repository.NewTaskRepository(db), repository.NewReportRepository(db), hub)
+	taskRepo := repository.NewTaskRepository(db)
+	svc := service.NewTaskService(taskRepo, repository.NewReportRepository(db), hub)
+	// The same channel service the reports screen uses. One row, one set of
+	// rules, reachable from wherever the person happens to be.
+	channels := service.NewReportProjectService(
+		repository.NewReportProjectRepository(db),
+		repository.NewOrganizationRepository(db),
+	)
 	// Same image-service client as reports: attachments are proxied so its API
 	// key and the bucket never reach the desktop app.
 	images := imageservice.New(
@@ -38,7 +45,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	if err != nil {
 		lg.Error("task attachment store init failed: " + err.Error())
 	}
-	h := handler.NewTaskHandler(svc, images, store)
+	h := handler.NewTaskHandler(svc, channels, taskRepo, images, store)
 
 	// The navigator: spaces → folders → lists.
 	r.Route("/api/v1/task-spaces", func(r chi.Router) {
@@ -50,6 +57,12 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/folders", h.CreateFolder)
 		r.Post("/{id}/lists", h.CreateList)
 		r.Post("/{id}/move", h.MoveSpace)
+		// The channel into this space: the credential work arrives with, and the
+		// rules it arrives under.
+		r.Get("/{id}/channel", h.GetChannel)
+		r.Post("/{id}/channel", h.CreateChannel)
+		r.Patch("/{id}/channel", h.UpdateChannel)
+		r.Post("/{id}/channel/rotate-key", h.RotateChannelKey)
 	})
 
 	r.Route("/api/v1/task-folders", func(r chi.Router) {
