@@ -278,7 +278,7 @@ func TestDraggingAClientsReportTellsThem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := svc.MoveTask(card.ID, domain.MoveTaskRequest{
+	if err := svc.MoveTask(card.ID, "u-1", domain.MoveTaskRequest{
 		StatusID: domain.SyntheticStatusID("list-1", domain.ReportInProgress),
 	}); err != nil {
 		t.Fatal(err)
@@ -325,7 +325,7 @@ func TestDraggingAnInternalCardTellsNobody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.MoveTask(card.ID, domain.MoveTaskRequest{
+	if err := svc.MoveTask(card.ID, "u-1", domain.MoveTaskRequest{
 		StatusID: domain.SyntheticStatusID("list-1", domain.ReportInProgress),
 	}); err != nil {
 		t.Fatal(err)

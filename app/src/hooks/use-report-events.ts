@@ -14,7 +14,25 @@ import { useConnectionStore } from "@/store/connection.store";
 import { usePendingStore } from "@/store/pending.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 
-type Payload = { reportId?: string; folio?: string; title?: string; status?: string };
+type Payload = {
+  reportId?: string;
+  folio?: string;
+  title?: string;
+  status?: string;
+  /**
+   * Which side caused the event — "team", "reporter", or "project:<slug>". A
+   * tenant uses it to ignore its own actions; it names a side, not a person.
+   */
+  from?: string;
+  /**
+   * Which *person* caused it, when it was one of ours.
+   *
+   * Needed because every console in the organization hears "team", including
+   * the one that just wrote the comment — so without this you get told about
+   * your own reply, which is how this was noticed.
+   */
+  actorId?: string;
+};
 
 async function ensureNotifyPermission(): Promise<boolean> {
   try {
@@ -123,6 +141,20 @@ export function useReportEvents() {
       if (store.selectedId) store.refreshDetail();
     };
 
+    /**
+     * Did this console cause the event?
+     *
+     * Every console in the organization hears the same stream, so an event has
+     * to name the person and not just the side — "team" is true for the one who
+     * typed it and for everyone else. Without this you get told about your own
+     * comment, your own drag, your own card.
+     *
+     * The refresh still happens either way: the screen should show what you did.
+     * What stops is the announcement.
+     */
+    const mine = (p: Payload) =>
+      Boolean(p.actorId) && p.actorId === useAuthStore.getState().session?.id;
+
     const parse = (raw: string): Payload => {
       try {
         return JSON.parse(raw);
@@ -143,6 +175,10 @@ export function useReportEvents() {
       switch (event) {
         case "report:new": {
           const p = parse(data);
+          if (mine(p)) {
+            refresh();
+            break;
+          }
           const desc = `${p.folio ?? ""} ${p.title ?? ""}`.trim();
           toast.info("New report", { description: desc });
           notify("report:new", "New report", desc || "A new report was filed", p.reportId);
@@ -150,9 +186,14 @@ export function useReportEvents() {
           break;
         }
         case "report:status": {
+          const moved = parse(data);
+          if (mine(moved)) {
+            refresh();
+            break;
+          }
           // Folded through the same map as the board, so the toast can't name a
           // state using the spelling the rest of the UI stopped using.
-          const raw = parse(data).status;
+          const raw = moved.status;
           toast.message("Report status changed", {
             description: raw ? STATUS_LABELS[normalizeStatus(String(raw))] : undefined,
           });
@@ -160,8 +201,24 @@ export function useReportEvents() {
           break;
         }
         case "report:comment": {
-          toast.message("New comment on a report");
-          notify("report:comment", "New reply", "A reporter replied to a report", parse(data).reportId);
+          const p = parse(data);
+          // Not your own. The refresh below still runs — the thread should show
+          // your comment — but nothing announces it back at you.
+          if (mine(p)) {
+            refresh();
+            break;
+          }
+          // Who actually replied, rather than assuming it was the reporter: the
+          // same event carries replies from the team and from a tenant's app,
+          // and calling all of them "a reporter" made two thirds of them wrong.
+          const who =
+            p.from === "reporter"
+              ? "The reporter replied"
+              : p.from && p.from.startsWith("project:")
+                ? "The client's app replied"
+                : "Someone on the team replied";
+          toast.message(who);
+          notify("report:comment", "New reply", who, p.reportId);
           refresh();
           break;
         }

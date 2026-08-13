@@ -447,7 +447,12 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 
 // MoveTask places a task between two neighbours, stamping completed_at when it
 // lands in (or leaves) a "done" column so reporting doesn't depend on names.
-func (s *TaskService) MoveTask(id string, req domain.MoveTaskRequest) error {
+// MoveTask takes the person doing it, not just the card.
+//
+// Only so the event can name them: every console in the organization hears the
+// same stream, including the one that just dragged the card, and without a name
+// on the event it announces the move back to whoever made it.
+func (s *TaskService) MoveTask(id, userID string, req domain.MoveTaskRequest) error {
 	next, ok := domain.SplitSyntheticStatusID(req.StatusID)
 	if !ok {
 		return ErrBadStatus
@@ -488,7 +493,7 @@ func (s *TaskService) MoveTask(id string, req domain.MoveTaskRequest) error {
 			return err
 		}
 		emitItemEvent(s.hub, s.reports, "report:status", id, "team", map[string]any{
-			"reportId": id, "status": string(next),
+			"reportId": id, "status": string(next), "actorId": userID,
 		})
 	}
 	s.publish("task:move", task.OrgID, task.ListID, task.ID)
@@ -731,7 +736,9 @@ func (s *TaskService) AddComment(taskID, userID, body string, want domain.ItemVi
 		// The client is owed this the same way they are owed a reply written from
 		// the reports page — it is the same thread.
 		emitItemEvent(s.hub, s.reports, "report:comment", taskID, "team", map[string]any{
-			"reportId": taskID, "commentId": c.ID,
+			// actorId so the console that wrote it doesn't announce it back. See
+			// the same field in report.go: "team" names a side, not a person.
+			"reportId": taskID, "commentId": c.ID, "actorId": userID,
 		})
 	}
 	return c, nil

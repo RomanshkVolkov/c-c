@@ -656,7 +656,8 @@ func (h *taskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Column does not belong to this list", "bad-status")
 		return
 	}
-	if err := h.svc.MoveTask(t.ID, req); err != nil {
+	mover, _ := currentUser(r)
+	if err := h.svc.MoveTask(t.ID, mover.UserID, req); err != nil {
 		if mapTaskError(w, err) {
 			return
 		}

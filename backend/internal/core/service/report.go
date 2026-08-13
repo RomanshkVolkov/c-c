@@ -666,6 +666,15 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 	// The author rides along so a receiver can attribute the reply without
 	// fetching the report back. `from` stays what it is — the echo filter.
 	data := map[string]any{"reportId": reportID, "commentId": c.ID}
+	// Which *person* caused this, when it was one of ours.
+	//
+	// `from` says which side, and that was enough for a tenant deciding whether
+	// it caused its own event. It is not enough for us: every console in the
+	// organization hears "team", including the one belonging to whoever just
+	// typed the comment — so they get told about their own reply.
+	if author.userID != nil {
+		data["actorId"] = *author.userID
+	}
 	if author.externalName != "" {
 		data["authorName"] = author.externalName
 	}
