@@ -130,7 +130,7 @@ func visibilityDB(t *testing.T) (*gorm.DB, func()) {
 		&domain.Organization{}, &domain.ReportProject{}, &domain.User{}, &domain.OrgMembership{},
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{},
 		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{},
-		&domain.TaskTag{}, &domain.TaskTagLink{}, &domain.TaskAssignee{},
+		&domain.TaskTag{}, &domain.TaskTagLink{}, &domain.ItemAssignee{},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -693,7 +693,7 @@ func TestOneAnswerToWhoIsResponsible(t *testing.T) {
 	// the tenant's board could show a different name between two refreshes, which
 	// is the failure this column exists to prevent.
 	var flagged []string
-	if err := db.Raw(`SELECT user_id FROM task_assignees WHERE task_id = ? AND "primary" = true`,
+	if err := db.Raw(`SELECT user_id FROM item_assignees WHERE item_id = ? AND "primary" = true`,
 		card.ID).Scan(&flagged).Error; err != nil {
 		t.Fatal(err)
 	}

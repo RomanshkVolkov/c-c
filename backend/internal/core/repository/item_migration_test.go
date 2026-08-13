@@ -312,7 +312,7 @@ func seedOldWorld(t *testing.T, db *gorm.DB) {
 		t.Fatal(err)
 	}
 
-	mk(&domain.TaskAssignee{TaskID: "task-done", UserID: "u-1"})
+	mk(&domain.ItemAssignee{ItemID: "task-done", UserID: "u-1"})
 }
 
 func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
@@ -344,7 +344,7 @@ func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
 	if err := db.AutoMigrate(
 		&domain.User{}, &domain.Organization{},
 		&domain.ReportProject{},
-		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.TaskAssignee{},
+		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.ItemAssignee{},
 		&domain.TaskTag{}, &domain.TaskTagLink{},
 		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{},
 	); err != nil {
@@ -1126,5 +1126,101 @@ func TestASpaceChannelStaysInItsOwnOrganization(t *testing.T) {
 	}
 	if ch, _ := repo.EffectiveChannel("list-1"); ch != "proj-1" {
 		t.Errorf("a refused binding must leave the previous one alone, got %q", ch)
+	}
+}
+
+// The rename happens to a live table, so it has to keep the rows.
+//
+// Nobody would trade knowing who is on a card for a tidier table name, and a
+// migration that ran twice — or against a database created after the rename —
+// must walk past rather than fail the boot.
+func TestRenamingTheAssigneeTableKeepsItsRows(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	// The world as it was: the old name, with somebody on a card.
+	if err := db.Exec(`DROP TABLE IF EXISTS item_assignees`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TABLE task_assignees (
+		task_id varchar(36), user_id varchar(36), "primary" boolean DEFAULT false,
+		PRIMARY KEY (task_id, user_id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO task_assignees (task_id, user_id, "primary")
+		VALUES ('task-done', 'u-1', true)`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	migrateItems(db)
+
+	var who string
+	if err := db.Raw(`SELECT user_id FROM item_assignees WHERE item_id = ?`, "task-done").
+		Scan(&who).Error; err != nil {
+		t.Fatalf("the renamed table should be readable: %v", err)
+	}
+	if who != "u-1" {
+		t.Errorf("the row should have survived the rename, got %q", who)
+	}
+
+	// And running it again is free: the old name is gone, so there is nothing to
+	// rename and nothing to fail on.
+	migrateItems(db)
+	var still int64
+	db.Raw(`SELECT COUNT(*) FROM item_assignees`).Scan(&still)
+	if still != 1 {
+		t.Errorf("a second boot must change nothing, found %d rows", still)
+	}
+}
+
+// The case production will actually hit: both tables present.
+//
+// AutoMigrate creates the new one before this migration runs, so on the deploy
+// that ships the rename the old table still holds the rows and the new one is
+// empty. Renaming isn't possible then — the name is taken — so the rows have to
+// be moved across, and the previous test doesn't reach that branch because it
+// drops the new table first.
+func TestWhenBothAssigneeTablesExistTheRowsMoveAcross(t *testing.T) {
+	db, cleanup := itemMigrationDB(t)
+	defer cleanup()
+	seedOldWorld(t, db)
+
+	// item_assignees already exists (AutoMigrate made it) and is empty…
+	var exists int64
+	db.Raw(`SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_name = 'item_assignees'`).Scan(&exists)
+	if exists == 0 {
+		t.Fatal("precondition: the new table should already have been created")
+	}
+	// Emptied first: the seed writes straight to the new table, so leaving its
+	// row there would let this test pass whether or not anything moved across.
+	if err := db.Exec(`DELETE FROM item_assignees`).Error; err != nil {
+		t.Fatal(err)
+	}
+	// …while the old one still holds who is on a card.
+	if err := db.Exec(`CREATE TABLE task_assignees (
+		task_id varchar(36), user_id varchar(36), "primary" boolean DEFAULT false,
+		PRIMARY KEY (task_id, user_id))`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO task_assignees (task_id, user_id, "primary")
+		VALUES ('task-done', 'u-1', true)`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	migrateItems(db)
+
+	var who string
+	db.Raw(`SELECT user_id FROM item_assignees WHERE item_id = ?`, "task-done").Scan(&who)
+	if who != "u-1" {
+		t.Errorf("the row should have moved across, got %q", who)
+	}
+	// And the old table is gone, so a later boot doesn't keep reconciling two.
+	var old int64
+	db.Raw(`SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_name = 'task_assignees'`).Scan(&old)
+	if old != 0 {
+		t.Error("the old table should be gone once its rows are safe")
 	}
 }

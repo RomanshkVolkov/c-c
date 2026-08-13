@@ -59,6 +59,9 @@ func migrateItems(db *gorm.DB) {
 	}
 	defer db.Exec(`SELECT pg_advisory_unlock(?)`, lockKey)
 
+	if err := renameAssigneeTable(db); err != nil {
+		panic("items migration: renaming the assignee table: " + err.Error())
+	}
 	if err := ensureItemHelperIndexes(db); err != nil {
 		panic("items migration: indexes: " + err.Error())
 	}
@@ -102,6 +105,43 @@ func migrateItems(db *gorm.DB) {
 	         ON CONFLICT (name) DO UPDATE SET completed_at = `+now+`, detail = excluded.detail`,
 		itemBackfillName, "delta upsert; old tables still authoritative")
 	lg.Info("items migration: up to date")
+}
+
+// renameAssigneeTable finishes what the merge started: the table holding who is
+// responsible was called task_assignees, and it stopped being only about tasks
+// the day a report became an item.
+//
+// Runs before anything reads it, and only when the old name is still there — so
+// a second boot, or a database created fresh with the new name, walks past.
+// Renaming rather than copying keeps the rows and their ids exactly as they are.
+func renameAssigneeTable(db *gorm.DB) error {
+	var old, current int64
+	if err := db.Raw(`SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_name = 'task_assignees'`).Scan(&old).Error; err != nil {
+		return err
+	}
+	if err := db.Raw(`SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_name = 'item_assignees'`).Scan(&current).Error; err != nil {
+		return err
+	}
+	if old == 0 {
+		return nil // already renamed, or never existed
+	}
+	if current > 0 {
+		// Both present: AutoMigrate made the new one before this ran. Move the
+		// rows across rather than dropping either — losing who is on a card to
+		// tidy up a name would be an absurd trade.
+		if err := db.Exec(`INSERT INTO item_assignees (item_id, user_id, "primary")
+			SELECT task_id, user_id, COALESCE("primary", false) FROM task_assignees
+			ON CONFLICT (item_id, user_id) DO NOTHING`).Error; err != nil {
+			return err
+		}
+		return db.Exec(`DROP TABLE task_assignees`).Error
+	}
+	if err := db.Exec(`ALTER TABLE task_assignees RENAME TO item_assignees`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`ALTER TABLE item_assignees RENAME COLUMN task_id TO item_id`).Error
 }
 
 // ensureItemHelperIndexes creates the plain lookup indexes. Safe at any point:
@@ -665,8 +705,8 @@ func (r *TaskRepository) MoveTaskToList(itemID, listID string) error {
 // PrimaryAssignee is the person a tenant is shown, and "" when nobody is on it.
 func (r *ReportRepository) PrimaryAssignee(itemID string) (string, error) {
 	var id string
-	err := r.db.Raw(`SELECT user_id FROM task_assignees
-		WHERE task_id = ? ORDER BY "primary" DESC LIMIT 1`, itemID).Scan(&id).Error
+	err := r.db.Raw(`SELECT user_id FROM item_assignees
+		WHERE item_id = ? ORDER BY "primary" DESC LIMIT 1`, itemID).Scan(&id).Error
 	return id, err
 }
 
@@ -678,13 +718,13 @@ func (r *ReportRepository) PrimaryAssignee(itemID string) (string, error) {
 // something else and neither looked wrong by itself.
 func (r *ReportRepository) SetPrimaryAssignee(itemID, userID string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("task_id = ?", itemID).Delete(&domain.TaskAssignee{}).Error; err != nil {
+		if err := tx.Where("item_id = ?", itemID).Delete(&domain.ItemAssignee{}).Error; err != nil {
 			return err
 		}
 		if userID == "" {
 			return nil
 		}
-		return tx.Create(&domain.TaskAssignee{TaskID: itemID, UserID: userID, Primary: true}).Error
+		return tx.Create(&domain.ItemAssignee{ItemID: itemID, UserID: userID, Primary: true}).Error
 	})
 }
 
@@ -695,16 +735,16 @@ func (r *ReportRepository) SetPrimaryAssignee(itemID, userID string) error {
 // because it says nobody is on something that is actively being worked.
 func (r *ReportRepository) PromoteAnAssignee(itemID string) error {
 	var n int64
-	if err := r.db.Model(&domain.TaskAssignee{}).
-		Where(`task_id = ? AND "primary" = true`, itemID).Count(&n).Error; err != nil {
+	if err := r.db.Model(&domain.ItemAssignee{}).
+		Where(`item_id = ? AND "primary" = true`, itemID).Count(&n).Error; err != nil {
 		return err
 	}
 	if n > 0 {
 		return nil
 	}
-	return r.db.Exec(`UPDATE task_assignees SET "primary" = true
-		WHERE task_id = ? AND user_id = (
-			SELECT user_id FROM task_assignees WHERE task_id = ? LIMIT 1
+	return r.db.Exec(`UPDATE item_assignees SET "primary" = true
+		WHERE item_id = ? AND user_id = (
+			SELECT user_id FROM item_assignees WHERE item_id = ? LIMIT 1
 		)`, itemID, itemID).Error
 }
 
@@ -714,9 +754,9 @@ func (r *ReportRepository) PromoteAnAssignee(itemID string) error {
 // them, and the column stops being read once this has run.
 func backfillAssignees(db *gorm.DB) error {
 	return db.Exec(`
-		INSERT INTO task_assignees (task_id, user_id, "primary")
+		INSERT INTO item_assignees (item_id, user_id, "primary")
 		SELECT i.id, i.assignee_user_id, true
 		FROM items i
 		WHERE i.assignee_user_id IS NOT NULL AND i.assignee_user_id <> ''
-		ON CONFLICT (task_id, user_id) DO UPDATE SET "primary" = true`).Error
+		ON CONFLICT (item_id, user_id) DO UPDATE SET "primary" = true`).Error
 }

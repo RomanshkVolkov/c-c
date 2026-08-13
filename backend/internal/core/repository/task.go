@@ -113,11 +113,14 @@ func deleteListsCascade(tx *gorm.DB, listIDs []string) error {
 	var itemIDs []string
 	tx.Model(&domain.Item{}).Where("list_id IN ?", listIDs).Pluck("id", &itemIDs)
 	if len(itemIDs) > 0 {
-		// Links carry no content of their own, so they go for real.
-		for _, m := range []any{&domain.TaskTagLink{}, &domain.TaskAssignee{}} {
-			if err := tx.Where("task_id IN ?", itemIDs).Delete(m).Error; err != nil {
-				return err
-			}
+		// Links carry no content of their own, so they go for real. Two statements
+		// rather than a loop: the assignee table was renamed with the merge and
+		// its column moved with it, so they no longer share one condition.
+		if err := tx.Where("task_id IN ?", itemIDs).Delete(&domain.TaskTagLink{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("item_id IN ?", itemIDs).Delete(&domain.ItemAssignee{}).Error; err != nil {
+			return err
 		}
 		// The work itself is only hidden. Deleting a list used to destroy every
 		// task in it outright — no undo, no trace, and no way to tell afterwards
@@ -443,11 +446,13 @@ func (r *TaskRepository) MoveTask(id string, status domain.ReportStatus, newRank
 
 func (r *TaskRepository) DeleteTask(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Tag links and assignees are pure links, so they go for real.
-		for _, m := range []any{&domain.TaskTagLink{}, &domain.TaskAssignee{}} {
-			if err := tx.Where("task_id = ?", id).Delete(m).Error; err != nil {
-				return err
-			}
+		// Tag links and assignees are pure links, so they go for real — each with
+		// its own column since the assignee table moved.
+		if err := tx.Where("task_id = ?", id).Delete(&domain.TaskTagLink{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("item_id = ?", id).Delete(&domain.ItemAssignee{}).Error; err != nil {
+			return err
 		}
 		// What somebody wrote is only hidden — see deleteListsCascade.
 		for _, m := range []any{&domain.ItemComment{}, &domain.ItemAttachment{}} {
@@ -566,10 +571,10 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 		Username string
 	}
 	var assigneeRows []assigneeRow
-	r.db.Table("task_assignees a").
-		Select("a.task_id, u.id, u.username").
+	r.db.Table("item_assignees a").
+		Select("a.item_id AS task_id, u.id, u.username").
 		Joins("JOIN users u ON u.id = a.user_id").
-		Where("a.task_id IN ?", ids).Scan(&assigneeRows)
+		Where("a.item_id IN ?", ids).Scan(&assigneeRows)
 
 	type countRow struct {
 		TaskID string
@@ -723,15 +728,15 @@ func (r *TaskRepository) SetTags(taskID string, tagIDs []string) error {
 // one a tenant sees, since their contract names a single person.
 func (r *TaskRepository) SetAssignees(taskID string, userIDs []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("task_id = ?", taskID).Delete(&domain.TaskAssignee{}).Error; err != nil {
+		if err := tx.Where("item_id = ?", taskID).Delete(&domain.ItemAssignee{}).Error; err != nil {
 			return err
 		}
 		if len(userIDs) == 0 {
 			return nil
 		}
-		rows := make([]domain.TaskAssignee, len(userIDs))
+		rows := make([]domain.ItemAssignee, len(userIDs))
 		for i, id := range userIDs {
-			rows[i] = domain.TaskAssignee{TaskID: taskID, UserID: id, Primary: i == 0}
+			rows[i] = domain.ItemAssignee{ItemID: taskID, UserID: id, Primary: i == 0}
 		}
 		return tx.Create(&rows).Error
 	})
@@ -749,8 +754,8 @@ func (r *TaskRepository) AssigneesOf(taskID string) ([]domain.UserSummary, error
 	var out []domain.UserSummary
 	err := r.db.Table("users u").
 		Select("u.id, u.username").
-		Joins("JOIN task_assignees a ON a.user_id = u.id").
-		Where("a.task_id = ?", taskID).Order("u.username ASC").Scan(&out).Error
+		Joins("JOIN item_assignees a ON a.user_id = u.id").
+		Where("a.item_id = ?", taskID).Order("u.username ASC").Scan(&out).Error
 	return orEmptyUsers(out), err
 }
 

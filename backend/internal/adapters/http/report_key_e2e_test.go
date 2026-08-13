@@ -1045,7 +1045,7 @@ func e2eDB(t *testing.T) (*gorm.DB, func()) {
 	// the proof that nothing outside noticed the model move underneath them.
 	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.OrgMembership{},
 		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{},
-		&domain.TaskAssignee{}); err != nil {
+		&domain.ItemAssignee{}); err != nil {
 		t.Fatal(err)
 	}
 	// The ingest key HMAC is keyed by an env secret; pin one so the hashes this

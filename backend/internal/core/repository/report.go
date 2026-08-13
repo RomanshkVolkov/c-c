@@ -255,7 +255,7 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 			// Ana on?" is the question being asked, and answering it about only
 			// the cards where she happens to be first hides real work.
 			db = db.Where(`EXISTS (
-				SELECT 1 FROM task_assignees x WHERE x.task_id = r.id AND x.user_id = ?
+				SELECT 1 FROM item_assignees x WHERE x.item_id = r.id AND x.user_id = ?
 			)`, q.AssigneeID)
 		}
 		// Narrows within what the caller can already see — the org scope above
@@ -290,8 +290,8 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 		// The primary assignee, from the table the board writes too. There used to
 		// be a column here as well, and the two never met.
 		Joins(`LEFT JOIN LATERAL (
-			SELECT user_id FROM task_assignees
-			WHERE task_id = r.id ORDER BY "primary" DESC LIMIT 1
+			SELECT user_id FROM item_assignees
+			WHERE item_id = r.id ORDER BY "primary" DESC LIMIT 1
 		) a ON true`).
 		Joins("LEFT JOIN users u ON u.id = a.user_id").
 		Order("r.created_at DESC").

@@ -78,7 +78,7 @@ func DBConnection() {
 		&domain.Task{},
 		&domain.TaskTag{},
 		&domain.TaskTagLink{},
-		&domain.TaskAssignee{},
+		&domain.ItemAssignee{},
 		&domain.TaskComment{},
 		&domain.TaskAttachment{},
 		&domain.Doc{},

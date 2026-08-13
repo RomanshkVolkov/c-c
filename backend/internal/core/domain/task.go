@@ -124,8 +124,8 @@ type TaskTagLink struct {
 // for tasks and a column on the item for reports — so assigning from the board
 // left the client's view unchanged, and assigning through their API left the
 // board's avatars empty. Neither screen looked wrong on its own.
-type TaskAssignee struct {
-	TaskID string `gorm:"type:varchar(36);primaryKey" json:"taskId"`
+type ItemAssignee struct {
+	ItemID string `gorm:"type:varchar(36);primaryKey" json:"itemId"`
 	UserID string `gorm:"type:varchar(36);primaryKey" json:"userId"`
 	// Primary is who the tenant sees, because their contract names one person.
 	//
@@ -134,6 +134,8 @@ type TaskAssignee struct {
 	// returning — a different name on their board between two refreshes.
 	Primary bool `gorm:"default:false;index" json:"primary"`
 }
+
+func (ItemAssignee) TableName() string { return "item_assignees" }
 
 // TaskComment is an internal ItemComment: nobody outside cac ever reads one.
 type TaskComment = ItemComment
