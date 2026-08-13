@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -458,6 +459,20 @@ func (s *TaskService) MoveTask(id string, req domain.MoveTaskRequest) error {
 	newRank := s.rankBetween("items", req.AfterID, req.BeforeID)
 	if err := s.repo.MoveTask(id, next, newRank, resolvedAt); err != nil {
 		return err
+	}
+
+	// Dragging a client's report across a column is the same act as triaging it
+	// from the reports page, so it has to leave the same trace: the note in the
+	// thread they can read, and the event their app is waiting for. A board that
+	// changed the state quietly would be a board that lies to the customer.
+	if task.IsVisibleToChannel() && task.Status != next {
+		if err := s.reports.CreateComment(newSystemComment(id,
+			fmt.Sprintf("status: %s → %s", task.Status, next))); err != nil {
+			return err
+		}
+		emitItemEvent(s.hub, s.reports, "report:status", id, "team", map[string]any{
+			"reportId": id, "status": string(next),
+		})
 	}
 	s.publish("task:move", task.OrgID, task.ListID, task.ID)
 	return nil

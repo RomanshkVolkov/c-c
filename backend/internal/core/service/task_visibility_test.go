@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"gorm.io/driver/postgres"
@@ -126,7 +127,7 @@ func visibilityDB(t *testing.T) (*gorm.DB, func()) {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(
-		&domain.Organization{}, &domain.ReportProject{},
+		&domain.Organization{}, &domain.ReportProject{}, &domain.User{},
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{},
 		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{},
 		&domain.TaskTag{}, &domain.TaskTagLink{}, &domain.TaskAssignee{},
@@ -244,5 +245,96 @@ func TestAnInternalItemCanBePublishedLater(t *testing.T) {
 	}
 	if after.Seq == 0 {
 		t.Error("and it needs a folio of its own — that number is how the client will refer to it")
+	}
+}
+
+// Dragging a client's report across a column is triage, and has to leave the
+// same trace as doing it from the reports page.
+//
+// The failure this guards is the quiet one: the card moves, the board looks
+// right, and the client is never told. They would be reading a status that
+// stopped being true, with nothing anywhere saying so.
+func TestDraggingAClientsReportTellsThem(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	reports := repository.NewReportRepository(db)
+	svc := NewTaskService(repo, reports, nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "algo que ven"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := reports.ListComments(card.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.MoveTask(card.ID, domain.MoveTaskRequest{
+		StatusID: domain.SyntheticStatusID("list-1", domain.ReportInProgress),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := reports.ListComments(card.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before)+1 {
+		t.Fatalf("the move should leave a line in the thread: %d comments before, %d after",
+			len(before), len(after))
+	}
+	note := after[len(after)-1]
+	if note.Kind != domain.CommentKindSystem {
+		t.Errorf("it is a system note, not somebody's words: %q", note.Kind)
+	}
+	// Public: this is how the reporter learns anything is happening at all.
+	if note.Body == "" || !strings.Contains(note.Body, "in_progress") {
+		t.Errorf("the note should say where it went, got %q", note.Body)
+	}
+	visible, err := reports.ListComments(card.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(visible) != len(after) {
+		t.Error("the client has to be able to read it — an internal status note tells nobody")
+	}
+}
+
+// Moving an internal card leaves no such trace: there is nobody to tell.
+func TestDraggingAnInternalCardTellsNobody(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	reports := repository.NewReportRepository(db)
+	svc := NewTaskService(repo, reports, nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "cosa nuestra"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.MoveTask(card.ID, domain.MoveTaskRequest{
+		StatusID: domain.SyntheticStatusID("list-1", domain.ReportInProgress),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	notes, err := reports.ListComments(card.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notes) != 0 {
+		t.Errorf("an internal card needs no status note; got %d", len(notes))
 	}
 }

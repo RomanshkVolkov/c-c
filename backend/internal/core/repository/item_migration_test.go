@@ -835,17 +835,23 @@ func TestABoardWorksOnTheUnifiedTable(t *testing.T) {
 	}
 }
 
-// A client's report never appears on a task board while the report path is still
-// the one serving it: two copies, one of them silently stale, is worse than not
-// showing it at all.
-func TestAClientsReportStaysOffTheTaskBoard(t *testing.T) {
+// A client's report is a card on the board like any other.
+//
+// It was held off for a while, and the reason was good at the time: the report
+// side still read its own tables, so a card dragged here would have changed one
+// copy and left the other stale, with no webhook. Both now read the same table,
+// so the reason expired — and a board that hides half the work is a board you
+// have to remember to distrust.
+//
+// What still does not belong there is a withdrawn item: that is ours again, and
+// it appears as an ordinary internal card rather than as the client's ticket.
+func TestAClientsReportIsACardLikeAnyOther(t *testing.T) {
 	db, cleanup := itemMigrationDB(t)
 	defer cleanup()
 	seedOldWorld(t, db)
 	migrateItems(db)
 	repo := NewTaskRepository(db)
 
-	// Put the migrated report in an ordinary list and look at that board.
 	if err := db.Model(&domain.Item{}).Where("id = ?", "rep-1").
 		Update("list_id", "list-1").Error; err != nil {
 		t.Fatal(err)
@@ -854,18 +860,26 @@ func TestAClientsReportStaysOffTheTaskBoard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var found bool
 	for _, c := range cards {
 		if c.ID == "rep-1" {
-			t.Error("a channel item must not be draggable on a task board yet — the report path still owns it")
+			found = true
 		}
 	}
+	if !found {
+		t.Error("a client's report should be on the board of the list it lives in")
+	}
+
+	// The dashboard is a different question: it already counts open reports in
+	// their own card, so listing them again as tasks would show the same work
+	// twice and make the numbers argue with each other.
 	open, err := repo.ListOpen([]string{"org-1"}, false, "", 50)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, o := range open {
 		if o.ID == "rep-1" {
-			t.Error("nor on the pending dashboard: it is a client's ticket, not our line item")
+			t.Error("the pending dashboard counts reports separately; listing them here doubles them")
 		}
 	}
 }

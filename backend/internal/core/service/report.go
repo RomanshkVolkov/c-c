@@ -870,3 +870,19 @@ func (s *ReportService) DetachImage(reportID, imageID string) error {
 	}
 	return s.systemComment(reportID, "removed image "+img.FileName)
 }
+
+// newSystemComment builds the line a state change leaves in a thread.
+//
+// Public, because the reporter is shown these today — "status: pending →
+// in_progress" is how they learn anything is happening — and filing them
+// internal would be a silent downgrade of what they already receive.
+func newSystemComment(itemID, body string) *domain.ReportComment {
+	c := &domain.ReportComment{
+		ItemID:     itemID,
+		Kind:       domain.CommentKindSystem,
+		Visibility: domain.VisibilityPublic,
+		Body:       body,
+	}
+	c.ID = uuid.NewString()
+	return c
+}

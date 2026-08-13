@@ -182,7 +182,7 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 	var counts []countRow
 	r.db.Model(&domain.Item{}).
 		Select("list_id, COUNT(*) AS n").
-		Where("archived_at IS NULL AND project_id = ''").
+		Where("archived_at IS NULL").
 		Group("list_id").Scan(&counts)
 	countBy := make(map[string]int64, len(counts))
 	for _, c := range counts {
@@ -392,7 +392,10 @@ func (r *TaskRepository) CreateTask(t *domain.Task, spaceID string) error {
 		t.SpaceID = spaceID
 
 		var last string
-		tx.Model(&domain.Item{}).Where("list_id = ? AND status = ? AND project_id = ''", t.ListID, t.Status).
+		// Ranked against everything the board will show it beside, channel items
+		// included — a rank computed over a different set than the one being
+		// rendered puts the card in the wrong place.
+		tx.Model(&domain.Item{}).Where("list_id = ? AND status = ?", t.ListID, t.Status).
 			Order("rank DESC").Limit(1).Pluck("rank", &last)
 		t.Rank = rank.Between(last, "")
 
@@ -528,11 +531,14 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 	// Subtasks belong to their parent's breakdown, not to the column: showing
 	// both would double-count the work on screen.
 	//
-	// project_id = '' keeps channel items off this board. They live in the same
-	// table now, but the report side is still served from its own tables — so a
-	// card dragged here would change one copy and not the other, and no webhook
-	// would fire. They arrive on boards when that path moves too.
-	if err := r.db.Where("list_id = ? AND project_id = '' AND archived_at IS NULL AND parent_id IS NULL", listID).
+	// A client's report is a card like any other. It was held back while the
+	// report side still read its own tables — a card dragged here would have
+	// changed one copy and not the other — and that stopped being true when
+	// reports moved into this table.
+	//
+	// A withdrawn item is excluded, because it is not the client's work any more;
+	// it is ours, and it shows up as an ordinary internal card.
+	if err := r.db.Where("list_id = ? AND archived_at IS NULL AND parent_id IS NULL", listID).
 		Order("rank ASC").Find(&tasks).Error; err != nil {
 		return nil, err
 	}
@@ -657,7 +663,7 @@ func orEmptyUsers(v []domain.UserSummary) []domain.UserSummary {
 // Subtasks returns a task's children as cards, ordered like the board.
 func (r *TaskRepository) Subtasks(parentID string) ([]domain.TaskCard, error) {
 	var tasks []domain.Task
-	if err := r.db.Where("parent_id = ? AND project_id = '' AND archived_at IS NULL", parentID).
+	if err := r.db.Where("parent_id = ? AND archived_at IS NULL", parentID).
 		Order("rank ASC").Find(&tasks).Error; err != nil {
 		return nil, err
 	}
