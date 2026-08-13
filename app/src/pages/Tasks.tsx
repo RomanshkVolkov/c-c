@@ -39,7 +39,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useOrgsStore } from "@/store/orgs.store";
-import { PRIORITY_META, docKey, type ItemVisibility, type TaskCard } from "@/types/task";
+import { docKey, priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
 
 export default function Tasks() {
@@ -639,8 +639,8 @@ function ListView({
                       </span>
                     ))}
                     {t.priority !== "none" && (
-                      <span className={cn("shrink-0 text-xs", PRIORITY_META[t.priority].className)}>
-                        {PRIORITY_META[t.priority].label}
+                      <span className={cn("shrink-0 text-xs", priorityMeta(t.priority).className)}>
+                        {priorityMeta(t.priority).label}
                       </span>
                     )}
                     {t.dueAt && (
@@ -685,7 +685,7 @@ function TaskCardView({
   dragging?: boolean;
   onOpen: () => void;
 }) {
-  const priority = PRIORITY_META[card.priority];
+  const priority = priorityMeta(card.priority);
   return (
     <div
       onClick={onOpen}

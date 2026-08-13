@@ -36,7 +36,7 @@ import PdfPreview from "@/components/PdfPreview";
 import CopyId from "@/components/CopyId";
 import { useTasksStore } from "@/store/tasks.store";
 import { useAuthStore } from "@/store/auth.store";
-import { PRIORITIES, PRIORITY_META } from "@/types/task";
+import { PRIORITIES, priorityMeta } from "@/types/task";
 import type { TaskComment } from "@/types/task";
 import { cn } from "@/lib/utils";
 
@@ -354,8 +354,8 @@ function Content() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className={cn("text-xs", PRIORITY_META[task.priority].className)}>
-                    {PRIORITY_META[task.priority].label}
+                  <button className={cn("text-xs", priorityMeta(task.priority).className)}>
+                    {priorityMeta(task.priority).label}
                   </button>
                 }
               />
@@ -366,8 +366,8 @@ function Content() {
                       key={p}
                       onClick={() => updateTask(task.id, { priority: p }).catch((e) => toast.error(String(e)))}
                     >
-                      <Flag className={cn("size-3.5", PRIORITY_META[p].className)} />
-                      {PRIORITY_META[p].label}
+                      <Flag className={cn("size-3.5", priorityMeta(p).className)} />
+                      {priorityMeta(p).label}
                       {p === task.priority && <Check className="ml-auto size-3.5" />}
                     </DropdownMenuItem>
                   ))}

@@ -547,8 +547,15 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	}
 
 	detail := &domain.TaskDetail{
-		Task: *t, ListName: list.Name, SpaceName: space.Name, Status: status,
-		Tags: tags, Assignees: assignees, Comments: comments, Attachments: attachments,
+		// Spelt the way the task API has always spelt it. The board already did
+		// this and the detail did not, so opening a card whose priority came from
+		// the report side handed the app a value its own table had no entry for —
+		// and reading a field off that undefined took the whole screen down.
+		Task:      withTaskWirePriority(*t),
+		ListName:  list.Name,
+		SpaceName: space.Name,
+		Status:    status,
+		Tags:      tags, Assignees: assignees, Comments: comments, Attachments: attachments,
 		Subtasks: subtasks,
 	}
 	// When this task is a subtask, hand the drawer enough to link back up.
@@ -610,6 +617,17 @@ func (s *TaskService) setVisibility(task *domain.Task, want domain.ItemVisibilit
 		})
 	}
 	return nil
+}
+
+// withTaskWirePriority returns the item with its priority in the vocabulary the
+// task API answers in.
+//
+// One helper rather than a conversion at each call site, because the one that
+// was missed is how this got out: a value correct everywhere else, wrong on the
+// single path a person actually looks at.
+func withTaskWirePriority(t domain.Item) domain.Item {
+	t.Priority = t.Priority.TaskWire()
+	return t
 }
 
 // ─── Comments / attachments ───────────────────────────────────────────────────

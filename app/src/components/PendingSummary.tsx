@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card";
 import { useOrgsStore } from "@/store/orgs.store";
 import { usePendingStore } from "@/store/pending.store";
-import { PRIORITY_META } from "@/types/task";
+import { priorityMeta } from "@/types/task";
 import { PRIORITY_LABELS, STATUS_LABELS } from "@/types/report";
 
 /**
@@ -82,8 +82,8 @@ export default function PendingSummary() {
                 <Badge variant="outline" className="py-0 text-xs">
                   {t.statusName}
                 </Badge>
-                <span className={`text-xs ${PRIORITY_META[t.priority]?.className ?? ""}`}>
-                  {t.dueAt ? formatDue(t.dueAt) : PRIORITY_META[t.priority]?.label}
+                <span className={`text-xs ${priorityMeta(t.priority).className}`}>
+                  {t.dueAt ? formatDue(t.dueAt) : priorityMeta(t.priority).label}
                 </span>
               </>
             }

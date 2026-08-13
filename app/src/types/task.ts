@@ -6,6 +6,14 @@ export type TaskStatusKind = "open" | "active" | "done";
 /** Ordered worst→best so pickers and sorts agree. */
 export const PRIORITIES: TaskPriority[] = ["urgent", "high", "normal", "low", "none"];
 
+/**
+ * How each priority is drawn.
+ *
+ * Read through `priorityMeta()`, never indexed directly: the server has grown a
+ * value this table didn't have before, and reading `.className` off the
+ * resulting undefined took the whole drawer down — a blank screen for one
+ * unrecognised string.
+ */
 export const PRIORITY_META: Record<TaskPriority, { label: string; className: string }> = {
   urgent: { label: "Urgent", className: "text-error" },
   high: { label: "High", className: "text-warning" },
@@ -13,6 +21,20 @@ export const PRIORITY_META: Record<TaskPriority, { label: string; className: str
   low: { label: "Low", className: "text-muted-foreground" },
   none: { label: "None", className: "text-muted-foreground/60" },
 };
+
+/**
+ * The drawing for a priority, including ones this build has never heard of.
+ *
+ * `medium` is the stored name for what this API calls `normal`; anything else
+ * unknown is shown by its own name rather than crashing or pretending to be
+ * something it isn't.
+ */
+export function priorityMeta(p: string): { label: string; className: string } {
+  const known = PRIORITY_META[p as TaskPriority];
+  if (known) return known;
+  if (p === "medium") return PRIORITY_META.normal;
+  return { label: p || "None", className: "text-muted-foreground/60" };
+}
 
 export interface TaskTag {
   id: string;

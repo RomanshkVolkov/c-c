@@ -436,3 +436,54 @@ func TestACardCannotMoveToAnotherOrgsList(t *testing.T) {
 		t.Error("and a refused move must not have moved anything")
 	}
 }
+
+// The detail speaks the vocabulary the task API promised.
+//
+// This is the bug that reached a person: the board translated the priority and
+// the detail did not, so opening a client's report handed the app `medium` — a
+// value its own table had no row for — and reading a field off that undefined
+// blanked the screen. Correct in five places and wrong in the one anybody
+// actually clicks.
+func TestTheDetailAnswersInTheTaskVocabulary(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A card carrying the stored spelling, as every migrated report does.
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "de un reporte"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&domain.Item{}).Where("id = ?", card.ID).
+		Update("priority", domain.ItemPriorityMedium).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	detail, err := svc.Detail(card.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Task.Priority != "normal" {
+		t.Errorf("the detail must answer in the vocabulary this API has always used: "+
+			"want normal, got %q", detail.Task.Priority)
+	}
+
+	// And the board, which already did — so the two never disagree about the
+	// same card.
+	cards, err := repo.Board("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 1 {
+		t.Fatalf("expected the one card, got %d", len(cards))
+	}
+	if string(cards[0].Priority) != string(detail.Task.Priority) {
+		t.Errorf("board says %q and detail says %q for the same card",
+			cards[0].Priority, detail.Task.Priority)
+	}
+}
