@@ -338,3 +338,101 @@ func TestDraggingAnInternalCardTellsNobody(t *testing.T) {
 		t.Errorf("an internal card needs no status note; got %d", len(notes))
 	}
 }
+
+// Moving a card to another list, which is how a report that landed in the wrong
+// place gets tidied up.
+func TestACardCanMoveToAnotherList(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	other := &domain.TaskList{SpaceID: "space-2", Name: "Otra", Rank: "U"}
+	other.ID = "list-2"
+	space2 := &domain.TaskSpace{OrgID: "org-1", Name: "Segundo", Rank: "V"}
+	space2.ID = "space-2"
+	for _, m := range []any{space2, other} {
+		if err := db.Create(m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "en el sitio equivocado"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := "list-2"
+	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{ListID: &dest}); err != nil {
+		t.Fatal(err)
+	}
+
+	moved, err := repo.FindTask(card.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.ListID != "list-2" {
+		t.Errorf("it should be in the destination list, got %q", moved.ListID)
+	}
+	// The denormalised space has to travel with it: it scopes internal numbering
+	// and keeps the report queries off the task tables, so a stale one puts the
+	// card in a space it is not in.
+	if moved.SpaceID != "space-2" {
+		t.Errorf("space_id should have followed the move, got %q", moved.SpaceID)
+	}
+	if moved.Rank == "" {
+		t.Error("and it needs a place in the destination's order")
+	}
+
+	// It shows up on the new board and not the old one.
+	cards, err := repo.Board("list-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 1 || cards[0].ID != card.ID {
+		t.Errorf("the destination board should hold it, got %d cards", len(cards))
+	}
+	if old, _ := repo.Board("list-1"); len(old) != 0 {
+		t.Errorf("it should be gone from the list it left, %d remain", len(old))
+	}
+}
+
+// And it cannot cross into another organization's tree.
+func TestACardCannotMoveToAnotherOrgsList(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	elsewhere := &domain.Organization{Name: "Otra", Slug: "otra"}
+	elsewhere.ID = "org-2"
+	theirSpace := &domain.TaskSpace{OrgID: "org-2", Name: "Suyo", Rank: "U"}
+	theirSpace.ID = "space-theirs"
+	theirList := &domain.TaskList{SpaceID: "space-theirs", Name: "Suya", Rank: "U"}
+	theirList.ID = "list-theirs"
+	for _, m := range []any{elsewhere, theirSpace, theirList} {
+		if err := db.Create(m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "nuestra"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := "list-theirs"
+	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{ListID: &dest}); err == nil {
+		t.Error("moving a card into another organization's tree must be refused")
+	}
+	after, _ := repo.FindTask(card.ID)
+	if after.ListID != "list-1" {
+		t.Error("and a refused move must not have moved anything")
+	}
+}

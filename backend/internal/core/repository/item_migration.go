@@ -617,3 +617,44 @@ func (r *TaskRepository) PublishToChannel(itemID, projectID string) (int, error)
 	})
 	return seq, err
 }
+
+// MoveTaskToList moves a card to another list.
+//
+// space_id travels with it, because it is denormalised onto the row and is what
+// scopes internal numbering and keeps the report queries off the task tables. A
+// stale one would put the card in a space it isn't in.
+//
+// The rank is recomputed: the orders of two lists have nothing to do with each
+// other, so carrying the old one over would drop the card in an arbitrary spot.
+func (r *TaskRepository) MoveTaskToList(itemID, listID string) error {
+	var dest struct {
+		SpaceID string
+		OrgID   string
+	}
+	if err := r.db.Raw(`
+		SELECT l.space_id, s.org_id FROM task_lists l
+		JOIN task_spaces s ON s.id = l.space_id
+		WHERE l.id = ?`, listID).Scan(&dest).Error; err != nil {
+		return err
+	}
+	if dest.SpaceID == "" {
+		return ErrListNotFound
+	}
+
+	var item domain.Item
+	if err := r.db.First(&item, "id = ?", itemID).Error; err != nil {
+		return err
+	}
+	// Same organization, always. Crossing that line would show the card to people
+	// who cannot see the list it came from — and nobody dragging something
+	// between two boards is expressing that intent.
+	if item.OrgID != "" && item.OrgID != dest.OrgID {
+		return ErrChannelOtherOrg
+	}
+
+	last := r.nextRank("items", "list_id = ? AND status = ?", listID, item.Status)
+	return r.db.Model(&domain.Item{}).Where("id = ?", itemID).
+		Updates(map[string]any{
+			"list_id": listID, "space_id": dest.SpaceID, "rank": last,
+		}).Error
+}

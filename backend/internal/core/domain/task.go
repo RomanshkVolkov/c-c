@@ -302,6 +302,11 @@ type UpdateTaskRequest struct {
 	// client may have quoted it — so their numbering keeps the gap. That is the
 	// honest outcome, not a bug to fix later.
 	Visibility *ItemVisibility `json:"visibility" validate:"omitempty,oneof=internal public"`
+	// ListID moves the card to another list, which is how work gets tidied up
+	// after the fact — a report that landed in the wrong place, a task filed in
+	// haste. Both lists must belong to the same organization: a card crossing that
+	// line would become visible to people who cannot see where it came from.
+	ListID *string `json:"listId" validate:"omitempty,max=36"`
 }
 
 // MoveTaskRequest places a task between two neighbours in a column. The server

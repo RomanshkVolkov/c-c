@@ -396,6 +396,15 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 	// Visibility last, and separately: it is the only field here that changes who
 	// can read the item, so it goes through the code that knows what a channel is
 	// rather than being another key in the map.
+	// Moving between lists is its own operation: it has to carry the denormalised
+	// space with it and give the card a place in the destination's order, neither
+	// of which is a field patch.
+	if req.ListID != nil && *req.ListID != "" {
+		if err := s.repo.MoveTaskToList(id, *req.ListID); err != nil {
+			return err
+		}
+	}
+
 	if req.Visibility != nil {
 		task, err := s.repo.FindTask(id)
 		if err != nil {
