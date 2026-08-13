@@ -141,6 +141,14 @@ export interface TaskComment {
   id: string;
   authorUserId: string;
   authorName: string;
+  /**
+   * Who reads this line. Sent per comment because a thread of replies looks
+   * identical whether the client can see them or not, and the only other way to
+   * find out is to open their side and compare.
+   */
+  visibility?: ItemVisibility;
+  /** `system` is a status line cac wrote, not somebody's words. */
+  kind?: "user" | "system";
   body: string;
   attachments: TaskAttachment[];
   createdAt: string;

@@ -784,15 +784,24 @@ func (r *TaskRepository) Comments(taskID string) ([]domain.TaskCommentResponse, 
 		ID           string
 		AuthorUserID string
 		AuthorName   string
+		Visibility   string
+		Kind         string
 		Body         string
 		CreatedAt    time.Time
 		UpdatedAt    time.Time
 	}
 	var rows []commentRow
 	err := r.db.Table("item_comments c").
-		Select("c.id, c.author_user_id, COALESCE(u.username,'') AS author_name, c.body, c.created_at, c.updated_at").
+		Select("c.id, c.author_user_id, COALESCE(u.username,'') AS author_name, "+
+			"c.visibility, c.kind, c.body, c.created_at, c.updated_at").
 		Joins("LEFT JOIN users u ON u.id = c.author_user_id").
-		Where("c.item_id = ?", taskID).Order("c.created_at ASC").Scan(&rows).Error
+		// deleted_at, spelt out: Table() with a raw name opts out of the soft-delete
+		// scope GORM would apply to a model query. Comments became soft-deleted
+		// when this table merged, and this read was never updated — so deleting
+		// one appeared to fail, the thread kept showing it, and trying again
+		// answered "not found" about something plainly on screen.
+		Where("c.item_id = ? AND c.deleted_at IS NULL", taskID).
+		Order("c.created_at ASC").Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -807,6 +816,8 @@ func (r *TaskRepository) Comments(taskID string) ([]domain.TaskCommentResponse, 
 			ID:           row.ID,
 			AuthorUserID: row.AuthorUserID,
 			AuthorName:   row.AuthorName,
+			Visibility:   domain.ItemVisibility(row.Visibility),
+			Kind:         domain.ReportCommentKind(row.Kind),
 			Body:         row.Body,
 			Attachments:  att,
 			CreatedAt:    row.CreatedAt,

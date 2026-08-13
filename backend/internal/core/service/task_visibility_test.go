@@ -568,3 +568,81 @@ func TestCommentingOnAnInternalCardStaysInternal(t *testing.T) {
 		t.Error("there is no client here; asking for public must not invent one")
 	}
 }
+
+// A deleted comment leaves the thread, and every comment says who reads it.
+//
+// Both halves of what a person actually hit. Comments became soft-deleted when
+// the tables merged and this read kept using a raw table name, which opts out of
+// the scope that hides them — so deleting one looked like it had failed, the
+// line stayed on screen, and trying again answered "not found" about something
+// visibly there.
+//
+// And the thread said nothing about audience, so a board of replies looked the
+// same whether the client could read them or not. The only way to find out was
+// to open their side and count.
+func TestTheThreadHidesDeletedCommentsAndNamesItsAudience(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "con hilo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared, err := svc.AddComment(card.ID, "u-1", "lo ven", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddComment(card.ID, "u-1", "no lo ven", domain.VisibilityInternal); err != nil {
+		t.Fatal(err)
+	}
+	doomed, err := svc.AddComment(card.ID, "u-1", "esto se va", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Each line says its audience, so the drawer can draw the difference.
+	thread, err := repo.Comments(card.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(thread) != 3 {
+		t.Fatalf("expected three comments, got %d", len(thread))
+	}
+	seen := map[string]domain.ItemVisibility{}
+	for _, c := range thread {
+		seen[c.Body] = c.Visibility
+	}
+	if seen["lo ven"] != domain.VisibilityPublic {
+		t.Errorf("a reply the client reads must say so, got %q", seen["lo ven"])
+	}
+	if seen["no lo ven"] != domain.VisibilityInternal {
+		t.Errorf("and an internal note must say that, got %q", seen["no lo ven"])
+	}
+	_ = shared
+
+	// Deleting removes it from the thread — the failure was that it did not.
+	if err := svc.DeleteComment(doomed.ID); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.Comments(card.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 2 {
+		t.Fatalf("a deleted comment must leave the thread; %d still there", len(after))
+	}
+	for _, c := range after {
+		if c.ID == doomed.ID {
+			t.Error("the deleted comment is still on screen, which is what made deleting look broken")
+		}
+	}
+}

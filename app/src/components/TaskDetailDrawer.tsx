@@ -89,10 +89,13 @@ function CommentItem({
   comment: c,
   taskId,
   onUpload,
+  clientReads,
 }: {
   comment: TaskComment;
   taskId: string;
   onUpload: (file: File) => Promise<{ url: string; fileName: string } | null>;
+  /** Whether this card's thread is one a client can read at all. */
+  clientReads: boolean;
 }) {
   const session = useAuthStore((s) => s.session);
   const editComment = useTasksStore((s) => s.editComment);
@@ -119,12 +122,34 @@ function CommentItem({
     }
   };
 
+  // Only worth saying on a card the client can read: everywhere else every
+  // comment is internal, and a badge on all of them says nothing.
+  const internal = clientReads && c.visibility === "internal";
+
   return (
-    <div className="group rounded-md border p-2.5">
+    <div
+      className={cn(
+        "group rounded-md border p-2.5",
+        internal && "border-dashed bg-muted/40",
+      )}
+    >
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{c.authorName || "unknown"}</span>
         <span>{new Date(c.createdAt).toLocaleString()}</span>
         {edited && <span className="italic">edited</span>}
+        {clientReads && (
+          <span
+            className={cn("flex items-center gap-1", internal ? "text-muted-foreground" : "text-primary")}
+            title={
+              internal
+                ? "Only the team can see this"
+                : "The client can read this on their own board"
+            }
+          >
+            {internal ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+            {internal ? "internal" : "client sees this"}
+          </span>
+        )}
         {mine && !editing && (
           <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
@@ -143,7 +168,8 @@ function CommentItem({
               onClick={async () => {
                 const ok = await confirm({
                   title: "Delete this comment?",
-                  description: "It's removed for everyone. This can't be undone.",
+                  description:
+                    "It stops showing in this thread, and to the client if they could see it.",
                   confirmText: "Delete",
                   destructive: true,
                 });
@@ -668,7 +694,7 @@ function Content() {
             Activity ({detail.comments.length})
           </h3>
           {detail.comments.map((c) => (
-            <CommentItem key={c.id} comment={c} taskId={task.id} onUpload={upload} />
+            <CommentItem key={c.id} comment={c} taskId={task.id} onUpload={upload} clientReads={clientReads} />
           ))}
 
           <div className="space-y-2">

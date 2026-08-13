@@ -422,13 +422,21 @@ type OpenTask struct {
 }
 
 type TaskCommentResponse struct {
-	ID           string           `json:"id"`
-	AuthorUserID string           `json:"authorUserId"`
-	AuthorName   string           `json:"authorName"`
-	Body         string           `json:"body"`
-	Attachments  []TaskAttachment `json:"attachments"`
-	CreatedAt    time.Time        `json:"createdAt"`
-	UpdatedAt    time.Time        `json:"updatedAt"`
+	ID           string `json:"id"`
+	AuthorUserID string `json:"authorUserId"`
+	AuthorName   string `json:"authorName"`
+	// Visibility is sent on every comment so the thread can say, line by line,
+	// who is reading it. Without it a board full of replies looks identical
+	// whether the client can see them or not, and the only way to find out is to
+	// open their side and compare.
+	Visibility ItemVisibility `json:"visibility"`
+	// Kind marks the ones the system wrote ("status: x → y") so they can be drawn
+	// as events rather than as somebody's words.
+	Kind        ReportCommentKind `json:"kind"`
+	Body        string            `json:"body"`
+	Attachments []TaskAttachment  `json:"attachments"`
+	CreatedAt   time.Time         `json:"createdAt"`
+	UpdatedAt   time.Time         `json:"updatedAt"`
 }
 
 type TaskDetail struct {
