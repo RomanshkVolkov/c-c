@@ -498,7 +498,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "create_task",
-            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.",
+            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.\n\nIf the list belongs to a client's channel (list_task_spaces shows a projectId on it), anything created there is VISIBLE TO THAT CLIENT by default: it lands on their board, takes a number from their folio sequence — permanently, even if withdrawn later — and fires their webhook. Pass visibility:\"internal\" to keep it to the team.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -513,6 +513,11 @@ fn tool_defs() -> Value {
                     "idempotencyKey": {
                         "type": "string",
                         "description": "Optional. Reusing the same key in the same list returns the task already created instead of a duplicate — send one if you might retry."
+                    },
+                    "visibility": {
+                        "type": "string",
+                        "enum": ["public", "internal"],
+                        "description": "Only meaningful in a list bound to a client's channel. \"public\" (the default) puts it on their board and spends one of their folio numbers; \"internal\" keeps it to the team. In an unbound list everything is internal and this is ignored."
                     },
                     "dryRun": {
                         "type": "boolean",
@@ -533,6 +538,11 @@ fn tool_defs() -> Value {
                     "description": { "type": "string", "description": "Markdown. Replaces the current body — read it with get_task first if you mean to add to it." },
                     "priority": { "type": "string", "enum": ["none", "low", "normal", "high", "urgent"] },
                     "statusId": { "type": "string", "description": "Move the task to this column. get_board returns a statusId per column." },
+                    "visibility": {
+                        "type": "string",
+                        "enum": ["public", "internal"],
+                        "description": "Show the item to the client whose channel this list belongs to, or take it back. Withdrawing does NOT return the folio number it was given — the client may already have quoted it, so their numbering keeps a gap. Publishing an internal item gives it the next number and notifies them."
+                    },
                     "dryRun": { "type": "boolean", "description": "Validate without writing." }
                 },
                 "required": ["id"]
@@ -990,6 +1000,14 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             if let Some(k) = arg_str(args, "idempotencyKey") {
                 body["idempotencyKey"] = json!(k);
             }
+            // Forwarded explicitly, and the reason is a scar: this argument was
+            // accepted by the tool and dropped here, so asking for "internal"
+            // published a note onto a client's board. An unknown key going
+            // quietly missing is tolerable for most parameters and not for one
+            // whose absence means "show this to the customer".
+            if let Some(v) = arg_str(args, "visibility") {
+                body["visibility"] = json!(v);
+            }
             let data = api_post(cfg, &format!("/api/v1/task-lists/{list_id}/tasks"), body)?;
             // Echo back what was created, including the sequence number, so the
             // caller can refer to the task without another round trip.
@@ -1010,7 +1028,9 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 return dry_run(cfg, "tasks:manage", target);
             }
             let mut body = json!({});
-            for key in ["title", "description", "priority"] {
+            // visibility rides with the rest, but it is the one key here that
+            // changes who can read the item rather than what it says.
+            for key in ["title", "description", "priority", "visibility"] {
                 if let Some(v) = arg_str(args, key) {
                     body[key] = json!(v);
                 }
@@ -1019,7 +1039,10 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             // rank from the neighbours, so a status change can't be a field patch.
             let status_id = arg_str(args, "statusId");
             if body.as_object().map(|o| o.is_empty()).unwrap_or(true) && status_id.is_none() {
-                return Err("Nothing to change: send at least one of title, description, priority or statusId".into());
+                return Err(
+                    "Nothing to change: send at least one of title, description, priority, visibility or statusId"
+                        .into(),
+                );
             }
 
             let mut changed: Vec<&str> = vec![];

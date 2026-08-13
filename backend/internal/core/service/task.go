@@ -311,10 +311,18 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 		channel = "" // kept to us, on purpose
 	}
 
+	// The column says what it means. An item with no channel is nobody's to see,
+	// so it is stored as internal rather than "public with nowhere to go" — a
+	// value that reads as client-visible to anyone who filters on it alone.
+	visibility := domain.VisibilityInternal
+	if channel != "" {
+		visibility = domain.VisibilityPublic
+	}
+
 	t := &domain.Task{
 		ListID:         list.ID,
 		ProjectID:      channel,
-		Visibility:     domain.VisibilityPublic,
+		Visibility:     visibility,
 		Status:         status,
 		Origin:         "internal",
 		OrgID:          orgID,
