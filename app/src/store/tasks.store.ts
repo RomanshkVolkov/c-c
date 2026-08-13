@@ -18,6 +18,7 @@ import type {
   DocResponse,
   UpdateTaskPayload,
 } from "@/types/task";
+import type { CreateReportProjectResult, ReportProject } from "@/types/report";
 
 interface TasksState {
   tree: SpaceTree[];
@@ -73,6 +74,17 @@ interface TasksState {
   deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
   createTag: (orgId: string, name: string, color: string) => Promise<TaskTag | null>;
 
+  // ── The channel a space or list belongs to ──
+  //
+  // Two separate things, and conflating them is how you end up with a list bound
+  // to a client whose settings nobody can reach: *binding* says which channel a
+  // node belongs to, *configuring* changes how that channel behaves.
+  bindNode: (kind: ChannelOwner, id: string, name: string, projectId: string) => Promise<void>;
+  fetchChannel: (kind: ChannelOwner, id: string) => Promise<ReportProject | null>;
+  createChannel: (spaceId: string, req: NewChannel) => Promise<CreateReportProjectResult | null>;
+  updateChannel: (kind: ChannelOwner, id: string, req: ChannelPatch) => Promise<void>;
+  rotateChannelKey: (kind: ChannelOwner, id: string) => Promise<string>;
+
   // ── Docs: one markdown overview per space/folder/list ──
   /** Which nodes carry a document, keyed `kind:id` — drives the navigator mark. */
   docIndex: Record<string, boolean>;
@@ -85,6 +97,37 @@ interface TasksState {
   closeDoc: () => void;
   saveDoc: (body: string) => Promise<void>;
   uploadDocAttachment: (file: File) => Promise<{ url: string; fileName: string } | null>;
+}
+
+/** Which node owns the binding. Folders can't: the backend has no such column. */
+export type ChannelOwner = "space" | "list";
+
+const channelBase = (kind: ChannelOwner, id: string) =>
+  kind === "space" ? `/api/v1/task-spaces/${id}` : `/api/v1/task-lists/${id}`;
+
+/** What opening a channel needs. The space supplies the org and the name. */
+export interface NewChannel {
+  name?: string;
+  platform: "web" | "app";
+  allowedOrigins?: string[];
+  webhookUrl?: string;
+  webhookSecret?: string;
+}
+
+/**
+ * A change to a channel's rules.
+ *
+ * `webhookSecret` is absent unless a new one was typed: the server only replaces
+ * it when one arrives, and sending an empty string would clear a secret nobody
+ * asked to remove.
+ */
+export interface ChannelPatch {
+  name: string;
+  allowedOrigins?: string[];
+  rateLimitPerHour?: number;
+  rateLimitPerReporterPerHour?: number;
+  webhookUrl?: string;
+  webhookSecret?: string;
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -498,6 +541,54 @@ export const useTasksStore = create<TasksState>()(
           set({ error: msg(e) });
           return null;
         }
+      },
+
+      // The node keeps its name: this PATCH is the same one that renames, so
+      // leaving `name` out would blank it while binding a channel.
+      bindNode: async (kind, id, name, projectId) => {
+        await api.patch<APIResponse<unknown>>(`${channelBase(kind, id)}`, { name, projectId }, true);
+        await get().fetchTree();
+      },
+
+      fetchChannel: async (kind, id) => {
+        const res = await api.get<APIResponse<ReportProject | null>>(
+          `${channelBase(kind, id)}/channel`,
+        );
+        return res.data ?? null;
+      },
+
+      createChannel: async (spaceId, req) => {
+        const res = await api.post<APIResponse<CreateReportProjectResult>>(
+          `/api/v1/task-spaces/${spaceId}/channel`,
+          req,
+          true,
+        );
+        // Opening a channel binds the space, so the tree now draws it differently.
+        await get().fetchTree();
+        return res.data ?? null;
+      },
+
+      updateChannel: async (kind, id, req) => {
+        // An empty webhook secret is dropped here rather than by the caller.
+        // The server only replaces a secret when one arrives, so sending "" wipes
+        // the one that is set — and every webhook the client receives from then
+        // on fails its signature check, with nothing on their side pointing back
+        // at a form somebody saved without touching that field.
+        //
+        // In the store because this is the only place that talks to the API: as a
+        // caller's discipline it would hold until the second caller.
+        const { webhookSecret, ...rest } = req;
+        const body = webhookSecret?.trim() ? { ...rest, webhookSecret: webhookSecret.trim() } : rest;
+        await api.patch<APIResponse<unknown>>(`${channelBase(kind, id)}/channel`, body, true);
+      },
+
+      rotateChannelKey: async (kind, id) => {
+        const res = await api.post<APIResponse<{ ingestKey: string }>>(
+          `${channelBase(kind, id)}/channel/rotate-key`,
+          {},
+          true,
+        );
+        return res.data?.ingestKey ?? "";
       },
 
       createTag: async (orgId, name, color) => {

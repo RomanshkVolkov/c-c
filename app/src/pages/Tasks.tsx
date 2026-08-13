@@ -35,6 +35,7 @@ import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard"
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import DocView from "@/components/DocView";
 import CopyId from "@/components/CopyId";
+import ChannelDialog from "@/components/ChannelDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
@@ -151,11 +152,19 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const docIndex = useTasksStore((s) => s.docIndex);
   const confirm = useConfirm();
   const { createFolder, createList, renameSpace, deleteSpace, moveSpace } = useTasksStore.getState();
+  const [channelOpen, setChannelOpen] = useState(false);
 
   const prompt = usePrompt();
 
   return (
     <div className="mb-0.5">
+      <ChannelDialog
+        kind="space"
+        id={space.id}
+        name={space.name}
+        open={channelOpen}
+        onOpenChange={setChannelOpen}
+      />
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
         <button onClick={() => setOpen((v) => !v)} className="text-muted-foreground">
           {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -164,6 +173,11 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           className="size-2 shrink-0 rounded-sm"
           style={{ backgroundColor: space.color || "var(--primary)" }}
         />
+        {/* A bound space is one a client can see into. The list already said so;
+            without this the space it hangs under looked like any other. */}
+        {space.projectId && (
+          <Eye className="size-3 shrink-0 text-primary" aria-label="A client can see this space" />
+        )}
         <button
           className={cn(
             "flex-1 truncate text-left text-sm font-medium hover:underline",
@@ -211,6 +225,9 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               >
                 <Pencil className="size-4" /> Rename
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setChannelOpen(true)}>
+                <Eye className="size-4" /> Channel{space.projectId ? "" : "…"}
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => moveSpace(space.id, "up").catch((e) => toast.error(String(e)))}>
                 <ArrowUp className="size-4" /> Move up
               </DropdownMenuItem>
@@ -238,10 +255,21 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
       {open && (
         <div className="ml-4">
           {space.folders.map((folder) => (
-            <FolderNode key={folder.id} spaceId={space.id} folder={folder} />
+            <FolderNode
+              key={folder.id}
+              spaceId={space.id}
+              folder={folder}
+              spaceName={space.name}
+              spaceProjectId={space.projectId}
+            />
           ))}
           {space.lists.map((list) => (
-            <ListNode key={list.id} list={list} />
+            <ListNode
+              key={list.id}
+              list={list}
+              spaceName={space.name}
+              spaceProjectId={space.projectId}
+            />
           ))}
           {space.folders.length === 0 && space.lists.length === 0 && (
             <p className="px-2 py-1 text-xs text-muted-foreground">Empty</p>
@@ -255,9 +283,19 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
 function FolderNode({
   spaceId,
   folder,
+  spaceName,
+  spaceProjectId,
 }: {
   spaceId: string;
-  folder: { id: string; name: string; lists: { id: string; name: string; taskCount: number }[] };
+  folder: {
+    id: string;
+    name: string;
+    lists: { id: string; name: string; taskCount: number; projectId?: string }[];
+  };
+  // Passed straight through: a folder can't hold a channel, but the lists inside
+  // it still inherit the space's.
+  spaceName?: string;
+  spaceProjectId?: string;
 }) {
   const [open, setOpen] = useState(true);
   const confirm = useConfirm();
@@ -339,7 +377,7 @@ function FolderNode({
       {open && (
         <div className="ml-4">
           {folder.lists.map((l) => (
-            <ListNode key={l.id} list={l} />
+            <ListNode key={l.id} list={l} spaceName={spaceName} spaceProjectId={spaceProjectId} />
           ))}
         </div>
       )}
@@ -349,8 +387,13 @@ function FolderNode({
 
 function ListNode({
   list,
+  spaceName,
+  spaceProjectId,
 }: {
   list: { id: string; name: string; taskCount: number; projectId?: string };
+  /** Named so an inherited channel can say where it comes from. */
+  spaceName?: string;
+  spaceProjectId?: string;
 }) {
   const activeListId = useTasksStore((s) => s.activeListId);
   const selectList = useTasksStore((s) => s.selectList);
@@ -358,9 +401,24 @@ function ListNode({
   const prompt = usePrompt();
   const docIndex = useTasksStore((s) => s.docIndex);
   const { renameList, deleteList } = useTasksStore.getState();
+  const [channelOpen, setChannelOpen] = useState(false);
   const active = activeListId === list.id;
+  // Its own binding, or the space's. The eye means "a client sees this" either
+  // way — where it was configured is a detail for the dialog, not the tree.
+  const channel = list.projectId ?? spaceProjectId;
 
   return (
+    <>
+      <ChannelDialog
+        kind="list"
+        id={list.id}
+        name={list.name}
+        // Only when the channel isn't the list's own: that's what makes
+        // "inherited from X" true rather than decorative.
+        inheritedFrom={!list.projectId && spaceProjectId ? spaceName : undefined}
+        open={channelOpen}
+        onOpenChange={setChannelOpen}
+      />
     <div
       className={cn(
         "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 hover:bg-accent/50",
@@ -373,7 +431,7 @@ function ListNode({
       {/* Work raised here is visible to a client unless someone says otherwise.
           That has to be legible from the tree: it is the difference between a
           note to the team and a message to the customer. */}
-      {list.projectId && (
+      {channel && (
         <Eye
           className="size-3 shrink-0 text-primary"
           aria-label="A client can see this list"
@@ -424,6 +482,7 @@ function ListNode({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    </>
   );
 }
 
