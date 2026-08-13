@@ -5,6 +5,8 @@ import {
   Flag,
   Tag as TagIcon,
   Trash2,
+  Eye,
+  EyeOff,
   Check,
   Paperclip,
   Send,
@@ -277,6 +279,14 @@ function Content() {
           {" · #"}
           {task.seq}
         </span>
+        {/* Whether a client is reading this, said plainly and next to the title.
+            Someone about to type a frank note needs to know before they type it,
+            not after. */}
+        {task.projectId && task.visibility !== "internal" && (
+          <span className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+            <Eye className="size-3" /> visible to the client
+          </span>
+        )}
         {/* The id the MCP tools take, so it can be handed to an agent. */}
         <CopyId id={task.id} label="task" />
         <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={closeTask} aria-label="Close">
@@ -688,6 +698,26 @@ function Content() {
         >
           <Trash2 className="size-3 mr-1" /> Delete task
         </Button>
+        {task.projectId && task.visibility !== "internal" && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-xs"
+            onClick={async () => {
+              const ok = await confirm({
+                title: "Take this off the client's board?",
+                description:
+                  "They stop seeing it. Its ticket number stays spent — they may already have quoted it — " +
+                  "so their numbering keeps a gap.",
+                confirmText: "Withdraw",
+              });
+              if (!ok) return;
+              updateTask(task.id, { visibility: "internal" }).catch((e) => toast.error(String(e)));
+            }}
+          >
+            <EyeOff className="size-3 mr-1" /> Withdraw
+          </Button>
+        )}
         <span className="ml-auto text-xs text-muted-foreground">
           Updated {new Date(task.updatedAt).toLocaleString()}
         </span>

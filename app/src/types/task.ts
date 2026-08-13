@@ -29,9 +29,20 @@ export interface TaskStatus {
   kind: TaskStatusKind;
 }
 
+/** Who can see the work in a place: a client's channel, or nobody outside. */
+export type ItemVisibility = "public" | "internal";
+
 export interface ListSummary {
   id: string;
   name: string;
+  /**
+   * The client channel this list belongs to, if any — its own binding or the one
+   * it inherits from its space.
+   *
+   * Present here so the navigator can mark those lists. Which lists a client can
+   * see into is exactly the thing that must not be invisible.
+   */
+  projectId?: string;
   taskCount: number;
 }
 
@@ -46,6 +57,7 @@ export interface SpaceTree {
   orgId: string;
   name: string;
   color: string;
+  projectId?: string;
   folders: FolderTree[];
   lists: ListSummary[];
 }
@@ -126,6 +138,14 @@ export interface Task {
   dueAt?: string | null;
   completedAt?: string | null;
   createdById: string;
+  /** The client channel this item belongs to, if any. */
+  projectId?: string;
+  /**
+   * Whether that client actually sees it. Separate from projectId because a
+   * withdrawn item keeps its channel — that is what stops its ticket number
+   * being handed out twice.
+   */
+  visibility?: ItemVisibility;
   parentId?: string | null;
   archivedAt?: string | null;
   createdAt: string;
@@ -154,6 +174,14 @@ export interface UpdateTaskPayload {
   tagIds?: string[];
   assigneeIds?: string[];
   archived?: boolean;
+  /**
+   * Show the item to the client whose channel this list belongs to, or take it
+   * back.
+   *
+   * Taking it back does not return the folio it was given: they may already have
+   * quoted that number, so their numbering keeps a gap.
+   */
+  visibility?: ItemVisibility;
 }
 
 // ─── Docs ─────────────────────────────────────────────────────────────────────

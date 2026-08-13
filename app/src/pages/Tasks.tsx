@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Folder,
   FolderPlus,
+  Eye,
   ListChecks,
   Plus,
   MoreHorizontal,
@@ -16,7 +17,6 @@ import {
   Paperclip,
   FileText,
   Flag,
-  Check,
   ArrowUp,
   ArrowDown,
   RefreshCw,
@@ -29,7 +29,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
@@ -40,7 +39,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useOrgsStore } from "@/store/orgs.store";
-import { PRIORITY_META, docKey, type TaskCard } from "@/types/task";
+import { PRIORITY_META, docKey, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
 
 export default function Tasks() {
@@ -348,7 +347,11 @@ function FolderNode({
   );
 }
 
-function ListNode({ list }: { list: { id: string; name: string; taskCount: number } }) {
+function ListNode({
+  list,
+}: {
+  list: { id: string; name: string; taskCount: number; projectId?: string };
+}) {
   const activeListId = useTasksStore((s) => s.activeListId);
   const selectList = useTasksStore((s) => s.selectList);
   const confirm = useConfirm();
@@ -367,6 +370,15 @@ function ListNode({ list }: { list: { id: string; name: string; taskCount: numbe
     >
       <ListChecks className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="flex-1 truncate text-sm">{list.name}</span>
+      {/* Work raised here is visible to a client unless someone says otherwise.
+          That has to be legible from the tree: it is the difference between a
+          note to the team and a message to the customer. */}
+      {list.projectId && (
+        <Eye
+          className="size-3 shrink-0 text-primary"
+          aria-label="A client can see this list"
+        />
+      )}
       {docIndex[docKey("list", list.id)] && (
         <FileText className="size-3 shrink-0 text-muted-foreground" />
       )}
@@ -429,7 +441,9 @@ function Board() {
   const openTask = useTasksStore((s) => s.openTask);
   const refreshBoard = useTasksStore((s) => s.refreshBoard);
   const openDoc = useTasksStore((s) => s.openDoc);
+  const tree = useTasksStore((s) => s.tree);
   const prompt = usePrompt();
+  const confirm = useConfirm();
 
   if (!activeListId) {
     return (
@@ -458,17 +472,52 @@ function Board() {
     );
   }
 
+  // Does the list this board belongs to reach a client? The tree carries the
+  // answer, including a binding inherited from the space above.
+  const channelOfList = (() => {
+    for (const sp of tree) {
+      for (const l of sp.lists) if (l.id === activeListId) return l.projectId ?? sp.projectId;
+      for (const f of sp.folders) {
+        for (const l of f.lists) if (l.id === activeListId) return l.projectId ?? sp.projectId;
+      }
+    }
+    return undefined;
+  })();
+
   const columns: KanbanColumn[] = board.statuses.map((s) => ({
     id: s.id,
     title: s.name,
     color: s.color,
-    accessory: <ColumnMenu status={s} statuses={board.statuses} />,
     action: (
       <button
         className="flex w-full items-center gap-1 rounded px-1 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
         onClick={async () => {
-          const title = await prompt({ title: "New task", label: "Title", confirmText: "Create" });
-          if (title) createTask(title, s.id).catch((e) => toast.error(String(e)));
+          const title = await prompt({
+            title: "New task",
+            label: "Title",
+            confirmText: "Create",
+            description: channelOfList
+              ? "This list belongs to a client. You'll choose next whether they see it."
+              : undefined,
+          });
+          if (!title) return;
+          // In a client's list the choice is asked, never assumed. The server's
+          // default is "they see it", which is right — and a default that
+          // publishes to a customer is not something to apply silently on their
+          // behalf from a screen that didn't mention it.
+          let visibility: ItemVisibility | undefined;
+          if (channelOfList) {
+            const share = await confirm({
+              title: "Can the client see this?",
+              description:
+                "Visible puts it on their board and takes one of their ticket numbers — permanently, " +
+                "even if you withdraw it later. Internal keeps it to the team.",
+              confirmText: "Visible to them",
+              cancelText: "Internal",
+            });
+            visibility = share ? "public" : "internal";
+          }
+          createTask(title, s.id, visibility).catch((e) => toast.error(String(e)));
         }}
       >
         <Plus className="size-3" /> Add task
@@ -511,25 +560,9 @@ function Board() {
           <FileText className="mr-1 size-3" /> Overview
         </Button>
         <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto h-7 text-xs"
-          onClick={async () => {
-            const name = await prompt({ title: "New column", label: "Name", confirmText: "Create" });
-            if (!name) return;
-            // New columns default to "open": only the user knows whether a column
-            // means finished, and `kind` drives the completed-at stamp.
-            useTasksStore
-              .getState()
-              .createStatus(name, "#7D8BA3", "open")
-              .catch((e) => toast.error(String(e)));
-          }}
-        >
-          <Plus className="size-3 mr-1" /> Column
-        </Button>
-        <Button
           size="icon-xs"
           variant="ghost"
+          className="ml-auto"
           title="Refresh"
           disabled={loading}
           onClick={() => refreshBoard()}
@@ -640,108 +673,6 @@ function ListView({
         );
       })}
     </div>
-  );
-}
-
-// Per-column menu: rename, recolour, set what the column *means* (kind), and
-// delete. `kind` is separate from the name on purpose — renaming "Done" to
-// "Shipped" must not stop it counting as finished.
-function ColumnMenu({
-  status,
-  statuses,
-}: {
-  status: { id: string; name: string; color: string; kind: string };
-  statuses: { id: string; name: string }[];
-}) {
-  const confirm = useConfirm();
-  const prompt = usePrompt();
-  const { updateStatus, deleteStatus } = useTasksStore.getState();
-
-  const KINDS: { value: "open" | "active" | "done"; label: string }[] = [
-    { value: "open", label: "Not started" },
-    { value: "active", label: "In progress" },
-    { value: "done", label: "Completed" },
-  ];
-  const COLORS = ["#7D8BA3", "#20D9E8", "#8B5CF6", "#34D399", "#FBBF24", "#FB7185", "#38BDF8"];
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <button className="text-muted-foreground hover:text-foreground" aria-label="Column menu">
-            <MoreHorizontal className="size-3.5" />
-          </button>
-        }
-      />
-      <DropdownMenuContent align="end">
-        <DropdownMenuGroup>
-          <DropdownMenuItem
-            onClick={async () => {
-              const n = await prompt({ title: "Rename column", label: "Name", defaultValue: status.name });
-              if (n) updateStatus(status.id, n, status.color, status.kind as "open").catch((e) => toast.error(String(e)));
-            }}
-          >
-            <Pencil className="size-4" /> Rename
-          </DropdownMenuItem>
-
-          <DropdownMenuLabel className="text-xs text-muted-foreground">Means</DropdownMenuLabel>
-          {KINDS.map((k) => (
-            <DropdownMenuItem
-              key={k.value}
-              onClick={() =>
-                updateStatus(status.id, status.name, status.color, k.value).catch((e) =>
-                  toast.error(String(e)),
-                )
-              }
-            >
-              {k.label}
-              {status.kind === k.value && <Check className="ml-auto size-3.5" />}
-            </DropdownMenuItem>
-          ))}
-
-          <DropdownMenuLabel className="text-xs text-muted-foreground">Colour</DropdownMenuLabel>
-          <div className="flex gap-1 px-2 pb-1">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                aria-label={`Colour ${c}`}
-                className={cn(
-                  "size-4 rounded-full ring-offset-1",
-                  status.color === c && "ring-2 ring-ring",
-                )}
-                style={{ backgroundColor: c }}
-                onClick={() =>
-                  updateStatus(status.id, status.name, c, status.kind as "open").catch((e) =>
-                    toast.error(String(e)),
-                  )
-                }
-              />
-            ))}
-          </div>
-
-          <DropdownMenuItem
-            onClick={async () => {
-              const others = statuses.filter((s) => s.id !== status.id);
-              if (others.length === 0) {
-                toast.error("A list needs at least one column");
-                return;
-              }
-              // Tasks can't be orphaned, so ask where they go before deleting.
-              const target = others[0];
-              const ok = await confirm({
-                title: `Delete column "${status.name}"?`,
-                description: `Its tasks move to "${target.name}".`,
-                confirmText: "Delete column",
-                destructive: true,
-              });
-              if (ok) deleteStatus(status.id, target.id).catch((e) => toast.error(String(e)));
-            }}
-          >
-            <Trash2 className="size-4 text-destructive" /> Delete column
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
