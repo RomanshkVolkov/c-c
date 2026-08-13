@@ -291,6 +291,17 @@ type UpdateTaskRequest struct {
 	TagIDs      *[]string `json:"tagIds"`
 	AssigneeIDs *[]string `json:"assigneeIds"`
 	Archived    *bool     `json:"archived"`
+	// Visibility takes a published item back, or hands an internal one over.
+	//
+	// It exists because publishing is a mistake someone will make: the choice is
+	// at creation time and defaults to visible, so the first time anyone gets it
+	// wrong the item is already on a client's board. Without a way back the only
+	// remedy was editing the database.
+	//
+	// Retracting does not give the folio back. A number handed out is spent — the
+	// client may have quoted it — so their numbering keeps the gap. That is the
+	// honest outcome, not a bug to fix later.
+	Visibility *ItemVisibility `json:"visibility" validate:"omitempty,oneof=internal public"`
 }
 
 // MoveTaskRequest places a task between two neighbours in a column. The server

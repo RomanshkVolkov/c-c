@@ -152,10 +152,16 @@ func (r *ReportRepository) UsernameByID(userID string) string {
 
 func (r *ReportRepository) ProjectIDForReport(reportID string) (string, error) {
 	var projectID string
+	// Retracted items are excluded here too, though today nothing can tell:
+	// ProjectForReport already refuses them, so every path a tenant takes ends in
+	// the same 404 with or without this clause. It stays because this is the
+	// authorization gate rather than a lookup — the place where a second refusal
+	// costs one condition and buys the case where the other filter is refactored
+	// away by someone who checked only that the tests still pass.
 	err := r.db.Raw(`
 		SELECT rp.project_id FROM items rp
-		WHERE rp.id = ? AND rp.deleted_at IS NULL
-	`, reportID).Scan(&projectID).Error
+		WHERE rp.id = ? AND rp.deleted_at IS NULL AND rp.visibility <> ?
+	`, reportID, domain.VisibilityInternal).Scan(&projectID).Error
 	if err != nil {
 		return "", err
 	}
@@ -184,11 +190,13 @@ func (r *ReportRepository) OrgIDForReport(reportID string) (string, error) {
 // ProjectForReport loads the report's project (slug for folios, org for authz).
 func (r *ReportRepository) ProjectForReport(reportID string) (*domain.ReportProject, error) {
 	var p domain.ReportProject
+	// Same rule as the tenant's gate: a retracted item is not there for anyone
+	// outside, and this is what the reporter's own view resolves through.
 	err := r.db.Raw(`
 		SELECT p.* FROM report_projects p
 		JOIN items rp ON rp.project_id = p.id
-		WHERE rp.id = ?
-	`, reportID).Scan(&p).Error
+		WHERE rp.id = ? AND rp.visibility <> ?
+	`, reportID, domain.VisibilityInternal).Scan(&p).Error
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +218,11 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 	filtered := func() *gorm.DB {
 		db := r.db.Table("items r").
 			Joins("JOIN report_projects p ON p.id = r.project_id").
-			Where("r.deleted_at IS NULL")
+			Where("r.deleted_at IS NULL").
+			// A retracted item keeps its channel so its folio stays spent, but
+			// stops being listed. Without this the "take it back" button takes
+			// nothing back.
+			Where("r.visibility <> ?", domain.VisibilityInternal)
 		if !superadmin { // superadmin sees reports across all orgs
 			db = db.Where("p.org_id IN ?", orgIDs)
 		}

@@ -583,3 +583,37 @@ func (r *TaskRepository) SetChannelInbox(projectID, listID string) error {
 	return r.db.Model(&domain.ReportProject{}).Where("id = ?", projectID).
 		Update("list_id", listID).Error
 }
+
+// RetractFromChannel takes an item off a client's board.
+//
+// The channel and the number both stay. Clearing the channel would look tidier
+// and would hand the next item the same folio — the client would then have two
+// different things called the same name, one of which they may already have
+// quoted. A gap in their numbering is the honest record.
+func (r *TaskRepository) RetractFromChannel(itemID string) error {
+	return r.db.Model(&domain.Item{}).Where("id = ?", itemID).
+		Update("visibility", domain.VisibilityInternal).Error
+}
+
+// PublishToChannel puts an internal item on a client's board, giving it the next
+// folio of that channel. Returns the number it was given.
+func (r *TaskRepository) PublishToChannel(itemID, projectID string) (int, error) {
+	var seq int
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		// Unscoped, like every other place a folio is allocated: a soft-deleted
+		// row still owns its number.
+		var maxSeq int
+		if err := tx.Unscoped().Raw(
+			`SELECT COALESCE(MAX(seq),0) FROM items WHERE project_id = ?`, projectID).
+			Scan(&maxSeq).Error; err != nil {
+			return err
+		}
+		seq = maxSeq + 1
+		return tx.Model(&domain.Item{}).Where("id = ?", itemID).
+			Updates(map[string]any{
+				"project_id": projectID, "seq": seq,
+				"visibility": domain.VisibilityPublic,
+			}).Error
+	})
+	return seq, err
+}

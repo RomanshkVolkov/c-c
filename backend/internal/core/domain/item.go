@@ -181,6 +181,17 @@ type Item struct {
 	// asked for several owners on a report. An extra "assignees" table here would
 	// have been a third place the same fact lives.
 	AssigneeUserID *string `gorm:"type:varchar(36);index" json:"assigneeUserId,omitempty"`
+	// Visibility is whether the channel's owner actually sees this, and it is a
+	// separate question from ProjectID on purpose.
+	//
+	// ProjectID says whose numbering the item uses. Visibility says whether they
+	// see it. Deriving one from the other looked simpler until retracting a
+	// published item cleared its channel — and the next one was handed the same
+	// folio, which is the collision this codebase already fixed once today.
+	//
+	// So a retracted item keeps its channel and its spent number, and stops being
+	// listed. The client's numbering keeps a gap, which is the truth.
+	Visibility ItemVisibility `gorm:"type:varchar(10);default:'public';index" json:"visibility"`
 
 	// ── From the task side, now available to everything ──
 	// Rank orders the board by hand. Fractional, so moving one card is one
@@ -205,9 +216,16 @@ type Item struct {
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
-// IsChannel reports whether the item came from outside — which is the question
-// almost every branch in the services actually asks.
+// IsChannel reports whether the item belongs to a tenant's channel — whose
+// numbering it uses, and whose board it may appear on.
 func (i *Item) IsChannel() bool { return i.ProjectID != "" }
+
+// IsVisibleToChannel is the question the services actually ask: can the client
+// see this? Belonging to a channel is not enough — a retracted item still
+// belongs, because its folio is spent.
+func (i *Item) IsVisibleToChannel() bool {
+	return i.ProjectID != "" && i.Visibility != VisibilityInternal
+}
 
 // ItemComment is one message on an item, internal or public.
 type ItemComment struct {

@@ -314,6 +314,7 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 	t := &domain.Task{
 		ListID:         list.ID,
 		ProjectID:      channel,
+		Visibility:     domain.VisibilityPublic,
 		Status:         status,
 		Origin:         "internal",
 		OrgID:          orgID,
@@ -383,6 +384,19 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 			fields["archived_at"] = nil
 		}
 	}
+	// Visibility last, and separately: it is the only field here that changes who
+	// can read the item, so it goes through the code that knows what a channel is
+	// rather than being another key in the map.
+	if req.Visibility != nil {
+		task, err := s.repo.FindTask(id)
+		if err != nil {
+			return err
+		}
+		if err := s.setVisibility(task, *req.Visibility); err != nil {
+			return err
+		}
+	}
+
 	if err := s.repo.UpdateTask(id, fields); err != nil {
 		return err
 	}
@@ -528,6 +542,42 @@ func (s *TaskService) CreateTag(req domain.CreateTagRequest) (*domain.TaskTag, e
 		return nil, err
 	}
 	return t, nil
+}
+
+// setVisibility publishes an item to a client's board or takes it back.
+//
+// Taking it back leaves the folio spent: the client may already have quoted that
+// number, and reusing it would make the name mean two things. Their numbering
+// keeps a gap, which is the truthful record of what happened.
+//
+// Publishing one that was internal gives it the next number of that channel and
+// announces it, exactly as if it had been created visible.
+func (s *TaskService) setVisibility(task *domain.Task, want domain.ItemVisibility) error {
+	channel, err := s.repo.EffectiveChannel(task.ListID)
+	if err != nil {
+		return err
+	}
+	switch {
+	case want == domain.VisibilityInternal && task.IsVisibleToChannel():
+		if err := s.repo.RetractFromChannel(task.ID); err != nil {
+			return err
+		}
+		// No event: there is no "unpublish" in the contract, and inventing one
+		// would have every receiver guessing. It simply stops being listed.
+		task.Visibility = domain.VisibilityInternal
+
+	case want == domain.VisibilityPublic && !task.IsVisibleToChannel() && channel != "":
+		seq, err := s.repo.PublishToChannel(task.ID, channel)
+		if err != nil {
+			return err
+		}
+		task.ProjectID, task.Seq = channel, seq
+		task.Visibility = domain.VisibilityPublic
+		emitItemEvent(s.hub, s.reports, "report:new", task.ID, "team", map[string]any{
+			"reportId": task.ID, "projectId": channel, "title": task.Title,
+		})
+	}
+	return nil
 }
 
 // ─── Comments / attachments ───────────────────────────────────────────────────

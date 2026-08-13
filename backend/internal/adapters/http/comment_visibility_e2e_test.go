@@ -142,3 +142,99 @@ func TestAnInternalNoteNeverLeavesCac(t *testing.T) {
 		t.Errorf("unread should count only the public reply, got %d", n)
 	}
 }
+
+// Taking a published item back has to close every door, not just the listing.
+//
+// Retraction keeps the item's channel — that is what stops its folio being
+// handed out twice — so "not listed" and "not readable" are separate filters,
+// and getting only the first one right leaves the item fetchable by anyone who
+// noticed its id before we pulled it.
+func TestARetractedItemIsGoneForTheClientEverywhere(t *testing.T) {
+	db, cleanup := e2eDB(t)
+	defer cleanup()
+
+	org := &domain.Organization{Name: "Retract Org", Slug: "retract-org"}
+	org.ID = "org-retract"
+	if err := db.Create(org).Error; err != nil {
+		t.Fatal(err)
+	}
+	const key = "pk_retract_key"
+	proj := mkProject(t, db, "proj-retract", "retract", org.ID, key)
+	rep := mkReport(t, db, "rep-retract", proj.ID, "publicado por error")
+
+	r := chi.NewRouter()
+	adapterhttp.InitReportRoutes(db, r, events.NewHub())
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	ask := func(path string, withKey bool) int {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+		if withKey {
+			req.Header.Set("X-Ingest-Key", key)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Before: readable by the tenant, and by the reporter with their token.
+	if code := ask("/api/v1/reports/"+rep.ID, true); code != http.StatusOK {
+		t.Fatalf("precondition: the tenant should be able to read it, got %d", code)
+	}
+	tok := repository.MintReportToken(rep.ID)
+	if code := ask("/ingest/v1/reports/"+rep.ID+"?token="+tok, false); code != http.StatusOK {
+		t.Fatalf("precondition: the reporter should be able to read it, got %d", code)
+	}
+
+	// Retract it.
+	if err := repository.NewTaskRepository(db).RetractFromChannel(rep.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Door one: the listing.
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/reports/", nil)
+	req.Header.Set("X-Ingest-Key", key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Contains(string(body), rep.ID) {
+		t.Error("a retracted item is still on the client's board")
+	}
+
+	// Door two: fetching it by id, which is what someone who saw it would do.
+	// 404, not 403 — the same answer they get for anything that isn't theirs.
+	if code := ask("/api/v1/reports/"+rep.ID, true); code != http.StatusNotFound {
+		t.Errorf("the tenant can still fetch it by id: %d", code)
+	}
+
+	// Door three: the reporter's own view, with a token that still verifies.
+	if code := ask("/ingest/v1/reports/"+rep.ID+"?token="+tok, false); code == http.StatusOK {
+		t.Error("the reporter can still read a retracted item")
+	}
+
+	// Door four, and the one that is easy to forget because it is not a read:
+	// writing to it. The authorization gate has to refuse too, or a tenant can
+	// still triage and comment on something we took back.
+	write := func(method, path string) int {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(`{"status":"in_progress"}`))
+		req.Header.Set("X-Ingest-Key", key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := write(http.MethodPatch, "/api/v1/reports/"+rep.ID); code != http.StatusNotFound {
+		t.Errorf("the tenant can still triage a retracted item: %d", code)
+	}
+}

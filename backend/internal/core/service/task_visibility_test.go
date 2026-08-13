@@ -38,7 +38,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !silent.IsChannel() {
+	if !silent.IsVisibleToChannel() {
 		t.Error("saying nothing must mean the client can see it — that is the whole point of the default")
 	}
 
@@ -49,7 +49,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !open.IsChannel() {
+	if !open.IsVisibleToChannel() {
 		t.Error("asking for public in a bound list must reach the client")
 	}
 
@@ -60,7 +60,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if private.IsChannel() {
+	if private.IsVisibleToChannel() {
 		t.Error("internal must stay internal — this is the choice the owner asked for")
 	}
 
@@ -72,7 +72,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.IsChannel() {
+	if child.IsVisibleToChannel() {
 		t.Error("a subtask must not appear on the client's board as a ticket of its own")
 	}
 }
@@ -94,7 +94,7 @@ func TestAskingForPublicWhereThereIsNoChannelChangesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.IsChannel() {
+	if got.IsVisibleToChannel() {
 		t.Error("there is no client here; asking must not invent one")
 	}
 }
@@ -152,5 +152,97 @@ func visibilityDB(t *testing.T) (*gorm.DB, func()) {
 		}
 		admin.Exec("DROP DATABASE IF EXISTS " + name)
 		adminSQL.Close()
+	}
+}
+
+// Publishing to a client is a mistake someone will make, so there has to be a
+// way back — and the way back has to be honest about what it can't undo.
+func TestAnItemCanBeTakenBackButKeepsItsSpentFolio(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	published, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "publicado sin querer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !published.IsVisibleToChannel() {
+		t.Fatal("precondition: it should have gone out visible")
+	}
+	spent := published.Seq
+
+	internal := domain.VisibilityInternal
+	if err := svc.UpdateTask(published.ID, domain.UpdateTaskRequest{Visibility: &internal}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.FindTask(published.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Off their board, but still belonging to their channel: that is what keeps
+	// the folio spent.
+	if after.IsVisibleToChannel() {
+		t.Error("it should be off the client's board")
+	}
+	if !after.IsChannel() {
+		t.Error("it must keep the channel, or the next item is handed the same folio")
+	}
+	if after.Seq != spent {
+		t.Errorf("the folio stays spent: the client may have quoted %d, so reusing it "+
+			"would make that name mean two things. got %d", spent, after.Seq)
+	}
+
+	// And the next thing published does not reuse the gap.
+	next, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "el siguiente"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Seq <= spent {
+		t.Errorf("numbering must move on: %d came after %d", next.Seq, spent)
+	}
+}
+
+// And the other direction: an internal item can be handed over deliberately.
+func TestAnInternalItemCanBePublishedLater(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	private, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{
+		Title: "todavía no", Visibility: domain.VisibilityInternal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	public := domain.VisibilityPublic
+	if err := svc.UpdateTask(private.ID, domain.UpdateTaskRequest{Visibility: &public}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.FindTask(private.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.IsVisibleToChannel() {
+		t.Fatal("it should now be on the client's board")
+	}
+	if after.Seq == 0 {
+		t.Error("and it needs a folio of its own — that number is how the client will refer to it")
 	}
 }
