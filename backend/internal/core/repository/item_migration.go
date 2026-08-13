@@ -77,6 +77,7 @@ func migrateItems(db *gorm.DB) {
 		{"task comments", copyTaskCommentsToItems},
 		{"report images", copyReportImagesToItems},
 		{"task attachments", copyTaskAttachmentsToItems},
+		{"assignees", backfillAssignees},
 	}
 	for _, s := range steps {
 		if err := s.run(db); err != nil {
@@ -657,4 +658,65 @@ func (r *TaskRepository) MoveTaskToList(itemID, listID string) error {
 		Updates(map[string]any{
 			"list_id": listID, "space_id": dest.SpaceID, "rank": last,
 		}).Error
+}
+
+// ─── Who is responsible ───────────────────────────────────────────────────────
+
+// PrimaryAssignee is the person a tenant is shown, and "" when nobody is on it.
+func (r *ReportRepository) PrimaryAssignee(itemID string) (string, error) {
+	var id string
+	err := r.db.Raw(`SELECT user_id FROM task_assignees
+		WHERE task_id = ? ORDER BY "primary" DESC LIMIT 1`, itemID).Scan(&id).Error
+	return id, err
+}
+
+// SetPrimaryAssignee is the single-assignee path the report contract exposes:
+// naming someone replaces whoever was there, and "" clears the card.
+//
+// It writes the same table the board writes, which is the whole point — the two
+// used to be different places, so assigning on one side left the other showing
+// something else and neither looked wrong by itself.
+func (r *ReportRepository) SetPrimaryAssignee(itemID, userID string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("task_id = ?", itemID).Delete(&domain.TaskAssignee{}).Error; err != nil {
+			return err
+		}
+		if userID == "" {
+			return nil
+		}
+		return tx.Create(&domain.TaskAssignee{TaskID: itemID, UserID: userID, Primary: true}).Error
+	})
+}
+
+// PromoteAnAssignee makes sure somebody is primary while anybody is on the card.
+//
+// Removing the primary from a card two other people are working on used to leave
+// the tenant's board reading "unassigned" — the one summary that misleads,
+// because it says nobody is on something that is actively being worked.
+func (r *ReportRepository) PromoteAnAssignee(itemID string) error {
+	var n int64
+	if err := r.db.Model(&domain.TaskAssignee{}).
+		Where(`task_id = ? AND "primary" = true`, itemID).Count(&n).Error; err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	return r.db.Exec(`UPDATE task_assignees SET "primary" = true
+		WHERE task_id = ? AND user_id = (
+			SELECT user_id FROM task_assignees WHERE task_id = ? LIMIT 1
+		)`, itemID, itemID).Error
+}
+
+// backfillAssignees moves the report side's single column into the shared table.
+//
+// Idempotent by the conflict clause: a card that already has its people keeps
+// them, and the column stops being read once this has run.
+func backfillAssignees(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO task_assignees (task_id, user_id, "primary")
+		SELECT i.id, i.assignee_user_id, true
+		FROM items i
+		WHERE i.assignee_user_id IS NOT NULL AND i.assignee_user_id <> ''
+		ON CONFLICT (task_id, user_id) DO UPDATE SET "primary" = true`).Error
 }

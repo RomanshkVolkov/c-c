@@ -251,7 +251,12 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 			}
 		}
 		if q.AssigneeID != "" {
-			db = db.Where("r.assignee_user_id = ?", q.AssigneeID)
+			// Anyone on the card, not only the one the tenant is shown. "What is
+			// Ana on?" is the question being asked, and answering it about only
+			// the cards where she happens to be first hides real work.
+			db = db.Where(`EXISTS (
+				SELECT 1 FROM task_assignees x WHERE x.task_id = r.id AND x.user_id = ?
+			)`, q.AssigneeID)
 		}
 		// Narrows within what the caller can already see — the org scope above
 		// still applies, so this can't reach another tenant's reports.
@@ -275,14 +280,20 @@ func (r *ReportRepository) List(orgIDs []string, q domain.ReportListQuery, super
 		Select(`r.id, r.project_id, p.slug AS project_slug, p.name AS project_name,
 			r.seq, r.title, r.status, r.category, r.priority, r.area,
 			r.origin, r.reporter_name, r.reporter_email, r.reporter_id,
-			r.assignee_user_id, u.username AS assignee_name,
+			a.user_id AS assignee_user_id, u.username AS assignee_name,
 			(SELECT COUNT(*) FROM item_attachments i
 			   WHERE i.item_id = r.id AND i.comment_id IS NULL AND i.deleted_at IS NULL) AS image_count,
 			(SELECT COUNT(*) FROM item_comments c
 			   WHERE c.item_id = r.id AND c.deleted_at IS NULL
 			     AND c.visibility = 'public') AS comment_count,
 			r.created_at, r.updated_at, r.resolved_at`).
-		Joins("LEFT JOIN users u ON u.id = r.assignee_user_id").
+		// The primary assignee, from the table the board writes too. There used to
+		// be a column here as well, and the two never met.
+		Joins(`LEFT JOIN LATERAL (
+			SELECT user_id FROM task_assignees
+			WHERE task_id = r.id ORDER BY "primary" DESC LIMIT 1
+		) a ON true`).
+		Joins("LEFT JOIN users u ON u.id = a.user_id").
 		Order("r.created_at DESC").
 		Limit(q.Limit).Offset(q.Offset).
 		Scan(&result.Items).Error

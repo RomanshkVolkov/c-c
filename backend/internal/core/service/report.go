@@ -456,8 +456,11 @@ func (s *ReportService) Detail(reportID string, includeWithdrawn bool) (*domain.
 	}
 
 	assigneeName := ""
-	if report.AssigneeUserID != nil {
-		assigneeName = s.repo.UsernameByID(*report.AssigneeUserID)
+	// From the table the board writes to, so a card assigned on either side reads
+	// the same on both.
+	assigneeID, _ := s.repo.PrimaryAssignee(reportID)
+	if assigneeID != "" {
+		assigneeName = s.repo.UsernameByID(assigneeID)
 	}
 
 	// Decrypt telemetry for the console timeline (best-effort: a purged/absent
@@ -488,7 +491,7 @@ func (s *ReportService) Detail(reportID string, includeWithdrawn bool) (*domain.
 		ReporterName:   report.ReporterName,
 		ReporterEmail:  report.ReporterEmail,
 		ReporterID:     report.ReporterID,
-		AssigneeUserID: report.AssigneeUserID,
+		AssigneeUserID: nilIfEmpty(assigneeID),
 		AssigneeName:   assigneeName,
 		ResolvedAt:     report.ResolvedAt,
 		CreatedAt:      report.CreatedAt,
@@ -536,9 +539,15 @@ func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRe
 	}
 
 	if req.AssigneeUserID != nil {
+		before, err := s.repo.PrimaryAssignee(reportID)
+		if err != nil {
+			return nil, err
+		}
 		if *req.AssigneeUserID == "" {
-			if report.AssigneeUserID != nil {
-				report.AssigneeUserID = nil
+			if before != "" {
+				if err := s.repo.SetPrimaryAssignee(reportID, ""); err != nil {
+					return nil, err
+				}
 				if err := s.systemComment(reportID, "unassigned"); err != nil {
 					return nil, err
 				}
@@ -554,7 +563,9 @@ func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRe
 				}
 				return nil, err
 			}
-			report.AssigneeUserID = req.AssigneeUserID
+			if err := s.repo.SetPrimaryAssignee(reportID, *req.AssigneeUserID); err != nil {
+				return nil, err
+			}
 			name := *req.AssigneeUserID
 			if u, err := s.authRepo.FindByID(*req.AssigneeUserID); err == nil {
 				name = u.Username
@@ -876,6 +887,15 @@ func (s *ReportService) DetachImage(reportID, imageID string) error {
 // Public, because the reporter is shown these today — "status: pending →
 // in_progress" is how they learn anything is happening — and filing them
 // internal would be a silent downgrade of what they already receive.
+// nilIfEmpty keeps the contract's optional field optional: the tenant reads an
+// absent assignee as "nobody", and "" would render as an empty name.
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func newSystemComment(itemID, body string) *domain.ReportComment {
 	c := &domain.ReportComment{
 		ItemID:     itemID,

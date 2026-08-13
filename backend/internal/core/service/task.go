@@ -28,6 +28,9 @@ type TaskService struct {
 	// reports resolves who to notify when work lands on a client's board. A list
 	// can belong to a channel now, so raising a task there is raising a report.
 	reports *repository.ReportRepository
+	// orgs answers "may this person be given this card" — the check the report
+	// side has always made and this one didn't.
+	orgs *repository.OrganizationRepository
 	// hub broadcasts board changes so every open console reflects them without
 	// polling. Optional: a nil hub simply means no live updates.
 	hub *events.Hub
@@ -36,8 +39,13 @@ type TaskService struct {
 // NewTaskService takes the report repository as well, because a list can belong
 // to a client's channel: work raised there is a report on their board, and it
 // has to be numbered and announced like one.
-func NewTaskService(repo *repository.TaskRepository, reports *repository.ReportRepository, hub *events.Hub) *TaskService {
-	return &TaskService{repo: repo, reports: reports, hub: hub}
+func NewTaskService(
+	repo *repository.TaskRepository,
+	reports *repository.ReportRepository,
+	orgs *repository.OrganizationRepository,
+	hub *events.Hub,
+) *TaskService {
+	return &TaskService{repo: repo, reports: reports, orgs: orgs, hub: hub}
 }
 
 // publish fans a board change out to the task's organization. Payloads stay
@@ -424,7 +432,7 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 		}
 	}
 	if req.AssigneeIDs != nil {
-		if err := s.repo.SetAssignees(id, *req.AssigneeIDs); err != nil {
+		if err := s.setAssignees(id, *req.AssigneeIDs); err != nil {
 			return err
 		}
 	}
@@ -628,6 +636,45 @@ func (s *TaskService) setVisibility(task *domain.Task, want domain.ItemVisibilit
 func withTaskWirePriority(t domain.Item) domain.Item {
 	t.Priority = t.Priority.TaskWire()
 	return t
+}
+
+// setAssignees replaces who is responsible, under the rules the report side has
+// always applied — which this side never did.
+//
+// Two of them. **Membership is checked**: assigning someone outside the
+// organization used to be a plain insert here, so a card could be handed to
+// somebody who cannot open it. And **the client is told**, because on their
+// board "assigned to Ana" is how they learn anyone picked it up; a card that
+// changed hands silently on our side read as untouched on theirs.
+func (s *TaskService) setAssignees(itemID string, userIDs []string) error {
+	task, err := s.repo.FindTask(itemID)
+	if err != nil {
+		return err
+	}
+	for _, uid := range userIDs {
+		if _, err := s.orgs.GetMembership(task.OrgID, uid); err != nil {
+			return ErrAssigneeNotMember
+		}
+	}
+
+	before, _ := s.reports.PrimaryAssignee(itemID)
+	if err := s.repo.SetAssignees(itemID, userIDs); err != nil {
+		return err
+	}
+	after, _ := s.reports.PrimaryAssignee(itemID)
+
+	// Only the person the tenant is shown, and only when it actually changed:
+	// their thread is a conversation, not a log of our staffing.
+	if task.IsVisibleToChannel() && before != after {
+		body := "unassigned"
+		if after != "" {
+			body = "assigned to " + s.reports.UsernameByID(after)
+		}
+		if err := s.reports.CreateComment(newSystemComment(itemID, body)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ─── Comments / attachments ───────────────────────────────────────────────────

@@ -1034,8 +1034,18 @@ func e2eDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// TaskAssignee is here despite the name: who is responsible for an item is one
+	// fact in one table now, shared by the board and by this API. It used to be a
+	// column on the report as well, and the two never agreed — assigning on one
+	// side left the other showing something else, with neither screen looking
+	// wrong on its own.
+	//
+	// Adding it to this fixture is a change to the setup, not to what any of
+	// these tests assert. That line is the one that matters: the assertions are
+	// the proof that nothing outside noticed the model move underneath them.
 	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.OrgMembership{},
-		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{}); err != nil {
+		&domain.ReportProject{}, &domain.Report{}, &domain.ReportComment{}, &domain.ReportImage{},
+		&domain.TaskAssignee{}); err != nil {
 		t.Fatal(err)
 	}
 	// The ingest key HMAC is keyed by an env secret; pin one so the hashes this

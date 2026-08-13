@@ -19,7 +19,7 @@ import (
 // org-scoped through the space that owns each node.
 func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	taskRepo := repository.NewTaskRepository(db)
-	svc := service.NewTaskService(taskRepo, repository.NewReportRepository(db), hub)
+	svc := service.NewTaskService(taskRepo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), hub)
 	// The same channel service the reports screen uses. One row, one set of
 	// rules, reachable from wherever the person happens to be.
 	channels := service.NewReportProjectService(

@@ -719,6 +719,8 @@ func (r *TaskRepository) SetTags(taskID string, tagIDs []string) error {
 	})
 }
 
+// SetAssignees replaces the whole set. The first id given is the primary — the
+// one a tenant sees, since their contract names a single person.
 func (r *TaskRepository) SetAssignees(taskID string, userIDs []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("task_id = ?", taskID).Delete(&domain.TaskAssignee{}).Error; err != nil {
@@ -729,7 +731,7 @@ func (r *TaskRepository) SetAssignees(taskID string, userIDs []string) error {
 		}
 		rows := make([]domain.TaskAssignee, len(userIDs))
 		for i, id := range userIDs {
-			rows[i] = domain.TaskAssignee{TaskID: taskID, UserID: id}
+			rows[i] = domain.TaskAssignee{TaskID: taskID, UserID: id, Primary: i == 0}
 		}
 		return tx.Create(&rows).Error
 	})

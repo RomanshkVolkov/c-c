@@ -113,9 +113,26 @@ type TaskTagLink struct {
 	TagID  string `gorm:"type:varchar(36);primaryKey" json:"tagId"`
 }
 
+// TaskAssignee is who on our side is responsible for an item.
+//
+// Not to be confused with the reporter. They are different people in different
+// id spaces: a reporter lives in the tenant's, is asserted by them and never
+// verified by us; an assignee is a cac user, which is why this one is checked
+// against org membership and the other isn't.
+//
+// This table is the single home for that fact. It used to be two — this table
+// for tasks and a column on the item for reports — so assigning from the board
+// left the client's view unchanged, and assigning through their API left the
+// board's avatars empty. Neither screen looked wrong on its own.
 type TaskAssignee struct {
 	TaskID string `gorm:"type:varchar(36);primaryKey" json:"taskId"`
 	UserID string `gorm:"type:varchar(36);primaryKey" json:"userId"`
+	// Primary is who the tenant sees, because their contract names one person.
+	//
+	// Explicit rather than "the oldest row": this table has no timestamp, so
+	// without a flag the answer would be whatever order Postgres felt like
+	// returning — a different name on their board between two refreshes.
+	Primary bool `gorm:"default:false;index" json:"primary"`
 }
 
 // TaskComment is an internal ItemComment: nobody outside cac ever reads one.

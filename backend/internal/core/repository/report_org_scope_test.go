@@ -97,7 +97,7 @@ func reportScopeDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.ReportProject{}, &domain.Report{}, &domain.User{}, &domain.ReportComment{}, &domain.ReportImage{}); err != nil {
+	if err := db.AutoMigrate(&domain.ReportProject{}, &domain.Report{}, &domain.User{}, &domain.ReportComment{}, &domain.ReportImage{}, &domain.TaskAssignee{}); err != nil {
 		t.Fatal(err)
 	}
 	return db, func() {

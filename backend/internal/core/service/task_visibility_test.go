@@ -24,7 +24,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func TestAskingForPublicWhereThereIsNoChannelChangesNothing(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func visibilityDB(t *testing.T) (*gorm.DB, func()) {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(
-		&domain.Organization{}, &domain.ReportProject{}, &domain.User{},
+		&domain.Organization{}, &domain.ReportProject{}, &domain.User{}, &domain.OrgMembership{},
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{},
 		&domain.Item{}, &domain.ItemComment{}, &domain.ItemAttachment{},
 		&domain.TaskTag{}, &domain.TaskTagLink{}, &domain.TaskAssignee{},
@@ -162,7 +162,7 @@ func TestAnItemCanBeTakenBackButKeepsItsSpentFolio(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ func TestAnInternalItemCanBePublishedLater(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +259,7 @@ func TestDraggingAClientsReportTellsThem(t *testing.T) {
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
 	reports := repository.NewReportRepository(db)
-	svc := NewTaskService(repo, reports, nil)
+	svc := NewTaskService(repo, reports, repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -315,7 +315,7 @@ func TestDraggingAnInternalCardTellsNobody(t *testing.T) {
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
 	reports := repository.NewReportRepository(db)
-	svc := NewTaskService(repo, reports, nil)
+	svc := NewTaskService(repo, reports, repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -345,7 +345,7 @@ func TestACardCanMoveToAnotherList(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -405,7 +405,7 @@ func TestACardCannotMoveToAnotherOrgsList(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -448,7 +448,7 @@ func TestTheDetailAnswersInTheTaskVocabulary(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -498,7 +498,7 @@ func TestCommentingOnAClientsCardReachesThem(t *testing.T) {
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
 	reports := repository.NewReportRepository(db)
-	svc := NewTaskService(repo, reports, nil)
+	svc := NewTaskService(repo, reports, repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -547,7 +547,7 @@ func TestCommentingOnAnInternalCardStaysInternal(t *testing.T) {
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
 	reports := repository.NewReportRepository(db)
-	svc := NewTaskService(repo, reports, nil)
+	svc := NewTaskService(repo, reports, repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -584,7 +584,7 @@ func TestTheThreadHidesDeletedCommentsAndNamesItsAudience(t *testing.T) {
 	db, cleanup := visibilityDB(t)
 	defer cleanup()
 	repo := repository.NewTaskRepository(db)
-	svc := NewTaskService(repo, repository.NewReportRepository(db), nil)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
 	list, err := repo.FindList("list-1")
 	if err != nil {
 		t.Fatal(err)
@@ -644,5 +644,127 @@ func TestTheThreadHidesDeletedCommentsAndNamesItsAudience(t *testing.T) {
 		if c.ID == doomed.ID {
 			t.Error("the deleted comment is still on screen, which is what made deleting look broken")
 		}
+	}
+}
+
+// Who is responsible reads the same from both sides.
+//
+// It didn't. The board wrote a table and the client's API read a column, so
+// assigning a card left the tenant's board saying "unassigned" and assigning
+// through their API left the board's avatars empty. Each screen was internally
+// consistent, which is why neither looked broken and only comparing them showed
+// it.
+func TestOneAnswerToWhoIsResponsible(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	reports := repository.NewReportRepository(db)
+	svc := NewTaskService(repo, reports, repository.NewOrganizationRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+	seedMember(t, db, "u-ana", "Ana")
+	seedMember(t, db, "u-bea", "Bea")
+
+	card, err := svc.CreateTask(list, "org-1", "u-ana", domain.CreateTaskRequest{Title: "suyo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Assigned from the board…
+	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{
+		AssigneeIDs: &[]string{"u-ana", "u-bea"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// …and the client is shown the first one, from the same table.
+	primary, err := reports.PrimaryAssignee(card.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if primary != "u-ana" {
+		t.Errorf("the tenant should see the first assignee, got %q", primary)
+	}
+	// And it is a stored fact, not the order rows came back in. Without the flag
+	// the tenant's board could show a different name between two refreshes, which
+	// is the failure this column exists to prevent.
+	var flagged []string
+	if err := db.Raw(`SELECT user_id FROM task_assignees WHERE task_id = ? AND "primary" = true`,
+		card.ID).Scan(&flagged).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(flagged) != 1 || flagged[0] != "u-ana" {
+		t.Errorf("exactly one assignee must be marked primary, and it must be the first: %v", flagged)
+	}
+
+	// Removing the one the client sees promotes the other, rather than telling
+	// them nobody is on something two people are working.
+	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{
+		AssigneeIDs: &[]string{"u-bea"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := reports.PrimaryAssignee(card.ID); p != "u-bea" {
+		t.Errorf("the remaining assignee should be the one they see, got %q", p)
+	}
+
+	// And the client's own thread was told, because on their board this is how
+	// they learn anybody picked it up.
+	thread, err := reports.ListComments(card.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var told bool
+	for _, c := range thread {
+		if strings.Contains(c.Body, "assigned to Ana") {
+			told = true
+		}
+	}
+	if !told {
+		t.Error("assigning on the board must leave the same note as assigning through their API")
+	}
+}
+
+// Handing a card to someone outside the organization was a plain insert here.
+func TestACardCannotBeGivenToAnOutsider(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db),
+		repository.NewOrganizationRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "nuestra"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{
+		AssigneeIDs: &[]string{"u-de-otra-org"},
+	}); err == nil {
+		t.Error("assigning someone who can't open the card must be refused")
+	}
+	who, _ := repository.NewReportRepository(db).PrimaryAssignee(card.ID)
+	if who != "" {
+		t.Errorf("and a refused assignment must not have written anything, got %q", who)
+	}
+}
+
+// seedMember makes a user who belongs to the test organization.
+func seedMember(t *testing.T, db *gorm.DB, id, username string) {
+	t.Helper()
+	u := &domain.User{Username: username, Email: username + "@vis.test", Password: "x"}
+	u.ID = id
+	if err := db.Create(u).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.OrgMembership{OrgID: "org-1", UserID: id, Role: "member"}).Error; err != nil {
+		t.Fatal(err)
 	}
 }
