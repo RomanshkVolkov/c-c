@@ -333,6 +333,13 @@ type CreateTagRequest struct {
 
 type TaskCommentRequest struct {
 	Body string `json:"body" validate:"required,min=1"`
+	// Visibility follows the same rule as raising the work in the first place: on
+	// something a client can see, saying nothing means they read it too. Send
+	// "internal" for a note between us.
+	//
+	// On an item no client can see this is ignored — there is nobody to show it
+	// to, and every comment is internal by definition.
+	Visibility ItemVisibility `json:"visibility" validate:"omitempty,oneof=internal public"`
 }
 
 // ─── Responses ────────────────────────────────────────────────────────────────

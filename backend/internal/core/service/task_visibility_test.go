@@ -487,3 +487,84 @@ func TestTheDetailAnswersInTheTaskVocabulary(t *testing.T) {
 			cards[0].Priority, detail.Task.Priority)
 	}
 }
+
+// Commenting from the task drawer on something a client can see reaches them.
+//
+// This is the one that got out: a reply typed into the board's thread was filed
+// internal, so the board showed two comments and the client's page showed one.
+// Nobody was told, and from either side the thread looked complete.
+func TestCommentingOnAClientsCardReachesThem(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	reports := repository.NewReportRepository(db)
+	svc := NewTaskService(repo, reports, nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "algo suyo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing said: they read it.
+	if _, err := svc.AddComment(card.ID, "u-1", "vamos con ello", ""); err != nil {
+		t.Fatal(err)
+	}
+	// Said internal: they don't.
+	if _, err := svc.AddComment(card.ID, "u-1", "ojo, se les olvidó pagar", domain.VisibilityInternal); err != nil {
+		t.Fatal(err)
+	}
+
+	inside, err := reports.ListComments(card.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside, err := reports.ListComments(card.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inside) != 2 {
+		t.Fatalf("the team sees both, got %d", len(inside))
+	}
+	if len(outside) != 1 {
+		t.Fatalf("the client sees only the one meant for them, got %d", len(outside))
+	}
+	if outside[0].Body != "vamos con ello" {
+		t.Errorf("the wrong one reached them: %q", outside[0].Body)
+	}
+}
+
+// On a card no client can see, every comment is internal — including one that
+// asks to be public, because there is nobody to show it to.
+func TestCommentingOnAnInternalCardStaysInternal(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	repo := repository.NewTaskRepository(db)
+	reports := repository.NewReportRepository(db)
+	svc := NewTaskService(repo, reports, nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "cosa nuestra"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddComment(card.ID, "u-1", "una nota", domain.VisibilityPublic); err != nil {
+		t.Fatal(err)
+	}
+	outside, err := reports.ListComments(card.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outside) != 0 {
+		t.Error("there is no client here; asking for public must not invent one")
+	}
+}

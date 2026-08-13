@@ -673,7 +673,7 @@ func (h *taskHandler) AddComment(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	if _, err := h.svc.AddComment(t.ID, user.UserID, req.Body); err != nil {
+	if _, err := h.svc.AddComment(t.ID, user.UserID, req.Body, req.Visibility); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to add comment", err.Error())
 		return
 	}

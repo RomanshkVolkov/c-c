@@ -244,12 +244,18 @@ function Content() {
 
   const upload = async (file: File) => uploadAttachment(task.id, file);
 
+  // On a card a client can read, the composer says who it is talking to and the
+  // choice is one click away. Public by default — the thread on their board and
+  // the one here have to be the same conversation, or both are misleading.
+  const clientReads = Boolean(task.projectId) && task.visibility !== "internal";
+  const [commentInternal, setCommentInternal] = useState(false);
+
   const send = async () => {
     const body = comment.trim();
     if (!body) return;
     setSending(true);
     try {
-      await addComment(task.id, body);
+      await addComment(task.id, body, clientReads && commentInternal ? "internal" : undefined);
       setComment("");
     } catch (e) {
       toast.error("Could not comment", { description: String(e) });
@@ -673,10 +679,32 @@ function Content() {
               placeholder="Write a comment… (markdown, paste files)"
               minHeight="5rem"
             />
-            <Button size="sm" onClick={send} disabled={sending || !comment.trim()}>
-              {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-              <span className="ml-1">Comment</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={send} disabled={sending || !comment.trim()}>
+                {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                <span className="ml-1">{clientReads && commentInternal ? "Comment internally" : "Comment"}</span>
+              </Button>
+              {clientReads && (
+                <button
+                  type="button"
+                  className={cn(
+                    "flex items-center gap-1 rounded px-2 py-1 text-xs",
+                    commentInternal
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setCommentInternal((v) => !v)}
+                  title={
+                    commentInternal
+                      ? "Only the team will see this"
+                      : "The client reads this thread — switch to keep it internal"
+                  }
+                >
+                  {commentInternal ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                  {commentInternal ? "Internal note" : "The client reads this"}
+                </button>
+              )}
+            </div>
           </div>
         </section>
       </div>

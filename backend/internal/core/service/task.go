@@ -632,14 +632,14 @@ func withTaskWirePriority(t domain.Item) domain.Item {
 
 // ─── Comments / attachments ───────────────────────────────────────────────────
 
-// newInternalComment builds a comment nobody outside cac will ever read.
+// newComment builds a comment with its audience decided at construction.
 //
 // A constructor rather than a struct literal at each call site: `visibility`
 // defaults to public at the column level — that is what lets the contract test
 // insert bare rows and still have the reporter see them — so leaving it unset
 // here would quietly publish a team note. Making it a parameter of construction
 // means it cannot be forgotten.
-func newInternalComment(itemID, authorUserID, body string) *domain.ItemComment {
+func newComment(itemID, authorUserID, body string, visibility domain.ItemVisibility) *domain.ItemComment {
 	var author *string
 	if authorUserID != "" {
 		author = &authorUserID
@@ -647,7 +647,7 @@ func newInternalComment(itemID, authorUserID, body string) *domain.ItemComment {
 	c := &domain.ItemComment{
 		ItemID:       itemID,
 		Kind:         domain.CommentKindUser,
-		Visibility:   domain.VisibilityInternal,
+		Visibility:   visibility,
 		AuthorUserID: author,
 		Body:         body,
 	}
@@ -655,16 +655,37 @@ func newInternalComment(itemID, authorUserID, body string) *domain.ItemComment {
 	return c
 }
 
-func (s *TaskService) AddComment(taskID, userID, body string) (*domain.TaskComment, error) {
+func (s *TaskService) AddComment(taskID, userID, body string, want domain.ItemVisibility) (*domain.TaskComment, error) {
+	task, err := s.repo.FindTask(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	// The same rule as raising the work: on something a client can see, saying
+	// nothing means they read this too. Anything else would make the thread in
+	// their board a partial transcript — they see a reply, we see three, and
+	// nobody can tell which is which from either side.
+	//
+	// On an item no client can see, every comment is internal by definition.
+	visibility := domain.VisibilityInternal
+	if task.IsVisibleToChannel() && want != domain.VisibilityInternal {
+		visibility = domain.VisibilityPublic
+	}
+
 	// Through the constructor, always: visibility is the one field on a comment
 	// that can leak, and the column default is the permissive one so the contract
 	// test keeps working. Nothing writes this table around it.
-	c := newInternalComment(taskID, userID, body)
+	c := newComment(taskID, userID, body, visibility)
 	if err := s.repo.CreateComment(c); err != nil {
 		return nil, err
 	}
-	if t, err := s.repo.FindTask(taskID); err == nil {
-		s.publish("task:comment", t.OrgID, t.ListID, t.ID)
+	s.publish("task:comment", task.OrgID, task.ListID, task.ID)
+	if visibility == domain.VisibilityPublic {
+		// The client is owed this the same way they are owed a reply written from
+		// the reports page — it is the same thread.
+		emitItemEvent(s.hub, s.reports, "report:comment", taskID, "team", map[string]any{
+			"reportId": taskID, "commentId": c.ID,
+		})
 	}
 	return c, nil
 }

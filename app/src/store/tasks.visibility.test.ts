@@ -53,3 +53,21 @@ describe("what the app sends when creating in a client's list", () => {
     expect(bodyOf().visibility).toBe("public");
   });
 });
+
+describe("what the app sends when commenting", () => {
+  beforeEach(() => {
+    post.mockClear();
+  });
+
+  const bodyOf = () => (post.mock.calls[0]?.[1] ?? {}) as Record<string, unknown>;
+
+  it("says nothing when nobody chose, so the client reads it too", async () => {
+    await useTasksStore.getState().addComment("task-1", "una respuesta");
+    expect(bodyOf()).not.toHaveProperty("visibility");
+  });
+
+  it("sends internal when that was the choice", async () => {
+    await useTasksStore.getState().addComment("task-1", "entre nosotros", "internal");
+    expect(bodyOf().visibility).toBe("internal");
+  });
+});

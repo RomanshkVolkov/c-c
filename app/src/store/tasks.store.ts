@@ -66,7 +66,7 @@ interface TasksState {
   closeTask: () => void;
   updateTask: (id: string, patch: UpdateTaskPayload) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  addComment: (taskId: string, body: string) => Promise<void>;
+  addComment: (taskId: string, body: string, visibility?: ItemVisibility) => Promise<void>;
   editComment: (taskId: string, commentId: string, body: string) => Promise<void>;
   deleteComment: (taskId: string, commentId: string) => Promise<void>;
   uploadAttachment: (taskId: string, file: File) => Promise<{ url: string; fileName: string } | null>;
@@ -381,10 +381,13 @@ export const useTasksStore = create<TasksState>()(
         await get().fetchTree();
       },
 
-      addComment: async (taskId, body) => {
+      addComment: async (taskId, body, visibility) => {
         const res = await api.post<APIResponse<TaskDetail>>(
           `/api/v1/tasks/${taskId}/comments`,
-          { body },
+          // Sent only when a choice was made, like createTask: the server's
+          // default is "the client reads it too", and inventing a value here
+          // would either hide a reply from them or publish a team note.
+          { body, ...(visibility ? { visibility } : {}) },
           true,
         );
         if (res.success && res.data && get().openTaskId === taskId) set({ detail: res.data });
