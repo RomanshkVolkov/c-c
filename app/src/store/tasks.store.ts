@@ -59,7 +59,13 @@ interface TasksState {
   moveStatus: (id: string, afterId: string, beforeId: string) => Promise<void>;
   deleteStatus: (id: string, moveToId: string) => Promise<void>;
 
-  createTask: (title: string, statusId?: string, visibility?: ItemVisibility) => Promise<void>;
+  createTask: (
+    title: string,
+    statusId?: string,
+    visibility?: ItemVisibility,
+    /** Markdown body, for callers that have more than a title — chat→task does. */
+    description?: string,
+  ) => Promise<void>;
   moveTask: (taskId: string, statusId: string, afterId: string, beforeId: string) => Promise<void>;
   openTask: (id: string) => Promise<void>;
   /** Re-read the open task without unmounting the drawer. See the impl. */
@@ -331,7 +337,7 @@ export const useTasksStore = create<TasksState>()(
         await get().refreshBoard();
       },
 
-      createTask: async (title, statusId, visibility) => {
+      createTask: async (title, statusId, visibility, description) => {
         const listId = get().activeListId;
         if (!listId) return;
         await api.post<APIResponse<unknown>>(
@@ -339,7 +345,12 @@ export const useTasksStore = create<TasksState>()(
           // visibility is sent only when a choice was made. Omitting it lets the
           // server apply its default, which is "the client sees it" — the rule
           // this app must not quietly contradict.
-          { title, statusId: statusId ?? "", ...(visibility ? { visibility } : {}) },
+          {
+            title,
+            statusId: statusId ?? "",
+            ...(visibility ? { visibility } : {}),
+            ...(description ? { description } : {}),
+          },
           true,
         );
         await get().refreshBoard();

@@ -36,9 +36,11 @@ import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import DocView from "@/components/DocView";
 import CopyId from "@/components/CopyId";
 import ChannelDialog from "@/components/ChannelDialog";
+import ChatPanel from "@/components/ChatPanel";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
+import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { docKey, priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
@@ -84,10 +86,29 @@ export default function Tasks() {
   // same node rather than something to show beside it.
   const activeDoc = useTasksStore((s) => s.activeDoc);
 
+  // The channel of whichever space the person opened it on — it stays open
+  // across boards, because a conversation you're in shouldn't close because you
+  // clicked a list.
+  const tree = useTasksStore((s) => s.tree);
+  const chatOpen = useChatStore((s) => s.panelOpen);
+  const chatSpaceId = useChatStore((s) => s.spaceId);
+  const fetchUnread = useChatStore((s) => s.fetchUnread);
+  const chatSpace = tree.find((s) => s.id === chatSpaceId);
+
+  // Badges come from one grouped call, re-asked when the org changes: the
+  // counts belong to that org's spaces and carrying them across would show the
+  // wrong number next to the wrong tree.
+  useEffect(() => {
+    fetchUnread().catch(() => {});
+  }, [currentOrgId, fetchUnread]);
+
   return (
     <div className="flex-1 flex min-h-0">
       <Navigator />
       {activeDoc ? <DocView /> : <Board />}
+      {chatOpen && chatSpace && (
+        <ChatPanel spaceId={chatSpace.id} spaceName={chatSpace.name} />
+      )}
       <TaskDetailDrawer />
     </div>
   );
@@ -191,6 +212,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         {docIndex[docKey("space", space.id)] && (
           <FileText className="size-3 shrink-0 text-muted-foreground" />
         )}
+        <SpaceChatButton spaceId={space.id} spaceName={space.name} />
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -277,6 +299,52 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The space's channel: one button, no creating and no joining.
+ *
+ * The badge stays visible when there's something unread — unlike the menu
+ * button, which only appears on hover. A count you have to hover to discover is
+ * not a notification.
+ */
+function SpaceChatButton({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+  const unread = useChatStore((s) => s.unreadBySpace[spaceId] ?? 0);
+  const openPanel = useChatStore((s) => s.openPanel);
+  const panelOpen = useChatStore((s) => s.panelOpen);
+  const openSpaceId = useChatStore((s) => s.spaceId);
+  const closePanel = useChatStore((s) => s.closePanel);
+  const showing = panelOpen && openSpaceId === spaceId;
+
+  return (
+    <button
+      className={cn(
+        "flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground",
+        // Clicking the space you're already reading closes it, so the same
+        // button is the way back out.
+        showing && "text-primary opacity-100",
+        unread === 0 && !showing && "opacity-0 group-hover:opacity-100",
+      )}
+      aria-label={`Chat in ${spaceName}`}
+      title={`#${spaceName} — team channel`}
+      onClick={(e) => {
+        // The row opens the space's overview; this is a different destination.
+        e.stopPropagation();
+        if (showing) {
+          closePanel();
+          return;
+        }
+        openPanel(spaceId).catch((err) => toast.error(String(err)));
+      }}
+    >
+      <MessageSquare className="size-3.5" />
+      {unread > 0 && (
+        <span className="rounded-full bg-primary px-1 text-[10px] font-medium leading-4 text-primary-foreground">
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
+    </button>
   );
 }
 

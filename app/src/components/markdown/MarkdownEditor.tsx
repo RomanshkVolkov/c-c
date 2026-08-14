@@ -32,6 +32,7 @@ import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
 import TableToolbar from "./TableToolbar";
 import { SlashMenu } from "./slash-menu";
+import { CardMenu, type CardRef } from "./card-menu";
 
 /**
  * WYSIWYG editor whose stored value is **markdown**, not HTML or ProseMirror
@@ -123,6 +124,17 @@ export interface MarkdownEditorProps {
    * widening what the document may contain.
    */
   blockTools?: boolean;
+  /**
+   * Offers `#` to cite a card, from whatever this returns at trigger time.
+   *
+   * A getter and not an array: the board changes while the composer stays
+   * mounted, and a snapshot taken when the editor was built would go on
+   * offering the cards of a list nobody is looking at any more.
+   *
+   * Absent means the extension isn't loaded at all, so `#` keeps its ordinary
+   * markdown meaning everywhere else.
+   */
+  cards?: () => CardRef[];
   className?: string;
   minHeight?: string;
   autoFocus?: boolean;
@@ -172,6 +184,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     onFiles,
     collapsible = false,
     blockTools = false,
+    cards,
     className,
     minHeight = "8rem",
     autoFocus,
@@ -221,6 +234,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       ...tableExtensions,
       ...(collapsible ? collapsibleExtensions : []),
       ...(blockTools ? [SlashMenu] : []),
+      ...(cards ? [CardMenu.configure({ cards })] : []),
       Markdown.configure({
         html: false, // never smuggle raw HTML into the stored markdown
         transformPastedText: true,

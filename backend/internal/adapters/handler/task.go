@@ -27,6 +27,14 @@ type TaskHandler interface {
 	DeleteList(w http.ResponseWriter, r *http.Request)
 	MoveList(w http.ResponseWriter, r *http.Request)
 	MoveSpace(w http.ResponseWriter, r *http.Request)
+	RawChatAttachment(w http.ResponseWriter, r *http.Request)
+	UploadChatAttachment(w http.ResponseWriter, r *http.Request)
+	ChatUnread(w http.ResponseWriter, r *http.Request)
+	MarkChatRead(w http.ResponseWriter, r *http.Request)
+	WithdrawChat(w http.ResponseWriter, r *http.Request)
+	EditChat(w http.ResponseWriter, r *http.Request)
+	PostChat(w http.ResponseWriter, r *http.Request)
+	ListChat(w http.ResponseWriter, r *http.Request)
 	RotateListChannelKey(w http.ResponseWriter, r *http.Request)
 	UpdateListChannel(w http.ResponseWriter, r *http.Request)
 	GetListChannel(w http.ResponseWriter, r *http.Request)
@@ -62,6 +70,10 @@ type taskHandler struct {
 	// screen belonged to is being folded into this one.
 	channels *service.ReportProjectService
 	repo     *repository.TaskRepository
+	// chat is the space's channel of conversation — internal only, which is why
+	// it has its own service rather than riding the item paths that reach a
+	// tenant's webhook.
+	chat *service.ChatService
 	// images proxies attachment uploads so the API key and bucket stay
 	// server-side; nil/disabled simply turns attachments off.
 	images *imageservice.Client
@@ -73,11 +85,12 @@ type taskHandler struct {
 func NewTaskHandler(
 	svc *service.TaskService,
 	channels *service.ReportProjectService,
+	chat *service.ChatService,
 	repo *repository.TaskRepository,
 	images *imageservice.Client,
 	store *mediastore.Store,
 ) TaskHandler {
-	return &taskHandler{svc: svc, channels: channels, repo: repo, images: images, store: store}
+	return &taskHandler{svc: svc, channels: channels, chat: chat, repo: repo, images: images, store: store}
 }
 
 func mapTaskError(w http.ResponseWriter, err error) bool {

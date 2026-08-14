@@ -45,7 +45,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	if err != nil {
 		lg.Error("task attachment store init failed: " + err.Error())
 	}
-	h := handler.NewTaskHandler(svc, channels, taskRepo, images, store)
+	chat := service.NewChatService(repository.NewChatRepository(db), hub)
+	h := handler.NewTaskHandler(svc, channels, chat, taskRepo, images, store)
 
 	// The navigator: spaces → folders → lists.
 	r.Route("/api/v1/task-spaces", func(r chi.Router) {
@@ -63,6 +64,14 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/channel", h.CreateChannel)
 		r.Patch("/{id}/channel", h.UpdateChannel)
 		r.Post("/{id}/channel/rotate-key", h.RotateChannelKey)
+		// The space's channel of conversation. Internal by construction — see
+		// domain/chat.go for why the table has no visibility column.
+		r.Get("/{id}/chat", h.ListChat)
+		r.Post("/{id}/chat", h.PostChat)
+		r.Patch("/{id}/chat/{messageId}", h.EditChat)
+		r.Delete("/{id}/chat/{messageId}", h.WithdrawChat)
+		r.Post("/{id}/chat/read", h.MarkChatRead)
+		r.Post("/{id}/chat/attachments", h.UploadChatAttachment)
 	})
 
 	r.Route("/api/v1/task-folders", func(r chi.Router) {
@@ -85,6 +94,10 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Patch("/{id}/channel", h.UpdateListChannel)
 		r.Post("/{id}/channel/rotate-key", h.RotateListChannelKey)
 	})
+
+	// Every channel with unread lines, in one call — the navigator asks on every
+	// load, and one request per space would be one request per space.
+	r.With(middleware.AuthMiddleware).Get("/api/v1/chat/unread", h.ChatUnread)
 
 	r.Route("/api/v1/task-statuses", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
@@ -112,6 +125,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// so this one authorizes from `?token=` as well. Same pattern as the report
 	// image proxy.
 	r.Get("/api/v1/tasks/{id}/attachments/{attachmentId}/raw", h.RawAttachment)
+	r.Get("/api/v1/task-spaces/{id}/chat/attachments/{attachmentId}/raw", h.RawChatAttachment)
 
 	// Docs: one markdown overview per space/folder/list, sharing the task
 	// module's image-service client and media store.

@@ -122,6 +122,16 @@ func TestProjectKeyReachesNothingButReports(t *testing.T) {
 		// Removing a whole report is the tenant discarding a user's report, not
 		// tidying its own reply.
 		{http.MethodDelete, "/api/v1/reports/abc"},
+		// A space's chat is the team talking among themselves — the one place in
+		// cac with no visibility column, because nothing in it is ever meant to
+		// leave. A tenant's credential reading it would be the leak the missing
+		// column exists to prevent.
+		{http.MethodGet, "/api/v1/task-spaces/abc/chat"},
+		{http.MethodPost, "/api/v1/task-spaces/abc/chat"},
+		{http.MethodPatch, "/api/v1/task-spaces/abc/chat/xyz"},
+		{http.MethodDelete, "/api/v1/task-spaces/abc/chat/xyz"},
+		{http.MethodPost, "/api/v1/task-spaces/abc/chat/attachments"},
+		{http.MethodGet, "/api/v1/chat/unread"},
 	} {
 		code, claims := run(t, keyReq(c.method, c.path, "srv-key"))
 		if code != http.StatusForbidden || claims != nil {

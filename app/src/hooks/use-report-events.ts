@@ -10,6 +10,7 @@ import { STATUS_LABELS, normalizeStatus } from "@/types/report";
 import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
+import { useChatStore } from "@/store/chat.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { usePendingStore } from "@/store/pending.store";
 import { useNotificationsStore } from "@/store/notifications.store";
@@ -243,6 +244,27 @@ export function useReportEvents() {
           // drawer — and the description someone is writing in it — because a
           // colleague moved an unrelated card.
           if (store.openTaskId) store.refreshOpenTask();
+          break;
+        }
+        case "chat:message": {
+          const p = parse(data) as Payload & { spaceId?: string };
+          if (!p.spaceId) break;
+          // Your own line, echoed back by the stream every console hears. The
+          // panel already shows it — the post refetched — so there is nothing
+          // to do at all here, not even a refresh.
+          if (mine(p)) break;
+          void useChatStore.getState().onIncoming(p.spaceId);
+          // Only announce what you aren't already looking at. onIncoming has the
+          // same condition; it is repeated rather than returned because the two
+          // decisions are different — one updates a badge, one interrupts you.
+          const chat = useChatStore.getState();
+          if (chat.panelOpen && chat.spaceId === p.spaceId) break;
+          const space = useTasksStore
+            .getState()
+            .tree.find((s) => s.id === p.spaceId);
+          const where = space ? `#${space.name}` : "a channel";
+          toast.message(`New message in ${where}`);
+          notify("chat:message", where, "New message in the channel");
           break;
         }
         default:

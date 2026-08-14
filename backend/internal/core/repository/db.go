@@ -87,6 +87,9 @@ func DBConnection() {
 		&domain.NoteAttachment{},
 		&domain.NoteRevision{},
 		// The unified model. Nothing reads these yet — see item_migration.go.
+		&domain.ChatMessage{},
+		&domain.ChatRead{},
+		&domain.ChatAttachment{},
 		&domain.Item{},
 		&domain.ItemComment{},
 		&domain.ItemAttachment{},
