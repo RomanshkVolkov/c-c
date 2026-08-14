@@ -59,6 +59,23 @@ func migrateItems(db *gorm.DB) {
 	}
 	defer db.Exec(`SELECT pg_advisory_unlock(?)`, lockKey)
 
+	// A database with none of the old tables is a fresh install, not a broken
+	// migration: there is nothing to copy, and every step below would fail asking
+	// for a table that never existed.
+	//
+	// Found by booting this binary against an empty database, which is what a
+	// first deploy and a restore-from-nothing both look like. It panicked in the
+	// collision check and would have crash-looped — the one case where stopping
+	// the deploy is exactly the wrong answer, because nothing is wrong.
+	if !hasLegacyItemTables(db) {
+		db.Exec(`INSERT INTO schema_backfills (name, completed_at, detail)
+		         VALUES (?, now(), ?)
+		         ON CONFLICT (name) DO NOTHING`,
+			itemBackfillName, "fresh database; no legacy tables to copy")
+		lg.Info("items migration: fresh database, nothing to copy")
+		return
+	}
+
 	if err := renameAssigneeTable(db); err != nil {
 		panic("items migration: renaming the assignee table: " + err.Error())
 	}
@@ -219,6 +236,27 @@ func ensureItemUniqueIndexes(db *gorm.DB) {
 // carried over unchanged — that is what keeps saved links and the tenant's own
 // records working — so if one ever did, two unrelated pieces of work would merge
 // into one row and the loss would be silent.
+// hasLegacyItemTables answers whether this database predates the unification.
+//
+// Both are required, not either: the copy reads reports and tasks together (the
+// collision check joins them), so a database with one and not the other is not
+// a state this migration knows how to reason about — and guessing would be how
+// half a copy gets made. It reads as "fresh" and stops, which leaves the data
+// untouched and visible rather than half-moved.
+func hasLegacyItemTables(db *gorm.DB) bool {
+	var n int64
+	if err := db.Raw(`SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_schema = CURRENT_SCHEMA() AND table_name IN ('reports','tasks')`).
+		Scan(&n).Error; err != nil {
+		// Can't tell → carry on as before. A migration that skips itself because
+		// a catalog query hiccupped would be worse than one that tries and fails
+		// loudly.
+		lg.Warn("items migration: cannot inspect the schema: " + err.Error())
+		return true
+	}
+	return n == 2
+}
+
 func checkNoIDCollisions(db *gorm.DB) error {
 	var n int64
 	if err := db.Raw(`SELECT COUNT(*) FROM reports r JOIN tasks t ON t.id = r.id`).Scan(&n).Error; err != nil {
