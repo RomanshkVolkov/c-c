@@ -25,7 +25,11 @@ const (
 
 func DBConnection() {
 	dsn := GetEnv("DATABASE_URL", "")
-	lg.Info("En injected: " + dsn)
+	// Redacted, because this line prints on every boot and the DSN carries the
+	// database password — the same leak already fixed in LoadEnv, in a second
+	// place. Which host and database were picked is the part worth logging, and
+	// it is the part that answers "why is this pointing at production?".
+	lg.Info("DB target: " + redactDSN(dsn))
 	if dsn == "" {
 		dsn = buildDSN()
 	}
@@ -260,6 +264,32 @@ func promoteSuperadmin(db *gorm.DB) {
 		Update("is_superadmin", true).Error; err != nil {
 		lg.Error("promote superadmin failed: " + err.Error())
 	}
+}
+
+// redactDSN keeps the parts that identify the target and drops the credential.
+//
+// Both DSN shapes are handled: the key=value form this project uses, and the
+// postgres:// URL form, because whoever sets DATABASE_URL next may well use it
+// and a redactor that only knows one shape leaks the other.
+func redactDSN(dsn string) string {
+	if dsn == "" {
+		return "(from DB_* variables)"
+	}
+	if i := strings.Index(dsn, "://"); i >= 0 {
+		// postgres://user:secret@host/db → hide everything between // and @.
+		rest := dsn[i+3:]
+		if at := strings.LastIndex(rest, "@"); at >= 0 {
+			return dsn[:i+3] + "***@" + rest[at+1:]
+		}
+		return dsn
+	}
+	parts := strings.Fields(dsn)
+	for i, p := range parts {
+		if strings.HasPrefix(p, "password=") {
+			parts[i] = "password=***"
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // buildDSN constructs a DSN from individual env vars as fallback.
