@@ -7,11 +7,41 @@ export interface UpdateInfo {
   body: string;
 }
 
+/**
+ * How long without a single chunk before the panel says so.
+ *
+ * The download is one 86 MB file over whatever connection the person has — on a
+ * slow one, twenty seconds between chunks is unremarkable. This is not a
+ * timeout and nothing is cancelled: it only replaces a number that has stopped
+ * moving with a sentence saying it has stopped moving.
+ */
+const STALL_SECONDS = 20;
+
+const MB = 1024 * 1024;
+
+/**
+ * What to show for a download in flight.
+ *
+ * Without a total there is no percentage — the API marks `contentLength`
+ * optional, and a made-up denominator is worse than an honest byte count.
+ */
+export function describeProgress(downloaded: number, total: number | null): string {
+  const got = (downloaded / MB).toFixed(1);
+  if (!total) return `${got} MB downloaded`;
+  const all = (total / MB).toFixed(1);
+  const pct = Math.min(100, Math.round((downloaded / total) * 100));
+  return `${got} / ${all} MB (${pct}%)`;
+}
+
 interface UpdaterState {
   available: UpdateInfo | null;
   checking: boolean;
   downloading: boolean;
   progress: string | null;
+  /** Bytes in, accumulated across every chunk. */
+  downloaded: number;
+  /** Total bytes, when the server declared one. */
+  total: number | null;
   lastCheckedAt: number | null;
   lastError: string | null;
   dismissedVersion: string | null;
@@ -26,6 +56,8 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   checking: false,
   downloading: false,
   progress: null,
+  downloaded: 0,
+  total: null,
   lastCheckedAt: null,
   lastError: null,
   dismissedVersion: null,
@@ -57,7 +89,29 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
 
   installUpdate: async () => {
     if (!get().available) return;
-    set({ downloading: true, progress: "Preparing..." });
+    // Every counter starts from zero, and last attempt's error goes with it —
+    // otherwise a retry shows the previous failure while it is busy succeeding.
+    set({
+      downloading: true,
+      progress: "Preparing…",
+      downloaded: 0,
+      total: null,
+      lastError: null,
+    });
+
+    let lastChunkAt = Date.now();
+    const stall = setInterval(() => {
+      const s = get();
+      if (!s.downloading) return;
+      const idle = Math.round((Date.now() - lastChunkAt) / 1000);
+      if (idle < STALL_SECONDS) return;
+      // A stalled download used to be indistinguishable from a slow one, which
+      // is how "it just sat there" became the whole bug report.
+      set({
+        progress: `${describeProgress(s.downloaded, s.total)} — no progress for ${idle}s`,
+      });
+    }, 5000);
+
     try {
       const update = await check();
       if (!update) {
@@ -70,16 +124,24 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
         return;
       }
       await update.downloadAndInstall((event) => {
-        if (event.event === "Started" && event.data.contentLength) {
-          set({
-            progress: `0 / ${(event.data.contentLength / 1024 / 1024).toFixed(1)} MB`,
-          });
+        if (event.event === "Started") {
+          lastChunkAt = Date.now();
+          const total = event.data.contentLength ?? null;
+          set({ total, downloaded: 0, progress: describeProgress(0, total) });
         } else if (event.event === "Progress") {
-          set({
-            progress: `Downloading... ${(event.data.chunkLength / 1024).toFixed(0)} KB`,
+          lastChunkAt = Date.now();
+          // `chunkLength` is the size of *this chunk*, not the running total —
+          // see the plugin's DownloadEvent. Reporting it directly is what made
+          // an 86 MB download read "16 KB" forever, because that is simply how
+          // big each chunk happens to be.
+          set((s) => {
+            const downloaded = s.downloaded + event.data.chunkLength;
+            return { downloaded, progress: describeProgress(downloaded, s.total) };
           });
         } else if (event.event === "Finished") {
-          set({ progress: "Restarting..." });
+          // Swapping the binary takes a moment and reports nothing while it
+          // does; saying "Restarting" before it happened was a small lie.
+          set({ progress: "Installing…" });
         }
       });
       await relaunch();
@@ -87,8 +149,12 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       set({
         downloading: false,
         progress: null,
+        downloaded: 0,
+        total: null,
         lastError: e instanceof Error ? e.message : String(e),
       });
+    } finally {
+      clearInterval(stall);
     }
   },
 

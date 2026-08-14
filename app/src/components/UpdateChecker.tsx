@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Download, RefreshCw, X } from "lucide-react";
+import { AlertCircle, Download, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUpdaterStore } from "@/store/updater.store";
 
@@ -7,6 +7,9 @@ export default function UpdateChecker() {
   const available = useUpdaterStore((s) => s.available);
   const downloading = useUpdaterStore((s) => s.downloading);
   const progress = useUpdaterStore((s) => s.progress);
+  const downloaded = useUpdaterStore((s) => s.downloaded);
+  const total = useUpdaterStore((s) => s.total);
+  const lastError = useUpdaterStore((s) => s.lastError);
   const dismissedVersion = useUpdaterStore((s) => s.dismissedVersion);
   const checkForUpdate = useUpdaterStore((s) => s.checkForUpdate);
   const installUpdate = useUpdaterStore((s) => s.installUpdate);
@@ -23,6 +26,8 @@ export default function UpdateChecker() {
 
   if (!available) return null;
   if (dismissedVersion === available.version && !downloading) return null;
+
+  const pct = total ? Math.min(100, (downloaded / total) * 100) : null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm bg-card border rounded-lg shadow-lg p-4 space-y-2">
@@ -54,6 +59,33 @@ export default function UpdateChecker() {
         <p className="text-xs text-muted-foreground font-mono">{progress}</p>
       )}
 
+      {/* A plain div rather than a new dependency: this is a filled rectangle.
+          Indeterminate until the server declares a size, because a bar sitting
+          at zero would say "nothing is happening" about a download that is. */}
+      {downloading && (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={
+              pct === null
+                ? "h-full w-1/3 animate-pulse bg-primary"
+                : "h-full bg-primary transition-all duration-300"
+            }
+            style={pct === null ? undefined : { width: `${pct}%` }}
+          />
+        </div>
+      )}
+
+      {/* Failures used to be swallowed: the panel simply went back to offering
+          the update, saying nothing about why the last try didn't take. On
+          Linux this is where "the updater only replaces an AppImage" finally
+          gets to say so out loud. */}
+      {lastError && !downloading && (
+        <p className="flex items-start gap-1.5 text-xs text-destructive">
+          <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+          <span className="break-words">{lastError}</span>
+        </p>
+      )}
+
       <Button
         size="sm"
         onClick={installUpdate}
@@ -65,7 +97,11 @@ export default function UpdateChecker() {
         ) : (
           <Download className="h-3 w-3 mr-1" />
         )}
-        {downloading ? "Updating..." : "Install & Restart"}
+        {downloading
+          ? "Updating..."
+          : lastError
+            ? "Retry"
+            : "Install & Restart"}
       </Button>
     </div>
   );
