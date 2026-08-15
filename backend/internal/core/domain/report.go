@@ -544,6 +544,13 @@ type ReportCommentResponse struct {
 	// the tenant and the reporter never receive these rows at all.
 	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 	// Scan targets, folded into Author by the repository.
+	//
+	// Visibility is scan-only: the board reads it to say, line by line, who else
+	// can see the reply. It stays out of the JSON because the only callers who
+	// receive this shape over the wire are the tenant and the reporter, and they
+	// are already sent nothing but public lines — telling them "this one is
+	// public" would be noise at best.
+	Visibility         string `json:"-"`
 	AuthorProjectID    string `json:"-"`
 	AuthorProjectName  string `json:"-"`
 	AuthorExternalID   string `json:"-"`

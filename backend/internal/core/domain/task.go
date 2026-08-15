@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -406,6 +407,14 @@ type TaskCard struct {
 	Tags         []TaskTag     `json:"tags"`
 	Assignees    []UserSummary `json:"assignees"`
 	UpdatedAt    time.Time     `json:"updatedAt"`
+	// Category and Area are the report taxonomy, on the card so the board can
+	// filter by them without opening anything. Empty on work raised inside cac,
+	// which nobody classifies this way.
+	Category string `json:"category,omitempty"`
+	Area     string `json:"area,omitempty"`
+	// CreatedAt drives the calendar view, which groups by the day something was
+	// filed — the question that view answers is "what came in that week".
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type BoardResponse struct {
@@ -441,9 +450,14 @@ type OpenTask struct {
 }
 
 type TaskCommentResponse struct {
-	ID           string `json:"id"`
-	AuthorUserID string `json:"authorUserId"`
-	AuthorName   string `json:"authorName"`
+	ID string `json:"id"`
+	// Author is the same tagged author the report thread returns, because it is
+	// the same thread. Resolving it here from null-ness instead is what left the
+	// client's own replies nameless on the board — see tagAuthor, which exists
+	// so exactly one place answers this question.
+	Author       *CommentAuthor `json:"author,omitempty" gorm:"-"`
+	AuthorUserID string         `json:"authorUserId"`
+	AuthorName   string         `json:"authorName"`
 	// Visibility is sent on every comment so the thread can say, line by line,
 	// who is reading it. Without it a board full of replies looks identical
 	// whether the client can see them or not, and the only way to find out is to
@@ -470,4 +484,13 @@ type TaskDetail struct {
 	Subtasks    []TaskCard            `json:"subtasks"`
 	/** Set when this task is itself a subtask, so the drawer can link back. */
 	Parent *TaskCard `json:"parent,omitempty"`
+	// Folio and ProjectSlug are how a client's ticket is named — "portento-89".
+	// Empty for work raised inside cac, which numbers per space and has no
+	// channel to name. Derived, not stored: see Folio().
+	Folio       string `json:"folio,omitempty"`
+	ProjectSlug string `json:"projectSlug,omitempty"`
+	// Telemetry is the decrypted breadcrumbs blob, when the report carried one
+	// and it hasn't been purged. The report facade has always returned this; the
+	// board could not show what led up to a bug without it.
+	Telemetry json.RawMessage `json:"telemetry,omitempty"`
 }

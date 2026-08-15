@@ -328,12 +328,32 @@ func (r *ReportRepository) ListImages(reportID string) ([]domain.ReportImage, er
 //
 // The caller decides; see the two gates in report_admin.go.
 func (r *ReportRepository) ListComments(reportID string, insideCac bool) ([]domain.ReportCommentResponse, error) {
+	// A report read from inside cac shows withdrawn lines struck through; read
+	// from outside it shows neither those nor the internal ones.
+	return listItemComments(r.db, reportID, insideCac, insideCac)
+}
+
+// listItemComments reads one item's thread, tagged, for whichever facade asks.
+//
+// Shared on purpose. There were two of these, and the second one — the board's —
+// resolved the author with `LEFT JOIN users` alone, so anyone without a cac
+// account came back nameless. Two readers of one thread will diverge again the
+// moment authorship gains a case, so there is one.
+//
+// The two permissions are separate arguments because they are separate
+// questions, and folding them into one "insideCac" flag silently changed the
+// board: it started showing withdrawn comments, which the report view does on
+// purpose and the board never has.
+//
+//   - includeInternal: may see lines the client cannot.
+//   - includeWithdrawn: may see lines somebody retracted.
+func listItemComments(db *gorm.DB, itemID string, includeInternal, includeWithdrawn bool) ([]domain.ReportCommentResponse, error) {
 	var out []domain.ReportCommentResponse
-	err := r.db.Raw(`
+	err := db.Raw(`
 		SELECT c.id, c.kind, c.author_user_id, u.username AS author_name,
 		       c.author_project_id, p.name AS author_project_name,
 		       c.author_external_id, c.author_external_name,
-		       r.reporter_name, r.reporter_id, c.deleted_at,
+		       r.reporter_name, r.reporter_id, c.deleted_at, c.visibility,
 		       c.body, c.created_at, c.updated_at
 		FROM item_comments c
 		JOIN items r ON r.id = c.item_id
@@ -343,7 +363,7 @@ func (r *ReportRepository) ListComments(reportID string, insideCac bool) ([]doma
 		  AND (c.deleted_at IS NULL OR ?)
 		  AND (c.visibility = 'public' OR ?)
 		ORDER BY c.created_at ASC
-	`, reportID, insideCac, insideCac).Scan(&out).Error
+	`, itemID, includeWithdrawn, includeInternal).Scan(&out).Error
 	if err != nil {
 		return nil, err
 	}

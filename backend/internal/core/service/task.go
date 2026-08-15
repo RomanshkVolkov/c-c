@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -571,6 +572,25 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 		Tags:      tags, Assignees: assignees, Comments: comments, Attachments: attachments,
 		Subtasks: subtasks,
 	}
+	// What this card is when it arrived through a client's channel. Guarded on
+	// ProjectID rather than on the fields being non-empty: an internal task must
+	// never be handed a folio, because a folio names a number in a client's
+	// sequence and this one has none.
+	if t.ProjectID != "" {
+		if slug := s.repo.ProjectSlug(t.ProjectID); slug != "" {
+			detail.ProjectSlug = slug
+			detail.Folio = domain.Folio(slug, t.Seq)
+		}
+		// Best-effort, exactly as the report facade does it: a purged blob or a
+		// missing key means no timeline, not a failed request. Losing the
+		// breadcrumbs is not a reason to refuse to open the card.
+		if len(t.Telemetry) > 0 {
+			if plain, err := repository.DecryptTelemetry(t.Telemetry); err == nil && json.Valid(plain) {
+				detail.Telemetry = plain
+			}
+		}
+	}
+
 	// When this task is a subtask, hand the drawer enough to link back up.
 	if t.ParentID != nil {
 		if p, err := s.repo.FindTask(*t.ParentID); err == nil {

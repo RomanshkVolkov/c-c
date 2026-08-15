@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -421,15 +422,62 @@ func (r *TaskRepository) FindTaskByIdempotencyKey(listID, key string) (*domain.T
 	return &t, nil
 }
 
+// FindTask resolves a card by its id, or by the folio a client's ticket is
+// known as — "portento-89".
+//
+// The folio exists to be quoted: it is what gets pasted into a chat message, an
+// email, or an agent's prompt. Until now only cac itself could turn one back
+// into a row, and everyone else had to search for it first, which makes a name
+// that names nothing.
+//
+// Every read and write of a single card comes through here, so accepting the
+// folio once covers the API and the MCP tools together instead of each endpoint
+// growing its own parsing.
 func (r *TaskRepository) FindTask(id string) (*domain.Task, error) {
 	var t domain.Task
-	if err := r.db.First(&t, "id = ?", id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrTaskNotFound
-		}
+	err := r.db.First(&t, "id = ?", id).Error
+	if err == nil {
+		return &t, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	return &t, nil
+	if found, ok := r.findByFolio(id); ok {
+		return found, nil
+	}
+	return nil, ErrTaskNotFound
+}
+
+// findByFolio turns "portento-89" into the item it names.
+//
+// Split on the *last* hyphen, not the first: slugs contain them
+// ("tds-geolocation-12"), and cutting at the front would look for a project
+// called "tds" and a sequence of "geolocation-12".
+//
+// Only channel items have a folio. An internal card's seq counts within its
+// space, so the same digits belong to a different thing — resolving those here
+// would hand back somebody else's card under the client's name.
+func (r *TaskRepository) findByFolio(ref string) (*domain.Task, bool) {
+	cut := strings.LastIndex(ref, "-")
+	if cut <= 0 || cut == len(ref)-1 {
+		return nil, false
+	}
+	slug, seqText := ref[:cut], ref[cut+1:]
+	seq, err := strconv.Atoi(seqText)
+	if err != nil || seq <= 0 {
+		return nil, false
+	}
+
+	var t domain.Task
+	err = r.db.Raw(`
+		SELECT i.* FROM items i
+		JOIN report_projects p ON p.id = i.project_id
+		WHERE p.slug = ? AND i.seq = ? AND i.deleted_at IS NULL
+	`, slug, seq).Scan(&t).Error
+	if err != nil || t.ID == "" {
+		return nil, false
+	}
+	return &t, true
 }
 
 func (r *TaskRepository) UpdateTask(id string, fields map[string]any) error {
@@ -646,6 +694,9 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 			Tags:            orEmptyTags(tagsBy[t.ID]),
 			Assignees:       orEmptyUsers(asgBy[t.ID]),
 			UpdatedAt:       t.UpdatedAt,
+			Category:        string(t.Category),
+			Area:            t.Area,
+			CreatedAt:       t.CreatedAt,
 		}
 	}
 	return cards, nil
@@ -784,31 +835,35 @@ func (r *TaskRepository) DeleteComment(id string) error {
 	})
 }
 
-func (r *TaskRepository) Comments(taskID string) ([]domain.TaskCommentResponse, error) {
-	// Scan into a flat row first: GORM tries to resolve a slice field on the
-	// destination struct as a relation and refuses the query otherwise.
-	type commentRow struct {
-		ID           string
-		AuthorUserID string
-		AuthorName   string
-		Visibility   string
-		Kind         string
-		Body         string
-		CreatedAt    time.Time
-		UpdatedAt    time.Time
+// Comments reads a card's thread for the board.
+//
+// The author comes from the shared reader, not from a join of its own. This
+// used to resolve the name with `LEFT JOIN users` alone, which answers only for
+// people who have a cac account — so a reply from the client, or from their
+// app, arrived with an empty name and the client's half of the conversation
+// rendered anonymous. The report facade never had that bug because it goes
+// through tagAuthor, and tagAuthor's whole reason for existing is that one
+// place must decide this. This is now that one place for both.
+// ProjectSlug names the channel an item arrived through, for its folio.
+//
+// Empty when there is no channel or it has since been removed — a card that
+// can't be named is still a card, and refusing to open it over a missing slug
+// would be worse than showing it without one.
+func (r *TaskRepository) ProjectSlug(projectID string) string {
+	if projectID == "" {
+		return ""
 	}
-	var rows []commentRow
-	err := r.db.Table("item_comments c").
-		Select("c.id, c.author_user_id, COALESCE(u.username,'') AS author_name, "+
-			"c.visibility, c.kind, c.body, c.created_at, c.updated_at").
-		Joins("LEFT JOIN users u ON u.id = c.author_user_id").
-		// deleted_at, spelt out: Table() with a raw name opts out of the soft-delete
-		// scope GORM would apply to a model query. Comments became soft-deleted
-		// when this table merged, and this read was never updated — so deleting
-		// one appeared to fail, the thread kept showing it, and trying again
-		// answered "not found" about something plainly on screen.
-		Where("c.item_id = ? AND c.deleted_at IS NULL", taskID).
-		Order("c.created_at ASC").Scan(&rows).Error
+	var slug string
+	r.db.Raw(`SELECT slug FROM report_projects WHERE id = ?`, projectID).Scan(&slug)
+	return slug
+}
+
+func (r *TaskRepository) Comments(taskID string) ([]domain.TaskCommentResponse, error) {
+	// Internal lines belong here — this is the team's own board, and the
+	// visibility of each one travels with it so the thread can say who else is
+	// reading. Withdrawn ones do not: retracting a comment on a card removes it,
+	// which is what the board has always done.
+	rows, err := listItemComments(r.db, taskID, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -819,12 +874,17 @@ func (r *TaskRepository) Comments(taskID string) ([]domain.TaskCommentResponse, 
 		if err != nil {
 			return nil, err
 		}
+		userID := ""
+		if row.AuthorUserID != nil {
+			userID = *row.AuthorUserID
+		}
 		out[i] = domain.TaskCommentResponse{
 			ID:           row.ID,
-			AuthorUserID: row.AuthorUserID,
+			Author:       row.Author,
+			AuthorUserID: userID,
 			AuthorName:   row.AuthorName,
 			Visibility:   domain.ItemVisibility(row.Visibility),
-			Kind:         domain.ReportCommentKind(row.Kind),
+			Kind:         row.Kind,
 			Body:         row.Body,
 			Attachments:  att,
 			CreatedAt:    row.CreatedAt,
