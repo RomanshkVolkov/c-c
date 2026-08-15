@@ -111,7 +111,8 @@ export default function NotificationsPanel({
                       onClick={() => {
                         if (!n.reportId) return;
                         onOpenChange(false);
-                        navigate(`/reports?open=${n.reportId}`);
+                        // The board is where this lives now; the id is the same row.
+                        navigate(`/tasks?task=${n.reportId}`);
                       }}
                     >
                       <div className="flex w-full items-center gap-2">

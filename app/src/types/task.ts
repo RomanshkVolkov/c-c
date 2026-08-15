@@ -1,4 +1,5 @@
 import type { UserSummary } from "@/types/collections";
+import type { CommentAuthor, ReportTelemetry } from "@/types/report";
 
 export type TaskPriority = "none" | "low" | "normal" | "high" | "urgent";
 export type TaskStatusKind = "open" | "active" | "done";
@@ -119,6 +120,11 @@ export interface TaskCard {
   tags: TaskTag[];
   assignees: UserSummary[];
   updatedAt: string;
+  /** Report taxonomy, so the board can filter without opening each card. */
+  category?: string;
+  area?: string;
+  /** When it arrived — what the calendar view groups by. */
+  createdAt: string;
 }
 
 export interface BoardResponse {
@@ -139,6 +145,11 @@ export interface TaskAttachment {
 
 export interface TaskComment {
   id: string;
+  /**
+   * Who wrote it, tagged. The flat fields below only ever name people with a
+   * cac account, so the client's own replies used to render anonymous.
+   */
+  author?: CommentAuthor;
   authorUserId: string;
   authorName: string;
   /**
@@ -180,6 +191,25 @@ export interface Task {
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Where this came from, when it arrived through a client's channel.
+   *
+   * These have always travelled — an item is one row and the task API returns
+   * all of it — but nothing on the board read them, so opening a client's
+   * ticket from the board showed a card with no reporter and no idea what they
+   * were looking at when it broke.
+   */
+  reporterName?: string;
+  reporterEmail?: string;
+  reporterId?: string;
+  /** The page they were on, and what they were using. */
+  url?: string;
+  userAgent?: string;
+  viewport?: string;
+  category?: string;
+  area?: string;
+  /** "user" for something a person filed, "system" for an automatic report. */
+  origin?: string;
 }
 
 export interface TaskDetail {
@@ -193,6 +223,11 @@ export interface TaskDetail {
   attachments: TaskAttachment[];
   subtasks: TaskCard[];
   parent?: TaskCard | null;
+  /** "portento-89" — only for a client's ticket; internal cards number per space. */
+  folio?: string;
+  projectSlug?: string;
+  /** Decrypted breadcrumbs, when the report carried them and they aren't purged. */
+  telemetry?: ReportTelemetry;
 }
 
 export interface UpdateTaskPayload {

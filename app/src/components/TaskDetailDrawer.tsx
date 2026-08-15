@@ -34,6 +34,9 @@ import { usePrompt } from "@/components/PromptDialog";
 import { openAttachment } from "@/lib/media";
 import PdfPreview from "@/components/PdfPreview";
 import CopyId from "@/components/CopyId";
+import TelemetryTimeline from "@/components/TelemetryTimeline";
+import { commentByline } from "@/lib/byline";
+import { describeAgent } from "@/lib/user-agent";
 import { useTasksStore } from "@/store/tasks.store";
 import { useAuthStore } from "@/store/auth.store";
 import { PRIORITIES, priorityMeta } from "@/types/task";
@@ -134,7 +137,7 @@ function CommentItem({
       )}
     >
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{c.authorName || "unknown"}</span>
+        <span className="font-medium text-foreground">{commentByline(c.author, c.authorName)}</span>
         <span>{new Date(c.createdAt).toLocaleString()}</span>
         {edited && <span className="italic">edited</span>}
         {clientReads && (
@@ -308,9 +311,15 @@ function Content() {
               </button>
             </>
           )}
-          {" · #"}
-          {task.seq}
+          {/* The number reads best beside the space it belongs to. When this
+              is a client's ticket the same chip copies the whole folio —
+              "portento-97" — which is what gets quoted in a message or handed
+              to an agent, and what the MCP tools resolve. */}
+          {!detail.folio && ` · #${task.seq}`}
         </span>
+        {detail.folio && (
+          <CopyId id={detail.folio} label="folio" display={`#${task.seq}`} />
+        )}
         {/* Whether a client is reading this, said plainly and next to the title.
             Someone about to type a frank note needs to know before they type it,
             not after. */}
@@ -617,6 +626,85 @@ function Content() {
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {/* Where this came from, when it came from a client.
+            Everything here has always been in the response — an item is one row
+            and the task API returns all of it — but the board never read it, so
+            a ticket opened from here showed no reporter and no clue what they
+            were looking at when it broke. Rendered only when there is a channel:
+            an internal card has none of it and would show a block of blanks. */}
+        {task.projectId && (
+          <section className="space-y-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Reported
+            </h3>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              {(task.reporterName || task.reporterEmail) && (
+                <>
+                  <dt className="text-muted-foreground">By</dt>
+                  <dd className="break-words">
+                    {task.reporterName || task.reporterEmail}
+                    {task.reporterName && task.reporterEmail && (
+                      <span className="text-muted-foreground"> · {task.reporterEmail}</span>
+                    )}
+                  </dd>
+                </>
+              )}
+              {task.url && (
+                <>
+                  <dt className="text-muted-foreground">On</dt>
+                  <dd className="break-all">
+                    {/* Their page, not ours: opened outside rather than routed
+                        into the app, which would only 404. */}
+                    <a
+                      href={task.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-foreground"
+                    >
+                      {task.url}
+                    </a>
+                  </dd>
+                </>
+              )}
+              {task.userAgent && (
+                <>
+                  <dt className="text-muted-foreground">Using</dt>
+                  <dd className="break-words" title={task.userAgent}>
+                    {describeAgent(task.userAgent)}
+                    {task.viewport && (
+                      <span className="text-muted-foreground"> · {task.viewport}</span>
+                    )}
+                  </dd>
+                </>
+              )}
+              {task.category && (
+                <>
+                  <dt className="text-muted-foreground">Kind</dt>
+                  <dd>
+                    {task.category}
+                    {task.area && <span className="text-muted-foreground"> · {task.area}</span>}
+                    {task.origin === "system" && (
+                      <span className="text-muted-foreground"> · filed automatically</span>
+                    )}
+                  </dd>
+                </>
+              )}
+            </dl>
+          </section>
+        )}
+
+        {/* What led up to it. Absent when the report carried none or its TTL has
+            passed and it was purged — both are normal, so there is no empty
+            state to show. */}
+        {detail.telemetry && (
+          <section className="space-y-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Before it broke
+            </h3>
+            <TelemetryTimeline data={detail.telemetry} />
           </section>
         )}
 

@@ -5,18 +5,27 @@ import { cn } from "@/lib/utils";
 /**
  * A copyable id, shown short.
  *
- * Ids exist so you can hand one to an agent: the MCP tools take a `listId` or a
- * task id, and reading a UUID off the screen by hand is where a session goes
- * wrong. Truncated on purpose — the point is to copy it, not to read it.
+ * Ids exist so you can hand one to an agent: the MCP tools take a `listId`, a
+ * task id or a folio, and reading a UUID off the screen by hand is where a
+ * session goes wrong. Truncated on purpose — the point is to copy it, not to
+ * read it.
+ *
+ * `display` separates the two jobs. A folio reads best as "#97" next to the
+ * space it belongs to, but what you want on the clipboard is "portento-97",
+ * which is the whole name and the thing the MCP tools resolve. Truncating that
+ * to fit would leave "portento" — identical on every ticket the client has.
  */
 export default function CopyId({
   id,
   label,
+  display,
   className,
 }: {
   id: string;
-  /** What this id refers to, used in the tooltip: "task", "list"… */
+  /** What this id refers to, used in the tooltip: "task", "list", "folio"… */
   label: string;
+  /** Shown instead of the id itself; the full id is still what gets copied. */
+  display?: string;
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -42,7 +51,7 @@ export default function CopyId({
       )}
     >
       {copied ? <Check className="size-2.5" /> : <Copy className="size-2.5" />}
-      {id.slice(0, 8)}
+      {display ?? id.slice(0, 8)}
     </button>
   );
 }

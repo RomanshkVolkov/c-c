@@ -40,13 +40,13 @@ export default function PendingSummary() {
         icon={Bug}
         count={reports?.length}
         failed={failed}
-        onSeeAll={() => navigate("/reports")}
+        onSeeAll={() => navigate("/tasks")}
         empty="Nothing reported and unresolved."
       >
         {reports?.slice(0, 6).map((r) => (
           <Row
             key={r.id}
-            onClick={() => navigate(`/reports?open=${r.id}`)}
+            onClick={() => navigate(`/tasks?task=${r.id}`)}
             title={r.title}
             meta={`${r.folio} · ${r.projectName}`}
             right={

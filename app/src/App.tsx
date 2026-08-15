@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "@/pages/Login";
+import ReportsRedirect from "@/components/ReportsRedirect";
 import Dashboard from "@/pages/Dashboard";
-import Reports from "@/pages/Reports";
 import ServerManage from "@/pages/ServerManage";
 import ServerStats from "@/pages/ServerStats";
 import StackSecrets from "@/pages/StackSecrets";
@@ -44,7 +44,11 @@ export default function App() {
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/reports" element={<Reports />} />
+          {/* The reports window is gone — its work lives on the board. The
+              route stays as a redirect because notifications already sent are
+              stored with /reports links, and a report's id *is* the item's id,
+              so the translation is exact. See ReportsRedirect. */}
+          <Route path="/reports" element={<ReportsRedirect />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/notes/:id" element={<Notes />} />

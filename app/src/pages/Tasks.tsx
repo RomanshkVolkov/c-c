@@ -37,6 +37,7 @@ import DocView from "@/components/DocView";
 import CopyId from "@/components/CopyId";
 import ChannelDialog from "@/components/ChannelDialog";
 import ChatPanel from "@/components/ChatPanel";
+import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
@@ -554,12 +555,65 @@ function ListNode({
   );
 }
 
+/**
+ * A filter over the report taxonomy, shown only when the cards carry one.
+ *
+ * Work raised inside cac has no category or area — nobody classifies it that
+ * way — so on an ordinary list these render nothing rather than two empty
+ * dropdowns that never do anything.
+ */
+function TaxonomyPicker({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <select
+      className="h-7 rounded-md border bg-background px-1.5 text-xs capitalize"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{label}</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** The colour of the column a card sits in, so the calendar reads like the board. */
+function dotForStatus(
+  statuses: { id: string; color: string }[],
+  statusId: string,
+): string {
+  const found = statuses.find((s) => s.id === statusId);
+  // A bare class name can't carry an arbitrary hex, and the column colours are
+  // user-chosen, so this maps to the two states the month view actually needs
+  // to distinguish at a glance.
+  return found ? "bg-primary" : "bg-muted-foreground/40";
+}
+
 // ─── Board ────────────────────────────────────────────────────────────────────
 
 function Board() {
   // Board vs list is a per-user viewing preference, not shared state — keeping
   // it local means two people can look at the same list differently.
-  const [view, setView] = useState<"board" | "list">("board");
+  const [view, setView] = useState<"board" | "list" | "calendar">("board");
+  // The report taxonomy, as a filter over the cards already on screen. Client
+  // work carries it and internal work doesn't, so the controls only appear when
+  // there is something to filter by — an always-visible pair of empty selects
+  // on a plain board would be furniture.
+  const [category, setCategory] = useState("");
+  const [area, setArea] = useState("");
   const board = useTasksStore((s) => s.board);
   const loading = useTasksStore((s) => s.loadingBoard);
   const activeListId = useTasksStore((s) => s.activeListId);
@@ -652,7 +706,12 @@ function Board() {
     ),
   }));
 
-  const items = board.tasks.map((t) => ({ ...t, columnId: t.statusId }));
+  const categories = [...new Set(board.tasks.map((t) => t.category).filter(Boolean))] as string[];
+  const areas = [...new Set(board.tasks.map((t) => t.area).filter(Boolean))] as string[];
+  const visible = board.tasks.filter(
+    (t) => (!category || t.category === category) && (!area || t.area === area),
+  );
+  const items = visible.map((t) => ({ ...t, columnId: t.statusId }));
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -664,7 +723,7 @@ function Board() {
           {board.tasks.length} tasks
         </Badge>
         <div className="ml-2 flex rounded-md border p-0.5">
-          {(["board", "list"] as const).map((v) => (
+          {(["board", "list", "calendar"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -677,6 +736,8 @@ function Board() {
             </button>
           ))}
         </div>
+        <TaxonomyPicker label="Any kind" value={category} options={categories} onChange={setCategory} />
+        <TaxonomyPicker label="Any area" value={area} options={areas} onChange={setArea} />
         <Button
           size="sm"
           variant="ghost"
@@ -713,8 +774,24 @@ function Board() {
               <TaskCardView card={item} dragging={dragging} onOpen={() => openTask(item.id)} />
             )}
           />
+        ) : view === "calendar" ? (
+          <div className="h-full overflow-auto p-4">
+            <ItemCalendar
+              noun="card"
+              onOpen={openTask}
+              items={visible.map((t) => ({
+                id: t.id,
+                title: t.title,
+                createdAt: t.createdAt,
+                // Coloured by the column it sits in, so the month reads the same
+                // way the board does.
+                dotClass: dotForStatus(board.statuses, t.statusId),
+                label: `#${t.seq}`,
+              }))}
+            />
+          </div>
         ) : (
-          <ListView board={board} onOpen={openTask} />
+          <ListView board={{ ...board, tasks: visible }} onOpen={openTask} />
         )}
       </div>
     </div>

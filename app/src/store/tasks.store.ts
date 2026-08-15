@@ -90,6 +90,18 @@ interface TasksState {
   createChannel: (spaceId: string, req: NewChannel) => Promise<CreateReportProjectResult | null>;
   updateChannel: (kind: ChannelOwner, id: string, req: ChannelPatch) => Promise<void>;
   rotateChannelKey: (kind: ChannelOwner, id: string) => Promise<string>;
+  /**
+   * Every channel of the current organization, for the picker that binds a node
+   * to one that already exists.
+   *
+   * Here rather than on a reports store because the tree is where channels are
+   * managed now, and a list of clients is not a fact about the reports screen.
+   */
+  channels: ReportProject[];
+  fetchChannels: () => Promise<void>;
+  /** Stop accepting new reports without destroying anything already filed. */
+  setChannelActive: (projectId: string, isActive: boolean) => Promise<void>;
+  deleteChannel: (projectId: string) => Promise<void>;
 
   // ── Docs: one markdown overview per space/folder/list ──
   /** Which nodes carry a document, keyed `kind:id` — drives the navigator mark. */
@@ -591,6 +603,30 @@ export const useTasksStore = create<TasksState>()(
         const { webhookSecret, ...rest } = req;
         const body = webhookSecret?.trim() ? { ...rest, webhookSecret: webhookSecret.trim() } : rest;
         await api.patch<APIResponse<unknown>>(`${channelBase(kind, id)}/channel`, body, true);
+      },
+
+      channels: [],
+
+      fetchChannels: async () => {
+        const orgId = useOrgsStore.getState().currentOrgId;
+        const res = await api.get<APIResponse<ReportProject[]>>("/api/v1/report-projects/");
+        const all = res.data ?? [];
+        // Scoped to the org on screen: binding a node to another organization's
+        // channel is how work gets pushed at a client nobody here deals with.
+        set({ channels: orgId ? all.filter((p) => p.orgId === orgId) : all });
+      },
+
+      setChannelActive: async (projectId, isActive) => {
+        await api.patch<APIResponse<unknown>>(`/api/v1/report-projects/${projectId}`, { isActive });
+        await get().fetchChannels();
+      },
+
+      deleteChannel: async (projectId) => {
+        await api.delete<APIResponse<unknown>>(`/api/v1/report-projects/${projectId}`);
+        await get().fetchChannels();
+        // The tree carries the binding, so it goes stale the moment a channel
+        // disappears from under a list.
+        await get().fetchTree();
       },
 
       rotateChannelKey: async (kind, id) => {

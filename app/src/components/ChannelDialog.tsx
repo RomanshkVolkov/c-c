@@ -22,7 +22,6 @@ import OriginsEditor, { cleanOrigins } from "@/components/OriginsEditor";
 import RevealedSecrets, { type Once } from "@/components/RevealedSecrets";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useTasksStore, type ChannelOwner } from "@/store/tasks.store";
-import { useReportsStore } from "@/store/reports.store";
 import type { ReportProject } from "@/types/report";
 
 /**
@@ -58,8 +57,8 @@ export default function ChannelDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const confirm = useConfirm();
-  const projects = useReportsStore((s) => s.projects);
-  const fetchProjects = useReportsStore((s) => s.fetchProjects);
+  const projects = useTasksStore((s) => s.channels);
+  const fetchProjects = useTasksStore((s) => s.fetchChannels);
   const { bindNode, fetchChannel, createChannel, updateChannel, rotateChannelKey } =
     useTasksStore.getState();
 

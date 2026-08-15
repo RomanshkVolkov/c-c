@@ -1,24 +1,38 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { ReportListItem, ReportStatus } from "@/types/report";
 
-const STATUS_DOT: Record<ReportStatus, string> = {
-  open: "bg-amber-500",
-  in_progress: "bg-info",
-  done: "bg-emerald-500",
-  closed: "bg-muted-foreground/40",
-};
+/**
+ * A month of work, by the day it arrived.
+ *
+ * Deliberately not typed to reports any more. It groups by a date and paints a
+ * dot per item, which is true of a board card as much as it was of a report —
+ * the view was only ever tied to reports because that was the page it lived on.
+ * The caller says what colour each dot is, so the board can colour by column
+ * without this file knowing what a column is.
+ */
+export interface CalendarItem {
+  id: string;
+  title: string;
+  createdAt: string;
+  /** Tailwind class for the dot; the caller owns what the colours mean. */
+  dotClass: string;
+  /** A short prefix — a folio, a number — shown before the title. */
+  label?: string;
+}
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
-export default function ReportsCalendar({
-  reports,
+export default function ItemCalendar({
+  items,
   onOpen,
+  noun = "item",
 }: {
-  reports: ReportListItem[];
+  items: CalendarItem[];
   onOpen: (id: string) => void;
+  /** What one of these is called, for "3 report(s)" vs "3 card(s)". */
+  noun?: string;
 }) {
   const [cursor, setCursor] = useState(() => {
     const n = new Date();
@@ -27,13 +41,13 @@ export default function ReportsCalendar({
   const [selected, setSelected] = useState<string | null>(null);
 
   const byDay = useMemo(() => {
-    const m = new Map<string, ReportListItem[]>();
-    for (const r of reports) {
+    const m = new Map<string, CalendarItem[]>();
+    for (const r of items) {
       const k = dayKey(new Date(r.createdAt));
       (m.get(k) ?? m.set(k, []).get(k)!).push(r);
     }
     return m;
-  }, [reports]);
+  }, [items]);
 
   // Build the 6-week grid starting on Monday.
   const cells = useMemo(() => {
@@ -50,7 +64,7 @@ export default function ReportsCalendar({
 
   const monthLabel = cursor.toLocaleString(undefined, { month: "long", year: "numeric" });
   const today = dayKey(new Date());
-  const selectedReports = selected ? (byDay.get(selected) ?? []) : [];
+  const selectedItems = selected ? (byDay.get(selected) ?? []) : [];
 
   return (
     <div className="flex flex-col gap-3">
@@ -97,7 +111,7 @@ export default function ReportsCalendar({
               </div>
               <div className="mt-1 flex flex-wrap gap-0.5">
                 {items.slice(0, 8).map((r) => (
-                  <span key={r.id} className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[r.status]}`} />
+                  <span key={r.id} className={`h-1.5 w-1.5 rounded-full ${r.dotClass}`} />
                 ))}
               </div>
             </button>
@@ -105,19 +119,20 @@ export default function ReportsCalendar({
         })}
       </div>
 
-      {selected && selectedReports.length > 0 && (
+      {selected && selectedItems.length > 0 && (
         <div className="rounded-lg border p-3 space-y-2">
           <p className="text-sm font-medium">
-            {new Date(selectedReports[0].createdAt).toLocaleDateString()} · {selectedReports.length} report(s)
+            {new Date(selectedItems[0].createdAt).toLocaleDateString()} · {selectedItems.length}{" "}
+            {noun}(s)
           </p>
-          {selectedReports.map((r) => (
+          {selectedItems.map((r) => (
             <button
               key={r.id}
               onClick={() => onOpen(r.id)}
               className="flex w-full items-center gap-2 rounded-md border p-2 text-left text-sm hover:bg-accent/40"
             >
-              <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[r.status]}`} />
-              <span className="font-mono text-xs text-muted-foreground">{r.folio}</span>
+              <span className={`h-2 w-2 shrink-0 rounded-full ${r.dotClass}`} />
+              {r.label && <span className="font-mono text-xs text-muted-foreground">{r.label}</span>}
               <span className="truncate">{r.title}</span>
             </button>
           ))}
