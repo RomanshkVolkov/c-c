@@ -51,6 +51,22 @@ export default function OrganizationSettings() {
 
   const orgId = current?.id;
   const canManage = superadmin || current?.role === "admin";
+  const myId = useAuthStore((s) => s.session?.id);
+  const iAmAMember = members.some((m) => m.userId === myId);
+
+  /** Put myself in this organization, as an admin. */
+  const joinSelf = async () => {
+    if (!orgId || !myId) return;
+    try {
+      await addMember(orgId, { userId: myId, role: "admin" });
+      toast.success(`Ya eres miembro de ${current?.name}`);
+      refresh();
+    } catch (e) {
+      toast.error("No se pudo añadir", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  };
 
   const refresh = useCallback(async () => {
     if (!orgId) return;
@@ -245,6 +261,24 @@ export default function OrganizationSettings() {
         {/* Members */}
         <section className="space-y-2">
           <Label className="text-sm font-medium">Members ({members.length})</Label>
+
+          {/* Joining it yourself.
+              The picker below searches everyone *except* you — right for
+              inviting somebody, and a dead end for the one case a superadmin
+              actually needs: they can see every organization without belonging
+              to any, and belonging is what makes them mentionable and
+              messageable. Without this there was no way in at all from the app. */}
+          {canManage && !iAmAMember && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed p-2 text-xs">
+              <span className="text-muted-foreground">
+                No perteneces a esta organización, así que nadie puede mencionarte ni
+                escribirte aquí.
+              </span>
+              <Button size="sm" variant="outline" className="ml-auto" onClick={joinSelf}>
+                Añadirme
+              </Button>
+            </div>
+          )}
           <div className="rounded-lg border">
             <Table>
               <TableHeader>
