@@ -100,3 +100,58 @@ func TestTheAddressSurvivesTheWire(t *testing.T) {
 		t.Errorf("the rest of the event should survive too: %+v", out)
 	}
 }
+
+// A private message crossing between pods.
+//
+// This is the production path, not a corner case: the deployment runs two
+// replicas, so the pod holding a person's stream is usually *not* the pod that
+// handled the write. The addressed field has to survive Valkey for delivery to
+// stay narrow — drop it in transit and the event arrives on the far pod looking
+// like an ordinary organization broadcast, delivered to every console there and
+// to any superadmin, with nothing anywhere to signal it.
+//
+// The unit test above covers the codec; this covers the wire. Skips without a
+// Valkey to talk to, like its neighbours in bus_test.go.
+func TestAnAddressedEventStaysNarrowAcrossPods(t *testing.T) {
+	addr := busAddr(t)
+	podA, podB := NewHub(), NewHub()
+	podA.UseBus(addr, "")
+	podB.UseBus(addr, "")
+	waitReady(t, podA)
+	waitReady(t, podB)
+
+	// Everyone listening on the far pod, including a superadmin.
+	bea, unsubB := podB.Subscribe("u-bea", []string{"org-1"})
+	defer unsubB()
+	ana, unsubA := podB.Subscribe("u-ana", []string{"org-1"})
+	defer unsubA()
+	root, unsubR := podB.SubscribeAll("u-root")
+	defer unsubR()
+
+	podA.Publish(Event{
+		Type: "dm:message", OrgID: "org-1", UserID: "u-bea",
+		Data: map[string]any{"conversationId": "c-1"},
+	})
+
+	select {
+	case ev := <-bea:
+		if ev.Type != "dm:message" {
+			t.Errorf("got %q", ev.Type)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the person it was addressed to never received it on the other pod")
+	}
+
+	// The two that must stay silent. Given the message above already arrived,
+	// anything for these would have been delivered in the same fan-out.
+	select {
+	case ev := <-ana:
+		t.Errorf("a colleague on the other pod received a private message: %+v", ev)
+	default:
+	}
+	select {
+	case ev := <-root:
+		t.Errorf("a superadmin on the other pod received it: %+v", ev)
+	default:
+	}
+}
