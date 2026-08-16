@@ -217,6 +217,20 @@ func (s *AuthService) SearchUsers(query, excludeUserID string, limit int) ([]dom
 	return out, nil
 }
 
+// SearchUsersInOrg: colleagues only. See the repository for why this is a
+// separate call rather than an argument on the platform-wide search.
+func (s *AuthService) SearchUsersInOrg(query, orgID, excludeUserID string, limit int) ([]domain.UserSummary, error) {
+	users, err := s.repo.SearchUsersInOrg(query, orgID, excludeUserID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.UserSummary, len(users))
+	for i, u := range users {
+		out[i] = domain.UserSummary{ID: u.ID, Username: u.Username}
+	}
+	return out, nil
+}
+
 func (s *AuthService) RefreshToken(refreshToken string) (*domain.AuthRefreshResponse, error) {
 	claims, err := repository.ValidateRefreshToken(refreshToken)
 	if err != nil {

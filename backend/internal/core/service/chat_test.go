@@ -242,3 +242,38 @@ func chatDB(t *testing.T) (*gorm.DB, func()) {
 		adminSQL.Close()
 	}
 }
+
+// Naming somebody who isn't there.
+//
+// The ids ride inside the message body, which is text the author typed — so a
+// caller can name any uuid at all, including a person at another client. If
+// those were taken at face value, a mention would be a way to ping strangers
+// about work they have nothing to do with, from a channel they cannot even
+// read.
+func TestOnlyPeopleOfThisOrganizationCanBeMentioned(t *testing.T) {
+	db, cleanup := chatDB(t)
+	defer cleanup()
+	if err := db.AutoMigrate(&domain.OrgMembership{}); err != nil {
+		t.Fatal(err)
+	}
+
+	const mate = "0f3c1a2b-4d5e-6f70-8192-a3b4c5d6e7f8"
+	const stranger = "1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809"
+	for _, m := range []domain.OrgMembership{
+		{OrgID: "org-1", UserID: mate, Role: "member"},
+		{OrgID: "org-otra", UserID: stranger, Role: "member"},
+	} {
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	repo := repository.NewChatRepository(db)
+	got, err := repo.MembersOf("org-1", []string{mate, stranger})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != mate {
+		t.Errorf("only the colleague may be named, got %v", got)
+	}
+}

@@ -260,7 +260,12 @@ func (h *userHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if q == "" {
+	orgID := strings.TrimSpace(r.URL.Query().Get("orgId"))
+	// An empty query across the whole platform is a request for every account
+	// there is, so it answers with nothing. Inside one organization it is a
+	// reasonable question — "who is on this team" — and the mention picker asks
+	// it once rather than searching on every keystroke.
+	if q == "" && orgID == "" {
 		SendResult(w, http.StatusOK, domain.APIResponse[[]domain.UserSummary]{Success: true, Data: []domain.UserSummary{}})
 		return
 	}
@@ -270,7 +275,29 @@ func (h *userHandler) Search(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	results, err := h.authService.SearchUsers(q, user.UserID, limit)
+	// orgId narrows the search to colleagues — what the mention picker and the
+	// direct-message picker ask for. It is *not* taken on trust: asking for an
+	// organization you don't belong to would turn this into a directory of
+	// every client's people, which is precisely what these two features must
+	// not offer.
+	//
+	// Without it the search stays platform-wide, which is what the screens that
+	// existed before this need (a superadmin has to find somebody before they
+	// belong to any organization).
+	var (
+		results []domain.UserSummary
+		err     error
+	)
+	if orgID != "" {
+		if _, member := user.RoleInOrg(orgID); !member && !user.Superadmin {
+			SendErrorResponse(w, http.StatusForbidden,
+				"You don't belong to that organization", "not-a-member")
+			return
+		}
+		results, err = h.authService.SearchUsersInOrg(q, orgID, user.UserID, limit)
+	} else {
+		results, err = h.authService.SearchUsers(q, user.UserID, limit)
+	}
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "User search failed", err.Error())
 		return

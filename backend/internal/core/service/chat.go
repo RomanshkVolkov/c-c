@@ -39,17 +39,42 @@ func NewChatService(repo *repository.ChatRepository, hub *events.Hub) *ChatServi
 // stream, including the one that just typed the message, and without a name on
 // the event the app announces it back at its author — a bug this codebase found
 // the hard way the day before this feature was written.
-func (s *ChatService) publish(orgID, spaceID, messageID, actorID string) {
+func (s *ChatService) publish(orgID, spaceID, messageID, actorID string, mentions []string) {
 	if s.hub == nil || orgID == "" {
 		return
 	}
 	s.hub.Publish(events.Event{
 		Type:  "chat:message",
 		OrgID: orgID,
-		Data: map[string]string{
+		Data: map[string]any{
 			"spaceId": spaceID, "messageId": messageID, "actorId": actorID,
+			// Who was named. Sent to the whole organization along with the rest
+			// of the event — the channel is theirs to read anyway — and each
+			// console decides whether it is being spoken to. Nothing private
+			// travels here: these are ids of people who share this channel.
+			"mentions": mentions,
 		},
 	})
+}
+
+// mentioned answers who this body actually names.
+//
+// The ids come out of text the author typed, so they are asserted and nothing
+// more. Anyone not in this organization is dropped rather than refused: naming
+// a stranger is not an error worth failing a message over, it just doesn't ping
+// anybody.
+func (s *ChatService) mentioned(orgID, body string) []string {
+	named := domain.ExtractMentions(body)
+	if len(named) == 0 {
+		return nil
+	}
+	ok, err := s.repo.MembersOf(orgID, named)
+	if err != nil {
+		// A message that sends is better than a message refused because the
+		// membership lookup blinked; it simply pings nobody.
+		return nil
+	}
+	return ok
 }
 
 func (s *ChatService) List(spaceID string, before time.Time, limit int) ([]domain.ChatMessageResponse, error) {
@@ -64,7 +89,7 @@ func (s *ChatService) Post(spaceID, orgID, userID, body string) (*domain.ChatMes
 	if err := s.repo.Create(m); err != nil {
 		return nil, err
 	}
-	s.publish(orgID, spaceID, m.ID, userID)
+	s.publish(orgID, spaceID, m.ID, userID, s.mentioned(orgID, body))
 	return m, nil
 }
 
@@ -86,7 +111,7 @@ func (s *ChatService) Edit(messageID, userID string, superadmin bool, body strin
 	}
 	// Same event as a new message: the receiver reloads the channel either way,
 	// and a second event type would be two things to handle for one outcome.
-	s.publish(m.OrgID, m.SpaceID, m.ID, userID)
+	s.publish(m.OrgID, m.SpaceID, m.ID, userID, s.mentioned(m.OrgID, body))
 	return nil
 }
 
@@ -101,7 +126,9 @@ func (s *ChatService) Withdraw(messageID, userID string, superadmin bool) error 
 	if err := s.repo.Withdraw(messageID); err != nil {
 		return err
 	}
-	s.publish(m.OrgID, m.SpaceID, m.ID, userID)
+	// A withdrawn message names nobody: pinging over something just retracted
+	// would be the opposite of retracting it.
+	s.publish(m.OrgID, m.SpaceID, m.ID, userID, nil)
 	return nil
 }
 

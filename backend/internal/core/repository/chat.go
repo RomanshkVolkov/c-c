@@ -114,6 +114,39 @@ func (r *ChatRepository) UnreadBySpace(userID string, orgIDs []string, superadmi
 	return out, q.Group("m.space_id").Scan(&out).Error
 }
 
+// MembersOf narrows a list of asserted user ids to the ones that actually
+// belong to an organization.
+//
+// The ids arrive inside a message body, which is text somebody typed: nothing
+// stops a caller from naming every uuid they can think of. Without this, a
+// mention would be a way to ping anybody on the platform — including people at
+// another client — about work they have nothing to do with.
+//
+// Returns them in the order asked, so the caller's list stays stable.
+func (r *ChatRepository) MembersOf(orgID string, userIDs []string) ([]string, error) {
+	if orgID == "" || len(userIDs) == 0 {
+		return nil, nil
+	}
+	var found []string
+	if err := r.db.Raw(`
+		SELECT user_id FROM org_memberships
+		WHERE org_id = ? AND user_id IN ?
+	`, orgID, userIDs).Scan(&found).Error; err != nil {
+		return nil, err
+	}
+	ok := make(map[string]bool, len(found))
+	for _, id := range found {
+		ok[id] = true
+	}
+	out := make([]string, 0, len(found))
+	for _, id := range userIDs {
+		if ok[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
 // ─── Attachments ──────────────────────────────────────────────────────────────
 
 func (r *ChatRepository) CreateAttachment(a *domain.ChatAttachment) error {

@@ -126,6 +126,39 @@ func (r *AuthRepository) FindByID(id string) (*domain.User, error) {
 // SearchByUsername returns up to `limit` users whose username matches the query
 // (case-insensitive prefix). The caller (`excludeID`) is filtered out so users
 // don't see themselves in share autocomplete.
+// SearchUsersInOrg finds colleagues: people who share an organization with the
+// caller.
+//
+// Separate from SearchByUsername rather than a filter bolted onto it, because
+// the two answer different questions and both are needed. That one searches the
+// whole platform, which is right for a superadmin adding somebody to an org —
+// they have to be findable before they belong anywhere. This one is for
+// mentioning and messaging, where offering a name from another client's
+// organization is offering to do something nobody here may do.
+func (r *AuthRepository) SearchUsersInOrg(query, orgID, excludeID string, limit int) ([]domain.User, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if orgID == "" {
+		// No organization, no colleagues. Falling back to the platform-wide
+		// search here would turn a missing parameter into a leak.
+		return []domain.User{}, nil
+	}
+	var users []domain.User
+	q := r.db.
+		Joins("JOIN org_memberships m ON m.user_id = users.id AND m.org_id = ?", orgID).
+		Where("LOWER(users.username) LIKE ?", "%"+strings.ToLower(query)+"%").
+		Order("users.username ASC").
+		Limit(limit)
+	if excludeID != "" {
+		q = q.Where("users.id <> ?", excludeID)
+	}
+	if err := q.Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 func (r *AuthRepository) SearchByUsername(query, excludeID string, limit int) ([]domain.User, error) {
 	if limit <= 0 {
 		limit = 10
