@@ -38,11 +38,37 @@ func (r *OrganizationRepository) CreateWithOwner(org *domain.Organization, owner
 		if err := tx.Create(org).Error; err != nil {
 			return err
 		}
-		return tx.Create(&domain.OrgMembership{
+		if err := tx.Create(&domain.OrgMembership{
 			OrgID:  org.ID,
 			UserID: ownerID,
 			Role:   domain.OrgRoleAdmin,
-		}).Error
+		}).Error; err != nil {
+			return err
+		}
+
+		// Superadmins join too, as ordinary admins.
+		//
+		// They can already see every organization, so this changes nothing about
+		// what they may reach — it changes whether the rest of the platform can
+		// reach *them*. Membership is what the people picker lists and what a
+		// mention is checked against, so a superadmin outside every organization
+		// is somebody nobody can message or name, while their own picker happily
+		// offers colleagues the server then refuses. That asymmetry is what
+		// "not-colleagues" turned out to be.
+		var supers []string
+		if err := tx.Model(&domain.User{}).
+			Where("is_superadmin = ? AND id <> ?", true, ownerID).
+			Pluck("id", &supers).Error; err != nil {
+			return err
+		}
+		for _, id := range supers {
+			if err := tx.Create(&domain.OrgMembership{
+				OrgID: org.ID, UserID: id, Role: domain.OrgRoleAdmin,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

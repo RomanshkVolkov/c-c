@@ -289,7 +289,18 @@ func (h *userHandler) Search(w http.ResponseWriter, r *http.Request) {
 		err     error
 	)
 	if orgID != "" {
-		if _, member := user.RoleInOrg(orgID); !member && !user.Superadmin {
+		// Membership, and not "member or superadmin".
+		//
+		// This list feeds the mention and direct-message pickers, and opening a
+		// conversation requires both people to actually belong to the
+		// organization. Letting a superadmin browse an org they are not in
+		// therefore offered colleagues the server then refused with
+		// "not-colleagues" — a picker that proposes something impossible.
+		//
+		// The two answers have to match, so this is the stricter one. A
+		// superadmin who wants to take part joins the organization, which is
+		// now automatic for new ones and available by hand for the rest.
+		if _, member := user.RoleInOrg(orgID); !member {
 			SendErrorResponse(w, http.StatusForbidden,
 				"You don't belong to that organization", "not-a-member")
 			return

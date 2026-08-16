@@ -265,3 +265,44 @@ func dmDB(t *testing.T) (*gorm.DB, func()) {
 		adminSQL.Close()
 	}
 }
+
+// A superadmin joins the organizations that get created, as an ordinary admin.
+//
+// Not for reach — they can already see every organization — but so the rest of
+// the platform can reach *them*. Membership is what the people picker lists and
+// what a mention is checked against, so a superadmin outside every organization
+// is somebody nobody can name or write to, while their own picker offers
+// colleagues the server then refuses. That gap is what "not-colleagues" was.
+func TestCreatingAnOrganizationBringsTheSuperadminsIn(t *testing.T) {
+	db, cleanup := dmDB(t)
+	defer cleanup()
+	if err := db.AutoMigrate(&domain.Organization{}); err != nil {
+		t.Fatal(err)
+	}
+	root := &domain.User{Username: "root", IsSuperadmin: true}
+	root.ID = "u-root"
+	if err := db.Create(root).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	org := &domain.Organization{Name: "Nueva", Slug: "nueva"}
+	org.ID = "org-nueva"
+	if err := repository.NewOrganizationRepository(db).CreateWithOwner(org, "u-ana"); err != nil {
+		t.Fatal(err)
+	}
+
+	var roles []string
+	db.Model(&domain.OrgMembership{}).Where("org_id = ? AND user_id = ?", org.ID, "u-root").
+		Pluck("role", &roles)
+	if len(roles) != 1 {
+		t.Fatal("the superadmin was left outside the organization that was just created")
+	}
+
+	// And the owner is still the owner.
+	var ownerRoles []string
+	db.Model(&domain.OrgMembership{}).Where("org_id = ? AND user_id = ?", org.ID, "u-ana").
+		Pluck("role", &ownerRoles)
+	if len(ownerRoles) != 1 {
+		t.Error("the person who created it must be a member too")
+	}
+}

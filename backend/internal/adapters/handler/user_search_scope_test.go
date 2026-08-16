@@ -45,6 +45,26 @@ func TestYouCannotSearchAnOrganizationYouDoNotBelongTo(t *testing.T) {
 	}
 }
 
+// A superadmin is not exempt here, and that is the point rather than an
+// oversight.
+//
+// They can see every organization, so the looser rule felt natural — and it
+// produced a picker that offered people the server then refused to open a
+// conversation with, because *that* check asks for real membership. Two answers
+// to one question is how "not-colleagues" reached a screen. A superadmin who
+// wants to take part joins the organization.
+func TestASuperadminOutsideTheOrganizationIsAlsoRefused(t *testing.T) {
+	root := &domain.ClaimsJWT{UserID: "u-root", Superadmin: true}
+
+	rec := httptest.NewRecorder()
+	h := &userHandler{}
+	h.Search(rec, searchReq("org-1", root))
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("a superadmin who is not a member → %d, want 403: the picker must not offer what opening a conversation refuses", rec.Code)
+	}
+}
+
 // And the ordinary case still works, so the guard isn't passing by refusing
 // everything.
 func TestYouCanSearchYourOwnOrganization(t *testing.T) {
