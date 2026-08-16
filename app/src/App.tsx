@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "@/pages/Login";
 import ReportsRedirect from "@/components/ReportsRedirect";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Dashboard from "@/pages/Dashboard";
 import ServerManage from "@/pages/ServerManage";
 import ServerStats from "@/pages/ServerStats";
@@ -31,6 +32,10 @@ function RootRedirect() {
 
 export default function App() {
   return (
+    // Outermost on purpose: a crash anywhere below leaves the window showing
+    // the app's own background and nothing else, which is impossible to
+    // diagnose from a screenshot — see ErrorBoundary.
+    <ErrorBoundary>
     <ConfirmProvider>
       <PromptProvider>
       <BrowserRouter>
@@ -77,5 +82,6 @@ export default function App() {
       </BrowserRouter>
       </PromptProvider>
     </ConfirmProvider>
+    </ErrorBoundary>
   );
 }

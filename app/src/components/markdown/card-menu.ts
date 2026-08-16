@@ -1,5 +1,6 @@
 import { Extension } from "@tiptap/core";
 import Suggestion from "@tiptap/suggestion";
+import { PluginKey } from "@tiptap/pm/state";
 
 /**
  * `#` — cite a card from the board you're looking at.
@@ -157,6 +158,13 @@ export const CardMenu = Extension.create<CardMenuOptions>({
     return [
       Suggestion<CardRef>({
         editor: this.editor,
+        // A key of its own. Suggestion defaults to the plugin key
+        // `suggestion$`, so two of these in one editor are "different
+        // instances of a keyed plugin" and ProseMirror refuses the whole
+        // state — taking the editor, and the screen it was on, with it.
+        // Nothing caught it until a composer offered # and another trigger
+        // together.
+        pluginKey: new PluginKey("cardMenu"),
         char: "#",
         // `#` at the start of a line is a heading in markdown, and taking it
         // over would break the one shortcut everybody already knows. A citation

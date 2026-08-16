@@ -35,6 +35,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
@@ -74,6 +75,7 @@ export default function AppSidebar() {
   const [mcpOpen, setMcpOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const unreadNotifications = useNotificationsStore((s) => s.items.filter((i) => !i.read).length);
+  const collapsed = useSidebar().state === "collapsed";
   const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
     (i) => !i.superadmin || superadmin,
   );
@@ -82,10 +84,23 @@ export default function AppSidebar() {
     <Sidebar collapsible="icon" variant="sidebar">
       {authed && (
         <SidebarHeader>
-          <div className="flex items-center gap-1">
-            <div className="min-w-0 flex-1">
-              <OrgSwitcher />
-            </div>
+          {/* Collapsed, the header is one icon wide. The org switcher was still
+              being rendered into it with flex-1, so it squeezed down to a sliver
+              nobody could read or click and pushed the bell off-centre — the
+              only part of the sidebar that didn't react to collapsing, because
+              the menu below gets its behaviour from SidebarMenuButton and this
+              was hand-rolled. */}
+          <div
+            className={cn(
+              "flex items-center gap-1",
+              collapsed && "justify-center",
+            )}
+          >
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <OrgSwitcher />
+              </div>
+            )}
             <button
               type="button"
               title="Notifications"

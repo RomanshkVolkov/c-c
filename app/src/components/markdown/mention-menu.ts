@@ -1,5 +1,6 @@
 import { Extension } from "@tiptap/core";
 import Suggestion from "@tiptap/suggestion";
+import { PluginKey } from "@tiptap/pm/state";
 
 /**
  * `@` — name somebody you work with.
@@ -155,6 +156,13 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
     return [
       Suggestion<PersonRef>({
         editor: this.editor,
+        // A key of its own. Suggestion defaults to the plugin key
+        // `suggestion$`, so two of these in one editor are "different
+        // instances of a keyed plugin" and ProseMirror refuses the whole
+        // state — taking the editor, and the screen it was on, with it.
+        // Nothing caught it until a composer offered @ and another trigger
+        // together.
+        pluginKey: new PluginKey("mentionMenu"),
         char: "@",
         // A code block is where somebody actually types an email address or a
         // shell variable; `@` at the start of a line is ordinary prose, so

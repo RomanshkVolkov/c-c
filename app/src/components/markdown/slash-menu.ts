@@ -1,5 +1,6 @@
 import { Extension, type Editor, type Range } from "@tiptap/core";
 import Suggestion from "@tiptap/suggestion";
+import { PluginKey } from "@tiptap/pm/state";
 
 /**
  * The `/` command menu: pick a block instead of remembering its markdown.
@@ -188,6 +189,13 @@ export const SlashMenu = Extension.create({
     return [
       Suggestion<Command>({
         editor: this.editor,
+        // A key of its own. Suggestion defaults to the plugin key
+        // `suggestion$`, so two of these in one editor are "different
+        // instances of a keyed plugin" and ProseMirror refuses the whole
+        // state — taking the editor, and the screen it was on, with it.
+        // Nothing caught it until a composer offered / and another trigger
+        // together.
+        pluginKey: new PluginKey("slashMenu"),
         char: "/",
         // A code block is where someone actually types paths and regexes.
         allow: ({ state, range }) =>
