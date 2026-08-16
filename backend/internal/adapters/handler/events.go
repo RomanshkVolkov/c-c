@@ -65,9 +65,9 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	var ch <-chan events.Event
 	var unsubscribe func()
 	if claims.Superadmin {
-		ch, unsubscribe = h.hub.SubscribeAll()
+		ch, unsubscribe = h.hub.SubscribeAll(claims.UserID)
 	} else {
-		ch, unsubscribe = h.hub.Subscribe(claims.OrgIDs())
+		ch, unsubscribe = h.hub.Subscribe(claims.UserID, claims.OrgIDs())
 	}
 	defer unsubscribe()
 

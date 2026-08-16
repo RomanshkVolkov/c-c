@@ -46,7 +46,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		lg.Error("task attachment store init failed: " + err.Error())
 	}
 	chat := service.NewChatService(repository.NewChatRepository(db), hub)
-	h := handler.NewTaskHandler(svc, channels, chat, taskRepo, images, store)
+	dms := service.NewDMService(repository.NewDMRepository(db), hub)
+	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store)
 
 	// The navigator: spaces → folders → lists.
 	r.Route("/api/v1/task-spaces", func(r chi.Router) {
@@ -98,6 +99,22 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// Every channel with unread lines, in one call — the navigator asks on every
 	// load, and one request per space would be one request per space.
 	r.With(middleware.AuthMiddleware).Get("/api/v1/chat/unread", h.ChatUnread)
+
+	// Direct messages. Their own space in the API for the same reason they have
+	// their own tables: nothing about a private conversation should be reachable
+	// by asking about a space.
+	r.Route("/api/v1/dm", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/", h.ListDMConversations)
+		// Opening is a POST because it may create the thread — but it is
+		// idempotent: naming the same person again returns the same row.
+		r.Post("/open", h.OpenDM)
+		r.Get("/{id}/messages", h.ListDMMessages)
+		r.Post("/{id}/messages", h.PostDM)
+		r.Patch("/{id}/messages/{messageId}", h.EditDM)
+		r.Delete("/{id}/messages/{messageId}", h.WithdrawDM)
+		r.Post("/{id}/read", h.MarkDMRead)
+	})
 
 	r.Route("/api/v1/task-statuses", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)

@@ -132,6 +132,12 @@ func TestProjectKeyReachesNothingButReports(t *testing.T) {
 		{http.MethodDelete, "/api/v1/task-spaces/abc/chat/xyz"},
 		{http.MethodPost, "/api/v1/task-spaces/abc/chat/attachments"},
 		{http.MethodGet, "/api/v1/chat/unread"},
+		// And a private conversation between two people is further outside a
+		// tenant's reach than anything else here.
+		{http.MethodGet, "/api/v1/dm/"},
+		{http.MethodPost, "/api/v1/dm/open"},
+		{http.MethodGet, "/api/v1/dm/abc/messages"},
+		{http.MethodPost, "/api/v1/dm/abc/messages"},
 	} {
 		code, claims := run(t, keyReq(c.method, c.path, "srv-key"))
 		if code != http.StatusForbidden || claims != nil {

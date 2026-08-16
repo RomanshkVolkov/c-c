@@ -39,7 +39,7 @@ func TestAnEventPublishedOnOnePodReachesASubscriberOnAnother(t *testing.T) {
 	waitReady(t, podA)
 	waitReady(t, podB)
 
-	ch, unsub := podB.Subscribe([]string{"org-1"})
+	ch, unsub := podB.Subscribe("", []string{"org-1"})
 	defer unsub()
 
 	podA.Publish(Event{Type: "report:new", OrgID: "org-1", Data: map[string]any{"folio": "portento-9"}})
@@ -67,7 +67,7 @@ func TestThePublishingPodDeliversOnceNotTwice(t *testing.T) {
 	h.UseBus(addr, "")
 	waitReady(t, h)
 
-	ch, unsub := h.Subscribe([]string{"org-1"})
+	ch, unsub := h.Subscribe("", []string{"org-1"})
 	defer unsub()
 
 	h.Publish(Event{Type: "report:new", OrgID: "org-1"})
@@ -94,7 +94,7 @@ func TestTheOrgFilterSurvivesTheBus(t *testing.T) {
 	waitReady(t, podA)
 	waitReady(t, podB)
 
-	mine, unsub := podB.Subscribe([]string{"org-mine"})
+	mine, unsub := podB.Subscribe("", []string{"org-mine"})
 	defer unsub()
 
 	podA.Publish(Event{Type: "report:new", OrgID: "org-somebody-else"})
@@ -115,7 +115,7 @@ func TestTheOrgFilterSurvivesTheBus(t *testing.T) {
 func TestWithoutABusDeliveryStaysLocal(t *testing.T) {
 	h := NewHub()
 	h.UseBus("", "")
-	ch, unsub := h.Subscribe([]string{"org-1"})
+	ch, unsub := h.Subscribe("", []string{"org-1"})
 	defer unsub()
 
 	h.Publish(Event{Type: "report:new", OrgID: "org-1"})

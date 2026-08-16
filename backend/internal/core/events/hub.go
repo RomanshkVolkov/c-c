@@ -21,13 +21,22 @@ import "sync"
 type Event struct {
 	Type  string `json:"type"`
 	OrgID string `json:"-"`
-	Data  any    `json:"data"`
+	// UserID addresses one person instead of an organization.
+	//
+	// Everything else here is org-wide by nature — a board moved, a report
+	// arrived — and a superadmin's console deliberately sees all of it. A direct
+	// message is the first thing that is nobody's business but its two
+	// participants', so when this is set it *narrows* delivery rather than
+	// widening it, and that includes cutting the superadmin out. See deliver().
+	UserID string `json:"-"`
+	Data   any    `json:"data"`
 }
 
 type subscriber struct {
-	orgs map[string]bool
-	all  bool // superadmin: receive events from every org
-	ch   chan Event
+	orgs   map[string]bool
+	all    bool   // superadmin: receive events from every org
+	userID string // who is listening, for events addressed to one person
+	ch     chan Event
 }
 
 type Hub struct {
@@ -44,22 +53,22 @@ func NewHub() *Hub {
 // Subscribe registers a listener for the given orgs and returns its channel plus
 // an unsubscribe func. The channel is buffered; a slow consumer drops events
 // rather than blocking publishers.
-func (h *Hub) Subscribe(orgIDs []string) (<-chan Event, func()) {
-	return h.subscribe(orgIDs, false)
+func (h *Hub) Subscribe(userID string, orgIDs []string) (<-chan Event, func()) {
+	return h.subscribe(userID, orgIDs, false)
 }
 
 // SubscribeAll registers a listener that receives events from every org. Used by
 // superadmins, whose console spans all organizations.
-func (h *Hub) SubscribeAll() (<-chan Event, func()) {
-	return h.subscribe(nil, true)
+func (h *Hub) SubscribeAll(userID string) (<-chan Event, func()) {
+	return h.subscribe(userID, nil, true)
 }
 
-func (h *Hub) subscribe(orgIDs []string, all bool) (<-chan Event, func()) {
+func (h *Hub) subscribe(userID string, orgIDs []string, all bool) (<-chan Event, func()) {
 	orgs := make(map[string]bool, len(orgIDs))
 	for _, id := range orgIDs {
 		orgs[id] = true
 	}
-	sub := &subscriber{orgs: orgs, all: all, ch: make(chan Event, 32)}
+	sub := &subscriber{orgs: orgs, all: all, userID: userID, ch: make(chan Event, 32)}
 
 	h.mu.Lock()
 	id := h.next
@@ -96,7 +105,15 @@ func (h *Hub) deliver(e Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, s := range h.subs {
-		if !s.all && !s.orgs[e.OrgID] {
+		// Addressed to one person: nobody else, whatever they are subscribed
+		// to. Checked before the org rule on purpose — `all` means "every
+		// organization", not "every conversation", and reading it as the latter
+		// would put private messages on a superadmin's stream.
+		if e.UserID != "" {
+			if s.userID != e.UserID {
+				continue
+			}
+		} else if !s.all && !s.orgs[e.OrgID] {
 			continue
 		}
 		select {

@@ -21,9 +21,14 @@ const channel = "cac:events"
 // never reach a client; across the bus it is the whole point, so it travels in
 // its own envelope instead.
 type wireEvent struct {
-	Type  string          `json:"type"`
-	OrgID string          `json:"orgId"`
-	Data  json.RawMessage `json:"data"`
+	Type  string `json:"type"`
+	OrgID string `json:"orgId"`
+	// UserID travels too, or an event addressed to one person would arrive on
+	// another pod as an ordinary org-wide broadcast — which is exactly the leak
+	// the field exists to prevent, and it would only show up with more than one
+	// replica.
+	UserID string          `json:"userId,omitempty"`
+	Data   json.RawMessage `json:"data"`
 }
 
 type bus struct {
@@ -54,12 +59,34 @@ func (h *Hub) UseBus(addr, password string) {
 
 func (b *bus) ready() bool { return b.connected.Load() }
 
-func (b *bus) publish(e Event) error {
+// encodeEvent and decodeEvent are the wire format, pulled out of publish and
+// the listen loop so they can be tested without a running bus.
+//
+// The tests that exercise the real bus skip when there is no Valkey to talk to,
+// which left the one field that must not be dropped — UserID — covered by
+// nothing at all. Production runs two replicas, so the cross-pod path is the
+// normal path, and losing the address there turns a private message into an
+// org-wide broadcast on every pod but the sender's.
+func encodeEvent(e Event) ([]byte, error) {
 	data, err := json.Marshal(e.Data)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	payload, err := json.Marshal(wireEvent{Type: e.Type, OrgID: e.OrgID, Data: data})
+	return json.Marshal(wireEvent{Type: e.Type, OrgID: e.OrgID, UserID: e.UserID, Data: data})
+}
+
+func decodeEvent(payload []byte) (Event, error) {
+	var w wireEvent
+	if err := json.Unmarshal(payload, &w); err != nil {
+		return Event{}, err
+	}
+	var data any
+	_ = json.Unmarshal(w.Data, &data)
+	return Event{Type: w.Type, OrgID: w.OrgID, UserID: w.UserID, Data: data}, nil
+}
+
+func (b *bus) publish(e Event) error {
+	payload, err := encodeEvent(e)
 	if err != nil {
 		return err
 	}
@@ -88,13 +115,11 @@ func (b *bus) listen(h *Hub) {
 		lg.Info("events: shared bus connected")
 
 		for msg := range sub.Channel() {
-			var w wireEvent
-			if err := json.Unmarshal([]byte(msg.Payload), &w); err != nil {
+			e, err := decodeEvent([]byte(msg.Payload))
+			if err != nil {
 				continue // a malformed frame is not worth dropping the stream for
 			}
-			var data any
-			_ = json.Unmarshal(w.Data, &data)
-			h.deliver(Event{Type: w.Type, OrgID: w.OrgID, Data: data})
+			h.deliver(e)
 		}
 
 		// Channel closed: the connection dropped. Mark it and reconnect.

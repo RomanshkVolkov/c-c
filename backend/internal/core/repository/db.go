@@ -90,10 +90,16 @@ func DBConnection() {
 		&domain.Note{},
 		&domain.NoteAttachment{},
 		&domain.NoteRevision{},
-		// The unified model. Nothing reads these yet — see item_migration.go.
+		// Conversations. Their own tables rather than a shared one, so a query
+		// written against a space's channel cannot return a private message —
+		// see domain/dm.go.
+		&domain.DMConversation{},
+		&domain.DMMessage{},
+		&domain.DMRead{},
 		&domain.ChatMessage{},
 		&domain.ChatRead{},
 		&domain.ChatAttachment{},
+		// The unified model. See item_migration.go.
 		&domain.Item{},
 		&domain.ItemComment{},
 		&domain.ItemAttachment{},

@@ -30,6 +30,13 @@ type TaskHandler interface {
 	RawChatAttachment(w http.ResponseWriter, r *http.Request)
 	UploadChatAttachment(w http.ResponseWriter, r *http.Request)
 	ChatUnread(w http.ResponseWriter, r *http.Request)
+	OpenDM(w http.ResponseWriter, r *http.Request)
+	ListDMConversations(w http.ResponseWriter, r *http.Request)
+	ListDMMessages(w http.ResponseWriter, r *http.Request)
+	PostDM(w http.ResponseWriter, r *http.Request)
+	EditDM(w http.ResponseWriter, r *http.Request)
+	WithdrawDM(w http.ResponseWriter, r *http.Request)
+	MarkDMRead(w http.ResponseWriter, r *http.Request)
 	MarkChatRead(w http.ResponseWriter, r *http.Request)
 	WithdrawChat(w http.ResponseWriter, r *http.Request)
 	EditChat(w http.ResponseWriter, r *http.Request)
@@ -74,6 +81,8 @@ type taskHandler struct {
 	// it has its own service rather than riding the item paths that reach a
 	// tenant's webhook.
 	chat *service.ChatService
+	// dms is the private half of the same conversation surface.
+	dms *service.DMService
 	// images proxies attachment uploads so the API key and bucket stay
 	// server-side; nil/disabled simply turns attachments off.
 	images *imageservice.Client
@@ -86,11 +95,12 @@ func NewTaskHandler(
 	svc *service.TaskService,
 	channels *service.ReportProjectService,
 	chat *service.ChatService,
+	dms *service.DMService,
 	repo *repository.TaskRepository,
 	images *imageservice.Client,
 	store *mediastore.Store,
 ) TaskHandler {
-	return &taskHandler{svc: svc, channels: channels, chat: chat, repo: repo, images: images, store: store}
+	return &taskHandler{svc: svc, channels: channels, chat: chat, dms: dms, repo: repo, images: images, store: store}
 }
 
 func mapTaskError(w http.ResponseWriter, err error) bool {
