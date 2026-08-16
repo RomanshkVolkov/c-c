@@ -11,6 +11,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
+import { useDMStore } from "@/store/dm.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { usePendingStore } from "@/store/pending.store";
 import { useNotificationsStore } from "@/store/notifications.store";
@@ -247,7 +248,7 @@ export function useReportEvents() {
           break;
         }
         case "chat:message": {
-          const p = parse(data) as Payload & { spaceId?: string };
+          const p = parse(data) as Payload & { spaceId?: string; mentions?: string[] };
           if (!p.spaceId) break;
           // Your own line, echoed back by the stream every console hears. The
           // panel already shows it — the post refetched — so there is nothing
@@ -257,14 +258,43 @@ export function useReportEvents() {
           // Only announce what you aren't already looking at. onIncoming has the
           // same condition; it is repeated rather than returned because the two
           // decisions are different — one updates a badge, one interrupts you.
-          const chat = useChatStore.getState();
-          if (chat.panelOpen && chat.spaceId === p.spaceId) break;
           const space = useTasksStore
             .getState()
             .tree.find((s) => s.id === p.spaceId);
           const where = space ? `#${space.name}` : "a channel";
+
+          // Being named is different from a message arriving: it is addressed
+          // to you, so it interrupts even while you are looking at the channel
+          // — the one case where the "you can already see it" rule is wrong.
+          const me = useAuthStore.getState().session?.id;
+          if (me && p.mentions?.includes(me)) {
+            toast.message(`You were mentioned in ${where}`);
+            notify("chat:mention", `Mentioned in ${where}`, "Somebody named you");
+            break;
+          }
+
+          const chat = useChatStore.getState();
+          if (chat.panelOpen && chat.spaceId === p.spaceId) break;
           toast.message(`New message in ${where}`);
           notify("chat:message", where, "New message in the channel");
+          break;
+        }
+        case "dm:message": {
+          // Addressed by the server to one person, so arriving at all means it
+          // is yours — the hub does the filtering that `mine()` does for the
+          // org-wide streams. The actor check stays anyway: you are told about
+          // your own message on no channel.
+          const p = parse(data) as Payload & { conversationId?: string };
+          if (!p.conversationId || mine(p)) break;
+          void useDMStore.getState().onIncoming(p.conversationId);
+
+          const dm = useDMStore.getState();
+          if (dm.conversationId === p.conversationId) break;
+          const who = dm.conversations.find(
+            (c) => c.conversationId === p.conversationId,
+          )?.username;
+          toast.message(who ? `${who} wrote to you` : "New direct message");
+          notify("dm:message", who ?? "Direct message", "You have a new message");
           break;
         }
         default:

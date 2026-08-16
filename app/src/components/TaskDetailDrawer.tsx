@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   X,
   Loader2,
@@ -38,6 +38,8 @@ import TelemetryTimeline from "@/components/TelemetryTimeline";
 import { commentByline } from "@/lib/byline";
 import { describeAgent } from "@/lib/user-agent";
 import { useTasksStore } from "@/store/tasks.store";
+import { usePeopleStore } from "@/store/people.store";
+import { mentionsAllowed } from "@/components/markdown/mention-scope";
 import { useAuthStore } from "@/store/auth.store";
 import { PRIORITIES, priorityMeta } from "@/types/task";
 import type { TaskComment } from "@/types/task";
@@ -218,6 +220,13 @@ function Content() {
   const updateTask = useTasksStore((s) => s.updateTask);
   const deleteTask = useTasksStore((s) => s.deleteTask);
   const addComment = useTasksStore((s) => s.addComment);
+  // Colleagues for `@`. Fetched here rather than per keystroke: a team is small
+  // and the picker has to answer while somebody is mid-word.
+  const fetchPeople = usePeopleStore((s) => s.fetchPeople);
+  const people = useCallback(() => usePeopleStore.getState().current(), []);
+  useEffect(() => {
+    fetchPeople().catch(() => {});
+  }, [fetchPeople]);
   const uploadAttachment = useTasksStore((s) => s.uploadAttachment);
   const deleteAttachment = useTasksStore((s) => s.deleteAttachment);
   const board = useTasksStore((s) => s.board);
@@ -790,7 +799,19 @@ function Content() {
               value={comment}
               onChange={setComment}
               onUpload={upload}
-              placeholder="Write a comment… (markdown, paste files)"
+              // `@` only where the client cannot read it.
+              //
+              // Naming a colleague in something a client reads puts a teammate's
+              // name in front of somebody it was never meant for, and the person
+              // typing has no reason to notice — the picker looks the same
+              // either way. So on a client-visible thread the extension simply
+              // isn't loaded, and `@` stays an ordinary character.
+              people={mentionsAllowed(clientReads, commentInternal) ? people : undefined}
+              placeholder={
+                mentionsAllowed(clientReads, commentInternal)
+                  ? "Write a comment… (markdown, @ names somebody)"
+                  : "Write a comment… the client reads this thread"
+              }
               minHeight="5rem"
             />
             <div className="flex items-center gap-2">

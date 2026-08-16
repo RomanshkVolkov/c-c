@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Send, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Send, Trash2, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
 import { taskIdFromHref } from "@/components/markdown/card-menu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useChatStore } from "@/store/chat.store";
+import { usePeopleStore } from "@/store/people.store";
+import { useDMStore } from "@/store/dm.store";
+import DMThread from "@/components/DMThread";
+import DMSwitcher from "@/components/DMSwitcher";
+import { userIdFromHref } from "@/components/markdown/mention-menu";
 import type { ChatMessage } from "@/store/chat.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -50,6 +55,13 @@ export default function ChatPanel({ spaceId, spaceName }: { spaceId: string; spa
       })),
     [],
   );
+  // Colleagues for the `@` picker, read at trigger time like the cards.
+  const fetchPeople = usePeopleStore((s) => s.fetchPeople);
+  const people = useCallback(() => usePeopleStore.getState().current(), []);
+  useEffect(() => {
+    fetchPeople().catch(() => {});
+  }, [fetchPeople]);
+
   const scroller = useRef<HTMLDivElement>(null);
   // How tall the list was before an older page landed, so the view can stay put.
   const heightBefore = useRef<number | null>(null);
@@ -113,18 +125,41 @@ export default function ChatPanel({ spaceId, spaceName }: { spaceId: string; spa
     }
   };
 
+  // A conversation open means the panel is showing it instead of the channel.
+  // Held in the DM store rather than here so a message arriving can put you in
+  // the right place without this component knowing how.
+  const dmOpen = useDMStore((s) => s.conversationId);
+  const [pickingPerson, setPickingPerson] = useState(false);
+
+  if (dmOpen) {
+    return (
+      <aside className="flex w-80 shrink-0 flex-col border-l bg-background xl:w-96">
+        <DMThread onBack={() => useDMStore.setState({ conversationId: null, messages: [] })} />
+      </aside>
+    );
+  }
+
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l bg-background xl:w-96">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
         <button
           className="ml-auto text-muted-foreground hover:text-foreground"
+          title="Direct messages"
+          onClick={() => setPickingPerson((v) => !v)}
+        >
+          <Users className="size-4" />
+        </button>
+        <button
+          className="text-muted-foreground hover:text-foreground"
           title="Close chat"
           onClick={closePanel}
         >
           <X className="size-4" />
         </button>
       </header>
+
+      {pickingPerson && <DMSwitcher onPicked={() => setPickingPerson(false)} />}
 
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
         {loadingOlder && (
@@ -150,6 +185,7 @@ export default function ChatPanel({ spaceId, spaceName }: { spaceId: string; spa
                 spaceName={spaceName}
                 onUpload={upload}
                 cards={citableCards}
+                people={people}
                 // Consecutive lines from one person read as one turn of speech.
                 grouped={i > 0 && messages[i - 1].authorUserId === m.authorUserId}
               />
@@ -167,11 +203,12 @@ export default function ChatPanel({ spaceId, spaceName }: { spaceId: string; spa
           // than captured now: the composer outlives the board it was mounted
           // beside.
           cards={citableCards}
+          people={people}
           minHeight="3rem"
           // The rule that keeps the four ways of writing in cac apart, said
           // where the decision is actually made rather than in a doc nobody
           // opens. If people don't know where to write, the feature failed.
-          placeholder="Message the team — if it's about a card, comment there; type # to cite it"
+          placeholder="Message the team — # cites a card, @ names somebody"
         />
         <div className="mt-1 flex justify-end">
           <Button size="sm" onClick={send} disabled={sending || !draft.trim()}>
@@ -195,6 +232,7 @@ function Message({
   grouped,
   onUpload,
   cards,
+  people,
 }: {
   m: ChatMessage;
   spaceId: string;
@@ -204,6 +242,7 @@ function Message({
   // or fixing a typo in a message that has an image would drop it.
   onUpload: (file: File) => Promise<{ url: string; fileName: string } | null>;
   cards: () => { id: string; seq: number; title: string }[];
+  people: () => { id: string; username: string }[];
 }) {
   const session = useAuthStore((s) => s.session);
   const edit = useChatStore((s) => s.edit);
@@ -220,9 +259,14 @@ function Message({
    */
   const openCited = (href: string) => {
     const id = taskIdFromHref(href);
-    if (!id) return false;
-    openTask(id).catch((e) => toast.error(String(e)));
-    return true;
+    if (id) {
+      openTask(id).catch((e) => toast.error(String(e)));
+      return true;
+    }
+    // A mention names a person rather than pointing somewhere. Claimed anyway,
+    // so the click doesn't fall through to the attachment and browser paths and
+    // try to open "cac:user/…" as a file.
+    return userIdFromHref(href) !== null;
   };
 
   const [editing, setEditing] = useState(false);
@@ -270,6 +314,7 @@ function Message({
               onChange={setDraft}
               onUpload={onUpload}
               cards={cards}
+              people={people}
               minHeight="3rem"
               autoFocus
             />

@@ -33,6 +33,7 @@ import { tableExtensions } from "./table";
 import TableToolbar from "./TableToolbar";
 import { SlashMenu } from "./slash-menu";
 import { CardMenu, type CardRef } from "./card-menu";
+import { MentionMenu, type PersonRef } from "./mention-menu";
 
 /**
  * WYSIWYG editor whose stored value is **markdown**, not HTML or ProseMirror
@@ -135,6 +136,15 @@ export interface MarkdownEditorProps {
    * markdown meaning everywhere else.
    */
   cards?: () => CardRef[];
+  /**
+   * Offers `@` to name a colleague, from whatever this returns at trigger time.
+   *
+   * Absent means the extension isn't loaded, so `@` stays an ordinary
+   * character. That default is the fence for client-visible text: a public
+   * comment on a client's card must not offer to put a teammate's name in
+   * something the client reads, so the caller simply doesn't pass this.
+   */
+  people?: () => PersonRef[];
   className?: string;
   minHeight?: string;
   autoFocus?: boolean;
@@ -185,6 +195,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     collapsible = false,
     blockTools = false,
     cards,
+    people,
     className,
     minHeight = "8rem",
     autoFocus,
@@ -235,6 +246,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       ...(collapsible ? collapsibleExtensions : []),
       ...(blockTools ? [SlashMenu] : []),
       ...(cards ? [CardMenu.configure({ cards })] : []),
+      ...(people ? [MentionMenu.configure({ people })] : []),
       Markdown.configure({
         html: false, // never smuggle raw HTML into the stored markdown
         transformPastedText: true,
