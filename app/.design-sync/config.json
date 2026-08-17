@@ -1,0 +1,16 @@
+{
+  "projectId": "3263110c-53b1-483f-9829-ee5e2783ad6e",
+  "shape": "package",
+  "pkg": "app",
+  "globalName": "CacDS",
+  "srcDir": "src/components/ui",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": "dist/assets/index-DdZLP3aF.css",
+  "extraFonts": [
+    "dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2",
+    "dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+    "dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+    "dist/assets/iosevka-term-slab-bold-BFlHcmHh.woff2",
+    "dist/assets/iosevka-term-slab-regular-fRHGudul.woff2"
+  ]
+}

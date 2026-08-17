@@ -1,0 +1,21 @@
+{
+  "// why": [
+    "The app compiles with noEmit — it ships a bundle, not a library — so there",
+    "are no .d.ts anywhere, and the converter derives its component list and its",
+    "prop contracts from the .d.ts tree. Without this it finds zero components.",
+    "Emitting declarations for the design-system entry alone gives the design",
+    "agent a real API to code against, without changing how the app builds."
+  ],
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "allowImportingTsExtensions": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "../types",
+    "rootDir": ".."
+  },
+  "include": ["ds-entry.ts", "../src/components/ui/**/*", "../src/lib/**/*", "../src/hooks/**/*"]
+}
