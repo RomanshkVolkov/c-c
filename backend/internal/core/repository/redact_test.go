@@ -7,11 +7,11 @@ import "testing"
 func TestTheLoggedDSNCarriesNoPassword(t *testing.T) {
 	for _, c := range []struct{ name, dsn, secret string }{
 		{"key=value, the shape this project uses",
-			"host=10.0.0.1 user=cac_user password=kqEiguqKdRHM7CHxqQN6j dbname=cac port=5432 sslmode=disable",
-			"kqEiguqKdRHM7CHxqQN6j"},
+			"host=10.0.0.1 user=cac_user password=NOT-A-REAL-PASSWORD dbname=cac port=5432 sslmode=disable",
+			"NOT-A-REAL-PASSWORD"},
 		{"the URL shape, which whoever sets this next may well use",
-			"postgres://cac_user:kqEiguqKdRHM7CHxqQN6j@10.0.0.1:5432/cac?sslmode=disable",
-			"kqEiguqKdRHM7CHxqQN6j"},
+			"postgres://cac_user:NOT-A-REAL-PASSWORD@10.0.0.1:5432/cac?sslmode=disable",
+			"NOT-A-REAL-PASSWORD"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			got := redactDSN(c.dsn)
