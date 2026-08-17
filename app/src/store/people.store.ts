@@ -18,6 +18,19 @@ export interface Person {
  * re-checks every mention when the message is saved — this list is a
  * convenience, never the boundary.
  */
+/**
+ * The empty result, shared.
+ *
+ * A fresh `[]` here is a different array every call, and a zustand selector
+ * that returns one re-renders forever: new reference → render → new reference.
+ * That is React error #185, and it took down the whole screen — with no error
+ * boundary at the time, the app just went blank.
+ *
+ * Callers that read through `getState()` never noticed; the one that used it as
+ * a selector did. Returning a constant makes the shape safe either way.
+ */
+const NOBODY: Person[] = [];
+
 interface PeopleState {
   byOrg: Record<string, Person[]>;
   fetchPeople: (orgId?: string) => Promise<void>;
@@ -41,7 +54,7 @@ export const usePeopleStore = create<PeopleState>((set, get) => ({
 
   current: () => {
     const org = useOrgsStore.getState().currentOrgId;
-    return org ? (get().byOrg[org] ?? []) : [];
+    return (org ? get().byOrg[org] : undefined) ?? NOBODY;
   },
 }));
 

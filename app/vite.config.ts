@@ -15,6 +15,18 @@ export default defineConfig(async () => ({
     },
   },
 
+  // Keep function and class names through minification.
+  //
+  // Without this a crash reports its component stack as `swt@…`, `iwt@…` — the
+  // minified names — and the card the error boundary files is unreadable: the
+  // one time it fired, the component had to be deduced from the route and a
+  // stray `aside` in the stack. `keepNames` makes that stack say `DMSwitcher`.
+  //
+  // It costs a little bundle size, which is the wrong thing to optimise here:
+  // this ships as an 86 MB desktop app, and the name is what turns a screenshot
+  // into a fix.
+  esbuild: { keepNames: true },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

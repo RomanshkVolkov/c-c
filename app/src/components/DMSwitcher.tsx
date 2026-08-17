@@ -22,9 +22,12 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
   const fetchConversations = useDMStore((s) => s.fetchConversations);
   const openConversation = useDMStore((s) => s.open);
   const openWith = useDMStore((s) => s.openWith);
-  const people = usePeopleStore((s) => s.current());
-  const fetchPeople = usePeopleStore((s) => s.fetchPeople);
+  // Selected as a stable slice rather than through `current()`: a selector must
+  // return the same reference when nothing changed, and a derived array never
+  // does. `byOrg[orgId]` is that reference — the `?? []` happens out here.
   const orgId = useOrgsStore((s) => s.currentOrgId);
+  const people = usePeopleStore((s) => (orgId ? s.byOrg[orgId] : undefined)) ?? [];
+  const fetchPeople = usePeopleStore((s) => s.fetchPeople);
 
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
