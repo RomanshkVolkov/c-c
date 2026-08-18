@@ -1,5 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
+import { Search } from "lucide-react";
+import CommandPalette from "@/components/CommandPalette";
 import { Toaster } from "sonner";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
@@ -43,14 +45,39 @@ export default function AppLayout() {
     return <ForcedChangePassword />;
   }
 
+  // ⌘K anywhere, and Escape closes it because the dialog handles that itself.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
         <ConnectionBanner />
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 md:hidden">
-          <SidebarTrigger />
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="md:hidden" />
+          {/* Centred and always there, because a search you have to remember a
+              shortcut for is one most people never find. Clicking it opens the
+              same palette ⌘K does. */}
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="mx-auto flex w-full max-w-md items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/60"
+          >
+            <Search className="size-3.5" />
+            <span>Search tasks, messages, people…</span>
+            <kbd className="ml-auto font-mono text-[10px] opacity-70">⌘K</kbd>
+          </button>
         </header>
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         <Outlet />
       </SidebarInset>
       <UpdateChecker />
