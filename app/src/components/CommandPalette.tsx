@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Loader2, KanbanSquare, NotebookPen, User, Hash, MessageSquare } from "lucide-react";
+import {
+  Search, Loader2, KanbanSquare, NotebookPen, User, Hash, MessageSquare,
+  Plus, Boxes, CornerDownLeft,
+} from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -38,6 +41,27 @@ interface Results {
 }
 
 const VACIO: Results = { tasks: [], notes: [], people: [], messages: [], dms: [] };
+
+/**
+ * What you can do from here, as opposed to what you can find.
+ *
+ * Shown when the box is empty, which is the moment somebody opened it without
+ * knowing what they wanted yet — and hidden as soon as they type, because from
+ * then on they are looking for something and a list of actions is in the way.
+ *
+ * Each one hands off to the screen that already knows how to do it rather than
+ * reimplementing creation in a dialog: the tree knows where a folder goes and
+ * what it may be called, and a second place that also decided that would be a
+ * second place to get it wrong.
+ */
+const ACCIONES = [
+  { key: "task", label: "New task", icon: Plus, to: "/my-work?new=1" },
+  { key: "space", label: "New space", icon: Boxes, to: "/my-work?newSpace=1" },
+  // No "new folder" or "new list" here. Both need a parent, and a palette entry
+  // that then asks "inside what?" would be a second place deciding something
+  // the tree already decides — with its own idea of what is allowed. The tree
+  // is two clicks away and knows the answer.
+] as const;
 
 const GRUPOS: { key: keyof Results; label: string; icon: typeof Search }[] = [
   { key: "tasks", label: "Tasks", icon: KanbanSquare },
@@ -121,9 +145,25 @@ export default function CommandPalette({
 
         <div className="max-h-[60vh] overflow-y-auto p-1">
           {q.trim().length < 2 ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-              Type at least two letters.
-            </p>
+            <>
+              <p className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Create
+              </p>
+              {ACCIONES.map((a) => (
+                <button
+                  key={a.key}
+                  onClick={() => ir(a.to)}
+                  className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
+                >
+                  <a.icon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">{a.label}</span>
+                  <CornerDownLeft className="size-3 text-muted-foreground" />
+                </button>
+              ))}
+              <p className="px-3 pb-2 pt-3 text-center text-xs text-muted-foreground">
+                Or type at least two letters to search.
+              </p>
+            </>
           ) : total === 0 && !loading ? (
             <p className="px-3 py-6 text-center text-xs text-muted-foreground">Nothing found.</p>
           ) : (

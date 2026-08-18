@@ -38,6 +38,26 @@ const escribir = (t: string) =>
   fireEvent.change(screen.getByLabelText("Search"), { target: { value: t } });
 
 describe("la paleta", () => {
+  it("con la caja vacía ofrece qué hacer, no una lista vacía", () => {
+    montar();
+    expect(screen.getByText("New task")).toBeTruthy();
+    expect(screen.getByText("New space")).toBeTruthy();
+  });
+
+  it("y las esconde en cuanto empiezas a buscar", async () => {
+    get.mockResolvedValue({ success: true, data: vacio });
+    montar();
+    escribir("portento");
+    // A partir de ahí buscas algo, y una lista de acciones estorba.
+    await waitFor(() => expect(screen.queryByText("New task")).toBeNull());
+  });
+
+  it("no ofrece crear folder ni lista: ninguna de las dos sabe dónde iría", () => {
+    montar();
+    expect(screen.queryByText("New folder")).toBeNull();
+    expect(screen.queryByText("New list")).toBeNull();
+  });
+
   it("no molesta al servidor con una sola letra", async () => {
     montar();
     escribir("a");

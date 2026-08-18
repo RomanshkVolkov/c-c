@@ -18,7 +18,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ChevronDown,
   ChevronRight,
@@ -236,6 +236,17 @@ export default function SpacesNavigator() {
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   const [addingSpace, setAddingSpace] = useState(false);
   const [ordenando, setOrdenando] = useState(false);
+  // The palette can ask for a new space without knowing how one is made: it
+  // says so in the address and the tree, which does know, opens its own row.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get("newSpace") !== "1") return;
+    setAddingSpace(true);
+    // Consumed once, or coming back to this screen would reopen it.
+    const resto = new URLSearchParams(params);
+    resto.delete("newSpace");
+    setParams(resto, { replace: true });
+  }, [params, setParams]);
   const dropNode = useTasksStore((s) => s.dropNode);
   const sensors = useSensors(
     // Same threshold as the notes tree and the board: under it a pointer-down

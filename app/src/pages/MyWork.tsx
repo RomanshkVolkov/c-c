@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
 import ItemCalendar from "@/components/ItemCalendar";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
@@ -55,6 +56,14 @@ const ESTADOS: { kind: string; label: string }[] = [
 export default function MyWork() {
   const [vista, setVista] = useState<Vista>("list");
   const [creando, setCreando] = useState(false);
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get("new") !== "1") return;
+    setCreando(true);
+    const resto = new URLSearchParams(params);
+    resto.delete("new");
+    setParams(resto, { replace: true });
+  }, [params, setParams]);
   const { lens, includeClosed, tasks, loading, error, scope } = useMyWorkStore();
   const setScope = useMyWorkStore((s) => s.setScope);
   const setLens = useMyWorkStore((s) => s.setLens);
