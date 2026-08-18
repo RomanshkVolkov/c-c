@@ -13,16 +13,17 @@ import { cleanup, render, waitFor } from "@testing-library/react";
  * It has now shipped twice. This is the cheapest guard against a third.
  */
 
-vi.mock("@/lib/api", () => ({
+// `restoreMocks: true` en la configuración desarma estos mocks después del
+// primer test, y entonces `api.get` devuelve `undefined`. Una pantalla que
+// hace `await` dentro de un `try` no se entera; una que encadena `.then` casta
+// con un TypeError que no habla de lo que se está comprobando. Se rearman en
+// `beforeEach`, abajo.
+const { api } = vi.hoisted(() => ({
   api: {
-    get: vi.fn().mockResolvedValue({ success: true, data: [] }),
-    post: vi.fn().mockResolvedValue({ success: true }),
-    patch: vi.fn().mockResolvedValue({ success: true }),
-    delete: vi.fn().mockResolvedValue({ success: true }),
-    postForm: vi.fn(),
+    get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), postForm: vi.fn(),
   },
-  apiUrl: (p: string) => `http://localhost${p}`,
 }));
+vi.mock("@/lib/api", () => ({ api, apiUrl: (p: string) => `http://localhost${p}` }));
 vi.mock("@/components/chat/ChannelView", () => ({ default: () => null }));
 vi.mock("@/components/DMThread", () => ({ default: () => null }));
 vi.mock("@/components/ItemCalendar", () => ({ default: () => null }));
@@ -43,6 +44,10 @@ const arbol = [
 ];
 
 beforeEach(() => {
+  api.get.mockResolvedValue({ success: true, data: [] });
+  api.post.mockResolvedValue({ success: true });
+  api.patch.mockResolvedValue({ success: true });
+  api.delete.mockResolvedValue({ success: true });
   // jsdom no trae matchMedia y el sidebar lo consulta (tema del sistema y
   // ancho de pantalla). Sin esto el fallo es un TypeError que no dice nada de
   // lo que se está comprobando.
@@ -101,6 +106,12 @@ describe("las pantallas nuevas se montan sin renderizar en bucle", () => {
     await waitFor(() => expect(document.body.textContent).toContain("Members"));
   });
 
+  it("Resumen", async () => {
+    const { default: Overview } = await import("@/pages/Overview");
+    montar(<Overview />);
+    await waitFor(() => expect(document.body.textContent).toContain("Open reports"));
+  });
+
   it("el árbol de espacios", async () => {
     const { default: SpacesNavigator } = await import("@/components/tree/SpacesNavigator");
     montar(<SpacesNavigator />);
@@ -124,5 +135,9 @@ describe("el sidebar", () => {
     // Y los servidores son una entrada de plataforma, no un «dashboard».
     expect(container.textContent).toContain("Servers");
     expect(container.textContent).not.toContain("Dashboard");
+    // El resumen abre la navegación, y «Tareas» ya no compite con el árbol de
+    // espacios: los espacios *son* esa navegación.
+    expect(container.textContent).toContain("Overview");
+    expect(container.textContent).not.toContain("Tasks");
   });
 });

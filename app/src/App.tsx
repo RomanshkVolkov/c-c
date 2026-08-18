@@ -3,6 +3,7 @@ import Login from "@/pages/Login";
 import ReportsRedirect from "@/components/ReportsRedirect";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Dashboard from "@/pages/Dashboard";
+import Overview from "@/pages/Overview";
 import ServerManage from "@/pages/ServerManage";
 import ServerStats from "@/pages/ServerStats";
 import StackSecrets from "@/pages/StackSecrets";
@@ -25,11 +26,15 @@ import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PromptProvider } from "@/components/PromptDialog";
 import { useAuthStore } from "@/store/auth.store";
 
-// Sends unknown paths to the right landing: the board for signed-in users, the
-// on-device tools for returning guests, otherwise the login screen.
+// Sends unknown paths to the right landing: the overview for signed-in users,
+// the on-device tools for returning guests, otherwise the login screen.
+//
+// El resumen y no la lista de servidores: abrir la app en la infraestructura
+// hacía que lo primero que vieras fuera lo que casi nunca cambia, y lo que sí
+// —reportes, tareas, quién te habló— quedara a un clic de distancia cada día.
 function RootRedirect() {
   const { isAuthenticated, isGuest } = useAuthStore();
-  if (isAuthenticated()) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated()) return <Navigate to="/overview" replace />;
   if (isGuest()) return <Navigate to="/image-tool" replace />;
   return <Navigate to="/login" replace />;
 }
@@ -52,6 +57,7 @@ export default function App() {
             </ProtectedRoute>
           }
         >
+          <Route path="/overview" element={<Overview />} />
           <Route path="/dashboard" element={<Dashboard />} />
           {/* The reports window is gone — its work lives on the board. The
               route stays as a redirect because notifications already sent are

@@ -10,7 +10,7 @@ import {
   Hash,
   MessagesSquare,
   ChevronRight,
-  KanbanSquare,
+  LayoutDashboard,
   NotebookPen,
   ImageDown,
   Send,
@@ -61,8 +61,11 @@ import { cn } from "@/lib/utils";
 // Ten equal rows made everything look equally important, which is another way
 // of saying nothing did.
 const NAV_ITEMS = [
+  { label: "Overview", path: "/overview", icon: LayoutDashboard, guest: false, group: "work" },
   { label: "My work", path: "/my-work", icon: Inbox, guest: false, group: "work" },
-  { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false, group: "work" },
+  // Sin entrada para tareas: el árbol de espacios de aquí abajo **es** esa
+  // navegación. Una fila «Tareas» que lleva a la última lista abierta compite
+  // con el árbol por el mismo trabajo y deja al usuario sin saber cuál manda.
   { label: "Notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
   { label: "Channels", path: "/chat", icon: Hash, guest: false, group: "talk" },
   { label: "Direct messages", path: "/dm", icon: MessagesSquare, guest: false, group: "talk" },
