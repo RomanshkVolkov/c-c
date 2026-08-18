@@ -35,12 +35,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import ChannelDialog from "@/components/ChannelDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { docKey } from "@/types/task";
 import { cn } from "@/lib/utils";
+import InlineName from "@/components/tree/InlineName";
+
+/** Reports a failed write and keeps the inline row open with what was typed. */
+const avisando = (p: Promise<unknown>) =>
+  p.catch((e) => {
+    toast.error(String(e));
+    throw e;
+  });
 
 // ─── Left navigator: spaces → folders → lists ────────────────────────────────
 
@@ -50,20 +57,14 @@ export default function SpacesNavigator() {
   const error = useTasksStore((s) => s.error);
   const createSpace = useTasksStore((s) => s.createSpace);
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
-  const prompt = usePrompt();
+  const [addingSpace, setAddingSpace] = useState(false);
 
-  const addSpace = async () => {
+  const addSpace = () => {
     if (!currentOrgId) {
       toast.error("Pick an organization first");
       return;
     }
-    const name = await prompt({ title: "New space", label: "Name", placeholder: "Engineering", confirmText: "Create" });
-    if (!name) return;
-    try {
-      await createSpace(currentOrgId, name);
-    } catch (e) {
-      toast.error("Could not create space", { description: String(e) });
-    }
+    setAddingSpace(true);
   };
 
   return (
@@ -89,6 +90,14 @@ export default function SpacesNavigator() {
         ) : (
           tree.map((space) => <SpaceNode key={space.id} space={space} />)
         )}
+        {addingSpace && currentOrgId && (
+          <InlineName
+            mode="create"
+            placeholder="New space"
+            onSubmit={(name) => avisando(createSpace(currentOrgId, name))}
+            onClose={() => setAddingSpace(false)}
+          />
+        )}
       </div>
     </aside>
   );
@@ -102,8 +111,13 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const confirm = useConfirm();
   const { createFolder, createList, renameSpace, deleteSpace, moveSpace } = useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
+  const [adding, setAdding] = useState<null | "folder" | "list">(null);
+  const [renaming, setRenaming] = useState(false);
 
-  const prompt = usePrompt();
+  const empezarA = (que: "folder" | "list") => {
+    setOpen(true); // or the new row would appear inside a collapsed node
+    setAdding(que);
+  };
 
   return (
     <div className="mb-0.5">
@@ -114,6 +128,15 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         open={channelOpen}
         onOpenChange={setChannelOpen}
       />
+      {renaming ? (
+        <InlineName
+          mode="rename"
+          defaultValue={space.name}
+          placeholder="Space name"
+          onSubmit={(name) => avisando(renameSpace(space.id, name))}
+          onClose={() => setRenaming(false)}
+        />
+      ) : (
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
         <button
           onClick={() => setOpen((v) => !v)}
@@ -158,24 +181,21 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             <DropdownMenuGroup>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await prompt({ title: "New folder", label: "Name", confirmText: "Create" });
-                  if (n) createFolder(space.id, n).catch((e) => toast.error(String(e)));
+                  empezarA("folder");
                 }}
               >
                 <FolderPlus className="size-4" /> New folder
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await prompt({ title: "New list", label: "Name", confirmText: "Create" });
-                  if (n) createList(space.id, n).catch((e) => toast.error(String(e)));
+                  empezarA("list");
                 }}
               >
                 <ListChecks className="size-4" /> New list
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await prompt({ title: "Rename space", label: "Name", defaultValue: space.name });
-                  if (n) renameSpace(space.id, n).catch((e) => toast.error(String(e)));
+                  setRenaming(true);
                 }}
               >
                 <Pencil className="size-4" /> Rename
@@ -206,6 +226,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      )}
 
       {open && (
         <div className="ml-4">
@@ -226,7 +247,17 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               spaceProjectId={space.projectId}
             />
           ))}
-          {space.folders.length === 0 && space.lists.length === 0 && (
+          {adding && (
+            <InlineName
+              mode="create"
+              placeholder={adding === "folder" ? "New folder" : "New list"}
+              onSubmit={(name) =>
+                avisando(adding === "folder" ? createFolder(space.id, name) : createList(space.id, name))
+              }
+              onClose={() => setAdding(null)}
+            />
+          )}
+          {!adding && space.folders.length === 0 && space.lists.length === 0 && (
             <p className="px-2 py-1 text-xs text-muted-foreground">Empty</p>
           )}
         </div>
@@ -299,8 +330,9 @@ function FolderNode({
   spaceProjectId?: string;
 }) {
   const [open, setOpen] = useState(true);
+  const [addingList, setAddingList] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const confirm = useConfirm();
-  const prompt = usePrompt();
   const openDoc = useTasksStore((s) => s.openDoc);
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
@@ -308,6 +340,15 @@ function FolderNode({
 
   return (
     <div>
+      {renaming ? (
+        <InlineName
+          mode="rename"
+          defaultValue={folder.name}
+          placeholder="Folder name"
+          onSubmit={(name) => avisando(renameFolder(folder.id, name))}
+          onClose={() => setRenaming(false)}
+        />
+      ) : (
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
         <button
           onClick={() => setOpen((v) => !v)}
@@ -343,16 +384,15 @@ function FolderNode({
             <DropdownMenuGroup>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await prompt({ title: "New list", label: "Name", confirmText: "Create" });
-                  if (n) createList(spaceId, n, folder.id).catch((e) => toast.error(String(e)));
+                  setOpen(true);
+                  setAddingList(true);
                 }}
               >
                 <ListChecks className="size-4" /> New list
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  const n = await prompt({ title: "Rename folder", label: "Name", defaultValue: folder.name });
-                  if (n) renameFolder(folder.id, n).catch((e) => toast.error(String(e)));
+                  setRenaming(true);
                 }}
               >
                 <Pencil className="size-4" /> Rename
@@ -380,11 +420,20 @@ function FolderNode({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      )}
       {open && (
         <div className="ml-4">
           {folder.lists.map((l) => (
             <ListNode key={l.id} list={l} spaceName={spaceName} spaceProjectId={spaceProjectId} />
           ))}
+          {addingList && (
+            <InlineName
+              mode="create"
+              placeholder="New list"
+              onSubmit={(name) => avisando(createList(spaceId, name, folder.id))}
+              onClose={() => setAddingList(false)}
+            />
+          )}
         </div>
       )}
     </div>
@@ -404,10 +453,10 @@ function ListNode({
   const activeListId = useTasksStore((s) => s.activeListId);
   const selectList = useTasksStore((s) => s.selectList);
   const confirm = useConfirm();
-  const prompt = usePrompt();
   const docIndex = useTasksStore((s) => s.docIndex);
   const { renameList, deleteList } = useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const active = activeListId === list.id;
   // Its own binding, or the space's. The eye means "a client sees this" either
   // way — where it was configured is a detail for the dialog, not the tree.
@@ -425,6 +474,15 @@ function ListNode({
         open={channelOpen}
         onOpenChange={setChannelOpen}
       />
+    {renaming ? (
+      <InlineName
+        mode="rename"
+        defaultValue={list.name}
+        placeholder="List name"
+        onSubmit={(name) => avisando(renameList(list.id, name))}
+        onClose={() => setRenaming(false)}
+      />
+    ) : (
     <div
       className={cn(
         "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 hover:bg-accent/50",
@@ -465,8 +523,7 @@ function ListNode({
           <DropdownMenuGroup>
             <DropdownMenuItem
               onClick={async () => {
-                const n = await prompt({ title: "Rename list", label: "Name", defaultValue: list.name });
-                if (n) renameList(list.id, n).catch((e) => toast.error(String(e)));
+                setRenaming(true);
               }}
             >
               <Pencil className="size-4" /> Rename
@@ -488,6 +545,7 @@ function ListNode({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    )}
     </>
   );
 }
