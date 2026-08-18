@@ -21,6 +21,7 @@ vi.mock("@/lib/api", () => ({
   apiUrl: (p: string) => `http://localhost${p}`,
 }));
 
+const { MemoryRouter } = await import("react-router-dom");
 const { default: SpacesNavigator } = await import("@/components/tree/SpacesNavigator");
 const { PromptProvider } = await import("@/components/PromptDialog");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
@@ -41,11 +42,15 @@ beforeEach(() => {
 
 const montar = () =>
   render(
-    <ConfirmProvider>
-      <PromptProvider>
-        <SpacesNavigator />
-      </PromptProvider>
-    </ConfirmProvider>,
+    // Needs a router since the tree moved to the global sidebar: picking a list
+    // now navigates to the board instead of quietly changing one nobody is on.
+    <MemoryRouter>
+      <ConfirmProvider>
+        <PromptProvider>
+          <SpacesNavigator />
+        </PromptProvider>
+      </ConfirmProvider>
+    </MemoryRouter>,
   );
 
 describe("acciones de fila del árbol", () => {

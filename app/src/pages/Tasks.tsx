@@ -17,7 +17,6 @@ import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard"
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import DocView from "@/components/DocView";
 import CopyId from "@/components/CopyId";
-import SpacesNavigator from "@/components/tree/SpacesNavigator";
 import ChatPanel from "@/components/ChatPanel";
 import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -29,20 +28,17 @@ import { priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
 
 export default function Tasks() {
-  const fetchTree = useTasksStore((s) => s.fetchTree);
   const fetchTags = useTasksStore((s) => s.fetchTags);
   const activeListId = useTasksStore((s) => s.activeListId);
   const refreshBoard = useTasksStore((s) => s.refreshBoard);
-  const fetchDocIndex = useTasksStore((s) => s.fetchDocIndex);
 
-  // Re-scope when the org switcher changes: spaces, tags and the open board all
-  // belong to one org, so a stale selection has to be dropped, not carried over.
+  // Only the tags: the tree, its doc index and the unread counts moved to the
+  // navigator when that moved to the sidebar, because they have to be there
+  // whether or not this screen is open.
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   useEffect(() => {
-    fetchTree();
     fetchTags();
-    fetchDocIndex();
-  }, [currentOrgId, fetchTree, fetchTags, fetchDocIndex]);
+  }, [currentOrgId, fetchTags]);
 
   // Restore the persisted list on first mount.
   useEffect(() => {
@@ -75,19 +71,10 @@ export default function Tasks() {
   const tree = useTasksStore((s) => s.tree);
   const chatOpen = useChatStore((s) => s.panelOpen);
   const chatSpaceId = useChatStore((s) => s.spaceId);
-  const fetchUnread = useChatStore((s) => s.fetchUnread);
   const chatSpace = tree.find((s) => s.id === chatSpaceId);
-
-  // Badges come from one grouped call, re-asked when the org changes: the
-  // counts belong to that org's spaces and carrying them across would show the
-  // wrong number next to the wrong tree.
-  useEffect(() => {
-    fetchUnread().catch(() => {});
-  }, [currentOrgId, fetchUnread]);
 
   return (
     <div className="flex-1 flex min-h-0">
-      <SpacesNavigator />
       {activeDoc ? <DocView /> : <Board />}
       {chatOpen && chatSpace && (
         <ChatPanel spaceId={chatSpace.id} spaceName={chatSpace.name} />

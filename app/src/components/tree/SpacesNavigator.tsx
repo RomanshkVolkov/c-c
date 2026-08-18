@@ -6,7 +6,8 @@
  * here unchanged: any difference in behaviour at this point is a mistake in the
  * move, not a decision.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   ChevronRight,
@@ -39,6 +40,11 @@ import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { docKey } from "@/types/task";
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import InlineName from "@/components/tree/InlineName";
 
@@ -59,6 +65,20 @@ export default function SpacesNavigator() {
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   const [addingSpace, setAddingSpace] = useState(false);
 
+  // Asked for here rather than by the Tasks screen, which is where it used to
+  // live. Now that the tree is in the global sidebar it is on screen from the
+  // moment you sign in, and a tree that only loads once you visit Tasks would
+  // simply look empty everywhere else. Re-asked when the org changes: spaces
+  // belong to one organization and a stale one is somebody else's work.
+  const fetchTree = useTasksStore((s) => s.fetchTree);
+  const fetchDocIndex = useTasksStore((s) => s.fetchDocIndex);
+  const fetchUnread = useChatStore((s) => s.fetchUnread);
+  useEffect(() => {
+    fetchTree();
+    fetchDocIndex();
+    fetchUnread().catch(() => {});
+  }, [currentOrgId, fetchTree, fetchDocIndex, fetchUnread]);
+
   const addSpace = () => {
     if (!currentOrgId) {
       toast.error("Pick an organization first");
@@ -68,14 +88,20 @@ export default function SpacesNavigator() {
   };
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/10">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        <span className="text-sm font-medium">Spaces</span>
-        <Button size="icon-xs" variant="ghost" className="ml-auto" title="New space" onClick={addSpace}>
+    <SidebarGroup>
+      <SidebarGroupLabel className="flex items-center">
+        Spaces
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          className="ml-auto"
+          title="New space"
+          onClick={addSpace}
+        >
           <Plus className="size-3.5" />
         </Button>
-      </header>
-      <div className="flex-1 overflow-auto py-1">
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
         {error && (
           <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-destructive">
             <AlertCircle className="size-3" /> {error}
@@ -98,8 +124,8 @@ export default function SpacesNavigator() {
             onClose={() => setAddingSpace(false)}
           />
         )}
-      </div>
-    </aside>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
@@ -452,6 +478,7 @@ function ListNode({
 }) {
   const activeListId = useTasksStore((s) => s.activeListId);
   const selectList = useTasksStore((s) => s.selectList);
+  const navigate = useNavigate();
   const confirm = useConfirm();
   const docIndex = useTasksStore((s) => s.docIndex);
   const { renameList, deleteList } = useTasksStore.getState();
@@ -488,7 +515,13 @@ function ListNode({
         "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 hover:bg-accent/50",
         active && "bg-accent",
       )}
-      onClick={() => selectList(list.id)}
+      onClick={() => {
+        selectList(list.id);
+        // The tree is in the global sidebar now, so this can be clicked from
+        // Notes or Diagnostics. Changing the board of a screen nobody is
+        // looking at is not what "open this list" means.
+        navigate("/tasks");
+      }}
     >
       <ListChecks className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="flex-1 truncate text-sm">{list.name}</span>

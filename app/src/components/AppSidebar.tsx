@@ -40,6 +40,7 @@ import {
 import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
 import { Brand, BrandMark } from "@/components/brand/Brand";
+import SpacesNavigator from "@/components/tree/SpacesNavigator";
 import { ChangePasswordDialog } from "@/components/ChangePassword";
 import ConnectMcpDialog from "@/components/ConnectMcpDialog";
 import NotificationsPanel from "@/components/NotificationsPanel";
@@ -52,17 +53,29 @@ import { useThemeStore, type ThemePreference } from "@/store/theme.store";
 import { cn } from "@/lib/utils";
 
 // guest: reachable on-device (no backend). superadmin: only for platform admins.
+//
+// `group` splits one flat list of ten into the three things a person is
+// actually doing: their work, the developer tools, and running the platform.
+// Ten equal rows made everything look equally important, which is another way
+// of saying nothing did.
 const NAV_ITEMS = [
-  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false },
-  { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false },
-  { label: "Notes", path: "/notes", icon: NotebookPen, guest: false },
-  { label: "Image Tool", path: "/image-tool", icon: ImageDown, guest: true },
-  { label: "Requests", path: "/requests", icon: Send, guest: false },
-  { label: "Crypto Tools", path: "/crypto", icon: KeyRound, guest: true },
-  { label: "Diagnostics", path: "/diagnostics", icon: Activity, guest: false },
-  { label: "Organization", path: "/organization", icon: Building2, guest: false },
-  { label: "Invitations", path: "/invitations", icon: Mail, guest: false },
-  { label: "Users", path: "/users", icon: Users, guest: false, superadmin: true },
+  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false, group: "work" },
+  { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false, group: "work" },
+  { label: "Notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
+  { label: "Image Tool", path: "/image-tool", icon: ImageDown, guest: true, group: "tools" },
+  { label: "Requests", path: "/requests", icon: Send, guest: false, group: "tools" },
+  { label: "Crypto Tools", path: "/crypto", icon: KeyRound, guest: true, group: "tools" },
+  { label: "Diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
+  { label: "Organization", path: "/organization", icon: Building2, guest: false, group: "platform" },
+  { label: "Invitations", path: "/invitations", icon: Mail, guest: false, group: "platform" },
+  { label: "Users", path: "/users", icon: Users, guest: false, superadmin: true, group: "platform" },
+];
+
+/** Rendered in this order; a group with nothing in it draws nothing at all. */
+const GROUPS: { key: string; label: string }[] = [
+  { key: "work", label: "Work" },
+  { key: "tools", label: "DevTools" },
+  { key: "platform", label: "Platform" },
 ];
 
 export default function AppSidebar() {
@@ -133,34 +146,45 @@ export default function AppSidebar() {
       )}
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => {
-                const badge =
-                  item.path === "/invitations" && pendingInvites > 0 ? pendingInvites : null;
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={pathname.startsWith(item.path)}
-                      tooltip={badge ? `${item.label} (${badge})` : item.label}
-                      onClick={() => navigate(item.path)}
-                    >
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                      {badge && (
-                        <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
-                          {badge}
-                        </span>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {GROUPS.map((grupo) => {
+          const deEsteGrupo = items.filter((i) => i.group === grupo.key);
+          if (deEsteGrupo.length === 0) return null;
+          return (
+            <SidebarGroup key={grupo.key}>
+              <SidebarGroupLabel>{grupo.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {deEsteGrupo.map((item) => {
+                    const badge =
+                      item.path === "/invitations" && pendingInvites > 0 ? pendingInvites : null;
+                    return (
+                      <SidebarMenuItem key={item.path}>
+                        <SidebarMenuButton
+                          isActive={pathname.startsWith(item.path)}
+                          tooltip={badge ? `${item.label} (${badge})` : item.label}
+                          onClick={() => navigate(item.path)}
+                        >
+                          <item.icon className="size-4" />
+                          <span>{item.label}</span>
+                          {badge && (
+                            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                              {badge}
+                            </span>
+                          )}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
+
+        {/* The spaces tree. Only signed in — it is the one group whose contents
+            come from the server — and only expanded, because a tree needs width
+            to be a tree and the collapsed rail is one icon across. */}
+        {authed && !collapsed && <SpacesNavigator />}
       </SidebarContent>
 
       <SidebarFooter>
