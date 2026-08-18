@@ -180,12 +180,17 @@ function DMLine({
   };
 
   return (
-    // Lo propio marcado igual que en un canal: la misma señal en los dos
-    // sitios, porque son la misma pregunta —¿esto lo dije yo?— y aprenderla dos
+    // Igual que en un canal: lo propio a la derecha. La misma señal en los dos
+    // sitios, porque es la misma pregunta —¿esto lo dije yo?— y aprenderla dos
     // veces no tiene sentido.
-    <div className={cn("group", mine && "-ml-2 border-l-2 border-primary/60 pl-2")}>
+    <div className={cn("group flex flex-col", mine && "items-end")}>
       {!grouped && (
-        <div className="mb-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "mb-0.5 flex items-center gap-2 text-xs text-muted-foreground",
+            mine && "flex-row-reverse",
+          )}
+        >
           <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
             {mine ? "You" : m.authorName || "unknown"}
           </span>
@@ -199,7 +204,9 @@ function DMLine({
         className={cn(
           "relative rounded-md px-2 py-1 hover:bg-muted/40",
           grouped && "mt-0.5",
-          mine && "bg-primary/5",
+          mine
+            ? "max-w-[75%] rounded-tr-sm border border-primary/25 bg-primary/10"
+            : "w-full",
         )}
       >
         {editing ? (
@@ -218,8 +225,11 @@ function DMLine({
         ) : (
           <>
             <Markdown>{m.body}</Markdown>
+            {/* A la izquierda, no a la derecha: estas acciones sólo existen en
+                los mensajes propios, que ahora van pegados al canto derecho, y
+                ahí taparían justo el final del texto. */}
             {mine && (
-              <div className="absolute -top-1 right-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+              <div className="absolute -top-1 left-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
                 <button
                   className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                   title="Edit"

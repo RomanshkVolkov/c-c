@@ -285,17 +285,22 @@ function Message({
   };
 
   return (
-    // Lo propio, marcado. Antes todos los mensajes eran la misma fila gris y
-    // había que leer el nombre para saber quién habló; en una conversación
-    // rápida eso es exactamente lo que no se hace.
+    // Lo propio a la derecha, lo demás a la izquierda: la señal se lee antes
+    // que cualquier nombre, que es lo que hace falta en una conversación
+    // rápida.
     //
-    // Un borde de color en el canto izquierdo y un fondo tenue, en vez de
-    // alinear a la derecha como un móvil: aquí hablan más de dos, y una columna
-    // partida en dos deja los mensajes de terceros pegados unos a otros y a
-    // media anchura.
-    <div className={cn("group", mine && "-ml-2 border-l-2 border-primary/60 pl-2")}>
+    // Sólo el globo propio se limita en ancho. Partir la columna por la mitad
+    // dejaría los mensajes de terceros a media anchura sin ganar nada —son los
+    // que más se leen—, así que los ajenos siguen ocupando la línea entera y es
+    // el mío el que se aparta.
+    <div className={cn("group flex flex-col", mine && "items-end")}>
       {!grouped && (
-        <div className="mb-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "mb-0.5 flex items-center gap-2 text-xs text-muted-foreground",
+            mine && "flex-row-reverse",
+          )}
+        >
           <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
             {mine ? "You" : m.authorName || "unknown"}
           </span>
@@ -312,7 +317,9 @@ function Message({
         className={cn(
           "relative rounded-md px-2 py-1 hover:bg-muted/40",
           grouped && "mt-0.5",
-          mine && "bg-primary/5",
+          mine
+            ? "max-w-[75%] rounded-tr-sm border border-primary/25 bg-primary/10"
+            : "w-full",
         )}
       >
         {editing ? (
@@ -342,7 +349,14 @@ function Message({
             {/* Con aire: iban a `px-1` y `gap-1` sobre iconos de 12px, así que
                 las tres acciones formaban un solo borrón imposible de acertar.
                 Cada botón tiene ahora su propia zona de pulsación. */}
-            <div className="absolute -top-1 right-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+            {/* Al lado contrario del globo: encima del propio taparían justo el
+                final del texto, que es donde acaba de mirar quien escribió. */}
+            <div
+              className={cn(
+                "absolute -top-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100",
+                mine ? "left-1" : "right-1",
+              )}
+            >
               <MessageToTask body={m.body} spaceId={spaceId} spaceName={spaceName} />
               {mine && (
                 <>
