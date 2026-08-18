@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Command & Control — isotipo.
+
+    Fuente de todo el set de iconos: de aquí sale `tauri icon`, no al revés.
+
+    Tres racks y no los cinco del arte original, porque el tamaño en el que más
+    se ve esto es 32px (barra de tareas) y ahí cinco racks con seis rayas cada
+    uno son treinta líneas de un píxel, o sea un borrón gris. A 32px esto debe
+    leerse como tres barras ascendentes cruzadas por una línea roja; las rejillas
+    son textura para los tamaños grandes y se funden en un tinte claro al
+    encoger, que es un degradado suave y no ruido.
+
+    El escalón entre racks es de 100px y no de 70 por la misma razón: a 32px, 70
+    son dos píxeles y las tres barras parecen iguales, con lo que se pierde la
+    progresión que hace reconocible la silueta.
+
+    El cuadrado redondeado se dibuja aquí a propósito: macOS no enmascara los
+    iconos, los aporta la app. El exterior queda transparente para que Windows y
+    Linux no arrastren un recuadro de más.
+
+    Colores muestreados del arte original, no inventados.
+  -->
+  <rect x="92" y="92" width="840" height="840" rx="185" fill="#1C1C1C"/>
+
+  <g fill="#F6F1EC">
+    <rect x="202" y="420" width="170" height="360" rx="24"/>
+    <rect x="427" y="320" width="170" height="460" rx="24"/>
+    <rect x="652" y="220" width="170" height="560" rx="24"/>
+  </g>
+
+  <!-- Rejillas. Van del color del fondo para que sean huecos, no rayas pegadas. -->
+  <g fill="#1C1C1C">
+    <rect x="234" y="464" width="106" height="28" rx="14"/>
+    <rect x="234" y="520" width="106" height="28" rx="14"/>
+    <rect x="234" y="652" width="106" height="28" rx="14"/>
+    <rect x="234" y="708" width="106" height="28" rx="14"/>
+
+    <rect x="459" y="364" width="106" height="28" rx="14"/>
+    <rect x="459" y="420" width="106" height="28" rx="14"/>
+    <rect x="459" y="652" width="106" height="28" rx="14"/>
+    <rect x="459" y="708" width="106" height="28" rx="14"/>
+
+    <rect x="684" y="264" width="106" height="28" rx="14"/>
+    <rect x="684" y="320" width="106" height="28" rx="14"/>
+    <rect x="684" y="652" width="106" height="28" rx="14"/>
+    <rect x="684" y="708" width="106" height="28" rx="14"/>
+  </g>
+
+  <!-- La línea de telemetría: lo último que debe perderse al encoger, así que
+       los nodos son gruesos y el trazo va por encima de todo. -->
+  <g fill="#DC2921">
+    <rect x="230" y="575" width="564" height="30"/>
+    <rect x="247" y="550" width="80" height="80"/>
+    <rect x="472" y="550" width="80" height="80"/>
+    <rect x="697" y="550" width="80" height="80"/>
+  </g>
+</svg>

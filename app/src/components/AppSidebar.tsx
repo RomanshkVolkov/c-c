@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/sidebar";
 import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
+import { Brand, BrandMark } from "@/components/brand/Brand";
 import { ChangePasswordDialog } from "@/components/ChangePassword";
 import ConnectMcpDialog from "@/components/ConnectMcpDialog";
 import NotificationsPanel from "@/components/NotificationsPanel";
@@ -82,6 +83,19 @@ export default function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
+      <SidebarHeader>
+        {/* The brand sits outside the `authed` check below: signed out, the
+            sidebar still shows guest navigation, and a product with no name on
+            it looks broken. Collapsed it drops to the mark alone, which is the
+            same drawing as the window icon. */}
+        <div className={cn("flex items-center", collapsed ? "justify-center" : "px-1")}>
+          {collapsed ? (
+            <BrandMark className="h-5 w-auto" />
+          ) : (
+            <Brand className="text-sm" />
+          )}
+        </div>
+      </SidebarHeader>
       {authed && (
         <SidebarHeader>
           {/* Collapsed, the header is one icon wide. The org switcher was still

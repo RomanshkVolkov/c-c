@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Brand } from "@/components/brand/Brand";
 
 const schema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -55,7 +56,9 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">CAC</CardTitle>
+          <CardTitle className="text-xl">
+            <Brand />
+          </CardTitle>
           <CardDescription>
             VPS Control Plane — Sign in to continue
           </CardDescription>
