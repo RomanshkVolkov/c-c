@@ -112,6 +112,17 @@ describe("las pantallas nuevas se montan sin renderizar en bucle", () => {
     await waitFor(() => expect(document.body.textContent).toContain("Open reports"));
   });
 
+  it("Servidores, sin el cascarón que traía de cuando era la app entera", async () => {
+    const { default: Dashboard } = await import("@/pages/Dashboard");
+    montar(<Dashboard />);
+    await waitFor(() => expect(document.body.textContent).toContain("Servers"));
+    // Su propio menú de cuenta se fue al pie del sidebar: tener dos sitios
+    // desde los que cerrar sesión es tener uno de más.
+    expect(document.body.textContent).not.toContain("Sign out");
+    // Y el resumen de pendientes que iba encima ahora es la pantalla Resumen.
+    expect(document.body.textContent).not.toContain("VPS Control Plane");
+  });
+
   it("el árbol de espacios", async () => {
     const { default: SpacesNavigator } = await import("@/components/tree/SpacesNavigator");
     montar(<SpacesNavigator />);

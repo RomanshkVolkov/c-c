@@ -1,29 +1,20 @@
 import { useState } from "react";
-import { Activity, KeyRound, LogOut, Network, Pencil, RefreshCw, Rocket, Server, Trash2, User } from "lucide-react";
+import { Activity, KeyRound, Network, Pencil, RefreshCw, Rocket, Server, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle,
+  Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { useAuth } from "@/hooks/use-auth";
 import { useServers } from "@/hooks/use-servers";
 import AddServerDialog from "@/components/AddServerDialog";
 import SshKeyDialog from "@/components/SshKeyDialog";
 import EditServerDialog from "@/components/EditServerDialog";
 import K8sStatusBadge from "@/components/K8sStatusBadge";
-import PendingSummary from "@/components/PendingSummary";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import type { Server as ServerType } from "@/types/server";
@@ -44,14 +35,11 @@ interface AgentResult {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { session, logout } = useAuth();
   const { servers, loading, createServer, updateServer, deleteServer, refresh } = useServers();
   const confirm = useConfirm();
   const [busy, setBusy] = useState<AgentBusy>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
 
-  const handleLogout = () => { logout(); navigate("/login"); };
-  const initials = session?.username?.slice(0, 2).toUpperCase() ?? "??";
   // `status` only tracks the swarm-manage agent, so the count is out of swarm
   // servers — a kubernetes row has no agent and would drag the total down.
   const swarmServers = servers.filter((s) => s.type === "docker-swarm");
@@ -112,45 +100,30 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Server className="h-5 w-5" />
-          <span className="font-semibold text-lg">CAC</span>
-          <Separator orientation="vertical" className="h-5 mx-1" />
-          <span className="text-muted-foreground text-sm">VPS Control Plane</span>
+    // Sin cabecera propia ni menú de cuenta: los tenía de cuando esta pantalla
+    // *era* la app y se abría sola. Ahora vive dentro del armazón con barra
+    // lateral, que ya pone la marca arriba y la cuenta en su pie — y aquel menú
+    // era el único sitio con un «Sign out» duplicado.
+    //
+    // Tampoco el resumen de pendientes que iba encima. Estaba ahí porque los
+    // servidores son lo que menos se toca y hacía falta que lo primero de la
+    // primera pantalla fuera trabajo; eso lo contesta Resumen, que es la
+    // pantalla en la que abre la app. Aquí sólo estorbaba entre el título y
+    // lo que se viene a hacer.
+    <div className="flex flex-1 flex-col overflow-auto">
+      <main className="flex-1 space-y-5 p-6">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0">
+            <h2 className="text-[19px] font-semibold">Servers</h2>
+            <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+              Registered VPS instances. Deploy and update use your local SSH agent;
+              no key leaves your machine.
+            </p>
+          </div>
+          <div className="ml-auto shrink-0">
+            <AddServerDialog onCreated={createServer} />
+          </div>
         </div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-accent transition-colors">
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-            </Avatar>
-            <span className="text-sm">{session?.username}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="flex items-center gap-2">
-                <User className="h-4 w-4" />
-                {session?.username}
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={handleLogout} variant="destructive">
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </header>
-
-      <main className="flex-1 p-6 space-y-6">
-        {/* First thing on the first screen. Servers are what this app started
-            as, but they're the part you touch least — pending work is the
-            reason to open cac on an ordinary day. */}
-        <PendingSummary />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
@@ -200,13 +173,6 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Servers</CardTitle>
-              <CardDescription>
-                Registered VPS instances. Deploy/Update uses your local SSH agent
-                (1Password recommended) — no keys leave your machine.
-              </CardDescription>
-            </div>
             {editing && (
         <EditServerDialog
           server={editing}
@@ -222,7 +188,6 @@ export default function Dashboard() {
           onOpenChange={(v) => !v && setKeyFor(null)}
         />
       )}
-      <AddServerDialog onCreated={createServer} />
           </CardHeader>
           <CardContent>
             {loading ? (
