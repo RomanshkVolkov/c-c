@@ -115,7 +115,12 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         onOpenChange={setChannelOpen}
       />
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
-        <button onClick={() => setOpen((v) => !v)} className="text-muted-foreground">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-muted-foreground hover:text-foreground"
+          aria-expanded={open}
+          aria-label={`${open ? "Collapse" : "Expand"} ${space.name}`}
+        >
           {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
         </button>
         <span
@@ -144,7 +149,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <button className="text-muted-foreground opacity-0 group-hover:opacity-100" aria-label="Space menu">
+              <button className="text-muted-foreground hover:text-foreground" aria-label="Space menu">
                 <MoreHorizontal className="size-3.5" />
               </button>
             }
@@ -252,7 +257,7 @@ function SpaceChatButton({ spaceId, spaceName }: { spaceId: string; spaceName: s
         // Clicking the space you're already reading closes it, so the same
         // button is the way back out.
         showing && "text-primary opacity-100",
-        unread === 0 && !showing && "opacity-0 group-hover:opacity-100",
+        unread === 0 && !showing && "text-muted-foreground/60 hover:text-foreground",
       )}
       aria-label={`Chat in ${spaceName}`}
       title={`#${spaceName} — team channel`}
@@ -304,7 +309,12 @@ function FolderNode({
   return (
     <div>
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
-        <button onClick={() => setOpen((v) => !v)} className="text-muted-foreground">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-muted-foreground hover:text-foreground"
+          aria-expanded={open}
+          aria-label={`${open ? "Collapse" : "Expand"} ${folder.name}`}
+        >
           {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </button>
         <Folder className="size-3.5 text-muted-foreground" />
@@ -324,7 +334,7 @@ function FolderNode({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <button className="text-muted-foreground opacity-0 group-hover:opacity-100" aria-label="Folder menu">
+              <button className="text-muted-foreground hover:text-foreground" aria-label="Folder menu">
                 <MoreHorizontal className="size-3.5" />
               </button>
             }
@@ -443,7 +453,7 @@ function ListNode({
         <DropdownMenuTrigger
           render={
             <button
-              className="text-muted-foreground opacity-0 group-hover:opacity-100"
+              className="text-muted-foreground hover:text-foreground"
               aria-label="List menu"
               onClick={(e) => e.stopPropagation()}
             >
