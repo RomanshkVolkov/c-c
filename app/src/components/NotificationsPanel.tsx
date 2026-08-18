@@ -1,209 +1,196 @@
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Check, Trash2, TriangleAlert, Eye, MonitorSmartphone } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from "@/components/ui/sheet";
-import { useNotificationsStore, type Delivery } from "@/store/notifications.store";
+import { AtSign, CheckSquare, Hash, Info, Settings, Zap } from "lucide-react";
 import { useInboxStore, type InboxItem } from "@/store/inbox.store";
+import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
 
 /**
- * What arrived and what the system was told, plus a way to prove the path works.
+ * Lo que pasó mientras no mirabas, colgando de la campana.
  *
- * The test button is the point of the panel as much as the list is: an OS
- * notification that doesn't appear could be the app, the permission, the
- * desktop's notification daemon, or a rule in it that silences this app. Trying
- * it on demand and saying what came back separates those, instead of leaving
- * "I didn't see anything" as the only evidence.
+ * Cuelga de arriba a la derecha y no es un cajón de altura completa: esto se
+ * consulta de pasada —¿me habló alguien?— y un panel que tapa la pantalla
+ * obliga a cerrarlo para volver a lo que estabas haciendo.
+ *
+ * El registro de entrega —«¿el sistema llegó a enseñar el aviso?»— se fue al
+ * diálogo de preferencias. Es un diagnóstico, no una noticia, y mezclarlo con
+ * lo que ocurrió hacía leer el doble para encontrar lo mismo; junto a «qué
+ * avisos quiero» es donde la pregunta se contesta sola.
  */
 
-const DELIVERY: Record<Delivery, { label: string; icon: typeof Bell; className: string }> = {
-  os: { label: "sent to the system", icon: MonitorSmartphone, className: "text-muted-foreground" },
-  focused: { label: "you were here", icon: Eye, className: "text-muted-foreground" },
-  failed: { label: "not delivered", icon: TriangleAlert, className: "text-destructive" },
+type Pestana = "all" | "mentions" | "tasks" | "system";
+
+const PESTANAS: { key: Pestana; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "mentions", label: "Mentions" },
+  { key: "tasks", label: "Tasks" },
+  { key: "system", label: "System" },
+];
+
+/** A qué pestaña pertenece cada clase, y con qué cara se dibuja. */
+const CLASES: Record<string, { grupo: Pestana; tag: string; icono: typeof AtSign; color: string }> = {
+  "chat:mention": { grupo: "mentions", tag: "mention", icono: Hash, color: "text-primary" },
+  "dm:message": { grupo: "mentions", tag: "direct", icono: AtSign, color: "text-primary" },
+  "task:comment": { grupo: "tasks", tag: "comment", icono: CheckSquare, color: "text-foreground" },
+  "report:new": { grupo: "system", tag: "report", icono: Zap, color: "text-warning" },
 };
 
-/**
- * The server's record: what happened, whether or not this app was open.
- *
- * Marking read happens when you click a row rather than when the panel opens.
- * The delivery log below clears itself on open because it is a diagnostic; an
- * inbox that emptied just because you glanced at it would lose the thing you
- * opened it to find.
- */
-/** The kinds, in words. An unknown one falls through as its raw name. */
-const ETIQUETA: Record<string, string> = {
-  "chat:mention": "Mentions",
-  "dm:message": "Direct messages",
-  "task:comment": "Comments",
-  "report:new": "New reports",
-};
-
-/** Grouped by kind, each group keeping the newest-first order it arrived in. */
-function AGRUPAR(items: InboxItem[]): [string, InboxItem[]][] {
-  const by = new Map<string, InboxItem[]>();
-  for (const n of items) by.set(n.kind, [...(by.get(n.kind) ?? []), n]);
-  return [...by.entries()];
-}
-
-function InboxSection() {
-  const items = useInboxStore((s) => s.items);
-  const unread = useInboxStore((s) => s.unread);
-  const markRead = useInboxStore((s) => s.markRead);
-  const markAllRead = useInboxStore((s) => s.markAllRead);
-  const navigate = useNavigate();
-
-  if (items.length === 0) return null;
-
-  return (
-    <>
-      <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-1.5">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Inbox{unread > 0 ? ` · ${unread} unread` : ""}
-        </span>
-        {unread > 0 && (
-          <button
-            className="ml-auto text-[11px] text-muted-foreground hover:text-foreground"
-            onClick={() => void markAllRead()}
-          >
-            Mark all read
-          </button>
-        )}
-      </div>
-      {/* Grouped by what happened, not by when.
-          An inbox after a weekend is mostly one kind of thing repeated, and a
-          flat list makes you read forty rows to notice that thirty-eight of
-          them are the same channel. The groups keep their newest-first order
-          inside. */}
-      {AGRUPAR(items).map(([tipo, deEste]) => (
-      <div key={tipo}>
-      <p className="bg-muted/20 px-4 py-1 text-[11px] text-muted-foreground">
-        {ETIQUETA[tipo] ?? tipo} · {deEste.length}
-      </p>
-      <ul className="divide-y">
-        {deEste.map((n) => (
-          <li key={n.id}>
-            <button
-              className={cn(
-                "flex w-full items-start gap-2 px-4 py-2 text-left hover:bg-accent/40",
-                !n.readAt && "bg-primary/5",
-              )}
-              onClick={() => {
-                void markRead([n.id]);
-                if (n.link) navigate(n.link);
-              }}
-            >
-              {!n.readAt && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{n.title}</span>
-                {n.body && (
-                  <span className="block truncate text-xs text-muted-foreground">{n.body}</span>
-                )}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      </div>
-      ))}
-    </>
-  );
-}
+const DESCONOCIDA = { grupo: "system" as Pestana, tag: "", icono: Info, color: "text-muted-foreground" };
 
 export default function NotificationsPanel({
   open,
   onOpenChange,
+  onOpenPrefs,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onOpenPrefs: () => void;
 }) {
   const navigate = useNavigate();
-  const items = useNotificationsStore((s) => s.items);
-  const markAllRead = useNotificationsStore((s) => s.markAllRead);
-  const clear = useNotificationsStore((s) => s.clear);
+  const items = useInboxStore((s) => s.items);
+  const unread = useInboxStore((s) => s.unread);
+  const markRead = useInboxStore((s) => s.markRead);
+  const markAllRead = useInboxStore((s) => s.markAllRead);
+  const [pestana, setPestana] = useState<Pestana>("all");
 
+  const { sinLeer, leidas } = useMemo(() => {
+    const suyas =
+      pestana === "all"
+        ? items
+        : items.filter((n) => (CLASES[n.kind] ?? DESCONOCIDA).grupo === pestana);
+    return {
+      sinLeer: suyas.filter((n) => !n.readAt),
+      leidas: suyas.filter((n) => n.readAt),
+    };
+  }, [items, pestana]);
+
+  if (!open) return null;
+
+  const abrir = (n: InboxItem) => {
+    void markRead([n.id]);
+    if (n.link) {
+      onOpenChange(false);
+      navigate(n.link);
+    }
+  };
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { onOpenChange(v); if (v) markAllRead(); }}>
-      <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Bell className="size-4" /> Notifications
-          </SheetTitle>
-        </SheetHeader>
-
-        <div className="flex items-center gap-2 border-b px-4 pb-3">
-          {items.length > 0 && (
-            <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground" onClick={clear}>
-              <Trash2 className="mr-1 size-3" /> Clear
-            </Button>
+    <div className="fixed inset-0 z-50">
+      {/* El fondo se oscurece y cierra al pulsarlo: sin él, un panel flotante
+          sobre una pantalla viva no se sabe si está abierto o pegado. */}
+      <div className="absolute inset-0 bg-black/35" onClick={() => onOpenChange(false)} />
+      <div className="absolute right-3 top-11 flex max-h-[calc(100%-3.5rem)] w-[392px] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
+        <div className="flex items-center gap-2.5 border-b px-3.5 py-2.5">
+          <span className="font-semibold">Notifications</span>
+          {unread > 0 && (
+            <span className="rounded-full bg-primary px-1.5 text-[10px] font-medium leading-4 text-primary-foreground">
+              {unread > 99 ? "99+" : unread}
+            </span>
           )}
+          <div className="ml-auto flex items-center gap-2.5 text-[11.5px] text-muted-foreground">
+            {unread > 0 && (
+              <button className="hover:text-foreground" onClick={() => void markAllRead()}>
+                Mark all read
+              </button>
+            )}
+            <button
+              title="Notification settings"
+              className="hover:text-foreground"
+              onClick={() => {
+                onOpenChange(false);
+                onOpenPrefs();
+              }}
+            >
+              <Settings className="size-3.5" />
+            </button>
+          </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto">
-          <InboxSection />
+        <div className="flex gap-0.5 border-b px-2.5 py-2">
+          {PESTANAS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setPestana(t.key)}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs",
+                pestana === t.key
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          {/* Below the inbox and labelled, because the two answer different
-              questions: what happened, and whether this machine managed to tell
-              you about it. Merging them would lose the second, which is the only
-              way to diagnose a notification that never appeared. */}
-          <p className="border-b bg-muted/30 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Delivery log · this session
-          </p>
-          {items.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-              Nothing yet. Everything that arrives is recorded here, whether or not the
-              system showed it.
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2.5 pt-1.5">
+          {sinLeer.length === 0 && leidas.length === 0 && (
+            <p className="px-2.5 py-5 text-center text-xs text-muted-foreground">
+              Nothing pending in this organization.
             </p>
-          ) : (
-            <ul className="divide-y">
-              {items.map((n) => {
-                const d = DELIVERY[n.delivery];
-                const Icon = d.icon;
-                return (
-                  <li key={n.id}>
-                    <button
-                      className={cn(
-                        "flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left hover:bg-accent/50",
-                        !n.read && "bg-primary/5",
-                      )}
-                      onClick={() => {
-                        if (!n.reportId) return;
-                        onOpenChange(false);
-                        // The board is where this lives now; the id is the same row.
-                        navigate(`/tasks?task=${n.reportId}`);
-                      }}
-                    >
-                      <div className="flex w-full items-center gap-2">
-                        <span className="truncate text-sm font-medium">{n.title}</span>
-                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                          {new Date(n.at).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="truncate text-xs text-muted-foreground">{n.body}</p>
-                      <p className={cn("flex items-center gap-1 text-xs", d.className)}>
-                        <Icon className="size-3" />
-                        {d.label}
-                        {n.error && <span>· {n.error}</span>}
-                        <span className="text-muted-foreground/60">· {n.kind}</span>
-                      </p>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+          )}
+
+          {sinLeer.map((n) => (
+            <Fila key={n.id} n={n} onClick={() => abrir(n)} />
+          ))}
+
+          {leidas.length > 0 && (
+            <>
+              <p className="px-2 pb-0.5 pt-2 text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                Read
+              </p>
+              {leidas.map((n) => (
+                <Fila key={n.id} n={n} leida onClick={() => abrir(n)} />
+              ))}
+            </>
           )}
         </div>
 
-        {items.some((i) => i.delivery === "focused") && (
-          <p className="flex items-start gap-1.5 border-t px-4 py-2 text-xs text-muted-foreground">
-            <Check className="mt-0.5 size-3 shrink-0" />
-            «You were here» means the window had focus, so it wasn't sent — you'd already
-            have seen the toast.
-          </p>
+        <p className="flex items-start gap-2.5 border-t px-3.5 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0 text-primary" />
+          Clicking a system notification opens the thread here, in the app.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Fila({ n, leida, onClick }: { n: InboxItem; leida?: boolean; onClick: () => void }) {
+  const clase = CLASES[n.kind] ?? DESCONOCIDA;
+  const Icono = clase.icono;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "grid w-full grid-cols-[26px_minmax(0,1fr)_10px] items-center gap-2.5 rounded-lg p-2 text-left hover:bg-accent/40",
+        leida && "opacity-55",
+      )}
+    >
+      <span className="flex size-[26px] items-center justify-center rounded-lg bg-accent">
+        <Icono className={cn("size-3.5", clase.color)} />
+      </span>
+      <span className="min-w-0">
+        <span className="flex items-baseline gap-1.5">
+          <span className="truncate text-[12.5px] font-semibold">{n.title}</span>
+          {clase.tag && (
+            <span className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground">
+              {clase.tag}
+            </span>
+          )}
+          <span className="ml-auto shrink-0 whitespace-nowrap text-[10.5px] text-muted-foreground">
+            {desde(n.createdAt)}
+          </span>
+        </span>
+        {n.body && (
+          <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{n.body}</span>
         )}
-      </SheetContent>
-    </Sheet>
+      </span>
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          !n.readAt ? "bg-primary" : "bg-transparent",
+        )}
+      />
+    </button>
   );
 }

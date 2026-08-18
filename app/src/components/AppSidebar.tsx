@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
-  Bell,
   Wrench,
   Server,
   Building2,
@@ -42,8 +41,7 @@ import AccountMenu from "@/components/AccountMenu";
 import SpacesNavigator from "@/components/tree/SpacesNavigator";
 import { ChangePasswordDialog } from "@/components/ChangePassword";
 import ConnectMcpDialog from "@/components/ConnectMcpDialog";
-import NotificationsPanel from "@/components/NotificationsPanel";
-import NotificationPrefsDialog from "@/components/NotificationPrefsDialog";
+import { useNotifUI } from "@/store/notifui.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useServers } from "@/hooks/use-servers";
 import { useInvitationsStore } from "@/store/invitations.store";
@@ -162,16 +160,15 @@ export default function AppSidebar() {
   );
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
-  // Two different things behind two entries. The bell opens what happened; the
-  // account menu opens what you want to be told about. They were the same
-  // dialog, so asking for your preferences showed you your inbox.
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  // Dos cosas distintas tras dos entradas: la campana —que ahora vive en la
+  // barra de arriba— abre lo que pasó, y el menú de cuenta abre qué quieres
+  // que te cuenten. Eran el mismo diálogo, así que pedir tus preferencias te
+  // enseñaba tu bandeja.
+  const setPrefsOpen = useNotifUI((s) => s.setPrefsOpen);
   // From the server, not from what this session happened to witness. That is
   // the whole point: the badge now means "since you last read it" rather than
   // "since you last launched me".
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
-  const unreadNotifications = useInboxStore((s) => s.unread);
   const loadInbox = useInboxStore((s) => s.load);
   useEffect(() => {
     if (authed) loadInbox(currentOrgId).catch(() => {});
@@ -199,39 +196,9 @@ export default function AppSidebar() {
           </div>
         </SidebarHeader>
       )}
-      {authed && (
+      {authed && !collapsed && (
         <SidebarHeader>
-          {/* Collapsed, the header is one icon wide. The org switcher was still
-              being rendered into it with flex-1, so it squeezed down to a sliver
-              nobody could read or click and pushed the bell off-centre — the
-              only part of the sidebar that didn't react to collapsing, because
-              the menu below gets its behaviour from SidebarMenuButton and this
-              was hand-rolled. */}
-          <div
-            className={cn(
-              "flex items-center gap-1",
-              collapsed && "justify-center",
-            )}
-          >
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <OrgSwitcher />
-              </div>
-            )}
-            <button
-              type="button"
-              title="Notifications"
-              onClick={() => setNotifOpen(true)}
-              className="relative shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <Bell className="size-4" />
-              {unreadNotifications > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground">
-                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                </span>
-              )}
-            </button>
-          </div>
+          <OrgSwitcher />
         </SidebarHeader>
       )}
 
@@ -358,8 +325,6 @@ export default function AppSidebar() {
       <SidebarRail />
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
       <ConnectMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} />
-      <NotificationsPanel open={notifOpen} onOpenChange={setNotifOpen} />
-      <NotificationPrefsDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
     </Sidebar>
   );
 }

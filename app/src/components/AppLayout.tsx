@@ -6,6 +6,11 @@ import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import { Toaster } from "sonner";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
+import NotificationsPanel from "@/components/NotificationsPanel";
+import NotificationPrefsDialog from "@/components/NotificationPrefsDialog";
+import { useNotifUI } from "@/store/notifui.store";
+import { useInboxStore } from "@/store/inbox.store";
+import { Bell } from "lucide-react";
 import UpdateChecker from "@/components/UpdateChecker";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -48,6 +53,11 @@ export default function AppLayout() {
 
   // ⌘K anywhere, and Escape closes it because the dialog handles that itself.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const panelOpen = useNotifUI((s) => s.panelOpen);
+  const setPanelOpen = useNotifUI((s) => s.setPanelOpen);
+  const prefsOpen = useNotifUI((s) => s.prefsOpen);
+  const setPrefsOpen = useNotifUI((s) => s.setPrefsOpen);
+  const sinLeer = useInboxStore((s) => s.unread);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -77,7 +87,30 @@ export default function AppLayout() {
             <span>Search tasks, messages, people…</span>
             <kbd className="ml-auto font-mono text-[10px] opacity-70">⌘K</kbd>
           </button>
+          {/* La campana, a la derecha del todo. Estaba metida en la cabecera
+              del sidebar, que es donde vive la organización: lo que te ha
+              pasado a ti no es una propiedad de la organización, y ahí abajo a
+              la izquierda quedaba lejos de donde uno mira cuando algo suena. */}
+          <button
+            type="button"
+            title="Notifications"
+            onClick={() => setPanelOpen(true)}
+            className="relative ml-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <Bell className="size-4" />
+            {sinLeer > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                {sinLeer > 9 ? "9+" : sinLeer}
+              </span>
+            )}
+          </button>
         </header>
+        <NotificationsPanel
+          open={panelOpen}
+          onOpenChange={setPanelOpen}
+          onOpenPrefs={() => setPrefsOpen(true)}
+        />
+        <NotificationPrefsDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         <Outlet />
         {/* Mounted here and not per screen. Opening a task is global state, so
