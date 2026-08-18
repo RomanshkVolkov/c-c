@@ -3,18 +3,18 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   Bell,
   Wrench,
+  Server,
+  Building2,
+  Mail,
   Inbox,
   Hash,
   MessagesSquare,
   ChevronRight,
-  LayoutDashboard,
   KanbanSquare,
   NotebookPen,
   ImageDown,
   Send,
   KeyRound,
-  Building2,
-  Mail,
   Activity,
   Users,
   LogIn,
@@ -44,6 +44,7 @@ import { ChangePasswordDialog } from "@/components/ChangePassword";
 import ConnectMcpDialog from "@/components/ConnectMcpDialog";
 import NotificationsPanel from "@/components/NotificationsPanel";
 import { useAuthStore } from "@/store/auth.store";
+import { useServers } from "@/hooks/use-servers";
 import { useInvitationsStore } from "@/store/invitations.store";
 import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
@@ -59,15 +60,15 @@ import { cn } from "@/lib/utils";
 // Ten equal rows made everything look equally important, which is another way
 // of saying nothing did.
 const NAV_ITEMS = [
-  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false, group: "work" },
   { label: "My work", path: "/my-work", icon: Inbox, guest: false, group: "work" },
   { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false, group: "work" },
   { label: "Notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
   { label: "Channels", path: "/chat", icon: Hash, guest: false, group: "talk" },
   { label: "Direct messages", path: "/dm", icon: MessagesSquare, guest: false, group: "talk" },
+  // The dashboard is the servers screen; named for what it holds rather than
+  // for the layout it happens to use.
+  { label: "Servers", path: "/dashboard", icon: Server, guest: false, group: "platform" },
   { label: "Diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
-  { label: "Organization", path: "/organization", icon: Building2, guest: false, group: "platform" },
-  { label: "Invitations", path: "/invitations", icon: Mail, guest: false, group: "platform" },
   { label: "Users", path: "/users", icon: Users, guest: false, superadmin: true, group: "platform" },
 ];
 
@@ -177,6 +178,10 @@ export default function AppSidebar() {
   const pendingInvites = useInvitationsStore((s) => s.pending.length);
   // Both counts already live in their stores for the tree and the switcher;
   // reading them here costs nothing and is what makes the group worth having.
+  // Servers that are not simply running. Counted rather than listed, and drawn
+  // in amber: it is a "look at this when you can", not an outage — an outage
+  // announces itself elsewhere.
+  const servidoresEnAtencion = useServers().servers.filter((sv) => sv.status !== "online").length;
   const sinLeerCanales = useChatStore((s) =>
     Object.values(s.unreadBySpace).reduce((a, b) => a + b, 0),
   );
@@ -268,6 +273,8 @@ export default function AppSidebar() {
                     const badge =
                       item.path === "/invitations" && pendingInvites > 0
                         ? pendingInvites
+                        : item.path === "/dashboard" && servidoresEnAtencion > 0
+                          ? servidoresEnAtencion
                         : item.path === "/chat" && sinLeerCanales > 0
                           ? sinLeerCanales
                           : item.path === "/dm" && sinLeerDirectos > 0
@@ -282,11 +289,17 @@ export default function AppSidebar() {
                         >
                           <item.icon className="size-4" />
                           <span>{item.label}</span>
-                          {badge && (
-                            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
-                              {badge}
-                            </span>
-                          )}
+                          {badge &&
+                            (item.path === "/dashboard" ? (
+                              <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                <span className="size-1.5 rounded-full bg-warning" />
+                                {badge}
+                              </span>
+                            ) : (
+                              <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                                {badge}
+                              </span>
+                            ))}
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     );
@@ -305,6 +318,42 @@ export default function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        {/* The organization, above the account and below everything else.
+            It is neither navigation nor a setting of yours: it is the place
+            those two meet, and the hint says what is inside so nobody has to
+            open it to find out that "people" lives there. Invitations only
+            appears when some are waiting — a permanent row for an empty list
+            is a row that teaches you to ignore it. */}
+        {authed && !collapsed && (
+          <button
+            onClick={() => navigate("/organization")}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+              pathname.startsWith("/organization")
+                ? "bg-accent text-accent-foreground"
+                : "hover:bg-accent",
+            )}
+          >
+            <Building2 className="size-4 shrink-0" />
+            <span className="truncate">Organization</span>
+            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+              people · invitations
+            </span>
+          </button>
+        )}
+        {authed && !collapsed && pendingInvites > 0 && (
+          <button
+            onClick={() => navigate("/invitations")}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+          >
+            <Mail className="size-4 shrink-0" />
+            <span className="truncate">Invitations for you</span>
+            <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+              {pendingInvites}
+            </span>
+          </button>
+        )}
+
         {/* Everything that is about you rather than about the work, behind one
             row. Six stacked items put "change my password" at the same level as
             the navigation, and made logging out — the last of them — the

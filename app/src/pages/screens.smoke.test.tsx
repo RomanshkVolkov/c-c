@@ -43,6 +43,24 @@ const arbol = [
 ];
 
 beforeEach(() => {
+  // jsdom no trae matchMedia y el sidebar lo consulta (tema del sistema y
+  // ancho de pantalla). Sin esto el fallo es un TypeError que no dice nada de
+  // lo que se está comprobando.
+  if (!window.matchMedia) {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+        onchange: null,
+      }),
+    });
+  }
   useTasksStore.setState({ tree: arbol, loadingTree: false, error: null } as never);
   useOrgsStore.setState({
     orgs: [{ id: "org-1", name: "Uno", slug: "uno", role: "admin", memberCount: 3 }],
@@ -87,5 +105,24 @@ describe("las pantallas nuevas se montan sin renderizar en bucle", () => {
     const { default: SpacesNavigator } = await import("@/components/tree/SpacesNavigator");
     montar(<SpacesNavigator />);
     await waitFor(() => expect(document.body.textContent).toContain("Uno"));
+  });
+});
+
+describe("el sidebar", () => {
+  it("pone la organización en el pie y no en la navegación", async () => {
+    const { default: AppSidebar } = await import("@/components/AppSidebar");
+    const { SidebarProvider } = await import("@/components/ui/sidebar");
+    const { container } = montar(
+      <SidebarProvider>
+        <AppSidebar />
+      </SidebarProvider>,
+    );
+    await waitFor(() => expect(container.textContent).toContain("Organization"));
+    // El rótulo dice lo que hay dentro, para no tener que abrirlo y averiguar
+    // que «personas» vive ahí.
+    expect(container.textContent).toContain("people · invitations");
+    // Y los servidores son una entrada de plataforma, no un «dashboard».
+    expect(container.textContent).toContain("Servers");
+    expect(container.textContent).not.toContain("Dashboard");
   });
 });
