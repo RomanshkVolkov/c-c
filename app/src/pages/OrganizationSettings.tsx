@@ -3,7 +3,8 @@ import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
 import OrgSpaces from "@/components/org/OrgSpaces";
-import { UserPlus, Trash2, Mail, X, Loader2 } from "lucide-react";
+import OrgGeneral from "@/components/org/OrgGeneral";
+import { UserPlus, Trash2, Mail, X, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +36,6 @@ const ROLES: OrgRole[] = ["admin", "member", "viewer"];
 
 /** The four jobs this screen does, in the order you usually come for them. */
 const PESTANAS = [
-  { key: "identity", label: "Identity" },
   { key: "members", label: "Members" },
   { key: "invites", label: "Invitations" },
   { key: "spaces", label: "Spaces" },
@@ -43,6 +43,7 @@ const PESTANAS = [
   // They belong to the organization, which is why they are here and not on a
   // server's screen.
   { key: "integrations", label: "Integrations" },
+  { key: "general", label: "General" },
 ] as const;
 
 type Pestana = (typeof PESTANAS)[number]["key"];
@@ -62,14 +63,12 @@ function desde(iso?: string | null): string {
 
 export default function OrganizationSettings() {
   const [pestana, setPestana] = useState<Pestana>("members");
-  const [nombre, setNombre] = useState("");
   const espacios = useTasksStore((s) => s.tree.length);
   const current = useOrgsStore((s) => s.currentOrg());
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const confirm = useConfirm();
 
   const listMembers = useOrgsStore((s) => s.listMembers);
-  const renameOrg = useOrgsStore((s) => s.renameOrg);
   const addMember = useOrgsStore((s) => s.addMember);
   const updateMemberRole = useOrgsStore((s) => s.updateMemberRole);
   const removeMember = useOrgsStore((s) => s.removeMember);
@@ -241,7 +240,10 @@ export default function OrganizationSettings() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-auto p-6 space-y-6 max-w-3xl mx-auto w-full">
+      {/* Full width. The design uses the pane it is given; centring this in a
+          3xl column left the members table squeezed and the rest of the screen
+          empty. */}
+      <div className="w-full flex-1 space-y-5 overflow-auto p-6">
         <div className="flex items-start gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-sm font-semibold uppercase text-primary">
             {current.name.slice(0, 1)}
@@ -303,7 +305,6 @@ export default function OrganizationSettings() {
           <>
           {/* Members */}
           <section className="space-y-2">
-            <Label className="text-sm font-medium">Members ({members.length})</Label>
 
             {/* Joining it yourself.
                 The picker below searches everyone *except* you — right for
@@ -323,12 +324,18 @@ export default function OrganizationSettings() {
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <Input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Search by user or email"
-                className="h-8 max-w-xs text-xs"
-              />
+              {/* The magnifier does the work the placeholder was doing alone:
+                  a bare box beside a dropdown reads as another field to fill
+                  in, not as a way to narrow what is already there. */}
+              <span className="relative max-w-xs flex-1">
+                <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Search by user or email"
+                  className="h-8 pl-7 text-xs"
+                />
+              </span>
               <select
                 aria-label="Role"
                 value={filtroRol}
@@ -512,49 +519,10 @@ export default function OrganizationSettings() {
 
         {pestana === "spaces" && <OrgSpaces />}
 
+        {pestana === "general" && <OrgGeneral org={current} canManage={canManage} />}
+
         {pestana === "integrations" && <OrgIntegrations canManage={canManage} />}
 
-        {pestana === "identity" && (
-          <section className="space-y-2">
-            <Label className="text-sm font-medium">Name</Label>
-            <div className="flex items-start gap-2">
-              <Input
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder={current.name}
-                disabled={!canManage}
-                className="max-w-sm"
-              />
-              <Button
-                size="sm"
-                disabled={!canManage || !nombre.trim() || nombre.trim() === current.name}
-                onClick={async () => {
-                  try {
-                    await renameOrg(current.id, nombre.trim());
-                    setNombre("");
-                    toast.success("Renamed");
-                  } catch (e) {
-                    toast.error(String(e));
-                  }
-                }}
-              >
-                Rename
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {canManage
-                ? "The name everybody in this organization sees, including in the sidebar."
-                : "Only an admin of this organization can change its name."}
-            </p>
-            <div className="pt-2">
-              <Label className="text-sm font-medium">Identifier</Label>
-              {/* The slug is what URLs and integrations are built on, so it is
-                  shown and not editable: renaming it would break links that
-                  already exist somewhere nobody here can see. */}
-              <p className="font-mono text-xs text-muted-foreground">{current.slug}</p>
-            </div>
-          </section>
-        )}
       </div>
     </div>
   );

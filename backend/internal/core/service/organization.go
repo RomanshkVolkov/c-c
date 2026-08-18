@@ -73,7 +73,15 @@ func (s *OrganizationService) Create(callerID string, req domain.CreateOrganizat
 		slug = uuid.NewString()[:8]
 	}
 
-	org := &domain.Organization{Name: req.Name, Slug: slug}
+	org := &domain.Organization{
+		Name: req.Name, Slug: slug,
+		// Written here rather than left to a column default: GORM omits Go zero
+		// values from an INSERT, so a `default:true` would make these
+		// impossible to turn off.
+		DefaultInviteRole:        domain.OrgRoleMember,
+		ClientsSeeOnlyTheirSpace: true,
+		GuestsCanUseDevTools:     true,
+	}
 	org.ID = uuid.NewString()
 
 	if err := s.repo.CreateWithOwner(org, callerID); err != nil {
@@ -81,7 +89,10 @@ func (s *OrganizationService) Create(callerID string, req domain.CreateOrganizat
 	}
 	return &domain.OrganizationResponse{
 		ID: org.ID, Name: org.Name, Slug: org.Slug, Role: domain.OrgRoleAdmin,
-		MemberCount: s.repo.MemberCount(org.ID),
+		MemberCount: s.repo.MemberCount(org.ID), CreatedAt: org.CreatedAt,
+		Domain: org.Domain, DefaultInviteRole: org.DefaultInviteRole,
+		ClientsSeeOnlyTheirSpace: org.ClientsSeeOnlyTheirSpace,
+		GuestsCanUseDevTools:     org.GuestsCanUseDevTools,
 	}, nil
 }
 
@@ -102,18 +113,44 @@ func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOr
 		return nil, err
 	}
 	org.Name = req.Name
+	// Only what was actually sent. A nil field is "the form did not mention
+	// this", which is different from "set it to false" — and treating them the
+	// same would let saving the name quietly turn two rules off.
+	if req.Domain != nil {
+		org.Domain = *req.Domain
+	}
+	if req.DefaultInviteRole != nil {
+		org.DefaultInviteRole = *req.DefaultInviteRole
+	}
+	if req.ClientsSeeOnlyTheirSpace != nil {
+		org.ClientsSeeOnlyTheirSpace = *req.ClientsSeeOnlyTheirSpace
+	}
+	if req.GuestsCanUseDevTools != nil {
+		org.GuestsCanUseDevTools = *req.GuestsCanUseDevTools
+	}
 	if err := s.repo.Update(org); err != nil {
 		return nil, err
 	}
 	return &domain.OrganizationResponse{
 		ID: org.ID, Name: org.Name, Slug: org.Slug, Role: m.Role,
-		MemberCount: s.repo.MemberCount(org.ID),
+		MemberCount: s.repo.MemberCount(org.ID), CreatedAt: org.CreatedAt,
+		Domain: org.Domain, DefaultInviteRole: org.DefaultInviteRole,
+		ClientsSeeOnlyTheirSpace: org.ClientsSeeOnlyTheirSpace,
+		GuestsCanUseDevTools:     org.GuestsCanUseDevTools,
 	}, nil
 }
 
+// ErrOnlySuperadminDeletes: deleting an organization takes its spaces, its
+// tasks and its channels with it, and stops every integration pointing at it.
+//
+// An org admin manages the place; ending it is a different kind of decision,
+// and one nobody should be able to make for a client by themselves. The
+// confirmation the app asks for is a second lock, not this one.
+var ErrOnlySuperadminDeletes = errors.New("only a platform superadmin can delete an organization")
+
 func (s *OrganizationService) Delete(callerID, orgID string, superadmin bool) error {
-	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin); err != nil {
-		return err
+	if !superadmin {
+		return ErrOnlySuperadminDeletes
 	}
 	return s.repo.Delete(orgID)
 }

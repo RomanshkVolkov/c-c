@@ -8,6 +8,10 @@ export interface Organization {
   /** How many people are in it. Counted server-side; see OrganizationResponse. */
   memberCount: number;
   createdAt: string;
+  domain?: string;
+  defaultInviteRole?: OrgRole;
+  clientsSeeOnlyTheirSpace: boolean;
+  guestsCanUseDevTools: boolean;
 }
 
 export interface OrgMember {

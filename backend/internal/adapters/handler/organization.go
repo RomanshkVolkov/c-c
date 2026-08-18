@@ -120,6 +120,14 @@ func (h *organizationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Delete(user.UserID, chi.URLParam(r, "id"), user.Superadmin); err != nil {
+		// Named rather than folded into a generic forbidden: "you cannot do
+		// this" and "nobody below platform level can do this" lead to different
+		// next steps, and only one of them is worth asking somebody about.
+		if errors.Is(err, service.ErrOnlySuperadminDeletes) {
+			SendErrorResponse(w, http.StatusForbidden,
+				"Only a platform superadmin can delete an organization", "superadmin-only")
+			return
+		}
 		if mapOrgError(w, err) {
 			return
 		}

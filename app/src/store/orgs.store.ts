@@ -21,6 +21,23 @@ interface OrgsState {
   setCurrentOrg: (id: string) => void;
   createOrg: (payload: CreateOrganizationPayload) => Promise<Organization>;
   renameOrg: (id: string, name: string) => Promise<void>;
+  /**
+   * Save the name and any rules that changed.
+   *
+   * A partial patch: fields the form did not mention are absent, and the server
+   * reads "absent" as "leave it alone" rather than "set it to false" — so
+   * saving one toggle cannot quietly turn the others off.
+   */
+  updateOrg: (
+    id: string,
+    patch: {
+      name?: string;
+      domain?: string;
+      defaultInviteRole?: OrgRole;
+      clientsSeeOnlyTheirSpace?: boolean;
+      guestsCanUseDevTools?: boolean;
+    },
+  ) => Promise<void>;
   deleteOrg: (id: string) => Promise<void>;
   currentOrg: () => Organization | null;
   reset: () => void;
@@ -88,6 +105,22 @@ export const useOrgsStore = create<OrgsState>()(
         );
         if (!res.success) throw new Error(res.error ?? "Rename failed");
         set((s) => ({ orgs: s.orgs.map((o) => (o.id === id ? { ...o, name } : o)) }));
+      },
+
+      updateOrg: async (id, patch) => {
+        const actual = get().orgs.find((o) => o.id === id);
+        const res = await api.patch<APIResponse<Organization>>(
+          `/api/v1/organizations/${id}`,
+          // The name is required by the server's validator, so it travels even
+          // when only a rule changed.
+          { name: patch.name ?? actual?.name, ...patch },
+          true,
+        );
+        if (!res.success) throw new Error(res.error ?? "Save failed");
+        // The server's answer wins: it decides what a partial patch left alone.
+        if (res.data) {
+          set((s) => ({ orgs: s.orgs.map((o) => (o.id === id ? { ...o, ...res.data! } : o)) }));
+        }
       },
 
       deleteOrg: async (id) => {

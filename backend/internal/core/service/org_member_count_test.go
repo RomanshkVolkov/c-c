@@ -112,6 +112,56 @@ func TestTheMembersListCarriesEmailAndLastSeen(t *testing.T) {
 	}
 }
 
+// Ending an organization is not an admin's decision.
+//
+// Deleting it takes its spaces, its tasks and its channels, and stops every
+// integration pointing at it. An org admin runs the place; ending it is a
+// different kind of act, and one nobody should be able to do to a client on
+// their own. The typed confirmation the app asks for is a second lock, not
+// this one.
+func TestOnlyASuperadminCanDeleteAnOrganization(t *testing.T) {
+	db, cleanup := orgCountDB(t)
+	defer cleanup()
+	svc := NewOrganizationService(repository.NewOrganizationRepository(db))
+
+	// Ana is an admin of org-1 and it makes no difference.
+	if err := svc.Delete("u-ana", "org-1", false); err != ErrOnlySuperadminDeletes {
+		t.Errorf("an org admin deleting → %v, want a refusal", err)
+	}
+	var quedan int64
+	db.Model(&domain.Organization{}).Where("id = ?", "org-1").Count(&quedan)
+	if quedan != 1 {
+		t.Error("and the organization is still there")
+	}
+
+	// The other half — that a superadmin *can* — is not asserted here on
+	// purpose: deleting cascades through most of the schema, and a fixture that
+	// mirrored all of it would be testing AutoMigrate rather than this rule.
+	// What is new is the refusal, and that is what this pins down.
+}
+
+// A new organization starts with its rules written, not left to the schema.
+func TestANewOrganizationStartsWithItsRulesOn(t *testing.T) {
+	db, cleanup := orgCountDB(t)
+	defer cleanup()
+	svc := NewOrganizationService(repository.NewOrganizationRepository(db))
+
+	creada, err := svc.Create("u-ana", domain.CreateOrganizationRequest{Name: "Nueva"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var org domain.Organization
+	db.First(&org, "id = ?", creada.ID)
+	// Written explicitly at creation: a `default:true` column would make these
+	// impossible to turn off, because GORM omits Go zero values on insert.
+	if !org.ClientsSeeOnlyTheirSpace || !org.GuestsCanUseDevTools {
+		t.Errorf("the rules should start on, got %+v", org)
+	}
+	if org.DefaultInviteRole != domain.OrgRoleMember {
+		t.Errorf("default invite role = %q, want member", org.DefaultInviteRole)
+	}
+}
+
 func orgCountDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 	if repository.GetEnv("DB_HOST", "") == "" {
@@ -138,7 +188,10 @@ func orgCountDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.OrgMembership{}); err != nil {
+	if err := db.AutoMigrate(
+		&domain.Organization{}, &domain.User{}, &domain.OrgMembership{},
+		&domain.ReportProject{}, &domain.Server{},
+	); err != nil {
 		t.Fatal(err)
 	}
 	uno := &domain.Organization{Name: "Uno", Slug: "uno"}

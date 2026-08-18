@@ -33,6 +33,26 @@ type Organization struct {
 	BaseModel
 	Name string `gorm:"type:varchar(100);not null"           json:"name"`
 	Slug string `gorm:"type:varchar(100);uniqueIndex;not null" json:"slug"`
+	// Domain is what this organization's people use for email. Informational:
+	// nothing is enforced against it, and saying so here keeps somebody from
+	// later assuming it gates anything.
+	Domain string `gorm:"type:varchar(255)" json:"domain"`
+
+	// ── Rules ────────────────────────────────────────────────────────────────
+	//
+	// No `default:` tags on the booleans, on purpose. GORM omits Go zero values
+	// from an INSERT, so a column defaulting to true makes "turn this off"
+	// store itself as on — a setting that silently does nothing. The defaults
+	// are written explicitly when the organization is created.
+
+	// DefaultInviteRole is what the invite form starts on.
+	DefaultInviteRole OrgRole `gorm:"type:varchar(20)" json:"defaultInviteRole"`
+	// ClientsSeeOnlyTheirSpace keeps a tenant's reach to the space bound to
+	// their channel, which is the assumption every screen already makes.
+	ClientsSeeOnlyTheirSpace bool `json:"clientsSeeOnlyTheirSpace"`
+	// GuestsCanUseDevTools is how somebody without an account reaches the
+	// on-device tools and nothing else.
+	GuestsCanUseDevTools bool `json:"guestsCanUseDevTools"`
 }
 
 // OrgMembership joins a user to an organization with a role. Composite PK
@@ -42,7 +62,12 @@ type OrgMembership struct {
 	UserID    string    `gorm:"type:varchar(36);primaryKey" json:"userId"`
 	Role      OrgRole   `gorm:"type:varchar(20);not null"   json:"role"`
 	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Domain    string    `json:"domain,omitempty"`
+
+	DefaultInviteRole        OrgRole   `json:"defaultInviteRole,omitempty"`
+	ClientsSeeOnlyTheirSpace bool      `json:"clientsSeeOnlyTheirSpace"`
+	GuestsCanUseDevTools     bool      `json:"guestsCanUseDevTools"`
+	UpdatedAt                time.Time `json:"updatedAt"`
 }
 
 // InvitationStatus is the lifecycle of an org invitation.
@@ -86,6 +111,13 @@ type CreateOrganizationRequest struct {
 
 type UpdateOrganizationRequest struct {
 	Name string `json:"name" validate:"required,min=1,max=100"`
+	// The rules. Pointers so "not mentioned" and "set to false" are different
+	// requests: a form that saves one toggle must not silently turn the others
+	// off just by not talking about them.
+	Domain                   *string  `json:"domain"`
+	DefaultInviteRole        *OrgRole `json:"defaultInviteRole" validate:"omitempty,oneof=admin member viewer"`
+	ClientsSeeOnlyTheirSpace *bool    `json:"clientsSeeOnlyTheirSpace"`
+	GuestsCanUseDevTools     *bool    `json:"guestsCanUseDevTools"`
 }
 
 type OrganizationResponse struct {
@@ -101,6 +133,12 @@ type OrganizationResponse struct {
 	// CreatedAt is shown on the organization screen: a place with a date on it
 	// is easier to tell apart from one somebody made by accident last week.
 	CreatedAt time.Time `json:"createdAt"`
+	Domain    string    `json:"domain,omitempty"`
+
+	// The rules, so the General tab can show them without a second request.
+	DefaultInviteRole        OrgRole `json:"defaultInviteRole,omitempty"`
+	ClientsSeeOnlyTheirSpace bool    `json:"clientsSeeOnlyTheirSpace"`
+	GuestsCanUseDevTools     bool    `json:"guestsCanUseDevTools"`
 }
 
 type AddMemberRequest struct {

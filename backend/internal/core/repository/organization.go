@@ -141,7 +141,8 @@ func (r *OrganizationRepository) MemberCount(orgID string) int64 {
 func (r *OrganizationRepository) ListForUser(userID string) ([]domain.OrganizationResponse, error) {
 	var out []domain.OrganizationResponse
 	err := r.db.Raw(`
-		SELECT o.id, o.name, o.slug, o.created_at, m.role,
+		SELECT o.id, o.name, o.slug, o.created_at, o.domain, o.default_invite_role,
+		       o.clients_see_only_their_space, o.guests_can_use_dev_tools, m.role,
 		       (SELECT COUNT(*) FROM org_memberships c WHERE c.org_id = o.id) AS member_count
 		FROM organizations o
 		JOIN org_memberships m ON m.org_id = o.id
@@ -156,7 +157,8 @@ func (r *OrganizationRepository) ListForUser(userID string) ([]domain.Organizati
 func (r *OrganizationRepository) ListAll() ([]domain.OrganizationResponse, error) {
 	var out []domain.OrganizationResponse
 	err := r.db.Raw(`
-		SELECT o.id, o.name, o.slug, o.created_at, 'admin' AS role,
+		SELECT o.id, o.name, o.slug, o.created_at, o.domain, o.default_invite_role,
+		       o.clients_see_only_their_space, o.guests_can_use_dev_tools, 'admin' AS role,
 		       (SELECT COUNT(*) FROM org_memberships c WHERE c.org_id = o.id) AS member_count
 		FROM organizations o
 		ORDER BY o.name ASC
