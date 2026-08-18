@@ -176,3 +176,19 @@ func (r *AuthRepository) SearchByUsername(query, excludeID string, limit int) ([
 	}
 	return users, nil
 }
+
+// TouchLastSeen records that an account did something, at most once every
+// `MinTouchInterval`.
+//
+// The condition is in the WHERE and not in Go on purpose: two requests arriving
+// together would both read a stale timestamp and both decide to write, and the
+// point of this is that it is cheap. Written by the database or not at all.
+func (r *AuthRepository) TouchLastSeen(userID string) {
+	if userID == "" {
+		return
+	}
+	r.db.Exec(`
+		UPDATE users SET last_seen_at = NOW()
+		WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '5 minutes')
+	`, userID)
+}

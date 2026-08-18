@@ -61,6 +61,57 @@ func TestASuperadminSeesEveryOrganizationWithItsOwnCount(t *testing.T) {
 	}
 }
 
+// The members table shows who they are and when they were last around.
+//
+// Last seen is written at most once every few minutes, in the database and not
+// in Go: two requests arriving together would otherwise both read a stale
+// timestamp and both decide to write, which defeats the point of throttling it.
+func TestTheMembersListCarriesEmailAndLastSeen(t *testing.T) {
+	db, cleanup := orgCountDB(t)
+	defer cleanup()
+	repo := repository.NewOrganizationRepository(db)
+	auth := repository.NewAuthRepository(db)
+
+	auth.TouchLastSeen("u-ana")
+
+	miembros, err := repo.ListMembers("org-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ana, bea *domain.MemberResponse
+	for i := range miembros {
+		switch miembros[i].UserID {
+		case "u-ana":
+			ana = &miembros[i]
+		case "u-bea":
+			bea = &miembros[i]
+		}
+	}
+	if ana == nil || bea == nil {
+		t.Fatalf("expected both members, got %+v", miembros)
+	}
+	if ana.Email != "ana@example.com" {
+		t.Errorf("the table shows the email, got %q", ana.Email)
+	}
+	if ana.LastSeenAt == nil {
+		t.Error("Ana was just seen")
+	}
+	// Y quien no ha hecho nada no se inventa una fecha.
+	if bea.LastSeenAt != nil {
+		t.Errorf("Bea has done nothing, got %v", bea.LastSeenAt)
+	}
+
+	// Un segundo toque inmediato no vuelve a escribir.
+	primera := *ana.LastSeenAt
+	auth.TouchLastSeen("u-ana")
+	otra, _ := repo.ListMembers("org-1")
+	for _, m := range otra {
+		if m.UserID == "u-ana" && !m.LastSeenAt.Equal(primera) {
+			t.Error("touching again within the window should not write")
+		}
+	}
+}
+
 func orgCountDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 	if repository.GetEnv("DB_HOST", "") == "" {
@@ -99,6 +150,17 @@ func orgCountDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	if err := db.Create(otra).Error; err != nil {
 		t.Fatal(err)
+	}
+	for _, u := range []struct{ id, name, mail string }{
+		{"u-ana", "ana", "ana@example.com"},
+		{"u-bea", "bea", "bea@example.com"},
+		{"u-carla", "carla", "carla@example.com"},
+	} {
+		user := &domain.User{Username: u.name, Email: u.mail}
+		user.ID = u.id
+		if err := db.Create(user).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, m := range []domain.OrgMembership{
 		{OrgID: "org-1", UserID: "u-ana", Role: "admin"},

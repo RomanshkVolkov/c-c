@@ -105,6 +105,15 @@ type PATAuthenticator func(token string) (*domain.ClaimsJWT, error)
 
 var patAuth PATAuthenticator
 
+// seenRecorder notes that an account is around. Optional: set at wiring time,
+// and absent in the tests that build the middleware on its own — which is why
+// this is a function and not a repository handle.
+type SeenRecorder func(userID string)
+
+var seenRecorder SeenRecorder
+
+func UseSeenRecorder(fn SeenRecorder) { seenRecorder = fn }
+
 // UsePATAuthenticator wires PAT support into AuthMiddleware.
 func UsePATAuthenticator(fn PATAuthenticator) { patAuth = fn }
 
@@ -156,6 +165,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		if err != nil {
 			handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", err.Error())
 			return
+		}
+
+		// Recorded after the token checks and before the handler, so an
+		// unauthenticated caller never writes anything. Not on the personal
+		// access token path: a token is a machine, and "when was this person
+		// last around" is a question about people.
+		if seenRecorder != nil {
+			seenRecorder(claims.UserID)
 		}
 
 		ctx := context.WithValue(r.Context(), repository.UserContextKey, claims)

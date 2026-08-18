@@ -98,6 +98,9 @@ type OrganizationResponse struct {
 	// otherwise have to pull the whole member list of every organization just
 	// to show a number beside its name.
 	MemberCount int64 `json:"memberCount"`
+	// CreatedAt is shown on the organization screen: a place with a date on it
+	// is easier to tell apart from one somebody made by accident last week.
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type AddMemberRequest struct {
@@ -112,7 +115,12 @@ type UpdateMemberRequest struct {
 type MemberResponse struct {
 	UserID   string  `json:"userId"`
 	Username string  `json:"username"`
+	Email    string  `json:"email,omitempty"`
 	Role     OrgRole `json:"role"`
+	// LastSeenAt is what the members table shows as activity. Absent means the
+	// account has not been used since this started being recorded, which the
+	// screen says as "never" rather than inventing a date.
+	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
 }
 
 type CreateInvitationRequest struct {

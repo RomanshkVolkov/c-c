@@ -7,12 +7,16 @@ export interface Organization {
   role: OrgRole; // caller's role in this org
   /** How many people are in it. Counted server-side; see OrganizationResponse. */
   memberCount: number;
+  createdAt: string;
 }
 
 export interface OrgMember {
   userId: string;
   username: string;
+  email?: string;
   role: OrgRole;
+  /** Absent means the account has done nothing since this began being kept. */
+  lastSeenAt?: string | null;
 }
 
 export interface CreateOrganizationPayload {

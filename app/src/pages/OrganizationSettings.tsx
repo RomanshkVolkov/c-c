@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
-import { Building2, UserPlus, Trash2, Mail, X, Loader2 } from "lucide-react";
+import { UserPlus, Trash2, Mail, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,9 +45,23 @@ const PESTANAS = [
 
 type Pestana = (typeof PESTANAS)[number]["key"];
 
+/** How long ago, in the words somebody would use. */
+function desde(iso?: string | null): string {
+  if (!iso) return "never";
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (min < 2) return "now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "yesterday";
+  return `${d} d ago`;
+}
+
 export default function OrganizationSettings() {
   const [pestana, setPestana] = useState<Pestana>("members");
   const [nombre, setNombre] = useState("");
+  const espacios = useTasksStore((s) => s.tree.length);
   const current = useOrgsStore((s) => s.currentOrg());
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const confirm = useConfirm();
@@ -62,6 +77,24 @@ export default function OrganizationSettings() {
 
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<Invitation[]>([]);
+  // Counts on the tabs, so the shape of the place is readable without opening
+  // each one. Absent where there is nothing to count: a "0" beside a tab that
+  // is a form rather than a list is just noise.
+  const [busca, setBusca] = useState("");
+  const [filtroRol, setFiltroRol] = useState("");
+  const termino = busca.trim().toLowerCase();
+  const visibles = members.filter(
+    (m) =>
+      (!filtroRol || m.role === filtroRol) &&
+      (!termino ||
+        m.username.toLowerCase().includes(termino) ||
+        (m.email ?? "").toLowerCase().includes(termino)),
+  );
+
+  const cuentas: Partial<Record<Pestana, number>> = {
+    members: members.length,
+    invites: invites.length,
+  };
   const [loading, setLoading] = useState(false);
 
   const [picked, setPicked] = useState<UserSummary | null>(null);
@@ -206,15 +239,34 @@ export default function OrganizationSettings() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 overflow-auto p-6 space-y-6 max-w-3xl mx-auto w-full">
-        <div className="flex items-center gap-3">
-          <Building2 className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h1 className="text-xl font-semibold">{current.name}</h1>
-            <p className="text-xs capitalize text-muted-foreground">
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-sm font-semibold uppercase text-primary">
+            {current.name.slice(0, 1)}
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-semibold">{current.name}</h1>
+            {/* Everything that tells one organization from another, on one
+                line. A date matters more than it looks: it is what separates a
+                real place from one somebody made by accident last week. */}
+            <p className="text-xs text-muted-foreground">
               Your role: {current.role}
               {superadmin && " · superadmin"}
+              {current.memberCount > 0 &&
+                ` · ${current.memberCount} member${current.memberCount === 1 ? "" : "s"}`}
+              {espacios > 0 && ` · ${espacios} space${espacios === 1 ? "" : "s"}`}
+              {current.createdAt &&
+                ` · created ${new Date(current.createdAt).toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}`}
             </p>
           </div>
+          {canManage && (
+            <Button size="sm" className="ml-auto shrink-0" onClick={() => setPestana("invites")}>
+              Invite
+            </Button>
+          )}
         </div>
 
         {/* One screen with tabs instead of four stacked sections.
@@ -237,6 +289,9 @@ export default function OrganizationSettings() {
               )}
             >
               {t.label}
+              {cuentas[t.key] !== undefined && (
+                <span className="ml-1.5 text-xs text-muted-foreground">{cuentas[t.key]}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -264,12 +319,39 @@ export default function OrganizationSettings() {
                 </Button>
               </div>
             )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Search by user or email"
+                className="h-8 max-w-xs text-xs"
+              />
+              <select
+                aria-label="Role"
+                value={filtroRol}
+                onChange={(e) => setFiltroRol(e.target.value)}
+                className="h-8 rounded border bg-background px-2 text-xs"
+              >
+                <option value="">Role: any</option>
+                <option value="admin">admin</option>
+                <option value="member">member</option>
+                <option value="viewer">viewer</option>
+              </select>
+              {/* What each role actually means, next to the control that sets
+                  it. Three words each; without them the dropdown asks a
+                  question most people answer by guessing. */}
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                admin manages · member writes · viewer only reads
+              </span>
+            </div>
             <div className="rounded-lg border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Username</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Email</TableHead>
                     <TableHead className="w-40">Role</TableHead>
+                    <TableHead className="w-28">Activity</TableHead>
                     <TableHead className="text-right w-16">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -281,9 +363,24 @@ export default function OrganizationSettings() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    members.map((m) => (
+                    visibles.map((m) => (
                       <TableRow key={m.userId}>
-                        <TableCell className="font-medium">{m.username}</TableCell>
+                        <TableCell className="font-medium">
+                          <span className="flex items-center gap-2">
+                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
+                              {m.username.slice(0, 2)}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate">{m.username}</span>
+                              <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                                @{m.username}
+                              </span>
+                            </span>
+                          </span>
+                        </TableCell>
+                        <TableCell className="truncate text-xs text-muted-foreground">
+                          {m.email || "—"}
+                        </TableCell>
                         <TableCell>
                           {canManage ? (
                             <Select
@@ -305,17 +402,30 @@ export default function OrganizationSettings() {
                             <span className="capitalize text-muted-foreground">{m.role}</span>
                           )}
                         </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {/* "never" and not an empty cell: a blank reads as
+                              missing data, and this is a fact about the account
+                              rather than a gap in what we know about it. */}
+                          {desde(m.lastSeenAt)}
+                        </TableCell>
                         <TableCell className="text-right">
-                          {canManage && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => kick(m)}
-                            >
-                              <Trash2 className="size-3" />
-                            </Button>
-                          )}
+                          <span className="flex items-center justify-end gap-1">
+                            {m.userId === myId && (
+                              <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                                you
+                              </span>
+                            )}
+                            {canManage && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => kick(m)}
+                              >
+                                <Trash2 className="size-3" />
+                              </Button>
+                            )}
+                          </span>
                         </TableCell>
                       </TableRow>
                     ))
@@ -325,6 +435,13 @@ export default function OrganizationSettings() {
             </div>
           </section>
           </>
+        )}
+
+        {pestana === "members" && (
+          <p className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            Guests are not listed here: they reach DevTools and nothing else, and
+            they do not belong to the organization.
+          </p>
         )}
 
         {pestana === "invites" && (

@@ -13,7 +13,12 @@ type User struct {
 	Username string `gorm:"uniqueIndex;type:varchar(100);not null" json:"username"`
 	Password string `gorm:"type:varchar(255);not null" json:"-"`
 	Email    string `gorm:"type:varchar(255)"              json:"email"`
-	Name     string `gorm:"type:varchar(120)"              json:"name"`
+	// LastSeenAt is when this account last did anything. Written at most once
+	// every few minutes rather than on every request — the question it answers
+	// is "is this person around", and that does not need second precision at
+	// the cost of a write per call.
+	LastSeenAt *time.Time `gorm:"index" json:"lastSeenAt,omitempty"`
+	Name       string     `gorm:"type:varchar(120)"              json:"name"`
 	// IsSuperadmin: platform-level admin that sees/manages ALL organizations
 	// (bypasses per-org membership scoping).
 	IsSuperadmin bool `gorm:"default:false" json:"isSuperadmin"`

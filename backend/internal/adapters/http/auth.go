@@ -18,6 +18,10 @@ func InitAuthRoutes(db *gorm.DB, r *chi.Mux) {
 	tokenSvc := service.NewTokenService(repository.NewTokenRepository(db), repo)
 	tokens := handler.NewTokenHandler(tokenSvc)
 	middleware.UsePATAuthenticator(tokenSvc.Authenticate)
+	// Who is around, for the members table. Throttled inside the repository, so
+	// this is one conditional UPDATE every few minutes per person and not one
+	// per request.
+	middleware.UseSeenRecorder(repo.TouchLastSeen)
 
 	r.Route("/api/v1/auth", func(r chi.Router) {
 		r.Post("/login", h.Login)
