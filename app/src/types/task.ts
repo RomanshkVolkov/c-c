@@ -72,6 +72,8 @@ export interface ListSummary {
 export interface FolderTree {
   id: string;
   name: string;
+  /** Folders hold folders since the tree gained nesting. Empty for a flat one. */
+  folders: FolderTree[];
   lists: ListSummary[];
 }
 

@@ -220,18 +220,31 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 			ID: s.ID, OrgID: s.OrgID, Name: s.Name, Color: s.Color, ProjectID: spaceProject[s.ID],
 			Folders: []domain.FolderTree{}, Lists: []domain.ListSummary{},
 		}
-		for _, f := range folders {
-			if f.SpaceID != s.ID {
-				continue
-			}
-			ft := domain.FolderTree{ID: f.ID, Name: f.Name, Lists: []domain.ListSummary{}}
-			for _, l := range lists {
-				if l.FolderID != nil && *l.FolderID == f.ID {
-					ft.Lists = append(ft.Lists, summary(l))
+		// Recursive since folders can hold folders. `folders` is already in rank
+		// order, so each level comes out ordered without sorting again.
+		var hijos func(parent *string) []domain.FolderTree
+		hijos = func(parent *string) []domain.FolderTree {
+			out := []domain.FolderTree{}
+			for _, f := range folders {
+				if f.SpaceID != s.ID || !mismoPadre(f.ParentFolderID, parent) {
+					continue
 				}
+				id := f.ID
+				ft := domain.FolderTree{
+					ID: f.ID, Name: f.Name,
+					Folders: hijos(&id),
+					Lists:   []domain.ListSummary{},
+				}
+				for _, l := range lists {
+					if l.FolderID != nil && *l.FolderID == f.ID {
+						ft.Lists = append(ft.Lists, summary(l))
+					}
+				}
+				out = append(out, ft)
 			}
-			tree.Folders = append(tree.Folders, ft)
+			return out
 		}
+		tree.Folders = hijos(nil)
 		for _, l := range lists {
 			if l.SpaceID == s.ID && l.FolderID == nil {
 				tree.Lists = append(tree.Lists, summary(l))
@@ -240,6 +253,14 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		out = append(out, tree)
 	}
 	return out, nil
+}
+
+// mismoPadre compares two optional parents, where nil means "under the space".
+func mismoPadre(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // ─── Folders / lists ──────────────────────────────────────────────────────────
@@ -314,14 +335,34 @@ func (r *TaskRepository) MoveList(id string, folderID *string, newRank string) e
 		Updates(map[string]any{"folder_id": folderID, "rank": newRank}).Error
 }
 
-// MoveSpace/MoveFolder only touch the rank: reparenting a space isn't a thing
-// (it belongs to an org) and folders always stay in their space.
+// MoveSpace only touches the rank: reparenting a space isn't a thing, it
+// belongs to an organization.
 func (r *TaskRepository) MoveSpace(id, newRank string) error {
 	return r.db.Model(&domain.TaskSpace{}).Where("id = ?", id).Update("rank", newRank).Error
 }
 
-func (r *TaskRepository) MoveFolder(id, newRank string) error {
-	return r.db.Model(&domain.TaskFolder{}).Where("id = ?", id).Update("rank", newRank).Error
+// MoveFolder reorders a folder and, since folders can now nest, optionally puts
+// it inside another. A folder never leaves its space: crossing spaces is what
+// "move to another space" is for, and doing it by accident with a drag would
+// carry one client's work into another's.
+func (r *TaskRepository) MoveFolder(id string, parentID *string, newRank string) error {
+	return r.db.Model(&domain.TaskFolder{}).Where("id = ?", id).
+		Updates(map[string]any{"parent_folder_id": parentID, "rank": newRank}).Error
+}
+
+// FolderParents maps every folder of a space to its parent, which is what a
+// cycle check needs and the only thing it needs.
+func (r *TaskRepository) FolderParents(spaceID string) (map[string]*string, error) {
+	var rows []domain.TaskFolder
+	if err := r.db.Select("id", "parent_folder_id").
+		Where("space_id = ?", spaceID).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]*string, len(rows))
+	for _, f := range rows {
+		out[f.ID] = f.ParentFolderID
+	}
+	return out, nil
 }
 
 // Siblings returns the ordered ids of a set, so "move up/down" can resolve the
@@ -933,3 +974,4 @@ func (r *TaskRepository) FindAttachment(id string) (*domain.TaskAttachment, erro
 func (r *TaskRepository) DeleteAttachment(id string) error {
 	return r.db.Delete(&domain.TaskAttachment{}, "id = ?", id).Error
 }
+

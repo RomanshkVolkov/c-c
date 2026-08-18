@@ -26,8 +26,12 @@ type TaskSpace struct {
 type TaskFolder struct {
 	BaseModel
 	SpaceID string `gorm:"type:varchar(36);index;not null" json:"spaceId"`
-	Name    string `gorm:"type:varchar(120);not null"      json:"name"`
-	Rank    string `gorm:"type:varchar(64);index"          json:"-"`
+	// ParentFolderID nil = the folder hangs off the space, which is what every
+	// folder did before nesting existed. Added rather than backfilled for
+	// exactly that reason: the absent value already means the right thing.
+	ParentFolderID *string `gorm:"type:varchar(36);index" json:"parentFolderId,omitempty"`
+	Name           string  `gorm:"type:varchar(120);not null" json:"name"`
+	Rank           string  `gorm:"type:varchar(64);index"     json:"-"`
 }
 
 type TaskList struct {
@@ -341,7 +345,9 @@ type MoveTaskRequest struct {
 type MoveNodeRequest struct {
 	AfterID  string `json:"afterId"`
 	BeforeID string `json:"beforeId"`
-	// FolderID only applies to lists: moving one into (or out of) a folder.
+	// FolderID is the folder the node lands in, and nil takes it out to the
+	// space. It reads the same for both kinds — a list into a folder, a folder
+	// into another folder — which is why nesting needed no second field.
 	FolderID *string `json:"folderId"`
 }
 
@@ -376,9 +382,10 @@ type SpaceTree struct {
 }
 
 type FolderTree struct {
-	ID    string        `json:"id"`
-	Name  string        `json:"name"`
-	Lists []ListSummary `json:"lists"`
+	ID      string        `json:"id"`
+	Name    string        `json:"name"`
+	Folders []FolderTree  `json:"folders"`
+	Lists   []ListSummary `json:"lists"`
 }
 
 type ListSummary struct {

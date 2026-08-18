@@ -170,8 +170,40 @@ func (s *TaskService) CreateFolder(spaceID, name string) (*domain.TaskFolder, er
 func (s *TaskService) RenameFolder(id, name string) error { return s.repo.RenameFolder(id, name) }
 
 // MoveFolder reorders a folder among its space's folders.
+// ErrFolderCycle: a folder cannot end up inside itself, directly or through any
+// chain of parents.
+//
+// Worth its own guard rather than trusting the client, because the failure is
+// not an error message — it is a subtree that vanishes from the navigator. The
+// tree is built by walking down from the space, and a ring is reachable from
+// nothing, so the folder and everything under it simply stop being drawn while
+// every row is still perfectly there in the database.
+var ErrFolderCycle = errors.New("a folder cannot be moved inside itself")
+
+// MoveFolder reorders a folder among its siblings and, optionally, puts it
+// inside another folder of the same space.
 func (s *TaskService) MoveFolder(id string, req domain.MoveNodeRequest) error {
-	return s.repo.MoveFolder(id, s.rankBetween("task_folders", req.AfterID, req.BeforeID))
+	if req.FolderID != nil {
+		f, err := s.repo.FindFolder(id)
+		if err != nil {
+			return err
+		}
+		padres, err := s.repo.FolderParents(f.SpaceID)
+		if err != nil {
+			return err
+		}
+		// Walk up from the proposed parent. Reaching the folder being moved
+		// means the move would close a ring. Bounded by the number of folders
+		// so a ring already in the data can't spin here forever.
+		padres[id] = req.FolderID
+		for cur, pasos := req.FolderID, 0; cur != nil && pasos <= len(padres); pasos++ {
+			if *cur == id {
+				return ErrFolderCycle
+			}
+			cur = padres[*cur]
+		}
+	}
+	return s.repo.MoveFolder(id, req.FolderID, s.rankBetween("task_folders", req.AfterID, req.BeforeID))
 }
 func (s *TaskService) DeleteFolder(id string) error { return s.repo.DeleteFolder(id) }
 func (s *TaskService) FindFolder(id string) (*domain.TaskFolder, error) {

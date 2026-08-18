@@ -342,6 +342,12 @@ func (h *taskHandler) MoveFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.MoveFolder(f.ID, req); err != nil {
+		// A refused drop is a legitimate answer, not a server fault: the client
+		// shows it as "you can't drop it there" rather than as a crash.
+		if errors.Is(err, service.ErrFolderCycle) {
+			SendErrorResponse(w, http.StatusConflict, "Cannot move a folder inside itself", err.Error())
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to move folder", err.Error())
 		return
 	}
