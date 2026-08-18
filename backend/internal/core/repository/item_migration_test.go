@@ -824,7 +824,7 @@ func TestABoardWorksOnTheUnifiedTable(t *testing.T) {
 	}
 
 	// And the dashboard stops listing it, because finished is read off the state.
-	open, err := repo.ListOpen([]string{"org-1"}, false, "", 50)
+	open, err := repo.ListOpen([]string{"org-1"}, false, "", 50, domain.OpenTaskFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -873,7 +873,7 @@ func TestAClientsReportIsACardLikeAnyOther(t *testing.T) {
 	// The dashboard is a different question: it already counts open reports in
 	// their own card, so listing them again as tasks would show the same work
 	// twice and make the numbers argue with each other.
-	open, err := repo.ListOpen([]string{"org-1"}, false, "", 50)
+	open, err := repo.ListOpen([]string{"org-1"}, false, "", 50, domain.OpenTaskFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

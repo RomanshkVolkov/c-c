@@ -93,8 +93,8 @@ func (s *TaskService) Tree(orgIDs []string, superadmin bool, orgID string) ([]do
 	return s.repo.Tree(orgIDs, superadmin, orgID)
 }
 
-func (s *TaskService) ListOpen(orgIDs []string, superadmin bool, orgID string, limit int) ([]domain.OpenTask, error) {
-	return s.repo.ListOpen(orgIDs, superadmin, orgID, limit)
+func (s *TaskService) ListOpen(orgIDs []string, superadmin bool, orgID string, limit int, f domain.OpenTaskFilter) ([]domain.OpenTask, error) {
+	return s.repo.ListOpen(orgIDs, superadmin, orgID, limit, f)
 }
 
 func (s *TaskService) CreateSpace(req domain.CreateSpaceRequest) (*domain.TaskSpace, error) {
@@ -913,6 +913,18 @@ func (s *TaskService) SortFolder(folderID string) error {
 		return err
 	}
 	return s.repo.SortChildren(f.SpaceID, &f.ID)
+}
+
+// Watch and Unwatch put somebody on, or off, a task's followers.
+//
+// Following is not assignment: it says "tell me how this goes" without saying
+// "this is mine to do". They are checked the same way, though — you can only
+// follow work you can already see, which resolveTask has decided by the time
+// this is called.
+func (s *TaskService) Watch(taskID, userID string) error   { return s.repo.Watch(taskID, userID) }
+func (s *TaskService) Unwatch(taskID, userID string) error { return s.repo.Unwatch(taskID, userID) }
+func (s *TaskService) Watchers(taskID string) ([]string, error) {
+	return s.repo.Watchers(taskID)
 }
 
 // ─── Duplicating a folder, and moving branches between spaces ────────────────

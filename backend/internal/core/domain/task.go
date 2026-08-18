@@ -129,6 +129,19 @@ type TaskTagLink struct {
 // for tasks and a column on the item for reports — so assigning from the board
 // left the client's view unchanged, and assigning through their API left the
 // board's avatars empty. Neither screen looked wrong on its own.
+// ItemWatcher is somebody following a task they are not responsible for.
+//
+// Separate from assignment on purpose: "this is mine to do" and "tell me how
+// this goes" are different sentences, and collapsing them would mean the only
+// way to keep an eye on a task was to take it.
+//
+// No timestamps and no state: the row existing *is* the fact. A follow that
+// could be half-on would need a rule for what half-on means.
+type ItemWatcher struct {
+	ItemID string `gorm:"type:varchar(36);primaryKey" json:"itemId"`
+	UserID string `gorm:"type:varchar(36);primaryKey;index" json:"userId"`
+}
+
 type ItemAssignee struct {
 	ItemID string `gorm:"type:varchar(36);primaryKey" json:"itemId"`
 	UserID string `gorm:"type:varchar(36);primaryKey" json:"userId"`
@@ -442,6 +455,25 @@ type BoardResponse struct {
 // for a board you work in and wasteful for a summary you glance at. It also
 // crosses lists, which the board never does, so it names the list and space a
 // task came from.
+// OpenTaskFilter is "my work", expressed as the few questions a person actually
+// asks: what is mine, what did I raise, what am I following, and what is due.
+//
+// Every field is optional and they combine with AND. Empty means the dashboard
+// list that existed before any of this.
+type OpenTaskFilter struct {
+	// AssigneeID, CreatorID and WatcherID each narrow to one person. They are
+	// ids and not a "me" flag so the same query can answer for somebody else
+	// later without a second endpoint.
+	AssigneeID string
+	CreatorID  string
+	WatcherID  string
+	// IncludeClosed brings back resolved and closed work, which the list hides
+	// by default: "what is pending" is the question it exists to answer.
+	IncludeClosed bool
+	DueFrom       *time.Time
+	DueTo         *time.Time
+}
+
 type OpenTask struct {
 	ID       string       `json:"id"`
 	Seq      int          `json:"seq"`

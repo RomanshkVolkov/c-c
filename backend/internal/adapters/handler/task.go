@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
@@ -53,6 +54,8 @@ type TaskHandler interface {
 	MoveFolder(w http.ResponseWriter, r *http.Request)
 	DuplicateFolder(w http.ResponseWriter, r *http.Request)
 	SortSpace(w http.ResponseWriter, r *http.Request)
+	Watch(w http.ResponseWriter, r *http.Request)
+	Unwatch(w http.ResponseWriter, r *http.Request)
 	SortFolder(w http.ResponseWriter, r *http.Request)
 	MoveFolderToSpace(w http.ResponseWriter, r *http.Request)
 	MoveListToSpace(w http.ResponseWriter, r *http.Request)
@@ -258,12 +261,76 @@ func (h *taskHandler) ListOpen(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	tasks, err := h.svc.ListOpen(user.OrgIDs(), user.Superadmin, orgID, limit)
+	tasks, err := h.svc.ListOpen(user.OrgIDs(), user.Superadmin, orgID, limit, openTaskFilter(r, user.UserID))
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load tasks", err.Error())
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.OpenTask]{Success: true, Data: tasks})
+}
+
+// openTaskFilter reads "my work" off the query string.
+//
+// `me` rather than a user id, and resolved here against the caller's own
+// claims. Accepting an arbitrary id would turn this into "show me anybody's
+// workload" — a different feature with a different answer about who may ask.
+func openTaskFilter(r *http.Request, callerID string) domain.OpenTaskFilter {
+	q := r.URL.Query()
+	quien := func(k string) string {
+		if q.Get(k) == "me" {
+			return callerID
+		}
+		return ""
+	}
+	f := domain.OpenTaskFilter{
+		AssigneeID:    quien("assignee"),
+		CreatorID:     quien("creator"),
+		WatcherID:     quien("watcher"),
+		IncludeClosed: q.Get("status") == "all",
+	}
+	if v := q.Get("dueFrom"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.DueFrom = &t
+		}
+	}
+	if v := q.Get("dueTo"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.DueTo = &t
+		}
+	}
+	return f
+}
+
+// Watch and Unwatch put the caller on, or off, a task's followers.
+func (h *taskHandler) Watch(w http.ResponseWriter, r *http.Request) {
+	h.setWatch(w, r, true)
+}
+
+func (h *taskHandler) Unwatch(w http.ResponseWriter, r *http.Request) {
+	h.setWatch(w, r, false)
+}
+
+func (h *taskHandler) setWatch(w http.ResponseWriter, r *http.Request, on bool) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	t, ok := h.resolveTask(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	var err error
+	if on {
+		err = h.svc.Watch(t.ID, user.UserID)
+	} else {
+		err = h.svc.Unwatch(t.ID, user.UserID)
+	}
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update watchers", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Watchers updated"})
 }
 
 func (h *taskHandler) CreateSpace(w http.ResponseWriter, r *http.Request) {

@@ -88,7 +88,7 @@ func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
 
 	repo := repository.NewTaskRepository(db)
 
-	got, err := repo.ListOpen([]string{org}, false, "", 50)
+	got, err := repo.ListOpen([]string{org}, false, "", 50, domain.OpenTaskFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,10 +110,10 @@ func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
 
 	// Membership is what scopes it: a caller in neither org sees nothing, and a
 	// superadmin narrowing by ?orgId sees only that org.
-	if none, err := repo.ListOpen([]string{"org-nobody"}, false, "", 50); err != nil || len(none) != 0 {
+	if none, err := repo.ListOpen([]string{"org-nobody"}, false, "", 50, domain.OpenTaskFilter{}); err != nil || len(none) != 0 {
 		t.Fatalf("a non-member must see nothing, got %d (%v)", len(none), err)
 	}
-	narrowed, err := repo.ListOpen(nil, true, other, 50)
+	narrowed, err := repo.ListOpen(nil, true, other, 50, domain.OpenTaskFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -564,7 +564,7 @@ func (r *TaskRepository) DeleteTask(id string) error {
 // renames "Done" to "Shipped" doesn't silently start seeing finished work here.
 // Subtasks are left out for the same reason the board leaves them out: they're
 // part of their parent's breakdown, and listing both double-counts the work.
-func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string, limit int) ([]domain.OpenTask, error) {
+func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string, limit int, f domain.OpenTaskFilter) ([]domain.OpenTask, error) {
 	if !superadmin && len(orgIDs) == 0 {
 		return []domain.OpenTask{}, nil
 	}
@@ -583,8 +583,32 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 		Joins("JOIN task_lists l ON l.id = t.list_id").
 		Joins("JOIN task_spaces sp ON sp.id = l.space_id").
 		Where("t.archived_at IS NULL AND t.parent_id IS NULL AND t.deleted_at IS NULL").
-		Where("t.project_id = ''").
-		Where("t.status NOT IN ('resolved','closed')")
+		Where("t.project_id = ''")
+	if !f.IncludeClosed {
+		q = q.Where("t.status NOT IN ('resolved','closed')")
+	}
+
+	// Assignment lives in two places for historical reasons: a single column
+	// for the one person a tenant is shown, and a table for everybody else on
+	// it. "Assigned to me" has to mean either, or the filter would quietly drop
+	// the work somebody shares.
+	if f.AssigneeID != "" {
+		q = q.Where(`(t.assignee_user_id = ? OR EXISTS (
+			SELECT 1 FROM item_assignees a WHERE a.item_id = t.id AND a.user_id = ?))`,
+			f.AssigneeID, f.AssigneeID)
+	}
+	if f.CreatorID != "" {
+		q = q.Where("t.created_by_id = ?", f.CreatorID)
+	}
+	if f.WatcherID != "" {
+		q = q.Where("EXISTS (SELECT 1 FROM item_watchers w WHERE w.item_id = t.id AND w.user_id = ?)", f.WatcherID)
+	}
+	if f.DueFrom != nil {
+		q = q.Where("t.due_at >= ?", *f.DueFrom)
+	}
+	if f.DueTo != nil {
+		q = q.Where("t.due_at <= ?", *f.DueTo)
+	}
 
 	if !superadmin {
 		q = q.Where("t.org_id IN ?", orgIDs)
@@ -1143,4 +1167,28 @@ func (r *TaskRepository) SortChildren(spaceID string, parentFolderID *string) er
 		}
 		return nil
 	})
+}
+
+// ─── Following a task ────────────────────────────────────────────────────────
+
+// Watch is idempotent: following something twice is the same as following it
+// once, and a second click should not be an error.
+func (r *TaskRepository) Watch(itemID, userID string) error {
+	return r.db.Exec(
+		`INSERT INTO item_watchers (item_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING`,
+		itemID, userID,
+	).Error
+}
+
+func (r *TaskRepository) Unwatch(itemID, userID string) error {
+	return r.db.Where("item_id = ? AND user_id = ?", itemID, userID).
+		Delete(&domain.ItemWatcher{}).Error
+}
+
+// Watchers of a task, so the detail can say whether you are following it.
+func (r *TaskRepository) Watchers(itemID string) ([]string, error) {
+	var out []string
+	err := r.db.Model(&domain.ItemWatcher{}).Where("item_id = ?", itemID).
+		Pluck("user_id", &out).Error
+	return out, err
 }
