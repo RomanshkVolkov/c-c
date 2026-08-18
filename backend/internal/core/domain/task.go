@@ -318,6 +318,12 @@ type CreateTaskRequest struct {
 	Priority    ItemPriority `json:"priority" validate:"omitempty,oneof=none low normal high urgent"`
 	// ParentID creates this task as a subtask of another one.
 	ParentID string `json:"parentId"`
+	// DueAt and AssigneeIDs are accepted at creation, not only on the edit that
+	// follows. The composer asks for all of it in one row, and making the client
+	// create-then-patch would mean a task that exists for a moment with nobody
+	// on it and no date — visible to everyone watching, and wrong.
+	DueAt       *time.Time `json:"dueAt"`
+	AssigneeIDs []string   `json:"assigneeIds"`
 }
 
 // UpdateTaskRequest patches a task; nil fields are left untouched so the client

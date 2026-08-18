@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2 } from "lucide-react";
 import ItemCalendar from "@/components/ItemCalendar";
+import NewTaskRow from "@/components/tasks/NewTaskRow";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -53,6 +54,7 @@ const ESTADOS: { kind: string; label: string }[] = [
 
 export default function MyWork() {
   const [vista, setVista] = useState<Vista>("list");
+  const [creando, setCreando] = useState(false);
   const { lens, includeClosed, tasks, loading, error } = useMyWorkStore();
   const setLens = useMyWorkStore((s) => s.setLens);
   const setIncludeClosed = useMyWorkStore((s) => s.setIncludeClosed);
@@ -87,8 +89,14 @@ export default function MyWork() {
             {loading ? "…" : `${tasks.length} visible`}
           </span>
           <button
+            onClick={() => setCreando(true)}
+            className="ml-auto rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
+          >
+            New task
+          </button>
+          <button
             onClick={() => setIncludeClosed(!includeClosed)}
-            className="ml-auto flex items-center gap-1.5 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="flex items-center gap-1.5 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             title={includeClosed ? "Hide finished work" : "Show finished work too"}
           >
             {includeClosed ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
@@ -132,6 +140,17 @@ export default function MyWork() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {creando && (
+          <NewTaskRow
+            onClose={() => {
+              setCreando(false);
+              // Re-ask: what you just raised may or may not belong in the lens
+              // you are looking at, and guessing which would be a list that
+              // disagrees with the server.
+              load(orgId).catch(() => {});
+            }}
+          />
+        )}
         {error && (
           <p className="flex items-center gap-1.5 text-xs text-destructive">
             <AlertCircle className="size-3" /> {error}

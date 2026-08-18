@@ -34,6 +34,7 @@ import type {
   DocOwnerKind,
   DocResponse,
   UpdateTaskPayload,
+  TaskPriority,
 } from "@/types/task";
 import type { CreateReportProjectResult, ReportProject } from "@/types/report";
 
@@ -104,6 +105,23 @@ interface TasksState {
     /** Markdown body, for callers that have more than a title — chat→task does. */
     description?: string,
   ) => Promise<void>;
+  /**
+   * Raise a task anywhere, with everything decided up front.
+   *
+   * Separate from `createTask`, which raises one in the board you are looking
+   * at. This one is told where to put it, so "my work" can create without
+   * navigating — and it sends the date and the people in the same request,
+   * because a task that exists for a moment with nobody on it and no date is
+   * visible to everyone watching and wrong while it lasts.
+   */
+  createTaskIn: (input: {
+    listId: string;
+    title: string;
+    priority?: TaskPriority;
+    dueAt?: string | null;
+    assigneeIds?: string[];
+    visibility?: ItemVisibility;
+  }) => Promise<void>;
   moveTask: (taskId: string, statusId: string, afterId: string, beforeId: string) => Promise<void>;
   openTask: (id: string) => Promise<void>;
   /** Re-read the open task without unmounting the drawer. See the impl. */
@@ -440,6 +458,24 @@ export const useTasksStore = create<TasksState>()(
           true,
         );
         await get().refreshBoard();
+        await get().fetchTree(); // list counts
+      },
+
+      createTaskIn: async ({ listId, title, priority, dueAt, assigneeIds, visibility }) => {
+        await api.post<APIResponse<unknown>>(
+          `/api/v1/task-lists/${listId}/tasks`,
+          {
+            title,
+            ...(priority ? { priority } : {}),
+            ...(dueAt ? { dueAt } : {}),
+            ...(assigneeIds?.length ? { assigneeIds } : {}),
+            // Same rule as createTask: sent only when a choice was made, so the
+            // server's default — the client sees it — is never contradicted by
+            // accident.
+            ...(visibility ? { visibility } : {}),
+          },
+          true,
+        );
         await get().fetchTree(); // list counts
       },
 

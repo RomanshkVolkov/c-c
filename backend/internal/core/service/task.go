@@ -373,6 +373,7 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 		IdempotencyKey: req.IdempotencyKey,
 		Priority:       priority,
 		CreatedByID:    userID,
+		DueAt:          req.DueAt,
 	}
 	// A subtask of a client-visible item stays internal: inheriting the channel
 	// would spend one of their folio numbers on a checklist line and put it on
@@ -393,6 +394,16 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 	t.ID = uuid.NewString()
 	if err := s.repo.CreateTask(t, list.SpaceID); err != nil {
 		return nil, err
+	}
+	// After the row exists, and through the same path an edit uses — which is
+	// what checks that each of them is actually in this organization. A failure
+	// here leaves the task created and unassigned rather than swallowing it:
+	// losing the work because the assignment was refused would be worse than
+	// having to name somebody twice.
+	if len(req.AssigneeIDs) > 0 {
+		if err := s.setAssignees(t.ID, req.AssigneeIDs); err != nil {
+			return t, err
+		}
 	}
 	s.publish("task:new", orgID, list.ID, t.ID)
 	return t, nil
