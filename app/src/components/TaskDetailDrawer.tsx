@@ -59,13 +59,35 @@ export default function TaskDetailDrawer() {
   const loading = useTasksStore((s) => s.loadingDetail);
   const closeTask = useTasksStore((s) => s.closeTask);
 
+  // Escape closes it. It used to be the click-away layer that did that job
+  // implicitly; full screen leaves nothing beside it to click, so the keyboard
+  // way out has to be explicit or the only exit is one small button.
+  useEffect(() => {
+    if (!openTaskId) return;
+    const onKey = (e: KeyboardEvent) => {
+      // Not while typing: Escape in an editor cancels what you are writing, and
+      // taking the whole screen away instead would lose it.
+      const el = document.activeElement;
+      const escribiendo =
+        el instanceof HTMLElement &&
+        (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (e.key === "Escape" && !escribiendo) closeTask();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openTaskId, closeTask]);
+
   if (!openTaskId) return null;
 
   return (
     <>
-      {/* Click-away layer; the drawer itself stops propagation. */}
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={closeTask} />
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l bg-background shadow-xl">
+      {/* Full screen rather than a drawer over the board.
+          A task is where work gets described, argued about and decided, and for
+          that it needs the room. The properties moved to a rail of their own so
+          the reading column stays a reading column. Closing is still the header
+          button — the click-away layer is gone, because there is nothing left
+          beside it to click away to. */}
+      <aside className="fixed inset-0 z-50 flex flex-col bg-background">
         {loading && !detail ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 size-4 animate-spin" /> Loading task…
@@ -344,7 +366,8 @@ function Content() {
         </Button>
       </header>
 
-      <div className="flex-1 space-y-5 overflow-auto p-4">
+      <div className="flex min-h-0 flex-1">
+      <div className="min-w-0 flex-1 space-y-5 overflow-auto p-4 lg:px-8">
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -354,183 +377,6 @@ function Content() {
           }}
           className="h-auto border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
         />
-
-        {/* Attributes */}
-        <div className="grid grid-cols-[7rem_1fr] items-center gap-y-2 text-sm">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Check className="size-3.5" /> Status
-          </span>
-          <div>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button className="rounded px-2 py-0.5 text-xs font-medium" style={{
-                    backgroundColor: `${detail.status.color}22`,
-                    color: detail.status.color,
-                  }}>
-                    {detail.status.name}
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="start">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    Move to column
-                  </DropdownMenuLabel>
-                  {(board?.statuses ?? []).map((s) => (
-                    <DropdownMenuItem
-                      key={s.id}
-                      onClick={() => {
-                        if (s.id === task.statusId) return;
-                        // Appending (no neighbours) is the least surprising drop
-                        // point when moving from the detail view.
-                        moveTask(task.id, s.id, "", "").catch((e) => toast.error(String(e)));
-                      }}
-                    >
-                      <span className="size-2 rounded-full" style={{ backgroundColor: s.color }} />
-                      {s.name}
-                      {s.id === task.statusId && <Check className="ml-auto size-3.5" />}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Flag className="size-3.5" /> Priority
-          </span>
-          <div>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button className={cn("text-xs", priorityMeta(task.priority).className)}>
-                    {priorityMeta(task.priority).label}
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="start">
-                <DropdownMenuGroup>
-                  {PRIORITIES.map((p) => (
-                    <DropdownMenuItem
-                      key={p}
-                      onClick={() => updateTask(task.id, { priority: p }).catch((e) => toast.error(String(e)))}
-                    >
-                      <Flag className={cn("size-3.5", priorityMeta(p).className)} />
-                      {priorityMeta(p).label}
-                      {p === task.priority && <Check className="ml-auto size-3.5" />}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <TagIcon className="size-3.5" /> Tags
-          </span>
-          <div className="flex flex-wrap items-center gap-1">
-            {detail.tags.map((t) => (
-              <span
-                key={t.id}
-                className="rounded px-1.5 py-0.5 text-xs"
-                style={{ backgroundColor: `${t.color || "#8B5CF6"}22`, color: t.color || undefined }}
-              >
-                {t.name}
-              </span>
-            ))}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button className="rounded border border-dashed px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground">
-                    + tag
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="start">
-                <DropdownMenuGroup>
-                  {orgTags.map((t) => (
-                    <DropdownMenuItem
-                      key={t.id}
-                      onClick={() => {
-                        const next = tagIds.has(t.id)
-                          ? detail.tags.filter((x) => x.id !== t.id).map((x) => x.id)
-                          : [...detail.tags.map((x) => x.id), t.id];
-                        updateTask(task.id, { tagIds: next }).catch((e) => toast.error(String(e)));
-                      }}
-                    >
-                      <span className="size-2 rounded-full" style={{ backgroundColor: t.color || "#8B5CF6" }} />
-                      {t.name}
-                      {tagIds.has(t.id) && <Check className="ml-auto size-3.5" />}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      const name = await prompt({ title: "New tag", label: "Name", confirmText: "Create" });
-                      if (!name) return;
-                      const created = await createTag(task.orgId, name, "#8B5CF6");
-                      if (created) {
-                        updateTask(task.id, {
-                          tagIds: [...detail.tags.map((x) => x.id), created.id],
-                        }).catch((e) => toast.error(String(e)));
-                      }
-                    }}
-                  >
-                    + New tag
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Users className="size-3.5" /> Assignees
-          </span>
-          <div className="flex flex-wrap items-center gap-1">
-            {detail.assignees.map((a) => (
-              <Badge key={a.id} variant="secondary" className="gap-1 text-xs">
-                {a.username}
-                <button
-                  onClick={() =>
-                    updateTask(task.id, {
-                      assigneeIds: detail.assignees.filter((x) => x.id !== a.id).map((x) => x.id),
-                    }).catch((e) => toast.error(String(e)))
-                  }
-                  aria-label={`Remove ${a.username}`}
-                >
-                  <X className="size-3" />
-                </button>
-              </Badge>
-            ))}
-            <div className="w-44">
-              <UserPicker
-                placeholder="Assign…"
-                onSelect={(u) => {
-                  if (detail.assignees.some((a) => a.id === u.id)) return;
-                  updateTask(task.id, {
-                    assigneeIds: [...detail.assignees.map((a) => a.id), u.id],
-                  }).catch((e) => toast.error(String(e)));
-                }}
-              />
-            </div>
-          </div>
-
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Calendar className="size-3.5" /> Due
-          </span>
-          <div>
-            <input
-              type="date"
-              value={task.dueAt ? task.dueAt.slice(0, 10) : ""}
-              onChange={(e) =>
-                updateTask(task.id, {
-                  dueAt: e.target.value ? new Date(e.target.value).toISOString() : null,
-                }).catch((err) => toast.error(String(err)))
-              }
-              className="rounded border bg-transparent px-2 py-0.5 text-xs"
-            />
-          </div>
-        </div>
 
         {/* Description */}
         <section className="space-y-2">
@@ -842,6 +688,191 @@ function Content() {
             </div>
           </div>
         </section>
+      </div>
+
+      {/* Properties, in a rail of their own.
+
+          Below the reading column on a narrow window rather than squeezed
+          beside it: at that width neither half gets enough room to be read,
+          and the description is the half that suffers. */}
+      <aside className="w-full shrink-0 overflow-auto border-t p-4 lg:w-72 lg:border-l lg:border-t-0">
+        <div className="grid grid-cols-[7rem_1fr] items-center gap-y-2 text-sm">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Check className="size-3.5" /> Status
+          </span>
+          <div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button className="rounded px-2 py-0.5 text-xs font-medium" style={{
+                    backgroundColor: `${detail.status.color}22`,
+                    color: detail.status.color,
+                  }}>
+                    {detail.status.name}
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="start">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    Move to column
+                  </DropdownMenuLabel>
+                  {(board?.statuses ?? []).map((s) => (
+                    <DropdownMenuItem
+                      key={s.id}
+                      onClick={() => {
+                        if (s.id === task.statusId) return;
+                        // Appending (no neighbours) is the least surprising drop
+                        // point when moving from the detail view.
+                        moveTask(task.id, s.id, "", "").catch((e) => toast.error(String(e)));
+                      }}
+                    >
+                      <span className="size-2 rounded-full" style={{ backgroundColor: s.color }} />
+                      {s.name}
+                      {s.id === task.statusId && <Check className="ml-auto size-3.5" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Flag className="size-3.5" /> Priority
+          </span>
+          <div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button className={cn("text-xs", priorityMeta(task.priority).className)}>
+                    {priorityMeta(task.priority).label}
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="start">
+                <DropdownMenuGroup>
+                  {PRIORITIES.map((p) => (
+                    <DropdownMenuItem
+                      key={p}
+                      onClick={() => updateTask(task.id, { priority: p }).catch((e) => toast.error(String(e)))}
+                    >
+                      <Flag className={cn("size-3.5", priorityMeta(p).className)} />
+                      {priorityMeta(p).label}
+                      {p === task.priority && <Check className="ml-auto size-3.5" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <TagIcon className="size-3.5" /> Tags
+          </span>
+          <div className="flex flex-wrap items-center gap-1">
+            {detail.tags.map((t) => (
+              <span
+                key={t.id}
+                className="rounded px-1.5 py-0.5 text-xs"
+                style={{ backgroundColor: `${t.color || "#8B5CF6"}22`, color: t.color || undefined }}
+              >
+                {t.name}
+              </span>
+            ))}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button className="rounded border border-dashed px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground">
+                    + tag
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="start">
+                <DropdownMenuGroup>
+                  {orgTags.map((t) => (
+                    <DropdownMenuItem
+                      key={t.id}
+                      onClick={() => {
+                        const next = tagIds.has(t.id)
+                          ? detail.tags.filter((x) => x.id !== t.id).map((x) => x.id)
+                          : [...detail.tags.map((x) => x.id), t.id];
+                        updateTask(task.id, { tagIds: next }).catch((e) => toast.error(String(e)));
+                      }}
+                    >
+                      <span className="size-2 rounded-full" style={{ backgroundColor: t.color || "#8B5CF6" }} />
+                      {t.name}
+                      {tagIds.has(t.id) && <Check className="ml-auto size-3.5" />}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      const name = await prompt({ title: "New tag", label: "Name", confirmText: "Create" });
+                      if (!name) return;
+                      const created = await createTag(task.orgId, name, "#8B5CF6");
+                      if (created) {
+                        updateTask(task.id, {
+                          tagIds: [...detail.tags.map((x) => x.id), created.id],
+                        }).catch((e) => toast.error(String(e)));
+                      }
+                    }}
+                  >
+                    + New tag
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Users className="size-3.5" /> Assignees
+          </span>
+          <div className="flex flex-wrap items-center gap-1">
+            {detail.assignees.map((a) => (
+              <Badge key={a.id} variant="secondary" className="gap-1 text-xs">
+                {a.username}
+                <button
+                  onClick={() =>
+                    updateTask(task.id, {
+                      assigneeIds: detail.assignees.filter((x) => x.id !== a.id).map((x) => x.id),
+                    }).catch((e) => toast.error(String(e)))
+                  }
+                  aria-label={`Remove ${a.username}`}
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+            <div className="w-44">
+              <UserPicker
+                placeholder="Assign…"
+                onSelect={(u) => {
+                  if (detail.assignees.some((a) => a.id === u.id)) return;
+                  updateTask(task.id, {
+                    assigneeIds: [...detail.assignees.map((a) => a.id), u.id],
+                  }).catch((e) => toast.error(String(e)));
+                }}
+              />
+            </div>
+          </div>
+
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <Calendar className="size-3.5" /> Due
+          </span>
+          <div>
+            <input
+              type="date"
+              value={task.dueAt ? task.dueAt.slice(0, 10) : ""}
+              onChange={(e) =>
+                updateTask(task.id, {
+                  dueAt: e.target.value ? new Date(e.target.value).toISOString() : null,
+                }).catch((err) => toast.error(String(err)))
+              }
+              className="rounded border bg-transparent px-2 py-0.5 text-xs"
+            />
+          </div>
+        </div>
+
+      </aside>
       </div>
 
       <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
