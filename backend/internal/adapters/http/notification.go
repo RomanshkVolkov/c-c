@@ -19,6 +19,14 @@ func InitNotificationRoutes(db *gorm.DB, r *chi.Mux) {
 	h := handler.NewNotificationHandler(
 		service.NewNotificationService(repository.NewNotificationRepository(db)),
 	)
+	search := handler.NewSearchHandler(
+		service.NewSearchService(repository.NewSearchRepository(db)),
+	)
+	r.Route("/api/v1/search", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/", search.Search)
+	})
+
 	r.Route("/api/v1/notifications", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.Feed)
