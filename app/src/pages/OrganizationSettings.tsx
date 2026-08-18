@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import OrgIntegrations from "@/components/org/OrgIntegrations";
 import { Building2, UserPlus, Trash2, Mail, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,10 +36,10 @@ const PESTANAS = [
   { key: "identity", label: "Identity" },
   { key: "members", label: "Members" },
   { key: "invites", label: "Invitations" },
-  // No Integrations tab. The design has one, but nothing in this product is an
-  // integration of an *organization* — the integrations that exist belong to a
-  // server or to a client's channel, and a tab with somebody else's settings in
-  // it would be worse than no tab at all.
+  // The report projects: another system holds an ingest key and pushes work in.
+  // They belong to the organization, which is why they are here and not on a
+  // server's screen.
+  { key: "integrations", label: "Integrations" },
 ] as const;
 
 type Pestana = (typeof PESTANAS)[number]["key"];
@@ -388,6 +389,8 @@ export default function OrganizationSettings() {
           )}
           </>
         )}
+
+        {pestana === "integrations" && <OrgIntegrations canManage={canManage} />}
 
         {pestana === "identity" && (
           <section className="space-y-2">
