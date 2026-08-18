@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useState, useCallback, useRef } from "react";
 import {
   ImageDown,
@@ -64,9 +65,18 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function reductionPercent(original: number, compressed: number): string {
+/**
+ * How much smaller — or bigger — the result came out, as a magnitude.
+ *
+ * Unsigned on purpose: the caller draws the sign, and it used to draw a `+` in
+ * front of a number that was already negative, so a file that grew by 12%
+ * reported "+-12.0%". Compressing something and getting a larger file back is
+ * exactly the case this tool has to be honest about, and it was the one it
+ * garbled.
+ */
+export function reductionPercent(original: number, compressed: number): string {
   if (original === 0) return "0%";
-  const pct = ((1 - compressed / original) * 100).toFixed(1);
+  const pct = Math.abs((1 - compressed / original) * 100).toFixed(1);
   return `${pct}%`;
 }
 
@@ -333,8 +343,18 @@ export default function ImageTool() {
                       {formatBytes(totalOriginal)}
                       <ArrowRight className="h-3 w-3 mx-1 inline" />
                       {formatBytes(totalCompressed)}
-                      <span className="ml-1 text-success">
-                        (-{reductionPercent(totalOriginal, totalCompressed)})
+                      {/* The whole batch can come out bigger — some formats do
+                          that with some images — and saying so in green with a
+                          minus in front would be the tool lying about the one
+                          thing it exists to measure. */}
+                      <span
+                        className={cn(
+                          "ml-1",
+                          totalCompressed <= totalOriginal ? "text-success" : "text-destructive",
+                        )}
+                      >
+                        ({totalCompressed <= totalOriginal ? "-" : "+"}
+                        {reductionPercent(totalOriginal, totalCompressed)})
                       </span>
                     </Badge>
                   )}

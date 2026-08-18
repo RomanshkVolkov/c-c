@@ -156,6 +156,7 @@ function JwtSection() {
             <Label className="text-xs text-muted-foreground">Header</Label>
             <OutputBox value={result.header} id="jwt-header" copied={copied} copy={copy} />
           </div>
+          <ClaimsInPlainWords payload={result.payload} />
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Payload</Label>
             <OutputBox value={result.payload} id="jwt-payload" copied={copied} copy={copy} />
@@ -500,6 +501,64 @@ function EncodeSection() {
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
+
+/**
+ * The three time claims, said in words.
+ *
+ * `exp: 1755640800` is the field people actually come here to read, and it is
+ * the one a person cannot read. Whether a token has expired is a yes-or-no
+ * question, and answering it by hand — paste the number into a converter, work
+ * out the timezone — is most of what this screen was used for.
+ *
+ * The raw payload stays below untouched: this is a reading aid, not a
+ * replacement for what the token actually says.
+ */
+function ClaimsInPlainWords({ payload }: { payload: string }) {
+  let claims: Record<string, unknown> = {};
+  try {
+    claims = JSON.parse(payload) as Record<string, unknown>;
+  } catch {
+    return null; // Not JSON: nothing to explain, and the box below still shows it.
+  }
+
+  const CAMPOS: { key: string; label: string }[] = [
+    { key: "iat", label: "Issued" },
+    { key: "nbf", label: "Valid from" },
+    { key: "exp", label: "Expires" },
+  ];
+  const presentes = CAMPOS.filter((c) => typeof claims[c.key] === "number");
+  if (presentes.length === 0) return null;
+
+  const ahora = Date.now();
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">In words</Label>
+      <div className="space-y-1 rounded border p-2 text-xs">
+        {presentes.map((c) => {
+          // Seconds since the epoch, as the spec says — not milliseconds. A
+          // token read as milliseconds looks like it expired in 1970, which is
+          // a confusing way to be wrong.
+          const cuando = new Date((claims[c.key] as number) * 1000);
+          const caducado = c.key === "exp" && cuando.getTime() < ahora;
+          const futuro = c.key === "nbf" && cuando.getTime() > ahora;
+          return (
+            <div key={c.key} className="flex items-baseline gap-2">
+              <span className="w-20 shrink-0 text-muted-foreground">{c.label}</span>
+              <span className="font-mono">{cuando.toLocaleString()}</span>
+              {caducado && (
+                <span className="font-medium text-destructive">· expired</span>
+              )}
+              {c.key === "exp" && !caducado && (
+                <span className="text-success">· still valid</span>
+              )}
+              {futuro && <span className="text-warning">· not yet valid</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function CryptoTools() {
   const [section, setSection] = useState<Section>("jwt");
