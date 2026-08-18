@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTelemetryStore } from "@/store/telemetry.store";
 import type { TelemetryBreadcrumb, TelemetryEventView } from "@/types/telemetry";
+import NotificationCheck from "@/components/diagnostics/NotificationCheck";
 
 function relativeTime(iso: string): string {
   const t = Date.parse(iso);
@@ -106,6 +107,9 @@ export default function Diagnostics() {
 
       {/* Timeline */}
       <div className="flex-1 flex flex-col min-h-0">
+        <div className="shrink-0 border-b px-4 py-2">
+          <NotificationCheck />
+        </div>
         {!selectedDeviceId ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-sm text-muted-foreground">

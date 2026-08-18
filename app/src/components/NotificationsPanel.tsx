@@ -1,13 +1,11 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, Check, Trash2, TriangleAlert, Eye, MonitorSmartphone } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { useNotificationsStore, type Delivery } from "@/store/notifications.store";
-import { useInboxStore } from "@/store/inbox.store";
+import { useInboxStore, type InboxItem } from "@/store/inbox.store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,6 +32,21 @@ const DELIVERY: Record<Delivery, { label: string; icon: typeof Bell; className: 
  * inbox that emptied just because you glanced at it would lose the thing you
  * opened it to find.
  */
+/** The kinds, in words. An unknown one falls through as its raw name. */
+const ETIQUETA: Record<string, string> = {
+  "chat:mention": "Mentions",
+  "dm:message": "Direct messages",
+  "task:comment": "Comments",
+  "report:new": "New reports",
+};
+
+/** Grouped by kind, each group keeping the newest-first order it arrived in. */
+function AGRUPAR(items: InboxItem[]): [string, InboxItem[]][] {
+  const by = new Map<string, InboxItem[]>();
+  for (const n of items) by.set(n.kind, [...(by.get(n.kind) ?? []), n]);
+  return [...by.entries()];
+}
+
 function InboxSection() {
   const items = useInboxStore((s) => s.items);
   const unread = useInboxStore((s) => s.unread);
@@ -58,8 +71,18 @@ function InboxSection() {
           </button>
         )}
       </div>
+      {/* Grouped by what happened, not by when.
+          An inbox after a weekend is mostly one kind of thing repeated, and a
+          flat list makes you read forty rows to notice that thirty-eight of
+          them are the same channel. The groups keep their newest-first order
+          inside. */}
+      {AGRUPAR(items).map(([tipo, deEste]) => (
+      <div key={tipo}>
+      <p className="bg-muted/20 px-4 py-1 text-[11px] text-muted-foreground">
+        {ETIQUETA[tipo] ?? tipo} · {deEste.length}
+      </p>
       <ul className="divide-y">
-        {items.map((n) => (
+        {deEste.map((n) => (
           <li key={n.id}>
             <button
               className={cn(
@@ -82,6 +105,8 @@ function InboxSection() {
           </li>
         ))}
       </ul>
+      </div>
+      ))}
     </>
   );
 }
@@ -97,39 +122,7 @@ export default function NotificationsPanel({
   const items = useNotificationsStore((s) => s.items);
   const markAllRead = useNotificationsStore((s) => s.markAllRead);
   const clear = useNotificationsStore((s) => s.clear);
-  const [testing, setTesting] = useState(false);
 
-  const sendTest = async () => {
-    setTesting(true);
-    try {
-      const { isPermissionGranted, requestPermission, sendNotification } = await import(
-        "@tauri-apps/plugin-notification"
-      );
-      let granted = await isPermissionGranted();
-      if (!granted) granted = (await requestPermission()) === "granted";
-      if (!granted) {
-        toast.error("The system refused permission", {
-          description: "cac can't post notifications on this desktop.",
-        });
-        return;
-      }
-      sendNotification({
-        title: "cac — test",
-        body: "If you can see this, notifications work.",
-      });
-      // Deliberately not "sent": the plugin hands it to the desktop and doesn't
-      // hear back, so claiming success would be a guess. Only you can confirm.
-      toast.success("Handed to the system", {
-        description: "If nothing appeared, the desktop is silencing it — check its notification settings.",
-      });
-    } catch (e) {
-      toast.error("Couldn't send it", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
 
   return (
     <Sheet open={open} onOpenChange={(v) => { onOpenChange(v); if (v) markAllRead(); }}>
@@ -141,9 +134,6 @@ export default function NotificationsPanel({
         </SheetHeader>
 
         <div className="flex items-center gap-2 border-b px-4 pb-3">
-          <Button size="sm" variant="outline" onClick={sendTest} disabled={testing}>
-            Send a test
-          </Button>
           {items.length > 0 && (
             <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground" onClick={clear}>
               <Trash2 className="mr-1 size-3" /> Clear
