@@ -27,6 +27,7 @@ import {
   ListChecks,
   Eye,
   Copy,
+  KanbanSquare,
   ArrowDownAZ,
   Lock,
   LockOpen,
@@ -56,6 +57,7 @@ import {
 import ChannelDialog from "@/components/ChannelDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useTasksStore, type DropWhere, type TreeNodeRef } from "@/store/tasks.store";
+import { useMyWorkStore } from "@/store/mywork.store";
 import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { docKey, type FolderTree, type SpaceTree } from "@/types/task";
@@ -701,6 +703,7 @@ function ListNode({
 }) {
   const activeListId = useTasksStore((s) => s.activeListId);
   const selectList = useTasksStore((s) => s.selectList);
+  const setScope = useMyWorkStore((s) => s.setScope);
   const navigate = useNavigate();
   const confirm = useConfirm();
   const docIndex = useTasksStore((s) => s.docIndex);
@@ -740,11 +743,13 @@ function ListNode({
         active && "bg-accent",
       )}
       onClick={() => {
+        // Narrows "my work" instead of opening this list's board. The question
+        // you were asking — what is mine, what am I following — survives, and
+        // the tree points it somewhere smaller. Opening the board is still
+        // there, in the row's own menu, because it is a different question.
         selectList(list.id);
-        // The tree is in the global sidebar now, so this can be clicked from
-        // Notes or Diagnostics. Changing the board of a screen nobody is
-        // looking at is not what "open this list" means.
-        navigate("/tasks");
+        setScope({ kind: "list", id: list.id, name: list.name });
+        navigate("/my-work");
       }}
     >
       <ListChecks className="size-3.5 shrink-0 text-muted-foreground" />
@@ -778,6 +783,14 @@ function ListNode({
         />
         <DropdownMenuContent align="start">
           <DropdownMenuGroup>
+            <DropdownMenuItem
+              onClick={() => {
+                selectList(list.id);
+                navigate("/tasks");
+              }}
+            >
+              <KanbanSquare className="size-4" /> Open the board
+            </DropdownMenuItem>
             <MoveToSpace
               currentSpaceId={spaceId}
               onPick={(destino) => moveListToSpace(list.id, destino).catch((e) => toast.error(String(e)))}

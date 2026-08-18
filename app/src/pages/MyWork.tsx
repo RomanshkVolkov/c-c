@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2 } from "lucide-react";
+import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
 import ItemCalendar from "@/components/ItemCalendar";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
@@ -55,7 +55,8 @@ const ESTADOS: { kind: string; label: string }[] = [
 export default function MyWork() {
   const [vista, setVista] = useState<Vista>("list");
   const [creando, setCreando] = useState(false);
-  const { lens, includeClosed, tasks, loading, error } = useMyWorkStore();
+  const { lens, includeClosed, tasks, loading, error, scope } = useMyWorkStore();
+  const setScope = useMyWorkStore((s) => s.setScope);
   const setLens = useMyWorkStore((s) => s.setLens);
   const setIncludeClosed = useMyWorkStore((s) => s.setIncludeClosed);
   const load = useMyWorkStore((s) => s.load);
@@ -66,11 +67,21 @@ export default function MyWork() {
     load(orgId).catch(() => {});
   }, [load, orgId, lens, includeClosed]);
 
+  // Narrowed in the client rather than re-asked: every row already says which
+  // space and list it is in, so pointing the same answer at a smaller part of
+  // it costs nothing and keeps the tree instant.
+  const visibles = useMemo(() => {
+    if (!scope) return tasks;
+    return tasks.filter((t) =>
+      scope.kind === "list" ? t.listId === scope.id : t.spaceId === scope.id,
+    );
+  }, [tasks, scope]);
+
   // Grouped in the order the tree shows spaces, so the two read the same way.
   const orden = useTasksStore((s) => s.tree.map((t) => t.id));
   const grupos = useMemo(() => {
     const by = new Map<string, { name: string; items: OpenTask[] }>();
-    for (const t of tasks) {
+    for (const t of visibles) {
       const g = by.get(t.spaceId) ?? { name: t.spaceName, items: [] };
       g.items.push(t);
       by.set(t.spaceId, g);
@@ -78,7 +89,7 @@ export default function MyWork() {
     return [...by.entries()].sort(
       (a, b) => (orden.indexOf(a[0]) + 1 || 99) - (orden.indexOf(b[0]) + 1 || 99),
     );
-  }, [tasks, orden]);
+  }, [visibles, orden]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -86,7 +97,7 @@ export default function MyWork() {
         <div className="flex items-baseline gap-2">
           <h1 className="text-lg font-semibold">My work</h1>
           <span className="text-xs text-muted-foreground">
-            {loading ? "…" : `${tasks.length} visible`}
+            {loading ? "…" : `${visibles.length} visible`}
           </span>
           <button
             onClick={() => setCreando(true)}
@@ -103,6 +114,18 @@ export default function MyWork() {
             {includeClosed ? "All states" : "Open only"}
           </button>
         </div>
+        {scope && (
+          <button
+            onClick={() => setScope(null)}
+            className="mt-1 flex items-center gap-1 self-start rounded-full border bg-accent/40 px-2 py-0.5 text-xs hover:bg-accent"
+            title="Show everything again"
+          >
+            {/* Says out loud that you are seeing part of it. A filtered list with
+                nothing announcing the filter reads as "there is nothing here". */}
+            {scope.kind === "list" ? "List" : "Space"}: {scope.name}
+            <X className="size-3" />
+          </button>
+        )}
         <nav className="-mb-px flex items-center gap-4 pt-2 text-sm">
           {LENSES.map((l) => (
             <button
@@ -156,9 +179,9 @@ export default function MyWork() {
             <AlertCircle className="size-3" /> {error}
           </p>
         )}
-        {loading && tasks.length === 0 ? (
+        {loading && visibles.length === 0 ? (
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
-        ) : tasks.length === 0 ? (
+        ) : visibles.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {lens === "watching"
               ? "You are not following anything. Open a task and follow it to keep an eye on it without taking it."
@@ -170,7 +193,7 @@ export default function MyWork() {
               // Placed by when it is due, not by when it was raised: this
               // screen answers "what is coming", and a month view of creation
               // dates answers nothing anybody asked.
-              items={tasks
+              items={visibles
                 .filter((t) => t.dueAt)
                 .map((t) => ({
                   id: t.id,
@@ -185,7 +208,7 @@ export default function MyWork() {
           ) : vista === "board" ? (
             <div className="flex gap-3 overflow-x-auto">
               {ESTADOS.map((col) => {
-                const suyas = tasks.filter((t) => t.statusKind === col.kind);
+                const suyas = visibles.filter((t) => t.statusKind === col.kind);
                 return (
                   <section key={col.kind} className="w-72 shrink-0">
                     <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">

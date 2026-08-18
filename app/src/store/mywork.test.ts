@@ -71,3 +71,30 @@ describe("las lentes de «mi trabajo»", () => {
     expect(useMyWorkStore.getState().error).toContain("sin red");
   });
 });
+
+describe("el alcance que pone el árbol", () => {
+  it("no se recuerda entre sesiones", () => {
+    // Sólo se persisten la lente y el interruptor: reabrir la app apuntando a
+    // una lista que ya no recuerdas haber elegido es un filtro que parece
+    // ausencia de datos.
+    const guardado = JSON.parse(
+      localStorage.getItem("cac-mywork") ?? '{"state":{}}',
+    ).state as Record<string, unknown>;
+    useMyWorkStore.setState({ scope: { kind: "list", id: "li-1", name: "Una" } });
+    const despues = JSON.parse(
+      localStorage.getItem("cac-mywork") ?? '{"state":{}}',
+    ).state as Record<string, unknown>;
+    expect(despues.scope).toBeUndefined();
+    expect(Object.keys(despues).sort()).toEqual(Object.keys(guardado).sort());
+  });
+
+  it("no cambia la pregunta que se le hace al servidor", async () => {
+    get.mockResolvedValue({ success: true, data: [] });
+    useMyWorkStore.setState({ lens: "assigned", scope: { kind: "list", id: "li-1", name: "Una" } });
+    await useMyWorkStore.getState().load("org-1");
+    // El alcance acota en el cliente: la lente sigue siendo la pregunta, y
+    // mandarlo al servidor sería una segunda forma de decir lo mismo.
+    expect(String(get.mock.calls[0][0])).toContain("assignee=me");
+    expect(String(get.mock.calls[0][0])).not.toContain("li-1");
+  });
+});

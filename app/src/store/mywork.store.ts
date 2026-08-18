@@ -17,6 +17,20 @@ import type { OpenTask } from "@/types/task";
 
 export type WorkLens = "assigned" | "created" | "watching" | "clients" | "all";
 
+/**
+ * What the tree has narrowed this view to, if anything.
+ *
+ * Picking a list used to take you to its board — a different screen with a
+ * different question on it. Narrowing instead keeps the question you were
+ * asking ("what is mine", "what am I following") and just points it somewhere
+ * smaller, which is what makes the tree a filter rather than a menu.
+ */
+export interface WorkScope {
+  kind: "space" | "list";
+  id: string;
+  name: string;
+}
+
 /** The query each lens asks. Kept here so the page never builds URLs. */
 const LENS_QUERY: Record<WorkLens, string> = {
   assigned: "assignee=me",
@@ -28,12 +42,14 @@ const LENS_QUERY: Record<WorkLens, string> = {
 
 interface MyWorkState {
   lens: WorkLens;
+  scope: WorkScope | null;
   includeClosed: boolean;
   tasks: OpenTask[];
   loading: boolean;
   error: string | null;
 
   setLens: (lens: WorkLens) => void;
+  setScope: (scope: WorkScope | null) => void;
   setIncludeClosed: (on: boolean) => void;
   load: (orgId: string | null) => Promise<void>;
   /** Follow or unfollow, and drop the row when it leaves the lens you're in. */
@@ -44,12 +60,14 @@ export const useMyWorkStore = create<MyWorkState>()(
   persist(
     (set, get) => ({
       lens: "assigned",
+      scope: null,
       includeClosed: false,
       tasks: [],
       loading: false,
       error: null,
 
       setLens: (lens) => set({ lens }),
+      setScope: (scope) => set({ scope }),
       setIncludeClosed: (includeClosed) => set({ includeClosed }),
 
       load: async (orgId) => {
@@ -86,6 +104,9 @@ export const useMyWorkStore = create<MyWorkState>()(
       name: "cac-mywork",
       // Only the lens and the toggle: the work itself is asked for fresh, since
       // a stale list of what is pending is worse than a moment with none.
+      // The scope is not kept: it is where you clicked a moment ago, and
+      // reopening the app pointed at a list you no longer remember choosing is
+      // a filter that looks like missing data.
       partialize: (s) => ({ lens: s.lens, includeClosed: s.includeClosed }),
     },
   ),
