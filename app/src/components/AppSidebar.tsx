@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Bell,
@@ -58,7 +58,7 @@ import { useInvitationsStore } from "@/store/invitations.store";
 import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
 import { useUpdaterStore } from "@/store/updater.store";
-import { useNotificationsStore } from "@/store/notifications.store";
+import { useInboxStore } from "@/store/inbox.store";
 import { useThemeStore, type ThemePreference } from "@/store/theme.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -229,7 +229,15 @@ export default function AppSidebar() {
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const unreadNotifications = useNotificationsStore((s) => s.items.filter((i) => !i.read).length);
+  // From the server, not from what this session happened to witness. That is
+  // the whole point: the badge now means "since you last read it" rather than
+  // "since you last launched me".
+  const currentOrgId = useOrgsStore((s) => s.currentOrgId);
+  const unreadNotifications = useInboxStore((s) => s.unread);
+  const loadInbox = useInboxStore((s) => s.load);
+  useEffect(() => {
+    if (authed) loadInbox(currentOrgId).catch(() => {});
+  }, [authed, currentOrgId, loadInbox]);
   const collapsed = useSidebar().state === "collapsed";
   const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
     (i) => !i.superadmin || superadmin,

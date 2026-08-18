@@ -7,6 +7,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { useNotificationsStore, type Delivery } from "@/store/notifications.store";
+import { useInboxStore } from "@/store/inbox.store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,6 +25,66 @@ const DELIVERY: Record<Delivery, { label: string; icon: typeof Bell; className: 
   focused: { label: "you were here", icon: Eye, className: "text-muted-foreground" },
   failed: { label: "not delivered", icon: TriangleAlert, className: "text-destructive" },
 };
+
+/**
+ * The server's record: what happened, whether or not this app was open.
+ *
+ * Marking read happens when you click a row rather than when the panel opens.
+ * The delivery log below clears itself on open because it is a diagnostic; an
+ * inbox that emptied just because you glanced at it would lose the thing you
+ * opened it to find.
+ */
+function InboxSection() {
+  const items = useInboxStore((s) => s.items);
+  const unread = useInboxStore((s) => s.unread);
+  const markRead = useInboxStore((s) => s.markRead);
+  const markAllRead = useInboxStore((s) => s.markAllRead);
+  const navigate = useNavigate();
+
+  if (items.length === 0) return null;
+
+  return (
+    <>
+      <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Inbox{unread > 0 ? ` · ${unread} unread` : ""}
+        </span>
+        {unread > 0 && (
+          <button
+            className="ml-auto text-[11px] text-muted-foreground hover:text-foreground"
+            onClick={() => void markAllRead()}
+          >
+            Mark all read
+          </button>
+        )}
+      </div>
+      <ul className="divide-y">
+        {items.map((n) => (
+          <li key={n.id}>
+            <button
+              className={cn(
+                "flex w-full items-start gap-2 px-4 py-2 text-left hover:bg-accent/40",
+                !n.readAt && "bg-primary/5",
+              )}
+              onClick={() => {
+                void markRead([n.id]);
+                if (n.link) navigate(n.link);
+              }}
+            >
+              {!n.readAt && <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm">{n.title}</span>
+                {n.body && (
+                  <span className="block truncate text-xs text-muted-foreground">{n.body}</span>
+                )}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
 export default function NotificationsPanel({
   open,
@@ -91,6 +152,15 @@ export default function NotificationsPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
+          <InboxSection />
+
+          {/* Below the inbox and labelled, because the two answer different
+              questions: what happened, and whether this machine managed to tell
+              you about it. Merging them would lose the second, which is the only
+              way to diagnose a notification that never appeared. */}
+          <p className="border-b bg-muted/30 px-4 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Delivery log · this session
+          </p>
           {items.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
               Nothing yet. Everything that arrives is recorded here, whether or not the
