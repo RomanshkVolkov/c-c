@@ -74,98 +74,98 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-    /* Light keeps neutral surfaces but carries the brand accents (cyan/violet)
-       so the product looks like itself in both themes. */
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    /* Brand cyan darkened for light backgrounds: #20D9E8 as a fill would leave
-       any label on it unreadable (~1.4:1 against white). */
+    /* Rebranding grafito + cian (handoff del rediseño). El claro se queda
+       neutro; lo que cambia respecto a antes es que `--accent` y `--border`
+       pierden el tinte azulado. */
+    --background: #ffffff;
+    --foreground: #252525;
+    --card: #ffffff;
+    --card-foreground: #252525;
+    --popover: #ffffff;
+    --popover-foreground: #252525;
     --primary: #00717D;
     --primary-foreground: #F2F5F9;
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    /* Darkened from oklch(0.556): that value cleared AA by 0.03 against the
-       sidebar — passing, with no room. Every light token below is set to
-       5.5:1 on the lightest surface instead, so a later tweak to a surface
-       can't drop it under 4.5 without anyone noticing. */
-    --muted-foreground: oklch(0.5103 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.5186 0.2388 28.49);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
+    --secondary: #f7f7f7;
+    --secondary-foreground: #343434;
+    --muted: #f7f7f7;
+    /* El handoff propone #797979, que da 4.35 sobre fondo y 4.17 sobre el
+       sidebar: por debajo del 4.5 de WCAG AA para texto normal, y
+       `theme.contrast.test.ts` lo caza. #737373 es el gris más claro que pasa
+       los tres casos (4.74 / 4.74 / 4.54) — seis puntos de hex, invisible a
+       ojo. */
+    --muted-foreground: #737373;
+    --accent: #f2f4f6;
+    --accent-foreground: #343434;
+    --destructive: #BE123C;
+    --border: #e8eaee;
+    --input: #e8eaee;
     --ring: #00717D;
-    /* Same hues as dark, darkened to stay legible on white. */
+    --radius: 0.625rem;
+
+    --sidebar: #fafafa;
+    --sidebar-foreground: #252525;
+    --sidebar-primary: #00717D;
+    --sidebar-primary-foreground: #F2F5F9;
+    --sidebar-accent: #f2f4f6;
+    --sidebar-accent-foreground: #343434;
+    --sidebar-border: #e8eaee;
+    --sidebar-ring: #00717D;
+
+    --success: #007554;
+    --warning: #A94900;
+    --info: #0369A1;
+
+    /* Fuera del handoff a propósito: `@theme inline` mapea `--color-chart-*` y
+       `--color-error` contra estas, así que si desaparecen esas utilidades se
+       quedan sin resolver. */
     --chart-1: #0E9AA7;
     --chart-2: #7C3AED;
     --chart-3: #2563EB;
     --chart-4: #059669;
     --chart-5: #D97706;
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: #00717D;
-    --sidebar-primary-foreground: #F2F5F9;
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: #00717D;
-
-    /* Status colors, exposed as tokens so pages stop hardcoding Tailwind
-       palette classes (text-green-500 & friends). */
-    --success: #007554;
-    --warning: #A94900;
     --error: #BE123C;
-    --info: #0369A1;
 }
 
 .dark {
-    /* Deep-navy control-plane palette: layered surfaces, cyan + violet accents. */
-    --background: #081225;
-    --foreground: #F2F5F9;
-    --card: #111F3A;
-    --card-foreground: #F2F5F9;
-    --popover: #111F3A;
-    --popover-foreground: #F2F5F9;
+    /* Grafito neutro: se va el navy del fondo, se queda el cian del acento. */
+    --background: #101013;
+    --foreground: #ECECEE;
+    --card: #17171B;
+    --card-foreground: #ECECEE;
+    --popover: #17171B;
+    --popover-foreground: #ECECEE;
     --primary: #20D9E8;
-    /* Dark ink ON the cyan fill — white here would be ~1.9:1 and unreadable. */
-    --primary-foreground: #081225;
-    --secondary: #0D1930;
-    --secondary-foreground: #F2F5F9;
-    --muted: #0D1930;
-    /* Nudged lighter than the source #7D8BA3: that value lands ~4.4:1 on cards
-       (#111F3A), just under AA. This clears it on every surface. */
-    --muted-foreground: #8B99B0;
-    --accent: #162747;
-    --accent-foreground: #F2F5F9;
+    --primary-foreground: #0B0B0E;
+    --secondary: #1B1B21;
+    --secondary-foreground: #ECECEE;
+    --muted: #131317;
+    --muted-foreground: #9A9AA4;
+    --accent: #212128;
+    --accent-foreground: #ECECEE;
     --destructive: #FB7185;
-    --border: #223454;
-    --input: #223454;
+    --border: #2B2B33;
+    --input: #2B2B33;
     --ring: #20D9E8;
-    /* Distinct hues — the previous set was five shades of blue. */
+
+    --sidebar: #0A0A0D;
+    --sidebar-foreground: #ECECEE;
+    --sidebar-primary: #20D9E8;
+    --sidebar-primary-foreground: #0B0B0E;
+    --sidebar-accent: #212128;
+    --sidebar-accent-foreground: #ECECEE;
+    --sidebar-border: #23232A;
+    --sidebar-ring: #20D9E8;
+
+    --success: #34D399;
+    --warning: #FBBF24;
+    --info: #38BDF8;
+
     --chart-1: #20D9E8;
     --chart-2: #8B5CF6;
     --chart-3: #3B82F6;
     --chart-4: #34D399;
     --chart-5: #F59E0B;
-    --sidebar: #07101F;
-    --sidebar-foreground: #F2F5F9;
-    --sidebar-primary: #20D9E8;
-    --sidebar-primary-foreground: #081225;
-    --sidebar-accent: #111F3A;
-    --sidebar-accent-foreground: #F2F5F9;
-    --sidebar-border: #1C2C49;
-    --sidebar-ring: #20D9E8;
-
-    --success: #34D399;
-    --warning: #FBBF24;
     --error: #FB7185;
-    --info: #38BDF8;
 }
 
 @theme inline {
@@ -358,3 +358,27 @@
   /* ProseMirror needs an explicit caret colour when the host sets none. */
   .prose-editor { caret-color: var(--foreground); }
 }
+
+/* Barras de scroll finas, del handoff del rediseño. Fuera de `@layer` a
+   propósito: son reglas de plataforma sobre `*`, no utilidades, y no deben
+   competir en cascada con los componentes. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(154, 154, 164, .28) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: rgba(154, 154, 164, .26);
+    border-radius: 99px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+    min-height: 36px;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(154, 154, 164, .45); border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:active { background: var(--primary); border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+:root:not(.dark) * { scrollbar-color: rgba(37, 37, 37, .24) transparent; }
+:root:not(.dark) *::-webkit-scrollbar-thumb { background: rgba(37, 37, 37, .22); border: 3px solid transparent; background-clip: content-box; }
+:root:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(37, 37, 37, .38); border: 3px solid transparent; background-clip: content-box; }
