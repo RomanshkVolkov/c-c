@@ -12,14 +12,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const get = vi.fn();
 const post = vi.fn();
-vi.mock("@/lib/api", () => ({ api: { get, post } }));
+const patch = vi.fn();
+vi.mock("@/lib/api", () => ({ api: { get, post, patch } }));
 
 const { useInboxStore } = await import("@/store/inbox.store");
 
 afterEach(() => {
   get.mockReset();
   post.mockReset();
-  useInboxStore.setState({ items: [], unread: 0, orgId: null, loading: false });
+  patch.mockReset();
+  useInboxStore.setState({ items: [], unread: 0, orgId: null, loading: false, prefs: null });
 });
 
 const item = (id: string, leido = false) => ({
@@ -63,5 +65,32 @@ describe("el buzón", () => {
     get.mockRejectedValue(new Error("sin red"));
     await useInboxStore.getState().load("org-1");
     expect(useInboxStore.getState().loading).toBe(false);
+  });
+});
+
+describe("las preferencias", () => {
+  it("se guardan y el servidor tiene la última palabra", async () => {
+    patch.mockResolvedValue({
+      success: true,
+      // El servidor devuelve las menciones en true aunque se hayan mandado en
+      // false: forzarlas y contestar la verdad es lo que impide que el diálogo
+      // afirme algo que no va a pasar.
+      data: { mentions: true, dms: false, comments: true, reports: true },
+    });
+    await useInboxStore
+      .getState()
+      .savePrefs({ mentions: false, dms: false, comments: true, reports: true });
+
+    expect(patch).toHaveBeenCalled();
+    expect(useInboxStore.getState().prefs?.mentions).toBe(true);
+    expect(useInboxStore.getState().prefs?.dms).toBe(false);
+  });
+
+  it("un fallo al leerlas no interrumpe a nadie", async () => {
+    get.mockRejectedValue(new Error("sin red"));
+    await useInboxStore.getState().loadPrefs();
+    // Sin preferencias el diálogo abre con los valores por defecto, que es lo
+    // que de verdad tiene alguien que nunca las tocó.
+    expect(useInboxStore.getState().prefs).toBeNull();
   });
 });

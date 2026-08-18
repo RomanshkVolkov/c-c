@@ -23,6 +23,13 @@ export interface InboxItem {
   createdAt: string;
 }
 
+export interface InboxPrefs {
+  mentions: boolean;
+  dms: boolean;
+  comments: boolean;
+  reports: boolean;
+}
+
 interface InboxState {
   items: InboxItem[];
   unread: number;
@@ -32,6 +39,9 @@ interface InboxState {
   load: (orgId: string | null) => Promise<void>;
   markRead: (ids: string[]) => Promise<void>;
   markAllRead: () => Promise<void>;
+  prefs: InboxPrefs | null;
+  loadPrefs: () => Promise<void>;
+  savePrefs: (p: InboxPrefs) => Promise<void>;
 }
 
 export const useInboxStore = create<InboxState>((set, get) => ({
@@ -67,6 +77,30 @@ export const useInboxStore = create<InboxState>((set, get) => ({
         s.items.some((i) => i.id === id && !i.readAt)).length) };
     });
     await api.post<APIResponse<unknown>>("/api/v1/notifications/read", { ids }, true);
+  },
+
+  prefs: null,
+
+  loadPrefs: async () => {
+    try {
+      const res = await api.get<APIResponse<InboxPrefs>>("/api/v1/notifications/preferences", true);
+      if (res.data) set({ prefs: res.data });
+    } catch {
+      // Silent: not knowing your preferences is a dialog that opens with the
+      // defaults, not something to interrupt anybody about.
+    }
+  },
+
+  savePrefs: async (p) => {
+    // Optimistic, and the server's answer wins: it forces mentions back on, so
+    // taking its reply is how the dialog stops claiming something untrue.
+    set({ prefs: p });
+    const res = await api.patch<APIResponse<InboxPrefs>>(
+      "/api/v1/notifications/preferences",
+      p,
+      true,
+    );
+    if (res.data) set({ prefs: res.data });
   },
 
   markAllRead: async () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
+import OrgSpaces from "@/components/org/OrgSpaces";
 import { UserPlus, Trash2, Mail, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ const PESTANAS = [
   { key: "identity", label: "Identity" },
   { key: "members", label: "Members" },
   { key: "invites", label: "Invitations" },
+  { key: "spaces", label: "Spaces" },
   // The report projects: another system holds an ingest key and pushes work in.
   // They belong to the organization, which is why they are here and not on a
   // server's screen.
@@ -94,6 +96,7 @@ export default function OrganizationSettings() {
   const cuentas: Partial<Record<Pestana, number>> = {
     members: members.length,
     invites: invites.length,
+    spaces: espacios,
   };
   const [loading, setLoading] = useState(false);
 
@@ -506,6 +509,8 @@ export default function OrganizationSettings() {
           )}
           </>
         )}
+
+        {pestana === "spaces" && <OrgSpaces />}
 
         {pestana === "integrations" && <OrgIntegrations canManage={canManage} />}
 

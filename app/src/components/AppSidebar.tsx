@@ -43,6 +43,7 @@ import SpacesNavigator from "@/components/tree/SpacesNavigator";
 import { ChangePasswordDialog } from "@/components/ChangePassword";
 import ConnectMcpDialog from "@/components/ConnectMcpDialog";
 import NotificationsPanel from "@/components/NotificationsPanel";
+import NotificationPrefsDialog from "@/components/NotificationPrefsDialog";
 import { useAuthStore } from "@/store/auth.store";
 import { useServers } from "@/hooks/use-servers";
 import { useInvitationsStore } from "@/store/invitations.store";
@@ -191,6 +192,10 @@ export default function AppSidebar() {
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // Two different things behind two entries. The bell opens what happened; the
+  // account menu opens what you want to be told about. They were the same
+  // dialog, so asking for your preferences showed you your inbox.
+  const [prefsOpen, setPrefsOpen] = useState(false);
   // From the server, not from what this session happened to witness. That is
   // the whole point: the badge now means "since you last read it" rather than
   // "since you last launched me".
@@ -362,7 +367,7 @@ export default function AppSidebar() {
           <AccountMenu
             onChangePassword={() => setPwOpen(true)}
             onConnectMcp={() => setMcpOpen(true)}
-            onNotificationPrefs={() => setNotifOpen(true)}
+            onNotificationPrefs={() => setPrefsOpen(true)}
           />
         )}
         {!authed && (
@@ -381,6 +386,7 @@ export default function AppSidebar() {
       <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
       <ConnectMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} />
       <NotificationsPanel open={notifOpen} onOpenChange={setNotifOpen} />
+      <NotificationPrefsDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
     </Sidebar>
   );
 }
