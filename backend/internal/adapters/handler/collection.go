@@ -305,7 +305,19 @@ func (h *userHandler) Search(w http.ResponseWriter, r *http.Request) {
 				"You don't belong to that organization", "not-a-member")
 			return
 		}
-		results, err = h.authService.SearchUsersInOrg(q, orgID, user.UserID, limit)
+		// You are not excluded from the answer.
+		//
+		// This used to leave the caller out, because it fed the mention and
+		// direct-message pickers and neither of those has a use for "yourself".
+		// It now also feeds the assignee picker — and assigning work to yourself
+		// is the most common assignment there is, so leaving you out made the
+		// commonest case impossible.
+		//
+		// The exclusion belonged to the question, not to the list: "who is in
+		// this organization" includes you. The two pickers that cannot use you
+		// leave you out themselves, and opening a conversation with yourself is
+		// refused at the door regardless.
+		results, err = h.authService.SearchUsersInOrg(q, orgID, "", limit)
 	} else {
 		results, err = h.authService.SearchUsers(q, user.UserID, limit)
 	}

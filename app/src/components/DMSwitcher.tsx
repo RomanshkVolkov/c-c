@@ -4,6 +4,7 @@ import { Loader2, Search } from "lucide-react";
 import { useDMStore } from "@/store/dm.store";
 import { usePeopleStore } from "@/store/people.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useAuthStore } from "@/store/auth.store";
 
 /**
  * Who to talk to: the conversations you already have, and the colleagues you
@@ -42,8 +43,17 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
   // Somebody you already have a thread with belongs in the first list, not
   // twice: the row that carries their unread count is the useful one.
   const withThread = new Set(conversations.map((c) => c.userId));
+  // Yourself is left out here rather than by the endpoint. The list answers
+  // "who is in this organization", and you are — but opening a conversation
+  // with yourself is refused at the door, so offering it would be proposing
+  // something impossible. The assignee picker, which reads the same list, needs
+  // you in it: assigning work to yourself is the commonest assignment there is.
+  const yo = useAuthStore((s) => s.session?.id);
   const fresh = people.filter(
-    (p) => !withThread.has(p.id) && (!term || p.username.toLowerCase().includes(term)),
+    (p) =>
+      p.id !== yo &&
+      !withThread.has(p.id) &&
+      (!term || p.username.toLowerCase().includes(term)),
   );
 
   const start = async (userId: string) => {

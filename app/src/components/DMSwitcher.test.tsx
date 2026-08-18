@@ -20,9 +20,17 @@ vi.mock("@/lib/api", () => ({
   api: { get: vi.fn(async () => ({ success: true, data: [] })), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
   apiUrl: (p: string) => p,
 }));
-vi.mock("@/store/auth.store", () => ({
-  useAuthStore: { getState: () => ({ accessToken: "t" }), subscribe: () => () => {} },
-}));
+// Invocable, no sólo `getState`: el componente lo usa como hook para saber
+// quién eres y no ofrecerte una conversación contigo mismo.
+vi.mock("@/store/auth.store", () => {
+  const estado = { accessToken: "t", session: { id: "u-yo", username: "yo" } };
+  return {
+    useAuthStore: Object.assign((sel: (s: typeof estado) => unknown) => sel(estado), {
+      getState: () => estado,
+      subscribe: () => () => {},
+    }),
+  };
+});
 vi.mock("@/store/orgs.store", () => ({
   useOrgsStore: Object.assign(
     (sel: (s: { currentOrgId: string }) => unknown) => sel({ currentOrgId: "org-1" }),
@@ -46,5 +54,24 @@ describe("the direct-message picker", () => {
   it("renders with colleagues loaded", () => {
     usePeopleStore.setState({ byOrg: { "org-1": [{ id: "u-1", username: "ana" }] } });
     expect(() => render(<DMSwitcher onPicked={() => {}} />)).not.toThrow();
+  });
+});
+
+describe("a quién se ofrece escribir", () => {
+  it("no se ofrece a uno mismo", () => {
+    usePeopleStore.setState({
+      byOrg: {
+        "org-1": [
+          { id: "u-yo", username: "yo" },
+          { id: "u-otra", username: "otra" },
+        ],
+      },
+    } as never);
+
+    const { container } = render(<DMSwitcher onPicked={() => {}} />);
+    // El servidor rechaza una conversación contigo mismo, así que ofrecerla
+    // sería proponer algo que la app va a negar.
+    expect(container.textContent).toContain("otra");
+    expect(container.textContent).not.toContain("yo");
   });
 });
