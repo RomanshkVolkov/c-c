@@ -300,7 +300,7 @@ function Board() {
               items={visible.map((t) => ({
                 id: t.id,
                 title: t.title,
-                createdAt: t.createdAt,
+                at: t.createdAt,
                 // Coloured by the column it sits in, so the month reads the same
                 // way the board does.
                 dotClass: dotForStatus(board.statuses, t.statusId),

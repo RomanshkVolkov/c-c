@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
-import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2 } from "lucide-react";
+import ItemCalendar from "@/components/ItemCalendar";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -27,7 +28,31 @@ const LENSES: { key: WorkLens; label: string }[] = [
   { key: "all", label: "All" },
 ];
 
+/**
+ * The three ways to look at the same answer.
+ *
+ * All three read the rows already fetched — none of them asks the server
+ * again. A board across many lists groups by state and not by column, because
+ * the columns are a rendering of one shared state machine, so "in progress"
+ * means the same thing in every list; grouping by column would invent as many
+ * boards as there are lists.
+ */
+const VISTAS = [
+  { key: "list", label: "List", icon: List },
+  { key: "board", label: "Board", icon: KanbanSquare },
+  { key: "calendar", label: "Calendar", icon: CalendarDays },
+] as const;
+
+type Vista = (typeof VISTAS)[number]["key"];
+
+const ESTADOS: { kind: string; label: string }[] = [
+  { kind: "open", label: "To do" },
+  { kind: "active", label: "In progress" },
+  { kind: "done", label: "Done" },
+];
+
 export default function MyWork() {
+  const [vista, setVista] = useState<Vista>("list");
   const { lens, includeClosed, tasks, loading, error } = useMyWorkStore();
   const setLens = useMyWorkStore((s) => s.setLens);
   const setIncludeClosed = useMyWorkStore((s) => s.setIncludeClosed);
@@ -70,7 +95,7 @@ export default function MyWork() {
             {includeClosed ? "All states" : "Open only"}
           </button>
         </div>
-        <nav className="-mb-px flex gap-4 pt-2 text-sm">
+        <nav className="-mb-px flex items-center gap-4 pt-2 text-sm">
           {LENSES.map((l) => (
             <button
               key={l.key}
@@ -85,6 +110,24 @@ export default function MyWork() {
               {l.label}
             </button>
           ))}
+          <span className="ml-auto flex gap-0.5 pb-1.5">
+            {VISTAS.map((v) => (
+              <button
+                key={v.key}
+                onClick={() => setVista(v.key)}
+                title={v.label}
+                aria-pressed={v.key === vista}
+                className={cn(
+                  "rounded px-1.5 py-1",
+                  v.key === vista
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                )}
+              >
+                <v.icon className="size-3.5" />
+              </button>
+            ))}
+          </span>
         </nav>
       </header>
 
@@ -103,6 +146,57 @@ export default function MyWork() {
               : "Nothing here."}
           </p>
         ) : (
+          vista === "calendar" ? (
+            <ItemCalendar
+              // Placed by when it is due, not by when it was raised: this
+              // screen answers "what is coming", and a month view of creation
+              // dates answers nothing anybody asked.
+              items={tasks
+                .filter((t) => t.dueAt)
+                .map((t) => ({
+                  id: t.id,
+                  title: t.title,
+                  at: t.dueAt as string,
+                  dotClass: priorityMeta(t.priority).className,
+                  label: `#${t.seq}`,
+                }))}
+              onOpen={(id) => openTask(id).catch(() => {})}
+              noun="task"
+            />
+          ) : vista === "board" ? (
+            <div className="flex gap-3 overflow-x-auto">
+              {ESTADOS.map((col) => {
+                const suyas = tasks.filter((t) => t.statusKind === col.kind);
+                return (
+                  <section key={col.kind} className="w-72 shrink-0">
+                    <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {col.label} · {suyas.length}
+                    </h2>
+                    <ul className="space-y-1">
+                      {suyas.map((t) => (
+                        <li key={t.id}>
+                          <button
+                            onClick={() => openTask(t.id).catch(() => {})}
+                            className="w-full rounded border px-2 py-1.5 text-left hover:bg-accent/40"
+                          >
+                            <span className="block truncate text-sm">{t.title}</span>
+                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                              {t.spaceName} · {t.listName}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                      {suyas.length === 0 && (
+                        <li className="rounded border border-dashed px-2 py-3 text-center text-xs text-muted-foreground">
+                          Nothing
+                        </li>
+                      )}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          ) : (
           <div className="space-y-5">
             {grupos.map(([spaceId, g]) => (
               <section key={spaceId}>
@@ -137,6 +231,7 @@ export default function MyWork() {
               </section>
             ))}
           </div>
+          )
         )}
       </div>
     </div>

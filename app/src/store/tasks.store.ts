@@ -60,7 +60,8 @@ interface TasksState {
   createSpace: (orgId: string, name: string) => Promise<void>;
   renameSpace: (id: string, name: string) => Promise<void>;
   deleteSpace: (id: string) => Promise<void>;
-  createFolder: (spaceId: string, name: string, parentFolderId?: string) => Promise<void>;
+  /** Returns the new folder's id, which is what lets `Tab` nest under it. */
+  createFolder: (spaceId: string, name: string, parentFolderId?: string) => Promise<string | undefined>;
   renameFolder: (id: string, name: string) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   createList: (spaceId: string, name: string, folderId?: string) => Promise<void>;
@@ -290,12 +291,13 @@ export const useTasksStore = create<TasksState>()(
         await get().fetchTree();
       },
       createFolder: async (spaceId, name, parentFolderId) => {
-        await api.post<APIResponse<unknown>>(
+        const res = await api.post<APIResponse<{ id: string }>>(
           `/api/v1/task-spaces/${spaceId}/folders`,
           { name, parentFolderId: parentFolderId ?? null },
           true,
         );
         await get().fetchTree();
+        return res.data?.id;
       },
       renameFolder: async (id, name) => {
         await api.patch<APIResponse<unknown>>(`/api/v1/task-folders/${id}`, { name }, true);

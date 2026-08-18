@@ -441,8 +441,13 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             <InlineName
               mode="create"
               placeholder={adding === "folder" ? "New folder" : "New list"}
-              onSubmit={(name) =>
-                avisando(adding === "folder" ? createFolder(space.id, name) : createList(space.id, name))
+              canNest={adding === "folder"}
+              onSubmit={(name, dentroDe) =>
+                avisando(
+                  adding === "folder"
+                    ? createFolder(space.id, name, dentroDe ?? undefined)
+                    : createList(space.id, name),
+                )
               }
               onClose={() => setAdding(null)}
             />
@@ -663,10 +668,11 @@ function FolderNode({
             <InlineName
               mode="create"
               placeholder={adding === "folder" ? "New folder" : "New list"}
-              onSubmit={(name) =>
+              canNest={adding === "folder"}
+              onSubmit={(name, dentroDe) =>
                 avisando(
                   adding === "folder"
-                    ? createFolder(spaceId, name, folder.id)
+                    ? createFolder(spaceId, name, dentroDe ?? folder.id)
                     : createList(spaceId, name, folder.id),
                 )
               }

@@ -28,14 +28,14 @@ describe("nombrar en línea", () => {
 
     escribir("Pendientes");
     enter();
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("Pendientes"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("Pendientes", null));
     expect(onClose).not.toHaveBeenCalled();
     await waitFor(() => expect(caja().value).toBe(""));
 
     escribir("En curso");
     enter();
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    expect(onSubmit).toHaveBeenLastCalledWith("En curso");
+    expect(onSubmit).toHaveBeenLastCalledWith("En curso", null);
   });
 
   it("al renombrar, Enter guarda y cierra", async () => {
@@ -44,7 +44,7 @@ describe("nombrar en línea", () => {
     render(<InlineName mode="rename" defaultValue="Viejo" onSubmit={onSubmit} onClose={onClose} />);
     escribir("Nuevo");
     enter();
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("Nuevo"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("Nuevo", null));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
@@ -75,6 +75,43 @@ describe("nombrar en línea", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     // Lo contrario obligaría a reescribir un nombre que el servidor nunca aceptó.
     expect(caja().value).toBe("Repetido");
+  });
+
+  it("Tab anida bajo lo que acabas de crear", async () => {
+    // El servidor contesta con el id de lo creado; eso es lo que permite que la
+    // siguiente fila sepa dónde meterse.
+    const onSubmit = vi.fn().mockResolvedValueOnce("fo-1").mockResolvedValueOnce(undefined);
+    render(<InlineName mode="create" canNest onSubmit={onSubmit} onClose={() => {}} />);
+
+    escribir("Padre");
+    enter();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("Padre", null));
+
+    escribir("Hija");
+    fireEvent.keyDown(caja(), { key: "Tab" });
+    await waitFor(() => expect(onSubmit).toHaveBeenLastCalledWith("Hija", "fo-1"));
+  });
+
+  it("sin nada creado antes, Tab no inventa un padre", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<InlineName mode="create" canNest onSubmit={onSubmit} onClose={() => {}} />);
+    escribir("Sola");
+    fireEvent.keyDown(caja(), { key: "Tab" });
+    // Tab se deja pasar: no hay bajo qué anidar, así que hace lo que siempre.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("donde no se puede anidar, Tab no crea nada", async () => {
+    const onSubmit = vi.fn().mockResolvedValue("li-1");
+    render(<InlineName mode="create" onSubmit={onSubmit} onClose={() => {}} />);
+    escribir("Una");
+    enter();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    escribir("Otra");
+    fireEvent.keyDown(caja(), { key: "Tab" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it("un nombre vacío no llega al servidor", () => {

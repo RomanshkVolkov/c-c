@@ -14,7 +14,13 @@ import { Button } from "@/components/ui/button";
 export interface CalendarItem {
   id: string;
   title: string;
-  createdAt: string;
+  /**
+   * The day this sits on. Named for what it is and not for `createdAt`, which
+   * is what it used to be: one caller places work by when it was raised and
+   * another by when it is due, and a field that says the wrong one of those is
+   * a small lie that costs somebody an hour later.
+   */
+  at: string;
   /** Tailwind class for the dot; the caller owns what the colours mean. */
   dotClass: string;
   /** A short prefix — a folio, a number — shown before the title. */
@@ -43,7 +49,7 @@ export default function ItemCalendar({
   const byDay = useMemo(() => {
     const m = new Map<string, CalendarItem[]>();
     for (const r of items) {
-      const k = dayKey(new Date(r.createdAt));
+      const k = dayKey(new Date(r.at));
       (m.get(k) ?? m.set(k, []).get(k)!).push(r);
     }
     return m;
@@ -122,7 +128,7 @@ export default function ItemCalendar({
       {selected && selectedItems.length > 0 && (
         <div className="rounded-lg border p-3 space-y-2">
           <p className="text-sm font-medium">
-            {new Date(selectedItems[0].createdAt).toLocaleDateString()} · {selectedItems.length}{" "}
+            {new Date(selectedItems[0].at).toLocaleDateString()} · {selectedItems.length}{" "}
             {noun}(s)
           </p>
           {selectedItems.map((r) => (
