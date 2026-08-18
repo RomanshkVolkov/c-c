@@ -13,7 +13,18 @@ interface UsersState {
   createUser: (payload: CreateUserPayload) => Promise<AdminUser>;
   updateUser: (id: string, payload: UpdateUserPayload) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
-  search: (query: string) => Promise<UserSummary[]>;
+  /**
+   * Buscar personas. Con `orgId` busca **colegas**; sin él, toda la
+   * plataforma.
+   *
+   * No es un detalle: el servidor responde cosas distintas y una de ellas te
+   * deja fuera a ti. Sin acotar, el buscador es el de «encontrar a alguien para
+   * meterlo en la organización», que excluye a quien pregunta —tú no te
+   * invitas— y ofrece gente de otras organizaciones. Eso llegaba al selector de
+   * responsables, así que asignarte una tarea a ti mismo era imposible y
+   * asignársela a un desconocido acababa en error del servidor.
+   */
+  search: (query: string, orgId?: string) => Promise<UserSummary[]>;
 }
 
 export const useUsersStore = create<UsersState>()((set) => ({
@@ -64,11 +75,11 @@ export const useUsersStore = create<UsersState>()((set) => ({
     set((s) => ({ users: s.users.filter((u) => u.id !== id) }));
   },
 
-  search: async (query) => {
+  search: async (query, orgId) => {
     const q = query.trim();
     if (!q) return [];
     const res = await api.get<APIResponse<UserSummary[]>>(
-      `/api/v1/users/search?q=${encodeURIComponent(q)}`,
+      `/api/v1/users/search?q=${encodeURIComponent(q)}${orgId ? `&orgId=${orgId}` : ""}`,
       true,
     );
     if (!res.success) throw new Error(res.error ?? "Search failed");

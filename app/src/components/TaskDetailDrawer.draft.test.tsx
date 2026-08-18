@@ -18,7 +18,17 @@ vi.mock("@/lib/api", () => ({
 vi.mock("@/store/auth.store", () => ({
   useAuthStore: { getState: () => ({ accessToken: "t" }), subscribe: () => () => {} },
 }));
-vi.mock("@/store/orgs.store", () => ({ useOrgsStore: { getState: () => ({ currentOrgId: "org" }) } }));
+// Con hook *y* getState: el drawer lo usa de la segunda forma y el selector de
+// responsables que lleva dentro, de la primera.
+vi.mock("@/store/orgs.store", () => ({
+  useOrgsStore: Object.assign(
+    (sel?: (s: Record<string, unknown>) => unknown) => {
+      const st = { currentOrgId: "org" };
+      return sel ? sel(st) : st;
+    },
+    { getState: () => ({ currentOrgId: "org" }) },
+  ),
+}));
 // The editor is Tiptap over a contenteditable; the draft lives in the drawer's
 // own state, so a textarea stands in for it and keeps this about the effect.
 vi.mock("@/components/markdown/MarkdownEditor", () => ({

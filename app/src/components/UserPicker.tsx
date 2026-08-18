@@ -2,22 +2,37 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useUsersStore } from "@/store/users.store";
+import { useOrgsStore } from "@/store/orgs.store";
 import type { UserSummary } from "@/types/collections";
 import { cn } from "@/lib/utils";
 
 /**
- * Searches users by username (backed by /users/search) and calls onSelect with
- * the chosen {id, username}. Debounced. Used to invite / add members without the
- * caller having to type a raw user id.
+ * Busca personas por nombre de usuario y devuelve la elegida. Con retardo.
+ *
+ * `scope` es obligatorio a propósito, porque las dos respuestas son
+ * incompatibles y elegir mal rompe en silencio:
+ *
+ * - `"org"` — colegas. Es lo que hace falta para asignar, mencionar o escribir
+ *   a alguien, y **te incluye a ti**.
+ * - `"platform"` — todo el mundo. Es lo que hace falta para invitar a alguien
+ *   que todavía no está dentro; ahí no tiene sentido ofrecerte a ti mismo y el
+ *   servidor te deja fuera.
+ *
+ * Con un valor por defecto, el selector de responsables se quedó con el de
+ * invitar: no podías asignarte una tarea, y te ofrecía gente de otras
+ * organizaciones a la que el servidor luego se negaba a asignársela.
  */
 export default function UserPicker({
   onSelect,
+  scope,
   placeholder = "Search username…",
 }: {
   onSelect: (user: UserSummary) => void;
+  scope: "org" | "platform";
   placeholder?: string;
 }) {
   const search = useUsersStore((s) => s.search);
+  const orgId = useOrgsStore((s) => s.currentOrgId);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +52,7 @@ export default function UserPicker({
     timer.current = setTimeout(async () => {
       setLoading(true);
       try {
-        setResults(await search(q));
+        setResults(await search(q, scope === "org" ? (orgId ?? undefined) : undefined));
         setOpen(true);
       } catch {
         setResults([]);
@@ -48,7 +63,7 @@ export default function UserPicker({
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [query, search, selected]);
+  }, [query, search, selected, scope, orgId]);
 
   const pick = (u: UserSummary) => {
     setSelected(u);

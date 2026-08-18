@@ -135,7 +135,12 @@ export default function OrgInvitations({
           <Label className="text-sm font-medium">Invite someone</Label>
           <div className="flex flex-wrap items-start gap-2">
             <div className="min-w-56 flex-1">
-              <UserPicker key={pickerKey} onSelect={setPicked} placeholder="Search by @username…" />
+              <UserPicker
+                key={pickerKey}
+                scope="platform"
+                onSelect={setPicked}
+                placeholder="Search by @username…"
+              />
             </div>
             <Select value={role} onValueChange={(v) => v && setRole(v as OrgRole)}>
               <SelectTrigger className="w-32 capitalize">

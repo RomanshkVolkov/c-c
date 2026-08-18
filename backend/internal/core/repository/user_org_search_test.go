@@ -145,3 +145,34 @@ func orgSearchDB(t *testing.T) (*gorm.DB, func()) {
 		adminSQL.Close()
 	}
 }
+
+// Preguntando por tu organización, te encuentras a ti mismo.
+//
+// Es lo que hace posible asignarte una tarea, que es la asignación más común
+// que hay. La exclusión de arriba pertenece a la *pregunta* —mencionar, abrir
+// una conversación— y no a la lista: «quién está en esta organización» te
+// incluye. Se pinta aquí porque el mismo endpoint sirve a los dos usos y la
+// diferencia es un parámetro fácil de perder de vista.
+func TestSinExcluirANadieTeEncuentrasATiMismo(t *testing.T) {
+	db, cleanup := orgSearchDB(t)
+	defer cleanup()
+	seedMember(t, db, "u-ana", "ana", "org-1")
+	seedMember(t, db, "u-ale", "alejandro", "org-1")
+
+	got, err := repository.NewAuthRepository(db).SearchUsersInOrg("a", "org-1", "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	yo := false
+	for _, u := range got {
+		if u.ID == "u-ana" {
+			yo = true
+		}
+	}
+	if !yo {
+		t.Error("sin exclusión, quien pregunta tiene que salir: es a quien más se asigna trabajo")
+	}
+	if len(got) != 2 {
+		t.Errorf("son los dos, salieron %d", len(got))
+	}
+}

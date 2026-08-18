@@ -868,6 +868,7 @@ function Content() {
             ))}
             <div className="w-44">
               <UserPicker
+                scope="org"
                 placeholder="Assign…"
                 onSelect={(u) => {
                   if (detail.assignees.some((a) => a.id === u.id)) return;
