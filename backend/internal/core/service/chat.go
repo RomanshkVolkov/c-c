@@ -19,12 +19,21 @@ import (
 var ErrNotTheAuthor = errors.New("only the author can change this message")
 
 type ChatService struct {
-	repo *repository.ChatRepository
-	hub  *events.Hub
+	repo     *repository.ChatRepository
+	hub      *events.Hub
+	notifier Notifier
 }
 
 func NewChatService(repo *repository.ChatRepository, hub *events.Hub) *ChatService {
 	return &ChatService{repo: repo, hub: hub}
+}
+
+// WithNotifier records mentions, so being named survives closing the app.
+// Only mentions: a channel message is for everyone in it, and an inbox row per
+// person per message would turn the inbox into the channel.
+func (s *ChatService) WithNotifier(n Notifier) *ChatService {
+	s.notifier = n
+	return s
 }
 
 // publish tells the consoles of one organization that a channel moved.
@@ -55,6 +64,19 @@ func (s *ChatService) publish(orgID, spaceID, messageID, actorID string, mention
 			"mentions": mentions,
 		},
 	})
+
+	if s.notifier == nil {
+		return
+	}
+	for _, uid := range mentions {
+		// Not the author: being told you named somebody is the app talking to
+		// itself, and this codebase has already shipped that bug once.
+		if uid == actorID {
+			continue
+		}
+		s.notifier.Notify(uid, orgID, "chat:mention",
+			"You were mentioned", "", "/chat?space="+spaceID)
+	}
 }
 
 // mentioned answers who this body actually names.

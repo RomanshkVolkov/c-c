@@ -18,12 +18,21 @@ import (
 // channel query touches) and the event's address (which no third console
 // receives).
 type DMService struct {
-	repo *repository.DMRepository
-	hub  *events.Hub
+	repo     *repository.DMRepository
+	hub      *events.Hub
+	notifier Notifier
 }
 
 func NewDMService(repo *repository.DMRepository, hub *events.Hub) *DMService {
 	return &DMService{repo: repo, hub: hub}
+}
+
+// WithNotifier records what it publishes, so a message you missed is still
+// there tomorrow. Optional on purpose: without one this behaves exactly as
+// before, which is what keeps every existing test honest.
+func (s *DMService) WithNotifier(n Notifier) *DMService {
+	s.notifier = n
+	return s
 }
 
 // publish tells one person that their conversation moved.
@@ -35,7 +44,7 @@ func NewDMService(repo *repository.DMRepository, hub *events.Hub) *DMService {
 //
 // The author is not told about their own message; the actor rides along anyway
 // so the receiving console can apply the same echo rule it uses everywhere.
-func (s *DMService) publish(toUserID, conversationID, messageID, actorID string) {
+func (s *DMService) publish(toUserID, orgID, conversationID, messageID, actorID string) {
 	if s.hub == nil || toUserID == "" || toUserID == actorID {
 		return
 	}
@@ -46,6 +55,13 @@ func (s *DMService) publish(toUserID, conversationID, messageID, actorID string)
 			"conversationId": conversationID, "messageId": messageID, "actorId": actorID,
 		},
 	})
+	if s.notifier != nil {
+		// No message body: an inbox row is read by a person who may be looking
+		// at a shared screen, and the point of a private conversation is that
+		// its contents stay in it.
+		s.notifier.Notify(toUserID, orgID, "dm:message",
+			"New direct message", "", "/dm?c="+conversationID)
+	}
 }
 
 // OpenWith is how a conversation starts: there is no "create", only naming the
@@ -88,7 +104,7 @@ func (s *DMService) Post(conversationID, userID, body string) (*domain.DMMessage
 	if err := s.repo.Create(m); err != nil {
 		return nil, err
 	}
-	s.publish(c.Other(userID), c.ID, m.ID, userID)
+	s.publish(c.Other(userID), c.OrgID, c.ID, m.ID, userID)
 	return m, nil
 }
 
@@ -112,7 +128,7 @@ func (s *DMService) Edit(conversationID, messageID, userID string, superadmin bo
 	if err := s.repo.UpdateBody(messageID, body); err != nil {
 		return err
 	}
-	s.publish(c.Other(userID), c.ID, m.ID, userID)
+	s.publish(c.Other(userID), c.OrgID, c.ID, m.ID, userID)
 	return nil
 }
 
@@ -134,7 +150,7 @@ func (s *DMService) Withdraw(conversationID, messageID, userID string, superadmi
 	if err := s.repo.Withdraw(messageID); err != nil {
 		return err
 	}
-	s.publish(c.Other(userID), c.ID, m.ID, userID)
+	s.publish(c.Other(userID), c.OrgID, c.ID, m.ID, userID)
 	return nil
 }
 

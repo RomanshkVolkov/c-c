@@ -45,8 +45,12 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	if err != nil {
 		lg.Error("task attachment store init failed: " + err.Error())
 	}
-	chat := service.NewChatService(repository.NewChatRepository(db), hub)
-	dms := service.NewDMService(repository.NewDMRepository(db), hub)
+	// One notifier for both: being mentioned and being written to are the two
+	// things that happen *to* a person, and they are the two that have to
+	// survive closing the app.
+	inbox := service.NewNotificationService(repository.NewNotificationRepository(db))
+	chat := service.NewChatService(repository.NewChatRepository(db), hub).WithNotifier(inbox)
+	dms := service.NewDMService(repository.NewDMRepository(db), hub).WithNotifier(inbox)
 	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store)
 
 	// The navigator: spaces → folders → lists.
