@@ -563,11 +563,14 @@ function ClaimsInPlainWords({ payload }: { payload: string }) {
 export default function CryptoTools() {
   const [section, setSection] = useState<Section>("jwt");
 
+  // Chips rather than a tab strip. These five are unrelated tools that happen
+  // to live together, not five views of one thing — and an underlined tab bar
+  // says "same subject, different angle", which is exactly what they are not.
   const tabClass = (s: Section) =>
-    `px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+    `rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
       section === s
-        ? "border-b-2 border-primary text-foreground"
-        : "text-muted-foreground hover:text-foreground"
+        ? "bg-primary text-primary-foreground"
+        : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
     }`;
 
   return (
@@ -575,12 +578,12 @@ export default function CryptoTools() {
       <div className="flex-1 overflow-auto p-6 space-y-4 max-w-4xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <KeyRound className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">Crypto Tools</h1>
+          <h1 className="text-xl font-semibold">Tokens</h1>
         </div>
 
         <Card>
           <CardHeader className="pb-0">
-            <div className="flex border-b -mx-6 px-6">
+            <div className="flex flex-wrap gap-1.5 pb-3">
               {SECTIONS.map((s) => (
                 <button
                   key={s.key}

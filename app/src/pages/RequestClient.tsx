@@ -13,6 +13,7 @@ import {
   ChevronDown,
   RefreshCw,
   Cloud,
+  HardDrive,
   CloudUpload,
   Users,
   Building2,
@@ -1497,6 +1498,17 @@ function RequestEditor({
 
   return (
     <div className="flex-1 overflow-auto p-6 space-y-4 max-w-5xl mx-auto w-full">
+      {/* Local requests said nothing at all, so there was no way to tell what
+          you were about to edit: something only you have, or something the
+          whole team is using. They are also the ones nobody backs up — living
+          on this machine and nowhere else — which is worth saying before
+          somebody spends an afternoon building one. */}
+      {source === "local" && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <HardDrive className="size-3.5 shrink-0" />
+          <span className="flex-1 truncate">Local — on this machine only, not shared</span>
+        </div>
+      )}
       {source === "remote" && (
         <div
           className={cn(

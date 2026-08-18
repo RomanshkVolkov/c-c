@@ -17,13 +17,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -259,18 +252,28 @@ export default function ImageTool() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs">Output Format</Label>
-                <Select value={format} onValueChange={(v) => v && setFormat(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {OUTPUT_FORMATS.map((f) => (
-                      <SelectItem key={f.value} value={f.value}>
-                        {f.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Chips rather than a dropdown: there are a handful of formats
+                    and choosing one is the decision that changes the result
+                    most. A closed select hides the options behind a click and
+                    makes comparing two of them a chore. */}
+                <div className="flex flex-wrap gap-1.5">
+                  {OUTPUT_FORMATS.map((f) => (
+                    <button
+                      key={f.value}
+                      type="button"
+                      aria-pressed={format === f.value}
+                      onClick={() => setFormat(f.value)}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                        format === f.value
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-1.5">
