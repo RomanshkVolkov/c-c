@@ -44,9 +44,10 @@ const { default: MyWork } = await import("@/pages/MyWork");
 
 afterEach(cleanup);
 
-const tarea = (id: string, kind: string): OpenTask =>
+const tarea = (id: string, status: string): OpenTask =>
   ({
-    id, seq: 1, title: id, priority: "normal", statusName: kind, statusKind: kind,
+    id, seq: 1, title: id, priority: "normal", status, statusName: status,
+    statusKind: status === "closed" || status === "done" ? "done" : status === "in_progress" ? "active" : "open",
     listId: "li-1", listName: "tasks", spaceId: "sp-1", spaceName: "uno",
     updatedAt: new Date().toISOString(), subtasksDone: 0, subtaskCount: 0,
   }) as unknown as OpenTask;
@@ -62,16 +63,36 @@ const enTablero = (tasks: OpenTask[], includeClosed: boolean) => {
 };
 
 describe("las cuentas del tablero de Mi trabajo", () => {
-  it("con «sólo abiertas», Done no afirma que no haya ninguna", () => {
+  it("con «sólo abiertas», Done y Closed no afirman que no haya ninguna", () => {
     enTablero([tarea("t1", "open")], false);
-    expect(screen.getByText("Not asked for — showing open only")).toBeTruthy();
-    // Y su cuenta no es «0», que sería afirmar que no queda nada terminado.
-    expect(screen.queryByText("Nothing")).toBeTruthy(); // las otras dos sí están vacías
+    // Dos columnas fuera de la pregunta: terminadas y cerradas.
+    expect(screen.getAllByText("Not asked for — showing open only")).toHaveLength(2);
   });
 
-  it("pidiéndolas todas, Done vuelve a contar de verdad", () => {
-    enTablero([tarea("t1", "open"), tarea("t2", "done")], true);
+  it("pidiéndolas todas, Done y Closed vuelven a contar de verdad", () => {
+    enTablero([tarea("t1", "open"), tarea("t2", "done"), tarea("t3", "closed")], true);
     expect(screen.queryByText("Not asked for — showing open only")).toBeNull();
     expect(screen.getByText("t2")).toBeTruthy();
+    expect(screen.getByText("t3")).toBeTruthy();
+  });
+
+  it("cerrada no se esconde dentro de «terminadas»", () => {
+    enTablero([tarea("t2", "done"), tarea("t3", "closed")], true);
+    // Cada columna con la suya: la clase las juntaba a las dos bajo «done», y
+    // una tarea cerrada —que es como llegan por la integración
+    // server-to-server— desaparecía dentro de las terminadas.
+    const columnas = screen.getAllByRole("heading", { level: 2 });
+    const cerrada = columnas.find((h) => h.textContent?.includes("Closed"))!;
+    expect(cerrada.textContent).toContain("1");
+    const terminada = columnas.find((h) => h.textContent?.startsWith("Done"))!;
+    expect(terminada.textContent).toContain("1");
+  });
+
+  it("un servidor que aún dice «resolved» cae igual en Done", () => {
+    enTablero([tarea("t9", "resolved")], true);
+    const cabecera = screen
+      .getAllByRole("heading", { level: 2 })
+      .find((h) => h.textContent?.startsWith("Done"))!;
+    expect(cabecera.textContent).toContain("1");
   });
 });

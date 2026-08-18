@@ -9,6 +9,7 @@ import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { priorityMeta } from "@/types/task";
 import type { OpenTask } from "@/types/task";
+import { normalizeStatus, type ReportStatus } from "@/types/report";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,11 +49,23 @@ const VISTAS = [
 
 type Vista = (typeof VISTAS)[number]["key"];
 
-const ESTADOS: { kind: string; label: string }[] = [
-  { kind: "open", label: "Open" },
-  { kind: "active", label: "In progress" },
-  { kind: "done", label: "Done" },
+/**
+ * Las cuatro columnas, por **estado** y no por clase.
+ *
+ * La clase junta `done` y `closed`, así que una tarea cerrada aparecía dentro
+ * de «terminadas» sin forma de distinguirla. Y cerrada no es lo mismo que
+ * hecha: un reporte se puede cerrar sin arreglarlo, y por la integración
+ * server-to-server llegan así de verdad.
+ */
+const ESTADOS: { status: ReportStatus; label: string; punto: string }[] = [
+  { status: "open", label: "Open", punto: "bg-muted-foreground" },
+  { status: "in_progress", label: "In progress", punto: "bg-primary" },
+  { status: "done", label: "Done", punto: "bg-success" },
+  { status: "closed", label: "Closed", punto: "bg-muted-foreground/60" },
 ];
+
+/** Terminadas y cerradas sólo se piden cuando pides «todos los estados». */
+const CERRADOS: ReportStatus[] = ["done", "closed"];
 
 export default function MyWork() {
   const [vista, setVista] = useState<Vista>("list");
@@ -224,24 +237,17 @@ export default function MyWork() {
           ) : vista === "board" ? (
             <div className="flex gap-3 overflow-x-auto">
               {ESTADOS.map((col) => {
-                const suyas = visibles.filter((t) => t.statusKind === col.kind);
+                const suyas = visibles.filter(
+                  (t) => normalizeStatus(t.status) === col.status,
+                );
                 // Con «sólo abiertas» lo terminado ni se pide al servidor, así
                 // que esta columna no está vacía: está fuera de la pregunta.
                 // Decir «0» era afirmar que no hay ninguna.
-                const fuera = !includeClosed && col.kind === "done";
+                const fuera = !includeClosed && CERRADOS.includes(col.status);
                 return (
-                  <section key={col.kind} className="w-72 shrink-0">
+                  <section key={col.status} className="w-72 shrink-0">
                     <h2 className="mb-1.5 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium uppercase tracking-wide">
-                      <span
-                        className={cn(
-                          "size-1.5 rounded-full",
-                          col.kind === "done"
-                            ? "bg-success"
-                            : col.kind === "active"
-                              ? "bg-primary"
-                              : "bg-muted-foreground",
-                        )}
-                      />
+                      <span className={cn("size-1.5 rounded-full", col.punto)} />
                       {col.label}
                       <span className="ml-auto text-muted-foreground">
                         {fuera ? "—" : suyas.length}

@@ -517,7 +517,12 @@ type OpenTask struct {
 	DueAt    *time.Time   `json:"dueAt,omitempty"`
 	// Status is the raw state, scanned from the row; the two fields under it are
 	// rendered from it for clients that still read column names.
-	Status     ReportStatus   `json:"-"`
+	//
+	// Viaja, y no se queda dentro: la clase agrupa `done` y `closed` bajo la
+	// misma etiqueta, así que un tablero que se guiara por ella no podría
+	// separar lo terminado de lo cerrado —y «cerrada» es un estado que llega de
+	// verdad por la integración server-to-server, no un adorno—.
+	Status     ReportStatus   `json:"status"`
 	StatusName string         `json:"statusName"`
 	StatusKind TaskStatusKind `json:"statusKind"`
 	ListID     string         `json:"listId"`

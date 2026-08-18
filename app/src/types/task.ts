@@ -112,6 +112,16 @@ export interface OpenTask {
   title: string;
   priority: TaskPriority;
   dueAt?: string | null;
+  /**
+   * El estado crudo. Hay que quedarse con éste y no con `statusKind` para
+   * agrupar: la clase mete `done` y `closed` en el mismo saco, y una tarea
+   * cerrada —que es un estado que llega de verdad por la integración
+   * server-to-server— desaparecería dentro de «terminadas».
+   *
+   * Pásalo por `normalizeStatus`: un servidor sin renombrar todavía responde
+   * `pending` y `resolved`.
+   */
+  status: string;
   statusName: string;
   statusKind: TaskStatusKind;
   listId: string;

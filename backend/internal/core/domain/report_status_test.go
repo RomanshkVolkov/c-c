@@ -1,5 +1,7 @@
 package domain
 
+import "encoding/json"
+
 import "testing"
 
 // The console is an installed desktop binary that users update by hand, so for
@@ -94,5 +96,32 @@ func TestLasColumnasSeLlamanComoLosEstadosQueSon(t *testing.T) {
 	}
 	if len(boardColumns) != len(quiero) {
 		t.Errorf("son cuatro estados, hay %d columnas", len(boardColumns))
+	}
+}
+
+// El estado crudo viaja al cliente.
+//
+// Sin él, la app sólo tiene la *clase*, que mete `done` y `closed` en el mismo
+// saco: un tablero de cuatro columnas se queda con tres y lo cerrado se
+// esconde dentro de lo terminado. Y si el campo desapareciera del JSON, el
+// cliente agruparía por un valor vacío y el tablero saldría vacío **sin dar
+// ningún error**, que es la peor forma de romperse.
+func TestElEstadoCrudoViajaEnLaTareaAbierta(t *testing.T) {
+	crudo, err := json.Marshal(OpenTask{
+		ID: "t-1", Status: ReportClosed, StatusName: "Closed", StatusKind: StatusKindDone,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var salio map[string]any
+	if err := json.Unmarshal(crudo, &salio); err != nil {
+		t.Fatal(err)
+	}
+	if salio["status"] != string(ReportClosed) {
+		t.Errorf("el estado tiene que salir en el JSON, salió %v", salio["status"])
+	}
+	// Y la clase sigue ahí para quien todavía la lea: esto añade, no sustituye.
+	if salio["statusKind"] != string(StatusKindDone) {
+		t.Errorf("la clase debe seguir viajando, salió %v", salio["statusKind"])
 	}
 }
