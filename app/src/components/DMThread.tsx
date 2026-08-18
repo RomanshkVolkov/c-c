@@ -122,6 +122,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
           value={draft}
           onChange={setDraft}
           minHeight="3rem"
+          onSubmit={send}
           placeholder={other ? `Message ${other.username}` : "Message"}
         />
         <div className="mt-1 flex justify-end">
@@ -179,17 +180,28 @@ function DMLine({
   };
 
   return (
-    <div className="group">
+    // Lo propio marcado igual que en un canal: la misma señal en los dos
+    // sitios, porque son la misma pregunta —¿esto lo dije yo?— y aprenderla dos
+    // veces no tiene sentido.
+    <div className={cn("group", mine && "-ml-2 border-l-2 border-primary/60 pl-2")}>
       {!grouped && (
         <div className="mb-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{m.authorName || "unknown"}</span>
+          <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
+            {mine ? "You" : m.authorName || "unknown"}
+          </span>
           <span>
             {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
           {edited && <span className="italic">edited</span>}
         </div>
       )}
-      <div className={cn("relative rounded-md px-2 py-1 hover:bg-muted/40", grouped && "mt-0.5")}>
+      <div
+        className={cn(
+          "relative rounded-md px-2 py-1 hover:bg-muted/40",
+          grouped && "mt-0.5",
+          mine && "bg-primary/5",
+        )}
+      >
         {editing ? (
           <div className="space-y-2">
             <MarkdownEditor value={draft} onChange={setDraft} minHeight="3rem" autoFocus />
@@ -207,16 +219,16 @@ function DMLine({
           <>
             <Markdown>{m.body}</Markdown>
             {mine && (
-              <div className="absolute right-1 top-0 flex items-center gap-1 rounded border bg-background px-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+              <div className="absolute -top-1 right-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
                 <button
-                  className="text-muted-foreground hover:text-foreground"
+                  className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                   title="Edit"
                   onClick={() => setEditing(true)}
                 >
                   <Pencil className="size-3" />
                 </button>
                 <button
-                  className="text-muted-foreground hover:text-destructive"
+                  className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
                   title="Withdraw"
                   onClick={async () => {
                     const ok = await confirm({

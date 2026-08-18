@@ -3,6 +3,15 @@ import Suggestion from "@tiptap/suggestion";
 import { PluginKey } from "@tiptap/pm/state";
 
 /**
+ * La clave del plugin, fuera del cierre a propósito.
+ *
+ * Exportada porque hay que poder preguntar desde fuera si este menú está
+ * abierto: el compositor manda con Enter, y mientras se está eligiendo aquí,
+ * Enter es de este menú y no del mensaje. Ver `haySugerenciaAbierta`.
+ */
+export const SLASH_MENU_KEY = new PluginKey("slashMenu");
+
+/**
  * The `/` command menu: pick a block instead of remembering its markdown.
  *
  * Every command here produces a node markdown can express. That is the rule
@@ -195,7 +204,7 @@ export const SlashMenu = Extension.create({
         // state — taking the editor, and the screen it was on, with it.
         // Nothing caught it until a composer offered / and another trigger
         // together.
-        pluginKey: new PluginKey("slashMenu"),
+        pluginKey: SLASH_MENU_KEY,
         char: "/",
         // A code block is where someone actually types paths and regexes.
         allow: ({ state, range }) =>

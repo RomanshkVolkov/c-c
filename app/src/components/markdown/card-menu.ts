@@ -3,6 +3,15 @@ import Suggestion from "@tiptap/suggestion";
 import { PluginKey } from "@tiptap/pm/state";
 
 /**
+ * La clave del plugin, fuera del cierre a propósito.
+ *
+ * Exportada porque hay que poder preguntar desde fuera si este menú está
+ * abierto: el compositor manda con Enter, y mientras se está eligiendo aquí,
+ * Enter es de este menú y no del mensaje. Ver `haySugerenciaAbierta`.
+ */
+export const CARD_MENU_KEY = new PluginKey("cardMenu");
+
+/**
  * `#` — cite a card from the board you're looking at.
  *
  * This is the reason the chat lives inside cac instead of being a Slack
@@ -164,7 +173,7 @@ export const CardMenu = Extension.create<CardMenuOptions>({
         // state — taking the editor, and the screen it was on, with it.
         // Nothing caught it until a composer offered # and another trigger
         // together.
-        pluginKey: new PluginKey("cardMenu"),
+        pluginKey: CARD_MENU_KEY,
         char: "#",
         // `#` at the start of a line is a heading in markdown, and taking it
         // over would break the one shortcut everybody already knows. A citation

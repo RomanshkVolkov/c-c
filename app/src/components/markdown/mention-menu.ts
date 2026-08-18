@@ -3,6 +3,15 @@ import Suggestion from "@tiptap/suggestion";
 import { PluginKey } from "@tiptap/pm/state";
 
 /**
+ * La clave del plugin, fuera del cierre a propósito.
+ *
+ * Exportada porque hay que poder preguntar desde fuera si este menú está
+ * abierto: el compositor manda con Enter, y mientras se está eligiendo aquí,
+ * Enter es de este menú y no del mensaje. Ver `haySugerenciaAbierta`.
+ */
+export const MENTION_MENU_KEY = new PluginKey("mentionMenu");
+
+/**
  * `@` — name somebody you work with.
  *
  * Only colleagues are offered: people who share the organization this is being
@@ -162,7 +171,7 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
         // state — taking the editor, and the screen it was on, with it.
         // Nothing caught it until a composer offered @ and another trigger
         // together.
-        pluginKey: new PluginKey("mentionMenu"),
+        pluginKey: MENTION_MENU_KEY,
         char: "@",
         // A code block is where somebody actually types an email address or a
         // shell variable; `@` at the start of a line is ordinary prose, so

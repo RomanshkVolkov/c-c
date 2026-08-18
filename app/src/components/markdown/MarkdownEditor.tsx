@@ -31,6 +31,7 @@ import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
 import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
 import TableToolbar from "./TableToolbar";
+import { EnviarConEnter } from "@/components/markdown/send-on-enter";
 import { SlashMenu } from "./slash-menu";
 import { CardMenu, type CardRef } from "./card-menu";
 import { MentionMenu, type PersonRef } from "./mention-menu";
@@ -147,6 +148,16 @@ export interface MarkdownEditorProps {
   people?: () => PersonRef[];
   className?: string;
   minHeight?: string;
+  /**
+   * Qué hace Enter. Con esto puesto, **Enter manda** y Shift+Enter salta de
+   * línea; sin ello, Enter hace lo de siempre —un párrafo nuevo—.
+   *
+   * Es una prop y no el comportamiento por defecto porque las dos formas son
+   * correctas según dónde se escriba: en un chat, mandar con Enter es lo que
+   * todo el mundo espera; en la descripción de una tarea o en una nota, mandar
+   * al primer salto de línea sería insufrible.
+   */
+  onSubmit?: () => void;
   autoFocus?: boolean;
   /**
    * Ctrl/Cmd+click on a link inside the editor calls this instead of the
@@ -200,9 +211,14 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     minHeight = "8rem",
     autoFocus,
     onLinkClick,
+    onSubmit,
   },
   ref,
 ) {
+  // Enter manda, y por eso el handler se lee por ref: se instala una vez en la
+  // extensión y `send` cambia en cada render con el borrador que cierra dentro.
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
   // The paste/drop handlers live inside the editor's own options, so they can't
   // close over `editor` itself — that would be a circular reference (and an
   // untypeable one). They read it back through this ref instead.
@@ -244,6 +260,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       // alone, whether or not anyone types a table into it. See ./table.ts.
       ...tableExtensions,
       ...(collapsible ? collapsibleExtensions : []),
+      ...(onSubmit ? [EnviarConEnter.configure({ onSubmit: () => onSubmitRef.current?.() })] : []),
       ...(blockTools ? [SlashMenu] : []),
       ...(cards ? [CardMenu.configure({ cards })] : []),
       ...(people ? [MentionMenu.configure({ people })] : []),

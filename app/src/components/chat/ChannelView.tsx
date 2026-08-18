@@ -171,6 +171,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           cards={citableCards}
           people={people}
           minHeight="3rem"
+          onSubmit={send}
           // The rule that keeps the four ways of writing in cac apart, said
           // where the decision is actually made rather than in a doc nobody
           // opens. If people don't know where to write, the feature failed.
@@ -259,10 +260,20 @@ function Message({
   };
 
   return (
-    <div className="group">
+    // Lo propio, marcado. Antes todos los mensajes eran la misma fila gris y
+    // había que leer el nombre para saber quién habló; en una conversación
+    // rápida eso es exactamente lo que no se hace.
+    //
+    // Un borde de color en el canto izquierdo y un fondo tenue, en vez de
+    // alinear a la derecha como un móvil: aquí hablan más de dos, y una columna
+    // partida en dos deja los mensajes de terceros pegados unos a otros y a
+    // media anchura.
+    <div className={cn("group", mine && "-ml-2 border-l-2 border-primary/60 pl-2")}>
       {!grouped && (
         <div className="mb-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{m.authorName || "unknown"}</span>
+          <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
+            {mine ? "You" : m.authorName || "unknown"}
+          </span>
           <span>
             {new Date(m.createdAt).toLocaleTimeString([], {
               hour: "2-digit",
@@ -272,7 +283,13 @@ function Message({
           {edited && <span className="italic">edited</span>}
         </div>
       )}
-      <div className={cn("relative rounded-md px-2 py-1 hover:bg-muted/40", grouped && "mt-0.5")}>
+      <div
+        className={cn(
+          "relative rounded-md px-2 py-1 hover:bg-muted/40",
+          grouped && "mt-0.5",
+          mine && "bg-primary/5",
+        )}
+      >
         {editing ? (
           <div className="space-y-2">
             <MarkdownEditor
@@ -297,12 +314,15 @@ function Message({
         ) : (
           <>
             <Markdown onInternalLink={openCited}>{m.body}</Markdown>
-            <div className="absolute right-1 top-0 flex items-center gap-1 rounded border bg-background px-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+            {/* Con aire: iban a `px-1` y `gap-1` sobre iconos de 12px, así que
+                las tres acciones formaban un solo borrón imposible de acertar.
+                Cada botón tiene ahora su propia zona de pulsación. */}
+            <div className="absolute -top-1 right-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
               <MessageToTask body={m.body} spaceId={spaceId} spaceName={spaceName} />
               {mine && (
                 <>
                   <button
-                    className="text-muted-foreground hover:text-foreground"
+                    className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                     title="Edit"
                     onClick={() => {
                       setDraft(m.body);
@@ -312,7 +332,7 @@ function Message({
                     <Pencil className="size-3" />
                   </button>
                   <button
-                    className="text-muted-foreground hover:text-destructive"
+                    className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
                     title="Withdraw"
                     onClick={async () => {
                       const ok = await confirm({
@@ -389,8 +409,8 @@ function MessageToTask({
   return (
     <button
       className={cn(
-        "text-muted-foreground hover:text-foreground",
-        !inThisSpace && "cursor-not-allowed opacity-40 hover:text-muted-foreground",
+        "rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground",
+        !inThisSpace && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground",
       )}
       title={
         inThisSpace
