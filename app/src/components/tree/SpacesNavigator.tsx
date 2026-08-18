@@ -27,6 +27,7 @@ import {
   ListChecks,
   Eye,
   Copy,
+  ArrowDownAZ,
   Lock,
   LockOpen,
   FolderInput,
@@ -291,7 +292,8 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
   const confirm = useConfirm();
-  const { createFolder, createList, renameSpace, deleteSpace, moveSpace } = useTasksStore.getState();
+  const { createFolder, createList, renameSpace, deleteSpace, moveSpace, sortChildren } =
+    useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
   const [adding, setAdding] = useState<null | "folder" | "list">(null);
   const [renaming, setRenaming] = useState(false);
@@ -390,6 +392,11 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => moveSpace(space.id, "down").catch((e) => toast.error(String(e)))}>
                 <ArrowDown className="size-4" /> Move down
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => sortChildren("space", space.id).catch((e) => toast.error(String(e)))}
+              >
+                <ArrowDownAZ className="size-4" /> Sort A–Z
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
@@ -517,8 +524,10 @@ function FolderNode({
   const openDoc = useTasksStore((s) => s.openDoc);
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
-  const { createFolder, createList, renameFolder, deleteFolder, moveFolder, duplicateFolder, moveFolderToSpace } =
-    useTasksStore.getState();
+  const {
+    createFolder, createList, renameFolder, deleteFolder, moveFolder,
+    duplicateFolder, moveFolderToSpace, sortChildren,
+  } = useTasksStore.getState();
 
   return (
     <div>
@@ -598,6 +607,11 @@ function FolderNode({
                 }
               >
                 <Copy className="size-4" /> Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => sortChildren("folder", folder.id).catch((e) => toast.error(String(e)))}
+              >
+                <ArrowDownAZ className="size-4" /> Sort A–Z
               </DropdownMenuItem>
               <MoveToSpace
                 currentSpaceId={spaceId}

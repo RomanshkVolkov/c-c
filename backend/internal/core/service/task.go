@@ -902,6 +902,19 @@ func (s *TaskService) OrgIDForTask(taskID string) (string, error) {
 	return t.OrgID, nil
 }
 
+// SortSpace and SortFolder put a container's children in alphabetical order.
+func (s *TaskService) SortSpace(spaceID string) error {
+	return s.repo.SortChildren(spaceID, nil)
+}
+
+func (s *TaskService) SortFolder(folderID string) error {
+	f, err := s.repo.FindFolder(folderID)
+	if err != nil {
+		return err
+	}
+	return s.repo.SortChildren(f.SpaceID, &f.ID)
+}
+
 // ─── Duplicating a folder, and moving branches between spaces ────────────────
 
 // ErrDifferentOrganization: the target space belongs to somebody else.

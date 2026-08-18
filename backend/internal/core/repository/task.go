@@ -1091,3 +1091,56 @@ func (r *TaskRepository) MoveListToSpace(listID, spaceID string, pinnedProject *
 	}
 	return r.db.Model(&domain.TaskList{}).Where("id = ?", listID).Updates(cambios).Error
 }
+
+// SortChildren puts one container's children in alphabetical order.
+//
+// A dedicated operation rather than a batch of moves, for two reasons. It is
+// atomic: a sort that half-applied would leave a tree that is neither the old
+// order nor the new one, and nobody could tell which. And the client sends no
+// order at all — "sort this alphabetically" is the whole request, so there is
+// no way for it to ask for an order that isn't sorted.
+//
+// Folders keep sitting above lists, because that is how the tree is drawn and a
+// sort that reshuffled the two kinds together would look like a bug.
+func (r *TaskRepository) SortChildren(spaceID string, parentFolderID *string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var folders []domain.TaskFolder
+		q := tx.Where("space_id = ?", spaceID)
+		if parentFolderID == nil {
+			q = q.Where("parent_folder_id IS NULL")
+		} else {
+			q = q.Where("parent_folder_id = ?", *parentFolderID)
+		}
+		if err := q.Order("LOWER(name) ASC").Find(&folders).Error; err != nil {
+			return err
+		}
+
+		var lists []domain.TaskList
+		q2 := tx.Where("space_id = ?", spaceID)
+		if parentFolderID == nil {
+			q2 = q2.Where("folder_id IS NULL")
+		} else {
+			q2 = q2.Where("folder_id = ?", *parentFolderID)
+		}
+		if err := q2.Order("LOWER(name) ASC").Find(&lists).Error; err != nil {
+			return err
+		}
+
+		anterior := ""
+		for _, f := range folders {
+			anterior = rank.Between(anterior, "")
+			if err := tx.Model(&domain.TaskFolder{}).Where("id = ?", f.ID).
+				Update("rank", anterior).Error; err != nil {
+				return err
+			}
+		}
+		for _, l := range lists {
+			anterior = rank.Between(anterior, "")
+			if err := tx.Model(&domain.TaskList{}).Where("id = ?", l.ID).
+				Update("rank", anterior).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

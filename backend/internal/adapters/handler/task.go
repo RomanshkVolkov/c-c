@@ -52,6 +52,8 @@ type TaskHandler interface {
 	GetChannel(w http.ResponseWriter, r *http.Request)
 	MoveFolder(w http.ResponseWriter, r *http.Request)
 	DuplicateFolder(w http.ResponseWriter, r *http.Request)
+	SortSpace(w http.ResponseWriter, r *http.Request)
+	SortFolder(w http.ResponseWriter, r *http.Request)
 	MoveFolderToSpace(w http.ResponseWriter, r *http.Request)
 	MoveListToSpace(w http.ResponseWriter, r *http.Request)
 	Board(w http.ResponseWriter, r *http.Request)
@@ -404,6 +406,31 @@ func (h *taskHandler) resolveFolder(w http.ResponseWriter, r *http.Request, need
 		return nil, false
 	}
 	return f, true
+}
+
+// SortSpace and SortFolder order a container's children alphabetically.
+func (h *taskHandler) SortSpace(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), true)
+	if !ok {
+		return
+	}
+	if err := h.svc.SortSpace(sp.ID); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to sort", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Sorted"})
+}
+
+func (h *taskHandler) SortFolder(w http.ResponseWriter, r *http.Request) {
+	f, ok := h.resolveFolder(w, r, true)
+	if !ok {
+		return
+	}
+	if err := h.svc.SortFolder(f.ID); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to sort", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Sorted"})
 }
 
 // DuplicateFolder copies a folder's shape into the same space.

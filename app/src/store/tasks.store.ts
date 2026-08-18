@@ -79,6 +79,14 @@ interface TasksState {
    */
   dropNode: (dragged: TreeNodeRef, target: TreeNodeRef, where: DropWhere) => Promise<void>;
   duplicateFolder: (id: string, name?: string) => Promise<void>;
+  /**
+   * Alphabetical order for one container's children.
+   *
+   * One request rather than a move per child: a sort that half-applied would
+   * leave a tree that is neither the old order nor the new one, and the server
+   * decides the order so there is no way to ask for one that isn't sorted.
+   */
+  sortChildren: (kind: "space" | "folder", id: string) => Promise<void>;
   moveFolderToSpace: (id: string, spaceId: string) => Promise<void>;
   moveListToSpace: (id: string, spaceId: string) => Promise<void>;
   createSubtask: (parentId: string, title: string) => Promise<void>;
@@ -338,6 +346,12 @@ export const useTasksStore = create<TasksState>()(
         if (where === "after") body.afterId = target.id;
         const base = dragged.kind === "folder" ? "task-folders" : "task-lists";
         await api.post<APIResponse<unknown>>(`/api/v1/${base}/${dragged.id}/move`, body, true);
+        await get().fetchTree();
+      },
+
+      sortChildren: async (kind, id) => {
+        const base = kind === "space" ? "task-spaces" : "task-folders";
+        await api.post<APIResponse<unknown>>(`/api/v1/${base}/${id}/sort`, {}, true);
         await get().fetchTree();
       },
 

@@ -129,10 +129,20 @@ func (r *OrganizationRepository) Delete(id string) error {
 
 // ListForUser returns the organizations the user belongs to, each carrying the
 // user's role, so the app can render the org switcher in one round-trip.
+// MemberCount is asked for on its own by the two paths that build a response
+// from a single organization — create and rename — so those don't come back
+// saying it has nobody in it.
+func (r *OrganizationRepository) MemberCount(orgID string) int64 {
+	var n int64
+	r.db.Model(&domain.OrgMembership{}).Where("org_id = ?", orgID).Count(&n)
+	return n
+}
+
 func (r *OrganizationRepository) ListForUser(userID string) ([]domain.OrganizationResponse, error) {
 	var out []domain.OrganizationResponse
 	err := r.db.Raw(`
-		SELECT o.id, o.name, o.slug, m.role
+		SELECT o.id, o.name, o.slug, m.role,
+		       (SELECT COUNT(*) FROM org_memberships c WHERE c.org_id = o.id) AS member_count
 		FROM organizations o
 		JOIN org_memberships m ON m.org_id = o.id
 		WHERE m.user_id = ?
@@ -146,7 +156,8 @@ func (r *OrganizationRepository) ListForUser(userID string) ([]domain.Organizati
 func (r *OrganizationRepository) ListAll() ([]domain.OrganizationResponse, error) {
 	var out []domain.OrganizationResponse
 	err := r.db.Raw(`
-		SELECT o.id, o.name, o.slug, 'admin' AS role
+		SELECT o.id, o.name, o.slug, 'admin' AS role,
+		       (SELECT COUNT(*) FROM org_memberships c WHERE c.org_id = o.id) AS member_count
 		FROM organizations o
 		ORDER BY o.name ASC
 	`).Scan(&out).Error

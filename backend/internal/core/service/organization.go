@@ -79,7 +79,10 @@ func (s *OrganizationService) Create(callerID string, req domain.CreateOrganizat
 	if err := s.repo.CreateWithOwner(org, callerID); err != nil {
 		return nil, err
 	}
-	return &domain.OrganizationResponse{ID: org.ID, Name: org.Name, Slug: org.Slug, Role: domain.OrgRoleAdmin}, nil
+	return &domain.OrganizationResponse{
+		ID: org.ID, Name: org.Name, Slug: org.Slug, Role: domain.OrgRoleAdmin,
+		MemberCount: s.repo.MemberCount(org.ID),
+	}, nil
 }
 
 func (s *OrganizationService) List(callerID string, superadmin bool) ([]domain.OrganizationResponse, error) {
@@ -102,7 +105,10 @@ func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOr
 	if err := s.repo.Update(org); err != nil {
 		return nil, err
 	}
-	return &domain.OrganizationResponse{ID: org.ID, Name: org.Name, Slug: org.Slug, Role: m.Role}, nil
+	return &domain.OrganizationResponse{
+		ID: org.ID, Name: org.Name, Slug: org.Slug, Role: m.Role,
+		MemberCount: s.repo.MemberCount(org.ID),
+	}, nil
 }
 
 func (s *OrganizationService) Delete(callerID, orgID string, superadmin bool) error {

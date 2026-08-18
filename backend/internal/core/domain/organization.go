@@ -93,6 +93,11 @@ type OrganizationResponse struct {
 	Name string  `json:"name"`
 	Slug string  `json:"slug"`
 	Role OrgRole `json:"role"` // caller's role in this org
+	// MemberCount is how many people are in it. Counted in the same query that
+	// lists the organizations rather than left to the client, which would
+	// otherwise have to pull the whole member list of every organization just
+	// to show a number beside its name.
+	MemberCount int64 `json:"memberCount"`
 }
 
 type AddMemberRequest struct {

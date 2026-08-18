@@ -59,6 +59,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/folders", h.CreateFolder)
 		r.Post("/{id}/lists", h.CreateList)
 		r.Post("/{id}/move", h.MoveSpace)
+		r.Post("/{id}/sort", h.SortSpace)
 		// The channel into this space: the credential work arrives with, and the
 		// rules it arrives under.
 		r.Get("/{id}/channel", h.GetChannel)
@@ -81,6 +82,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Delete("/{id}", h.DeleteFolder)
 		r.Post("/{id}/move", h.MoveFolder)
 		r.Post("/{id}/duplicate", h.DuplicateFolder)
+		r.Post("/{id}/sort", h.SortFolder)
 		r.Post("/{id}/move-to-space", h.MoveFolderToSpace)
 	})
 

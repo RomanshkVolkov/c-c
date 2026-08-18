@@ -190,3 +190,58 @@ func treeDB(t *testing.T) (*gorm.DB, func()) {
 		adminSQL.Close()
 	}
 }
+
+// Sorting a container alphabetically, and the one thing it must not do.
+//
+// Folders keep sitting above lists. That is how the navigator draws them, and a
+// sort that interleaved the two kinds would look to a person like the tree had
+// scrambled itself rather than tidied up.
+func TestSortingPutsFoldersFirstAndThenNames(t *testing.T) {
+	db, cleanup := treeDB(t)
+	defer cleanup()
+	svc := treeSvc(db)
+
+	// Names deliberately out of order, and a list whose name sorts before both
+	// folders — it must still end up below them.
+	db.Model(&domain.TaskFolder{}).Where("id = ?", "fo-a").Update("name", "Zeta")
+	db.Model(&domain.TaskFolder{}).Where("id = ?", "fo-b").Update("name", "alfa")
+	lista := &domain.TaskList{SpaceID: "space-1", Name: "Abeja", Rank: "A"}
+	lista.ID = "li-x"
+	if err := db.Create(lista).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SortSpace("space-1"); err != nil {
+		t.Fatal(err)
+	}
+	// Asserted on the ranks and not on the tree response: that one returns
+	// folders and lists in separate fields, so reading it back would show them
+	// grouped whatever the sort did — a test that cannot fail on the thing it
+	// claims to check.
+	var folders []domain.TaskFolder
+	db.Where("space_id = ?", "space-1").Order("rank ASC").Find(&folders)
+	var lists []domain.TaskList
+	db.Where("space_id = ?", "space-1").Order("rank ASC").Find(&lists)
+
+	// Case-insensitive, or "Zeta" would sort before "alfa" on raw bytes.
+	if len(folders) != 2 || folders[0].Name != "alfa" || folders[1].Name != "Zeta" {
+		t.Errorf("folders = %v, want [alfa Zeta]", nombresDe(folders))
+	}
+	// And every list ranks below every folder, which is what keeps the drawn
+	// tree from looking like it scrambled itself.
+	for _, l := range lists {
+		for _, f := range folders {
+			if l.Rank <= f.Rank {
+				t.Errorf("list %q (%s) should rank after folder %q (%s)", l.Name, l.Rank, f.Name, f.Rank)
+			}
+		}
+	}
+}
+
+func nombresDe(fs []domain.TaskFolder) []string {
+	out := make([]string, len(fs))
+	for i, f := range fs {
+		out[i] = f.Name
+	}
+	return out
+}

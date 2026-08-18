@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Bell,
@@ -59,6 +59,9 @@ import { useDMStore } from "@/store/dm.store";
 import { useUpdaterStore } from "@/store/updater.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useThemeStore, type ThemePreference } from "@/store/theme.store";
+import { useOrgsStore } from "@/store/orgs.store";
+import { useTasksStore } from "@/store/tasks.store";
+import { useAppVersion } from "@/hooks/use-app-version";
 import { cn } from "@/lib/utils";
 
 // guest: reachable on-device (no backend). superadmin: only for platform admins.
@@ -101,6 +104,66 @@ const DEV_TOOLS = [
   { label: "Requests", path: "/devtools/requests", icon: Send, guest: false },
   { label: "Tokens", path: "/devtools/tokens", icon: KeyRound, guest: true },
 ];
+
+/**
+ * Who you are signed in as, and which build you are running.
+ *
+ * The version was reachable only by hovering the update button, which is the
+ * wrong place: the question "what am I running" comes up when something looks
+ * wrong, not when you are already thinking about updating. On an app that
+ * updates itself it belongs where you can read it without pressing anything.
+ */
+function AccountRow() {
+  const username = useAuthStore((s) => s.session?.username ?? "");
+  const superadmin = useAuthStore((s) => !!s.session?.superadmin);
+  const org = useOrgsStore((s) => s.currentOrg());
+  const version = useAppVersion();
+  if (!username) return null;
+  const bajo = [superadmin ? "superadmin" : org?.role, version && `v${version}`]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-medium uppercase text-primary">
+        {username.slice(0, 2)}
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium">{username}</p>
+        {bajo && <p className="truncate text-[11px] text-muted-foreground">{bajo}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Who you are working as, above everything else in the sidebar.
+ *
+ * The organization decides what every screen below shows, and the only sign of
+ * which one you were in was a switcher you had to open. Naming it — with your
+ * role, how many people are in it and how many spaces it has — means you can
+ * tell at a glance whether you are about to write in a client's space or your
+ * own.
+ *
+ * The member count is served with the organization rather than counted here:
+ * doing it in the client would mean pulling the whole member list of every
+ * organization on screen just to show a number beside its name.
+ */
+function OrgHeader() {
+  const org = useOrgsStore((s) => s.currentOrg());
+  const spaces = useTasksStore((s) => s.tree.length);
+  if (!org) return null;
+  const partes = [
+    org.role,
+    org.memberCount ? `${org.memberCount} member${org.memberCount === 1 ? "" : "s"}` : "",
+    spaces ? `${spaces} space${spaces === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+  return (
+    <div className="px-3 pb-1 pt-2">
+      <p className="truncate text-sm font-medium">{org.name}</p>
+      <p className="truncate text-xs text-muted-foreground">{partes.join(" · ")}</p>
+    </div>
+  );
+}
 
 /** DevTools, folded into one row that opens onto the tools you can use. */
 function DevToolsMenu() {
@@ -185,6 +248,7 @@ export default function AppSidebar() {
           )}
         </div>
       </SidebarHeader>
+      {authed && !collapsed && <OrgHeader />}
       {authed && (
         <SidebarHeader>
           {/* Collapsed, the header is one icon wide. The org switcher was still
@@ -274,6 +338,7 @@ export default function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        {authed && !collapsed && <AccountRow />}
         <SidebarMenu>
           <SidebarMenuItem>
             <ThemeToggle />
@@ -375,16 +440,7 @@ function UpdateCheckButton() {
   const lastError = useUpdaterStore((s) => s.lastError);
   const checkForUpdate = useUpdaterStore((s) => s.checkForUpdate);
   const installUpdate = useUpdaterStore((s) => s.installUpdate);
-  // Which build am I actually running? Without this the only answer was the
-  // release notes on GitHub, and an installed app that updates on its own is
-  // exactly where that question comes up.
-  const [version, setVersion] = useState("");
-  useEffect(() => {
-    void import("@tauri-apps/api/app")
-      .then(({ getVersion }) => getVersion())
-      .then(setVersion)
-      .catch(() => {}); // running in a plain browser
-  }, []);
+  const version = useAppVersion();
 
   const handleClick = async () => {
     const id = toast.loading("Checking for updates…");

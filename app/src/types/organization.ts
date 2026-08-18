@@ -5,6 +5,8 @@ export interface Organization {
   name: string;
   slug: string;
   role: OrgRole; // caller's role in this org
+  /** How many people are in it. Counted server-side; see OrganizationResponse. */
+  memberCount: number;
 }
 
 export interface OrgMember {
