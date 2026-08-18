@@ -13,6 +13,7 @@ type ServerHandler interface {
 	CreateServer(w http.ResponseWriter, r *http.Request)
 	UpdateServer(w http.ResponseWriter, r *http.Request)
 	DeleteServer(w http.ResponseWriter, r *http.Request)
+	ReportAgentStatus(w http.ResponseWriter, r *http.Request)
 }
 
 type serverHandler struct {
@@ -95,6 +96,39 @@ func (h *serverHandler) UpdateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ServerResponse]{Success: true, Data: updated})
+}
+
+// ReportAgentStatus: la app probó el agente y cuenta qué pasó.
+//
+// Pertenecer a la organización basta —no exige poder escribir—: esto no cambia
+// la configuración de nada, sólo anota si contestó. Pedir rol de escritura
+// dejaría a un `viewer` mirando un «pending» eterno.
+func (h *serverHandler) ReportAgentStatus(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	server, err := h.svc.Find(id)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Server not found", err.Error())
+		return
+	}
+	if _, member := user.RoleInOrg(server.OrgID); !user.Superadmin && !member {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-member")
+		return
+	}
+	req, err := ValidateRequest[domain.ReportAgentStatusRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	if err := h.svc.ReportAgentStatus(id, req.Status); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to record status", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Recorded"})
 }
 
 func (h *serverHandler) DeleteServer(w http.ResponseWriter, r *http.Request) {

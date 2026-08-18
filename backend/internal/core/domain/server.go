@@ -60,3 +60,12 @@ type ServerResponse struct {
 	AgentPort int        `json:"agentPort"`
 	Status    string     `json:"status"`
 }
+
+// ReportAgentStatusRequest es lo que la app dice tras probar el agente.
+//
+// Sólo `online` u `offline`: `pending` significa «nadie lo ha mirado todavía» y
+// es del servidor ponerlo, no de un cliente devolverlo. Sin esta lista, un
+// cliente podría dejar un servidor en un estado que ninguna pantalla sabe leer.
+type ReportAgentStatusRequest struct {
+	Status string `json:"status" validate:"required,oneof=online offline"`
+}

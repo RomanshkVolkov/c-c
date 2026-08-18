@@ -53,6 +53,17 @@ func (s *ServerService) List(orgIDs []string, superadmin bool) ([]domain.ServerR
 }
 
 // Find returns a single server (used for authorization before mutations).
+// ReportAgentStatus anota si el agente contestó.
+//
+// Lo cuenta la app y no el servidor porque el agente vive en la VPS del
+// cliente y quien alcanza esa red es el escritorio del operador —el backend
+// está en otro sitio y no tiene por qué llegar—. La consecuencia hay que
+// asumirla y decirla: esto es «lo que la última consola que miró pudo
+// alcanzar», no una verdad absoluta sobre la máquina.
+func (s *ServerService) ReportAgentStatus(id, status string) error {
+	return s.repo.UpdateStatus(id, status)
+}
+
 func (s *ServerService) Find(id string) (*domain.ServerResponse, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
