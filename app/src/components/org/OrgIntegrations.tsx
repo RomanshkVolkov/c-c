@@ -30,8 +30,6 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
 
   const [creando, setCreando] = useState(false);
   const [nombre, setNombre] = useState("");
-  const [plataforma, setPlataforma] = useState<"app" | "web">("app");
-  const [origenes, setOrigenes] = useState("");
   const [busy, setBusy] = useState(false);
   /**
    * The key, shown once.
@@ -64,19 +62,17 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
     if (!n || busy) return;
     setBusy(true);
     try {
+      // Siempre server-to-server: lo que se integra hoy es otro servidor, no un
+      // navegador. Las que ya existan en "web" se siguen leyendo y editando tal
+      // cual —el servidor sigue vigilando sus orígenes— pero no se crean más.
       const key = await createProject({
         name: n,
-        platform: plataforma,
-        // Only "web" polices the Origin header; a server-to-server caller sends
-        // none, so the list stays empty rather than holding something that is
-        // never checked.
-        allowedOrigins:
-          plataforma === "web"
-            ? origenes.split(",").map((o) => o.trim()).filter(Boolean)
-            : [],
+        platform: "app",
+        // Nadie manda Origin desde un servidor, así que la lista se queda vacía
+        // en vez de guardar algo que no se comprueba nunca.
+        allowedOrigins: [],
       });
       setNombre("");
-      setOrigenes("");
       setCreando(false);
       setClave(key);
     } catch (e) {
@@ -107,6 +103,14 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
         </div>
       )}
 
+      {/* Lo que hay que saber antes de crear una, no después: de dónde llega
+          esto y cuándo se puede leer la llave. */}
+      <p className="max-w-[660px] text-xs leading-relaxed text-muted-foreground">
+        Each integration receives reports from an external system, server to server: it
+        holds an ingest key and sends no Origin, so the key is the whole of it. The key
+        is shown once — when it is created, and when it is rotated.
+      </p>
+
       <div className="flex items-center gap-2">
         <Label className="text-sm font-medium">Report projects</Label>
         {canManage && !creando && (
@@ -125,30 +129,9 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
             placeholder="Name — the client or system this is for"
             className="max-w-sm"
           />
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <select
-              aria-label="Kind"
-              value={plataforma}
-              onChange={(e) => setPlataforma(e.target.value as "app" | "web")}
-              className="h-8 rounded border bg-background px-2"
-            >
-              <option value="app">Server to server</option>
-              <option value="web">From a browser</option>
-            </select>
-            {plataforma === "web" && (
-              <Input
-                value={origenes}
-                onChange={(e) => setOrigenes(e.target.value)}
-                placeholder="https://one.example, https://two.example"
-                className="h-8 max-w-sm text-xs"
-              />
-            )}
-            <span className="text-muted-foreground">
-              {plataforma === "web"
-                ? "Only these origins may post; a browser sends one and it is checked."
-                : "No origin is checked — a server sends none. The key is the whole of it."}
-            </span>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            No origin is checked — a server sends none. The key is the whole of it.
+          </p>
           <div className="flex gap-2">
             <Button size="sm" onClick={crear} disabled={!nombre.trim() || busy}>
               {busy && <Loader2 className="mr-1 size-3 animate-spin" />} Create
