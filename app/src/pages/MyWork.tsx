@@ -87,7 +87,13 @@ export default function MyWork() {
   }, [tasks, scope]);
 
   // Grouped in the order the tree shows spaces, so the two read the same way.
-  const orden = useTasksStore((s) => s.tree.map((t) => t.id));
+  //
+  // The tree itself is selected, and the order derived out here. A selector
+  // must return the same reference when nothing changed, and `.map()` never
+  // does: zustand compares with Object.is, sees a new array every render, and
+  // renders again — which is the infinite loop, not a slow one.
+  const tree = useTasksStore((s) => s.tree);
+  const orden = useMemo(() => tree.map((t) => t.id), [tree]);
   const grupos = useMemo(() => {
     const by = new Map<string, { name: string; items: OpenTask[] }>();
     for (const t of visibles) {
