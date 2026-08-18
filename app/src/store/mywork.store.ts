@@ -31,13 +31,23 @@ export interface WorkScope {
   name: string;
 }
 
-/** The query each lens asks. Kept here so the page never builds URLs. */
+/**
+ * The query each lens asks. Kept here so the page never builds URLs.
+ *
+ * Todas mandan `origin=any` menos la de clientes. El servidor, si no le dicen
+ * nada, deja fuera lo que entró por un canal de cliente —tiene sentido para el
+ * resumen del escritorio, que es de dónde viene ese comportamiento— pero aquí
+ * mentía dos veces: una lista de cliente con siete tareas abiertas salía como
+ * «0 visible» bajo una lente llamada **All**, y «asignadas a mí» se callaba un
+ * ticket asignado a mí sólo porque lo levantó un cliente. Quién lo levantó es
+ * otra pregunta, y tiene su propia lente.
+ */
 const LENS_QUERY: Record<WorkLens, string> = {
-  assigned: "assignee=me",
-  created: "creator=me",
-  watching: "watcher=me",
+  assigned: "assignee=me&origin=any",
+  created: "creator=me&origin=any",
+  watching: "watcher=me&origin=any",
   clients: "origin=clients",
-  all: "",
+  all: "origin=any",
 };
 
 interface MyWorkState {

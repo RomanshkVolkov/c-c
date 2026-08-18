@@ -179,6 +179,12 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 	}
 
 	// Cuántas hay y cuántas quedan, por lista, en una sola consulta agrupada.
+	//
+	// Sin subtareas, igual que ListOpen: son el desglose de su padre y contarlas
+	// aparte cuenta el mismo trabajo dos veces. Importa que sea el mismo
+	// conjunto porque este número vive al lado del de «Mi trabajo», y dos
+	// cifras distintas sobre la misma lista no se pueden explicar en la
+	// pantalla — sólo se pueden sufrir.
 	type countRow struct {
 		ListID string
 		N      int64
@@ -187,7 +193,7 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 	var counts []countRow
 	r.db.Model(&domain.Item{}).
 		Select("list_id, COUNT(*) AS n, COUNT(*) FILTER (WHERE status NOT IN ('resolved','closed')) AS open").
-		Where("archived_at IS NULL").
+		Where("archived_at IS NULL AND parent_id IS NULL").
 		Group("list_id").Scan(&counts)
 	countBy := make(map[string]int64, len(counts))
 	openBy := make(map[string]int64, len(counts))

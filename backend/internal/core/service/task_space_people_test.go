@@ -71,8 +71,9 @@ func TestLaListaDiceCuantasHayYCuantasQuedan(t *testing.T) {
 	if lista == nil {
 		t.Fatal("no salió lis-a")
 	}
-	// Cuatro vivas: tres abiertas y una cerrada. La archivada no cuenta en
-	// ninguna de las dos.
+	// Cuatro vivas: tres abiertas y una cerrada. Ni la archivada ni la subtarea
+	// cuentan en ninguna de las dos — la subtarea porque ya está contada dentro
+	// de su padre, que es lo mismo que hace «Mi trabajo».
 	if lista.TaskCount != 4 {
 		t.Errorf("todas las vivas son cuatro, salieron %d", lista.TaskCount)
 	}
@@ -141,6 +142,9 @@ func arbolDB(t *testing.T) (*gorm.DB, func()) {
 	ins("t-4", "lis-a", "closed", &caro, false)
 	ins("t-5", "lis-a", "pending", &ana, true) // archivada: no cuenta
 	ins("t-6", "lis-b", "closed", &caro, false)
+	// Una subtarea de t-1: es el desglose de su padre, no una línea propia.
+	db.Exec(`INSERT INTO items (id, list_id, parent_id, org_id, title, status, origin, created_at, updated_at)
+		VALUES ('s-1', 'lis-a', 't-1', 'org-1', 'sub', 'pending', 'internal', ?, ?)`, ahora, ahora)
 
 	return db, func() {
 		if inner, _ := db.DB(); inner != nil {
