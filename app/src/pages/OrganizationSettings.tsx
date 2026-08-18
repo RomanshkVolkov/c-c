@@ -243,7 +243,7 @@ export default function OrganizationSettings() {
       {/* Full width. The design uses the pane it is given; centring this in a
           3xl column left the members table squeezed and the rest of the screen
           empty. */}
-      <div className="w-full flex-1 space-y-5 overflow-auto p-6">
+      <div className="w-full flex-1 space-y-6 overflow-auto px-8 py-6">
         <div className="flex items-start gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-sm font-semibold uppercase text-primary">
             {current.name.slice(0, 1)}
@@ -303,8 +303,7 @@ export default function OrganizationSettings() {
 
         {pestana === "members" && (
           <>
-          {/* Members */}
-          <section className="space-y-2">
+          <section className="space-y-3">
 
             {/* Joining it yourself.
                 The picker below searches everyone *except* you — right for
@@ -323,7 +322,7 @@ export default function OrganizationSettings() {
                 </Button>
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-3">
               {/* The magnifier does the work the placeholder was doing alone:
                   a bare box beside a dropdown reads as another field to fill
                   in, not as a way to narrow what is already there. */}
@@ -333,14 +332,17 @@ export default function OrganizationSettings() {
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
                   placeholder="Search by user or email"
-                  className="h-8 pl-7 text-xs"
+                  className="h-8 bg-card pl-7 text-xs"
                 />
               </span>
               <select
                 aria-label="Role"
                 value={filtroRol}
                 onChange={(e) => setFiltroRol(e.target.value)}
-                className="h-8 rounded border bg-background px-2 text-xs"
+                // A bordered chip and not a filled control: it narrows what is
+                // already on screen, and giving it the same weight as the
+                // search box made two things look like one form to fill in.
+                className="h-8 rounded-lg border bg-transparent px-2 text-xs text-muted-foreground"
               >
                 <option value="">Role: any</option>
                 <option value="admin">admin</option>
@@ -354,8 +356,15 @@ export default function OrganizationSettings() {
                 admin manages · member writes · viewer only reads
               </span>
             </div>
-            <div className="rounded-lg border">
-              <Table>
+            {/* On `card`, like every other surface that holds content. The
+                tokens set the palette but not which surface each thing sits on,
+                so this stayed on the page background — the darkest tone — and
+                read as a hole rather than as a panel. */}
+            <div className="overflow-hidden rounded-xl border bg-card">
+              {/* Roomier than the shared table's default `px-2`. A members list
+                  is read across — name, then email, then role — and at that
+                  padding the columns run into each other. */}
+              <Table className="[&_td]:px-3.5 [&_td]:py-2.5 [&_th]:px-3.5">
                 <TableHeader>
                   <TableRow>
                     <TableHead>User</TableHead>

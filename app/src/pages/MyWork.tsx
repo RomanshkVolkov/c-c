@@ -248,7 +248,7 @@ export default function MyWork() {
                         </li>
                       ))}
                       {suyas.length === 0 && (
-                        <li className="rounded border border-dashed px-2 py-3 text-center text-xs text-muted-foreground">
+                        <li className="rounded-lg border border-dashed px-2 py-3 text-center text-xs text-muted-foreground">
                           Nothing
                         </li>
                       )}
@@ -264,7 +264,7 @@ export default function MyWork() {
                 <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {g.name} · {g.items.length}
                 </h2>
-                <ul className="divide-y rounded border">
+                <ul className="divide-y overflow-hidden rounded-xl border bg-card">
                   {g.items.map((t) => (
                     <li key={t.id}>
                       <button

@@ -81,7 +81,7 @@ export default function OrgGeneral({
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
-      <section className="space-y-3 rounded-lg border p-4">
+      <section className="space-y-3 rounded-xl border bg-card p-4">
         <h2 className="text-sm font-medium">Identity</h2>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Name</label>
@@ -115,7 +115,7 @@ export default function OrgGeneral({
         />
       </section>
 
-      <section className="space-y-2 rounded-lg border p-4">
+      <section className="space-y-2 rounded-xl border bg-card p-4">
         <h2 className="text-sm font-medium">Rules</h2>
         <div className="flex items-center gap-2 py-1.5">
           <span className="flex-1 text-sm">Default role when inviting</span>
@@ -147,7 +147,7 @@ export default function OrgGeneral({
         <Interruptor on={false} onChange={() => {}} disabled label="Require 2FA for admins" />
       </section>
 
-      <section className="space-y-3 rounded-lg border border-destructive/40 p-4">
+      <section className="space-y-3 rounded-xl border border-destructive/40 bg-card p-4">
         <h2 className="text-sm font-medium text-destructive">Danger zone</h2>
         <p className="text-xs text-muted-foreground">
           Transferring changes who can bill and manage members. Deleting removes its

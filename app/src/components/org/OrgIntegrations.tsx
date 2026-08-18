@@ -108,7 +108,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
       </div>
 
       {creando && (
-        <div className="space-y-2 rounded border p-3">
+        <div className="space-y-2 rounded-xl border bg-card p-3">
           <Input
             autoFocus
             value={nombre}
@@ -156,7 +156,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
           Nothing is wired to this organization yet.
         </p>
       ) : (
-        <ul className="divide-y rounded border">
+        <ul className="divide-y overflow-hidden rounded-xl border bg-card">
           {mios.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
               <span className={cn("truncate font-medium", !p.isActive && "text-muted-foreground")}>

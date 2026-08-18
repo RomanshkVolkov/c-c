@@ -47,7 +47,7 @@ export default function OrgSpaces() {
   }
 
   return (
-    <ul className="divide-y rounded border">
+    <ul className="divide-y overflow-hidden rounded-xl border bg-card">
       {tree.map((sp) => {
         const dentro = contar(sp.folders);
         const listas = dentro.lists + sp.lists.length;
