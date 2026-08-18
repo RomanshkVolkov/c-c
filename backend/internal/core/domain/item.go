@@ -340,13 +340,19 @@ func lastIndexByte(s string, b byte) int {
 // boardColumns is the fixed set, in board order, with the kind an older client
 // reads to decide what "done" means. Colours match what the previous defaults
 // used, so a board doesn't change appearance on the day of the switch.
+//
+// Los nombres son los del vocabulario unificado —open / in_progress / done /
+// closed— y no los que tenía el tablero antes. La primera columna se llamaba
+// «To do» mientras un reporte del mismo estado decía «Open», así que el mismo
+// estado se leía de dos maneras según por qué pantalla entraras. Es sólo
+// rótulo: nada ramifica por él, el id sintético sale del estado.
 var boardColumns = []struct {
 	Status ReportStatus
 	Name   string
 	Color  string
 	Kind   TaskStatusKind
 }{
-	{ReportPending, "To do", "#7D8BA3", StatusKindOpen},
+	{ReportPending, "Open", "#7D8BA3", StatusKindOpen},
 	{ReportInProgress, "In progress", "#20D9E8", StatusKindActive},
 	{ReportResolved, "Done", "#34D399", StatusKindDone},
 	// Closed is a real state — a report can be closed without being fixed — and

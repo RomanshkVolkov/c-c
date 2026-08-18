@@ -42,7 +42,7 @@ const detail = (id: string, description: string, title = "Una tarea") =>
       seq: 1, priority: "none", createdById: "u1", createdAt: "", updatedAt: "",
     },
     listName: "L", spaceName: "S",
-    status: { id: "st-1", listId: "list-1", name: "To do", color: "", kind: "open" },
+    status: { id: "st-1", listId: "list-1", name: "Open", color: "", kind: "open" },
     tags: [], assignees: [], comments: [], attachments: [], subtasks: [],
   }) as never;
 

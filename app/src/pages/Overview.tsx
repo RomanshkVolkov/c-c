@@ -8,7 +8,7 @@ import { useDMStore } from "@/store/dm.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useServers } from "@/hooks/use-servers";
 import { desde, iniciales } from "@/lib/desde";
-import { normalizeStatus } from "@/types/report";
+import { normalizeStatus, STATUS_LABELS } from "@/types/report";
 import type { APIResponse } from "@/types/auth";
 import type { OpenTask } from "@/types/task";
 import type { ReportListItem, ReportListResult } from "@/types/report";
@@ -129,7 +129,7 @@ export default function Overview() {
                 titulo={r.title}
                 meta={r.folio || r.projectName}
                 metaMono
-                estado={r.status}
+                estado={STATUS_LABELS[r.status]}
                 prioridad={r.priority}
                 onClick={() => navigate(`/reports?report=${r.id}`)}
               />

@@ -9,7 +9,7 @@ export const REPORT_STATUSES: ReportStatus[] = [
 
 export const STATUS_LABELS: Record<ReportStatus, string> = {
   open: "Open",
-  in_progress: "In Progress",
+  in_progress: "In progress",
   done: "Done",
   closed: "Closed",
 };

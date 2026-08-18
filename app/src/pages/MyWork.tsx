@@ -49,7 +49,7 @@ const VISTAS = [
 type Vista = (typeof VISTAS)[number]["key"];
 
 const ESTADOS: { kind: string; label: string }[] = [
-  { kind: "open", label: "To do" },
+  { kind: "open", label: "Open" },
   { kind: "active", label: "In progress" },
   { kind: "done", label: "Done" },
 ];

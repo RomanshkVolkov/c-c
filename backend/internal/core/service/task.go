@@ -73,7 +73,7 @@ func defaultStatuses() []domain.TaskStatus {
 		name, color string
 		kind        domain.TaskStatusKind
 	}{
-		{"To do", "#7D8BA3", domain.StatusKindOpen},
+		{"Open", "#7D8BA3", domain.StatusKindOpen},
 		{"In progress", "#20D9E8", domain.StatusKindActive},
 		{"Done", "#34D399", domain.StatusKindDone},
 	}

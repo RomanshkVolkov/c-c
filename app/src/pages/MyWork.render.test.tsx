@@ -53,7 +53,7 @@ describe("«mi trabajo» al montarse", () => {
     useMyWorkStore.setState({
       tasks: [
         {
-          id: "t-1", seq: 1, title: "Una", priority: "normal", statusName: "To do",
+          id: "t-1", seq: 1, title: "Una", priority: "normal", statusName: "Open",
           statusKind: "open", listId: "li-1", listName: "Lista", spaceId: "sp-1",
           spaceName: "Uno", updatedAt: new Date().toISOString(),
         },

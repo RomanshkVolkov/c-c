@@ -72,3 +72,27 @@ func TestTransitionsAgreeAcrossVocabularies(t *testing.T) {
 		}
 	}
 }
+
+// Las columnas del tablero se llaman como los estados que son.
+//
+// El vocabulario se unificó con el de portento —open / in_progress / done /
+// closed— pero el tablero siguió llamando «To do» a la primera columna, así
+// que el mismo estado se leía de dos maneras según si mirabas un reporte o una
+// tarea. Esto lo fija: es sólo un rótulo, y por eso mismo nada avisa cuando se
+// separa de lo que nombra.
+func TestLasColumnasSeLlamanComoLosEstadosQueSon(t *testing.T) {
+	quiero := map[ReportStatus]string{
+		ReportPending:    "Open",
+		ReportInProgress: "In progress",
+		ReportResolved:   "Done",
+		ReportClosed:     "Closed",
+	}
+	for _, c := range boardColumns {
+		if quiero[c.Status] != c.Name {
+			t.Errorf("el estado %q se llama %q y debería llamarse %q", c.Status, c.Name, quiero[c.Status])
+		}
+	}
+	if len(boardColumns) != len(quiero) {
+		t.Errorf("son cuatro estados, hay %d columnas", len(boardColumns))
+	}
+}

@@ -29,7 +29,7 @@ const detalle = {
     id: "t-1", seq: 7, title: "Una tarea", listId: "li-otra", orgId: "org-1",
     priority: "normal", statusId: "s-open", visibility: "internal", description: "",
   },
-  status: { id: "s-open", name: "To do", color: "#888", kind: "open" },
+  status: { id: "s-open", name: "Open", color: "#888", kind: "open" },
   spaceName: "Uno", listName: "Otra", tags: [], assignees: [], comments: [],
   attachments: [], subtasks: [], backlinks: [],
 };
@@ -38,7 +38,7 @@ beforeEach(() => {
   get.mockResolvedValue({
     success: true,
     data: [
-      { id: "s-open", name: "To do", color: "#888", kind: "open", listId: "li-otra" },
+      { id: "s-open", name: "Open", color: "#888", kind: "open", listId: "li-otra" },
       { id: "s-done", name: "Done", color: "#0f0", kind: "done", listId: "li-otra" },
     ],
   });

@@ -104,7 +104,7 @@ func TestListOpenSkipsFinishedSubtasksAndArchived(t *testing.T) {
 	if got[0].ListName != "Backlog" || got[0].SpaceName != "Producto" {
 		t.Fatalf("a cross-list row has to say where it came from: %+v", got[0])
 	}
-	if got[0].StatusName != "To do" || got[0].StatusKind != domain.StatusKindOpen {
+	if got[0].StatusName != "Open" || got[0].StatusKind != domain.StatusKindOpen {
 		t.Fatalf("status not carried through: %+v", got[0])
 	}
 
