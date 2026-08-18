@@ -27,9 +27,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useTasksStore } from "@/store/tasks.store";
+import { BrandMark } from "@/components/brand/Brand";
 
 /**
- * Cambiar de organización.
+ * Con qué organización estás trabajando, y cómo cambiarla.
+ *
+ * La organización decide lo que enseña cada pantalla de abajo, y la única señal
+ * de en cuál estabas era un selector que había que abrir. Nombrarla —con tu
+ * rol, cuánta gente hay y cuántos espacios tiene— deja ver de un vistazo si vas
+ * a escribir en el espacio de un cliente o en el tuyo.
+ *
+ * La cuenta de miembros viene servida con la organización en vez de contarse
+ * aquí: hacerlo en el cliente obligaría a traerse la lista entera de cada
+ * organización en pantalla sólo para poner un número al lado del nombre.
  *
  * Dos sitios lo piden —el encabezado del sidebar y el de la pantalla de
  * organización— y lo único distinto entre ellos es el disparador: uno es una
@@ -43,6 +54,21 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
   const setCurrentOrg = useOrgsStore((s) => s.setCurrentOrg);
   const createOrg = useOrgsStore((s) => s.createOrg);
   const current = orgs.find((o) => o.id === currentOrgId) ?? null;
+  const espacios = useTasksStore((s) => s.tree.length);
+  // Rol, gente y espacios en una línea. Vivía en un bloque propio encima de
+  // esta fila, que repetía el nombre de la organización dos veces seguidas; es
+  // información de la misma cosa, así que va con ella.
+  const seña = current
+    ? [
+        current.role,
+        current.memberCount
+          ? `${current.memberCount} member${current.memberCount === 1 ? "" : "s"}`
+          : "",
+        espacios ? `${espacios} space${espacios === 1 ? "" : "s"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
@@ -76,20 +102,23 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
             </DropdownMenuTrigger>
           ) : (
             <DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>
+              {/* El icono de la app, no un edificio genérico: es la única marca
+                  que lleva el sidebar desde que esta fila absorbió la cabecera
+                  que la repetía. */}
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Building2 className="size-4" />
+                <BrandMark className="h-4 w-auto" />
               </div>
               <div className="flex flex-1 flex-col gap-0.5 overflow-hidden text-left leading-none">
-                <span className="truncate font-semibold">
+                <span className="truncate text-[12.5px] font-semibold">
                   {current?.name ?? "No organization"}
                 </span>
-                {current && (
-                  <span className="text-xs capitalize text-muted-foreground">
-                    {current.role}
+                {seña && (
+                  <span className="truncate text-[10.5px] capitalize text-muted-foreground">
+                    {seña}
                   </span>
                 )}
               </div>
-              <ChevronsUpDown className="ml-auto size-4 opacity-60" />
+              <ChevronsUpDown className="ml-auto size-3.5 shrink-0 opacity-60" />
             </DropdownMenuTrigger>
           )}
           <DropdownMenuContent

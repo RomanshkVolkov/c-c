@@ -139,5 +139,12 @@ describe("el sidebar", () => {
     // espacios: los espacios *son* esa navegación.
     expect(container.textContent).toContain("Overview");
     expect(container.textContent).not.toContain("Tasks");
+    // La organización se nombra **una** vez. Vivía en dos bloques seguidos —una
+    // cabecera y el selector— que decían lo mismo uno encima del otro.
+    expect(container.textContent!.match(/Uno/g)?.length).toBe(1);
+    // Y esa única fila lleva la seña. Sin espacios en la cuenta: el navegador
+    // vuelve a pedir el árbol al montarse y aquí la api contesta vacío, así
+    // que exigir «1 space» sería exigir un dato que en este montaje no existe.
+    expect(container.textContent).toContain("admin · 3 members");
   });
 });

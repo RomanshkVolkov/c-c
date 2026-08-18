@@ -51,7 +51,6 @@ import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useOrgsStore } from "@/store/orgs.store";
-import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
 
 // guest: reachable on-device (no backend). superadmin: only for platform admins.
@@ -98,37 +97,6 @@ const DEV_TOOLS = [
   { label: "Requests", path: "/devtools/requests", icon: Send, guest: false },
   { label: "Tokens", path: "/devtools/tokens", icon: KeyRound, guest: true },
 ];
-
-
-/**
- * Who you are working as, above everything else in the sidebar.
- *
- * The organization decides what every screen below shows, and the only sign of
- * which one you were in was a switcher you had to open. Naming it — with your
- * role, how many people are in it and how many spaces it has — means you can
- * tell at a glance whether you are about to write in a client's space or your
- * own.
- *
- * The member count is served with the organization rather than counted here:
- * doing it in the client would mean pulling the whole member list of every
- * organization on screen just to show a number beside its name.
- */
-function OrgHeader() {
-  const org = useOrgsStore((s) => s.currentOrg());
-  const spaces = useTasksStore((s) => s.tree.length);
-  if (!org) return null;
-  const partes = [
-    org.role,
-    org.memberCount ? `${org.memberCount} member${org.memberCount === 1 ? "" : "s"}` : "",
-    spaces ? `${spaces} space${spaces === 1 ? "" : "s"}` : "",
-  ].filter(Boolean);
-  return (
-    <div className="px-3 pb-1 pt-2">
-      <p className="truncate text-sm font-medium">{org.name}</p>
-      <p className="truncate text-xs text-muted-foreground">{partes.join(" · ")}</p>
-    </div>
-  );
-}
 
 /** DevTools, folded into one row that opens onto the tools you can use. */
 function DevToolsMenu() {
@@ -215,20 +183,22 @@ export default function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
-      <SidebarHeader>
-        {/* The brand sits outside the `authed` check below: signed out, the
-            sidebar still shows guest navigation, and a product with no name on
-            it looks broken. Collapsed it drops to the mark alone, which is the
-            same drawing as the window icon. */}
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "px-1")}>
-          {collapsed ? (
-            <BrandMark className="h-5 w-auto" />
-          ) : (
-            <Brand className="text-sm" />
-          )}
-        </div>
-      </SidebarHeader>
-      {authed && !collapsed && <OrgHeader />}
+      {/* La marca sólo cuando no hay una fila de organización que la lleve:
+          sin sesión —el sidebar sigue mostrando las herramientas de invitado, y
+          un producto sin nombre parece roto— o plegado, que es cuando el
+          selector no se dibuja. Con sesión y desplegado, el nombre de la app
+          vive dentro de esa fila y repetirlo encima era el bloque de más. */}
+      {(!authed || collapsed) && (
+        <SidebarHeader>
+          <div className={cn("flex items-center", collapsed ? "justify-center" : "px-1")}>
+            {collapsed ? (
+              <BrandMark className="h-5 w-auto" />
+            ) : (
+              <Brand className="text-sm" />
+            )}
+          </div>
+        </SidebarHeader>
+      )}
       {authed && (
         <SidebarHeader>
           {/* Collapsed, the header is one icon wide. The org switcher was still
