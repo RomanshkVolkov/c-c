@@ -62,12 +62,6 @@ type OrgMembership struct {
 	UserID    string    `gorm:"type:varchar(36);primaryKey" json:"userId"`
 	Role      OrgRole   `gorm:"type:varchar(20);not null"   json:"role"`
 	CreatedAt time.Time `json:"createdAt"`
-	Domain    string    `json:"domain,omitempty"`
-
-	DefaultInviteRole        OrgRole   `json:"defaultInviteRole,omitempty"`
-	ClientsSeeOnlyTheirSpace bool      `json:"clientsSeeOnlyTheirSpace"`
-	GuestsCanUseDevTools     bool      `json:"guestsCanUseDevTools"`
-	UpdatedAt                time.Time `json:"updatedAt"`
 }
 
 // InvitationStatus is the lifecycle of an org invitation.
@@ -177,4 +171,7 @@ type InvitationResponse struct {
 	InvitedBy   string           `json:"invitedBy"`   // inviter username
 	InvitedUser string           `json:"invitedUser"` // invitee username (org-side listing)
 	CreatedAt   time.Time        `json:"createdAt"`
+	// ExpiresAt viaja porque la vista de administración muestra las caducadas
+	// para poder reenviarlas; sin la fecha no hay forma de distinguirlas.
+	ExpiresAt time.Time `json:"expiresAt"`
 }

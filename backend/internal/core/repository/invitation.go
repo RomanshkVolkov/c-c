@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"gorm.io/gorm"
@@ -69,7 +70,7 @@ func (r *InvitationRepository) ListForUser(userID string) ([]domain.InvitationRe
 	var out []domain.InvitationResponse
 	err := r.db.Raw(`
 		SELECT i.id, i.org_id, o.name AS org_name, i.role, i.status,
-		       inv.username AS invited_by, i.created_at
+		       inv.username AS invited_by, i.created_at, i.expires_at
 		FROM org_invitations i
 		JOIN organizations o ON o.id = i.org_id
 		LEFT JOIN users inv ON inv.id = i.invited_by_user_id
@@ -82,17 +83,21 @@ func (r *InvitationRepository) ListForUser(userID string) ([]domain.InvitationRe
 
 // ListForOrg returns an org's pending invitations, with the invitee's username
 // (admin management view).
+//
+// A diferencia de ListForUser, esta **no** esconde las caducadas: quien
+// administra necesita verlas para reenviarlas o retirarlas. Esconderlas dejaba
+// «Reenviar» sin nada a lo que aplicarse — la invitación vencida desaparecía y
+// la única salida era crear otra.
 func (r *InvitationRepository) ListForOrg(orgID string) ([]domain.InvitationResponse, error) {
 	var out []domain.InvitationResponse
 	err := r.db.Raw(`
 		SELECT i.id, i.org_id, o.name AS org_name, i.role, i.status,
-		       inv.username AS invited_by, u.username AS invited_user, i.created_at
+		       inv.username AS invited_by, u.username AS invited_user, i.created_at, i.expires_at
 		FROM org_invitations i
 		JOIN organizations o ON o.id = i.org_id
 		LEFT JOIN users inv ON inv.id = i.invited_by_user_id
 		LEFT JOIN users u ON u.id = i.invited_user_id
 		WHERE i.org_id = ? AND i.status = ?
-		  AND (i.expires_at IS NULL OR i.expires_at > NOW())
 		ORDER BY i.created_at DESC
 	`, orgID, domain.InvitePending).Scan(&out).Error
 	return out, err
@@ -127,6 +132,22 @@ func (r *InvitationRepository) Accept(inv *domain.OrgInvitation) error {
 		}
 		return nil
 	})
+}
+
+// Renew empuja el vencimiento de una invitación pendiente. Sólo toca las
+// pendientes: reavivar una ya aceptada, rechazada o retirada la resucitaría a
+// espaldas de quien la cerró.
+func (r *InvitationRepository) Renew(id string, expiresAt time.Time) error {
+	res := r.db.Model(&domain.OrgInvitation{}).
+		Where("id = ? AND status = ?", id, domain.InvitePending).
+		Update("expires_at", expiresAt)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrInvitationNotFound
+	}
+	return nil
 }
 
 // SetStatus transitions a pending invitation to declined/revoked.

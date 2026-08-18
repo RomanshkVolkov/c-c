@@ -52,6 +52,7 @@ interface OrgsState {
   listOrgInvitations: (orgId: string) => Promise<Invitation[]>;
   createInvitation: (orgId: string, payload: CreateInvitationPayload) => Promise<void>;
   revokeInvitation: (orgId: string, invitationId: string) => Promise<void>;
+  resendInvitation: (orgId: string, invitationId: string) => Promise<void>;
 }
 
 export const useOrgsStore = create<OrgsState>()(
@@ -190,6 +191,18 @@ export const useOrgsStore = create<OrgsState>()(
           true,
         );
         if (!res.success) throw new Error(res.error ?? "Failed to send invitation");
+      },
+
+      // «Reenviar» le devuelve el plazo a una invitación. Como se aceptan
+      // dentro de la app y no por correo, no hay nada que volver a mandar: lo
+      // que se recupera es la vigencia de la que ya caducó.
+      resendInvitation: async (orgId, invitationId) => {
+        const res = await api.post<APIResponse<unknown>>(
+          `/api/v1/organizations/${orgId}/invitations/${invitationId}/resend`,
+          {},
+          true,
+        );
+        if (!res.success) throw new Error(res.error ?? "Failed to resend invitation");
       },
 
       revokeInvitation: async (orgId, invitationId) => {

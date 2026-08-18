@@ -31,6 +31,7 @@ func InitOrganizationRoutes(db *gorm.DB, r *chi.Mux) {
 		// Invitations (org-admin side).
 		r.Get("/{id}/invitations", inv.ListForOrg)
 		r.Post("/{id}/invitations", inv.Create)
+		r.Post("/{id}/invitations/{invitationId}/resend", inv.Renew)
 		r.Delete("/{id}/invitations/{invitationId}", inv.Revoke)
 	})
 

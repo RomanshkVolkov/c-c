@@ -70,6 +70,21 @@ func (s *InvitationService) Decline(invitationID, callerID string) error {
 	return s.repo.SetStatus(invitationID, domain.InviteDeclined)
 }
 
+// Renew reinicia el plazo de una invitación. Es lo que «Reenviar» significa
+// aquí: como se aceptan dentro de la app y no por correo, no hay nada que
+// volver a mandar — lo que se hace es devolverle vigencia a la que caducó.
+// orgID guarda contra renovar la invitación de otra organización.
+func (s *InvitationService) Renew(invitationID, orgID string) error {
+	inv, err := s.repo.FindByID(invitationID)
+	if err != nil {
+		return err
+	}
+	if inv.OrgID != orgID {
+		return repository.ErrInvitationNotFound
+	}
+	return s.repo.Renew(invitationID, time.Now().Add(invitationTTL))
+}
+
 // Revoke marks an invitation revoked. The handler verifies the caller admins
 // the invitation's org (route is nested under the org). orgID guards against
 // revoking an invitation from a different org via a mismatched URL.

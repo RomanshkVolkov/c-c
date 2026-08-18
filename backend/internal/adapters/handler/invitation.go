@@ -14,6 +14,7 @@ type InvitationHandler interface {
 	Create(w http.ResponseWriter, r *http.Request)
 	ListForOrg(w http.ResponseWriter, r *http.Request)
 	Revoke(w http.ResponseWriter, r *http.Request)
+	Renew(w http.ResponseWriter, r *http.Request)
 	ListMine(w http.ResponseWriter, r *http.Request)
 	Accept(w http.ResponseWriter, r *http.Request)
 	Decline(w http.ResponseWriter, r *http.Request)
@@ -108,6 +109,21 @@ func (h *invitationHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Invitation revoked"})
+}
+
+func (h *invitationHandler) Renew(w http.ResponseWriter, r *http.Request) {
+	_, orgID, ok := requireOrgAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := h.svc.Renew(chi.URLParam(r, "invitationId"), orgID); err != nil {
+		if mapInvitationError(w, err) {
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to renew invitation", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Invitation renewed"})
 }
 
 func (h *invitationHandler) ListMine(w http.ResponseWriter, r *http.Request) {

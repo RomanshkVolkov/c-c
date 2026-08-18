@@ -3,12 +3,12 @@ import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
 import OrgSpaces from "@/components/org/OrgSpaces";
+import OrgInvitations from "@/components/org/OrgInvitations";
 import OrgGeneral from "@/components/org/OrgGeneral";
-import { UserPlus, Trash2, Mail, X, Loader2, Search } from "lucide-react";
+import OrgSwitcher from "@/components/OrgSwitcher";
+import { Trash2, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -25,12 +25,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import UserPicker from "@/components/UserPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { desde } from "@/lib/desde";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useAuthStore } from "@/store/auth.store";
 import type { OrgMember, OrgRole, Invitation } from "@/types/organization";
-import type { UserSummary } from "@/types/collections";
 
 const ROLES: OrgRole[] = ["admin", "member", "viewer"];
 
@@ -48,19 +47,6 @@ const PESTANAS = [
 
 type Pestana = (typeof PESTANAS)[number]["key"];
 
-/** How long ago, in the words somebody would use. */
-function desde(iso?: string | null): string {
-  if (!iso) return "never";
-  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (min < 2) return "now";
-  if (min < 60) return `${min} min ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.floor(h / 24);
-  if (d === 1) return "yesterday";
-  return `${d} d ago`;
-}
-
 export default function OrganizationSettings() {
   const [pestana, setPestana] = useState<Pestana>("members");
   const espacios = useTasksStore((s) => s.tree.length);
@@ -73,8 +59,6 @@ export default function OrganizationSettings() {
   const updateMemberRole = useOrgsStore((s) => s.updateMemberRole);
   const removeMember = useOrgsStore((s) => s.removeMember);
   const listOrgInvitations = useOrgsStore((s) => s.listOrgInvitations);
-  const createInvitation = useOrgsStore((s) => s.createInvitation);
-  const revokeInvitation = useOrgsStore((s) => s.revokeInvitation);
 
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<Invitation[]>([]);
@@ -98,10 +82,6 @@ export default function OrganizationSettings() {
     spaces: espacios,
   };
   const [loading, setLoading] = useState(false);
-
-  const [picked, setPicked] = useState<UserSummary | null>(null);
-  const [role, setRole] = useState<OrgRole>("member");
-  const [pickerKey, setPickerKey] = useState(0); // reset picker after use
 
   const orgId = current?.id;
   const canManage = superadmin || current?.role === "admin";
@@ -153,41 +133,6 @@ export default function OrganizationSettings() {
     );
   }
 
-  const resetPicker = () => {
-    setPicked(null);
-    setPickerKey((k) => k + 1);
-  };
-
-  const invite = async () => {
-    if (!picked || !orgId) return;
-    try {
-      await createInvitation(orgId, { userId: picked.id, role });
-      toast.success(`Invited @${picked.username} to ${current.name}`);
-      resetPicker();
-      refresh();
-    } catch (e) {
-      toast.error("Could not send invitation", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  // Direct assignment (no accept step) — for admins/superadmins onboarding a user
-  // straight into the org.
-  const addDirect = async () => {
-    if (!picked || !orgId) return;
-    try {
-      await addMember(orgId, { userId: picked.id, role });
-      toast.success(`Added @${picked.username} to ${current.name}`);
-      resetPicker();
-      refresh();
-    } catch (e) {
-      toast.error("Could not add member", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
   const changeRole = async (userId: string, next: OrgRole) => {
     if (!orgId) return;
     try {
@@ -215,24 +160,6 @@ export default function OrganizationSettings() {
       toast.success(`Removed @${m.username}`);
     } catch (e) {
       toast.error("Could not remove member", {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  const revoke = async (inv: Invitation) => {
-    if (!orgId) return;
-    const ok = await confirm({
-      title: `Revoke invitation to @${inv.invitedUser}?`,
-      confirmText: "Revoke",
-      destructive: true,
-    });
-    if (!ok) return;
-    try {
-      await revokeInvitation(orgId, inv.id);
-      setInvites((prev) => prev.filter((x) => x.id !== inv.id));
-    } catch (e) {
-      toast.error("Could not revoke invitation", {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -268,9 +195,12 @@ export default function OrganizationSettings() {
             </p>
           </div>
           {canManage && (
-            <Button size="sm" className="ml-auto shrink-0" onClick={() => setPestana("invites")}>
-              Invite
-            </Button>
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              <OrgSwitcher variant="button" />
+              <Button size="sm" onClick={() => setPestana("invites")}>
+                Invite
+              </Button>
+            </span>
           )}
         </div>
 
@@ -464,66 +394,15 @@ export default function OrganizationSettings() {
         )}
 
         {pestana === "invites" && (
-          <>
-          {/* Invite */}
-          {canManage && (
-            <section className="space-y-2">
-              <Label className="text-sm font-medium">Invite a user</Label>
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  <UserPicker key={pickerKey} onSelect={setPicked} placeholder="Search username…" />
-                </div>
-                <Select value={role} onValueChange={(v) => v && setRole(v as OrgRole)}>
-                  <SelectTrigger className="w-32 capitalize">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ROLES.map((r) => (
-                      <SelectItem key={r} value={r} className="capitalize">
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" onClick={addDirect} disabled={!picked} title="Add without an invitation">
-                  Add
-                </Button>
-                <Button onClick={invite} disabled={!picked}>
-                  <UserPlus className="size-4 mr-1" /> Invite
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                <strong>Add</strong> assigns the user immediately. <strong>Invite</strong> sends a
-                request they accept from their own “Invitations” screen — no email needed.
-              </p>
-            </section>
-          )}
-          {/* Pending invitations */}
-          {canManage && invites.length > 0 && (
-            <section className="space-y-2">
-              <Label className="text-sm font-medium flex items-center gap-1.5">
-                <Mail className="size-4" /> Pending invitations ({invites.length})
-              </Label>
-              <div className="rounded-lg border divide-y">
-                {invites.map((inv) => (
-                  <div key={inv.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                    <span className="flex-1 truncate">@{inv.invitedUser}</span>
-                    <Badge variant="secondary" className="capitalize">{inv.role}</Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => revoke(inv)}
-                      title="Revoke"
-                    >
-                      <X className="size-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-          </>
+          <OrgInvitations
+            orgId={current.id}
+            orgName={current.name}
+            invites={invites}
+            setInvites={setInvites}
+            canManage={canManage}
+            defaultRole={current.defaultInviteRole ?? "member"}
+            onAdded={refresh}
+          />
         )}
 
         {pestana === "spaces" && <OrgSpaces />}

@@ -28,7 +28,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOrgsStore } from "@/store/orgs.store";
 
-export default function OrgSwitcher() {
+/**
+ * Cambiar de organización.
+ *
+ * Dos sitios lo piden —el encabezado del sidebar y el de la pantalla de
+ * organización— y lo único distinto entre ellos es el disparador: uno es una
+ * fila de barra lateral, el otro un botón. La lista y el diálogo de crear son
+ * los mismos, así que lo que varía es una prop y no un segundo componente que
+ * se quedaría atrás a la primera corrección.
+ */
+export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sidebar" | "button" }) {
   const orgs = useOrgsStore((s) => s.orgs);
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   const setCurrentOrg = useOrgsStore((s) => s.setCurrentOrg);
@@ -57,26 +66,32 @@ export default function OrgSwitcher() {
     }
   };
 
-  return (
-    <SidebarMenu>
-      <SidebarMenuItem>
+  const menu = (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>
-            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          {variant === "button" ? (
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
               <Building2 className="size-4" />
-            </div>
-            <div className="flex flex-1 flex-col gap-0.5 overflow-hidden text-left leading-none">
-              <span className="truncate font-semibold">
-                {current?.name ?? "No organization"}
-              </span>
-              {current && (
-                <span className="text-xs capitalize text-muted-foreground">
-                  {current.role}
+              Switch organization
+              <ChevronsUpDown className="size-3.5 opacity-60" />
+            </DropdownMenuTrigger>
+          ) : (
+            <DropdownMenuTrigger render={<SidebarMenuButton size="lg" />}>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Building2 className="size-4" />
+              </div>
+              <div className="flex flex-1 flex-col gap-0.5 overflow-hidden text-left leading-none">
+                <span className="truncate font-semibold">
+                  {current?.name ?? "No organization"}
                 </span>
-              )}
-            </div>
-            <ChevronsUpDown className="ml-auto size-4 opacity-60" />
-          </DropdownMenuTrigger>
+                {current && (
+                  <span className="text-xs capitalize text-muted-foreground">
+                    {current.role}
+                  </span>
+                )}
+              </div>
+              <ChevronsUpDown className="ml-auto size-4 opacity-60" />
+            </DropdownMenuTrigger>
+          )}
           <DropdownMenuContent
             align="start"
             className="w-[--radix-dropdown-menu-trigger-width] min-w-56"
@@ -105,8 +120,9 @@ export default function OrgSwitcher() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </SidebarMenuItem>
+  );
 
+  const dialogo = (
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -141,6 +157,22 @@ export default function OrgSwitcher() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+  );
+
+  // El botón se pone donde caiga; la fila necesita ir dentro de la maquinaria
+  // de la barra lateral para heredar su colapso.
+  if (variant === "button") {
+    return (
+      <>
+        {menu}
+        {dialogo}
+      </>
+    );
+  }
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>{menu}</SidebarMenuItem>
+      {dialogo}
     </SidebarMenu>
   );
 }

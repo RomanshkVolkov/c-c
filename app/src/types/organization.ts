@@ -44,6 +44,9 @@ export interface Invitation {
   invitedBy: string; // inviter username
   invitedUser?: string; // invitee username (org-side listing only)
   createdAt: string;
+  // Sólo en la vista de administración: ahí sí llegan las caducadas, y sin la
+  // fecha no habría forma de distinguirlas de las vigentes.
+  expiresAt?: string;
 }
 
 export interface CreateInvitationPayload {
