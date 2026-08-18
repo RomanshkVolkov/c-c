@@ -4,6 +4,23 @@ import { api, apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import type { APIResponse } from "@/types/auth";
+
+/** Where a dragged node lands relative to the row it was dropped on. */
+export type DropWhere = "before" | "after" | "inside";
+
+/**
+ * Enough to move a node: what it is, and what it currently hangs off.
+ *
+ * The parent travels with the reference because "drop it after this list" has
+ * to resolve to a container, and the tree already knows which one — asking the
+ * server again would be a round-trip for something on screen.
+ */
+export interface TreeNodeRef {
+  id: string;
+  kind: "folder" | "list";
+  /** The folder it sits in; null means directly under the space. */
+  parentId: string | null;
+}
 import type {
   TaskStatusKind,
   BoardResponse,
@@ -52,6 +69,18 @@ interface TasksState {
 
   moveSpace: (id: string, dir: "up" | "down") => Promise<void>;
   moveFolder: (id: string, dir: "up" | "down") => Promise<void>;
+  /**
+   * Drag-and-drop in the tree: drop `dragged` before/after `target`, or inside
+   * it when the target is a folder.
+   *
+   * The server has taken neighbours rather than a position all along — the same
+   * shape `moveTask` uses — so a drop is one row updated, not every sibling
+   * after it renumbered.
+   */
+  dropNode: (dragged: TreeNodeRef, target: TreeNodeRef, where: DropWhere) => Promise<void>;
+  duplicateFolder: (id: string, name?: string) => Promise<void>;
+  moveFolderToSpace: (id: string, spaceId: string) => Promise<void>;
+  moveListToSpace: (id: string, spaceId: string) => Promise<void>;
   createSubtask: (parentId: string, title: string) => Promise<void>;
 
   createStatus: (name: string, color: string, kind: TaskStatusKind) => Promise<void>;
@@ -293,6 +322,31 @@ export const useTasksStore = create<TasksState>()(
       },
       moveFolder: async (id, dir) => {
         await api.post<APIResponse<unknown>>(`/api/v1/task-folders/${id}/move?dir=${dir}`, {}, true);
+        await get().fetchTree();
+      },
+
+      dropNode: async (dragged, target, where) => {
+        // "inside" means the target becomes the parent; before/after make them
+        // siblings, so the parent is the target's own.
+        const parent = where === "inside" ? target.id : target.parentId;
+        const body: Record<string, unknown> = { folderId: parent ?? null };
+        if (where === "before") body.beforeId = target.id;
+        if (where === "after") body.afterId = target.id;
+        const base = dragged.kind === "folder" ? "task-folders" : "task-lists";
+        await api.post<APIResponse<unknown>>(`/api/v1/${base}/${dragged.id}/move`, body, true);
+        await get().fetchTree();
+      },
+
+      duplicateFolder: async (id, name) => {
+        await api.post<APIResponse<unknown>>(`/api/v1/task-folders/${id}/duplicate`, { name: name ?? "" }, true);
+        await get().fetchTree();
+      },
+      moveFolderToSpace: async (id, spaceId) => {
+        await api.post<APIResponse<unknown>>(`/api/v1/task-folders/${id}/move-to-space`, { spaceId }, true);
+        await get().fetchTree();
+      },
+      moveListToSpace: async (id, spaceId) => {
+        await api.post<APIResponse<unknown>>(`/api/v1/task-lists/${id}/move-to-space`, { spaceId }, true);
         await get().fetchTree();
       },
 

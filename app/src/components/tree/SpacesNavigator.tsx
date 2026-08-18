@@ -15,6 +15,8 @@ import {
   FolderPlus,
   ListChecks,
   Eye,
+  Copy,
+  FolderInput,
   Plus,
   MoreHorizontal,
   Pencil,
@@ -32,6 +34,9 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import ChannelDialog from "@/components/ChannelDialog";
@@ -39,7 +44,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
-import { docKey } from "@/types/task";
+import { docKey, type FolderTree } from "@/types/task";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -47,6 +52,37 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import InlineName from "@/components/tree/InlineName";
+
+/**
+ * "Move to another space", as a submenu of the spaces you could move it to.
+ *
+ * A submenu rather than a dialog because the answer is always one of a short
+ * list you are already looking at. The space it is already in is left out: it
+ * is the one choice that does nothing.
+ *
+ * Dragging across spaces is refused on purpose — the design marks it in red —
+ * so this is the only way, and it being deliberate is the point: crossing
+ * spaces can change which client sees the work.
+ */
+function MoveToSpace({ currentSpaceId, onPick }: { currentSpaceId: string; onPick: (id: string) => void }) {
+  const tree = useTasksStore((s) => s.tree);
+  const otros = tree.filter((s) => s.id !== currentSpaceId);
+  if (otros.length === 0) return null;
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <FolderInput className="size-4" /> Move to space
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        {otros.map((s) => (
+          <DropdownMenuItem key={s.id} onClick={() => onPick(s.id)}>
+            <span className="truncate">{s.name}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
 
 /** Reports a failed write and keeps the inline row open with what was typed. */
 const avisando = (p: Promise<unknown>) =>
@@ -269,6 +305,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             <ListNode
               key={list.id}
               list={list}
+              spaceId={space.id}
               spaceName={space.name}
               spaceProjectId={space.projectId}
             />
@@ -343,13 +380,12 @@ function FolderNode({
   folder,
   spaceName,
   spaceProjectId,
+  depth,
 }: {
   spaceId: string;
-  folder: {
-    id: string;
-    name: string;
-    lists: { id: string; name: string; taskCount: number; projectId?: string }[];
-  };
+  folder: FolderTree;
+  /** How deep this folder sits, only so the row can be indented. */
+  depth?: number;
   // Passed straight through: a folder can't hold a channel, but the lists inside
   // it still inherit the space's.
   spaceName?: string;
@@ -362,7 +398,8 @@ function FolderNode({
   const openDoc = useTasksStore((s) => s.openDoc);
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
-  const { createList, renameFolder, deleteFolder, moveFolder } = useTasksStore.getState();
+  const { createList, renameFolder, deleteFolder, moveFolder, duplicateFolder, moveFolderToSpace } =
+    useTasksStore.getState();
 
   return (
     <div>
@@ -430,6 +467,19 @@ function FolderNode({
                 <ArrowDown className="size-4" /> Move down
               </DropdownMenuItem>
               <DropdownMenuItem
+                onClick={() =>
+                  duplicateFolder(folder.id, `${folder.name} copy`).catch((e) => toast.error(String(e)))
+                }
+              >
+                <Copy className="size-4" /> Duplicate
+              </DropdownMenuItem>
+              <MoveToSpace
+                currentSpaceId={spaceId}
+                onPick={(destino) =>
+                  moveFolderToSpace(folder.id, destino).catch((e) => toast.error(String(e)))
+                }
+              />
+              <DropdownMenuItem
                 onClick={async () => {
                   const ok = await confirm({
                     title: `Delete folder "${folder.name}"?`,
@@ -449,8 +499,24 @@ function FolderNode({
       )}
       {open && (
         <div className="ml-4">
+          {folder.folders?.map((f) => (
+            <FolderNode
+              key={f.id}
+              spaceId={spaceId}
+              folder={f}
+              spaceName={spaceName}
+              spaceProjectId={spaceProjectId}
+              depth={(depth ?? 0) + 1}
+            />
+          ))}
           {folder.lists.map((l) => (
-            <ListNode key={l.id} list={l} spaceName={spaceName} spaceProjectId={spaceProjectId} />
+            <ListNode
+              key={l.id}
+              list={l}
+              spaceId={spaceId}
+              spaceName={spaceName}
+              spaceProjectId={spaceProjectId}
+            />
           ))}
           {addingList && (
             <InlineName
@@ -468,10 +534,14 @@ function FolderNode({
 
 function ListNode({
   list,
+  spaceId,
   spaceName,
   spaceProjectId,
 }: {
   list: { id: string; name: string; taskCount: number; projectId?: string };
+  /** Passed down rather than read off the list: the summary the tree gets does
+      not carry it, and both callers already know which space they are in. */
+  spaceId: string;
   /** Named so an inherited channel can say where it comes from. */
   spaceName?: string;
   spaceProjectId?: string;
@@ -481,7 +551,7 @@ function ListNode({
   const navigate = useNavigate();
   const confirm = useConfirm();
   const docIndex = useTasksStore((s) => s.docIndex);
-  const { renameList, deleteList } = useTasksStore.getState();
+  const { renameList, deleteList, moveListToSpace } = useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const active = activeListId === list.id;
@@ -554,6 +624,10 @@ function ListNode({
         />
         <DropdownMenuContent align="start">
           <DropdownMenuGroup>
+            <MoveToSpace
+              currentSpaceId={spaceId}
+              onPick={(destino) => moveListToSpace(list.id, destino).catch((e) => toast.error(String(e)))}
+            />
             <DropdownMenuItem
               onClick={async () => {
                 setRenaming(true);
