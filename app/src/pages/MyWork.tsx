@@ -225,6 +225,10 @@ export default function MyWork() {
             <div className="flex gap-3 overflow-x-auto">
               {ESTADOS.map((col) => {
                 const suyas = visibles.filter((t) => t.statusKind === col.kind);
+                // Con «sólo abiertas» lo terminado ni se pide al servidor, así
+                // que esta columna no está vacía: está fuera de la pregunta.
+                // Decir «0» era afirmar que no hay ninguna.
+                const fuera = !includeClosed && col.kind === "done";
                 return (
                   <section key={col.kind} className="w-72 shrink-0">
                     <h2 className="mb-1.5 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium uppercase tracking-wide">
@@ -239,7 +243,9 @@ export default function MyWork() {
                         )}
                       />
                       {col.label}
-                      <span className="ml-auto text-muted-foreground">{suyas.length}</span>
+                      <span className="ml-auto text-muted-foreground">
+                        {fuera ? "—" : suyas.length}
+                      </span>
                     </h2>
                     <ul className="space-y-1.5">
                       {suyas.map((t) => (
@@ -249,7 +255,7 @@ export default function MyWork() {
                       ))}
                       {suyas.length === 0 && (
                         <li className="rounded-lg border border-dashed px-2 py-3 text-center text-xs text-muted-foreground">
-                          Nothing
+                          {fuera ? "Not asked for — showing open only" : "Nothing"}
                         </li>
                       )}
                     </ul>

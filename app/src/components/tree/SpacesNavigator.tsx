@@ -769,7 +769,7 @@ function ListNode({
   spaceName,
   spaceProjectId,
 }: {
-  list: { id: string; name: string; taskCount: number; projectId?: string };
+  list: { id: string; name: string; taskCount: number; openCount: number; projectId?: string };
   /** Passed down rather than read off the list: the summary the tree gets does
       not carry it, and both callers already know which space they are in. */
   spaceId: string;
@@ -842,8 +842,18 @@ function ListNode({
       {docIndex[docKey("list", list.id)] && (
         <FileText className="size-3 shrink-0 text-muted-foreground" />
       )}
-      {list.taskCount > 0 && (
-        <span className="text-xs text-muted-foreground">{list.taskCount}</span>
+      {/* Lo que queda por hacer, no cuántas tareas caben ahí dentro.
+          Decía el total y no coincidía con «Mi trabajo», que enseña lo abierto:
+          la misma lista contaba 9 en el árbol y 1 en la pantalla de al lado sin
+          que nada explicara la diferencia. El total sigue estando, en el
+          título, para quien lo busque. */}
+      {list.openCount > 0 && (
+        <span
+          className="text-xs text-muted-foreground"
+          title={`${list.openCount} open · ${list.taskCount} in total`}
+        >
+          {list.openCount}
+        </span>
       )}
       <DropdownMenu>
         <DropdownMenuTrigger

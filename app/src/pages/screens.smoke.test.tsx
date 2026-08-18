@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * Every new screen, mounted once with data in the stores.
@@ -39,7 +39,7 @@ const arbol = [
   {
     id: "sp-1", orgId: "org-1", name: "Uno", color: "#888",
     folders: [{ id: "fo-1", name: "Carpeta", folders: [], lists: [] }],
-    lists: [{ id: "li-1", name: "Lista", taskCount: 2 }],
+    lists: [{ id: "li-1", name: "Lista", taskCount: 9, openCount: 1 }],
   },
 ];
 
@@ -116,6 +116,15 @@ describe("las pantallas nuevas se montan sin renderizar en bucle", () => {
     const { default: SpacesNavigator } = await import("@/components/tree/SpacesNavigator");
     montar(<SpacesNavigator />);
     await waitFor(() => expect(document.body.textContent).toContain("Uno"));
+  });
+
+  it("el árbol cuenta lo que queda, que es lo que enseña «Mi trabajo»", async () => {
+    const { default: SpacesNavigator } = await import("@/components/tree/SpacesNavigator");
+    montar(<SpacesNavigator />);
+    // Nueve tareas vivas, una abierta. El árbol decía 9 y la pantalla de al
+    // lado 1, sin que nada explicara la diferencia.
+    const badge = await screen.findByTitle("1 open · 9 in total");
+    expect(badge.textContent).toBe("1");
   });
 });
 
