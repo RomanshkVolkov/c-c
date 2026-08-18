@@ -80,13 +80,42 @@ import InlineName from "@/components/tree/InlineName";
  */
 const Ordering = createContext(false);
 
-/** Where a node currently lives, worked out from the tree already on screen. */
-function localizar(tree: SpaceTree[], id: string): TreeNodeRef | null {
+/** What is in the air, so every row can tell whether it is a legal landing. */
+const Arrastrado = createContext<Situado | null>(null);
+
+/**
+ * Where a node lives, worked out from the tree already on screen.
+ *
+ * Carries the space too, because crossing spaces is the one move a drag must
+ * refuse — that is what "move to another space" is for, and doing it by
+ * accident can change which client sees the work. And how many things travel
+ * with it, so the drag can say so instead of quietly taking a whole branch.
+ */
+interface Situado extends TreeNodeRef {
+  spaceId: string;
+  /** Folders and lists underneath. Zero for a list. */
+  arrastra: number;
+}
+
+function contar(f: FolderTree): number {
+  return (
+    f.lists.length +
+    (f.folders ?? []).reduce((n, h) => n + 1 + contar(h), 0)
+  );
+}
+
+function localizar(tree: SpaceTree[], id: string): Situado | null {
   for (const space of tree) {
-    const enFolders = (folders: FolderTree[], parent: string | null): TreeNodeRef | null => {
+    const enFolders = (folders: FolderTree[], parent: string | null): Situado | null => {
       for (const f of folders) {
-        if (f.id === id) return { id, kind: "folder", parentId: parent };
-        for (const l of f.lists) if (l.id === id) return { id, kind: "list", parentId: f.id };
+        if (f.id === id) {
+          return { id, kind: "folder", parentId: parent, spaceId: space.id, arrastra: contar(f) };
+        }
+        for (const l of f.lists) {
+          if (l.id === id) {
+            return { id, kind: "list", parentId: f.id, spaceId: space.id, arrastra: 0 };
+          }
+        }
         const dentro = enFolders(f.folders ?? [], f.id);
         if (dentro) return dentro;
       }
@@ -94,7 +123,11 @@ function localizar(tree: SpaceTree[], id: string): TreeNodeRef | null {
     };
     const enEspacio = enFolders(space.folders, null);
     if (enEspacio) return enEspacio;
-    for (const l of space.lists) if (l.id === id) return { id, kind: "list", parentId: null };
+    for (const l of space.lists) {
+      if (l.id === id) {
+        return { id, kind: "list", parentId: null, spaceId: space.id, arrastra: 0 };
+      }
+    }
   }
   return null;
 }
@@ -111,26 +144,45 @@ function localizar(tree: SpaceTree[], id: string): TreeNodeRef | null {
  */
 function Reordenable({
   id,
+  spaceId,
   canNest,
   children,
 }: {
   id: string;
+  /** The space this row is in, which is what makes a drop legal or not. */
+  spaceId: string;
   canNest: boolean;
   children: React.ReactNode;
 }) {
   const ordenando = useContext(Ordering);
+  const enElAire = useContext(Arrastrado);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
   if (!ordenando) return <>{children}</>;
+
+  // Landing in another space is refused: it is what "move to another space" is
+  // for, and doing it with a drag can change which client sees the work. Drawn
+  // in red rather than made inert, because a target that stops responding
+  // reads as a broken drag instead of an answer.
+  const prohibido = !!enElAire && enElAire.spaceId !== spaceId;
+
   return (
     <div
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={cn("relative cursor-grab", isDragging && "opacity-40")}
+      className={cn(
+        "relative cursor-grab",
+        // The whole branch dims, not just its top row: a folder takes its
+        // contents with it, and dimming only the row it was grabbed by would
+        // understate what is about to move.
+        isDragging && "opacity-40",
+      )}
     >
-      <DropZone id={`before:${id}`} className="top-0 h-1/4" line="top" />
-      {canNest && <DropZone id={`inside:${id}`} className="inset-y-1/4" nest />}
-      <DropZone id={`after:${id}`} className="bottom-0 h-1/4" line="bottom" />
+      <DropZone id={`before:${id}`} className="top-0 h-1/4" line="top" blocked={prohibido} />
+      {canNest && (
+        <DropZone id={`inside:${id}`} className="inset-y-1/4" nest blocked={prohibido} />
+      )}
+      <DropZone id={`after:${id}`} className="bottom-0 h-1/4" line="bottom" blocked={prohibido} />
       {children}
     </div>
   );
@@ -191,7 +243,7 @@ export default function SpacesNavigator() {
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const [arrastrando, setArrastrando] = useState<string | null>(null);
+  const [arrastrando, setArrastrando] = useState<Situado | null>(null);
 
   // Asked for here rather than by the Tasks screen, which is where it used to
   // live. Now that the tree is in the global sidebar it is on screen from the
@@ -235,10 +287,11 @@ export default function SpacesNavigator() {
       </SidebarGroupLabel>
       <SidebarGroupContent>
       <Ordering.Provider value={ordenando}>
+      <Arrastrado.Provider value={arrastrando}>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
-        onDragStart={(e) => setArrastrando(String(e.active.id))}
+        onDragStart={(e) => setArrastrando(localizar(tree, String(e.active.id)))}
         onDragCancel={() => setArrastrando(null)}
         onDragEnd={(e) => {
           setArrastrando(null);
@@ -247,6 +300,10 @@ export default function SpacesNavigator() {
           const arrastrado = localizar(tree, String(e.active.id));
           const destino = localizar(tree, targetId);
           if (!arrastrado || !destino || arrastrado.id === destino.id) return;
+          // Silently, as the design says: the red zone already said no while
+          // the pointer was over it, and a toast afterwards would be telling
+          // somebody off for something they were shown they could not do.
+          if (arrastrado.spaceId !== destino.spaceId) return;
           dropNode(arrastrado, destino, where as DropWhere).catch((err) =>
             toast.error("Could not move it", { description: String(err) }),
           );
@@ -277,11 +334,19 @@ export default function SpacesNavigator() {
         <DragOverlay dropAnimation={null}>
           {arrastrando ? (
             <div className="rounded bg-background/95 px-2 py-1 text-xs shadow ring-1 ring-border">
-              {localizar(tree, arrastrando)?.kind === "folder" ? "Folder" : "List"}
+              {arrastrando.kind === "folder" ? "Folder" : "List"}
+              {/* What travels with it. A folder that quietly takes eleven other
+                  things is worth saying out loud before it lands. */}
+              {arrastrando.arrastra > 0 && (
+                <span className="ml-1 text-muted-foreground">
+                  · moving {arrastrando.arrastra + 1}
+                </span>
+              )}
             </div>
           ) : null}
         </DragOverlay>
       </DndContext>
+      </Arrastrado.Provider>
       </Ordering.Provider>
       </SidebarGroupContent>
     </SidebarGroup>
@@ -547,7 +612,7 @@ function FolderNode({
           onClose={() => setRenaming(false)}
         />
       ) : (
-      <Reordenable id={folder.id} canNest>
+      <Reordenable id={folder.id} spaceId={spaceId} canNest>
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
         <button
           onClick={() => setOpen((v) => !v)}
@@ -736,7 +801,7 @@ function ListNode({
         onClose={() => setRenaming(false)}
       />
     ) : (
-    <Reordenable id={list.id} canNest={false}>
+    <Reordenable id={list.id} spaceId={spaceId} canNest={false}>
     <div
       className={cn(
         "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 hover:bg-accent/50",

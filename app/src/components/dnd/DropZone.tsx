@@ -10,11 +10,18 @@ export default function DropZone({
   className,
   line,
   nest,
+  blocked,
 }: {
   id: string;
   className?: string;
   line?: "top" | "bottom";
   nest?: boolean;
+  /**
+   * A place the thing being dragged cannot go. Drawn in red rather than hidden:
+   * a target that simply stops responding reads as a broken drag, while a red
+   * one says "not there" and leaves the person to put it back.
+   */
+  blocked?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
@@ -22,12 +29,22 @@ export default function DropZone({
       {isOver && line && (
         <div
           className={cn(
-            "absolute inset-x-1 h-0.5 rounded bg-primary",
+            "absolute inset-x-1 h-0.5 rounded",
+            blocked ? "bg-destructive" : "bg-primary",
             line === "top" ? "top-0" : "bottom-0",
           )}
         />
       )}
-      {isOver && nest && <div className="absolute inset-0 rounded bg-primary/15 ring-1 ring-primary/40" />}
+      {isOver && nest && (
+        <div
+          className={cn(
+            "absolute inset-0 rounded ring-1",
+            blocked
+              ? "bg-destructive/15 ring-destructive/50"
+              : "bg-primary/15 ring-primary/40",
+          )}
+        />
+      )}
     </div>
   );
 }
