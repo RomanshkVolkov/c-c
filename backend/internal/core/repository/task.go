@@ -582,8 +582,16 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 			sp.id AS space_id, sp.name AS space_name`).
 		Joins("JOIN task_lists l ON l.id = t.list_id").
 		Joins("JOIN task_spaces sp ON sp.id = l.space_id").
-		Where("t.archived_at IS NULL AND t.parent_id IS NULL AND t.deleted_at IS NULL").
-		Where("t.project_id = ''")
+		Where("t.archived_at IS NULL AND t.parent_id IS NULL AND t.deleted_at IS NULL")
+
+	switch f.Origin {
+	case domain.OriginClients:
+		q = q.Where("t.project_id <> ''")
+	case domain.OriginAny:
+		// no restriction
+	default:
+		q = q.Where("t.project_id = ''")
+	}
 	if !f.IncludeClosed {
 		q = q.Where("t.status NOT IN ('resolved','closed')")
 	}

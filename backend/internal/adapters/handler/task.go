@@ -287,6 +287,7 @@ func openTaskFilter(r *http.Request, callerID string) domain.OpenTaskFilter {
 		CreatorID:     quien("creator"),
 		WatcherID:     quien("watcher"),
 		IncludeClosed: q.Get("status") == "all",
+		Origin:        domain.OpenTaskOrigin(q.Get("origin")),
 	}
 	if v := q.Get("dueFrom"); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {

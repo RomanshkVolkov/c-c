@@ -114,6 +114,39 @@ func TestClosedWorkIsHiddenUnlessAskedFor(t *testing.T) {
 	}
 }
 
+// Client-facing work is a different list, not a filter people forget to set.
+//
+// The team's board deliberately leaves out what came in through a channel: a
+// tenant's tickets have their own screen, and mixing them in would make "what
+// is pending" mean two different things at once. Asking for them is explicit.
+func TestClientWorkIsItsOwnQuestion(t *testing.T) {
+	db, cleanup := myWorkDB(t)
+	defer cleanup()
+	svc := myWorkSvc(db)
+
+	deCliente := &domain.Item{
+		OrgID: "org-1", ListID: "list-1", Title: "De un cliente",
+		CreatedByID: "u-otro", Status: domain.ReportPending, ProjectID: "proj-1",
+	}
+	deCliente.ID = "it-cliente"
+	if err := db.Create(deCliente).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	nuestras, _ := svc.ListOpen([]string{"org-1"}, false, "org-1", 0, domain.OpenTaskFilter{})
+	if idsDe(nuestras)["it-cliente"] {
+		t.Error("client work should stay out of the team's own list")
+	}
+	suyas, _ := svc.ListOpen([]string{"org-1"}, false, "org-1", 0,
+		domain.OpenTaskFilter{Origin: domain.OriginClients})
+	if !idsDe(suyas)["it-cliente"] {
+		t.Error("asked for by origin, it should come back")
+	}
+	if idsDe(suyas)["it-creada"] {
+		t.Error("and our own work should not be in that answer")
+	}
+}
+
 func idsDe(ts []domain.OpenTask) map[string]bool {
 	out := map[string]bool{}
 	for _, t := range ts {

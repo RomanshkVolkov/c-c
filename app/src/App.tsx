@@ -17,6 +17,7 @@ import Tasks from "@/pages/Tasks";
 import Notes from "@/pages/Notes";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import DevTools from "@/pages/DevTools";
+import MyWork from "@/pages/MyWork";
 import Channels from "@/pages/Channels";
 import DirectMessages from "@/pages/DirectMessages";
 import AppLayout from "@/components/AppLayout";
@@ -58,6 +59,7 @@ export default function App() {
               so the translation is exact. See ReportsRedirect. */}
           <Route path="/reports" element={<ReportsRedirect />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/my-work" element={<MyWork />} />
           <Route path="/chat" element={<Channels />} />
           <Route path="/dm" element={<DirectMessages />} />
           <Route path="/notes" element={<Notes />} />

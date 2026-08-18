@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   Bell,
   Wrench,
+  Inbox,
   Hash,
   MessagesSquare,
   ChevronRight,
@@ -72,6 +73,7 @@ import { cn } from "@/lib/utils";
 // of saying nothing did.
 const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false, group: "work" },
+  { label: "My work", path: "/my-work", icon: Inbox, guest: false, group: "work" },
   { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false, group: "work" },
   { label: "Notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
   { label: "Channels", path: "/chat", icon: Hash, guest: false, group: "talk" },

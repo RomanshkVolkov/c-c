@@ -470,9 +470,24 @@ type OpenTaskFilter struct {
 	// IncludeClosed brings back resolved and closed work, which the list hides
 	// by default: "what is pending" is the question it exists to answer.
 	IncludeClosed bool
+	// Origin picks work by where it came from. Client-facing items are hidden
+	// by default because this list is the team's own board and a tenant's
+	// tickets have their own screen; "clients" asks for exactly those instead.
+	Origin OpenTaskOrigin
 	DueFrom       *time.Time
 	DueTo         *time.Time
 }
+
+// OpenTaskOrigin: work raised inside cac, work that came from a client, or
+// both. Three named values rather than a pair of booleans, because "neither"
+// would be a question with no answer.
+type OpenTaskOrigin string
+
+const (
+	OriginInternal OpenTaskOrigin = ""        // the default: our own work
+	OriginClients  OpenTaskOrigin = "clients" // only what came through a channel
+	OriginAny      OpenTaskOrigin = "any"
+)
 
 type OpenTask struct {
 	ID       string       `json:"id"`
