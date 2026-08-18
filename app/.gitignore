@@ -27,4 +27,9 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
-types/
+# Anchored on purpose. Unanchored, `types/` matches a directory of that name at
+# any depth, so it also swallowed `src/types/` — where the app's own types live.
+# The tracked files there survived, but any new one was ignored in silence, and
+# a missing type only shows up as a broken build on somebody else's machine.
+# What this is actually for is the design-sync .d.ts bundle at app/types/.
+/types/
