@@ -770,13 +770,16 @@ function NoteEditorPane({ id }: { id: string }) {
             minHeight="24rem"
             placeholder="Write… (⌘K to link another page)"
           />
-          {!loading && detail && detail.backlinks.length > 0 && (
+          {/* Optional chaining and not a bare read: this comes from a cache
+              that outlives the build that wrote it, and a whole screen going
+              down over an absent list is out of proportion to the problem. */}
+          {!loading && detail && (detail.backlinks?.length ?? 0) > 0 && (
             <section className="mt-8 space-y-2 border-t pt-4">
               <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Linked from
               </h2>
               <ul className="space-y-1">
-                {detail.backlinks.map((b) => (
+                {detail.backlinks?.map((b) => (
                   <li key={b.id}>
                     <button
                       className="truncate text-left text-sm text-primary underline decoration-primary/40 hover:decoration-primary"

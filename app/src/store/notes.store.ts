@@ -433,6 +433,24 @@ export const useNotesStore = create<NotesState>()(
     }),
     {
       name: "cac-notes",
+      /**
+       * Bumped whenever the shape of what is persisted changes.
+       *
+       * `detail` is cached so reopening a page is instant, which means a build
+       * from before a field existed leaves that field missing in localStorage —
+       * and the next build reads it back and crashes on the absence. That is
+       * what happened with `backlinks`: the server always sent it, the type said
+       * it was there, and the value came from a store written weeks earlier.
+       *
+       * Dropping the cached detail is safe: it is a cache, and the next read
+       * refills it from the server.
+       */
+      version: 2,
+      migrate: (state, from) => {
+        if (from >= 2) return state as never;
+        const s = (state ?? {}) as Record<string, unknown>;
+        return { ...s, detail: null } as never;
+      },
       // Only the tree, the last-open note's detail, and any write still owed to
       // the server are worth persisting: that's what makes the sidebar and the
       // open page readable without a network round trip, and what lets a save
