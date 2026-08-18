@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Send, Trash2, Users, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
@@ -8,9 +8,6 @@ import { taskIdFromHref } from "@/components/markdown/card-menu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useChatStore } from "@/store/chat.store";
 import { usePeopleStore } from "@/store/people.store";
-import { useDMStore } from "@/store/dm.store";
-import DMThread from "@/components/DMThread";
-import DMSwitcher from "@/components/DMSwitcher";
 import { userIdFromHref } from "@/components/markdown/mention-menu";
 import type { ChatMessage } from "@/store/chat.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -31,13 +28,12 @@ import type { ItemVisibility } from "@/types/task";
  * properly means a two-column right rail, which is a layout change larger than
  * the feature.
  */
-export default function ChatPanel({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+export default function ChannelView({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const messages = useChatStore((s) => s.messages);
   const loading = useChatStore((s) => s.loading);
   const hasMore = useChatStore((s) => s.hasMore);
   const loadingOlder = useChatStore((s) => s.loadingOlder);
   const openSpaceId = useChatStore((s) => s.spaceId);
-  const closePanel = useChatStore((s) => s.closePanel);
   const fetch = useChatStore((s) => s.fetch);
   const fetchOlder = useChatStore((s) => s.fetchOlder);
   const markRead = useChatStore((s) => s.markRead);
@@ -125,41 +121,11 @@ export default function ChatPanel({ spaceId, spaceName }: { spaceId: string; spa
     }
   };
 
-  // A conversation open means the panel is showing it instead of the channel.
-  // Held in the DM store rather than here so a message arriving can put you in
-  // the right place without this component knowing how.
-  const dmOpen = useDMStore((s) => s.conversationId);
-  const [pickingPerson, setPickingPerson] = useState(false);
-
-  if (dmOpen) {
-    return (
-      <aside className="flex w-80 shrink-0 flex-col border-l bg-background xl:w-96">
-        <DMThread onBack={() => useDMStore.setState({ conversationId: null, messages: [] })} />
-      </aside>
-    );
-  }
-
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l bg-background xl:w-96">
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
-        <button
-          className="ml-auto text-muted-foreground hover:text-foreground"
-          title="Direct messages"
-          onClick={() => setPickingPerson((v) => !v)}
-        >
-          <Users className="size-4" />
-        </button>
-        <button
-          className="text-muted-foreground hover:text-foreground"
-          title="Close chat"
-          onClick={closePanel}
-        >
-          <X className="size-4" />
-        </button>
       </header>
-
-      {pickingPerson && <DMSwitcher onPicked={() => setPickingPerson(false)} />}
 
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
         {loadingOlder && (
@@ -221,7 +187,7 @@ export default function ChatPanel({ spaceId, spaceName }: { spaceId: string; spa
           </Button>
         </div>
       </div>
-    </aside>
+    </div>
   );
 }
 

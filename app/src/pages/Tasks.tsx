@@ -17,12 +17,10 @@ import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard"
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import DocView from "@/components/DocView";
 import CopyId from "@/components/CopyId";
-import ChatPanel from "@/components/ChatPanel";
 import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
-import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
@@ -65,20 +63,10 @@ export default function Tasks() {
   // same node rather than something to show beside it.
   const activeDoc = useTasksStore((s) => s.activeDoc);
 
-  // The channel of whichever space the person opened it on — it stays open
-  // across boards, because a conversation you're in shouldn't close because you
-  // clicked a list.
-  const tree = useTasksStore((s) => s.tree);
-  const chatOpen = useChatStore((s) => s.panelOpen);
-  const chatSpaceId = useChatStore((s) => s.spaceId);
-  const chatSpace = tree.find((s) => s.id === chatSpaceId);
 
   return (
     <div className="flex-1 flex min-h-0">
       {activeDoc ? <DocView /> : <Board />}
-      {chatOpen && chatSpace && (
-        <ChatPanel spaceId={chatSpace.id} spaceName={chatSpace.name} />
-      )}
       <TaskDetailDrawer />
     </div>
   );

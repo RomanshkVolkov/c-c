@@ -35,6 +35,11 @@ interface ChatState {
   /** False once a backwards page comes back short — there is no more history. */
   hasMore: boolean;
   unreadBySpace: Record<string, number>;
+  /**
+   * Which channel is on screen, if any. Named for the panel it used to be; it
+   * now means "the Channels screen is showing this space", and its one job is
+   * to stop the notifier announcing messages you are watching arrive.
+   */
   panelOpen: boolean;
 
   openPanel: (spaceId: string) => Promise<void>;

@@ -18,7 +18,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   ChevronRight,
@@ -458,18 +458,14 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
  */
 function SpaceChatButton({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const unread = useChatStore((s) => s.unreadBySpace[spaceId] ?? 0);
-  const openPanel = useChatStore((s) => s.openPanel);
-  const panelOpen = useChatStore((s) => s.panelOpen);
-  const openSpaceId = useChatStore((s) => s.spaceId);
-  const closePanel = useChatStore((s) => s.closePanel);
-  const showing = panelOpen && openSpaceId === spaceId;
+  const navigate = useNavigate();
+  const { pathname, search } = useLocation();
+  const showing = pathname === "/chat" && new URLSearchParams(search).get("space") === spaceId;
 
   return (
     <button
       className={cn(
         "flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground",
-        // Clicking the space you're already reading closes it, so the same
-        // button is the way back out.
         showing && "text-primary opacity-100",
         unread === 0 && !showing && "text-muted-foreground/60 hover:text-foreground",
       )}
@@ -477,12 +473,10 @@ function SpaceChatButton({ spaceId, spaceName }: { spaceId: string; spaceName: s
       title={`#${spaceName} — team channel`}
       onClick={(e) => {
         // The row opens the space's overview; this is a different destination.
+        // It navigates now rather than opening a panel: the channel is a screen
+        // of its own, and putting the space in the address makes it a link.
         e.stopPropagation();
-        if (showing) {
-          closePanel();
-          return;
-        }
-        openPanel(spaceId).catch((err) => toast.error(String(err)));
+        navigate(`/chat?space=${spaceId}`);
       }}
     >
       <MessageSquare className="size-3.5" />

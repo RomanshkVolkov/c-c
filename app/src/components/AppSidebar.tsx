@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   Bell,
   Wrench,
+  Hash,
+  MessagesSquare,
   ChevronRight,
   LayoutDashboard,
   KanbanSquare,
@@ -52,6 +54,8 @@ import NotificationsPanel from "@/components/NotificationsPanel";
 import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
+import { useChatStore } from "@/store/chat.store";
+import { useDMStore } from "@/store/dm.store";
 import { useUpdaterStore } from "@/store/updater.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useThemeStore, type ThemePreference } from "@/store/theme.store";
@@ -67,6 +71,8 @@ const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false, group: "work" },
   { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false, group: "work" },
   { label: "Notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
+  { label: "Channels", path: "/chat", icon: Hash, guest: false, group: "talk" },
+  { label: "Direct messages", path: "/dm", icon: MessagesSquare, guest: false, group: "talk" },
   { label: "Diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
   { label: "Organization", path: "/organization", icon: Building2, guest: false, group: "platform" },
   { label: "Invitations", path: "/invitations", icon: Mail, guest: false, group: "platform" },
@@ -76,6 +82,7 @@ const NAV_ITEMS = [
 /** Rendered in this order; a group with nothing in it draws nothing at all. */
 const GROUPS: { key: string; label: string }[] = [
   { key: "work", label: "Work" },
+  { key: "talk", label: "Talk" },
   { key: "platform", label: "Platform" },
 ];
 
@@ -146,6 +153,14 @@ export default function AppSidebar() {
   const authed = useAuthStore((s) => !!s.accessToken);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const pendingInvites = useInvitationsStore((s) => s.pending.length);
+  // Both counts already live in their stores for the tree and the switcher;
+  // reading them here costs nothing and is what makes the group worth having.
+  const sinLeerCanales = useChatStore((s) =>
+    Object.values(s.unreadBySpace).reduce((a, b) => a + b, 0),
+  );
+  const sinLeerDirectos = useDMStore((s) =>
+    s.conversations.reduce((a, c) => a + c.unread, 0),
+  );
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -220,7 +235,13 @@ export default function AppSidebar() {
                 <SidebarMenu>
                   {deEsteGrupo.map((item) => {
                     const badge =
-                      item.path === "/invitations" && pendingInvites > 0 ? pendingInvites : null;
+                      item.path === "/invitations" && pendingInvites > 0
+                        ? pendingInvites
+                        : item.path === "/chat" && sinLeerCanales > 0
+                          ? sinLeerCanales
+                          : item.path === "/dm" && sinLeerDirectos > 0
+                            ? sinLeerDirectos
+                            : null;
                     return (
                       <SidebarMenuItem key={item.path}>
                         <SidebarMenuButton
