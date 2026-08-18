@@ -28,7 +28,6 @@ import {
   PointerSensor,
   pointerWithin,
   useDraggable,
-  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -54,6 +53,7 @@ import { usePrompt } from "@/components/PromptDialog";
 import { useNotesStore, type DropWhere } from "@/store/notes.store";
 import type { NoteTreeItem } from "@/types/note";
 import { cn } from "@/lib/utils";
+import DropZone from "@/components/dnd/DropZone";
 
 /**
  * Personal notes: a nested page tree, private to the signed-in user.
@@ -612,37 +612,6 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
         </div>
       </div>
       {open && children.map((c) => <NoteRow key={c.id} note={c} depth={depth + 1} />)}
-    </div>
-  );
-}
-
-/**
- * One drop target overlaying part of a row. `line` draws an insertion bar for
- * a reorder; `nest` tints the row to say "this becomes a subpage".
- */
-function DropZone({
-  id,
-  className,
-  line,
-  nest,
-}: {
-  id: string;
-  className?: string;
-  line?: "top" | "bottom";
-  nest?: boolean;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div ref={setNodeRef} className={cn("pointer-events-none absolute inset-x-0 z-10", className)}>
-      {isOver && line && (
-        <div
-          className={cn(
-            "absolute inset-x-1 h-0.5 rounded bg-primary",
-            line === "top" ? "top-0" : "bottom-0",
-          )}
-        />
-      )}
-      {isOver && nest && <div className="absolute inset-0 rounded bg-primary/15 ring-1 ring-primary/40" />}
     </div>
   );
 }

@@ -6,7 +6,18 @@
  * here unchanged: any difference in behaviour at this point is a mistake in the
  * move, not a decision.
  */
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronDown,
@@ -16,6 +27,8 @@ import {
   ListChecks,
   Eye,
   Copy,
+  Lock,
+  LockOpen,
   FolderInput,
   Plus,
   MoreHorizontal,
@@ -41,10 +54,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import ChannelDialog from "@/components/ChannelDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { useTasksStore } from "@/store/tasks.store";
+import { useTasksStore, type DropWhere, type TreeNodeRef } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
-import { docKey, type FolderTree } from "@/types/task";
+import { docKey, type FolderTree, type SpaceTree } from "@/types/task";
+import DropZone from "@/components/dnd/DropZone";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -52,6 +66,72 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import InlineName from "@/components/tree/InlineName";
+
+/**
+ * Whether reordering is unlocked.
+ *
+ * Closed by default and deliberately: the tree is mostly something you click,
+ * and a click that starts a drag by accident moves somebody's work. The lock
+ * makes rearranging a thing you decide to do, and while it is closed there are
+ * no drag handles and no drop zones at all — not disabled ones, none.
+ */
+const Ordering = createContext(false);
+
+/** Where a node currently lives, worked out from the tree already on screen. */
+function localizar(tree: SpaceTree[], id: string): TreeNodeRef | null {
+  for (const space of tree) {
+    const enFolders = (folders: FolderTree[], parent: string | null): TreeNodeRef | null => {
+      for (const f of folders) {
+        if (f.id === id) return { id, kind: "folder", parentId: parent };
+        for (const l of f.lists) if (l.id === id) return { id, kind: "list", parentId: f.id };
+        const dentro = enFolders(f.folders ?? [], f.id);
+        if (dentro) return dentro;
+      }
+      return null;
+    };
+    const enEspacio = enFolders(space.folders, null);
+    if (enEspacio) return enEspacio;
+    for (const l of space.lists) if (l.id === id) return { id, kind: "list", parentId: null };
+  }
+  return null;
+}
+
+/**
+ * A row you can pick up, and the three places you can put one down.
+ *
+ * `inside` is offered only by folders: a list holds tasks, not other nodes, so
+ * a "drop into this list" target would promise something the tree cannot do.
+ *
+ * When the lock is closed this renders the row untouched — no handle, no zones,
+ * no listeners. Reordering that is merely disabled still moves under the
+ * pointer and still answers to the keyboard; this simply is not there.
+ */
+function Reordenable({
+  id,
+  canNest,
+  children,
+}: {
+  id: string;
+  canNest: boolean;
+  children: React.ReactNode;
+}) {
+  const ordenando = useContext(Ordering);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  if (!ordenando) return <>{children}</>;
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn("relative cursor-grab", isDragging && "opacity-40")}
+    >
+      <DropZone id={`before:${id}`} className="top-0 h-1/4" line="top" />
+      {canNest && <DropZone id={`inside:${id}`} className="inset-y-1/4" nest />}
+      <DropZone id={`after:${id}`} className="bottom-0 h-1/4" line="bottom" />
+      {children}
+    </div>
+  );
+}
 
 /**
  * "Move to another space", as a submenu of the spaces you could move it to.
@@ -100,6 +180,15 @@ export default function SpacesNavigator() {
   const createSpace = useTasksStore((s) => s.createSpace);
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   const [addingSpace, setAddingSpace] = useState(false);
+  const [ordenando, setOrdenando] = useState(false);
+  const dropNode = useTasksStore((s) => s.dropNode);
+  const sensors = useSensors(
+    // Same threshold as the notes tree and the board: under it a pointer-down
+    // is a click that opens a list, not the start of a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const [arrastrando, setArrastrando] = useState<string | null>(null);
 
   // Asked for here rather than by the Tasks screen, which is where it used to
   // live. Now that the tree is in the global sidebar it is on screen from the
@@ -131,13 +220,35 @@ export default function SpacesNavigator() {
           size="icon-xs"
           variant="ghost"
           className="ml-auto"
-          title="New space"
-          onClick={addSpace}
+          title={ordenando ? "Finish rearranging" : "Rearrange"}
+          aria-pressed={ordenando}
+          onClick={() => setOrdenando((v) => !v)}
         >
+          {ordenando ? <LockOpen className="size-3.5 text-primary" /> : <Lock className="size-3.5" />}
+        </Button>
+        <Button size="icon-xs" variant="ghost" title="New space" onClick={addSpace}>
           <Plus className="size-3.5" />
         </Button>
       </SidebarGroupLabel>
       <SidebarGroupContent>
+      <Ordering.Provider value={ordenando}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={(e) => setArrastrando(String(e.active.id))}
+        onDragCancel={() => setArrastrando(null)}
+        onDragEnd={(e) => {
+          setArrastrando(null);
+          if (!e.over) return;
+          const [where, targetId] = String(e.over.id).split(":");
+          const arrastrado = localizar(tree, String(e.active.id));
+          const destino = localizar(tree, targetId);
+          if (!arrastrado || !destino || arrastrado.id === destino.id) return;
+          dropNode(arrastrado, destino, where as DropWhere).catch((err) =>
+            toast.error("Could not move it", { description: String(err) }),
+          );
+        }}
+      >
         {error && (
           <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-destructive">
             <AlertCircle className="size-3" /> {error}
@@ -160,6 +271,15 @@ export default function SpacesNavigator() {
             onClose={() => setAddingSpace(false)}
           />
         )}
+        <DragOverlay dropAnimation={null}>
+          {arrastrando ? (
+            <div className="rounded bg-background/95 px-2 py-1 text-xs shadow ring-1 ring-border">
+              {localizar(tree, arrastrando)?.kind === "folder" ? "Folder" : "List"}
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+      </Ordering.Provider>
       </SidebarGroupContent>
     </SidebarGroup>
   );
@@ -412,6 +532,7 @@ function FolderNode({
           onClose={() => setRenaming(false)}
         />
       ) : (
+      <Reordenable id={folder.id} canNest>
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
         <button
           onClick={() => setOpen((v) => !v)}
@@ -496,6 +617,7 @@ function FolderNode({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      </Reordenable>
       )}
       {open && (
         <div className="ml-4">
@@ -580,6 +702,7 @@ function ListNode({
         onClose={() => setRenaming(false)}
       />
     ) : (
+    <Reordenable id={list.id} canNest={false}>
     <div
       className={cn(
         "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 hover:bg-accent/50",
@@ -652,6 +775,7 @@ function ListNode({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    </Reordenable>
     )}
     </>
   );
