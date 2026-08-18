@@ -105,6 +105,11 @@ export interface OpenTask {
   spaceId: string;
   spaceName: string;
   updatedAt: string;
+  /** Done / total, so a card says what you would open it to find out. */
+  subtasksDone: number;
+  subtasksTotal: number;
+  /** The primary assignee's name; the card shows their initials. */
+  assignee?: string;
 }
 
 export interface TaskCard {

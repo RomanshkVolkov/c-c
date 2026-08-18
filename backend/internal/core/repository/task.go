@@ -647,6 +647,58 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 		out[i].StatusName, out[i].StatusKind = st.Name, st.Kind
 		out[i].Priority = out[i].Priority.TaskWire()
 	}
+	if len(out) == 0 {
+		return out, nil
+	}
+
+	// What a card shows beyond its title, in two grouped queries rather than
+	// two per row. Same shape the board already uses, for the same reason.
+	ids := make([]string, len(out))
+	for i, t := range out {
+		ids[i] = t.ID
+	}
+
+	type subRow struct {
+		ParentID    string
+		Total, Done int64
+	}
+	var subs []subRow
+	// "Done" is a set of states and not a column name, so renaming a column
+	// cannot change what a card claims. Closed counts: a subtask nobody is
+	// going to do is not outstanding work.
+	r.db.Table("items t").
+		Select(`t.parent_id, COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE t.status IN ('resolved','closed')) AS done`).
+		Where("t.parent_id IN ? AND t.archived_at IS NULL AND t.deleted_at IS NULL", ids).
+		Group("t.parent_id").Scan(&subs)
+	hechas := map[string][2]int64{}
+	for _, x := range subs {
+		hechas[x.ParentID] = [2]int64{x.Done, x.Total}
+	}
+
+	type asgRow struct {
+		ItemID, Username string
+	}
+	var asg []asgRow
+	// The primary one: a tenant's contract names one person, and a card has room
+	// for one set of initials. Which one is explicit in the data, not "whichever
+	// row came back first".
+	r.db.Table("item_assignees a").
+		Select("a.item_id, u.username").
+		Joins("JOIN users u ON u.id = a.user_id").
+		Where("a.item_id IN ? AND a.primary = true", ids).
+		Scan(&asg)
+	quien := map[string]string{}
+	for _, x := range asg {
+		quien[x.ItemID] = x.Username
+	}
+
+	for i := range out {
+		if p, ok := hechas[out[i].ID]; ok {
+			out[i].SubtasksDone, out[i].SubtasksTotal = p[0], p[1]
+		}
+		out[i].Assignee = quien[out[i].ID]
+	}
 	return out, nil
 }
 
@@ -1006,7 +1058,6 @@ func (r *TaskRepository) FindAttachment(id string) (*domain.TaskAttachment, erro
 func (r *TaskRepository) DeleteAttachment(id string) error {
 	return r.db.Delete(&domain.TaskAttachment{}, "id = ?", id).Error
 }
-
 
 // ─── Duplicating and moving whole branches ───────────────────────────────────
 

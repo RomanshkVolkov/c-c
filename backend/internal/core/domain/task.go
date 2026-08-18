@@ -479,9 +479,9 @@ type OpenTaskFilter struct {
 	// Origin picks work by where it came from. Client-facing items are hidden
 	// by default because this list is the team's own board and a tenant's
 	// tickets have their own screen; "clients" asks for exactly those instead.
-	Origin OpenTaskOrigin
-	DueFrom       *time.Time
-	DueTo         *time.Time
+	Origin  OpenTaskOrigin
+	DueFrom *time.Time
+	DueTo   *time.Time
 }
 
 // OpenTaskOrigin: work raised inside cac, work that came from a client, or
@@ -511,6 +511,18 @@ type OpenTask struct {
 	SpaceID    string         `json:"spaceId"`
 	SpaceName  string         `json:"spaceName"`
 	UpdatedAt  time.Time      `json:"updatedAt"`
+	// Subtasks, as done/total. A card that says 1/3 is telling you the thing
+	// you would otherwise have to open it to find out.
+	SubtasksDone  int64 `json:"subtasksDone"`
+	SubtasksTotal int64 `json:"subtasksTotal"`
+	// Assignee is who it belongs to, by name. The name and not the id, because
+	// what a card shows is initials, and resolving ids to people in the client
+	// would mean holding a directory it has no other use for.
+	Assignee string `json:"assignee,omitempty"`
+	// Folio is the client-facing number, when this came through a channel. A
+	// card raised in cac shows its `seq`; one that belongs to a tenant shows the
+	// number *they* see, because that is the one anybody will quote at you.
+	Folio string `json:"folio,omitempty"`
 }
 
 type TaskCommentResponse struct {

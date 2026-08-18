@@ -147,6 +147,65 @@ func TestClientWorkIsItsOwnQuestion(t *testing.T) {
 	}
 }
 
+// A card says what you would otherwise open it to find out.
+//
+// Two grouped queries, not two per row: the list is up to two hundred cards and
+// a query apiece is the difference between a screen and a wait.
+func TestACardCarriesItsProgressAndWhoseItIs(t *testing.T) {
+	db, cleanup := myWorkDB(t)
+	defer cleanup()
+	svc := myWorkSvc(db)
+
+	// Dos subtareas de it-creada, una terminada.
+	for i, estado := range []domain.ReportStatus{domain.ReportPending, domain.ReportStatus("closed")} {
+		padre := "it-creada"
+		sub := &domain.Item{
+			OrgID: "org-1", ListID: "list-1", Title: fmt.Sprintf("sub %d", i),
+			ParentID: &padre, Status: estado,
+		}
+		sub.ID = fmt.Sprintf("it-sub-%d", i)
+		if err := db.Create(sub).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Y una responsable principal.
+	u := &domain.User{Username: "ana"}
+	u.ID = "u-ana"
+	if err := db.Create(u).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.ItemAssignee{ItemID: "it-creada", UserID: "u-ana", Primary: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.ListOpen([]string{"org-1"}, false, "org-1", 0, domain.OpenTaskFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var card *domain.OpenTask
+	for i := range got {
+		if got[i].ID == "it-creada" {
+			card = &got[i]
+		}
+	}
+	if card == nil {
+		t.Fatal("the task should be in the list")
+	}
+	if card.SubtasksDone != 1 || card.SubtasksTotal != 2 {
+		t.Errorf("progress = %d/%d, want 1/2", card.SubtasksDone, card.SubtasksTotal)
+	}
+	if card.Assignee != "ana" {
+		t.Errorf("assignee = %q, want ana", card.Assignee)
+	}
+
+	// Y una sin nada no inventa nada.
+	for i := range got {
+		if got[i].ID == "it-ajena" && (got[i].SubtasksTotal != 0 || got[i].Assignee != "") {
+			t.Errorf("a bare task should stay bare: %+v", got[i])
+		}
+	}
+}
+
 func idsDe(ts []domain.OpenTask) map[string]bool {
 	out := map[string]bool{}
 	for _, t := range ts {
@@ -192,7 +251,7 @@ func myWorkDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	if err := db.AutoMigrate(
 		&domain.Organization{}, &domain.TaskSpace{}, &domain.TaskList{},
-		&domain.Item{}, &domain.ItemAssignee{}, &domain.ItemWatcher{},
+		&domain.Item{}, &domain.ItemAssignee{}, &domain.ItemWatcher{}, &domain.User{},
 	); err != nil {
 		t.Fatal(err)
 	}

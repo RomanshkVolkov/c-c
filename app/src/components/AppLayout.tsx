@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
+import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import { Toaster } from "sonner";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
@@ -79,6 +80,11 @@ export default function AppLayout() {
         </header>
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         <Outlet />
+        {/* Mounted here and not per screen. Opening a task is global state, so
+            drawing it has to be too: it used to live inside the board, which
+            meant "my work", the channels and the dashboard could all ask for a
+            task and nothing would appear. */}
+        <TaskDetailDrawer />
       </SidebarInset>
       <UpdateChecker />
       <Toaster richColors closeButton position="bottom-right" theme={theme} />

@@ -14,7 +14,6 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
-import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import DocView from "@/components/DocView";
 import CopyId from "@/components/CopyId";
 import ItemCalendar from "@/components/ItemCalendar";
@@ -67,7 +66,6 @@ export default function Tasks() {
   return (
     <div className="flex-1 flex min-h-0">
       {activeDoc ? <DocView /> : <Board />}
-      <TaskDetailDrawer />
     </div>
   );
 }

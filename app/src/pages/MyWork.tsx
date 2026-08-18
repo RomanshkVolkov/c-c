@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
 import ItemCalendar from "@/components/ItemCalendar";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
+import TaskCardMini, { cuando } from "@/components/tasks/TaskCardMini";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -226,21 +227,24 @@ export default function MyWork() {
                 const suyas = visibles.filter((t) => t.statusKind === col.kind);
                 return (
                   <section key={col.kind} className="w-72 shrink-0">
-                    <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {col.label} · {suyas.length}
+                    <h2 className="mb-1.5 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium uppercase tracking-wide">
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          col.kind === "done"
+                            ? "bg-success"
+                            : col.kind === "active"
+                              ? "bg-primary"
+                              : "bg-muted-foreground",
+                        )}
+                      />
+                      {col.label}
+                      <span className="ml-auto text-muted-foreground">{suyas.length}</span>
                     </h2>
-                    <ul className="space-y-1">
+                    <ul className="space-y-1.5">
                       {suyas.map((t) => (
                         <li key={t.id}>
-                          <button
-                            onClick={() => openTask(t.id).catch(() => {})}
-                            className="w-full rounded border px-2 py-1.5 text-left hover:bg-accent/40"
-                          >
-                            <span className="block truncate text-sm">{t.title}</span>
-                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                              {t.spaceName} · {t.listName}
-                            </span>
-                          </button>
+                          <TaskCardMini task={t} onOpen={() => openTask(t.id).catch(() => {})} />
                         </li>
                       ))}
                       {suyas.length === 0 && (
@@ -278,6 +282,16 @@ export default function MyWork() {
                         <span className={cn("shrink-0 text-xs", priorityMeta(t.priority).className)}>
                           {priorityMeta(t.priority).label}
                         </span>
+                        {t.dueAt && (
+                          <span
+                            className={cn(
+                              "w-20 shrink-0 text-right text-xs",
+                              cuando(t.dueAt).vencida ? "text-destructive" : "text-muted-foreground",
+                            )}
+                          >
+                            {cuando(t.dueAt).texto}
+                          </span>
+                        )}
                         <span className="w-28 shrink-0 truncate text-right text-xs text-muted-foreground">
                           {t.listName}
                         </span>
