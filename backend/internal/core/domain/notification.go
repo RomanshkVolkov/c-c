@@ -52,11 +52,17 @@ type NotificationPrefs struct {
 	DMs      bool `json:"dms"`
 	Comments bool `json:"comments"`
 	Reports  bool `json:"reports"`
+	// Messages son los mensajes corrientes de los canales que sigues. Sólo
+	// llegan de ahí: seguir es lo que los pide, y esto es lo que los calla sin
+	// tener que dejar de seguir el canal.
+	Messages bool `json:"messages"`
 }
 
 // DefaultPrefs is what somebody who has never touched this gets.
 func DefaultPrefs(userID string) NotificationPrefs {
-	return NotificationPrefs{UserID: userID, Mentions: true, DMs: true, Comments: true, Reports: true}
+	return NotificationPrefs{
+		UserID: userID, Mentions: true, DMs: true, Comments: true, Reports: true, Messages: true,
+	}
 }
 
 // Allows answers whether a kind should be recorded at all.
@@ -70,6 +76,8 @@ func (p NotificationPrefs) Allows(kind string) bool {
 		return p.Comments
 	case "report:new":
 		return p.Reports
+	case "chat:message":
+		return p.Messages
 	}
 	return true
 }

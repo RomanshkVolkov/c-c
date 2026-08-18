@@ -113,6 +113,55 @@ func (h *taskHandler) MarkChatRead(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Marked read"})
 }
 
+// FollowChannel / UnfollowChannel: decir que este canal te importa, para que lo
+// corriente que se hable aquí también te avise. `resolveSpace` es lo que impide
+// seguir el canal de otra organización.
+func (h *taskHandler) FollowChannel(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	if err := h.chat.Follow(sp.ID, user.UserID); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to follow", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Following"})
+}
+
+func (h *taskHandler) UnfollowChannel(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	if err := h.chat.Unfollow(sp.ID, user.UserID); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to unfollow", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Unfollowed"})
+}
+
+// FollowedChannels: todos de una vez, por la misma razón que los no leídos —
+// la pantalla los necesita para pintar el botón y una consulta por canal sería
+// una consulta por canal.
+func (h *taskHandler) FollowedChannels(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "unauthorized")
+		return
+	}
+	out, err := h.chat.Following(user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list", err.Error())
+		return
+	}
+	if out == nil {
+		out = []string{}
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]string]{Success: true, Data: out})
+}
+
 // ChatUnread answers every channel the caller has unread lines in, in one call —
 // the navigator asks on every load and a request per space would be a request
 // per space.

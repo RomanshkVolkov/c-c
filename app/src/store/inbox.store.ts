@@ -28,6 +28,8 @@ export interface InboxPrefs {
   dms: boolean;
   comments: boolean;
   reports: boolean;
+  /** Lo corriente de los canales que sigues. Sólo llega de ahí. */
+  messages: boolean;
 }
 
 interface InboxState {

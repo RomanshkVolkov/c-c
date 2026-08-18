@@ -123,6 +123,35 @@ func (r *ChatRepository) UnreadBySpace(userID string, orgIDs []string, superadmi
 // another client — about work they have nothing to do with.
 //
 // Returns them in the order asked, so the caller's list stays stable.
+// Follow y Unfollow: seguir un canal es idempotente en las dos direcciones —
+// pulsar dos veces «seguir» no es un error que merezca una pantalla roja.
+func (r *ChatRepository) Follow(spaceID, userID string) error {
+	return r.db.Where("space_id = ? AND user_id = ?", spaceID, userID).
+		FirstOrCreate(&domain.SpaceFollower{SpaceID: spaceID, UserID: userID}).Error
+}
+
+func (r *ChatRepository) Unfollow(spaceID, userID string) error {
+	return r.db.Where("space_id = ? AND user_id = ?", spaceID, userID).
+		Delete(&domain.SpaceFollower{}).Error
+}
+
+// Followers son los ids a los que avisar de un mensaje corriente.
+func (r *ChatRepository) Followers(spaceID string) ([]string, error) {
+	var ids []string
+	err := r.db.Model(&domain.SpaceFollower{}).
+		Where("space_id = ?", spaceID).Pluck("user_id", &ids).Error
+	return ids, err
+}
+
+// FollowedSpaces son los espacios que este usuario sigue, para que la pantalla
+// pueda pintar el estado del botón sin una consulta por canal.
+func (r *ChatRepository) FollowedSpaces(userID string) ([]string, error) {
+	var ids []string
+	err := r.db.Model(&domain.SpaceFollower{}).
+		Where("user_id = ?", userID).Pluck("space_id", &ids).Error
+	return ids, err
+}
+
 func (r *ChatRepository) MembersOf(orgID string, userIDs []string) ([]string, error) {
 	if orgID == "" || len(userIDs) == 0 {
 		return nil, nil

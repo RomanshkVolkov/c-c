@@ -20,6 +20,11 @@ const OPCIONES: { key: keyof InboxPrefs; label: string; hint: string }[] = [
   { key: "dms", label: "Direct messages", hint: "Somebody writes to you privately." },
   { key: "comments", label: "Comments", hint: "Somebody comments on work you are on." },
   { key: "reports", label: "New reports", hint: "A client raises something through a channel." },
+  {
+    key: "messages",
+    label: "Channels you follow",
+    hint: "Ordinary messages in a channel you chose to follow. Being named always reaches you.",
+  },
 ];
 
 /**
@@ -119,7 +124,9 @@ export default function NotificationPrefsDialog({
   // Defaults while it loads: everything on, which is what a person with no
   // preferences actually gets. Showing everything off for a moment would be a
   // dialog that lies before it is even used.
-  const actual: InboxPrefs = prefs ?? { mentions: true, dms: true, comments: true, reports: true };
+  const actual: InboxPrefs = prefs ?? {
+    mentions: true, dms: true, comments: true, reports: true, messages: true,
+  };
 
   const alternar = async (key: keyof InboxPrefs) => {
     if (busy) return;

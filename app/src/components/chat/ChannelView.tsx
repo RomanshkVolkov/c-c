@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Bell, BellOff, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
@@ -38,6 +38,10 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
   const fetchOlder = useChatStore((s) => s.fetchOlder);
   const markRead = useChatStore((s) => s.markRead);
   const post = useChatStore((s) => s.post);
+  const following = useChatStore((s) => s.following);
+  const fetchFollowing = useChatStore((s) => s.fetchFollowing);
+  const setFollowing = useChatStore((s) => s.setFollowing);
+  const sigo = following.includes(spaceId);
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -56,7 +60,8 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
   const people = useCallback(() => usePeopleStore.getState().current(), []);
   useEffect(() => {
     fetchPeople().catch(() => {});
-  }, [fetchPeople]);
+    fetchFollowing().catch(() => {});
+  }, [fetchPeople, fetchFollowing]);
 
   const scroller = useRef<HTMLDivElement>(null);
   // How tall the list was before an older page landed, so the view can stay put.
@@ -125,6 +130,26 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
+        {/* Seguir un canal es pedir que también lo corriente avise, no sólo
+            cuando te nombran. Vive aquí y no en preferencias porque es una
+            decisión por canal: los que te importan los sabes estando dentro. */}
+        <button
+          onClick={() => setFollowing(spaceId, !sigo).catch((e) => toast.error(String(e)))}
+          title={
+            sigo
+              ? "You get a notification for every message here"
+              : "Only mentions notify you here"
+          }
+          className={cn(
+            "ml-auto flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
+            sigo
+              ? "border-primary/40 text-primary"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {sigo ? <Bell className="size-3" /> : <BellOff className="size-3" />}
+          {sigo ? "Following" : "Follow"}
+        </button>
       </header>
 
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">

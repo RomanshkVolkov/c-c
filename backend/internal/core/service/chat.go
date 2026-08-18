@@ -49,9 +49,21 @@ func (s *ChatService) WithNotifier(n Notifier) *ChatService {
 // the event the app announces it back at its author — a bug this codebase found
 // the hard way the day before this feature was written.
 func (s *ChatService) publish(orgID, spaceID, messageID, actorID string, mentions []string) {
-	if s.hub == nil || orgID == "" {
+	if orgID == "" {
 		return
 	}
+	// El bus y la bandeja son dos trabajos distintos, y por eso se guardan por
+	// separado. Estaban bajo la misma condición: sin bus no se anotaba **ni
+	// una** notificación, así que una configuración sin Valkey dejaba de avisar
+	// a todo el mundo sin dar ningún error. Nadie lo habría visto hasta que
+	// alguien se quejara de no enterarse de nada.
+	if s.hub != nil {
+		s.publicarAlStream(orgID, spaceID, messageID, actorID, mentions)
+	}
+	s.anotarAvisos(orgID, spaceID, actorID, mentions)
+}
+
+func (s *ChatService) publicarAlStream(orgID, spaceID, messageID, actorID string, mentions []string) {
 	s.hub.Publish(events.Event{
 		Type:  "chat:message",
 		OrgID: orgID,
@@ -64,7 +76,9 @@ func (s *ChatService) publish(orgID, spaceID, messageID, actorID string, mention
 			"mentions": mentions,
 		},
 	})
+}
 
+func (s *ChatService) anotarAvisos(orgID, spaceID, actorID string, mentions []string) {
 	if s.notifier == nil {
 		return
 	}
@@ -77,6 +91,41 @@ func (s *ChatService) publish(orgID, spaceID, messageID, actorID string, mention
 		s.notifier.Notify(uid, orgID, "chat:mention",
 			"You were mentioned", "", "/chat?space="+spaceID)
 	}
+
+	// Y a quien sigue el canal, por lo corriente. Sólo a quien lo sigue: avisar
+	// a todo el espacio de cada línea convierte la bandeja en una copia del
+	// chat, y cuarenta mensajes de un canal ajeno tapan la mención que sí te
+	// buscaba. Sin repetir a los ya nombrados, que acaban de recibir el suyo.
+	nombrados := make(map[string]bool, len(mentions))
+	for _, uid := range mentions {
+		nombrados[uid] = true
+	}
+	seguidores, err := s.repo.Followers(spaceID)
+	if err != nil {
+		return
+	}
+	for _, uid := range seguidores {
+		if uid == actorID || nombrados[uid] {
+			continue
+		}
+		s.notifier.Notify(uid, orgID, "chat:message",
+			"New message in a channel you follow", "", "/chat?space="+spaceID)
+	}
+}
+
+// Follow / Unfollow / Following: quién quiere enterarse de lo que se hable
+// aquí. La autorización por pertenencia a la organización la aplica el handler,
+// igual que en el resto del módulo.
+func (s *ChatService) Follow(spaceID, userID string) error {
+	return s.repo.Follow(spaceID, userID)
+}
+
+func (s *ChatService) Unfollow(spaceID, userID string) error {
+	return s.repo.Unfollow(spaceID, userID)
+}
+
+func (s *ChatService) Following(userID string) ([]string, error) {
+	return s.repo.FollowedSpaces(userID)
 }
 
 // mentioned answers who this body actually names.

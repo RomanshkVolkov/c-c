@@ -36,6 +36,12 @@ interface ChatState {
   hasMore: boolean;
   unreadBySpace: Record<string, number>;
   /**
+   * Los canales que sigo. Seguir es decir «avísame también de lo corriente»:
+   * sin eso, sólo una mención genera notificación, y con eso encendido para
+   * todo el espacio la bandeja acabaría siendo una copia del chat.
+   */
+  following: string[];
+  /**
    * Which channel is on screen, if any. Named for the panel it used to be; it
    * now means "the Channels screen is showing this space", and its one job is
    * to stop the notifier announcing messages you are watching arrive.
@@ -51,6 +57,8 @@ interface ChatState {
   withdraw: (spaceId: string, messageId: string) => Promise<void>;
   markRead: (spaceId: string) => Promise<void>;
   fetchUnread: () => Promise<void>;
+  fetchFollowing: () => Promise<void>;
+  setFollowing: (spaceId: string, on: boolean) => Promise<void>;
   /**
    * A message arrived on the stream. Echo filtering happens in the events hook,
    * which owns that rule for every event type; by the time it calls this, the
@@ -68,6 +76,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadingOlder: false,
   hasMore: true,
   unreadBySpace: {},
+  following: [],
   panelOpen: false,
 
   openPanel: async (spaceId) => {
@@ -161,6 +170,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ unreadBySpace: map });
   },
 
+  fetchFollowing: async () => {
+    const res = await api.get<{ data: string[] }>("/api/v1/chat/following");
+    set({ following: res.data ?? [] });
+  },
+
+  // Optimista y luego confirmado: el botón responde en el acto y, si el
+  // servidor dice que no, la lista que vuelve manda. Un botón que tarda medio
+  // segundo en cambiar de estado se pulsa dos veces.
+  setFollowing: async (spaceId, on) => {
+    set((s) => ({
+      following: on
+        ? [...new Set([...s.following, spaceId])]
+        : s.following.filter((id) => id !== spaceId),
+    }));
+    const path = `/api/v1/task-spaces/${spaceId}/chat/follow`;
+    try {
+      if (on) await api.post(path, {}, true);
+      else await api.delete(path, true);
+    } finally {
+      await useChatStore.getState().fetchFollowing();
+    }
+  },
+
   onIncoming: async (spaceId) => {
     const s = get();
     if (s.panelOpen && s.spaceId === spaceId) {
@@ -185,6 +217,7 @@ useAuthStore.subscribe((state, prev) => {
       messages: [],
       spaceId: null,
       unreadBySpace: {},
+  following: [],
       panelOpen: false,
       hasMore: true,
     });

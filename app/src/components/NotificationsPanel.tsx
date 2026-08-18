@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AtSign, CheckSquare, Hash, Info, Settings, Zap } from "lucide-react";
+import { AtSign, CheckSquare, Hash, Info, MessageSquare, Settings, Zap } from "lucide-react";
 import { useInboxStore, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
@@ -18,19 +18,24 @@ import { cn } from "@/lib/utils";
  * avisos quiero» es donde la pregunta se contesta sola.
  */
 
-type Pestana = "all" | "mentions" | "tasks" | "system";
+type Pestana = "all" | "talk" | "tasks" | "system";
 
 const PESTANAS: { key: Pestana; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "mentions", label: "Mentions" },
+  // «Talk» y no «Mentions», que es como lo llama el prototipo: aquí caen
+  // también los directos y los mensajes de los canales que sigues, y ninguno de
+  // los dos te nombra. Una pestaña que promete menciones y trae mensajes
+  // corrientes deja de servir para encontrar quién te buscaba.
+  { key: "talk", label: "Talk" },
   { key: "tasks", label: "Tasks" },
   { key: "system", label: "System" },
 ];
 
 /** A qué pestaña pertenece cada clase, y con qué cara se dibuja. */
 const CLASES: Record<string, { grupo: Pestana; tag: string; icono: typeof AtSign; color: string }> = {
-  "chat:mention": { grupo: "mentions", tag: "mention", icono: Hash, color: "text-primary" },
-  "dm:message": { grupo: "mentions", tag: "direct", icono: AtSign, color: "text-primary" },
+  "chat:mention": { grupo: "talk", tag: "mention", icono: AtSign, color: "text-primary" },
+  "dm:message": { grupo: "talk", tag: "direct", icono: MessageSquare, color: "text-primary" },
+  "chat:message": { grupo: "talk", tag: "channel", icono: Hash, color: "text-muted-foreground" },
   "task:comment": { grupo: "tasks", tag: "comment", icono: CheckSquare, color: "text-foreground" },
   "report:new": { grupo: "system", tag: "report", icono: Zap, color: "text-warning" },
 };

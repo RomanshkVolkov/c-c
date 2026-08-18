@@ -120,3 +120,15 @@ type ChatUnread struct {
 	SpaceID string `json:"spaceId"`
 	Count   int64  `json:"count"`
 }
+
+// SpaceFollower es quien quiere enterarse de lo que se hable en un canal, sin
+// que haga falta que le nombren.
+//
+// Existe porque «todo mensaje avisa a todo el espacio» convierte la bandeja en
+// una copia del chat: cuarenta líneas de un canal ajeno tapan la mención que sí
+// te buscaba. Seguir es la forma de decir «este sitio me importa» sin apagarle
+// el aviso a nadie más.
+type SpaceFollower struct {
+	SpaceID string `gorm:"type:varchar(36);primaryKey" json:"spaceId"`
+	UserID  string `gorm:"type:varchar(36);primaryKey;index" json:"userId"`
+}

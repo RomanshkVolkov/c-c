@@ -45,6 +45,7 @@ const n = (id: string, kind: string, title: string, readAt?: string): InboxItem 
 const TODAS = [
   n("m1", "chat:mention", "#portento · te nombraron"),
   n("d1", "dm:message", "Ana · directo"),
+  n("c1", "chat:message", "#portento · mensaje"),
   n("t1", "task:comment", "portento-89 · comentario"),
   n("r1", "report:new", "portento-97 · nuevo reporte"),
   n("v1", "task:comment", "portento-93 · cerrada", new Date().toISOString()),
@@ -64,11 +65,14 @@ describe("el panel de notificaciones", () => {
     expect(screen.getByText("portento-97 · nuevo reporte")).toBeTruthy();
   });
 
-  it("«Menciones» deja fuera lo que no te nombró", () => {
+  it("«Talk» recoge lo conversacional y deja fuera lo demás", () => {
     montar();
-    fireEvent.click(screen.getByText("Mentions"));
+    fireEvent.click(screen.getByText("Talk"));
     expect(screen.getByText("#portento · te nombraron")).toBeTruthy();
     expect(screen.getByText("Ana · directo")).toBeTruthy();
+    // Y el mensaje corriente de un canal seguido, que no te nombra pero es
+    // igual de conversacional: por eso la pestaña ya no se llama «Mentions».
+    expect(screen.getByText("#portento · mensaje")).toBeTruthy();
     expect(screen.queryByText("portento-97 · nuevo reporte")).toBeNull();
     expect(screen.queryByText("portento-89 · comentario")).toBeNull();
   });

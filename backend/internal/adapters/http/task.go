@@ -77,6 +77,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Patch("/{id}/chat/{messageId}", h.EditChat)
 		r.Delete("/{id}/chat/{messageId}", h.WithdrawChat)
 		r.Post("/{id}/chat/read", h.MarkChatRead)
+		r.Post("/{id}/chat/follow", h.FollowChannel)
+		r.Delete("/{id}/chat/follow", h.UnfollowChannel)
 		r.Post("/{id}/chat/attachments", h.UploadChatAttachment)
 	})
 
@@ -108,6 +110,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// Every channel with unread lines, in one call — the navigator asks on every
 	// load, and one request per space would be one request per space.
 	r.With(middleware.AuthMiddleware).Get("/api/v1/chat/unread", h.ChatUnread)
+	r.With(middleware.AuthMiddleware).Get("/api/v1/chat/following", h.FollowedChannels)
 
 	// Direct messages. Their own space in the API for the same reason they have
 	// their own tables: nothing about a private conversation should be reachable

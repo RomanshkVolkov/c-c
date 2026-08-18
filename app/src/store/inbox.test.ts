@@ -79,7 +79,7 @@ describe("las preferencias", () => {
     });
     await useInboxStore
       .getState()
-      .savePrefs({ mentions: false, dms: false, comments: true, reports: true });
+      .savePrefs({ mentions: false, dms: false, comments: true, reports: true, messages: true });
 
     expect(patch).toHaveBeenCalled();
     expect(useInboxStore.getState().prefs?.mentions).toBe(true);
