@@ -901,3 +901,139 @@ func (s *TaskService) OrgIDForTask(taskID string) (string, error) {
 	}
 	return t.OrgID, nil
 }
+
+// ─── Duplicating a folder, and moving branches between spaces ────────────────
+
+// ErrDifferentOrganization: the target space belongs to somebody else.
+//
+// The hard fence of this whole module. Spaces are how one client's work is kept
+// apart from another's, and a move that crossed organizations would carry it
+// over in a single drag, silently and with no way to notice afterwards.
+var ErrDifferentOrganization = errors.New("that space belongs to another organization")
+
+// DuplicateFolder copies a folder, the folders inside it however deep, and the
+// lists in all of them.
+//
+// **Structure only: no tasks are copied.** Duplicating a folder is how a
+// template gets reused, and carrying the work across with it would mint new
+// folios for items that already exist, duplicate their comments and
+// attachments, and leave two copies of the same job for someone to reconcile.
+// The empty shape is the useful half.
+func (s *TaskService) DuplicateFolder(id, name string) (*domain.TaskFolder, error) {
+	origen, err := s.repo.FindFolder(id)
+	if err != nil {
+		return nil, err
+	}
+	folders, lists, err := s.repo.FolderSubtree(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Old id → new id, so the copied folders keep pointing at each other rather
+	// than at the originals.
+	nuevoID := make(map[string]string, len(folders))
+	for _, f := range folders {
+		nuevoID[f.ID] = uuid.NewString()
+	}
+
+	copias := make([]domain.TaskFolder, 0, len(folders))
+	for _, f := range folders {
+		c := domain.TaskFolder{SpaceID: f.SpaceID, Name: f.Name, Rank: f.Rank}
+		c.ID = nuevoID[f.ID]
+		if f.ID == origen.ID {
+			if name != "" {
+				c.Name = name
+			}
+			c.ParentFolderID = origen.ParentFolderID
+			c.Rank = s.repo.LastRankIn("task_folders", f.SpaceID)
+		} else if f.ParentFolderID != nil {
+			padre := nuevoID[*f.ParentFolderID]
+			c.ParentFolderID = &padre
+		}
+		copias = append(copias, c)
+	}
+
+	copiaLists := make([]domain.TaskList, 0, len(lists))
+	statuses := make(map[string][]domain.TaskStatus, len(lists))
+	for _, l := range lists {
+		padre := nuevoID[*l.FolderID]
+		c := domain.TaskList{SpaceID: l.SpaceID, FolderID: &padre, Name: l.Name, Rank: l.Rank}
+		c.ID = uuid.NewString()
+		// The channel binding is deliberately not carried over. A copy is a new
+		// container, and inheriting "a client can see this" without anyone
+		// saying so is the one mistake here that would be invisible.
+		copiaLists = append(copiaLists, c)
+		statuses[c.ID] = defaultStatuses()
+	}
+
+	if err := s.repo.CreateBranch(copias, copiaLists, statuses); err != nil {
+		return nil, err
+	}
+	return &copias[0], nil
+}
+
+// MoveFolderToSpace re-homes a folder and everything under it.
+func (s *TaskService) MoveFolderToSpace(folderID, spaceID string) error {
+	origen, err := s.repo.FindFolder(folderID)
+	if err != nil {
+		return err
+	}
+	if err := s.mismaOrganizacion(origen.SpaceID, spaceID); err != nil {
+		return err
+	}
+	folders, lists, err := s.repo.FolderSubtree(folderID)
+	if err != nil {
+		return err
+	}
+	folderIDs := make([]string, len(folders))
+	for i, f := range folders {
+		folderIDs[i] = f.ID
+	}
+	listIDs := make([]string, len(lists))
+	for i, l := range lists {
+		listIDs[i] = l.ID
+	}
+	return s.repo.MoveBranchToSpace(
+		folderIDs, listIDs, folderID, spaceID, s.repo.LastRankIn("task_folders", spaceID))
+}
+
+// MoveListToSpace takes one list to another space of the same organization.
+//
+// It carries its channel with it, explicitly. A list with no binding of its own
+// shows whatever its space says, so moving it from a bound space into an
+// unbound one — or into one bound to a different client — would change who can
+// read that work as a side effect of tidying up. Writing the inherited channel
+// onto the list at the moment of the move keeps the answer to "who sees this"
+// exactly as it was, and makes it visible in the dialog rather than implied.
+func (s *TaskService) MoveListToSpace(listID, spaceID string) error {
+	l, err := s.repo.FindList(listID)
+	if err != nil {
+		return err
+	}
+	if err := s.mismaOrganizacion(l.SpaceID, spaceID); err != nil {
+		return err
+	}
+	var fijar *string
+	if l.ProjectID == nil {
+		if origen, err := s.repo.FindSpace(l.SpaceID); err == nil && origen.ProjectID != nil {
+			heredado := *origen.ProjectID
+			fijar = &heredado
+		}
+	}
+	return s.repo.MoveListToSpace(listID, spaceID, fijar, s.repo.LastRankIn("task_lists", spaceID))
+}
+
+func (s *TaskService) mismaOrganizacion(origenSpaceID, destinoSpaceID string) error {
+	origen, err := s.repo.FindSpace(origenSpaceID)
+	if err != nil {
+		return err
+	}
+	destino, err := s.repo.FindSpace(destinoSpaceID)
+	if err != nil {
+		return err
+	}
+	if origen.OrgID != destino.OrgID {
+		return ErrDifferentOrganization
+	}
+	return nil
+}

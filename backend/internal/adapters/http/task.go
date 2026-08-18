@@ -80,6 +80,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Patch("/{id}", h.UpdateFolder)
 		r.Delete("/{id}", h.DeleteFolder)
 		r.Post("/{id}/move", h.MoveFolder)
+		r.Post("/{id}/duplicate", h.DuplicateFolder)
+		r.Post("/{id}/move-to-space", h.MoveFolderToSpace)
 	})
 
 	r.Route("/api/v1/task-lists", func(r chi.Router) {
@@ -87,6 +89,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Patch("/{id}", h.UpdateList)
 		r.Delete("/{id}", h.DeleteList)
 		r.Post("/{id}/move", h.MoveList)
+		r.Post("/{id}/move-to-space", h.MoveListToSpace)
 		r.Get("/{id}/board", h.Board)
 		r.Post("/{id}/statuses", h.CreateStatus)
 		r.Post("/{id}/tasks", h.CreateTask)

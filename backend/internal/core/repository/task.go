@@ -975,3 +975,119 @@ func (r *TaskRepository) DeleteAttachment(id string) error {
 	return r.db.Delete(&domain.TaskAttachment{}, "id = ?", id).Error
 }
 
+
+// ─── Duplicating and moving whole branches ───────────────────────────────────
+
+// LastRankIn gives the rank a node should take to land at the end of a space,
+// which is where anything arriving from elsewhere belongs: it has no
+// relationship with the order that is already there.
+func (r *TaskRepository) LastRankIn(table, spaceID string) string {
+	return r.nextRank(table, "space_id = ?", spaceID)
+}
+
+// FolderSubtree returns a folder, every folder under it however deep, and every
+// list in any of them. One query per kind rather than one per level: the depth
+// is unbounded and a walk would be a query per node.
+func (r *TaskRepository) FolderSubtree(folderID string) ([]domain.TaskFolder, []domain.TaskList, error) {
+	root, err := r.FindFolder(folderID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var todos []domain.TaskFolder
+	if err := r.db.Where("space_id = ?", root.SpaceID).Order("rank ASC").Find(&todos).Error; err != nil {
+		return nil, nil, err
+	}
+	dentro := map[string]bool{root.ID: true}
+	// Repeated passes rather than recursion: `todos` is rank-ordered, not
+	// parent-ordered, so a child can appear before its parent.
+	for cambio := true; cambio; {
+		cambio = false
+		for _, f := range todos {
+			if !dentro[f.ID] && f.ParentFolderID != nil && dentro[*f.ParentFolderID] {
+				dentro[f.ID] = true
+				cambio = true
+			}
+		}
+	}
+	folders := make([]domain.TaskFolder, 0, len(dentro))
+	for _, f := range todos {
+		if dentro[f.ID] {
+			folders = append(folders, f)
+		}
+	}
+	var todasLas []domain.TaskList
+	if err := r.db.Where("space_id = ?", root.SpaceID).Order("rank ASC").Find(&todasLas).Error; err != nil {
+		return nil, nil, err
+	}
+	lists := make([]domain.TaskList, 0)
+	for _, l := range todasLas {
+		if l.FolderID != nil && dentro[*l.FolderID] {
+			lists = append(lists, l)
+		}
+	}
+	return folders, lists, nil
+}
+
+// CreateBranch writes a prepared set of folders and lists in one transaction, so
+// a duplicate either exists whole or not at all — half a copied folder is worse
+// than none, because nobody can tell which half is missing.
+func (r *TaskRepository) CreateBranch(
+	folders []domain.TaskFolder, lists []domain.TaskList, statuses map[string][]domain.TaskStatus,
+) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for i := range folders {
+			if err := tx.Create(&folders[i]).Error; err != nil {
+				return err
+			}
+		}
+		for i := range lists {
+			if err := tx.Create(&lists[i]).Error; err != nil {
+				return err
+			}
+			st := statuses[lists[i].ID]
+			for j := range st {
+				st[j].ListID = lists[i].ID
+			}
+			if len(st) > 0 {
+				if err := tx.Create(&st).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// MoveBranchToSpace re-homes a folder and everything under it. The folder lands
+// at the top level of the target — it has no parent there — and every list it
+// carries follows, because a folder without its lists is not the thing that was
+// moved.
+func (r *TaskRepository) MoveBranchToSpace(
+	folderIDs, listIDs []string, rootFolderID, spaceID, newRank string,
+) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&domain.TaskFolder{}).Where("id IN ?", folderIDs).
+			Update("space_id", spaceID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&domain.TaskFolder{}).Where("id = ?", rootFolderID).
+			Updates(map[string]any{"parent_folder_id": nil, "rank": newRank}).Error; err != nil {
+			return err
+		}
+		if len(listIDs) == 0 {
+			return nil
+		}
+		return tx.Model(&domain.TaskList{}).Where("id IN ?", listIDs).
+			Update("space_id", spaceID).Error
+	})
+}
+
+// MoveListToSpace takes one list out of its folder and into another space.
+// `pinnedProject` is the channel it must keep; see the service for why.
+func (r *TaskRepository) MoveListToSpace(listID, spaceID string, pinnedProject *string, newRank string) error {
+	cambios := map[string]any{"space_id": spaceID, "folder_id": nil, "rank": newRank}
+	if pinnedProject != nil {
+		cambios["project_id"] = pinnedProject
+	}
+	return r.db.Model(&domain.TaskList{}).Where("id = ?", listID).Updates(cambios).Error
+}

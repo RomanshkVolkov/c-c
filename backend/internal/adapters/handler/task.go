@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -50,6 +51,9 @@ type TaskHandler interface {
 	CreateChannel(w http.ResponseWriter, r *http.Request)
 	GetChannel(w http.ResponseWriter, r *http.Request)
 	MoveFolder(w http.ResponseWriter, r *http.Request)
+	DuplicateFolder(w http.ResponseWriter, r *http.Request)
+	MoveFolderToSpace(w http.ResponseWriter, r *http.Request)
+	MoveListToSpace(w http.ResponseWriter, r *http.Request)
 	Board(w http.ResponseWriter, r *http.Request)
 	CreateStatus(w http.ResponseWriter, r *http.Request)
 	UpdateStatus(w http.ResponseWriter, r *http.Request)
@@ -400,6 +404,87 @@ func (h *taskHandler) resolveFolder(w http.ResponseWriter, r *http.Request, need
 		return nil, false
 	}
 	return f, true
+}
+
+// DuplicateFolder copies a folder's shape into the same space.
+func (h *taskHandler) DuplicateFolder(w http.ResponseWriter, r *http.Request) {
+	f, ok := h.resolveFolder(w, r, true)
+	if !ok {
+		return
+	}
+	// The name is optional: without one the copy keeps the original's, which is
+	// what a person renaming it straight afterwards would rather start from.
+	var req struct {
+		Name string `json:"name"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	copia, err := h.svc.DuplicateFolder(f.ID, req.Name)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to duplicate folder", err.Error())
+		return
+	}
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.TaskFolder]{
+		Success: true, Message: "Folder duplicated", Data: copia,
+	})
+}
+
+// MoveFolderToSpace and MoveListToSpace both refuse to cross organizations.
+func (h *taskHandler) MoveFolderToSpace(w http.ResponseWriter, r *http.Request) {
+	f, ok := h.resolveFolder(w, r, true)
+	if !ok {
+		return
+	}
+	destino, ok := h.targetSpace(w, r)
+	if !ok {
+		return
+	}
+	if err := h.svc.MoveFolderToSpace(f.ID, destino); err != nil {
+		h.sendMoveError(w, err, "Failed to move folder")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Folder moved"})
+}
+
+func (h *taskHandler) MoveListToSpace(w http.ResponseWriter, r *http.Request) {
+	l, _, ok := h.resolveList(w, r, chi.URLParam(r, "id"), true)
+	if !ok {
+		return
+	}
+	destino, ok := h.targetSpace(w, r)
+	if !ok {
+		return
+	}
+	if err := h.svc.MoveListToSpace(l.ID, destino); err != nil {
+		h.sendMoveError(w, err, "Failed to move list")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "List moved"})
+}
+
+// targetSpace reads the destination and checks the caller may write to it.
+// Checked on both ends: being allowed to move something out of a space says
+// nothing about being allowed to put it into another.
+func (h *taskHandler) targetSpace(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var req struct {
+		SpaceID string `json:"spaceId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SpaceID == "" {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", "spaceId is required")
+		return "", false
+	}
+	if _, ok := h.resolveSpace(w, r, req.SpaceID, true); !ok {
+		return "", false
+	}
+	return req.SpaceID, true
+}
+
+func (h *taskHandler) sendMoveError(w http.ResponseWriter, err error, msg string) {
+	if errors.Is(err, service.ErrDifferentOrganization) {
+		SendErrorResponse(w, http.StatusConflict, "That space belongs to another organization", err.Error())
+		return
+	}
+	SendErrorResponse(w, http.StatusInternalServerError, msg, err.Error())
 }
 
 func (h *taskHandler) UpdateFolder(w http.ResponseWriter, r *http.Request) {
