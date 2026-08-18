@@ -67,6 +67,8 @@ export interface ListSummary {
    */
   projectId?: string;
   taskCount: number;
+  /** Las que quedan por hacer, frente a `taskCount` que son todas las vivas. */
+  openCount: number;
 }
 
 export interface FolderTree {
@@ -77,6 +79,11 @@ export interface FolderTree {
   lists: ListSummary[];
 }
 
+export interface SpacePerson {
+  userId: string;
+  username: string;
+}
+
 export interface SpaceTree {
   id: string;
   orgId: string;
@@ -85,6 +92,13 @@ export interface SpaceTree {
   projectId?: string;
   folders: FolderTree[];
   lists: ListSummary[];
+  /**
+   * Quién carga trabajo abierto aquí dentro. Es la única pertenencia real que
+   * tiene un espacio: no hay miembros por espacio —quien está en la
+   * organización llega a todos— así que «quién está aquí» sólo se responde por
+   * lo que la gente sostiene.
+   */
+  people: SpacePerson[];
 }
 
 /**

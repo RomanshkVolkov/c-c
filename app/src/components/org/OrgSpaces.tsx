@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, Hash, MessageSquare, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useTasksStore } from "@/store/tasks.store";
@@ -8,6 +8,7 @@ import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { usePrompt } from "@/components/PromptDialog";
 import type { FolderTree, ListSummary, SpaceTree } from "@/types/task";
+import { iniciales } from "@/lib/desde";
 
 /**
  * Los espacios de la organización, como fichas y no como árbol.
@@ -17,10 +18,11 @@ import type { FolderTree, ListSummary, SpaceTree } from "@/types/task";
  * cliente**. Eso es una propiedad del sitio entero, así que va en la pantalla
  * de la organización, al lado de quiénes son sus personas.
  *
- * Sin avatares por ficha, a diferencia del prototipo: hoy no hay pertenencia
- * por espacio —quien está en la organización llega a todos, salvo el cliente
- * atado a su canal— así que las mismas caras repetidas en cada ficha serían
- * ruido con aspecto de información.
+ * Las caras de cada ficha son quien **carga trabajo abierto** ahí. No hay
+ * miembros por espacio —quien está en la organización llega a todos, salvo el
+ * cliente atado a su canal— así que repetir la misma plantilla en cada ficha
+ * sería ruido con aspecto de información; lo que cada sitio tiene de suyo es
+ * quién lo sostiene.
  */
 
 /** Todo lo que cuelga de un espacio, aplanado: las carpetas anidan. */
@@ -94,68 +96,78 @@ export default function OrgSpaces({ canManage = false }: { canManage?: boolean }
           No spaces in this organization.
         </p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(290px,1fr))]">
           {tree.map((sp: SpaceTree) => {
             const dentro = aplanar(sp.folders);
             const listas = [...sp.lists, ...dentro.lists];
-            const tareas = listas.reduce((n, l) => n + (l.taskCount ?? 0), 0);
+            const todas = listas.reduce((n, l) => n + (l.taskCount ?? 0), 0);
+            const abiertas = listas.reduce((n, l) => n + (l.openCount ?? 0), 0);
             // Una lista puede traer su propia atadura aunque el espacio no
             // tenga ninguna, así que «esto no lo ve nadie» tiene que mirar las
             // dos: decir que un espacio es interno cuando una de sus listas no
             // lo es sería el peor error posible en esta pantalla.
             const listaVisible = listas.some((l) => l.projectId);
             const visible = !!sp.projectId || listaVisible;
+            const gente = sp.people ?? [];
 
             return (
-              <li key={sp.id} className="flex flex-col gap-3 rounded-xl border bg-card p-4">
+              <li
+                key={sp.id}
+                className="flex flex-col gap-2.5 rounded-xl border bg-card px-3.5 py-3"
+              >
                 <div className="flex items-center gap-2">
                   <span
-                    className="size-2.5 shrink-0 rounded-sm"
+                    className="size-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: sp.color || "var(--primary)" }}
                   />
-                  <span className="min-w-0 flex-1 truncate font-medium">{sp.name}</span>
+                  <span className="min-w-0 flex-1 truncate font-semibold">{sp.name}</span>
                 </div>
 
-                <dl className="grid gap-1.5 text-xs">
-                  <div className="flex items-center gap-2">
-                    <dt className="w-16 shrink-0 text-muted-foreground">Channel</dt>
-                    <dd className="flex min-w-0 items-center gap-1 truncate">
-                      <MessageSquare className="size-3 shrink-0 text-muted-foreground" />#
-                      {sp.name}
-                    </dd>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <dt className="w-16 shrink-0 text-muted-foreground">Tasks</dt>
-                    <dd className="truncate">
-                      {tareas} open · {listas.length} list{listas.length === 1 ? "" : "s"}
-                      {dentro.folders > 0 && ` · ${dentro.folders} folder${dentro.folders === 1 ? "" : "s"}`}
-                    </dd>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <dt className="w-16 shrink-0 text-muted-foreground">Access</dt>
-                    <dd className="min-w-0 truncate">
-                      {visible ? (
-                        <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary">
-                          <Eye className="size-3" />
-                          {sp.projectId ? nombreDe(sp.projectId) : "a client sees part of it"}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                          <Hash className="size-3" /> internal
-                        </span>
-                      )}
-                    </dd>
-                  </div>
+                {/* Dos columnas fijas y no filas sueltas: con el ancho de la
+                    etiqueta suelto, los valores de cada ficha caen en un sitio
+                    distinto y la rejilla deja de leerse en vertical. */}
+                <dl className="grid grid-cols-[78px_1fr] gap-x-2.5 gap-y-1.5 text-xs">
+                  <dt className="text-muted-foreground">Channel</dt>
+                  <dd className="min-w-0 truncate">#{sp.name}</dd>
+
+                  <dt className="text-muted-foreground">Tasks</dt>
+                  <dd className="min-w-0 truncate text-muted-foreground">
+                    {todas} · {abiertas} open
+                  </dd>
+
+                  <dt className="text-muted-foreground">Access</dt>
+                  <dd className="min-w-0 truncate text-muted-foreground">
+                    {visible
+                      ? sp.projectId
+                        ? nombreDe(sp.projectId)
+                        : "a client sees part of it"
+                      : "the whole organization"}
+                  </dd>
                 </dl>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-auto"
-                  onClick={() => navigate(`/tasks?space=${sp.id}`)}
-                >
-                  Manage
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  {gente.slice(0, 4).map((p) => (
+                    <span
+                      key={p.userId}
+                      title={`@${p.username}`}
+                      className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium"
+                    >
+                      {iniciales(p.username)}
+                    </span>
+                  ))}
+                  {gente.length > 4 && (
+                    <span className="text-[11px] text-muted-foreground">+{gente.length - 4}</span>
+                  )}
+                  {gente.length === 0 && (
+                    <span className="text-[11px] text-muted-foreground">nobody is on it</span>
+                  )}
+                  <button
+                    className="ml-auto shrink-0 text-[11.5px] text-primary hover:underline"
+                    onClick={() => navigate(`/tasks?space=${sp.id}`)}
+                  >
+                    Manage
+                  </button>
+                </div>
               </li>
             );
           })}

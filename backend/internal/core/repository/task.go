@@ -178,19 +178,49 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		return nil, err
 	}
 
-	// Open task counts per list, in one grouped query.
+	// Cuántas hay y cuántas quedan, por lista, en una sola consulta agrupada.
 	type countRow struct {
 		ListID string
 		N      int64
+		Open   int64
 	}
 	var counts []countRow
 	r.db.Model(&domain.Item{}).
-		Select("list_id, COUNT(*) AS n").
+		Select("list_id, COUNT(*) AS n, COUNT(*) FILTER (WHERE status NOT IN ('resolved','closed')) AS open").
 		Where("archived_at IS NULL").
 		Group("list_id").Scan(&counts)
 	countBy := make(map[string]int64, len(counts))
+	openBy := make(map[string]int64, len(counts))
 	for _, c := range counts {
 		countBy[c.ListID] = c.N
+		openBy[c.ListID] = c.Open
+	}
+
+	// Quién carga trabajo en cada espacio. Una consulta para todos: la pantalla
+	// de la organización pinta todos los espacios a la vez.
+	type personRow struct {
+		SpaceID  string
+		UserID   string
+		Username string
+		N        int64
+	}
+	var personas []personRow
+	r.db.Table("items AS i").
+		Select("l.space_id AS space_id, u.id AS user_id, u.username AS username, COUNT(*) AS n").
+		Joins("JOIN task_lists l ON l.id = i.list_id").
+		Joins("JOIN users u ON u.id = i.assignee_user_id").
+		Where("l.space_id IN ? AND i.archived_at IS NULL AND i.status NOT IN ('resolved','closed')", spaceIDs).
+		Group("l.space_id, u.id, u.username").
+		Order("n DESC").Scan(&personas)
+	// Un tope por espacio: la ficha dibuja unas pocas caras y el resto se cuenta.
+	// Sale ordenado por carga, así que las que llegan son las que más sostienen.
+	const carasPorEspacio = 5
+	peopleBy := make(map[string][]domain.SpacePerson, len(spaces))
+	for _, p := range personas {
+		if len(peopleBy[p.SpaceID]) >= carasPorEspacio {
+			continue
+		}
+		peopleBy[p.SpaceID] = append(peopleBy[p.SpaceID], domain.SpacePerson{UserID: p.UserID, Username: p.Username})
 	}
 
 	// Space bindings, so a list can inherit one without a query per list.
@@ -211,7 +241,10 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		} else if sp := spaceProject[l.SpaceID]; sp != "" {
 			channel = sp
 		}
-		return domain.ListSummary{ID: l.ID, Name: l.Name, ProjectID: channel, TaskCount: countBy[l.ID]}
+		return domain.ListSummary{
+			ID: l.ID, Name: l.Name, ProjectID: channel,
+			TaskCount: countBy[l.ID], OpenCount: openBy[l.ID],
+		}
 	}
 
 	out := make([]domain.SpaceTree, 0, len(spaces))
@@ -219,6 +252,10 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		tree := domain.SpaceTree{
 			ID: s.ID, OrgID: s.OrgID, Name: s.Name, Color: s.Color, ProjectID: spaceProject[s.ID],
 			Folders: []domain.FolderTree{}, Lists: []domain.ListSummary{},
+			People: peopleBy[s.ID],
+		}
+		if tree.People == nil {
+			tree.People = []domain.SpacePerson{}
 		}
 		// Recursive since folders can hold folders. `folders` is already in rank
 		// order, so each level comes out ordered without sorting again.

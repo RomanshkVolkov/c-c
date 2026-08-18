@@ -402,6 +402,17 @@ type SpaceTree struct {
 	ProjectID string        `json:"projectId,omitempty"`
 	Folders   []FolderTree  `json:"folders"`
 	Lists     []ListSummary `json:"lists"` // lists directly under the space
+	// People es quién tiene trabajo asignado aquí dentro. Es la única
+	// pertenencia real que tiene un espacio: no hay tabla de miembros por
+	// espacio —quien está en la organización llega a todos— así que «quién está
+	// en este sitio» sólo se puede responder por lo que la gente carga.
+	People []SpacePerson `json:"people"`
+}
+
+// SpacePerson es una cara en la ficha de un espacio: lo justo para dibujarla.
+type SpacePerson struct {
+	UserID   string `json:"userId"`
+	Username string `json:"username"`
 }
 
 type FolderTree struct {
@@ -414,6 +425,9 @@ type FolderTree struct {
 type ListSummary struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// OpenCount son las que quedan por hacer, frente a TaskCount que son todas
+	// las vivas. Las dos, porque «9 de 48» dice algo que ninguna sola dice.
+	OpenCount int64 `json:"openCount"`
 	// ProjectID is the channel this list belongs to, if any — either its own
 	// binding or the one it inherits from its space. Sent so the navigator can
 	// say which lists a client can see into, rather than leaving that invisible.
