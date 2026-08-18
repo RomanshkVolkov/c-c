@@ -328,6 +328,11 @@ type ReportProjectResponse struct {
 	// Whether a secret is set — never the value.
 	WebhookConfigured bool      `json:"webhookConfigured"`
 	CreatedAt         time.Time `json:"createdAt"`
+	// ReportsThisMonth es lo único que dice si una integración está viva. Un
+	// canal configurado hace meses y otro que recibe a diario se ven idénticos
+	// sin este número, y la diferencia entre ambos es justo lo que se quiere
+	// saber al mirar esta pantalla.
+	ReportsThisMonth int64 `json:"reportsThisMonth"`
 }
 
 // CreateReportProjectResult carries the plaintext ingest key returned exactly

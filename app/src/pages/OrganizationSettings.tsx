@@ -211,7 +211,7 @@ export default function OrganizationSettings() {
             of them makes each one look like part of the next. Tabs also mean
             the invitation list is not the first thing between you and the
             member you came to find. */}
-        <nav className="-mb-px flex gap-4 border-b text-sm">
+        <nav className="mb-4 flex gap-4 border-b text-sm">
           {PESTANAS.filter((t) => t.key !== "invites" || canManage).map((t) => (
             <button
               key={t.key}
@@ -405,7 +405,7 @@ export default function OrganizationSettings() {
           />
         )}
 
-        {pestana === "spaces" && <OrgSpaces />}
+        {pestana === "spaces" && <OrgSpaces canManage={canManage} />}
 
         {pestana === "general" && <OrgGeneral org={current} canManage={canManage} />}
 

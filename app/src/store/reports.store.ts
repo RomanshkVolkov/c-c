@@ -55,6 +55,8 @@ interface ReportsState {
       webhookUrl?: string;
       /** Omit to keep the current secret; "" alongside an empty url clears it. */
       webhookSecret?: string;
+      /** "" lo quita; un uuid lo pone. */
+      defaultAssigneeUserId?: string;
     }
   ) => Promise<void>;
   setProjectActive: (id: string, isActive: boolean) => Promise<void>;
@@ -152,6 +154,12 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     await get().fetchProjects();
   },
 
+  // Pausar y reanudar mandan el proyecto **entero**, no sólo la bandera.
+  //
+  // El PATCH del servidor reemplaza, no fusiona: lo que no viaja se guarda
+  // vacío. Mandando sólo nombre, orígenes y límites, pausar una integración le
+  // borraba el webhook, su secreto y el responsable por defecto —y reanudarla
+  // no los devolvía, porque ya no existían.
   setProjectActive: async (id, isActive) => {
     const p = get().projects.find((x) => x.id === id);
     if (!p) return;
@@ -161,6 +169,10 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
       rateLimitPerHour: p.rateLimitPerHour,
       rateLimitPerReporterPerHour: p.rateLimitPerReporterPerHour,
       isActive,
+      webhookUrl: p.webhookUrl,
+      // El secreto no se manda: el servidor sólo lo cambia si llega uno nuevo,
+      // y aquí no hay ninguno que mandar. Va con la url para que no lo retire.
+      defaultAssigneeUserId: p.defaultAssigneeUserId ?? "",
     });
   },
 

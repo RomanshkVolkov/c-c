@@ -4,6 +4,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
+	"time"
 )
 
 type ReportProjectService struct {
@@ -111,9 +112,20 @@ func (s *ReportProjectService) List(orgIDs []string, superadmin bool) ([]domain.
 	if err != nil {
 		return nil, err
 	}
+	// El volumen del mes en curso, contado desde el día 1 en la zona del
+	// servidor. Si la cuenta falla, la lista sale igual con ceros: no ver un
+	// número es peor que no ver la integración.
+	ahora := time.Now()
+	inicioDeMes := time.Date(ahora.Year(), ahora.Month(), 1, 0, 0, 0, 0, ahora.Location())
+	volumen, err := s.repo.CountSinceByProject(inicioDeMes)
+	if err != nil {
+		volumen = map[string]int64{}
+	}
+
 	out := make([]domain.ReportProjectResponse, len(projects))
 	for i := range projects {
 		out[i] = *toReportProjectResponse(&projects[i])
+		out[i].ReportsThisMonth = volumen[projects[i].ID]
 	}
 	return out, nil
 }

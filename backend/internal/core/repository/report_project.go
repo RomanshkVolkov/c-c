@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"gorm.io/gorm"
@@ -57,6 +58,38 @@ func (r *ReportProjectRepository) ListAll() ([]domain.ReportProject, error) {
 	var out []domain.ReportProject
 	err := r.db.Order("created_at DESC").Find(&out).Error
 	return out, err
+}
+
+// CountSinceByProject cuenta los reportes **recibidos** desde `desde`,
+// agrupados por canal.
+//
+// Recibidos, no todos los del canal: una tarea escrita a mano dentro de una
+// lista atada a un cliente también lleva su project_id (la hereda del espacio),
+// y contarla haría que un canal que no recibe nada pareciera activo por el
+// trabajo que hacemos nosotros. Eso lo distingue el origen, que sólo vale
+// "internal" cuando la tarea nació aquí dentro.
+//
+// Una sola consulta y no una por proyecto: la pantalla de organización pinta
+// todas las integraciones a la vez, y N+1 consultas ahí crecen con el número de
+// clientes.
+func (r *ReportProjectRepository) CountSinceByProject(desde time.Time) (map[string]int64, error) {
+	type fila struct {
+		ProjectID string
+		N         int64
+	}
+	var filas []fila
+	err := r.db.Model(&domain.Item{}).
+		Select("project_id, COUNT(*) AS n").
+		Where("project_id <> '' AND origin <> 'internal' AND created_at >= ?", desde).
+		Group("project_id").Scan(&filas).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int64, len(filas))
+	for _, f := range filas {
+		out[f.ProjectID] = f.N
+	}
+	return out, nil
 }
 
 // Update persists the editable fields (name, origins, rate limit, active flag).

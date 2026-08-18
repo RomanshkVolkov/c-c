@@ -79,6 +79,12 @@ export interface ReportProject {
   /** Whether a signing secret exists — the value itself is never returned. */
   webhookConfigured: boolean;
   createdAt: string;
+  /**
+   * Cuántos reportes recibió en el mes en curso. Lo único que distingue un
+   * canal vivo de uno configurado y jamás usado; no cuenta el trabajo que
+   * levantamos nosotros dentro de sus listas.
+   */
+  reportsThisMonth: number;
 }
 
 export interface CreateReportProjectResult {
