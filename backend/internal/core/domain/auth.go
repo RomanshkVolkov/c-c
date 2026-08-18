@@ -126,8 +126,11 @@ type AuthResponse struct {
 }
 
 type Session struct {
-	ID                 string `json:"id"`
-	Username           string `json:"username"`
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	// Email is shown in the account menu, where the username alone is not
+	// enough to tell two accounts apart on a shared machine.
+	Email              string `json:"email,omitempty"`
 	Superadmin         bool   `json:"superadmin"`
 	MustChangePassword bool   `json:"mustChangePassword"`
 	// Scopes of the token that made this call — empty for a signed-in user's JWT.

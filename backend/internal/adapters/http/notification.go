@@ -32,5 +32,7 @@ func InitNotificationRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Get("/", h.Feed)
 		r.Post("/read", h.MarkRead)
 		r.Post("/read-all", h.MarkAllRead)
+		r.Get("/preferences", h.Prefs)
+		r.Patch("/preferences", h.SavePrefs)
 	})
 }

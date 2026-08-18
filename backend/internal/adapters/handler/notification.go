@@ -11,6 +11,8 @@ import (
 
 type NotificationHandler interface {
 	Feed(w http.ResponseWriter, r *http.Request)
+	Prefs(w http.ResponseWriter, r *http.Request)
+	SavePrefs(w http.ResponseWriter, r *http.Request)
 	MarkRead(w http.ResponseWriter, r *http.Request)
 	MarkAllRead(w http.ResponseWriter, r *http.Request)
 }
@@ -36,6 +38,47 @@ func (h *notificationHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[domain.NotificationFeed]{Success: true, Data: feed})
+}
+
+// Prefs and SavePrefs answer only for the caller, like everything else here.
+func (h *notificationHandler) Prefs(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	p, err := h.svc.Prefs(user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load preferences", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[domain.NotificationPrefs]{Success: true, Data: p})
+}
+
+func (h *notificationHandler) SavePrefs(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	var req domain.NotificationPrefs
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	// The id comes from the token and never from the body: otherwise this would
+	// be "set anybody's preferences", which is a different feature with a
+	// different answer about who may ask.
+	req.UserID = user.UserID
+	// Mentions are not negotiable — see the domain. Forced rather than ignored,
+	// so a client that sends false gets the truth back in the response instead
+	// of a value the server will never honour.
+	req.Mentions = true
+	if err := h.svc.SavePrefs(req); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save preferences", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[domain.NotificationPrefs]{Success: true, Data: req})
 }
 
 func (h *notificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {

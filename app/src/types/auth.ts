@@ -1,6 +1,9 @@
 export interface Session {
   id: string;
   username: string;
+  /** Shown in the account menu: the username alone does not tell two accounts
+   *  apart on a shared machine. */
+  email?: string;
   superadmin?: boolean;
   mustChangePassword?: boolean;
 }

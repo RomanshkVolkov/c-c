@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -67,4 +68,24 @@ func (r *NotificationRepository) MarkAllRead(userID, orgID string) error {
 		q = q.Where("org_id = ?", orgID)
 	}
 	return q.Update("read_at", now).Error
+}
+
+// Prefs reads somebody's preferences, or the defaults if they never set any.
+//
+// The absent row is not an error and not "everything off": nobody opts in to
+// being told they were named.
+func (r *NotificationRepository) Prefs(userID string) (domain.NotificationPrefs, error) {
+	var p domain.NotificationPrefs
+	err := r.db.Where("user_id = ?", userID).First(&p).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.DefaultPrefs(userID), nil
+		}
+		return domain.DefaultPrefs(userID), err
+	}
+	return p, nil
+}
+
+func (r *NotificationRepository) SavePrefs(p domain.NotificationPrefs) error {
+	return r.db.Save(&p).Error
 }

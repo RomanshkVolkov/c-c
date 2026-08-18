@@ -30,6 +30,50 @@ type Notification struct {
 	ReadAt *time.Time `gorm:"index:idx_notif_inbox,priority:2" json:"readAt,omitempty"`
 }
 
+// NotificationPrefs is what somebody wants to be told about.
+//
+// Booleans and not a list of enabled kinds, so a kind added later starts on for
+// everybody instead of off for everybody: a notification nobody asked to lose
+// is a worse default than one they have to turn off.
+//
+// Absent row means "everything on". Nobody has to opt in to being told they
+// were named — that is the point of being named.
+type NotificationPrefs struct {
+	UserID string `gorm:"type:varchar(36);primaryKey" json:"-"`
+	// Mentions is deliberately not offered as something to disable in the UI:
+	// it is here so the shape is complete, and it stays true. Somebody naming
+	// you is the one thing this product should never quietly swallow.
+	// No `default:true` on any of these, deliberately. GORM treats `false` as a
+	// zero value and substitutes the column default on insert, so a column
+	// defaulting to true made "turn this off" store itself as on — a setting
+	// that silently did nothing. The default for somebody with no row at all is
+	// handled in code instead; see DefaultPrefs.
+	Mentions bool `json:"mentions"`
+	DMs      bool `json:"dms"`
+	Comments bool `json:"comments"`
+	Reports  bool `json:"reports"`
+}
+
+// DefaultPrefs is what somebody who has never touched this gets.
+func DefaultPrefs(userID string) NotificationPrefs {
+	return NotificationPrefs{UserID: userID, Mentions: true, DMs: true, Comments: true, Reports: true}
+}
+
+// Allows answers whether a kind should be recorded at all.
+func (p NotificationPrefs) Allows(kind string) bool {
+	switch kind {
+	case "chat:mention":
+		return true // never silenced; see the field comment
+	case "dm:message":
+		return p.DMs
+	case "task:comment":
+		return p.Comments
+	case "report:new":
+		return p.Reports
+	}
+	return true
+}
+
 // NotificationFeed is what the panel shows: the notifications and the number
 // the badge needs, so it takes one request and not two.
 type NotificationFeed struct {

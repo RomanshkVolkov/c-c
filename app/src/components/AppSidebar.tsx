@@ -13,20 +13,11 @@ import {
   ImageDown,
   Send,
   KeyRound,
-  Bot,
-  Monitor,
-  Moon,
-  Sun,
   Building2,
   Mail,
   Activity,
   Users,
-  LogOut,
   LogIn,
-  RefreshCw,
-  CheckCircle2,
-  Download,
-  AlertCircle,
 } from "lucide-react";
 import {
   Sidebar,
@@ -45,24 +36,20 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { toast } from "sonner";
 import OrgSwitcher from "@/components/OrgSwitcher";
 import { Brand, BrandMark } from "@/components/brand/Brand";
+import AccountMenu from "@/components/AccountMenu";
 import SpacesNavigator from "@/components/tree/SpacesNavigator";
 import { ChangePasswordDialog } from "@/components/ChangePassword";
 import ConnectMcpDialog from "@/components/ConnectMcpDialog";
 import NotificationsPanel from "@/components/NotificationsPanel";
-import { useAuth } from "@/hooks/use-auth";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
 import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
-import { useUpdaterStore } from "@/store/updater.store";
 import { useInboxStore } from "@/store/inbox.store";
-import { useThemeStore, type ThemePreference } from "@/store/theme.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
-import { useAppVersion } from "@/hooks/use-app-version";
 import { cn } from "@/lib/utils";
 
 // guest: reachable on-device (no backend). superadmin: only for platform admins.
@@ -107,35 +94,6 @@ const DEV_TOOLS = [
   { label: "Tokens", path: "/devtools/tokens", icon: KeyRound, guest: true },
 ];
 
-/**
- * Who you are signed in as, and which build you are running.
- *
- * The version was reachable only by hovering the update button, which is the
- * wrong place: the question "what am I running" comes up when something looks
- * wrong, not when you are already thinking about updating. On an app that
- * updates itself it belongs where you can read it without pressing anything.
- */
-function AccountRow() {
-  const username = useAuthStore((s) => s.session?.username ?? "");
-  const superadmin = useAuthStore((s) => !!s.session?.superadmin);
-  const org = useOrgsStore((s) => s.currentOrg());
-  const version = useAppVersion();
-  if (!username) return null;
-  const bajo = [superadmin ? "superadmin" : org?.role, version && `v${version}`]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-medium uppercase text-primary">
-        {username.slice(0, 2)}
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-xs font-medium">{username}</p>
-        {bajo && <p className="truncate text-[11px] text-muted-foreground">{bajo}</p>}
-      </div>
-    </div>
-  );
-}
 
 /**
  * Who you are working as, above everything else in the sidebar.
@@ -214,7 +172,6 @@ function DevToolsMenu() {
 export default function AppSidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { logout } = useAuth();
   const authed = useAuthStore((s) => !!s.accessToken);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const pendingInvites = useInvitationsStore((s) => s.pending.length);
@@ -348,50 +305,27 @@ export default function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
-        {authed && !collapsed && <AccountRow />}
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <ThemeToggle />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <UpdateCheckButton />
-          </SidebarMenuItem>
-          {authed && (
+        {/* Everything that is about you rather than about the work, behind one
+            row. Six stacked items put "change my password" at the same level as
+            the navigation, and made logging out — the last of them — the
+            easiest thing in the sidebar to hit by accident. */}
+        {authed && !collapsed && (
+          <AccountMenu
+            onChangePassword={() => setPwOpen(true)}
+            onConnectMcp={() => setMcpOpen(true)}
+            onNotificationPrefs={() => setNotifOpen(true)}
+          />
+        )}
+        {!authed && (
+          <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Change password" onClick={() => setPwOpen(true)}>
-                <KeyRound className="size-4" />
-                <span>Change password</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
-          {authed && (
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Connect Claude Code" onClick={() => setMcpOpen(true)}>
-                <Bot className="size-4" />
-                <span>Connect Claude Code</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
-          <SidebarMenuItem>
-            {authed ? (
-              <SidebarMenuButton
-                tooltip="Logout"
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
-              >
-                <LogOut className="size-4" />
-                <span>Logout</span>
-              </SidebarMenuButton>
-            ) : (
-              <SidebarMenuButton tooltip="Sign in" onClick={() => navigate("/login")}>
+              <SidebarMenuButton tooltip="Login" onClick={() => navigate("/login")}>
                 <LogIn className="size-4" />
-                <span>Sign in</span>
+                <span>Login</span>
               </SidebarMenuButton>
-            )}
-          </SidebarMenuItem>
-        </SidebarMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </SidebarFooter>
 
       <SidebarRail />
@@ -402,119 +336,4 @@ export default function AppSidebar() {
   );
 }
 
-// Cycles system → light → dark. A three-way toggle beats a switch here: the
-// default should follow the OS, but an ops console is often used in conditions
-// (bright room, screen share) where you want to override it.
-function ThemeToggle() {
-  const preference = useThemeStore((s) => s.preference);
-  const setPreference = useThemeStore((s) => s.setPreference);
 
-  const next: Record<ThemePreference, ThemePreference> = {
-    system: "light",
-    light: "dark",
-    dark: "system",
-  };
-  const label: Record<ThemePreference, string> = {
-    system: "Theme: system",
-    light: "Theme: light",
-    dark: "Theme: dark",
-  };
-  const Icon = preference === "system" ? Monitor : preference === "light" ? Sun : Moon;
-
-  return (
-    <SidebarMenuButton
-      tooltip={label[preference]}
-      onClick={() => setPreference(next[preference])}
-    >
-      <Icon className="size-4" />
-      <span>{label[preference]}</span>
-    </SidebarMenuButton>
-  );
-}
-
-function formatRelativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function UpdateCheckButton() {
-  const checking = useUpdaterStore((s) => s.checking);
-  const downloading = useUpdaterStore((s) => s.downloading);
-  const available = useUpdaterStore((s) => s.available);
-  const lastCheckedAt = useUpdaterStore((s) => s.lastCheckedAt);
-  const lastError = useUpdaterStore((s) => s.lastError);
-  const checkForUpdate = useUpdaterStore((s) => s.checkForUpdate);
-  const installUpdate = useUpdaterStore((s) => s.installUpdate);
-  const version = useAppVersion();
-
-  const handleClick = async () => {
-    const id = toast.loading("Checking for updates…");
-    try {
-      const info = await checkForUpdate();
-      if (info) {
-        toast.success(`Update v${info.version} available`, {
-          id,
-          description: info.body
-            ? info.body.split("\n").slice(0, 3).join("\n")
-            : undefined,
-          action: { label: "Install", onClick: () => installUpdate() },
-          duration: 10_000,
-        });
-      } else {
-        toast.success("You are up to date", { id });
-      }
-    } catch (e) {
-      toast.error("Update check failed", {
-        id,
-        description: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  let label = version ? `v${version}` : "Check updates";
-  let tooltip = version ? `Running v${version} — check for updates` : "Check for updates";
-  let Icon = RefreshCw;
-  let iconClass = "";
-
-  if (downloading) {
-    label = "Updating…";
-    tooltip = "Downloading update";
-    Icon = Download;
-  } else if (checking) {
-    label = "Checking…";
-    tooltip = "Checking for updates";
-    Icon = RefreshCw;
-    iconClass = "animate-spin";
-  } else if (available) {
-    label = `Update to v${available.version}`;
-    tooltip = `Running v${version || "?"} — v${available.version} is available`;
-    Icon = Download;
-    iconClass = "text-primary";
-  } else if (lastError) {
-    label = "Check failed";
-    tooltip = `Last check failed: ${lastError}`;
-    Icon = AlertCircle;
-    iconClass = "text-destructive";
-  } else if (lastCheckedAt) {
-    label = version ? `v${version} · up to date` : "Up to date";
-    tooltip = `${version ? `Running v${version}. ` : ""}Up to date — checked ${formatRelativeTime(lastCheckedAt)}`;
-    Icon = CheckCircle2;
-    iconClass = "text-success";
-  }
-
-  return (
-    <SidebarMenuButton
-      tooltip={tooltip}
-      disabled={checking || downloading}
-      onClick={handleClick}
-    >
-      <Icon className={cn("size-4", iconClass)} />
-      <span>{label}</span>
-    </SidebarMenuButton>
-  );
-}

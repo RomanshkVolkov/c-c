@@ -50,6 +50,7 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 		Session: domain.Session{
 			ID:                 user.ID,
 			Username:           user.Username,
+			Email:              user.Email,
 			Superadmin:         user.IsSuperadmin,
 			MustChangePassword: user.MustChangePassword,
 		},
@@ -65,6 +66,7 @@ func (s *AuthService) Me(userID string) (*domain.Session, error) {
 	}
 	return &domain.Session{
 		ID:                 user.ID,
+		Email:              user.Email,
 		Username:           user.Username,
 		Superadmin:         user.IsSuperadmin,
 		MustChangePassword: user.MustChangePassword,

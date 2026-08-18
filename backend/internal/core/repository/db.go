@@ -85,6 +85,7 @@ func DBConnection() {
 		&domain.ItemAssignee{},
 		&domain.ItemWatcher{},
 		&domain.Notification{},
+		&domain.NotificationPrefs{},
 		&domain.TaskComment{},
 		&domain.TaskAttachment{},
 		&domain.Doc{},

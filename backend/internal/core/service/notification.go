@@ -28,6 +28,12 @@ func (s *NotificationService) Notify(userID, orgID, kind, title, body, link stri
 	if s == nil || s.repo == nil || userID == "" {
 		return
 	}
+	// Checked here rather than at every call site: the services that publish
+	// events should not each have to remember what somebody wants, and one of
+	// them forgetting would be a preference that silently does nothing.
+	if prefs, err := s.repo.Prefs(userID); err == nil && !prefs.Allows(kind) {
+		return
+	}
 	n := &domain.Notification{
 		UserID: userID, OrgID: orgID, Kind: kind, Title: title, Body: body, Link: link,
 	}
@@ -36,6 +42,14 @@ func (s *NotificationService) Notify(userID, orgID, kind, title, body, link stri
 
 func (s *NotificationService) Feed(userID, orgID string, limit int) (domain.NotificationFeed, error) {
 	return s.repo.Feed(userID, orgID, limit)
+}
+
+func (s *NotificationService) Prefs(userID string) (domain.NotificationPrefs, error) {
+	return s.repo.Prefs(userID)
+}
+
+func (s *NotificationService) SavePrefs(p domain.NotificationPrefs) error {
+	return s.repo.SavePrefs(p)
 }
 
 func (s *NotificationService) MarkRead(userID string, ids []string) error {

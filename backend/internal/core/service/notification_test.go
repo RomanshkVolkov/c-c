@@ -99,6 +99,49 @@ func TestMarkAllReadLeavesOtherOrganizationsAlone(t *testing.T) {
 	}
 }
 
+// Preferences silence what somebody asked to be silent about — except being
+// named, which is never negotiable.
+func TestPreferencesSilenceAKindButNeverAMention(t *testing.T) {
+	db, cleanup := inboxDB(t)
+	defer cleanup()
+	svc := NewNotificationService(repository.NewNotificationRepository(db))
+
+	prefs := domain.DefaultPrefs("u-ana")
+	prefs.DMs = false
+	// Turned off too, and it must make no difference. Leaving it on would let
+	// this test pass whether or not mentions are actually unsilenceable.
+	prefs.Mentions = false
+	if err := svc.SavePrefs(prefs); err != nil {
+		t.Fatal(err)
+	}
+
+	svc.Notify("u-ana", "org-1", "dm:message", "Alguien te escribió", "", "/dm")
+	svc.Notify("u-ana", "org-1", "chat:mention", "Te nombraron", "", "/chat")
+
+	feed, _ := svc.Feed("u-ana", "org-1", 0)
+	if len(feed.Items) != 1 {
+		t.Fatalf("the silenced kind should not be recorded: %+v", feed.Items)
+	}
+	if feed.Items[0].Kind != "chat:mention" {
+		t.Errorf("being named must survive any preference, got %q", feed.Items[0].Kind)
+	}
+}
+
+// Somebody who never touched this gets everything, not nothing.
+func TestWithoutPreferencesEverythingArrives(t *testing.T) {
+	db, cleanup := inboxDB(t)
+	defer cleanup()
+	svc := NewNotificationService(repository.NewNotificationRepository(db))
+
+	p, err := svc.Prefs("u-nueva")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.DMs || !p.Comments || !p.Reports || !p.Mentions {
+		t.Errorf("the default is everything on, got %+v", p)
+	}
+}
+
 func inboxDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 	if repository.GetEnv("DB_HOST", "") == "" {
@@ -125,7 +168,7 @@ func inboxDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Notification{}); err != nil {
+	if err := db.AutoMigrate(&domain.Notification{}, &domain.NotificationPrefs{}); err != nil {
 		t.Fatal(err)
 	}
 	return db, func() {
