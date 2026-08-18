@@ -42,6 +42,7 @@ import { usePeopleStore } from "@/store/people.store";
 import { mentionsAllowed } from "@/components/markdown/mention-scope";
 import { useAuthStore } from "@/store/auth.store";
 import { PRIORITIES, priorityMeta } from "@/types/task";
+import type { TaskStatus } from "@/types/task";
 import type { TaskComment } from "@/types/task";
 import { cn } from "@/lib/utils";
 
@@ -251,7 +252,6 @@ function Content() {
   }, [fetchPeople]);
   const uploadAttachment = useTasksStore((s) => s.uploadAttachment);
   const deleteAttachment = useTasksStore((s) => s.deleteAttachment);
-  const board = useTasksStore((s) => s.board);
   const moveTask = useTasksStore((s) => s.moveTask);
   const tags = useTasksStore((s) => s.tags);
   const openTask = useTasksStore((s) => s.openTask);
@@ -263,6 +263,23 @@ function Content() {
   const { task } = detail;
   const [title, setTitle] = useState(task.title);
   const [editingDesc, setEditingDesc] = useState(false);
+  // The columns of *this task's* list. Reading `board.statuses` meant reading
+  // whichever board happened to be open, so opening a task from "my work" or
+  // from a notification showed an empty menu — a control that looked like a
+  // label and did nothing.
+  const statusesOf = useTasksStore((s) => s.statusesOf);
+  const [columnas, setColumnas] = useState<TaskStatus[]>([]);
+  useEffect(() => {
+    if (!detail?.task.listId) return;
+    let vivo = true;
+    statusesOf(detail.task.listId)
+      .then((c) => vivo && setColumnas(c))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [detail?.task.listId, statusesOf]);
+
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
   const [draft, setDraft] = useState(task.description);
   const [comment, setComment] = useState("");
@@ -288,12 +305,16 @@ function Content() {
 
   // Resolve "done"/"open" through the columns' `kind`, never their names: the
   // user is free to rename them.
+  //
+  // From this task's own list, for the same reason the status menu is: reading
+  // the open board meant ticking a subtask did nothing at all when the detail
+  // was opened from anywhere but the board it belongs to.
   const doneStatusIds = useMemo(
-    () => new Set((board?.statuses ?? []).filter((s) => s.kind === "done").map((s) => s.id)),
-    [board],
+    () => new Set(columnas.filter((s) => s.kind === "done").map((s) => s.id)),
+    [columnas],
   );
-  const firstDoneStatusId = (board?.statuses ?? []).find((s) => s.kind === "done")?.id ?? "";
-  const firstOpenStatusId = (board?.statuses ?? []).find((s) => s.kind !== "done")?.id ?? "";
+  const firstDoneStatusId = columnas.find((s) => s.kind === "done")?.id ?? "";
+  const firstOpenStatusId = columnas.find((s) => s.kind !== "done")?.id ?? "";
   const tagIds = new Set(detail.tags.map((t) => t.id));
 
   const saveTitle = () => {
@@ -696,8 +717,11 @@ function Content() {
           beside it: at that width neither half gets enough room to be read,
           and the description is the half that suffers. */}
       <aside className="w-full shrink-0 overflow-auto border-t p-4 lg:w-72 lg:border-l lg:border-t-0">
-        <div className="grid grid-cols-[7rem_1fr] items-center gap-y-2 text-sm">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
+        {/* Stacked, not two columns. The grid was written for a 672px drawer;
+            in a 288px rail a 7rem label leaves the controls too little and they
+            push a horizontal scrollbar into a panel nobody scrolls sideways. */}
+        <div className="space-y-3 text-sm [&>*]:min-w-0">
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Check className="size-3.5" /> Status
           </span>
           <div>
@@ -717,7 +741,7 @@ function Content() {
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
                     Move to column
                   </DropdownMenuLabel>
-                  {(board?.statuses ?? []).map((s) => (
+                  {columnas.map((s) => (
                     <DropdownMenuItem
                       key={s.id}
                       onClick={() => {
@@ -737,7 +761,7 @@ function Content() {
             </DropdownMenu>
           </div>
 
-          <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Flag className="size-3.5" /> Priority
           </span>
           <div>
@@ -766,7 +790,7 @@ function Content() {
             </DropdownMenu>
           </div>
 
-          <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <TagIcon className="size-3.5" /> Tags
           </span>
           <div className="flex flex-wrap items-center gap-1">
@@ -823,7 +847,7 @@ function Content() {
             </DropdownMenu>
           </div>
 
-          <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Users className="size-3.5" /> Assignees
           </span>
           <div className="flex flex-wrap items-center gap-1">
@@ -855,7 +879,7 @@ function Content() {
             </div>
           </div>
 
-          <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Calendar className="size-3.5" /> Due
           </span>
           <div>

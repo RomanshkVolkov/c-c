@@ -35,6 +35,7 @@ import type {
   DocResponse,
   UpdateTaskPayload,
   TaskPriority,
+  TaskStatus,
 } from "@/types/task";
 import type { CreateReportProjectResult, ReportProject } from "@/types/report";
 
@@ -93,6 +94,15 @@ interface TasksState {
   moveListToSpace: (id: string, spaceId: string) => Promise<void>;
   createSubtask: (parentId: string, title: string) => Promise<void>;
 
+  /**
+   * The columns of one list, whichever list that is.
+   *
+   * The detail used to read `board.statuses`, which is the columns of the board
+   * that happens to be open — so opening a task from "my work" or from a
+   * notification offered an empty menu and no way to change its state. They are
+   * asked for by list because that is what they belong to.
+   */
+  statusesOf: (listId: string) => Promise<TaskStatus[]>;
   createStatus: (name: string, color: string, kind: TaskStatusKind) => Promise<void>;
   updateStatus: (id: string, name: string, color: string, kind: TaskStatusKind) => Promise<void>;
   moveStatus: (id: string, afterId: string, beforeId: string) => Promise<void>;
@@ -402,6 +412,14 @@ export const useTasksStore = create<TasksState>()(
       },
 
       // ─── Columns ────────────────────────────────────────────────────────
+
+      statusesOf: async (listId) => {
+        const res = await api.get<APIResponse<TaskStatus[]>>(
+          `/api/v1/task-lists/${listId}/statuses`,
+          true,
+        );
+        return res.data ?? [];
+      },
 
       createStatus: async (name, color, kind) => {
         const listId = get().activeListId;
