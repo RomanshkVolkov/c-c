@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Bell,
+  Wrench,
+  ChevronRight,
   LayoutDashboard,
   KanbanSquare,
   NotebookPen,
@@ -34,6 +36,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -62,9 +67,6 @@ const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, guest: false, group: "work" },
   { label: "Tasks", path: "/tasks", icon: KanbanSquare, guest: false, group: "work" },
   { label: "Notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
-  { label: "Image Tool", path: "/image-tool", icon: ImageDown, guest: true, group: "tools" },
-  { label: "Requests", path: "/requests", icon: Send, guest: false, group: "tools" },
-  { label: "Crypto Tools", path: "/crypto", icon: KeyRound, guest: true, group: "tools" },
   { label: "Diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
   { label: "Organization", path: "/organization", icon: Building2, guest: false, group: "platform" },
   { label: "Invitations", path: "/invitations", icon: Mail, guest: false, group: "platform" },
@@ -74,9 +76,68 @@ const NAV_ITEMS = [
 /** Rendered in this order; a group with nothing in it draws nothing at all. */
 const GROUPS: { key: string; label: string }[] = [
   { key: "work", label: "Work" },
-  { key: "tools", label: "DevTools" },
   { key: "platform", label: "Platform" },
 ];
+
+/**
+ * The on-device tools, as one entry that opens.
+ *
+ * They were three of the ten rows in a flat menu, which put "compress an image"
+ * at the same level as "Users". Folded into one, the menu says what is work and
+ * what is a workbench.
+ *
+ * Rendered whether or not there is a session: signed out these are the only
+ * part of the app that does anything, and they are how the guest flow starts.
+ */
+const DEV_TOOLS = [
+  { label: "Image", path: "/devtools/image", icon: ImageDown, guest: true },
+  { label: "Requests", path: "/devtools/requests", icon: Send, guest: false },
+  { label: "Tokens", path: "/devtools/tokens", icon: KeyRound, guest: true },
+];
+
+/** DevTools, folded into one row that opens onto the tools you can use. */
+function DevToolsMenu() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const authed = useAuthStore((s) => !!s.accessToken);
+  const dentro = pathname.startsWith("/devtools");
+  const [open, setOpen] = useState(dentro);
+  const tools = DEV_TOOLS.filter((t) => authed || t.guest);
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={dentro}
+        tooltip="DevTools"
+        onClick={() => {
+          // Clicking the parent both opens the list and goes somewhere: a row
+          // that only expands makes you click twice to reach anything.
+          setOpen(true);
+          if (!dentro) navigate(tools[0]?.path ?? "/devtools");
+        }}
+      >
+        <Wrench className="size-4" />
+        <span>DevTools</span>
+        <ChevronRight className={cn("ml-auto size-3.5 transition-transform", open && "rotate-90")} />
+      </SidebarMenuButton>
+      {open && (
+        <SidebarMenuSub>
+          {tools.map((t) => (
+            <SidebarMenuSubItem key={t.path}>
+              <SidebarMenuSubButton
+                isActive={pathname.startsWith(t.path)}
+                onClick={() => navigate(t.path)}
+              >
+                <t.icon className="size-3.5" />
+                <span>{t.label}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      )}
+    </SidebarMenuItem>
+  );
+}
 
 export default function AppSidebar() {
   const navigate = useNavigate();
@@ -148,7 +209,10 @@ export default function AppSidebar() {
       <SidebarContent>
         {GROUPS.map((grupo) => {
           const deEsteGrupo = items.filter((i) => i.group === grupo.key);
-          if (deEsteGrupo.length === 0) return null;
+          // El grupo de plataforma se dibuja igualmente porque DevTools cuelga
+          // de él, y sin sesión es lo único que la app puede hacer.
+          const conHerramientas = grupo.key === "platform";
+          if (deEsteGrupo.length === 0 && !conHerramientas) return null;
           return (
             <SidebarGroup key={grupo.key}>
               <SidebarGroupLabel>{grupo.label}</SidebarGroupLabel>
@@ -175,6 +239,7 @@ export default function AppSidebar() {
                       </SidebarMenuItem>
                     );
                   })}
+                  {conHerramientas && <DevToolsMenu />}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

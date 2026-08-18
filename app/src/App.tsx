@@ -16,6 +16,7 @@ import Diagnostics from "@/pages/Diagnostics";
 import Tasks from "@/pages/Tasks";
 import Notes from "@/pages/Notes";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import DevTools from "@/pages/DevTools";
 import AppLayout from "@/components/AppLayout";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PromptProvider } from "@/components/PromptDialog";
@@ -60,13 +61,15 @@ export default function App() {
           <Route path="/servers/:id" element={<ServerManage />} />
           <Route path="/servers/:id/stats" element={<ServerStats />} />
           <Route path="/servers/:id/secrets" element={<StackSecrets />} />
-          <Route path="/requests" element={<RequestClient />} />
           <Route path="/organization" element={<OrganizationSettings />} />
           <Route path="/invitations" element={<Invitations />} />
           <Route path="/diagnostics" element={<Diagnostics />} />
           <Route path="/users" element={<Users />} />
         </Route>
-        {/* On-device tools — reachable as a guest (no backend/sign-in). */}
+        {/* On-device tools — reachable as a guest (no backend/sign-in).
+            Requests is the exception and keeps its own gate inside: it talks to
+            whatever host you point it at, but it lives behind the account like
+            the rest of the product. */}
         <Route
           element={
             <ProtectedRoute allowGuest>
@@ -74,8 +77,24 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="/image-tool" element={<ImageTool />} />
-          <Route path="/crypto" element={<CryptoTools />} />
+          <Route path="/devtools" element={<DevTools />}>
+            <Route index element={<Navigate to="image" replace />} />
+            <Route path="image" element={<ImageTool />} />
+            <Route path="tokens" element={<CryptoTools />} />
+            <Route
+              path="requests"
+              element={
+                <ProtectedRoute>
+                  <RequestClient />
+                </ProtectedRoute>
+              }
+            />
+          </Route>
+          {/* The old addresses still work: they were in menus, bookmarks and in
+              the guest flow, and a dead link is a worse greeting than a hop. */}
+          <Route path="/image-tool" element={<Navigate to="/devtools/image" replace />} />
+          <Route path="/crypto" element={<Navigate to="/devtools/tokens" replace />} />
+          <Route path="/requests" element={<Navigate to="/devtools/requests" replace />} />
         </Route>
         <Route path="*" element={<RootRedirect />} />
         </Routes>
