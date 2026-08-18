@@ -250,6 +250,10 @@ type RenameRequest struct {
 
 type CreateFolderRequest struct {
 	Name string `json:"name" validate:"required,min=1,max=120"`
+	// ParentFolderID nests the new folder inside another. Absent — the only
+	// thing that was possible before folders could hold folders — puts it
+	// straight under the space.
+	ParentFolderID *string `json:"parentFolderId"`
 }
 
 type CreateListRequest struct {

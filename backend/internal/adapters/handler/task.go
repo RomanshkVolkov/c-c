@@ -385,7 +385,7 @@ func (h *taskHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	f, err := h.svc.CreateFolder(sp.ID, req.Name)
+	f, err := h.svc.CreateFolder(sp.ID, req.Name, req.ParentFolderID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to create folder", err.Error())
 		return

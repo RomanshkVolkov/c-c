@@ -158,8 +158,8 @@ func (s *TaskService) Neighbours(table, scopeCol, scopeID, id string, up bool) (
 
 // ─── Folders / lists ──────────────────────────────────────────────────────────
 
-func (s *TaskService) CreateFolder(spaceID, name string) (*domain.TaskFolder, error) {
-	f := &domain.TaskFolder{SpaceID: spaceID, Name: name}
+func (s *TaskService) CreateFolder(spaceID, name string, parentID *string) (*domain.TaskFolder, error) {
+	f := &domain.TaskFolder{SpaceID: spaceID, Name: name, ParentFolderID: parentID}
 	f.ID = uuid.NewString()
 	if err := s.repo.CreateFolder(f); err != nil {
 		return nil, err

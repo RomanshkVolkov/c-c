@@ -60,7 +60,7 @@ interface TasksState {
   createSpace: (orgId: string, name: string) => Promise<void>;
   renameSpace: (id: string, name: string) => Promise<void>;
   deleteSpace: (id: string) => Promise<void>;
-  createFolder: (spaceId: string, name: string) => Promise<void>;
+  createFolder: (spaceId: string, name: string, parentFolderId?: string) => Promise<void>;
   renameFolder: (id: string, name: string) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   createList: (spaceId: string, name: string, folderId?: string) => Promise<void>;
@@ -281,8 +281,12 @@ export const useTasksStore = create<TasksState>()(
         await api.delete<APIResponse<unknown>>(`/api/v1/task-spaces/${id}`);
         await get().fetchTree();
       },
-      createFolder: async (spaceId, name) => {
-        await api.post<APIResponse<unknown>>(`/api/v1/task-spaces/${spaceId}/folders`, { name }, true);
+      createFolder: async (spaceId, name, parentFolderId) => {
+        await api.post<APIResponse<unknown>>(
+          `/api/v1/task-spaces/${spaceId}/folders`,
+          { name, parentFolderId: parentFolderId ?? null },
+          true,
+        );
         await get().fetchTree();
       },
       renameFolder: async (id, name) => {

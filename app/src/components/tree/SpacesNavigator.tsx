@@ -512,13 +512,18 @@ function FolderNode({
   spaceProjectId?: string;
 }) {
   const [open, setOpen] = useState(true);
-  const [addingList, setAddingList] = useState(false);
+  const [adding, setAdding] = useState<null | "folder" | "list">(null);
   const [renaming, setRenaming] = useState(false);
+
+  const empezarA = (que: "folder" | "list") => {
+    setOpen(true);
+    setAdding(que);
+  };
   const confirm = useConfirm();
   const openDoc = useTasksStore((s) => s.openDoc);
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
-  const { createList, renameFolder, deleteFolder, moveFolder, duplicateFolder, moveFolderToSpace } =
+  const { createFolder, createList, renameFolder, deleteFolder, moveFolder, duplicateFolder, moveFolderToSpace } =
     useTasksStore.getState();
 
   return (
@@ -567,9 +572,15 @@ function FolderNode({
           <DropdownMenuContent align="start">
             <DropdownMenuGroup>
               <DropdownMenuItem
+                onClick={() => {
+                  empezarA("folder");
+                }}
+              >
+                <FolderPlus className="size-4" /> New folder
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onClick={async () => {
-                  setOpen(true);
-                  setAddingList(true);
+                  empezarA("list");
                 }}
               >
                 <ListChecks className="size-4" /> New list
@@ -640,12 +651,18 @@ function FolderNode({
               spaceProjectId={spaceProjectId}
             />
           ))}
-          {addingList && (
+          {adding && (
             <InlineName
               mode="create"
-              placeholder="New list"
-              onSubmit={(name) => avisando(createList(spaceId, name, folder.id))}
-              onClose={() => setAddingList(false)}
+              placeholder={adding === "folder" ? "New folder" : "New list"}
+              onSubmit={(name) =>
+                avisando(
+                  adding === "folder"
+                    ? createFolder(spaceId, name, folder.id)
+                    : createList(spaceId, name, folder.id),
+                )
+              }
+              onClose={() => setAdding(null)}
             />
           )}
         </div>
