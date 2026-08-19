@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Bell, BellOff, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
@@ -349,46 +355,53 @@ function Message({
             {/* Con aire: iban a `px-1` y `gap-1` sobre iconos de 12px, así que
                 las tres acciones formaban un solo borrón imposible de acertar.
                 Cada botón tiene ahora su propia zona de pulsación. */}
-            {/* Al lado contrario del globo: encima del propio taparían justo el
-                final del texto, que es donde acaba de mirar quien escribió. */}
-            <div
-              className={cn(
-                "absolute -top-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100",
-                mine ? "left-1" : "right-1",
-              )}
-            >
-              <MessageToTask body={m.body} spaceId={spaceId} spaceName={spaceName} />
-              {mine && (
-                <>
-                  <button
-                    className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                    title="Edit"
-                    onClick={() => {
-                      setDraft(m.body);
-                      setEditing(true);
-                    }}
-                  >
-                    <Pencil className="size-3" />
-                  </button>
-                  <button
-                    className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
-                    title="Withdraw"
-                    onClick={async () => {
-                      const ok = await confirm({
-                        title: "Withdraw this message?",
-                        description: "It stops showing in the channel for everyone.",
-                        confirmText: "Withdraw",
-                        destructive: true,
-                      });
-                      if (!ok) return;
-                      withdraw(spaceId, m.id).catch((e) => toast.error(String(e)));
-                    }}
-                  >
-                    <Trash2 className="size-3" />
-                  </button>
-                </>
-              )}
-            </div>
+            {/* Una flecha, y las opciones dentro. La barra flotante ponía
+                tres iconos de 12px sobre el texto: había que acertarle a uno
+                de tres blancos diminutos que además tapaban lo escrito. Una
+                sola diana abre una lista con los nombres de las cosas. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="Message actions"
+                className={cn(
+                  "absolute top-0.5 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100",
+                  mine ? "left-1" : "right-1",
+                )}
+              >
+                <ChevronDown className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align={mine ? "start" : "end"} className="min-w-40">
+                <MessageToTask body={m.body} spaceId={spaceId} spaceName={spaceName} />
+                {mine && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setDraft(m.body);
+                        setEditing(true);
+                      }}
+                    >
+                      <Pencil className="size-4" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: "Withdraw this message?",
+                          description: "It stops showing in the channel for everyone.",
+                          confirmText: "Withdraw",
+                          destructive: true,
+                        });
+                        if (!ok) return;
+                        withdraw(spaceId, m.id).catch((e) => toast.error(String(e)));
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                      Withdraw
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
       </div>
@@ -446,14 +459,11 @@ function MessageToTask({
   const title = firstLine(body);
 
   return (
-    <button
-      className={cn(
-        "rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground",
-        !inThisSpace && "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground",
-      )}
+    <DropdownMenuItem
+      disabled={!inThisSpace}
       title={
         inThisSpace
-          ? "Create a task from this message"
+          ? undefined
           : `Open a list in #${spaceName} to turn messages into tasks`
       }
       onClick={async () => {
@@ -479,8 +489,9 @@ function MessageToTask({
         );
       }}
     >
-      <Plus className="size-3" />
-    </button>
+      <Plus className="size-4" />
+      Create a task
+    </DropdownMenuItem>
   );
 }
 

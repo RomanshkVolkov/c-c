@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * De qué lado cae cada mensaje.
@@ -76,5 +76,38 @@ describe("de qué lado cae cada mensaje", () => {
     const ajeno = screen.getByText("lo de ana").closest("div.relative") as HTMLElement;
     expect(ajeno.className).toContain("w-full");
     expect(ajeno.className).not.toContain("max-w-");
+  });
+});
+
+/**
+ * Las acciones de un mensaje, tras una flecha.
+ *
+ * Antes eran tres iconos de 12px flotando sobre el texto: tres blancos
+ * diminutos que además tapaban lo escrito. Una sola diana que abre una lista
+ * con los nombres de las cosas se acierta a la primera y se lee sin adivinar.
+ */
+describe("las acciones de un mensaje", () => {
+  const abrirMenuDe = async (texto: string) => {
+    const fila = filaDe(texto);
+    const flecha = fila.querySelector('[aria-label="Message actions"]') as HTMLElement;
+    expect(flecha).toBeTruthy();
+    fireEvent.click(flecha);
+    await waitFor(() => expect(screen.getByRole("menu")).toBeTruthy());
+  };
+
+  it("lo mío ofrece editar y retirar", async () => {
+    render(<ChannelView spaceId="sp-1" spaceName="uno" />);
+    await abrirMenuDe("lo mio");
+    expect(screen.getByText("Edit")).toBeTruthy();
+    expect(screen.getByText("Withdraw")).toBeTruthy();
+  });
+
+  it("lo de otro no ofrece editarlo ni retirarlo, pero sí volverlo tarea", async () => {
+    render(<ChannelView spaceId="sp-1" spaceName="uno" />);
+    await abrirMenuDe("lo de ana");
+    expect(screen.getByText("Create a task")).toBeTruthy();
+    // Estar en la conversación no es permiso para reescribir lo que dijo otro.
+    expect(screen.queryByText("Edit")).toBeNull();
+    expect(screen.queryByText("Withdraw")).toBeNull();
   });
 });

@@ -1,6 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
+import { ChevronDown, ArrowLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
@@ -225,35 +231,40 @@ function DMLine({
         ) : (
           <>
             <Markdown>{m.body}</Markdown>
-            {/* A la izquierda, no a la derecha: estas acciones sólo existen en
-                los mensajes propios, que ahora van pegados al canto derecho, y
-                ahí taparían justo el final del texto. */}
+            {/* La misma flecha que en un canal, por lo mismo: tres iconos
+                diminutos encima del texto eran tres blancos que además tapaban
+                lo escrito. */}
             {mine && (
-              <div className="absolute -top-1 left-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
-                <button
-                  className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                  title="Edit"
-                  onClick={() => setEditing(true)}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Message actions"
+                  className="absolute left-1 top-0.5 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100"
                 >
-                  <Pencil className="size-3" />
-                </button>
-                <button
-                  className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-destructive"
-                  title="Withdraw"
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: "Withdraw this message?",
-                      description: "It stops showing for both of you.",
-                      confirmText: "Withdraw",
-                      destructive: true,
-                    });
-                    if (!ok) return;
-                    withdraw(conversationId, m.id).catch((e) => toast.error(String(e)));
-                  }}
-                >
-                  <Trash2 className="size-3" />
-                </button>
-              </div>
+                  <ChevronDown className="size-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-40">
+                  <DropdownMenuItem onClick={() => setEditing(true)}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Withdraw this message?",
+                        description: "It stops showing for both of you.",
+                        confirmText: "Withdraw",
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      withdraw(conversationId, m.id).catch((e) => toast.error(String(e)));
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                    Withdraw
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </>
         )}
