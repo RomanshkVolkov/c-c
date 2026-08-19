@@ -77,6 +77,16 @@ describe("de qué lado cae cada mensaje", () => {
     expect(ajeno.className).toContain("w-full");
     expect(ajeno.className).not.toContain("max-w-");
   });
+
+  it("el globo reserva el hueco de la flecha, para que no tape el texto", () => {
+    render(<ChannelView spaceId="sp-1" spaceName="uno" />);
+    for (const texto of ["lo mio", "lo de ana"]) {
+      const globo = screen.getByText(texto).closest("div.relative") as HTMLElement;
+      // Sin este relleno la flecha cae encima de las primeras letras de la
+      // línea, que es justo lo que se venía a leer.
+      expect(globo.className).toContain("pr-7");
+    }
+  });
 });
 
 /**

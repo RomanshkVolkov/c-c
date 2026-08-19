@@ -321,7 +321,10 @@ function Message({
       )}
       <div
         className={cn(
-          "relative rounded-md px-2 py-1 hover:bg-muted/40",
+          // `pr-7` es el hueco de la flecha. Sin él el texto pasa por debajo y
+          // la flecha tapa justo las primeras letras de la línea que ibas a
+          // leer; reservarle el sitio es lo que hace que no cubra nada nunca.
+          "relative rounded-md py-1 pl-2 pr-7 hover:bg-muted/40",
           grouped && "mt-0.5",
           mine
             ? "max-w-[75%] rounded-tr-sm border border-primary/25 bg-primary/10"
@@ -362,14 +365,11 @@ function Message({
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label="Message actions"
-                className={cn(
-                  "absolute top-0.5 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100",
-                  mine ? "left-1" : "right-1",
-                )}
+                className="absolute right-1 top-1 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100"
               >
                 <ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align={mine ? "start" : "end"} className="min-w-40">
+              <DropdownMenuContent align="end" className="min-w-40">
                 <MessageToTask body={m.body} spaceId={spaceId} spaceName={spaceName} />
                 {mine && (
                   <>
