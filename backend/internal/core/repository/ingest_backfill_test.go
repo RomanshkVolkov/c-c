@@ -37,6 +37,9 @@ func TestElRellenoDaHogarAlHuerfanoYNoTocaLoDemas(t *testing.T) {
 		t.Errorf("el huérfano tenía que aterrizar; quedó en lista=%q org=%q",
 			huerfano.ListID, huerfano.OrgID)
 	}
+	if huerfano.SpaceID != "esp-1" {
+		t.Errorf("y con su espacio; quedó en %q", huerfano.SpaceID)
+	}
 
 	// El que ya estaba colocado no se mueve, aunque su lista no sea la bandeja
 	// del canal: alguien lo puso ahí a mano y reasignarlo sería deshacerlo.

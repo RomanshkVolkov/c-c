@@ -308,6 +308,17 @@ func backfillIngestedItems(db *gorm.DB) {
 		lg.Error("ingested-item backfill: list_id: " + err.Error())
 	}
 
+	// Y la tercera columna desnormalizada, desde la lista que acaban de recibir.
+	// Hoy no la filtra ninguna consulta de reportes; dejarla a medias es cómo
+	// empezó todo esto.
+	if err := db.Exec(`
+		UPDATE items i SET space_id = l.space_id
+		FROM task_lists l
+		WHERE i.list_id = l.id
+		  AND (i.space_id IS NULL OR i.space_id = '')`).Error; err != nil {
+		lg.Error("ingested-item backfill: space_id: " + err.Error())
+	}
+
 	// Se dice en voz alta: esto repara filas de clientes, y hacerlo en silencio
 	// es como no poder saber después si llegó a correr.
 	if quedan := huerfanos("list_id"); antes > 0 {

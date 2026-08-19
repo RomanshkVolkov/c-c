@@ -47,6 +47,11 @@ func TestUnReporteQueEntraAterrizaEnLaListaDelCanal(t *testing.T) {
 	if fila.OrgID != "org-1" {
 		t.Errorf("sin organización no lo ve nadie; quedó en %q", fila.OrgID)
 	}
+	// La tercera desnormalizada. Hoy no la filtra ninguna consulta de reportes,
+	// pero dejar una de las tres a medias es exactamente cómo empezó esto.
+	if fila.SpaceID != "esp-1" {
+		t.Errorf("el espacio también sale de la lista; quedó en %q", fila.SpaceID)
+	}
 }
 
 // Y se puede abrir. Es lo que se pulsó en la notificación y devolvió un 500.

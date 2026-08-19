@@ -427,6 +427,21 @@ func tagAuthor(c *domain.ReportCommentResponse) {
 	}
 }
 
+// SpaceOfList es el espacio al que pertenece una lista.
+//
+// Para rellenar `items.space_id`, que está desnormalizado a propósito: scopea la
+// numeración interna sin join y mantiene las consultas de reportes lejos de las
+// tablas de tareas — que no pueden tocar, porque el test de contrato corre
+// contra una base donde no existen.
+func (r *ReportRepository) SpaceOfList(listID string) (string, error) {
+	if listID == "" {
+		return "", nil
+	}
+	var espacio string
+	err := r.db.Raw(`SELECT space_id FROM task_lists WHERE id = ?`, listID).Scan(&espacio).Error
+	return espacio, err
+}
+
 // Involved son las personas de cac que ya tienen algo que ver con este item:
 // quien lo lleva, quien lo sigue y quien ya escribió en el hilo.
 //

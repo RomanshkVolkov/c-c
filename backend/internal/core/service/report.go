@@ -197,6 +197,7 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		// ya existían, y desde entonces cada reporte nuevo entraba huérfano.
 		OrgID:       project.OrgID,
 		ListID:      inboxDe(project),
+		SpaceID:     s.espacioDe(inboxDe(project)),
 		Title:       in.Title,
 		Description: in.Description,
 		Status:      domain.ReportPending,
@@ -406,6 +407,18 @@ func (s *ReportService) ReporterComment(ctx context.Context, reportID, body stri
 // normaliza, no se rechaza— porque perder el reporte de un cliente por un hueco
 // de configuración nuestro es el peor de los dos fallos posibles. Se abre y se
 // lee; lo único que no tiene es columna.
+// espacioDe completa la tercera columna desnormalizada. Un fallo al leerla la
+// deja vacía en vez de tumbar el ingest: perder el reporte de un cliente por no
+// haber podido rellenar un campo que hoy nadie filtra sería el peor de los dos
+// resultados posibles.
+func (s *ReportService) espacioDe(listID string) string {
+	espacio, err := s.repo.SpaceOfList(listID)
+	if err != nil {
+		return ""
+	}
+	return espacio
+}
+
 func inboxDe(project *domain.ReportProject) string {
 	if project == nil || project.ListID == nil {
 		return ""
