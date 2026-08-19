@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -8,6 +7,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
+import Lightbox from "@/components/Lightbox";
 import PdfPreview from "@/components/PdfPreview";
 
 /**
@@ -132,30 +132,3 @@ export default function Markdown({
  * would be trapped by any ancestor with a transform or its own scroll — and
  * comments live inside exactly that kind of drawer.
  */
-function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // Stop the drawer underneath from closing on the same keystroke.
-      e.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      role="presentation"
-      onClick={onClose}
-      className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
-    >
-      <img
-        src={src}
-        alt={alt}
-        className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
-      />
-    </div>,
-    document.body,
-  );
-}

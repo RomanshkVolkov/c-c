@@ -32,7 +32,8 @@ import Markdown from "@/components/markdown/Markdown";
 import UserPicker from "@/components/UserPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
-import { openAttachment } from "@/lib/media";
+import { mediaSrc, openAttachment } from "@/lib/media";
+import Lightbox from "@/components/Lightbox";
 import PdfPreview from "@/components/PdfPreview";
 import CopyId from "@/components/CopyId";
 import TelemetryTimeline from "@/components/TelemetryTimeline";
@@ -278,6 +279,36 @@ function Content() {
   }, [detail?.task.listId, statusesOf]);
 
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
+  const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
+
+  /**
+   * Qué adjunto es una imagen.
+   *
+   * Por el `contentType` que declaró quien lo subió, y por la extensión cuando
+   * viene vacío — que pasa con lo ingerido por la integración, donde el tipo lo
+   * afirma el cliente y a veces no lo manda. Equivocarse aquí sólo cuesta que
+   * una imagen salga como línea de fichero, que es lo que hacían todas.
+   */
+  const esImagen = (a: { contentType: string; fileName: string }) =>
+    a.contentType.startsWith("image/") ||
+    /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(a.fileName);
+  const imagenes = detail.attachments.filter(esImagen);
+  const otros = detail.attachments.filter((a) => !esImagen(a));
+
+  /** Quitar un adjunto, desde la miniatura o desde la lista. */
+  const quitar = async (a: { id: string; fileName: string }) => {
+    const inUse = task.description.includes(a.id);
+    const ok = await confirm({
+      title: `Remove "${a.fileName}"?`,
+      description: inUse
+        ? "It's still referenced from the description — that image will stop loading."
+        : "Removes it from this task's attachment list.",
+      confirmText: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteAttachment(task.id, a.id).catch((e) => toast.error(String(e)));
+  };
   const [draft, setDraft] = useState(task.description);
   const [comment, setComment] = useState("");
   const [sending, setSending] = useState(false);
@@ -345,6 +376,7 @@ function Content() {
   return (
     <>
       {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
+      {zoom && <Lightbox {...zoom} onClose={() => setZoom(null)} />}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <span className="truncate text-xs text-muted-foreground">
           {detail.spaceName} / {detail.listName}
@@ -453,8 +485,46 @@ function Content() {
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Attachments
             </h3>
+            {/* Las imágenes se ven, no se listan.
+                
+                En un reporte de cliente la captura **es** el reporte, y hasta
+                ahora salía como una línea con un clip que había que abrir en
+                otro programa — una por una. La app ya sabía pintar una imagen
+                autenticada con zoom, pero sólo dentro del cuerpo en markdown; lo
+                que llega de un cliente entra como adjunto de galería y se
+                quedaba fuera de ese camino. */}
+            {imagenes.length > 0 && (
+              <ul className="flex flex-wrap gap-2">
+                {imagenes.map((a) => {
+                  const src = mediaSrc(a.url);
+                  return (
+                    <li key={a.id} className="group/img relative">
+                      <button
+                        onClick={() => src && setZoom({ src, alt: a.fileName })}
+                        title={a.fileName}
+                        className="block cursor-zoom-in overflow-hidden rounded-md border"
+                      >
+                        <img
+                          src={src}
+                          alt={a.fileName}
+                          loading="lazy"
+                          className="max-h-40 max-w-64 object-contain"
+                        />
+                      </button>
+                      <button
+                        className="absolute right-1 top-1 rounded bg-background/80 p-1 text-muted-foreground opacity-0 transition-opacity group-hover/img:opacity-100 hover:text-destructive"
+                        title="Remove attachment"
+                        onClick={() => void quitar(a)}
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <ul className="space-y-1">
-              {detail.attachments.map((a) => (
+              {otros.map((a) => (
                 <li key={a.id} className="group flex items-center gap-2 text-xs">
                   <Paperclip className="size-3 shrink-0 text-muted-foreground" />
                   <button
@@ -480,19 +550,7 @@ function Content() {
                   <button
                     className="ml-auto shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
                     title="Remove attachment"
-                    onClick={async () => {
-                      const inUse = task.description.includes(a.id);
-                      const ok = await confirm({
-                        title: `Remove "${a.fileName}"?`,
-                        description: inUse
-                          ? "It's still referenced from the description — that image will stop loading."
-                          : "Removes it from this task's attachment list.",
-                        confirmText: "Remove",
-                        destructive: true,
-                      });
-                      if (!ok) return;
-                      deleteAttachment(task.id, a.id).catch((e) => toast.error(String(e)));
-                    }}
+                    onClick={() => void quitar(a)}
                   >
                     <Trash2 className="size-3" />
                   </button>
