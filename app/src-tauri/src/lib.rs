@@ -6,6 +6,7 @@ mod http_client;
 mod image;
 mod mcp;
 mod notes_export;
+mod pty;
 
 /// Entry point for `cac --mcp` (stdio MCP server; see `mcp.rs`).
 pub fn serve_mcp() {
@@ -457,7 +458,7 @@ fn agent_candidates() -> Vec<(String, String)> {
 
 /// The socket to use when the caller didn't pick one: the first candidate that
 /// actually answers with at least one key, else the first that answers at all.
-fn resolve_agent_socket() -> Option<String> {
+pub(crate) fn resolve_agent_socket() -> Option<String> {
     let mut answering: Option<String> = None;
     for (sock, _) in agent_candidates() {
         match probe_agent(&sock) {
@@ -644,8 +645,8 @@ fn list_agent_ssh_keys(socket: Option<String>) -> Result<Vec<SshKeyItem>, String
 /// ssh needs an `IdentityFile` path; the file holds the PUBLIC half only (the
 /// private key never leaves the agent, which does the signing) and is removed as
 /// soon as the command returns.
-struct EphemeralIdentity {
-    path: std::path::PathBuf,
+pub(crate) struct EphemeralIdentity {
+    pub(crate) path: std::path::PathBuf,
 }
 
 impl Drop for EphemeralIdentity {
@@ -654,7 +655,7 @@ impl Drop for EphemeralIdentity {
     }
 }
 
-fn stage_public_key(public_key: &str) -> Result<EphemeralIdentity, String> {
+pub(crate) fn stage_public_key(public_key: &str) -> Result<EphemeralIdentity, String> {
     let key = public_key.trim();
     if !key.starts_with("ssh-") && !key.starts_with("ecdsa-") {
         return Err("Stored SSH identity is not a public key".into());
@@ -674,7 +675,7 @@ fn stage_public_key(public_key: &str) -> Result<EphemeralIdentity, String> {
     Ok(EphemeralIdentity { path })
 }
 
-fn ephemeral_suffix() -> String {
+pub(crate) fn ephemeral_suffix() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -699,7 +700,14 @@ fn set_server_ssh_key(server_id: String, public_key: String) -> Result<(), Strin
 
 #[tauri::command]
 fn get_server_ssh_key(server_id: String) -> Result<Option<String>, String> {
-    match keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account(&server_id))
+    stored_ssh_key(&server_id)
+}
+
+/// La misma lectura, llamable desde Rust. El comando de arriba no sirve: la
+/// macro de tauri le cuelga un re-export con su nombre, y hacerlo visible al
+/// resto del crate choca con él.
+pub(crate) fn stored_ssh_key(server_id: &str) -> Result<Option<String>, String> {
+    match keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account(server_id))
         .map_err(|e| e.to_string())?
         .get_password()
     {
@@ -1479,6 +1487,14 @@ fn sanitize_component(raw: &str, fallback: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Las sesiones de terminal se matan al cerrar la ventana. En Unix el
+        // `ssh` moriría igual al soltarse el pty, pero apoyarse en eso es
+        // apostar a en qué orden se destruyen los descriptores al salir.
+        .on_window_event(|_, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                pty::close_all();
+            }
+        })
         .manage(TokenCache(Mutex::new(HashMap::new())))
         .manage(media::Session::default())
         // Attachments are served under our own scheme so an <img> can carry
@@ -1544,6 +1560,10 @@ pub fn run() {
             export_notes,
             op_item_create,
             op_list_vaults,
+            pty::pty_open,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

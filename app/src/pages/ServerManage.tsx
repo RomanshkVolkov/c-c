@@ -10,6 +10,7 @@ import {
   X,
   RotateCcw,
   KeyRound,
+  SquareTerminal,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,6 +35,9 @@ import type { SwarmService, SwarmNode } from "@/types/swarm";
 import K8sHub from "@/pages/K8sHub";
 import { useSwarm } from "@/hooks/use-swarm";
 import { agentBase, agentFetch } from "@/lib/agent";
+import TerminalPanel from "@/components/terminal/TerminalPanel";
+import { useTerminals } from "@/store/terminal.store";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> =
@@ -177,6 +181,7 @@ function ServicesTab({
   onFilterChange,
   onLogsClick,
   onSecretsClick,
+  onShellClick,
 }: {
   services: SwarmService[];
   host: string;
@@ -185,6 +190,7 @@ function ServicesTab({
   onFilterChange: (v: string) => void;
   onLogsClick: (svc: SwarmService) => void;
   onSecretsClick: (svc: SwarmService) => void;
+  onShellClick: (svc: SwarmService) => void;
 }) {
   const needle = filter.trim().toLowerCase();
   const filtered = needle
@@ -231,6 +237,7 @@ function ServicesTab({
           agentPort={agentPort}
           onLogsClick={onLogsClick}
           onSecretsClick={onSecretsClick}
+          onShellClick={onShellClick}
         />
       )}
 
@@ -249,12 +256,14 @@ function ServicesTable({
   agentPort,
   onLogsClick,
   onSecretsClick,
+  onShellClick,
 }: {
   services: SwarmService[];
   host: string;
   agentPort: number;
   onLogsClick: (svc: SwarmService) => void;
   onSecretsClick: (svc: SwarmService) => void;
+  onShellClick: (svc: SwarmService) => void;
 }) {
   return (
     <Table>
@@ -346,6 +355,15 @@ function ServicesTable({
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => onShellClick(svc)}
+                title="Open a shell inside this service's container"
+              >
+                <SquareTerminal className="h-3 w-3 mr-1" />
+                Shell
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => onSecretsClick(svc)}
               >
                 <KeyRound className="h-3 w-3 mr-1" />
@@ -433,6 +451,31 @@ export default function ServerManage() {
 
 function SwarmManage({ server }: { server: Server }) {
   const navigate = useNavigate();
+  const confirm = useConfirm();
+
+  const abrirTerminal = useTerminals((s) => s.abrir);
+  const cerrarTerminales = useTerminals((s) => s.cerrarTodas);
+  const maximizado = useTerminals((s) => s.maximizado);
+  const sesiones = useTerminals((s) => s.sesiones);
+
+  // Los terminales viven en esta pantalla, así que salir de ella los cierra.
+  // Sin esto quedaría un `ssh` por sesión sin nada que lo represente en la UI:
+  // vivo, invisible e imposible de cerrar salvo reiniciando la app.
+  useEffect(() => cerrarTerminales, [cerrarTerminales]);
+
+  const volver = async () => {
+    const vivas = useTerminals.getState().sesiones.filter((s) => s.estado === "viva");
+    if (vivas.length > 0) {
+      const ok = await confirm({
+        title: vivas.length === 1 ? "Close the open terminal?" : `Close ${vivas.length} open terminals?`,
+        description: "Leaving this screen ends the sessions. Anything still running in them stops.",
+        confirmText: "Leave",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    navigate("/dashboard");
+  };
 
   const [tab, setTab] = useState<"services" | "nodes">("services");
   const [selectedService, setSelectedService] = useState<SwarmService | null>(
@@ -455,11 +498,7 @@ function SwarmManage({ server }: { server: Server }) {
   return (
     <div className="h-full bg-background flex flex-col overflow-hidden">
       <header className="shrink-0 border-b px-6 py-3 flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate("/dashboard")}
-        >
+        <Button variant="ghost" size="sm" onClick={volver}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center gap-3 flex-1">
@@ -471,6 +510,15 @@ function SwarmManage({ server }: { server: Server }) {
             {server.status}
           </Badge>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          title="Open a shell on this machine over SSH"
+          onClick={() => abrirTerminal(server, { kind: "host" })}
+        >
+          <SquareTerminal className="h-4 w-4 mr-1" />
+          Terminal
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -496,7 +544,11 @@ function SwarmManage({ server }: { server: Server }) {
         </Button>
       </header>
 
-      <main className="flex-1 flex flex-col min-h-0 p-6 gap-4 overflow-hidden">
+      <main
+        className={`flex-1 flex-col min-h-0 p-6 gap-4 overflow-hidden ${
+          maximizado && sesiones.length > 0 ? "hidden" : "flex"
+        }`}
+      >
         {error && (
           <div className="shrink-0 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}
@@ -542,6 +594,9 @@ function SwarmManage({ server }: { server: Server }) {
                     state: { server, service: svc, services },
                   })
                 }
+                onShellClick={(svc) =>
+                  abrirTerminal(server, { kind: "service", name: svc.name })
+                }
               />
             ) : (
               <NodesTab nodes={nodes} />
@@ -558,6 +613,8 @@ function SwarmManage({ server }: { server: Server }) {
           />
         )}
       </main>
+
+      <TerminalPanel />
     </div>
   );
 }
