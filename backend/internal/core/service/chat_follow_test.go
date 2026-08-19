@@ -24,13 +24,24 @@ import (
 // que sí te buscaba. Seguir es cómo se dice «este sitio me importa».
 
 type avisoEspiado struct {
-	userID, kind string
+	userID, kind, via string
 }
 
 type notificadorEspia struct{ avisos []avisoEspiado }
 
-func (n *notificadorEspia) Notify(userID, orgID, kind, title, body, link string) {
-	n.avisos = append(n.avisos, avisoEspiado{userID, kind})
+func (n *notificadorEspia) Notify(userID, orgID, kind, title, body, link, via string) {
+	n.avisos = append(n.avisos, avisoEspiado{userID, kind, via})
+}
+
+// viasDe: con qué etiqueta llegó cada aviso de esa clase.
+func (n *notificadorEspia) viasDe(kind string) []string {
+	var out []string
+	for _, a := range n.avisos {
+		if a.kind == kind {
+			out = append(out, a.via)
+		}
+	}
+	return out
 }
 
 func (n *notificadorEspia) paraQuien(kind string) []string {

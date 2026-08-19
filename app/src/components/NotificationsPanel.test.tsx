@@ -42,6 +42,12 @@ const n = (id: string, kind: string, title: string, readAt?: string): InboxItem 
   readAt: readAt ?? null, createdAt: new Date().toISOString(),
 });
 
+/** Igual, pero escrito por el agente. */
+const conAgente = (id: string, kind: string, title: string): InboxItem => ({
+  ...n(id, kind, title),
+  via: "mcp",
+});
+
 const TODAS = [
   n("m1", "chat:mention", "#portento · te nombraron"),
   n("d1", "dm:message", "Ana · directo"),
@@ -104,5 +110,37 @@ describe("el panel de notificaciones", () => {
     expect(screen.getByText("Nothing pending in this organization.")).toBeTruthy();
     // Y no ofrece marcar como leído lo que no existe.
     expect(screen.queryByText("Mark all read")).toBeNull();
+  });
+});
+
+describe("de quién fue", () => {
+  it("marca lo que escribió el agente, y sólo eso", async () => {
+    items.current = [
+      conAgente("a1", "task:comment", "Claude respondió"),
+      n("h1", "task:comment", "Bea respondió"),
+    ];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+
+    // Un solo chip: el que dice quién lo hizo. Sin esto, un agente moviendo
+    // trabajo en tu tablero es indistinguible de un compañero haciéndolo.
+    const chips = await screen.findAllByTitle(/Written by an agent/);
+    expect(chips).toHaveLength(1);
+    expect(chips[0].textContent).toContain("agent");
+  });
+
+  it("lo de siempre no lleva chip", () => {
+    items.current = [n("h1", "task:comment", "Bea respondió")];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    expect(screen.queryByTitle(/Written by an agent/)).toBeNull();
+  });
+
+  it("una asignación cae en Tasks, con su etiqueta", async () => {
+    items.current = [n("t1", "task:assigned", "Assigned to you")];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    fireEvent.click(screen.getByText("Tasks"));
+    // Sin entrada en CLASES caería en «System» sin etiqueta, que es donde va a
+    // parar cualquier clase que el panel no conozca.
+    await waitFor(() => expect(screen.getByText("Assigned to you")).toBeTruthy());
+    expect(screen.getByText("assigned")).toBeTruthy();
   });
 });

@@ -156,7 +156,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 					return
 				}
 			}
-			ctx := context.WithValue(r.Context(), repository.UserContextKey, claims)
+			ctx := domain.WithVia(r.Context(), r.Header.Get(domain.HeaderVia))
+			ctx = context.WithValue(ctx, repository.UserContextKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -175,7 +176,13 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			seenRecorder(claims.UserID)
 		}
 
-		ctx := context.WithValue(r.Context(), repository.UserContextKey, claims)
+		// Por dónde entró la escritura. Se lee aquí y no en cada handler porque
+		// es una propiedad de la petición, no de lo que se pida en ella; y se
+		// acepta tal cual llega porque no puede ser otra cosa: el servidor MCP
+		// usa el token de su dueño, así que esto es lo que el cliente declara y
+		// nada más. Ver domain/via.go.
+		ctx := domain.WithVia(r.Context(), r.Header.Get(domain.HeaderVia))
+		ctx = context.WithValue(ctx, repository.UserContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

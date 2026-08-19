@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -35,7 +36,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	}
 
 	// Nothing said → the client sees it.
-	silent, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "sin decir nada"})
+	silent, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "sin decir nada"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	}
 
 	// Asked for public → same.
-	open, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{
+	open, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{
 		Title: "explícitamente visible", Visibility: domain.VisibilityPublic,
 	})
 	if err != nil {
@@ -55,7 +56,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 	}
 
 	// Asked for internal → kept to us.
-	private, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{
+	private, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{
 		Title: "esto no lo enseñamos", Visibility: domain.VisibilityInternal,
 	})
 	if err != nil {
@@ -67,7 +68,7 @@ func TestVisibleIsTheDefaultAndInternalIsAChoice(t *testing.T) {
 
 	// A subtask of a visible item stays ours: inheriting would spend one of the
 	// client's folio numbers on a checklist line.
-	child, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{
+	child, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{
 		Title: "un paso", ParentID: silent.ID,
 	})
 	if err != nil {
@@ -89,7 +90,7 @@ func TestAskingForPublicWhereThereIsNoChannelChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{
+	got, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{
 		Title: "nadie a quien enseñárselo", Visibility: domain.VisibilityPublic,
 	})
 	if err != nil {
@@ -171,7 +172,7 @@ func TestAnItemCanBeTakenBackButKeepsItsSpentFolio(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	published, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "publicado sin querer"})
+	published, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "publicado sin querer"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ func TestAnItemCanBeTakenBackButKeepsItsSpentFolio(t *testing.T) {
 	spent := published.Seq
 
 	internal := domain.VisibilityInternal
-	if err := svc.UpdateTask(published.ID, domain.UpdateTaskRequest{Visibility: &internal}); err != nil {
+	if err := svc.UpdateTask(context.Background(), published.ID, "", domain.UpdateTaskRequest{Visibility: &internal}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := repo.FindTask(published.ID)
@@ -202,7 +203,7 @@ func TestAnItemCanBeTakenBackButKeepsItsSpentFolio(t *testing.T) {
 	}
 
 	// And the next thing published does not reuse the gap.
-	next, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "el siguiente"})
+	next, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "el siguiente"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +226,7 @@ func TestAnInternalItemCanBePublishedLater(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	private, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{
+	private, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{
 		Title: "todavía no", Visibility: domain.VisibilityInternal,
 	})
 	if err != nil {
@@ -233,7 +234,7 @@ func TestAnInternalItemCanBePublishedLater(t *testing.T) {
 	}
 
 	public := domain.VisibilityPublic
-	if err := svc.UpdateTask(private.ID, domain.UpdateTaskRequest{Visibility: &public}); err != nil {
+	if err := svc.UpdateTask(context.Background(), private.ID, "", domain.UpdateTaskRequest{Visibility: &public}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := repo.FindTask(private.ID)
@@ -268,7 +269,7 @@ func TestDraggingAClientsReportTellsThem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "algo que ven"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "algo que ven"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +279,7 @@ func TestDraggingAClientsReportTellsThem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := svc.MoveTask(card.ID, "u-1", domain.MoveTaskRequest{
+	if err := svc.MoveTask(context.Background(), card.ID, "u-1", domain.MoveTaskRequest{
 		StatusID: domain.SyntheticStatusID("list-1", domain.ReportInProgress),
 	}); err != nil {
 		t.Fatal(err)
@@ -321,11 +322,11 @@ func TestDraggingAnInternalCardTellsNobody(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "cosa nuestra"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "cosa nuestra"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.MoveTask(card.ID, "u-1", domain.MoveTaskRequest{
+	if err := svc.MoveTask(context.Background(), card.ID, "u-1", domain.MoveTaskRequest{
 		StatusID: domain.SyntheticStatusID("list-1", domain.ReportInProgress),
 	}); err != nil {
 		t.Fatal(err)
@@ -361,12 +362,12 @@ func TestACardCanMoveToAnotherList(t *testing.T) {
 		}
 	}
 
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "en el sitio equivocado"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "en el sitio equivocado"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dest := "list-2"
-	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{ListID: &dest}); err != nil {
+	if err := svc.UpdateTask(context.Background(), card.ID, "", domain.UpdateTaskRequest{ListID: &dest}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -423,12 +424,12 @@ func TestACardCannotMoveToAnotherOrgsList(t *testing.T) {
 		}
 	}
 
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "nuestra"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "nuestra"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	dest := "list-theirs"
-	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{ListID: &dest}); err == nil {
+	if err := svc.UpdateTask(context.Background(), card.ID, "", domain.UpdateTaskRequest{ListID: &dest}); err == nil {
 		t.Error("moving a card into another organization's tree must be refused")
 	}
 	after, _ := repo.FindTask(card.ID)
@@ -455,7 +456,7 @@ func TestTheDetailAnswersInTheTaskVocabulary(t *testing.T) {
 	}
 
 	// A card carrying the stored spelling, as every migrated report does.
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "de un reporte"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "de un reporte"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,17 +508,17 @@ func TestCommentingOnAClientsCardReachesThem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "algo suyo"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "algo suyo"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Nothing said: they read it.
-	if _, err := svc.AddComment(card.ID, "u-1", "vamos con ello", ""); err != nil {
+	if _, err := svc.AddComment(context.Background(), card.ID, "u-1", "vamos con ello", ""); err != nil {
 		t.Fatal(err)
 	}
 	// Said internal: they don't.
-	if _, err := svc.AddComment(card.ID, "u-1", "ojo, se les olvidó pagar", domain.VisibilityInternal); err != nil {
+	if _, err := svc.AddComment(context.Background(), card.ID, "u-1", "ojo, se les olvidó pagar", domain.VisibilityInternal); err != nil {
 		t.Fatal(err)
 	}
 
@@ -553,11 +554,11 @@ func TestCommentingOnAnInternalCardStaysInternal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "cosa nuestra"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "cosa nuestra"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AddComment(card.ID, "u-1", "una nota", domain.VisibilityPublic); err != nil {
+	if _, err := svc.AddComment(context.Background(), card.ID, "u-1", "una nota", domain.VisibilityPublic); err != nil {
 		t.Fatal(err)
 	}
 	outside, err := reports.ListComments(card.ID, false)
@@ -592,19 +593,19 @@ func TestTheThreadHidesDeletedCommentsAndNamesItsAudience(t *testing.T) {
 	if err := repo.BindListToChannel("list-1", "proj-1"); err != nil {
 		t.Fatal(err)
 	}
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "con hilo"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "con hilo"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	shared, err := svc.AddComment(card.ID, "u-1", "lo ven", "")
+	shared, err := svc.AddComment(context.Background(), card.ID, "u-1", "lo ven", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AddComment(card.ID, "u-1", "no lo ven", domain.VisibilityInternal); err != nil {
+	if _, err := svc.AddComment(context.Background(), card.ID, "u-1", "no lo ven", domain.VisibilityInternal); err != nil {
 		t.Fatal(err)
 	}
-	doomed, err := svc.AddComment(card.ID, "u-1", "esto se va", "")
+	doomed, err := svc.AddComment(context.Background(), card.ID, "u-1", "esto se va", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,13 +671,13 @@ func TestOneAnswerToWhoIsResponsible(t *testing.T) {
 	seedMember(t, db, "u-ana", "Ana")
 	seedMember(t, db, "u-bea", "Bea")
 
-	card, err := svc.CreateTask(list, "org-1", "u-ana", domain.CreateTaskRequest{Title: "suyo"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-ana", domain.CreateTaskRequest{Title: "suyo"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Assigned from the board…
-	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{
+	if err := svc.UpdateTask(context.Background(), card.ID, "", domain.UpdateTaskRequest{
 		AssigneeIDs: &[]string{"u-ana", "u-bea"},
 	}); err != nil {
 		t.Fatal(err)
@@ -703,7 +704,7 @@ func TestOneAnswerToWhoIsResponsible(t *testing.T) {
 
 	// Removing the one the client sees promotes the other, rather than telling
 	// them nobody is on something two people are working.
-	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{
+	if err := svc.UpdateTask(context.Background(), card.ID, "", domain.UpdateTaskRequest{
 		AssigneeIDs: &[]string{"u-bea"},
 	}); err != nil {
 		t.Fatal(err)
@@ -740,12 +741,12 @@ func TestACardCannotBeGivenToAnOutsider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	card, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "nuestra"})
+	card, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "nuestra"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := svc.UpdateTask(card.ID, domain.UpdateTaskRequest{
+	if err := svc.UpdateTask(context.Background(), card.ID, "", domain.UpdateTaskRequest{
 		AssigneeIDs: &[]string{"u-de-otra-org"},
 	}); err == nil {
 		t.Error("assigning someone who can't open the card must be refused")

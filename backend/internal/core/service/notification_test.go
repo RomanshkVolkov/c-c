@@ -25,8 +25,8 @@ func TestYouCanOnlyMarkYourOwnNotificationsRead(t *testing.T) {
 	defer cleanup()
 	svc := NewNotificationService(repository.NewNotificationRepository(db))
 
-	svc.Notify("u-ana", "org-1", "chat:mention", "Te nombraron", "", "/chat")
-	svc.Notify("u-bea", "org-1", "chat:mention", "Te nombraron", "", "/chat")
+	svc.Notify("u-ana", "org-1", "chat:mention", "Te nombraron", "", "/chat", domain.ViaApp)
+	svc.Notify("u-bea", "org-1", "chat:mention", "Te nombraron", "", "/chat", domain.ViaApp)
 
 	var deBea domain.Notification
 	db.Where("user_id = ?", "u-bea").First(&deBea)
@@ -48,8 +48,8 @@ func TestTheInboxIsScopedToTheOrganization(t *testing.T) {
 	defer cleanup()
 	svc := NewNotificationService(repository.NewNotificationRepository(db))
 
-	svc.Notify("u-ana", "org-1", "chat:mention", "Aquí", "", "/chat")
-	svc.Notify("u-ana", "org-2", "chat:mention", "Allá", "", "/chat")
+	svc.Notify("u-ana", "org-1", "chat:mention", "Aquí", "", "/chat", domain.ViaApp)
+	svc.Notify("u-ana", "org-2", "chat:mention", "Allá", "", "/chat", domain.ViaApp)
 
 	uno, _ := svc.Feed("u-ana", "org-1", 0)
 	if len(uno.Items) != 1 || uno.Items[0].Title != "Aquí" {
@@ -70,7 +70,7 @@ func TestTheUnreadCountIsNotLimitedByThePage(t *testing.T) {
 	svc := NewNotificationService(repository.NewNotificationRepository(db))
 
 	for i := 0; i < 12; i++ {
-		svc.Notify("u-ana", "org-1", "chat:mention", fmt.Sprintf("n%d", i), "", "/chat")
+		svc.Notify("u-ana", "org-1", "chat:mention", fmt.Sprintf("n%d", i), "", "/chat", domain.ViaApp)
 	}
 	feed, _ := svc.Feed("u-ana", "org-1", 5)
 	if len(feed.Items) != 5 {
@@ -87,8 +87,8 @@ func TestMarkAllReadLeavesOtherOrganizationsAlone(t *testing.T) {
 	defer cleanup()
 	svc := NewNotificationService(repository.NewNotificationRepository(db))
 
-	svc.Notify("u-ana", "org-1", "chat:mention", "Aquí", "", "/chat")
-	svc.Notify("u-ana", "org-2", "chat:mention", "Allá", "", "/chat")
+	svc.Notify("u-ana", "org-1", "chat:mention", "Aquí", "", "/chat", domain.ViaApp)
+	svc.Notify("u-ana", "org-2", "chat:mention", "Allá", "", "/chat", domain.ViaApp)
 
 	if err := svc.MarkAllRead("u-ana", "org-1"); err != nil {
 		t.Fatal(err)
@@ -115,8 +115,8 @@ func TestPreferencesSilenceAKindButNeverAMention(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc.Notify("u-ana", "org-1", "dm:message", "Alguien te escribió", "", "/dm")
-	svc.Notify("u-ana", "org-1", "chat:mention", "Te nombraron", "", "/chat")
+	svc.Notify("u-ana", "org-1", "dm:message", "Alguien te escribió", "", "/dm", domain.ViaApp)
+	svc.Notify("u-ana", "org-1", "chat:mention", "Te nombraron", "", "/chat", domain.ViaApp)
 
 	feed, _ := svc.Feed("u-ana", "org-1", 0)
 	if len(feed.Items) != 1 {

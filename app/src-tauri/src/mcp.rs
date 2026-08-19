@@ -19,6 +19,19 @@ struct Cfg {
     token: String,
 }
 
+/// Marca de origen: dice que esto lo escribió el agente y no la persona.
+///
+/// Va en cada llamada a cac —también en las lecturas, para que el servidor vea
+/// una petición coherente— y su único trabajo es que la campana pueda etiquetar
+/// lo que hizo un agente.
+///
+/// **No es una credencial ni una barrera.** Este servidor usa el token de su
+/// dueño, así que una petición suya ya puede hacer todo lo que él puede; la
+/// cabecera es una declaración voluntaria, y quien tenga el token puede
+/// omitirla. Sirve para ser honesto con quien lee, no para impedir nada.
+const VIA_HEADER: &str = "X-Cac-Via";
+const VIA_MCP: &str = "mcp";
+
 fn cfg() -> Result<Cfg, String> {
     let base = std::env::var("CAC_URL")
         .unwrap_or_else(|_| "https://cac.guz-studio.dev".to_string())
@@ -45,6 +58,7 @@ fn api_get(cfg: &Cfg, path: &str) -> Result<Value, String> {
         let res = client
             .get(&url)
             .header("Authorization", format!("Bearer {}", cfg.token))
+            .header(VIA_HEADER, VIA_MCP)
             .send()
             .await
             .map_err(|e| format!("request failed: {e}"))?;
@@ -99,6 +113,7 @@ fn api_form(cfg: &Cfg, method: &str, path: &str, fields: Vec<(&str, String)>) ->
         };
         let res = req
             .header("Authorization", format!("Bearer {}", cfg.token))
+            .header(VIA_HEADER, VIA_MCP)
             .multipart(form)
             .send()
             .await
@@ -170,6 +185,7 @@ fn api_upload(
         let res = client
             .post(&url)
             .header("Authorization", format!("Bearer {}", cfg.token))
+            .header(VIA_HEADER, VIA_MCP)
             .multipart(reqwest::multipart::Form::new().part("file", part))
             .send()
             .await
@@ -201,6 +217,7 @@ fn api_delete(cfg: &Cfg, path: &str) -> Result<Value, String> {
         let res = client
             .delete(&url)
             .header("Authorization", format!("Bearer {}", cfg.token))
+            .header(VIA_HEADER, VIA_MCP)
             .send()
             .await
             .map_err(|e| format!("request failed: {e}"))?;
@@ -237,6 +254,7 @@ fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, 
         };
         let res = req
             .header("Authorization", format!("Bearer {}", cfg.token))
+            .header(VIA_HEADER, VIA_MCP)
             .json(&body)
             .send()
             .await

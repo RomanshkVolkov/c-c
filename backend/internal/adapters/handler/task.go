@@ -805,7 +805,7 @@ func (h *taskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	t, err := h.svc.CreateTask(l, sp.OrgID, user.UserID, req)
+	t, err := h.svc.CreateTask(r.Context(), l, sp.OrgID, user.UserID, req)
 	if err != nil {
 		if mapTaskError(w, err) {
 			return
@@ -839,7 +839,8 @@ func (h *taskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	if err := h.svc.UpdateTask(t.ID, req); err != nil {
+	editor, _ := currentUser(r)
+	if err := h.svc.UpdateTask(r.Context(), t.ID, editor.UserID, req); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update task", err.Error())
 		return
 	}
@@ -869,7 +870,7 @@ func (h *taskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mover, _ := currentUser(r)
-	if err := h.svc.MoveTask(t.ID, mover.UserID, req); err != nil {
+	if err := h.svc.MoveTask(r.Context(), t.ID, mover.UserID, req); err != nil {
 		if mapTaskError(w, err) {
 			return
 		}
@@ -904,7 +905,7 @@ func (h *taskHandler) AddComment(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	if _, err := h.svc.AddComment(t.ID, user.UserID, req.Body, req.Visibility); err != nil {
+	if _, err := h.svc.AddComment(r.Context(), t.ID, user.UserID, req.Body, req.Visibility); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to add comment", err.Error())
 		return
 	}

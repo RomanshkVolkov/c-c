@@ -19,7 +19,12 @@ import (
 // org-scoped through the space that owns each node.
 func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	taskRepo := repository.NewTaskRepository(db)
-	svc := service.NewTaskService(taskRepo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), hub)
+	// El buzón se construye antes que nada porque ahora lo comparten cuatro
+	// servicios, no dos. Ver el comentario de más abajo, que ya explicaba por
+	// qué es uno solo.
+	inbox := service.NewNotificationService(repository.NewNotificationRepository(db))
+	svc := service.NewTaskService(taskRepo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), hub).
+		WithNotifier(inbox)
 	// The same channel service the reports screen uses. One row, one set of
 	// rules, reachable from wherever the person happens to be.
 	channels := service.NewReportProjectService(
@@ -45,10 +50,9 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	if err != nil {
 		lg.Error("task attachment store init failed: " + err.Error())
 	}
-	// One notifier for both: being mentioned and being written to are the two
-	// things that happen *to* a person, and they are the two that have to
-	// survive closing the app.
-	inbox := service.NewNotificationService(repository.NewNotificationRepository(db))
+	// One notifier for all of them: being mentioned, being written to and being
+	// answered are things that happen *to* a person, and they are the ones that
+	// have to survive closing the app.
 	chat := service.NewChatService(repository.NewChatRepository(db), hub).WithNotifier(inbox)
 	dms := service.NewDMService(repository.NewDMRepository(db), hub).WithNotifier(inbox)
 	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store)

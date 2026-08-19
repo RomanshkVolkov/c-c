@@ -259,7 +259,7 @@ func (h *reportAdminHandler) Update(w http.ResponseWriter, r *http.Request) {
 		canonical := req.Status.Canonical()
 		req.Status = &canonical
 	}
-	detail, err := h.svc.Update(user.EventActor(), reportID, req)
+	detail, err := h.svc.Update(r.Context(), user.EventActor(), user.UserID, reportID, req)
 	if err != nil {
 		if mapReportError(w, err) {
 			return

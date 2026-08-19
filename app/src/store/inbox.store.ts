@@ -21,6 +21,14 @@ export interface InboxItem {
   link: string;
   readAt?: string | null;
   createdAt: string;
+  /**
+   * Quién lo causó: vacío la app, `"mcp"` un agente.
+   *
+   * Ausente en todo lo anterior a esta columna, y está bien: aquello no lo
+   * escribió ningún agente. Lo declara el cliente que hizo la petición, así que
+   * dice de dónde vino, no quién tenía permiso.
+   */
+  via?: string;
 }
 
 export interface InboxPrefs {
@@ -28,6 +36,15 @@ export interface InboxPrefs {
   dms: boolean;
   comments: boolean;
   reports: boolean;
+  /**
+   * Invertido, y es el único: apaga los avisos de tu propio trabajo.
+   *
+   * Al derecho habría llegado en `false` para todo el que ya tuviera
+   * preferencias guardadas —una columna nueva nace en el cero de su tipo—, es
+   * decir apagado justo para quien más lo usa. Así el cero significa «no lo he
+   * apagado», que es lo que se quiere decir.
+   */
+  workQuiet?: boolean;
   /** Lo corriente de los canales que sigues. Sólo llega de ahí. */
   messages: boolean;
 }

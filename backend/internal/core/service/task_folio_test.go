@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -32,7 +33,7 @@ func TestOnlyAClientsTicketGetsAFolio(t *testing.T) {
 	}
 
 	// Raised in the client's list and visible to them: theirs, so it is named.
-	theirs, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{Title: "lo ven"})
+	theirs, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{Title: "lo ven"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestOnlyAClientsTicketGetsAFolio(t *testing.T) {
 
 	// Raised in the same list but kept internal: no channel, so it numbers per
 	// space and there is no folio to give it.
-	mine, err := svc.CreateTask(list, "org-1", "u-1", domain.CreateTaskRequest{
+	mine, err := svc.CreateTask(context.Background(), list, "org-1", "u-1", domain.CreateTaskRequest{
 		Title: "no lo ven", Visibility: domain.VisibilityInternal,
 	})
 	if err != nil {

@@ -88,8 +88,11 @@ func (s *ChatService) anotarAvisos(orgID, spaceID, actorID string, mentions []st
 		if uid == actorID {
 			continue
 		}
+		// ViaApp fijo: hoy ninguna herramienta del MCP escribe en un canal. El
+		// día que exista una, este servicio tendrá que recibir el contexto de
+		// la petición — si no, un mensaje del agente se pintará como tuyo.
 		s.notifier.Notify(uid, orgID, "chat:mention",
-			"You were mentioned", "", "/chat?space="+spaceID)
+			"You were mentioned", "", "/chat?space="+spaceID, domain.ViaApp)
 	}
 
 	// Y a quien sigue el canal, por lo corriente. Sólo a quien lo sigue: avisar
@@ -109,7 +112,7 @@ func (s *ChatService) anotarAvisos(orgID, spaceID, actorID string, mentions []st
 			continue
 		}
 		s.notifier.Notify(uid, orgID, "chat:message",
-			"New message in a channel you follow", "", "/chat?space="+spaceID)
+			"New message in a channel you follow", "", "/chat?space="+spaceID, domain.ViaApp)
 	}
 }
 

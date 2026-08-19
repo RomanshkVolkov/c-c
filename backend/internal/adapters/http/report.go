@@ -77,7 +77,10 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	}()
 
 	projectSvc := service.NewReportProjectService(projectRepo, orgRepo)
-	reportSvc := service.NewReportService(reportRepo, orgRepo, authRepo, imgClient, hub)
+	// Con buzón: lo que escribe un cliente es justo lo que hay que poder leer
+	// más tarde, y el aviso en vivo sólo lo oye quien tenga la app abierta.
+	reportSvc := service.NewReportService(reportRepo, orgRepo, authRepo, imgClient, hub).
+		WithNotifier(service.NewNotificationService(repository.NewNotificationRepository(db)))
 
 	projects := handler.NewReportProjectHandler(projectSvc)
 	ingest := handler.NewIngestHandler(projectRepo, reportSvc, telemetrySvc)

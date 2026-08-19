@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,17 @@ type TaskService struct {
 	// hub broadcasts board changes so every open console reflects them without
 	// polling. Optional: a nil hub simply means no live updates.
 	hub *events.Hub
+	// avisos escribe en la campana. Opcional como el hub: un servicio sin él
+	// simplemente no deja constancia, que es lo que hacen todas las pruebas que
+	// no van de esto.
+	avisos *avisos
+}
+
+// WithNotifier deja constancia de los comentarios, para que uno que llegó con
+// la app cerrada se pueda leer después. Sin esto sólo había aviso en vivo.
+func (s *TaskService) WithNotifier(n Notifier) *TaskService {
+	s.avisos = &avisos{inbox: n, items: s.reports, orgs: s.orgs}
+	return s
 }
 
 // NewTaskService takes the report repository as well, because a list can belong
@@ -318,7 +330,7 @@ func (s *TaskService) Board(listID string) (*domain.BoardResponse, error) {
 }
 
 // CreateTask drops a task in the requested column, defaulting to the first one.
-func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, req domain.CreateTaskRequest) (*domain.Task, error) {
+func (s *TaskService) CreateTask(ctx context.Context, list *domain.TaskList, orgID, userID string, req domain.CreateTaskRequest) (*domain.Task, error) {
 	// A retry with the same key must not produce a second card. Checked before
 	// doing any work, and backed by a partial unique index for the case where two
 	// retries land at once.
@@ -401,6 +413,7 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 	// losing the work because the assignment was refused would be worse than
 	// having to name somebody twice.
 	if len(req.AssigneeIDs) > 0 {
+		s.avisos.asignada(domain.ViaFrom(ctx), orgID, t.ID, userID, req.AssigneeIDs, t.Title)
 		if err := s.setAssignees(t.ID, req.AssigneeIDs); err != nil {
 			return t, err
 		}
@@ -411,7 +424,9 @@ func (s *TaskService) CreateTask(list *domain.TaskList, orgID, userID string, re
 
 func (s *TaskService) FindTask(id string) (*domain.Task, error) { return s.repo.FindTask(id) }
 
-func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error {
+// actorID es quien edita: hace falta para no avisarle de que se ha asignado
+// algo a sí mismo, que es la mitad de las asignaciones que existen.
+func (s *TaskService) UpdateTask(ctx context.Context, id, actorID string, req domain.UpdateTaskRequest) error {
 	// Captured before the write so a description edit can be compared against
 	// what it replaced (see dropRemovedAttachments).
 	var oldDescription string
@@ -476,8 +491,15 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 		}
 	}
 	if req.AssigneeIDs != nil {
+		// La diferencia, antes de escribirla: guardar responsables reemplaza la
+		// lista entera, así que sin esto se avisaría otra vez a quien ya la
+		// tenía cada vez que alguien toca cualquier otro campo.
+		nuevos := s.reciénAsignados(id, *req.AssigneeIDs)
 		if err := s.setAssignees(id, *req.AssigneeIDs); err != nil {
 			return err
+		}
+		if t, err := s.repo.FindTask(id); err == nil {
+			s.avisos.asignada(domain.ViaFrom(ctx), t.OrgID, id, actorID, nuevos, t.Title)
 		}
 	}
 	if req.Description != nil {
@@ -496,7 +518,7 @@ func (s *TaskService) UpdateTask(id string, req domain.UpdateTaskRequest) error 
 // Only so the event can name them: every console in the organization hears the
 // same stream, including the one that just dragged the card, and without a name
 // on the event it announces the move back to whoever made it.
-func (s *TaskService) MoveTask(id, userID string, req domain.MoveTaskRequest) error {
+func (s *TaskService) MoveTask(ctx context.Context, id, userID string, req domain.MoveTaskRequest) error {
 	next, ok := domain.SplitSyntheticStatusID(req.StatusID)
 	if !ok {
 		return ErrBadStatus
@@ -541,6 +563,12 @@ func (s *TaskService) MoveTask(id, userID string, req domain.MoveTaskRequest) er
 		})
 	}
 	s.publish("task:move", task.OrgID, task.ListID, task.ID)
+	// Sólo cuando cambia de estado. Reordenar dentro de la misma columna es
+	// mover una tarjeta de sitio, no una noticia.
+	if task.Status != next {
+		s.avisos.estado(domain.ViaFrom(ctx), task.OrgID, id, userID,
+			"Moved to "+string(next), task.Title)
+	}
 	return nil
 }
 
@@ -688,6 +716,12 @@ func (s *TaskService) setVisibility(task *domain.Task, want domain.ItemVisibilit
 		}
 		task.ProjectID, task.Seq = channel, seq
 		task.Visibility = domain.VisibilityPublic
+		// Sin aviso en la campana, y a propósito. Este `report:new` lo causa
+		// alguien del equipo publicando en el tablero de un cliente; el de
+		// `report.go` lo causa el cliente levantando algo. Sólo el segundo es
+		// noticia para toda la organización — avisar a todo el mundo de cada
+		// tarjeta que publica un compañero es justo el ruido que hace que se
+		// deje de mirar la campana. Ver la regla en avisos.go.
 		emitItemEvent(s.hub, s.reports, "report:new", task.ID, "team", map[string]any{
 			"reportId": task.ID, "projectId": channel, "title": task.Title,
 		})
@@ -714,6 +748,26 @@ func withTaskWirePriority(t domain.Item) domain.Item {
 // somebody who cannot open it. And **the client is told**, because on their
 // board "assigned to Ana" is how they learn anyone picked it up; a card that
 // changed hands silently on our side read as untouched on theirs.
+// reciénAsignados son los que no estaban antes. Un fallo al leer devuelve nada:
+// avisar de más por no haber podido comparar es peor que no avisar.
+func (s *TaskService) reciénAsignados(itemID string, quedan []string) []string {
+	antes, err := s.repo.AssigneesOf(itemID)
+	if err != nil {
+		return nil
+	}
+	ya := make(map[string]bool, len(antes))
+	for _, a := range antes {
+		ya[a.ID] = true
+	}
+	var nuevos []string
+	for _, id := range quedan {
+		if !ya[id] {
+			nuevos = append(nuevos, id)
+		}
+	}
+	return nuevos
+}
+
 func (s *TaskService) setAssignees(itemID string, userIDs []string) error {
 	task, err := s.repo.FindTask(itemID)
 	if err != nil {
@@ -770,7 +824,7 @@ func newComment(itemID, authorUserID, body string, visibility domain.ItemVisibil
 	return c
 }
 
-func (s *TaskService) AddComment(taskID, userID, body string, want domain.ItemVisibility) (*domain.TaskComment, error) {
+func (s *TaskService) AddComment(ctx context.Context, taskID, userID, body string, want domain.ItemVisibility) (*domain.TaskComment, error) {
 	task, err := s.repo.FindTask(taskID)
 	if err != nil {
 		return nil, err
@@ -795,6 +849,10 @@ func (s *TaskService) AddComment(taskID, userID, body string, want domain.ItemVi
 		return nil, err
 	}
 	s.publish("task:comment", task.OrgID, task.ListID, task.ID)
+	// Siempre de un compañero: este camino pide un usuario de cac. Así que va a
+	// los del hilo y no a la organización entera.
+	s.avisos.comentario(false, domain.ViaFrom(ctx), task.OrgID, task.ID, userID,
+		tituloDeRespuesta(false, ""), task.Title)
 	if visibility == domain.VisibilityPublic {
 		// The client is owed this the same way they are owed a reply written from
 		// the reports page — it is the same thread.

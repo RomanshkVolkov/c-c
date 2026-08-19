@@ -191,6 +191,18 @@ func (r *OrganizationRepository) ListMembers(orgID string) ([]domain.MemberRespo
 	return out, err
 }
 
+// MemberIDs son sólo los ids, para repartir un aviso.
+//
+// Aparte de ListMembers a propósito: aquella une con `users` y ordena por
+// nombre porque pinta una tabla, y esto corre en cada comentario que llega de
+// un cliente. Nada de lo que cuesta allí hace falta aquí.
+func (r *OrganizationRepository) MemberIDs(orgID string) ([]string, error) {
+	var ids []string
+	err := r.db.Raw(`SELECT user_id FROM org_memberships WHERE org_id = ?`, orgID).
+		Scan(&ids).Error
+	return ids, err
+}
+
 // UpsertMember adds or updates a membership. Returns ErrUserNotFound if the
 // target user does not exist.
 func (r *OrganizationRepository) UpsertMember(orgID, userID string, role domain.OrgRole) error {

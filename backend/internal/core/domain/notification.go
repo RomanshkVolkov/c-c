@@ -28,6 +28,10 @@ type Notification struct {
 	// ReadAt nil means unread. A timestamp rather than a flag because "when did
 	// I read this" is the question that orders an inbox.
 	ReadAt *time.Time `gorm:"index:idx_notif_inbox,priority:2" json:"readAt,omitempty"`
+	// Via es quién lo causó: la app (vacío) o el agente por MCP. Vacío es el
+	// caso corriente y es también lo que tienen todas las filas anteriores a
+	// esta columna, lo que es correcto: no fueron de un agente.
+	Via string `gorm:"type:varchar(10)" json:"via,omitempty"`
 }
 
 // NotificationPrefs is what somebody wants to be told about.
@@ -52,6 +56,17 @@ type NotificationPrefs struct {
 	DMs      bool `json:"dms"`
 	Comments bool `json:"comments"`
 	Reports  bool `json:"reports"`
+	// WorkQuiet apaga los avisos de tu propio trabajo: que te asignen algo, que
+	// cambie de estado.
+	//
+	// **Invertido, y es la única de estas que lo está.** Una columna nueva sobre
+	// una tabla con filas nace en el cero de su tipo, así que un `Work bool`
+	// habría llegado en `false` para todo el que ya tuviera preferencias
+	// guardadas — es decir, apagado justo para quien más usa esto, y sin que
+	// nadie lo pidiera. Al revés, el cero significa «no lo he apagado», que es
+	// lo que se quiere decir. El comentario de arriba explica por qué tampoco
+	// vale un `default:true`.
+	WorkQuiet bool `json:"workQuiet"`
 	// Messages son los mensajes corrientes de los canales que sigues. Sólo
 	// llegan de ahí: seguir es lo que los pide, y esto es lo que los calla sin
 	// tener que dejar de seguir el canal.
@@ -78,6 +93,8 @@ func (p NotificationPrefs) Allows(kind string) bool {
 		return p.Reports
 	case "chat:message":
 		return p.Messages
+	case "task:assigned", "task:status":
+		return !p.WorkQuiet
 	}
 	return true
 }

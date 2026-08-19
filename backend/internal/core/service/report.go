@@ -89,6 +89,16 @@ type ReportService struct {
 	authRepo *repository.AuthRepository
 	images   *imageservice.Client
 	hub      *events.Hub
+	// avisos escribe en la campana; ver el comentario del tipo.
+	avisos *avisos
+}
+
+// WithNotifier deja constancia de lo que llega de un cliente. Es la mitad que
+// faltaba: el stream ya lo contaba en vivo, pero en vivo sólo lo oye quien
+// tenga la app abierta en ese momento.
+func (s *ReportService) WithNotifier(n Notifier) *ReportService {
+	s.avisos = &avisos{inbox: n, items: s.repo, orgs: s.orgRepo}
+	return s
 }
 
 func NewReportService(
@@ -233,6 +243,15 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	s.emit("report:new", report.ID, "reporter", map[string]any{
 		"reportId": report.ID, "projectId": project.ID, "folio": folio, "title": report.Title,
 	})
+	// El responsable por defecto del proyecto es esta misma pregunta ya
+	// contestada: quién lleva la cuenta de ese cliente. Los reportes nuevos
+	// nacen asignados a él, así que avisarle es avisar a quien ya lo tiene.
+	responsable := ""
+	if project.DefaultAssigneeUserID != nil {
+		responsable = *project.DefaultAssigneeUserID
+	}
+	s.avisos.reporteNuevo(domain.ViaFrom(ctx), project.OrgID, report.ID, responsable,
+		"New report · "+folio, report.Title)
 
 	return &domain.IngestReportResult{
 		ID:     report.ID,
@@ -360,6 +379,13 @@ func (s *ReportService) ReporterComment(ctx context.Context, reportID, body stri
 		}
 	}
 	s.emit("report:comment", reportID, "reporter", map[string]any{"reportId": reportID, "commentId": c.ID})
+	// De fuera, así que a toda la organización. Se relee el reporte porque aquí
+	// sólo llega el id: el que lo escribió no tiene usuario en cac y no hay más
+	// contexto a mano.
+	if rep, err := s.repo.FindByID(reportID); err == nil {
+		s.avisos.comentario(true, domain.ViaFrom(ctx), rep.OrgID, reportID, "",
+			tituloDeRespuesta(true, rep.ReporterName), rep.Title)
+	}
 	return s.ReporterView(reportID)
 }
 
@@ -504,7 +530,12 @@ func (s *ReportService) Detail(reportID string, includeWithdrawn bool) (*domain.
 
 // Update applies a validated status transition and/or (un)assignment, leaving
 // kind=system audit comments (portento behavior).
-func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRequest) (*domain.ReportDetailResponse, error) {
+// actorUserID va aparte de `actor` porque contestan preguntas distintas:
+// `actor` es el **lado** que causó el evento —"team", "reporter", un
+// proyecto— y es lo que necesita el webhook del tenant para filtrar su propio
+// eco; esto es **la persona**, y es lo único que sirve para no avisarle a
+// alguien de lo que acaba de hacer. Vacío cuando no hubo persona.
+func (s *ReportService) Update(ctx context.Context, actor, actorUserID, reportID string, req domain.UpdateReportRequest) (*domain.ReportDetailResponse, error) {
 	report, err := s.repo.FindByID(reportID)
 	if err != nil {
 		return nil, err
@@ -583,6 +614,8 @@ func (s *ReportService) Update(actor, reportID string, req domain.UpdateReportRe
 		s.emit("report:status", reportID, actor, map[string]any{
 			"reportId": reportID, "status": report.Status,
 		})
+		s.avisos.estado(domain.ViaFrom(ctx), report.OrgID, reportID, actorUserID,
+			"Moved to "+string(report.Status), report.Title)
 	}
 	return s.Detail(reportID, actorIsPerson(actor))
 }
@@ -682,6 +715,19 @@ func (s *ReportService) addComment(ctx context.Context, author commentAuthor, re
 		data["authorId"] = author.externalID
 	}
 	s.emit("report:comment", reportID, author.from, data)
+	// `from` ya distingue las dos procedencias y es lo que decide el reparto:
+	// "team" es un compañero; "reporter" y "project:<slug>" vienen de fuera.
+	externo := author.from != "team"
+	nombre := author.externalName
+	if nombre == "" && externo {
+		nombre = report.ReporterName
+	}
+	actor := ""
+	if author.userID != nil {
+		actor = *author.userID
+	}
+	s.avisos.comentario(externo, domain.ViaFrom(ctx), report.OrgID, reportID, actor,
+		tituloDeRespuesta(externo, nombre), report.Title)
 	return s.Detail(reportID, author.projectID == nil)
 }
 

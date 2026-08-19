@@ -15,6 +15,7 @@ import { useDMStore } from "@/store/dm.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { usePendingStore } from "@/store/pending.store";
 import { useNotificationsStore } from "@/store/notifications.store";
+import { useInboxStore } from "@/store/inbox.store";
 
 type Payload = {
   reportId?: string;
@@ -113,6 +114,23 @@ export function useReportEvents() {
      * leaves no trace at all, which is exactly what made "it didn't arrive"
      * indistinguishable from "nothing happened" — see the notifications store.
      */
+    /**
+     * Vuelve a pedir la bandeja del servidor.
+     *
+     * El backend ya escribe la fila; sin esto, con la app abierta el contador
+     * de la campana no se movía hasta cambiar de organización o reiniciar — la
+     * notificación existía y no se veía, que es la mitad del fallo original
+     * contada al revés.
+     *
+     * Del `orgId` que la bandeja ya tiene: quien la cargó sabe de qué
+     * organización es, y adivinarlo aquí sería una segunda fuente para la misma
+     * verdad.
+     */
+    const releerBandeja = () => {
+      const inbox = useInboxStore.getState();
+      void inbox.load(inbox.orgId).catch(() => {});
+    };
+
     const notify = (kind: string, title: string, body: string, reportId?: string) => {
       void (async () => {
         const log = useNotificationsStore.getState().add;
@@ -184,6 +202,7 @@ export function useReportEvents() {
           const desc = `${p.folio ?? ""} ${p.title ?? ""}`.trim();
           toast.info("New report", { description: desc });
           notify("report:new", "New report", desc || "A new report was filed", p.reportId);
+          releerBandeja();
           refresh();
           break;
         }
@@ -221,6 +240,7 @@ export function useReportEvents() {
                 : "Someone on the team replied";
           toast.message(who);
           notify("report:comment", "New reply", who, p.reportId);
+          releerBandeja();
           refresh();
           break;
         }
@@ -236,6 +256,10 @@ export function useReportEvents() {
           // the event belongs to the list currently on screen — a busy org would
           // otherwise reload the board on every unrelated card someone touches.
           const p = parse(data) as { listId?: string };
+          // Sólo el comentario deja fila en la campana; mover una tarjeta no.
+          // Y antes del corte de abajo, que se va si no hay lista abierta: a
+          // quien está en el hilo le toca enterarse mire donde mire.
+          if (event === "task:comment") releerBandeja();
           const store = useTasksStore.getState();
           if (!store.activeListId) return;
           if (p.listId && p.listId !== store.activeListId) return;

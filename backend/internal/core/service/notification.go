@@ -10,7 +10,7 @@ import (
 // depend on the act and not on the store, and so a service constructed without
 // one simply doesn't record — which is what every existing test does.
 type Notifier interface {
-	Notify(userID, orgID, kind, title, body, link string)
+	Notify(userID, orgID, kind, title, body, link, via string)
 }
 
 type NotificationService struct {
@@ -24,7 +24,10 @@ func NewNotificationService(repo *repository.NotificationRepository) *Notificati
 // Notify records one. Errors are swallowed on purpose: failing to write the
 // inbox row must never fail the message that caused it — being told late is a
 // nuisance, not being able to speak is a fault.
-func (s *NotificationService) Notify(userID, orgID, kind, title, body, link string) {
+// `via` es por dónde entró la acción; ver domain/via.go. Es un parámetro y no
+// un campo del contexto porque el compilador no se olvida de los parámetros: si
+// mañana otra cosa escribe notificaciones, tiene que contestar de dónde viene.
+func (s *NotificationService) Notify(userID, orgID, kind, title, body, link, via string) {
 	if s == nil || s.repo == nil || userID == "" {
 		return
 	}
@@ -36,6 +39,7 @@ func (s *NotificationService) Notify(userID, orgID, kind, title, body, link stri
 	}
 	n := &domain.Notification{
 		UserID: userID, OrgID: orgID, Kind: kind, Title: title, Body: body, Link: link,
+		Via: domain.NormalizeVia(via),
 	}
 	_ = s.repo.Add(n)
 }

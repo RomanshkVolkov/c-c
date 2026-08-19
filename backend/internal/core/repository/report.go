@@ -427,6 +427,32 @@ func tagAuthor(c *domain.ReportCommentResponse) {
 	}
 }
 
+// Involved son las personas de cac que ya tienen algo que ver con este item:
+// quien lo lleva, quien lo sigue y quien ya escribió en el hilo.
+//
+// Las tres en una consulta y no en tres: la respuesta se usa como un conjunto
+// —a nadie se le avisa dos veces por estar apuntado dos veces— y unirlas en Go
+// sería reimplementar el UNION con un mapa.
+//
+// Vive en este repositorio y no en el de tareas porque los dos servicios que la
+// necesitan lo tienen a mano, y porque reportes y tareas son la misma tabla:
+// esto ya consulta `item_assignees` unas líneas más arriba.
+//
+// Los comentarios retirados no cuentan. Es lo que enseña el hilo, y avisar a
+// alguien por algo que borró sería tenerlo en cuenta justo cuando se salió.
+func (r *ReportRepository) Involved(itemID string) ([]string, error) {
+	var ids []string
+	err := r.db.Raw(`
+		SELECT user_id FROM item_assignees WHERE item_id = ?
+		UNION
+		SELECT user_id FROM item_watchers  WHERE item_id = ?
+		UNION
+		SELECT author_user_id FROM item_comments
+		 WHERE item_id = ? AND author_user_id IS NOT NULL AND deleted_at IS NULL
+	`, itemID, itemID, itemID).Scan(&ids).Error
+	return ids, err
+}
+
 func (r *ReportRepository) CreateComment(c *domain.ReportComment) error {
 	return r.db.Create(c).Error
 }

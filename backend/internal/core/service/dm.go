@@ -59,8 +59,10 @@ func (s *DMService) publish(toUserID, orgID, conversationID, messageID, actorID 
 		// No message body: an inbox row is read by a person who may be looking
 		// at a shared screen, and the point of a private conversation is that
 		// its contents stay in it.
+		// ViaApp fijo, por lo mismo que en chat.go: ninguna herramienta del MCP
+		// escribe directos. Si alguna llega, este servicio necesita el contexto.
 		s.notifier.Notify(toUserID, orgID, "dm:message",
-			"New direct message", "", "/dm?c="+conversationID)
+			"New direct message", "", "/dm?c="+conversationID, domain.ViaApp)
 	}
 }
 

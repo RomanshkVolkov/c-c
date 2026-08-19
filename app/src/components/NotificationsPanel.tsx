@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AtSign, CheckSquare, Hash, Info, MessageSquare, Settings, Zap } from "lucide-react";
+import { AtSign, Bot, CheckSquare, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
 import { useInboxStore, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,8 @@ const CLASES: Record<string, { grupo: Pestana; tag: string; icono: typeof AtSign
   "dm:message": { grupo: "talk", tag: "direct", icono: MessageSquare, color: "text-primary" },
   "chat:message": { grupo: "talk", tag: "channel", icono: Hash, color: "text-muted-foreground" },
   "task:comment": { grupo: "tasks", tag: "comment", icono: CheckSquare, color: "text-foreground" },
+  "task:assigned": { grupo: "tasks", tag: "assigned", icono: UserPlus, color: "text-primary" },
+  "task:status": { grupo: "tasks", tag: "status", icono: CheckSquare, color: "text-muted-foreground" },
   "report:new": { grupo: "system", tag: "report", icono: Zap, color: "text-warning" },
 };
 
@@ -180,6 +182,19 @@ function Fila({ n, leida, onClick }: { n: InboxItem; leida?: boolean; onClick: (
           {clase.tag && (
             <span className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground">
               {clase.tag}
+            </span>
+          )}
+          {/* Lo escribió un agente por MCP. Chip aparte y no otro icono: la
+              clase dice *qué* pasó y esto dice *quién* lo hizo, que son dos
+              preguntas y se leen mejor separadas. Lo declara el cliente que
+              escribió, así que informa; no acredita nada. */}
+          {n.via === "mcp" && (
+            <span
+              title="Written by an agent through the MCP server"
+              className="flex shrink-0 items-center gap-0.5 rounded border border-primary/40 px-1 text-[10px] text-primary"
+            >
+              <Bot className="size-2.5" />
+              agent
             </span>
           )}
           <span className="ml-auto shrink-0 whitespace-nowrap text-[10.5px] text-muted-foreground">
