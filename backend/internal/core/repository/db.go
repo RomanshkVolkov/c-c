@@ -136,6 +136,7 @@ func DBConnection() {
 	seedBaseOrg(db)
 	promoteSuperadmin(db)
 	backfillAttachmentRefs(db)
+	backfillIngestedItems(db)
 	migrateItems(db)
 }
 
@@ -263,6 +264,56 @@ func seedBaseOrg(db *gorm.DB) {
 	db.Model(&domain.ReportProject{}).
 		Where("platform IS NULL OR platform = ''").
 		Update("platform", "web")
+}
+
+// backfillIngestedItems da hogar a los reportes que entraron sin él.
+//
+// El ingest nunca copió `org_id` ni `list_id` del proyecto a la fila. La
+// migración a items se los puso una vez a los que ya existían, y desde entonces
+// cada reporte de cliente entraba huérfano: fuera de todo tablero, y con un
+// detalle que contestaba «list not found». `portento-99` fue el primero en
+// caerse por ahí, y sólo se supo porque una notificación apuntó a él.
+//
+// Los dos valores salen del proyecto, que es de donde tenían que haber salido
+// siempre. Acotado por el WHERE a lo que está vacío: nunca reasigna nada que ya
+// tenga sitio, así que correrlo dos veces no cambia nada la segunda.
+func backfillIngestedItems(db *gorm.DB) {
+	huerfanos := func(col string) int64 {
+		var n int64
+		db.Model(&domain.Item{}).
+			Where("project_id <> '' AND (" + col + " IS NULL OR " + col + " = '')").
+			Count(&n)
+		return n
+	}
+	antes := huerfanos("list_id")
+
+	if err := db.Exec(`
+		UPDATE items i SET org_id = p.org_id
+		FROM report_projects p
+		WHERE i.project_id = p.id
+		  AND (i.org_id IS NULL OR i.org_id = '')
+		  AND p.org_id <> ''`).Error; err != nil {
+		lg.Error("ingested-item backfill: org_id: " + err.Error())
+	}
+	// El `p.list_id IS NOT NULL` no es una guarda de corrección: sin él la
+	// sentencia intentaría escribir NULL sobre una columna que no lo admite y
+	// fallaría entera, llevándose por delante a los que sí tenían bandeja que
+	// copiar. Está para que un canal sin lista no arrastre a los demás.
+	if err := db.Exec(`
+		UPDATE items i SET list_id = p.list_id
+		FROM report_projects p
+		WHERE i.project_id = p.id
+		  AND (i.list_id IS NULL OR i.list_id = '')
+		  AND p.list_id IS NOT NULL AND p.list_id <> ''`).Error; err != nil {
+		lg.Error("ingested-item backfill: list_id: " + err.Error())
+	}
+
+	// Se dice en voz alta: esto repara filas de clientes, y hacerlo en silencio
+	// es como no poder saber después si llegó a correr.
+	if quedan := huerfanos("list_id"); antes > 0 {
+		lg.Info("ingested-item backfill: gave a list to " + strconv.FormatInt(antes-quedan, 10) +
+			" item(s); " + strconv.FormatInt(quedan, 10) + " still have no channel list configured")
+	}
 }
 
 // promoteSuperadmin marks the seed admin as a platform superadmin (sees/manages

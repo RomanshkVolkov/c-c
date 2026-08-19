@@ -53,6 +53,13 @@ interface TasksState {
   openTaskId: string | null;
   detail: TaskDetail | null;
   loadingDetail: boolean;
+  /**
+   * Por qué no se pudo abrir. Antes esto se perdía en el `error` general del
+   * store, que esta pantalla no mira, así que el motivo real —«list not
+   * found»— no llegaba a ninguna parte y sólo quedaba «Could not load this
+   * task»: un callejón que no se puede ni buscar ni reportar.
+   */
+  detailError: string | null;
 
   fetchTree: () => Promise<void>;
   fetchTags: () => Promise<void>;
@@ -233,6 +240,7 @@ export const useTasksStore = create<TasksState>()(
       loadingDoc: false,
       detail: null,
       loadingDetail: false,
+      detailError: null,
 
       fetchTree: async () => {
         set({ loadingTree: true, error: null });
@@ -528,13 +536,17 @@ export const useTasksStore = create<TasksState>()(
       },
 
       openTask: async (id) => {
-        set({ openTaskId: id, loadingDetail: true, detail: null });
+        set({ openTaskId: id, loadingDetail: true, detail: null, detailError: null });
         try {
           const res = await api.get<APIResponse<TaskDetail>>(`/api/v1/tasks/${id}`);
           if (get().openTaskId !== id) return;
-          set({ detail: res.success && res.data ? res.data : null });
+          if (res.success && res.data) set({ detail: res.data });
+          // Un `success: false` sin excepción también es un fallo, y sin esto
+          // era el que se quedaba más mudo de los dos.
+          else set({ detailError: res.error ?? "the server answered without a task" });
         } catch (e) {
-          set({ error: msg(e) });
+          if (get().openTaskId !== id) return;
+          set({ detailError: msg(e) });
         } finally {
           if (get().openTaskId === id) set({ loadingDetail: false });
         }

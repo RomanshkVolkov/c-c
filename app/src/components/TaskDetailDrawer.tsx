@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   X,
   Loader2,
@@ -15,6 +15,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
+import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,7 @@ import { cn } from "@/lib/utils";
 export default function TaskDetailDrawer() {
   const openTaskId = useTasksStore((s) => s.openTaskId);
   const detail = useTasksStore((s) => s.detail);
+  const detailError = useTasksStore((s) => s.detailError);
   const loading = useTasksStore((s) => s.loadingDetail);
   const closeTask = useTasksStore((s) => s.closeTask);
 
@@ -94,12 +96,7 @@ export default function TaskDetailDrawer() {
             <Loader2 className="mr-2 size-4 animate-spin" /> Loading task…
           </div>
         ) : !detail ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2">
-            <p className="text-sm text-muted-foreground">Could not load this task.</p>
-            <Button size="sm" variant="outline" onClick={closeTask}>
-              Close
-            </Button>
-          </div>
+          <NoSePudo id={openTaskId} motivo={detailError} onClose={closeTask} />
         ) : (
           <Content />
         )}
@@ -942,5 +939,75 @@ function Content() {
         </span>
       </footer>
     </>
+  );
+}
+
+/**
+ * Lo que se ve cuando algo no carga.
+ *
+ * Antes: «Could not load this task.» y un botón de cerrar. Ni el motivo, ni el
+ * id, ni rastro en ninguna parte — un callejón que no se puede buscar ni
+ * reportar, y que tapó una semana entera de reportes de cliente que no
+ * aterrizaban en ningún tablero.
+ *
+ * Ahora dice qué contestó el servidor y levanta la tarjeta en cac por su
+ * cuenta, con la misma firma que ya deduplica los pantallazos. La firma sale
+ * del **motivo** y no del id: si mañana fallan cuarenta reportes por lo mismo,
+ * es un problema, no cuarenta.
+ */
+function NoSePudo({
+  id,
+  motivo,
+  onClose,
+}: {
+  id: string;
+  motivo: string | null;
+  onClose: () => void;
+}) {
+  const [fichado, setFichado] = useState<Fichado>("no");
+  const yaFichado = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!motivo || yaFichado.current === motivo) return;
+    yaFichado.current = motivo;
+    void (async () => {
+      setFichado("filing");
+      setFichado(
+        await fileCrash({
+          title: `No abre una tarjeta: ${motivo}`,
+          description: [
+            `**El detalle de un item no cargó.**`,
+            "",
+            `Motivo del servidor: \`${motivo}\``,
+            `Item: \`${id}\``,
+            `Ruta: \`${rutaActual()}\``,
+          ].join("\n"),
+          key: signature(`detail-failed: ${motivo}`),
+        }),
+      );
+    })();
+  }, [motivo, id]);
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+      <p className="text-sm">No se pudo abrir esta tarjeta.</p>
+      {motivo && (
+        <pre className="max-w-lg overflow-auto rounded border bg-muted/40 px-2 py-1 text-xs">
+          {motivo}
+        </pre>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {fichado === "done"
+          ? "Ya quedó anotado como tarjeta en cac."
+          : fichado === "failed"
+            ? "No se pudo anotar en cac, así que este texto es el único registro."
+            : fichado === "filing"
+              ? "Anotándolo en cac…"
+              : "No se anotó en cac (sin sesión)."}
+      </p>
+      <Button size="sm" variant="outline" onClick={onClose}>
+        Close
+      </Button>
+    </div>
   );
 }

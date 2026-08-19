@@ -241,12 +241,26 @@ func (s *TaskService) RenameList(id, name string) error             { return s.r
 // having portento's reports arrive somewhere else would be a setting that lies.
 // Binding a second list moves the inbox to it — the last explicit choice wins,
 // which is the only rule that doesn't need a second control to explain it.
+// Desvincular se rechaza. La invariante es que un canal tiene siempre
+// exactamente una bandeja y que es una lista de verdad; **no** que la bandeja no
+// se pueda mover. Repuntarla es legítimo —se reorganiza un tablero, se separa un
+// cliente en otro espacio— y congelarla dejaría un canal mal puesto mal para
+// siempre. Lo que no puede pasar es quedarse en nada.
+//
+// Y antes se quedaba: con proyecto vacío esto limpiaba `task_lists.project_id` y
+// salía **antes** de tocar la bandeja, así que el canal seguía entregando en una
+// lista que ya no se declaraba suya y el árbol no lo decía.
 func (s *TaskService) BindList(listID, projectID string) error {
+	if projectID == "" {
+		if enUso, err := s.repo.ChannelDeliveringInto(listID); err != nil {
+			return err
+		} else if enUso {
+			return repository.ErrChannelNeedsInbox
+		}
+		return s.repo.BindListToChannel(listID, "")
+	}
 	if err := s.repo.BindListToChannel(listID, projectID); err != nil {
 		return err
-	}
-	if projectID == "" {
-		return nil
 	}
 	return s.repo.SetChannelInbox(projectID, listID)
 }
@@ -585,19 +599,43 @@ func (s *TaskService) DeleteTask(id string) error {
 	return nil
 }
 
+func nombreDe(l *domain.TaskList) string {
+	if l == nil {
+		return ""
+	}
+	return l.Name
+}
+
+func nombreDeEspacio(sp *domain.TaskSpace) string {
+	if sp == nil {
+		return ""
+	}
+	return sp.Name
+}
+
 // Detail assembles everything the task drawer needs in one response.
 func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	t, err := s.repo.FindTask(id)
 	if err != nil {
 		return nil, err
 	}
-	list, err := s.repo.FindList(t.ListID)
-	if err != nil {
-		return nil, err
+	// Un item sin lista se lee igual, sin columna.
+	//
+	// Antes esto devolvía «list not found» y el handler lo convertía en un 500,
+	// así que un reporte huérfano no sólo no salía en ningún tablero: tampoco se
+	// podía abrir para ver qué decía. Un dato incompleto no es un fallo del
+	// servidor, y negarse a enseñar lo que sí hay no ayuda a nadie.
+	var list *domain.TaskList
+	var space *domain.TaskSpace
+	if t.ListID != "" {
+		if list, err = s.repo.FindList(t.ListID); err != nil && !errors.Is(err, repository.ErrListNotFound) {
+			return nil, err
+		}
 	}
-	space, err := s.repo.FindSpace(list.SpaceID)
-	if err != nil {
-		return nil, err
+	if list != nil {
+		if space, err = s.repo.FindSpace(list.SpaceID); err != nil {
+			return nil, err
+		}
 	}
 	// Synthesised, not looked up: the column is a rendering of the state now.
 	status := domain.BoardStatusFor(t.ListID, t.Status)
@@ -637,8 +675,10 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 		// the report side handed the app a value its own table had no entry for —
 		// and reading a field off that undefined took the whole screen down.
 		Task:      withTaskWirePriority(*t),
-		ListName:  list.Name,
-		SpaceName: space.Name,
+		// Vacíos cuando el item no está en ninguna lista. La pantalla lo pinta
+		// como lo que es —una tarjeta sin sitio— en vez de no pintar nada.
+		ListName:  nombreDe(list),
+		SpaceName: nombreDeEspacio(space),
 		Status:    status,
 		Tags:      tags, Assignees: assignees, Comments: comments, Attachments: attachments,
 		Subtasks: subtasks,

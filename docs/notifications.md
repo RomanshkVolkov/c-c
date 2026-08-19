@@ -160,7 +160,14 @@ que una configuración sin bus dejaba de avisar a todo el mundo sin dar ningún
 error. Están separados desde entonces (`publicarAlStream` / `anotarAvisos`) y
 conviene que sigan así.
 
-## 6 · Dónde tocar
+## 6 · Ver también
+
+[`canales.md`](./canales.md) — de dónde sale un item y dónde aterriza. Este
+documento mapea **qué avisa**; aquel, cómo un reporte de cliente llega a tener
+un tablero al que la notificación pueda apuntar. Se escribió cuando la primera
+notificación de `report:new` apuntó a un reporte que no estaba en ninguna parte.
+
+## 7 · Dónde tocar
 
 | Qué | Dónde |
 |---|---|

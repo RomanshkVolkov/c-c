@@ -134,6 +134,11 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusConflict,
 			"This list holds reports that belong to a client. Move them out before deleting it.",
 			"list-holds-channel-work")
+	case errors.Is(err, repository.ErrChannelNeedsInbox):
+		SendErrorResponse(w, http.StatusConflict,
+			"This list is where a client's reports arrive. Point that channel at another list "+
+				"instead of unlinking it — a channel with nowhere to deliver loses everything it sends.",
+			"channel-needs-inbox")
 	case errors.Is(err, repository.ErrListInUseByChannel):
 		SendErrorResponse(w, http.StatusConflict,
 			"A report project delivers into this list, so deleting it would take that project's reports with it. "+

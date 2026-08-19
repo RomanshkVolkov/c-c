@@ -658,6 +658,18 @@ func (r *TaskRepository) channelSharesOrgWithList(listID, projectID string) (boo
 }
 
 // SetChannelInbox is where a channel's incoming reports land.
+// ChannelDeliveringInto dice si algún canal usa esta lista como bandeja.
+//
+// La misma pregunta que hace la puerta de borrar (`ErrListInUseByChannel`), y
+// por la misma razón: dejar de mirarla es cómo un canal se queda entregando en
+// una lista que ya no existe o que ya no se declara suya.
+func (r *TaskRepository) ChannelDeliveringInto(listID string) (bool, error) {
+	var n int64
+	err := r.db.Model(&domain.ReportProject{}).
+		Where("list_id = ?", listID).Count(&n).Error
+	return n > 0, err
+}
+
 func (r *TaskRepository) SetChannelInbox(projectID, listID string) error {
 	return r.db.Model(&domain.ReportProject{}).Where("id = ?", projectID).
 		Update("list_id", listID).Error

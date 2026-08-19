@@ -1,6 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { api } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
+import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
 
 /**
  * What the app does when a render throws.
@@ -16,31 +15,19 @@ import { useAuthStore } from "@/store/auth.store";
  */
 
 /**
- * Command and control → App → tasks. Checked before hardcoding: the list has no
- * channel, so nothing filed here reaches a client — which matters, since a
- * stack trace is exactly the sort of thing that must not.
- */
-const CRASH_LIST = "ca0bfd49-0909-43eb-8135-bc8ecd0f282c";
-
-/**
- * A stable name for one crash.
+ * El nombre estable de un pantallazo: el mensaje más el primer marco.
  *
- * The message plus the first frame, hashed. React re-renders after an error and
- * a person will click reload more than once, so without this a single broken
- * screen would file a card per attempt. The server takes it as an idempotency
- * key: the same crash is one card, however many times it happens.
+ * React vuelve a dibujar tras un error y una persona pulsa recargar más de una
+ * vez, así que sin esto una pantalla rota levantaría una tarjeta por intento.
  */
-function signature(error: Error): string {
+function firmaDe(error: Error): string {
   const frame = (error.stack ?? "").split("\n")[1]?.trim() ?? "";
-  const text = `${error.name}: ${error.message} @ ${frame}`;
-  let h = 5381;
-  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
-  return `crash-${(h >>> 0).toString(16)}`;
+  return signature(`${error.name}: ${error.message} @ ${frame}`);
 }
 
 interface State {
   error: Error | null;
-  filed: "no" | "filing" | "done" | "failed";
+  filed: Fichado;
 }
 
 export default class ErrorBoundary extends Component<{ children: ReactNode }, State> {
@@ -58,45 +45,27 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
   }
 
   private async file(error: Error, info: ErrorInfo) {
-    // Signed out there is no token to file with, and in dev this would litter
-    // the real board with crashes somebody is in the middle of causing.
-    if (!useAuthStore.getState().accessToken || import.meta.env.DEV) return;
-
     this.setState({ filed: "filing" });
-    try {
-      await api.post(
-        `/api/v1/task-lists/${CRASH_LIST}/tasks`,
-        {
-          title: `Pantallazo: ${error.message}`.slice(0, 200),
-          description: [
-            `**${error.name}: ${error.message}**`,
-            "",
-            `Ruta: \`${window.location.hash || window.location.pathname}\``,
-            "",
-            "```",
-            (error.stack ?? "sin stack").split("\n").slice(0, 12).join("\n"),
-            "```",
-            "",
-            "Componentes:",
-            "```",
-            (info.componentStack ?? "").split("\n").slice(0, 12).join("\n").trim(),
-            "```",
-          ].join("\n"),
-          priority: "high",
-          // Belt and braces. The list has no channel so everything in it is
-          // internal anyway; saying so means a later binding can't quietly turn
-          // crash reports into something a client reads.
-          visibility: "internal",
-          idempotencyKey: signature(error),
-        },
-        true,
-      );
-      this.setState({ filed: "done" });
-    } catch {
-      // Reporting a crash must never cause one. The screen below already tells
-      // the person what happened; the card is a bonus, not the mechanism.
-      this.setState({ filed: "failed" });
-    }
+    this.setState({
+      filed: await fileCrash({
+        title: `Pantallazo: ${error.message}`,
+        description: [
+          `**${error.name}: ${error.message}**`,
+          "",
+          `Ruta: \`${rutaActual()}\``,
+          "",
+          "```",
+          (error.stack ?? "sin stack").split("\n").slice(0, 12).join("\n"),
+          "```",
+          "",
+          "Componentes:",
+          "```",
+          (info.componentStack ?? "").split("\n").slice(0, 12).join("\n").trim(),
+          "```",
+        ].join("\n"),
+        key: firmaDe(error),
+      }),
+    });
   }
 
   render() {

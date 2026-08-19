@@ -186,7 +186,17 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 	}
 
 	report := &domain.Report{
-		ProjectID:   project.ID,
+		ProjectID: project.ID,
+		// De dónde salen estos dos: del proyecto que la llave de ingesta acaba
+		// de identificar. No hay nada que pedirle al tenant ni ninguna consulta
+		// que hacer — están en la fila que ya tenemos en la mano.
+		//
+		// Que faltaran es el fallo que dejó a `portento-99` fuera del tablero:
+		// un item sin lista no sale en ninguna columna y su detalle contestaba
+		// «list not found». La migración a items se los puso una vez a los que
+		// ya existían, y desde entonces cada reporte nuevo entraba huérfano.
+		OrgID:       project.OrgID,
+		ListID:      inboxDe(project),
 		Title:       in.Title,
 		Description: in.Description,
 		Status:      domain.ReportPending,
@@ -387,6 +397,20 @@ func (s *ReportService) ReporterComment(ctx context.Context, reportID, body stri
 			tituloDeRespuesta(true, rep.ReporterName), rep.Title)
 	}
 	return s.ReporterView(reportID)
+}
+
+// inboxDe es la lista donde aterriza lo que llega de este cliente.
+//
+// Vacío cuando el canal todavía no tiene ninguna vinculada. El reporte entra
+// igual: es la misma regla que el resto del ingest —una categoría rara se
+// normaliza, no se rechaza— porque perder el reporte de un cliente por un hueco
+// de configuración nuestro es el peor de los dos fallos posibles. Se abre y se
+// lee; lo único que no tiene es columna.
+func inboxDe(project *domain.ReportProject) string {
+	if project == nil || project.ListID == nil {
+		return ""
+	}
+	return *project.ListID
 }
 
 // storageFolder builds the private-bucket prefix: org/<slug>/project/<slug>/<reportID>.

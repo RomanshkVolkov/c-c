@@ -28,6 +28,11 @@ Se muestra **una única vez**, al crear el proyecto; después solo queda rotarla
 la app de cac (Reports → Projects → Rotate ingest key). De ella se guarda solo un
 HMAC, así que nadie —tampoco nosotros— puede recuperarla.
 
+La llave identifica el proyecto, y con eso basta: **tú nunca mandas dónde guardar
+un reporte.** En qué tablero aterriza y a quién se le avisa lo decide cac a
+partir del proyecto, y podemos reorganizarlo por dentro sin que cambie nada de
+este contrato — no hay ningún campo de enrutado que puedas o debas enviar.
+
 **Solo funciona con proyectos `platform: "app"`.** Un proyecto `web` responde:
 
 ```json
