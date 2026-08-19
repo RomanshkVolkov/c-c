@@ -17,7 +17,19 @@ import { PRIORITIES, priorityMeta, type ItemVisibility, type TaskPriority } from
  * would put a task on everyone's board for a moment with nobody on it and no
  * date, which is a thing other people can see and act on while it is wrong.
  */
-export default function NewTaskRow({ onClose }: { onClose: () => void }) {
+export default function NewTaskRow({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  /**
+   * Una tarea acaba de existir. Hace falta porque esta fila **se queda
+   * abierta** tras cada Enter: quien la mira ve el título vaciarse y su lista
+   * exactamente igual que antes, y concluye que no se creó nada. Se creó — sólo
+   * que la pantalla no volvía a preguntar hasta cerrar la fila.
+   */
+  onCreated?: () => void;
+}) {
   const tree = useTasksStore((s) => s.tree);
   const createTaskIn = useTasksStore((s) => s.createTaskIn);
   const orgId = useOrgsStore((s) => s.currentOrgId);
@@ -82,6 +94,7 @@ export default function NewTaskRow({ onClose }: { onClose: () => void }) {
       // Only the title clears. The next thing you write down almost always
       // belongs in the same list with the same urgency.
       setTitle("");
+      onCreated?.();
     } catch (e) {
       toast.error("Could not create it", { description: String(e) });
     } finally {

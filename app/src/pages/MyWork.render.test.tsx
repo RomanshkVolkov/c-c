@@ -49,6 +49,28 @@ describe("«mi trabajo» al montarse", () => {
     await waitFor(() => expect(screen.getByText("My work")).toBeTruthy());
   });
 
+  /**
+   * El id de la lista, al alcance de la mano.
+   *
+   * Se llega aquí pinchando una lista del árbol, y las herramientas del MCP
+   * piden `listId`. El tablero de Tasks ya lo enseñaba; esta pantalla no, y era
+   * donde hacía falta: leer un uuid de otro sitio a mano es donde se tuerce una
+   * sesión con el agente.
+   */
+  it("enseña el id de la lista cuando estás dentro de una", async () => {
+    useMyWorkStore.setState({
+      scope: { kind: "list", id: "ca0bfd49-0909-43eb-8135-bc8ecd0f282c", name: "tasks" },
+    } as never);
+    render(
+      <MemoryRouter>
+        <MyWork />
+      </MemoryRouter>,
+    );
+    const boton = await screen.findByTitle(/Copy list id/);
+    // Lo que se copia es el id entero, aunque en pantalla salga cortado.
+    expect(boton.getAttribute("title")).toContain("ca0bfd49-0909-43eb-8135-bc8ecd0f282c");
+  });
+
   it("y tampoco con tareas dentro", async () => {
     useMyWorkStore.setState({
       tasks: [

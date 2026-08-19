@@ -90,6 +90,34 @@ describe("el composer", () => {
     await waitFor(() => expect(createTaskIn).toHaveBeenCalledTimes(2));
   });
 
+  /**
+   * El fallo que trajo esto: la fila se queda abierta, así que la pantalla que
+   * la contiene sólo volvía a preguntar al cerrarla. Con Enter la tarea existía
+   * y no aparecía en ninguna lista hasta cambiar de pestaña y volver.
+   */
+  it("avisa tras cada Enter, no sólo al cerrar", async () => {
+    const onCreated = vi.fn();
+    render(<NewTaskRow onClose={() => {}} onCreated={onCreated} />);
+    escribirTitulo("Primera");
+    enter();
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+    escribirTitulo("Segunda");
+    enter();
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(2));
+  });
+
+  it("si la creación falla no avisa de nada", async () => {
+    createTaskIn.mockRejectedValueOnce(new Error("no"));
+    const onCreated = vi.fn();
+    render(<NewTaskRow onClose={() => {}} onCreated={onCreated} />);
+    escribirTitulo("Algo");
+    enter();
+    // Recargar aquí pintaría la lista igual que estaba y haría creer que la
+    // tarea entró; el aviso de error es lo único que debe verse.
+    await waitFor(() => expect(createTaskIn).toHaveBeenCalled());
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
   it("un título en blanco no llega al servidor", () => {
     render(<NewTaskRow onClose={() => {}} />);
     escribirTitulo("   ");

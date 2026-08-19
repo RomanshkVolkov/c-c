@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import { useDMStore } from "@/store/dm.store";
@@ -33,16 +33,39 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Depende de `orgId`. Antes dependía sólo de las dos acciones, que en zustand
+  // nunca cambian de identidad: al cambiar de organización no se volvía a pedir
+  // nada, y la única forma de ver a los colegas de la nueva era recargar la app
+  // a mano. Ese era el «click derecho y reload» del reporte.
+  const previa = useRef<string | null>(null);
   useEffect(() => {
+    if (!orgId) return;
     fetchConversations().catch(() => {});
-    fetchPeople().catch(() => {});
-  }, [fetchConversations, fetchPeople]);
+    fetchPeople(orgId).catch(() => {});
+    // Y el hilo abierto se cierra, porque pertenece a la organización que
+    // acabas de dejar. Sólo cuando de verdad cambió: volver a esta pantalla
+    // desde otra remonta el componente, y cerrar el hilo ahí sería perder de
+    // vista una conversación que nadie pidió cerrar.
+    if (previa.current && previa.current !== orgId) {
+      useDMStore.setState({ conversationId: null, messages: [] });
+    }
+    previa.current = orgId;
+  }, [orgId, fetchConversations, fetchPeople]);
 
   const term = q.trim().toLowerCase();
-  const threads = conversations.filter((c) => !term || c.username.toLowerCase().includes(term));
+  // Sólo las de esta organización. El endpoint devuelve las de todas —una
+  // consulta por organización para pintar una lista sería absurdo—, así que
+  // quedarse con las de aquí es trabajo de esta pantalla, y no hacerlo mezclaba
+  // en la misma columna gente de dos clientes distintos.
+  const delOrg = conversations.filter((c) => c.orgId === orgId);
+  const threads = delOrg.filter((c) => !term || c.username.toLowerCase().includes(term));
   // Somebody you already have a thread with belongs in the first list, not
   // twice: the row that carries their unread count is the useful one.
-  const withThread = new Set(conversations.map((c) => c.userId));
+  //
+  // Del mismo `delOrg` y no de todas: con un hilo abierto con alguien en otra
+  // organización, mirarlo entero lo escondía también de aquí — ni arriba, por
+  // no ser de esta org, ni abajo, por «ya tener hilo».
+  const withThread = new Set(delOrg.map((c) => c.userId));
   // Yourself is left out here rather than by the endpoint. The list answers
   // "who is in this organization", and you are — but opening a conversation
   // with yourself is refused at the door, so offering it would be proposing

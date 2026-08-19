@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
+import CopyId from "@/components/CopyId";
 import ItemCalendar from "@/components/ItemCalendar";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
 import TaskCardMini, { cuando } from "@/components/tasks/TaskCardMini";
@@ -144,16 +145,23 @@ export default function MyWork() {
           </button>
         </div>
         {scope && (
-          <button
-            onClick={() => setScope(null)}
-            className="mt-1 flex items-center gap-1 self-start rounded-full border bg-accent/40 px-2 py-0.5 text-xs hover:bg-accent"
-            title="Show everything again"
-          >
-            {/* Says out loud that you are seeing part of it. A filtered list with
-                nothing announcing the filter reads as "there is nothing here". */}
-            {scope.kind === "list" ? "List" : "Space"}: {scope.name}
-            <X className="size-3" />
-          </button>
+          <div className="mt-1 flex items-center gap-1.5">
+            <button
+              onClick={() => setScope(null)}
+              className="flex items-center gap-1 self-start rounded-full border bg-accent/40 px-2 py-0.5 text-xs hover:bg-accent"
+              title="Show everything again"
+            >
+              {/* Says out loud that you are seeing part of it. A filtered list with
+                  nothing announcing the filter reads as "there is nothing here". */}
+              {scope.kind === "list" ? "List" : "Space"}: {scope.name}
+              <X className="size-3" />
+            </button>
+            {/* El id, para dárselo a un agente. El tablero de Tasks ya lo
+                enseña; aquí no, y era donde hacía falta: se llega a esta
+                pantalla pinchando una lista del árbol, y copiar el uuid a mano
+                de otro sitio es donde se tuerce una sesión de MCP. */}
+            <CopyId id={scope.id} label={scope.kind} />
+          </div>
         )}
         <nav className="-mb-px flex items-center gap-4 pt-2 text-sm">
           {LENSES.map((l) => (
@@ -194,6 +202,11 @@ export default function MyWork() {
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {creando && (
           <NewTaskRow
+            // Tras cada Enter, no sólo al cerrar. La fila se queda abierta a
+            // propósito —se escriben cuatro seguidas—, así que preguntar sólo al
+            // cerrarla dejaba la tarea recién creada sin aparecer por ninguna
+            // parte hasta cambiar de pestaña y volver.
+            onCreated={() => load(orgId).catch(() => {})}
             onClose={() => {
               setCreando(false);
               // Re-ask: what you just raised may or may not belong in the lens
