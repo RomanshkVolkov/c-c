@@ -170,7 +170,13 @@ export interface TaskAttachment {
   commentId?: string | null;
   url: string;
   fileName: string;
-  contentType: string;
+  /**
+   * Ausente cuando el servidor no tiene ninguno: el campo es `omitempty`, y el
+   * ingest de imágenes de un cliente nunca lo escribe. Decía `string` y era
+   * mentira — una llamada a `.startsWith` sobre él tumbó la pantalla de tareas
+   * entera en cuanto una tarjeta con captura de cliente entró en pantalla.
+   */
+  contentType?: string;
   bytes: number;
 }
 
@@ -290,7 +296,13 @@ export interface DocAttachment {
   docId: string;
   url: string;
   fileName: string;
-  contentType: string;
+  /**
+   * Ausente cuando el servidor no tiene ninguno: el campo es `omitempty`, y el
+   * ingest de imágenes de un cliente nunca lo escribe. Decía `string` y era
+   * mentira — una llamada a `.startsWith` sobre él tumbó la pantalla de tareas
+   * entera en cuanto una tarjeta con captura de cliente entró en pantalla.
+   */
+  contentType?: string;
   bytes: number;
 }
 

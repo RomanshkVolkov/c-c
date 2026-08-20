@@ -13,9 +13,18 @@ import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 
 const { estado } = vi.hoisted(() => ({ estado: { current: {} as Record<string, unknown> } }));
 
-const adjunto = (id: string, fileName: string, contentType: string) => ({
+/**
+ * `contentType` opcional **de verdad**: cuando no se pasa, la clave no existe.
+ *
+ * La primera versión de este test le ponía `""`, y eso fue lo que dejó pasar el
+ * fallo: `"".startsWith` funciona y `undefined.startsWith` tumba la pantalla.
+ * El servidor manda el campo con `omitempty`, así que lo que llega de verdad es
+ * la ausencia, no el vacío.
+ */
+const adjunto = (id: string, fileName: string, contentType?: string) => ({
   id, taskId: "t-1", url: `/api/v1/tasks/t-1/attachments/${id}/raw`,
-  fileName, contentType, bytes: 4096,
+  fileName, bytes: 4096,
+  ...(contentType === undefined ? {} : { contentType }),
 });
 
 const detalle = {
@@ -26,8 +35,10 @@ const detalle = {
   },
   attachments: [
     adjunto("a-img", "Captura de pantalla.png", "image/png"),
-    // Sin contentType, como llega a veces de la integración.
-    adjunto("a-sin-tipo", "otra-captura.jpg", ""),
+    // Sin la clave siquiera, que es como llega todo lo de la integración.
+    adjunto("a-sin-tipo", "otra-captura.jpg"),
+    // Y con la clave vacía, que es el otro caso que existió.
+    adjunto("a-tipo-vacio", "tercera.webp", ""),
     adjunto("a-pdf", "contrato.pdf", "application/pdf"),
   ],
   comments: [], subtasks: [], tags: [], assignees: [],
@@ -78,8 +89,9 @@ describe("la galería de una tarjeta", () => {
     render(<TaskDetailDrawer />);
     const vistas = screen.getAllByRole("img").map((i) => i.getAttribute("alt"));
     expect(vistas).toContain("Captura de pantalla.png");
-    // La integración no siempre declara el tipo; la extensión decide entonces.
+    // La integración nunca declara el tipo; la extensión decide entonces.
     expect(vistas).toContain("otra-captura.jpg");
+    expect(vistas).toContain("tercera.webp");
   });
 
   it("el PDF no se pinta como imagen: tiene su propio visor", () => {

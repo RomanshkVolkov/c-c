@@ -285,13 +285,18 @@ function Content() {
    * Qué adjunto es una imagen.
    *
    * Por el `contentType` que declaró quien lo subió, y por la extensión cuando
-   * viene vacío — que pasa con lo ingerido por la integración, donde el tipo lo
-   * afirma el cliente y a veces no lo manda. Equivocarse aquí sólo cuesta que
-   * una imagen salga como línea de fichero, que es lo que hacían todas.
+   * no viene — que es **siempre** en lo que llega por la integración: el ingest
+   * de imágenes no escribe el tipo, y el campo es `omitempty`, así que el
+   * servidor ni siquiera manda la clave.
+   *
+   * Ambos con respaldo, y no por prudencia: la primera versión de esto llamaba
+   * a `.startsWith` directamente sobre un `contentType` que el tipo prometía
+   * `string`. Tumbó la pantalla de tareas entera. El test lo daba por bueno
+   * porque su fixture usaba `""` — un campo vacío, no un campo que no está.
    */
-  const esImagen = (a: { contentType: string; fileName: string }) =>
-    a.contentType.startsWith("image/") ||
-    /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(a.fileName);
+  const esImagen = (a: { contentType?: string; fileName?: string }) =>
+    (a.contentType ?? "").startsWith("image/") ||
+    /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(a.fileName ?? "");
   const imagenes = detail.attachments.filter(esImagen);
   const otros = detail.attachments.filter((a) => !esImagen(a));
 
