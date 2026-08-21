@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { ImageDown, Send, KeyRound, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ImageDown, Send, KeyRound, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,8 @@ const TOOLS = [
   // Renamed from "Crypto": what it actually does is read and sign tokens, and
   // "crypto" now says something else entirely to most people.
   { to: "tokens", label: "Tokens", icon: KeyRound, guest: true },
+  // La Fase 0 de los canales de voz: interroga al webview. Ver VoiceLab.tsx.
+  { to: "voice", label: "Voice lab", icon: Mic, guest: true },
 ];
 
 export default function DevTools() {

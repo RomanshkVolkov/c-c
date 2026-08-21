@@ -1,0 +1,23 @@
+# Spike 0b de los canales de voz: ¿el SDK Rust de LiveKit sirve como motor
+# nativo, y a qué precio?
+#
+# Crate aparte a propósito, y no en el Cargo.toml de la app: `livekit` arrastra
+# libwebrtc precompilado, y eso engorda el build de todo el mundo. Aquí se mide
+# antes de casarse — tiempo de compilación, peso del binario, y si el SDK expone
+# la cancelación de eco.
+#
+# El camino nativo existe porque el webview de Linux no puede: el WebKitGTK de
+# Arch viene compilado sin WebRTC (cero símbolos de JSRTCPeerConnection en
+# libwebkit2gtk-4.1.so), así que `livekit-client` en el webview no era opción.
+[package]
+name = "voice-native-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# rustls y no native-tls: una dependencia menos del sistema, y es lo que ya usa
+# el resto de la app (reqwest con rustls en src-tauri).
+livekit = { version = "0.8.3", features = ["rustls-tls-native-roots"] }
+livekit-api = { version = "0.6.3", default-features = false, features = ["access-token", "services-tokio", "signal-client-tokio", "rustls-tls-native-roots"] }
+tokio = { version = "1", features = ["full"] }

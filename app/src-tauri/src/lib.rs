@@ -1519,6 +1519,48 @@ pub fn run() {
         // hands a pasted bitmap to the page as an <img> with no src — see
         // readClipboardImage() in the frontend for the whole story.
         .plugin(tauri_plugin_clipboard_manager::init())
+        // WebKitGTK trae WebRTC apagado de fábrica: sin esto, en Linux
+        // `getUserMedia` ni siquiera existe en `navigator.mediaDevices` y los
+        // canales de voz mueren antes de pedir el micrófono. Windows (WebView2)
+        // y macOS (WKWebView) no necesitan nada equivalente.
+        .setup(|app| {
+            #[cfg(target_os = "linux")]
+            {
+                use tauri::Manager;
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.with_webview(|webview| {
+                        use webkit2gtk::{PermissionRequestExt, SettingsExt, WebViewExt};
+                        let inner = webview.inner();
+                        if let Some(settings) = inner.settings() {
+                            settings.set_enable_webrtc(true);
+                            settings.set_enable_media_stream(true);
+                        }
+                        // WebKitGTK deniega todo permiso que el embebedor no
+                        // conteste — sin esto, `getUserMedia` devuelve
+                        // NotAllowedError sin preguntarle a nadie. Se concede
+                        // micrófono/cámara sin diálogo propio porque este
+                        // webview sólo carga cac (los enlaces externos se abren
+                        // en el navegador del sistema), así que quien pide es
+                        // siempre nuestra propia app; el permiso del sistema
+                        // operativo sigue aplicando por encima. La pantalla no
+                        // pasa por aquí: la pide el portal del escritorio con
+                        // su propio selector.
+                        inner.connect_permission_request(|_, req| {
+                            use webkit2gtk::glib::object::Cast;
+                            use webkit2gtk::{DeviceInfoPermissionRequest, UserMediaPermissionRequest};
+                            if req.downcast_ref::<UserMediaPermissionRequest>().is_some()
+                                || req.downcast_ref::<DeviceInfoPermissionRequest>().is_some()
+                            {
+                                req.allow();
+                                return true;
+                            }
+                            false
+                        });
+                    });
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             update_swarm_manage_agent,
             deploy_swarm_manage_agent,
