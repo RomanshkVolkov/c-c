@@ -326,3 +326,35 @@ func atoiDefault(s string, def int) int {
 	}
 	return n
 }
+
+// VoiceToken entrega la entrada a la sala de voz de un espacio.
+//
+// El guard es el mismo que el del chat de ese espacio —`resolveSpace`, que
+// devuelve 404 a quien no pertenece a la organización— porque hablar y escribir
+// en un canal son el mismo permiso. La sala no se acepta del cliente: se deriva
+// del espacio que este handler ya resolvió y autorizó.
+func (h *taskHandler) VoiceToken(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	if !h.voice.Configured() {
+		// 501 y no 500: no está roto, es que esta instalación no tiene voz. La
+		// pantalla puede decirlo con esas palabras.
+		SendErrorResponse(w, http.StatusNotImplemented,
+			"Voice is not configured on this server", "voice-unconfigured")
+		return
+	}
+	user, _ := currentUser(r)
+	token, err := h.voice.Token(sp.ID, user.UserID, user.Username)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to mint a voice token", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.VoiceTokenResponse]{
+		Success: true,
+		Data: &domain.VoiceTokenResponse{
+			URL: h.voice.URL(), Token: token, Room: service.RoomFor(sp.ID),
+		},
+	})
+}

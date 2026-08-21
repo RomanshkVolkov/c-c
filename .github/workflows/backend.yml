@@ -45,7 +45,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "backend/k8s/0-rbac.yaml,backend/k8s/2-deployment.yaml,backend/k8s/3-service.yaml,backend/k8s/4-http-route.yaml"
+          source: "backend/k8s/0-rbac.yaml,backend/k8s/2-deployment.yaml,backend/k8s/3-service.yaml,backend/k8s/4-http-route.yaml,backend/k8s/5-livekit.yaml,backend/k8s/6-livekit-route.yaml"
           target: "/tmp/cac-k8s"
           strip_components: 2
 
@@ -65,12 +65,18 @@ jobs:
           INGEST_KEY_SECRET: ${{ secrets.INGEST_KEY_SECRET }}
           REPORTS_KEK: ${{ secrets.REPORTS_KEK }}
           REPORT_TOKEN_SECRET: ${{ secrets.REPORT_TOKEN_SECRET }}
+          # Voz. LIVEKIT_URL es lo que la app usa para conectar; la llave y el
+          # secreto los comparten cac (acuña los tokens) y el propio LiveKit
+          # (los valida) — por eso el mismo par alimenta dos secretos.
+          LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK,REPORT_TOKEN_SECRET
+          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK,REPORT_TOKEN_SECRET,LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET
           script: |
             kubectl create secret generic cac-secret \
               --from-literal=DATABASE_URL="$DATABASE_URL" \
@@ -86,7 +92,19 @@ jobs:
               --from-literal=INGEST_KEY_SECRET="$INGEST_KEY_SECRET" \
               --from-literal=REPORTS_KEK="$REPORTS_KEK" \
               --from-literal=REPORT_TOKEN_SECRET="$REPORT_TOKEN_SECRET" \
+              --from-literal=LIVEKIT_URL="$LIVEKIT_URL" \
+              --from-literal=LIVEKIT_API_KEY="$LIVEKIT_API_KEY" \
+              --from-literal=LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
               --dry-run=client -o yaml | kubectl apply -f -
+
+            # El secreto que lee el propio LiveKit. Formato "clave: secreto",
+            # que es lo que espera en LIVEKIT_KEYS. Se omite si no hay llaves
+            # configuradas todavía, para que un despliegue sin voz no falle.
+            if [ -n "$LIVEKIT_API_KEY" ]; then
+              kubectl create secret generic livekit-secret \
+                --from-literal=LIVEKIT_KEYS="$LIVEKIT_API_KEY: $LIVEKIT_API_SECRET" \
+                --dry-run=client -o yaml | kubectl apply -f -
+            fi
 
             kubectl apply -f /tmp/cac-k8s/
             # Force a fresh rollout so the :latest image is re-pulled and the new

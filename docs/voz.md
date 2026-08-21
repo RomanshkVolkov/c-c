@@ -101,13 +101,62 @@ Eso separa tres fallos que de otro modo se confunden: el SDK, la red, y el audio
 del sistema. El micrófono real es el paso siguiente, y ése sí lo tiene que oír
 una persona.
 
-## 5 · Lo que queda, en orden
+## 5 · La puerta: el token
 
-1. **Infra**: LiveKit en el VPS (`hostNetwork`, ConfigMap, Secret, HTTPRoute,
-   abrir UDP 7882 / TCP 7881, DNS). Se verifica con dos pestañas de un navegador
-   normal — separa «la infra está mal» de «el cliente está mal».
-2. **Backend**: `POST /api/v1/task-spaces/{id}/voice/token`, con el guard de
-   pertenencia del chat como molde.
+`POST /api/v1/task-spaces/{id}/voice/token` → `{url, token, room}`.
+
+Dos reglas, y las dos tienen test con mutación que las tumba:
+
+1. **La sala se deriva del espacio en el servidor** (`service.RoomFor` →
+   `voice:<spaceId>`), nunca se acepta del cliente. Si viajara en la petición, el
+   guard estaría comprobando la pertenencia a un espacio mientras el token
+   concede la entrada a otro.
+2. **La pertenencia decide**, con el mismo `resolveSpace` que el chat de ese
+   espacio: hablar y escribir en un canal son el mismo permiso. Pedir la sala de
+   otra organización devuelve **404**, no 403 — confirmar que el espacio existe
+   ya sería contar algo.
+
+El token concede entrar, publicar y suscribirse. **No** concede administrar la
+sala: echar gente o cambiar metadatos no es algo que un cliente deba poder
+hacer, y darlo «por si acaso» es repartir permisos que nadie pidió. Dura una
+hora; reconectar pide otro.
+
+Sin `LIVEKIT_*` configurado el endpoint contesta **501** con «voice-unconfigured»
+en vez de acuñar un token que ningún servidor aceptaría: una instalación sin voz
+es legítima y la pantalla puede decirlo con esas palabras.
+
+## 6 · Puertos, y qué hay que abrir a mano
+
+| Puerto | Protocolo | Para qué |
+|---|---|---|
+| 7880 | TCP, vía Gateway | Señalización (WebSocket). Sale por `rtc.guz-studio.dev` |
+| 7882 | **UDP** | El media. Es el que hay que abrir en el security group |
+| 7881 | TCP | Respaldo para redes que bloquean UDP |
+
+El HTTPRoute de la señalización lleva `timeouts.request: 0s`. No es opcional: el
+valor por defecto de Envoy son 15 segundos y cortaría cada llamada a los quince
+— la misma lección que costó la ruta de eventos, aprendida una vez y aplicada
+aquí sin repetirla.
+
+### Lo que sólo se puede hacer desde fuera del repositorio
+
+1. Generar el par de llaves: `docker run --rm livekit/livekit-server generate-keys`.
+2. Guardarlas como secretos de GitHub `LIVEKIT_API_KEY` y `LIVEKIT_API_SECRET`,
+   y la variable `LIVEKIT_URL` con `wss://rtc.guz-studio.dev`.
+3. DNS: `rtc.guz-studio.dev` → la IP del VPS.
+4. Security group: abrir **UDP 7882** y TCP 7881.
+
+El despliegue omite el secreto de LiveKit si no hay llaves, así que **un deploy
+sin nada de esto no falla**: simplemente no hay voz, y el endpoint lo dice.
+
+## 7 · Lo que queda, en orden
+
+1. ~~**Infra**~~: manifiestos escritos (`backend/k8s/5-livekit.yaml`,
+   `6-livekit-route.yaml`) y enganchados al despliegue. **Pendiente**: los cuatro
+   pasos de §6.2 que viven fuera del repositorio. Se verificará con dos pestañas
+   de un navegador normal — eso separa «la infra está mal» de «el cliente está
+   mal».
+2. ~~**Backend**~~: hecho, ver §5.
 3. **Motor**: `src-tauri/src/voice.rs` — unirse, colgar, silenciar, y eventos por
    `Channel`, con el patrón de `pty.rs` (incluida la limpieza al cerrar).
 4. **UI**: entrar desde el canal, barra de conectado, y quién está dentro visible

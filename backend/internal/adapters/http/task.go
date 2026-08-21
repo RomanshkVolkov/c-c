@@ -55,7 +55,14 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// have to survive closing the app.
 	chat := service.NewChatService(repository.NewChatRepository(db), hub).WithNotifier(inbox)
 	dms := service.NewDMService(repository.NewDMRepository(db), hub).WithNotifier(inbox)
-	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store)
+	// La voz sale de las mismas envs que consume LiveKit; sin ellas el handler
+	// contesta 501 en vez de fingir que hay un SFU.
+	voice := service.NewVoiceService(
+		repository.GetEnv("LIVEKIT_URL", ""),
+		repository.GetEnv("LIVEKIT_API_KEY", ""),
+		repository.GetEnv("LIVEKIT_API_SECRET", ""),
+	)
+	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store, voice)
 
 	// The navigator: spaces → folders → lists.
 	r.Route("/api/v1/task-spaces", func(r chi.Router) {
@@ -84,6 +91,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/chat/follow", h.FollowChannel)
 		r.Delete("/{id}/chat/follow", h.UnfollowChannel)
 		r.Post("/{id}/chat/attachments", h.UploadChatAttachment)
+		// La entrada a la sala de voz de este espacio. Mismo guard que el chat.
+		r.Post("/{id}/voice/token", h.VoiceToken)
 	})
 
 	r.Route("/api/v1/task-folders", func(r chi.Router) {

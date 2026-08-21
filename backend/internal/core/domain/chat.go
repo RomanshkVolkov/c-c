@@ -145,3 +145,16 @@ type SpaceFollower struct {
 	SpaceID string `gorm:"type:varchar(36);primaryKey" json:"spaceId"`
 	UserID  string `gorm:"type:varchar(36);primaryKey;index" json:"userId"`
 }
+
+// VoiceTokenResponse es todo lo que la app necesita para entrar a una sala.
+//
+// La URL viaja con el token y no está fijada en el cliente: el SFU puede
+// cambiar de sitio —otro host, otro puerto— sin que haya que publicar una
+// versión de la app para seguirlo.
+type VoiceTokenResponse struct {
+	URL   string `json:"url"`
+	Token string `json:"token"`
+	// Room viaja informativa, para que un log del cliente diga en qué sala
+	// estaba. No se acepta de vuelta: la sala la decide el servidor.
+	Room string `json:"room"`
+}

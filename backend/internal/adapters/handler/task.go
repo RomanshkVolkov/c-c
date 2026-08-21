@@ -41,6 +41,7 @@ type TaskHandler interface {
 	MarkDMRead(w http.ResponseWriter, r *http.Request)
 	MarkChatRead(w http.ResponseWriter, r *http.Request)
 	FollowChannel(w http.ResponseWriter, r *http.Request)
+	VoiceToken(w http.ResponseWriter, r *http.Request)
 	UnfollowChannel(w http.ResponseWriter, r *http.Request)
 	FollowedChannels(w http.ResponseWriter, r *http.Request)
 	WithdrawChat(w http.ResponseWriter, r *http.Request)
@@ -95,6 +96,9 @@ type taskHandler struct {
 	chat *service.ChatService
 	// dms is the private half of the same conversation surface.
 	dms *service.DMService
+	// voice acuña las entradas a las salas del SFU. Puede no estar configurado:
+	// una instalación sin voz es legítima y el handler lo dice con un 501.
+	voice *service.VoiceService
 	// images proxies attachment uploads so the API key and bucket stay
 	// server-side; nil/disabled simply turns attachments off.
 	images *imageservice.Client
@@ -111,8 +115,9 @@ func NewTaskHandler(
 	repo *repository.TaskRepository,
 	images *imageservice.Client,
 	store *mediastore.Store,
+	voice *service.VoiceService,
 ) TaskHandler {
-	return &taskHandler{svc: svc, channels: channels, chat: chat, dms: dms, repo: repo, images: images, store: store}
+	return &taskHandler{svc: svc, channels: channels, chat: chat, dms: dms, repo: repo, images: images, store: store, voice: voice}
 }
 
 func mapTaskError(w http.ResponseWriter, err error) bool {

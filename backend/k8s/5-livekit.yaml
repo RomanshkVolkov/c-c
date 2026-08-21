@@ -1,0 +1,102 @@
+# LiveKit: el SFU que reparte voz y vídeo de los canales.
+#
+# `hostNetwork: true` no es pereza. El media de WebRTC va por UDP y necesita que
+# la IP y el puerto que el servidor anuncia en sus candidatos ICE sean los que
+# el cliente puede alcanzar de verdad. Detrás de un Service ClusterIP o de un
+# NodePort con SNAT, LiveKit anunciaría una dirección interna y la conexión se
+# quedaría negociando para siempre. Con la red del host, lo que anuncia es lo
+# que hay.
+#
+# `use_external_ip: true` cierra el círculo: el VPS está detrás del NAT de AWS,
+# así que la IP de su interfaz no es la pública. LiveKit la descubre por STUN al
+# arrancar y anuncia esa.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livekit-config
+  namespace: default
+data:
+  livekit.yaml: |
+    port: 7880
+    log_level: info
+    rtc:
+      # Un solo puerto UDP muxeado en vez de un rango: es un agujero que abrir
+      # en el security group en vez de diez mil, y para el tamaño de equipo que
+      # esto sirve no hay diferencia de rendimiento.
+      udp_port: 7882
+      # Respaldo para redes que bloquean UDP. Peor latencia, pero conecta.
+      tcp_port: 7881
+      use_external_ip: true
+    # Sin `keys` aquí: llegan por LIVEKIT_KEYS desde el Secret, para que este
+    # ConfigMap se pueda leer sin exponer nada.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: livekit
+  template:
+    metadata:
+      labels:
+        app: livekit
+    spec:
+      hostNetwork: true
+      # Obligado con hostNetwork: sin esto el pod hereda el resolv.conf del host
+      # y deja de ver el DNS del clúster.
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: livekit
+          image: livekit/livekit-server:latest
+          args: ["--config", "/etc/livekit/livekit.yaml"]
+          env:
+            # Formato "clave: secreto". Lo consume LiveKit al arrancar.
+            - name: LIVEKIT_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: livekit-secret
+                  key: LIVEKIT_KEYS
+          ports:
+            - name: signal
+              containerPort: 7880
+            - name: rtc-tcp
+              containerPort: 7881
+            - name: rtc-udp
+              containerPort: 7882
+              protocol: UDP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 7880
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: livekit-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit
+  namespace: default
+spec:
+  selector:
+    app: livekit
+  ports:
+    - name: signal
+      port: 7880
+      targetPort: 7880

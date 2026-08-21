@@ -1,0 +1,28 @@
+# La señalización de LiveKit: WebSocket largo, por el Gateway que ya existe.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: livekit-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: gateway-api
+      namespace: default
+
+  hostnames:
+    - "rtc.guz-studio.dev"
+
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      timeouts:
+        # Cero lo desactiva. Es la misma lección que costó la ruta de eventos:
+        # el timeout por defecto de Envoy son 15s, y una señalización de WebRTC
+        # es una conexión que dura lo que dure la llamada. Con el valor por
+        # defecto, cada llamada se cortaría a los quince segundos.
+        request: 0s
+      backendRefs:
+        - name: livekit
+          port: 7880
