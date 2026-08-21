@@ -153,7 +153,7 @@ func (r *DMRepository) Conversations(userID string, orgIDs []string) ([]domain.D
 	err := r.db.Raw(`
 		SELECT c.id AS conversation_id, c.org_id,
 		       CASE WHEN c.user_lo_id = ? THEN c.user_hi_id ELSE c.user_lo_id END AS user_id,
-		       COALESCE(u.username,'') AS username,
+		       COALESCE(u.username,'') AS username, u.last_seen_at,
 		       COALESCE(SUM(CASE
 		            WHEN m.id IS NOT NULL
 		             AND m.author_user_id <> ?
@@ -165,7 +165,7 @@ func (r *DMRepository) Conversations(userID string, orgIDs []string) ([]domain.D
 		LEFT JOIN dm_reads r ON r.conversation_id = c.id AND r.user_id = ?
 		LEFT JOIN users u ON u.id = CASE WHEN c.user_lo_id = ? THEN c.user_hi_id ELSE c.user_lo_id END
 		WHERE (c.user_lo_id = ? OR c.user_hi_id = ?) AND c.org_id IN ?
-		GROUP BY c.id, c.org_id, u.username
+		GROUP BY c.id, c.org_id, u.username, u.last_seen_at
 		ORDER BY MAX(m.created_at) DESC NULLS LAST
 	`, userID, userID, userID, userID, userID, userID, orgIDs).Scan(&out).Error
 	return out, err

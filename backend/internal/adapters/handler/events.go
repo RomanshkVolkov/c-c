@@ -18,11 +18,32 @@ type EventsHandler interface {
 
 type eventsHandler struct {
 	hub *events.Hub
+	// seen marca que esta persona sigue por aquí, en cada latido.
+	//
+	// Hace falta porque **esta ruta no pasa por el AuthMiddleware**: autentica
+	// por `?token=` ya que EventSource no manda cabeceras, así que el registro
+	// de presencia que hace el middleware nunca la ve. Y nada más en la app
+	// consulta la API por temporizador — con lo cual alguien leyendo un canal
+	// sin escribir se apagaba a los pocos minutos y el punto decía «ausente» de
+	// quien estaba mirando la pantalla.
+	//
+	// El latido es el sitio correcto: tener el stream abierto *es* tener la app
+	// abierta, que es lo que un punto verde debe significar. No cuesta más
+	// escrituras — `TouchLastSeen` ya se limita a una cada cinco minutos por
+	// persona, y lo hace en el propio WHERE.
+	seen func(userID string)
 }
 
-func NewEventsHandler(hub *events.Hub) EventsHandler {
-	return &eventsHandler{hub: hub}
+func NewEventsHandler(hub *events.Hub, seen func(userID string)) EventsHandler {
+	return &eventsHandler{hub: hub, seen: seen}
 }
+
+// latido es cada cuánto se manda el ping y, con él, se registra la presencia.
+//
+// Variable y no constante sólo para que un test pueda acortarlo: esperar 25
+// segundos por una aserción es un test que nadie corre. Nada en producción lo
+// cambia.
+var latido = 25 * time.Second
 
 // Stream is the org-scoped SSE endpoint the Tauri console subscribes to. Auth is
 // by ?token= (EventSource can't set Authorization) or the Authorization header.
@@ -87,7 +108,7 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	heartbeat := time.NewTicker(25 * time.Second)
+	heartbeat := time.NewTicker(latido)
 	defer heartbeat.Stop()
 
 	for {
@@ -95,6 +116,9 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-heartbeat.C:
+			if h.seen != nil {
+				h.seen(claims.UserID)
+			}
 			// A real named event, not an SSE comment: comment lines (": ping")
 			// keep the socket warm but fire NOTHING in the browser, so a client
 			// can't tell a live stream from a half-open one. With this, the app

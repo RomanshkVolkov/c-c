@@ -34,7 +34,7 @@ Todos los eventos que emite el backend, y qué deja cada uno.
 | `report:comment` — una **edición** de un comentario | `report.go:856` | No, a propósito | — | corregir una errata no es noticia |
 | `report:comment` — desde el lado de tareas | `task.go:822` | **Sí**, vía `task.go:817` | `task:comment` | los implicados |
 | `task:comment` | `task.go:814` | **Sí** | `task:comment` | los implicados, nunca el autor |
-| `chat:message` | `chat.go:67` | **Sí** | `chat:message` · `chat:mention` | quien sigue el canal · quien es nombrado |
+| `chat:message` | `chat.go:67` | **Sí** | `chat:message` · `chat:mention` | toda la org menos quien se salió · quien es nombrado |
 | `dm:message` | `dm.go:51` | **Sí** | `dm:message` | el destinatario |
 | `report:status` | `report.go:609`, `task.go:550` | **Sí** | `task:status` | los implicados |
 | `task:new` con responsables | `task.go:419` | **Sí** | `task:assigned` | a quien se le asigna, nunca a quien asigna |
@@ -51,6 +51,29 @@ a quién avisar vive entera en `service/avisos.go` y en ningún otro sitio.
 **«Sólo a los nuevos»** es `TaskService.reciénAsignados`. Guardar responsables
 reemplaza la lista entera, así que sin la diferencia se avisaría otra vez a quien
 ya la tenía cada vez que alguien toca cualquier otro campo de la tarjeta.
+
+## 2 bis · Seguir un canal es lo que pasa por defecto
+
+Desde el 21/08/2026: **todo miembro de una organización sigue todos sus canales**
+y recibe aviso de cada mensaje. Lo que se guarda es la excepción — `space_mutes`,
+quién se salió de cuál — y por eso no hay nada que rellenar al alta de un miembro
+ni al alta de un espacio.
+
+`Followers(spaceID)` ya no lee una lista propia: son los miembros de la
+organización del espacio menos los silenciados. Un espacio no tiene miembros
+suyos —cualquiera de la organización lo alcanza—, así que inventarle una lista
+sería una segunda verdad sobre quién está dentro.
+
+Los endpoints conservan ruta y verbo (`POST …/chat/follow` quita el silencio,
+`DELETE` lo pone) para que una build vieja siga funcionando. `space_followers`
+queda en la base sin que nadie la lea.
+
+**El precio, dicho claro:** cada línea de cada canal llega a todos los colegas
+salvo al autor y a los ya nombrados. Con equipos pequeños es lo que se quiere.
+Cuando seáis diez, o haya diez canales, esto se convierte en la copia del chat
+que el diseño anterior evitaba — y la válvula es el interruptor «Channels you
+follow», que apaga la clase entera. Si llega ese día, el arreglo no es volver
+atrás sino agrupar: un aviso por canal y por rato, no uno por línea.
 
 ## 3 · Las clases y sus interruptores
 

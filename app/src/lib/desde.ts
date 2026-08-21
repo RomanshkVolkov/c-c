@@ -17,6 +17,28 @@ export function desde(iso?: string | null): string {
   return `${d} d ago`;
 }
 
+/**
+ * Cuánta ausencia se tolera antes de apagar el punto.
+ *
+ * Diez minutos, y no menos, por dos razones que se suman: la marca se escribe
+ * como mucho una vez cada cinco (`TouchLastSeen`), y el stream late cada 25
+ * segundos. Con una ventana más corta el punto parpadearía por el propio tope,
+ * no por la persona.
+ */
+const VENTANA_MIN = 10;
+
+/**
+ * Si esta persona ha dado señales hace poco.
+ *
+ * **No es «en línea ahora»** y no debe llamarse así en pantalla: el dato puede
+ * traer hasta cinco minutos de retraso por el tope de escritura. Es «ha estado
+ * por aquí hace nada», que es lo que se puede sostener.
+ */
+export function activo(iso?: string | null): boolean {
+  if (!iso) return false;
+  return Date.now() - new Date(iso).getTime() < VENTANA_MIN * 60_000;
+}
+
 /** Lo mismo mirando al futuro: lo que le queda a un plazo. */
 export function faltan(iso?: string | null): string {
   if (!iso) return "";

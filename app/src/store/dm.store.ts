@@ -31,6 +31,8 @@ export interface DMSummary {
   username: string;
   unread: number;
   lastMessageAt?: string | null;
+  /** Del otro, no tuyo: es la mitad de decidir si escribirle ahora. */
+  lastSeenAt?: string | null;
 }
 
 interface DMState {

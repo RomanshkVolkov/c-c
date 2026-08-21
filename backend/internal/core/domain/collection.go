@@ -155,4 +155,11 @@ type ShareInfo struct {
 type UserSummary struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+	// LastSeenAt es lo que pinta el punto de actividad. Sale del `domain.User`
+	// que ya se lee para construir esto — se estaba descartando en el mapeo.
+	//
+	// Es de la persona, no de la membresía: alguien no está «activo en esta
+	// organización», está activo o no. Lo que la organización scopea es de quién
+	// ves el punto, no la señal.
+	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
 }

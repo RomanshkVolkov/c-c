@@ -134,4 +134,7 @@ type DMSummary struct {
 	Username       string     `json:"username"`
 	Unread         int64      `json:"unread"`
 	LastMessageAt  *time.Time `json:"lastMessageAt,omitempty"`
+	// Del otro, no tuyo: la lista de conversaciones existe para decidir a quién
+	// escribir, y saber si está por aquí es la mitad de esa decisión.
+	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import { useDMStore } from "@/store/dm.store";
+import PresenceDot from "@/components/PresenceDot";
 import { usePeopleStore } from "@/store/people.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -118,6 +119,7 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
                     .catch((e) => toast.error(String(e)));
                 }}
               >
+                <PresenceDot lastSeenAt={c.lastSeenAt} />
                 <span className="truncate">{c.username}</span>
                 {c.unread > 0 && (
                   <span className="ml-auto rounded-full bg-primary px-1 text-[10px] font-medium leading-4 text-primary-foreground">
@@ -139,10 +141,11 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
             {fresh.map((p) => (
               <li key={p.id}>
                 <button
-                  className="w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-accent"
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-accent"
                   onClick={() => start(p.id)}
                 >
-                  {p.username}
+                  <PresenceDot lastSeenAt={p.lastSeenAt} />
+                  <span className="truncate">{p.username}</span>
                 </button>
               </li>
             ))}

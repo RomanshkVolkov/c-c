@@ -87,7 +87,9 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	admin := handler.NewReportAdminHandler(reportSvc)
 	telemetryAdmin := handler.NewTelemetryAdminHandler(telemetrySvc)
 	imageProxy := handler.NewImageProxyHandler(reportRepo, store)
-	eventsH := handler.NewEventsHandler(hub)
+	// Con el registrador de presencia: ver el comentario en el handler — esta
+	// ruta no pasa por el middleware que lo hace en todas las demás.
+	eventsH := handler.NewEventsHandler(hub, repository.NewAuthRepository(db).TouchLastSeen)
 
 	// Admin API — JWT, org-scoped.
 	r.Route("/api/v1/report-projects", func(r chi.Router) {

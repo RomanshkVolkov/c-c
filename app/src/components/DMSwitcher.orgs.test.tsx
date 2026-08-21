@@ -20,6 +20,7 @@ const CONVERSACIONES = [
     username: "ana",
     unread: 0,
     lastMessageAt: null,
+    lastSeenAt: new Date().toISOString(),
   },
   {
     conversationId: "c-2",
@@ -31,10 +32,11 @@ const CONVERSACIONES = [
   },
 ];
 
-const GENTE: Record<string, { id: string; username: string }[]> = {
+const GENTE: Record<string, { id: string; username: string; lastSeenAt?: string }[]> = {
   "org-1": [
-    { id: "u-ana", username: "ana" },
-    { id: "u-beto", username: "beto" },
+    { id: "u-ana", username: "ana", lastSeenAt: new Date().toISOString() },
+    // Beto lleva un día sin aparecer: el punto tiene que distinguirlos.
+    { id: "u-beto", username: "beto", lastSeenAt: new Date(Date.now() - 86_400_000).toISOString() },
   ],
   "org-2": [{ id: "u-carmen", username: "carmen" }],
 };
@@ -133,5 +135,26 @@ describe("los directos son de una organización", () => {
     // Ir a Servers y volver remonta esta pantalla. Cerrar el hilo ahí sería
     // perder de vista una conversación que nadie pidió cerrar.
     expect(useDMStore.getState().conversationId).toBe("c-1");
+  });
+});
+
+describe("quién anda por aquí", () => {
+  it("distingue a quien está de quien no", async () => {
+    const { container } = render(<DMSwitcher onPicked={() => {}} />);
+    await waitFor(() => expect(container.textContent).toContain("beto"));
+
+    // Ana tiene hilo abierto y está activa; beto no tiene hilo y lleva un día.
+    // Se miran por su etiqueta y no por el color, que es lo que un lector
+    // asistivo recibe — y de paso no ata el test a una clase de Tailwind.
+    expect(container.querySelectorAll('[aria-label="active recently"]').length).toBe(1);
+    expect(container.querySelectorAll('[aria-label="not active recently"]').length).toBe(1);
+  });
+
+  it("el punto dice desde cuándo, sin prometer tiempo real", async () => {
+    const { container } = render(<DMSwitcher onPicked={() => {}} />);
+    await waitFor(() => expect(container.textContent).toContain("ana"));
+    const activo = container.querySelector('[aria-label="active recently"]');
+    // «active now», nunca «online»: el dato puede traer cinco minutos de retraso.
+    expect(activo?.getAttribute("title")).toBe("active now");
   });
 });

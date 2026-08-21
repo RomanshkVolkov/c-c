@@ -17,6 +17,8 @@ import { usePeopleStore } from "@/store/people.store";
 import { userIdFromHref } from "@/components/markdown/mention-menu";
 import type { ChatMessage } from "@/store/chat.store";
 import { useAuthStore } from "@/store/auth.store";
+import { useOrgsStore } from "@/store/orgs.store";
+import { activo } from "@/lib/desde";
 import { useTasksStore } from "@/store/tasks.store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -136,15 +138,16 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
-        {/* Seguir un canal es pedir que también lo corriente avise, no sólo
-            cuando te nombran. Vive aquí y no en preferencias porque es una
+        <QuienAnda />
+        {/* Salirse de un canal es pedir que lo corriente deje de avisar; las
+            menciones llegan igual. Vive aquí y no en preferencias porque es una
             decisión por canal: los que te importan los sabes estando dentro. */}
         <button
           onClick={() => setFollowing(spaceId, !sigo).catch((e) => toast.error(String(e)))}
           title={
             sigo
               ? "You get a notification for every message here"
-              : "Only mentions notify you here"
+              : "You left this channel — only mentions notify you here"
           }
           className={cn(
             "ml-auto flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
@@ -499,4 +502,35 @@ function MessageToTask({
 function firstLine(body: string): string {
   const line = body.split("\n").find((l) => l.trim().length > 0)?.trim() ?? "Message";
   return line.length > 120 ? line.slice(0, 117) + "…" : line;
+}
+
+/**
+ * Quién de esta organización anda por aquí.
+ *
+ * En la cabecera y no junto a cada mensaje: un punto por línea es ruido, y la
+ * pregunta que un canal contesta es «¿hay alguien ahora mismo?». Se lee de la
+ * misma lista de colegas que ya alimenta el selector de `@`, así que no cuesta
+ * ninguna petición nueva.
+ *
+ * Sale con cuentagotas —tres caras y un contador— porque la cabecera mide 48px
+ * y una fila de veinte iniciales tapa el nombre del canal, que es lo que la
+ * gente viene a leer.
+ */
+function QuienAnda() {
+  const orgId = useOrgsStore((s) => s.currentOrgId);
+  const gente = usePeopleStore((s) => (orgId ? s.byOrg[orgId] : undefined)) ?? [];
+  const yo = useAuthStore((s) => s.session?.id);
+  const aqui = gente.filter((p) => p.id !== yo && activo(p.lastSeenAt));
+  if (aqui.length === 0) return null;
+
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+      title={`Active recently: ${aqui.map((p) => p.username).join(", ")}`}
+    >
+      <span className="size-1.5 rounded-full bg-success" />
+      {aqui.slice(0, 3).map((p) => p.username).join(", ")}
+      {aqui.length > 3 && ` +${aqui.length - 3}`}
+    </span>
+  );
 }

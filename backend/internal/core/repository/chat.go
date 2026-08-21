@@ -123,32 +123,56 @@ func (r *ChatRepository) UnreadBySpace(userID string, orgIDs []string, superadmi
 // another client — about work they have nothing to do with.
 //
 // Returns them in the order asked, so the caller's list stays stable.
-// Follow y Unfollow: seguir un canal es idempotente en las dos direcciones —
-// pulsar dos veces «seguir» no es un error que merezca una pantalla roja.
+// Follow y Unfollow: seguir es lo que pasa por defecto, así que lo que se
+// guarda es lo contrario — salirse. Idempotente en las dos direcciones: pulsar
+// dos veces no es un error que merezca una pantalla roja.
+//
+// Los endpoints conservan su nombre y su verbo a propósito. La app es un
+// binario que se actualiza a mano, y una build vieja sigue pulsando
+// `POST …/follow`; lo único que cambió es qué significa la tabla por dentro.
 func (r *ChatRepository) Follow(spaceID, userID string) error {
 	return r.db.Where("space_id = ? AND user_id = ?", spaceID, userID).
-		FirstOrCreate(&domain.SpaceFollower{SpaceID: spaceID, UserID: userID}).Error
+		Delete(&domain.SpaceMute{}).Error
 }
 
 func (r *ChatRepository) Unfollow(spaceID, userID string) error {
 	return r.db.Where("space_id = ? AND user_id = ?", spaceID, userID).
-		Delete(&domain.SpaceFollower{}).Error
+		FirstOrCreate(&domain.SpaceMute{SpaceID: spaceID, UserID: userID}).Error
 }
 
-// Followers son los ids a los que avisar de un mensaje corriente.
+// Followers son los ids a los que avisar de un mensaje corriente: todo el que
+// pertenece a la organización del espacio y no se ha salido de él.
+//
+// La pertenencia decide, y no una lista propia, porque un espacio no tiene
+// miembros suyos — cualquier miembro de la organización lo alcanza. Inventarle
+// una lista sería una segunda verdad sobre quién está dentro.
 func (r *ChatRepository) Followers(spaceID string) ([]string, error) {
 	var ids []string
-	err := r.db.Model(&domain.SpaceFollower{}).
-		Where("space_id = ?", spaceID).Pluck("user_id", &ids).Error
+	err := r.db.Raw(`
+		SELECT m.user_id
+		FROM task_spaces s
+		JOIN org_memberships m ON m.org_id = s.org_id
+		WHERE s.id = ?
+		  AND NOT EXISTS (
+		        SELECT 1 FROM space_mutes x
+		        WHERE x.space_id = s.id AND x.user_id = m.user_id)
+	`, spaceID).Scan(&ids).Error
 	return ids, err
 }
 
 // FollowedSpaces son los espacios que este usuario sigue, para que la pantalla
-// pueda pintar el estado del botón sin una consulta por canal.
+// pueda pintar el estado del botón sin una consulta por canal. Con la regla
+// nueva: todos los de sus organizaciones menos los que silenció.
 func (r *ChatRepository) FollowedSpaces(userID string) ([]string, error) {
 	var ids []string
-	err := r.db.Model(&domain.SpaceFollower{}).
-		Where("user_id = ?", userID).Pluck("space_id", &ids).Error
+	err := r.db.Raw(`
+		SELECT s.id
+		FROM task_spaces s
+		JOIN org_memberships m ON m.org_id = s.org_id AND m.user_id = ?
+		WHERE NOT EXISTS (
+		        SELECT 1 FROM space_mutes x
+		        WHERE x.space_id = s.id AND x.user_id = ?)
+	`, userID, userID).Scan(&ids).Error
 	return ids, err
 }
 

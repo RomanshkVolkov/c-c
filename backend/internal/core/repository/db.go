@@ -69,6 +69,7 @@ func DBConnection() {
 		&domain.CollectionNode{},
 		&domain.CollectionShare{},
 		&domain.SpaceFollower{},
+		&domain.SpaceMute{},
 		&domain.ReportProject{},
 		&domain.Report{},
 		&domain.ReportComment{},

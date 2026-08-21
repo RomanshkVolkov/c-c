@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -54,24 +55,74 @@ func (n *notificadorEspia) paraQuien(kind string) []string {
 	return out
 }
 
-func TestElMensajeCorrienteAvisaSoloAQuienSigueElCanal(t *testing.T) {
+func TestElMensajeCorrienteAvisaATodaLaOrganizacion(t *testing.T) {
 	db, cleanup := chatFollowDB(t)
 	defer cleanup()
-	repo := repository.NewChatRepository(db)
 	espia := &notificadorEspia{}
-	svc := NewChatService(repo, nil).WithNotifier(espia)
+	svc := NewChatService(repository.NewChatRepository(db), nil).WithNotifier(espia)
 
-	if err := svc.Follow("esp-1", "22222222-2222-4222-8222-222222222222"); err != nil {
-		t.Fatal(err)
-	}
-	// Ana escribe. Bea sigue el canal; caro no.
+	// Ana escribe y nadie ha tocado nada: bea y caro se enteran sin haber
+	// pulsado ningún botón, que es de lo que iba el cambio.
 	if _, err := svc.Post("esp-1", "org-1", "11111111-1111-4111-8111-111111111111", "hola equipo"); err != nil {
 		t.Fatal(err)
 	}
 
 	avisados := espia.paraQuien("chat:message")
+	sort.Strings(avisados)
+	if len(avisados) != 2 ||
+		avisados[0] != "22222222-2222-4222-8222-222222222222" ||
+		avisados[1] != "33333333-3333-4333-8333-333333333333" {
+		t.Errorf("todos menos el autor; recibieron %v", avisados)
+	}
+}
+
+// Y quien se sale deja de recibir, que es lo único que la tabla guarda ya.
+func TestQuienSeSaleDejaDeRecibir(t *testing.T) {
+	db, cleanup := chatFollowDB(t)
+	defer cleanup()
+	espia := &notificadorEspia{}
+	svc := NewChatService(repository.NewChatRepository(db), nil).WithNotifier(espia)
+
+	if err := svc.Unfollow("esp-1", "33333333-3333-4333-8333-333333333333"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Post("esp-1", "org-1", "11111111-1111-4111-8111-111111111111", "hola"); err != nil {
+		t.Fatal(err)
+	}
+
+	avisados := espia.paraQuien("chat:message")
 	if len(avisados) != 1 || avisados[0] != "22222222-2222-4222-8222-222222222222" {
-		t.Errorf("sólo quien sigue el canal debe recibirlo, recibieron %v", avisados)
+		t.Errorf("caro se salió y bea no; recibieron %v", avisados)
+	}
+}
+
+// Salirse de un canal no te saca de los demás: la fila es por espacio.
+func TestSalirseDeUnCanalNoTeSacaDeOtro(t *testing.T) {
+	db, cleanup := chatFollowDB(t)
+	defer cleanup()
+	repo := repository.NewChatRepository(db)
+	if err := NewChatService(repo, nil).Unfollow("esp-1", "33333333-3333-4333-8333-333333333333"); err != nil {
+		t.Fatal(err)
+	}
+	quienes, err := repo.Followers("esp-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quienes) != 3 {
+		t.Errorf("el otro canal sigue con los tres; tiene %v", quienes)
+	}
+}
+
+// Y alguien de otra organización nunca entra en la lista, se salga o no.
+func TestNadieDeOtraOrganizacionRecibe(t *testing.T) {
+	db, cleanup := chatFollowDB(t)
+	defer cleanup()
+	quienes, err := repository.NewChatRepository(db).Followers("esp-otra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quienes) != 1 || quienes[0] != "44444444-4444-4444-8444-444444444444" {
+		t.Errorf("sólo el miembro de esa org; salieron %v", quienes)
 	}
 }
 
@@ -81,15 +132,17 @@ func TestQuienEscribeNoSeAvisaASiMismo(t *testing.T) {
 	espia := &notificadorEspia{}
 	svc := NewChatService(repository.NewChatRepository(db), nil).WithNotifier(espia)
 
-	// Ana sigue su propio canal, que es lo normal.
-	if err := svc.Follow("esp-1", "11111111-1111-4111-8111-111111111111"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := svc.Post("esp-1", "org-1", "11111111-1111-4111-8111-111111111111", "hola"); err != nil {
 		t.Fatal(err)
 	}
-	if len(espia.paraQuien("chat:message")) != 0 {
-		t.Error("avisarte de lo que acabas de escribir es la app hablando sola")
+	// Los demás sí lo reciben; lo que se comprueba es que ana no está entre
+	// ellos. Antes bastaba con «la lista está vacía» porque sólo el autor
+	// seguía el canal — con todos siguiendo por defecto, esa forma de mirarlo
+	// habría dejado de probar nada.
+	for _, uid := range espia.paraQuien("chat:message") {
+		if uid == "11111111-1111-4111-8111-111111111111" {
+			t.Error("avisarte de lo que acabas de escribir es la app hablando sola")
+		}
 	}
 }
 
@@ -101,17 +154,14 @@ func TestAQuienNombranNoLeLlegaTambienElAvisoCorriente(t *testing.T) {
 	espia := &notificadorEspia{}
 	svc := NewChatService(repository.NewChatRepository(db), nil).WithNotifier(espia)
 
-	if err := svc.Follow("esp-1", "22222222-2222-4222-8222-222222222222"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := svc.Post("esp-1", "org-1", "11111111-1111-4111-8111-111111111111", "oye [bea](cac:user/22222222-2222-4222-8222-222222222222) mira esto"); err != nil {
 		t.Fatal(err)
 	}
 	if m := espia.paraQuien("chat:mention"); len(m) != 1 || m[0] != "22222222-2222-4222-8222-222222222222" {
 		t.Errorf("la mención tiene que llegar, llegó a %v", m)
 	}
-	if len(espia.paraQuien("chat:message")) != 0 {
-		t.Error("nombrada y avisada por el mismo mensaje es contarlo dos veces")
+	if m := espia.paraQuien("chat:message"); len(m) != 1 || m[0] != "33333333-3333-4333-8333-333333333333" {
+		t.Errorf("a bea la nombraron, así que sólo caro recibe el corriente; %v", m)
 	}
 }
 
@@ -123,20 +173,21 @@ func TestSeguirEsIdempotenteYDejarDeSeguirCalla(t *testing.T) {
 	svc := NewChatService(repo, nil)
 
 	for i := 0; i < 2; i++ {
-		if err := svc.Follow("esp-1", "22222222-2222-4222-8222-222222222222"); err != nil {
-			t.Fatalf("seguir dos veces no puede fallar: %v", err)
+		if err := svc.Unfollow("esp-1", "22222222-2222-4222-8222-222222222222"); err != nil {
+			t.Fatalf("salirse dos veces no puede fallar: %v", err)
 		}
 	}
 	quienes, _ := repo.Followers("esp-1")
-	if len(quienes) != 1 {
-		t.Errorf("seguir dos veces deja un seguidor, dejó %d", len(quienes))
+	if len(quienes) != 2 {
+		t.Errorf("salirse dos veces saca a uno, quedaron %v", quienes)
 	}
-	if err := svc.Unfollow("esp-1", "22222222-2222-4222-8222-222222222222"); err != nil {
+	// Y volver a entrar deshace exactamente eso.
+	if err := svc.Follow("esp-1", "22222222-2222-4222-8222-222222222222"); err != nil {
 		t.Fatal(err)
 	}
 	quienes, _ = repo.Followers("esp-1")
-	if len(quienes) != 0 {
-		t.Errorf("tras dejarlo no queda nadie, quedaron %d", len(quienes))
+	if len(quienes) != 3 {
+		t.Errorf("al volver está de nuevo, quedaron %v", quienes)
 	}
 }
 
@@ -167,7 +218,7 @@ func chatFollowDB(t *testing.T) (*gorm.DB, func()) {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&domain.User{}, &domain.Organization{}, &domain.OrgMembership{},
-		&domain.TaskSpace{}, &domain.ChatMessage{}, &domain.SpaceFollower{}); err != nil {
+		&domain.TaskSpace{}, &domain.ChatMessage{}, &domain.SpaceMute{}); err != nil {
 		t.Fatal(err)
 	}
 	ahora := time.Now()
@@ -186,7 +237,18 @@ func chatFollowDB(t *testing.T) (*gorm.DB, func()) {
 		('org-1','11111111-1111-4111-8111-111111111111','admin',?), ('org-1','22222222-2222-4222-8222-222222222222','member',?), ('org-1','33333333-3333-4333-8333-333333333333','member',?)`,
 		ahora, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
-		VALUES ('esp-1','org-1','Uno','#fff','m',?,?)`, ahora, ahora))
+		VALUES ('esp-1','org-1','Uno','#fff','m',?,?), ('esp-2','org-1','Dos','#fff','n',?,?)`,
+		ahora, ahora, ahora, ahora))
+	// Otra organización con su propia persona: la pertenencia es lo que decide
+	// quién recibe, así que hace falta alguien de fuera para probar que no cruza.
+	must(db.Exec(`INSERT INTO users (id, username, email, password, created_at, updated_at) VALUES
+		('44444444-4444-4444-8444-444444444444','dani','d@x.io','x',?,?)`, ahora, ahora))
+	must(db.Exec(`INSERT INTO organizations (id, name, slug, created_at, updated_at)
+		VALUES ('org-2','Dos','dos',?,?)`, ahora, ahora))
+	must(db.Exec(`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+		VALUES ('org-2','44444444-4444-4444-8444-444444444444','admin',?)`, ahora))
+	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
+		VALUES ('esp-otra','org-2','Ajeno','#fff','m',?,?)`, ahora, ahora))
 
 	return db, func() {
 		if inner, _ := db.DB(); inner != nil {

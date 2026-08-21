@@ -31,4 +31,5 @@ export interface ShareInfo {
 export interface UserSummary {
   id: string;
   username: string;
+  lastSeenAt?: string | null;
 }

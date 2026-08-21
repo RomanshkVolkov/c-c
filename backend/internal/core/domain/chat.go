@@ -121,13 +121,26 @@ type ChatUnread struct {
 	Count   int64  `json:"count"`
 }
 
-// SpaceFollower es quien quiere enterarse de lo que se hable en un canal, sin
-// que haga falta que le nombren.
+// SpaceMute es quien **no** quiere enterarse de lo que se hable en un canal.
 //
-// Existe porque «todo mensaje avisa a todo el espacio» convierte la bandeja en
-// una copia del chat: cuarenta líneas de un canal ajeno tapan la mención que sí
-// te buscaba. Seguir es la forma de decir «este sitio me importa» sin apagarle
-// el aviso a nadie más.
+// Guarda la excepción, no la regla: por defecto todo miembro de la organización
+// sigue todos sus canales, y aquí sólo caen los que se salieron de uno.
+//
+// Al revés —una tabla de «quién sigue»— poner a todo el mundo a seguir habría
+// obligado a insertar una fila por miembro y por espacio, y a mantenerlas al
+// alta de un miembro, al alta de un espacio y a la baja: tres sitios que se
+// desincronizan y una verdad que hay que recalcular. Así no hay nada que
+// rellenar ni que sincronizar, y salirse sigue siendo un acto explícito con su
+// propia fila.
+//
+// `SpaceFollower` queda en la base sin que nadie la lea; retirarla es limpieza
+// aparte.
+type SpaceMute struct {
+	SpaceID string `gorm:"type:varchar(36);primaryKey" json:"spaceId"`
+	UserID  string `gorm:"type:varchar(36);primaryKey;index" json:"userId"`
+}
+
+// SpaceFollower: la tabla vieja, cuando seguir era opt-in. No la lee nadie.
 type SpaceFollower struct {
 	SpaceID string `gorm:"type:varchar(36);primaryKey" json:"spaceId"`
 	UserID  string `gorm:"type:varchar(36);primaryKey;index" json:"userId"`
