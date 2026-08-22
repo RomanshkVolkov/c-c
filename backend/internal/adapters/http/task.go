@@ -93,6 +93,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/chat/attachments", h.UploadChatAttachment)
 		// La entrada a la sala de voz de este espacio. Mismo guard que el chat.
 		r.Post("/{id}/voice/token", h.VoiceToken)
+		r.Post("/{id}/voice/ring", h.VoiceRing)
+		r.Delete("/{id}/voice/ring/{userId}", h.VoiceRingCancel)
 	})
 
 	r.Route("/api/v1/task-folders", func(r chi.Router) {

@@ -272,6 +272,51 @@ en el store y no en la pantalla porque es del producto: quien se ensordece en
 mitad de una llamada casi siempre se está apartando de ella, y volver hablando
 sin querer es el accidente que ese botón existe para evitar.
 
+### El timbre
+
+Un canal de voz al que hay que mirar para enterarte de que alguien te espera no
+es una llamada: es un sitio. El timbre es lo que convierte «estoy en el canal»
+en «te estoy llamando».
+
+**No se guarda en ninguna parte.** Es un evento y no un registro: lo único que
+hace es hacer sonar un teléfono, y un teléfono que suena no es estado que haya
+que reconciliar. Guardarlo obligaría a limpiarlo —al colgar, al expirar, al
+reiniciar un pod— y cada una de esas limpiezas es una manera nueva de dejar un
+timbre sonando para siempre. El tope de **veinte segundos** viaja en
+`expiresAt` y lo respetan los dos clientes por su cuenta; por eso un timbre deja
+de sonar aunque la app de quien llamaba muera de golpe.
+
+| Endpoint | Qué hace |
+|---|---|
+| `POST /api/v1/task-spaces/{id}/voice/ring` `{userId}` | Hace sonar a esa persona. Devuelve `{ringId, expiresAt}` |
+| `DELETE /api/v1/task-spaces/{id}/voice/ring/{userId}` | Deja de llamarla |
+
+La cancelación va **por persona y no por `ringId`**, que es donde el diseño
+original y la realidad no coincidían: sin estado en el servidor, un id opaco no
+dice a quién había que avisar de la cancelación —habría que guardar la
+correspondencia, que es justo lo que se evita—. «Deja de llamar a esta persona»
+es además idempotente, que es lo que uno quiere de un botón de colgar.
+
+Ese mismo endpoint es el que usa **rechazar**: quien recibe la llamada cancela
+el timbre hacia quien llamaba, y a este le llega como una cancelación con el id
+del otro. Así un «no» se ve al instante en vez de a los veinte segundos, sin
+inventar un endpoint más.
+
+La entrega **no es por websocket** como decía el handoff, sino por el stream SSE
+que ya existe, con `Event.UserID`: el hub sabe dirigir un evento a una persona
+—lo hacía ya para los directos— y eso es lo que hace que el teléfono suene en un
+solo escritorio. Si saliera dirigido a la organización sonaría en todo el equipo
+y nadie sabría a quién llamaban; hay un test que lo vigila
+(`voice_ring_test.go`, «suena en un solo escritorio»).
+
+Los tonos son **WebAudio sintetizado**, sin ficheros: dos senos y una
+envolvente pesan cero en el instalador y no hay que empaquetar un mp3 para tres
+sistemas operativos. La rampa de 30 ms a la entrada y a la salida no es estética
+—cortar una onda en seco suena a chasquido, y un chasquido cada 1,6 segundos es
+peor que el timbre—. El tono entrante respeta la sordera; el silencio del
+sistema operativo no lo puede consultar un webview, así que eso queda sin hacer
+y sin fingir.
+
 Del diseño falta todavía el **chat de la sala**. El mute de los demás y la
 latencia ya los reporta el motor (arriba); el propio micrófono se pinta de forma
 optimista al pulsar y el evento del servidor confirma un instante después,

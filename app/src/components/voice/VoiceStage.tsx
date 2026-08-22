@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { Loader2, Minimize2, Volume2 } from "lucide-react";
+import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
+import RingRow from "@/components/voice/RingRow";
 import VoiceControls from "@/components/voice/VoiceControls";
 import VoiceTile from "@/components/voice/VoiceTile";
 import { useVoice } from "@/store/voice.store";
@@ -27,13 +30,14 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const alternarMic = useVoice((s) => s.alternarMic);
   const alternarSordera = useVoice((s) => s.alternarSordera);
   const cerrarEscenario = useVoice((s) => s.cerrarEscenario);
+  const [invitando, setInvitando] = useState(false);
 
   // Tú cuentas como presente aunque el motor sólo reporte a los demás.
   const dentro = [...(yo ? [{ identity: yo, name: "You" }] : []), ...gente];
   const solo = dentro.length === 1;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
       <header className="flex h-13 shrink-0 items-center gap-3 border-b px-4">
         <Volume2 className="size-4 shrink-0 text-success" />
         <span className="truncate text-sm font-semibold">#{spaceName}</span>
@@ -50,6 +54,9 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
           {latencia !== null && ` · ${latencia} ms`}
         </span>
         <div className="flex-1" />
+        {/* Llamar a alguien vive aquí y no en la barra de mandos: los mandos
+            son sobre ti —tu micro, tu cámara— y esto es sobre la sala. */}
+        <InviteButton abierto={invitando} onToggle={() => setInvitando((v) => !v)} />
         <button
           type="button"
           onClick={cerrarEscenario}
@@ -82,6 +89,10 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
           </div>
         )}
       </div>
+
+      {invitando && <InvitePicker onClose={() => setInvitando(false)} />}
+
+      <RingRow />
 
       <VoiceControls
         mic={mic}

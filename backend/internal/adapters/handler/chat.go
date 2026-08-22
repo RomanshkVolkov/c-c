@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -357,6 +358,70 @@ func (h *taskHandler) VoiceToken(w http.ResponseWriter, r *http.Request) {
 			URL: h.voice.URL(), Token: token, Room: service.RoomFor(sp.ID),
 		},
 	})
+}
+
+// VoiceRing hace sonar el teléfono de un compañero para que entre a esta sala.
+//
+// Existe porque un canal de voz al que hay que mirar para enterarte de que
+// alguien te espera no es una llamada: es un sitio. El timbre es lo que
+// convierte «estoy en el canal» en «te estoy llamando».
+//
+// El guard es el mismo que el del token —`resolveSpace`— más el de a quién se
+// puede llamar, que está en el servicio. Sin el segundo, esto sería un pulsador
+// para hacer sonar el escritorio de cualquiera cuyo id se conozca.
+func (h *taskHandler) VoiceRing(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	var req struct {
+		UserID string `json:"userId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid body", "invalid-body")
+		return
+	}
+
+	timbre, err := h.svc.Timbrar(sp, domain.VoiceCaller{ID: user.UserID, Name: user.Username}, req.UserID)
+	if err != nil {
+		if errors.Is(err, service.ErrRingOutsider) {
+			// 403 y no 404: quien llama eligió a esa persona de una lista, y
+			// «no encontrado» de alguien que está viendo delante no explica
+			// nada. Aquí lo que pasa es que no se le puede llamar.
+			SendErrorResponse(w, http.StatusForbidden,
+				"You can only call people in this organization", "ring-outsider")
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to ring", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.VoiceRing]{Success: true, Data: timbre})
+}
+
+// VoiceRingCancel retira un timbre que todavía no ha contestado nadie.
+//
+// La persona va en la ruta y no el `ringId` que devolvió el POST. Es a
+// propósito: el timbre no se guarda en ninguna parte —ver `domain.VoiceRing`—
+// así que un id opaco no diría a quién hay que avisar. «Deja de llamar a esta
+// persona» es además idempotente, que es lo que uno quiere de un botón de
+// colgar.
+func (h *taskHandler) VoiceRingCancel(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	if err := h.svc.CancelarTimbre(sp, user.UserID, chi.URLParam(r, "userId")); err != nil {
+		if errors.Is(err, service.ErrRingOutsider) {
+			SendErrorResponse(w, http.StatusForbidden,
+				"You can only call people in this organization", "ring-outsider")
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to cancel the ring", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
 }
 
 // VoicePresence dice quién está en cada canal de voz, sin tener que entrar.

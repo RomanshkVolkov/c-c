@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // En `vi.hoisted` porque `vi.mock` se iza por encima de cualquier `const`.
-const { invoke, post, get } = vi.hoisted(() => ({ invoke: vi.fn(), post: vi.fn(), get: vi.fn() }));
+const { invoke, post, get, del } = vi.hoisted(() => ({
+  invoke: vi.fn(), post: vi.fn(), get: vi.fn(), del: vi.fn(),
+}));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke,
   // El canal real es de Tauri; aquí sólo hace falta que se pueda construir y
@@ -10,7 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((ev: unknown) => void) | null = null;
   },
 }));
-vi.mock("@/lib/api", () => ({ api: { post, get } }));
+vi.mock("@/lib/api", () => ({ api: { post, get, delete: del } }));
 
 import { useVoice } from "./voice.store";
 
@@ -18,6 +20,7 @@ const inicial = useVoice.getState();
 
 beforeEach(() => {
   invoke.mockResolvedValue("u-ana");
+  del.mockResolvedValue({ success: true });
   post.mockResolvedValue({
     success: true,
     data: { url: "wss://rtc.example", token: "jwt", room: "voice:esp-1" },
@@ -25,7 +28,8 @@ beforeEach(() => {
   useVoice.setState({
     ...inicial,
     spaceId: null, estado: "fuera", escenario: false, gente: [], hablando: [],
-    mudos: {}, latencia: null, yo: null, mic: true, sordo: false, error: null,
+    mudos: {}, latencia: null, llamando: null, entrante: null,
+    yo: null, mic: true, sordo: false, error: null,
   });
 });
 
@@ -268,5 +272,142 @@ describe("lo que el motor cuenta de los demás", () => {
     // 38 ms de la sala anterior en la cabecera de la nueva es un número que
     // parece medido y no lo es.
     expect(useVoice.getState().latencia).toBeNull();
+  });
+});
+
+/**
+ * El timbre.
+ *
+ * Un canal de voz al que hay que mirar para enterarte de que alguien te espera
+ * no es una llamada, es un sitio. El timbre es lo que convierte «estoy en el
+ * canal» en «te estoy llamando» — y con eso llega su problema: un teléfono que
+ * suena y nadie para. El servidor **no guarda el timbre**, así que el tope de
+ * los veinte segundos vive en los dos clientes, y estos tests son lo único que
+ * lo vigila de este lado.
+ */
+const timbre = (extra: Partial<Record<string, unknown>> = {}) => ({
+  ringId: "r-1",
+  spaceId: "esp-9",
+  spaceName: "general",
+  from: { id: "u-bea", name: "bea" },
+  expiresAt: new Date(Date.now() + 20_000).toISOString(),
+  ...extra,
+});
+
+describe("llamar a alguien", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    post.mockResolvedValue({ success: true, data: { ringId: "r-1" } });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("no se puede llamar desde fuera de una sala", async () => {
+    await useVoice.getState().timbrar("u-bea", "bea");
+    // A qué sala la invitarías. La llamada es «vente aquí», y sin aquí no hay
+    // nada que ofrecer.
+    expect(useVoice.getState().llamando).toBeNull();
+    expect(post).not.toHaveBeenCalledWith(expect.stringContaining("/ring"), expect.anything(), true);
+  });
+
+  it("se rinde a los veinte segundos, en vez de sonar para siempre", async () => {
+    useVoice.setState({ spaceId: "esp-1", estado: "dentro" });
+    await useVoice.getState().timbrar("u-bea", "bea");
+    expect(useVoice.getState().llamando?.sinRespuesta).toBe(false);
+
+    vi.advanceTimersByTime(20_000);
+    // No desaparece: se queda como «no contestó». Una fila que se esfuma sola
+    // no dice si te rechazaron o si el botón nunca hizo nada.
+    expect(useVoice.getState().llamando?.sinRespuesta).toBe(true);
+    expect(useVoice.getState().llamando?.name).toBe("bea");
+  });
+
+  it("si el servidor lo rechaza, no se queda una llamada de mentira sonando", async () => {
+    useVoice.setState({ spaceId: "esp-1", estado: "dentro" });
+    post.mockResolvedValue({ success: false, error: "ring-outsider" });
+    await useVoice.getState().timbrar("u-carla", "carla");
+    expect(useVoice.getState().llamando).toBeNull();
+    expect(useVoice.getState().error).toContain("ring-outsider");
+  });
+
+  it("colgar avisa al otro lado y para el reloj", async () => {
+    useVoice.setState({ spaceId: "esp-1", estado: "dentro" });
+    await useVoice.getState().timbrar("u-bea", "bea");
+    await useVoice.getState().cancelarTimbre();
+
+    expect(del).toHaveBeenCalledWith("/api/v1/task-spaces/esp-1/voice/ring/u-bea", true);
+    vi.advanceTimersByTime(30_000);
+    // Sin parar el reloj, el «no contestó» resucitaría la fila que ya cerraste.
+    expect(useVoice.getState().llamando).toBeNull();
+  });
+
+  it("salirse de la sala le calla el teléfono a quien llamabas", async () => {
+    useVoice.setState({ spaceId: "esp-1", estado: "dentro" });
+    await useVoice.getState().timbrar("u-bea", "bea");
+    await useVoice.getState().salir();
+    // Si no, le sigue sonando veinte segundos una invitación a una sala vacía.
+    expect(del).toHaveBeenCalledWith("/api/v1/task-spaces/esp-1/voice/ring/u-bea", true);
+  });
+
+  it("que te digan que no se ve como que te dijeron que no", async () => {
+    useVoice.setState({ spaceId: "esp-1", estado: "dentro" });
+    await useVoice.getState().timbrar("u-bea", "bea");
+    useVoice.getState().alColgarTimbre("u-bea");
+    expect(useVoice.getState().llamando?.sinRespuesta).toBe(true);
+  });
+});
+
+describe("que te llamen", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("enseña quién llama y a qué canal", () => {
+    useVoice.getState().alTimbrar(timbre() as never);
+    expect(useVoice.getState().entrante?.from.name).toBe("bea");
+    expect(useVoice.getState().entrante?.spaceName).toBe("general");
+  });
+
+  it("se apaga sola a la hora que dijo el servidor", () => {
+    useVoice.getState().alTimbrar(timbre() as never);
+    vi.advanceTimersByTime(20_000);
+    // Es lo que hace que un timbre sobreviva a que la app de quien llamaba
+    // muera de golpe: nadie mandará la cancelación y aun así deja de sonar.
+    expect(useVoice.getState().entrante).toBeNull();
+  });
+
+  it("no te invita a la sala en la que ya estás", () => {
+    useVoice.setState({ spaceId: "esp-9", estado: "dentro" });
+    useVoice.getState().alTimbrar(timbre() as never);
+    expect(useVoice.getState().entrante).toBeNull();
+  });
+
+  it("si el que llama cuelga, la tarjeta se va", () => {
+    useVoice.getState().alTimbrar(timbre() as never);
+    useVoice.getState().alColgarTimbre("u-bea");
+    expect(useVoice.getState().entrante).toBeNull();
+  });
+
+  it("y la de otra persona no", () => {
+    useVoice.getState().alTimbrar(timbre() as never);
+    useVoice.getState().alColgarTimbre("u-quien-sea");
+    expect(useVoice.getState().entrante).not.toBeNull();
+  });
+
+  it("aceptar entra a la sala del que llamaba, no a la que tuvieras delante", async () => {
+    post.mockResolvedValue({
+      success: true,
+      data: { url: "wss://rtc.example", token: "jwt", room: "voice:esp-9" },
+    });
+    useVoice.getState().alTimbrar(timbre() as never);
+    await useVoice.getState().aceptarEntrante();
+    expect(post).toHaveBeenCalledWith("/api/v1/task-spaces/esp-9/voice/token", {}, true);
+    expect(useVoice.getState().entrante).toBeNull();
+  });
+
+  it("rechazar se lo dice a quien llamaba, en vez de dejarle esperando", async () => {
+    useVoice.getState().alTimbrar(timbre() as never);
+    await useVoice.getState().rechazarEntrante();
+    // Veinte segundos mirando un «llamando» que ya nadie va a coger.
+    expect(del).toHaveBeenCalledWith("/api/v1/task-spaces/esp-9/voice/ring/u-bea", true);
+    expect(useVoice.getState().entrante).toBeNull();
   });
 });

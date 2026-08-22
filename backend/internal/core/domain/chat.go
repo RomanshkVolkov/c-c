@@ -158,3 +158,42 @@ type VoiceTokenResponse struct {
 	// estaba. No se acepta de vuelta: la sala la decide el servidor.
 	Room string `json:"room"`
 }
+
+// ─── El timbre de la voz ──────────────────────────────────────────────────────
+
+// VoiceCaller es quien llama, con lo justo para pintar la tarjeta.
+type VoiceCaller struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// VoiceRing es una llamada a una persona concreta para que entre a una sala.
+//
+// **No se guarda en ninguna parte.** Es un evento y no un registro: lo único
+// que hace es hacer sonar un teléfono, y un teléfono que suena no es estado que
+// haya que reconciliar. Guardarlo obligaría a limpiarlo —al colgar, al expirar,
+// al reiniciar el proceso— y cada una de esas limpiezas es una manera nueva de
+// dejar un timbre sonando para siempre.
+//
+// El tope de tiempo viaja en `ExpiresAt` y lo respetan los dos lados por su
+// cuenta: quien llama deja de esperar, y a quien llaman se le apaga la tarjeta.
+// Así, si la app de quien llama se cierra de golpe, el timbre se calla igual.
+type VoiceRing struct {
+	RingID    string      `json:"ringId"`
+	SpaceID   string      `json:"spaceId"`
+	SpaceName string      `json:"spaceName"`
+	From      VoiceCaller `json:"from"`
+	ExpiresAt time.Time   `json:"expiresAt"`
+}
+
+// VoiceRingCancel retira un timbre antes de que expire.
+//
+// Va por persona y no por `ringId` a propósito. Sin estado en el servidor, un
+// id opaco no dice a quién había que avisar de la cancelación: habría que
+// guardar la correspondencia, que es justo lo que `VoiceRing` evita. «Deja de
+// llamar a esta persona» es además idempotente y no necesita que quien cuelga
+// se acuerde de nada.
+type VoiceRingCancel struct {
+	SpaceID string `json:"spaceId"`
+	From    string `json:"from"`
+}

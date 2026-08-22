@@ -43,6 +43,17 @@ Todos los eventos que emite el backend, y qué deja cada uno.
 | `task:move` dentro de la misma columna | `task.go:554` | No, y está bien | — | reordenar no es una noticia |
 | `report:attachment` | `report.go:908` | **No** — sigue capado | — | — |
 | `task:delete` | `task.go:567` | No | — | |
+| `voice.ring` — te llaman a una sala | `voice_ring.go:47` | **No, a propósito** | — | **una sola persona**, vía `Event.UserID` |
+| `voice.ring.cancel` — colgaron, o rechazaste | `voice_ring.go:79` | No | — | la otra persona de esa llamada |
+
+**El timbre no deja fila en la campana**, y eso es una decisión y no un
+descuido. Una llamada caduca en veinte segundos: una entrada en el historial
+que dice «Bea te llamó» y ya no se puede contestar es un recordatorio de algo
+que no se puede hacer. Lo que sí hace es una notificación **del sistema**
+—cuando la ventana no está delante— y la tarjeta a pantalla completa, que es la
+única cosa de la app que se pone encima de todo lo demás. Si alguna vez hace
+falta el «te llamaron y no lo cogiste», eso es un mensaje en el canal, que sí
+espera.
 
 «Los implicados» es `ReportRepository.Involved(itemID)`: responsables ∪
 seguidores ∪ quien ya escribió en el hilo, en una sola consulta. La decisión de

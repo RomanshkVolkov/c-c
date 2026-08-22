@@ -12,6 +12,7 @@ import { useNotifUI } from "@/store/notifui.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { Bell } from "lucide-react";
 import UpdateChecker from "@/components/UpdateChecker";
+import IncomingCall from "@/components/voice/IncomingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useReportEvents } from "@/hooks/use-report-events";
@@ -119,6 +120,9 @@ export default function AppLayout() {
             task and nothing would appear. */}
         <TaskDetailDrawer />
       </SidebarInset>
+      {/* Encima de todo, y montado una sola vez: una llamada puede entrar
+          mientras miras un servidor o una nota, no sólo desde un canal. */}
+      <IncomingCall />
       <UpdateChecker />
       <Toaster richColors closeButton position="bottom-right" theme={theme} />
     </SidebarProvider>

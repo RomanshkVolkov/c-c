@@ -16,6 +16,7 @@ import { useConnectionStore } from "@/store/connection.store";
 import { usePendingStore } from "@/store/pending.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useInboxStore } from "@/store/inbox.store";
+import { useVoice, type TimbreEntrante } from "@/store/voice.store";
 
 type Payload = {
   reportId?: string;
@@ -319,6 +320,25 @@ export function useReportEvents() {
           )?.username;
           toast.message(who ? `${who} wrote to you` : "New direct message");
           notify("dm:message", who ?? "Direct message", "You have a new message");
+          break;
+        }
+        // ── El timbre de la voz ─────────────────────────────────────────
+        //
+        // Dirigidos a una persona por el servidor, igual que un directo: que
+        // lleguen ya significa que son tuyos. Y no pasan por `notify` con un
+        // texto cualquiera — la llamada tiene tarjeta propia, y la notificación
+        // del sistema es sólo para cuando la ventana no está delante.
+        case "voice.ring": {
+          const t = parse(data) as unknown as TimbreEntrante | null;
+          if (!t?.ringId) break;
+          useVoice.getState().alTimbrar(t);
+          notify("voice.ring", `${t.from.name} is calling`, `Voice call in #${t.spaceName}`);
+          break;
+        }
+        case "voice.ring.cancel": {
+          const c = parse(data) as unknown as { from?: string } | null;
+          if (!c?.from) break;
+          useVoice.getState().alColgarTimbre(c.from);
           break;
         }
         default:

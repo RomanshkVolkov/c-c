@@ -26,6 +26,37 @@ export interface VoicePeer {
   name: string;
 }
 
+/** Lo que llega por el stream de eventos cuando alguien te llama. */
+export interface TimbreEntrante {
+  ringId: string;
+  spaceId: string;
+  spaceName: string;
+  from: { id: string; name: string };
+  /** ISO. Pasada esa hora la tarjeta se va sola, llame quien llame. */
+  expiresAt: string;
+}
+
+/** Una llamada tuya que todavía no ha contestado nadie. */
+export interface TimbreSaliente {
+  identity: string;
+  name: string;
+  /** Cuándo empezó a sonar, para el contador de la pantalla. */
+  desde: number;
+  /** Se rindió: veinte segundos sin respuesta, o el otro lado dijo que no. */
+  sinRespuesta: boolean;
+}
+
+/**
+ * Cuánto suena un timbre antes de rendirse. **Tiene que coincidir con
+ * `service.TimbreTTL` del backend**, que es quien pone el `expiresAt`.
+ *
+ * El tope vive en los dos lados a propósito: el servidor no guarda el timbre en
+ * ninguna parte —es un evento, no un registro— así que no hay nadie vigilando
+ * el reloj. Cada extremo se rinde por su cuenta, y por eso un timbre sobrevive
+ * a que la app de quien llamaba se cierre de golpe.
+ */
+export const TIMBRE_MS = 20_000;
+
 interface VoiceState {
   /** El espacio cuya sala está abierta, o null. Una a la vez. */
   spaceId: string | null;
@@ -54,6 +85,10 @@ interface VoiceState {
   mudos: Record<string, boolean>;
   /** Ida y vuelta al SFU en milisegundos, o null mientras no se sepa. */
   latencia: number | null;
+  /** A quién estás llamando y todavía no contesta. */
+  llamando: TimbreSaliente | null;
+  /** Quién te llama a ti. */
+  entrante: TimbreEntrante | null;
   yo: string | null;
   mic: boolean;
   /** Sordera: ni oyes ni te oyen. */
@@ -83,6 +118,17 @@ interface VoiceState {
   refrescarOcupacion: (orgId?: string | null) => Promise<void>;
   /** Lo que reporta el motor. Público para poder probarlo sin Tauri. */
   alRecibir: (ev: VoiceEvent) => void;
+
+  /** Hacer sonar el escritorio de un compañero para que entre a esta sala. */
+  timbrar: (userId: string, nombre: string) => Promise<void>;
+  /** Dejar de llamar. También sirve para quitar el «no contestó» de en medio. */
+  cancelarTimbre: () => Promise<void>;
+  /** Te llaman. Lo invoca el stream de eventos. */
+  alTimbrar: (t: TimbreEntrante) => void;
+  /** El que llamaba colgó, o rechazaste tú y el eco vuelve. */
+  alColgarTimbre: (de: string) => void;
+  aceptarEntrante: () => Promise<void>;
+  rechazarEntrante: () => Promise<void>;
 }
 
 const VACIO = {
@@ -93,14 +139,33 @@ const VACIO = {
   hablando: [],
   mudos: {},
   latencia: null,
+  llamando: null,
   yo: null,
   mic: true,
   sordo: false,
   error: null,
 };
 
+/**
+ * Los dos relojes del timbre, fuera del store.
+ *
+ * No son estado que nadie pinte —lo que se pinta es `sinRespuesta` y que la
+ * tarjeta esté o no— y meterlos dentro obligaría a arrastrar identificadores de
+ * temporizador por el `set` y a acordarse de no serializarlos nunca.
+ */
+let relojSaliente: ReturnType<typeof setTimeout> | null = null;
+let relojEntrante: ReturnType<typeof setTimeout> | null = null;
+
+function pararReloj(cual: "saliente" | "entrante") {
+  const r = cual === "saliente" ? relojSaliente : relojEntrante;
+  if (r) clearTimeout(r);
+  if (cual === "saliente") relojSaliente = null;
+  else relojEntrante = null;
+}
+
 export const useVoice = create<VoiceState>((set, get) => ({
   ...VACIO,
+  entrante: null,
   // Fuera de `VACIO` a propósito: salir de una sala no vacía los demás canales.
   ocupacion: {},
 
@@ -144,6 +209,10 @@ export const useVoice = create<VoiceState>((set, get) => ({
   },
 
   salir: async () => {
+    // Colgar mientras llamas a alguien tiene que callarle el teléfono: si no,
+    // le sigue sonando veinte segundos una invitación a una sala vacía.
+    if (get().llamando) await get().cancelarTimbre();
+    pararReloj("saliente");
     set({ ...VACIO });
     await invoke("voice_leave").catch(() => {});
   },
@@ -199,6 +268,102 @@ export const useVoice = create<VoiceState>((set, get) => ({
     set(siguiente ? { sordo: true, mic: false } : { sordo: false });
     await invoke("voice_set_deaf", { enabled: siguiente }).catch(() => {});
     if (siguiente) await invoke("voice_set_mic", { enabled: false }).catch(() => {});
+  },
+
+  timbrar: async (userId, nombre) => {
+    const spaceId = get().spaceId;
+    if (!spaceId) return;
+    pararReloj("saliente");
+    set({ llamando: { identity: userId, name: nombre, desde: Date.now(), sinRespuesta: false } });
+    try {
+      const res = await api.post<APIResponse<{ ringId: string }>>(
+        `/api/v1/task-spaces/${spaceId}/voice/ring`,
+        { userId },
+        true,
+      );
+      if (!res.success) throw new Error(res.error ?? "no se pudo llamar");
+    } catch (e) {
+      // Se cae la fila entera en vez de dejarla sonando: una llamada que el
+      // servidor rechazó no está sonando en ninguna parte, y enseñarla como si
+      // sonara es la peor de las mentiras posibles aquí.
+      set({ llamando: null, error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+    // El tope lo pone también el cliente porque el servidor no guarda el
+    // timbre: nadie está mirando el reloj por nosotros.
+    relojSaliente = setTimeout(() => {
+      set((s) => (s.llamando ? { llamando: { ...s.llamando, sinRespuesta: true } } : s));
+    }, TIMBRE_MS);
+  },
+
+  cancelarTimbre: async () => {
+    const { spaceId, llamando } = get();
+    // Parar el reloj aquí no cambia nada que se vea: el callback comprueba que
+    // siga habiendo llamada, así que uno que llegue tarde no hace nada. Es por
+    // no dejar veinte segundos de temporizador colgando, no por corrección — y
+    // se dice para que nadie quite el `if` de ahí abajo creyendo que sobra.
+    pararReloj("saliente");
+    set({ llamando: null });
+    if (!spaceId || !llamando) return;
+    await api
+      .delete(`/api/v1/task-spaces/${spaceId}/voice/ring/${llamando.identity}`, true)
+      .catch(() => {});
+  },
+
+  alTimbrar: (t) => {
+    // Ya estás dentro de esa sala: la llamada llegó tarde o cruzada, y una
+    // tarjeta que te invita a donde ya estás sólo tapa la conversación.
+    if (get().spaceId === t.spaceId && get().estado !== "fuera") return;
+    pararReloj("entrante");
+    set({ entrante: t });
+    // Se apaga sola a la hora que dijo el servidor. Es lo que hace que un
+    // timbre sobreviva a que la app de quien llamaba muera de golpe: nadie
+    // mandará la cancelación, y aun así deja de sonar.
+    const falta = Math.max(0, new Date(t.expiresAt).getTime() - Date.now());
+    relojEntrante = setTimeout(() => {
+      set((s) => (s.entrante?.ringId === t.ringId ? { entrante: null } : s));
+    }, falta);
+  },
+
+  alColgarTimbre: (de) => {
+    set((s) => {
+      const cambios: Partial<VoiceState> = {};
+      // Colgó quien te llamaba.
+      if (s.entrante?.from.id === de) {
+        pararReloj("entrante");
+        cambios.entrante = null;
+      }
+      // O al revés: a quien tú llamabas dijo que no, y su rechazo vuelve por
+      // el mismo camino que una cancelación. Se queda «no contestó» en vez de
+      // desaparecer, porque una fila que se esfuma sola no dice si te
+      // rechazaron o si el botón nunca llegó a hacer nada.
+      if (s.llamando?.identity === de) {
+        pararReloj("saliente");
+        cambios.llamando = { ...s.llamando, sinRespuesta: true };
+      }
+      return cambios;
+    });
+  },
+
+  aceptarEntrante: async () => {
+    const t = get().entrante;
+    if (!t) return;
+    pararReloj("entrante");
+    set({ entrante: null });
+    await get().entrar(t.spaceId);
+  },
+
+  rechazarEntrante: async () => {
+    const t = get().entrante;
+    if (!t) return;
+    pararReloj("entrante");
+    set({ entrante: null });
+    // Decir que no en vez de dejar que expire: quien llamaba se entera ahora y
+    // no dentro de veinte segundos. Va por el mismo endpoint —«deja de sonar
+    // entre tú y yo»— y llega como una cancelación con tu id.
+    await api
+      .delete(`/api/v1/task-spaces/${t.spaceId}/voice/ring/${t.from.id}`, true)
+      .catch(() => {});
   },
 
   alRecibir: (ev) => {
