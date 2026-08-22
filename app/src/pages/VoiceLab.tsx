@@ -5,13 +5,17 @@ import { Input } from "@/components/ui/input";
 import type { Room } from "livekit-client";
 
 /**
- * El laboratorio de voz: la Fase 0 de los canales de voz, hecha pantalla.
+ * El laboratorio de **webview**, que ya no es por donde va la voz.
  *
- * Existe porque la app corre sobre **tres navegadores distintos** —WebView2 en
- * Windows, WKWebView en macOS, WebKitGTK en Linux— y ninguna documentación
- * sustituye a preguntarle al de verdad. Esta pantalla interroga al webview en
- * el que corre (¿hay getUserMedia? ¿getDisplayMedia? ¿conecta con un SFU real y
- * publica?) y produce el acta por OS de la que depende el resto del plan.
+ * **Esto no prueba los canales de voz.** Los canales usan un motor nativo, en
+ * el proceso de Rust, precisamente porque esta pantalla demostró que el webview
+ * de Linux viene compilado sin WebRTC. Un «RTCPeerConnection: fallo» aquí es el
+ * resultado esperado en Linux y no dice nada sobre si la voz funciona.
+ *
+ * Sigue siendo útil para lo que sí mide: qué sabe hacer el webview de cada
+ * sistema. Hará falta el día que algo de la interfaz quiera cámara o pantalla
+ * desde la ventana en vez de desde el proceso — y para volver a medir cuando
+ * cambie una versión de WebKitGTK.
  *
  * Deliberadamente autocontenida y sin tocar el backend de cac: el token se
  * acuña aquí mismo con la llave que se le dé. Eso está bien **sólo** porque es
@@ -190,12 +194,23 @@ export default function VoiceLab() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
-      <div>
-        <h1 className="text-lg font-semibold">Voice lab</h1>
+      <div className="space-y-2">
+        <h1 className="text-lg font-semibold">Webview lab</h1>
+        {/* El aviso va arriba y en rojo porque esta pantalla se confunde con
+            los canales de voz con una facilidad pasmosa — y su resultado normal
+            en Linux es un fallo, que parece una avería y no lo es. */}
+        <p className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs">
+          <strong>Esto no prueba los canales de voz.</strong> La voz usa un motor nativo
+          en el proceso de la app, no el webview. En Linux es <em>normal</em> que
+          «RTCPeerConnection» falle aquí: es justamente el motivo de que la voz no
+          pase por la ventana.
+        </p>
         <p className="text-xs text-muted-foreground">
-          Interroga a este webview: qué WebRTC tiene, y si conecta con un LiveKit de
-          desarrollo (<code>docker run --rm -p7880:7880 -p7882:7882/udp livekit/livekit-server --dev</code>).
-          El secreto se escribe aquí sólo porque es el de desarrollo; el producto real acuña el token en el servidor.
+          Lo que sí mide: qué sabe hacer el webview de este sistema. Y opcionalmente,
+          si conecta con un LiveKit de desarrollo
+          (<code>docker run --rm -p7880:7880 -p7882:7882/udp livekit/livekit-server --dev</code>).
+          El secreto se escribe aquí sólo porque es el de desarrollo; el producto real acuña
+          el token en el servidor.
         </p>
       </div>
 
