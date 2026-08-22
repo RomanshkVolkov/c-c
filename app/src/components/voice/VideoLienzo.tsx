@@ -10,11 +10,16 @@ import { convertFileSrc } from "@/lib/media";
  * devuelve la última trama de esa persona comprimida en JPEG. Ver
  * `docs/voz-video.md`.
  *
- * **Pide al ritmo al que puede pintar, no al que llegan.** Cada vuelta empieza
- * cuando la anterior terminó de dibujarse, así que si la máquina va justa se
- * piden menos tramas en vez de acumular una cola — y en Rust no se comprime
- * ninguna que nadie vaya a mirar. Un `setInterval` a 30 Hz haría lo contrario:
- * seguiría pidiendo mientras la anterior no ha llegado.
+ * **Pide al ritmo al que puede pintar, y con un techo.** Cada vuelta empieza
+ * cuando la anterior terminó de dibujarse, así que una máquina justa pide menos
+ * en vez de acumular cola. Pero además hay un tope: sin él, el bucle pedía todo
+ * lo rápido que la máquina daba —cientos de veces por segundo— y cada petición
+ * costaba una compresión al otro lado. Eso, con el manejador que entonces era
+ * síncrono, colgó la app en la v1.6.38.
+ *
+ * Y se manda **la trama que ya se tiene** en `?seq=`. Si no ha llegado ninguna
+ * nueva, el otro lado contesta 204 y no comprime nada: pedir más deprisa de lo
+ * que la cámara produce deja de costar CPU.
  *
  * El lienzo se queda **transparente hasta la primera trama** para que el avatar
  * de debajo siga viéndose. Entre suscribirse a una cámara y recibir su primera
@@ -24,13 +29,25 @@ import { convertFileSrc } from "@/lib/media";
 
 /** Tiene que coincidir con `video_frames::SCHEME` del núcleo en Rust. */
 const ESQUEMA = "cacvideo";
+
+/**
+ * 30 tramas por segundo como techo. Publicamos vídeo a esa tasa, así que pedir
+ * más deprisa no puede traer nada nuevo — sólo trabajo.
+ */
+const PERIODO_MS = 1000 / 30;
+
+/** Cuánto se espera cuando no hay trama todavía, o cuando algo falló. */
+const REINTENTO_MS = 200;
+
+const esperar = (ms: number) =>
+  ms <= 0 ? Promise.resolve() : new Promise((r) => setTimeout(r, ms));
 export default function VideoLienzo({ identity }: { identity: string }) {
   const lienzo = useRef<HTMLCanvasElement>(null);
   const [pintando, setPintando] = useState(false);
 
   useEffect(() => {
     let vivo = true;
-    let sig = 0;
+    let seq = 0;
     // El mismo ayudante que los adjuntos: construye la URL correcta para cada
     // sistema y, fuera de Tauri, devuelve la ruta sin más en vez de explotar.
     const base = convertFileSrc(identity, ESQUEMA);
@@ -38,19 +55,25 @@ export default function VideoLienzo({ identity }: { identity: string }) {
 
     const vuelta = async () => {
       while (vivo) {
+        const empezo = performance.now();
         try {
-          // La cola cambia en cada vuelta: la URL es siempre la misma trama y
-          // sin esto el webview serviría la primera para siempre desde su
-          // caché, por muchos `no-store` que mande el otro lado.
-          const res = await fetch(`${base}?t=${sig++}`);
+          // `seq` es a la vez la cola que evita la caché del webview y lo que
+          // le dice al otro lado qué trama tenemos ya.
+          const res = await fetch(`${base}?seq=${seq}`);
           if (!vivo) return;
           if (res.status === 404) {
             // Todavía no hay trama de esta persona. No es un error: es que
             // acaba de encender la cámara.
-            await new Promise((r) => setTimeout(r, 120));
+            await esperar(REINTENTO_MS);
+            continue;
+          }
+          if (res.status === 204) {
+            // La misma que ya tenemos. La cámara va más despacio que nosotros.
+            await esperar(PERIODO_MS);
             continue;
           }
           if (!res.ok) throw new Error(String(res.status));
+          seq = Number(res.headers.get("X-Cac-Seq") ?? seq) || seq;
 
           const bitmap = await createImageBitmap(await res.blob());
           if (!vivo) {
@@ -77,8 +100,13 @@ export default function VideoLienzo({ identity }: { identity: string }) {
           // Un fallo suelto no apaga el vídeo: se espera un poco y se vuelve a
           // pedir. Apagarlo dejaría el mosaico en el avatar para siempre por un
           // tropiezo de una trama.
-          await new Promise((r) => setTimeout(r, 250));
+          await esperar(REINTENTO_MS);
+          continue;
         }
+        // El techo: si la vuelta fue más rápida que un fotograma, se espera lo
+        // que falta. Es lo que impide que una máquina rápida se dedique a pedir
+        // la misma imagen mil veces por segundo.
+        await esperar(PERIODO_MS - (performance.now() - empezo));
       }
     };
     void vuelta();

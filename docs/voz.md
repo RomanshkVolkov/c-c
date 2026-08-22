@@ -361,8 +361,26 @@ callas creyendo que el otro no te oye.
    esquema `cacvideo://`, y **se comprime cuando la pantalla la pide**, no
    cuando llega. Una cámara cuyo mosaico nadie mira no cuesta un ciclo.
 
-   Falta por medir el transporte —cuántas peticiones por segundo aguanta el
-   esquema— y eso sólo se ve con dos máquinas hablando.
+   **La v1.6.38 colgó la app por esto y conviene saber por qué.** El manejador
+   del esquema era *síncrono*, y un manejador síncrono corre en el hilo que
+   atiende al webview: once milisegundos de JPEG por trama, decenas de veces
+   por segundo, y la ventana deja de responder. Encima el bucle del lienzo no
+   tenía tope y pedía todo lo rápido que la máquina daba, recomprimiendo la
+   misma trama. Ahora se contesta desde otro hilo, cada trama lleva número de
+   secuencia —quien ya la tiene recibe un 204 y no se comprime nada— y el
+   lienzo tiene un techo de 30 peticiones por segundo.
+
+   Falta por medir el transporte con esos arreglos puestos, y eso sólo se ve
+   con dos máquinas hablando.
+
+   **Tu propio recuadro no sale de la lista del servidor.** `ActiveSpeakersChanged`
+   la decide el SFU, tarda su medio segundo y puede no incluirte; en la v1.6.38
+   el recuadro propio no se encendía nunca. Se mide ahora sobre las mismas
+   muestras que se publican —energía RMS por trama de 10 ms, con 300 ms de cola
+   para que no parpadee entre sílabas— y es inmediato, funciona estando solo en
+   la sala, y se apaga solo al silenciarse porque las muestras ya van a cero.
+   Un golpe fuerte cerca del micro lo enciende un instante: está medido, está
+   aceptado, y hay un test que lo dice para que nadie lo tome por un fallo.
 
 7. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan

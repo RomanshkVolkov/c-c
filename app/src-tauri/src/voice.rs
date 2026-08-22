@@ -44,6 +44,20 @@ const CANALES: u32 = 1;
 /// 10 ms por trama, que es el tamaño que espera libwebrtc.
 const MUESTRAS_POR_TRAMA: usize = SAMPLE_RATE as usize / 100;
 
+/// A partir de qué energía se considera que alguien está hablando.
+///
+/// Sobre 1 en escala completa. Un 2 % deja fuera el ruido de fondo de una
+/// habitación y el zumbido de un ventilador, y entra con voz normal a medio
+/// metro del micrófono.
+const UMBRAL_VOZ: f32 = 0.02;
+
+/// Cuánto se mantiene encendido el indicador tras la última trama con voz.
+///
+/// Sin esto parpadea entre palabra y palabra —y entre sílabas— porque el
+/// silencio de una coma también baja del umbral. Trescientos milisegundos es
+/// más que la pausa de una frase y menos que la de un turno de conversación.
+const COLA_VOZ: std::time::Duration = std::time::Duration::from_millis(300);
+
 /// Lo que la sala le cuenta a la pantalla.
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -66,6 +80,14 @@ pub enum VoiceEvent {
     /// Esta persona está publicando vídeo, o dejó de hacerlo. La pantalla lo
     /// usa para poner un lienzo en su mosaico en vez del avatar.
     Video { identity: String, enabled: bool },
+    /// **Tú** estás hablando, medido de tu propio micrófono.
+    ///
+    /// Va aparte de `Speaking` a propósito. Aquélla es la lista que manda el
+    /// servidor, que tarda su medio segundo en decidirla y —según cómo esté
+    /// configurado el observador de niveles— puede no incluirte a ti nunca. Tu
+    /// propio recuadro no debería depender de que un servidor opine sobre algo
+    /// que está pasando en tu mesa.
+    SelfSpeaking { speaking: bool },
     Disconnected { reason: String },
 }
 
@@ -133,7 +155,7 @@ pub async fn voice_join(
         .await
         .map_err(|e| format!("no se pudo publicar el micrófono: {e}"))?;
 
-    let captura = arrancar_captura(fuente.clone())?;
+    let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
 
     on_event
         .send(VoiceEvent::Connected { identity: identidad.clone() })
@@ -231,7 +253,10 @@ pub fn close_all() {
 /// cpal entrega tramas del tamaño que le da la gana; libwebrtc las quiere de
 /// 10 ms exactos. El acumulador de aquí en medio es lo que traduce entre las dos
 /// cosas, y sin él la voz sale troceada.
-fn arrancar_captura(fuente: NativeAudioSource) -> Result<StreamGuard, String> {
+fn arrancar_captura(
+    fuente: NativeAudioSource,
+    canal: Channel<VoiceEvent>,
+) -> Result<StreamGuard, String> {
     let (fin_tx, fin_rx) = std::sync::mpsc::channel::<()>();
     let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
@@ -296,7 +321,26 @@ fn arrancar_captura(fuente: NativeAudioSource) -> Result<StreamGuard, String> {
         // El puente al SDK vive en el runtime de tauri; este hilo sólo espera la
         // orden de morir, que es lo que mantiene vivo al `stream` de cpal.
         tauri::async_runtime::spawn(async move {
+            // ¿Estás hablando? Se mide aquí, sobre las mismas muestras que se
+            // publican, en vez de esperar a que el servidor lo diga: es
+            // inmediato, funciona aunque estés solo en la sala, y no depende de
+            // cómo esté configurado el observador de niveles del SFU.
+            let mut hablando = false;
+            let mut ultima_voz = std::time::Instant::now();
+
             while let Some(datos) = tramas_rx.recv().await {
+                if hay_voz(&datos) {
+                    ultima_voz = std::time::Instant::now();
+                }
+                // La cola es lo que evita el parpadeo entre sílabas.
+                let ahora = hablando_ahora(&datos, ultima_voz);
+                if ahora != hablando {
+                    hablando = ahora;
+                    if canal.send(VoiceEvent::SelfSpeaking { speaking: ahora }).is_err() {
+                        break; // la pantalla se fue
+                    }
+                }
+
                 let trama = AudioFrame {
                     data: datos.into(),
                     sample_rate: entrada_rate,
@@ -318,6 +362,34 @@ fn arrancar_captura(fuente: NativeAudioSource) -> Result<StreamGuard, String> {
         Ok(Err(e)) => Err(e),
         Err(_) => Err("el hilo del micrófono murió al arrancar".into()),
     }
+}
+
+/// ¿Hay voz en estos 10 ms?
+///
+/// Energía media cuadrática sobre la trama. Se usa RMS y no el pico porque el
+/// pico lo alcanza cualquier cosa: con el pico, el roce de un dedo en el
+/// micrófono enciende el indicador igual que una frase.
+///
+/// **Lo que RMS no arregla**: un golpe *fuerte* en 10 ms lleva tanta energía
+/// como voz, así que un teclazo cerca del micro enciende el punto trescientos
+/// milisegundos. Se comprobó midiendo y se acepta — distinguirlo pide mirar
+/// varias tramas y su forma, que es un detector de voz de verdad y no cabe
+/// aquí. Lo que sí se descarta es todo lo que suena flojo.
+///
+/// Con las muestras puestas a cero por `SILENCIADO`, esto da cero solo:
+/// silenciarse apaga el indicador sin ningún caso especial.
+fn hay_voz(muestras: &[i16]) -> bool {
+    if muestras.is_empty() {
+        return false;
+    }
+    let suma: f64 = muestras.iter().map(|&m| { let v = m as f64; v * v }).sum();
+    let rms = (suma / muestras.len() as f64).sqrt() / i16::MAX as f64;
+    rms as f32 > UMBRAL_VOZ
+}
+
+/// El estado con la cola aplicada: hay voz ahora, o la hubo hace poco.
+fn hablando_ahora(muestras: &[i16], ultima_voz: std::time::Instant) -> bool {
+    hay_voz(muestras) || ultima_voz.elapsed() < COLA_VOZ
 }
 
 /// Traduce los eventos de la sala a lo que la pantalla entiende, y reproduce lo
@@ -739,7 +811,60 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
 
 #[cfg(test)]
 mod pruebas {
-    use super::rtt_nominado;
+    use super::{hay_voz, rtt_nominado, UMBRAL_VOZ};
+
+    fn tono(amplitud: f32) -> Vec<i16> {
+        (0..480)
+            .map(|i| {
+                let t = i as f32 / 48_000.0;
+                ((t * 440.0 * std::f32::consts::TAU).sin() * amplitud * i16::MAX as f32) as i16
+            })
+            .collect()
+    }
+
+    // Silencio absoluto es lo que produce `SILENCIADO` poniendo las muestras a
+    // cero, así que silenciarse tiene que apagar el indicador sin ningún caso
+    // especial en ningún sitio.
+    #[test]
+    fn el_silencio_no_es_hablar() {
+        assert!(!hay_voz(&vec![0i16; 480]));
+        assert!(!hay_voz(&[]));
+    }
+
+    // El ruido de fondo de una habitación queda muy por debajo del umbral. Si
+    // esto empezara a dar `true`, el punto verde estaría encendido siempre y
+    // dejaría de significar nada.
+    #[test]
+    fn el_ruido_de_fondo_no_es_hablar() {
+        assert!(!hay_voz(&tono(UMBRAL_VOZ / 4.0)));
+    }
+
+    #[test]
+    fn una_voz_normal_si_lo_es() {
+        assert!(hay_voz(&tono(0.2)));
+    }
+
+    // Lo que RMS compra frente al pico: un roce satura una muestra y deja el
+    // resto en silencio. Con el pico eso sería «hablando»; con la energía, no.
+    #[test]
+    fn un_roce_flojo_no_es_hablar() {
+        let mut roce = vec![0i16; 480];
+        roce[100] = i16::MAX / 8;
+        roce[101] = i16::MIN / 8;
+        assert!(!hay_voz(&roce));
+    }
+
+    // Y lo que **no** compra, escrito para que nadie lo descubra creyendo que
+    // es un fallo: un golpe fuerte en diez milisegundos lleva tanta energía
+    // como voz. Un teclazo cerca del micro enciende el punto un instante.
+    // Distinguirlo pide un detector de voz de verdad, que mira varias tramas.
+    #[test]
+    fn un_golpe_fuerte_si_lo_enciende_y_se_acepta() {
+        let mut golpe = vec![0i16; 480];
+        golpe[100] = i16::MAX;
+        golpe[101] = i16::MIN;
+        assert!(hay_voz(&golpe));
+    }
     use livekit::webrtc::stats::{dictionaries, CandidatePairStats, RtcStats};
 
     fn par(nominado: bool, rtt: f64) -> RtcStats {

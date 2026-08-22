@@ -33,6 +33,7 @@ const base = {
   latencia: null as number | null,
   video: {} as Record<string, boolean>,
   cam: false,
+  hablandoYo: false,
 };
 
 beforeEach(() => {
@@ -140,6 +141,31 @@ describe("la pantalla de la sala", () => {
     render(<Escenario spaceName="general" />);
     fireEvent.click(screen.getByLabelText("Turn your camera on"));
     expect(estado.current.alternarCam).toHaveBeenCalled();
+  });
+
+  it("tu recuadro se enciende con tu micrófono, no con la lista del servidor", () => {
+    // En la v1.6.38 no se encendía nunca: la lista la decide el SFU, tarda su
+    // medio segundo y puede no incluirte. Tu propio recuadro no puede depender
+    // de que un servidor opine sobre lo que pasa en tu mesa.
+    estado.current = { ...estado.current, hablandoYo: true, hablando: [] };
+    render(<Escenario spaceName="general" />);
+    expect(screen.getByText("You").closest("div")!.className).toContain("border-success");
+  });
+
+  it("y no se enciende porque el servidor te nombre a ti", () => {
+    estado.current = { ...estado.current, hablandoYo: false, hablando: ["u-ana"] };
+    render(<Escenario spaceName="general" />);
+    expect(screen.getByText("You").closest("div")!.className).not.toContain("border-success");
+  });
+
+  it("no hay botones que no hagan nada", () => {
+    render(<Escenario spaceName="general" />);
+    // Compartir pantalla y los ajustes no están implementados. Pintarlos
+    // apagados fue lo primero que se reportó de la v1.6.38.
+    expect(screen.queryByLabelText(/Share your screen/)).toBeNull();
+    expect(screen.queryByLabelText(/settings/i)).toBeNull();
+    expect(screen.queryAllByRole("button").filter((b) => (b as HTMLButtonElement).disabled))
+      .toHaveLength(0);
   });
 
   it("minimizar no cuelga", () => {

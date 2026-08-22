@@ -21,6 +21,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const estado = useVoice((s) => s.estado);
   const gente = useVoice((s) => s.gente);
   const hablando = useVoice((s) => s.hablando);
+  const hablandoYo = useVoice((s) => s.hablandoYo);
   const yo = useVoice((s) => s.yo);
   const mic = useVoice((s) => s.mic);
   const mudos = useVoice((s) => s.mudos);
@@ -81,7 +82,8 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
               <VoiceTile
                 key={p.identity}
                 nombre={p.name || p.identity}
-                hablando={hablando.includes(p.identity)}
+                // El tuyo sale de tu micrófono; el de los demás, del servidor.
+                hablando={p.identity === yo ? hablandoYo : hablando.includes(p.identity)}
                 // El propio sale de `mic` y no del mapa: es optimista, y
                 // esperar la confirmación del servidor para tachar tu propio
                 // micrófono son doscientos milisegundos en los que parece que

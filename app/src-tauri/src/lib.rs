@@ -1504,11 +1504,20 @@ pub fn run() {
         .manage(media::Session::default())
         // Attachments are served under our own scheme so an <img> can carry
         // credentials in a header instead of the URL. See media.rs.
-        .register_uri_scheme_protocol(video_frames::SCHEME, |_ctx, req| {
-            // Síncrono y no asíncrono como el de los adjuntos: aquí no hay red
-            // de por medio, sólo comprimir una trama que ya está en memoria.
-            video_frames::servir(&req)
-        })
+        .register_asynchronous_uri_scheme_protocol(
+            video_frames::SCHEME,
+            |_ctx, req, responder| {
+                // En otro hilo, y esto **no** es una optimización.
+                //
+                // La primera versión era síncrona, con el argumento de que aquí
+                // no hay red de por medio y sólo hay que comprimir algo que ya
+                // está en memoria. Pero comprimir cuesta once milisegundos y el
+                // manejador síncrono corre en el hilo que atiende al webview:
+                // con la pantalla pidiendo tramas seguidas, la ventana deja de
+                // responder y acaba muriendo. Pasó en la v1.6.38.
+                std::thread::spawn(move || responder.respond(video_frames::servir(&req)));
+            },
+        )
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |ctx, req, responder| {
             use tauri::Manager;
             let state = ctx.app_handle().state::<media::Session>();

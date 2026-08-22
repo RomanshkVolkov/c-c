@@ -17,6 +17,16 @@
 //! está mirando —minimizado, en otra pantalla— no cuesta un solo ciclo, y el
 //! ritmo lo marca lo que la interfaz es capaz de pintar en vez de lo que la red
 //! es capaz de entregar.
+//!
+//! **Dos cosas que costaron una app colgada** (v1.6.38, la primera con vídeo):
+//!
+//!  1. El manejador era **síncrono**, así que comprimía en el hilo que atiende
+//!     al webview — el bucle principal de la interfaz. Once milisegundos de
+//!     JPEG por trama, decenas de veces por segundo, y la ventana deja de
+//!     responder. Ahora la petición se contesta desde otro hilo.
+//!  2. Se recomprimía **la misma trama** una y otra vez si la pantalla pedía
+//!     más deprisa de lo que llegaban. Cada trama lleva ahora un número de
+//!     secuencia; quien ya la tiene recibe un 204 y no se comprime nada.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -35,7 +45,11 @@ pub const SCHEME: &str = "cacvideo";
 const CALIDAD: u8 = 70;
 
 /// Una trama tal como la entregó el motor, sin comprimir.
+#[derive(Clone)]
 struct Cruda {
+    /// Cuál es. Sube uno por trama recibida, y es lo que permite contestar
+    /// «no ha cambiado» sin volver a comprimir.
+    seq: u64,
     ancho: u32,
     alto: u32,
     /// Los tres planos, ya contiguos y sin relleno entre filas.
@@ -64,10 +78,9 @@ pub fn guardar(
 
     let planos = empaquetar((yp, up, vp), (sy, su, sv), ancho, alto);
 
-    ULTIMAS
-        .lock()
-        .unwrap()
-        .insert(identidad.to_string(), Cruda { ancho, alto, planos });
+    let mut guard = ULTIMAS.lock().unwrap();
+    let seq = guard.get(identidad).map_or(1, |c| c.seq + 1);
+    guard.insert(identidad.to_string(), Cruda { seq, ancho, alto, planos });
 }
 
 /// Quita el relleno del final de cada fila y deja los tres planos pegados.
@@ -127,26 +140,51 @@ pub fn identidad_de(uri: &str) -> Option<String> {
     Some(id.to_string())
 }
 
-/// Contesta a `cacvideo://localhost/<identidad>` con la última trama en JPEG.
+/// El número de trama que el webview dice tener ya, de `?seq=`.
+fn seq_pedida(uri: &str) -> Option<u64> {
+    uri.split_once("seq=")
+        .map(|(_, r)| r.split('&').next().unwrap_or(r))
+        .and_then(|v| v.parse().ok())
+}
+
+/// Contesta a `cacvideo://localhost/<identidad>?seq=<la que ya tengo>`.
+///
+/// **Se llama desde un hilo aparte**, nunca desde el bucle de la interfaz: ver
+/// la nota de arriba sobre la app colgada.
 pub fn servir(req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
-    let Some(id) = identidad_de(req.uri().to_string().as_str()) else {
+    let uri = req.uri().to_string();
+    let Some(id) = identidad_de(&uri) else {
         return vacia(400);
     };
 
-    let guard = ULTIMAS.lock().unwrap();
-    let Some(t) = guard.get(&id) else {
+    // El bloqueo se suelta **antes** de comprimir. Comprimir con el candado
+    // puesto para el hilo que además está guardando las tramas que llegan es
+    // cómo se para la recepción entera por pintar una imagen.
+    let trama = {
+        let guard = ULTIMAS.lock().unwrap();
+        guard.get(&id).cloned()
+    };
+    let Some(t) = trama else {
         // 404 y no una imagen en blanco: «todavía no hay trama» es un estado
         // que la interfaz tiene que poder distinguir de «hay una trama negra».
         return vacia(404);
     };
+    // Ya tiene ésta. Contestar 204 cuesta nada; comprimirla otra vez para que
+    // pinte lo mismo cuesta once milisegundos de CPU por cada vez que pregunta.
+    if seq_pedida(&uri) == Some(t.seq) {
+        return vacia(204);
+    }
     let Some(jpeg) = comprimir(&t.planos, t.ancho, t.alto) else {
         return vacia(500);
     };
-    drop(guard);
 
     Response::builder()
         .status(200)
         .header("Content-Type", "image/jpeg")
+        // Para que la pantalla sepa qué acaba de recibir y pueda no volver a
+        // pedirlo.
+        .header("X-Cac-Seq", t.seq.to_string())
+        .header("Access-Control-Expose-Headers", "X-Cac-Seq")
         // Sin caché: la URL es la misma trama tras trama y un `304` congelaría
         // la imagen para siempre.
         .header("Cache-Control", "no-store")

@@ -101,9 +101,6 @@ export default function VoiceControls({
         activo={sordo}
         onClick={onSordera}
       />
-      {/* Compartir pantalla y los ajustes llegan en su propio PR. Se pintan
-          apagados y sin respuesta en vez de esconderse: la barra no cambia de
-          forma cuando lleguen, y quien la mira ya sabe qué va a haber ahí. */}
       <Redondo
         icono={cam ? Video : VideoOff}
         etiqueta={cam ? "Turn your camera off" : "Turn your camera on"}
@@ -112,20 +109,24 @@ export default function VoiceControls({
         onClick={onCam}
         disabled={!onCam}
       />
-      <Redondo
-        icono={MonitorUp}
-        etiqueta="Share your screen — coming soon"
-        tono="primario"
-        activo={compartiendo}
-        onClick={onCompartir}
-        disabled={!onCompartir}
-      />
-      <Redondo
-        icono={SlidersHorizontal}
-        etiqueta="Audio and video settings — coming soon"
-        onClick={onAjustes}
-        disabled={!onAjustes}
-      />
+      {/* Compartir pantalla y los ajustes **no se pintan hasta que hagan
+          algo**. La primera versión los dejaba apagados con el argumento de
+          que así la barra no cambiaba de forma cuando llegaran; en la mano de
+          alguien eso son tres botones que no responden, y lo primero que se
+          reportó de la v1.6.38 fue justo eso. Una barra que crece luego cuesta
+          menos que una que miente ahora. */}
+      {onCompartir && (
+        <Redondo
+          icono={MonitorUp}
+          etiqueta={compartiendo ? "Stop sharing your screen" : "Share your screen"}
+          tono="primario"
+          activo={compartiendo}
+          onClick={onCompartir}
+        />
+      )}
+      {onAjustes && (
+        <Redondo icono={SlidersHorizontal} etiqueta="Audio and video settings" onClick={onAjustes} />
+      )}
 
       <span className="mx-1.5 h-7 w-px bg-border" />
 

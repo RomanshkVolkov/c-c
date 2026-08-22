@@ -20,6 +20,7 @@ export type VoiceEvent =
   | { kind: "muted"; identity: string; muted: boolean }
   | { kind: "latency"; ms: number }
   | { kind: "video"; identity: string; enabled: boolean }
+  | { kind: "selfSpeaking"; speaking: boolean }
   | { kind: "disconnected"; reason: string };
 
 export interface VoicePeer {
@@ -74,8 +75,18 @@ interface VoiceState {
   escenario: boolean;
   /** Quién está dentro, tú incluido. */
   gente: VoicePeer[];
-  /** Quién habla ahora mismo. */
+  /** Quién habla ahora mismo, **de los demás**. Lo decide el servidor. */
   hablando: string[];
+  /**
+   * Si estás hablando tú, medido de tu propio micrófono.
+   *
+   * Aparte de `hablando` a propósito: aquélla es la lista que manda el
+   * servidor, tarda su medio segundo en decidirse y puede no incluirte nunca
+   * según cómo esté configurado el SFU. Tu recuadro no debe depender de que un
+   * servidor opine sobre lo que pasa en tu mesa — en la v1.6.38 no se encendía
+   * nunca por eso.
+   */
+  hablandoYo: boolean;
   /**
    * Quién tiene el micrófono cerrado, por identidad.
    *
@@ -150,6 +161,7 @@ const VACIO = {
   escenario: false,
   gente: [],
   hablando: [],
+  hablandoYo: false,
   mudos: {},
   latencia: null,
   video: {},
@@ -441,6 +453,9 @@ export const useVoice = create<VoiceState>((set, get) => ({
         break;
       case "latency":
         set({ latencia: ev.ms });
+        break;
+      case "selfSpeaking":
+        set({ hablandoYo: ev.speaking });
         break;
       case "video":
         set((s) => ({ video: { ...s.video, [ev.identity]: ev.enabled } }));
