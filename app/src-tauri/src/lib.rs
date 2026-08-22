@@ -7,6 +7,7 @@ mod image;
 mod mcp;
 mod notes_export;
 mod pty;
+mod voice;
 
 /// Entry point for `cac --mcp` (stdio MCP server; see `mcp.rs`).
 pub fn serve_mcp() {
@@ -1493,6 +1494,9 @@ pub fn run() {
         .on_window_event(|_, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 pty::close_all();
+                // Igual que el pty: una sala abierta y un micrófono vivo en un
+                // proceso que ya nadie mira es peor que un recurso filtrado.
+                voice::close_all();
             }
         })
         .manage(TokenCache(Mutex::new(HashMap::new())))
@@ -1606,6 +1610,9 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,
+            voice::voice_join,
+            voice::voice_leave,
+            voice::voice_set_mic,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

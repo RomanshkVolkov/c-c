@@ -45,6 +45,9 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 portable-pty = "0.9.0"
+livekit = { version = "0.8.3", features = ["rustls-tls-native-roots"] }
+cpal = "0.18.2"
+tokio-stream = "0.1.19"
 
 # WebRTC en el webview de Linux. La versión y las features tienen que casar con
 # las de tauri (Cargo.lock: webkit2gtk 2.0.x); v2_38 es la puerta tras la que

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Bell, BellOff, ChevronDown, Loader2, Mic, MicOff, Pencil, PhoneOff, Plus, Send, Trash2, Volume2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +19,7 @@ import type { ChatMessage } from "@/store/chat.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { activo } from "@/lib/desde";
+import { useVoice } from "@/store/voice.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
         <QuienAnda />
+        <BotonVoz spaceId={spaceId} />
         {/* Salirse de un canal es pedir que lo corriente deje de avisar; las
             menciones llegan igual. Vive aquí y no en preferencias porque es una
             decisión por canal: los que te importan los sabes estando dentro. */}
@@ -531,6 +533,70 @@ function QuienAnda() {
       <span className="size-1.5 rounded-full bg-success" />
       {aqui.slice(0, 3).map((p) => p.username).join(", ")}
       {aqui.length > 3 && ` +${aqui.length - 3}`}
+    </span>
+  );
+}
+
+/**
+ * Entrar y salir de la voz de este canal.
+ *
+ * Vive en la cabecera, al lado del nombre: la conversación hablada es del canal,
+ * no una pantalla aparte a la que haya que ir. Cuando estás dentro, el mismo
+ * sitio pasa a ser la barra de la llamada — silenciar, colgar y quién habla.
+ */
+function BotonVoz({ spaceId }: { spaceId: string }) {
+  const { spaceId: enSala, estado, gente, hablando, yo, mic, error } = useVoice();
+  const entrar = useVoice((s) => s.entrar);
+  const salir = useVoice((s) => s.salir);
+  const alternarMic = useVoice((s) => s.alternarMic);
+  const aqui = enSala === spaceId;
+
+  if (!aqui) {
+    return (
+      <button
+        onClick={() => void entrar(spaceId)}
+        disabled={estado === "entrando"}
+        title={error ?? "Join the voice channel"}
+        className={cn(
+          "flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
+          error ? "border-destructive/40 text-destructive" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {estado === "entrando" && enSala === spaceId ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : (
+          <Volume2 className="size-3" />
+        )}
+        Voice
+      </button>
+    );
+  }
+
+  // Tú cuentas como presente aunque el motor sólo reporte a los demás.
+  const dentro = [...(yo ? [{ identity: yo, name: "tú" }] : []), ...gente];
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 rounded-md border border-success/40 px-2 py-1 text-xs">
+      <span className="flex items-center gap-1">
+        {dentro.map((p) => (
+          <span
+            key={p.identity}
+            title={p.name}
+            className={cn(
+              "size-1.5 rounded-full transition-colors",
+              // Verde vivo mientras habla; apagado cuando calla. Es lo que
+              // convierte una lista de nombres en «quién está diciendo esto».
+              hablando.includes(p.identity) ? "bg-success" : "bg-muted-foreground/40",
+            )}
+          />
+        ))}
+      </span>
+      <span className="text-muted-foreground">{dentro.length}</span>
+      <button onClick={() => void alternarMic()} title={mic ? "Mute" : "Unmute"} className="ml-1">
+        {mic ? <Mic className="size-3" /> : <MicOff className="size-3 text-destructive" />}
+      </button>
+      <button onClick={() => void salir()} title="Leave voice" className="text-muted-foreground hover:text-destructive">
+        <PhoneOff className="size-3" />
+      </button>
     </span>
   );
 }

@@ -149,7 +149,38 @@ aquí sin repetirla.
 El despliegue omite el secreto de LiveKit si no hay llaves, así que **un deploy
 sin nada de esto no falla**: simplemente no hay voz, y el endpoint lo dice.
 
-## 7 · Lo que queda, en orden
+## 7 · El motor, dentro del proceso
+
+`src-tauri/src/voice.rs`, con la forma de `pty.rs`: comandos que la pantalla
+invoca, eventos que suben por un `Channel`, y limpieza al cerrar la ventana
+—una sala abierta y un micrófono vivo en un proceso que ya nadie mira es peor
+que un recurso filtrado—.
+
+| Comando | Qué hace |
+|---|---|
+| `voice_join(url, token, onEvent)` | Conecta, publica el micro, devuelve tu identidad |
+| `voice_leave()` | Sale. Idempotente |
+| `voice_set_mic(enabled)` | Silencia **en la fuente**, sin parar el dispositivo: volver a hablar es inmediato en vez de tener que levantar otra vez el audio |
+
+**Aquí no hay credenciales de cac.** La pantalla pide el token al backend y le
+pasa al motor un `{url, token}` ya concedido — este código no puede entrar donde
+no le dejaron entrar. Esa separación es lo que hace que la autorización de la voz
+sea exactamente la del resto de la app.
+
+Dos detalles del audio que no son adorno:
+
+- **Acumulador de 10 ms.** cpal entrega tramas del tamaño que le da la gana y
+  libwebrtc las quiere de 10 ms exactos. Sin el acumulador de por medio, la voz
+  sale troceada.
+- **AEC encendido** (`echo_cancellation`, `noise_suppression`,
+  `auto_gain_control`). Sin él, hablar con altavoces es un bucle de
+  realimentación. Que el SDK lo exponga fue lo primero que comprobó el spike.
+
+La UI vive en la cabecera del canal, no en una pantalla aparte: la conversación
+hablada es del canal. Al entrar, el mismo sitio pasa a ser la barra de la
+llamada, con un punto por persona que se enciende cuando habla.
+
+## 8 · Lo que queda, en orden
 
 1. ~~**Infra**~~: manifiestos escritos (`backend/k8s/5-livekit.yaml`,
    `6-livekit-route.yaml`) y enganchados al despliegue. **Pendiente**: los cuatro
@@ -157,11 +188,13 @@ sin nada de esto no falla**: simplemente no hay voz, y el endpoint lo dice.
    de un navegador normal — eso separa «la infra está mal» de «el cliente está
    mal».
 2. ~~**Backend**~~: hecho, ver §5.
-3. **Motor**: `src-tauri/src/voice.rs` — unirse, colgar, silenciar, y eventos por
-   `Channel`, con el patrón de `pty.rs` (incluida la limpieza al cerrar).
-4. **UI**: entrar desde el canal, barra de conectado, y quién está dentro visible
-   sin entrar.
-5. **Cámara y pantalla**: nativas, después de que la voz esté sólida.
+3. ~~**Motor**~~ y ~~**UI**~~: hechos, ver §7.
+4. **Probarlo entre dos máquinas de verdad** — es lo único que valida el camino
+   del audio de punta a punta, y no lo puede hacer una prueba automática.
+5. **Quién está dentro visible sin entrar**: hoy sólo se ve estando dentro. Pide
+   que el servidor publique la ocupación de cada sala (webhooks de LiveKit o
+   consulta periódica), y es lo siguiente.
+6. **Cámara y pantalla**: nativas, después de que la voz esté sólida.
 
 ## Fuera de v1
 

@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- Los canales de voz capturan audio desde el proceso nativo (cpal), no
+       desde el webview. macOS exige la razón igual, y sin ella la app muere al
+       primer intento de abrir el micrófono en vez de pedir permiso. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>cac usa el micrófono para los canales de voz.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>cac usa la cámara para el vídeo de los canales de voz.</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsArbitraryLoads</key>
