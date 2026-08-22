@@ -138,6 +138,29 @@ valor por defecto de Envoy son 15 segundos y cortaría cada llamada a los quince
 — la misma lección que costó la ruta de eventos, aprendida una vez y aplicada
 aquí sin repetirla.
 
+### Dos trampas que costaron una tarde, y que no se ven venir
+
+**Kubernetes le pisa las variables a LiveKit.** Por cada Service del namespace,
+Kubernetes inyecta en todos los pods una variable al estilo de los viejos
+enlaces de Docker: para un Service llamado `livekit`, aparece
+`LIVEKIT_PORT=tcp://10.101.6.157:7880`. Y LiveKit lee `LIVEKIT_PORT` como su
+propio `--port`: intenta parsear eso como número y muere al arrancar. Dos
+convenciones que no se conocen, colisionando por el nombre. Se apaga con
+`enableServiceLinks: false`, que es más honesto que renombrar el Service para
+esquivar una inyección que no queremos.
+
+**`hostNetwork` no admite rolling update.** Los puertos del host son uno solo,
+así que el pod nuevo no puede programarse mientras el viejo los tiene cogidos:
+«didn't have free ports», y el despliegue se atasca **cada vez**. Por eso
+`strategy: Recreate`. El precio son unos segundos sin voz por despliegue; con
+una réplica no había alta disponibilidad que perder.
+
+Y un tercero que no es un bug sino un eco: un pod en `CrashLoopBackOff` sigue
+reportando el error **viejo** mucho después de que se haya arreglado, porque el
+backoff es exponencial. Si el `describe` acusa algo que ya resolviste, compara
+la edad del evento con la del arreglo antes de perseguirlo — o borra el pod y
+que se recree.
+
 ### Lo que sólo se puede hacer desde fuera del repositorio
 
 1. Generar el par de llaves: `docker run --rm livekit/livekit-server generate-keys`.
@@ -182,11 +205,11 @@ llamada, con un punto por persona que se enciende cuando habla.
 
 ## 8 · Lo que queda, en orden
 
-1. ~~**Infra**~~: manifiestos escritos (`backend/k8s/5-livekit.yaml`,
-   `6-livekit-route.yaml`) y enganchados al despliegue. **Pendiente**: los cuatro
-   pasos de §6.2 que viven fuera del repositorio. Se verificará con dos pestañas
-   de un navegador normal — eso separa «la infra está mal» de «el cliente está
-   mal».
+1. ~~**Infra**~~: **en pie y verificada** (2026-08-22). `rtc.guz-studio.dev`
+   responde 200 por el Gateway, y un token firmado con las llaves del clúster
+   —la misma firma que hace cac— es aceptado por el SFU:
+   `ListRooms → HTTP 200`. Falta abrir **UDP 7882** en el security group; sin
+   eso la señalización conecta y el audio no pasa.
 2. ~~**Backend**~~: hecho, ver §5.
 3. ~~**Motor**~~ y ~~**UI**~~: hechos, ver §7.
 4. **Probarlo entre dos máquinas de verdad** — es lo único que valida el camino
