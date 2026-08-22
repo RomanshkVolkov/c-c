@@ -232,9 +232,21 @@ llamada, con un punto por persona que se enciende cuando habla.
 3. ~~**Motor**~~ y ~~**UI**~~: hechos, ver §7.
 4. **Probarlo entre dos máquinas de verdad** — es lo único que valida el camino
    del audio de punta a punta, y no lo puede hacer una prueba automática.
-5. **Quién está dentro visible sin entrar**: hoy sólo se ve estando dentro. Pide
-   que el servidor publique la ocupación de cada sala (webhooks de LiveKit o
-   consulta periódica), y es lo siguiente.
+5. ~~**Quién está dentro visible sin entrar**~~: hecho.
+   `GET /api/v1/chat/voice-presence` devuelve en una sola llamada quién está en
+   la sala de cada espacio que el caller puede ver; la lista de canales lo pinta
+   y lo refresca cada quince segundos mientras está abierta.
+
+   **Se le pregunta al SFU en cada consulta**, sin llevar la cuenta por nuestro
+   lado. Escuchar los webhooks de LiveKit y mantener el estado suena más
+   eficiente y es peor: se desincroniza con el primer evento perdido y con el
+   primer reinicio, y entonces la lista miente sin que nada falle. El SFU tiene
+   la verdad por definición. Si algún día el volumen lo pide, la optimización es
+   cachear unos segundos — no llevar un registro paralelo.
+
+   La autorización no necesita puerta propia: los espacios salen del árbol que
+   ese caller ya puede ver, así que el id de una sala ajena nunca entra en la
+   consulta.
 6. **Cámara y pantalla**: nativas, después de que la voz esté sólida.
 
 ## Fuera de v1
