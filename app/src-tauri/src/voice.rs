@@ -21,11 +21,13 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use livekit::options::TrackPublishOptions;
-use livekit::track::{LocalAudioTrack, LocalTrack, RemoteTrack, TrackSource};
+use livekit::track::{LocalAudioTrack, LocalTrack, LocalVideoTrack, RemoteTrack, TrackSource};
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
-use livekit::webrtc::prelude::AudioFrame;
+use livekit::webrtc::prelude::{AudioFrame, I420Buffer, VideoFrame, VideoResolution, VideoRotation};
+use livekit::webrtc::video_source::native::NativeVideoSource;
+use livekit::webrtc::video_source::RtcVideoSource;
 use livekit::{Room, RoomEvent, RoomOptions};
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -353,4 +355,176 @@ fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
         });
         drop(stream);
     });
+}
+
+// ─── Vídeo: cámara y pantalla ─────────────────────────────────────────────────
+//
+// Mismo reparto que el audio: la captura es del sistema y la publicación es del
+// SDK. Lo único propio de aquí es la traducción entre los dos, que en vídeo es
+// el formato de píxel — las cámaras entregan RGB y WebRTC quiere I420.
+
+/// Qué se está publicando además de la voz, para que la pantalla lo sepa sin
+/// preguntar.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoState {
+    pub camera: bool,
+    pub screen: bool,
+}
+
+/// 720p a 30 fps. Suficiente para una cara y para leer código compartido, y la
+/// mitad de ancho de banda que 1080p — que en una llamada de trabajo nadie echa
+/// de menos.
+const VIDEO_ANCHO: u32 = 1280;
+const VIDEO_ALTO: u32 = 720;
+
+/// RGB de la cámara → I420, que es lo que WebRTC transporta.
+///
+/// A mano y no con los ayudantes del SDK porque los suyos van a NV12 y de ahí a
+/// I420: dos conversiones y una copia de más por trama, treinta veces por
+/// segundo. Esta es la aritmética de BT.601 y cabe en veinte líneas.
+///
+/// El submuestreo de croma toma **una** muestra por bloque de 2×2 en vez de
+/// promediar los cuatro. Es lo que hace la mayoría de las cámaras al entregar
+/// YUY2, y la diferencia no se ve en una cara a 720p.
+fn rgb_a_i420(rgb: &[u8], ancho: u32, alto: u32, destino: &mut I420Buffer) {
+    let (w, h) = (ancho as usize, alto as usize);
+    let (sy, su, _sv) = destino.strides();
+    let (y_plano, u_plano, v_plano) = destino.data_mut();
+
+    for fila in 0..h {
+        for col in 0..w {
+            let i = (fila * w + col) * 3;
+            let (r, g, b) = (rgb[i] as f32, rgb[i + 1] as f32, rgb[i + 2] as f32);
+            y_plano[fila * sy as usize + col] =
+                (0.257 * r + 0.504 * g + 0.098 * b + 16.0).clamp(0.0, 255.0) as u8;
+
+            // Un píxel de croma por cada cuatro de luma.
+            if fila % 2 == 0 && col % 2 == 0 {
+                let idx = (fila / 2) * su as usize + col / 2;
+                u_plano[idx] = (-0.148 * r - 0.291 * g + 0.439 * b + 128.0).clamp(0.0, 255.0) as u8;
+                v_plano[idx] = (0.439 * r - 0.368 * g - 0.071 * b + 128.0).clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+}
+
+/// Enciende o apaga la cámara sin tocar la voz.
+///
+/// Son pistas independientes a propósito: apagar la cámara en mitad de una frase
+/// no debería cortar lo que estás diciendo, y unirlas obligaría a republicar el
+/// audio cada vez que alguien se tapa.
+#[tauri::command]
+pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
+    let room = {
+        let guard = SESION.lock().unwrap();
+        let s = guard.as_ref().ok_or("no estás en ninguna sala")?;
+        s.room.clone()
+    };
+
+    if !enabled {
+        despublicar(&room, TrackSource::Camera).await;
+        CAMARA.store(false, std::sync::atomic::Ordering::Relaxed);
+        return Ok(estado_video());
+    }
+
+    // `is_screencast: false` — una cara. El SFU lo usa para decidir su
+    // estrategia: en una cámara prioriza la fluidez, en una pantalla el detalle
+    // del texto aunque baje la tasa.
+    let fuente = NativeVideoSource::new(
+        VideoResolution { width: VIDEO_ANCHO, height: VIDEO_ALTO },
+        false,
+    );
+    arrancar_camara(fuente.clone())?;
+    let pista = LocalVideoTrack::create_video_track("camara", RtcVideoSource::Native(fuente));
+    room.local_participant()
+        .publish_track(
+            LocalTrack::Video(pista),
+            TrackPublishOptions { source: TrackSource::Camera, ..Default::default() },
+        )
+        .await
+        .map_err(|e| format!("no se pudo publicar la cámara: {e}"))?;
+    CAMARA.store(true, std::sync::atomic::Ordering::Relaxed);
+    Ok(estado_video())
+}
+
+static CAMARA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PANTALLA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn estado_video() -> VideoState {
+    use std::sync::atomic::Ordering::Relaxed;
+    VideoState { camera: CAMARA.load(Relaxed), screen: PANTALLA.load(Relaxed) }
+}
+
+/// Retira la pista de una fuente. Se busca por `source` y no por nombre: el
+/// nombre es nuestro y podría cambiar, la fuente es lo que el otro extremo usa
+/// para decidir si eso es una cara o una pantalla.
+async fn despublicar(room: &Arc<Room>, fuente: TrackSource) {
+    let sids: Vec<_> = room
+        .local_participant()
+        .track_publications()
+        .iter()
+        .filter(|(_, pub_)| pub_.source() == fuente)
+        .map(|(sid, _)| sid.clone())
+        .collect();
+    for sid in sids {
+        let _ = room.local_participant().unpublish_track(&sid).await;
+    }
+}
+
+/// La cámara del sistema, en su propio hilo.
+fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
+    use nokhwa::pixel_format::RgbFormat;
+    use nokhwa::utils::{CameraIndex, RequestedFormat, RequestedFormatType};
+    use nokhwa::Camera;
+
+    let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    std::thread::spawn(move || {
+        let formato = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
+        let mut camara = match Camera::new(CameraIndex::Index(0), formato) {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = listo_tx.send(Err(format!("no se pudo abrir la cámara: {e}")));
+                return;
+            }
+        };
+        if let Err(e) = camara.open_stream() {
+            let _ = listo_tx.send(Err(format!("no se pudo arrancar la cámara: {e}")));
+            return;
+        }
+        let _ = listo_tx.send(Ok(()));
+
+        while CAMARA.load(std::sync::atomic::Ordering::Relaxed) {
+            // Un buffer por trama: `I420Buffer` no se puede clonar y el frame
+            // se lo lleva. Reusarlo exigiría que la conversión y el envío no se
+            // solapen, que es sincronización a cambio de una asignación que el
+            // asignador resuelve en nada.
+            let mut buffer = I420Buffer::new(VIDEO_ANCHO, VIDEO_ALTO);
+            let Ok(trama) = camara.frame() else { break };
+            let Ok(rgb) = trama.decode_image::<RgbFormat>() else { continue };
+            // Sólo si la cámara entrega justo lo que pedimos: escalar aquí sería
+            // meter un reescalador por software en el camino caliente, y el
+            // sitio correcto para eso es pedirle a la cámara otra resolución.
+            if rgb.width() != VIDEO_ANCHO || rgb.height() != VIDEO_ALTO {
+                continue;
+            }
+            rgb_a_i420(rgb.as_raw(), VIDEO_ANCHO, VIDEO_ALTO, &mut buffer);
+            fuente.capture_frame(&VideoFrame {
+                rotation: VideoRotation::VideoRotation0,
+                timestamp_us: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_micros() as i64)
+                    .unwrap_or(0),
+                buffer,
+                frame_metadata: Default::default(),
+            });
+        }
+        let _ = camara.stop_stream();
+    });
+
+    match listo_rx.recv() {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err("el hilo de la cámara murió al arrancar".into()),
+    }
 }

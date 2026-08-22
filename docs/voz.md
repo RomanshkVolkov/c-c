@@ -247,7 +247,22 @@ llamada, con un punto por persona que se enciende cuando habla.
    La autorización no necesita puerta propia: los espacios salen del árbol que
    ese caller ya puede ver, así que el id de una sala ajena nunca entra en la
    consulta.
-6. **Cámara y pantalla**: nativas, después de que la voz esté sólida.
+6. **Cámara y pantalla**: **publicar** está hecho para la cámara
+   (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
+   un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
+   mitad de una frase no corta lo que estás diciendo.
+
+   **Ver lo que publican los demás es el problema abierto**, y no es de layout.
+   Con el motor en Rust, las tramas de vídeo llegan al proceso nativo y la
+   interfaz vive en un webview: hay que cruzar esa frontera treinta veces por
+   segundo. El audio no tuvo este problema porque sale por los altavoces sin
+   pasar por la ventana. Las salidas posibles —un esquema propio que sirva las
+   tramas como un stream, o memoria compartida y un canvas— son una decisión
+   arquitectónica que conviene tomar despierto, no de pasada.
+
+7. **La barra de llamada como es debido.** La primera versión cabe en la
+   cabecera del canal, y eso está mal: una llamada tiene que sobrevivir a irte a
+   otro canal, y compartir pantalla necesita sitio de verdad. Está en diseño.
 
 ## Fuera de v1
 
