@@ -360,13 +360,21 @@ callas creyendo que el otro no te oye.
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
 
+   **Compartir pantalla resultó estar casi resuelto**: el `libwebrtc` que ya
+   enlazamos trae un `DesktopCapturer` multiplataforma —WGC en Windows,
+   ScreenCaptureKit en macOS, PipeWire en Linux— y no hacen falta ni `scap` ni
+   bindings propios. Medido en `docs/voz-video.md` §1.
+
    **Ver lo que publican los demás es el problema abierto**, y no es de layout.
    Con el motor en Rust, las tramas de vídeo llegan al proceso nativo y la
    interfaz vive en un webview: hay que cruzar esa frontera treinta veces por
    segundo. El audio no tuvo este problema porque sale por los altavoces sin
    pasar por la ventana. Las salidas posibles —un esquema propio que sirva las
    tramas como un stream, o memoria compartida y un canvas— son una decisión
-   arquitectónica que conviene tomar despierto, no de pasada.
+   arquitectónica que conviene tomar despierto, no de pasada. El análisis con lo
+   que se puede medir de este stack, las cuatro salidas posibles y lo que hizo
+   otro equipo con exactamente el mismo problema está en
+   [`voz-video.md`](voz-video.md).
 
 7. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
