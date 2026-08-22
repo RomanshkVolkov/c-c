@@ -29,6 +29,8 @@ const base = {
   yo: "u-ana",
   mic: true,
   sordo: false,
+  mudos: {} as Record<string, boolean>,
+  latencia: null as number | null,
 };
 
 beforeEach(() => {
@@ -74,6 +76,42 @@ describe("la pantalla de la sala", () => {
     const mosaico = (n: string) => screen.getByText(n).closest("div")!.className;
     expect(mosaico("bea")).toContain("border-success");
     expect(mosaico("caro")).not.toContain("border-success");
+  });
+
+  it("tacha el micrófono de quien el motor dice que está mudo", () => {
+    estado.current = {
+      ...estado.current,
+      gente: [{ identity: "u-bea", name: "bea" }, { identity: "u-caro", name: "caro" }],
+      mudos: { "u-bea": true, "u-caro": false },
+    };
+    render(<Escenario spaceName="general" />);
+    expect(screen.getByTitle("bea is muted")).toBeTruthy();
+    expect(screen.queryByTitle("caro is muted")).toBeNull();
+  });
+
+  it("y del que no se sabe nada, no dice que esté mudo", () => {
+    estado.current = { ...estado.current, gente: [{ identity: "u-bea", name: "bea" }], mudos: {} };
+    render(<Escenario spaceName="general" />);
+    // Pintar mudo a quien no ha reportado su pista es peor que no pintar nada:
+    // te callas creyendo que el otro no te oye.
+    expect(screen.queryByTitle("bea is muted")).toBeNull();
+  });
+
+  it("tu propio micrófono sale de lo que pulsaste, no del servidor", () => {
+    estado.current = { ...estado.current, mic: false, mudos: {} };
+    render(<Escenario spaceName="general" />);
+    expect(screen.getByTitle("You is muted")).toBeTruthy();
+  });
+
+  it("enseña la latencia sólo cuando se sabe", () => {
+    estado.current = { ...estado.current, gente: [{ identity: "u-bea", name: "bea" }] };
+    const { rerender } = render(<Escenario spaceName="general" />);
+    // Mientras se establece la conexión no hay par ICE nominado; un «0 ms» ahí
+    // se lee como una llamada perfecta justo cuando todavía no lo es.
+    expect(screen.getByText(/2 in voice/).textContent).not.toContain("ms");
+    estado.current = { ...estado.current, latencia: 38 };
+    rerender(<Escenario spaceName="general" />);
+    expect(screen.getByText(/2 in voice/).textContent).toContain("· 38 ms");
   });
 
   it("minimizar no cuelga", () => {

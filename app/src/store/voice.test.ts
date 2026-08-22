@@ -25,7 +25,7 @@ beforeEach(() => {
   useVoice.setState({
     ...inicial,
     spaceId: null, estado: "fuera", escenario: false, gente: [], hablando: [],
-    yo: null, mic: true, sordo: false, error: null,
+    mudos: {}, latencia: null, yo: null, mic: true, sordo: false, error: null,
   });
 });
 
@@ -216,5 +216,57 @@ describe("la sordera", () => {
     await useVoice.getState().alternarSordera();
     await useVoice.getState().entrar("esp-2");
     expect(useVoice.getState().sordo).toBe(false);
+  });
+});
+
+/**
+ * Quién tiene el micrófono cerrado, y cuánto tarda la voz en llegar.
+ *
+ * Los dos los reporta el motor —el primero porque `voice_set_mic` silencia la
+ * **pista** y eso viaja al resto de la sala; el segundo del par ICE nominado—
+ * y los dos tienen la misma trampa: un valor por defecto miente. Por eso
+ * `mudos` es un mapa y no una lista, y `latencia` empieza en `null`.
+ */
+describe("lo que el motor cuenta de los demás", () => {
+  it("apunta quién está mudo cuando lo dice el motor", () => {
+    useVoice.getState().alRecibir({ kind: "muted", identity: "u-bea", muted: true });
+    expect(useVoice.getState().mudos["u-bea"]).toBe(true);
+  });
+
+  it("de quien no ha dicho nada, no afirma nada", () => {
+    useVoice.getState().alRecibir({ kind: "muted", identity: "u-bea", muted: true });
+    // Ni abierto ni cerrado: `undefined`. Con una lista de mudos, «no sé» y
+    // «está abierto» serían el mismo valor y la pantalla tendría que elegir.
+    expect(useVoice.getState().mudos["u-caro"]).toBeUndefined();
+  });
+
+  it("al irse alguien se olvida su micrófono", () => {
+    useVoice.setState({ gente: [{ identity: "u-bea", name: "bea" }] });
+    useVoice.getState().alRecibir({ kind: "muted", identity: "u-bea", muted: true });
+    useVoice.getState().alRecibir({ kind: "left", identity: "u-bea" });
+    // Si se quedara, quien se fue mudo y vuelve abierto saldría silenciado
+    // hasta que se le ocurriera tocar el botón.
+    expect(useVoice.getState().mudos["u-bea"]).toBeUndefined();
+  });
+
+  it("silenciarte se pinta ya, sin esperar al servidor", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().alternarMic();
+    // Tu mosaico y el de los demás salen del mismo mapa; esperar la
+    // confirmación son doscientos milisegundos de botón que no hace nada.
+    expect(useVoice.getState().mudos["u-ana"]).toBe(true);
+  });
+
+  it("guarda la latencia que mide el motor", () => {
+    useVoice.getState().alRecibir({ kind: "latency", ms: 38 });
+    expect(useVoice.getState().latencia).toBe(38);
+  });
+
+  it("y no la arrastra de una llamada a la siguiente", async () => {
+    useVoice.getState().alRecibir({ kind: "latency", ms: 38 });
+    await useVoice.getState().entrar("esp-1");
+    // 38 ms de la sala anterior en la cabecera de la nueva es un número que
+    // parece medido y no lo es.
+    expect(useVoice.getState().latencia).toBeNull();
   });
 });

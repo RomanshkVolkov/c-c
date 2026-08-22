@@ -200,13 +200,38 @@ que un recurso filtrado—.
 |---|---|
 | `voice_join(url, token, onEvent)` | Conecta, publica el micro, devuelve tu identidad |
 | `voice_leave()` | Sale. Idempotente |
-| `voice_set_mic(enabled)` | Silencia **en la fuente**, sin parar el dispositivo: volver a hablar es inmediato en vez de tener que levantar otra vez el audio |
+| `voice_set_mic(enabled)` | Silencia **la pista publicada**, no sólo las muestras — ver abajo. La captura sigue corriendo: volver a hablar es inmediato en vez de tener que levantar otra vez el dispositivo |
 | `voice_set_deaf(enabled)` | Deja de oír: el callback del altavoz descarta lo que saca de la cola. Se descarta consumiéndolo, no saltándose el `pop` — si no, la cola crece mientras no oyes y al volver sonaría lo de hace un minuto |
 
 **Aquí no hay credenciales de cac.** La pantalla pide el token al backend y le
 pasa al motor un `{url, token}` ya concedido — este código no puede entrar donde
 no le dejaron entrar. Esa separación es lo que hace que la autorización de la voz
 sea exactamente la del resto de la app.
+
+**Silenciarse tiene que viajar.** La primera versión zereaba las muestras y ya:
+te dejaba callado, pero para el resto de la sala seguías con el micrófono
+abierto —el SFU no distingue tu silencio del silencio— y su icono de «mudo»
+nunca se encendía. `LocalAudioTrack::mute()` sí viaja: el servidor lo reparte y
+a los demás les llega un `TrackMuted`. Las muestras se siguen zereando encima,
+que es lo que garantiza que entre pulsar y que el servidor se entere no salga
+media palabra.
+
+**Los que ya estaban.** El SDK **no** manda `ParticipantConnected` por la gente
+que estaba en la sala antes que tú: vienen en `RoomEvent::Connected` con sus
+publicaciones. Sin ese brazo, entrar a una conversación en curso enseñaba una
+sala vacía hasta que alguien se movía — justo la vez que más importa ver quién
+hay. De ahí sale también su estado de micrófono de partida: reportarlo sólo al
+cambiar dejaba a quien entró mudo pintado como abierto hasta que hablara.
+
+**La latencia es medida, no estimada.** Sale de `Room::get_stats()`, del
+`CandidatePair` **nominado** —el camino por el que van de verdad los paquetes— y
+su `current_round_trip_time`, que es lo que mide WebRTC con sus consent checks.
+Hay un par por cada camino que ICE probó y casi todos son callejones con el
+contador a cero; coger el primero de la lista da un número bonito que no
+corresponde a nada, y hay tests en `voice.rs` que fallan si alguien lo hace. Se
+pregunta cada cinco segundos y, mientras no haya par nominado, **no se manda
+nada**: un «0 ms» en la cabecera se lee como una conexión perfecta justo cuando
+todavía se está estableciendo.
 
 Dos detalles del audio que no son adorno:
 
@@ -247,11 +272,16 @@ en el store y no en la pantalla porque es del producto: quien se ensordece en
 mitad de una llamada casi siempre se está apartando de ella, y volver hablando
 sin querer es el accidente que ese botón existe para evitar.
 
-Tres cosas que el diseño pide y **todavía no están**, para que no se lean como
-olvidos: la latencia en la cabecera (el motor aún no la reporta, y un número
-inventado justo donde se mira cuando la llamada va mal es peor que nada), el
-mute de los demás (el motor sólo reporta el propio; pintarlos a todos abiertos
-miente menos que pintarlos silenciados), y el chat de la sala.
+Del diseño falta todavía el **chat de la sala**. El mute de los demás y la
+latencia ya los reporta el motor (arriba); el propio micrófono se pinta de forma
+optimista al pulsar y el evento del servidor confirma un instante después,
+porque esperar la confirmación son doscientos milisegundos en los que parece que
+el botón no hizo nada.
+
+En el store, `mudos` es un **mapa** y no una lista de silenciados a propósito:
+«no sé nada de esta persona» y «esta persona está abierta» no son lo mismo, y
+pintar mudo a quien no ha reportado su pista es peor que no pintar nada — te
+callas creyendo que el otro no te oye.
 
 ## 8 · Lo que queda, en orden
 

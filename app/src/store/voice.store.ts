@@ -17,6 +17,8 @@ export type VoiceEvent =
   | { kind: "joined"; identity: string; name: string }
   | { kind: "left"; identity: string }
   | { kind: "speaking"; identities: string[] }
+  | { kind: "muted"; identity: string; muted: boolean }
+  | { kind: "latency"; ms: number }
   | { kind: "disconnected"; reason: string };
 
 export interface VoicePeer {
@@ -42,6 +44,16 @@ interface VoiceState {
   gente: VoicePeer[];
   /** Quién habla ahora mismo. */
   hablando: string[];
+  /**
+   * Quién tiene el micrófono cerrado, por identidad.
+   *
+   * Un mapa y no una lista porque «no sé nada de esta persona» y «esta persona
+   * está abierta» no son lo mismo: hasta que el motor reporta su pista, la
+   * pantalla no debe afirmar ninguna de las dos.
+   */
+  mudos: Record<string, boolean>;
+  /** Ida y vuelta al SFU en milisegundos, o null mientras no se sepa. */
+  latencia: number | null;
   yo: string | null;
   mic: boolean;
   /** Sordera: ni oyes ni te oyen. */
@@ -79,6 +91,8 @@ const VACIO = {
   escenario: false,
   gente: [],
   hablando: [],
+  mudos: {},
+  latencia: null,
   yo: null,
   mic: true,
   sordo: false,
@@ -160,7 +174,15 @@ export const useVoice = create<VoiceState>((set, get) => ({
     const siguiente = !get().mic;
     // Optimista: silenciarse tiene que sentirse instantáneo, y el motor no
     // puede fallar en apagar algo que ya tiene abierto.
-    set({ mic: siguiente });
+    //
+    // Se pinta también en `mudos` para que tu mosaico y el de los demás salgan
+    // del mismo sitio; el motor confirma con su propio evento un instante
+    // después y escribe encima lo mismo.
+    const yo = get().yo;
+    set((s) => ({
+      mic: siguiente,
+      mudos: yo ? { ...s.mudos, [yo]: !siguiente } : s.mudos,
+    }));
     await invoke("voice_set_mic", { enabled: siguiente }).catch(() => {});
   },
 
@@ -192,12 +214,26 @@ export const useVoice = create<VoiceState>((set, get) => ({
         );
         break;
       case "left":
-        set((s) => ({
-          gente: s.gente.filter((p) => p.identity !== ev.identity),
-          // Y fuera de los que hablan: sin esto, quien se va mientras habla
-          // deja su punto encendido para siempre.
-          hablando: s.hablando.filter((id) => id !== ev.identity),
-        }));
+        set((s) => {
+          // Fuera del mapa de mudos también: dejar la entrada haría que quien
+          // se fue mudo y vuelve abierto apareciera silenciado hasta que se le
+          // ocurriera tocar el botón.
+          const mudos = { ...s.mudos };
+          delete mudos[ev.identity];
+          return {
+            gente: s.gente.filter((p) => p.identity !== ev.identity),
+            // Y fuera de los que hablan: sin esto, quien se va mientras habla
+            // deja su punto encendido para siempre.
+            hablando: s.hablando.filter((id) => id !== ev.identity),
+            mudos,
+          };
+        });
+        break;
+      case "muted":
+        set((s) => ({ mudos: { ...s.mudos, [ev.identity]: ev.muted } }));
+        break;
+      case "latency":
+        set({ latencia: ev.ms });
         break;
       case "speaking":
         // La lista entera, no un delta: reconstruirla a base de altas y bajas

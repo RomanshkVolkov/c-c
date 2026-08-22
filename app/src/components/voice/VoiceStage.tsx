@@ -20,6 +20,8 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const hablando = useVoice((s) => s.hablando);
   const yo = useVoice((s) => s.yo);
   const mic = useVoice((s) => s.mic);
+  const mudos = useVoice((s) => s.mudos);
+  const latencia = useVoice((s) => s.latencia);
   const sordo = useVoice((s) => s.sordo);
   const salir = useVoice((s) => s.salir);
   const alternarMic = useVoice((s) => s.alternarMic);
@@ -35,15 +37,17 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
       <header className="flex h-13 shrink-0 items-center gap-3 border-b px-4">
         <Volume2 className="size-4 shrink-0 text-success" />
         <span className="truncate text-sm font-semibold">#{spaceName}</span>
-        {/* Sin latencia: el motor todavía no la reporta y un número inventado
-            en el sitio donde se mira cuando la llamada va mal es peor que no
-            poner nada. Cuando el SDK la dé, va aquí. */}
         <span className="shrink-0 text-[13px] text-muted-foreground">
           {estado === "entrando"
             ? "connecting…"
             : solo
               ? "nobody else yet"
               : `${dentro.length} in voice`}
+          {/* El ida y vuelta medido por WebRTC, no una estimación nuestra. Sólo
+              cuando se sabe: mientras se establece la conexión no hay par
+              nominado, y un «0 ms» ahí se lee como una llamada perfecta justo
+              en el momento en que todavía no lo es. */}
+          {latencia !== null && ` · ${latencia} ms`}
         </span>
         <div className="flex-1" />
         <button
@@ -68,10 +72,11 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                 key={p.identity}
                 nombre={p.name || p.identity}
                 hablando={hablando.includes(p.identity)}
-                // Sólo se sabe del propio: el motor aún no reporta el mute de
-                // los demás. Pintar a todos como abiertos sería mentir menos
-                // que pintarlos silenciados, así que se calla de los demás.
-                silenciado={p.identity === yo && !mic}
+                // El propio sale de `mic` y no del mapa: es optimista, y
+                // esperar la confirmación del servidor para tachar tu propio
+                // micrófono son doscientos milisegundos en los que parece que
+                // el botón no hizo nada.
+                silenciado={p.identity === yo ? !mic : (mudos[p.identity] ?? false)}
               />
             ))}
           </div>

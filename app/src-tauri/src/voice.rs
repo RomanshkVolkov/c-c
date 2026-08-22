@@ -21,7 +21,9 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use livekit::options::TrackPublishOptions;
-use livekit::track::{LocalAudioTrack, LocalTrack, LocalVideoTrack, RemoteTrack, TrackSource};
+use livekit::track::{
+    LocalAudioTrack, LocalTrack, LocalVideoTrack, RemoteTrack, TrackKind, TrackSource,
+};
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
@@ -54,6 +56,12 @@ pub enum VoiceEvent {
     /// reconstruir el conjunto a base de altas y bajas es cómo se acaba con un
     /// punto verde encendido para siempre por un evento perdido.
     Speaking { identities: Vec<String> },
+    /// Quién tiene el micrófono cerrado. Uno a uno y no la lista entera, porque
+    /// aquí sí llega un evento por cambio y no un estado completo: el SDK avisa
+    /// de la pista que se silencia, no de las que siguen igual.
+    Muted { identity: String, muted: bool },
+    /// Ida y vuelta al SFU, en milisegundos.
+    Latency { ms: u32 },
     Disconnected { reason: String },
 }
 
@@ -62,7 +70,10 @@ struct VoiceSession {
     /// Se retienen para que la captura siga viva: soltar el stream de cpal lo
     /// para, y soltar la fuente corta lo que se publica.
     _captura: StreamGuard,
-    fuente: NativeAudioSource,
+    _fuente: NativeAudioSource,
+    /// La pista publicada, para poder silenciarla **en la pista** y no sólo en
+    /// las muestras. Ver `voice_set_mic`.
+    micro: LocalAudioTrack,
 }
 
 /// Un `cpal::Stream` no es `Send`, y aquí hace falta guardarlo en una estructura
@@ -112,7 +123,7 @@ pub async fn voice_join(
     let pista = LocalAudioTrack::create_audio_track("micro", RtcAudioSource::Native(fuente.clone()));
     room.local_participant()
         .publish_track(
-            LocalTrack::Audio(pista),
+            LocalTrack::Audio(pista.clone()),
             TrackPublishOptions { source: TrackSource::Microphone, ..Default::default() },
         )
         .await
@@ -127,10 +138,12 @@ pub async fn voice_join(
     *SESION.lock().unwrap() = Some(VoiceSession {
         room: room.clone(),
         _captura: captura,
-        fuente,
+        _fuente: fuente,
+        micro: pista,
     });
 
-    escuchar_eventos(eventos, on_event);
+    escuchar_eventos(eventos, on_event.clone());
+    medir_latencia(Arc::downgrade(&room), on_event);
     Ok(identidad)
 }
 
@@ -149,19 +162,30 @@ pub async fn voice_leave() {
     }
 }
 
-/// Silenciar sin salirse. Se apaga en la **fuente** y no parando la captura:
-/// así el flujo sigue vivo y volver a hablar es inmediato, en vez de tener que
-/// levantar otra vez el dispositivo de audio.
+/// Silenciar sin salirse.
+///
+/// Se silencia **la pista** y no sólo las muestras, y esa es la diferencia que
+/// importa: zerear lo que se publica te deja callado, pero para el resto de la
+/// sala sigues con el micrófono abierto —el SFU no distingue tu silencio del
+/// silencio— y su icono de «mudo» nunca se enciende. `mute()` sí viaja: el
+/// servidor lo reparte y a los demás les llega un `TrackMuted`.
+///
+/// Las muestras se siguen zereando además de eso. Es redundante mientras la
+/// pista esté muda, y es lo que garantiza que entre pulsar el botón y que el
+/// servidor se entere no salga media palabra.
+///
+/// Lo que **no** se hace es parar la captura: el flujo sigue vivo y volver a
+/// hablar es inmediato, en vez de tener que levantar otra vez el dispositivo.
 #[tauri::command]
 pub fn voice_set_mic(enabled: bool) -> Result<(), String> {
     let guard = SESION.lock().unwrap();
     let s = guard.as_ref().ok_or("no estás en ninguna sala")?;
-    s.fuente.set_audio_options(AudioSourceOptions {
-        echo_cancellation: true,
-        noise_suppression: true,
-        auto_gain_control: true,
-    });
     SILENCIADO.store(!enabled, std::sync::atomic::Ordering::Relaxed);
+    if enabled {
+        s.micro.unmute();
+    } else {
+        s.micro.mute();
+    }
     Ok(())
 }
 
@@ -296,6 +320,35 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = eventos.recv().await {
             let enviado = match ev {
+                // Los que ya estaban cuando llegaste.
+                //
+                // El SDK **no** manda `ParticipantConnected` por ellos: vienen
+                // en la respuesta de entrada y sólo aparecen aquí. Sin este
+                // brazo, entrar a una conversación en curso enseñaba una sala
+                // vacía hasta que alguien se movía — que es justo la vez que
+                // más importa ver quién hay.
+                RoomEvent::Connected { participants_with_tracks } => {
+                    let mut r = Ok(());
+                    for (p, pistas) in participants_with_tracks {
+                        let identity = p.identity().to_string();
+                        r = r.and(canal.send(VoiceEvent::Joined {
+                            identity: identity.clone(),
+                            name: p.name().to_string(),
+                        }));
+                        // Y su micrófono, que también es estado de partida: si
+                        // sólo se reportara al cambiar, quien entró mudo se
+                        // vería abierto hasta que se le ocurriera hablar.
+                        for pista in pistas {
+                            if pista.kind() == TrackKind::Audio {
+                                r = r.and(canal.send(VoiceEvent::Muted {
+                                    identity: identity.clone(),
+                                    muted: pista.is_muted(),
+                                }));
+                            }
+                        }
+                    }
+                    r
+                }
                 RoomEvent::ParticipantConnected(p) => canal.send(VoiceEvent::Joined {
                     identity: p.identity().to_string(),
                     name: p.name().to_string(),
@@ -306,6 +359,32 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                 RoomEvent::ActiveSpeakersChanged { speakers } => canal.send(VoiceEvent::Speaking {
                     identities: speakers.iter().map(|s| s.identity().to_string()).collect(),
                 }),
+                RoomEvent::TrackMuted { participant, publication }
+                | RoomEvent::TrackUnmuted { participant, publication } => {
+                    // El propio también llega por aquí, y se deja pasar: la
+                    // pantalla ya lo pintó de forma optimista al pulsar, y esto
+                    // es la confirmación de que el servidor se enteró.
+                    if publication.kind() == TrackKind::Audio {
+                        canal.send(VoiceEvent::Muted {
+                            identity: participant.identity().to_string(),
+                            muted: publication.is_muted(),
+                        })
+                    } else {
+                        Ok(())
+                    }
+                }
+                // Alguien publica un micrófono estando ya dentro —se reconectó,
+                // o cambió de dispositivo—: su estado de partida otra vez.
+                RoomEvent::TrackPublished { publication, participant } => {
+                    if publication.kind() == TrackKind::Audio {
+                        canal.send(VoiceEvent::Muted {
+                            identity: participant.identity().to_string(),
+                            muted: publication.is_muted(),
+                        })
+                    } else {
+                        Ok(())
+                    }
+                }
                 RoomEvent::TrackSubscribed { track, .. } => {
                     if let RemoteTrack::Audio(audio) = track {
                         reproducir(audio.rtc_track());
@@ -319,6 +398,61 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
             };
             if enviado.is_err() {
                 break; // la pantalla se fue; no hay a quién contarle nada
+            }
+        }
+    });
+}
+
+/// Cada cuánto se pregunta el ida y vuelta. Cinco segundos: es un número para
+/// mirar de reojo cuando la llamada va rara, no un gráfico.
+const CADA_LATENCIA: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// El ida y vuelta del par de candidatos que se está usando de verdad.
+///
+/// Hay un `CandidatePair` por cada camino que ICE probó, y casi todos son
+/// callejones sin salida con el contador a cero. El que vale es el **nominado**,
+/// que es por donde van los paquetes. Coger el primero de la lista, o el mínimo
+/// de todos, da un número bonito que no corresponde a nada.
+fn rtt_nominado(stats: &[livekit::webrtc::stats::RtcStats]) -> Option<f64> {
+    stats.iter().find_map(|s| match s {
+        livekit::webrtc::stats::RtcStats::CandidatePair(cp)
+            if cp.candidate_pair.nominated && cp.candidate_pair.current_round_trip_time > 0.0 =>
+        {
+            Some(cp.candidate_pair.current_round_trip_time)
+        }
+        _ => None,
+    })
+}
+
+/// La latencia real, sacada de las estadísticas de la conexión.
+///
+/// `current_round_trip_time` es lo que mide el propio WebRTC con sus consent
+/// checks sobre el camino que está usando. No es una estimación nuestra ni un
+/// ping a otra cosa, y por eso se puede enseñar en la cabecera.
+///
+/// La referencia a la sala es **débil** a propósito: cuando `voice_leave` suelta
+/// la sesión, este bucle se entera y se muere. Con un `Arc` fuerte seguiría
+/// despierto preguntando por una sala que ya nadie tiene.
+fn medir_latencia(sala: std::sync::Weak<Room>, canal: Channel<VoiceEvent>) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(CADA_LATENCIA).await;
+            let Some(room) = sala.upgrade() else { break };
+            let Ok(stats) = room.get_stats().await else { break };
+
+            // El publisher primero: la subida es la mitad que uno controla, y
+            // es la que se degrada cuando la queja es «no me oyen bien».
+            //
+            // Sin par nominado todavía no hay nada que decir. Callarse es mejor
+            // que mandar un cero, que en la cabecera se lee como una conexión
+            // perfecta justo mientras se está estableciendo.
+            let Some(rtt) = rtt_nominado(&stats.publisher_stats)
+                .or_else(|| rtt_nominado(&stats.subscriber_stats))
+            else {
+                continue;
+            };
+            if canal.send(VoiceEvent::Latency { ms: (rtt * 1000.0).round() as u32 }).is_err() {
+                break;
             }
         }
     });
@@ -551,5 +685,46 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(e),
         Err(_) => Err("el hilo de la cámara murió al arrancar".into()),
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::rtt_nominado;
+    use livekit::webrtc::stats::{dictionaries, CandidatePairStats, RtcStats};
+
+    fn par(nominado: bool, rtt: f64) -> RtcStats {
+        RtcStats::CandidatePair(CandidatePairStats {
+            rtc: dictionaries::RtcStats::default(),
+            candidate_pair: dictionaries::CandidatePairStats {
+                nominated: nominado,
+                current_round_trip_time: rtt,
+                ..Default::default()
+            },
+        })
+    }
+
+    // ICE prueba varios caminos y deja un `CandidatePair` por cada uno. Casi
+    // todos son callejones sin salida con el contador a cero; el que vale es el
+    // nominado. Coger el primero de la lista es el fallo fácil, y da un número
+    // que parece medido sin corresponder a nada.
+    #[test]
+    fn coge_el_par_nominado_y_no_el_primero() {
+        let stats = vec![par(false, 0.500), par(true, 0.038), par(false, 0.900)];
+        assert_eq!(rtt_nominado(&stats), Some(0.038));
+    }
+
+    // Un par nominado recién elegido puede no haber completado todavía un
+    // consent check. Su cero no es «cero milisegundos», es «no lo sé», y
+    // enseñarlo en la cabecera se lee como una conexión perfecta justo cuando
+    // aún se está estableciendo.
+    #[test]
+    fn un_cero_no_es_una_medida() {
+        assert_eq!(rtt_nominado(&[par(true, 0.0)]), None);
+    }
+
+    #[test]
+    fn sin_par_nominado_no_inventa_nada() {
+        assert_eq!(rtt_nominado(&[par(false, 0.120)]), None);
     }
 }
