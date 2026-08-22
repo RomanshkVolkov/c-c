@@ -41,6 +41,7 @@ type TaskHandler interface {
 	MarkDMRead(w http.ResponseWriter, r *http.Request)
 	MarkChatRead(w http.ResponseWriter, r *http.Request)
 	FollowChannel(w http.ResponseWriter, r *http.Request)
+	Statuses(w http.ResponseWriter, r *http.Request)
 	VoiceToken(w http.ResponseWriter, r *http.Request)
 	VoiceRing(w http.ResponseWriter, r *http.Request)
 	VoiceRingCancel(w http.ResponseWriter, r *http.Request)
@@ -712,6 +713,30 @@ func (h *taskHandler) Board(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.BoardResponse]{Success: true, Data: board})
+}
+
+// Statuses son las columnas de una lista, sin las tarjetas.
+//
+// Existe porque el detalle de una tarea necesita saber a qué columnas puede
+// moverla, y la tarea que estás mirando **casi nunca es de la lista que tienes
+// abierta**: se llega a ella desde «mi trabajo», desde una notificación o desde
+// un enlace. Pedir el tablero entero para leerle las columnas sería traerse
+// todas las tarjetas de esa lista para tirarlas.
+//
+// La app lo llamaba desde antes de que existiera, y como el `POST` sí estaba,
+// chi contestaba 405 en vez de 404. El menú de estado se abría vacío y no había
+// forma de mover una tarjeta desde el detalle — ver App #24.
+func (h *taskHandler) Statuses(w http.ResponseWriter, r *http.Request) {
+	l, _, ok := h.resolveList(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	cols, err := h.svc.Statuses(l.ID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load columns", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.TaskStatus]{Success: true, Data: cols})
 }
 
 func (h *taskHandler) CreateStatus(w http.ResponseWriter, r *http.Request) {

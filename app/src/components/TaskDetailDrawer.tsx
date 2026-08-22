@@ -267,12 +267,25 @@ function Content() {
   // label and did nothing.
   const statusesOf = useTasksStore((s) => s.statusesOf);
   const [columnas, setColumnas] = useState<TaskStatus[]>([]);
+  // Y por qué no se pudieron cargar, si no se pudieron.
+  //
+  // El `.catch(() => {})` que había aquí se tragó durante semanas un 405: la
+  // ruta `GET /task-lists/{id}/statuses` no existía —sólo el POST del mismo
+  // camino, y por eso 405 y no 404—, así que el menú se abría **vacío** y
+  // cambiar el estado desde el detalle era imposible sin un solo error en
+  // pantalla. Un fallo que no se ve es un fallo que dura.
+  const [fallo, setFallo] = useState<string | null>(null);
   useEffect(() => {
     if (!detail?.task.listId) return;
     let vivo = true;
+    setFallo(null);
     statusesOf(detail.task.listId)
-      .then((c) => vivo && setColumnas(c))
-      .catch(() => {});
+      .then((c) => {
+        if (!vivo) return;
+        setColumnas(c);
+        if (c.length === 0) setFallo("Este tablero no devolvió columnas");
+      })
+      .catch((e) => vivo && setFallo(String(e)));
     return () => {
       vivo = false;
     };
@@ -801,6 +814,13 @@ function Content() {
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
                     Move to column
                   </DropdownMenuLabel>
+                  {/* Sin columnas hay algo roto, y decirlo aquí es lo único
+                      que separa «no se puede mover» de «el menú está vacío». */}
+                  {columnas.length === 0 && (
+                    <DropdownMenuItem disabled className="text-destructive">
+                      {fallo ?? "Cargando…"}
+                    </DropdownMenuItem>
+                  )}
                   {columnas.map((s) => (
                     <DropdownMenuItem
                       key={s.id}

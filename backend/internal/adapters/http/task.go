@@ -114,6 +114,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/move", h.MoveList)
 		r.Post("/{id}/move-to-space", h.MoveListToSpace)
 		r.Get("/{id}/board", h.Board)
+		r.Get("/{id}/statuses", h.Statuses)
 		r.Post("/{id}/statuses", h.CreateStatus)
 		r.Post("/{id}/tasks", h.CreateTask)
 		// A list can carry its own binding, so it can configure it too.
