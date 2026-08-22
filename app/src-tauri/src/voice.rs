@@ -30,6 +30,7 @@ use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::prelude::{AudioFrame, I420Buffer, VideoFrame, VideoResolution, VideoRotation};
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::RtcVideoSource;
+use livekit::webrtc::video_stream::native::NativeVideoStream;
 use livekit::{Room, RoomEvent, RoomOptions};
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -62,6 +63,9 @@ pub enum VoiceEvent {
     Muted { identity: String, muted: bool },
     /// Ida y vuelta al SFU, en milisegundos.
     Latency { ms: u32 },
+    /// Esta persona está publicando vídeo, o dejó de hacerlo. La pantalla lo
+    /// usa para poner un lienzo en su mosaico en vez del avatar.
+    Video { identity: String, enabled: bool },
     Disconnected { reason: String },
 }
 
@@ -152,6 +156,8 @@ pub async fn voice_join(
 /// mientras alguien pulsaba el botón.
 #[tauri::command]
 pub async fn voice_leave() {
+    // Las caras de la sala anterior no se heredan.
+    crate::video_frames::olvidar_todo();
     // La sordera no se hereda: entrar a otra sala sin oír a nadie, y sin que la
     // pantalla lo diga porque el store ya se vació, es un fallo mudo.
     SORDO.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -354,6 +360,10 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                     name: p.name().to_string(),
                 }),
                 RoomEvent::ParticipantDisconnected(p) => {
+                    // Su última cara se va con ella: si no, el mosaico
+                    // siguiente que reutilice ese hueco enseñaría a quien ya
+                    // se fue.
+                    crate::video_frames::olvidar(&p.identity().to_string());
                     canal.send(VoiceEvent::Left { identity: p.identity().to_string() })
                 }
                 RoomEvent::ActiveSpeakersChanged { speakers } => canal.send(VoiceEvent::Speaking {
@@ -385,11 +395,27 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                         Ok(())
                     }
                 }
-                RoomEvent::TrackSubscribed { track, .. } => {
-                    if let RemoteTrack::Audio(audio) = track {
-                        reproducir(audio.rtc_track());
+                RoomEvent::TrackSubscribed { track, participant, .. } => {
+                    let identidad = participant.identity().to_string();
+                    match track {
+                        RemoteTrack::Audio(audio) => {
+                            reproducir(audio.rtc_track());
+                            Ok(())
+                        }
+                        RemoteTrack::Video(video) => {
+                            recibir_video(identidad.clone(), video.rtc_track());
+                            canal.send(VoiceEvent::Video { identity: identidad, enabled: true })
+                        }
                     }
-                    Ok(())
+                }
+                RoomEvent::TrackUnsubscribed { track, participant, .. } => {
+                    if matches!(track, RemoteTrack::Video(_)) {
+                        let identidad = participant.identity().to_string();
+                        crate::video_frames::olvidar(&identidad);
+                        canal.send(VoiceEvent::Video { identity: identidad, enabled: false })
+                    } else {
+                        Ok(())
+                    }
                 }
                 RoomEvent::Disconnected { reason } => {
                     canal.send(VoiceEvent::Disconnected { reason: format!("{reason:?}") })
@@ -455,6 +481,29 @@ fn medir_latencia(sala: std::sync::Weak<Room>, canal: Channel<VoiceEvent>) {
                 break;
             }
         }
+    });
+}
+
+/// Lo que enseña otro, guardado para cuando la pantalla lo pida.
+///
+/// Aquí **no se codifica nada**: se copian los planos y se dejan en el sitio
+/// donde el manejador de `cacvideo://` los va a buscar. Comprimir en cuanto
+/// llega la trama sería trabajar para tirarlo — el webview pinta a su ritmo, no
+/// al de la red, y una cámara cuyo mosaico nadie mira no debe costar CPU.
+///
+/// `to_i420()` es una conversión y no una copia sólo cuando la trama no venía
+/// ya en I420. Con lo que publica cac —y con lo que publica cualquier cliente
+/// de LiveKit— viene en I420, así que en la práctica no cuesta nada.
+fn recibir_video(identidad: String, pista: livekit::webrtc::prelude::RtcVideoTrack) {
+    tauri::async_runtime::spawn(async move {
+        let mut entrante = NativeVideoStream::new(pista);
+        while let Some(trama) = entrante.next().await {
+            let (ancho, alto) = (trama.buffer.width(), trama.buffer.height());
+            crate::video_frames::guardar(&identidad, &trama.buffer.to_i420(), ancho, alto);
+        }
+        // El stream se acaba cuando la pista se va; el `olvidar` del evento
+        // llega por su lado, y repetirlo aquí no hace daño.
+        crate::video_frames::olvidar(&identidad);
     });
 }
 

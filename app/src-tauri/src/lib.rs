@@ -7,6 +7,7 @@ mod image;
 mod mcp;
 mod notes_export;
 mod pty;
+mod video_frames;
 mod voice;
 
 /// Entry point for `cac --mcp` (stdio MCP server; see `mcp.rs`).
@@ -1503,6 +1504,11 @@ pub fn run() {
         .manage(media::Session::default())
         // Attachments are served under our own scheme so an <img> can carry
         // credentials in a header instead of the URL. See media.rs.
+        .register_uri_scheme_protocol(video_frames::SCHEME, |_ctx, req| {
+            // Síncrono y no asíncrono como el de los adjuntos: aquí no hay red
+            // de por medio, sólo comprimir una trama que ya está en memoria.
+            video_frames::servir(&req)
+        })
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |ctx, req, responder| {
             use tauri::Manager;
             let state = ctx.app_handle().state::<media::Session>();

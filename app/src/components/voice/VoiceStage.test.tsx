@@ -31,6 +31,7 @@ const base = {
   sordo: false,
   mudos: {} as Record<string, boolean>,
   latencia: null as number | null,
+  video: {} as Record<string, boolean>,
 };
 
 beforeEach(() => {
@@ -112,6 +113,25 @@ describe("la pantalla de la sala", () => {
     estado.current = { ...estado.current, latencia: 38 };
     rerender(<Escenario spaceName="general" />);
     expect(screen.getByText(/2 in voice/).textContent).toContain("· 38 ms");
+  });
+
+  it("pone el lienzo del vídeo a quien publica cámara", () => {
+    estado.current = {
+      ...estado.current,
+      gente: [{ identity: "u-bea", name: "bea" }, { identity: "u-caro", name: "caro" }],
+      video: { "u-bea": true },
+    };
+    const { container } = render(<Escenario spaceName="general" />);
+    // Un lienzo y sólo uno: el de quien tiene cámara encendida.
+    expect(container.querySelectorAll("canvas")).toHaveLength(1);
+  });
+
+  it("y no se pinta a sí mismo", () => {
+    estado.current = { ...estado.current, video: { "u-ana": true } };
+    const { container } = render(<Escenario spaceName="general" />);
+    // El motor no se suscribe a su propia pista, así que no hay nada que
+    // servir: un lienzo aquí sería un rectángulo negro sobre tu avatar.
+    expect(container.querySelectorAll("canvas")).toHaveLength(0);
   });
 
   it("minimizar no cuelga", () => {

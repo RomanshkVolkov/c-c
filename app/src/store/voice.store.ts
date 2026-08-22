@@ -19,6 +19,7 @@ export type VoiceEvent =
   | { kind: "speaking"; identities: string[] }
   | { kind: "muted"; identity: string; muted: boolean }
   | { kind: "latency"; ms: number }
+  | { kind: "video"; identity: string; enabled: boolean }
   | { kind: "disconnected"; reason: string };
 
 export interface VoicePeer {
@@ -85,6 +86,15 @@ interface VoiceState {
   mudos: Record<string, boolean>;
   /** Ida y vuelta al SFU en milisegundos, o null mientras no se sepa. */
   latencia: number | null;
+  /**
+   * Quién está publicando vídeo.
+   *
+   * Sólo dice que hay pista, no que haya llegado una trama. El mosaico pone el
+   * lienzo con esto y el avatar se queda debajo hasta que se pinte algo: entre
+   * suscribirse y la primera imagen pasa medio segundo, y un rectángulo negro
+   * durante medio segundo se lee como una cámara rota.
+   */
+  video: Record<string, boolean>;
   /** A quién estás llamando y todavía no contesta. */
   llamando: TimbreSaliente | null;
   /** Quién te llama a ti. */
@@ -139,6 +149,7 @@ const VACIO = {
   hablando: [],
   mudos: {},
   latencia: null,
+  video: {},
   llamando: null,
   yo: null,
   mic: true,
@@ -385,7 +396,10 @@ export const useVoice = create<VoiceState>((set, get) => ({
           // ocurriera tocar el botón.
           const mudos = { ...s.mudos };
           delete mudos[ev.identity];
+          const video = { ...s.video };
+          delete video[ev.identity];
           return {
+            video,
             gente: s.gente.filter((p) => p.identity !== ev.identity),
             // Y fuera de los que hablan: sin esto, quien se va mientras habla
             // deja su punto encendido para siempre.
@@ -399,6 +413,9 @@ export const useVoice = create<VoiceState>((set, get) => ({
         break;
       case "latency":
         set({ latencia: ev.ms });
+        break;
+      case "video":
+        set((s) => ({ video: { ...s.video, [ev.identity]: ev.enabled } }));
         break;
       case "speaking":
         // La lista entera, no un delta: reconstruirla a base de altas y bajas

@@ -28,6 +28,20 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread", "time"] }
 futures-util = "0.3"
 image = "0.25"
+# JPEG para las tramas de vídeo de la voz. Rust puro con SIMD, cero
+# dependencias del sistema.
+#
+# **No es el más rápido y se eligió a sabiendas.** libjpeg-turbo tarda 4,6 ms
+# en 1080p contra 30,2 de éste (`docs/voz-video.md` §3), pero quiere compilar
+# libjpeg-turbo desde fuente con `cmake` y `nasm` en los tres sistemas de CI, y
+# esa deuda no la paga lo que ganamos: publicamos vídeo a 720p, donde éste
+# tarda 11,4 ms — un tercio de núcleo a 30 tramas por segundo, con la
+# codificación además hecha sólo cuando la pantalla pide la imagen.
+#
+# Si algún día se publica a 1080p, o si se ven cuatro pantallas compartidas a
+# la vez, el cambio es la función `comprimir` de `video_frames.rs` y añadir
+# `cmake`/`nasm` a los tres runners. Está medido para poder decidirlo entonces.
+jpeg-encoder = { version = "0.6", features = ["simd"] }
 webp = "0.3"
 tauri-plugin-dialog = "2.7.0"
 tauri-plugin-fs = "2.5.0"

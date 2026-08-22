@@ -11,7 +11,7 @@ const MEDIA_SCHEME = "cacmedia";
  * (`cacmedia://localhost/…` on Linux and macOS, `http://cacmedia.localhost/…`
  * on Windows), which is not something to hand-roll.
  */
-function convertFileSrc(path: string, scheme: string): string {
+export function convertFileSrc(path: string, scheme: string): string {
   const w = window as unknown as { __TAURI_INTERNALS__?: { convertFileSrc?: (p: string, s: string) => string } };
   const convert = w.__TAURI_INTERNALS__?.convertFileSrc;
   return convert ? convert(path, scheme) : path;

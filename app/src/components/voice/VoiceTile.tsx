@@ -1,4 +1,5 @@
 import { MicOff } from "lucide-react";
+import VideoLienzo from "@/components/voice/VideoLienzo";
 import { iniciales } from "@/lib/desde";
 import { cn } from "@/lib/utils";
 
@@ -10,18 +11,21 @@ import { cn } from "@/lib/utils";
  * uno busca es cuál de ellos se ha encendido, y para eso el contorno es lo más
  * rápido de leer y lo más barato de repintar treinta veces por segundo.
  *
- * El sitio del vídeo ya está reservado: cuando haya pista, llena el mosaico y
- * el avatar desaparece. Hasta entonces, iniciales.
+ * Con cámara, el vídeo llena el mosaico y el avatar se queda debajo hasta que
+ * llegue la primera trama — ver `VideoLienzo`. Sin cámara, iniciales.
  */
 export default function VoiceTile({
   nombre,
   hablando,
   silenciado,
   compacto,
+  video,
 }: {
   nombre: string;
   hablando: boolean;
   silenciado?: boolean;
+  /** La identidad cuya cámara pintar, o nada si no publica vídeo. */
+  video?: string;
   /** En la tira lateral del compartir; en la rejilla, no. */
   compacto?: boolean;
 }) {
@@ -41,6 +45,8 @@ export default function VoiceTile({
       >
         {iniciales(nombre)}
       </span>
+
+      {video && <VideoLienzo identity={video} />}
 
       <span className="absolute bottom-3 left-3 max-w-[calc(100%-4rem)] truncate rounded-full bg-background/70 px-2.5 py-1 text-[13px]">
         {nombre}

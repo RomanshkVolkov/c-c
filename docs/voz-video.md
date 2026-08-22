@@ -147,27 +147,58 @@ crudo, y el **tiempo** de codificación apenas depende del contenido.
 
 | | Cómo | Estado tras medir |
 |---|---|---|
-| **A · JPEG al webview** | I420 → `turbojpeg` planar → bytes crudos por `Channel` → `createImageBitmap` → canvas | **Viable, y barato.** El coste que lo descartaba era un artefacto de medir con el codificador equivocado |
-| **A′ · I420 crudo + WebCodecs** | I420 → bytes crudos → `new VideoFrame(…, {format:'I420'})` → canvas | Abierto: WebCodecs existe. No cuesta CPU de codificar, pero paga 89 MB/s de transporte a 1080p30. **El transporte no está medido** |
+| **A · JPEG al webview** | I420 → JPEG → esquema propio `cacvideo://` → `createImageBitmap` → canvas | **Elegido e implementado.** El coste que lo descartaba era un artefacto de medir con el codificador equivocado |
+| **A′ · I420 crudo + WebCodecs** | I420 → bytes crudos → `new VideoFrame(…, {format:'I420'})` → canvas | Abierto: WebCodecs existe. No cuesta CPU de codificar, pero paga 89 MB/s de transporte a 1080p30. **El transporte no está medido**, y por eso A —con 1,3 MB/s— va primero: es el que menos depende de lo que no sabemos |
 | **B · `<video>` + fMP4** | H.264 → muxer fMP4 → protocolo propio → MSE | Posible (MSE y H.264 están) y sigue siendo el más caro de escribir: el muxer a mano es el trabajo largo. Su ventaja —descodificación por hardware— se la come tener que codificar H.264 justo antes |
 | **C · Superficie nativa wgpu** | Las tramas no entran al webview; se pintan bajo o sobre él | En Windows y macOS hay plugins que funcionan. **En Linux/WebKitGTK no hay solución conocida**, y el issue [#9220](https://github.com/tauri-apps/tauri/issues/9220) describe webview y wgpu peleándose por la superficie |
 | **D · Proceso aparte** | Ventana propia con `winit` + wgpu, hablando por socket | Lo que hace Hopp. En Wayland **no se puede posicionar una ventana** respecto de otra, así que sólo sirve a pantalla completa, no para mosaicos dentro del layout |
 
-### Qué haría
+### Lo elegido, y cómo está montado
 
-**El camino A, con `turbojpeg` y entrada planar.** Los números lo respaldan para
-las dos superficies, incluida la pantalla 1080p30 que el diseño promete — y deja
-el layout en HTML, que es donde vive el diseño y donde la llamada sigue estando
-dentro de cac.
+**El camino A**, en `src-tauri/src/video_frames.rs` y
+`src/components/voice/VideoLienzo.tsx`. Tres decisiones que no se ven en el
+diagrama:
 
-Antes de escribir la versión buena falta **un número**: cuánto aguanta de verdad
-el transporte de Tauri con bytes crudos. Es lo único que puede tumbar A, y no se
-puede medir desde fuera de la app — hay que medirlo dentro, en la pantalla de
-*Webview lab* que ya existe. Con ~1,3 MB/s de JPEG no debería ser problema; con
-los 89 MB/s de A′ casi seguro que sí, y por eso A va antes que A′.
+**Un esquema propio, no el canal de IPC.** El webview pide
+`cacvideo://localhost/<identidad>` y recibe un JPEG, igual que los adjuntos
+piden `cacmedia://`. El `Channel` de Tauri con bytes crudos también habría
+servido —por encima de 1 kB deja de serializar a JSON y usa `fetch`— pero
+empuja: manda tramas aunque nadie las mire. El esquema **tira**, y eso encaja
+con lo siguiente.
 
-`spikes/webview-probe/bench.c` mide la otra mitad —construir un `VideoFrame` y
-pintarlo, contra `putImageData`, contra descodificar un JPEG— pero **está sin
+**Se codifica cuando la pantalla pide, no cuando la trama llega.** En Rust sólo
+se guarda la última trama cruda de cada participante; el JPEG se hace dentro del
+manejador de la petición. Una cámara encendida cuyo mosaico está minimizado no
+cuesta un ciclo, y el ritmo lo marca lo que la interfaz puede pintar en vez de
+lo que la red puede entregar. El lienzo pide la siguiente cuando terminó de
+pintar la anterior, así que una máquina lenta pide menos en vez de acumular cola.
+
+**Se guarda sólo la última.** Si el webview va más despacio que la red, lo
+correcto es saltarse tramas y enseñar lo más reciente. Una cola se convertiría
+en retraso y el retraso no se recupera.
+
+### Lo que cambió respecto a la recomendación, y por qué
+
+Se recomendó `turbojpeg` por sus 4,6 ms en 1080p. **Se implementó con
+`jpeg-encoder`**, que tarda 30,2 ms, porque `turbojpeg` no encuentra
+libjpeg-turbo del sistema con sus opciones por defecto: compila la suya con
+`cmake` y `nasm`, y eso hay que instalarlo en los tres runners de CI y en cada
+máquina de desarrollo. La deuda no la paga lo que ganamos hoy: **se publica a
+720p**, donde `jpeg-encoder` tarda 11,4 ms — un tercio de núcleo a 30 tramas por
+segundo, y sólo mientras alguien esté mirando el mosaico.
+
+El cambio está a un renglón: la función `comprimir` de `video_frames.rs`. Si
+algún día se publica a 1080p o se ven varias pantallas a la vez, se cambia esa
+función y se añade `cmake`/`nasm` al CI, con los números de §3 delante.
+
+### Lo que sigue sin medirse
+
+**El transporte.** Cuánto aguanta de verdad el esquema propio sirviendo 30
+peticiones por segundo por mosaico. Es lo único que puede tumbar A y no se puede
+medir desde fuera de la app; se verá en cuanto haya dos máquinas hablando.
+
+**El webview pintando.** `spikes/webview-probe/bench.c` compara construir un
+`VideoFrame` de WebCodecs, `putImageData` y descodificar un JPEG. **Está sin
 correr**: abre una ventana en el escritorio de quien lo lance, y eso se avisa
 antes de hacerlo.
 

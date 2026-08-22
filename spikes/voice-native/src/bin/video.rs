@@ -78,8 +78,8 @@ fn main() {
     println!("   SIMD con la misma entrada RGB, y libjpeg-turbo comiendo el I420");
     println!("   **planar** tal cual — que se salta las dos conversiones de color.\n");
     println!(
-        "{:<34} {:>13} {:>7} {:>13} {:>7} {:>9}",
-        "tamaño", "simd (rgb)", "fps", "turbo (i420)", "fps", "kB"
+        "{:<34} {:>13} {:>7} {:>13} {:>7} {:>13} {:>7}",
+        "tamaño", "simd (rgb)", "fps", "simd (ycbcr)", "fps", "turbo (i420)", "fps"
     );
     for &(w, h, etiqueta) in TAMANOS {
         let i420 = i420_de_prueba(w, h);
@@ -93,17 +93,24 @@ fn main() {
         // Se le suma la conversión: con entrada RGB hay que pagarla igual.
         let ms_simd = t.elapsed().as_secs_f64() * 1000.0 / VECES as f64 + ms_conv_de(w, h, &i420);
 
-        let mut bytes = 0usize;
+        let mut entrelazado = vec![0u8; (w * h * 3) as usize];
         let t = Instant::now();
         for _ in 0..VECES {
-            bytes = jpeg_turbo_planar(&i420, w, h);
+            i420_a_ycbcr(&i420, w, h, &mut entrelazado);
+            jpeg_simd_ycbcr(&entrelazado, w, h);
+        }
+        let ms_ycbcr = t.elapsed().as_secs_f64() * 1000.0 / VECES as f64;
+
+        let t = Instant::now();
+        for _ in 0..VECES {
+            jpeg_turbo_planar(&i420, w, h);
         }
         let ms_turbo = t.elapsed().as_secs_f64() * 1000.0 / VECES as f64;
 
         println!(
-            "{:<34} {:>12.1}ms {:>7.0} {:>12.1}ms {:>7.0} {:>9.0}",
-            etiqueta, ms_simd, 1000.0 / ms_simd, ms_turbo, 1000.0 / ms_turbo,
-            bytes as f64 / 1024.0
+            "{:<34} {:>12.1}ms {:>7.0} {:>12.1}ms {:>7.0} {:>12.1}ms {:>7.0}",
+            etiqueta, ms_simd, 1000.0 / ms_simd, ms_ycbcr, 1000.0 / ms_ycbcr,
+            ms_turbo, 1000.0 / ms_turbo
         );
     }
 
@@ -167,6 +174,33 @@ fn jpeg_simd(rgb: &[u8], w: u32, h: u32) -> usize {
     let mut salida = Vec::with_capacity(rgb.len() / 8);
     let cod = Encoder::new(&mut salida, 70);
     cod.encode(rgb, w as u16, h as u16, ColorType::Rgb).expect("jpeg simd");
+    salida.len()
+}
+
+/// I420 planar → YCbCr entrelazado. **No hay aritmética de color**: son los
+/// mismos valores, reordenados, con el croma duplicado al muestrear 2×2. Es lo
+/// más cerca que se puede estar del camino corto sin salir de Rust.
+fn i420_a_ycbcr(i420: &[u8], w: u32, h: u32, destino: &mut [u8]) {
+    let (w, h) = (w as usize, h as usize);
+    let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
+    let (yp, resto) = i420.split_at(w * h);
+    let (up, vp) = resto.split_at(cw * ch);
+    for fila in 0..h {
+        let cfila = (fila / 2) * cw;
+        for col in 0..w {
+            let i = (fila * w + col) * 3;
+            destino[i] = yp[fila * w + col];
+            destino[i + 1] = up[cfila + col / 2];
+            destino[i + 2] = vp[cfila + col / 2];
+        }
+    }
+}
+
+fn jpeg_simd_ycbcr(ycbcr: &[u8], w: u32, h: u32) -> usize {
+    use jpeg_encoder::{ColorType, Encoder};
+    let mut salida = Vec::with_capacity(ycbcr.len() / 8);
+    let cod = Encoder::new(&mut salida, 70);
+    cod.encode(ycbcr, w as u16, h as u16, ColorType::Ycbcr).expect("jpeg ycbcr");
     salida.len()
 }
 

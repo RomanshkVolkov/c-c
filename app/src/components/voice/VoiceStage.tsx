@@ -24,6 +24,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const yo = useVoice((s) => s.yo);
   const mic = useVoice((s) => s.mic);
   const mudos = useVoice((s) => s.mudos);
+  const video = useVoice((s) => s.video);
   const latencia = useVoice((s) => s.latencia);
   const sordo = useVoice((s) => s.sordo);
   const salir = useVoice((s) => s.salir);
@@ -84,6 +85,10 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                 // micrófono son doscientos milisegundos en los que parece que
                 // el botón no hizo nada.
                 silenciado={p.identity === yo ? !mic : (mudos[p.identity] ?? false)}
+                // El propio no: el motor no se suscribe a su propia pista, y
+                // verte a ti mismo es una función aparte —con espejo— que no
+                // es ésta.
+                video={p.identity !== yo && video[p.identity] ? p.identity : undefined}
               />
             ))}
           </div>
