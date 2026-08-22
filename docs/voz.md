@@ -201,12 +201,26 @@ que un recurso filtrado—.
 | `voice_join(url, token, onEvent)` | Conecta, publica el micro, devuelve tu identidad |
 | `voice_leave()` | Sale. Idempotente |
 | `voice_set_mic(enabled)` | Silencia **la pista publicada**, no sólo las muestras — ver abajo. La captura sigue corriendo: volver a hablar es inmediato en vez de tener que levantar otra vez el dispositivo |
+| `voice_list_devices()` | Qué micrófonos y qué cámaras hay, y cuál está puesto. Se pregunta al abrir el desplegable y no al entrar a la sala: enchufar unos auriculares en mitad de una llamada es justo cuando alguien lo abre |
+| `voice_set_device(kind, deviceId)` | Cambia de micrófono **sin cortar la voz** —se levanta la captura nueva y luego se suelta la vieja, y la pista publicada es la misma— o de cámara, que sí parpadea porque su pista está atada al dispositivo |
 | `voice_set_deaf(enabled)` | Deja de oír: el callback del altavoz descarta lo que saca de la cola. Se descarta consumiéndolo, no saltándose el `pop` — si no, la cola crece mientras no oyes y al volver sonaría lo de hace un minuto |
 
 **Aquí no hay credenciales de cac.** La pantalla pide el token al backend y le
 pasa al motor un `{url, token}` ya concedido — este código no puede entrar donde
 no le dejaron entrar. Esa separación es lo que hace que la autorización de la voz
 sea exactamente la del resto de la app.
+
+**La preferencia de dispositivo sobrevive a la llamada.** Quien tuvo que
+corregir el micrófono una vez no debería tener que corregirlo en cada sala, así
+que vive fuera de la sesión. El micrófono se guarda por el `DeviceId` de cpal
+—que la biblioteca documenta como estable entre desconexiones y reinicios— y la
+cámara por nombre, porque `nokhwa` sólo da índice y nombre y el índice se mueve
+al enchufar otro cacharro. Si el guardado ya no existe, se cae al del sistema:
+negarse a hablar porque falta un micrófono concreto sería peor.
+
+**Falta elegir la salida**, y no se pinta hasta que se pueda: cambiarla obliga a
+reconstruir el stream de reproducción de cada pista remota a la vez, y es la que
+menos se equivoca de las tres.
 
 **Silenciarse tiene que viajar.** La primera versión zereaba las muestras y ya:
 te dejaba callado, pero para el resto de la sala seguías con el micrófono

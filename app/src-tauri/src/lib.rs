@@ -1630,6 +1630,8 @@ pub fn run() {
             voice::voice_set_mic,
             voice::voice_set_deaf,
             voice::voice_set_camera,
+            voice::voice_list_devices,
+            voice::voice_set_device,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

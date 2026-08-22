@@ -160,12 +160,21 @@ describe("la pantalla de la sala", () => {
 
   it("no hay botones que no hagan nada", () => {
     render(<Escenario spaceName="general" />);
-    // Compartir pantalla y los ajustes no están implementados. Pintarlos
-    // apagados fue lo primero que se reportó de la v1.6.38.
+    // Compartir pantalla no está implementado, así que no se pinta. Pintarlo
+    // apagado fue lo primero que se reportó de la v1.6.38: un botón
+    // deshabilitado se lee como «existe y está apagado», no como «no existe».
     expect(screen.queryByLabelText(/Share your screen/)).toBeNull();
-    expect(screen.queryByLabelText(/settings/i)).toBeNull();
     expect(screen.queryAllByRole("button").filter((b) => (b as HTMLButtonElement).disabled))
       .toHaveLength(0);
+  });
+
+  it("y los ajustes sí están, porque ya sirven", () => {
+    render(<Escenario spaceName="general" />);
+    const boton = screen.getByLabelText("Audio and video settings");
+    expect((boton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(boton);
+    // Se abre el panel. Sin esto, «no está deshabilitado» no dice gran cosa.
+    expect(screen.getByText(/Looking for devices|Microphone/)).toBeTruthy();
   });
 
   it("minimizar no cuelga", () => {

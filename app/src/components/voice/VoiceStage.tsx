@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Loader2, Minimize2, Volume2 } from "lucide-react";
+import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
 import VoiceControls from "@/components/voice/VoiceControls";
@@ -35,6 +36,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const alternarCam = useVoice((s) => s.alternarCam);
   const cerrarEscenario = useVoice((s) => s.cerrarEscenario);
   const [invitando, setInvitando] = useState(false);
+  const [ajustes, setAjustes] = useState(false);
 
   // Tú cuentas como presente aunque el motor sólo reporte a los demás.
   const dentro = [...(yo ? [{ identity: yo, name: "You" }] : []), ...gente];
@@ -100,6 +102,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
       </div>
 
       {invitando && <InvitePicker onClose={() => setInvitando(false)} />}
+      {ajustes && <DeviceSettings />}
 
       <RingRow />
 
@@ -111,6 +114,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         onMic={() => void alternarMic()}
         onSordera={() => void alternarSordera()}
         onCam={() => void alternarCam()}
+        onAjustes={() => setAjustes((v) => !v)}
         onSalir={() => void salir()}
       />
     </div>

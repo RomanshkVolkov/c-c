@@ -95,8 +95,9 @@ struct VoiceSession {
     room: Arc<Room>,
     /// Se retienen para que la captura siga viva: soltar el stream de cpal lo
     /// para, y soltar la fuente corta lo que se publica.
+    // Mutable: cambiar de micrófono la sustituye sin salirse de la llamada.
     _captura: StreamGuard,
-    _fuente: NativeAudioSource,
+    fuente: NativeAudioSource,
     /// La pista publicada, para poder silenciarla **en la pista** y no sólo en
     /// las muestras. Ver `voice_set_mic`.
     micro: LocalAudioTrack,
@@ -155,6 +156,7 @@ pub async fn voice_join(
         .await
         .map_err(|e| format!("no se pudo publicar el micrófono: {e}"))?;
 
+    *CANAL.lock().unwrap() = Some(on_event.clone());
     let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
 
     on_event
@@ -164,7 +166,7 @@ pub async fn voice_join(
     *SESION.lock().unwrap() = Some(VoiceSession {
         room: room.clone(),
         _captura: captura,
-        _fuente: fuente,
+        fuente,
         micro: pista,
     });
 
@@ -221,6 +223,126 @@ pub fn voice_set_mic(enabled: bool) -> Result<(), String> {
 /// silencio. Parar el dispositivo daría un corte audible al volver.
 static SILENCIADO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// El micrófono y la cámara elegidos a mano, si alguien eligió.
+///
+/// Fuera de la sesión y no dentro porque **sobreviven a la llamada**: quien
+/// tuvo que corregir el micrófono una vez no debería tener que corregirlo en
+/// cada sala.
+///
+/// El micrófono se guarda por el `DeviceId` de cpal, que la propia biblioteca
+/// documenta como estable entre desconexiones y reinicios. La cámara, por
+/// nombre, porque `nokhwa` sólo da índice y nombre — y el índice se mueve al
+/// enchufar otro cacharro, con lo que la preferencia guardada apuntaría a otra
+/// cosa sin que nadie la cambiara.
+static MIC_ELEGIDO: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+static CAM_ELEGIDA: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+
+/// Un dispositivo, tal como lo enseña la pantalla.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dispositivo {
+    /// El nombre del sistema, que es también el identificador. Ver arriba.
+    pub id: String,
+    pub name: String,
+    /// El que se está usando ahora mismo.
+    pub current: bool,
+}
+
+/// Qué micrófonos y qué cámaras hay.
+///
+/// Se pregunta al abrir el desplegable y no al entrar a la sala: enchufar unos
+/// auriculares en mitad de una llamada es exactamente cuando alguien va a
+/// abrirlo, y una lista cacheada al entrar no los tendría.
+#[tauri::command]
+pub fn voice_list_devices() -> Result<serde_json::Value, String> {
+    let host = cpal::default_host();
+    let elegido = MIC_ELEGIDO.lock().unwrap().clone();
+    let por_defecto = host.default_input_device().and_then(|d| id_de(&d));
+    let actual_mic = elegido.clone().or(por_defecto);
+
+    let mics: Vec<Dispositivo> = host
+        .input_devices()
+        .map_err(|e| format!("no se pudieron listar los micrófonos: {e}"))?
+        .filter_map(|d| {
+            let id = id_de(&d)?;
+            Some(Dispositivo {
+                current: Some(&id) == actual_mic.as_ref(),
+                id,
+                // En cpal 0.18 el nombre legible es el `Display` del propio
+                // dispositivo; `name()` ya no existe.
+                name: d.to_string(),
+            })
+        })
+        .collect();
+
+    let elegida = CAM_ELEGIDA.lock().unwrap().clone();
+    let camaras = nokhwa::query(nokhwa::utils::ApiBackend::Auto).unwrap_or_default();
+    let primera = camaras.first().map(|c| c.human_name());
+    let actual_cam = elegida.clone().or(primera);
+    let cams: Vec<Dispositivo> = camaras
+        .into_iter()
+        .map(|c| {
+            let name = c.human_name();
+            Dispositivo { current: Some(&name) == actual_cam.as_ref(), id: name.clone(), name }
+        })
+        .collect();
+
+    Ok(serde_json::json!({ "mics": mics, "cams": cams }))
+}
+
+/// Cambiar de micrófono o de cámara **sin salirse de la llamada**.
+///
+/// El micrófono se cambia levantando otra captura y soltando la anterior, en
+/// ese orden: la fuente que se publica es la misma, así que para el resto de la
+/// sala no pasa nada — no hay que republicar la pista ni se corta el audio más
+/// que las milésimas que tarda el dispositivo nuevo en arrancar.
+///
+/// La cámara sí se apaga y se enciende, porque su pista está atada al
+/// dispositivo. Quien esté mirando ve un parpadeo, que es honesto: la cámara
+/// que estaba mirando ya no es la que va a ver.
+#[tauri::command]
+pub async fn voice_set_device(kind: String, device_id: String) -> Result<(), String> {
+    match kind.as_str() {
+        "mic" => {
+            *MIC_ELEGIDO.lock().unwrap() = Some(device_id);
+            let fuente = {
+                let guard = SESION.lock().unwrap();
+                guard.as_ref().map(|s| s.fuente.clone())
+            };
+            // Fuera de una llamada sólo se apunta la preferencia, que es lo que
+            // hará falta en la siguiente.
+            let Some(fuente) = fuente else { return Ok(()) };
+            let canal = CANAL.lock().unwrap().clone();
+            let nueva = arrancar_captura(fuente, canal.ok_or("no hay canal de eventos")?)?;
+            // Se sustituye **después** de que la nueva arranque: si se soltara
+            // antes y la nueva fallara, la llamada se quedaría muda sin que
+            // nadie hubiera pedido eso.
+            if let Some(s) = SESION.lock().unwrap().as_mut() {
+                s._captura = nueva;
+            }
+            Ok(())
+        }
+        "cam" => {
+            *CAM_ELEGIDA.lock().unwrap() = Some(device_id);
+            if CAMARA.load(std::sync::atomic::Ordering::Relaxed) {
+                voice_set_camera(false).await?;
+                voice_set_camera(true).await?;
+            }
+            Ok(())
+        }
+        otro => Err(format!("no sé cambiar «{otro}»")),
+    }
+}
+
+/// El identificador estable de un dispositivo de audio, como texto.
+fn id_de(d: &cpal::Device) -> Option<String> {
+    d.id().ok().map(|i| i.to_string())
+}
+
+/// El canal de eventos de la sesión en curso, para poder rearrancar la captura
+/// sin que el llamante tenga que pasarlo.
+static CANAL: LazyLock<Mutex<Option<Channel<VoiceEvent>>>> = LazyLock::new(|| Mutex::new(None));
+
 /// Sordera: lo que llega se descarta al pintarlo en el altavoz.
 ///
 /// Se apaga aquí y no cerrando los streams de reproducción porque las pistas de
@@ -262,7 +384,15 @@ fn arrancar_captura(
 
     std::thread::spawn(move || {
         let host = cpal::default_host();
-        let dispositivo = match host.default_input_device() {
+        // El elegido a mano si lo hay y sigue existiendo; si se desenchufó, el
+        // del sistema. Caer al del sistema es mejor que negarse a hablar.
+        let elegido = MIC_ELEGIDO.lock().unwrap().clone();
+        let dispositivo = elegido
+            .and_then(|id| {
+                host.input_devices().ok()?.find(|d| id_de(d).as_ref() == Some(&id))
+            })
+            .or_else(|| host.default_input_device());
+        let dispositivo = match dispositivo {
             Some(d) => d,
             None => {
                 let _ = listo_tx.send(Err("no hay micrófono".into()));
@@ -761,7 +891,22 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
     let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(), String>>();
     std::thread::spawn(move || {
         let formato = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
-        let mut camara = match Camera::new(CameraIndex::Index(0), formato) {
+        // Igual que el micrófono: la elegida por nombre, y si ya no está, la
+        // primera. El índice se resuelve ahora y no se guarda, porque enchufar
+        // otra cámara los renumera.
+        let indice = CAM_ELEGIDA
+            .lock()
+            .unwrap()
+            .clone()
+            .and_then(|nombre| {
+                nokhwa::query(nokhwa::utils::ApiBackend::Auto)
+                    .ok()?
+                    .into_iter()
+                    .find(|c| c.human_name() == nombre)
+                    .map(|c| c.index().clone())
+            })
+            .unwrap_or(CameraIndex::Index(0));
+        let mut camara = match Camera::new(indice, formato) {
             Ok(c) => c,
             Err(e) => {
                 let _ = listo_tx.send(Err(format!("no se pudo abrir la cámara: {e}")));
