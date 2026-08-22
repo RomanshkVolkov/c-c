@@ -33,6 +33,36 @@ use std::sync::{LazyLock, Mutex};
 
 use tauri::http::{Request, Response};
 
+/// De qué es una trama: de una cara o de una pantalla.
+///
+/// Las dos cosas se guardan por separado y no es un detalle: una persona puede
+/// publicar las dos a la vez, y con una sola entrada por participante la
+/// segunda pisaba a la primera — el mosaico habría parpadeado entre la cara y
+/// la pantalla treinta veces por segundo.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Fuente {
+    Camara,
+    Pantalla,
+}
+
+impl Fuente {
+    /// El nombre con el que viaja en la URL y hasta la interfaz.
+    pub fn como_texto(self) -> &'static str {
+        match self {
+            Fuente::Camara => "camera",
+            Fuente::Pantalla => "screen",
+        }
+    }
+
+    fn de_texto(t: &str) -> Option<Self> {
+        match t {
+            "camera" => Some(Fuente::Camara),
+            "screen" => Some(Fuente::Pantalla),
+            _ => None,
+        }
+    }
+}
+
 /// El esquema que usa el webview. La interfaz construye la URL correcta para
 /// cada sistema con `convertFileSrc(identidad, "cacvideo")`.
 pub const SCHEME: &str = "cacvideo";
@@ -63,12 +93,13 @@ struct Cruda {
 /// La última trama de cada participante. Sólo la última: si el webview va más
 /// lento que la red, lo correcto es saltarse tramas y enseñar lo más reciente,
 /// no acumular una cola que se va convirtiendo en retraso.
-static ULTIMAS: LazyLock<Mutex<HashMap<String, Cruda>>> =
+static ULTIMAS: LazyLock<Mutex<HashMap<(String, Fuente), Cruda>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Guarda lo que acaba de llegar de esta persona.
 pub fn guardar(
     identidad: &str,
+    fuente: Fuente,
     i420: &livekit::webrtc::prelude::I420Buffer,
     ancho: u32,
     alto: u32,
@@ -78,9 +109,10 @@ pub fn guardar(
 
     let planos = empaquetar((yp, up, vp), (sy, su, sv), ancho, alto);
 
+    let clave = (identidad.to_string(), fuente);
     let mut guard = ULTIMAS.lock().unwrap();
-    let seq = guard.get(identidad).map_or(1, |c| c.seq + 1);
-    guard.insert(identidad.to_string(), Cruda { seq, ancho, alto, planos });
+    let seq = guard.get(&clave).map_or(1, |c| c.seq + 1);
+    guard.insert(clave, Cruda { seq, ancho, alto, planos });
 }
 
 /// Quita el relleno del final de cada fila y deja los tres planos pegados.
@@ -112,9 +144,14 @@ fn empaquetar(
     fuera
 }
 
-/// Esta persona dejó de publicar vídeo.
-pub fn olvidar(identidad: &str) {
-    ULTIMAS.lock().unwrap().remove(identidad);
+/// Esta persona dejó de publicar esto.
+pub fn olvidar(identidad: &str, fuente: Fuente) {
+    ULTIMAS.lock().unwrap().remove(&(identidad.to_string(), fuente));
+}
+
+/// Esta persona se fue: se va todo lo suyo, publicara lo que publicara.
+pub fn olvidar_persona(identidad: &str) {
+    ULTIMAS.lock().unwrap().retain(|(quien, _), _| quien != identidad);
 }
 
 /// Al salir de la sala. Sin esto, entrar a otra enseñaría durante un instante
@@ -123,21 +160,26 @@ pub fn olvidar_todo() {
     ULTIMAS.lock().unwrap().clear();
 }
 
-/// La identidad que pide una URL `cacvideo://…`.
+/// Quién y qué pide una URL `cacvideo://…/<identidad>/<fuente>`.
 ///
-/// Los sistemas no se ponen de acuerdo en la forma —`cacvideo://localhost/<id>`
-/// en Linux y macOS, `http://cacvideo.localhost/<id>` en Windows— así que se
-/// normalizan las dos. La cola `?t=` que el frontend añade para que nadie
-/// cachee se descarta aquí.
-pub fn identidad_de(uri: &str) -> Option<String> {
+/// Los sistemas no se ponen de acuerdo en la forma —`cacvideo://localhost/…`
+/// en Linux y macOS, `http://cacvideo.localhost/…` en Windows— así que se
+/// normalizan las dos. La cola `?seq=` se descarta aquí.
+///
+/// Sin fuente en el camino se asume la cámara. No es por compatibilidad: es que
+/// una URL a medias tiene que resolver a algo concreto, y la cara es lo que
+/// pide un mosaico normal.
+pub fn pedido_de(uri: &str) -> Option<(String, Fuente)> {
     let tras_esquema = uri.split_once("://").map(|(_, r)| r).unwrap_or(uri);
     let camino = tras_esquema.split_once('/').map(|(_, p)| p)?;
     let camino = camino.split('?').next().unwrap_or(camino);
-    let id = camino.trim_matches('/');
+    let mut partes = camino.trim_matches('/').split('/');
+    let id = partes.next().unwrap_or("");
     if id.is_empty() {
         return None;
     }
-    Some(id.to_string())
+    let fuente = partes.next().and_then(Fuente::de_texto).unwrap_or(Fuente::Camara);
+    Some((id.to_string(), fuente))
 }
 
 /// El número de trama que el webview dice tener ya, de `?seq=`.
@@ -147,13 +189,13 @@ fn seq_pedida(uri: &str) -> Option<u64> {
         .and_then(|v| v.parse().ok())
 }
 
-/// Contesta a `cacvideo://localhost/<identidad>?seq=<la que ya tengo>`.
+/// Contesta a `cacvideo://localhost/<identidad>/<fuente>?seq=<la que ya tengo>`.
 ///
 /// **Se llama desde un hilo aparte**, nunca desde el bucle de la interfaz: ver
 /// la nota de arriba sobre la app colgada.
 pub fn servir(req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     let uri = req.uri().to_string();
-    let Some(id) = identidad_de(&uri) else {
+    let Some((id, fuente)) = pedido_de(&uri) else {
         return vacia(400);
     };
 
@@ -162,7 +204,7 @@ pub fn servir(req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     // cómo se para la recepción entera por pintar una imagen.
     let trama = {
         let guard = ULTIMAS.lock().unwrap();
-        guard.get(&id).cloned()
+        guard.get(&(id, fuente)).cloned()
     };
     let Some(t) = trama else {
         // 404 y no una imagen en blanco: «todavía no hay trama» es un estado
@@ -245,7 +287,7 @@ fn vacia(codigo: u16) -> Response<Vec<u8>> {
 
 #[cfg(test)]
 mod pruebas {
-    use super::{comprimir, empaquetar, identidad_de};
+    use super::{comprimir, empaquetar, pedido_de, Fuente};
 
     /// Una trama de 4×4 con **relleno al final de cada fila**, que es la forma
     /// en que llegan las de verdad.
@@ -309,20 +351,46 @@ mod pruebas {
         assert!(comprimir(&[0u8; 10], 640, 360).is_none());
     }
 
-    // Las tres formas que toma la misma petición según el sistema, más la cola
-    // que el frontend añade para saltarse la caché.
+    // Las formas que toma la misma petición según el sistema, más la cola que
+    // el frontend añade para saltarse la caché.
     #[test]
-    fn saca_la_identidad_de_cualquiera_de_las_formas() {
-        assert_eq!(identidad_de("cacvideo://localhost/u-bea").as_deref(), Some("u-bea"));
-        assert_eq!(identidad_de("http://cacvideo.localhost/u-bea").as_deref(), Some("u-bea"));
-        assert_eq!(identidad_de("cacvideo://localhost/u-bea?t=12345").as_deref(), Some("u-bea"));
+    fn saca_quien_y_que_de_cualquiera_de_las_formas() {
+        let camara = Some(("u-bea".to_string(), Fuente::Camara));
+        assert_eq!(pedido_de("cacvideo://localhost/u-bea/camera"), camara);
+        assert_eq!(pedido_de("http://cacvideo.localhost/u-bea/camera"), camara);
+        assert_eq!(pedido_de("cacvideo://localhost/u-bea/camera?seq=7"), camara);
+        assert_eq!(
+            pedido_de("cacvideo://localhost/u-bea/screen?seq=7"),
+            Some(("u-bea".to_string(), Fuente::Pantalla))
+        );
+    }
+
+    // La cara y la pantalla de la misma persona son dos cosas distintas y se
+    // piden por separado. Con una sola entrada por participante, quien
+    // compartiera pantalla con la cámara encendida haría parpadear su mosaico
+    // entre las dos treinta veces por segundo.
+    #[test]
+    fn la_camara_y_la_pantalla_no_son_lo_mismo() {
+        assert_ne!(
+            pedido_de("cacvideo://localhost/u-bea/camera"),
+            pedido_de("cacvideo://localhost/u-bea/screen")
+        );
+    }
+
+    // Sin fuente, la cara: una URL a medias tiene que resolver a algo concreto.
+    #[test]
+    fn sin_fuente_se_asume_la_camara() {
+        assert_eq!(
+            pedido_de("cacvideo://localhost/u-bea"),
+            Some(("u-bea".to_string(), Fuente::Camara))
+        );
     }
 
     // Sin identidad no hay a quién servir, y devolver la primera trama que haya
     // sería enseñarle a alguien la cara de otro.
     #[test]
     fn sin_identidad_no_contesta() {
-        assert_eq!(identidad_de("cacvideo://localhost/"), None);
-        assert_eq!(identidad_de("cacvideo://localhost"), None);
+        assert_eq!(pedido_de("cacvideo://localhost/"), None);
+        assert_eq!(pedido_de("cacvideo://localhost"), None);
     }
 }

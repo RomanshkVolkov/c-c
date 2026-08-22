@@ -19,7 +19,7 @@ export type VoiceEvent =
   | { kind: "speaking"; identities: string[] }
   | { kind: "muted"; identity: string; muted: boolean }
   | { kind: "latency"; ms: number }
-  | { kind: "video"; identity: string; enabled: boolean }
+  | { kind: "video"; identity: string; source: "camera" | "screen"; enabled: boolean }
   | { kind: "selfSpeaking"; speaking: boolean }
   | { kind: "disconnected"; reason: string };
 
@@ -98,7 +98,7 @@ interface VoiceState {
   /** Ida y vuelta al SFU en milisegundos, o null mientras no se sepa. */
   latencia: number | null;
   /**
-   * Quién está publicando vídeo.
+   * Quién tiene la cámara encendida.
    *
    * Sólo dice que hay pista, no que haya llegado una trama. El mosaico pone el
    * lienzo con esto y el avatar se queda debajo hasta que se pinte algo: entre
@@ -106,6 +106,17 @@ interface VoiceState {
    * durante medio segundo se lee como una cámara rota.
    */
   video: Record<string, boolean>;
+  /**
+   * Quién está compartiendo pantalla, o null.
+   *
+   * Uno solo y no un mapa: en el escenario cabe una pantalla grande, y si dos
+   * comparten a la vez hay que elegir cuál se mira. Se queda la primera —
+   * cambiar el foco solo, porque alguien más empezó a compartir, es quitarte de
+   * delante lo que estabas leyendo.
+   */
+  pantalla: string | null;
+  /** Tu propia pantalla compartida. */
+  compartiendo: boolean;
   /** A quién estás llamando y todavía no contesta. */
   llamando: TimbreSaliente | null;
   /** Quién te llama a ti. */
@@ -138,6 +149,7 @@ interface VoiceState {
   alternarMic: () => Promise<void>;
   alternarSordera: () => Promise<void>;
   alternarCam: () => Promise<void>;
+  alternarCompartir: () => Promise<void>;
   /** Refresca quién anda por los canales. La pantalla decide cada cuánto. */
   refrescarOcupacion: (orgId?: string | null) => Promise<void>;
   /** Lo que reporta el motor. Público para poder probarlo sin Tauri. */
@@ -165,6 +177,8 @@ const VACIO = {
   mudos: {},
   latencia: null,
   video: {},
+  pantalla: null,
+  compartiendo: false,
   llamando: null,
   yo: null,
   mic: true,
@@ -417,6 +431,27 @@ export const useVoice = create<VoiceState>((set, get) => ({
     }
   },
 
+  /**
+   * Compartir la pantalla, o dejar de hacerlo.
+   *
+   * Como la cámara y por lo mismo: **no es optimista**. Entre pulsar y que
+   * empiece a salir imagen hay un diálogo del sistema pidiendo permiso, y
+   * pintar el botón encendido mientras alguien decide es prometer algo que
+   * todavía no ha pasado. Puede tardar y puede decir que no.
+   *
+   * Y si falla al parar, se queda encendido: decirte que dejaste de compartir
+   * mientras tu pantalla sigue viéndose es el peor error posible de los dos.
+   */
+  alternarCompartir: async () => {
+    const siguiente = !get().compartiendo;
+    try {
+      await invoke(siguiente ? "voice_share_screen" : "voice_stop_share");
+      set({ compartiendo: siguiente, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   alRecibir: (ev) => {
     switch (ev.kind) {
       case "connected":
@@ -440,6 +475,8 @@ export const useVoice = create<VoiceState>((set, get) => ({
           delete video[ev.identity];
           return {
             video,
+            // Y si era quien compartía, el escenario vuelve a los mosaicos.
+            pantalla: s.pantalla === ev.identity ? null : s.pantalla,
             gente: s.gente.filter((p) => p.identity !== ev.identity),
             // Y fuera de los que hablan: sin esto, quien se va mientras habla
             // deja su punto encendido para siempre.
@@ -458,7 +495,15 @@ export const useVoice = create<VoiceState>((set, get) => ({
         set({ hablandoYo: ev.speaking });
         break;
       case "video":
-        set((s) => ({ video: { ...s.video, [ev.identity]: ev.enabled } }));
+        if (ev.source === "screen") {
+          set((s) => ({
+            // El foco no se lo quita nadie al que ya está: sólo se ocupa si
+            // está libre, y sólo se suelta el que lo tenía.
+            pantalla: ev.enabled ? (s.pantalla ?? ev.identity) : s.pantalla === ev.identity ? null : s.pantalla,
+          }));
+        } else {
+          set((s) => ({ video: { ...s.video, [ev.identity]: ev.enabled } }));
+        }
         break;
       case "speaking":
         // La lista entera, no un delta: reconstruirla a base de altas y bajas

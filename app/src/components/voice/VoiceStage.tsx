@@ -4,7 +4,9 @@ import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
 import VoiceControls from "@/components/voice/VoiceControls";
+import VideoLienzo from "@/components/voice/VideoLienzo";
 import VoiceTile from "@/components/voice/VoiceTile";
+import { cn } from "@/lib/utils";
 import { useVoice } from "@/store/voice.store";
 
 /**
@@ -27,6 +29,9 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const mic = useVoice((s) => s.mic);
   const mudos = useVoice((s) => s.mudos);
   const video = useVoice((s) => s.video);
+  const pantalla = useVoice((s) => s.pantalla);
+  const compartiendo = useVoice((s) => s.compartiendo);
+  const alternarCompartir = useVoice((s) => s.alternarCompartir);
   const latencia = useVoice((s) => s.latencia);
   const sordo = useVoice((s) => s.sordo);
   const salir = useVoice((s) => s.salir);
@@ -79,24 +84,56 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
             <Loader2 className="size-4 animate-spin" /> Joining #{spaceName}…
           </div>
         ) : (
-          <div className="grid size-full auto-rows-fr grid-cols-2 gap-3.5">
-            {dentro.map((p) => (
-              <VoiceTile
-                key={p.identity}
-                nombre={p.name || p.identity}
-                // El tuyo sale de tu micrófono; el de los demás, del servidor.
-                hablando={p.identity === yo ? hablandoYo : hablando.includes(p.identity)}
-                // El propio sale de `mic` y no del mapa: es optimista, y
-                // esperar la confirmación del servidor para tachar tu propio
-                // micrófono son doscientos milisegundos en los que parece que
-                // el botón no hizo nada.
-                silenciado={p.identity === yo ? !mic : (mudos[p.identity] ?? false)}
-                // El propio no: el motor no se suscribe a su propia pista, y
-                // verte a ti mismo es una función aparte —con espejo— que no
-                // es ésta.
-                video={p.identity !== yo && video[p.identity] ? p.identity : undefined}
-              />
-            ))}
+          <div className={cn("flex size-full gap-3.5", !pantalla && "flex-col")}>
+            {/* Con una pantalla compartida, ella manda: ocupa el sitio y las
+                caras se van a una tira lateral. Es lo que se ha venido a mirar
+                —código, un documento— y en un mosaico de la rejilla no se lee.
+                Sin pantalla, la rejilla de siempre. */}
+            {pantalla && (
+              <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border-2 border-primary bg-black">
+                <VideoLienzo identity={pantalla} fuente="screen" />
+                <span className="absolute bottom-3 left-3 rounded-full bg-background/70 px-2.5 py-1 text-xs font-semibold text-primary">
+                  {pantalla === yo
+                    ? "You are sharing"
+                    : `${dentro.find((p) => p.identity === pantalla)?.name ?? pantalla} is sharing`}
+                </span>
+                {pantalla === yo && (
+                  <button
+                    onClick={() => void alternarCompartir()}
+                    className="absolute bottom-3 right-3 rounded-full border border-destructive/50 bg-background/80 px-3 py-1 text-xs font-semibold text-destructive"
+                  >
+                    Stop sharing
+                  </button>
+                )}
+              </div>
+            )}
+            <div
+              className={cn(
+                "min-h-0 gap-3.5",
+                pantalla
+                  ? "flex w-50 shrink-0 flex-col overflow-y-auto"
+                  : "grid flex-1 auto-rows-fr grid-cols-2",
+              )}
+            >
+              {dentro.map((p) => (
+                <VoiceTile
+                  key={p.identity}
+                  nombre={p.name || p.identity}
+                  compacto={!!pantalla}
+                  // El tuyo sale de tu micrófono; el de los demás, del servidor.
+                  hablando={p.identity === yo ? hablandoYo : hablando.includes(p.identity)}
+                  // El propio sale de `mic` y no del mapa: es optimista, y
+                  // esperar la confirmación del servidor para tachar tu propio
+                  // micrófono son doscientos milisegundos en los que parece que
+                  // el botón no hizo nada.
+                  silenciado={p.identity === yo ? !mic : (mudos[p.identity] ?? false)}
+                  // El propio no: el motor no se suscribe a su propia pista, y
+                  // verte a ti mismo es una función aparte —con espejo— que no
+                  // es ésta.
+                  video={p.identity !== yo && video[p.identity] ? p.identity : undefined}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -110,10 +147,11 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         mic={mic}
         sordo={sordo}
         cam={cam}
-        compartiendo={false}
+        compartiendo={compartiendo}
         onMic={() => void alternarMic()}
         onSordera={() => void alternarSordera()}
         onCam={() => void alternarCam()}
+        onCompartir={() => void alternarCompartir()}
         onAjustes={() => setAjustes((v) => !v)}
         onSalir={() => void salir()}
       />

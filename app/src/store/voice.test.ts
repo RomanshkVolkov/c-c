@@ -29,6 +29,7 @@ beforeEach(() => {
     ...inicial,
     spaceId: null, estado: "fuera", escenario: false, gente: [], hablando: [],
     mudos: {}, latencia: null, llamando: null, entrante: null, video: {},
+    pantalla: null, compartiendo: false,
     yo: null, mic: true, sordo: false, cam: false, error: null,
   });
 });
@@ -464,5 +465,76 @@ describe("encender la cámara", () => {
     // Entrar a otra sala con la cámara pintada como encendida, sin estarlo, es
     // el peor de los dos errores posibles aquí.
     expect(useVoice.getState().cam).toBe(false);
+  });
+});
+
+/**
+ * Compartir pantalla.
+ *
+ * Lo que tiene decisión aquí no es encenderla sino **quién ocupa el escenario**
+ * cuando hay más de una: sólo cabe una grande, y cambiar de foco solo —porque
+ * alguien más empezó a compartir— es quitarle de delante a la gente lo que
+ * estaba leyendo.
+ */
+describe("la pantalla compartida", () => {
+  it("la cámara y la pantalla de la misma persona son cosas distintas", () => {
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-bea", source: "camera", enabled: true });
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-bea", source: "screen", enabled: true });
+    // Su cara sigue en el mosaico y su pantalla va al escenario. Con una sola
+    // entrada por persona, la segunda pisaba a la primera.
+    expect(useVoice.getState().video["u-bea"]).toBe(true);
+    expect(useVoice.getState().pantalla).toBe("u-bea");
+  });
+
+  it("el segundo que comparte no le quita el sitio al primero", () => {
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-bea", source: "screen", enabled: true });
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-caro", source: "screen", enabled: true });
+    expect(useVoice.getState().pantalla).toBe("u-bea");
+  });
+
+  it("y al soltarla, el escenario vuelve a los mosaicos", () => {
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-bea", source: "screen", enabled: true });
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-bea", source: "screen", enabled: false });
+    expect(useVoice.getState().pantalla).toBeNull();
+  });
+
+  it("pero soltarla otro no se lo quita a quien la tiene", () => {
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-bea", source: "screen", enabled: true });
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-caro", source: "screen", enabled: false });
+    expect(useVoice.getState().pantalla).toBe("u-bea");
+  });
+
+  it("si el que comparte se va, el escenario se libera", () => {
+    useVoice.setState({ gente: [{ identity: "u-bea", name: "bea" }] });
+    useVoice.getState().alRecibir({ kind: "video", identity: "u-bea", source: "screen", enabled: true });
+    useVoice.getState().alRecibir({ kind: "left", identity: "u-bea" });
+    // Si no, queda un rectángulo negro con el nombre de alguien que ya no está.
+    expect(useVoice.getState().pantalla).toBeNull();
+  });
+
+  it("no se pinta compartiendo hasta que el sistema conceda la pantalla", async () => {
+    await useVoice.getState().entrar("esp-1");
+    let resolver: (v: unknown) => void = () => {};
+    invoke.mockImplementation((cmd: string) =>
+      cmd === "voice_share_screen" ? new Promise((r) => (resolver = r)) : Promise.resolve("u-ana"),
+    );
+    const enCurso = useVoice.getState().alternarCompartir();
+    // Entre pulsar y que salga imagen hay un diálogo del sistema pidiendo
+    // permiso. Pintarlo encendido mientras alguien decide es prometer algo que
+    // todavía no ha pasado, y que puede acabar en «no».
+    expect(useVoice.getState().compartiendo).toBe(false);
+    resolver(undefined);
+    await enCurso;
+    expect(useVoice.getState().compartiendo).toBe(true);
+  });
+
+  it("y si falla al parar, no te dice que dejaste de compartir", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().alternarCompartir();
+    invoke.mockRejectedValue(new Error("el motor no contesta"));
+    await useVoice.getState().alternarCompartir();
+    // Tu pantalla probablemente se sigue viendo. Decir que no es el peor de
+    // los dos errores posibles — el mismo criterio que el micro y la cámara.
+    expect(useVoice.getState().compartiendo).toBe(true);
   });
 });

@@ -34,6 +34,8 @@ const base = {
   video: {} as Record<string, boolean>,
   cam: false,
   hablandoYo: false,
+  pantalla: null as string | null,
+  compartiendo: false,
 };
 
 beforeEach(() => {
@@ -43,6 +45,7 @@ beforeEach(() => {
     alternarMic: vi.fn(),
     alternarSordera: vi.fn(),
     alternarCam: vi.fn(),
+    alternarCompartir: vi.fn(),
     cerrarEscenario: vi.fn(),
   };
 });
@@ -160,12 +163,41 @@ describe("la pantalla de la sala", () => {
 
   it("no hay botones que no hagan nada", () => {
     render(<Escenario spaceName="general" />);
-    // Compartir pantalla no está implementado, así que no se pinta. Pintarlo
-    // apagado fue lo primero que se reportó de la v1.6.38: un botón
-    // deshabilitado se lee como «existe y está apagado», no como «no existe».
-    expect(screen.queryByLabelText(/Share your screen/)).toBeNull();
+    // Un botón deshabilitado se lee como «existe y está apagado», no como «no
+    // existe». Fue lo primero que se reportó de la v1.6.38, y la regla se
+    // queda aunque ya no falte ninguno.
     expect(screen.queryAllByRole("button").filter((b) => (b as HTMLButtonElement).disabled))
       .toHaveLength(0);
+  });
+
+  it("compartir pantalla ya se puede pedir", () => {
+    render(<Escenario spaceName="general" />);
+    fireEvent.click(screen.getByLabelText("Share your screen"));
+    expect(estado.current.alternarCompartir).toHaveBeenCalled();
+  });
+
+  it("una pantalla compartida ocupa el sitio y las caras se van al lado", () => {
+    estado.current = {
+      ...estado.current,
+      gente: [{ identity: "u-bea", name: "bea" }],
+      pantalla: "u-bea",
+    };
+    const { container } = render(<Escenario spaceName="general" />);
+    expect(screen.getByText("bea is sharing")).toBeTruthy();
+    // Dos lienzos serían la pantalla y una cámara; aquí sólo hay pantalla.
+    expect(container.querySelectorAll("canvas")).toHaveLength(1);
+    // Y los mosaicos pasan a compactos: la rejilla de dos columnas dejaría la
+    // pantalla del tamaño de una cara, que es no compartirla.
+    expect(container.querySelector(".h-30")).toBeTruthy();
+  });
+
+  it("compartiendo tú, se puede parar desde la propia pantalla", () => {
+    estado.current = { ...estado.current, pantalla: "u-ana", compartiendo: true };
+    render(<Escenario spaceName="general" />);
+    // Sin esto habría que bajar a la barra de mandos para parar algo que estás
+    // mirando — y el diseño lo pide justo por eso.
+    fireEvent.click(screen.getByText("Stop sharing"));
+    expect(estado.current.alternarCompartir).toHaveBeenCalled();
   });
 
   it("y los ajustes sí están, porque ya sirven", () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@/lib/media";
+import { cn } from "@/lib/utils";
 
 /**
  * El vídeo de otra persona, pintado en un lienzo.
@@ -41,7 +42,14 @@ const REINTENTO_MS = 200;
 
 const esperar = (ms: number) =>
   ms <= 0 ? Promise.resolve() : new Promise((r) => setTimeout(r, ms));
-export default function VideoLienzo({ identity }: { identity: string }) {
+export default function VideoLienzo({
+  identity,
+  fuente = "camera",
+}: {
+  identity: string;
+  /** Qué de esa persona: su cara o su pantalla. */
+  fuente?: "camera" | "screen";
+}) {
   const lienzo = useRef<HTMLCanvasElement>(null);
   const [pintando, setPintando] = useState(false);
 
@@ -50,7 +58,9 @@ export default function VideoLienzo({ identity }: { identity: string }) {
     let seq = 0;
     // El mismo ayudante que los adjuntos: construye la URL correcta para cada
     // sistema y, fuera de Tauri, devuelve la ruta sin más en vez de explotar.
-    const base = convertFileSrc(identity, ESQUEMA);
+    // `<identidad>/<fuente>`: la cara y la pantalla de la misma persona son dos
+    // cosas distintas y se piden por separado.
+    const base = convertFileSrc(`${identity}/${fuente}`, ESQUEMA);
     let primera = true;
 
     const vuelta = async () => {
@@ -113,13 +123,19 @@ export default function VideoLienzo({ identity }: { identity: string }) {
     return () => {
       vivo = false;
     };
-  }, [identity]);
+  }, [identity, fuente]);
 
   return (
     <canvas
       ref={lienzo}
       aria-hidden
-      className="absolute inset-0 size-full object-cover transition-opacity"
+      className={cn(
+        "absolute inset-0 size-full transition-opacity",
+        // Una cara se recorta para llenar el mosaico; una pantalla **no**:
+        // recortar una pantalla compartida corta justo lo que alguien quería
+        // enseñar. Entra entera aunque sobren bandas.
+        fuente === "screen" ? "object-contain" : "object-cover",
+      )}
       style={{ opacity: pintando ? 1 : 0 }}
     />
   );

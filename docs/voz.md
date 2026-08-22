@@ -450,7 +450,48 @@ callas creyendo que el otro no te oye.
    Un golpe fuerte cerca del micro lo enciende un instante: está medido, está
    aceptado, y hay un test que lo dice para que nadie lo tome por un fallo.
 
-7. **Cámara y pantalla**: **publicar** está hecho para la cámara
+7. ~~**Compartir pantalla**~~: hecho, con el `DesktopCapturer` que ya venía en
+   libwebrtc — WGC en Windows, ScreenCaptureKit en macOS, PipeWire en Linux.
+   Ver `docs/voz-video.md` §1.
+
+   **El selector de fuentes lo pinta el sistema y no nosotros.** En Linux la
+   captura pasa por xdg-desktop-portal, que enseña su propio diálogo; en macOS,
+   ScreenCaptureKit trae el suyo. No es una limitación que estemos rodeando: el
+   permiso de grabar tu pantalla no debe concederlo una aplicación dibujando su
+   propia ventana. Por eso `voice_share_screen` no recibe una fuente y no existe
+   `voice_list_sources`. En Windows sí se podría enumerar y elegir dentro de la
+   app, y ahí queda — un selector propio en un sistema y el del sistema en los
+   otros dos es peor de explicar que un solo camino.
+
+   **Se espera a la primera trama antes de publicar.** Es lo único que demuestra
+   que el sistema concedió el permiso, y es lo que permite crear la pista con el
+   tamaño de verdad en vez de adivinarlo. Publicar antes deja a los demás
+   mirando un rectángulo negro mientras alguien decide en el diálogo.
+
+   Dos detalles que muerden: el capturador entrega **BGRA** y no RGB como la
+   cámara —confundirlo pinta a todo el mundo de azul— y hay que pedirle tramas
+   **a ritmo de vídeo**, nunca en bucle cerrado: a un millón de peticiones por
+   segundo no deja trabajar al hilo que las produce y contesta «todavía no»
+   para siempre. Eso costó una tarde en el spike.
+
+8. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
+   tramas se guardan por `(persona, fuente)` y se piden a
+   `cacvideo://…/<identidad>/<camera|screen>`. Estuvieron guardándose sólo por
+   persona: nadie lo notó porque no había pantalla que compartir, y en cuanto la
+   hubiera, el mosaico habría parpadeado entre la cara y la pantalla treinta
+   veces por segundo.
+
+   En el escenario, una pantalla compartida **ocupa el sitio** y las caras se
+   van a una tira lateral: es lo que se ha venido a mirar, y en un mosaico de la
+   rejilla no se lee. Se pinta con `object-contain` y no `object-cover` — a una
+   cara se le recorta el borde sin perder nada, a una pantalla se le corta justo
+   lo que alguien quería enseñar.
+
+   Si dos comparten a la vez, **manda el primero**. Cambiar el foco solo porque
+   alguien más empezó a compartir es quitarle de delante a la gente lo que
+   estaba leyendo.
+
+9. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -471,7 +512,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-8. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+10. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.

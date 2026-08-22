@@ -77,9 +77,12 @@ pub enum VoiceEvent {
     Muted { identity: String, muted: bool },
     /// Ida y vuelta al SFU, en milisegundos.
     Latency { ms: u32 },
-    /// Esta persona está publicando vídeo, o dejó de hacerlo. La pantalla lo
-    /// usa para poner un lienzo en su mosaico en vez del avatar.
-    Video { identity: String, enabled: bool },
+    /// Esta persona está publicando vídeo, o dejó de hacerlo.
+    ///
+    /// `source` es `"camera"` o `"screen"`, y no sobra: una persona puede
+    /// publicar las dos a la vez, y la pantalla compartida no va en su mosaico
+    /// sino ocupando el escenario.
+    Video { identity: String, source: String, enabled: bool },
     /// **Tú** estás hablando, medido de tu propio micrófono.
     ///
     /// Va aparte de `Speaking` a propósito. Aquélla es la lista que manda el
@@ -651,7 +654,7 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                     // Su última cara se va con ella: si no, el mosaico
                     // siguiente que reutilice ese hueco enseñaría a quien ya
                     // se fue.
-                    crate::video_frames::olvidar(&p.identity().to_string());
+                    crate::video_frames::olvidar_persona(&p.identity().to_string());
                     canal.send(VoiceEvent::Left { identity: p.identity().to_string() })
                 }
                 RoomEvent::ActiveSpeakersChanged { speakers } => canal.send(VoiceEvent::Speaking {
@@ -683,7 +686,7 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                         Ok(())
                     }
                 }
-                RoomEvent::TrackSubscribed { track, participant, .. } => {
+                RoomEvent::TrackSubscribed { track, publication, participant } => {
                     let identidad = participant.identity().to_string();
                     match track {
                         RemoteTrack::Audio(audio) => {
@@ -691,16 +694,26 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                             Ok(())
                         }
                         RemoteTrack::Video(video) => {
-                            recibir_video(identidad.clone(), video.rtc_track());
-                            canal.send(VoiceEvent::Video { identity: identidad, enabled: true })
+                            let fuente = fuente_de(publication.source());
+                            recibir_video(identidad.clone(), fuente, video.rtc_track());
+                            canal.send(VoiceEvent::Video {
+                                identity: identidad,
+                                source: fuente.como_texto().into(),
+                                enabled: true,
+                            })
                         }
                     }
                 }
-                RoomEvent::TrackUnsubscribed { track, participant, .. } => {
+                RoomEvent::TrackUnsubscribed { track, publication, participant } => {
                     if matches!(track, RemoteTrack::Video(_)) {
                         let identidad = participant.identity().to_string();
-                        crate::video_frames::olvidar(&identidad);
-                        canal.send(VoiceEvent::Video { identity: identidad, enabled: false })
+                        let fuente = fuente_de(publication.source());
+                        crate::video_frames::olvidar(&identidad, fuente);
+                        canal.send(VoiceEvent::Video {
+                            identity: identidad,
+                            source: fuente.como_texto().into(),
+                            enabled: false,
+                        })
                     } else {
                         Ok(())
                     }
@@ -782,17 +795,33 @@ fn medir_latencia(sala: std::sync::Weak<Room>, canal: Channel<VoiceEvent>) {
 /// `to_i420()` es una conversión y no una copia sólo cuando la trama no venía
 /// ya en I420. Con lo que publica cac —y con lo que publica cualquier cliente
 /// de LiveKit— viene en I420, así que en la práctica no cuesta nada.
-fn recibir_video(identidad: String, pista: livekit::webrtc::prelude::RtcVideoTrack) {
+fn recibir_video(
+    identidad: String,
+    fuente: crate::video_frames::Fuente,
+    pista: livekit::webrtc::prelude::RtcVideoTrack,
+) {
     tauri::async_runtime::spawn(async move {
         let mut entrante = NativeVideoStream::new(pista);
         while let Some(trama) = entrante.next().await {
             let (ancho, alto) = (trama.buffer.width(), trama.buffer.height());
-            crate::video_frames::guardar(&identidad, &trama.buffer.to_i420(), ancho, alto);
+            crate::video_frames::guardar(&identidad, fuente, &trama.buffer.to_i420(), ancho, alto);
         }
         // El stream se acaba cuando la pista se va; el `olvidar` del evento
         // llega por su lado, y repetirlo aquí no hace daño.
-        crate::video_frames::olvidar(&identidad);
+        crate::video_frames::olvidar(&identidad, fuente);
     });
+}
+
+/// Lo que el SFU llama fuente, en nuestros términos.
+///
+/// Todo lo que no se anuncia como pantalla se trata como cara. Es la caída
+/// segura: una fuente desconocida en un mosaico es raro, y en el escenario a
+/// pantalla completa taparía la conversación.
+fn fuente_de(source: TrackSource) -> crate::video_frames::Fuente {
+    match source {
+        TrackSource::Screenshare => crate::video_frames::Fuente::Pantalla,
+        _ => crate::video_frames::Fuente::Camara,
+    }
 }
 
 /// Lo que dice otro, por los altavoces.
@@ -946,6 +975,220 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
 
 static CAMARA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static PANTALLA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Compartir la pantalla.
+///
+/// # El selector de fuentes lo pinta el sistema, no nosotros
+///
+/// En Linux la captura pasa por **xdg-desktop-portal**, que enseña su propio
+/// diálogo de permiso y de elección; en macOS, por ScreenCaptureKit con su
+/// selector. Eso no es una limitación que estemos rodeando: el permiso de
+/// grabar tu pantalla no debe concederlo una aplicación dibujando su propia
+/// ventana. Por eso este comando no recibe una fuente y no hay un
+/// `voice_list_sources`: se pide compartir y el sistema pregunta qué.
+///
+/// En Windows sí se podría enumerar y elegir en la app —Windows Graphics
+/// Capture lo permite—, y ahí queda para cuando alguien lo pida. Un selector
+/// propio en un sistema y el del sistema en los otros dos es peor de explicar
+/// que un solo camino.
+///
+/// # Es una pista aparte de la cámara
+///
+/// `is_screencast: true` no es decorativo: el SFU cambia de estrategia con él
+/// —en una cara prioriza la fluidez, en una pantalla el detalle del texto
+/// aunque baje la tasa— y el otro extremo lo usa para saber que eso va al
+/// escenario y no a un mosaico.
+#[tauri::command]
+pub async fn voice_share_screen() -> Result<VideoState, String> {
+    let room = {
+        let guard = SESION.lock().unwrap();
+        match guard.as_ref() {
+            Some(s) => s.room.clone(),
+            None => return Err("no estás en ninguna sala".into()),
+        }
+    };
+    if PANTALLA.load(std::sync::atomic::Ordering::Relaxed) {
+        return Ok(estado_video());
+    }
+
+    // La resolución la dicta la pantalla que el sistema conceda, así que la
+    // fuente se crea con la de la primera trama. Hasta que llegue no hay nada
+    // que publicar — y publicar una pista muerta deja a los demás mirando un
+    // rectángulo negro mientras alguien decide en el diálogo del portal.
+    let (fuente, ancho, alto) = arrancar_pantalla()?;
+
+    let pista = LocalVideoTrack::create_video_track("pantalla", RtcVideoSource::Native(fuente));
+    room.local_participant()
+        .publish_track(
+            LocalTrack::Video(pista),
+            TrackPublishOptions { source: TrackSource::Screenshare, ..Default::default() },
+        )
+        .await
+        .map_err(|e| {
+            PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
+            format!("no se pudo publicar la pantalla: {e}")
+        })?;
+    eprintln!("voz: compartiendo pantalla a {ancho}x{alto}");
+    Ok(estado_video())
+}
+
+/// Dejar de compartir.
+#[tauri::command]
+pub async fn voice_stop_share() -> Result<VideoState, String> {
+    let room = {
+        let guard = SESION.lock().unwrap();
+        match guard.as_ref() {
+            Some(s) => s.room.clone(),
+            None => return Err("no estás en ninguna sala".into()),
+        }
+    };
+    // Primero la bandera: es la que para el hilo de captura, y pararlo antes de
+    // despublicar evita que siga entregando tramas a una pista que ya no está.
+    PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
+    despublicar(&room, TrackSource::Screenshare).await;
+    Ok(estado_video())
+}
+
+/// Cuánto se espera a que alguien conteste al diálogo del sistema.
+///
+/// Un minuto y no diez segundos: entre que aparece el diálogo, se busca la
+/// ventana correcta y se acepta, pasa más tiempo del que parece — y rendirse
+/// mientras el usuario está eligiendo es el peor momento posible.
+const ESPERA_PORTAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// La pantalla del sistema, en su propio hilo.
+///
+/// Devuelve la fuente ya alimentada con la primera trama, más sus medidas. Se
+/// espera a esa primera trama a propósito: es lo único que demuestra que el
+/// sistema concedió el permiso, y es lo que permite crear la pista con el
+/// tamaño de verdad en vez de adivinarlo.
+fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
+    use livekit::webrtc::desktop_capturer::{
+        DesktopCaptureSourceType, DesktopCapturer, DesktopCapturerOptions,
+    };
+
+    let (primera_tx, primera_rx) = std::sync::mpsc::channel::<Result<(u32, u32), String>>();
+    let (fuente_tx, fuente_rx) = std::sync::mpsc::channel::<NativeVideoSource>();
+
+    std::thread::spawn(move || {
+        let mut opciones = DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen);
+        // El cursor dentro de la imagen. Compartir una pantalla para señalar
+        // algo sin que se vea el puntero es media función.
+        opciones.set_include_cursor(true);
+        let Some(mut cap) = DesktopCapturer::new(opciones) else {
+            let _ = primera_tx.send(Err("este sistema no sabe capturar la pantalla".into()));
+            return;
+        };
+        // En Wayland la lista trae una entrada de relleno y la elección real la
+        // hace el portal; en Windows y macOS es la pantalla principal. Elegir
+        // aquí una concreta sería adelantarse a lo que el sistema va a preguntar.
+        let fuentes = cap.get_source_list();
+        let (envio, recibo) = std::sync::mpsc::channel();
+        cap.start_capture(fuentes.first().cloned(), move |r| {
+            let _ = envio.send(r.map(|f| (f.width() as u32, f.height() as u32, f.data().to_vec())));
+        });
+
+        PANTALLA.store(true, std::sync::atomic::Ordering::Relaxed);
+        let limite = std::time::Instant::now() + ESPERA_PORTAL;
+        let mut fuente: Option<NativeVideoSource> = None;
+
+        // A ritmo de vídeo, nunca en bucle cerrado: pedir tramas a un millón por
+        // segundo no deja trabajar al hilo que tiene que producirlas, y el
+        // capturador contesta «todavía no» mientras tanto. Costó una tarde.
+        let cada = std::time::Duration::from_millis(1000 / 30);
+        while PANTALLA.load(std::sync::atomic::Ordering::Relaxed) {
+            cap.capture_frame();
+            let mut ultima = None;
+            while let Ok(r) = recibo.try_recv() {
+                ultima = Some(r);
+            }
+            match ultima {
+                Some(Ok((w, h, bgra))) => {
+                    let fte = fuente.get_or_insert_with(|| {
+                        let f = NativeVideoSource::new(
+                            VideoResolution { width: w, height: h },
+                            // Pantalla, no cara: el SFU prioriza el detalle.
+                            true,
+                        );
+                        let _ = fuente_tx.send(f.clone());
+                        let _ = primera_tx.send(Ok((w, h)));
+                        f
+                    });
+                    let mut buffer = I420Buffer::new(w, h);
+                    bgra_a_i420(&bgra, w, h, &mut buffer);
+                    fte.capture_frame(&VideoFrame {
+                        rotation: VideoRotation::VideoRotation0,
+                        timestamp_us: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_micros() as i64)
+                            .unwrap_or(0),
+                        buffer,
+                        frame_metadata: Default::default(),
+                    });
+                }
+                Some(Err(e)) => {
+                    // `Temporary` es lo normal mientras el sistema pregunta;
+                    // `Permanent` es que dijo que no.
+                    if format!("{e:?}").contains("Permanent") {
+                        let _ = primera_tx.send(Err("el sistema no concedió la pantalla".into()));
+                        break;
+                    }
+                }
+                None => {}
+            }
+            if fuente.is_none() && std::time::Instant::now() > limite {
+                let _ = primera_tx.send(Err("nadie contestó al diálogo de compartir".into()));
+                break;
+            }
+            std::thread::sleep(cada);
+        }
+        PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
+    });
+
+    match primera_rx.recv_timeout(ESPERA_PORTAL + std::time::Duration::from_secs(5)) {
+        Ok(Ok((w, h))) => {
+            let fuente = fuente_rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .map_err(|_| "la captura arrancó sin fuente".to_string())?;
+            Ok((fuente, w, h))
+        }
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err("la captura de pantalla no respondió".into()),
+    }
+}
+
+/// BGRA de la pantalla → I420.
+///
+/// El capturador de escritorio entrega **BGRA**, no RGB como la cámara: el
+/// orden de los canales es el de los mapas de bits del sistema, y confundirlo
+/// pinta a todo el mundo de azul. Misma aritmética BT.601 que `rgb_a_i420`,
+/// leyendo los componentes al revés y saltándose el alfa.
+fn bgra_a_i420(bgra: &[u8], ancho: u32, alto: u32, destino: &mut I420Buffer) {
+    let (w, h) = (ancho as usize, alto as usize);
+    let (sy, su, _sv) = destino.strides();
+    let (y_plano, u_plano, v_plano) = destino.data_mut();
+
+    for fila in 0..h {
+        for col in 0..w {
+            let i = (fila * w + col) * 4;
+            let (b, g, r) = (bgra[i] as f32, bgra[i + 1] as f32, bgra[i + 2] as f32);
+            y_plano[fila * sy as usize + col] =
+                (0.257 * r + 0.504 * g + 0.098 * b + 16.0).clamp(0.0, 255.0) as u8;
+        }
+    }
+    for fila in (0..h).step_by(2) {
+        for col in (0..w).step_by(2) {
+            let i = (fila * w + col) * 4;
+            let (b, g, r) = (bgra[i] as f32, bgra[i + 1] as f32, bgra[i + 2] as f32);
+            let cf = fila / 2;
+            let cc = col / 2;
+            u_plano[cf * su as usize + cc] =
+                (-0.148 * r - 0.291 * g + 0.439 * b + 128.0).clamp(0.0, 255.0) as u8;
+            v_plano[cf * su as usize + cc] =
+                (0.439 * r - 0.368 * g - 0.071 * b + 128.0).clamp(0.0, 255.0) as u8;
+        }
+    }
+}
 
 fn estado_video() -> VideoState {
     use std::sync::atomic::Ordering::Relaxed;
