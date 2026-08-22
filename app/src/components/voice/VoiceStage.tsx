@@ -30,6 +30,8 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const salir = useVoice((s) => s.salir);
   const alternarMic = useVoice((s) => s.alternarMic);
   const alternarSordera = useVoice((s) => s.alternarSordera);
+  const cam = useVoice((s) => s.cam);
+  const alternarCam = useVoice((s) => s.alternarCam);
   const cerrarEscenario = useVoice((s) => s.cerrarEscenario);
   const [invitando, setInvitando] = useState(false);
 
@@ -102,10 +104,11 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
       <VoiceControls
         mic={mic}
         sordo={sordo}
-        cam={false}
+        cam={cam}
         compartiendo={false}
         onMic={() => void alternarMic()}
         onSordera={() => void alternarSordera()}
+        onCam={() => void alternarCam()}
         onSalir={() => void salir()}
       />
     </div>

@@ -28,8 +28,8 @@ beforeEach(() => {
   useVoice.setState({
     ...inicial,
     spaceId: null, estado: "fuera", escenario: false, gente: [], hablando: [],
-    mudos: {}, latencia: null, llamando: null, entrante: null,
-    yo: null, mic: true, sordo: false, error: null,
+    mudos: {}, latencia: null, llamando: null, entrante: null, video: {},
+    yo: null, mic: true, sordo: false, cam: false, error: null,
   });
 });
 
@@ -409,5 +409,60 @@ describe("que te llamen", () => {
     // Veinte segundos mirando un «llamando» que ya nadie va a coger.
     expect(del).toHaveBeenCalledWith("/api/v1/task-spaces/esp-9/voice/ring/u-bea", true);
     expect(useVoice.getState().entrante).toBeNull();
+  });
+});
+
+/**
+ * La cámara.
+ *
+ * Su diferencia con el micrófono es que **puede fallar**: puede no haber
+ * ninguna, puede estar cogida por otro programa, y en macOS puede faltar el
+ * permiso. Silenciarse no puede fallar, y por eso el micro se pinta al pulsar y
+ * la cámara espera al motor.
+ */
+describe("encender la cámara", () => {
+  it("no se enciende hasta que el motor dice que sí", async () => {
+    await useVoice.getState().entrar("esp-1");
+    let resolver: (v: unknown) => void = () => {};
+    invoke.mockImplementation((cmd: string) =>
+      cmd === "voice_set_camera" ? new Promise((r) => (resolver = r)) : Promise.resolve("u-ana"),
+    );
+
+    const enCurso = useVoice.getState().alternarCam();
+    // Todavía no: pintar el botón encendido y que no salga imagen deja a
+    // alguien saludando a nadie.
+    expect(useVoice.getState().cam).toBe(false);
+    resolver(undefined);
+    await enCurso;
+    expect(useVoice.getState().cam).toBe(true);
+  });
+
+  it("si no hay cámara, el botón se queda apagado y se dice por qué", async () => {
+    await useVoice.getState().entrar("esp-1");
+    invoke.mockRejectedValue(new Error("no se pudo abrir la cámara"));
+    await useVoice.getState().alternarCam();
+    expect(useVoice.getState().cam).toBe(false);
+    expect(useVoice.getState().error).toContain("no se pudo abrir la cámara");
+  });
+
+  it("y si falla al apagarla, no te dice que estás apagado", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().alternarCam();
+    expect(useVoice.getState().cam).toBe(true);
+
+    invoke.mockRejectedValue(new Error("el motor no contesta"));
+    await useVoice.getState().alternarCam();
+    // Sigue publicando, probablemente. Decirte que nadie te ve mientras te ven
+    // es el peor de los dos errores posibles — el mismo criterio que el micro.
+    expect(useVoice.getState().cam).toBe(true);
+  });
+
+  it("no se hereda de una llamada a la siguiente", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().alternarCam();
+    await useVoice.getState().entrar("esp-2");
+    // Entrar a otra sala con la cámara pintada como encendida, sin estarlo, es
+    // el peor de los dos errores posibles aquí.
+    expect(useVoice.getState().cam).toBe(false);
   });
 });

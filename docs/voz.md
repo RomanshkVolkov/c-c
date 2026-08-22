@@ -355,7 +355,16 @@ callas creyendo que el otro no te oye.
    La autorización no necesita puerta propia: los espacios salen del árbol que
    ese caller ya puede ver, así que el id de una sala ajena nunca entra en la
    consulta.
-6. **Cámara y pantalla**: **publicar** está hecho para la cámara
+6. ~~**Ver el vídeo de los demás**~~: hecho, y con el análisis medido en
+   [`voz-video.md`](voz-video.md). Las tramas no cruzan por el canal de IPC:
+   Rust guarda la última de cada participante y la sirve comprimida bajo el
+   esquema `cacvideo://`, y **se comprime cuando la pantalla la pide**, no
+   cuando llega. Una cámara cuyo mosaico nadie mira no cuesta un ciclo.
+
+   Falta por medir el transporte —cuántas peticiones por segundo aguanta el
+   esquema— y eso sólo se ve con dos máquinas hablando.
+
+7. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -376,7 +385,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-7. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+8. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.

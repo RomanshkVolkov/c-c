@@ -101,12 +101,12 @@ export default function VoiceControls({
         activo={sordo}
         onClick={onSordera}
       />
-      {/* Cámara y pantalla llegan en su propio PR. Se pintan apagados y sin
-          respuesta en vez de esconderse: la barra no cambia de forma cuando
-          lleguen, y quien la mira ya sabe qué va a haber ahí. */}
+      {/* Compartir pantalla y los ajustes llegan en su propio PR. Se pintan
+          apagados y sin respuesta en vez de esconderse: la barra no cambia de
+          forma cuando lleguen, y quien la mira ya sabe qué va a haber ahí. */}
       <Redondo
         icono={cam ? Video : VideoOff}
-        etiqueta="Camera — coming soon"
+        etiqueta={cam ? "Turn your camera off" : "Turn your camera on"}
         tono="primario"
         activo={cam}
         onClick={onCam}

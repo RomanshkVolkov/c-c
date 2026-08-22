@@ -32,6 +32,7 @@ const base = {
   mudos: {} as Record<string, boolean>,
   latencia: null as number | null,
   video: {} as Record<string, boolean>,
+  cam: false,
 };
 
 beforeEach(() => {
@@ -40,6 +41,7 @@ beforeEach(() => {
     salir: vi.fn(),
     alternarMic: vi.fn(),
     alternarSordera: vi.fn(),
+    alternarCam: vi.fn(),
     cerrarEscenario: vi.fn(),
   };
 });
@@ -132,6 +134,12 @@ describe("la pantalla de la sala", () => {
     // El motor no se suscribe a su propia pista, así que no hay nada que
     // servir: un lienzo aquí sería un rectángulo negro sobre tu avatar.
     expect(container.querySelectorAll("canvas")).toHaveLength(0);
+  });
+
+  it("el botón de la cámara ya hace algo, y dice qué", () => {
+    render(<Escenario spaceName="general" />);
+    fireEvent.click(screen.getByLabelText("Turn your camera on"));
+    expect(estado.current.alternarCam).toHaveBeenCalled();
   });
 
   it("minimizar no cuelga", () => {

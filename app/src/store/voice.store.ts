@@ -103,6 +103,8 @@ interface VoiceState {
   mic: boolean;
   /** Sordera: ni oyes ni te oyen. */
   sordo: boolean;
+  /** Tu cámara. */
+  cam: boolean;
   error: string | null;
   /**
    * Quién está en cada canal de voz, **sin haber entrado**.
@@ -124,6 +126,7 @@ interface VoiceState {
   cerrarEscenario: () => void;
   alternarMic: () => Promise<void>;
   alternarSordera: () => Promise<void>;
+  alternarCam: () => Promise<void>;
   /** Refresca quién anda por los canales. La pantalla decide cada cuánto. */
   refrescarOcupacion: (orgId?: string | null) => Promise<void>;
   /** Lo que reporta el motor. Público para poder probarlo sin Tauri. */
@@ -154,6 +157,7 @@ const VACIO = {
   yo: null,
   mic: true,
   sordo: false,
+  cam: false,
   error: null,
 };
 
@@ -375,6 +379,30 @@ export const useVoice = create<VoiceState>((set, get) => ({
     await api
       .delete(`/api/v1/task-spaces/${t.spaceId}/voice/ring/${t.from.id}`, true)
       .catch(() => {});
+  },
+
+  /**
+   * Encender o apagar tu cámara.
+   *
+   * **No es optimista, al revés que el micrófono.** Silenciarse no puede
+   * fallar —el motor ya tiene el micro abierto— pero la cámara sí: puede no
+   * haber ninguna, puede estar cogida por otro programa, y en macOS puede
+   * faltar el permiso. Pintar el botón encendido y que no salga imagen deja a
+   * alguien saludando a nadie.
+   *
+   * Y si falla, **se queda como estaba**, que no es lo mismo que apagarse. Si
+   * lo que falló fue apagarla, la cámara probablemente sigue publicando:
+   * pintarla apagada te diría que nadie te ve mientras te siguen viendo, que
+   * es el peor de los dos errores posibles. El mismo criterio que el micro.
+   */
+  alternarCam: async () => {
+    const siguiente = !get().cam;
+    try {
+      await invoke("voice_set_camera", { enabled: siguiente });
+      set({ cam: siguiente, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
   },
 
   alRecibir: (ev) => {
