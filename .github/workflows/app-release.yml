@@ -36,6 +36,10 @@ jobs:
             args: "--bundles nsis"
 
     runs-on: ${{ matrix.platform }}
+    # Un paso colgado —el `apt-get` de una noche se quedó veinte minutos— se
+    # comería el límite por defecto de seis horas antes de rendirse. Con esto
+    # falla en un tiempo que se puede mirar y relanzar.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +60,10 @@ jobs:
           sed -i.bak '0,/^version = ".*"$/s//version = "'"$VERSION"'"/' app/src-tauri/Cargo.toml
           rm -f app/src-tauri/Cargo.toml.bak
 
+      # ALSA (`libasound2-dev`) la pide cpal, que es como los canales de voz
+      # llegan al micrófono en Linux. Sin ella `alsa-sys` no compila y el build
+      # muere a mitad — y no se ve venir desde una máquina de escritorio, donde
+      # ALSA ya está por estar.
       - name: Install system deps (Linux)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -64,7 +72,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            libasound2-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
