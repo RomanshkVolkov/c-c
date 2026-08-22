@@ -37,6 +37,15 @@ metadata:
   namespace: default
 spec:
   replicas: 1
+  # Recreate y no RollingUpdate, y es consecuencia directa de `hostNetwork`:
+  # los puertos del host son uno solo, así que el pod nuevo no puede
+  # programarse mientras el viejo los tenga cogidos — «didn't have free ports»
+  # y el despliegue se atasca para siempre. Se mata el viejo primero.
+  #
+  # El precio es unos segundos sin voz en cada despliegue. Con una réplica no
+  # había alta disponibilidad que perder de todas formas.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: livekit
@@ -45,6 +54,19 @@ spec:
       labels:
         app: livekit
     spec:
+      # Sin las variables de enlace de Kubernetes, y esto no es higiene: son
+      # obligatorias de apagar aquí.
+      #
+      # Kubernetes inyecta en cada pod una variable por Service del namespace,
+      # al estilo de los viejos enlaces de Docker: `LIVEKIT_PORT=tcp://10.x:7880`
+      # para un Service llamado `livekit`. LiveKit lee `LIVEKIT_PORT` como su
+      # propio `--port`, intenta parsear «tcp://10.101.6.157:7880» como número y
+      # muere al arrancar. Una colisión de nombres entre dos convenciones que no
+      # se conocen.
+      #
+      # Apagarlas es más honesto que renombrar el Service para esquivar la
+      # inyección: no queremos esas variables, así que se dicen que no.
+      enableServiceLinks: false
       hostNetwork: true
       # Obligado con hostNetwork: sin esto el pod hereda el resolv.conf del host
       # y deja de ver el DNS del clúster.
