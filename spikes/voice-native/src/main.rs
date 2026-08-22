@@ -29,12 +29,16 @@ use livekit::{Room, RoomOptions};
 use livekit_api::access_token::{AccessToken, VideoGrants};
 use livekit_api::services::room::RoomClient;
 
-/// Los del modo `--dev` de livekit-server. No son un secreto: ese modo los
-/// imprime en su propio arranque y sólo escucha en localhost.
-const API_KEY: &str = "devkey";
-const API_SECRET: &str = "secret";
-const HTTP_URL: &str = "http://localhost:7880";
-const WS_URL: &str = "ws://localhost:7880";
+/// Por defecto, el modo `--dev` de livekit-server: sus llaves no son un secreto
+/// —las imprime en su propio arranque— y sólo escucha en localhost.
+///
+/// Se pueden apuntar a un servidor de verdad por entorno (`LK_URL`, `LK_KEY`,
+/// `LK_SECRET`), que es como se comprueba si el media atraviesa la red real.
+/// Por entorno y no por argumentos para que el secreto no quede en la lista de
+/// procesos ni en el historial del shell.
+fn env_o(clave: &str, por_defecto: &str) -> String {
+    std::env::var(clave).unwrap_or_else(|_| por_defecto.to_string())
+}
 const SALA: &str = "spike-nativo";
 
 /// 48 kHz mono: lo que WebRTC usa internamente, así que no hay remuestreo que
@@ -48,14 +52,19 @@ const MUESTRAS_POR_TRAMA: usize = (SAMPLE_RATE as usize) / 100;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let identidad = "spike-emisor";
 
-    let token = AccessToken::with_api_key(API_KEY, API_SECRET)
+    let ws_url = env_o("LK_URL", "ws://localhost:7880");
+    let http_url = ws_url.replacen("ws", "http", 1);
+    let api_key = env_o("LK_KEY", "devkey");
+    let api_secret = env_o("LK_SECRET", "secret");
+
+    let token = AccessToken::with_api_key(&api_key, &api_secret)
         .with_identity(identidad)
         .with_name("Spike emisor")
         .with_grants(VideoGrants { room_join: true, room: SALA.to_string(), ..Default::default() })
         .to_jwt()?;
 
-    println!("→ conectando a {WS_URL} (sala «{SALA}»)…");
-    let (room, mut eventos) = Room::connect(WS_URL, &token, RoomOptions::default()).await?;
+    println!("→ conectando a {ws_url} (sala «{SALA}»)…");
+    let (room, mut eventos) = Room::connect(&ws_url, &token, RoomOptions::default()).await?;
     println!("✓ conectado como «{}»", room.local_participant().identity());
 
     // La pregunta cara del plan, contestada por el tipo: el SDK **sí** expone
@@ -107,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Que el servidor lo confirme, que es la prueba que no depende de oídos.
     tokio::time::sleep(Duration::from_secs(2)).await;
-    let cliente = RoomClient::with_api_key(HTTP_URL, API_KEY, API_SECRET);
+    let cliente = RoomClient::with_api_key(&http_url, &api_key, &api_secret);
     let dentro = cliente.list_participants(SALA).await?;
     println!("\n── lo que ve el servidor ──");
     for p in &dentro {
@@ -138,7 +147,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fin = tokio::time::Instant::now() + Duration::from_secs(20);
     while tokio::time::Instant::now() < fin {
         tokio::select! {
-            Some(ev) = eventos.recv() => println!("  evento: {ev:?}"),
+            Some(ev) = eventos.recv() => {
+                // Sin volcar el evento crudo: `TokenRefreshed` lleva un JWT
+                // vivo, y un secreto que acaba en la terminal acaba en el
+                // scrollback, en una captura y en un pegado. Se imprime la
+                // forma del evento, que es lo que aquí sirve para algo.
+                let etiqueta = format!("{ev:?}");
+                let corte = etiqueta.find(|c| c == '{' || c == '(').unwrap_or(etiqueta.len());
+                println!("  evento: {}", &etiqueta[..corte].trim());
+            }
             _ = tokio::time::sleep(Duration::from_millis(500)) => {}
         }
     }

@@ -127,11 +127,18 @@ es legítima y la pantalla puede decirlo con esas palabras.
 
 ## 6 · Puertos, y qué hay que abrir a mano
 
-| Puerto | Protocolo | Para qué |
-|---|---|---|
-| 7880 | TCP, vía Gateway | Señalización (WebSocket). Sale por `rtc.guz-studio.dev` |
-| 7882 | **UDP** | El media. Es el que hay que abrir en el security group |
-| 7881 | TCP | Respaldo para redes que bloquean UDP |
+| Puerto | Protocolo | Para qué | Estado |
+|---|---|---|---|
+| 7880 | TCP, vía Gateway | Señalización (WebSocket), por `rtc.guz-studio.dev` | ✓ |
+| 7882 | **UDP**, directo al host | El media | ✓ verificado con tráfico real |
+| 7881 | TCP, directo al host | Respaldo para redes que bloquean UDP | escucha |
+
+**El media no pasa por Envoy**, y por eso el Gateway no aparece en esta tabla
+más que para la señalización. Con `hostNetwork`, LiveKit escucha directamente en
+la IP pública del VPS: MetalLB sólo reclama los puertos que tienen un Service de
+tipo LoadBalancer (80, 443, 5432), así que el 7882 llega al proceso sin
+intermediarios. Buscar la solución en la configuración de Envoy es el desvío
+natural aquí, y no lleva a ninguna parte.
 
 El HTTPRoute de la señalización lleva `timeouts.request: 0s`. No es opcional: el
 valor por defecto de Envoy son 15 segundos y cortaría cada llamada a los quince
@@ -163,11 +170,21 @@ que se recree.
 
 ### Lo que sólo se puede hacer desde fuera del repositorio
 
-1. Generar el par de llaves: `docker run --rm livekit/livekit-server generate-keys`.
-2. Guardarlas como secretos de GitHub `LIVEKIT_API_KEY` y `LIVEKIT_API_SECRET`,
-   y la variable `LIVEKIT_URL` con `wss://rtc.guz-studio.dev`.
-3. DNS: `rtc.guz-studio.dev` → la IP del VPS.
-4. Security group: abrir **UDP 7882** y TCP 7881.
+~~1. Generar el par de llaves.~~ Hecho: están en los secretos de GitHub
+`LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`, y **nadie tiene copia** — viven ahí y
+llegan al VPS por el despliegue. Si hicieran falta a mano, se regeneran y se
+redespliega; no se recuperan.
+
+~~2. La variable `LIVEKIT_URL`.~~ Hecha: `wss://rtc.guz-studio.dev`.
+
+~~3. DNS.~~ Hecho. Un apunte: el subdominio nació **proxied** en Cloudflare
+mientras `cac` es directo. Se pasó a DNS-only para igualarlos — el proxy no
+transporta UDP de todas formas, así que sólo habría añadido un salto a la
+señalización y sus propios tiempos de inactividad a una conexión que dura lo
+que dure la llamada.
+
+~~4. Cortafuegos.~~ No hizo falta: el media ya pasa, verificado con tráfico
+real.
 
 El despliegue omite el secreto de LiveKit si no hay llaves, así que **un deploy
 sin nada de esto no falla**: simplemente no hay voz, y el endpoint lo dice.
@@ -205,11 +222,12 @@ llamada, con un punto por persona que se enciende cuando habla.
 
 ## 8 · Lo que queda, en orden
 
-1. ~~**Infra**~~: **en pie y verificada** (2026-08-22). `rtc.guz-studio.dev`
-   responde 200 por el Gateway, y un token firmado con las llaves del clúster
-   —la misma firma que hace cac— es aceptado por el SFU:
-   `ListRooms → HTTP 200`. Falta abrir **UDP 7882** en el security group; sin
-   eso la señalización conecta y el audio no pasa.
+1. ~~**Infra**~~: **en pie y con el media verificado de punta a punta**
+   (2026-08-22). El spike, apuntado a `wss://rtc.guz-studio.dev` desde una
+   máquina de fuera, conectó, publicó un tono, y el servidor reportó
+   `ActiveSpeakersChanged` con `quality: Excellent`. Eso es lo que lo demuestra:
+   el SFU **detectó energía de audio**, y eso sólo pasa si los paquetes
+   llegaron. No hay nada que abrir en el cortafuegos.
 2. ~~**Backend**~~: hecho, ver §5.
 3. ~~**Motor**~~ y ~~**UI**~~: hechos, ver §7.
 4. **Probarlo entre dos máquinas de verdad** — es lo único que valida el camino
