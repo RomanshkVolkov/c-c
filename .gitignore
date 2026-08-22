@@ -1,0 +1,6 @@
+
+# Borradores de docs/proposals que no van al repo. Con ignorarlos basta: se han
+# colado dos veces por un `git add docs` bienintencionado, y una regla vale más
+# que acordarse.
+docs/proposals/*.zip
+docs/proposals/rec.mjs
