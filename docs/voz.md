@@ -378,6 +378,26 @@ callas creyendo que el otro no te oye.
    la sala de cada espacio que el caller puede ver; la lista de canales lo pinta
    y lo refresca cada quince segundos mientras está abierta.
 
+   **No funcionó hasta la v1.6.40**, y los dos fallos eran del mismo tipo: creer
+   saber qué contesta un servidor que no controlamos.
+
+   1. La API Twirp de LiveKit emite los nombres del proto **en snake_case**.
+      Leíamos `numParticipants` y llega `num_participants`, así que el recuento
+      era siempre cero, toda sala parecía vacía y se saltaban todas.
+   2. `ListParticipants` mira dentro de una sala concreta y **exige que el token
+      la nombre**. `RoomAdmin` a secas vale para listar salas y no para mirar
+      dentro de una: 401.
+
+   Y lo que los hizo invisibles: un `continue` tolerante —«una sala que no se
+   deja leer no tumba las demás»— convirtió un fallo permanente de permisos en
+   algo que se veía igual que una sala vacía. Ahora se registra.
+
+   Había un test que debería haberlo cazado y no pudo: su servidor falso estaba
+   escrito **copiando nuestra propia struct** en vez de una respuesta real, así
+   que comprobaba que el código se parece a sí mismo. Los dobles de
+   `voice_test.go` llevan ahora las claves del servidor de verdad, y hay un test
+   nuevo con una respuesta capturada de un LiveKit en marcha.
+
    **Se le pregunta al SFU en cada consulta**, sin llevar la cuenta por nuestro
    lado. Escuchar los webhooks de LiveKit y mantener el estado suena más
    eficiente y es peor: se desincroniza con el primer evento perdido y con el

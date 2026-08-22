@@ -160,12 +160,18 @@ func TestSinVozLaOcupacionEsVaciaYNoFalla(t *testing.T) {
 
 // Una sala que no se deja leer no puede tumbar a las demás: media lista es más
 // útil que un error, y la que falte vuelve en la siguiente consulta.
+// Ojo con los servidores falsos de este fichero: **las claves son las del
+// servidor de verdad**, en snake_case. Estuvieron en camelCase, copiadas de
+// nuestra propia struct en vez de de una respuesta real, y por eso este test
+// pasaba mientras la función no enseñaba a nadie en producción. Un doble
+// construido a imagen del código no comprueba el contrato: comprueba que el
+// código se parece a sí mismo.
 func TestUnaSalaIlegibleNoTumbaLasDemas(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "ListRooms") {
 			_, _ = w.Write([]byte(`{"rooms":[
-				{"name":"voice:esp-rota","numParticipants":1},
-				{"name":"voice:esp-buena","numParticipants":1}]}`))
+				{"name":"voice:esp-rota","num_participants":1},
+				{"name":"voice:esp-buena","num_participants":1}]}`))
 			return
 		}
 		var cuerpo struct {
@@ -200,7 +206,7 @@ func TestUnaSalaVaciaNoSeVuelveAConsultar(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		llamadas++
 		if strings.HasSuffix(r.URL.Path, "ListRooms") {
-			_, _ = w.Write([]byte(`{"rooms":[{"name":"voice:esp-1","numParticipants":0}]}`))
+			_, _ = w.Write([]byte(`{"rooms":[{"name":"voice:esp-1","num_participants":0}]}`))
 			return
 		}
 		_, _ = w.Write([]byte(`{"participants":[]}`))

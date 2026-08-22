@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/livekit/protocol/auth"
+
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 )
 
 // ErrVoiceUnconfigured: no hay SFU al que mandar a nadie.
@@ -130,11 +132,16 @@ func (s *VoiceService) Ocupacion(ctx context.Context, spaceIDs []string) (Ocupac
 	}
 	var salas struct {
 		Rooms []struct {
-			Name            string `json:"name"`
-			NumParticipants int    `json:"numParticipants"`
+			Name string `json:"name"`
+			// `num_participants`, en **snake_case**: la API Twirp de LiveKit
+			// emite los nombres del proto tal cual. Con `numParticipants` esto
+			// se leía siempre como cero, toda sala parecía vacía y «quién está
+			// en el canal» no enseñaba a nadie nunca. Hay un test con una
+			// respuesta real del servidor para que no vuelva a pasar.
+			NumParticipants int `json:"num_participants"`
 		} `json:"rooms"`
 	}
-	if err := s.twirp(ctx, "ListRooms", map[string]any{"names": nombres}, &salas); err != nil {
+	if err := s.twirp(ctx, "ListRooms", "", map[string]any{"names": nombres}, &salas); err != nil {
 		return nil, err
 	}
 
@@ -145,9 +152,17 @@ func (s *VoiceService) Ocupacion(ctx context.Context, spaceIDs []string) (Ocupac
 		var dentro struct {
 			Participants []OcupanteResponse `json:"participants"`
 		}
-		if err := s.twirp(ctx, "ListParticipants", map[string]any{"room": sala.Name}, &dentro); err != nil {
+		// La sala va **también en la concesión del token**, no sólo en el
+		// cuerpo. `ListParticipants` es una operación sobre una sala concreta y
+		// LiveKit exige que el token la nombre; sin eso contesta 401. Costó
+		// verlo porque el `continue` de abajo se lo tragaba: un fallo
+		// sistemático de permisos se veía igual que una sala que tarda.
+		if err := s.twirp(ctx, "ListParticipants", sala.Name, map[string]any{"room": sala.Name}, &dentro); err != nil {
 			// Una sala que no se deja leer no tumba las demás: media lista es
 			// más útil que un error, y la que falte volverá en la siguiente.
+			// Se registra, que es lo que faltaba: tolerar en silencio convirtió
+			// un fallo permanente en uno que parecía transitorio.
+			lg.Warn("voz: no se pudo listar " + sala.Name + ": " + err.Error())
 			continue
 		}
 		out[strings.TrimPrefix(sala.Name, salaPrefijo)] = dentro.Participants
@@ -162,11 +177,16 @@ const salaPrefijo = "voice:"
 // Son dos endpoints y un JWT que ya sabemos firmar; el SDK traería consigo grpc
 // y la mitad de su árbol de dependencias para eso. Si algún día hacen falta
 // diez llamadas más, el SDK deja de ser desproporcionado y entonces se mete.
-func (s *VoiceService) twirp(ctx context.Context, metodo string, cuerpo any, salida any) error {
+// twirp llama a la API de administración de LiveKit.
+//
+// `sala` es la sala que la operación toca, vacía para las que no tocan ninguna.
+// No es opcional por gusto: `RoomAdmin` sin nombrar la sala vale para listar
+// salas y **no** para mirar dentro de una.
+func (s *VoiceService) twirp(ctx context.Context, metodo, sala string, cuerpo any, salida any) error {
 	// El mismo par de llaves, con una concesión distinta: esto administra —lista
 	// salas—, así que no vale el token de entrar. Y nunca sale de aquí.
 	jwt, err := auth.NewAccessToken(s.key, s.secret).
-		SetVideoGrant(&auth.VideoGrant{RoomList: true, RoomAdmin: true}).
+		SetVideoGrant(&auth.VideoGrant{RoomList: true, RoomAdmin: true, Room: sala}).
 		SetIdentity("cac-server").
 		SetValidFor(time.Minute).
 		ToJWT()

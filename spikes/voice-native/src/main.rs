@@ -39,7 +39,9 @@ use livekit_api::services::room::RoomClient;
 fn env_o(clave: &str, por_defecto: &str) -> String {
     std::env::var(clave).unwrap_or_else(|_| por_defecto.to_string())
 }
-const SALA: &str = "spike-nativo";
+/// La sala. Configurable para poder apuntar a una con el mismo nombre que usa
+/// cac (`voice:<spaceId>`) y comprobar así el camino de «quién está dentro».
+const SALA_POR_DEFECTO: &str = "spike-nativo";
 
 /// 48 kHz mono: lo que WebRTC usa internamente, así que no hay remuestreo que
 /// pueda enmascarar un problema.
@@ -52,6 +54,7 @@ const MUESTRAS_POR_TRAMA: usize = (SAMPLE_RATE as usize) / 100;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let identidad = "spike-emisor";
 
+    let sala = env_o("LK_ROOM", SALA_POR_DEFECTO);
     let ws_url = env_o("LK_URL", "ws://localhost:7880");
     let http_url = ws_url.replacen("ws", "http", 1);
     let api_key = env_o("LK_KEY", "devkey");
@@ -60,10 +63,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = AccessToken::with_api_key(&api_key, &api_secret)
         .with_identity(identidad)
         .with_name("Spike emisor")
-        .with_grants(VideoGrants { room_join: true, room: SALA.to_string(), ..Default::default() })
+        .with_grants(VideoGrants { room_join: true, room: sala.clone(), ..Default::default() })
         .to_jwt()?;
 
-    println!("→ conectando a {ws_url} (sala «{SALA}»)…");
+    println!("→ conectando a {ws_url} (sala «{sala}»)…");
     let (room, mut eventos) = Room::connect(&ws_url, &token, RoomOptions::default()).await?;
     println!("✓ conectado como «{}»", room.local_participant().identity());
 
@@ -117,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Que el servidor lo confirme, que es la prueba que no depende de oídos.
     tokio::time::sleep(Duration::from_secs(2)).await;
     let cliente = RoomClient::with_api_key(&http_url, &api_key, &api_secret);
-    let dentro = cliente.list_participants(SALA).await?;
+    let dentro = cliente.list_participants(&sala).await?;
     println!("\n── lo que ve el servidor ──");
     for p in &dentro {
         println!(
