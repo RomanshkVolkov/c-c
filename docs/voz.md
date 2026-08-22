@@ -218,6 +218,21 @@ cámara por nombre, porque `nokhwa` sólo da índice y nombre y el índice se mu
 al enchufar otro cacharro. Si el guardado ya no existe, se cae al del sistema:
 negarse a hablar porque falta un micrófono concreto sería peor.
 
+**En Linux hay que filtrar la lista, y no es opcional.** cpal enumera la
+configuración de ALSA entera: en un portátil con PipeWire salen quince entradas
+de las que **una** es hardware. El resto son plugins —conversores de tasa,
+mezcla a 4/6/8 canales, puentes a JACK y a OSS— con nombres que suenan a
+dispositivo: «Rate Converter Plugin Using Libav», «PulseAudio Sound Server»,
+«Plugin for channel upmix (4,6,8)». Y el mismo códec aparece ocho veces con la
+misma descripción, porque son subdispositivos.
+
+Se filtra por el **nombre PCM** (`DeviceId::id()`, lo mismo que imprime
+`arecord -L`) y no por la descripción, que cambia con el idioma y con la
+versión. Es una lista de permitidos y no de prohibidos —los plugins de ALSA se
+inventan nuevos, el hardware no cambia de forma de nombrarse— y **nunca filtra
+hasta dejarla vacía**: si no sobrevive nada se enseña entera, porque una lista
+fea es mejor que ninguna cuando alguien tiene el micrófono equivocado.
+
 **Falta elegir la salida**, y no se pinta hasta que se pueda: cambiarla obliga a
 reconstruir el stream de reproducción de cada pista remota a la vez, y es la que
 menos se equivoca de las tres.

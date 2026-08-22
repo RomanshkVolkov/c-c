@@ -285,7 +285,7 @@ pub async fn voice_list_devices() -> Result<serde_json::Value, String> {
     let por_defecto = host.default_input_device().and_then(|d| id_de(&d));
     let actual_mic = elegido.clone().or(por_defecto);
 
-    let mics: Vec<Dispositivo> = host
+    let todos: Vec<Dispositivo> = host
         .input_devices()
         .map_err(|e| format!("no se pudieron listar los micrófonos: {e}"))?
         .filter_map(|d| {
@@ -299,18 +299,24 @@ pub async fn voice_list_devices() -> Result<serde_json::Value, String> {
             })
         })
         .collect();
+    let mics = limpiar(todos);
 
     let elegida = CAM_ELEGIDA.lock().unwrap().clone();
     let camaras = nokhwa::query(nokhwa::utils::ApiBackend::Auto).unwrap_or_default();
     let primera = camaras.first().map(|c| c.human_name());
     let actual_cam = elegida.clone().or(primera);
-    let cams: Vec<Dispositivo> = camaras
-        .into_iter()
-        .map(|c| {
-            let name = c.human_name();
-            Dispositivo { current: Some(&name) == actual_cam.as_ref(), id: name.clone(), name }
-        })
-        .collect();
+    // Sin repetidas: una webcam suele aparecer dos veces —`/dev/video0` captura
+    // y `/dev/video1` metadatos— con el mismo nombre. Salían las dos, y las dos
+    // con la marca de «puesta», que además era mentira.
+    let cams = sin_repetidos(
+        camaras
+            .into_iter()
+            .map(|c| {
+                let name = c.human_name();
+                Dispositivo { current: Some(&name) == actual_cam.as_ref(), id: name.clone(), name }
+            })
+            .collect(),
+    );
 
     Ok(serde_json::json!({ "mics": mics, "cams": cams }))
 }
@@ -357,6 +363,57 @@ pub async fn voice_set_device(kind: String, device_id: String) -> Result<(), Str
         }
         otro => Err(format!("no sé cambiar «{otro}»")),
     }
+}
+
+/// Quita de la lista lo que no es un micrófono para una persona.
+///
+/// En Linux hace falta porque cpal enumera **la configuración de ALSA entera**:
+/// en esta máquina, quince entradas de las que una es hardware. El resto son
+/// plugins —conversores de tasa, mezcla a 4/6/8 canales, puentes a JACK y a
+/// OSS— con nombres que suenan a dispositivo («Rate Converter Plugin»,
+/// «PulseAudio Sound Server») y que a nadie le sirven para elegir su micro.
+///
+/// Se filtra por el **nombre PCM**, que es lo que `DeviceId::id()` devuelve en
+/// ALSA y lo mismo que imprime `arecord -L`. No por la descripción: ésa cambia
+/// con el idioma y con la versión, y una lista de textos prohibidos envejece.
+///
+/// Es una lista de permitidos y no de prohibidos a propósito: los plugins de
+/// ALSA se inventan nuevos y el hardware no cambia de forma de nombrarse. El
+/// riesgo de un permitido es dejar fuera algo válido, así que **nunca filtra
+/// hasta dejarlo vacío**: si no sobrevive nada, se devuelve la lista entera.
+/// Una lista fea es mejor que ninguna.
+fn limpiar(todos: Vec<Dispositivo>) -> Vec<Dispositivo> {
+    let utiles: Vec<Dispositivo> = todos
+        .iter()
+        .filter(|d| es_util(&d.id))
+        .cloned()
+        .collect();
+    sin_repetidos(if utiles.is_empty() { todos } else { utiles })
+}
+
+/// El identificador viene como `<host>:<pcm>`; sólo el `pcm` dice qué es esto.
+fn es_util(id: &str) -> bool {
+    let Some((host, pcm)) = id.split_once(':') else { return true };
+    // Fuera de Linux la enumeración ya viene limpia y no hay nada que decidir.
+    if host != "alsa" {
+        return true;
+    }
+    pcm == "default"
+        || pcm.starts_with("hw:")
+        || pcm.starts_with("plughw:")
+        || pcm.starts_with("sysdefault:")
+        || pcm.starts_with("front:")
+}
+
+/// Un nombre, una entrada.
+///
+/// El mismo hardware sale varias veces con descripciones idénticas —ocho
+/// «sof-hda-dsp,» en esta máquina— porque son subdispositivos del mismo códec.
+/// Se queda el primero: si dos cosas se llaman igual, quien elige tampoco puede
+/// distinguirlas.
+fn sin_repetidos(lista: Vec<Dispositivo>) -> Vec<Dispositivo> {
+    let mut vistos = std::collections::HashSet::new();
+    lista.into_iter().filter(|d| vistos.insert(d.name.clone())).collect()
 }
 
 /// El identificador estable de un dispositivo de audio, como texto.
@@ -985,7 +1042,76 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
 
 #[cfg(test)]
 mod pruebas {
-    use super::{hay_voz, rtt_nominado, UMBRAL_VOZ};
+    use super::{es_util, hay_voz, limpiar, rtt_nominado, Dispositivo, UMBRAL_VOZ};
+
+    fn d(id: &str, name: &str) -> Dispositivo {
+        Dispositivo { id: id.into(), name: name.into(), current: false }
+    }
+
+    /// Lo que de verdad enumera ALSA en un portátil con PipeWire. Sacado de
+    /// `arecord -L` y del desplegable que salió en la v1.6.40: quince entradas
+    /// para un micrófono.
+    fn lo_que_hay_de_verdad() -> Vec<Dispositivo> {
+        vec![
+            d("alsa:null", "Discard all samples"),
+            d("alsa:lavrate", "Rate Converter Plugin Using Libav/FFmpeg"),
+            d("alsa:samplerate", "Rate Converter Plugin Using Samplerate"),
+            d("alsa:speexrate", "Rate Converter Plugin Using Speex"),
+            d("alsa:jack", "JACK Audio Connection Kit"),
+            d("alsa:oss", "Open Sound System"),
+            d("alsa:pipewire", "PipeWire Sound Server"),
+            d("alsa:pulse", "PulseAudio Sound Server"),
+            d("alsa:speex", "Plugin using Speex DSP"),
+            d("alsa:upmix", "Plugin for channel upmix (4,6,8)"),
+            d("alsa:vdownmix", "Plugin for channel downmix (stereo)"),
+            d("alsa:default", "Default ALSA Output (currently PipeWire Media Server)"),
+            d("alsa:usbstream:CARD=NVidia", "HDA NVidia"),
+            d("alsa:sysdefault:CARD=sofhdadsp", "sof-hda-dsp,"),
+            d("alsa:usbstream:CARD=sofhdadsp", "sof-hda-dsp,"),
+        ]
+    }
+
+    // De quince entradas, dos sirven para elegir un micrófono. Las otras trece
+    // son plugins de ALSA con nombres que suenan a dispositivo.
+    #[test]
+    fn el_desplegable_solo_ensenia_lo_que_es_un_microfono() {
+        let limpia = limpiar(lo_que_hay_de_verdad());
+        let nombres: Vec<&str> = limpia.iter().map(|x| x.name.as_str()).collect();
+        assert_eq!(
+            nombres,
+            vec!["Default ALSA Output (currently PipeWire Media Server)", "sof-hda-dsp,"],
+            "quedaron {} entradas", limpia.len()
+        );
+    }
+
+    // El mismo códec sale como varios subdispositivos con la misma
+    // descripción. Ocho «sof-hda-dsp,» seguidos no son ocho micrófonos.
+    #[test]
+    fn el_mismo_nombre_no_sale_dos_veces() {
+        let limpia = limpiar(vec![
+            d("alsa:hw:1,0", "sof-hda-dsp,"),
+            d("alsa:hw:1,6", "sof-hda-dsp,"),
+            d("alsa:hw:1,7", "sof-hda-dsp,"),
+        ]);
+        assert_eq!(limpia.len(), 1);
+    }
+
+    // Un permitido puede dejar fuera algo válido que no vimos venir. Que la
+    // lista se quede vacía es peor que enseñarla sucia: sin entradas, quien
+    // tiene el micrófono equivocado no tiene ni cómo intentarlo.
+    #[test]
+    fn nunca_filtra_hasta_dejarlo_vacio() {
+        let raros = vec![d("alsa:algo-que-no-conocemos", "Un micro de otro planeta")];
+        assert_eq!(limpiar(raros).len(), 1);
+    }
+
+    // Windows y macOS enumeran limpio; el filtro es un apaño para ALSA y no
+    // tiene por qué opinar sobre los demás.
+    #[test]
+    fn fuera_de_alsa_no_se_toca_nada() {
+        assert!(es_util("coreaudio:BuiltInMicrophoneDevice"));
+        assert!(es_util("wasapi:{0.0.1.00000000}.{abc}"));
+    }
 
     /// Todo comando que toque el SDK tiene que ser `async`.
     ///
