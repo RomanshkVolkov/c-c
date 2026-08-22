@@ -80,7 +80,12 @@ func (r *SearchRepository) People(query, orgID, excludeID string, limit int) ([]
 		Limit(limit).Scan(&rows).Error
 	for _, x := range rows {
 		out = append(out, domain.SearchHit{
-			Kind: domain.SearchPerson, ID: x.ID, Title: x.Username, Link: "/dm",
+			// `?u=` y no `/dm` a secas: la pantalla abre la conversación con
+			// esa persona, creándola si aún no existe. Enlazar a la lista
+			// pelada dejaba al que busca a un nombre de distancia de lo que
+			// acababa de encontrar.
+			Kind: domain.SearchPerson, ID: x.ID, Title: x.Username,
+			Link: "/dm?u=" + x.ID,
 		})
 	}
 	return out, err
