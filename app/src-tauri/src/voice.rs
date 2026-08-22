@@ -206,15 +206,36 @@ pub async fn voice_leave() {
 ///
 /// Lo que **no** se hace es parar la captura: el flujo sigue vivo y volver a
 /// hablar es inmediato, en vez de tener que levantar otra vez el dispositivo.
+///
+/// # Es `async`, y eso no es cosmético
+///
+/// Fue `pub fn` una versión y **cerraba la app al silenciarse**, en Windows y
+/// en Linux. Tauri corre los comandos síncronos en el hilo principal, que no
+/// está dentro de ningún runtime de Tokio; `mute()` avisa al servidor con un
+/// `tokio::task::spawn`, y eso entra en pánico fuera de un runtime. Un pánico
+/// en el hilo principal se lleva el proceso por delante.
+///
+/// **Regla, entonces: todo comando que toque el SDK de LiveKit va `async`.**
+/// `voice_set_camera` lo era desde el principio y por eso nunca falló; éste no,
+/// y el fallo no aparece hasta que alguien pulsa el botón con una llamada
+/// abierta — ninguna prueba de las que tenemos llega ahí.
 #[tauri::command]
-pub fn voice_set_mic(enabled: bool) -> Result<(), String> {
-    let guard = SESION.lock().unwrap();
-    let s = guard.as_ref().ok_or("no estás en ninguna sala")?;
+pub async fn voice_set_mic(enabled: bool) -> Result<(), String> {
+    // La pista se saca del candado y el candado se suelta antes de tocarla: lo
+    // que hace `mute()` por dentro no es asunto de este bloqueo, y sostenerlo
+    // mientras el SDK hace cosas es cómo se inventan los interbloqueos.
+    let micro = {
+        let guard = SESION.lock().unwrap();
+        match guard.as_ref() {
+            Some(s) => s.micro.clone(),
+            None => return Err("no estás en ninguna sala".into()),
+        }
+    };
     SILENCIADO.store(!enabled, std::sync::atomic::Ordering::Relaxed);
     if enabled {
-        s.micro.unmute();
+        micro.unmute();
     } else {
-        s.micro.mute();
+        micro.mute();
     }
     Ok(())
 }
@@ -253,8 +274,12 @@ pub struct Dispositivo {
 /// Se pregunta al abrir el desplegable y no al entrar a la sala: enchufar unos
 /// auriculares en mitad de una llamada es exactamente cuando alguien va a
 /// abrirlo, y una lista cacheada al entrar no los tendría.
+/// Síncrono por dentro pero declarado `async`: enumerar cámaras tarda su
+/// décima de segundo, y en un comando síncrono eso es una décima de interfaz
+/// congelada. No toca el SDK de LiveKit, así que no le aplica la regla de
+/// `voice_set_mic`; se hace por no bloquear la ventana.
 #[tauri::command]
-pub fn voice_list_devices() -> Result<serde_json::Value, String> {
+pub async fn voice_list_devices() -> Result<serde_json::Value, String> {
     let host = cpal::default_host();
     let elegido = MIC_ELEGIDO.lock().unwrap().clone();
     let por_defecto = host.default_input_device().and_then(|d| id_de(&d));
@@ -353,6 +378,10 @@ static SORDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new
 
 /// Dejar de oír. Silenciar el micrófono es cosa del que llama —ver el store—,
 /// porque es una regla del producto y no del motor.
+///
+/// Síncrono a propósito y es de los pocos que puede serlo: escribe un booleano
+/// atómico y nada más. No toca el SDK, así que no le aplica la regla de
+/// `voice_set_mic`. Está en la lista de excepciones del test de abajo.
 #[tauri::command]
 pub fn voice_set_deaf(enabled: bool) -> Result<(), String> {
     SORDO.store(enabled, std::sync::atomic::Ordering::Relaxed);
@@ -957,6 +986,52 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
 #[cfg(test)]
 mod pruebas {
     use super::{hay_voz, rtt_nominado, UMBRAL_VOZ};
+
+    /// Todo comando que toque el SDK tiene que ser `async`.
+    ///
+    /// Esto lee su propio fichero, y es la única forma que encontré de vigilar
+    /// el fallo que cerró la app al silenciarse. Tauri corre los comandos
+    /// síncronos en el hilo principal, fuera de todo runtime de Tokio; el SDK
+    /// avisa al servidor con `tokio::task::spawn`, que entra en pánico si no
+    /// hay runtime, y un pánico ahí se lleva el proceso. No hay prueba de
+    /// unidad que llegue: hace falta una llamada abierta y alguien pulsando.
+    ///
+    /// Las excepciones se nombran una a una. Que haya que escribir el nombre
+    /// aquí es el punto: convierte «se me olvidó» en «decidí que éste puede».
+    #[test]
+    fn los_comandos_que_tocan_el_sdk_son_async() {
+        const PUEDEN_SER_SINCRONOS: &[&str] = &[
+            // Escribe un booleano atómico y nada más.
+            "voice_set_deaf",
+        ];
+
+        let fuente = include_str!("voice.rs");
+        let mut sincronos = Vec::new();
+        let mut marcado = false;
+        for linea in fuente.lines() {
+            let l = linea.trim();
+            if l == "#[tauri::command]" {
+                marcado = true;
+                continue;
+            }
+            if !marcado || l.is_empty() || l.starts_with("///") || l.starts_with("//") {
+                continue;
+            }
+            marcado = false;
+            if let Some(resto) = l.strip_prefix("pub fn ") {
+                let nombre = resto.split('(').next().unwrap_or(resto);
+                if !PUEDEN_SER_SINCRONOS.contains(&nombre) {
+                    sincronos.push(nombre.to_string());
+                }
+            }
+        }
+        assert!(
+            sincronos.is_empty(),
+            "estos comandos son síncronos y no están en la lista de excepciones: {sincronos:?}.\n\
+             Un comando síncrono corre en el hilo principal; si toca el SDK de LiveKit, \
+             cierra la app. Hazlo `async` o justifícalo en PUEDEN_SER_SINCRONOS."
+        );
+    }
 
     fn tono(amplitud: f32) -> Vec<i16> {
         (0..480)

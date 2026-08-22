@@ -222,6 +222,25 @@ negarse a hablar porque falta un micrófono concreto sería peor.
 reconstruir el stream de reproducción de cada pista remota a la vez, y es la que
 menos se equivoca de las tres.
 
+### Los comandos que tocan el SDK van `async`. Siempre
+
+`voice_set_mic` fue síncrono una versión y **cerraba la app al silenciarse**, en
+Windows y en Linux. La cadena es corta y no se ve venir: Tauri corre los
+comandos síncronos en el hilo principal, que no está dentro de ningún runtime
+de Tokio; `LocalAudioTrack::mute()` avisa al servidor con un
+`tokio::task::spawn`; y `tokio::task::spawn` entra en pánico fuera de un
+runtime. Un pánico en el hilo principal se lleva el proceso.
+
+`voice_set_camera` era `async` desde el principio y por eso nunca falló — lo que
+hizo el fallo más difícil de ver, porque la cámara y el micrófono parecían
+hacer lo mismo.
+
+No hay prueba de unidad que llegue ahí: hace falta una llamada abierta y alguien
+pulsando. Lo que sí hay es un test que **lee el propio fichero** y exige que
+todo `#[tauri::command]` sea `async`, con una lista de excepciones que hay que
+escribir a mano. Que haya que nombrarlas convierte «se me olvidó» en «decidí que
+éste puede».
+
 **Silenciarse tiene que viajar.** La primera versión zereaba las muestras y ya:
 te dejaba callado, pero para el resto de la sala seguías con el micrófono
 abierto —el SFU no distingue tu silencio del silencio— y su icono de «mudo»
