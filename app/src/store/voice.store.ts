@@ -29,12 +29,23 @@ interface VoiceState {
   spaceId: string | null;
   /** "entrando" mientras se pide el token y se conecta. */
   estado: "fuera" | "entrando" | "dentro";
+  /**
+   * ¿Está abierta la pantalla de la sala?
+   *
+   * Estar conectado y estar mirando la llamada son dos cosas distintas, y con
+   * un solo booleano no se pueden distinguir: minimizar acabaría colgando. Con
+   * `estado` se sabe si el micrófono está abierto; con esto, si la sala ocupa
+   * la pantalla. Salir apaga los dos; minimizar sólo éste.
+   */
+  escenario: boolean;
   /** Quién está dentro, tú incluido. */
   gente: VoicePeer[];
   /** Quién habla ahora mismo. */
   hablando: string[];
   yo: string | null;
   mic: boolean;
+  /** Sordera: ni oyes ni te oyen. */
+  sordo: boolean;
   error: string | null;
   /**
    * Quién está en cada canal de voz, **sin haber entrado**.
@@ -50,7 +61,12 @@ interface VoiceState {
 
   entrar: (spaceId: string) => Promise<void>;
   salir: () => Promise<void>;
+  /** Volver a la llamada sin reconectar: sólo abre la pantalla. */
+  abrirEscenario: () => void;
+  /** Minimizar. No cuelga: el audio sigue. */
+  cerrarEscenario: () => void;
   alternarMic: () => Promise<void>;
+  alternarSordera: () => Promise<void>;
   /** Refresca quién anda por los canales. La pantalla decide cada cuánto. */
   refrescarOcupacion: (orgId?: string | null) => Promise<void>;
   /** Lo que reporta el motor. Público para poder probarlo sin Tauri. */
@@ -60,10 +76,12 @@ interface VoiceState {
 const VACIO = {
   spaceId: null,
   estado: "fuera" as const,
+  escenario: false,
   gente: [],
   hablando: [],
   yo: null,
   mic: true,
+  sordo: false,
   error: null,
 };
 
@@ -80,7 +98,9 @@ export const useVoice = create<VoiceState>((set, get) => ({
     // que sólo se nota cuando alguien te oye desde donde no estabas.
     if (get().spaceId) await get().salir();
 
-    set({ ...VACIO, spaceId, estado: "entrando" });
+    // El escenario se abre ya, mientras conecta: entrar a una llamada lleva un
+    // segundo largo y sin nada que mirar parece que el botón no hizo nada.
+    set({ ...VACIO, spaceId, estado: "entrando", escenario: true });
     try {
       const res = await api.post<APIResponse<{ url: string; token: string; room: string }>>(
         `/api/v1/task-spaces/${spaceId}/voice/token`,
@@ -114,6 +134,15 @@ export const useVoice = create<VoiceState>((set, get) => ({
     await invoke("voice_leave").catch(() => {});
   },
 
+  abrirEscenario: () => {
+    // Sin sala no hay nada que enseñar, y un escenario vacío con la barra de
+    // controles encima invita a pulsar botones que no van a ninguna parte.
+    if (get().estado === "fuera") return;
+    set({ escenario: true });
+  },
+
+  cerrarEscenario: () => set({ escenario: false }),
+
   refrescarOcupacion: async (orgId) => {
     try {
       const res = await api.get<APIResponse<Record<string, VoicePeer[]>>>(
@@ -133,6 +162,21 @@ export const useVoice = create<VoiceState>((set, get) => ({
     // puede fallar en apagar algo que ya tiene abierto.
     set({ mic: siguiente });
     await invoke("voice_set_mic", { enabled: siguiente }).catch(() => {});
+  },
+
+  /**
+   * Sordera.
+   *
+   * Silencia el micrófono además de los altavoces, y no lo devuelve al
+   * quitarla: quien se pone sordo en mitad de una llamada casi siempre se está
+   * apartando de ella, y volver hablando sin querer es el accidente que este
+   * botón existe para evitar. Reabrir el micro es un gesto aparte, deliberado.
+   */
+  alternarSordera: async () => {
+    const siguiente = !get().sordo;
+    set(siguiente ? { sordo: true, mic: false } : { sordo: false });
+    await invoke("voice_set_deaf", { enabled: siguiente }).catch(() => {});
+    if (siguiente) await invoke("voice_set_mic", { enabled: false }).catch(() => {});
   },
 
   alRecibir: (ev) => {

@@ -1613,6 +1613,7 @@ pub fn run() {
             voice::voice_join,
             voice::voice_leave,
             voice::voice_set_mic,
+            voice::voice_set_deaf,
             voice::voice_set_camera,
         ])
         .run(tauri::generate_context!())

@@ -4,3 +4,6 @@
 # que acordarse.
 docs/proposals/*.zip
 docs/proposals/rec.mjs
+
+# Handoff de diseño descomprimido: se mira, no se versiona.
+.diseno-voz/

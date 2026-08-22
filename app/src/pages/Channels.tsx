@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Hash, MessagesSquare, Volume2 } from "lucide-react";
+import { iniciales } from "@/lib/desde";
 import ChannelView from "@/components/chat/ChannelView";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
@@ -72,8 +73,8 @@ export default function Channels() {
               const sinLeer = unread[s.id] ?? 0;
               const enVoz = ocupacion[s.id] ?? [];
               return (
+                <div key={s.id}>
                 <button
-                  key={s.id}
                   onClick={() => setParams({ space: s.id })}
                   className={cn(
                     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm",
@@ -105,6 +106,29 @@ export default function Channels() {
                     </span>
                   )}
                 </button>
+
+                {/* Quién está hablando ahí, con nombre y cara, colgando del
+                    canal como cuelgan en Discord.
+                    
+                    El contador de la fila dice «hay dos»; esto dice «son Marta
+                    y Luis», que es la información con la que uno decide si
+                    entrar. Un número no distingue una reunión a la que te
+                    llamaban de una charla que no va contigo. */}
+                {enVoz.length > 0 && (
+                  <ul className="flex flex-col gap-0.5 py-0.5 pl-6">
+                    {enVoz.map((p) => (
+                      <li key={p.identity} className="flex items-center gap-2 px-2 py-0.5">
+                        <span className="grid size-5.5 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">
+                          {iniciales(p.name || p.identity)}
+                        </span>
+                        <span className="truncate text-[13px] text-foreground">
+                          {p.name || p.identity}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                </div>
               );
             })
           )}

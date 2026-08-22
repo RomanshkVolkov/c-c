@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 /**
- * La barra de la llamada tiene que decir tres cosas de un vistazo: quién está,
- * quién habla, y si estás solo.
+ * La puerta de la llamada, en la cabecera del canal.
  *
- * La primera versión enseñaba un número y dos iconos. «1» no dice si te oyen,
- * ni a quién oyes tú — y una llamada en la que nadie te escucha se veía igual
- * que una que iba bien.
+ * Ya no es la llamada entera —eso es `VoiceStage`—, así que aquí sólo se
+ * comprueban las dos cosas que decide: si estás dentro o fuera **de este**
+ * canal, y qué se ofrece en cada caso.
  */
 
 const { estado } = vi.hoisted(() => ({ estado: { current: {} as Record<string, unknown> } }));
@@ -23,59 +22,61 @@ vi.mock("@/store/voice.store", () => ({
 const { default: BarraDePrueba } = await import("./VoiceBar");
 
 const base = {
-  spaceId: "esp-1",
-  estado: "dentro",
-  gente: [] as { identity: string; name: string }[],
-  hablando: [] as string[],
-  yo: "u-ana",
+  spaceId: null as string | null,
+  estado: "fuera",
   mic: true,
   error: null,
-  ocupacion: {},
+  ocupacion: {} as Record<string, { identity: string; name: string }[]>,
   entrar: vi.fn(),
-  salir: vi.fn(),
+  abrirEscenario: vi.fn(),
   alternarMic: vi.fn(),
 };
 
 beforeEach(() => {
-  estado.current = { ...base };
+  estado.current = { ...base, entrar: vi.fn(), abrirEscenario: vi.fn(), alternarMic: vi.fn() };
 });
 afterEach(cleanup);
 
-describe("la barra de la llamada", () => {
-  it("dice quién está por su nombre, no un número", () => {
-    estado.current = { ...base, gente: [{ identity: "u-bea", name: "bea" }] };
-    render(<BarraDePrueba spaceId="esp-1" />);
-    expect(screen.getByText("You")).toBeTruthy();
-    expect(screen.getByText("bea")).toBeTruthy();
-  });
-
-  it("avisa cuando estás solo, en vez de dejarte deducirlo de un «1»", () => {
-    render(<BarraDePrueba spaceId="esp-1" />);
-    expect(screen.getByText(/nadie más aún/)).toBeTruthy();
-  });
-
-  it("y deja de avisarlo en cuanto entra alguien", () => {
-    estado.current = { ...base, gente: [{ identity: "u-bea", name: "bea" }] };
-    render(<BarraDePrueba spaceId="esp-1" />);
-    expect(screen.queryByText(/nadie más aún/)).toBeNull();
-  });
-
-  it("marca a quien habla y sólo a quien habla", () => {
+describe("la puerta de la voz del canal", () => {
+  it("enseña quién hay dentro antes de entrar", () => {
     estado.current = {
-      ...base,
-      gente: [{ identity: "u-bea", name: "bea" }, { identity: "u-caro", name: "caro" }],
-      hablando: ["u-bea"],
+      ...estado.current,
+      ocupacion: { "esp-1": [{ identity: "u-bea", name: "Bea Ruiz" }] },
     };
     render(<BarraDePrueba spaceId="esp-1" />);
-    // El color es lo que convierte la lista en «quién está diciendo esto».
-    expect(screen.getByText("bea").className).toContain("text-success");
-    expect(screen.getByText("caro").className).not.toContain("text-success");
+    // El motivo para pulsar es la gente, no el botón: un canal de voz vacío no
+    // se llena nunca porque nadie entra el primero.
+    expect(screen.getByTitle("Bea Ruiz")).toBeTruthy();
   });
 
-  it("el botón dice qué va a hacer, no en qué estado está", () => {
+  it("estando dentro de este canal, ofrece volver a la llamada", () => {
+    estado.current = { ...estado.current, spaceId: "esp-1", estado: "dentro" };
     render(<BarraDePrueba spaceId="esp-1" />);
-    // Con el micro abierto, el botón ofrece silenciarlo. Al revés se lee como
-    // «estás silenciado» y la gente pulsa justo lo contrario de lo que quiere.
+    expect(screen.getByText("Back to call")).toBeTruthy();
+    expect(screen.queryByText("Join voice")).toBeNull();
+  });
+
+  it("volver no reconecta: abre la pantalla y ya", () => {
+    estado.current = { ...estado.current, spaceId: "esp-1", estado: "dentro" };
+    render(<BarraDePrueba spaceId="esp-1" />);
+    fireEvent.click(screen.getByText("Back to call"));
+    expect(estado.current.abrirEscenario).toHaveBeenCalled();
+    expect(estado.current.entrar).not.toHaveBeenCalled();
+  });
+
+  it("estando en OTRA sala, este canal sigue ofreciendo entrar", () => {
+    estado.current = { ...estado.current, spaceId: "esp-2", estado: "dentro" };
+    render(<BarraDePrueba spaceId="esp-1" />);
+    // Sin esta distinción, «Back to call» aparecería en todos los canales y te
+    // llevaría a una conversación que no es la que estás mirando.
+    expect(screen.getByText("Join voice")).toBeTruthy();
+  });
+
+  it("el botón del micro dice qué va a hacer, no en qué estado está", () => {
+    estado.current = { ...estado.current, spaceId: "esp-1", estado: "dentro" };
+    render(<BarraDePrueba spaceId="esp-1" />);
+    // Al revés se lee como «estás silenciado» y la gente pulsa lo contrario de
+    // lo que quiere.
     expect(screen.getByTitle("Mute your microphone")).toBeTruthy();
   });
 });

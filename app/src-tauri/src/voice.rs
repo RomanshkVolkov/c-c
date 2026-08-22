@@ -139,6 +139,9 @@ pub async fn voice_join(
 /// mientras alguien pulsaba el botón.
 #[tauri::command]
 pub async fn voice_leave() {
+    // La sordera no se hereda: entrar a otra sala sin oír a nadie, y sin que la
+    // pantalla lo diga porque el store ya se vació, es un fallo mudo.
+    SORDO.store(false, std::sync::atomic::Ordering::Relaxed);
     let sesion = SESION.lock().unwrap().take();
     if let Some(s) = sesion {
         // El guard de captura muere con `s` y con él el hilo del micrófono.
@@ -165,6 +168,22 @@ pub fn voice_set_mic(enabled: bool) -> Result<(), String> {
 /// Silenciar de verdad: la captura sigue corriendo y lo que se publica es
 /// silencio. Parar el dispositivo daría un corte audible al volver.
 static SILENCIADO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Sordera: lo que llega se descarta al pintarlo en el altavoz.
+///
+/// Se apaga aquí y no cerrando los streams de reproducción porque las pistas de
+/// los demás siguen llegando mientras tanto: si se cerraran, quitar la sordera
+/// exigiría reconstruir un stream por persona y los primeros segundos se
+/// perderían. Un booleano en el callback cuesta nada y vuelve al instante.
+static SORDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Dejar de oír. Silenciar el micrófono es cosa del que llama —ver el store—,
+/// porque es una regla del producto y no del motor.
+#[tauri::command]
+pub fn voice_set_deaf(enabled: bool) -> Result<(), String> {
+    SORDO.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
 
 /// Al cerrar la ventana. Sin esto queda una sala abierta y un micrófono vivo en
 /// un proceso que ya nadie mira — la misma lección que el pty.
@@ -324,10 +343,16 @@ fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
             config.config(),
             move |salida: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 let mut q = cola_cb.lock().unwrap();
+                let sordo = SORDO.load(std::sync::atomic::Ordering::Relaxed);
                 for trozo in salida.chunks_mut(salida_canales) {
                     // Silencio cuando la cola se vacía: es preferible un hueco
                     // a repetir la última muestra, que suena a chirrido.
+                    //
+                    // Sordo también consume la muestra en vez de saltarse el
+                    // `pop`: si no, la cola crece mientras no oyes y al volver
+                    // sonaría lo de hace un minuto.
                     let v = q.pop_front().map(|s| s as f32 / i16::MAX as f32).unwrap_or(0.0);
+                    let v = if sordo { 0.0 } else { v };
                     for canal in trozo.iter_mut() {
                         *canal = v;
                     }

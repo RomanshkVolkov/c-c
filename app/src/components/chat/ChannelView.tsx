@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2, Volume2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,9 @@ import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { activo } from "@/lib/desde";
 import VoiceBar from "@/components/chat/VoiceBar";
+import VoiceStage from "@/components/voice/VoiceStage";
+import { quienHabla } from "@/components/voice/frase";
+import { useVoice } from "@/store/voice.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -51,6 +54,10 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
   const fetchFollowing = useChatStore((s) => s.fetchFollowing);
   const setFollowing = useChatStore((s) => s.setFollowing);
   const sigo = following.includes(spaceId);
+  // Dos condiciones y no una: se puede estar conectado a esta sala con la
+  // pantalla minimizada, y entonces lo que toca ver es el hilo con el botón de
+  // volver — no la llamada.
+  const enLlamada = useVoice((s) => s.escenario && s.spaceId === spaceId && s.estado !== "fuera");
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -135,6 +142,11 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
     }
   };
 
+  // La llamada de *este* canal, abierta. Ocupa el sitio del hilo en vez de
+  // flotar encima: una llamada tapada a medias por lo que hay detrás se lee
+  // como un diálogo que se puede cerrar sin consecuencias, y colgar no lo es.
+  if (enLlamada) return <VoiceStage spaceName={spaceName} />;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
@@ -195,6 +207,8 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           </div>
         )}
       </div>
+
+      <VozEnCurso spaceId={spaceId} />
 
       <div className="shrink-0 border-t p-2">
         <MarkdownEditor
@@ -534,5 +548,39 @@ function QuienAnda() {
       {aqui.slice(0, 3).map((p) => p.username).join(", ")}
       {aqui.length > 3 && ` +${aqui.length - 3}`}
     </span>
+  );
+}
+
+/**
+ * «Están hablando aquí ahora mismo».
+ *
+ * Pegado al hilo y no sólo en la cabecera porque el hilo es donde está la
+ * mirada: se llega a un canal a leer lo que se dijo, y sin este aviso te enteras
+ * de la conversación en curso media hora tarde, cuando ya terminó. El botón de
+ * la cabecera lo dice también, pero lo dice arriba y en pequeño.
+ *
+ * Desaparece en cuanto entras: dentro de la llamada, contarte que la llamada
+ * existe es ruido.
+ */
+function VozEnCurso({ spaceId }: { spaceId: string }) {
+  const dentro = useVoice((s) => s.ocupacion[spaceId]);
+  const enSala = useVoice((s) => s.spaceId);
+  const estado = useVoice((s) => s.estado);
+  const entrar = useVoice((s) => s.entrar);
+  if (!dentro?.length || (enSala === spaceId && estado !== "fuera")) return null;
+
+  const quien = quienHabla(dentro.map((p) => p.name || p.identity));
+
+  return (
+    <div className="mx-3 mb-2 flex shrink-0 items-center gap-2.5 rounded-lg border border-dashed border-success/30 bg-success/5 px-3 py-2.5 text-[13px] text-muted-foreground">
+      <Volume2 className="size-[15px] shrink-0 text-success" />
+      <span className="min-w-0 truncate">{quien} talking in this channel.</span>
+      <button
+        onClick={() => void entrar(spaceId)}
+        className="ml-auto shrink-0 font-semibold text-success hover:underline"
+      >
+        Join
+      </button>
+    </div>
   );
 }

@@ -49,6 +49,7 @@ import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import VoiceMini from "@/components/voice/VoiceMini";
 import { cn } from "@/lib/utils";
 
 // guest: reachable on-device (no backend). superadmin: only for platform admins.
@@ -263,6 +264,9 @@ export default function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        {/* Encima de la cuenta y de la organización: es lo único de aquí abajo
+            que pasa *ahora mismo*, y lo que pasa ahora va arriba. */}
+        {authed && <VoiceMini compacto={collapsed} />}
         {/* The organization, above the account and below everything else.
             It is neither navigation nor a setting of yours: it is the place
             those two meet, and the hint says what is inside so nobody has to

@@ -201,6 +201,7 @@ que un recurso filtrado—.
 | `voice_join(url, token, onEvent)` | Conecta, publica el micro, devuelve tu identidad |
 | `voice_leave()` | Sale. Idempotente |
 | `voice_set_mic(enabled)` | Silencia **en la fuente**, sin parar el dispositivo: volver a hablar es inmediato en vez de tener que levantar otra vez el audio |
+| `voice_set_deaf(enabled)` | Deja de oír: el callback del altavoz descarta lo que saca de la cola. Se descarta consumiéndolo, no saltándose el `pop` — si no, la cola crece mientras no oyes y al volver sonaría lo de hace un minuto |
 
 **Aquí no hay credenciales de cac.** La pantalla pide el token al backend y le
 pasa al motor un `{url, token}` ya concedido — este código no puede entrar donde
@@ -216,9 +217,41 @@ Dos detalles del audio que no son adorno:
   `auto_gain_control`). Sin él, hablar con altavoces es un bucle de
   realimentación. Que el SDK lo exponga fue lo primero que comprobó el spike.
 
-La UI vive en la cabecera del canal, no en una pantalla aparte: la conversación
-hablada es del canal. Al entrar, el mismo sitio pasa a ser la barra de la
-llamada, con un punto por persona que se enciende cuando habla.
+### La pantalla, y por qué lleva dos estados y no uno
+
+La llamada tiene sitio propio: `VoiceStage`, que ocupa el canal entero con un
+mosaico por persona y la barra de mandos al pie. La cabecera del canal se queda
+como puerta —«Join voice» con las caras de quien ya está dentro, «Back to call»
+si estás conectado— y no como la llamada entera, que es lo que era antes.
+
+Lo que hay que entender del store es que **conectado y mirando son dos cosas
+distintas**:
+
+| Estado | Significa |
+|---|---|
+| `estado !== "fuera"` | El micrófono está abierto en esa sala |
+| `escenario` | La pantalla de la sala está ocupando el canal |
+
+Con un solo booleano, minimizar cuelga. Suena a detalle y es el fallo central
+del diseño anterior: pulsas «minimizar» para seguir escuchando mientras miras un
+tablero y te quedas fuera de la conversación sin enterarte. Hay tests que fallan
+si alguien vuelve a unirlos (`voice.test.ts`, «minimizar no cuelga»).
+
+Mientras estás conectado con la pantalla minimizada, el pie del sidebar lleva la
+barra verde con el nombre del canal, mute y colgar. Está ahí y no en la cabecera
+del canal a propósito: la cabecera sólo se ve desde el canal, que es justo el
+único sitio donde ya sabías que estabas conectado.
+
+**La sordera silencia el micrófono, y quitarla no lo devuelve.** La regla vive
+en el store y no en la pantalla porque es del producto: quien se ensordece en
+mitad de una llamada casi siempre se está apartando de ella, y volver hablando
+sin querer es el accidente que ese botón existe para evitar.
+
+Tres cosas que el diseño pide y **todavía no están**, para que no se lean como
+olvidos: la latencia en la cabecera (el motor aún no la reporta, y un número
+inventado justo donde se mira cuando la llamada va mal es peor que nada), el
+mute de los demás (el motor sólo reporta el propio; pintarlos a todos abiertos
+miente menos que pintarlos silenciados), y el chat de la sala.
 
 ## 8 · Lo que queda, en orden
 
@@ -260,9 +293,17 @@ llamada, con un punto por persona que se enciende cuando habla.
    tramas como un stream, o memoria compartida y un canvas— son una decisión
    arquitectónica que conviene tomar despierto, no de pasada.
 
-7. **La barra de llamada como es debido.** La primera versión cabe en la
-   cabecera del canal, y eso está mal: una llamada tiene que sobrevivir a irte a
-   otro canal, y compartir pantalla necesita sitio de verdad. Está en diseño.
+7. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+   (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
+   PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
+   presentes colgando del canal en la lista y aviso en el hilo. Ver §7.
+
+   Quedan del mismo diseño, en orden: **cámara en los mosaicos** (bloqueada por
+   el punto 6), **compartir pantalla** con su selector de fuentes, **ajustes de
+   dispositivos** (micro, salida, cámara), **chat de la sala**, y el **timbre**
+   —que necesita backend: `POST /task-spaces/:id/voice/ring`, su `DELETE`, y un
+   evento `voice.ring` por el websocket. Sin ese evento el timbre no se puede
+   entregar, y no se emula desde el cliente.
 
 ## Fuera de v1
 

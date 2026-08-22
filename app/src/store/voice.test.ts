@@ -24,7 +24,8 @@ beforeEach(() => {
   });
   useVoice.setState({
     ...inicial,
-    spaceId: null, estado: "fuera", gente: [], hablando: [], yo: null, mic: true, error: null,
+    spaceId: null, estado: "fuera", escenario: false, gente: [], hablando: [],
+    yo: null, mic: true, sordo: false, error: null,
   });
 });
 
@@ -136,5 +137,84 @@ describe("quién anda por los canales sin entrar", () => {
     await useVoice.getState().entrar("esp-1");
     await useVoice.getState().salir();
     expect(useVoice.getState().ocupacion["esp-2"]).toHaveLength(1);
+  });
+});
+
+/**
+ * Minimizar no es colgar.
+ *
+ * Con un solo booleano —«estás dentro»— la pantalla de la sala y la conexión
+ * son la misma cosa, y cerrar la primera corta la segunda: pulsas «minimizar»
+ * para seguir escuchando mientras miras un tablero, y te quedas fuera de la
+ * conversación sin enterarte. De ahí que haya dos.
+ */
+describe("estar en la llamada y estar mirándola", () => {
+  it("entrar abre la pantalla de la sala", async () => {
+    await useVoice.getState().entrar("esp-1");
+    expect(useVoice.getState().escenario).toBe(true);
+  });
+
+  it("minimizar cierra la pantalla y deja la llamada en pie", async () => {
+    await useVoice.getState().entrar("esp-1");
+    invoke.mockClear();
+    useVoice.getState().cerrarEscenario();
+    expect(useVoice.getState().escenario).toBe(false);
+    expect(useVoice.getState().estado).toBe("dentro");
+    // Lo que de verdad se comprueba: nadie le dijo al motor que colgara.
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("volver a la llamada no reconecta, sólo vuelve a enseñarla", async () => {
+    await useVoice.getState().entrar("esp-1");
+    useVoice.getState().cerrarEscenario();
+    invoke.mockClear();
+    useVoice.getState().abrirEscenario();
+    expect(useVoice.getState().escenario).toBe(true);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("sin llamada no hay escenario que abrir", () => {
+    useVoice.getState().abrirEscenario();
+    // Si no, quedaría una barra de controles sobre una sala vacía, con botones
+    // que no van a ninguna parte y un «Leave» que no deja nada.
+    expect(useVoice.getState().escenario).toBe(false);
+  });
+
+  it("salir apaga las dos cosas", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().salir();
+    expect(useVoice.getState().escenario).toBe(false);
+    expect(useVoice.getState().estado).toBe("fuera");
+  });
+});
+
+describe("la sordera", () => {
+  it("silencia el micrófono además de los altavoces", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().alternarSordera();
+    expect(useVoice.getState().sordo).toBe(true);
+    // Ponerse sordo y seguir emitiendo es la trampa: dejas de oír que te están
+    // hablando y sigues mandando la habitación entera.
+    expect(useVoice.getState().mic).toBe(false);
+    expect(invoke).toHaveBeenCalledWith("voice_set_deaf", { enabled: true });
+    expect(invoke).toHaveBeenCalledWith("voice_set_mic", { enabled: false });
+  });
+
+  it("quitarla no reabre el micrófono por su cuenta", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().alternarSordera();
+    invoke.mockClear();
+    await useVoice.getState().alternarSordera();
+    expect(useVoice.getState().sordo).toBe(false);
+    // Volver hablando sin querer es el accidente que este botón evita.
+    expect(useVoice.getState().mic).toBe(false);
+    expect(invoke.mock.calls.map((c) => c[0])).toEqual(["voice_set_deaf"]);
+  });
+
+  it("no se hereda de una llamada a la siguiente", async () => {
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().alternarSordera();
+    await useVoice.getState().entrar("esp-2");
+    expect(useVoice.getState().sordo).toBe(false);
   });
 });
