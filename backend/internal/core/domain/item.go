@@ -364,7 +364,7 @@ var boardColumns = []struct {
 func BoardStatuses(listID string) []TaskStatus {
 	out := make([]TaskStatus, 0, len(boardColumns))
 	for _, c := range boardColumns {
-		s := TaskStatus{ListID: listID, Name: c.Name, Color: c.Color, Kind: c.Kind}
+		s := TaskStatus{ListID: listID, Name: c.Name, Color: c.Color, Kind: c.Kind, Status: c.Status}
 		s.ID = SyntheticStatusID(listID, c.Status)
 		out = append(out, s)
 	}
@@ -392,14 +392,14 @@ func BoardStatusFor(listID string, status ReportStatus) TaskStatus {
 	want := status.Canonical()
 	for _, c := range boardColumns {
 		if c.Status == want {
-			s := TaskStatus{ListID: listID, Name: c.Name, Color: c.Color, Kind: c.Kind}
+			s := TaskStatus{ListID: listID, Name: c.Name, Color: c.Color, Kind: c.Kind, Status: c.Status}
 			s.ID = SyntheticStatusID(listID, c.Status)
 			return s
 		}
 	}
 	// Unreachable for a stored state, but a zero column would render as a blank
 	// chip rather than saying anything, so name it.
-	s := TaskStatus{ListID: listID, Name: string(status), Kind: StatusKindOpen}
+	s := TaskStatus{ListID: listID, Name: string(status), Kind: StatusKindOpen, Status: want}
 	s.ID = SyntheticStatusID(listID, want)
 	return s
 }

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
 import CopyId from "@/components/CopyId";
+import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ItemCalendar from "@/components/ItemCalendar";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
 import TaskCardMini, { cuando } from "@/components/tasks/TaskCardMini";
@@ -86,6 +88,41 @@ export default function MyWork() {
   const load = useMyWorkStore((s) => s.load);
   const orgId = useOrgsStore((s) => s.currentOrgId);
   const openTask = useTasksStore((s) => s.openTask);
+  const statusesOf = useTasksStore((s) => s.statusesOf);
+  const moveTask = useTasksStore((s) => s.moveTask);
+
+  /**
+   * Arrastrar una tarjeta a otra columna, aquí, significa **cambiarle el estado
+   * en su propia lista**.
+   *
+   * Las columnas de esta pantalla son transversales: las tarjetas vienen de
+   * listas y de espacios distintos, y «Done» no es una columna de ningún
+   * tablero concreto sino el mismo estado visto en todos a la vez. Soltar algo
+   * ahí no lo mueve de lista — eso sería una operación completamente distinta y
+   * nadie la pidió arrastrando.
+   *
+   * El id de la columna de destino se le **pregunta al servidor** en vez de
+   * componerlo aquí. Se podría: son `<listId>/<estado>`. Pero esa forma es una
+   * regla suya, y copiarla al cliente es cómo se acaba con dos versiones de la
+   * misma verdad — hoy mismo costó dos fallos con la API del SFU.
+   */
+  const mover = async (taskId: string, columna: string) => {
+    const t = visibles.find((x) => x.id === taskId);
+    if (!t || normalizeStatus(t.status) === columna) return;
+    try {
+      const columnas = await statusesOf(t.listId);
+      const destino = columnas.find((c) => normalizeStatus(c.status) === columna);
+      if (!destino) {
+        throw new Error(`«${columna}» no existe en ${t.listName}`);
+      }
+      // Sin vecinos: se añade al final. Es el sitio menos sorprendente cuando
+      // la columna de la que vienes ni siquiera es del mismo tablero.
+      await moveTask(t.id, destino.id, "", "");
+      await load(orgId);
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
 
   useEffect(() => {
     load(orgId).catch(() => {});
@@ -248,40 +285,34 @@ export default function MyWork() {
               noun="task"
             />
           ) : vista === "board" ? (
-            <div className="flex gap-3 overflow-x-auto">
-              {ESTADOS.map((col) => {
-                const suyas = visibles.filter(
-                  (t) => normalizeStatus(t.status) === col.status,
-                );
+            <KanbanBoard
+              columns={ESTADOS.map((col) => {
                 // Con «sólo abiertas» lo terminado ni se pide al servidor, así
-                // que esta columna no está vacía: está fuera de la pregunta.
+                // que esa columna no está vacía: está fuera de la pregunta.
                 // Decir «0» era afirmar que no hay ninguna.
                 const fuera = !includeClosed && CERRADOS.includes(col.status);
-                return (
-                  <section key={col.status} className="w-72 shrink-0">
-                    <h2 className="mb-1.5 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium uppercase tracking-wide">
-                      <span className={cn("size-1.5 rounded-full", col.punto)} />
-                      {col.label}
-                      <span className="ml-auto text-muted-foreground">
-                        {fuera ? "—" : suyas.length}
-                      </span>
-                    </h2>
-                    <ul className="space-y-1.5">
-                      {suyas.map((t) => (
-                        <li key={t.id}>
-                          <TaskCardMini task={t} onOpen={() => openTask(t.id).catch(() => {})} />
-                        </li>
-                      ))}
-                      {suyas.length === 0 && (
-                        <li className="rounded-lg border border-dashed px-2 py-3 text-center text-xs text-muted-foreground">
-                          {fuera ? "Not asked for — showing open only" : "Nothing"}
-                        </li>
-                      )}
-                    </ul>
-                  </section>
-                );
+                return {
+                  id: col.status,
+                  title: col.label,
+                  // El guion en vez del cero, y el porqué escrito abajo: «0»
+                  // afirmaría que no hay ninguna, y lo que pasa es que no se
+                  // preguntó.
+                  accessory: fuera ? <span className="text-muted-foreground">—</span> : undefined,
+                  emptyHint: fuera ? "Not asked for — showing open only" : undefined,
+                };
               })}
-            </div>
+              items={visibles.map((t) => ({
+                ...t,
+                // La columna es el estado **normalizado**: las tarjetas vienen
+                // de listas distintas y cada una trae el suyo en crudo.
+                columnId: normalizeStatus(t.status),
+              }))}
+              renderItem={(t) => (
+                <TaskCardMini task={t} onOpen={() => openTask(t.id).catch(() => {})} />
+              )}
+              onMove={(m) => void mover(m.itemId, m.toColumnId)}
+              emptyColumnHint="Nothing"
+            />
           ) : (
           <div className="space-y-5">
             {grupos.map(([spaceId, g]) => (

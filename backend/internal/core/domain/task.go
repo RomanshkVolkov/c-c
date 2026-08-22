@@ -72,6 +72,17 @@ type TaskStatus struct {
 	Color  string         `gorm:"type:varchar(20)"                json:"color"`
 	Kind   TaskStatusKind `gorm:"type:varchar(20);default:'open'" json:"kind"`
 	Rank   string         `gorm:"type:varchar(64);index"          json:"-"`
+	// Status es el estado canónico que esta columna representa: `pending`,
+	// `in_progress`, `resolved` o `closed`.
+	//
+	// No es una columna de la base de datos —las del tablero son sintéticas,
+	// las construye `BoardStatuses`— y viaja al cliente porque sin él no hay
+	// forma honesta de saber a cuál corresponde cada una. `Kind` no sirve:
+	// «Done» y «Closed» son las dos `done`. La alternativa era que el cliente
+	// partiera el id por la barra, o sea duplicar una regla del servidor en el
+	// otro lado — que es exactamente cómo se inventan contratos que luego no
+	// coinciden.
+	Status ReportStatus `gorm:"-" json:"status"`
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────

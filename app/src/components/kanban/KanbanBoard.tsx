@@ -43,6 +43,15 @@ export interface KanbanColumn {
    * belongs where you start reading a column, not past the end of a long scroll.
    */
   action?: ReactNode;
+  /**
+   * What to say when this column has no cards, overriding the board's default.
+   *
+   * Exists because "empty" and "not asked for" are different facts and a board
+   * can hold both at once: in "my work" with *open only* selected, Done and
+   * Closed are never fetched. Saying "Nothing" there claims there is none, and
+   * that claim is false.
+   */
+  emptyHint?: string;
 }
 
 export interface KanbanItem {
@@ -152,7 +161,7 @@ export default function KanbanBoard<T extends KanbanItem>({
             column={col}
             items={byColumn.get(col.id) ?? []}
             renderItem={renderItem}
-            emptyHint={emptyColumnHint}
+            emptyHint={col.emptyHint ?? emptyColumnHint}
           />
         ))}
       </div>

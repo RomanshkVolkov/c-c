@@ -81,18 +81,23 @@ describe("las cuentas del tablero de Mi trabajo", () => {
     // Cada columna con la suya: la clase las juntaba a las dos bajo «done», y
     // una tarea cerrada —que es como llegan por la integración
     // server-to-server— desaparecía dentro de las terminadas.
-    const columnas = screen.getAllByRole("heading", { level: 2 });
-    const cerrada = columnas.find((h) => h.textContent?.includes("Closed"))!;
-    expect(cerrada.textContent).toContain("1");
-    const terminada = columnas.find((h) => h.textContent?.startsWith("Done"))!;
-    expect(terminada.textContent).toContain("1");
+    // Sin fijar el nivel del encabezado: lo que importa es que cada columna
+    // tenga el suyo y diga su número, no si es un `h2` o un `h3`. Se fijaba, y
+    // se rompió al pasar el tablero al componente compartido sin que nada del
+    // comportamiento hubiera cambiado.
+    // La cuenta va al lado del título, no dentro: se mira la cabecera entera.
+    const cabecera = (titulo: string) =>
+      screen.getAllByRole("heading").find((h) => h.textContent === titulo)!.closest("header")!;
+    expect(cabecera("Closed").textContent).toContain("1");
+    expect(cabecera("Done").textContent).toContain("1");
   });
 
   it("un servidor que aún dice «resolved» cae igual en Done", () => {
     enTablero([tarea("t9", "resolved")], true);
     const cabecera = screen
-      .getAllByRole("heading", { level: 2 })
-      .find((h) => h.textContent?.startsWith("Done"))!;
+      .getAllByRole("heading")
+      .find((h) => h.textContent === "Done")!
+      .closest("header")!;
     expect(cabecera.textContent).toContain("1");
   });
 });

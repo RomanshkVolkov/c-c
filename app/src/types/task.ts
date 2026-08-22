@@ -50,6 +50,15 @@ export interface TaskStatus {
   name: string;
   color: string;
   kind: TaskStatusKind;
+  /**
+   * El estado canónico que esta columna representa: `pending`, `in_progress`,
+   * `resolved` o `closed`. Pásalo por `normalizeStatus` para compararlo.
+   *
+   * Lo manda el servidor a propósito. `kind` no vale para identificar una
+   * columna —«Done» y «Closed» son las dos `done`— y sacarlo del id partiéndolo
+   * por la barra sería copiar aquí una regla que es suya.
+   */
+  status: string;
 }
 
 /** Who can see the work in a place: a client's channel, or nobody outside. */
