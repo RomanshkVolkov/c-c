@@ -1,0 +1,27 @@
+# Banderas de enlazado que exige el SDK de LiveKit.
+#
+# Están copiadas de `livekit/rust-sdks/.cargo/config.toml`, que su README manda
+# copiar y que aquí faltaba. Se notó tarde y mal: **el build de Windows lleva
+# fallando desde la v1.6.37** —la primera con voz— y las dos releases desde
+# entonces se publicaron sin instalador de Windows sin que nadie lo mirara,
+# porque los otros dos sí salían.
+
+# libwebrtc viene compilado contra el runtime de C++ **estático** (`/MT`) y Rust
+# enlaza el dinámico por defecto. Mezclarlos da un centenar de `LNK2005: already
+# defined` entre `libcpmt.lib` y `msvcprt.lib`, que es exactamente lo que se ve
+# en el log de la v1.6.37.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# `-ObjC` carga las categorías de Objective-C que libwebrtc trae en su
+# biblioteca estática. Sin él **compila igual** y revienta al arrancar, cuando
+# los inicializadores estáticos de `RTCH264ProfileLevelId.mm` no encuentran lo
+# suyo. Que el build de macOS pase no demuestra nada sobre esto.
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
