@@ -358,3 +358,47 @@ func (h *taskHandler) VoiceToken(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+// VoicePresence dice quién está en cada canal de voz, sin tener que entrar.
+//
+// Es lo que rompe el círculo de un canal de voz vacío: si no ves que hay
+// alguien dentro no entras, y si nadie entra nunca hay nadie a quien ver. Va en
+// una sola llamada para todos los espacios porque la lista de canales los pinta
+// todos a la vez — una petición por canal sería una petición por canal.
+//
+// Los espacios salen del árbol que el propio caller puede ver, así que la
+// pertenencia decide aquí igual que en todo lo demás: no se puede preguntar por
+// la ocupación de una sala de otra organización porque su id nunca entra en la
+// consulta.
+func (h *taskHandler) VoicePresence(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "unauthorized")
+		return
+	}
+	if !h.voice.Configured() {
+		// Vacío y 200, no un error: una instalación sin voz no tiene a nadie
+		// dentro de ninguna sala, y eso es una respuesta correcta.
+		SendResult(w, http.StatusOK, domain.APIResponse[*service.Ocupacion]{
+			Success: true, Data: &service.Ocupacion{},
+		})
+		return
+	}
+
+	arbol, err := h.svc.Tree(user.OrgIDs(), user.Superadmin, r.URL.Query().Get("orgId"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load spaces", err.Error())
+		return
+	}
+	ids := make([]string, 0, len(arbol))
+	for _, sp := range arbol {
+		ids = append(ids, sp.ID)
+	}
+
+	dentro, err := h.voice.Ocupacion(r.Context(), ids)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadGateway, "Failed to ask the voice server", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*service.Ocupacion]{Success: true, Data: &dentro})
+}

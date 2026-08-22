@@ -1,7 +1,13 @@
 package service
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/livekit/protocol/auth"
@@ -79,5 +85,118 @@ func (s *VoiceService) Token(spaceID, userID, username string) (string, error) {
 
 // URL del SFU, para que la app sepa a dónde conectarse.
 func (s *VoiceService) URL() string { return s.url }
+
+// ─── Quién está dentro ────────────────────────────────────────────────────────
+
+// Ocupacion es quién está en la sala de cada espacio, para poder pintarlo en la
+// lista de canales **sin entrar**.
+//
+// Es la diferencia entre un canal de voz que se usa y uno decorativo: si no ves
+// que hay alguien dentro, no entras; y si nadie entra, nunca hay nadie a quien
+// ver. Romper ese círculo es el único motivo de esta consulta.
+type Ocupacion map[string][]OcupanteResponse
+
+type OcupanteResponse struct {
+	// Identity es el id de usuario de cac — el mismo que acuñó el token, así que
+	// la pantalla lo cruza con la gente que ya conoce sin un segundo directorio.
+	Identity string `json:"identity"`
+	Name     string `json:"name"`
+}
+
+/*
+Se pregunta al SFU en cada consulta, en vez de llevar la cuenta por nuestro lado.
+
+La alternativa era escuchar los webhooks de LiveKit y mantener el estado aquí.
+Suena más eficiente y es peor: ese estado se desincroniza con el primer evento
+perdido y con el primer reinicio, y entonces la lista miente sin que nada falle
+—gente dentro que ya no está, o al revés—. El SFU tiene la verdad por
+definición; preguntársela cuesta una llamada en la misma máquina.
+
+Cuando el volumen lo pida, la optimización es cachear unos segundos, no llevar
+un registro paralelo.
+*/
+func (s *VoiceService) Ocupacion(ctx context.Context, spaceIDs []string) (Ocupacion, error) {
+	out := Ocupacion{}
+	if !s.Configured() || len(spaceIDs) == 0 {
+		return out, nil
+	}
+
+	// Se piden por nombre y no todas: un superadmin pertenece a muchas
+	// organizaciones, y traerse las salas de todas para descartar la mayoría
+	// sería contar en el servidor lo que ya sabíamos al preguntar.
+	nombres := make([]string, len(spaceIDs))
+	for i, id := range spaceIDs {
+		nombres[i] = RoomFor(id)
+	}
+	var salas struct {
+		Rooms []struct {
+			Name            string `json:"name"`
+			NumParticipants int    `json:"numParticipants"`
+		} `json:"rooms"`
+	}
+	if err := s.twirp(ctx, "ListRooms", map[string]any{"names": nombres}, &salas); err != nil {
+		return nil, err
+	}
+
+	for _, sala := range salas.Rooms {
+		if sala.NumParticipants == 0 {
+			continue
+		}
+		var dentro struct {
+			Participants []OcupanteResponse `json:"participants"`
+		}
+		if err := s.twirp(ctx, "ListParticipants", map[string]any{"room": sala.Name}, &dentro); err != nil {
+			// Una sala que no se deja leer no tumba las demás: media lista es
+			// más útil que un error, y la que falte volverá en la siguiente.
+			continue
+		}
+		out[strings.TrimPrefix(sala.Name, salaPrefijo)] = dentro.Participants
+	}
+	return out, nil
+}
+
+const salaPrefijo = "voice:"
+
+// twirp habla con la API de LiveKit sin arrastrar su SDK de servidor.
+//
+// Son dos endpoints y un JWT que ya sabemos firmar; el SDK traería consigo grpc
+// y la mitad de su árbol de dependencias para eso. Si algún día hacen falta
+// diez llamadas más, el SDK deja de ser desproporcionado y entonces se mete.
+func (s *VoiceService) twirp(ctx context.Context, metodo string, cuerpo any, salida any) error {
+	// El mismo par de llaves, con una concesión distinta: esto administra —lista
+	// salas—, así que no vale el token de entrar. Y nunca sale de aquí.
+	jwt, err := auth.NewAccessToken(s.key, s.secret).
+		SetVideoGrant(&auth.VideoGrant{RoomList: true, RoomAdmin: true}).
+		SetIdentity("cac-server").
+		SetValidFor(time.Minute).
+		ToJWT()
+	if err != nil {
+		return err
+	}
+
+	datos, err := json.Marshal(cuerpo)
+	if err != nil {
+		return err
+	}
+	// La URL de señalización es `wss://`; la API es el mismo host por https.
+	base := strings.Replace(strings.Replace(s.url, "wss://", "https://", 1), "ws://", "http://", 1)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		base+"/twirp/livekit.RoomService/"+metodo, bytes.NewReader(datos))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 400 {
+		return fmt.Errorf("livekit %s: %s", metodo, res.Status)
+	}
+	return json.NewDecoder(res.Body).Decode(salida)
+}
 
 func boolPtr(b bool) *bool { return &b }

@@ -36,10 +36,23 @@ interface VoiceState {
   yo: string | null;
   mic: boolean;
   error: string | null;
+  /**
+   * Quién está en cada canal de voz, **sin haber entrado**.
+   *
+   * Es lo que rompe el círculo del canal vacío: si no ves que hay alguien
+   * dentro no entras, y si nadie entra nunca hay a quien ver.
+   *
+   * Se pregunta al servidor y él al SFU, en vez de llevar la cuenta por aquí:
+   * un recuento propio se desincroniza con el primer evento perdido y entonces
+   * la lista miente sin que nada falle.
+   */
+  ocupacion: Record<string, VoicePeer[]>;
 
   entrar: (spaceId: string) => Promise<void>;
   salir: () => Promise<void>;
   alternarMic: () => Promise<void>;
+  /** Refresca quién anda por los canales. La pantalla decide cada cuánto. */
+  refrescarOcupacion: (orgId?: string | null) => Promise<void>;
   /** Lo que reporta el motor. Público para poder probarlo sin Tauri. */
   alRecibir: (ev: VoiceEvent) => void;
 }
@@ -56,6 +69,8 @@ const VACIO = {
 
 export const useVoice = create<VoiceState>((set, get) => ({
   ...VACIO,
+  // Fuera de `VACIO` a propósito: salir de una sala no vacía los demás canales.
+  ocupacion: {},
 
   entrar: async (spaceId) => {
     // Ya dentro de ésta: no se reconecta. Volver a entrar cortaría la
@@ -97,6 +112,19 @@ export const useVoice = create<VoiceState>((set, get) => ({
   salir: async () => {
     set({ ...VACIO });
     await invoke("voice_leave").catch(() => {});
+  },
+
+  refrescarOcupacion: async (orgId) => {
+    try {
+      const res = await api.get<APIResponse<Record<string, VoicePeer[]>>>(
+        `/api/v1/chat/voice-presence${orgId ? `?orgId=${orgId}` : ""}`,
+        true,
+      );
+      set({ ocupacion: res.data ?? {} });
+    } catch {
+      // Silencio: esto es informativo y se reintenta solo. Una pantalla roja
+      // porque el SFU tardó sería peor que no saber quién hay.
+    }
   },
 
   alternarMic: async () => {

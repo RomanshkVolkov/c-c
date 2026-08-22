@@ -42,6 +42,7 @@ type TaskHandler interface {
 	MarkChatRead(w http.ResponseWriter, r *http.Request)
 	FollowChannel(w http.ResponseWriter, r *http.Request)
 	VoiceToken(w http.ResponseWriter, r *http.Request)
+	VoicePresence(w http.ResponseWriter, r *http.Request)
 	UnfollowChannel(w http.ResponseWriter, r *http.Request)
 	FollowedChannels(w http.ResponseWriter, r *http.Request)
 	WithdrawChat(w http.ResponseWriter, r *http.Request)

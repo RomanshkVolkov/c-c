@@ -1,6 +1,10 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -110,4 +114,104 @@ func verificar(t *testing.T, jwt string) *auth.ClaimGrants {
 		t.Fatalf("el token no valida con su propio secreto: %v", err)
 	}
 	return concesion
+}
+
+/*
+La consulta de ocupación pregunta sólo por lo que se le pasa.
+
+La puerta de esta función no es un `if`: es que la sala se construye desde los
+ids que le dan y **nunca** desde nada que venga del cliente. El handler le pasa
+los espacios del árbol que ese caller puede ver, así que un espacio ajeno no
+llega a nombrarse. Si algún día alguien le pasara ids sin filtrar, esto lo
+convertiría en un mirador de las salas de todos los clientes.
+*/
+func TestLaOcupacionSoloPreguntaPorLosEspaciosQueSeLePasan(t *testing.T) {
+	var pedido []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var cuerpo struct {
+			Names []string `json:"names"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&cuerpo)
+		pedido = cuerpo.Names
+		_, _ = w.Write([]byte(`{"rooms":[]}`))
+	}))
+	defer srv.Close()
+
+	svc := NewVoiceService(srv.URL, llave, secreto)
+	if _, err := svc.Ocupacion(context.Background(), []string{"esp-1", "esp-2"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(pedido) != 2 || pedido[0] != "voice:esp-1" || pedido[1] != "voice:esp-2" {
+		t.Errorf("pregunta por las salas de esos espacios y por ninguna más; pidió %v", pedido)
+	}
+}
+
+// Sin voz configurada no hay a quién preguntar, y eso no es un error: una
+// instalación sin SFU sencillamente no tiene a nadie dentro de nada.
+func TestSinVozLaOcupacionEsVaciaYNoFalla(t *testing.T) {
+	oc, err := NewVoiceService("", "", "").Ocupacion(context.Background(), []string{"esp-1"})
+	if err != nil {
+		t.Fatalf("no puede fallar: %v", err)
+	}
+	if len(oc) != 0 {
+		t.Errorf("y está vacía; salió %v", oc)
+	}
+}
+
+// Una sala que no se deja leer no puede tumbar a las demás: media lista es más
+// útil que un error, y la que falte vuelve en la siguiente consulta.
+func TestUnaSalaIlegibleNoTumbaLasDemas(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "ListRooms") {
+			_, _ = w.Write([]byte(`{"rooms":[
+				{"name":"voice:esp-rota","numParticipants":1},
+				{"name":"voice:esp-buena","numParticipants":1}]}`))
+			return
+		}
+		var cuerpo struct {
+			Room string `json:"room"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&cuerpo)
+		if cuerpo.Room == "voice:esp-rota" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"participants":[{"identity":"u-ana","name":"ana"}]}`))
+	}))
+	defer srv.Close()
+
+	oc, err := NewVoiceService(srv.URL, llave, secreto).
+		Ocupacion(context.Background(), []string{"esp-rota", "esp-buena"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(oc["esp-buena"]) != 1 || oc["esp-buena"][0].Identity != "u-ana" {
+		t.Errorf("la sala legible tiene que salir; salió %v", oc)
+	}
+	if _, hay := oc["esp-rota"]; hay {
+		t.Error("y la ilegible no se inventa")
+	}
+}
+
+// Una sala vacía no se consulta dos veces: si el SFU ya dijo que no hay nadie,
+// preguntar por sus participantes es una llamada para saber lo que ya sabemos.
+func TestUnaSalaVaciaNoSeVuelveAConsultar(t *testing.T) {
+	llamadas := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		llamadas++
+		if strings.HasSuffix(r.URL.Path, "ListRooms") {
+			_, _ = w.Write([]byte(`{"rooms":[{"name":"voice:esp-1","numParticipants":0}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"participants":[]}`))
+	}))
+	defer srv.Close()
+
+	oc, _ := NewVoiceService(srv.URL, llave, secreto).Ocupacion(context.Background(), []string{"esp-1"})
+	if llamadas != 1 {
+		t.Errorf("una sala vacía se resuelve con la primera llamada; hubo %d", llamadas)
+	}
+	if len(oc) != 0 {
+		t.Errorf("y no aparece en el resultado; salió %v", oc)
+	}
 }

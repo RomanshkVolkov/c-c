@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Hash, MessagesSquare } from "lucide-react";
+import { Hash, MessagesSquare, Volume2 } from "lucide-react";
 import ChannelView from "@/components/chat/ChannelView";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
+import { useVoice } from "@/store/voice.store";
+import { useOrgsStore } from "@/store/orgs.store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,6 +28,21 @@ export default function Channels() {
   useEffect(() => {
     fetchUnread().catch(() => {});
   }, [fetchUnread]);
+
+  // Quién anda por los canales de voz, mientras esta pantalla está abierta.
+  //
+  // Se pregunta cada quince segundos en vez de escuchar eventos: la ocupación
+  // sólo importa para decidir si entrar, y quince segundos de retraso en esa
+  // decisión no los nota nadie. Un canal de webhooks con estado propio para
+  // esto sería mucha maquinaria por muy poco, y una que puede mentir.
+  const ocupacion = useVoice((s) => s.ocupacion);
+  const refrescarOcupacion = useVoice((s) => s.refrescarOcupacion);
+  const orgId = useOrgsStore((s) => s.currentOrgId);
+  useEffect(() => {
+    void refrescarOcupacion(orgId);
+    const t = setInterval(() => void refrescarOcupacion(orgId), 15_000);
+    return () => clearInterval(t);
+  }, [refrescarOcupacion, orgId]);
 
   const abierto = params.get("space");
   const espacio = tree.find((s) => s.id === abierto) ?? tree[0];
@@ -53,6 +70,7 @@ export default function Channels() {
           ) : (
             tree.map((s) => {
               const sinLeer = unread[s.id] ?? 0;
+              const enVoz = ocupacion[s.id] ?? [];
               return (
                 <button
                   key={s.id}
@@ -66,8 +84,23 @@ export default function Channels() {
                 >
                   <Hash className="size-3.5 shrink-0" />
                   <span className="truncate">{s.name}</span>
+                  {/* Alguien hablando ahí dentro. Va antes del contador de no
+                      leídos porque una conversación en curso es más urgente
+                      que un mensaje que lleva ahí desde ayer. */}
+                  {enVoz.length > 0 && (
+                    <span
+                      title={`In voice: ${enVoz.map((p) => p.name || p.identity).join(", ")}`}
+                      className="ml-auto flex shrink-0 items-center gap-0.5 text-[10px] text-success"
+                    >
+                      <Volume2 className="size-3" />
+                      {enVoz.length}
+                    </span>
+                  )}
                   {sinLeer > 0 && (
-                    <span className="ml-auto rounded-full bg-primary px-1.5 text-[10px] font-medium leading-4 text-primary-foreground">
+                    <span className={cn(
+                      "rounded-full bg-primary px-1.5 text-[10px] font-medium leading-4 text-primary-foreground",
+                      enVoz.length === 0 && "ml-auto",
+                    )}>
                       {sinLeer > 99 ? "99+" : sinLeer}
                     </span>
                   )}

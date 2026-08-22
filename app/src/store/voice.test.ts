@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { invoke, post } = vi.hoisted(() => ({ invoke: vi.fn(), post: vi.fn() }));
+// En `vi.hoisted` porque `vi.mock` se iza por encima de cualquier `const`.
+const { invoke, post, get } = vi.hoisted(() => ({ invoke: vi.fn(), post: vi.fn(), get: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke,
   // El canal real es de Tauri; aquí sólo hace falta que se pueda construir y
@@ -9,7 +10,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((ev: unknown) => void) | null = null;
   },
 }));
-vi.mock("@/lib/api", () => ({ api: { post } }));
+vi.mock("@/lib/api", () => ({ api: { post, get } }));
 
 import { useVoice } from "./voice.store";
 
@@ -106,5 +107,34 @@ describe("lo que reporta el motor", () => {
     const s = useVoice.getState();
     expect(s.spaceId).toBeNull();
     expect(s.gente).toEqual([]);
+  });
+});
+
+describe("quién anda por los canales sin entrar", () => {
+  it("pregunta por la organización en pantalla y guarda lo que venga", async () => {
+    get.mockResolvedValue({
+      success: true,
+      data: { "esp-1": [{ identity: "u-bea", name: "bea" }] },
+    });
+    await useVoice.getState().refrescarOcupacion("org-1");
+    expect(get).toHaveBeenCalledWith("/api/v1/chat/voice-presence?orgId=org-1", true);
+    expect(useVoice.getState().ocupacion["esp-1"]).toHaveLength(1);
+  });
+
+  it("si el servidor falla, se calla y conserva lo último", async () => {
+    useVoice.setState({ ocupacion: { "esp-1": [{ identity: "u-bea", name: "bea" }] } });
+    get.mockRejectedValue(new Error("502"));
+    await useVoice.getState().refrescarOcupacion("org-1");
+    // Es informativo y se reintenta solo: vaciarlo o gritar sería peor que
+    // enseñar durante quince segundos algo que quizá ya cambió.
+    expect(useVoice.getState().ocupacion["esp-1"]).toHaveLength(1);
+  });
+
+  it("salir de una sala no borra quién hay en las demás", async () => {
+    get.mockResolvedValue({ success: true, data: { "esp-2": [{ identity: "u-caro", name: "caro" }] } });
+    await useVoice.getState().refrescarOcupacion("org-1");
+    await useVoice.getState().entrar("esp-1");
+    await useVoice.getState().salir();
+    expect(useVoice.getState().ocupacion["esp-2"]).toHaveLength(1);
   });
 });

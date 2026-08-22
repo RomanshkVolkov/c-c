@@ -123,6 +123,11 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// Every channel with unread lines, in one call — the navigator asks on every
 	// load, and one request per space would be one request per space.
 	r.With(middleware.AuthMiddleware).Get("/api/v1/chat/unread", h.ChatUnread)
+
+	// Quién está en cada canal de voz. Una llamada para todos los espacios: la
+	// lista de canales los pinta a la vez y una petición por canal sería una
+	// petición por canal.
+	r.With(middleware.AuthMiddleware).Get("/api/v1/chat/voice-presence", h.VoicePresence)
 	r.With(middleware.AuthMiddleware).Get("/api/v1/chat/following", h.FollowedChannels)
 
 	// Direct messages. Their own space in the API for the same reason they have
