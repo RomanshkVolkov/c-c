@@ -21,3 +21,12 @@ publish = false
 livekit = { version = "0.8.3", features = ["rustls-tls-native-roots"] }
 livekit-api = { version = "0.6.3", default-features = false, features = ["access-token", "services-tokio", "signal-client-tokio", "rustls-tls-native-roots"] }
 tokio = { version = "1", features = ["full"] }
+# La misma versión que la app: medir con otro codificador mediría otra cosa.
+image = "0.25"
+# Para comparar: JPEG con SIMD, y —lo que más importa— con entrada YCbCr
+# planar, que se salta las **dos** conversiones de espacio de color.
+jpeg-encoder = { version = "0.6", features = ["simd"] }
+# libjpeg-turbo del sistema. Es el único que acepta **I420 planar** directo y
+# se salta las dos conversiones de espacio de color; los de Rust puro sólo
+# comen RGB o YCbCr entrelazado.
+turbojpeg = { version = "1", default-features = false, features = ["pkg-config"] }

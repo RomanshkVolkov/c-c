@@ -7,3 +7,7 @@ docs/proposals/rec.mjs
 
 # Handoff de diseño descomprimido: se mira, no se versiona.
 .diseno-voz/
+
+# Binarios del probe del webview: se compilan con una línea, no se versionan.
+spikes/webview-probe/probe
+spikes/webview-probe/bench
