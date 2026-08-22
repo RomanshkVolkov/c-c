@@ -132,12 +132,45 @@ describe("la pantalla de la sala", () => {
     expect(container.querySelectorAll("canvas")).toHaveLength(1);
   });
 
-  it("y no se pinta a sí mismo", () => {
-    estado.current = { ...estado.current, video: { "u-ana": true } };
+  it("te pintas a ti mismo cuando enciendes tu cámara", () => {
+    // El motor no se suscribe a sus propias pistas —el SFU no te devuelve lo
+    // que mandas— así que esto sale de `cam`, no del mapa de los demás. Sin
+    // ello, encender la cámara solo en la sala no enseñaba nada y parecía
+    // rota: fue lo primero que se reportó de la v1.6.41.
+    estado.current = { ...estado.current, cam: true, video: {} };
     const { container } = render(<Escenario spaceName="general" />);
-    // El motor no se suscribe a su propia pista, así que no hay nada que
-    // servir: un lienzo aquí sería un rectángulo negro sobre tu avatar.
+    expect(container.querySelectorAll("canvas")).toHaveLength(1);
+  });
+
+  it("y tu cara va en espejo, la de los demás no", () => {
+    estado.current = {
+      ...estado.current,
+      cam: true,
+      gente: [{ identity: "u-bea", name: "bea" }],
+      video: { "u-bea": true },
+    };
+    const { container } = render(<Escenario spaceName="general" />);
+    const lienzos = [...container.querySelectorAll("canvas")];
+    expect(lienzos).toHaveLength(2);
+    // Levantar la mano derecha tiene que mover el lado derecho de tu imagen.
+    // Sin voltear te ves como te ven los demás, y todo sale al revés.
+    expect(lienzos.filter((c) => c.className.includes("-scale-x-100"))).toHaveLength(1);
+  });
+
+  it("con la cámara apagada no hay lienzo propio", () => {
+    estado.current = { ...estado.current, cam: false, video: { "u-ana": true } };
+    const { container } = render(<Escenario spaceName="general" />);
+    // Y no lo enciende que el mapa de los demás mencione tu id: el tuyo sale
+    // de lo que tú pulsaste.
     expect(container.querySelectorAll("canvas")).toHaveLength(0);
+  });
+
+  it("tu propia pantalla compartida también ocupa el escenario", () => {
+    estado.current = { ...estado.current, compartiendo: true, pantalla: null };
+    render(<Escenario spaceName="general" />);
+    // Sin esto, compartir con nadie más en la sala no enseñaba nada y no había
+    // forma de saber si funcionaba.
+    expect(screen.getByText("You are sharing")).toBeTruthy();
   });
 
   it("el botón de la cámara ya hace algo, y dice qué", () => {

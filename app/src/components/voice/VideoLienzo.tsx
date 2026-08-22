@@ -45,10 +45,22 @@ const esperar = (ms: number) =>
 export default function VideoLienzo({
   identity,
   fuente = "camera",
+  espejo,
 }: {
   identity: string;
   /** Qué de esa persona: su cara o su pantalla. */
   fuente?: "camera" | "screen";
+  /**
+   * Voltear en horizontal. Sólo para tu propia cara.
+   *
+   * Es lo que hace cualquier videollamada y lo que espera cualquiera: te ves
+   * como en un espejo, así que levantar la mano derecha mueve el lado derecho
+   * de la imagen. Sin voltear, te ves como te ven los demás y todo movimiento
+   * sale al revés de donde lo esperas.
+   *
+   * Nunca en una pantalla compartida: ahí el texto saldría del revés.
+   */
+  espejo?: boolean;
 }) {
   const lienzo = useRef<HTMLCanvasElement>(null);
   const [pintando, setPintando] = useState(false);
@@ -135,6 +147,7 @@ export default function VideoLienzo({
         // recortar una pantalla compartida corta justo lo que alguien quería
         // enseñar. Entra entera aunque sobren bandas.
         fuente === "screen" ? "object-contain" : "object-cover",
+        espejo && "-scale-x-100",
       )}
       style={{ opacity: pintando ? 1 : 0 }}
     />

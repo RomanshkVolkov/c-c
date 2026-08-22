@@ -160,6 +160,7 @@ pub async fn voice_join(
         .map_err(|e| format!("no se pudo publicar el micrófono: {e}"))?;
 
     *CANAL.lock().unwrap() = Some(on_event.clone());
+    *YO.lock().unwrap() = Some(identidad.clone());
     let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
 
     on_event
@@ -185,6 +186,7 @@ pub async fn voice_join(
 pub async fn voice_leave() {
     // Las caras de la sala anterior no se heredan.
     crate::video_frames::olvidar_todo();
+    *YO.lock().unwrap() = None;
     // La sordera no se hereda: entrar a otra sala sin oír a nadie, y sin que la
     // pantalla lo diga porque el store ya se vació, es un fallo mudo.
     SORDO.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -423,6 +425,17 @@ fn sin_repetidos(lista: Vec<Dispositivo>) -> Vec<Dispositivo> {
 fn id_de(d: &cpal::Device) -> Option<String> {
     d.id().ok().map(|i| i.to_string())
 }
+
+/// Mi propia identidad en la sala.
+///
+/// Hace falta para **verte a ti mismo**. El motor no se suscribe a sus propias
+/// pistas —el SFU no te devuelve lo que acabas de mandar, y menos mal— así que
+/// tu cámara y tu pantalla no llegarían nunca por el camino de los demás. Se
+/// guardan aquí, en el mismo sitio, para que la interfaz las pida igual.
+///
+/// Sin esto, encender la cámara con nadie más en la sala no enseña nada, y no
+/// hay forma de comprobar que compartir pantalla funciona sin dos máquinas.
+static YO: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 /// El canal de eventos de la sesión en curso, para poder rearrancar la captura
 /// sin que el llamante tenga que pasarlo.
@@ -950,6 +963,11 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
     if !enabled {
         despublicar(&room, TrackSource::Camera).await;
         CAMARA.store(false, std::sync::atomic::Ordering::Relaxed);
+        // Y se borra la última trama propia: sin esto, apagar la cámara deja tu
+        // cara congelada en tu propio mosaico, que es peor que no verse.
+        if let Some(yo) = YO.lock().unwrap().clone() {
+            crate::video_frames::olvidar(&yo, crate::video_frames::Fuente::Camara);
+        }
         return Ok(estado_video());
     }
 
@@ -1046,6 +1064,9 @@ pub async fn voice_stop_share() -> Result<VideoState, String> {
     // despublicar evita que siga entregando tramas a una pista que ya no está.
     PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
     despublicar(&room, TrackSource::Screenshare).await;
+    if let Some(yo) = YO.lock().unwrap().clone() {
+        crate::video_frames::olvidar(&yo, crate::video_frames::Fuente::Pantalla);
+    }
     Ok(estado_video())
 }
 
@@ -1116,6 +1137,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                     });
                     let mut buffer = I420Buffer::new(w, h);
                     bgra_a_i420(&bgra, w, h, &mut buffer);
+                    guardarme(crate::video_frames::Fuente::Pantalla, &buffer, w, h);
                     fte.capture_frame(&VideoFrame {
                         rotation: VideoRotation::VideoRotation0,
                         timestamp_us: std::time::SystemTime::now()
@@ -1155,6 +1177,17 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         Ok(Err(e)) => Err(e),
         Err(_) => Err("la captura de pantalla no respondió".into()),
     }
+}
+
+/// Guarda una trama propia donde la interfaz las busca.
+///
+/// Cuesta una copia por trama, la misma que se paga por cada participante
+/// remoto. Se paga siempre y no sólo cuando alguien mira, porque la alternativa
+/// —un «¿hay alguien mirando?» que la captura tuviera que consultar— acopla el
+/// hilo del vídeo a la interfaz para ahorrar un memcpy.
+fn guardarme(fuente: crate::video_frames::Fuente, buffer: &I420Buffer, ancho: u32, alto: u32) {
+    let Some(yo) = YO.lock().unwrap().clone() else { return };
+    crate::video_frames::guardar(&yo, fuente, buffer, ancho, alto);
 }
 
 /// BGRA de la pantalla → I420.
@@ -1263,6 +1296,7 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
                 continue;
             }
             rgb_a_i420(rgb.as_raw(), VIDEO_ANCHO, VIDEO_ALTO, &mut buffer);
+            guardarme(crate::video_frames::Fuente::Camara, &buffer, VIDEO_ANCHO, VIDEO_ALTO);
             fuente.capture_frame(&VideoFrame {
                 rotation: VideoRotation::VideoRotation0,
                 timestamp_us: std::time::SystemTime::now()

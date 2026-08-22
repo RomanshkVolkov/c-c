@@ -20,12 +20,15 @@ export default function VoiceTile({
   silenciado,
   compacto,
   video,
+  espejo,
 }: {
   nombre: string;
   hablando: boolean;
   silenciado?: boolean;
   /** La identidad cuya cámara pintar, o nada si no publica vídeo. */
   video?: string;
+  /** Tu propia cara va en espejo. Ver `VideoLienzo`. */
+  espejo?: boolean;
   /** En la tira lateral del compartir; en la rejilla, no. */
   compacto?: boolean;
 }) {
@@ -46,7 +49,7 @@ export default function VoiceTile({
         {iniciales(nombre)}
       </span>
 
-      {video && <VideoLienzo identity={video} />}
+      {video && <VideoLienzo identity={video} espejo={espejo} />}
 
       <span className="absolute bottom-3 left-3 max-w-[calc(100%-4rem)] truncate rounded-full bg-background/70 px-2.5 py-1 text-[13px]">
         {nombre}

@@ -474,7 +474,22 @@ callas creyendo que el otro no te oye.
    segundo no deja trabajar al hilo que las produce y contesta «todavía no»
    para siempre. Eso costó una tarde en el spike.
 
-8. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
+8. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
+   propias pistas —el SFU no te devuelve lo que acabas de mandar— así que tu
+   cámara y tu pantalla no llegarían nunca por el camino de los demás. La
+   captura las guarda por su cuenta en el mismo sitio, bajo tu propia identidad.
+
+   Sin esto, encender la cámara sin nadie más en la sala no enseñaba nada y
+   parecía rota; y **no había forma de comprobar que compartir pantalla
+   funciona sin dos máquinas**, que fue exactamente lo que pasó al probar la
+   v1.6.41. Cuesta una copia por trama, la misma que se paga por cada
+   participante remoto.
+
+   Tu cara va **en espejo** y tu pantalla no: levantar la mano derecha tiene
+   que mover el lado derecho de la imagen, y una pantalla volteada sale con el
+   texto del revés.
+
+9. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
    tramas se guardan por `(persona, fuente)` y se piden a
    `cacvideo://…/<identidad>/<camera|screen>`. Estuvieron guardándose sólo por
    persona: nadie lo notó porque no había pantalla que compartir, y en cuanto la
@@ -491,7 +506,7 @@ callas creyendo que el otro no te oye.
    alguien más empezó a compartir es quitarle de delante a la gente lo que
    estaba leyendo.
 
-9. **Cámara y pantalla**: **publicar** está hecho para la cámara
+10. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -512,7 +527,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-10. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+11. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.

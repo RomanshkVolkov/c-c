@@ -29,7 +29,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const mic = useVoice((s) => s.mic);
   const mudos = useVoice((s) => s.mudos);
   const video = useVoice((s) => s.video);
-  const pantalla = useVoice((s) => s.pantalla);
+  const pantallaAjena = useVoice((s) => s.pantalla);
   const compartiendo = useVoice((s) => s.compartiendo);
   const alternarCompartir = useVoice((s) => s.alternarCompartir);
   const latencia = useVoice((s) => s.latencia);
@@ -40,6 +40,9 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const cam = useVoice((s) => s.cam);
   const alternarCam = useVoice((s) => s.alternarCam);
   const cerrarEscenario = useVoice((s) => s.cerrarEscenario);
+  // La tuya manda sobre la de otro: si estás compartiendo, lo que necesitas ver
+  // es lo que los demás están viendo de ti.
+  const pantalla = compartiendo ? yo : pantallaAjena;
   const [invitando, setInvitando] = useState(false);
   const [ajustes, setAjustes] = useState(false);
 
@@ -127,10 +130,21 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                   // micrófono son doscientos milisegundos en los que parece que
                   // el botón no hizo nada.
                   silenciado={p.identity === yo ? !mic : (mudos[p.identity] ?? false)}
-                  // El propio no: el motor no se suscribe a su propia pista, y
-                  // verte a ti mismo es una función aparte —con espejo— que no
-                  // es ésta.
-                  video={p.identity !== yo && video[p.identity] ? p.identity : undefined}
+                  // El tuyo también, y en espejo. El motor no se suscribe a
+                  // sus propias pistas —el SFU no te devuelve lo que mandas—
+                  // así que tu cara la guarda la captura por su cuenta. Sin
+                  // esto, encender la cámara sin nadie más en la sala no
+                  // enseñaba nada y parecía rota.
+                  video={
+                    p.identity === yo
+                      ? cam
+                        ? (yo ?? undefined)
+                        : undefined
+                      : video[p.identity]
+                        ? p.identity
+                        : undefined
+                  }
+                  espejo={p.identity === yo}
                 />
               ))}
             </div>
