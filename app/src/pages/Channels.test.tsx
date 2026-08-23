@@ -36,10 +36,16 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+// `SidebarProvider` porque la pantalla vive dentro del armazón —`AppLayout` lo
+// envuelve todo— y encoge el rail cuando alguien comparte pantalla.
+const { SidebarProvider } = await import("@/components/ui/sidebar");
+
 const montar = (url: string) =>
   render(
     <MemoryRouter initialEntries={[url]}>
-      <Channels />
+      <SidebarProvider>
+        <Channels />
+      </SidebarProvider>
     </MemoryRouter>,
   );
 

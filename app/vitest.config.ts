@@ -13,6 +13,8 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
   test: {
     environment: "jsdom",
+    // jsdom no trae `matchMedia`; ver src/test-setup.ts.
+    setupFiles: ["./src/test-setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     restoreMocks: true,
   },

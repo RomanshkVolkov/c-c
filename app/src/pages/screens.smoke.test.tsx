@@ -34,6 +34,7 @@ const { useOrgsStore } = await import("@/store/orgs.store");
 const { useAuthStore } = await import("@/store/auth.store");
 const { PromptProvider } = await import("@/components/PromptDialog");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
+const { SidebarProvider } = await import("@/components/ui/sidebar");
 
 const arbol = [
   {
@@ -48,24 +49,6 @@ beforeEach(() => {
   api.post.mockResolvedValue({ success: true });
   api.patch.mockResolvedValue({ success: true });
   api.delete.mockResolvedValue({ success: true });
-  // jsdom no trae matchMedia y el sidebar lo consulta (tema del sistema y
-  // ancho de pantalla). Sin esto el fallo es un TypeError que no dice nada de
-  // lo que se está comprobando.
-  if (!window.matchMedia) {
-    Object.defineProperty(window, "matchMedia", {
-      writable: true,
-      value: (query: string) => ({
-        matches: false,
-        media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-        onchange: null,
-      }),
-    });
-  }
   useTasksStore.setState({ tree: arbol, loadingTree: false, error: null } as never);
   useOrgsStore.setState({
     orgs: [{ id: "org-1", name: "Uno", slug: "uno", role: "admin", memberCount: 3 }],
@@ -78,11 +61,16 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+// Con `SidebarProvider` porque en la app **todas** estas pantallas se pintan
+// dentro de él —`AppLayout` lo envuelve todo— y alguna ya lee su contexto. Un
+// fixture que las monta sueltas prueba un montaje que no existe.
 const montar = (el: React.ReactNode) =>
   render(
     <MemoryRouter>
       <ConfirmProvider>
-        <PromptProvider>{el}</PromptProvider>
+        <PromptProvider>
+          <SidebarProvider>{el}</SidebarProvider>
+        </PromptProvider>
       </ConfirmProvider>
     </MemoryRouter>,
   );
@@ -142,7 +130,6 @@ describe("las pantallas nuevas se montan sin renderizar en bucle", () => {
 describe("el sidebar", () => {
   it("pone la organización en el pie y no en la navegación", async () => {
     const { default: AppSidebar } = await import("@/components/AppSidebar");
-    const { SidebarProvider } = await import("@/components/ui/sidebar");
     const { container } = montar(
       <SidebarProvider>
         <AppSidebar />

@@ -6,6 +6,7 @@ import ChannelView from "@/components/chat/ChannelView";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
 import { useVoice } from "@/store/voice.store";
+import { useEncogerAlCompartir } from "@/components/voice/useEncogerAlCompartir";
 import { useOrgsStore } from "@/store/orgs.store";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,9 @@ export default function Channels() {
   const abierto = params.get("space");
   const espacio = tree.find((s) => s.id === abierto) ?? tree[0];
 
+  // Con una pantalla en el escenario esta columna sobra, y el rail también.
+  const encogido = useEncogerAlCompartir(espacio?.id ?? null);
+
   // Says which channel is on screen, so the event handler can keep quiet about
   // messages you are watching arrive. It used to read "is the panel open on
   // this space", and with the panel gone that would have been false forever —
@@ -59,7 +63,16 @@ export default function Channels() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-muted/10">
+      <aside
+        // A cero en vez de desmontada: desmontar pierde el foco y corta la
+        // transición en seco. `inert` es lo que impide que quede una columna
+        // invisible pero tabulable, que es peor que dejarla a la vista.
+        inert={encogido}
+        className={cn(
+          "flex shrink-0 flex-col overflow-hidden bg-muted/10 transition-[width] duration-200",
+          encogido ? "w-0 border-r-0" : "w-60 border-r",
+        )}
+      >
         <header className="flex h-12 shrink-0 items-center border-b px-3">
           <span className="text-sm font-medium">Channels</span>
         </header>
