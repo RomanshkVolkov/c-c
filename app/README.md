@@ -95,6 +95,30 @@ Releases are cut by publishing a `vX.Y.Z` GitHub release. The `app-release.yml` 
 
 The installed app polls `https://github.com/RomanshkVolkov/c-c/releases/latest/download/latest.json` every 30 min via the `UpdateChecker` component.
 
+### Building the package locally
+
+Worth doing before cutting a release: the packaged app has a different library
+environment from `tauri dev` — that is its whole purpose — and v1.6.49 shipped a
+build that opened to a blank window because everything *except* the package had
+been verified.
+
+```
+cd app && NO_STRIP=1 ARCH=x86_64 bun run tauri build
+```
+
+Both variables are needed **on Arch and derivatives**, and without them the
+error says nothing useful — Tauri swallows linuxdeploy's output and prints only
+`failed to bundle project 'failed to run linuxdeploy'`:
+
+- `NO_STRIP=1` — linuxdeploy bundles an old binutils whose `strip` cannot read
+  the `.relr.dyn` sections in current Arch libraries, and aborts the build.
+- `ARCH=x86_64` — appimagetool finds more than one architecture in the AppDir
+  and refuses to guess.
+
+The build ends with `A public key has been found, but no private key`. That is
+only the updater signature, whose key lives in CI; the `.AppImage` is already
+written and works.
+
 ## Related proposals
 
 - [Groups & multi-user sharing](../docs/proposals/groups-and-sharing.md) — future model for multi-user resource ownership. Currently the app assumes a single user.
