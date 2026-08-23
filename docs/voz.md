@@ -491,7 +491,39 @@ callas creyendo que el otro no te oye.
      reporte. Una línea por trama sería un cuello de botella y un diario que
      nadie lee.
 
-9. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
+9. **Una webcam son dos dispositivos, y `nokhwa` devuelve el muerto primero.**
+   Medido con `spikes/camera-probe` en la máquina donde fallaba:
+
+   ```text
+   index=Index(1)  nombre="HD Webcam: HD Webcam"  formatos=0   ← no abre nunca
+   index=Index(0)  nombre="HD Webcam: HD Webcam"  formatos=10  ← 10/10 tramas
+   ```
+
+   El segundo nodo es el de metadatos que acompaña a muchas webcams: **se llama
+   igual** y `nokhwa::query` lo devuelve **antes**. El selector de dispositivos
+   deduplica por nombre y se quedaba con él; la preferencia guardada lo buscaba
+   por nombre y encontraba el mismo. La cámara «se abría» donde no hay imagen.
+
+   Se filtra por «¿ofrece algún formato?», que es lo único que los distingue —
+   no por una lista de índices o de nombres sospechosos, que envejecería. Cuesta
+   abrir cada dispositivo un instante, y se paga al listar o al elegir, nunca
+   por trama.
+
+   La primera trama tarda **~590 ms** (1280×720 MJPEG); las siguientes, ~33 ms.
+   El plazo de veinte segundos sobra de largo, que descarta la otra sospecha.
+
+10. **Un bucle de captura que se rinde tiene que decir por qué.** El de la
+    cámara hacía `let Ok(t) = camara.frame() else { break }`: el primer error
+    rompía el bucle, el hilo terminaba sin avisar y el llamante sólo veía
+    agotarse su plazo. «La cámara no entregó ninguna imagen» era todo lo que
+    quedaba de un error que el driver sí había explicado.
+
+    Ahora un tropiezo no mata la captura —treinta seguidos, sí— y al salir
+    **antes** de la primera trama se manda el motivo real por el mismo canal
+    que la respuesta buena. Un plazo agotado no es un diagnóstico: es la
+    ausencia de uno.
+
+11. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
    formato con más fps» —que podía ser 320×240— y luego el bucle **descartaba
    toda trama que no fuera exactamente 1280×720**. Con una webcam que diera otra
    cosa, el botón se quedaba encendido y no se publicaba una sola imagen, sin un
@@ -515,7 +547,7 @@ callas creyendo que el otro no te oye.
    prefiera: pueden dar algo pequeño o enorme, pero abren, y el bucle publica
    con las medidas que lleguen. Cada intento se anota en el diario.
 
-10. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
+12. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
    propias pistas —el SFU no te devuelve lo que acabas de mandar— así que tu
    cámara y tu pantalla no llegarían nunca por el camino de los demás. La
    captura las guarda por su cuenta en el mismo sitio, bajo tu propia identidad.
@@ -530,7 +562,7 @@ callas creyendo que el otro no te oye.
    que mover el lado derecho de la imagen, y una pantalla volteada sale con el
    texto del revés.
 
-11. **Lo que salió de revisar el camino caliente**, y que ninguna prueba podía
+13. **Lo que salió de revisar el camino caliente**, y que ninguna prueba podía
     cazar porque todo pasa a treinta veces por segundo con una llamada abierta:
 
     - **Las respuestas vacías no llevaban CORS.** El 204 «no ha cambiado» es la
@@ -550,7 +582,7 @@ callas creyendo que el otro no te oye.
       bloqueantes, que además hace que el búfer reutilizable del entrelazado
       sirva de algo: con un hilo distinto cada vez no se reutilizaba nunca.
 
-12. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
+14. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
    tramas se guardan por `(persona, fuente)` y se piden a
    `cacvideo://…/<identidad>/<camera|screen>`. Estuvieron guardándose sólo por
    persona: nadie lo notó porque no había pantalla que compartir, y en cuanto la
@@ -567,7 +599,7 @@ callas creyendo que el otro no te oye.
    alguien más empezó a compartir es quitarle de delante a la gente lo que
    estaba leyendo.
 
-13. **Cámara y pantalla**: **publicar** está hecho para la cámara
+15. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -588,7 +620,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-14. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+16. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.

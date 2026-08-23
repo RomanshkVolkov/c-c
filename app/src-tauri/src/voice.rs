@@ -321,7 +321,7 @@ pub async fn voice_list_devices() -> Result<serde_json::Value, String> {
     let mics = limpiar(todos);
 
     let elegida = CAM_ELEGIDA.lock().unwrap().clone();
-    let camaras = nokhwa::query(nokhwa::utils::ApiBackend::Auto).unwrap_or_default();
+    let camaras = camaras_utiles();
     let primera = camaras.first().map(|c| c.human_name());
     let actual_cam = elegida.clone().or(primera);
     // Sin repetidas: una webcam suele aparecer dos veces —`/dev/video0` captura
@@ -433,6 +433,43 @@ fn es_util(id: &str) -> bool {
 fn sin_repetidos(lista: Vec<Dispositivo>) -> Vec<Dispositivo> {
     let mut vistos = std::collections::HashSet::new();
     lista.into_iter().filter(|d| vistos.insert(d.name.clone())).collect()
+}
+
+/// Las cámaras que **de verdad** pueden capturar algo.
+///
+/// Hace falta filtrar porque una webcam suele exponer **dos nodos con el mismo
+/// nombre**: el de vídeo y el de metadatos. Medido en esta máquina con el
+/// spike `spikes/camera-probe`:
+///
+/// ```text
+/// index=Index(1)  nombre="HD Webcam: HD Webcam"  formatos=0   ← no abre nunca
+/// index=Index(0)  nombre="HD Webcam: HD Webcam"  formatos=10  ← 10/10 tramas
+/// ```
+///
+/// Y `nokhwa::query` devuelve **el muerto primero**. Como el selector deduplica
+/// por nombre y la preferencia guardada busca por nombre, los dos se quedaban
+/// con él: la cámara «se abría» en un nodo que no entrega una sola imagen.
+///
+/// El criterio es «¿ofrece algún formato?», que es justo lo que los distingue,
+/// y no una lista de nombres o de índices sospechosos. Cuesta abrir cada
+/// dispositivo un instante; se paga sólo al listar o al elegir, nunca por trama.
+fn camaras_utiles() -> Vec<nokhwa::utils::CameraInfo> {
+    use nokhwa::pixel_format::RgbFormat;
+    use nokhwa::utils::{ApiBackend, RequestedFormat, RequestedFormatType};
+
+    nokhwa::query(ApiBackend::Auto)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| {
+            nokhwa::Camera::new(
+                c.index().clone(),
+                RequestedFormat::new::<RgbFormat>(RequestedFormatType::None),
+            )
+            .and_then(|mut cam| cam.compatible_camera_formats())
+            .map(|f| !f.is_empty())
+            .unwrap_or(false)
+        })
+        .collect()
 }
 
 /// El identificador estable de un dispositivo de audio, como texto.
@@ -1357,18 +1394,19 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
         // Igual que el micrófono: la elegida por nombre, y si ya no está, la
         // primera. El índice se resuelve ahora y no se guarda, porque enchufar
         // otra cámara los renumera.
-        let indice = CAM_ELEGIDA
-            .lock()
-            .unwrap()
-            .clone()
-            .and_then(|nombre| {
-                nokhwa::query(nokhwa::utils::ApiBackend::Auto)
-                    .ok()?
-                    .into_iter()
-                    .find(|c| c.human_name() == nombre)
-                    .map(|c| c.index().clone())
-            })
+        // Sólo entre las que pueden capturar, y por eso no vale `query` a secas:
+        // el nodo de metadatos de la webcam se llama igual y sale antes.
+        let utiles = camaras_utiles();
+        let elegida = CAM_ELEGIDA.lock().unwrap().clone();
+        let indice = elegida
+            .and_then(|nombre| utiles.iter().find(|c| c.human_name() == nombre))
+            .or_else(|| utiles.first())
+            .map(|c| c.index().clone())
             .unwrap_or(CameraIndex::Index(0));
+        nota(format!(
+            "cámara: {} útiles, se usa {indice:?}",
+            utiles.len()
+        ));
         let mut camara = None;
         let mut porques = Vec::new();
         for (nombre, tipo) in intentos {
@@ -1403,10 +1441,49 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
         // preferencia, no una promesa.
         let mut fuente: Option<NativeVideoSource> = None;
         let mut medidas = (0u32, 0u32);
+        // Un tropiezo no mata la captura, pero una racha sí — y **con motivo**.
+        //
+        // Antes era `let Ok(t) = camara.frame() else { break }`: el primer error
+        // rompía el bucle, el hilo terminaba sin avisar a nadie y el llamante
+        // sólo veía agotarse su plazo de veinte segundos. «La cámara no entregó
+        // ninguna imagen» era todo lo que quedaba de un error que el driver sí
+        // había explicado.
+        const RACHA_MAX: u32 = 30;
+        let mut seguidos = 0u32;
+        let mut ultimo_fallo = String::new();
 
         while CAMARA.load(std::sync::atomic::Ordering::Relaxed) {
-            let Ok(trama) = camara.frame() else { break };
-            let Ok(rgb) = trama.decode_image::<RgbFormat>() else { continue };
+            let trama = match camara.frame() {
+                Ok(t) => {
+                    seguidos = 0;
+                    t
+                }
+                Err(e) => {
+                    seguidos += 1;
+                    ultimo_fallo = format!("la cámara dejó de dar imagen: {e}");
+                    if seguidos == 1 || seguidos == RACHA_MAX {
+                        nota(format!("cámara: fallo {seguidos}/{RACHA_MAX} — {e}"));
+                    }
+                    if seguidos >= RACHA_MAX {
+                        break;
+                    }
+                    continue;
+                }
+            };
+            let rgb = match trama.decode_image::<RgbFormat>() {
+                Ok(r) => r,
+                Err(e) => {
+                    seguidos += 1;
+                    ultimo_fallo = format!("no se pudo descodificar lo que da la cámara: {e}");
+                    if seguidos == 1 || seguidos == RACHA_MAX {
+                        nota(format!("cámara: no descodifica {seguidos}/{RACHA_MAX} — {e}"));
+                    }
+                    if seguidos >= RACHA_MAX {
+                        break;
+                    }
+                    continue;
+                }
+            };
             let (w, h) = (rgb.width(), rgb.height());
             if w == 0 || h == 0 {
                 continue;
@@ -1449,6 +1526,21 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             });
         }
         let _ = camara.stop_stream();
+
+        // Si el bucle se acabó **antes** de la primera trama, alguien está
+        // esperando una respuesta que ya no va a llegar por otro camino. Decir
+        // el motivo aquí es la diferencia entre un diagnóstico y un plazo
+        // agotado; si ya había tramas, el canal está cerrado y esto no hace
+        // nada, que es lo correcto.
+        if fuente.is_none() {
+            let porque = if ultimo_fallo.is_empty() {
+                "la captura se detuvo antes de la primera imagen".to_string()
+            } else {
+                ultimo_fallo
+            };
+            nota(format!("cámara: se rinde — {porque}"));
+            let _ = listo_tx.send(Err(porque));
+        }
     });
 
     // Con plazo: entre abrir el dispositivo y la primera trama hay un momento,

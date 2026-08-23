@@ -1,0 +1,18 @@
+# ¿Por qué la cámara abre y no entrega tramas?
+#
+# La app dice «la cámara no entregó ninguna imagen» y ahí se acaba lo que
+# sabemos: el hilo de captura muere sin explicarse. Dos versiones seguidas se
+# arreglaron a ciegas y las dos empeoraron las cosas, así que esto pregunta a la
+# cámara en vez de suponer.
+#
+# Crate aparte y no un test de la app: abrir una webcam es E/S de verdad, no se
+# puede fingir, y no tiene sitio en una suite que corre en CI sin hardware.
+[package]
+name = "camera-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Las mismas features que `app/src-tauri`, o mediríamos otra cosa.
+nokhwa = { version = "0.10.11", features = ["input-native"] }
