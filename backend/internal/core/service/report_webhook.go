@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 )
@@ -34,6 +36,18 @@ const (
 // webhookPayload is the body receivers verify and parse. `data` is the same
 // map the live stream carries, so a receiver can treat both the same way.
 type webhookPayload struct {
+	// Un id por **evento**, no por intento. Es lo único que deja al receptor
+	// distinguir "esto pasó dos veces" de "lo estoy recibiendo dos veces": un
+	// reintento repite el cuerpo byte a byte, firma incluida, así que sin esto
+	// los dos casos son indistinguibles y la única defensa posible es guardar
+	// una huella de tipo+reporte+`at` unos minutos — que además falla si dos
+	// eventos legítimos del mismo tipo caen en el mismo segundo.
+	//
+	// Se genera donde se serializa el cuerpo, que es **una sola vez** para los
+	// tres intentos. Generarlo dentro del bucle lo dejaría inservible, y es un
+	// error que no se ve en ninguna prueba manual: los duplicados sólo aparecen
+	// cuando el receptor va lento.
+	EventID   string `json:"eventId"`
 	Type      string `json:"type"`
 	ReportID  string `json:"reportId"`
 	ProjectID string `json:"projectId"`
@@ -67,7 +81,8 @@ func dispatchWebhook(t *domain.ReportEventTarget, eventType, reportID string, da
 		return
 	}
 	body, err := json.Marshal(webhookPayload{
-		Type: eventType, ReportID: reportID, ProjectID: t.ProjectID,
+		EventID: uuid.NewString(),
+		Type:    eventType, ReportID: reportID, ProjectID: t.ProjectID,
 		Folio: t.Folio, ReporterID: t.ReporterID, ReporterName: t.ReporterName,
 		Data: data, At: time.Now().UTC(),
 	})

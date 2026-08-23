@@ -339,6 +339,7 @@ Payload:
 
 ```json
 {
+  "eventId": "9f1c2b8e-...",
   "type": "report:comment",
   "reportId": "...", "projectId": "...", "folio": "portento-12",
   "reporterId": "...", "reporterName": "...",
@@ -346,6 +347,19 @@ Payload:
   "at": "2026-08-02T09:00:00Z"
 }
 ```
+
+### `eventId`: deduplica con esto y no con marcas de tiempo
+
+Un id por **evento**, no por intento: los tres reintentos de un mismo evento
+llegan con el mismo `eventId` y el cuerpo idéntico byte a byte.
+
+Es lo que te deja distinguir «esto pasó dos veces» de «lo estoy recibiendo dos
+veces». **Guarda los ids que ya procesaste y descarta los repetidos.** No hace
+falta ventana de tiempo, ni comparar campos, ni adivinar.
+
+Importa porque el caso que lo dispara no parece un fallo: tardas un poco en
+responder, cac agota los 10 s y reintenta, y tú notificas dos veces. Nada peta
+en ninguno de los dos lados.
 
 Eventos: `report:new`, `report:status`, `report:comment`, `report:attachment`.
 

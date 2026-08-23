@@ -138,15 +138,16 @@ lentitud se convierte en un reintento — y en notificaciones duplicadas.
 
 Contesta 200 en cuanto valides la firma, y haz el trabajo después.
 
-### Deduplica, porque no puedes distinguir un reintento
+### Deduplica por `eventId`
 
-Y aquí hay una carencia **de cac**, no tuya: el payload lleva tipo, reporte,
-folio, reporter y marca de tiempo, pero **no un id de evento**. Un reintento es
-byte a byte idéntico al original, así que no hay forma limpia de reconocerlo.
+El payload trae un `eventId` que es **por evento, no por intento**: los
+reintentos de un mismo evento lo repiten. Guarda los que ya procesaste y
+descarta los repetidos.
 
-Mientras no lo haya, lo pragmático es guardar una huella —tipo + reporte + `at`—
-durante unos minutos y descartar repetidos. Menos elegante que un id, pero evita
-notificar dos veces.
+Esta integración se escribió cuando ese campo no existía y aquí decía que
+guardaras una huella de tipo + reporte + `at` durante unos minutos. **Eso ya no
+hace falta, y además fallaba** si dos eventos legítimos del mismo tipo caían en
+el mismo segundo. Si lo tienes puesto, se puede quitar.
 
 ### Que el webhook refresque el tablero, no sólo notifique
 
