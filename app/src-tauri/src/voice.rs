@@ -553,6 +553,132 @@ pub fn nota(linea: impl AsRef<str>) {
     d.push_back(format!("{sello} · {linea}"));
 }
 
+/// ¿Hay que dejar fuera el EGL de NVIDIA para que la pantalla se vea?
+///
+/// Sólo cuando **la primera** tarjeta que va a coger libwebrtc es la NVIDIA y
+/// hay otra distinta. Los tres casos que no son ése, y por qué se dejan en paz:
+///
+/// - **Una sola tarjeta, sea cual sea**: no hay desajuste posible. Y si es la
+///   NVIDIA, dejarla fuera rompería EGL entero en vez de arreglar nada.
+/// - **La primera no es NVIDIA**: libwebrtc ya va a coger la misma en la que
+///   compone el escritorio. Es el caso bueno.
+///
+/// `nodos` viene ordenado como los enumera libdrm —por número de nodo, que es
+/// como `drmGetDevices2` los devuelve— porque lo que importa es cuál va a coger
+/// libwebrtc, no cuál nos parezca mejor a nosotros.
+fn hay_que_dejar_fuera_a_nvidia(nodos: &[(u32, String)]) -> bool {
+    let Some((_, primera)) = nodos.first() else {
+        return false;
+    };
+    primera == "nvidia" && nodos.iter().any(|(_, otra)| otra != "nvidia")
+}
+
+/// Que libwebrtc use la tarjeta en la que compone el escritorio, no otra.
+///
+/// # Qué arregla
+///
+/// En un portátil híbrido, compartir pantalla enseñaba un rectángulo negro. El
+/// compositor compone en la integrada y entrega el búfer del screencast como
+/// DMA-BUF suyo; `EglDmaBuf` de libwebrtc abre **el primer nodo de render que
+/// encuentre** —«Defaulting to using first available render node», literal en
+/// el binario— y en estas máquinas ése es el de NVIDIA. EGL inicializa bien
+/// sobre él, así que libwebrtc ofrece DMA-BUF; al importar el búfer ajeno falla
+/// («Failed to bind DMA buf framebuffer»), tira el modificador, renegocia mal, y
+/// PipeWire mata el flujo con «error alloc buffers: Invalid argument».
+///
+/// Si EGL **no** inicializa, libwebrtc no ofrece DMA-BUF y usa memoria
+/// compartida, que funciona. Dejando fuera el vendedor de NVIDIA, la llamada
+/// sobre ese nodo falla y se toma ese camino. Comprobado a mano antes de
+/// escribir esto.
+///
+/// Y conviene decirlo: **DMA-BUF no nos aporta nada**. Ahorra copias en GPU y
+/// nosotros leemos los píxeles en CPU dos líneas después para pasarlos a I420.
+/// Memoria compartida no es el plan B, es el que nos conviene.
+///
+/// # Lo que cuesta, sin adornos
+///
+/// Es una variable de entorno: vale para **todo el proceso**, así que WebKit
+/// también renderiza con Mesa. En la máquina que dispara la detección eso es lo
+/// que ya hacía. En una híbrida cuyo escritorio sí corra sobre la NVIDIA le
+/// quitamos la dedicada a la ventana — sigue funcionando, en la integrada, y
+/// para una app de texto y listas no se nota. Es el precio de una heurística
+/// sobre el hardware de quien ejecuta, y por eso esto es una mitigación: el
+/// arreglo de verdad es hablar con PipeWire nosotros y no depender de la GPU.
+///
+/// Si la variable ya viene puesta desde fuera **no se toca**: quien la puso
+/// sabe más que nosotros de su máquina.
+///
+/// Se llama al principio de `run()` y tiene que seguir ahí: GLVND enumera a los
+/// vendedores **una sola vez**, la primera que alguien use EGL, y en cuanto la
+/// ventana se abre ya es tarde.
+#[cfg(target_os = "linux")]
+pub fn preferir_la_gpu_del_escritorio() {
+    const VARIABLE: &str = "__EGL_VENDOR_LIBRARY_FILENAMES";
+    const VENDEDORES: [&str; 2] = ["/usr/share/glvnd/egl_vendor.d", "/etc/glvnd/egl_vendor.d"];
+
+    if std::env::var_os(VARIABLE).is_some() {
+        return;
+    }
+
+    let mut nodos: Vec<(u32, String)> = Vec::new();
+    let Ok(entradas) = std::fs::read_dir("/sys/class/drm") else {
+        return;
+    };
+    for entrada in entradas.flatten() {
+        let nombre = entrada.file_name();
+        let Some(numero) = nombre.to_str().and_then(|n| n.strip_prefix("renderD")) else {
+            continue;
+        };
+        let Ok(numero) = numero.parse::<u32>() else {
+            continue;
+        };
+        let Ok(destino) = std::fs::canonicalize(entrada.path().join("device/driver")) else {
+            continue;
+        };
+        let controlador = destino
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        nodos.push((numero, controlador));
+    }
+    nodos.sort_by_key(|(numero, _)| *numero);
+
+    if !hay_que_dejar_fuera_a_nvidia(&nodos) {
+        return;
+    }
+
+    // El de Mesa por nombre y no por ruta fija: las distribuciones lo numeran
+    // distinto, y el número es justo lo que decide el orden.
+    let mesa = VENDEDORES
+        .iter()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flat_map(|d| d.flatten())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .map(|n| {
+                    let n = n.to_string_lossy().to_lowercase();
+                    n.contains("mesa") && n.ends_with(".json")
+                })
+                .unwrap_or(false)
+        })
+        .min();
+    let Some(mesa) = mesa else {
+        nota("gpu: la primera tarjeta es NVIDIA y no encuentro el EGL de Mesa; la pantalla puede salir en negro");
+        return;
+    };
+
+    std::env::set_var(VARIABLE, &mesa);
+    nota(format!(
+        "gpu: {} tarjetas y la primera es NVIDIA; se usa el EGL de Mesa ({})",
+        nodos.len(),
+        mesa.display()
+    ));
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn preferir_la_gpu_del_escritorio() {}
+
 /// Deja que libwebrtc escriba en el diario, filtrado.
 ///
 /// El SDK instala un sumidero de los registros de libwebrtc a nivel `VERBOSE` y
@@ -2154,7 +2280,10 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
 
 #[cfg(test)]
 mod pruebas {
-    use super::{es_util, hay_voz, limpiar, rtt_nominado, Dispositivo, UMBRAL_VOZ};
+    use super::{
+        es_util, hay_que_dejar_fuera_a_nvidia, hay_voz, limpiar, rtt_nominado, Dispositivo,
+        UMBRAL_VOZ,
+    };
 
     fn d(id: &str, name: &str) -> Dispositivo {
         Dispositivo {
@@ -2375,6 +2504,57 @@ mod pruebas {
             dentro.is_ok(),
             "entrar al runtime desde el hilo tendría que bastar"
         );
+    }
+
+    fn nodos(pares: &[(u32, &str)]) -> Vec<(u32, String)> {
+        pares.iter().map(|(n, d)| (*n, d.to_string())).collect()
+    }
+
+    // El caso que rompía: la NVIDIA sale primera, el escritorio compone en la
+    // Intel, y libwebrtc importa un búfer de una tarjeta en la otra.
+    #[test]
+    fn la_hibrida_con_nvidia_delante_si_se_toca() {
+        assert!(hay_que_dejar_fuera_a_nvidia(&nodos(&[
+            (128, "nvidia"),
+            (129, "i915")
+        ])));
+    }
+
+    // Y la misma máquina con los nodos al revés **no**: libwebrtc ya va a coger
+    // la integrada, que es donde compone el escritorio. Tocarla sería cambiar
+    // algo que funciona.
+    #[test]
+    fn la_hibrida_con_la_integrada_delante_se_deja_en_paz() {
+        assert!(!hay_que_dejar_fuera_a_nvidia(&nodos(&[
+            (128, "i915"),
+            (129, "nvidia")
+        ])));
+    }
+
+    // Con una sola tarjeta no hay desajuste que arreglar. Y si esa única
+    // tarjeta es la NVIDIA, dejarla fuera no daría memoria compartida: dejaría
+    // el proceso sin EGL ninguno.
+    #[test]
+    fn una_sola_tarjeta_nunca_se_toca() {
+        assert!(!hay_que_dejar_fuera_a_nvidia(&nodos(&[(128, "nvidia")])));
+        assert!(!hay_que_dejar_fuera_a_nvidia(&nodos(&[(128, "i915")])));
+        assert!(!hay_que_dejar_fuera_a_nvidia(&nodos(&[(128, "amdgpu")])));
+    }
+
+    // Dos NVIDIA tampoco: no hay ninguna otra a la que caer.
+    #[test]
+    fn dos_nvidia_no_dejan_alternativa() {
+        assert!(!hay_que_dejar_fuera_a_nvidia(&nodos(&[
+            (128, "nvidia"),
+            (129, "nvidia")
+        ])));
+    }
+
+    // Una máquina sin tarjetas —un contenedor, un servidor— no puede hacer que
+    // esto entre en pánico ni decida nada.
+    #[test]
+    fn sin_tarjetas_no_hay_nada_que_decidir() {
+        assert!(!hay_que_dejar_fuera_a_nvidia(&[]));
     }
 
     fn tono(amplitud: f32) -> Vec<i16> {

@@ -651,6 +651,21 @@ callas creyendo que el otro no te oye.
     plan que nos conviene. El problema no es perder DMA-BUF, es que hoy no hay
     forma limpia de renunciar a él.
 
+    **La mitigación que va puesta** (`voice::preferir_la_gpu_del_escritorio`, se
+    llama al principio de `run()`): si el primer nodo de render es de NVIDIA y
+    hay otro distinto, se pone `__EGL_VENDOR_LIBRARY_FILENAMES` al vendedor de
+    Mesa. Sólo en ese caso: con una sola tarjeta no hay desajuste, y si esa
+    única tarjeta fuera la NVIDIA la dejaríamos sin EGL en vez de arreglar nada.
+    Si la variable ya viene de fuera no se toca. Tiene que ir antes de que nada
+    use EGL, porque GLVND enumera vendedores **una sola vez**.
+
+    Es una **mitigación**, no un arreglo, y el precio hay que decirlo: la
+    variable vale para todo el proceso, así que WebKit también renderiza con
+    Mesa. En la máquina que dispara la detección es lo que ya hacía; en una
+    híbrida cuyo escritorio corra sobre la NVIDIA le quitamos la dedicada a la
+    ventana. Es el precio de adivinar sobre el hardware ajeno, y por eso el
+    arreglo de verdad es hablar con PipeWire nosotros (cac App #29).
+
 13b. **Lo que de verdad costó la noche no fue el fallo, fue no poder oírlo.**
     libwebrtc instala un sumidero de sus propios registros a nivel `VERBOSE` y
     los manda a `log::debug!(target: "libwebrtc")`. La app no tenía ninguna
