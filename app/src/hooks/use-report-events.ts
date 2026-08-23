@@ -74,6 +74,36 @@ async function windowIsFocused(): Promise<boolean> {
 // Fallback (browser, no Tauri) only — in the app the stream lives in Rust.
 const MAX_BACKOFF_MS = 30_000;
 const PING_TIMEOUT_MS = 60_000;
+
+/**
+ * ¿Acaba de volver el stream de una caída?
+ *
+ * Un evento emitido mientras la conexión estaba muerta **no se reenvía** al
+ * reconectar. Así que reconectar en silencio deja la pantalla con un hueco que
+ * nada delata: los mensajes de ese rato no llegaron y no van a llegar. Quien
+ * responde `true` aquí está diciendo «hay que volver a pedir lo que hay a la
+ * vista».
+ *
+ * El primer `open` **no** cuenta: es el arranque, y ahí las pantallas acaban de
+ * pedir sus datos. Distinguirlo es toda la razón de que esto tenga estado.
+ *
+ * Se exporta para poder probarlo de verdad, y lo usan los dos transportes —el
+ * de Rust y el de `EventSource`—, que tenían el mismo agujero por separado.
+ */
+export function vigilanteDeReconexion() {
+  let caido = false;
+  return (estado: "open" | "connecting" | "down"): boolean => {
+    if (estado === "down") {
+      caido = true;
+      return false;
+    }
+    if (estado === "open" && caido) {
+      caido = false;
+      return true;
+    }
+    return false;
+  };
+}
 const WATCHDOG_TICK_MS = 15_000;
 
 /**
@@ -156,10 +186,32 @@ export function useReportEvents() {
       })();
     };
 
+    /**
+     * Volver a pedir lo que hay en pantalla.
+     *
+     * Se llama al recuperar el foco y —lo que faltaba— **cuando el stream se
+     * cae y vuelve**. Un evento emitido mientras nadie escuchaba no se reenvía:
+     * si no se recupera aquí, se ha perdido hasta que alguien recargue.
+     *
+     * Antes sólo miraba los reportes, y por eso el chat se quedaba atrás sin
+     * que nada lo delatara: los mensajes llegaban en vivo o no llegaban. Es la
+     * causa de tener que recargar para leer lo que te habían escrito, y se nota
+     * sobre todo en una llamada, que es cuando pasas media hora sin quitarle el
+     * foco a la ventana ni una vez.
+     */
     const refresh = () => {
       const store = useReportsStore.getState();
       store.fetchReports();
       if (store.selectedId) store.refreshDetail();
+
+      const chat = useChatStore.getState();
+      void chat.fetchUnread();
+      // Sólo el canal que está a la vista: recargar los demás sería pedir el
+      // historial entero de la organización cada vez que parpadea la red.
+      if (chat.panelOpen && chat.spaceId) void chat.fetch(chat.spaceId);
+
+      const dm = useDMStore.getState();
+      if (dm.conversationId) void dm.open(dm.conversationId);
     };
 
     /**
@@ -349,6 +401,7 @@ export function useReportEvents() {
     // ── Rust-owned stream ────────────────────────────────────────────────────
     if (inTauri) {
       const unlisten: Array<() => void> = [];
+      const volvio = vigilanteDeReconexion();
       void (async () => {
         const [{ invoke }, { listen }] = await Promise.all([
           import("@tauri-apps/api/core"),
@@ -367,6 +420,14 @@ export function useReportEvents() {
             useConnectionStore
               .getState()
               .setStream(s === "open" ? "open" : s === "connecting" ? "connecting" : "down");
+
+            // Rust reconecta solo, y eso bastaba para que el stream volviera
+            // a estar vivo — pero lo emitido mientras estaba muerto no se
+            // reenvía. Sin esto la reconexión era silenciosa y perfecta salvo
+            // por el detalle de que faltaban mensajes.
+            if (volvio(s === "open" ? "open" : s === "connecting" ? "connecting" : "down")) {
+              refresh();
+            }
 
             // Rust stops retrying on an auth failure — retrying with the same
             // token would just fail again. Getting a fresh one is the UI's job,
@@ -406,6 +467,7 @@ export function useReportEvents() {
     let watchdog: ReturnType<typeof setInterval> | null = null;
     let lastSeenAt = Date.now();
     let attempts = 0;
+    const volvio = vigilanteDeReconexion();
 
     const connect = () => {
       if (stopped) return;
@@ -418,6 +480,7 @@ export function useReportEvents() {
         attempts = 0;
         lastSeenAt = Date.now();
         useConnectionStore.getState().setStream("open");
+        if (volvio("open")) refresh();
       };
 
       const seen = () => {
@@ -444,6 +507,7 @@ export function useReportEvents() {
 
       es.onerror = () => {
         useConnectionStore.getState().setStream("down");
+        volvio("down");
         es?.close();
         es = null;
         if (stopped) return;
