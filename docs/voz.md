@@ -523,7 +523,24 @@ callas creyendo que el otro no te oye.
     que la respuesta buena. Un plazo agotado no es un diagnóstico: es la
     ausencia de uno.
 
-11. **`Camera::frame()` puede colgarse para siempre, y en la app se cuelga.**
+11. **La ruta del vídeo llega escapada, y eso dejó sin imagen a las dos
+    capturas.** `convertFileSrc` de Tauri pasa la ruta entera por
+    `encodeURIComponent`, **barras incluidas**. En cuanto la URL pasó a tener
+    dos segmentos —`<identidad>/<fuente>`— la barra viajaba como `%2F`, el
+    manejador buscaba a una persona llamada «u-ana%2Fcamera» y contestaba 404 a
+    todo.
+
+    Ni la cámara ni la pantalla se veían nunca. Como son dos capturas
+    completamente distintas, parecían dos fallos independientes y se
+    persiguieron por separado durante tres versiones. Lo que las unía era el
+    único trozo que compartían.
+
+    `media.rs` ya tenía su propio `percent_decode` por esto mismo, con el motivo
+    escrito encima. La lección no es «hay que decodificar»: es que **cuando dos
+    cosas que no se parecen fallan igual, lo que falla es lo que comparten** — y
+    yo estaba mirando los dos extremos.
+
+12. **`Camera::frame()` puede colgarse para siempre, y en la app se cuelga.**
     El diario de la v1.6.45 enseña la cámara abierta a 1280×720 MJPEG y
     **después nada**: ni trama, ni fallo, ni rendición. Debajo está
     `MmapStream::next()` del crate `v4l`, que bloquea sin plazo, y nokhwa no
@@ -551,7 +568,7 @@ callas creyendo que el otro no te oye.
       dispositivo. Un hilo bloqueado no se puede matar desde fuera en Rust, pero
       sí se puede dejar de empeorar la situación.
 
-12. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
+13. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
    formato con más fps» —que podía ser 320×240— y luego el bucle **descartaba
    toda trama que no fuera exactamente 1280×720**. Con una webcam que diera otra
    cosa, el botón se quedaba encendido y no se publicaba una sola imagen, sin un
@@ -575,7 +592,7 @@ callas creyendo que el otro no te oye.
    prefiera: pueden dar algo pequeño o enorme, pero abren, y el bucle publica
    con las medidas que lleguen. Cada intento se anota en el diario.
 
-13. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
+14. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
    propias pistas —el SFU no te devuelve lo que acabas de mandar— así que tu
    cámara y tu pantalla no llegarían nunca por el camino de los demás. La
    captura las guarda por su cuenta en el mismo sitio, bajo tu propia identidad.
@@ -590,7 +607,7 @@ callas creyendo que el otro no te oye.
    que mover el lado derecho de la imagen, y una pantalla volteada sale con el
    texto del revés.
 
-14. **Lo que salió de revisar el camino caliente**, y que ninguna prueba podía
+15. **Lo que salió de revisar el camino caliente**, y que ninguna prueba podía
     cazar porque todo pasa a treinta veces por segundo con una llamada abierta:
 
     - **Las respuestas vacías no llevaban CORS.** El 204 «no ha cambiado» es la
@@ -610,7 +627,7 @@ callas creyendo que el otro no te oye.
       bloqueantes, que además hace que el búfer reutilizable del entrelazado
       sirva de algo: con un hilo distinto cada vez no se reutilizaba nunca.
 
-15. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
+16. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
    tramas se guardan por `(persona, fuente)` y se piden a
    `cacvideo://…/<identidad>/<camera|screen>`. Estuvieron guardándose sólo por
    persona: nadie lo notó porque no había pantalla que compartir, y en cuanto la
@@ -627,7 +644,7 @@ callas creyendo que el otro no te oye.
    alguien más empezó a compartir es quitarle de delante a la gente lo que
    estaba leyendo.
 
-16. **Cámara y pantalla**: **publicar** está hecho para la cámara
+17. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -648,7 +665,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-17. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+18. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.

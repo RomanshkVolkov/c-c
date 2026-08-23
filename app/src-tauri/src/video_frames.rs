@@ -166,11 +166,41 @@ pub fn olvidar_todo() {
     ULTIMAS.lock().unwrap().clear();
 }
 
+/// Deshace el `%XX` de una ruta.
+///
+/// Hace falta porque `convertFileSrc` de Tauri pasa la ruta entera por
+/// `encodeURIComponent`, **barras incluidas**. Los adjuntos ya tenían su propio
+/// decodificador por esto mismo (`media.rs`), con el motivo escrito, y aun así
+/// se repitió aquí en cuanto la ruta pasó a tener dos segmentos.
+fn sin_escapes(entrada: &str) -> String {
+    let bytes = entrada.as_bytes();
+    let mut fuera: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(v) = u8::from_str_radix(&entrada[i + 1..i + 3], 16) {
+                fuera.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        fuera.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&fuera).into_owned()
+}
+
 /// Quién y qué pide una URL `cacvideo://…/<identidad>/<fuente>`.
 ///
 /// Los sistemas no se ponen de acuerdo en la forma —`cacvideo://localhost/…`
 /// en Linux y macOS, `http://cacvideo.localhost/…` en Windows— así que se
 /// normalizan las dos. La cola `?seq=` se descarta aquí.
+///
+/// **La ruta llega escapada.** `convertFileSrc` la pasa por
+/// `encodeURIComponent`, así que la barra que separa la identidad de la fuente
+/// viaja como `%2F`. Sin deshacerlo, esto buscaba a una persona llamada
+/// «u-ana%2Fcamera» y contestaba 404 a todo — ni la cámara ni la pantalla se
+/// veían nunca, y como son dos capturas distintas parecían dos fallos.
 ///
 /// Sin fuente en el camino se asume la cámara. No es por compatibilidad: es que
 /// una URL a medias tiene que resolver a algo concreto, y la cara es lo que
@@ -179,6 +209,7 @@ pub fn pedido_de(uri: &str) -> Option<(String, Fuente)> {
     let tras_esquema = uri.split_once("://").map(|(_, r)| r).unwrap_or(uri);
     let camino = tras_esquema.split_once('/').map(|(_, p)| p)?;
     let camino = camino.split('?').next().unwrap_or(camino);
+    let camino = sin_escapes(camino);
     let mut partes = camino.trim_matches('/').split('/');
     let id = partes.next().unwrap_or("");
     if id.is_empty() {
@@ -395,6 +426,22 @@ mod pruebas {
         assert_eq!(
             pedido_de("cacvideo://localhost/u-bea/screen?seq=7"),
             Some(("u-bea".to_string(), Fuente::Pantalla))
+        );
+    }
+
+    // La ruta llega **escapada**: `convertFileSrc` de Tauri pasa todo por
+    // `encodeURIComponent`, barras incluidas. Éste es el caso que se coló en la
+    // v1.6.45 y dejó sin imagen tanto a la cámara como a la pantalla — dos
+    // capturas distintas rotas por el mismo camino, que parecían dos fallos.
+    #[test]
+    fn la_barra_llega_escapada_y_hay_que_deshacerla() {
+        assert_eq!(
+            pedido_de("cacvideo://localhost/u-bea%2Fscreen?seq=3"),
+            Some(("u-bea".to_string(), Fuente::Pantalla))
+        );
+        assert_eq!(
+            pedido_de("http://cacvideo.localhost/u-bea%2Fcamera"),
+            Some(("u-bea".to_string(), Fuente::Camara))
         );
     }
 
