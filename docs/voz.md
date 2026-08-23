@@ -640,8 +640,16 @@ callas creyendo que el otro no te oye.
     `include_cursor` y `allow_sck_system_picker`. Nada que tocar desde Rust.
 
     Si EGL **no** inicializa, libwebrtc no ofrece DMA-BUF y usa memoria
-    compartida, que funciona. Ése es el camino bueno y hoy no hay forma limpia
-    de pedirlo.
+    compartida, que funciona. **Comprobado**: arrancando la app con
+    `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`
+    —que deja fuera el EGL de NVIDIA, así que `eglInitialize` sobre el nodo
+    NVIDIA falla— se ven la cámara y la pantalla. Diagnóstico cerrado.
+
+    Y conviene decir lo que eso significa: **DMA-BUF no nos sirve de nada**. Su
+    razón de ser es ahorrar copias en GPU, y nosotros leemos los píxeles en CPU
+    acto seguido para pasarlos a I420. Memoria compartida no es el plan B; es el
+    plan que nos conviene. El problema no es perder DMA-BUF, es que hoy no hay
+    forma limpia de renunciar a él.
 
 13b. **Lo que de verdad costó la noche no fue el fallo, fue no poder oírlo.**
     libwebrtc instala un sumidero de sus propios registros a nivel `VERBOSE` y
