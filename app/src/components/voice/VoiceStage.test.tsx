@@ -36,6 +36,7 @@ const base = {
   hablandoYo: false,
   pantalla: null as string | null,
   compartiendo: false,
+  error: null as string | null,
 };
 
 beforeEach(() => {
@@ -240,6 +241,20 @@ describe("la pantalla de la sala", () => {
     fireEvent.click(boton);
     // Se abre el panel. Sin esto, «no está deshabilitado» no dice gran cosa.
     expect(screen.getByText(/Looking for devices|Microphone/)).toBeTruthy();
+  });
+
+  it("lo que el motor no pudo hacer se ve, y no sólo en el store", () => {
+    // Estuvo tres versiones guardándose sin pintarse en ninguna parte: la
+    // cámara no abría, el botón no cambiaba y no aparecía nada. «Encender la
+    // cámara no hace nada» era un fallo del motor con la boca tapada.
+    estado.current = { ...estado.current, error: "la cámara no aceptó ningún formato" };
+    render(<Escenario spaceName="general" />);
+    expect(screen.getByRole("alert").textContent).toContain("no aceptó ningún formato");
+  });
+
+  it("y sin fallo no hay ruido", () => {
+    render(<Escenario spaceName="general" />);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("minimizar no cuelga", () => {

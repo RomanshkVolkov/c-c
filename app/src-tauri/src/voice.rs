@@ -161,6 +161,7 @@ pub async fn voice_join(
 
     *CANAL.lock().unwrap() = Some(on_event.clone());
     *YO.lock().unwrap() = Some(identidad.clone());
+    nota(format!("sala: dentro como {identidad}"));
     let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
 
     on_event
@@ -191,6 +192,9 @@ pub async fn voice_leave() {
     // llama a esto antes de entrar, entrar a dos salas seguidas dejaba dos
     // cámaras corriendo a la vez.
     use std::sync::atomic::Ordering::Relaxed;
+    if YO.lock().unwrap().is_some() {
+        nota("sala: fuera");
+    }
     CAMARA.store(false, Relaxed);
     PANTALLA.store(false, Relaxed);
     // Las caras de la sala anterior no se heredan.
@@ -246,6 +250,7 @@ pub async fn voice_set_mic(enabled: bool) -> Result<(), String> {
         }
     };
     SILENCIADO.store(!enabled, std::sync::atomic::Ordering::Relaxed);
+    nota(if enabled { "micro: abierto" } else { "micro: silenciado" });
     if enabled {
         micro.unmute();
     } else {
@@ -433,6 +438,52 @@ fn sin_repetidos(lista: Vec<Dispositivo>) -> Vec<Dispositivo> {
 /// El identificador estable de un dispositivo de audio, como texto.
 fn id_de(d: &cpal::Device) -> Option<String> {
     d.id().ok().map(|i| i.to_string())
+}
+
+// ─── El diario del motor ──────────────────────────────────────────────────────
+
+/// Cuántas líneas se guardan. Trescientas cubren de sobra una llamada entera
+/// contada por cambios de estado; más sería guardar para nadie.
+const DIARIO_MAX: usize = 300;
+
+static DIARIO: LazyLock<Mutex<std::collections::VecDeque<String>>> =
+    LazyLock::new(|| Mutex::new(std::collections::VecDeque::with_capacity(DIARIO_MAX)));
+
+/// Apunta algo que pasó en el motor.
+///
+/// Existe porque **los fallos de aquí abajo no llegan arriba**: la cámara no
+/// abría y en la pantalla no pasaba nada, ni imagen ni error, y no había forma
+/// de saber dónde había mirado el motor. Tres versiones se probaron a ciegas
+/// por eso.
+///
+/// Se anota en los **cambios de estado**, nunca por trama: entrar, salir,
+/// silenciar, qué formato de cámara se pidió y cuál abrió, si el portal
+/// concedió la pantalla, qué pistas llegan. Una línea por trama convertiría
+/// esto en un cuello de botella y en un diario ilegible.
+pub fn nota(linea: impl AsRef<str>) {
+    let linea = linea.as_ref();
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() % 86_400)
+        .unwrap_or(0);
+    let sello = format!("{:02}:{:02}:{:02}", t / 3600, (t % 3600) / 60, t % 60);
+    // También a la salida de error: quien tenga la app en una terminal lo ve
+    // en vivo, sin abrir ninguna pantalla.
+    eprintln!("voz {sello} · {linea}");
+    let mut d = DIARIO.lock().unwrap();
+    if d.len() == DIARIO_MAX {
+        d.pop_front();
+    }
+    d.push_back(format!("{sello} · {linea}"));
+}
+
+/// El diario, lo más reciente al final.
+///
+/// `async` porque lo exige la regla de `voice_set_mic` — y aunque éste no toca
+/// el SDK, la excepción hay que escribirla a mano y no vale la pena.
+#[tauri::command]
+pub async fn voice_diagnostics() -> Vec<String> {
+    DIARIO.lock().unwrap().iter().cloned().collect()
 }
 
 /// Mi propia identidad en la sala.
@@ -722,6 +773,7 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                         }
                         RemoteTrack::Video(video) => {
                             let fuente = fuente_de(publication.source());
+                            nota(format!("llega {} de {identidad}", fuente.como_texto()));
                             recibir_video(identidad.clone(), fuente, video.rtc_track());
                             canal.send(VoiceEvent::Video {
                                 identity: identidad,
@@ -735,6 +787,7 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                     if matches!(track, RemoteTrack::Video(_)) {
                         let identidad = participant.identity().to_string();
                         let fuente = fuente_de(publication.source());
+                        nota(format!("se va {} de {identidad}", fuente.como_texto()));
                         crate::video_frames::olvidar(&identidad, fuente);
                         canal.send(VoiceEvent::Video {
                             identity: identidad,
@@ -999,7 +1052,7 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
     let (fuente, ancho, alto) = arrancar_camara().inspect_err(|_| {
         CAMARA.store(false, std::sync::atomic::Ordering::Relaxed);
     })?;
-    eprintln!("voz: cámara a {ancho}x{alto}");
+    nota(format!("cámara: publicada a {ancho}x{alto}"));
     let pista = LocalVideoTrack::create_video_track("camara", RtcVideoSource::Native(fuente));
     room.local_participant()
         .publish_track(
@@ -1069,7 +1122,7 @@ pub async fn voice_share_screen() -> Result<VideoState, String> {
             PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
             format!("no se pudo publicar la pantalla: {e}")
         })?;
-    eprintln!("voz: compartiendo pantalla a {ancho}x{alto}");
+    nota(format!("pantalla: publicada a {ancho}x{alto}"));
     Ok(estado_video())
 }
 
@@ -1120,6 +1173,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         // algo sin que se vea el puntero es media función.
         opciones.set_include_cursor(true);
         let Some(mut cap) = DesktopCapturer::new(opciones) else {
+            nota("pantalla: este sistema no trae capturador");
             let _ = primera_tx.send(Err("este sistema no sabe capturar la pantalla".into()));
             return;
         };
@@ -1127,6 +1181,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         // hace el portal; en Windows y macOS es la pantalla principal. Elegir
         // aquí una concreta sería adelantarse a lo que el sistema va a preguntar.
         let fuentes = cap.get_source_list();
+        nota(format!("pantalla: pidiendo permiso ({} fuentes enumeradas)", fuentes.len()));
         let (envio, recibo) = std::sync::mpsc::channel();
         cap.start_capture(fuentes.first().cloned(), move |r| {
             let _ = envio.send(r.map(|f| (f.width() as u32, f.height() as u32, f.data().to_vec())));
@@ -1154,6 +1209,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                             // Pantalla, no cara: el SFU prioriza el detalle.
                             true,
                         );
+                        nota(format!("pantalla: concedida, primera trama {w}x{h}"));
                         let _ = fuente_tx.send(f.clone());
                         let _ = primera_tx.send(Ok((w, h)));
                         f
@@ -1175,6 +1231,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                     // `Temporary` es lo normal mientras el sistema pregunta;
                     // `Permanent` es que dijo que no.
                     if format!("{e:?}").contains("Permanent") {
+                        nota("pantalla: el sistema la denegó");
                         let _ = primera_tx.send(Err("el sistema no concedió la pantalla".into()));
                         break;
                     }
@@ -1182,6 +1239,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                 None => {}
             }
             if fuente.is_none() && std::time::Instant::now() > limite {
+                nota("pantalla: nadie contestó al diálogo en un minuto");
                 let _ = primera_tx.send(Err("nadie contestó al diálogo de compartir".into()));
                 break;
             }
@@ -1276,12 +1334,26 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
     let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(u32, u32), String>>();
     let (fuente_tx, fuente_rx) = std::sync::mpsc::channel::<NativeVideoSource>();
     std::thread::spawn(move || {
-        // La mayor que no pase de 720p. Pedir «el mayor número de fps» daba el
-        // formato que a la cámara le apeteciera, que podía ser 320×240 — y como
-        // el bucle exigía 720p exactos, no se publicaba nada.
-        let formato = RequestedFormat::new::<RgbFormat>(RequestedFormatType::HighestResolution(
-            Resolution::new(VIDEO_ANCHO, VIDEO_ALTO),
-        ));
+        // Lo que se le pide a la cámara, en orden de preferencia y **cayendo**
+        // al siguiente si no lo tiene.
+        //
+        // Hace falta la cadena porque `HighestResolution` de nokhwa **exige la
+        // resolución exacta**: filtra por igualdad y devuelve `None` si no la
+        // encuentra, con lo que `Camera::new` falla y la cámara ni se abre.
+        // Pedir sólo 720p dejó sin cámara a quien no los ofreciera — y sin un
+        // error en pantalla, «encender la cámara no hacía nada». `Closest`
+        // tampoco vale: elige la resolución más cercana pero luego busca los
+        // fps de la resolución **pedida**, así que también falla sin exacta.
+        //
+        // Las dos últimas aceptan lo que la cámara prefiera: pueden dar algo
+        // pequeño o enorme, pero abren. El bucle de abajo ya publica con las
+        // medidas que lleguen, así que abrir es lo único que importa.
+        let intentos: [(&str, RequestedFormatType); 4] = [
+            ("720p", RequestedFormatType::HighestResolution(Resolution::new(VIDEO_ANCHO, VIDEO_ALTO))),
+            ("480p", RequestedFormatType::HighestResolution(Resolution::new(640, 480))),
+            ("más fps", RequestedFormatType::AbsoluteHighestFrameRate),
+            ("la mayor", RequestedFormatType::AbsoluteHighestResolution),
+        ];
         // Igual que el micrófono: la elegida por nombre, y si ya no está, la
         // primera. El índice se resuelve ahora y no se guarda, porque enchufar
         // otra cámara los renumera.
@@ -1297,17 +1369,34 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
                     .map(|c| c.index().clone())
             })
             .unwrap_or(CameraIndex::Index(0));
-        let mut camara = match Camera::new(indice, formato) {
-            Ok(c) => c,
-            Err(e) => {
-                let _ = listo_tx.send(Err(format!("no se pudo abrir la cámara: {e}")));
-                return;
+        let mut camara = None;
+        let mut porques = Vec::new();
+        for (nombre, tipo) in intentos {
+            match Camera::new(indice.clone(), RequestedFormat::new::<RgbFormat>(tipo)) {
+                Ok(mut c) => match c.open_stream() {
+                    Ok(()) => {
+                        nota(format!("cámara: abierta pidiendo «{nombre}» → {}", c.camera_format()));
+                        camara = Some(c);
+                        break;
+                    }
+                    Err(e) => {
+                        nota(format!("cámara: «{nombre}» abrió pero no arrancó: {e}"));
+                        porques.push(format!("{nombre}: {e}"));
+                    }
+                },
+                Err(e) => {
+                    nota(format!("cámara: «{nombre}» no está disponible: {e}"));
+                    porques.push(format!("{nombre}: {e}"));
+                }
             }
-        };
-        if let Err(e) = camara.open_stream() {
-            let _ = listo_tx.send(Err(format!("no se pudo arrancar la cámara: {e}")));
-            return;
         }
+        let Some(mut camara) = camara else {
+            let _ = listo_tx.send(Err(format!(
+                "la cámara no aceptó ningún formato ({})",
+                porques.join("; ")
+            )));
+            return;
+        };
 
         // La fuente nace con la primera trama, y con **sus** medidas. Hasta
         // entonces no se sabe qué va a dar la cámara: lo que se le pide es una
@@ -1333,8 +1422,11 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
                     false,
                 );
                 if fuente.is_none() {
+                    nota(format!("cámara: primera trama {w}x{h}"));
                     let _ = fuente_tx.send(f.clone());
                     let _ = listo_tx.send(Ok((w, h)));
+                } else {
+                    nota(format!("cámara: cambió a {w}x{h}, se rehace la pista"));
                 }
                 fuente = Some(f);
                 medidas = (w, h);

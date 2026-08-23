@@ -1642,6 +1642,7 @@ pub fn run() {
             voice::voice_set_camera,
             voice::voice_share_screen,
             voice::voice_stop_share,
+            voice::voice_diagnostics,
             voice::voice_list_devices,
             voice::voice_set_device,
         ])

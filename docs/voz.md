@@ -474,7 +474,24 @@ callas creyendo que el otro no te oye.
    segundo no deja trabajar al hilo que las produce y contesta «todavía no»
    para siempre. Eso costó una tarde en el spike.
 
-8. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
+8. **Un fallo del motor que no se ve es un fallo que dura.** Tres versiones se
+   probaron a ciegas —«no se ve nada», «encender la cámara no hace nada»— y en
+   las tres el motor sabía perfectamente qué había pasado. Dos cosas lo
+   arreglan, y las dos son de método más que de código:
+
+   - **Los errores se pintan donde está el control.** `alternarCam` dejaba el
+     mensaje en `voice.store.error` y el escenario no lo pintaba en ninguna
+     parte, así que un fallo del motor se veía **exactamente igual** que un
+     botón que no responde. Ahora sale junto a la barra de mandos.
+   - **El motor lleva un diario** (`nota()` en `voice.rs`): trescientas líneas
+     con marca de tiempo, en los **cambios de estado** y nunca por trama —
+     entrar, salir, silenciar, qué formato de cámara se pidió y cuál abrió, si
+     el portal concedió la pantalla, qué pistas llegan. Se lee en
+     *Dev tools → Voice lab* y se copia con un botón, para pegarlo en un
+     reporte. Una línea por trama sería un cuello de botella y un diario que
+     nadie lee.
+
+9. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
    formato con más fps» —que podía ser 320×240— y luego el bucle **descartaba
    toda trama que no fuera exactamente 1280×720**. Con una webcam que diera otra
    cosa, el botón se quedaba encendido y no se publicaba una sola imagen, sin un
@@ -485,7 +502,20 @@ callas creyendo que el otro no te oye.
    El comentario que había encima decía «sólo si la cámara entrega justo lo que
    pedimos». La suposición estaba escrita y nadie la comprobó.
 
-9. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
+   **Y el arreglo tuvo su propia versión rota**, que es la parte instructiva:
+   se pasó a pedir `HighestResolution(1280×720)` creyendo que era «la mayor que
+   no pase de 720p». No lo es — `nokhwa-core-0.1.9/src/types.rs:115` filtra por
+   **igualdad exacta** y devuelve `None` si no la encuentra, con lo que
+   `Camera::new` falla y la cámara ni se abre. Se cambió una webcam mal
+   configurada por ninguna cámara. `Closest` tampoco sirve: elige la resolución
+   más cercana y luego busca los fps de la **pedida**.
+
+   Ahora es una **cadena con caída** —720p, 480p, la de más fps, la mayor— y se
+   queda con la primera que abra. Las dos últimas aceptan lo que la cámara
+   prefiera: pueden dar algo pequeño o enorme, pero abren, y el bucle publica
+   con las medidas que lleguen. Cada intento se anota en el diario.
+
+10. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
    propias pistas —el SFU no te devuelve lo que acabas de mandar— así que tu
    cámara y tu pantalla no llegarían nunca por el camino de los demás. La
    captura las guarda por su cuenta en el mismo sitio, bajo tu propia identidad.
@@ -500,7 +530,7 @@ callas creyendo que el otro no te oye.
    que mover el lado derecho de la imagen, y una pantalla volteada sale con el
    texto del revés.
 
-10. **Lo que salió de revisar el camino caliente**, y que ninguna prueba podía
+11. **Lo que salió de revisar el camino caliente**, y que ninguna prueba podía
     cazar porque todo pasa a treinta veces por segundo con una llamada abierta:
 
     - **Las respuestas vacías no llevaban CORS.** El 204 «no ha cambiado» es la
@@ -520,7 +550,7 @@ callas creyendo que el otro no te oye.
       bloqueantes, que además hace que el búfer reutilizable del entrelazado
       sirva de algo: con un hilo distinto cada vez no se reutilizaba nunca.
 
-11. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
+12. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
    tramas se guardan por `(persona, fuente)` y se piden a
    `cacvideo://…/<identidad>/<camera|screen>`. Estuvieron guardándose sólo por
    persona: nadie lo notó porque no había pantalla que compartir, y en cuanto la
@@ -537,7 +567,7 @@ callas creyendo que el otro no te oye.
    alguien más empezó a compartir es quitarle de delante a la gente lo que
    estaba leyendo.
 
-12. **Cámara y pantalla**: **publicar** está hecho para la cámara
+13. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -558,7 +588,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-13. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+14. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.

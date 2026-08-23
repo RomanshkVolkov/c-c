@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
-import { Loader2, Mic, MonitorUp, PhoneOff, Video } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { ClipboardCopy, Loader2, Mic, MonitorUp, PhoneOff, RefreshCw, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Room } from "livekit-client";
@@ -269,8 +270,75 @@ export default function VoiceLab() {
         )}
       </div>
 
+      <Diario />
+
       {/* Los <audio> remotos aterrizan aquí; invisibles, sólo suenan. */}
       <div ref={audios} className="hidden" />
+    </div>
+  );
+}
+
+/**
+ * Lo que el motor de voz ha ido apuntando.
+ *
+ * Existe porque los fallos de abajo no llegan arriba y las versiones se
+ * probaban a ciegas: «no se ve nada» podía ser la cámara sin abrir, el portal
+ * sin conceder, o una pista que nunca llegó, y no había forma de distinguirlo.
+ * Aquí sale en una lista y con un botón para copiarla, para poder pegarla tal
+ * cual en un reporte.
+ *
+ * No se refresca solo: leerlo es un acto deliberado, y un panel que se mueve
+ * mientras lo lees es peor que uno quieto con un botón.
+ */
+function Diario() {
+  const [lineas, setLineas] = useState<string[]>([]);
+  const [copiado, setCopiado] = useState(false);
+
+  const leer = () =>
+    invoke<string[]>("voice_diagnostics")
+      .then(setLineas)
+      .catch((e) => setLineas([`no se pudo leer el diario: ${e}`]));
+
+  useEffect(() => {
+    void leer();
+  }, []);
+
+  return (
+    <div className="space-y-2 rounded-xl border p-4">
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-medium">Diario del motor</h2>
+        <span className="text-xs text-muted-foreground">{lineas.length} líneas</span>
+        <span className="ml-auto flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => void leer()}>
+            <RefreshCw className="mr-1 size-3.5" /> Refrescar
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={lineas.length === 0}
+            onClick={() => {
+              void navigator.clipboard.writeText(lineas.join("\n"));
+              setCopiado(true);
+              setTimeout(() => setCopiado(false), 1500);
+            }}
+          >
+            <ClipboardCopy className="mr-1 size-3.5" /> {copiado ? "Copiado" : "Copiar"}
+          </Button>
+        </span>
+      </div>
+      {lineas.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Nada todavía. Entra a un canal de voz, enciende la cámara o comparte pantalla y vuelve.
+        </p>
+      ) : (
+        <ol className="max-h-72 overflow-y-auto rounded-lg border bg-muted/20 p-2 font-mono text-[11px] leading-relaxed">
+          {lineas.map((l, i) => (
+            <li key={i} className="whitespace-pre-wrap">
+              {l}
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }

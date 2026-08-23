@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Minimize2, Volume2 } from "lucide-react";
+import { AlertCircle, Loader2, Minimize2, Volume2 } from "lucide-react";
 import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
@@ -40,6 +40,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const cam = useVoice((s) => s.cam);
   const alternarCam = useVoice((s) => s.alternarCam);
   const cerrarEscenario = useVoice((s) => s.cerrarEscenario);
+  const error = useVoice((s) => s.error);
   // La tuya manda sobre la de otro: si estás compartiendo, lo que necesitas ver
   // es lo que los demás están viendo de ti.
   const pantalla = compartiendo ? yo : pantallaAjena;
@@ -154,6 +155,21 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
 
       {invitando && <InvitePicker onClose={() => setInvitando(false)} />}
       {ajustes && <DeviceSettings />}
+
+      {/* Lo que el motor no pudo hacer, **junto a los mandos** y no en un
+          aviso flotante: el error de encender la cámara pertenece al botón de
+          la cámara. Y sobre todo, en algún sitio — se quedaba en el store sin
+          pintarse en ninguna parte, así que un fallo del motor se veía
+          exactamente igual que un botón que no responde. Tres versiones se
+          probaron a ciegas por eso. */}
+      {error && (
+        <p
+          role="alert"
+          className="flex shrink-0 items-center justify-center gap-2 border-t bg-destructive/10 px-4 py-2 text-center text-xs text-destructive"
+        >
+          <AlertCircle className="size-3.5 shrink-0" /> {error}
+        </p>
+      )}
 
       <RingRow />
 
