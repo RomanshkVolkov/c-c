@@ -530,25 +530,55 @@ pub fn nota(linea: impl AsRef<str>) {
 ///   entorno queda descartado.
 ///
 /// No toca la sesión ni publica pista: se puede pulsar sin estar en una llamada.
+///
+/// # Contesta siempre, aunque la cámara no
+///
+/// La primera versión esperaba a que la prueba terminara. Si la cámara se
+/// cuelga —que es **el caso que esto existe para detectar**— el botón se
+/// quedaba girando y no devolvía nada: el resultado más informativo era el
+/// único que no se podía leer. Ahora cada paso se escribe en el diario según
+/// ocurre, y el comando se rinde a los quince segundos diciendo dónde se quedó.
+/// El hilo colgado se queda ahí —en Rust no se mata desde fuera— pero la
+/// evidencia ya está escrita.
 #[tauri::command]
 pub async fn voice_test_camera() -> Vec<String> {
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<String>>();
+    std::thread::spawn(move || {
+        let _ = tx.send(probar_camara());
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(15)) {
+        Ok(r) => r,
+        Err(_) => vec![
+            "la prueba no terminó en 15 s: la cámara se quedó colgada".into(),
+            "mira el diario de arriba: la última línea «prueba:» dice dónde".into(),
+        ],
+    }
+}
+
+fn probar_camara() -> Vec<String> {
     use nokhwa::pixel_format::RgbFormat;
     use nokhwa::utils::{RequestedFormat, RequestedFormatType, Resolution};
 
-    tauri::async_runtime::spawn_blocking(|| {
-        let mut r = Vec::new();
+    // Cada paso al diario **según pasa**, no al final: si la cámara se cuelga,
+    // lo ya escrito es todo lo que va a haber, y es justo lo que hace falta.
+    let mut r = Vec::new();
+    let mut apunta = |linea: String| {
+        nota(format!("prueba: {linea}"));
+        r.push(linea);
+    };
+    {
         if CAPTURA_VIVA.load(std::sync::atomic::Ordering::Relaxed) {
-            r.push("hay una captura sin terminar: apaga la cámara antes de probar".into());
+            apunta("hay una captura sin terminar: apaga la cámara antes de probar".into());
             return r;
         }
 
+        apunta("enumerando cámaras".into());
         let utiles = camaras_utiles();
-        r.push(format!("cámaras que capturan: {}", utiles.len()));
+        apunta(format!("cámaras que capturan: {}", utiles.len()));
         let Some(info) = utiles.first() else {
-            r.push("ninguna cámara utilizable".into());
             return r;
         };
-        r.push(format!("se prueba {:?} ({})", info.index(), info.human_name()));
+        apunta(format!("abriendo {:?} ({})", info.index(), info.human_name()));
 
         let peticion = RequestedFormat::new::<RgbFormat>(RequestedFormatType::HighestResolution(
             Resolution::new(VIDEO_ANCHO, VIDEO_ALTO),
@@ -556,16 +586,16 @@ pub async fn voice_test_camera() -> Vec<String> {
         let mut cam = match nokhwa::Camera::new(info.index().clone(), peticion) {
             Ok(c) => c,
             Err(e) => {
-                r.push(format!("no abre: {e}"));
+                apunta(format!("no abre: {e}"));
                 return r;
             }
         };
-        r.push(format!("abre como {}", cam.camera_format()));
+        apunta(format!("abre como {}", cam.camera_format()));
         if let Err(e) = cam.open_stream() {
-            r.push(format!("open_stream falla: {e}"));
+            apunta(format!("open_stream falla: {e}"));
             return r;
         }
-        r.push("open_stream ok".into());
+        apunta("open_stream ok, pidiendo la trama 0".into());
 
         // Diez tramas, con el tiempo de cada una. Si la primera no vuelve, esta
         // línea es la última del informe — y eso ya es la respuesta.
@@ -575,30 +605,31 @@ pub async fn voice_test_camera() -> Vec<String> {
             match cam.frame() {
                 Ok(trama) => {
                     let crudos = trama.buffer().len();
+                    if i == 0 {
+                        apunta(format!("trama 0 cruda: {crudos} bytes, descodificando"));
+                    }
                     match trama.decode_image::<RgbFormat>() {
                         Ok(rgb) => {
                             buenas += 1;
                             if i < 2 {
-                                r.push(format!(
-                                    "trama {i}: {}x{} ({crudos} bytes) en {:?}",
+                                apunta(format!(
+                                    "trama {i}: {}x{} en {:?}",
                                     rgb.width(),
                                     rgb.height(),
                                     t.elapsed()
                                 ));
                             }
                         }
-                        Err(e) => r.push(format!("trama {i}: no descodifica ({e})")),
+                        Err(e) => apunta(format!("trama {i}: no descodifica ({e})")),
                     }
                 }
-                Err(e) => r.push(format!("trama {i}: sin trama tras {:?} ({e})", t.elapsed())),
+                Err(e) => apunta(format!("trama {i}: sin trama tras {:?} ({e})", t.elapsed())),
             }
         }
-        r.push(format!("{buenas}/10 tramas buenas"));
+        apunta(format!("{buenas}/10 tramas buenas"));
         let _ = cam.stop_stream();
-        r
-    })
-    .await
-    .unwrap_or_else(|e| vec![format!("la prueba no llegó a terminar: {e}")])
+    }
+    r
 }
 
 /// El diario, lo más reciente al final.
