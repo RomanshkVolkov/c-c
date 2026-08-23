@@ -59,6 +59,18 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 portable-pty = "0.9.0"
+# Sin `glib-main-loop` a propósito, y no por olvido.
+#
+# La característica existe para el capturador de escritorio en Wayland, que
+# habla con xdg-desktop-portal por D-Bus y necesita que alguien despache el
+# contexto de GLib. Pero lo que hace es arrancar un `g_main_loop_run` sobre el
+# **contexto por defecto global** desde un hilo suelto — y en una app GTK ese
+# contexto es el de la interfaz. Un hilo que no es el principal despachando
+# fuentes de GTK es corrupción esperando su turno.
+#
+# Lo hacemos nosotros y bien: un `GMainContext` propio, empujado como
+# thread-default en el hilo de captura antes de crear el capturador, e iterado
+# sólo desde ahí. Ver `arrancar_pantalla`.
 livekit = { version = "0.8.3", features = ["rustls-tls-native-roots"] }
 cpal = "0.18.2"
 tokio-stream = "0.1.19"

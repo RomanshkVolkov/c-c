@@ -1337,6 +1337,16 @@ static CAMARA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::ne
 static CAPTURA_VIVA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static PANTALLA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// ¿Hay una pista de pantalla publicada de verdad?
+///
+/// Separada de `PANTALLA` porque esa dice otra cosa —«el hilo de captura está
+/// vivo»— y se enciende **antes** de que el sistema conceda nada. Usarla como
+/// «estoy compartiendo» convertía el diálogo del portal abierto en un éxito:
+/// pulsar el botón otra vez mientras se elegía pantalla devolvía «sí, ya está»,
+/// la interfaz encendía el foco y el cartel de «You are sharing», y lo que se
+/// veía era un rectángulo negro que nadie iba a rellenar.
+static COMPARTIENDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Compartir la pantalla.
 ///
 /// # El selector de fuentes lo pinta el sistema, no nosotros
@@ -1368,8 +1378,11 @@ pub async fn voice_share_screen() -> Result<VideoState, String> {
             None => return Err("no estás en ninguna sala".into()),
         }
     };
-    if PANTALLA.load(std::sync::atomic::Ordering::Relaxed) {
+    if COMPARTIENDO.load(std::sync::atomic::Ordering::Relaxed) {
         return Ok(estado_video());
+    }
+    if PANTALLA.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err("ya se está pidiendo la pantalla: contesta al diálogo del sistema".into());
     }
 
     // La resolución la dicta la pantalla que el sistema conceda, así que la
@@ -1392,6 +1405,7 @@ pub async fn voice_share_screen() -> Result<VideoState, String> {
             PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
             format!("no se pudo publicar la pantalla: {e}")
         })?;
+    COMPARTIENDO.store(true, std::sync::atomic::Ordering::Relaxed);
     nota(format!("pantalla: publicada a {ancho}x{alto}"));
     Ok(estado_video())
 }
@@ -1409,6 +1423,7 @@ pub async fn voice_stop_share() -> Result<VideoState, String> {
     // Primero la bandera: es la que para el hilo de captura, y pararlo antes de
     // despublicar evita que siga entregando tramas a una pista que ya no está.
     PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
+    COMPARTIENDO.store(false, std::sync::atomic::Ordering::Relaxed);
     despublicar(&room, TrackSource::Screenshare).await;
     if let Some(yo) = YO.lock().unwrap().clone() {
         crate::video_frames::olvidar(&yo, crate::video_frames::Fuente::Pantalla);
@@ -1456,6 +1471,92 @@ fn entrar_al_runtime(
     manija.inner().enter()
 }
 
+/// Un contexto de GLib **propio** para el hilo que habla con el portal.
+///
+/// El capturador de PipeWire pide la sesión a xdg-desktop-portal por D-Bus con
+/// GIO, de forma asíncrona. GIO entrega esas respuestas al *thread-default main
+/// context* del hilo que hizo la llamada, y sólo cuando alguien lo itera. Un
+/// `std::thread` pelado no tiene contexto propio, así que caían en el global
+/// —el de GTK— y de ahí no volvían: el diálogo salía, elegías pantalla, y
+/// `capture_frame` contestaba `Temporary` para siempre. Mil quinientas veces
+/// seguidas, medido en el diario.
+///
+/// Iterar el contexto global desde aquí habría «funcionado» y es justo lo que
+/// no se puede hacer: despacharía fuentes de GTK fuera del hilo principal. Por
+/// eso un contexto nuestro, empujado **antes** de crear el capturador —GIO mira
+/// cuál hay puesto en el momento de la llamada, no después— e iterado sólo
+/// desde este hilo.
+///
+/// Es también la razón de no encender la característica `glib-main-loop` de
+/// `libwebrtc`: hace lo mismo sobre el contexto global. Ver el `Cargo.toml`.
+#[cfg(target_os = "linux")]
+struct ContextoGlib(*mut std::ffi::c_void);
+
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn g_main_context_new() -> *mut std::ffi::c_void;
+    fn g_main_context_push_thread_default(context: *mut std::ffi::c_void);
+    fn g_main_context_pop_thread_default(context: *mut std::ffi::c_void);
+    fn g_main_context_iteration(context: *mut std::ffi::c_void, may_block: i32) -> i32;
+    fn g_main_context_unref(context: *mut std::ffi::c_void);
+}
+
+#[cfg(target_os = "linux")]
+impl ContextoGlib {
+    fn nuevo() -> Self {
+        unsafe {
+            let ctx = g_main_context_new();
+            g_main_context_push_thread_default(ctx);
+            Self(ctx)
+        }
+    }
+
+    /// Despacha lo que haya pendiente, sin bloquear. Devuelve cuántos.
+    ///
+    /// La cuenta se lleva al diario porque distingue dos fallos que se ven
+    /// igual: cero eventos en toda la espera significa que las respuestas del
+    /// portal **no vienen a este contexto** —y entonces esto no es el arreglo—;
+    /// unos cuantos y aun así sin imagen es otra cosa, más abajo.
+    fn bombear(&self) -> u32 {
+        // Con tope: si algo reencolara sin parar, un `while` a secas dejaría de
+        // pedir tramas para siempre y el cuelgue sería nuestro.
+        let mut n = 0;
+        unsafe {
+            for _ in 0..64 {
+                if g_main_context_iteration(self.0, 0) == 0 {
+                    break;
+                }
+                n += 1;
+            }
+        }
+        n
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for ContextoGlib {
+    fn drop(&mut self) {
+        unsafe {
+            g_main_context_pop_thread_default(self.0);
+            g_main_context_unref(self.0);
+        }
+    }
+}
+
+/// Fuera de Linux no hay portal ni GLib: el capturador es del sistema.
+#[cfg(not(target_os = "linux"))]
+struct ContextoGlib;
+
+#[cfg(not(target_os = "linux"))]
+impl ContextoGlib {
+    fn nuevo() -> Self {
+        Self
+    }
+    fn bombear(&self) -> u32 {
+        0
+    }
+}
+
 /// La pantalla del sistema, en su propio hilo.
 ///
 /// Devuelve la fuente ya alimentada con la primera trama, más sus medidas. Se
@@ -1474,6 +1575,9 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
     std::thread::spawn(move || {
         // Sin esto la captura no llega a la primera trama.
         let _en_runtime = entrar_al_runtime(&manija);
+        // Antes de crear el capturador, no después: GIO se queda con el
+        // contexto que encuentre puesto en el momento de la llamada.
+        let glib = ContextoGlib::nuevo();
         let mut opciones = DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen);
         // El cursor dentro de la imagen. Compartir una pantalla para señalar
         // algo sin que se vea el puntero es media función.
@@ -1505,6 +1609,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         impl Drop for AlSalir {
             fn drop(&mut self) {
                 PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
+                COMPARTIENDO.store(false, std::sync::atomic::Ordering::Relaxed);
             }
         }
         PANTALLA.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -1516,11 +1621,34 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         // segundo no deja trabajar al hilo que tiene que producirlas, y el
         // capturador contesta «todavía no» mientras tanto. Costó una tarde.
         let cada = std::time::Duration::from_millis(1000 / 30);
+        // Mientras no llega la primera trama, un parte cada cinco segundos.
+        //
+        // «Aparece el diálogo, eliges, y no pasa nada» se veía exactamente
+        // igual con el bucle de GLib apagado que con el usuario pensándoselo, y
+        // eso costó una tarde. Con la cuenta de respuestas se distinguen: cero
+        // es que nadie está contestando por debajo, muchas y todas `Temporary`
+        // es que el sistema aún no ha concedido.
+        let mut respuestas = 0u32;
+        let mut fallos = 0u32;
+        let mut eventos = 0u32;
+        let mut siguiente_parte = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while PANTALLA.load(std::sync::atomic::Ordering::Relaxed) {
+            eventos += glib.bombear();
             cap.capture_frame();
             let mut ultima = None;
             while let Ok(r) = recibo.try_recv() {
+                respuestas += 1;
+                if r.is_err() {
+                    fallos += 1;
+                }
                 ultima = Some(r);
+            }
+            if fuente.is_none() && std::time::Instant::now() >= siguiente_parte {
+                nota(format!(
+                    "pantalla: sin imagen todavía — {respuestas} respuestas del capturador, \
+                     {fallos} con error, {eventos} eventos de glib despachados"
+                ));
+                siguiente_parte += std::time::Duration::from_secs(5);
             }
             match ultima {
                 Some(Ok((w, h, bgra))) => {
@@ -1555,7 +1683,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                     // `Temporary` es lo normal mientras el sistema pregunta;
                     // `Permanent` es que dijo que no.
                     if format!("{e:?}").contains("Permanent") {
-                        nota("pantalla: el sistema la denegó");
+                        nota(format!("pantalla: el sistema la denegó ({e:?})"));
                         let _ = primera_tx.send(Err("el sistema no concedió la pantalla".into()));
                         break;
                     }
@@ -1639,7 +1767,7 @@ fn estado_video() -> VideoState {
     use std::sync::atomic::Ordering::Relaxed;
     VideoState {
         camera: CAMARA.load(Relaxed),
-        screen: PANTALLA.load(Relaxed),
+        screen: COMPARTIENDO.load(Relaxed),
     }
 }
 

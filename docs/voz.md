@@ -583,6 +583,41 @@ callas creyendo que el otro no te oye.
     pánico del SDK sigue siendo real — si algún día deja de serlo, cae y la
     precaución sobra.
 
+12b. **El portal de Wayland contesta a un contexto de GLib que nadie itera.**
+    Sale el diálogo de «elige qué compartir», eliges, y el capturador responde
+    `Temporary` para siempre — 1.492 veces en cincuenta segundos, contadas en el
+    diario. El capturador de PipeWire pide la sesión a xdg-desktop-portal **por
+    D-Bus con GIO**, y GIO entrega la respuesta al *thread-default main context*
+    del hilo que llamó, sólo cuando alguien lo itera. Un `std::thread` pelado no
+    tiene contexto propio: las respuestas caían en el global y de ahí no volvían.
+
+    El arreglo es un `GMainContext` **nuestro**, empujado como thread-default en
+    el hilo de captura **antes** de crear el capturador —GIO mira cuál hay
+    puesto en el momento de la llamada— e iterado sólo desde ese hilo.
+
+    Lo que **no** sirve, y se probó: la característica `glib-main-loop` de
+    `libwebrtc`. Hace un `g_main_loop_run` sobre el **contexto global** desde un
+    hilo suelto, y en una app GTK ese contexto es el de la interfaz — un hilo
+    que no es el principal despachando fuentes de GTK. Ni arregló nada ni era
+    seguro. Iterar el contexto global desde el hilo de captura tiene el mismo
+    problema, aunque «funcione».
+
+    El spike `voice-native` ya había descubierto la mitad de esto y dejó escrito
+    que «la app de Tauri tiene el bucle de GTK corriendo y no necesita esto».
+    Esa frase era una suposición sin comprobar, y es la que costó la tarde:
+    **un spike que documenta lo que cree del entorno de producción está
+    documentando una hipótesis, no un hallazgo.**
+
+    Lo tapaba, además, una mentira nuestra: **`PANTALLA` decía «el hilo de
+    captura está vivo» y la interfaz la leía como «estoy compartiendo»**. Se
+    enciende antes de que el sistema conceda nada, así que pulsar el botón otra
+    vez mientras el diálogo estaba abierto devolvía «sí, ya está» por la vuelta
+    temprana de `voice_share_screen` — foco ocupado, cartel de «You are
+    sharing», y un rectángulo negro. Ahora son dos banderas: `PANTALLA` para el
+    bucle y `COMPARTIENDO` para lo que se le cuenta a la interfaz, que sólo se
+    enciende con la pista publicada. Una bandera que sirve para dos cosas acaba
+    mintiendo sobre una de ellas.
+
 13. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
    formato con más fps» —que podía ser 320×240— y luego el bucle **descartaba
    toda trama que no fuera exactamente 1280×720**. Con una webcam que diera otra
