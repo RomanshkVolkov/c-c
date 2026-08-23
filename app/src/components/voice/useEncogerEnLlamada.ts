@@ -4,46 +4,45 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useVoice } from "@/store/voice.store";
 
 /**
- * Cuando hay una pantalla en el escenario, quitar de en medio lo que sobra.
+ * Con la sala en pantalla, quitar de en medio lo que sobra.
  *
- * Compartir es justo el momento en que el ancho hace más falta, y es cuando el
- * rail de espacios y la columna de canales se lo comen: 16rem + 15rem sobre una
- * imagen que ya viene reducida. En un portátil eso deja el contenido compartido
- * ilegible.
+ * El rail de espacios y la columna de canales suman 31rem que ahí no pintan
+ * nada: mientras miras la llamada no estás navegando entre canales, y si
+ * alguien comparte pantalla se comen el ancho justo cuando más falta hace.
  *
- * Vale tanto la pantalla propia como la ajena. Mirar la de otro estorba igual
- * que enseñar la tuya, y distinguirlas sería una regla que nadie podría
- * explicar.
+ * Se dispara al **entrar**, no al compartir. Empezó siendo lo segundo y era una
+ * distinción que no se sostenía: el escenario ocupa el área principal en los
+ * dos casos, y explicar por qué la interfaz encoge unas veces sí y otras no
+ * habría sido imposible. **Minimizar la devuelve**, que es lo que hace de esto
+ * algo reversible en un clic y no una imposición.
  *
  * # Las dos reglas que evitan que esto se vuelva molesto
  *
  * **Se restaura lo que había, no se abre.** Se recuerda el estado del rail al
  * encogerlo y se devuelve a ése. Quien lo tenía colapsado a propósito no se lo
- * encuentra abierto de golpe al dejar de compartir; devolver «abierto» sería
- * cómodo de programar y una imposición.
+ * encuentra abierto de golpe al salir; devolver «abierto» sería cómodo de
+ * programar y una imposición.
  *
  * **Si lo tocas tú, esto deja de mandar.** Abrir el rail a mano durante la
- * compartición cancela la gestión hasta la siguiente: no se vuelve a cerrar, y
- * al terminar no se toca. Una interfaz que te pelea el clic es peor que una
+ * llamada cancela la gestión hasta la siguiente: no se vuelve a cerrar, y al
+ * salir no se toca. Una interfaz que te pelea el clic es peor que una
  * apretada.
  *
  * Devuelve si la columna de canales debe estar encogida; el rail lo mueve este
  * hook por su cuenta, porque su estado vive en el contexto de shadcn y no en
  * una clase.
  */
-export function useEncogerAlCompartir(spaceId: string | null): boolean {
+export function useEncogerEnLlamada(spaceId: string | null): boolean {
   const { open, setOpen } = useSidebar();
 
   // Una sola suscripción con un booleano derivado, y no cinco campos sueltos:
   // así el componente sólo se vuelve a pintar cuando la respuesta cambia, no
   // cada vez que se mueve cualquier cosa de la sala.
-  const hayPantalla = useVoice(
-    (s) =>
-      s.escenario &&
-      s.estado !== "fuera" &&
-      s.spaceId !== null &&
-      s.spaceId === spaceId &&
-      (s.compartiendo || s.pantalla !== null),
+  // La misma condición con la que `ChannelView` decide enseñar el escenario en
+  // vez del hilo. Si algún día se separan, la interfaz encogería sin sala
+  // delante o al revés.
+  const enLlamada = useVoice(
+    (s) => s.escenario && s.estado !== "fuera" && s.spaceId !== null && s.spaceId === spaceId,
   );
 
   // El estado al que hay que volver, o `null` si todavía no hemos tocado nada.
@@ -58,7 +57,7 @@ export function useEncogerAlCompartir(spaceId: string | null): boolean {
   const soltado = useRef(false);
 
   useEffect(() => {
-    if (hayPantalla) {
+    if (enLlamada) {
       if (soltado.current) return;
       if (previo.current === null) {
         previo.current = open;
@@ -73,12 +72,12 @@ export function useEncogerAlCompartir(spaceId: string | null): boolean {
       }
       return;
     }
-    // Fuera de la compartición se olvida todo, incluida la renuncia: la próxima
-    // vez que compartas se vuelve a encoger, que es lo que esperarías.
+    // Al salir o minimizar se olvida todo, incluida la renuncia: la próxima vez
+    // que entres se vuelve a encoger, que es lo que esperarías.
     if (previo.current !== null && !soltado.current && previo.current) setOpen(true);
     previo.current = null;
     soltado.current = false;
-  }, [hayPantalla, open, setOpen]);
+  }, [enLlamada, open, setOpen]);
 
-  return hayPantalla;
+  return enLlamada;
 }

@@ -6,7 +6,7 @@ import ChannelView from "@/components/chat/ChannelView";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
 import { useVoice } from "@/store/voice.store";
-import { useEncogerAlCompartir } from "@/components/voice/useEncogerAlCompartir";
+import { useEncogerEnLlamada } from "@/components/voice/useEncogerEnLlamada";
 import { useOrgsStore } from "@/store/orgs.store";
 import { cn } from "@/lib/utils";
 
@@ -49,8 +49,8 @@ export default function Channels() {
   const abierto = params.get("space");
   const espacio = tree.find((s) => s.id === abierto) ?? tree[0];
 
-  // Con una pantalla en el escenario esta columna sobra, y el rail también.
-  const encogido = useEncogerAlCompartir(espacio?.id ?? null);
+  // Con la sala en pantalla esta columna sobra, y el rail también.
+  const encogido = useEncogerEnLlamada(espacio?.id ?? null);
 
   // Says which channel is on screen, so the event handler can keep quiet about
   // messages you are watching arrive. It used to read "is the panel open on

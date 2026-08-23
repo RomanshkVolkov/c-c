@@ -3,7 +3,7 @@ import { useEffect, useReducer } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 
 /**
- * Encoger la interfaz cuando hay una pantalla en el escenario.
+ * Encoger la interfaz mientras la sala ocupa la pantalla.
  *
  * Lo que se prueba no es que encoja —eso es la parte fácil— sino las dos reglas
  * que deciden si la función es útil o molesta: que **devuelva lo que había** en
@@ -30,7 +30,7 @@ vi.mock("@/components/ui/sidebar", () => ({
   useSidebar: () => rail,
 }));
 
-const { useEncogerAlCompartir } = await import("./useEncogerAlCompartir");
+const { useEncogerEnLlamada } = await import("./useEncogerEnLlamada");
 
 /**
  * Un componente mínimo que sólo existe para llamar al hook.
@@ -45,7 +45,7 @@ function Sonda({ spaceId }: { spaceId: string | null }) {
   const [, repintar] = useReducer((n: number) => n + 1, 0);
   suscritos.add(repintar);
   useEffect(() => () => void suscritos.delete(repintar), [repintar]);
-  const encogido = useEncogerAlCompartir(spaceId);
+  const encogido = useEncogerEnLlamada(spaceId);
   return <div data-testid="aside" data-encogido={String(encogido)} />;
 }
 
@@ -87,46 +87,52 @@ function railVivo(inicial: boolean) {
 /** Mover el rail a mano, como haría un clic en el trigger. */
 const aMano = (v: boolean) => act(() => rail.setOpen(v));
 
-describe("encoger al compartir", () => {
-  it("con una pantalla en el escenario, se encoge la columna y se cierra el rail", () => {
-    railVivo(true);
-    enLaSala({ compartiendo: true });
-    const v = montar();
-    expect(v.encogido()).toBe("true");
-    expect(rail.open).toBe(false);
-  });
-
-  it("la pantalla de otro encoge igual que la propia", () => {
-    railVivo(true);
-    enLaSala({ pantalla: "u-bea" });
-    const v = montar();
-    expect(v.encogido()).toBe("true");
-    expect(rail.open).toBe(false);
-  });
-
-  it("estar en la sala sin compartir no encoge nada", () => {
+describe("encoger en llamada", () => {
+  it("con la sala en pantalla se encoge la columna y se cierra el rail", () => {
     railVivo(true);
     enLaSala();
     const v = montar();
-    expect(v.encogido()).toBe("false");
-    expect(rail.open).toBe(true);
+    expect(v.encogido()).toBe("true");
+    expect(rail.open).toBe(false);
   });
 
-  it("una pantalla de otro espacio no toca esta", () => {
+  // Minimizar es la salida en un clic: sigues en la llamada y recuperas la
+  // navegación. Sin esto, encoger sería una imposición y no una comodidad.
+  it("minimizar devuelve la interfaz sin colgar la llamada", () => {
     railVivo(true);
-    enLaSala({ spaceId: "esp-9", compartiendo: true });
-    const v = montar();
-    expect(v.encogido()).toBe("false");
-    expect(rail.open).toBe(true);
-  });
-
-  it("al dejar de compartir, el rail vuelve a estar abierto", () => {
-    railVivo(true);
-    enLaSala({ compartiendo: true });
+    enLaSala();
     const v = montar();
     expect(rail.open).toBe(false);
 
-    enLaSala({ compartiendo: false });
+    enLaSala({ escenario: false });
+    v.repintar();
+    expect(v.encogido()).toBe("false");
+    expect(rail.open).toBe(true);
+  });
+
+  it("fuera de la sala no se toca nada", () => {
+    railVivo(true);
+    enLaSala({ estado: "fuera" });
+    const v = montar();
+    expect(v.encogido()).toBe("false");
+    expect(rail.open).toBe(true);
+  });
+
+  it("una llamada en otro espacio no toca esta pantalla", () => {
+    railVivo(true);
+    enLaSala({ spaceId: "esp-9" });
+    const v = montar();
+    expect(v.encogido()).toBe("false");
+    expect(rail.open).toBe(true);
+  });
+
+  it("al salir, el rail vuelve a estar abierto", () => {
+    railVivo(true);
+    enLaSala();
+    const v = montar();
+    expect(rail.open).toBe(false);
+
+    enLaSala({ escenario: false });
     v.repintar();
     expect(rail.open).toBe(true);
     expect(v.encogido()).toBe("false");
@@ -134,13 +140,13 @@ describe("encoger al compartir", () => {
 
   // El caso que delata la implementación ingenua: quien lo tenía colapsado a
   // propósito no debe encontrárselo abierto al dejar de compartir.
-  it("si el rail ya estaba colapsado, se queda colapsado al terminar", () => {
+  it("si el rail ya estaba colapsado, se queda colapsado al salir", () => {
     railVivo(false);
-    enLaSala({ compartiendo: true });
+    enLaSala();
     const v = montar();
     expect(rail.open).toBe(false);
 
-    enLaSala({ compartiendo: false });
+    enLaSala({ escenario: false });
     v.repintar();
     expect(rail.open).toBe(false);
   });
@@ -151,7 +157,7 @@ describe("encoger al compartir", () => {
   // coincide con lo que había al empezar — abres y vuelves a cerrar.
   it("una vez que lo tocas, manda tu última decisión y no la que había", () => {
     railVivo(true);
-    enLaSala({ compartiendo: true });
+    enLaSala();
     const v = montar();
     expect(rail.open).toBe(false);
 
@@ -160,44 +166,44 @@ describe("encoger al compartir", () => {
     // …y lo vuelves a cerrar.
     aMano(false);
 
-    enLaSala({ compartiendo: false });
+    enLaSala({ escenario: false });
     v.repintar();
     // Sin soltar el mando, aquí lo habría abierto: era el estado de partida.
     expect(rail.open).toBe(false);
   });
 
-  // La renuncia dura lo que dura esa compartición, no la sesión entera. Sin
+  // La renuncia dura lo que dura esa llamada, no la sesión entera. Sin
   // esto, tocar el rail una vez desactivaría la función para siempre — y nadie
   // relacionaría las dos cosas.
-  it("a la siguiente compartición vuelve a encoger, aunque la anterior la tocaras", () => {
+  it("a la siguiente llamada vuelve a encoger, aunque en la anterior lo tocaras", () => {
     railVivo(true);
-    enLaSala({ compartiendo: true });
+    enLaSala();
     const v = montar();
     aMano(true); // tomas el mando
     expect(rail.open).toBe(true);
 
-    enLaSala({ compartiendo: false });
+    enLaSala({ escenario: false });
     v.repintar();
     expect(rail.open).toBe(true);
 
     // Segunda vuelta: esto vuelve a mandar.
-    enLaSala({ compartiendo: true });
+    enLaSala();
     v.repintar();
     expect(rail.open).toBe(false);
   });
 
   // Si lo abres tú a mano, esto se aparta: ni lo vuelve a cerrar mientras
   // compartes, ni te lo cierra al terminar.
-  it("abrirlo a mano durante la compartición suelta el mando", () => {
+  it("abrirlo a mano durante la llamada suelta el mando", () => {
     railVivo(true);
-    enLaSala({ compartiendo: true });
+    enLaSala();
     const v = montar();
     expect(rail.open).toBe(false);
 
     aMano(true);
     expect(rail.open).toBe(true);
 
-    enLaSala({ compartiendo: false });
+    enLaSala({ escenario: false });
     v.repintar();
     expect(rail.open).toBe(true);
   });
