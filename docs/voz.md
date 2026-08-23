@@ -651,27 +651,43 @@ callas creyendo que el otro no te oye.
     plan que nos conviene. El problema no es perder DMA-BUF, es que hoy no hay
     forma limpia de renunciar a él.
 
-    **La mitigación que va puesta** (`voice::preferir_la_gpu_del_escritorio`, se
-    llama al principio de `run()`): si el primer nodo de render es de NVIDIA y
-    hay otro distinto, se pone `__EGL_VENDOR_LIBRARY_FILENAMES` al vendedor de
-    Mesa. Sólo en ese caso: con una sola tarjeta no hay desajuste, y si esa
-    única tarjeta fuera la NVIDIA la dejaríamos sin EGL en vez de arreglar nada.
-    Si la variable ya viene de fuera no se toca. Tiene que ir antes de que nada
-    use EGL, porque GLVND enumera vendedores **una sola vez**.
+    **Se intentó mitigarlo y se retiró el mismo día.** La idea era poner
+    `__EGL_VENDOR_LIBRARY_FILENAMES` al vendedor de Mesa cuando el primer nodo de
+    render fuera de NVIDIA y hubiera otro: sin el EGL de NVIDIA, `eglInitialize`
+    sobre ese nodo falla, libwebrtc no ofrece DMA-BUF y usa memoria compartida.
+    Funcionaba en `tauri dev`. **En el AppImage la app abría en blanco**, sin una
+    sola línea en stderr, y se publicó así en la v1.6.49.
 
-    Es una **mitigación**, no un arreglo, y el precio hay que decirlo: la
-    variable vale para todo el proceso, así que WebKit también renderiza con
-    Mesa. En la máquina que dispara la detección es lo que ya hacía; en una
-    híbrida cuyo escritorio corra sobre la NVIDIA le quitamos la dedicada a la
-    ventana. Es el precio de adivinar sobre el hardware ajeno, y por eso el
-    arreglo de verdad es hablar con PipeWire nosotros (cac App #29).
+    La causa es un símbolo:
 
-    **Y no se reporta aguas arriba** (cac App #30, cerrada el 2026-08-23). El
-    diagnóstico lo produjo un agente, y quien lo firmaría no escribió el código
-    ni puede distinguir un fallo real de un límite del modelo; abrir un hilo que
-    no se sostiene en las preguntas de seguimiento es cargarle trabajo a los
-    mantenedores. La consecuencia práctica hay que asumirla: **la mitigación no
-    es temporal**, la llevamos hasta que #29 la haga innecesaria.
+    ```
+    con las bibliotecas del AppImage:  libEGL_mesa.so.0: undefined symbol: wl_fixes_interface
+    con las del sistema (dev):         carga
+    ```
+
+    El AppImage empaqueta su propia `libwayland-client.so.0` —construida por
+    linuxdeploy en una distro vieja, sin `wl_fixes_interface`— y su `AppRun` la
+    pone por delante con `LD_LIBRARY_PATH`. El `libEGL_mesa` del sistema está
+    compilado contra la nueva y no puede cargar ahí dentro; ocho de sus
+    dependencias están ensombrecidas así. El vendedor de NVIDIA casi no tiene
+    dependencias y no pisa ninguna, **por eso él sí carga**. Al quitarlo de la
+    lista, glvnd se quedaba sin ningún vendedor y WebKit sin EGL — en silencio,
+    porque glvnd no se queja.
+
+    Quitando esa única biblioteca del bundle, Mesa carga y la mitigación
+    funcionaría. Pero Tauri invoca `linuxdeploy` sin exponer `--exclude-library`,
+    así que excluirla significa extraer, borrar, reempaquetar y volver a firmar
+    en CI: reestructurar la publicación para que un parche haga funcionar a otro.
+
+    Dos lecciones, y la segunda es la cara:
+
+    - **Una variable de entorno no tiene alcance.** Se quería apagar EGL para
+      libwebrtc y se apagó para todo el proceso, WebKit incluido. No hay forma
+      de limitarla, y por eso esta clase de arreglo estaba condenada.
+    - **Verificar en `dev` no es verificar.** El paquete tiene otro entorno de
+      bibliotecas —ése es su propósito— y nadie abrió el AppImage antes de
+      publicar. Se corrieron pruebas, clippy, tsc, vitest y una prueba manual en
+      desarrollo, y aun así salió una versión que no arrancaba.
 
 13b. **Lo que de verdad costó la noche no fue el fallo, fue no poder oírlo.**
     libwebrtc instala un sumidero de sus propios registros a nivel `VERBOSE` y
