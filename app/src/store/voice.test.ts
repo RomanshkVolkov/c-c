@@ -538,3 +538,39 @@ describe("la pantalla compartida", () => {
     expect(useVoice.getState().compartiendo).toBe(true);
   });
 });
+
+describe("el aviso de error", () => {
+  // Nada limpiaba este campo salvo salir de la llamada, así que un fallo
+  // pasajero de la cámara dejaba el cartel puesto el resto de la sesión — y
+  // reintentar no servía, porque el segundo intento contesta que el dispositivo
+  // sigue ocupado.
+  it("se puede descartar", async () => {
+    useVoice.setState({ error: "la cámara dejó de dar imagen: 0xC00D3704", errorSpaceId: "esp-1" });
+    useVoice.getState().limpiarError();
+    expect(useVoice.getState().error).toBeNull();
+    expect(useVoice.getState().errorSpaceId).toBeNull();
+  });
+
+  // Una acción que sí funciona borra el aviso de la que no: si el micrófono
+  // responde, seguir enseñando el fallo de la cámara es mentir sobre el estado
+  // actual del motor.
+  it("una acción que funciona lo borra", async () => {
+    useVoice.setState({
+      error: "la cámara dejó de dar imagen",
+      errorSpaceId: "esp-1",
+      mic: true,
+      yo: "u-1",
+    });
+    invoke.mockResolvedValue(undefined);
+    await useVoice.getState().alternarMic();
+    expect(useVoice.getState().error).toBeNull();
+  });
+
+  // El error es uno para toda la sala y el botón de entrar de cada canal lo
+  // leía: media lista en rojo por un fallo de cámara de otra llamada.
+  it("sabe de qué canal es", async () => {
+    post.mockResolvedValue({ success: false, error: "space not found" });
+    await useVoice.getState().entrar("esp-9");
+    expect(useVoice.getState().errorSpaceId).toBe("esp-9");
+  });
+});

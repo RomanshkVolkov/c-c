@@ -15,6 +15,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
   const estado = useVoice((s) => s.estado);
   const mic = useVoice((s) => s.mic);
   const error = useVoice((s) => s.error);
+  const errorSpaceId = useVoice((s) => s.errorSpaceId);
   const ocupacion = useVoice((s) => s.ocupacion);
   const entrar = useVoice((s) => s.entrar);
   const abrirEscenario = useVoice((s) => s.abrirEscenario);
@@ -53,15 +54,19 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
   // Quién anda dentro sin que tú estés. Es lo que rompe el círculo del canal
   // vacío: las caras en el botón son el motivo para pulsarlo.
   const dentro = ocupacion[spaceId] ?? [];
+  // Sólo el error de **este** canal. `error` es uno para toda la sala, y sin
+  // este filtro un fallo de la cámara en otra llamada pintaba de rojo el botón
+  // de entrar de todos los canales, con un texto que aquí no dice nada.
+  const fallo = errorSpaceId === spaceId ? error : null;
 
   return (
     <button
       onClick={() => void entrar(spaceId)}
       disabled={estado === "entrando"}
-      title={error ?? "Join the voice channel"}
+      title={fallo ?? "Join the voice channel"}
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 rounded-lg border pl-2 pr-3 text-[13px] font-semibold",
-        error
+        fallo
           ? "border-destructive/40 text-destructive"
           : dentro.length > 0
             ? "border-success/40 bg-success/10 text-success"

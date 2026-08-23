@@ -176,34 +176,60 @@ pub async fn voice_join(
     );
     let pista =
         LocalAudioTrack::create_audio_track("micro", RtcAudioSource::Native(fuente.clone()));
-    room.local_participant()
-        .publish_track(
-            LocalTrack::Audio(pista.clone()),
-            TrackPublishOptions {
-                source: TrackSource::Microphone,
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("no se pudo publicar el micrófono: {e}"))?;
 
-    *CANAL.lock().unwrap() = Some(on_event.clone());
-    *YO.lock().unwrap() = Some(identidad.clone());
-    nota(format!("sala: dentro como {identidad}"));
-    let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
+    // Todo lo que puede fallar **después de estar conectado**, junto y en un
+    // solo sitio, para poder cerrar la sala si algo se tuerce.
+    //
+    // Antes esto eran tres `?` sueltos, y cada uno se llevaba por delante el
+    // `Arc<Room>` sin cerrarlo: quedabas publicado en el SFU y sin nadie que
+    // colgara, porque `voice_leave` sólo cierra lo que encuentre en `SESION` y
+    // `SESION` todavía no estaba puesto. El resultado era un participante
+    // fantasma que sólo desaparecía cuando LiveKit lo segaba por su cuenta —y,
+    // como la presencia se lee del SFU, mientras tanto te veías a ti mismo
+    // dentro de una llamada de la que ya no formabas parte.
+    let armado = async {
+        room.local_participant()
+            .publish_track(
+                LocalTrack::Audio(pista.clone()),
+                TrackPublishOptions {
+                    source: TrackSource::Microphone,
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("no se pudo publicar el micrófono: {e}"))?;
 
-    on_event
-        .send(VoiceEvent::Connected {
-            identity: identidad.clone(),
+        *CANAL.lock().unwrap() = Some(on_event.clone());
+        *YO.lock().unwrap() = Some(identidad.clone());
+        nota(format!("sala: dentro como {identidad}"));
+        let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
+
+        on_event
+            .send(VoiceEvent::Connected {
+                identity: identidad.clone(),
+            })
+            .map_err(|e| e.to_string())?;
+
+        Ok::<_, String>(VoiceSession {
+            room: room.clone(),
+            _captura: captura,
+            fuente: fuente.clone(),
+            micro: pista.clone(),
         })
-        .map_err(|e| e.to_string())?;
+    }
+    .await;
 
-    *SESION.lock().unwrap() = Some(VoiceSession {
-        room: room.clone(),
-        _captura: captura,
-        fuente,
-        micro: pista,
-    });
+    let sesion = match armado {
+        Ok(s) => s,
+        Err(e) => {
+            nota(format!("sala: entrada a medias, se cierra la sala — {e}"));
+            let _ = room.close().await;
+            *CANAL.lock().unwrap() = None;
+            *YO.lock().unwrap() = None;
+            return Err(e);
+        }
+    };
+    *SESION.lock().unwrap() = Some(sesion);
 
     escuchar_eventos(eventos, on_event.clone());
     medir_latencia(Arc::downgrade(&room), on_event);
@@ -922,10 +948,28 @@ fn arrancar_captura(
         drop(stream);
     });
 
-    match listo_rx.recv() {
+    // Con plazo, como todas las demás capturas.
+    //
+    // Era la única que esperaba sin límite, y eso la convertía en la forma más
+    // silenciosa de romper la app: abrir un dispositivo de audio **puede
+    // colgarse** —en Windows pasa cuando el sistema está reenumerando los
+    // puntos finales— y este `recv()` bloqueaba dentro de `voice_join`. El
+    // comando no resolvía nunca, la interfaz se quedaba en «entrando», y su
+    // guardia de reentrada la dejaba ahí para siempre: parecías estar en la
+    // llamada y no podías volver a ella.
+    //
+    // Quince segundos porque abrir el micrófono no compite con ningún diálogo
+    // del sistema —la cámara en macOS sí, y por eso la suya son veinte.
+    match listo_rx.recv_timeout(std::time::Duration::from_secs(15)) {
         Ok(Ok(())) => Ok(StreamGuard(Some(fin_tx))),
         Ok(Err(e)) => Err(e),
-        Err(_) => Err("el hilo del micrófono murió al arrancar".into()),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err("el hilo del micrófono murió al arrancar".into())
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            nota("micro: quince segundos sin abrir el dispositivo, se abandona");
+            Err("el micrófono no abrió en quince segundos".into())
+        }
     }
 }
 

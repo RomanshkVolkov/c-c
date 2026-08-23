@@ -129,6 +129,17 @@ interface VoiceState {
   cam: boolean;
   error: string | null;
   /**
+   * De qué canal es el error, para no pintarlos todos de rojo.
+   *
+   * `error` es uno solo para toda la sala, y el botón de entrar de **cada**
+   * canal lo leía: un fallo al encender la cámara dejaba media lista en rojo
+   * con un mensaje que allí no significaba nada. Con esto, cada botón enseña lo
+   * suyo y calla lo ajeno.
+   */
+  errorSpaceId: string | null;
+  /** Descartar el aviso. Ver el botón de cerrar del cartel. */
+  limpiarError: () => void;
+  /**
    * Quién está en cada canal de voz, **sin haber entrado**.
    *
    * Es lo que rompe el círculo del canal vacío: si no ves que hay alguien
@@ -185,6 +196,7 @@ const VACIO = {
   sordo: false,
   cam: false,
   error: null,
+  errorSpaceId: null,
 };
 
 /**
@@ -245,7 +257,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
       set({ estado: "dentro", yo, mic: true });
     } catch (e) {
       const motivo = e instanceof Error ? e.message : String(e);
-      set({ ...VACIO, error: motivo });
+      set({ ...VACIO, error: motivo, errorSpaceId: spaceId });
     }
   },
 
@@ -293,7 +305,9 @@ export const useVoice = create<VoiceState>((set, get) => ({
       mic: siguiente,
       mudos: yo ? { ...s.mudos, [yo]: !siguiente } : s.mudos,
     }));
-    await invoke("voice_set_mic", { enabled: siguiente }).catch(() => {});
+    await invoke("voice_set_mic", { enabled: siguiente })
+      .then(() => set({ error: null, errorSpaceId: null }))
+      .catch(() => {});
   },
 
   /**
@@ -311,6 +325,8 @@ export const useVoice = create<VoiceState>((set, get) => ({
     if (siguiente) await invoke("voice_set_mic", { enabled: false }).catch(() => {});
   },
 
+  limpiarError: () => set({ error: null, errorSpaceId: null }),
+
   timbrar: async (userId, nombre) => {
     const spaceId = get().spaceId;
     if (!spaceId) return;
@@ -327,7 +343,11 @@ export const useVoice = create<VoiceState>((set, get) => ({
       // Se cae la fila entera en vez de dejarla sonando: una llamada que el
       // servidor rechazó no está sonando en ninguna parte, y enseñarla como si
       // sonara es la peor de las mentiras posibles aquí.
-      set({ llamando: null, error: e instanceof Error ? e.message : String(e) });
+      set({
+        llamando: null,
+        error: e instanceof Error ? e.message : String(e),
+        errorSpaceId: get().spaceId,
+      });
       return;
     }
     // El tope lo pone también el cliente porque el servidor no guarda el
@@ -425,9 +445,9 @@ export const useVoice = create<VoiceState>((set, get) => ({
     const siguiente = !get().cam;
     try {
       await invoke("voice_set_camera", { enabled: siguiente });
-      set({ cam: siguiente, error: null });
+      set({ cam: siguiente, error: null, errorSpaceId: null });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      set({ error: e instanceof Error ? e.message : String(e), errorSpaceId: get().spaceId });
     }
   },
 
@@ -446,9 +466,9 @@ export const useVoice = create<VoiceState>((set, get) => ({
     const siguiente = !get().compartiendo;
     try {
       await invoke(siguiente ? "voice_share_screen" : "voice_stop_share");
-      set({ compartiendo: siguiente, error: null });
+      set({ compartiendo: siguiente, error: null, errorSpaceId: null });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      set({ error: e instanceof Error ? e.message : String(e), errorSpaceId: get().spaceId });
     }
   },
 
@@ -511,7 +531,11 @@ export const useVoice = create<VoiceState>((set, get) => ({
         set({ hablando: ev.identities });
         break;
       case "disconnected":
-        set({ ...VACIO, error: ev.reason === "Unknown" ? null : ev.reason });
+        set({
+          ...VACIO,
+          error: ev.reason === "Unknown" ? null : ev.reason,
+          errorSpaceId: get().spaceId,
+        });
         break;
     }
   },

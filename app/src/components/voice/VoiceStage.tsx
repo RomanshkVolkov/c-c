@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertCircle, Loader2, Minimize2, Volume2 } from "lucide-react";
+import { AlertCircle, Loader2, Minimize2, Volume2, X } from "lucide-react";
 import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
@@ -41,6 +41,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const alternarCam = useVoice((s) => s.alternarCam);
   const cerrarEscenario = useVoice((s) => s.cerrarEscenario);
   const error = useVoice((s) => s.error);
+  const limpiarError = useVoice((s) => s.limpiarError);
   // La tuya manda sobre la de otro: si estás compartiendo, lo que necesitas ver
   // es lo que los demás están viendo de ti.
   const pantalla = compartiendo ? yo : pantallaAjena;
@@ -168,6 +169,19 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
           className="flex shrink-0 items-center justify-center gap-2 border-t bg-destructive/10 px-4 py-2 text-center text-xs text-destructive"
         >
           <AlertCircle className="size-3.5 shrink-0" /> {error}
+          {/* Con botón de cerrar, y no por pulcritud: nada limpiaba este campo
+              salvo salir de la llamada, así que un fallo pasajero de la cámara
+              dejaba el cartel puesto el resto de la sesión. Reintentar tampoco
+              servía —el segundo intento contesta que el dispositivo sigue
+              ocupado— y acababas leyendo un aviso de algo que ya no pasaba. */}
+          <button
+            type="button"
+            onClick={limpiarError}
+            aria-label="Dismiss"
+            className="ml-1 shrink-0 rounded p-0.5 hover:bg-destructive/20"
+          >
+            <X className="size-3.5" />
+          </button>
         </p>
       )}
 
