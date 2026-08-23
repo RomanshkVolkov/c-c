@@ -184,6 +184,15 @@ pub async fn voice_join(
 /// mientras alguien pulsaba el botón.
 #[tauri::command]
 pub async fn voice_leave() {
+    // Las capturas de vídeo se paran aquí, y esto es lo que impide un hilo
+    // huérfano por llamada. Las dos banderas son la única correa que tienen:
+    // sin bajarlas, el hilo de la cámara sigue pidiendo tramas y convirtiendo
+    // espacios de color para siempre después de colgar — y como `voice_join`
+    // llama a esto antes de entrar, entrar a dos salas seguidas dejaba dos
+    // cámaras corriendo a la vez.
+    use std::sync::atomic::Ordering::Relaxed;
+    CAMARA.store(false, Relaxed);
+    PANTALLA.store(false, Relaxed);
     // Las caras de la sala anterior no se heredan.
     crate::video_frames::olvidar_todo();
     *YO.lock().unwrap() = None;
@@ -464,6 +473,11 @@ pub fn voice_set_deaf(enabled: bool) -> Result<(), String> {
 /// Al cerrar la ventana. Sin esto queda una sala abierta y un micrófono vivo en
 /// un proceso que ya nadie mira — la misma lección que el pty.
 pub fn close_all() {
+    // Igual que al colgar: sin esto la ventana se cierra y los hilos de la
+    // cámara y la pantalla siguen vivos en un proceso que ya nadie mira.
+    use std::sync::atomic::Ordering::Relaxed;
+    CAMARA.store(false, Relaxed);
+    PANTALLA.store(false, Relaxed);
     let sesion = SESION.lock().unwrap().take();
     if let Some(s) = sesion {
         tauri::async_runtime::spawn(async move {

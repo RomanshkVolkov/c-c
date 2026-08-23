@@ -500,7 +500,27 @@ callas creyendo que el otro no te oye.
    que mover el lado derecho de la imagen, y una pantalla volteada sale con el
    texto del revés.
 
-10. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
+10. **Lo que salió de revisar el camino caliente**, y que ninguna prueba podía
+    cazar porque todo pasa a treinta veces por segundo con una llamada abierta:
+
+    - **Las respuestas vacías no llevaban CORS.** El 204 «no ha cambiado» es la
+      más frecuente de las tres, y en Windows el esquema es otro origen: sin
+      `Access-Control-Allow-Origin`, el `fetch` falla en vez de contestar, el
+      lienzo lo toma por un error de red y espera. El vídeo en Windows habría
+      ido a tirones o no habría arrancado.
+    - **Colgar no paraba las capturas.** `CAMARA` y `PANTALLA` son la única
+      correa de esos hilos, y no se bajaban al salir. Seguían pidiendo tramas y
+      convirtiendo espacios de color para siempre — y como `voice_join` cuelga
+      antes de entrar, dos salas seguidas dejaban dos cámaras corriendo.
+    - **Cada petición clonaba la trama entera** para soltar el candado antes de
+      comprimir: tres megabytes por vuelta en 1080p. Ahora los planos van en un
+      `Arc` y el candado se suelta igual de pronto sin copiar la imagen.
+    - **Un hilo nuevo por petición.** Treinta por segundo y por mosaico, cada
+      uno costando más que el trabajo que hacía. Va al pool de hilos
+      bloqueantes, que además hace que el búfer reutilizable del entrelazado
+      sirva de algo: con un hilo distinto cada vez no se reutilizaba nunca.
+
+11. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
    tramas se guardan por `(persona, fuente)` y se piden a
    `cacvideo://…/<identidad>/<camera|screen>`. Estuvieron guardándose sólo por
    persona: nadie lo notó porque no había pantalla que compartir, y en cuanto la
@@ -517,7 +537,7 @@ callas creyendo que el otro no te oye.
    alguien más empezó a compartir es quitarle de delante a la gente lo que
    estaba leyendo.
 
-11. **Cámara y pantalla**: **publicar** está hecho para la cámara
+12. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -538,7 +558,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-12. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+13. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.

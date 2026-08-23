@@ -1507,7 +1507,8 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol(
             video_frames::SCHEME,
             |_ctx, req, responder| {
-                // En otro hilo, y esto **no** es una optimización.
+                // Fuera del hilo de la interfaz, y esto **no** es una
+                // optimización.
                 //
                 // La primera versión era síncrona, con el argumento de que aquí
                 // no hay red de por medio y sólo hay que comprimir algo que ya
@@ -1515,7 +1516,16 @@ pub fn run() {
                 // manejador síncrono corre en el hilo que atiende al webview:
                 // con la pantalla pidiendo tramas seguidas, la ventana deja de
                 // responder y acaba muriendo. Pasó en la v1.6.38.
-                std::thread::spawn(move || responder.respond(video_frames::servir(&req)));
+                //
+                // Y en el **pool** de hilos bloqueantes, no en un hilo nuevo por
+                // petición. Con treinta peticiones por segundo y por mosaico,
+                // crear y destruir un hilo cada vez cuesta más que el trabajo
+                // que hace; además el búfer que `comprimir` reutiliza es
+                // `thread_local`, y con un hilo distinto cada vez no se
+                // reutilizaría nunca.
+                tauri::async_runtime::spawn_blocking(move || {
+                    responder.respond(video_frames::servir(&req))
+                });
             },
         )
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |ctx, req, responder| {

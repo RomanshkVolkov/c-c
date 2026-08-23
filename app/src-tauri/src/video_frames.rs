@@ -87,7 +87,13 @@ struct Cruda {
     /// Se copian aquí en vez de guardar el búfer del SDK porque ése se
     /// reutiliza: quedarse con la referencia significaría servir una trama que
     /// ya se sobrescribió, y eso se ve como rayas.
-    planos: Vec<u8>,
+    ///
+    /// En un `Arc` para que sacarla del candado sea gratis. Estaba en un `Vec`
+    /// y cada petición clonaba los planos enteros —tres megabytes en 1080p,
+    /// treinta veces por segundo— sólo para poder soltar el bloqueo antes de
+    /// comprimir. El bloqueo se sigue soltando; lo que ya no se copia es la
+    /// imagen.
+    planos: std::sync::Arc<Vec<u8>>,
 }
 
 /// La última trama de cada participante. Sólo la última: si el webview va más
@@ -112,7 +118,7 @@ pub fn guardar(
     let clave = (identidad.to_string(), fuente);
     let mut guard = ULTIMAS.lock().unwrap();
     let seq = guard.get(&clave).map_or(1, |c| c.seq + 1);
-    guard.insert(clave, Cruda { seq, ancho, alto, planos });
+    guard.insert(clave, Cruda { seq, ancho, alto, planos: std::sync::Arc::new(planos) });
 }
 
 /// Quita el relleno del final de cada fila y deja los tres planos pegados.
@@ -263,26 +269,53 @@ fn comprimir(planos: &[u8], ancho: u32, alto: u32) -> Option<Vec<u8>> {
     let (yp, resto) = planos.split_at(w * h);
     let (up, vp) = resto.split_at(cw * ch);
 
-    let mut entrelazado = vec![0u8; w * h * 3];
-    for fila in 0..h {
-        let cfila = (fila / 2) * cw;
-        for col in 0..w {
-            let i = (fila * w + col) * 3;
-            entrelazado[i] = yp[fila * w + col];
-            entrelazado[i + 1] = up[cfila + col / 2];
-            entrelazado[i + 2] = vp[cfila + col / 2];
-        }
+    // El búfer del entrelazado se reutiliza entre tramas. Reservarlo cada vez
+    // son seis megabytes en 1080p treinta veces por segundo: el asignador
+    // resuelve bien lo pequeño, pero a ese tamaño cada reserva es una llamada
+    // al sistema. Es `thread_local` porque cada petición se atiende en su
+    // propio hilo — ver el registro del esquema en `lib.rs`— así que no hay
+    // nada que sincronizar.
+    thread_local! {
+        static ENTRELAZADO: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
     }
 
-    let mut salida = Vec::with_capacity(planos.len() / 8);
-    Encoder::new(&mut salida, CALIDAD)
-        .encode(&entrelazado, ancho as u16, alto as u16, ColorType::Ycbcr)
-        .ok()?;
-    Some(salida)
+    ENTRELAZADO.with(|celda| {
+        let mut entrelazado = celda.borrow_mut();
+        entrelazado.resize(w * h * 3, 0);
+        for fila in 0..h {
+            let cfila = (fila / 2) * cw;
+            for col in 0..w {
+                let i = (fila * w + col) * 3;
+                entrelazado[i] = yp[fila * w + col];
+                entrelazado[i + 1] = up[cfila + col / 2];
+                entrelazado[i + 2] = vp[cfila + col / 2];
+            }
+        }
+
+        let mut salida = Vec::with_capacity(planos.len() / 8);
+        Encoder::new(&mut salida, CALIDAD)
+            .encode(&entrelazado[..w * h * 3], ancho as u16, alto as u16, ColorType::Ycbcr)
+            .ok()?;
+        Some(salida)
+    })
 }
 
+/// Una respuesta sin cuerpo — 204 «no ha cambiado», 404 «todavía no hay».
+///
+/// **Con las mismas cabeceras CORS que la que sí trae imagen.** En Windows el
+/// esquema se sirve como otro origen, así que una respuesta sin
+/// `Access-Control-Allow-Origin` hace fallar el `fetch` en vez de contestarlo:
+/// el bucle del lienzo lo vería como un error de red, esperaría su cuarto de
+/// segundo y volvería a intentarlo. El 204 es la respuesta **más frecuente** de
+/// las tres —cada vez que se pide más deprisa de lo que llega— así que sin esto
+/// el vídeo en Windows iría a tirones o no arrancaría.
 fn vacia(codigo: u16) -> Response<Vec<u8>> {
-    Response::builder().status(codigo).body(Vec::new()).unwrap()
+    Response::builder()
+        .status(codigo)
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Cache-Control", "no-store")
+        .body(Vec::new())
+        .unwrap()
 }
 
 #[cfg(test)]
