@@ -522,7 +522,16 @@ export const useVoice = create<VoiceState>((set, get) => ({
             pantalla: ev.enabled ? (s.pantalla ?? ev.identity) : s.pantalla === ev.identity ? null : s.pantalla,
           }));
         } else {
-          set((s) => ({ video: { ...s.video, [ev.identity]: ev.enabled } }));
+          set((s) => ({
+            video: { ...s.video, [ev.identity]: ev.enabled },
+            // Si el evento habla de **tu** cámara, hazle caso al botón también.
+            //
+            // El motor sólo lo manda cuando la cámara se apaga sola a media
+            // llamada —te la quita otra aplicación, o el dispositivo se cae— y
+            // sin esto el mapa decía «apagada» mientras el botón seguía
+            // encendido. Dos sitios contando cosas distintas del mismo aparato.
+            ...(ev.identity === s.yo ? { cam: ev.enabled } : {}),
+          }));
         }
         break;
       case "speaking":

@@ -566,6 +566,32 @@ describe("el aviso de error", () => {
     expect(useVoice.getState().error).toBeNull();
   });
 
+  // Si el motor apaga tu cámara por su cuenta —te la quita otra aplicación—
+  // el botón tiene que enterarse. Antes el mapa decía «apagada» y el botón
+  // seguía encendido.
+  it("si el motor apaga tu cámara, el botón se apaga con ella", () => {
+    useVoice.setState({ yo: "u-1", cam: true });
+    useVoice.getState().alRecibir({
+      kind: "video",
+      identity: "u-1",
+      source: "camera",
+      enabled: false,
+    });
+    expect(useVoice.getState().cam).toBe(false);
+  });
+
+  // Y la cámara de otro no toca la tuya.
+  it("la cámara de otro no apaga la tuya", () => {
+    useVoice.setState({ yo: "u-1", cam: true });
+    useVoice.getState().alRecibir({
+      kind: "video",
+      identity: "u-bea",
+      source: "camera",
+      enabled: false,
+    });
+    expect(useVoice.getState().cam).toBe(true);
+  });
+
   // El error es uno para toda la sala y el botón de entrar de cada canal lo
   // leía: media lista en rojo por un fallo de cámara de otra llamada.
   it("sabe de qué canal es", async () => {

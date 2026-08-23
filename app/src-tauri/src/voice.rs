@@ -2169,6 +2169,34 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             };
             nota(format!("cámara: se rinde — {porque}"));
             let _ = listo_tx.send(Err(porque));
+            return;
+        }
+
+        // Se rindió **después** de haber dado imagen, y eso antes no lo contaba
+        // nadie: el canal de arranque ya estaba cerrado, así que el hilo
+        // terminaba en silencio con la bandera en alto. Quedaba el botón
+        // encendido, la pista publicando una fuente muerta, y ni un aviso —el
+        // caso de una cámara que otra aplicación te quita a media llamada.
+        //
+        // No hay por dónde mandar el motivo, así que va al diario y la interfaz
+        // recibe lo único que puede pintar: que la cámara está apagada. Es
+        // menos de lo que uno querría y muchísimo más que mentir.
+        CAMARA.store(false, std::sync::atomic::Ordering::Relaxed);
+        let porque = if ultimo_fallo.is_empty() {
+            "la cámara dejó de entregar imagen".to_string()
+        } else {
+            ultimo_fallo
+        };
+        nota(format!("cámara: se apaga a media llamada — {porque}"));
+        if let (Some(canal), Some(yo)) = (
+            CANAL.lock().unwrap().clone(),
+            YO.lock().unwrap().clone(),
+        ) {
+            let _ = canal.send(VoiceEvent::Video {
+                identity: yo,
+                source: crate::video_frames::Fuente::Camara.como_texto().into(),
+                enabled: false,
+            });
         }
     });
 
