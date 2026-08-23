@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,7 +49,7 @@ func (s *ChatService) WithNotifier(n Notifier) *ChatService {
 // stream, including the one that just typed the message, and without a name on
 // the event the app announces it back at its author — a bug this codebase found
 // the hard way the day before this feature was written.
-func (s *ChatService) publish(orgID, spaceID, messageID, actorID string, mentions []string) {
+func (s *ChatService) publish(orgID, spaceID, messageID, actorID, cuerpo string, mentions []string) {
 	if orgID == "" {
 		return
 	}
@@ -58,17 +59,22 @@ func (s *ChatService) publish(orgID, spaceID, messageID, actorID string, mention
 	// a todo el mundo sin dar ningún error. Nadie lo habría visto hasta que
 	// alguien se quejara de no enterarse de nada.
 	if s.hub != nil {
-		s.publicarAlStream(orgID, spaceID, messageID, actorID, mentions)
+		s.publicarAlStream(orgID, spaceID, messageID, actorID, cuerpo, mentions)
 	}
-	s.anotarAvisos(orgID, spaceID, actorID, mentions)
+	s.anotarAvisos(orgID, spaceID, actorID, cuerpo, mentions)
 }
 
-func (s *ChatService) publicarAlStream(orgID, spaceID, messageID, actorID string, mentions []string) {
+func (s *ChatService) publicarAlStream(orgID, spaceID, messageID, actorID, cuerpo string, mentions []string) {
+	canal, autor := s.repo.Rotulos(spaceID, actorID)
 	s.hub.Publish(events.Event{
 		Type:  "chat:message",
 		OrgID: orgID,
 		Data: map[string]any{
 			"spaceId": spaceID, "messageId": messageID, "actorId": actorID,
+			// El canal, quién escribe y un adelanto del texto, para que el
+			// aviso del sistema diga algo. Sin esto la consola sólo tenía un
+			// id de espacio y anunciaba «New message in a channel».
+			"spaceName": canal, "authorName": autor, "preview": Adelanto(cuerpo),
 			// Who was named. Sent to the whole organization along with the rest
 			// of the event — the channel is theirs to read anyway — and each
 			// console decides whether it is being spoken to. Nothing private
@@ -78,9 +84,24 @@ func (s *ChatService) publicarAlStream(orgID, spaceID, messageID, actorID string
 	})
 }
 
-func (s *ChatService) anotarAvisos(orgID, spaceID, actorID string, mentions []string) {
+func (s *ChatService) anotarAvisos(orgID, spaceID, actorID, cuerpo string, mentions []string) {
 	if s.notifier == nil {
 		return
+	}
+	// Con qué se rellenan los avisos. Si el canal no tiene nombre —borrado a
+	// medio camino— se dice «a channel» y el aviso sigue sirviendo para algo.
+	canal, autor := s.repo.Rotulos(spaceID, actorID)
+	donde := "a channel"
+	if canal != "" {
+		donde = "#" + canal
+	}
+	// «Quién: qué», que es como se lee un chat. Sin autor conocido queda sólo
+	// el texto, que sigue siendo lo más informativo de los dos.
+	linea := Adelanto(cuerpo)
+	if autor != "" && linea != "" {
+		linea = autor + ": " + linea
+	} else if autor != "" {
+		linea = autor
 	}
 	for _, uid := range mentions {
 		// Not the author: being told you named somebody is the app talking to
@@ -92,7 +113,7 @@ func (s *ChatService) anotarAvisos(orgID, spaceID, actorID string, mentions []st
 		// día que exista una, este servicio tendrá que recibir el contexto de
 		// la petición — si no, un mensaje del agente se pintará como tuyo.
 		s.notifier.Notify(uid, orgID, "chat:mention",
-			"You were mentioned", "", "/chat?space="+spaceID, domain.ViaApp)
+			"Mentioned in "+donde, linea, "/chat?space="+spaceID, domain.ViaApp)
 	}
 
 	// Y a quien sigue el canal, por lo corriente. Sólo a quien lo sigue: avisar
@@ -112,7 +133,7 @@ func (s *ChatService) anotarAvisos(orgID, spaceID, actorID string, mentions []st
 			continue
 		}
 		s.notifier.Notify(uid, orgID, "chat:message",
-			"New message in a channel you follow", "", "/chat?space="+spaceID, domain.ViaApp)
+			donde, linea, "/chat?space="+spaceID, domain.ViaApp)
 	}
 }
 
@@ -163,7 +184,7 @@ func (s *ChatService) Post(spaceID, orgID, userID, body string) (*domain.ChatMes
 	if err := s.repo.Create(m); err != nil {
 		return nil, err
 	}
-	s.publish(orgID, spaceID, m.ID, userID, s.mentioned(orgID, body))
+	s.publish(orgID, spaceID, m.ID, userID, body, s.mentioned(orgID, body))
 	return m, nil
 }
 
@@ -185,7 +206,7 @@ func (s *ChatService) Edit(messageID, userID string, superadmin bool, body strin
 	}
 	// Same event as a new message: the receiver reloads the channel either way,
 	// and a second event type would be two things to handle for one outcome.
-	s.publish(m.OrgID, m.SpaceID, m.ID, userID, s.mentioned(m.OrgID, body))
+	s.publish(m.OrgID, m.SpaceID, m.ID, userID, body, s.mentioned(m.OrgID, body))
 	return nil
 }
 
@@ -202,7 +223,7 @@ func (s *ChatService) Withdraw(messageID, userID string, superadmin bool) error 
 	}
 	// A withdrawn message names nobody: pinging over something just retracted
 	// would be the opposite of retracting it.
-	s.publish(m.OrgID, m.SpaceID, m.ID, userID, nil)
+	s.publish(m.OrgID, m.SpaceID, m.ID, userID, "", nil)
 	return nil
 }
 
@@ -220,4 +241,27 @@ func (s *ChatService) AddAttachment(a *domain.ChatAttachment) error {
 
 func (s *ChatService) FindAttachment(id string) (*domain.ChatAttachment, error) {
 	return s.repo.FindAttachment(id)
+}
+
+// Adelanto recorta un mensaje a lo que cabe en un aviso.
+//
+// Tres cosas, y las tres tienen su motivo:
+//
+//   - **Los saltos de línea se vuelven espacios.** Un aviso es una línea; con
+//     un mensaje de varios párrafos, el sistema operativo recorta por el primer
+//     salto y enseña una palabra suelta.
+//   - **Se cuenta en runas, no en bytes.** Cortar por bytes parte una «ñ» o una
+//     tilde por la mitad y deja un carácter roto al final de cada aviso en
+//     castellano. Es el clásico que sólo se ve cuando el texto no es inglés.
+//   - **Se avisa del recorte con «…»**, para que nadie lea media frase creyendo
+//     que es entera.
+func Adelanto(cuerpo string) string {
+	const tope = 140
+
+	limpio := strings.Join(strings.Fields(cuerpo), " ")
+	runas := []rune(limpio)
+	if len(runas) <= tope {
+		return limpio
+	}
+	return strings.TrimRight(string(runas[:tope]), " ") + "…"
 }

@@ -146,6 +146,33 @@ func (r *ChatRepository) Unfollow(spaceID, userID string) error {
 // La pertenencia decide, y no una lista propia, porque un espacio no tiene
 // miembros suyos — cualquier miembro de la organización lo alcanza. Inventarle
 // una lista sería una segunda verdad sobre quién está dentro.
+// Rotulos: cómo se llama el canal y quién ha escrito.
+//
+// Para que un aviso diga algo. La fila de la bandeja se guardaba con el título
+// «New message in a channel you follow» y el cuerpo **vacío**, así que siete
+// avisos seguidos eran siete líneas idénticas: ni canal, ni autor, ni texto.
+// Sin saber de dónde venían, la única forma de enterarse era abrir los canales
+// uno a uno.
+//
+// Una sola consulta con dos subconsultas en vez de dos viajes: esto corre en el
+// camino de publicar un mensaje, que es de los pocos sitios de este servicio
+// donde alguien está esperando.
+//
+// Devuelve cadenas vacías si algo no está —un espacio borrado, un usuario que
+// ya no existe— y quien llama decide el texto de reserva. Un aviso pobre es
+// mejor que ninguno.
+func (r *ChatRepository) Rotulos(spaceID, autorID string) (canal, autor string) {
+	var fila struct {
+		Canal string
+		Autor string
+	}
+	r.db.Raw(`SELECT
+			(SELECT COALESCE(name, '') FROM task_spaces WHERE id = ?) AS canal,
+			(SELECT COALESCE(username, '') FROM users WHERE id = ?) AS autor`,
+		spaceID, autorID).Scan(&fila)
+	return fila.Canal, fila.Autor
+}
+
 func (r *ChatRepository) Followers(spaceID string) ([]string, error) {
 	var ids []string
 	err := r.db.Raw(`

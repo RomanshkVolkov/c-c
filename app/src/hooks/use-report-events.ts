@@ -325,7 +325,13 @@ export function useReportEvents() {
           break;
         }
         case "chat:message": {
-          const p = parse(data) as Payload & { spaceId?: string; mentions?: string[] };
+          const p = parse(data) as Payload & {
+            spaceId?: string;
+            mentions?: string[];
+            spaceName?: string;
+            authorName?: string;
+            preview?: string;
+          };
           if (!p.spaceId) break;
           // Your own line, echoed back by the stream every console hears. The
           // panel already shows it — the post refetched — so there is nothing
@@ -335,10 +341,19 @@ export function useReportEvents() {
           // Only announce what you aren't already looking at. onIncoming has the
           // same condition; it is repeated rather than returned because the two
           // decisions are different — one updates a badge, one interrupts you.
-          const space = useTasksStore
-            .getState()
-            .tree.find((s) => s.id === p.spaceId);
-          const where = space ? `#${space.name}` : "a channel";
+          // El nombre lo manda el servidor; el árbol local es sólo el respaldo.
+          //
+          // Antes era al revés y por eso los avisos decían «a channel»: el
+          // árbol de espacios sólo está cargado si has abierto esa pantalla, y
+          // quien recibe un mensaje con el tablero delante no lo tiene.
+          const space = useTasksStore.getState().tree.find((s) => s.id === p.spaceId);
+          const nombre = p.spaceName || space?.name;
+          const where = nombre ? `#${nombre}` : "a channel";
+          // «Quién: qué», que es como se lee un chat.
+          const linea =
+            p.authorName && p.preview
+              ? `${p.authorName}: ${p.preview}`
+              : p.preview || (p.authorName ? `${p.authorName} escribió` : "New message in the channel");
 
           // Being named is different from a message arriving: it is addressed
           // to you, so it interrupts even while you are looking at the channel
@@ -346,14 +361,14 @@ export function useReportEvents() {
           const me = useAuthStore.getState().session?.id;
           if (me && p.mentions?.includes(me)) {
             toast.message(`You were mentioned in ${where}`);
-            notify("chat:mention", `Mentioned in ${where}`, "Somebody named you");
+            notify("chat:mention", `Mentioned in ${where}`, linea);
             break;
           }
 
           const chat = useChatStore.getState();
           if (chat.panelOpen && chat.spaceId === p.spaceId) break;
           toast.message(`New message in ${where}`);
-          notify("chat:message", where, "New message in the channel");
+          notify("chat:message", where, linea);
           break;
         }
         case "dm:message": {
