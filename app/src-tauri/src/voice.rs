@@ -971,14 +971,21 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
         return Ok(estado_video());
     }
 
-    // `is_screencast: false` — una cara. El SFU lo usa para decidir su
-    // estrategia: en una cámara prioriza la fluidez, en una pantalla el detalle
-    // del texto aunque baje la tasa.
-    let fuente = NativeVideoSource::new(
-        VideoResolution { width: VIDEO_ANCHO, height: VIDEO_ALTO },
-        false,
-    );
-    arrancar_camara(fuente.clone())?;
+    // La fuente se crea **con lo que la cámara entregue**, no con lo que
+    // pidamos. Esto era al revés y fue un fallo silencioso: se fijaba 1280×720
+    // y el bucle descartaba toda trama de otro tamaño, así que una webcam que
+    // entregara 640×480 o 1080p dejaba el botón encendido y la imagen en
+    // negro, sin un error en ninguna parte. Se pide algo cercano a 720p y se
+    // acepta lo que haya.
+    // La bandera **antes** de arrancar: el bucle de captura la mira para saber
+    // si sigue vivo, y encenderla después dejaría el hilo saliendo en la
+    // primera vuelta, sin entregar nunca una trama. Si algo falla se vuelve a
+    // apagar unas líneas más abajo.
+    CAMARA.store(true, std::sync::atomic::Ordering::Relaxed);
+    let (fuente, ancho, alto) = arrancar_camara().inspect_err(|_| {
+        CAMARA.store(false, std::sync::atomic::Ordering::Relaxed);
+    })?;
+    eprintln!("voz: cámara a {ancho}x{alto}");
     let pista = LocalVideoTrack::create_video_track("camara", RtcVideoSource::Native(fuente));
     room.local_participant()
         .publish_track(
@@ -986,8 +993,10 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
             TrackPublishOptions { source: TrackSource::Camera, ..Default::default() },
         )
         .await
-        .map_err(|e| format!("no se pudo publicar la cámara: {e}"))?;
-    CAMARA.store(true, std::sync::atomic::Ordering::Relaxed);
+        .map_err(|e| {
+            CAMARA.store(false, std::sync::atomic::Ordering::Relaxed);
+            format!("no se pudo publicar la cámara: {e}")
+        })?;
     Ok(estado_video())
 }
 
@@ -1245,14 +1254,20 @@ async fn despublicar(room: &Arc<Room>, fuente: TrackSource) {
 }
 
 /// La cámara del sistema, en su propio hilo.
-fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
+fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
     use nokhwa::pixel_format::RgbFormat;
-    use nokhwa::utils::{CameraIndex, RequestedFormat, RequestedFormatType};
+    use nokhwa::utils::{CameraIndex, RequestedFormat, RequestedFormatType, Resolution};
     use nokhwa::Camera;
 
-    let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(u32, u32), String>>();
+    let (fuente_tx, fuente_rx) = std::sync::mpsc::channel::<NativeVideoSource>();
     std::thread::spawn(move || {
-        let formato = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
+        // La mayor que no pase de 720p. Pedir «el mayor número de fps» daba el
+        // formato que a la cámara le apeteciera, que podía ser 320×240 — y como
+        // el bucle exigía 720p exactos, no se publicaba nada.
+        let formato = RequestedFormat::new::<RgbFormat>(RequestedFormatType::HighestResolution(
+            Resolution::new(VIDEO_ANCHO, VIDEO_ALTO),
+        ));
         // Igual que el micrófono: la elegida por nombre, y si ya no está, la
         // primera. El índice se resuelve ahora y no se guarda, porque enchufar
         // otra cámara los renumera.
@@ -1279,25 +1294,45 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
             let _ = listo_tx.send(Err(format!("no se pudo arrancar la cámara: {e}")));
             return;
         }
-        let _ = listo_tx.send(Ok(()));
+
+        // La fuente nace con la primera trama, y con **sus** medidas. Hasta
+        // entonces no se sabe qué va a dar la cámara: lo que se le pide es una
+        // preferencia, no una promesa.
+        let mut fuente: Option<NativeVideoSource> = None;
+        let mut medidas = (0u32, 0u32);
 
         while CAMARA.load(std::sync::atomic::Ordering::Relaxed) {
+            let Ok(trama) = camara.frame() else { break };
+            let Ok(rgb) = trama.decode_image::<RgbFormat>() else { continue };
+            let (w, h) = (rgb.width(), rgb.height());
+            if w == 0 || h == 0 {
+                continue;
+            }
+            // Si la cámara cambia de resolución a media captura —pasa al
+            // reenfocar en algunas— se rehace la fuente en vez de tirar tramas.
+            if fuente.is_none() || medidas != (w, h) {
+                let f = NativeVideoSource::new(
+                    VideoResolution { width: w, height: h },
+                    // `false` — una cara. El SFU lo usa para decidir su
+                    // estrategia: en una cámara prioriza la fluidez, en una
+                    // pantalla el detalle del texto aunque baje la tasa.
+                    false,
+                );
+                if fuente.is_none() {
+                    let _ = fuente_tx.send(f.clone());
+                    let _ = listo_tx.send(Ok((w, h)));
+                }
+                fuente = Some(f);
+                medidas = (w, h);
+            }
             // Un buffer por trama: `I420Buffer` no se puede clonar y el frame
             // se lo lleva. Reusarlo exigiría que la conversión y el envío no se
             // solapen, que es sincronización a cambio de una asignación que el
             // asignador resuelve en nada.
-            let mut buffer = I420Buffer::new(VIDEO_ANCHO, VIDEO_ALTO);
-            let Ok(trama) = camara.frame() else { break };
-            let Ok(rgb) = trama.decode_image::<RgbFormat>() else { continue };
-            // Sólo si la cámara entrega justo lo que pedimos: escalar aquí sería
-            // meter un reescalador por software en el camino caliente, y el
-            // sitio correcto para eso es pedirle a la cámara otra resolución.
-            if rgb.width() != VIDEO_ANCHO || rgb.height() != VIDEO_ALTO {
-                continue;
-            }
-            rgb_a_i420(rgb.as_raw(), VIDEO_ANCHO, VIDEO_ALTO, &mut buffer);
-            guardarme(crate::video_frames::Fuente::Camara, &buffer, VIDEO_ANCHO, VIDEO_ALTO);
-            fuente.capture_frame(&VideoFrame {
+            let mut buffer = I420Buffer::new(w, h);
+            rgb_a_i420(rgb.as_raw(), w, h, &mut buffer);
+            guardarme(crate::video_frames::Fuente::Camara, &buffer, w, h);
+            fuente.as_ref().expect("recién creada").capture_frame(&VideoFrame {
                 rotation: VideoRotation::VideoRotation0,
                 timestamp_us: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -1310,10 +1345,17 @@ fn arrancar_camara(fuente: NativeVideoSource) -> Result<(), String> {
         let _ = camara.stop_stream();
     });
 
-    match listo_rx.recv() {
-        Ok(Ok(())) => Ok(()),
+    // Con plazo: entre abrir el dispositivo y la primera trama hay un momento,
+    // y en macOS puede aparecer de por medio el diálogo del permiso.
+    match listo_rx.recv_timeout(std::time::Duration::from_secs(20)) {
+        Ok(Ok((w, h))) => {
+            let fuente = fuente_rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .map_err(|_| "la cámara arrancó sin fuente".to_string())?;
+            Ok((fuente, w, h))
+        }
         Ok(Err(e)) => Err(e),
-        Err(_) => Err("el hilo de la cámara murió al arrancar".into()),
+        Err(_) => Err("la cámara no entregó ninguna imagen".into()),
     }
 }
 

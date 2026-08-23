@@ -474,7 +474,18 @@ callas creyendo que el otro no te oye.
    segundo no deja trabajar al hilo que las produce y contesta «todavía no»
    para siempre. Eso costó una tarde en el spike.
 
-8. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
+8. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
+   formato con más fps» —que podía ser 320×240— y luego el bucle **descartaba
+   toda trama que no fuera exactamente 1280×720**. Con una webcam que diera otra
+   cosa, el botón se quedaba encendido y no se publicaba una sola imagen, sin un
+   error en ninguna parte. Ahora se pide la mayor que no pase de 720p, se acepta
+   lo que entregue, y la pista se crea con **sus** medidas; si cambia a media
+   captura, la fuente se rehace en vez de tirar tramas.
+
+   El comentario que había encima decía «sólo si la cámara entrega justo lo que
+   pedimos». La suposición estaba escrita y nadie la comprobó.
+
+9. **Te ves a ti mismo, y no es un adorno.** El motor no se suscribe a sus
    propias pistas —el SFU no te devuelve lo que acabas de mandar— así que tu
    cámara y tu pantalla no llegarían nunca por el camino de los demás. La
    captura las guarda por su cuenta en el mismo sitio, bajo tu propia identidad.
@@ -489,7 +500,7 @@ callas creyendo que el otro no te oye.
    que mover el lado derecho de la imagen, y una pantalla volteada sale con el
    texto del revés.
 
-9. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
+10. **La cara y la pantalla son dos cosas distintas, en todo el camino.** Las
    tramas se guardan por `(persona, fuente)` y se piden a
    `cacvideo://…/<identidad>/<camera|screen>`. Estuvieron guardándose sólo por
    persona: nadie lo notó porque no había pantalla que compartir, y en cuanto la
@@ -506,7 +517,7 @@ callas creyendo que el otro no te oye.
    alguien más empezó a compartir es quitarle de delante a la gente lo que
    estaba leyendo.
 
-10. **Cámara y pantalla**: **publicar** está hecho para la cámara
+11. **Cámara y pantalla**: **publicar** está hecho para la cámara
    (`voice_set_camera`, 720p, RGB→I420 a mano porque los ayudantes del SDK dan
    un rodeo por NV12). Pistas independientes de la voz: apagar la cámara en
    mitad de una frase no corta lo que estás diciendo.
@@ -527,7 +538,7 @@ callas creyendo que el otro no te oye.
    otro equipo con exactamente el mismo problema está en
    [`voz-video.md`](voz-video.md).
 
-11. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
+12. ~~**La barra de llamada como es debido**~~: hecha. El diseño llegó
    (`docs/proposals`, descomprimido fuera del repositorio) y de él salen los
    PR 1 y 2: pantalla de la sala con minimizar, barra en el sidebar, sordera,
    presentes colgando del canal en la lista y aviso en el hilo. Ver §7.
