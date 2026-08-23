@@ -27,7 +27,9 @@ use livekit::track::{
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
-use livekit::webrtc::prelude::{AudioFrame, I420Buffer, VideoFrame, VideoResolution, VideoRotation};
+use livekit::webrtc::prelude::{
+    AudioFrame, I420Buffer, VideoFrame, VideoResolution, VideoRotation,
+};
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::RtcVideoSource;
 use livekit::webrtc::video_stream::native::NativeVideoStream;
@@ -64,25 +66,43 @@ const COLA_VOZ: std::time::Duration = std::time::Duration::from_millis(300);
 pub enum VoiceEvent {
     /// Dentro. `identity` es el id de usuario de cac — el mismo que acuñó el
     /// token, así que la pantalla puede cruzarlo con la gente que ya conoce.
-    Connected { identity: String },
-    Joined { identity: String, name: String },
-    Left { identity: String },
+    Connected {
+        identity: String,
+    },
+    Joined {
+        identity: String,
+        name: String,
+    },
+    Left {
+        identity: String,
+    },
     /// Quién está hablando ahora mismo. Llega la lista entera y no un delta:
     /// reconstruir el conjunto a base de altas y bajas es cómo se acaba con un
     /// punto verde encendido para siempre por un evento perdido.
-    Speaking { identities: Vec<String> },
+    Speaking {
+        identities: Vec<String>,
+    },
     /// Quién tiene el micrófono cerrado. Uno a uno y no la lista entera, porque
     /// aquí sí llega un evento por cambio y no un estado completo: el SDK avisa
     /// de la pista que se silencia, no de las que siguen igual.
-    Muted { identity: String, muted: bool },
+    Muted {
+        identity: String,
+        muted: bool,
+    },
     /// Ida y vuelta al SFU, en milisegundos.
-    Latency { ms: u32 },
+    Latency {
+        ms: u32,
+    },
     /// Esta persona está publicando vídeo, o dejó de hacerlo.
     ///
     /// `source` es `"camera"` o `"screen"`, y no sobra: una persona puede
     /// publicar las dos a la vez, y la pantalla compartida no va en su mosaico
     /// sino ocupando el escenario.
-    Video { identity: String, source: String, enabled: bool },
+    Video {
+        identity: String,
+        source: String,
+        enabled: bool,
+    },
     /// **Tú** estás hablando, medido de tu propio micrófono.
     ///
     /// Va aparte de `Speaking` a propósito. Aquélla es la lista que manda el
@@ -90,8 +110,12 @@ pub enum VoiceEvent {
     /// configurado el observador de niveles— puede no incluirte a ti nunca. Tu
     /// propio recuadro no debería depender de que un servidor opine sobre algo
     /// que está pasando en tu mesa.
-    SelfSpeaking { speaking: bool },
-    Disconnected { reason: String },
+    SelfSpeaking {
+        speaking: bool,
+    },
+    Disconnected {
+        reason: String,
+    },
 }
 
 struct VoiceSession {
@@ -150,11 +174,15 @@ pub async fn voice_join(
         CANALES,
         1_000,
     );
-    let pista = LocalAudioTrack::create_audio_track("micro", RtcAudioSource::Native(fuente.clone()));
+    let pista =
+        LocalAudioTrack::create_audio_track("micro", RtcAudioSource::Native(fuente.clone()));
     room.local_participant()
         .publish_track(
             LocalTrack::Audio(pista.clone()),
-            TrackPublishOptions { source: TrackSource::Microphone, ..Default::default() },
+            TrackPublishOptions {
+                source: TrackSource::Microphone,
+                ..Default::default()
+            },
         )
         .await
         .map_err(|e| format!("no se pudo publicar el micrófono: {e}"))?;
@@ -165,7 +193,9 @@ pub async fn voice_join(
     let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
 
     on_event
-        .send(VoiceEvent::Connected { identity: identidad.clone() })
+        .send(VoiceEvent::Connected {
+            identity: identidad.clone(),
+        })
         .map_err(|e| e.to_string())?;
 
     *SESION.lock().unwrap() = Some(VoiceSession {
@@ -250,7 +280,11 @@ pub async fn voice_set_mic(enabled: bool) -> Result<(), String> {
         }
     };
     SILENCIADO.store(!enabled, std::sync::atomic::Ordering::Relaxed);
-    nota(if enabled { "micro: abierto" } else { "micro: silenciado" });
+    nota(if enabled {
+        "micro: abierto"
+    } else {
+        "micro: silenciado"
+    });
     if enabled {
         micro.unmute();
     } else {
@@ -332,7 +366,11 @@ pub async fn voice_list_devices() -> Result<serde_json::Value, String> {
             .into_iter()
             .map(|c| {
                 let name = c.human_name();
-                Dispositivo { current: Some(&name) == actual_cam.as_ref(), id: name.clone(), name }
+                Dispositivo {
+                    current: Some(&name) == actual_cam.as_ref(),
+                    id: name.clone(),
+                    name,
+                }
             })
             .collect(),
     );
@@ -402,17 +440,15 @@ pub async fn voice_set_device(kind: String, device_id: String) -> Result<(), Str
 /// hasta dejarlo vacío**: si no sobrevive nada, se devuelve la lista entera.
 /// Una lista fea es mejor que ninguna.
 fn limpiar(todos: Vec<Dispositivo>) -> Vec<Dispositivo> {
-    let utiles: Vec<Dispositivo> = todos
-        .iter()
-        .filter(|d| es_util(&d.id))
-        .cloned()
-        .collect();
+    let utiles: Vec<Dispositivo> = todos.iter().filter(|d| es_util(&d.id)).cloned().collect();
     sin_repetidos(if utiles.is_empty() { todos } else { utiles })
 }
 
 /// El identificador viene como `<host>:<pcm>`; sólo el `pcm` dice qué es esto.
 fn es_util(id: &str) -> bool {
-    let Some((host, pcm)) = id.split_once(':') else { return true };
+    let Some((host, pcm)) = id.split_once(':') else {
+        return true;
+    };
     // Fuera de Linux la enumeración ya viene limpia y no hay nada que decidir.
     if host != "alsa" {
         return true;
@@ -432,7 +468,10 @@ fn es_util(id: &str) -> bool {
 /// distinguirlas.
 fn sin_repetidos(lista: Vec<Dispositivo>) -> Vec<Dispositivo> {
     let mut vistos = std::collections::HashSet::new();
-    lista.into_iter().filter(|d| vistos.insert(d.name.clone())).collect()
+    lista
+        .into_iter()
+        .filter(|d| vistos.insert(d.name.clone()))
+        .collect()
 }
 
 /// Las cámaras que **de verdad** pueden capturar algo.
@@ -578,7 +617,11 @@ fn probar_camara() -> Vec<String> {
         let Some(info) = utiles.first() else {
             return r;
         };
-        apunta(format!("abriendo {:?} ({})", info.index(), info.human_name()));
+        apunta(format!(
+            "abriendo {:?} ({})",
+            info.index(),
+            info.human_name()
+        ));
 
         let peticion = RequestedFormat::new::<RgbFormat>(RequestedFormatType::HighestResolution(
             Resolution::new(VIDEO_ANCHO, VIDEO_ALTO),
@@ -711,7 +754,9 @@ fn arrancar_captura(
         let elegido = MIC_ELEGIDO.lock().unwrap().clone();
         let dispositivo = elegido
             .and_then(|id| {
-                host.input_devices().ok()?.find(|d| id_de(d).as_ref() == Some(&id))
+                host.input_devices()
+                    .ok()?
+                    .find(|d| id_de(d).as_ref() == Some(&id))
             })
             .or_else(|| host.default_input_device());
         let dispositivo = match dispositivo {
@@ -788,7 +833,10 @@ fn arrancar_captura(
                 let ahora = hablando_ahora(&datos, ultima_voz);
                 if ahora != hablando {
                     hablando = ahora;
-                    if canal.send(VoiceEvent::SelfSpeaking { speaking: ahora }).is_err() {
+                    if canal
+                        .send(VoiceEvent::SelfSpeaking { speaking: ahora })
+                        .is_err()
+                    {
                         break; // la pantalla se fue
                     }
                 }
@@ -834,7 +882,13 @@ fn hay_voz(muestras: &[i16]) -> bool {
     if muestras.is_empty() {
         return false;
     }
-    let suma: f64 = muestras.iter().map(|&m| { let v = m as f64; v * v }).sum();
+    let suma: f64 = muestras
+        .iter()
+        .map(|&m| {
+            let v = m as f64;
+            v * v
+        })
+        .sum();
     let rms = (suma / muestras.len() as f64).sqrt() / i16::MAX as f64;
     rms as f32 > UMBRAL_VOZ
 }
@@ -857,7 +911,9 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                 // brazo, entrar a una conversación en curso enseñaba una sala
                 // vacía hasta que alguien se movía — que es justo la vez que
                 // más importa ver quién hay.
-                RoomEvent::Connected { participants_with_tracks } => {
+                RoomEvent::Connected {
+                    participants_with_tracks,
+                } => {
                     let mut r = Ok(());
                     for (p, pistas) in participants_with_tracks {
                         let identity = p.identity().to_string();
@@ -888,13 +944,21 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                     // siguiente que reutilice ese hueco enseñaría a quien ya
                     // se fue.
                     crate::video_frames::olvidar_persona(&p.identity().to_string());
-                    canal.send(VoiceEvent::Left { identity: p.identity().to_string() })
+                    canal.send(VoiceEvent::Left {
+                        identity: p.identity().to_string(),
+                    })
                 }
                 RoomEvent::ActiveSpeakersChanged { speakers } => canal.send(VoiceEvent::Speaking {
                     identities: speakers.iter().map(|s| s.identity().to_string()).collect(),
                 }),
-                RoomEvent::TrackMuted { participant, publication }
-                | RoomEvent::TrackUnmuted { participant, publication } => {
+                RoomEvent::TrackMuted {
+                    participant,
+                    publication,
+                }
+                | RoomEvent::TrackUnmuted {
+                    participant,
+                    publication,
+                } => {
                     // El propio también llega por aquí, y se deja pasar: la
                     // pantalla ya lo pintó de forma optimista al pulsar, y esto
                     // es la confirmación de que el servidor se enteró.
@@ -909,7 +973,10 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                 }
                 // Alguien publica un micrófono estando ya dentro —se reconectó,
                 // o cambió de dispositivo—: su estado de partida otra vez.
-                RoomEvent::TrackPublished { publication, participant } => {
+                RoomEvent::TrackPublished {
+                    publication,
+                    participant,
+                } => {
                     if publication.kind() == TrackKind::Audio {
                         canal.send(VoiceEvent::Muted {
                             identity: participant.identity().to_string(),
@@ -919,7 +986,11 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                         Ok(())
                     }
                 }
-                RoomEvent::TrackSubscribed { track, publication, participant } => {
+                RoomEvent::TrackSubscribed {
+                    track,
+                    publication,
+                    participant,
+                } => {
                     let identidad = participant.identity().to_string();
                     match track {
                         RemoteTrack::Audio(audio) => {
@@ -938,7 +1009,11 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                         }
                     }
                 }
-                RoomEvent::TrackUnsubscribed { track, publication, participant } => {
+                RoomEvent::TrackUnsubscribed {
+                    track,
+                    publication,
+                    participant,
+                } => {
                     if matches!(track, RemoteTrack::Video(_)) {
                         let identidad = participant.identity().to_string();
                         let fuente = fuente_de(publication.source());
@@ -953,9 +1028,9 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                         Ok(())
                     }
                 }
-                RoomEvent::Disconnected { reason } => {
-                    canal.send(VoiceEvent::Disconnected { reason: format!("{reason:?}") })
-                }
+                RoomEvent::Disconnected { reason } => canal.send(VoiceEvent::Disconnected {
+                    reason: format!("{reason:?}"),
+                }),
                 _ => Ok(()),
             };
             if enviado.is_err() {
@@ -1000,7 +1075,9 @@ fn medir_latencia(sala: std::sync::Weak<Room>, canal: Channel<VoiceEvent>) {
         loop {
             tokio::time::sleep(CADA_LATENCIA).await;
             let Some(room) = sala.upgrade() else { break };
-            let Ok(stats) = room.get_stats().await else { break };
+            let Ok(stats) = room.get_stats().await else {
+                break;
+            };
 
             // El publisher primero: la subida es la mitad que uno controla, y
             // es la que se degrada cuando la queja es «no me oyen bien».
@@ -1013,7 +1090,12 @@ fn medir_latencia(sala: std::sync::Weak<Room>, canal: Channel<VoiceEvent>) {
             else {
                 continue;
             };
-            if canal.send(VoiceEvent::Latency { ms: (rtt * 1000.0).round() as u32 }).is_err() {
+            if canal
+                .send(VoiceEvent::Latency {
+                    ms: (rtt * 1000.0).round() as u32,
+                })
+                .is_err()
+            {
                 break;
             }
         }
@@ -1068,8 +1150,12 @@ fn fuente_de(source: TrackSource) -> crate::video_frames::Fuente {
 fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
     std::thread::spawn(move || {
         let host = cpal::default_host();
-        let Some(dispositivo) = host.default_output_device() else { return };
-        let Ok(config) = dispositivo.default_output_config() else { return };
+        let Some(dispositivo) = host.default_output_device() else {
+            return;
+        };
+        let Ok(config) = dispositivo.default_output_config() else {
+            return;
+        };
         let salida_canales = config.channels() as usize;
 
         let cola = Arc::new(Mutex::new(std::collections::VecDeque::<i16>::new()));
@@ -1086,7 +1172,10 @@ fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
                     // Sordo también consume la muestra en vez de saltarse el
                     // `pop`: si no, la cola crece mientras no oyes y al volver
                     // sonaría lo de hace un minuto.
-                    let v = q.pop_front().map(|s| s as f32 / i16::MAX as f32).unwrap_or(0.0);
+                    let v = q
+                        .pop_front()
+                        .map(|s| s as f32 / i16::MAX as f32)
+                        .unwrap_or(0.0);
                     let v = if sordo { 0.0 } else { v };
                     for canal in trozo.iter_mut() {
                         *canal = v;
@@ -1219,7 +1308,10 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
     room.local_participant()
         .publish_track(
             LocalTrack::Video(pista),
-            TrackPublishOptions { source: TrackSource::Camera, ..Default::default() },
+            TrackPublishOptions {
+                source: TrackSource::Camera,
+                ..Default::default()
+            },
         )
         .await
         .map_err(|e| {
@@ -1291,7 +1383,10 @@ pub async fn voice_share_screen() -> Result<VideoState, String> {
     room.local_participant()
         .publish_track(
             LocalTrack::Video(pista),
-            TrackPublishOptions { source: TrackSource::Screenshare, ..Default::default() },
+            TrackPublishOptions {
+                source: TrackSource::Screenshare,
+                ..Default::default()
+            },
         )
         .await
         .map_err(|e| {
@@ -1357,7 +1452,10 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         // hace el portal; en Windows y macOS es la pantalla principal. Elegir
         // aquí una concreta sería adelantarse a lo que el sistema va a preguntar.
         let fuentes = cap.get_source_list();
-        nota(format!("pantalla: pidiendo permiso ({} fuentes enumeradas)", fuentes.len()));
+        nota(format!(
+            "pantalla: pidiendo permiso ({} fuentes enumeradas)",
+            fuentes.len()
+        ));
         let (envio, recibo) = std::sync::mpsc::channel();
         cap.start_capture(fuentes.first().cloned(), move |r| {
             let _ = envio.send(r.map(|f| (f.width() as u32, f.height() as u32, f.data().to_vec())));
@@ -1381,7 +1479,10 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                 Some(Ok((w, h, bgra))) => {
                     let fte = fuente.get_or_insert_with(|| {
                         let f = NativeVideoSource::new(
-                            VideoResolution { width: w, height: h },
+                            VideoResolution {
+                                width: w,
+                                height: h,
+                            },
                             // Pantalla, no cara: el SFU prioriza el detalle.
                             true,
                         );
@@ -1443,7 +1544,9 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
 /// —un «¿hay alguien mirando?» que la captura tuviera que consultar— acopla el
 /// hilo del vídeo a la interfaz para ahorrar un memcpy.
 fn guardarme(fuente: crate::video_frames::Fuente, buffer: &I420Buffer, ancho: u32, alto: u32) {
-    let Some(yo) = YO.lock().unwrap().clone() else { return };
+    let Some(yo) = YO.lock().unwrap().clone() else {
+        return;
+    };
     crate::video_frames::guardar(&yo, fuente, buffer, ancho, alto);
 }
 
@@ -1482,7 +1585,10 @@ fn bgra_a_i420(bgra: &[u8], ancho: u32, alto: u32, destino: &mut I420Buffer) {
 
 fn estado_video() -> VideoState {
     use std::sync::atomic::Ordering::Relaxed;
-    VideoState { camera: CAMARA.load(Relaxed), screen: PANTALLA.load(Relaxed) }
+    VideoState {
+        camera: CAMARA.load(Relaxed),
+        screen: PANTALLA.load(Relaxed),
+    }
 }
 
 /// Retira la pista de una fuente. Se busca por `source` y no por nombre: el
@@ -1536,8 +1642,14 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
         // pequeño o enorme, pero abren. El bucle de abajo ya publica con las
         // medidas que lleguen, así que abrir es lo único que importa.
         let intentos: [(&str, RequestedFormatType); 4] = [
-            ("720p", RequestedFormatType::HighestResolution(Resolution::new(VIDEO_ANCHO, VIDEO_ALTO))),
-            ("480p", RequestedFormatType::HighestResolution(Resolution::new(640, 480))),
+            (
+                "720p",
+                RequestedFormatType::HighestResolution(Resolution::new(VIDEO_ANCHO, VIDEO_ALTO)),
+            ),
+            (
+                "480p",
+                RequestedFormatType::HighestResolution(Resolution::new(640, 480)),
+            ),
             ("más fps", RequestedFormatType::AbsoluteHighestFrameRate),
             ("la mayor", RequestedFormatType::AbsoluteHighestResolution),
         ];
@@ -1563,7 +1675,10 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             match Camera::new(indice.clone(), RequestedFormat::new::<RgbFormat>(tipo)) {
                 Ok(mut c) => match c.open_stream() {
                     Ok(()) => {
-                        nota(format!("cámara: abierta pidiendo «{nombre}» → {}", c.camera_format()));
+                        nota(format!(
+                            "cámara: abierta pidiendo «{nombre}» → {}",
+                            c.camera_format()
+                        ));
                         camara = Some(c);
                         break;
                     }
@@ -1664,7 +1779,9 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
                     seguidos += 1;
                     ultimo_fallo = format!("no se pudo descodificar lo que da la cámara: {e}");
                     if seguidos == 1 || seguidos == RACHA_MAX {
-                        nota(format!("cámara: no descodifica {seguidos}/{RACHA_MAX} — {e}"));
+                        nota(format!(
+                            "cámara: no descodifica {seguidos}/{RACHA_MAX} — {e}"
+                        ));
                     }
                     if seguidos >= RACHA_MAX {
                         break;
@@ -1680,7 +1797,10 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             // reenfocar en algunas— se rehace la fuente en vez de tirar tramas.
             if fuente.is_none() || medidas != (w, h) {
                 let f = NativeVideoSource::new(
-                    VideoResolution { width: w, height: h },
+                    VideoResolution {
+                        width: w,
+                        height: h,
+                    },
                     // `false` — una cara. El SFU lo usa para decidir su
                     // estrategia: en una cámara prioriza la fluidez, en una
                     // pantalla el detalle del texto aunque baje la tasa.
@@ -1704,15 +1824,18 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             let mut buffer = I420Buffer::new(w, h);
             rgb_a_i420(rgb.as_raw(), w, h, &mut buffer);
             guardarme(crate::video_frames::Fuente::Camara, &buffer, w, h);
-            fuente.as_ref().expect("recién creada").capture_frame(&VideoFrame {
-                rotation: VideoRotation::VideoRotation0,
-                timestamp_us: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_micros() as i64)
-                    .unwrap_or(0),
-                buffer,
-                frame_metadata: Default::default(),
-            });
+            fuente
+                .as_ref()
+                .expect("recién creada")
+                .capture_frame(&VideoFrame {
+                    rotation: VideoRotation::VideoRotation0,
+                    timestamp_us: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_micros() as i64)
+                        .unwrap_or(0),
+                    buffer,
+                    frame_metadata: Default::default(),
+                });
         }
         let _ = camara.stop_stream();
 
@@ -1751,7 +1874,11 @@ mod pruebas {
     use super::{es_util, hay_voz, limpiar, rtt_nominado, Dispositivo, UMBRAL_VOZ};
 
     fn d(id: &str, name: &str) -> Dispositivo {
-        Dispositivo { id: id.into(), name: name.into(), current: false }
+        Dispositivo {
+            id: id.into(),
+            name: name.into(),
+            current: false,
+        }
     }
 
     /// Lo que de verdad enumera ALSA en un portátil con PipeWire. Sacado de
@@ -1770,7 +1897,10 @@ mod pruebas {
             d("alsa:speex", "Plugin using Speex DSP"),
             d("alsa:upmix", "Plugin for channel upmix (4,6,8)"),
             d("alsa:vdownmix", "Plugin for channel downmix (stereo)"),
-            d("alsa:default", "Default ALSA Output (currently PipeWire Media Server)"),
+            d(
+                "alsa:default",
+                "Default ALSA Output (currently PipeWire Media Server)",
+            ),
             d("alsa:usbstream:CARD=NVidia", "HDA NVidia"),
             d("alsa:sysdefault:CARD=sofhdadsp", "sof-hda-dsp,"),
             d("alsa:usbstream:CARD=sofhdadsp", "sof-hda-dsp,"),
@@ -1785,8 +1915,12 @@ mod pruebas {
         let nombres: Vec<&str> = limpia.iter().map(|x| x.name.as_str()).collect();
         assert_eq!(
             nombres,
-            vec!["Default ALSA Output (currently PipeWire Media Server)", "sof-hda-dsp,"],
-            "quedaron {} entradas", limpia.len()
+            vec![
+                "Default ALSA Output (currently PipeWire Media Server)",
+                "sof-hda-dsp,"
+            ],
+            "quedaron {} entradas",
+            limpia.len()
         );
     }
 
