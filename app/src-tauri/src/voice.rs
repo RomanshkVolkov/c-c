@@ -514,6 +514,93 @@ pub fn nota(linea: impl AsRef<str>) {
     d.push_back(format!("{sello} · {linea}"));
 }
 
+/// Abrir la cámara y pedir diez tramas, aquí y ahora, sin publicar nada.
+///
+/// Es el spike `spikes/camera-probe` metido **dentro del proceso de la app**, y
+/// existe porque el binario suelto saca 10/10 tramas y la app se queda colgada
+/// con el mismo código. Mientras las dos cosas corran en procesos distintos, la
+/// diferencia se puede achacar a cualquier cosa; aquí se compara lo único que
+/// no cuadra.
+///
+/// Contesta un informe legible para pegar en un reporte:
+///
+/// - si **también se cuelga aquí**, el problema es del entorno de la app
+///   —libwebrtc, el webview, GTK— y no de cómo llamamos a la cámara;
+/// - si **aquí funciona**, el problema es nuestro camino de captura y el
+///   entorno queda descartado.
+///
+/// No toca la sesión ni publica pista: se puede pulsar sin estar en una llamada.
+#[tauri::command]
+pub async fn voice_test_camera() -> Vec<String> {
+    use nokhwa::pixel_format::RgbFormat;
+    use nokhwa::utils::{RequestedFormat, RequestedFormatType, Resolution};
+
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut r = Vec::new();
+        if CAPTURA_VIVA.load(std::sync::atomic::Ordering::Relaxed) {
+            r.push("hay una captura sin terminar: apaga la cámara antes de probar".into());
+            return r;
+        }
+
+        let utiles = camaras_utiles();
+        r.push(format!("cámaras que capturan: {}", utiles.len()));
+        let Some(info) = utiles.first() else {
+            r.push("ninguna cámara utilizable".into());
+            return r;
+        };
+        r.push(format!("se prueba {:?} ({})", info.index(), info.human_name()));
+
+        let peticion = RequestedFormat::new::<RgbFormat>(RequestedFormatType::HighestResolution(
+            Resolution::new(VIDEO_ANCHO, VIDEO_ALTO),
+        ));
+        let mut cam = match nokhwa::Camera::new(info.index().clone(), peticion) {
+            Ok(c) => c,
+            Err(e) => {
+                r.push(format!("no abre: {e}"));
+                return r;
+            }
+        };
+        r.push(format!("abre como {}", cam.camera_format()));
+        if let Err(e) = cam.open_stream() {
+            r.push(format!("open_stream falla: {e}"));
+            return r;
+        }
+        r.push("open_stream ok".into());
+
+        // Diez tramas, con el tiempo de cada una. Si la primera no vuelve, esta
+        // línea es la última del informe — y eso ya es la respuesta.
+        let mut buenas = 0;
+        for i in 0..10 {
+            let t = std::time::Instant::now();
+            match cam.frame() {
+                Ok(trama) => {
+                    let crudos = trama.buffer().len();
+                    match trama.decode_image::<RgbFormat>() {
+                        Ok(rgb) => {
+                            buenas += 1;
+                            if i < 2 {
+                                r.push(format!(
+                                    "trama {i}: {}x{} ({crudos} bytes) en {:?}",
+                                    rgb.width(),
+                                    rgb.height(),
+                                    t.elapsed()
+                                ));
+                            }
+                        }
+                        Err(e) => r.push(format!("trama {i}: no descodifica ({e})")),
+                    }
+                }
+                Err(e) => r.push(format!("trama {i}: sin trama tras {:?} ({e})", t.elapsed())),
+            }
+        }
+        r.push(format!("{buenas}/10 tramas buenas"));
+        let _ = cam.stop_stream();
+        r
+    })
+    .await
+    .unwrap_or_else(|e| vec![format!("la prueba no llegó a terminar: {e}")])
+}
+
 /// El diario, lo más reciente al final.
 ///
 /// `async` porque lo exige la regla de `voice_set_mic` — y aunque éste no toca

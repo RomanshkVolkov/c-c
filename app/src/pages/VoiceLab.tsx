@@ -299,6 +299,7 @@ export default function VoiceLab() {
 function Diario() {
   const [lineas, setLineas] = useState<string[]>([]);
   const [copiado, setCopiado] = useState(false);
+  const [probando, setProbando] = useState(false);
 
   const leer = () =>
     invoke<string[]>("voice_diagnostics")
@@ -315,6 +316,29 @@ function Diario() {
         <h2 className="text-sm font-medium">Diario del motor de voz</h2>
         <span className="text-xs text-muted-foreground">{lineas.length} líneas</span>
         <span className="ml-auto flex gap-2">
+          {/* Abrir la cámara aquí mismo y contar tramas. Es el spike metido
+              dentro del proceso de la app: si aquí también se cuelga, el
+              problema es del entorno; si aquí va, es de nuestro camino de
+              captura. Sin eso, las dos explicaciones son igual de creíbles. */}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={probando}
+            onClick={() => {
+              setProbando(true);
+              invoke<string[]>("voice_test_camera")
+                .then((r) => setLineas((l) => [...l, "— prueba de cámara —", ...r]))
+                .catch((e) => setLineas((l) => [...l, `la prueba falló: ${e}`]))
+                .finally(() => setProbando(false));
+            }}
+          >
+            {probando ? (
+              <Loader2 className="mr-1 size-3.5 animate-spin" />
+            ) : (
+              <Video className="mr-1 size-3.5" />
+            )}
+            Probar cámara
+          </Button>
           <Button size="sm" variant="outline" onClick={() => void leer()}>
             <RefreshCw className="mr-1 size-3.5" /> Refrescar
           </Button>

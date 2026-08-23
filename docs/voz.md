@@ -539,6 +539,12 @@ callas creyendo que el otro no te oye.
     - **Marcas de etapa en el diario**, para que la próxima vez se sepa si el
       bloqueo es al pedir la trama o al descodificarla. Desde fuera las dos se
       ven exactamente igual: silencio.
+    - **El spike, metido dentro del proceso de la app** (`voice_test_camera`,
+      botón «Probar cámara» del *Voice lab*). Mientras el que funciona y el que
+      se cuelga corran en procesos distintos, la diferencia se puede achacar a
+      cualquier cosa. Con los dos en el mismo sitio la pregunta se cierra: si
+      ahí también se cuelga, es el entorno —libwebrtc, el webview, GTK— y no
+      cómo llamamos a la cámara; si ahí va, el entorno queda descartado.
     - **No abrir una segunda cámara si la primera sigue colgada.** El diario
       enseña dos aperturas con siete segundos de diferencia, la segunda mientras
       la primera no había vuelto — dos flujos peleándose por el mismo
