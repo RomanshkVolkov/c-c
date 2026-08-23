@@ -522,6 +522,10 @@ fn tool_defs() -> Value {
                 "properties": {
                     "listId": { "type": "string", "description": "Target list (from list_task_spaces)." },
                     "title": { "type": "string" },
+                    "parentId": {
+                        "type": "string",
+                        "description": "Optional. Makes this a subtask of that task. Two rules that surprise people: the parent must be in the SAME list — a subtask elsewhere would be unreachable from its parent's board — and a subtask of a client-visible item stays internal, so it never spends one of their folio numbers on a checklist line."
+                    },
                     "description": { "type": "string", "description": "Optional markdown body." },
                     "priority": {
                         "type": "string",
@@ -1018,6 +1022,13 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             if let Some(k) = arg_str(args, "idempotencyKey") {
                 body["idempotencyKey"] = json!(k);
             }
+            // Explícito por lo mismo que `visibility` justo debajo, y por su
+            // propia razón: sin esto la subtarea se crea igual, pero suelta y
+            // como hermana de su padre. Sale bien, no avisa de nada, y anidarla
+            // hay que ir a hacerlo a mano en el tablero.
+            if let Some(p) = arg_str(args, "parentId") {
+                body["parentId"] = json!(p);
+            }
             // Forwarded explicitly, and the reason is a scar: this argument was
             // accepted by the tool and dropped here, so asking for "internal"
             // published a note onto a client's board. An unknown key going
@@ -1036,6 +1047,10 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "listId": data.get("listId"),
                 "statusId": data.get("statusId"),
                 "priority": data.get("priority"),
+                // De vuelta a quien llamó: es la confirmación de que colgó del
+                // padre. Pedir `parentId` y recibir un eco sin él es la única
+                // señal de que algo se perdió por el camino.
+                "parentId": data.get("parentId"),
             }))
         }
 
