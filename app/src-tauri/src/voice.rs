@@ -1592,8 +1592,13 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         // aquí una concreta sería adelantarse a lo que el sistema va a preguntar.
         let fuentes = cap.get_source_list();
         nota(format!(
-            "pantalla: pidiendo permiso ({} fuentes enumeradas)",
-            fuentes.len()
+            "pantalla: pidiendo permiso ({} fuentes: {})",
+            fuentes.len(),
+            fuentes
+                .iter()
+                .map(|f| format!("id={} «{}»", f.id(), f.title()))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
         let (envio, recibo) = std::sync::mpsc::channel();
         cap.start_capture(fuentes.first().cloned(), move |r| {
@@ -1631,9 +1636,25 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         let mut respuestas = 0u32;
         let mut fallos = 0u32;
         let mut eventos = 0u32;
+        let mut eventos_vistos = 0u32;
         let mut siguiente_parte = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while PANTALLA.load(std::sync::atomic::Ordering::Relaxed) {
             eventos += glib.bombear();
+            // Cada movimiento del contador, con su hora.
+            //
+            // El saludo con el portal son unos nueve eventos hasta que aparece
+            // el diálogo, y luego se para en seco a esperar a una persona. Con
+            // el parte cada cinco segundos eso se ve como un número quieto y no
+            // se distingue de estar roto. Con la hora de cada movimiento sí: si
+            // al elegir pantalla el contador se mueve, la respuesta llegó a
+            // nuestro contexto; si no se mueve, llegó a otro sitio.
+            if eventos != eventos_vistos {
+                nota(format!(
+                    "pantalla: glib despachó {} evento(s) más (van {eventos})",
+                    eventos - eventos_vistos
+                ));
+                eventos_vistos = eventos;
+            }
             cap.capture_frame();
             let mut ultima = None;
             while let Ok(r) = recibo.try_recv() {
