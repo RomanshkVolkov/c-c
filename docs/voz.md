@@ -666,6 +666,13 @@ callas creyendo que el otro no te oye.
     ventana. Es el precio de adivinar sobre el hardware ajeno, y por eso el
     arreglo de verdad es hablar con PipeWire nosotros (cac App #29).
 
+    **Y no se reporta aguas arriba** (cac App #30, cerrada el 2026-08-23). El
+    diagnóstico lo produjo un agente, y quien lo firmaría no escribió el código
+    ni puede distinguir un fallo real de un límite del modelo; abrir un hilo que
+    no se sostiene en las preguntas de seguimiento es cargarle trabajo a los
+    mantenedores. La consecuencia práctica hay que asumirla: **la mitigación no
+    es temporal**, la llevamos hasta que #29 la haga innecesaria.
+
 13b. **Lo que de verdad costó la noche no fue el fallo, fue no poder oírlo.**
     libwebrtc instala un sumidero de sus propios registros a nivel `VERBOSE` y
     los manda a `log::debug!(target: "libwebrtc")`. La app no tenía ninguna
