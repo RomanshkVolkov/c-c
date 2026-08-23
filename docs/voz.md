@@ -540,33 +540,48 @@ callas creyendo que el otro no te oye.
     cosas que no se parecen fallan igual, lo que falla es lo que comparten** — y
     yo estaba mirando los dos extremos.
 
-12. **`Camera::frame()` puede colgarse para siempre, y en la app se cuelga.**
-    El diario de la v1.6.45 enseña la cámara abierta a 1280×720 MJPEG y
-    **después nada**: ni trama, ni fallo, ni rendición. Debajo está
-    `MmapStream::next()` del crate `v4l`, que bloquea sin plazo, y nokhwa no
-    expone ninguno.
+12. **No era la cámara: era crear la pista.** La cámara abría, entregaba su
+    primera trama cruda y el diario se paraba en «descodificando» para siempre.
+    Cinco versiones persiguiendo a `Camera::frame()` y a `MmapStream::next()`,
+    que bloquea sin plazo y era el sospechoso perfecto. No era.
 
-    **No está reproducido fuera de la app**: la misma secuencia —filtrar todas
-    las cámaras abriéndolas, y acto seguido abrir la buena y pedir tramas— da
-    10/10 tramas tres veces seguidas en `spikes/camera-probe`. La diferencia
-    está en el entorno de la app y sigue sin identificarse.
+    `NativeVideoSource::new` **no es una función de construcción a secas**:
+    dentro arranca un mantenedor de tramas negras con `livekit_runtime::spawn`,
+    que con la característica `tokio` es `tokio::task::spawn` a pelo. Nuestros
+    bucles de captura son `std::thread::spawn` sin runtime, así que la llamada
+    entraba en pánico —«there is no reactor running»— y el hilo moría en el
+    sitio. La pantalla caía por lo mismo: «pidiendo permiso» y después nada.
 
-    Lo que sí se puede hacer mientras tanto, y se hizo:
+    Es **el mismo fallo que cerró la app al silenciarse** (punto 8), un piso más
+    abajo: allí un comando síncrono en el hilo principal, aquí un hilo nuestro.
+    La regla que faltaba: *cualquier* llamada al SDK necesita runtime, la firma
+    sea `async` o no. Arreglado con `entrar_al_runtime()` al principio de los
+    dos hilos —el contexto de Tokio es **por hilo**, no por proceso: entrar en
+    `main` no sirve—.
 
-    - **Marcas de etapa en el diario**, para que la próxima vez se sepa si el
-      bloqueo es al pedir la trama o al descodificarla. Desde fuera las dos se
-      ven exactamente igual: silencio.
-    - **El spike, metido dentro del proceso de la app** (`voice_test_camera`,
-      botón «Probar cámara» del *Voice lab*). Mientras el que funciona y el que
-      se cuelga corran en procesos distintos, la diferencia se puede achacar a
-      cualquier cosa. Con los dos en el mismo sitio la pregunta se cierra: si
-      ahí también se cuelga, es el entorno —libwebrtc, el webview, GTK— y no
-      cómo llamamos a la cámara; si ahí va, el entorno queda descartado.
-    - **No abrir una segunda cámara si la primera sigue colgada.** El diario
-      enseña dos aperturas con siete segundos de diferencia, la segunda mientras
-      la primera no había vuelto — dos flujos peleándose por el mismo
-      dispositivo. Un hilo bloqueado no se puede matar desde fuera en Rust, pero
-      sí se puede dejar de empeorar la situación.
+    Lo que hizo que costara tanto fue el disimulo, y ahí hay tres lecciones
+    aparte del arreglo:
+
+    - **El pánico se desenrolla y ejecuta los `Drop`.** El testigo que bajaba
+      `CAPTURA_VIVA` al salir del hilo hacía justo su trabajo, y con eso la
+      guardia contra dos capturas simultáneas daba paso libre al siguiente
+      intento. Una protección puesta contra un cuelgue no protege de una muerte.
+    - **`Disconnected` no es `Timeout`.** Al morir el hilo se cerraba el canal y
+      el llamante lo contaba como plazo agotado: «la cámara no entregó ninguna
+      imagen» —verdad literal, diagnóstico nulo—. Ahora se distinguen, porque
+      un hilo muerto y un hilo lento piden mirar en sitios distintos.
+    - **Un vigía sólo puede señalar la última marca, no la llamada culpable.**
+      Marcaba «descodificando» antes de descodificar, y entre esa marca y la
+      siguiente había *dos* llamadas: la que sospechábamos y la que fallaba.
+      `spikes/camera-probe` daba 10/10 tramas porque copiaba la primera y no la
+      segunda — el spike reprodujo fielmente la parte inocente.
+
+    Reproducido en `spikes/voice-native/src/bin/fuente.rs`: desde un hilo suelto
+    muere, entrando al runtime desde ese mismo hilo funciona. Dos pruebas lo
+    sujetan: una lee este fichero y exige que toda función que cree una
+    `NativeVideoSource` llame a `entrar_al_runtime`, y otra comprueba que el
+    pánico del SDK sigue siendo real — si algún día deja de serlo, cae y la
+    precaución sobra.
 
 13. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
    formato con más fps» —que podía ser 320×240— y luego el bucle **descartaba

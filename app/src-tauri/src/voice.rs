@@ -555,18 +555,15 @@ pub fn nota(linea: impl AsRef<str>) {
 
 /// Abrir la cámara y pedir diez tramas, aquí y ahora, sin publicar nada.
 ///
-/// Es el spike `spikes/camera-probe` metido **dentro del proceso de la app**, y
-/// existe porque el binario suelto saca 10/10 tramas y la app se queda colgada
-/// con el mismo código. Mientras las dos cosas corran en procesos distintos, la
-/// diferencia se puede achacar a cualquier cosa; aquí se compara lo único que
-/// no cuadra.
+/// Es el spike `spikes/camera-probe` metido **dentro del proceso de la app**.
+/// Nació para dirimir si la cámara se colgaba por el entorno o por nuestro
+/// código, y contestó lo que le tocaba: aquí saca 10/10 tramas, luego el
+/// entorno estaba limpio y la culpa era nuestra. Lo era —de
+/// `NativeVideoSource::new`, no de nokhwa; ver `entrar_al_runtime`—.
 ///
-/// Contesta un informe legible para pegar en un reporte:
-///
-/// - si **también se cuelga aquí**, el problema es del entorno de la app
-///   —libwebrtc, el webview, GTK— y no de cómo llamamos a la cámara;
-/// - si **aquí funciona**, el problema es nuestro camino de captura y el
-///   entorno queda descartado.
+/// Se queda porque separa dos cosas que desde fuera se ven igual: «esta máquina
+/// no da imagen» y «la app no la publica». Lo primero que hay que preguntar
+/// cuando alguien reporte pantalla en negro.
 ///
 /// No toca la sesión ni publica pista: se puede pulsar sin estar en una llamada.
 ///
@@ -1328,13 +1325,15 @@ static CAMARA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::ne
 /// `MmapStream::next()` —lo que hay debajo de `Camera::frame()` en Linux—
 /// **bloquea sin plazo** y nokhwa no expone ninguno. Si el driver no entrega,
 /// ese hilo se queda ahí para siempre reteniendo el dispositivo, y en Rust no
-/// se mata un hilo desde fuera.
+/// se mata un hilo desde fuera. Con esto, el segundo intento dice lo que pasa
+/// en vez de añadirse al montón.
 ///
-/// Lo que sí se puede es no empeorarlo. El diario de la v1.6.45 enseña la
-/// cámara abriéndose **dos veces** con siete segundos de diferencia, la segunda
-/// mientras la primera seguía colgada: dos flujos peleándose por el mismo
-/// dispositivo. Con esto, el segundo intento dice lo que pasa en vez de
-/// añadirse al montón.
+/// Aviso sobre su alcance, que se aprendió por las malas: esto **protege de un
+/// cuelgue, no de una muerte**. El diario de la v1.6.45 enseñaba la cámara
+/// abriéndose dos veces seguidas a pesar de la guardia, y la explicación no era
+/// que fallara: el hilo moría de un pánico, el desenrollado ejecutaba el `Drop`
+/// de `AlSalir` y la bandera bajaba correctamente. La guardia hacía su trabajo;
+/// la conclusión que sacamos de verla fallar era la equivocada.
 static CAPTURA_VIVA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static PANTALLA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -1424,6 +1423,39 @@ pub async fn voice_stop_share() -> Result<VideoState, String> {
 /// mientras el usuario está eligiendo es el peor momento posible.
 const ESPERA_PORTAL: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Mete el hilo actual en el runtime de Tokio, y por qué hace falta.
+///
+/// `NativeVideoSource::new` **no es una función de construcción a secas**:
+/// dentro arranca un mantenedor de tramas negras con `livekit_runtime::spawn`,
+/// que con la característica `tokio` es `tokio::task::spawn` a pelo. Fuera de
+/// un runtime eso entra en pánico —«there is no reactor running»— y el hilo
+/// muere ahí mismo.
+///
+/// Lo que se veía: la cámara abría, entregaba su primera trama cruda y el
+/// diario se paraba en «descodificando» para siempre. El vigía señalaba esa
+/// etapa porque es la última que se marca **antes** de crear la fuente, y
+/// `spikes/camera-probe` daba 10/10 tramas con la misma llamada a nokhwa — la
+/// diferencia entre los dos era justo esta línea, que el spike no tenía.
+///
+/// Lo peor era el disimulo. Al desenrollarse el pánico se ejecuta el `Drop` de
+/// `AlSalir`, que baja `CAPTURA_VIVA`; así que la guardia contra dos capturas a
+/// la vez daba paso libre al siguiente intento y la cámara se abría dos veces.
+/// Y el `listo_tx` se cerraba con el hilo, con lo que el llamante recibía un
+/// canal desconectado que se contaba como plazo agotado: «la cámara no entregó
+/// ninguna imagen», que era verdad y no decía nada.
+///
+/// La pantalla caía por lo mismo, un piso más abajo: «pidiendo permiso» y
+/// después nada.
+///
+/// Reproducido y comprobado en `spikes/voice-native/src/bin/fuente.rs`: desde
+/// un hilo suelto muere, entrando al runtime **desde ese mismo hilo** funciona.
+/// Entrar en `main` no vale — el contexto es por hilo, no por proceso.
+fn entrar_al_runtime(
+    manija: &tauri::async_runtime::RuntimeHandle,
+) -> tokio::runtime::EnterGuard<'_> {
+    manija.inner().enter()
+}
+
 /// La pantalla del sistema, en su propio hilo.
 ///
 /// Devuelve la fuente ya alimentada con la primera trama, más sus medidas. Se
@@ -1438,7 +1470,10 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
     let (primera_tx, primera_rx) = std::sync::mpsc::channel::<Result<(u32, u32), String>>();
     let (fuente_tx, fuente_rx) = std::sync::mpsc::channel::<NativeVideoSource>();
 
+    let manija = tauri::async_runtime::handle();
     std::thread::spawn(move || {
+        // Sin esto la captura no llega a la primera trama.
+        let _en_runtime = entrar_al_runtime(&manija);
         let mut opciones = DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen);
         // El cursor dentro de la imagen. Compartir una pantalla para señalar
         // algo sin que se vea el puntero es media función.
@@ -1461,7 +1496,19 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
             let _ = envio.send(r.map(|f| (f.width() as u32, f.height() as u32, f.data().to_vec())));
         });
 
+        // La bandera se baja pase lo que pase, igual que en la cámara. Estaba
+        // sólo al final del bucle, y un hilo que muriera antes la dejaba en
+        // alto para siempre: la app se creía compartiendo —botón en «Stop
+        // sharing», cartel de «You are sharing»— sobre un cuadro negro que
+        // nadie iba a rellenar nunca.
+        struct AlSalir;
+        impl Drop for AlSalir {
+            fn drop(&mut self) {
+                PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         PANTALLA.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _testigo = AlSalir;
         let limite = std::time::Instant::now() + ESPERA_PORTAL;
         let mut fuente: Option<NativeVideoSource> = None;
 
@@ -1522,7 +1569,6 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
             }
             std::thread::sleep(cada);
         }
-        PANTALLA.store(false, std::sync::atomic::Ordering::Relaxed);
     });
 
     match primera_rx.recv_timeout(ESPERA_PORTAL + std::time::Duration::from_secs(5)) {
@@ -1533,7 +1579,13 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
             Ok((fuente, w, h))
         }
         Ok(Err(e)) => Err(e),
-        Err(_) => Err("la captura de pantalla no respondió".into()),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            nota("pantalla: el hilo de captura murió sin decir nada");
+            Err("el hilo de la pantalla murió; mira el diario del laboratorio de voz".into())
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err("la captura de pantalla no respondió".into())
+        }
     }
 }
 
@@ -1616,9 +1668,13 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
     let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(u32, u32), String>>();
     let (fuente_tx, fuente_rx) = std::sync::mpsc::channel::<NativeVideoSource>();
     CAPTURA_VIVA.store(true, std::sync::atomic::Ordering::Relaxed);
+    let manija = tauri::async_runtime::handle();
     std::thread::spawn(move || {
-        // Se baja pase lo que pase, salvo si el hilo se queda colgado — que es
-        // justo el caso que este testigo existe para detectar.
+        // Sin esto la captura no llega a la primera trama.
+        let _en_runtime = entrar_al_runtime(&manija);
+        // Se baja pase lo que pase —incluido un pánico, que desenrolla y ejecuta
+        // este `Drop`—, salvo si el hilo se queda colgado dentro de una llamada
+        // que no vuelve, que es el caso que el testigo existe para detectar.
         struct AlSalir;
         impl Drop for AlSalir {
             fn drop(&mut self) {
@@ -1865,7 +1921,17 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             Ok((fuente, w, h))
         }
         Ok(Err(e)) => Err(e),
-        Err(_) => Err("la cámara no entregó ninguna imagen".into()),
+        // Desconectado y agotado no son lo mismo y no se pueden contar igual:
+        // el primero es que el hilo de captura ha muerto —un pánico, sin ir más
+        // lejos— y el segundo que sigue vivo sin dar imagen. Decir «no entregó
+        // ninguna imagen» ante un hilo muerto costó cinco versiones.
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            nota("cámara: el hilo de captura murió sin decir nada");
+            Err("el hilo de la cámara murió; mira el diario del laboratorio de voz".into())
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err("la cámara no entregó ninguna imagen".into())
+        }
     }
 }
 
@@ -1996,6 +2062,101 @@ mod pruebas {
             "estos comandos son síncronos y no están en la lista de excepciones: {sincronos:?}.\n\
              Un comando síncrono corre en el hilo principal; si toca el SDK de LiveKit, \
              cierra la app. Hazlo `async` o justifícalo en PUEDEN_SER_SINCRONOS."
+        );
+    }
+
+    /// Quien crea una `NativeVideoSource` tiene que estar dentro del runtime.
+    ///
+    /// El hermano de la prueba de arriba, y el mismo fallo un piso más abajo:
+    /// allí era un comando síncrono en el hilo principal, aquí un
+    /// `std::thread::spawn` nuestro. En los dos casos el SDK hace
+    /// `tokio::spawn` por dentro y se muere sin runtime.
+    ///
+    /// Mira funciones enteras y no cada `spawn` por separado a propósito:
+    /// contar llaves en este fichero no es de fiar —los `format!` llevan las
+    /// suyas dentro de las cadenas— y una función que crea la fuente y no
+    /// menciona el runtime en ninguna parte ya es sospechosa de sobra.
+    #[test]
+    fn quien_crea_la_fuente_de_video_entra_al_runtime() {
+        let fuente = include_str!("voice.rs");
+        let mut culpables = Vec::new();
+        let mut dentro: Option<(&str, String)> = None;
+        for linea in fuente.lines() {
+            // La llave sola en la primera columna cierra la función. Es lo que
+            // hace rustfmt sin excepción, y sirve donde contar llaves no
+            // serviría. Sin este cierre el cuerpo de la última función seguía
+            // hasta el final del fichero y se tragaba este mismo módulo de
+            // pruebas — que menciona `.inner().enter()` ahí abajo. La regla se
+            // cumplía sola y el mutante sobrevivió.
+            if linea == "}" {
+                if let Some((nombre, cuerpo)) = dentro.take() {
+                    if cuerpo.contains("NativeVideoSource::new(")
+                        && !cuerpo.contains("entrar_al_runtime(")
+                    {
+                        culpables.push(nombre.to_string());
+                    }
+                }
+                continue;
+            }
+            if let Some(resto) = linea
+                .strip_prefix("fn ")
+                .or_else(|| linea.strip_prefix("pub fn "))
+            {
+                dentro = Some((resto.split('(').next().unwrap_or(resto), String::new()));
+            }
+            if let Some((_, cuerpo)) = dentro.as_mut() {
+                cuerpo.push_str(linea);
+                cuerpo.push('\n');
+            }
+        }
+
+        assert!(
+            culpables.is_empty(),
+            "{culpables:?} crean una NativeVideoSource sin entrar al runtime de Tokio.\n\
+             `NativeVideoSource::new` hace `tokio::spawn` por dentro: fuera de un \
+             runtime el hilo muere en el sitio y la captura se queda sin primera \
+             trama. Añade `let _en_runtime = entrar_al_runtime(&manija);` al \
+             principio del hilo."
+        );
+    }
+
+    /// Y que sea verdad, no sólo que lo diga el comentario.
+    ///
+    /// Esto vigila al SDK, no a nosotros: si algún día `NativeVideoSource::new`
+    /// deja de hacer `tokio::spawn` por dentro, esta prueba cae y la de arriba
+    /// —con su regla y su explicación— sobra. Mejor enterarse así que
+    /// arrastrar una precaución que ya no protege de nada.
+    #[test]
+    fn sin_runtime_la_fuente_de_video_mata_el_hilo() {
+        use livekit::webrtc::video_source::{native::NativeVideoSource, VideoResolution};
+
+        let medidas = || VideoResolution {
+            width: 320,
+            height: 240,
+        };
+
+        // El pánico es el resultado esperado: sin esto la salida de `cargo
+        // test` se llena de un rastro que parece un fallo y no lo es.
+        let antes = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let suelto = std::thread::spawn(move || NativeVideoSource::new(medidas(), false)).join();
+        std::panic::set_hook(antes);
+        assert!(
+            suelto.is_err(),
+            "el SDK ya no necesita runtime: `NativeVideoSource::new` dejó de hacer \
+             `tokio::spawn` por dentro, así que `entrar_al_runtime` y su prueba sobran"
+        );
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime de prueba");
+        let manija = rt.handle().clone();
+        let dentro = std::thread::spawn(move || {
+            let _en_runtime = manija.enter();
+            NativeVideoSource::new(medidas(), false)
+        })
+        .join();
+        assert!(
+            dentro.is_ok(),
+            "entrar al runtime desde el hilo tendría que bastar"
         );
     }
 
