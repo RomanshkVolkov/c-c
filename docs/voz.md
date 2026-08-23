@@ -618,6 +618,41 @@ callas creyendo que el otro no te oye.
     enciende con la pista publicada. Una bandera que sirve para dos cosas acaba
     mintiendo sobre una de ellas.
 
+12c. **Compartir pantalla no funciona en un portátil híbrido, y la culpa es de
+    una heurística de libwebrtc.** Cadena completa, medida entera en el diario:
+
+    1. COSMIC compone en la **Intel** (la sesión rinde con Mesa/Intel UHD) y
+       entrega el búfer del screencast como DMA-BUF de Intel.
+    2. `EglDmaBuf` de libwebrtc abre **el primer nodo de render que encuentre**
+       —está literal en el binario: «Defaulting to using first available render
+       node»—, y en esta máquina `renderD128` es la **NVIDIA** y `renderD129`
+       la Intel.
+    3. EGL inicializa bien sobre la NVIDIA, así que libwebrtc **ofrece**
+       DMA-BUF. Al importar el búfer ajeno: `Failed to bind DMA buf framebuffer`.
+    4. Tira el modificador y renegocia, tres veces. La renegociación sin
+       modificadores sale malformada y PipeWire la rechaza:
+       `error alloc buffers: Invalid argument`.
+    5. El flujo muere y `capture_frame()` contesta `Temporary` para siempre.
+       1.813 veces seguidas, contadas.
+
+    No hay interruptor: `egl_dmabuf.o` no llama a `getenv` ni una vez, y las
+    `DesktopCapturerOptions` que expone el SDK son `source_type`,
+    `include_cursor` y `allow_sck_system_picker`. Nada que tocar desde Rust.
+
+    Si EGL **no** inicializa, libwebrtc no ofrece DMA-BUF y usa memoria
+    compartida, que funciona. Ése es el camino bueno y hoy no hay forma limpia
+    de pedirlo.
+
+13b. **Lo que de verdad costó la noche no fue el fallo, fue no poder oírlo.**
+    libwebrtc instala un sumidero de sus propios registros a nivel `VERBOSE` y
+    los manda a `log::debug!(target: "libwebrtc")`. La app no tenía ninguna
+    implementación de `log`, así que la macro era un no-op y **todo esto se
+    estaba contando en voz alta desde el primer intento**. Con el puente puesto
+    —`voice::escuchar_al_sdk`, filtrado a las líneas de captura de pantalla— el
+    diagnóstico entero cupo en una sola corrida.
+
+    Antes de instrumentar nada propio, mirar si la dependencia ya lo hace.
+
 13. **La resolución la dice la cámara, no nosotros.** Se abría pidiendo «el
    formato con más fps» —que podía ser 320×240— y luego el bucle **descartaba
    toda trama que no fuera exactamente 1280×720**. Con una webcam que diera otra
