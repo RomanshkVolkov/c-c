@@ -56,13 +56,27 @@ func (s *DMService) publish(toUserID, orgID, conversationID, messageID, actorID 
 		},
 	})
 	if s.notifier != nil {
-		// No message body: an inbox row is read by a person who may be looking
-		// at a shared screen, and the point of a private conversation is that
-		// its contents stay in it.
+		// El nombre de quien escribe en el título; el mensaje **no**.
+		//
+		// Sin el nombre, tres conversaciones abiertas daban tres filas
+		// idénticas —«New direct message»— y había que entrar en las tres para
+		// saber cuál era. Quién te escribe ya se ve en la lista de
+		// conversaciones, así que decirlo aquí no destapa nada.
+		//
+		// El cuerpo sigue fuera, y a propósito: una fila de la bandeja la lee
+		// alguien que puede tener la pantalla compartida, y lo que distingue a
+		// una conversación privada es justo que su contenido se queda dentro.
+		// En un canal el texto sí viaja, porque ahí ya lo puede leer toda la
+		// organización.
+		//
 		// ViaApp fijo, por lo mismo que en chat.go: ninguna herramienta del MCP
 		// escribe directos. Si alguna llega, este servicio necesita el contexto.
+		titulo := "New direct message"
+		if de := s.repo.NombreDe(actorID); de != "" {
+			titulo = de + " te escribió"
+		}
 		s.notifier.Notify(toUserID, orgID, "dm:message",
-			"New direct message", "", "/dm?c="+conversationID, domain.ViaApp)
+			titulo, "", "/dm?c="+conversationID, domain.ViaApp)
 	}
 }
 

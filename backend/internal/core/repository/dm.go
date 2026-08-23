@@ -111,6 +111,18 @@ func (r *DMRepository) List(conversationID string, before time.Time, limit int) 
 	return out, nil
 }
 
+// Nombre de quien escribe, para que el aviso diga de quién es.
+//
+// El título era «New direct message» a secas: con tres conversaciones abiertas,
+// tres filas idénticas y ninguna forma de saber a cuál entrar. El nombre no es
+// contenido —quién te escribe se ve igual en la lista de conversaciones— así
+// que ponerlo no toca la decisión de dejar el cuerpo fuera.
+func (r *DMRepository) NombreDe(userID string) string {
+	var nombre string
+	r.db.Raw(`SELECT COALESCE(username, '') FROM users WHERE id = ?`, userID).Scan(&nombre)
+	return nombre
+}
+
 func (r *DMRepository) Create(m *domain.DMMessage) error { return r.db.Create(m).Error }
 
 func (r *DMRepository) Find(id string) (*domain.DMMessage, error) {
