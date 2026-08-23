@@ -122,6 +122,7 @@ dependencies = [
  "jsonwebtoken 9.3.1",
  "keyring",
  "livekit",
+ "log",
  "md-5",
  "nokhwa",
  "portable-pty",

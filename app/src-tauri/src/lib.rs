@@ -1488,6 +1488,8 @@ fn sanitize_component(raw: &str, fallback: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Antes que nada: si no, los primeros registros del SDK se pierden.
+    voice::escuchar_al_sdk();
     tauri::Builder::default()
         // Las sesiones de terminal se matan al cerrar la ventana. En Unix el
         // `ssh` moriría igual al soltarse el pty, pero apoyarse en eso es

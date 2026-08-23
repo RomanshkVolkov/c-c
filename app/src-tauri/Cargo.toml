@@ -14,6 +14,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Sólo para escuchar a libwebrtc. El SDK ya instala un sumidero de sus registros
+# a nivel VERBOSE y los reenvía a `log::debug!(target: "libwebrtc")`; sin una
+# implementación de `log` en el proceso, esa macro no hace nada y todo lo que
+# libwebrtc cuenta de sí mismo se tira a la basura. Ver `voice::escuchar_al_sdk`.
+log = "0.4"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-http = "2"

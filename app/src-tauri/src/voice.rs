@@ -553,6 +553,74 @@ pub fn nota(linea: impl AsRef<str>) {
     d.push_back(format!("{sello} · {linea}"));
 }
 
+/// Deja que libwebrtc escriba en el diario, filtrado.
+///
+/// El SDK instala un sumidero de los registros de libwebrtc a nivel `VERBOSE` y
+/// los reenvía a `log::debug!(target: "libwebrtc")`. La app no tenía ninguna
+/// implementación de `log`, así que esa macro era un no-op: libwebrtc llevaba
+/// todo el tiempo contando en voz alta lo que le pasaba —«Failed to create
+/// PipeWire stream», «Dropping DMA-BUF modifier», «PipeWire stream state
+/// error»— y no había nadie al otro lado.
+///
+/// **Filtrado y no entero.** A nivel `VERBOSE` esto son miles de líneas por
+/// segundo de RTP y estadísticas; volcarlas en un anillo de trescientas borra
+/// justo lo que se quiere leer. Pasan sólo las que hablan de la captura de
+/// pantalla, que es la superficie donde se pierde la señal hoy.
+///
+/// Se llama una vez al arrancar. Si otro componente instalara un logger antes,
+/// `set_logger` falla y se deja como está: perder trazas es peor que un pánico
+/// al arrancar, pero no tanto como no arrancar.
+pub fn escuchar_al_sdk() {
+    /// Lo que sí interesa. Todo en minúsculas: la comparación no distingue.
+    const INTERESA: &[&str] = &[
+        "pipewire",
+        "dma-buf",
+        "dmabuf",
+        "screencast",
+        "portal",
+        "modifier",
+        "desktop captur",
+    ];
+
+    struct AlDiario;
+    impl log::Log for AlDiario {
+        fn enabled(&self, dato: &log::Metadata) -> bool {
+            dato.target() == "libwebrtc"
+        }
+
+        fn log(&self, registro: &log::Record) {
+            if !self.enabled(registro.metadata()) {
+                return;
+            }
+            let texto = registro.args().to_string();
+            let bajo = texto.to_lowercase();
+            if !INTERESA.iter().any(|clave| bajo.contains(clave)) {
+                return;
+            }
+            // Repetidos seguidos, una sola vez. Un estado de error de PipeWire
+            // se reimprime en cada vuelta del bucle: treinta líneas idénticas
+            // por segundo llenarían el anillo en diez segundos y se llevarían
+            // por delante el resto del diario.
+            static ULTIMA: Mutex<String> = Mutex::new(String::new());
+            {
+                let mut ultima = ULTIMA.lock().unwrap();
+                if *ultima == texto {
+                    return;
+                }
+                ultima.clone_from(&texto);
+            }
+            nota(format!("sdk: {texto}"));
+        }
+
+        fn flush(&self) {}
+    }
+
+    static AL_DIARIO: AlDiario = AlDiario;
+    if log::set_logger(&AL_DIARIO).is_ok() {
+        log::set_max_level(log::LevelFilter::Debug);
+    }
+}
+
 /// Abrir la cámara y pedir diez tramas, aquí y ahora, sin publicar nada.
 ///
 /// Es el spike `spikes/camera-probe` metido **dentro del proceso de la app**.
