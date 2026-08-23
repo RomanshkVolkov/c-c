@@ -1085,6 +1085,13 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
     // si sigue vivo, y encenderla después dejaría el hilo saliendo en la
     // primera vuelta, sin entregar nunca una trama. Si algo falla se vuelve a
     // apagar unas líneas más abajo.
+    if CAPTURA_VIVA.load(std::sync::atomic::Ordering::Relaxed) {
+        nota("cámara: ya hay una captura sin terminar, no se abre otra");
+        return Err(
+            "la cámara sigue ocupada por el intento anterior. Sal de la llamada y vuelve a entrar"
+                .into(),
+        );
+    }
     CAMARA.store(true, std::sync::atomic::Ordering::Relaxed);
     let (fuente, ancho, alto) = arrancar_camara().inspect_err(|_| {
         CAMARA.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -1105,6 +1112,20 @@ pub async fn voice_set_camera(enabled: bool) -> Result<VideoState, String> {
 }
 
 static CAMARA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// ¿Queda un hilo de captura del que no se sabe nada?
+///
+/// `MmapStream::next()` —lo que hay debajo de `Camera::frame()` en Linux—
+/// **bloquea sin plazo** y nokhwa no expone ninguno. Si el driver no entrega,
+/// ese hilo se queda ahí para siempre reteniendo el dispositivo, y en Rust no
+/// se mata un hilo desde fuera.
+///
+/// Lo que sí se puede es no empeorarlo. El diario de la v1.6.45 enseña la
+/// cámara abriéndose **dos veces** con siete segundos de diferencia, la segunda
+/// mientras la primera seguía colgada: dos flujos peleándose por el mismo
+/// dispositivo. Con esto, el segundo intento dice lo que pasa en vez de
+/// añadirse al montón.
+static CAPTURA_VIVA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static PANTALLA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Compartir la pantalla.
@@ -1370,7 +1391,18 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
 
     let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(u32, u32), String>>();
     let (fuente_tx, fuente_rx) = std::sync::mpsc::channel::<NativeVideoSource>();
+    CAPTURA_VIVA.store(true, std::sync::atomic::Ordering::Relaxed);
     std::thread::spawn(move || {
+        // Se baja pase lo que pase, salvo si el hilo se queda colgado — que es
+        // justo el caso que este testigo existe para detectar.
+        struct AlSalir;
+        impl Drop for AlSalir {
+            fn drop(&mut self) {
+                CAPTURA_VIVA.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        let _testigo = AlSalir;
+
         // Lo que se le pide a la cámara, en orden de preferencia y **cayendo**
         // al siguiente si no lo tiene.
         //
@@ -1452,7 +1484,37 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
         let mut seguidos = 0u32;
         let mut ultimo_fallo = String::new();
 
+        // Un vigía para la primera trama.
+        //
+        // El diario de la v1.6.45 enseñaba la cámara abierta y **después nada**:
+        // ni trama, ni fallo, ni rendición. Eso sólo pasa si una de las dos
+        // llamadas de abajo no vuelve nunca, y desde fuera las dos se ven
+        // igual. Estas marcas dicen cuál — y el vigía lo cuenta sin esperar a
+        // que caduque el plazo de veinte segundos.
+        //
+        // Reproducido no está: la misma secuencia en un binario suelto da
+        // 10/10 tramas tres veces seguidas (`spikes/camera-probe`). La
+        // diferencia está en el entorno de la app, y esto es lo que la va a
+        // señalar.
+        let etapa = std::sync::Arc::new(Mutex::new("abriendo"));
+        {
+            let etapa = etapa.clone();
+            std::thread::spawn(move || {
+                for espera in [3u64, 10] {
+                    std::thread::sleep(std::time::Duration::from_secs(espera));
+                    let d = *etapa.lock().unwrap();
+                    if d == "listo" {
+                        return;
+                    }
+                    nota(format!("cámara: {espera}s esperando y sigue en «{d}»"));
+                }
+            });
+        }
+
         while CAMARA.load(std::sync::atomic::Ordering::Relaxed) {
+            if fuente.is_none() {
+                *etapa.lock().unwrap() = "pidiendo la trama";
+            }
             let trama = match camara.frame() {
                 Ok(t) => {
                     seguidos = 0;
@@ -1470,6 +1532,14 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
                     continue;
                 }
             };
+            if fuente.is_none() {
+                *etapa.lock().unwrap() = "descodificando";
+                nota(format!(
+                    "cámara: primera trama cruda, {} bytes en {}",
+                    trama.buffer().len(),
+                    trama.source_frame_format()
+                ));
+            }
             let rgb = match trama.decode_image::<RgbFormat>() {
                 Ok(r) => r,
                 Err(e) => {
@@ -1499,6 +1569,7 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
                     false,
                 );
                 if fuente.is_none() {
+                    *etapa.lock().unwrap() = "listo";
                     nota(format!("cámara: primera trama {w}x{h}"));
                     let _ = fuente_tx.send(f.clone());
                     let _ = listo_tx.send(Ok((w, h)));

@@ -195,7 +195,15 @@ export default function VoiceLab() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
-      <div className="space-y-2">
+      {/* El diario va **primero**. Es lo único de esta pantalla que sirve para
+          diagnosticar los canales de voz de verdad, y estaba al final, debajo
+          de un formulario con URL, clave y secreto que parecen obligatorios —
+          alguien vino a copiar el diario y lo primero que preguntó fue qué
+          poner en esos campos. Lo que se usa a diario va antes que lo que se
+          usa una vez. */}
+      <Diario />
+
+      <div className="space-y-2 border-t pt-4">
         <h1 className="text-lg font-semibold">Webview lab</h1>
         {/* El aviso va arriba y en rojo porque esta pantalla se confunde con
             los canales de voz con una facilidad pasmosa — y su resultado normal
@@ -270,8 +278,6 @@ export default function VoiceLab() {
         )}
       </div>
 
-      <Diario />
-
       {/* Los <audio> remotos aterrizan aquí; invisibles, sólo suenan. */}
       <div ref={audios} className="hidden" />
     </div>
@@ -306,7 +312,7 @@ function Diario() {
   return (
     <div className="space-y-2 rounded-xl border p-4">
       <div className="flex items-center gap-2">
-        <h2 className="text-sm font-medium">Diario del motor</h2>
+        <h2 className="text-sm font-medium">Diario del motor de voz</h2>
         <span className="text-xs text-muted-foreground">{lineas.length} líneas</span>
         <span className="ml-auto flex gap-2">
           <Button size="sm" variant="outline" onClick={() => void leer()}>
@@ -326,6 +332,11 @@ function Diario() {
           </Button>
         </span>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Lo que el motor ha ido apuntando: qué cámara abrió y con qué formato, si el
+        sistema concedió la pantalla, quién entra y sale. No hay nada que rellenar —
+        los campos de abajo son de otra prueba.
+      </p>
       {lineas.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Nada todavía. Entra a un canal de voz, enciende la cámara o comparte pantalla y vuelve.

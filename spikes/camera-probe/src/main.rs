@@ -75,6 +75,37 @@ fn main() {
             probar(c.index().clone(), nombre, *tipo);
         }
     }
+
+    // La secuencia **exacta** de la app, que es donde se cuelga: abrir y
+    // cerrar todas para filtrarlas, y acto seguido abrir la buena y pedir
+    // tramas. Se prueba porque el diario de la app enseña ese orden y luego
+    // silencio, y el spike suelto no lo reproduce.
+    println!("\n══ como lo hace la app: filtrar y abrir seguido ══");
+    for vuelta in 1..=3 {
+        let utiles: Vec<_> = nokhwa::query(ApiBackend::Auto)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|c| {
+                Camera::new(
+                    c.index().clone(),
+                    RequestedFormat::new::<RgbFormat>(RequestedFormatType::None),
+                )
+                .and_then(|mut cam| cam.compatible_camera_formats())
+                .map(|f| !f.is_empty())
+                .unwrap_or(false)
+            })
+            .collect();
+        let Some(elegida) = utiles.first() else {
+            println!("  vuelta {vuelta}: ninguna útil");
+            continue;
+        };
+        print!("  vuelta {vuelta}: ");
+        probar(
+            elegida.index().clone(),
+            "720p",
+            RequestedFormatType::HighestResolution(Resolution::new(1280, 720)),
+        );
+    }
 }
 
 fn probar(indice: CameraIndex, nombre: &str, tipo: RequestedFormatType) {
