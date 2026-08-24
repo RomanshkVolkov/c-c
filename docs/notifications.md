@@ -45,6 +45,7 @@ Todos los eventos que emite el backend, y qué deja cada uno.
 | `task:delete` | `task.go:567` | No | — | |
 | `voice.ring` — te llaman a una sala | `voice_ring.go:47` | **No, a propósito** | — | **una sola persona**, vía `Event.UserID` |
 | `voice.ring.cancel` — colgaron, o rechazaste | `voice_ring.go:79` | No | — | la otra persona de esa llamada |
+| `meeting:reminder` — empieza una reunión periódica | `meeting.go` (`anunciar`) | **Sí** | `MeetingsQuiet` | **una sola persona**, vía `Event.UserID`, a cada convocado |
 
 **El timbre no deja fila en la campana**, y eso es una decisión y no un
 descuido. Una llamada caduca en veinte segundos: una entrada en el historial

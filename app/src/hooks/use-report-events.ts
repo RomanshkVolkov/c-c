@@ -17,6 +17,7 @@ import { usePendingStore } from "@/store/pending.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
+import { useMeetingsStore, type ReunionEntrante } from "@/store/meetings.store";
 
 type Payload = {
   reportId?: string;
@@ -113,6 +114,10 @@ const DEJAN_FILA = new Set([
   "chat:message",
   "chat:mention",
   "dm:message",
+  // Una reunión deja constancia además de sonar: la tarjeta caduca en un
+  // minuto, y quien no estaba delante tiene que poder enterarse después de que
+  // la hubo.
+  "meeting:reminder",
 ]);
 
 export function tocaLaCampana(evento: string): boolean {
@@ -451,6 +456,20 @@ export function useReportEvents() {
           notify("voice.ring", `${t.from.name} is calling`, `Voice call in #${t.spaceName}`);
           break;
         }
+        // La reunión periódica: tarjeta propia con su timbre, como una llamada,
+        // y fila en la campana —a diferencia de la llamada— porque el aviso
+        // caduca solo y no deja rastro de otra forma.
+        case "meeting:reminder": {
+          const t = parse(data) as unknown as ReunionEntrante | null;
+          if (!t?.meetingId) break;
+          useMeetingsStore.getState().alSonar(t);
+          notify(
+            "meeting:reminder",
+            t.title,
+            t.spaceName ? `Starting now in #${t.spaceName}` : "Starting now",
+          );
+          break;
+        }
         case "voice.ring.cancel": {
           const c = parse(data) as unknown as { from?: string } | null;
           if (!c?.from) break;
@@ -562,6 +581,7 @@ export function useReportEvents() {
         "task:move",
         "task:delete",
         "task:comment",
+        "meeting:reminder",
       ]) {
         es.addEventListener(kind, (e) => {
           seen();

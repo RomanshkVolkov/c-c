@@ -53,9 +53,31 @@ export interface MeetingDraft {
   spaceId?: string;
 }
 
+/**
+ * El aviso que acaba de sonar.
+ *
+ * Lo manda el servidor por el mismo canal que el timbre de una llamada, con la
+ * sala ya resuelta por nombre para que la tarjeta se pinte sin ir a buscar
+ * nada, y con la hora a la que caduca.
+ */
+export interface ReunionEntrante {
+  meetingId: string;
+  title: string;
+  spaceId?: string;
+  spaceName?: string;
+  wallTime: string;
+  timezone: string;
+  firesAt: string;
+  expiresAt: string;
+}
+
 interface MeetingsState {
   meetings: Meeting[];
   loading: boolean;
+  /** La reunión que está sonando ahora mismo, si hay alguna. */
+  entrante: ReunionEntrante | null;
+  alSonar: (t: ReunionEntrante) => void;
+  descartar: () => void;
   fetch: (orgId: string) => Promise<void>;
   create: (orgId: string, draft: MeetingDraft) => Promise<void>;
   update: (id: string, orgId: string, patch: Partial<MeetingDraft> & { paused?: boolean }) => Promise<void>;
@@ -64,9 +86,40 @@ interface MeetingsState {
   setExcluded: (id: string, orgId: string, userIds: string[]) => Promise<void>;
 }
 
+/** El reloj que apaga la tarjeta sola. Uno, y se reemplaza. */
+let relojEntrante: ReturnType<typeof setTimeout> | null = null;
+
 export const useMeetingsStore = create<MeetingsState>((set, get) => ({
   meetings: [],
   loading: false,
+  entrante: null,
+
+  alSonar: (t) => {
+    if (relojEntrante) clearTimeout(relojEntrante);
+    set({ entrante: t });
+    // Se apaga sola a la hora que dijo el servidor, como el timbre de una
+    // llamada. Sin esto, una reunión a la que nadie hace caso deja la tarjeta
+    // tapando la pantalla hasta que alguien la cierre — y quien no estaba
+    // delante vuelve a un ordenador bloqueado por un aviso de hace una hora.
+    const falta = Math.max(0, new Date(t.expiresAt).getTime() - Date.now());
+    relojEntrante = setTimeout(() => {
+      // Comprobar de quién es el reloj antes de apagar nada.
+      //
+      // Hoy es cinturón sobre tirantes: el `clearTimeout` de arriba ya cancela
+      // el anterior, así que a este punto sólo llega el reloj de la reunión que
+      // se está viendo — no hay forma de provocar lo contrario desde fuera, y
+      // un mutante que quite esta comprobación sobrevive. Se queda porque es lo
+      // que hace `voice.store` con el timbre de las llamadas, y porque el día
+      // que alguien añada otra vía para poner `entrante` esto es lo que impide
+      // que un reloj viejo apague un aviso nuevo.
+      set((s) => (s.entrante?.meetingId === t.meetingId ? { entrante: null } : s));
+    }, falta);
+  },
+
+  descartar: () => {
+    if (relojEntrante) clearTimeout(relojEntrante);
+    set({ entrante: null });
+  },
 
   fetch: async (orgId) => {
     set({ loading: true });

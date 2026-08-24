@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AtSign, Bot, CheckSquare, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
+import { AtSign, Bot, CalendarClock, CheckSquare, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
 import { useInboxStore, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,11 @@ const CLASES: Record<string, { grupo: Pestana; tag: string; icono: typeof AtSign
   "task:assigned": { grupo: "tasks", tag: "assigned", icono: UserPlus, color: "text-primary" },
   "task:status": { grupo: "tasks", tag: "status", icono: CheckSquare, color: "text-muted-foreground" },
   "report:new": { grupo: "system", tag: "report", icono: Zap, color: "text-warning" },
+  // Sin esta entrada caería en DESCONOCIDA: funcionaría, pero sin etiqueta y en
+  // «System», que es donde se guarda lo que no se supo clasificar.
+  "meeting:reminder": {
+    grupo: "talk", tag: "meeting", icono: CalendarClock, color: "text-primary",
+  },
 };
 
 const DESCONOCIDA = { grupo: "system" as Pestana, tag: "", icono: Info, color: "text-muted-foreground" };
