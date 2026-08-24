@@ -34,6 +34,17 @@ func mapReportProjectError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusConflict, "Slug already in use", err.Error())
 	case errors.Is(err, service.ErrAssigneeNotMember):
 		SendErrorResponse(w, http.StatusBadRequest, "Default assignee is not a member of the organization", err.Error())
+	// Los dos de la bandeja. 409 y no 500: la petición es válida y quien la hace
+	// tiene permiso; lo que se le niega es dejar el canal en un estado en el que
+	// perdería reportes, o entregarlos donde no le corresponde.
+	case errors.Is(err, repository.ErrChannelNeedsInbox):
+		SendErrorResponse(w, http.StatusConflict,
+			"Reports need a list to arrive in. Pick another one instead of clearing it — "+
+				"a channel with nowhere to deliver loses everything it is sent.",
+			"channel-needs-inbox")
+	case errors.Is(err, service.ErrInboxOtherOrg):
+		SendErrorResponse(w, http.StatusConflict,
+			"That list belongs to another organization.", "inbox-other-org")
 	default:
 		return false
 	}

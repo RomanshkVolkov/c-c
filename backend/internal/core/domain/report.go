@@ -305,6 +305,14 @@ type UpdateReportProjectRequest struct {
 	IsActive                    *bool    `json:"isActive"`
 	// "" clears the default assignee; a uuid sets it.
 	DefaultAssigneeUserID string `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
+	// ListID mueve la bandeja: en qué lista aparecen los reportes que llegan
+	// por la key.
+	//
+	// Puntero porque ausente y vacío no son lo mismo: omitirlo deja la bandeja
+	// como está, y mandar "" **se rechaza** — un canal sin lista donde entregar
+	// pierde todo lo que le manden, en silencio. Hasta ahora sólo la escribía
+	// una migración de arranque, así que moverla requería SQL.
+	ListID *string `json:"listId" validate:"omitempty,max=36"`
 	// "" clears the webhook. The secret is only replaced when a new one is
 	// sent, so an ordinary edit doesn't silently wipe it.
 	WebhookURL    string `json:"webhookUrl"    validate:"omitempty,url"`

@@ -1,11 +1,16 @@
 package service
 
 import (
+	"errors"
+
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"time"
 )
+
+// ErrInboxOtherOrg: la lista elegida como bandeja es de otra organización.
+var ErrInboxOtherOrg = errors.New("that list belongs to another organization")
 
 type ReportProjectService struct {
 	repo    *repository.ReportProjectRepository
@@ -162,6 +167,21 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 		p.DefaultAssigneeUserID = nil
 	} else {
 		p.DefaultAssigneeUserID = &req.DefaultAssigneeUserID
+	}
+	// La bandeja, si se pide moverla.
+	if req.ListID != nil {
+		if *req.ListID == "" {
+			// Dejar un canal sin lista no es «desconfigurarlo»: es que todo lo
+			// que le manden a partir de ese momento se pierda sin decir nada.
+			return nil, repository.ErrChannelNeedsInbox
+		}
+		// Y no a la de otra organización: sería enseñar el trabajo de un
+		// cliente a gente que no tiene nada que ver con él, por una línea mal
+		// puesta en un formulario.
+		if org := s.repo.OrgDeLista(*req.ListID); org != p.OrgID {
+			return nil, ErrInboxOtherOrg
+		}
+		p.ListID = req.ListID
 	}
 	if err := s.repo.Update(p); err != nil {
 		return nil, err

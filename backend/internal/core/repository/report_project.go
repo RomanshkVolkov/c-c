@@ -93,6 +93,23 @@ func (r *ReportProjectRepository) CountSinceByProject(desde time.Time) (map[stri
 }
 
 // Update persists the editable fields (name, origins, rate limit, active flag).
+// OrgDeLista dice de qué organización es una lista, y devuelve "" si no
+// existe.
+//
+// Hace falta para no dejar que un proyecto entregue sus reportes en el tablero
+// de otra organización: sería filtrar el trabajo de un cliente a gente que no
+// tiene nada que ver con él, y por una sola línea mal puesta en un formulario.
+func (r *ReportProjectRepository) OrgDeLista(listID string) string {
+	var orgID string
+	r.db.Raw(`
+		SELECT COALESCE(s.org_id, '')
+		FROM task_lists l
+		JOIN task_spaces s ON s.id = l.space_id
+		WHERE l.id = ? AND l.deleted_at IS NULL
+	`, listID).Scan(&orgID)
+	return orgID
+}
+
 func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 	return r.db.Model(&domain.ReportProject{}).
 		Where("id = ?", p.ID).
