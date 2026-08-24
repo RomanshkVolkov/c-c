@@ -135,6 +135,17 @@ func TestTheReportListAndDetailKeepTheirShape(t *testing.T) {
 	if u, _ := one["url"].(string); !strings.Contains(u, "exp=") || !strings.Contains(u, "sig=") {
 		t.Errorf("image url must carry its signature, got %q", u)
 	}
+	// Y es **relativa**, que es la otra mitad del contrato.
+	//
+	// Todo integrador la prefija con su propia base —así está documentado— así
+	// que devolverla absoluta haría que cada cliente concatenara dos veces y
+	// diera 404 en todas las miniaturas. La firma no lo detectaría: `exp=` y
+	// `sig=` seguirían estando. Se fija aquí porque es una decisión, no un
+	// detalle: la URL apunta al proxy de CAC y no a S3, y no hay ninguna
+	// configuración que la vuelva absoluta.
+	if u, _ := one["url"].(string); !strings.HasPrefix(u, "/api/v1/reports/") {
+		t.Errorf("image url must be a relative path to CAC's proxy, got %q", u)
+	}
 
 	comments, _ := detail["comments"].([]any)
 	if len(comments) != 1 {
