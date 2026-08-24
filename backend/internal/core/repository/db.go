@@ -126,6 +126,18 @@ func DBConnection() {
 		lg.Error("idempotency index: " + err.Error())
 	}
 
+	// La sala general es una por organización, y lo garantiza la base.
+	//
+	// Dos admins pulsando «crear» a la vez son dos INSERT en vuelo: comprobar
+	// antes en Go no sirve de nada, porque entre la comprobación y la escritura
+	// cabe la otra. Con el índice, la segunda choca y el servicio relee la que
+	// ganó. Parcial y con `deleted_at IS NULL` para que ni los espacios normales
+	// ni una sala borrada participen.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_space_general_per_org
+		ON task_spaces (org_id) WHERE kind = 'general' AND deleted_at IS NULL`).Error; err != nil {
+		lg.Error("general space index: " + err.Error())
+	}
+
 	pss, err := HashPassword("ZMWmDcnawh3CQbJjMpPKoorTZv68jYuyzUojgvQpdJCmuUQ3mMNrDXiA2EKs7Jszv6uYjao8ds96uP2VU8CTKigEYZpdTDgZ78zn")
 	if err != nil {
 		panic("failed to hash seed password: " + err.Error())

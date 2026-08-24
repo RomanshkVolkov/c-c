@@ -56,6 +56,20 @@ func (r *TaskRepository) CreateSpace(s *domain.TaskSpace) error {
 	return r.db.Create(s).Error
 }
 
+// FindGeneralSpace devuelve la sala general de la organización, o
+// ErrSpaceNotFound si todavía no existe.
+func (r *TaskRepository) FindGeneralSpace(orgID string) (*domain.TaskSpace, error) {
+	var s domain.TaskSpace
+	err := r.db.First(&s, "org_id = ? AND kind = ?", orgID, domain.SpaceKindGeneral).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSpaceNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
 func (r *TaskRepository) FindSpace(id string) (*domain.TaskSpace, error) {
 	var s domain.TaskSpace
 	if err := r.db.First(&s, "id = ?", id).Error; err != nil {
@@ -260,6 +274,7 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 	for _, s := range spaces {
 		tree := domain.SpaceTree{
 			ID: s.ID, OrgID: s.OrgID, Name: s.Name, Color: s.Color, ProjectID: spaceProject[s.ID],
+			Kind: s.Kind,
 			Folders: []domain.FolderTree{}, Lists: []domain.ListSummary{},
 			People: peopleBy[s.ID],
 		}

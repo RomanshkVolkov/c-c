@@ -21,7 +21,27 @@ type TaskSpace struct {
 	// ProjectID binds everything under this space to a tenant's channel, unless a
 	// list below says otherwise. Set here when a whole space is one client's work.
 	ProjectID *string `gorm:"type:varchar(36);index" json:"projectId,omitempty"`
+	// Kind distingue el espacio corriente ("") de la sala general de la
+	// organización ("general"): un canal con su llamada y su hilo, anclado en
+	// Channels y ausente del navegador de tareas.
+	//
+	// Cadena y no un bool: el valor ausente ya significa lo correcto para todas
+	// las filas que ya existen —igual que `ParentFolderID`— y así no hace falta
+	// tocar ninguna. Un bool habría necesitado `default:true` en algún sentido,
+	// que en GORM es el terreno minado de siempre: omite el zero-value al
+	// insertar y guarda lo contrario de lo que pediste.
+	Kind string `gorm:"type:varchar(20);index" json:"kind,omitempty"`
 }
+
+// SpaceKindGeneral: la sala de toda la organización.
+//
+// No es una entidad aparte. Un espacio ya trae canal de chat y sala de voz por
+// el hecho de existir, y sus permisos ya son de organización —no hay membresía
+// por espacio—, así que lo único que la distingue es que **no tiene tareas**:
+// ni listas, ni carpetas, ni sitio en el navegador de Tasks. Inventar una
+// entidad paralela habría obligado a duplicar chat, presencia, timbre y media
+// pantalla para no ganar nada.
+const SpaceKindGeneral = "general"
 
 type TaskFolder struct {
 	BaseModel
@@ -404,6 +424,11 @@ type TaskCommentRequest struct {
 
 // ─── Responses ────────────────────────────────────────────────────────────────
 
+// EnsureGeneralSpaceRequest pide la sala general de una organización.
+type EnsureGeneralSpaceRequest struct {
+	OrgID string `json:"orgId" validate:"required"`
+}
+
 // SpaceTree is the whole left-hand navigator in one round-trip.
 type SpaceTree struct {
 	ID        string        `json:"id"`
@@ -411,6 +436,9 @@ type SpaceTree struct {
 	Name      string        `json:"name"`
 	Color     string        `json:"color"`
 	ProjectID string        `json:"projectId,omitempty"`
+	// Kind viaja para que la app sepa cuál anclar arriba en Channels y cuál
+	// esconder en el navegador de tareas. Ver domain.SpaceKindGeneral.
+	Kind string `json:"kind,omitempty"`
 	Folders   []FolderTree  `json:"folders"`
 	Lists     []ListSummary `json:"lists"` // lists directly under the space
 	// People es quién tiene trabajo asignado aquí dentro. Es la única

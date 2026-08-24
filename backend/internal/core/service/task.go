@@ -120,11 +120,66 @@ func (s *TaskService) CreateSpace(req domain.CreateSpaceRequest) (*domain.TaskSp
 
 func (s *TaskService) FindSpace(id string) (*domain.TaskSpace, error) { return s.repo.FindSpace(id) }
 
+// ErrGeneralSpaceProtected: la sala general no admite tareas ni desaparece.
+//
+// La app no ofrece ninguna de esas acciones sobre ella, pero **el MCP sí llega
+// aquí**: `create_task_list` acepta cualquier spaceId, y un agente que la
+// tomara por un espacio corriente le colgaría una lista. La regla vive en el
+// servicio porque es donde pasan las dos puertas.
+var ErrGeneralSpaceProtected = errors.New("the general room holds no tasks and cannot be deleted")
+
+// esGeneral dice si ese espacio es la sala de la organización.
+//
+// Un espacio que no existe **no** es la sala: devolver el error de más abajo
+// taparía un «no encontrado» con un mensaje que no tiene nada que ver, y quien
+// llama ya sabe tratar el suyo.
+func (s *TaskService) esGeneral(spaceID string) bool {
+	sp, err := s.repo.FindSpace(spaceID)
+	return err == nil && sp.Kind == domain.SpaceKindGeneral
+}
+
+// EnsureGeneralSpace devuelve la sala general de la organización, creándola la
+// primera vez que alguien la pide.
+//
+// Buscar-o-crear en vez de sembrarla al crear la organización: bautizar una
+// sala y decidir que la quieres es del admin, no de una migración, y así las
+// organizaciones que nunca usen la voz no cargan con un canal vacío.
+//
+// Idempotente por partida doble. Si dos admins pulsan a la vez, el índice
+// `idx_space_general_per_org` tumba al segundo INSERT y aquí se relee la que
+// ganó: el segundo admin recibe la misma sala, no un error.
+func (s *TaskService) EnsureGeneralSpace(orgID string) (*domain.TaskSpace, error) {
+	if sp, err := s.repo.FindGeneralSpace(orgID); err == nil {
+		return sp, nil
+	} else if !errors.Is(err, repository.ErrSpaceNotFound) {
+		return nil, err
+	}
+
+	sp := &domain.TaskSpace{OrgID: orgID, Name: "General", Kind: domain.SpaceKindGeneral}
+	sp.ID = uuid.NewString()
+	if err := s.repo.CreateSpace(sp); err != nil {
+		// Perdió la carrera: la sala existe y es la del otro.
+		if otra, e := s.repo.FindGeneralSpace(orgID); e == nil {
+			return otra, nil
+		}
+		return nil, err
+	}
+	return sp, nil
+}
+
 func (s *TaskService) RenameSpace(id string, req domain.RenameRequest) error {
 	return s.repo.UpdateSpace(id, req.Name, req.Color)
 }
 
-func (s *TaskService) DeleteSpace(id string) error { return s.repo.DeleteSpace(id) }
+func (s *TaskService) DeleteSpace(id string) error {
+	// Renombrarla sí se permite —una organización puede querer llamarla «Lobby»,
+	// y es reversible—; borrarla no: se llevaría por delante el hilo de toda la
+	// organización.
+	if s.esGeneral(id) {
+		return ErrGeneralSpaceProtected
+	}
+	return s.repo.DeleteSpace(id)
+}
 
 // MoveSpace reorders a space among the org's spaces.
 func (s *TaskService) MoveSpace(id string, req domain.MoveNodeRequest) error {
@@ -171,6 +226,9 @@ func (s *TaskService) Neighbours(table, scopeCol, scopeID, id string, up bool) (
 // ─── Folders / lists ──────────────────────────────────────────────────────────
 
 func (s *TaskService) CreateFolder(spaceID, name string, parentID *string) (*domain.TaskFolder, error) {
+	if s.esGeneral(spaceID) {
+		return nil, ErrGeneralSpaceProtected
+	}
 	f := &domain.TaskFolder{SpaceID: spaceID, Name: name, ParentFolderID: parentID}
 	f.ID = uuid.NewString()
 	if err := s.repo.CreateFolder(f); err != nil {
@@ -223,6 +281,9 @@ func (s *TaskService) FindFolder(id string) (*domain.TaskFolder, error) {
 }
 
 func (s *TaskService) CreateList(spaceID string, req domain.CreateListRequest) (*domain.TaskList, error) {
+	if s.esGeneral(spaceID) {
+		return nil, ErrGeneralSpaceProtected
+	}
 	l := &domain.TaskList{SpaceID: spaceID, FolderID: req.FolderID, Name: req.Name}
 	l.ID = uuid.NewString()
 	if err := s.repo.CreateList(l, defaultStatuses()); err != nil {
@@ -269,6 +330,11 @@ func (s *TaskService) BindList(listID, projectID string) error {
 // setting is about what belongs where, and quietly redirecting a tenant's
 // incoming reports from two levels up would be too far from the action.
 func (s *TaskService) BindSpace(spaceID, projectID string) error {
+	// Atarla a un cliente diría que el hilo de toda la organización es trabajo
+	// suyo y se lo enseñaría.
+	if s.esGeneral(spaceID) {
+		return ErrGeneralSpaceProtected
+	}
 	return s.repo.BindSpaceToChannel(spaceID, projectID)
 }
 func (s *TaskService) DeleteList(id string) error { return s.repo.DeleteList(id) }
@@ -1108,6 +1174,9 @@ func (s *TaskService) DuplicateFolder(id, name string) (*domain.TaskFolder, erro
 
 // MoveFolderToSpace re-homes a folder and everything under it.
 func (s *TaskService) MoveFolderToSpace(folderID, spaceID string) error {
+	if s.esGeneral(spaceID) {
+		return ErrGeneralSpaceProtected
+	}
 	origen, err := s.repo.FindFolder(folderID)
 	if err != nil {
 		return err
@@ -1140,6 +1209,10 @@ func (s *TaskService) MoveFolderToSpace(folderID, spaceID string) error {
 // onto the list at the moment of the move keeps the answer to "who sees this"
 // exactly as it was, and makes it visible in the dialog rather than implied.
 func (s *TaskService) MoveListToSpace(listID, spaceID string) error {
+	// Mover una lista aquí dentro es la otra forma de darle tareas.
+	if s.esGeneral(spaceID) {
+		return ErrGeneralSpaceProtected
+	}
 	l, err := s.repo.FindList(listID)
 	if err != nil {
 		return err

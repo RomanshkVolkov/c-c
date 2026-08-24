@@ -19,6 +19,7 @@ type TaskHandler interface {
 	Tree(w http.ResponseWriter, r *http.Request)
 	ListOpen(w http.ResponseWriter, r *http.Request)
 	CreateSpace(w http.ResponseWriter, r *http.Request)
+	EnsureGeneralSpace(w http.ResponseWriter, r *http.Request)
 	UpdateSpace(w http.ResponseWriter, r *http.Request)
 	DeleteSpace(w http.ResponseWriter, r *http.Request)
 	CreateFolder(w http.ResponseWriter, r *http.Request)
@@ -131,6 +132,14 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		errors.Is(err, repository.ErrTaskNotFound),
 		errors.Is(err, repository.ErrStatusNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "Not found", err.Error())
+	// 409 y no 403: quien pide tiene permiso de sobra —suele ser el admin— y la
+	// petición está bien formada. Lo que se le niega es dejar la sala general en
+	// un estado que no es el suyo.
+	case errors.Is(err, service.ErrGeneralSpaceProtected):
+		SendErrorResponse(w, http.StatusConflict,
+			"The general room is the organization's channel, not a place for tasks: "+
+				"it holds no lists or folders, and it cannot be deleted. Rename it if you like.",
+			"general-space-protected")
 	case errors.Is(err, service.ErrColumnsAreFixed):
 		SendErrorResponse(w, http.StatusGone,
 			"Board columns are fixed: To do, In progress, Done and Closed. "+
@@ -209,6 +218,35 @@ func (h *taskHandler) authorizeOrg(w http.ResponseWriter, r *http.Request, orgID
 		return nil, false
 	}
 	return user, true
+}
+
+// EnsureGeneralSpace: la sala de toda la organización, creada la primera vez
+// que un admin la pide. Idempotente — pedirla dos veces devuelve la misma.
+func (h *taskHandler) EnsureGeneralSpace(w http.ResponseWriter, r *http.Request) {
+	req, err := ValidateRequest[domain.EnsureGeneralSpaceRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	// Sólo admin. `authorizeOrg` con needWrite deja pasar a cualquier miembro que
+	// escriba, y abrir el canal de toda la organización —y bautizarlo— es una
+	// decisión de quien la administra.
+	user, ok := h.authorizeOrg(w, r, req.OrgID, true)
+	if !ok {
+		return
+	}
+	if role, _ := user.RoleInOrg(req.OrgID); !user.Superadmin && role != domain.OrgRoleAdmin {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-an-admin")
+		return
+	}
+	sp, err := h.svc.EnsureGeneralSpace(req.OrgID)
+	if err != nil {
+		if !mapTaskError(w, err) {
+			SendErrorResponse(w, http.StatusInternalServerError, "Failed to open the general room", err.Error())
+		}
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.TaskSpace]{Success: true, Data: sp})
 }
 
 // resolveSpace walks a space id to its org and authorizes in one step; the same

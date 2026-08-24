@@ -69,6 +69,9 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.Tree)
 		r.Post("/", h.CreateSpace)
+		// Antes que "/{id}": chi casa las rutas literales primero, pero dejarlas
+		// juntas evita que alguien mueva una y cree una sala llamada "general".
+		r.Post("/general", h.EnsureGeneralSpace)
 		r.Patch("/{id}", h.UpdateSpace)
 		r.Delete("/{id}", h.DeleteSpace)
 		r.Post("/{id}/folders", h.CreateFolder)
