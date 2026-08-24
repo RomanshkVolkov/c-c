@@ -144,35 +144,12 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateDefaultAssignee(p.OrgID, req.DefaultAssigneeUserID); err != nil {
-		return nil, err
-	}
-	p.Name = req.Name
-	p.WebhookURL = req.WebhookURL
-	// Only replaced when a new one is sent: an edit that leaves the field blank
-	// means "unchanged", not "wipe the secret and silently stop signing".
-	if req.WebhookSecret != "" {
-		p.WebhookSecret = req.WebhookSecret
-	}
-	if req.WebhookURL == "" {
-		p.WebhookSecret = "" // clearing the endpoint retires its secret too
-	}
-	p.AllowedOrigins = domain.StringList(req.AllowedOrigins)
-	p.RateLimitPerHour = defaultRateLimit(req.RateLimitPerHour)
-	p.RateLimitPerReporterPerHour = defaultReporterRateLimit(req.RateLimitPerReporterPerHour)
-	if req.IsActive != nil {
-		p.IsActive = *req.IsActive
-	}
-	if req.DefaultAssigneeUserID == "" {
-		p.DefaultAssigneeUserID = nil
-	} else {
-		p.DefaultAssigneeUserID = &req.DefaultAssigneeUserID
-	}
-	// La bandeja, si se pide moverla.
+	// Las dos guardas de la bandeja, antes de tocar nada.
 	if req.ListID != nil {
 		if *req.ListID == "" {
 			// Dejar un canal sin lista no es «desconfigurarlo»: es que todo lo
 			// que le manden a partir de ese momento se pierda sin decir nada.
+			// Es la única excepción a «el vacío borra».
 			return nil, repository.ErrChannelNeedsInbox
 		}
 		// Y no a la de otra organización: sería enseñar el trabajo de un
@@ -181,12 +158,77 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 		if org := s.repo.OrgDeLista(*req.ListID); org != p.OrgID {
 			return nil, ErrInboxOtherOrg
 		}
-		p.ListID = req.ListID
+	}
+	if err := s.aplicarCambios(p, req); err != nil {
+		return nil, err
 	}
 	if err := s.repo.Update(p); err != nil {
 		return nil, err
 	}
 	return toReportProjectResponse(p), nil
+}
+
+// aplicarCambios copia sobre el proyecto **sólo los campos que llegaron**.
+//
+// Aparte de `Update` para poder probarse sin base de datos: la regla que
+// implementa —omitir no borra— es aritmética sobre dos structs, y montar
+// Postgres para leerla añadiría formas de fallar que no tienen nada que ver con
+// ella. Importa porque el CI no corre las pruebas del backend, así que una
+// prueba que necesite una base de datos no vigila nada.
+//
+// Lo que necesita el repositorio se queda fuera: validar el responsable y
+// comprobar la organización de la bandeja.
+func aplicarCambios(p *domain.ReportProject, req domain.UpdateReportProjectRequest) {
+	if req.DefaultAssigneeUserID != nil {
+		if *req.DefaultAssigneeUserID == "" {
+			p.DefaultAssigneeUserID = nil
+		} else {
+			p.DefaultAssigneeUserID = req.DefaultAssigneeUserID
+		}
+	}
+	if req.Name != nil {
+		p.Name = *req.Name
+	}
+	if req.AllowedOrigins != nil {
+		p.AllowedOrigins = domain.StringList(*req.AllowedOrigins)
+	}
+	if req.RateLimitPerHour != nil {
+		p.RateLimitPerHour = defaultRateLimit(*req.RateLimitPerHour)
+	}
+	if req.RateLimitPerReporterPerHour != nil {
+		p.RateLimitPerReporterPerHour = defaultReporterRateLimit(*req.RateLimitPerReporterPerHour)
+	}
+	if req.IsActive != nil {
+		p.IsActive = *req.IsActive
+	}
+	// El secreto se reemplaza sólo cuando llega uno nuevo: una edición
+	// corriente no puede dejar de firmar sin decirlo.
+	if req.WebhookSecret != nil && *req.WebhookSecret != "" {
+		p.WebhookSecret = *req.WebhookSecret
+	}
+	if req.WebhookURL != nil {
+		p.WebhookURL = *req.WebhookURL
+		if *req.WebhookURL == "" {
+			// Retirar el destino retira su secreto — pero sólo si mandaste el
+			// vacío a propósito.
+			p.WebhookSecret = ""
+		}
+	}
+	// El vacío no llega aquí: `Update` lo rechaza antes.
+	if req.ListID != nil && *req.ListID != "" {
+		p.ListID = req.ListID
+	}
+}
+
+// aplicarCambios con lo que hace falta el repositorio: validar el responsable.
+func (s *ReportProjectService) aplicarCambios(p *domain.ReportProject, req domain.UpdateReportProjectRequest) error {
+	if req.DefaultAssigneeUserID != nil {
+		if err := s.validateDefaultAssignee(p.OrgID, *req.DefaultAssigneeUserID); err != nil {
+			return err
+		}
+	}
+	aplicarCambios(p, req)
+	return nil
 }
 
 func (s *ReportProjectService) Delete(id string) error {

@@ -297,26 +297,42 @@ type CreateReportProjectRequest struct {
 	WebhookSecret               string   `json:"webhookSecret"         validate:"omitempty,min=16,max=120"`
 }
 
+// UpdateReportProjectRequest es un PATCH de verdad: **lo que no mandas no se
+// toca**.
+//
+// Todo puntero por eso. Antes eran valores, y omitir un campo lo reseteaba: un
+// `PATCH` que sólo quisiera cambiar la bandeja **borraba el webhook y su
+// secreto**, vaciaba los orígenes permitidos y devolvía los límites a su
+// defecto. Nada de eso avisaba.
+//
+// La regla, ahora explícita en los tres estados que puede tener un campo:
+//
+//   - **ausente** — se queda como está;
+//   - **con valor** — se cambia;
+//   - **vacío** (`""`, `[]`) — se borra, porque lo pediste.
+//
+// Borrar algo sin haberlo pedido es peor que obligar a pedirlo.
 type UpdateReportProjectRequest struct {
-	Name                        string   `json:"name"             validate:"required,min=1,max=120"`
-	AllowedOrigins              []string `json:"allowedOrigins"   validate:"omitempty,dive,url"`
-	RateLimitPerHour            int      `json:"rateLimitPerHour" validate:"omitempty,min=1,max=10000"`
-	RateLimitPerReporterPerHour int      `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
-	IsActive                    *bool    `json:"isActive"`
-	// "" clears the default assignee; a uuid sets it.
-	DefaultAssigneeUserID string `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
+	Name                        *string   `json:"name"             validate:"omitempty,min=1,max=120"`
+	AllowedOrigins              *[]string `json:"allowedOrigins"   validate:"omitempty,dive,url"`
+	RateLimitPerHour            *int      `json:"rateLimitPerHour" validate:"omitempty,min=1,max=10000"`
+	RateLimitPerReporterPerHour *int      `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
+	IsActive                    *bool     `json:"isActive"`
+	// "" borra el responsable por defecto; un uuid lo pone.
+	DefaultAssigneeUserID *string `json:"defaultAssigneeUserId" validate:"omitempty"`
 	// ListID mueve la bandeja: en qué lista aparecen los reportes que llegan
 	// por la key.
 	//
-	// Puntero porque ausente y vacío no son lo mismo: omitirlo deja la bandeja
-	// como está, y mandar "" **se rechaza** — un canal sin lista donde entregar
-	// pierde todo lo que le manden, en silencio. Hasta ahora sólo la escribía
-	// una migración de arranque, así que moverla requería SQL.
+	// Aquí el vacío **se rechaza** en vez de borrar, y es la única excepción a
+	// la regla de arriba: un canal sin lista donde entregar pierde todo lo que
+	// le manden, en silencio. Hasta ahora sólo la escribía una migración de
+	// arranque, así que moverla requería SQL.
 	ListID *string `json:"listId" validate:"omitempty,max=36"`
-	// "" clears the webhook. The secret is only replaced when a new one is
-	// sent, so an ordinary edit doesn't silently wipe it.
-	WebhookURL    string `json:"webhookUrl"    validate:"omitempty,url"`
-	WebhookSecret string `json:"webhookSecret" validate:"omitempty,min=16,max=120"`
+	// "" borra el webhook, y con él su secreto — pero sólo si lo mandas vacío
+	// a propósito. El secreto se reemplaza únicamente cuando llega uno nuevo,
+	// así que una edición corriente no lo pisa.
+	WebhookURL    *string `json:"webhookUrl"    validate:"omitempty,url"`
+	WebhookSecret *string `json:"webhookSecret" validate:"omitempty,min=16,max=120"`
 }
 
 type ReportProjectResponse struct {
