@@ -68,6 +68,29 @@ widget) — `origin-missing` y `origin-not-allowed` según el caso.
 
 ---
 
+## 1.b La envoltura de las respuestas
+
+**Todo lo que devuelve la API va envuelto.** El payload vive en `data`, nunca en la
+raíz:
+
+```json
+{ "success": true, "data": { … } }
+```
+
+En un fallo, `success` es `false` y el código va en `error` (con un texto libre en
+`message`):
+
+```json
+{ "success": false, "error": "rate-limited", "message": "…" }
+```
+
+Dos consecuencias que cuestan un bug si no se dicen:
+
+- **Leer el payload de la raíz devuelve `undefined`.** Los ejemplos de este
+  documento muestran el contenido de `data`, no el cuerpo completo.
+- **`res.ok` no basta.** Un `200` puede traer `success: false`; hay que mirar los
+  dos.
+
 ## 2. Mapa de operaciones
 
 Base: `https://cac.guz-studio.dev`
@@ -99,6 +122,36 @@ sería devolver datos que no pediste bajo el id de otro.
 Consume `transitions` y `taxonomy` del servidor en vez de copiar las listas: es la
 diferencia entre una fuente y dos que se separan.
 
+### El listado viene paginado
+
+`GET /api/v1/reports` **no devuelve un arreglo**: devuelve la página y su total.
+
+```json
+{ "success": true,
+  "data": { "items": [ … ], "total": 42, "limit": 200, "offset": 0 } }
+```
+
+Tratar `data` como arreglo revienta con `.map is not a function`. Acepta `limit` y
+`offset` como query params; sin `limit` explícito la página tiene su tamaño por
+defecto, así que un tablero que asuma «vienen todos» empieza a perder reportes en
+cuanto el proyecto crece.
+
+### La URL de las imágenes es relativa
+
+Cada imagen trae una `url` **relativa al host de cac**, firmada y de vida corta:
+
+```json
+{ "id": "…", "fileName": "captura.png",
+  "url": "/api/v1/reports/{reportId}/images/{imageId}?exp=1787563290&sig=0cd82…" }
+```
+
+Hay que prefijarla con la base de cac antes de usarla. Puesta en un `<img>` tal cual,
+el navegador la resuelve contra **tu** dominio y da 404.
+
+La firma es lo que sustituye a la credencial: una vez absoluta se consume sin
+cabeceras, que es justo lo que necesita un `<img>`. No es una URL de S3 — apunta al
+proxy de cac.
+
 ### Crear un reporte
 
 `multipart/form-data`. Campos, todos opcionales salvo `title`:
@@ -110,15 +163,26 @@ diferencia entre una fuente y dos que se separan.
 
 ### El cuerpo de cada llamada
 
-Todo lo que escribe comentarios es `multipart/form-data`. **También el PATCH** —
-es la asimetría que más tiempo cuesta si no se dice:
+Hay **dos formatos** y no se reparten por verbo, así que no se puede deducir: lo de
+comentarios va en `multipart/form-data` —porque lleva imágenes— y el `PATCH` del
+reporte va en **JSON**.
 
-| Operación | Cuerpo |
-|---|---|
-| `POST …/comments` | `body`, `images`, `authorName`, `authorId` (§3) |
-| `PATCH …/comments/{id}` | `body`, `images`, `removeImageIds` — ver §3 |
-| `DELETE …/comments/{id}` | sin cuerpo |
-| `DELETE …/images/{id}` | sin cuerpo, y **sólo galería** (§3) |
+| Operación | Cuerpo | Formato |
+|---|---|---|
+| `POST /ingest/v1/reports` | ver arriba | `multipart` |
+| `PATCH /api/v1/reports/{id}` | `status`, `priority`, `category`, `area` | **`application/json`** |
+| `POST …/comments` | `body`, `images`, `authorName`, `authorId` (§3) | `multipart` |
+| `PATCH …/comments/{id}` | `body`, `images`, `removeImageIds` — ver §3 | `multipart` |
+| `DELETE …/comments/{id}` | sin cuerpo | — |
+| `DELETE …/images/{id}` | sin cuerpo, y **sólo galería** (§3) | — |
+
+Mandarle `multipart` al `PATCH` del reporte responde algo que no orienta nada:
+
+```
+400 {"error": "invalid character '-' in numeric literal"}
+```
+
+Es el parser de JSON tropezando con el `boundary` del multipart.
 
 `POST` y `PATCH` de comentario devuelven **el hilo entero ya actualizado**, así que
 no hace falta volver a pedir el detalle.
@@ -128,11 +192,12 @@ que un valor nuevo nunca rompe el alta. `origin=system` activa el dedup por tít
 contra los reportes abiertos del proyecto, para que un proceso automático que
 reintenta no inunde el tablero.
 
-Respuesta:
+Respuesta (dentro de `data`, ver §1.b):
 
 ```json
-{ "id": "...", "seq": 12, "folio": "portento-12", "images": 1,
-  "token": "...", "deduped": false }
+{ "success": true,
+  "data": { "id": "...", "seq": 12, "folio": "portento-12", "images": 1,
+            "token": "...", "deduped": false } }
 ```
 
 `token` es el token de ese reporte (§5). `deduped: true` significa que se devolvió
@@ -541,3 +606,7 @@ Los que vas a ver de verdad, con lo que significan:
 5. Ignoras los eventos cuyo `data.from` es tu propio proyecto.
 6. Guardas el `token` de cada reporte junto a su id.
 7. Lees `transitions` y `taxonomy` del servidor en vez de copiarlos.
+8. Lees el payload de `data`, no de la raíz, y compruebas `success` además de `res.ok` (§1.b).
+9. El listado lo lees de `data.items` y mandas `limit` explícito.
+10. El `PATCH` del reporte lo mandas en JSON; los comentarios en `multipart`.
+11. Prefijas la `url` de cada imagen con la base de cac antes de pintarla.
