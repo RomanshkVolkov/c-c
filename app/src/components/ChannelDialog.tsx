@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Eye, KeyRound, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -59,8 +59,9 @@ export default function ChannelDialog({
   const confirm = useConfirm();
   const projects = useTasksStore((s) => s.channels);
   const fetchProjects = useTasksStore((s) => s.fetchChannels);
-  const { bindNode, fetchChannel, createChannel, updateChannel, rotateChannelKey } =
+  const { bindNode, fetchChannel, createChannel, updateChannel, rotateChannelKey, setChannelInbox } =
     useTasksStore.getState();
+  const tree = useTasksStore((s) => s.tree);
 
   const [loading, setLoading] = useState(true);
   const [channel, setChannel] = useState<ReportProject | null>(null);
@@ -99,6 +100,39 @@ export default function ChannelDialog({
   // A list showing a channel it inherited hasn't been bound to anything itself,
   // so "none" is already its state and clearing it changes nothing visible.
   const inherited = kind === "list" && Boolean(inheritedFrom) && bindTo === channel?.id;
+
+  // El nombre de la lista donde caen hoy, con su ruta: «Boaty · web · Tasks».
+  // Un id crudo no le dice nada a nadie, y es lo que se estaba enseñando.
+  const bandeja = useMemo(() => {
+    if (!channel?.listId) return null;
+    for (const sp of tree) {
+      for (const l of sp.lists ?? []) {
+        if (l.id === channel.listId) return `${sp.name} · ${l.name}`;
+      }
+      for (const f of sp.folders ?? []) {
+        for (const l of f.lists ?? []) {
+          if (l.id === channel.listId) return `${sp.name} · ${f.name} · ${l.name}`;
+        }
+      }
+    }
+    // Puede estar en otra organización o haberse borrado; decirlo es mejor que
+    // enseñar un uuid.
+    return "a list outside this organization";
+  }, [channel, tree]);
+
+  const moverBandeja = async () => {
+    if (!channel) return;
+    setSaving(true);
+    try {
+      await setChannelInbox(channel.id, id);
+      setChannel(await fetchChannel(kind, id));
+      toast.success("Their reports will arrive here from now on");
+    } catch (e) {
+      toast.error("Couldn't move the inbox", { description: String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const bind = async () => {
     setSaving(true);
@@ -231,11 +265,16 @@ export default function ChannelDialog({
                 </p>
               )}
 
-              {/* The consequence people don't expect from a dropdown. */}
+              {/* Lo que la gente no espera de un desplegable.
+                  Antes esta frase decía que los reportes del cliente caerían en
+                  esta lista, y **era falsa**: pertenecer a un cliente y recibir
+                  sus reportes son dos cosas distintas, y la segunda vive en el
+                  canal. Confundirlas es lo que hacía imposible entender por qué
+                  los reportes aparecían en otro sitio. */}
               {kind === "list" && bindTo && (
                 <p className="text-xs text-muted-foreground">
-                  Reports from this client will land in this list, and work created here will be
-                  visible to them unless marked internal.
+                  Work created here will be visible to them unless marked internal. Where their
+                  reports <em>arrive</em> is set below.
                 </p>
               )}
               {kind === "space" && bindTo && (
@@ -245,6 +284,40 @@ export default function ChannelDialog({
                 </p>
               )}
             </section>
+
+            {/* ── Dónde llegan los reportes ── */}
+            {channel && (
+              <section className="space-y-2 border-t pt-4">
+                <Label>Reports arrive in</Label>
+                <p className="text-sm">
+                  {bandeja ? (
+                    <span className="font-medium">{bandeja}</span>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      Nowhere — anything sent is being lost.
+                    </span>
+                  )}
+                </p>
+                {kind === "list" && channel.listId !== id && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={moverBandeja} disabled={saving}>
+                      Send them to this list instead
+                    </Button>
+                    {/* Lo que cuesta, antes de pulsar: los reportes que ya
+                        están no se mueven, así que el histórico se queda
+                        partido en dos sitios. */}
+                    <p className="text-xs text-muted-foreground">
+                      From now on. Reports already filed stay where they are.
+                    </p>
+                  </>
+                )}
+                {kind === "space" && (
+                  <p className="text-xs text-muted-foreground">
+                    A space isn't an inbox: open the list you want and set it there.
+                  </p>
+                )}
+              </section>
+            )}
 
             {/* ── The channel's own rules ── */}
             {!channel ? (

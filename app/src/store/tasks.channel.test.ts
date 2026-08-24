@@ -77,6 +77,26 @@ describe("binding a node to a channel", () => {
   });
 });
 
+describe("moving where a client's reports arrive", () => {
+  beforeEach(() => patch.mockClear());
+
+  // Lo que hace posible este botón: el PATCH dejó de borrar lo que no se
+  // menciona. Mandar la configuración entera para cambiar la bandeja era la
+  // forma de perder un webhook por omisión.
+  it("manda sólo la lista, y nada más", async () => {
+    await useTasksStore.getState().setChannelInbox("proj-1", "li-9");
+    const [url, sent] = patch.mock.calls[0] ?? [];
+    expect(url).toBe("/api/v1/report-projects/proj-1");
+    expect(sent).toEqual({ listId: "li-9" });
+  });
+
+  // No al del árbol: la bandeja es del proyecto, no del nodo.
+  it("va al endpoint del proyecto", async () => {
+    await useTasksStore.getState().setChannelInbox("proj-1", "li-9");
+    expect(String(patch.mock.calls[0]?.[0])).not.toContain("task-lists");
+  });
+});
+
 describe("the empty-secret guard lives in the store", () => {
   beforeEach(() => patch.mockClear());
 

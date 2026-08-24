@@ -75,6 +75,14 @@ export interface ReportProject {
   defaultAssigneeUserId?: string;
   /** "web" enforces the Origin allowlist; "app" is for server-to-server. */
   platform: "web" | "app";
+  /**
+   * En qué lista aparecen los reportes que llegan por la key.
+   *
+   * El servidor lo manda desde siempre y la app lo ignoraba, así que no había
+   * forma de ver —ni de cambiar— dónde caían. Opcional porque un proyecto puede
+   * existir antes de tener bandeja.
+   */
+  listId?: string;
   webhookUrl: string;
   /** Whether a signing secret exists — the value itself is never returned. */
   webhookConfigured: boolean;

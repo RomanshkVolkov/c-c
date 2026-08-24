@@ -173,6 +173,15 @@ interface TasksState {
   channels: ReportProject[];
   fetchChannels: () => Promise<void>;
   /** Stop accepting new reports without destroying anything already filed. */
+  /**
+   * Mover la bandeja: en qué lista aparecen los reportes que llegan por la key.
+   *
+   * Manda **sólo** ese campo, que es posible desde que el `PATCH` dejó de
+   * borrar lo que no se menciona. Antes había que reenviar la configuración
+   * entera —nombre, orígenes, límites, webhook— y omitir el webhook lo borraba
+   * junto con su secreto.
+   */
+  setChannelInbox: (projectId: string, listId: string) => Promise<void>;
   setChannelActive: (projectId: string, isActive: boolean) => Promise<void>;
   deleteChannel: (projectId: string) => Promise<void>;
 
@@ -754,6 +763,15 @@ export const useTasksStore = create<TasksState>()(
         // Scoped to the org on screen: binding a node to another organization's
         // channel is how work gets pushed at a client nobody here deals with.
         set({ channels: orgId ? all.filter((p) => p.orgId === orgId) : all });
+      },
+
+      setChannelInbox: async (projectId, listId) => {
+        await api.patch<APIResponse<unknown>>(
+          `/api/v1/report-projects/${projectId}`,
+          { listId },
+          true,
+        );
+        await get().fetchChannels();
       },
 
       setChannelActive: async (projectId, isActive) => {

@@ -877,6 +877,17 @@ function ListNode({
             >
               <KanbanSquare className="size-4" /> Open the board
             </DropdownMenuItem>
+            {/* Faltaba, y el diálogo llevaba tiempo montado unas líneas más
+                abajo sin nada que lo abriera: el canal sólo se podía configurar
+                en el espacio, que lo hereda **todo** lo que hay dentro. Quien
+                necesitaba que los reportes de un cliente entraran en una lista
+                concreta no tenía forma de decirlo.
+
+                Y el nombre importa: «Channel» en cac ya son los canales de
+                chat, así que nadie lo buscaba aquí. */}
+            <DropdownMenuItem onClick={() => setChannelOpen(true)}>
+              <Eye className="size-4" /> Client reports{channel ? "" : "…"}
+            </DropdownMenuItem>
             <MoveToSpace
               currentSpaceId={spaceId}
               onPick={(destino) => moveListToSpace(list.id, destino).catch((e) => toast.error(String(e)))}
