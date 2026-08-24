@@ -52,10 +52,20 @@ type NotificationPrefs struct {
 	// defaulting to true made "turn this off" store itself as on — a setting
 	// that silently did nothing. The default for somebody with no row at all is
 	// handled in code instead; see DefaultPrefs.
-	Mentions bool `json:"mentions"`
-	DMs      bool `json:"dms"`
-	Comments bool `json:"comments"`
-	Reports  bool `json:"reports"`
+	// MeetingsQuiet apaga los recordatorios de reuniones periódicas.
+	//
+	// Invertido como WorkQuiet y por lo mismo: la columna nace en el cero de su
+	// tipo para todo el que ya tenga preferencias guardadas, y ese cero tiene que
+	// significar «sí, avísame» — que es lo que espera quien nunca ha tocado esto.
+	//
+	// Existe porque sin él una reunión sería el único aviso **recurrente** de la
+	// app imposible de silenciar: cae en el `return true` del final, que está
+	// pensado para clases nuevas y sueltas, no para algo que suena cada martes.
+	MeetingsQuiet bool `json:"meetingsQuiet"`
+	Mentions      bool `json:"mentions"`
+	DMs           bool `json:"dms"`
+	Comments      bool `json:"comments"`
+	Reports       bool `json:"reports"`
 	// WorkQuiet apaga los avisos de tu propio trabajo: que te asignen algo, que
 	// cambie de estado.
 	//
@@ -95,6 +105,8 @@ func (p NotificationPrefs) Allows(kind string) bool {
 		return p.Messages
 	case "task:assigned", "task:status":
 		return !p.WorkQuiet
+	case "meeting:reminder":
+		return !p.MeetingsQuiet
 	}
 	return true
 }
