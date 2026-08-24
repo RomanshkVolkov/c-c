@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
+import OrgMeetings from "@/components/org/OrgMeetings";
 import OrgSpaces from "@/components/org/OrgSpaces";
 import OrgInvitations from "@/components/org/OrgInvitations";
 import OrgGeneral from "@/components/org/OrgGeneral";
@@ -42,6 +43,8 @@ const PESTANAS = [
   // They belong to the organization, which is why they are here and not on a
   // server's screen.
   { key: "integrations", label: "Integrations" },
+  // Las reuniones periódicas: lo que suena a una hora sin que nadie lo pida.
+  { key: "meetings", label: "Meetings" },
   { key: "general", label: "General" },
 ] as const;
 
@@ -410,6 +413,8 @@ export default function OrganizationSettings() {
         {pestana === "general" && <OrgGeneral org={current} canManage={canManage} />}
 
         {pestana === "integrations" && <OrgIntegrations canManage={canManage} />}
+
+        {pestana === "meetings" && <OrgMeetings canManage={canManage} />}
 
       </div>
     </div>
