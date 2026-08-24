@@ -90,6 +90,35 @@ const PING_TIMEOUT_MS = 60_000;
  * Se exporta para poder probarlo de verdad, y lo usan los dos transportes —el
  * de Rust y el de `EventSource`—, que tenían el mismo agujero por separado.
  */
+/**
+ * ¿Este evento deja fila en la campana?
+ *
+ * El backend guarda la notificación en su tabla, pero la campana no se entera
+ * sola: hay que volver a pedir la bandeja. Sólo lo hacían tres ramas del
+ * conmutador —reportes y comentarios de tarea—, así que un mensaje de canal o un
+ * directo se guardaban y **no aparecían** hasta que algo recargaba la bandeja
+ * por otro motivo: arrancar la app, iniciar sesión o cambiar de organización.
+ * Desde fuera parecía que llegaban al entrar en la sección.
+ *
+ * Se escribe como lista y no repartido por el conmutador para que se pueda leer
+ * de un vistazo qué avisa y qué no — que es justo la pregunta que nadie podía
+ * contestar cuando esto estaba roto.
+ */
+const DEJAN_FILA = new Set([
+  "report:new",
+  "report:comment",
+  "task:comment",
+  "task:assigned",
+  "task:status",
+  "chat:message",
+  "chat:mention",
+  "dm:message",
+]);
+
+export function tocaLaCampana(evento: string): boolean {
+  return DEJAN_FILA.has(evento);
+}
+
 export function vigilanteDeReconexion() {
   let caido = false;
   return (estado: "open" | "connecting" | "down"): boolean => {
@@ -212,6 +241,11 @@ export function useReportEvents() {
 
       const dm = useDMStore.getState();
       if (dm.conversationId) void dm.open(dm.conversationId);
+
+      // Y la campana, que faltaba: sin esto un aviso emitido durante una caída
+      // no se recuperaba nunca, ni volviendo a la ventana.
+      const inbox = useInboxStore.getState();
+      void inbox.load(inbox.orgId).catch(() => {});
     };
 
     /**
@@ -245,6 +279,14 @@ export function useReportEvents() {
       if (event.startsWith("report:") || event.startsWith("task:")) {
         usePendingStore.getState().markStale();
       }
+      // La campana, en un solo sitio y antes del conmutador.
+      //
+      // Estaba repartida en tres ramas y faltaba en cinco. Ponerla aquí evita
+      // además la trampa que tenía: varias ramas se cortan antes de terminar
+      // —«ya estás mirando esa conversación», «no hay lista abierta»— y esos
+      // cortes son razones para **no interrumpirte**, no para dejar la campana
+      // sin actualizar.
+      if (tocaLaCampana(event)) releerBandeja();
       switch (event) {
         case "report:new": {
           const p = parse(data);
@@ -293,7 +335,6 @@ export function useReportEvents() {
                 : "Someone on the team replied";
           toast.message(who);
           notify("report:comment", "New reply", who, p.reportId);
-          releerBandeja();
           refresh();
           break;
         }
@@ -309,10 +350,6 @@ export function useReportEvents() {
           // the event belongs to the list currently on screen — a busy org would
           // otherwise reload the board on every unrelated card someone touches.
           const p = parse(data) as { listId?: string };
-          // Sólo el comentario deja fila en la campana; mover una tarjeta no.
-          // Y antes del corte de abajo, que se va si no hay lista abierta: a
-          // quien está en el hilo le toca enterarse mire donde mire.
-          if (event === "task:comment") releerBandeja();
           const store = useTasksStore.getState();
           if (!store.activeListId) return;
           if (p.listId && p.listId !== store.activeListId) return;
@@ -376,17 +413,29 @@ export function useReportEvents() {
           // is yours — the hub does the filtering that `mine()` does for the
           // org-wide streams. The actor check stays anyway: you are told about
           // your own message on no channel.
-          const p = parse(data) as Payload & { conversationId?: string };
+          const p = parse(data) as Payload & {
+            conversationId?: string;
+            authorName?: string;
+          };
           if (!p.conversationId || mine(p)) break;
           void useDMStore.getState().onIncoming(p.conversationId);
 
           const dm = useDMStore.getState();
           if (dm.conversationId === p.conversationId) break;
-          const who = dm.conversations.find(
-            (c) => c.conversationId === p.conversationId,
-          )?.username;
+          // El nombre lo manda el servidor; la lista local es sólo el respaldo.
+          //
+          // Antes era al revés, y `conversations` sólo está cargada si has
+          // abierto la sección de directos. Quien recibe un directo con el
+          // tablero delante no la tiene, y el aviso decía «Direct message» —
+          // indistinguible de cualquier otro.
+          const who =
+            p.authorName ||
+            dm.conversations.find((c) => c.conversationId === p.conversationId)?.username;
           toast.message(who ? `${who} wrote to you` : "New direct message");
-          notify("dm:message", who ?? "Direct message", "You have a new message");
+          // Sin cuerpo: el texto de un directo no sale de la conversación, ni
+          // aquí ni en la fila de la bandeja. Con el nombre en el título basta
+          // para saber a dónde ir, que es para lo que sirve un aviso.
+          notify("dm:message", who ? `${who} wrote to you` : "New direct message", "");
           break;
         }
         // ── El timbre de la voz ─────────────────────────────────────────

@@ -48,11 +48,21 @@ func (s *DMService) publish(toUserID, orgID, conversationID, messageID, actorID 
 	if s.hub == nil || toUserID == "" || toUserID == actorID {
 		return
 	}
+	// El nombre viaja en el evento, y no se deja que la consola lo busque.
+	//
+	// Lo sacaba de su lista de conversaciones, que sólo está cargada si has
+	// abierto la sección de directos; antes de eso el aviso del sistema decía
+	// «Direct message» y no se distinguía de ningún otro. Mismo fallo que tenía
+	// el chat con el nombre del canal, y misma solución.
+	//
+	// El **texto** no viaja, a diferencia del chat: ver el comentario de abajo.
+	de := s.repo.NombreDe(actorID)
 	s.hub.Publish(events.Event{
 		Type:   "dm:message",
 		UserID: toUserID,
 		Data: map[string]string{
 			"conversationId": conversationID, "messageId": messageID, "actorId": actorID,
+			"authorName": de,
 		},
 	})
 	if s.notifier != nil {
@@ -72,7 +82,7 @@ func (s *DMService) publish(toUserID, orgID, conversationID, messageID, actorID 
 		// ViaApp fijo, por lo mismo que en chat.go: ninguna herramienta del MCP
 		// escribe directos. Si alguna llega, este servicio necesita el contexto.
 		titulo := "New direct message"
-		if de := s.repo.NombreDe(actorID); de != "" {
+		if de != "" {
 			titulo = de + " te escribió"
 		}
 		s.notifier.Notify(toUserID, orgID, "dm:message",

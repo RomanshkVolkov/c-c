@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { vigilanteDeReconexion } from "./use-report-events";
+import { tocaLaCampana, vigilanteDeReconexion } from "./use-report-events";
 
 /**
  * Recuperar lo que pasó mientras el stream estaba caído.
@@ -57,4 +57,39 @@ describe("volver de una caída", () => {
     expect(otro("open")).toBe(false);
     expect(uno("open")).toBe(true);
   });
+});
+
+/**
+ * Qué eventos dejan fila en la campana.
+ *
+ * El backend guarda la notificación en su tabla, pero la campana no se entera
+ * sola: hay que volver a pedir la bandeja. Sólo lo hacían tres ramas del
+ * conmutador, así que un mensaje de canal o un directo se guardaban y no
+ * aparecían hasta que algo la recargaba por otro motivo —arrancar la app o
+ * cambiar de organización—. Desde fuera parecía que llegaban al entrar en la
+ * sección.
+ */
+describe("qué toca la campana", () => {
+  // Los tres del fallo reportado, y los que ya iban.
+  it.each([
+    "dm:message",
+    "chat:message",
+    "chat:mention",
+    "task:assigned",
+    "task:status",
+    "report:new",
+    "report:comment",
+    "task:comment",
+  ])("%s deja fila", (evento) => {
+    expect(tocaLaCampana(evento)).toBe(true);
+  });
+
+  // Y lo que no debe tocarla. Mover una tarjeta o recibir vídeo pasa
+  // constantemente; releer la bandeja en cada uno sería un sondeo disfrazado.
+  it.each(["task:move", "task:new", "task:delete", "report:attachment", "voice.ring", "ping"])(
+    "%s no la toca",
+    (evento) => {
+      expect(tocaLaCampana(evento)).toBe(false);
+    },
+  );
 });
