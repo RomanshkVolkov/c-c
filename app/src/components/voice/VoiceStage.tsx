@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { AlertCircle, Loader2, Minimize2, Volume2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, Loader2, MessageSquare, Minimize2, Volume2, X } from "lucide-react";
+import { iniciales } from "@/lib/desde";
+import VoiceChat from "@/components/voice/VoiceChat";
 import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
@@ -47,6 +49,26 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const pantalla = compartiendo ? yo : pantallaAjena;
   const [invitando, setInvitando] = useState(false);
   const [ajustes, setAjustes] = useState(false);
+  const [chat, setChat] = useState(false);
+  const spaceId = useVoice((s) => s.spaceId);
+
+  // Con alguien compartiendo, las caras se van **encima** de la imagen en vez
+  // de ocupar una columna de 200 px al lado. El ancho es lo que se ha venido a
+  // mirar; un bloque sólido robándoselo a una captura ya reducida es justo lo
+  // que estorba.
+  //
+  // Automático y no un botón más: son cuatro pastillas en la cabecera y esto se
+  // resuelve solo. Con las dos reglas de `useEncogerEnLlamada`, por lo mismo
+  // que allí — se restaura al terminar, y si lo abres a mano deja de mandar.
+  // Un solo booleano, y dice una cosa: «las pediste tú». Antes eran tres
+  // estados —`null`, `false`, `true`— y dos de ellos significaban lo mismo
+  // según hubiera pantalla o no; la mitad de la condición resultante no era
+  // observable, que es como se acumulan guardas contra estados imposibles.
+  const [carasAMano, setCarasAMano] = useState(false);
+  useEffect(() => {
+    if (!pantalla) setCarasAMano(false);
+  }, [pantalla]);
+  const carasFuera = !!pantalla && !carasAMano;
 
   // Tú cuentas como presente aunque el motor sólo reporte a los demás.
   const dentro = [...(yo ? [{ identity: yo, name: "You" }] : []), ...gente];
@@ -73,6 +95,15 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         {/* Llamar a alguien vive aquí y no en la barra de mandos: los mandos
             son sobre ti —tu micro, tu cámara— y esto es sobre la sala. */}
         <InviteButton abierto={invitando} onToggle={() => setInvitando((v) => !v)} />
+        {/* La etiqueta dice lo que va a hacer, no en qué estado está: es el
+            patrón del resto de la cabecera y del diseño. */}
+        <button
+          type="button"
+          onClick={() => setChat((v) => !v)}
+          className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+        >
+          <MessageSquare className="size-[15px]" /> {chat ? "Hide chat" : "Chat"}
+        </button>
         <button
           type="button"
           onClick={cerrarEscenario}
@@ -89,7 +120,11 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
             <Loader2 className="size-4 animate-spin" /> Joining #{spaceName}…
           </div>
         ) : (
-          <div className={cn("flex size-full gap-3.5", !pantalla && "flex-col")}>
+          <div className="flex size-full gap-3.5">
+            {/* El eje de dentro depende de si hay pantalla; el chat va fuera,
+                porque es una columna a la derecha en los dos casos. Estaban
+                juntos y sin pantalla el panel caía debajo de la rejilla. */}
+            <div className={cn("flex min-h-0 min-w-0 flex-1 gap-3.5", !pantalla && "flex-col")}>
             {/* Con una pantalla compartida, ella manda: ocupa el sitio y las
                 caras se van a una tira lateral. Es lo que se ha venido a mirar
                 —código, un documento— y en un mosaico de la rejilla no se lee.
@@ -110,6 +145,39 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                     Stop sharing
                   </button>
                 )}
+                {/* Las caras, encima y arriba a la derecha.
+                    Arriba porque abajo ya viven las dos píldoras. Atenuadas
+                    mientras nadie habla: presentando, lo único que hace falta
+                    de un vistazo es quién está hablando, y el resto del tiempo
+                    cuanto menos tapen mejor. Con sombra y no con un bloque —un
+                    avatar sobre un IDE oscuro se lee, sobre una hoja blanca
+                    no—, y pulsar cualquiera devuelve la columna. */}
+                {carasFuera && (
+                  <button
+                    type="button"
+                    onClick={() => setCarasAMano(true)}
+                    title="Show participants"
+                    className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-background/40 p-1 backdrop-blur-sm transition-opacity hover:opacity-100"
+                  >
+                    {dentro.map((p) => {
+                      const habla = p.identity === yo ? hablandoYo : hablando.includes(p.identity);
+                      return (
+                        <span
+                          key={p.identity}
+                          title={p.name || p.identity}
+                          className={cn(
+                            "grid size-7 place-items-center rounded-full text-[11px] font-bold shadow-md transition-all",
+                            habla
+                              ? "bg-success/25 text-success ring-2 ring-success"
+                              : "bg-background/80 text-muted-foreground opacity-40",
+                          )}
+                        >
+                          {iniciales(p.name || p.identity)}
+                        </span>
+                      );
+                    })}
+                  </button>
+                )}
               </div>
             )}
             <div
@@ -118,6 +186,11 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                 pantalla
                   ? "flex w-50 shrink-0 flex-col overflow-y-auto"
                   : "grid flex-1 auto-rows-fr grid-cols-2",
+                // Al final y no antes: `cn` es tailwind-merge, y `hidden`,
+                // `flex` y `grid` son la misma familia — gana la última. Puesto
+                // arriba se descartaba en silencio y la columna seguía a la
+                // vista, que es exactamente lo que esto venía a evitar.
+                carasFuera && "hidden",
               )}
             >
               {dentro.map((p) => (
@@ -149,7 +222,11 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                   espejo={p.identity === yo}
                 />
               ))}
+              </div>
             </div>
+            {chat && spaceId && (
+              <VoiceChat spaceId={spaceId} spaceName={spaceName} onClose={() => setChat(false)} />
+            )}
           </div>
         )}
       </div>

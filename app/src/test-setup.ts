@@ -28,3 +28,17 @@ if (!window.matchMedia) {
     }),
   });
 }
+
+/**
+ * `scrollIntoView` tampoco está en jsdom.
+ *
+ * Cualquier lista que se mantenga pegada al fondo —el chat de la sala, el hilo
+ * de un canal— lo llama tras pintar, y sin esto la prueba falla con un
+ * `is not a function` que no dice nada de lo que se estaba comprobando.
+ *
+ * Un no-op basta: lo que se prueba nunca es que el navegador haya hecho
+ * scroll, sino lo que se pintó.
+ */
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function () {};
+}
