@@ -12,6 +12,7 @@ import (
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -144,6 +145,11 @@ func emitItemEvent(hub *events.Hub, repo *repository.ReportRepository,
 	data["from"] = from
 	target, err := repo.EventTargetForReport(itemID)
 	if err != nil {
+		// Aquí no se pierde sólo el webhook: **tampoco se publica al stream
+		// interno**, así que ni los tableros de cac se enteran. Volvía en
+		// silencio, y desde fuera era indistinguible de que no hubiera pasado
+		// nada. El caso normal es un item que no cuelga de ningún proyecto.
+		lg.Warn("evento " + eventType + " de " + itemID + " sin destino: " + err.Error())
 		return
 	}
 	if hub != nil {

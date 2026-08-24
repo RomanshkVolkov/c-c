@@ -77,7 +77,21 @@ func signPayload(secret string, body []byte) string {
 // goroutine — an ingest must not wait on, or fail because of, a third party's
 // server.
 func dispatchWebhook(t *domain.ReportEventTarget, eventType, reportID string, data map[string]any) {
-	if t == nil || t.WebhookURL == "" {
+	if t == nil {
+		return
+	}
+	// Un proyecto sin webhook deja de comportarse igual que uno que funciona.
+	//
+	// Esto volvía en silencio, y la pregunta «¿se le está avisando al cliente
+	// cuando comento?» no se podía contestar sin leer el código: un proyecto mal
+	// configurado y uno bien configurado hacían exactamente lo mismo desde
+	// fuera, o sea nada observable. La línea cuesta un log y contesta sola.
+	//
+	// A nivel de aviso y no de error: no tener webhook es una decisión válida
+	// —hay inquilinos que sólo miran el tablero— y llenar de errores el registro
+	// por algo que puede ser deliberado enseña a ignorarlo.
+	if t.WebhookURL == "" {
+		lg.Warn("webhook: " + t.Folio + " (proyecto " + t.ProjectID + ") no tiene URL configurada, " + eventType + " no sale")
 		return
 	}
 	body, err := json.Marshal(webhookPayload{

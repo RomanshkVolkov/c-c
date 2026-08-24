@@ -13,6 +13,7 @@ import {
   Calendar,
   Users,
   Pencil,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
@@ -376,6 +377,19 @@ function Content() {
   // the one here have to be the same conversation, or both are misleading.
   const clientReads = Boolean(task.projectId) && task.visibility !== "internal";
   const [commentInternal, setCommentInternal] = useState(false);
+  // El cliente puede leer esto, pero **no hay a quién avisar**.
+  //
+  // El webhook sale igual; lo que no hay es destinatario. Los receptores
+  // enrutan el aviso por `reporterId` —el contrato lo dice así en §5.b— y un
+  // reporte que levantamos nosotros no tiene reporter, así que el evento llega
+  // y no notifica a nadie.
+  //
+  // Se dice **antes** de escribir y no al enviar: la decisión de si esto es el
+  // sitio adecuado se toma con el cursor en blanco, no con tres párrafos ya
+  // redactados. Costó una explicación larga esperando respuesta tres días.
+  //
+  // Con el comentario en modo interno no se enseña: ahí nadie espera aviso.
+  const sinDestinatario = clientReads && !commentInternal && !task.reporterId;
 
   const send = async () => {
     const body = comment.trim();
@@ -735,6 +749,15 @@ function Content() {
           ))}
 
           <div className="space-y-2">
+            {sinDestinatario && (
+              <p className="flex items-start gap-1.5 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-warning-foreground">
+                <Info className="mt-px size-3.5 shrink-0" />
+                <span>
+                  Nadie reportó esto, así que tu comentario no le va a avisar a nadie del
+                  cliente. Aparece en su tablero si lo abre.
+                </span>
+              </p>
+            )}
             <MarkdownEditor
               value={comment}
               onChange={setComment}

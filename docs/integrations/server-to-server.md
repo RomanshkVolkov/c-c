@@ -385,6 +385,18 @@ equipo, y acabas re-aplicando tu cambio en bucle o ignorando los ajenos.
 **Regla práctica: descarta todo evento cuyo `data.from` sea tu propio
 `project:<slug>`.**
 
+### Los agentes cuentan como equipo
+
+El equipo de cac usa herramientas de agente para leer y responder reportes. Un
+comentario escrito así **te llega igual que uno tecleado por una persona**:
+`report:comment` con `data.from` valiendo `"team"`. No hay un valor aparte para
+distinguirlo, y es deliberado — desde tu lado es el equipo respondiendo, que es
+lo único que cambia lo que tienes que hacer con el evento.
+
+Se dice aquí porque la pregunta sale sola en cuanto alguien se entera de que hay
+agentes de por medio: **no**, no hace falta que trates ese caso.
+
+
 ---
 
 ## 5. El token del reporter
