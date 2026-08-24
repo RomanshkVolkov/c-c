@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { KeyRound, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Inbox, KeyRound, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,8 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import CopyId from "@/components/CopyId";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useTasksStore } from "@/store/tasks.store";
+import { listasDelArbol, rutaDeLista, type ListaConRuta } from "@/lib/bandeja";
 import { cn } from "@/lib/utils";
 import { desde } from "@/lib/desde";
 import type { ReportProject } from "@/types/report";
@@ -46,9 +48,19 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
   const listMembers = useOrgsStore((s) => s.listMembers);
   const [miembros, setMiembros] = useState<OrgMember[]>([]);
 
+  // El árbol de la organización, para decir dónde caen los reportes con el
+  // nombre de la lista y para poder elegir otra. Está en el store porque el
+  // navegador lo carga, pero esta pantalla se puede abrir de primeras.
+  const tree = useTasksStore((s) => s.tree);
+  const fetchTree = useTasksStore((s) => s.fetchTree);
+
   useEffect(() => {
     fetchProjects().catch(() => {});
   }, [fetchProjects, orgId]);
+
+  useEffect(() => {
+    if (tree.length === 0) void fetchTree();
+  }, [tree.length, fetchTree]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -155,6 +167,8 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
               proyecto={p}
               canManage={canManage}
               miembros={miembros}
+              listas={listasDelArbol(tree)}
+              ruta={rutaDeLista(tree, p.listId)}
               onRotated={setClave}
             />
           ))}
@@ -169,11 +183,17 @@ function FichaIntegracion({
   proyecto: p,
   canManage,
   miembros,
+  listas,
+  ruta,
   onRotated,
 }: {
   proyecto: ReportProject;
   canManage: boolean;
   miembros: OrgMember[];
+  /** Las listas de la organización, para poder elegir bandeja. */
+  listas: ListaConRuta[];
+  /** La ruta de la bandeja de hoy, o `null` si no es de esta organización. */
+  ruta: string | null;
   onRotated: (clave: string) => void;
 }) {
   const confirm = useConfirm();
@@ -192,30 +212,61 @@ function FichaIntegracion({
     webhookUrl: p.webhookUrl ?? "",
     webhookSecret: "",
     defaultAssigneeUserId: p.defaultAssigneeUserId ?? "",
+    listId: p.listId ?? "",
   });
 
   const responsable = miembros.find((m) => m.userId === p.defaultAssigneeUserId);
 
+  /**
+   * Guardar manda **sólo lo que cambió**.
+   *
+   * Antes mandaba el formulario entero cada vez, porque el servidor borraba lo
+   * que no viajara y había que reenviarlo todo para conservarlo. Eso hacía que
+   * dos personas editando a la vez se pisaran campos que ninguna había tocado, y
+   * que un `Number("")` mal parado reiniciara un límite de paso. Ya no: omitir
+   * un campo lo deja como está, así que lo que no se toca no se manda.
+   *
+   * Borrar sigue siendo posible y sigue siendo explícito: vaciar la caja del
+   * webhook manda `""`, que sí lo retira. Lo que no puede pasar es borrar algo
+   * sin haberlo pedido.
+   */
   const guardar = async () => {
+    const cambios: Parameters<typeof updateProject>[1] = {};
+    const nombre = borrador.name.trim();
+    if (nombre && nombre !== p.name) cambios.name = nombre;
+
+    if (p.platform === "web") {
+      const origenes = borrador.allowedOrigins.split(",").map((o) => o.trim()).filter(Boolean);
+      if (origenes.join(",") !== p.allowedOrigins.join(",")) cambios.allowedOrigins = origenes;
+    }
+    const porHora = Number(borrador.rateLimitPerHour);
+    if (porHora > 0 && porHora !== p.rateLimitPerHour) cambios.rateLimitPerHour = porHora;
+    const porReportero = Number(borrador.rateLimitPerReporterPerHour);
+    if (porReportero > 0 && porReportero !== p.rateLimitPerReporterPerHour) {
+      cambios.rateLimitPerReporterPerHour = porReportero;
+    }
+
+    if (borrador.webhookUrl.trim() !== (p.webhookUrl ?? "")) {
+      cambios.webhookUrl = borrador.webhookUrl.trim();
+    }
+    // El secreto sólo viaja cuando hay uno nuevo: en blanco significa «deja el
+    // que hay», no «deja de firmar».
+    if (borrador.webhookSecret) cambios.webhookSecret = borrador.webhookSecret;
+
+    if (borrador.defaultAssigneeUserId !== (p.defaultAssigneeUserId ?? "")) {
+      cambios.defaultAssigneeUserId = borrador.defaultAssigneeUserId;
+    }
+    // La bandeja no se puede vaciar —el servidor lo rechaza, porque un canal sin
+    // lista pierde todo lo que le manden— así que sólo se cambia por otra.
+    if (borrador.listId && borrador.listId !== (p.listId ?? "")) cambios.listId = borrador.listId;
+
+    if (Object.keys(cambios).length === 0) {
+      setEditando(false);
+      return;
+    }
     setGuardando(true);
     try {
-      await updateProject(p.id, {
-        name: borrador.name.trim() || p.name,
-        allowedOrigins:
-          p.platform === "web"
-            ? borrador.allowedOrigins.split(",").map((o) => o.trim()).filter(Boolean)
-            : [],
-        rateLimitPerHour: Number(borrador.rateLimitPerHour) || p.rateLimitPerHour,
-        rateLimitPerReporterPerHour:
-          Number(borrador.rateLimitPerReporterPerHour) || p.rateLimitPerReporterPerHour,
-        isActive: p.isActive,
-        webhookUrl: borrador.webhookUrl.trim(),
-        // Vacío significa «no lo toques»: mandarlo en blanco borraría el que ya
-        // hay, y nadie que sólo venía a cambiar el nombre espera eso.
-        ...(borrador.webhookSecret ? { webhookSecret: borrador.webhookSecret } : {}),
-        // "" lo quita; el servidor distingue vacío de ausente aquí.
-        defaultAssigneeUserId: borrador.defaultAssigneeUserId,
-      });
+      await updateProject(p.id, cambios);
       setEditando(false);
     } catch (e) {
       toast.error("Could not save it", { description: String(e) });
@@ -326,6 +377,24 @@ function FichaIntegracion({
                 className="mt-1 h-8 text-xs"
               />
             </label>
+            <label className="min-w-56 flex-1 text-xs text-muted-foreground">
+              Reports arrive in
+              <select
+                value={borrador.listId}
+                onChange={(e) => setBorrador({ ...borrador, listId: e.target.value })}
+                className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
+              >
+                {/* Sin opción de «ninguna»: quitarla no desconfigura la
+                    integración, hace que todo lo que le manden se pierda sin
+                    decir nada. Se cambia por otra lista o se queda. */}
+                {!p.listId && <option value="">— pick a list —</option>}
+                {listas.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.ruta}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="min-w-48 flex-1 text-xs text-muted-foreground">
               Default assignee
               <select
@@ -398,6 +467,26 @@ function FichaIntegracion({
                 </>
               ) : (
                 <span className="text-muted-foreground">none</span>
+              )}
+            </dd>
+          </div>
+          {/* Lo primero que se pregunta de una integración y lo único que no se
+              podía ver: dónde acaba lo que manda. */}
+          <div>
+            <dt className="flex items-center gap-1 uppercase tracking-wide text-muted-foreground">
+              <Inbox className="size-3" /> Reports arrive in
+            </dt>
+            <dd className="mt-0.5">
+              {ruta ? (
+                <span className="font-medium">{ruta}</span>
+              ) : p.listId ? (
+                // Hay bandeja, pero no es de esta organización o ya no existe.
+                // Decirlo es mejor que pintar el uuid que se pintaba antes.
+                <span className="text-warning">a list outside this organization</span>
+              ) : (
+                <span className="text-destructive">
+                  nowhere — anything it sends is being lost
+                </span>
               )}
             </dd>
           </div>

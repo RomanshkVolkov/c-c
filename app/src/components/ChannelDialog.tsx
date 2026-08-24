@@ -22,6 +22,7 @@ import OriginsEditor, { cleanOrigins } from "@/components/OriginsEditor";
 import RevealedSecrets, { type Once } from "@/components/RevealedSecrets";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useTasksStore, type ChannelOwner } from "@/store/tasks.store";
+import { rutaDeLista } from "@/lib/bandeja";
 import type { ReportProject } from "@/types/report";
 
 /**
@@ -77,6 +78,8 @@ export default function ChannelDialog({
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [origins, setOrigins] = useState<string[]>([]);
+  /** La integración libre elegida en el desplegable, aún sin apuntar. */
+  const [libreElegida, setLibreElegida] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -105,20 +108,48 @@ export default function ChannelDialog({
   // Un id crudo no le dice nada a nadie, y es lo que se estaba enseñando.
   const bandeja = useMemo(() => {
     if (!channel?.listId) return null;
-    for (const sp of tree) {
-      for (const l of sp.lists ?? []) {
-        if (l.id === channel.listId) return `${sp.name} · ${l.name}`;
-      }
-      for (const f of sp.folders ?? []) {
-        for (const l of f.lists ?? []) {
-          if (l.id === channel.listId) return `${sp.name} · ${f.name} · ${l.name}`;
-        }
-      }
-    }
     // Puede estar en otra organización o haberse borrado; decirlo es mejor que
-    // enseñar un uuid.
-    return "a list outside this organization";
+    // enseñar un uuid, que es lo que se enseñaba.
+    return rutaDeLista(tree, channel.listId) ?? "a list outside this organization";
   }, [channel, tree]);
+
+  /**
+   * El cliente al que está atado, cuando no sale en el desplegable.
+   *
+   * `channels` está recortado a la organización de la pestaña, así que un nodo
+   * atado a la de otra —o a una recién borrada— dejaba el `Select` sin opción
+   * que casar y pintaba «No client», que es justo lo contrario de lo que pasa.
+   */
+  const ajeno = channel && !projects.some((p) => p.id === channel.id) ? channel : null;
+
+  /**
+   * Quién entrega en esta lista, y quién no entrega en ningún sitio.
+   *
+   * Son las dos preguntas que no se podían responder: mirando una lista no
+   * había forma de saber si algún cliente descargaba ahí, y una integración
+   * recién creada no tenía bandeja sin que nadie lo dijera —todo lo que
+   * mandara se perdía—. «Libre» es exactamente eso: sin bandeja, no «sin usar».
+   */
+  const aquiCaen = useMemo(
+    () => (kind === "list" ? projects.filter((p) => p.listId === id) : []),
+    [kind, id, projects],
+  );
+  const libres = useMemo(() => projects.filter((p) => !p.listId), [projects]);
+
+  const apuntarAqui = async () => {
+    if (!libreElegida) return;
+    setSaving(true);
+    try {
+      await setChannelInbox(libreElegida, id);
+      setLibreElegida("");
+      setChannel(await fetchChannel(kind, id));
+      toast.success("Its reports will arrive here from now on");
+    } catch (e) {
+      toast.error("Couldn't point it here", { description: String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const moverBandeja = async () => {
     if (!channel) return;
@@ -246,6 +277,9 @@ export default function ChannelDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No client — internal work</SelectItem>
+                    {ajeno && (
+                      <SelectItem value={ajeno.id}>{ajeno.name} — another organization</SelectItem>
+                    )}
                     {projects.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {p.name}
@@ -285,37 +319,103 @@ export default function ChannelDialog({
               )}
             </section>
 
-            {/* ── Dónde llegan los reportes ── */}
-            {channel && (
+            {/* ── Qué cae aquí ──
+                En una lista la pregunta es al revés que en una integración: no
+                «dónde acaba lo suyo» sino «qué llega a esto que estoy mirando».
+                Contestarla aquí es lo que faltaba: se abría este diálogo en la
+                lista de un cliente y no se sabía si sus reportes caían dentro. */}
+            {kind === "list" && (
               <section className="space-y-2 border-t pt-4">
+                <Label>Reports that arrive here</Label>
+                {aquiCaen.length > 0 ? (
+                  <p className="text-sm">
+                    <span className="font-medium">
+                      {aquiCaen.map((c) => c.name).join(", ")}
+                    </span>{" "}
+                    <span className="text-muted-foreground">
+                      {aquiCaen.length === 1 ? "delivers" : "deliver"} into this list.
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Nothing delivers here — no integration is pointed at this list.
+                  </p>
+                )}
+
+                {/* La integración de este cliente entrega en otra parte. Es el
+                    caso que desconcierta: la lista es suya y sus reportes
+                    aparecen en un sitio distinto. */}
+                {channel && channel.listId !== id && (
+                  <div className="space-y-2 rounded-md border border-dashed p-3">
+                    <p className="text-sm">
+                      <span className="font-medium">{channel.name}</span>{" "}
+                      {bandeja ? (
+                        <>
+                          delivers into <span className="font-medium">{bandeja}</span>.
+                        </>
+                      ) : (
+                        <span className="text-warning">
+                          delivers nowhere — anything it sends is being lost.
+                        </span>
+                      )}
+                    </p>
+                    <Button size="sm" variant="outline" onClick={moverBandeja} disabled={saving}>
+                      Send its reports here instead
+                    </Button>
+                  </div>
+                )}
+
+                {/* Y las que no entregan en ningún sitio, que es lo que le pasa
+                    a una recién creada. Sólo las libres: redirigir la de otro
+                    cliente desde aquí sería quitarle su bandeja sin abrir la
+                    suya, y eso se hace donde se ve lo que se está quitando. */}
+                {libres.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Select value={libreElegida} onValueChange={(v) => setLibreElegida(v ?? "")}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="An integration with no inbox yet…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {libres.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" onClick={apuntarAqui} disabled={saving || !libreElegida}>
+                      Point it here
+                    </Button>
+                  </div>
+                )}
+
+                {/* Lo que cuesta, antes de pulsar: los reportes que ya están no
+                    se mueven, así que el histórico se queda partido en dos. */}
+                {(libres.length > 0 || (channel && channel.listId !== id)) && (
+                  <p className="text-xs text-muted-foreground">
+                    From now on. Reports already filed stay where they are.
+                  </p>
+                )}
+              </section>
+            )}
+
+            {/* En un espacio no hay bandeja que enseñar —no recibe nada— pero sí
+                hace falta decir dónde se pone, o se busca aquí y no está. */}
+            {kind === "space" && channel && (
+              <section className="space-y-1 border-t pt-4">
                 <Label>Reports arrive in</Label>
                 <p className="text-sm">
                   {bandeja ? (
                     <span className="font-medium">{bandeja}</span>
                   ) : (
-                    <span className="text-muted-foreground">
-                      Nowhere — anything sent is being lost.
+                    <span className="text-warning">
+                      Nowhere — anything {channel.name} sends is being lost.
                     </span>
                   )}
                 </p>
-                {kind === "list" && channel.listId !== id && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={moverBandeja} disabled={saving}>
-                      Send them to this list instead
-                    </Button>
-                    {/* Lo que cuesta, antes de pulsar: los reportes que ya
-                        están no se mueven, así que el histórico se queda
-                        partido en dos sitios. */}
-                    <p className="text-xs text-muted-foreground">
-                      From now on. Reports already filed stay where they are.
-                    </p>
-                  </>
-                )}
-                {kind === "space" && (
-                  <p className="text-xs text-muted-foreground">
-                    A space isn't an inbox: open the list you want and set it there.
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  A space isn't an inbox: open the list you want and point it there.
+                </p>
               </section>
             )}
 

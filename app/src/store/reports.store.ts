@@ -44,19 +44,30 @@ interface ReportsState {
     webhookSecret?: string;
   }) => Promise<string>; // returns ingest key (once)
   rotateProjectKey: (id: string) => Promise<string>;
+  /**
+   * Un PATCH de verdad: **lo que no viaja se queda como está**.
+   *
+   * Todos los campos son opcionales porque el servidor distingue tres cosas —
+   * ausente es «no lo toques», un valor es «ponlo», y el vacío es «bórralo» para
+   * los que se pueden borrar. Antes ausente y vacío eran lo mismo, así que
+   * cambiar el nombre de una integración le borraba el webhook.
+   */
   updateProject: (
     id: string,
     patch: {
-      name: string;
-      allowedOrigins: string[];
-      rateLimitPerHour: number;
+      name?: string;
+      allowedOrigins?: string[];
+      rateLimitPerHour?: number;
       rateLimitPerReporterPerHour?: number;
       isActive?: boolean;
+      /** "" retira el destino, y con él su secreto. */
       webhookUrl?: string;
-      /** Omit to keep the current secret; "" alongside an empty url clears it. */
+      /** Omitir deja el secreto que haya; sólo se reemplaza si llega uno nuevo. */
       webhookSecret?: string;
       /** "" lo quita; un uuid lo pone. */
       defaultAssigneeUserId?: string;
+      /** La lista donde caen los reportes. El servidor no acepta vaciarla. */
+      listId?: string;
     }
   ) => Promise<void>;
   setProjectActive: (id: string, isActive: boolean) => Promise<void>;
@@ -154,26 +165,16 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     await get().fetchProjects();
   },
 
-  // Pausar y reanudar mandan el proyecto **entero**, no sólo la bandera.
+  // Pausar y reanudar mandan **sólo la bandera**.
   //
-  // El PATCH del servidor reemplaza, no fusiona: lo que no viaja se guarda
-  // vacío. Mandando sólo nombre, orígenes y límites, pausar una integración le
-  // borraba el webhook, su secreto y el responsable por defecto —y reanudarla
-  // no los devolvía, porque ya no existían.
+  // Mandaban el proyecto entero, y no por gusto: el PATCH del servidor
+  // reemplazaba en vez de fusionar, así que omitir el webhook lo borraba y
+  // reanudar no lo devolvía. Reenviarlo todo tapaba eso pero traía lo suyo —
+  // pausar escribía encima los valores que tuviera esta pestaña cargados, que
+  // podían ser de hace una hora—. Ahora que omitir no borra, la bandera va
+  // sola.
   setProjectActive: async (id, isActive) => {
-    const p = get().projects.find((x) => x.id === id);
-    if (!p) return;
-    await get().updateProject(id, {
-      name: p.name,
-      allowedOrigins: p.allowedOrigins,
-      rateLimitPerHour: p.rateLimitPerHour,
-      rateLimitPerReporterPerHour: p.rateLimitPerReporterPerHour,
-      isActive,
-      webhookUrl: p.webhookUrl,
-      // El secreto no se manda: el servidor sólo lo cambia si llega uno nuevo,
-      // y aquí no hay ninguno que mandar. Va con la url para que no lo retire.
-      defaultAssigneeUserId: p.defaultAssigneeUserId ?? "",
-    });
+    await get().updateProject(id, { isActive });
   },
 
   deleteProject: async (id) => {
