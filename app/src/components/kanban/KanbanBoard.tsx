@@ -71,6 +71,22 @@ interface Props<T extends KanbanItem> {
   items: T[];
   renderItem: (item: T, dragging?: boolean) => ReactNode;
   onMove: (move: KanbanMove) => void;
+  /**
+   * ¿Puede esta tarjeta acabar en esa columna?
+   *
+   * Sin esto, el tablero ofrece las cuatro columnas como destino y el servidor
+   * rechaza el movimiento después — la tarjeta se va, se queda un instante
+   * donde no puede estar, y vuelve. Con esto la columna imposible se pinta en
+   * rojo mientras arrastras y soltar ahí no hace nada.
+   *
+   * Opcional: un tablero sin reglas de transición no pasa nada y todo vale.
+   *
+   * El predicado lo pone cada pantalla porque cada una nombra sus columnas a su
+   * manera —una usa el estado plegado, la otra ids opacos `lista/estado`— y
+   * traducir eso aquí obligaría a este componente a saber de estados, que es
+   * justo lo que no sabe.
+   */
+  puedeSoltar?: (item: T, aColumna: string) => boolean;
   emptyColumnHint?: string;
   className?: string;
 }
@@ -80,6 +96,7 @@ export default function KanbanBoard<T extends KanbanItem>({
   items,
   renderItem,
   onMove,
+  puedeSoltar,
   emptyColumnHint = "Nothing here",
   className,
 }: Props<T>) {
@@ -122,6 +139,12 @@ export default function KanbanBoard<T extends KanbanItem>({
     const toColumnId = overItem ? overItem.columnId : overId;
     if (!columns.some((c) => c.id === toColumnId)) return;
 
+    // En silencio, como manda la casa: la columna roja ya dijo que no mientras
+    // el puntero estaba encima, y un aviso después sería reñir a alguien por
+    // algo que se le acababa de enseñar que no podía hacer. La misma regla que
+    // sigue el árbol de espacios al rechazar un salto entre espacios.
+    if (puedeSoltar && !puedeSoltar(moved, toColumnId)) return;
+
     const target = (byColumn.get(toColumnId) ?? []).filter((i) => i.id !== itemId);
     let index = target.length; // default: append
     if (overItem) {
@@ -162,6 +185,10 @@ export default function KanbanBoard<T extends KanbanItem>({
             items={byColumn.get(col.id) ?? []}
             renderItem={renderItem}
             emptyHint={col.emptyHint ?? emptyColumnHint}
+            // Sólo mientras hay algo en el aire: en reposo no hay tarjeta de la
+            // que decir si cabe, y pintar columnas en rojo sin motivo sería
+            // avisar de un problema que nadie tiene.
+            bloqueada={!!active && !!puedeSoltar && !puedeSoltar(active, col.id)}
           />
         ))}
       </div>
@@ -180,18 +207,31 @@ function Column<T extends KanbanItem>({
   items,
   renderItem,
   emptyHint,
+  bloqueada,
 }: {
   column: KanbanColumn;
   items: T[];
   renderItem: (item: T, dragging?: boolean) => ReactNode;
   emptyHint: string;
+  bloqueada?: boolean;
 }) {
   // Registering the column as a drop target is what makes dropping into an
   // empty column work — with only sortable items, there'd be nothing to hit.
+  //
+  // Y sigue registrada aunque esté bloqueada, a propósito: `useDroppable`
+  // acepta `disabled`, que la sacaría de la detección de colisiones, y entonces
+  // arrastrar por encima no daría ninguna respuesta. Es la convención de
+  // `DropZone`: en rojo, no inerte — «un destino que deja de responder se lee
+  // como un arrastre roto, y uno rojo dice *ahí no*».
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   return (
-    <section className="flex w-72 shrink-0 flex-col rounded-lg border bg-muted/20">
+    <section
+      className={cn(
+        "flex w-72 shrink-0 flex-col rounded-lg border bg-muted/20 transition-colors",
+        bloqueada && "border-destructive/40",
+      )}
+    >
       <header className="flex items-center gap-2 border-b px-3 py-2">
         {column.color && (
           <span
@@ -212,7 +252,8 @@ function Column<T extends KanbanItem>({
         ref={setNodeRef}
         className={cn(
           "flex-1 space-y-2 overflow-y-auto p-2 transition-colors",
-          isOver && "bg-primary/5",
+          isOver && (bloqueada ? "bg-destructive/15 ring-1 ring-inset ring-destructive/50" : "bg-primary/5"),
+          bloqueada && !isOver && "opacity-50",
         )}
       >
         <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>

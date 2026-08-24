@@ -158,6 +158,30 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusConflict, "List has no columns", err.Error())
 	case errors.Is(err, service.ErrParentOther):
 		SendErrorResponse(w, http.StatusBadRequest, "Parent task is in another list", err.Error())
+	// 409 y no 500: la petición es válida y quien la hace tiene permiso; lo que
+	// pasa es que el estado actual no admite ese salto. Un 500 dice «se rompió
+	// el servidor», y eso tiene consecuencias — un cliente que reintenta ante
+	// 5xx, como el nuestro, reintenta tres veces contra una regla que nunca va a
+	// ceder, y el registro acumula errores de servidor que no lo son.
+	//
+	// Mismo trato que ya recibe `ErrInvalidTransition` del lado de reportes, que
+	// es literalmente la misma máquina de estados.
+	case errors.Is(err, service.ErrBadTransition):
+		SendErrorResponse(w, http.StatusConflict,
+			"That move is not allowed from the current state. Open and Done are not "+
+				"adjacent: a card passes through In progress.", "bad-transition")
+	// 400 y no 409: aquí no hay conflicto con ningún estado, es que el id de
+	// columna no nombra nada. Petición malformada.
+	case errors.Is(err, service.ErrBadStatus):
+		SendErrorResponse(w, http.StatusBadRequest, "Unknown column", err.Error())
+	// Las dos de abajo ya contestaban 409, pero cada una desde su propio `if` en
+	// un sitio distinto. Aquí sirven para cualquier ruta que use este ayudante, y
+	// hay una sola tabla que mirar para saber qué contesta qué.
+	case errors.Is(err, service.ErrFolderCycle):
+		SendErrorResponse(w, http.StatusConflict, "Cannot move a folder inside itself", err.Error())
+	case errors.Is(err, service.ErrDifferentOrganization):
+		SendErrorResponse(w, http.StatusConflict,
+			"That space belongs to another organization", err.Error())
 	default:
 		return false
 	}
@@ -433,10 +457,9 @@ func (h *taskHandler) MoveFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.MoveFolder(f.ID, req); err != nil {
-		// A refused drop is a legitimate answer, not a server fault: the client
-		// shows it as "you can't drop it there" rather than as a crash.
-		if errors.Is(err, service.ErrFolderCycle) {
-			SendErrorResponse(w, http.StatusConflict, "Cannot move a folder inside itself", err.Error())
+		// El ciclo de carpetas —«no puedes meterla dentro de sí misma»— lo
+		// resuelve `mapTaskError`, igual que el resto.
+		if mapTaskError(w, err) {
 			return
 		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to move folder", err.Error())
@@ -592,8 +615,7 @@ func (h *taskHandler) targetSpace(w http.ResponseWriter, r *http.Request) (strin
 }
 
 func (h *taskHandler) sendMoveError(w http.ResponseWriter, err error, msg string) {
-	if errors.Is(err, service.ErrDifferentOrganization) {
-		SendErrorResponse(w, http.StatusConflict, "That space belongs to another organization", err.Error())
+	if mapTaskError(w, err) {
 		return
 	}
 	SendErrorResponse(w, http.StatusInternalServerError, msg, err.Error())
@@ -879,6 +901,11 @@ func (h *taskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	editor, _ := currentUser(r)
 	if err := h.svc.UpdateTask(r.Context(), t.ID, editor.UserID, req); err != nil {
+		// Faltaba, y era la única escritura de tareas sin mapeo: hasta «esa
+		// tarea no existe» o «ese padre es de otra lista» salían como 500.
+		if mapTaskError(w, err) {
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update task", err.Error())
 		return
 	}

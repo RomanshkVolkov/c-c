@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import CopyId from "@/components/CopyId";
+import { useReportsStore } from "@/store/reports.store";
 import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ItemCalendar from "@/components/ItemCalendar";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
@@ -12,7 +13,7 @@ import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { priorityMeta } from "@/types/task";
 import type { OpenTask } from "@/types/task";
-import { normalizeStatus, type ReportStatus } from "@/types/report";
+import { normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { cn } from "@/lib/utils";
 
 /**
@@ -123,6 +124,17 @@ export default function MyWork() {
       toast.error(String(e));
     }
   };
+
+  // La máquina de estados del servidor, para no ofrecer destinos imposibles.
+  //
+  // `fetchTransitions` no vuelve a pedirla si ya la tiene, así que llamarla en
+  // cada montaje no cuesta nada. Estaba escrita desde hace tiempo y no la
+  // llamaba nadie.
+  const transiciones = useReportsStore((s) => s.transitions);
+  const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
+  useEffect(() => {
+    fetchTransitions().catch(() => {});
+  }, [fetchTransitions]);
 
   useEffect(() => {
     load(orgId).catch(() => {});
@@ -311,6 +323,12 @@ export default function MyWork() {
                 <TaskCardMini task={t} onOpen={() => openTask(t.id).catch(() => {})} />
               )}
               onMove={(m) => void mover(m.itemId, m.toColumnId)}
+              // Las columnas de aquí ya son el estado plegado, así que la
+              // comparación es directa: el mapa que trae `fetchTransitions`
+              // viene plegado en las dos direcciones por el mismo motivo.
+              puedeSoltar={(t, columna) =>
+                puedeIr(transiciones, normalizeStatus(t.status), columna as ReportStatus)
+              }
               emptyColumnHint="Nothing"
             />
           ) : (

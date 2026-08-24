@@ -39,6 +39,21 @@ vi.mock("@/store/mywork.store", () => ({
     { getState: () => estado.current },
   ),
 }));
+// El mapa de transiciones que la pantalla consulta ahora para saber qué
+// columnas puede ofrecer. Llega ya plegado al vocabulario de la app, que es lo
+// que hace `fetchTransitions`.
+vi.mock("@/store/reports.store", () => ({
+  useReportsStore: (sel: (s: Record<string, unknown>) => unknown) =>
+    sel({
+      transitions: {
+        open: ["in_progress", "closed"],
+        in_progress: ["open", "done", "closed"],
+        done: ["in_progress", "closed"],
+        closed: [],
+      },
+      fetchTransitions: vi.fn().mockResolvedValue(undefined),
+    }),
+}));
 vi.mock("@/store/orgs.store", () => ({
   useOrgsStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ currentOrgId: "org-1" }),
 }));
@@ -49,12 +64,20 @@ vi.mock("@/store/tasks.store", () => ({
 
 // El tablero se sustituye por un doble que sólo guarda su `onMove`: es lo que
 // se quiere disparar, y simular un arrastre de verdad probaría a dnd-kit.
-const { onMove } = vi.hoisted(() => ({
+const { onMove, puedeSoltar } = vi.hoisted(() => ({
   onMove: { fn: null as null | ((m: { itemId: string; toColumnId: string }) => void) },
+  // Y el predicado, que es lo que decide si una columna se ofrece o se pinta en
+  // rojo. Se captura igual que `onMove`: probar el rojo de verdad sería probar
+  // a dnd-kit, y lo que importa es la decisión.
+  puedeSoltar: { fn: null as null | ((t: OpenTask, c: string) => boolean) },
 }));
 vi.mock("@/components/kanban/KanbanBoard", () => ({
-  default: (props: { onMove: (m: { itemId: string; toColumnId: string }) => void }) => {
+  default: (props: {
+    onMove: (m: { itemId: string; toColumnId: string }) => void;
+    puedeSoltar?: (t: OpenTask, c: string) => boolean;
+  }) => {
     onMove.fn = props.onMove;
+    puedeSoltar.fn = props.puedeSoltar ?? null;
     return null;
   },
 }));
@@ -97,13 +120,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("arrastrar en Mi trabajo", () => {
+  // Con «in_progress» y no «done» a propósito: desde «open», «done» ya no es un
+  // destino que el tablero ofrezca, y una prueba que mueve donde la interfaz no
+  // deja describe algo que no puede pasar.
   it("mueve a la columna equivalente de la lista de esa tarea", async () => {
     montar([tarea("t1", "pending", "lista-de-otro-espacio")]);
-    await onMove.fn!({ itemId: "t1", toColumnId: "done" });
+    await onMove.fn!({ itemId: "t1", toColumnId: "in_progress" });
 
     // La lista se le pregunta al servidor y el id sale de su respuesta.
     expect(statusesOf).toHaveBeenCalledWith("lista-de-otro-espacio");
-    expect(moveTask).toHaveBeenCalledWith("t1", "lista-de-otro-espacio/resolved", "", "");
+    expect(moveTask).toHaveBeenCalledWith("t1", "lista-de-otro-espacio/in_progress", "", "");
   });
 
   it("distingue «Done» de «Closed», que por clase son la misma", async () => {
@@ -119,5 +145,31 @@ describe("arrastrar en Mi trabajo", () => {
     await onMove.fn!({ itemId: "t1", toColumnId: "done" });
     // «resolved» normaliza a «done»: es la misma columna, con otro nombre.
     expect(moveTask).not.toHaveBeenCalled();
+  });
+
+  // Qué columnas se ofrecen. El tablero las pinta en rojo y rechaza soltar;
+  // aquí se comprueba la decisión, que es lo nuestro.
+  describe("qué columnas se ofrecen", () => {
+    it("de Open a Done no, porque no son adyacentes", () => {
+      montar([tarea("t1", "pending", "l-1")]);
+      expect(puedeSoltar.fn!(tarea("t1", "pending", "l-1"), "done")).toBe(false);
+    });
+
+    it("de Open a In progress sí", () => {
+      montar([tarea("t1", "pending", "l-1")]);
+      expect(puedeSoltar.fn!(tarea("t1", "pending", "l-1"), "in_progress")).toBe(true);
+    });
+
+    // El caso del vocabulario: el servidor dice «resolved» y el tablero «done».
+    // Sin normalizar, esto diría que una tarjeta no puede quedarse donde está.
+    it("un servidor que dice «resolved» se entiende con una columna «done»", () => {
+      montar([tarea("t1", "resolved", "l-1")]);
+      expect(puedeSoltar.fn!(tarea("t1", "resolved", "l-1"), "done")).toBe(true);
+    });
+
+    it("de Closed no se sale", () => {
+      montar([tarea("t1", "closed", "l-1")]);
+      expect(puedeSoltar.fn!(tarea("t1", "closed", "l-1"), "in_progress")).toBe(false);
+    });
   });
 });

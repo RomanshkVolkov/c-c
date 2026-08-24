@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ListChecks,
@@ -21,6 +21,8 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useReportsStore } from "@/store/reports.store";
+import { normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
 
@@ -131,6 +133,22 @@ function Board() {
   const [category, setCategory] = useState("");
   const [area, setArea] = useState("");
   const board = useTasksStore((s) => s.board);
+
+  // La máquina de estados del servidor, para no ofrecer destinos imposibles.
+  const transiciones = useReportsStore((s) => s.transitions);
+  const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
+  useEffect(() => {
+    fetchTransitions().catch(() => {});
+  }, [fetchTransitions]);
+
+  /** De un id de columna al estado que representa, según lo que dijo el servidor. */
+  const estadoDeColumna = useCallback(
+    (id: string): ReportStatus | null => {
+      const col = board?.statuses.find((s) => s.id === id);
+      return col ? normalizeStatus(col.status) : null;
+    },
+    [board],
+  );
   const loading = useTasksStore((s) => s.loadingBoard);
   const activeListId = useTasksStore((s) => s.activeListId);
   const moveTask = useTasksStore((s) => s.moveTask);
@@ -289,6 +307,16 @@ function Board() {
             renderItem={(item, dragging) => (
               <TaskCardView card={item} dragging={dragging} onOpen={() => openTask(item.id)} />
             )}
+            // Aquí las columnas son ids opacos `<lista>/<estado>`, así que el
+            // estado se resuelve por `board.statuses` y **no partiendo el id
+            // por la barra**: esa forma es una regla del servidor, y copiarla
+            // al cliente es cómo se acaba con dos versiones de la misma verdad.
+            puedeSoltar={(item, aColumna) => {
+              const de = estadoDeColumna(item.columnId);
+              const a = estadoDeColumna(aColumna);
+              if (!de || !a) return true;
+              return puedeIr(transiciones, de, a);
+            }}
           />
         ) : view === "calendar" ? (
           <div className="h-full overflow-auto p-4">

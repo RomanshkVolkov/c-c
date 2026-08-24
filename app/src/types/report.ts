@@ -204,6 +204,34 @@ export interface ReportDetail {
 /** transitions map from GET /api/v1/reports/transitions */
 export type TransitionsMap = Record<ReportStatus, ReportStatus[]>;
 
+/**
+ * ¿Puede una tarjeta pasar de un estado a otro?
+ *
+ * La regla vive en el servidor —`open` y `done` no son adyacentes: se pasa por
+ * `in_progress`— y llega por `fetchTransitions`. Esto sólo la consulta, para
+ * que un tablero no ofrezca como destino algo que va a ser rechazado.
+ *
+ * Dos decisiones que parecen detalles y no lo son:
+ *
+ * **Sin mapa, todo vale.** Si la petición aún no volvió o falló, se deja pasar
+ * y que conteste el servidor. Bloquear por no saber convertiría un fallo de red
+ * en un tablero congelado, que es peor que un movimiento rechazado con su 409.
+ *
+ * **Quedarse donde estás siempre vale.** Reordenar dentro de una columna no es
+ * una transición, y la tabla del servidor no se lista a sí misma como destino
+ * — sin este caso, arrastrar una tarjeta dos posiciones más arriba quedaría
+ * prohibido.
+ */
+export function puedeIr(
+  mapa: TransitionsMap | null,
+  desde: ReportStatus,
+  hasta: ReportStatus,
+): boolean {
+  if (!mapa) return true;
+  if (desde === hasta) return true;
+  return (mapa[desde] ?? []).includes(hasta);
+}
+
 // ─── Telemetry (decrypted breadcrumbs, decision 7) ────────────────────────────
 
 export interface TelemetryError {
