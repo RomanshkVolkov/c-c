@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Hash, MessagesSquare, Volume2 } from "lucide-react";
+import { Hash, Megaphone, MessagesSquare, Volume2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/store/auth.store";
 import { iniciales } from "@/lib/desde";
 import ChannelView from "@/components/chat/ChannelView";
 import { useTasksStore } from "@/store/tasks.store";
@@ -46,8 +49,31 @@ export default function Channels() {
     return () => clearInterval(t);
   }, [refrescarOcupacion, orgId]);
 
+  // Abrir la sala de toda la organización es de quien la administra.
+  const superadmin = useAuthStore((s) => !!s.session?.superadmin);
+  const orgActual = useOrgsStore((s) => s.currentOrg());
+  const puedeAbrirla = superadmin || orgActual?.role === "admin";
+  const abrirSalaGeneral = useTasksStore((s) => s.abrirSalaGeneral);
+  const abrirGeneral = async () => {
+    if (!orgId) return;
+    try {
+      await abrirSalaGeneral(orgId);
+    } catch (e) {
+      toast.error("Couldn't open the general room", { description: String(e) });
+    }
+  };
+
   const abierto = params.get("space");
-  const espacio = tree.find((s) => s.id === abierto) ?? tree[0];
+  /**
+   * La sala de toda la organización, y los canales de cada espacio.
+   *
+   * Va anclada arriba y separada: es de todos, mientras que cada canal de abajo
+   * es de un trabajo concreto. Y es el primer sitio razonable al que llevar a
+   * quien entra sin haber elegido nada.
+   */
+  const general = tree.find((s) => s.kind === "general");
+  const canales = tree.filter((s) => s.kind !== "general");
+  const espacio = tree.find((s) => s.id === abierto) ?? general ?? tree[0];
 
   // Con la sala en pantalla esta columna sobra, y el rail también.
   const encogido = useEncogerEnLlamada(espacio?.id ?? null);
@@ -82,11 +108,12 @@ export default function Channels() {
               Channels live in spaces. Create a space to start one.
             </p>
           ) : (
-            tree.map((s) => {
+            [...(general ? [general] : []), ...canales].map((s) => {
               const sinLeer = unread[s.id] ?? 0;
               const enVoz = ocupacion[s.id] ?? [];
+              const esGeneral = s.kind === "general";
               return (
-                <div key={s.id}>
+                <div key={s.id} className={cn(esGeneral && canales.length > 0 && "mb-1 border-b pb-1")}>
                 <button
                   onClick={() => setParams({ space: s.id })}
                   className={cn(
@@ -96,7 +123,11 @@ export default function Channels() {
                       : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                   )}
                 >
-                  <Hash className="size-3.5 shrink-0" />
+                  {esGeneral ? (
+                    <Megaphone className="size-3.5 shrink-0" />
+                  ) : (
+                    <Hash className="size-3.5 shrink-0" />
+                  )}
                   <span className="truncate">{s.name}</span>
                   {/* Alguien hablando ahí dentro. Va antes del contador de no
                       leídos porque una conversación en curso es más urgente
@@ -144,6 +175,20 @@ export default function Channels() {
                 </div>
               );
             })
+          )}
+
+          {/* Abrirla es cosa del admin, y sólo tiene sentido enseñarlo cuando no
+              existe: el resto de la organización no debe ver un botón que le va
+              a responder que no. */}
+          {!general && puedeAbrirla && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="mt-1 w-full justify-start text-xs text-muted-foreground"
+              onClick={abrirGeneral}
+            >
+              <Megaphone className="mr-1 size-3.5" /> Open a general room
+            </Button>
           )}
         </nav>
       </aside>

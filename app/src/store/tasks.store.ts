@@ -67,6 +67,13 @@ interface TasksState {
   refreshBoard: () => Promise<void>;
 
   createSpace: (orgId: string, name: string) => Promise<void>;
+  /**
+   * Abre —o encuentra— la sala general de la organización.
+   *
+   * Idempotente en el servidor: pedirla dos veces devuelve la misma, así que
+   * dos admins pulsando a la vez no crean dos salas.
+   */
+  abrirSalaGeneral: (orgId: string) => Promise<void>;
   renameSpace: (id: string, name: string) => Promise<void>;
   deleteSpace: (id: string) => Promise<void>;
   /** Returns the new folder's id, which is what lets `Tab` nest under it. */
@@ -323,6 +330,10 @@ export const useTasksStore = create<TasksState>()(
 
       // ─── Tree mutations ─────────────────────────────────────────────────
 
+      abrirSalaGeneral: async (orgId) => {
+        await api.post<APIResponse<unknown>>("/api/v1/task-spaces/general", { orgId }, true);
+        await get().fetchTree();
+      },
       createSpace: async (orgId, name) => {
         await api.post<APIResponse<unknown>>("/api/v1/task-spaces/", { orgId, name }, true);
         await get().fetchTree();

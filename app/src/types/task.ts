@@ -99,6 +99,12 @@ export interface SpaceTree {
   name: string;
   color: string;
   projectId?: string;
+  /**
+   * "general" es la sala de toda la organización: canal y llamada, sin tareas.
+   * Vacío —o ausente— es un espacio corriente, que es lo que son todos los que
+   * ya existían.
+   */
+  kind?: string;
   folders: FolderTree[];
   lists: ListSummary[];
   /**

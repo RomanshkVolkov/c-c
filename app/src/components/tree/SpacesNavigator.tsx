@@ -201,7 +201,9 @@ function Reordenable({
  */
 function MoveToSpace({ currentSpaceId, onPick }: { currentSpaceId: string; onPick: (id: string) => void }) {
   const tree = useTasksStore((s) => s.tree);
-  const otros = tree.filter((s) => s.id !== currentSpaceId);
+  // Sin la sala general: no acepta listas ni carpetas, así que ofrecerla como
+  // destino sería ofrecer un movimiento que el servidor rechaza.
+  const otros = tree.filter((s) => s.id !== currentSpaceId && s.kind !== "general");
   if (otros.length === 0) return null;
   return (
     <DropdownMenuSub>
@@ -230,6 +232,15 @@ const avisando = (p: Promise<unknown>) =>
 
 export default function SpacesNavigator() {
   const tree = useTasksStore((s) => s.tree);
+  /**
+   * Sin la sala general: aquí se organiza trabajo, y ella no lo tiene.
+   *
+   * Se filtra **en la pantalla y no en el store** a propósito. La sala viaja en
+   * el árbol como cualquier espacio, que es lo que le permite a `VoiceMini`
+   * resolver su nombre y a `Channels` pintarla; recortarla en `fetchTree` la
+   * dejaría sin nombre en la barra de la llamada y sin sitio al que volver.
+   */
+  const espaciosDeTrabajo = tree.filter((s) => s.kind !== "general");
   const loading = useTasksStore((s) => s.loadingTree);
   const error = useTasksStore((s) => s.error);
   const createSpace = useTasksStore((s) => s.createSpace);
@@ -327,12 +338,12 @@ export default function SpacesNavigator() {
         )}
         {loading && tree.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
-        ) : tree.length === 0 ? (
+        ) : espaciosDeTrabajo.length === 0 ? (
           <p className="px-3 py-3 text-xs text-muted-foreground">
             No spaces yet. Create one to start organizing work.
           </p>
         ) : (
-          tree.map((space) => <SpaceNode key={space.id} space={space} />)
+          espaciosDeTrabajo.map((space) => <SpaceNode key={space.id} space={space} />)
         )}
         {addingSpace && currentOrgId && (
           <InlineName
