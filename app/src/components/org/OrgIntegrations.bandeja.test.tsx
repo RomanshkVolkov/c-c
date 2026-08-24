@@ -16,10 +16,12 @@ import type { ReportProject } from "@/types/report";
  * nombre le borraba el webhook a un cliente.
  */
 
-const { updateProject, tree } = vi.hoisted(() => ({
+const { updateProject, tree, fetchTree } = vi.hoisted(() => ({
   updateProject: vi.fn(),
   tree: { current: [] as SpaceTree[] },
+  fetchTree: vi.fn(),
 }));
+const orgActual = { current: "org-1" };
 
 const proyectos = { current: [] as ReportProject[] };
 
@@ -37,11 +39,11 @@ vi.mock("@/store/reports.store", () => ({
 }));
 vi.mock("@/store/tasks.store", () => ({
   useTasksStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({ tree: tree.current, fetchTree: vi.fn().mockResolvedValue(undefined) }),
+    sel({ tree: tree.current, fetchTree }),
 }));
 vi.mock("@/store/orgs.store", () => ({
   useOrgsStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({ currentOrgId: "org-1", listMembers: vi.fn().mockResolvedValue([]) }),
+    sel({ currentOrgId: orgActual.current, listMembers: vi.fn().mockResolvedValue([]) }),
 }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -56,6 +58,18 @@ const ARBOL = [
     color: "#0ff",
     lists: [],
     folders: [{ id: "car-1", name: "web", lists: [{ id: "li-honda", name: "Tasks" }] }],
+    people: [],
+  },
+  // Una organización que no es la suya. El árbol del store es el que dejó la
+  // última pantalla, así que esto no es rebuscado: es el estado normal cuando
+  // se abre Ajustes después de haber estado en otra organización.
+  {
+    id: "esp-9",
+    orgId: "org-otra",
+    name: "Latinet",
+    color: "#000",
+    lists: [{ id: "li-ajena", name: "salud en casa" }],
+    folders: [],
     people: [],
   },
 ] as unknown as SpaceTree[];
@@ -82,7 +96,12 @@ const pintar = (extra: Partial<ReportProject> = {}) => {
   return render(<OrgIntegrations canManage />);
 };
 
-beforeEach(() => updateProject.mockResolvedValue(undefined));
+beforeEach(() => {
+  updateProject.mockResolvedValue(undefined);
+  fetchTree.mockReset();
+  fetchTree.mockResolvedValue(undefined);
+  orgActual.current = "org-1";
+});
 afterEach(cleanup);
 
 describe("dónde caen sus reportes", () => {
@@ -126,6 +145,61 @@ describe("dónde caen sus reportes", () => {
     expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
       "Boaty · web · Tasks",
     ]);
+  });
+});
+
+describe("el árbol que se ofrece es el de esta organización", () => {
+  /**
+   * Se recarga al cambiar de organización, **aunque ya hubiera uno cargado**.
+   *
+   * Estaba escrito como «si está vacío, cárgalo», y el que quedaba en memoria
+   * podía ser de otra organización: el navegador lo recarga al cambiar de org,
+   * pero en Ajustes no está montado. De ahí salían las listas ajenas.
+   */
+  it("se pide de nuevo cuando cambia la organización", () => {
+    const r = pintar({ listId: "li-honda" });
+    expect(fetchTree).toHaveBeenCalledTimes(1);
+
+    orgActual.current = "org-otra";
+    r.rerender(<OrgIntegrations canManage />);
+    expect(fetchTree).toHaveBeenCalledTimes(2);
+  });
+
+  // El caso exacto que fallaba: había árbol, así que no se pedía ninguno.
+  it("se pide aunque ya hubiera uno cargado", () => {
+    tree.current = ARBOL;
+    proyectos.current = [INTEGRACION];
+    render(<OrgIntegrations canManage />);
+    expect(fetchTree).toHaveBeenCalled();
+  });
+});
+
+describe("no se puede elegir la lista de otra organización", () => {
+  /**
+   * El fallo que llegó de producción: subir el límite de una integración
+   * respondía `inbox-other-org`.
+   *
+   * El desplegable ofrecía las listas del árbol que hubiera cargado, que podía
+   * ser el de **otra** organización —el navegador lo recarga al cambiar de org,
+   * pero en Ajustes no está montado—. El servidor lo rechazaba, y con razón:
+   * poner ahí la bandeja sería entregarle los reportes de un cliente a gente de
+   * otra organización. Que el servidor tenga que defenderse de la pantalla es
+   * el fallo; la pantalla no debe ofrecerlo.
+   */
+  it("la lista ajena no está entre las opciones", () => {
+    pintar({ listId: "li-honda" });
+    fireEvent.click(screen.getByText("Edit"));
+    const select = screen.getByRole("combobox", { name: /Reports arrive in/i });
+    const valores = [...select.querySelectorAll("option")].map((o) => o.getAttribute("value"));
+    expect(valores).not.toContain("li-ajena");
+    expect(valores).toEqual(["li-honda"]);
+  });
+
+  it("y su nombre tampoco se ofrece", () => {
+    pintar();
+    fireEvent.click(screen.getByText("Edit"));
+    const select = screen.getByRole("combobox", { name: /Reports arrive in/i });
+    expect(select.textContent).not.toContain("salud en casa");
   });
 });
 

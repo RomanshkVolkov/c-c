@@ -18,9 +18,18 @@ export interface ListaConRuta {
   ruta: string;
 }
 
-export function listasDelArbol(tree: SpaceTree[]): ListaConRuta[] {
+/**
+ * @param orgId Si se pasa, sólo las listas de esa organización.
+ *
+ * No es un filtro de comodidad: ofrecer como bandeja la lista de otra
+ * organización es enseñarle el trabajo de un cliente a gente que no tiene nada
+ * que ver con él. El servidor lo rechaza —`inbox-other-org`— pero llegar a que
+ * lo rechace ya es un fallo de la pantalla, que ofreció algo imposible.
+ */
+export function listasDelArbol(tree: SpaceTree[], orgId?: string): ListaConRuta[] {
   const out: ListaConRuta[] = [];
   for (const sp of tree) {
+    if (orgId && sp.orgId !== orgId) continue;
     for (const l of sp.lists ?? []) out.push({ id: l.id, ruta: `${sp.name} · ${l.name}` });
     for (const f of sp.folders ?? []) {
       for (const l of f.lists ?? []) {

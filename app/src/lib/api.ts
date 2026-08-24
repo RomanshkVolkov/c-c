@@ -134,9 +134,23 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
   const json = parse(reply);
 
   if (reply.status >= 400) {
-    const errorMsg: string = json?.error ?? json?.message ?? "Request failed";
+    /**
+     * Dos campos con dos oficios, y hay que no confundirlos.
+     *
+     * `message` es la frase para leer —«That list belongs to another
+     * organization»— y `error` la etiqueta para el código —`inbox-other-org`—.
+     * Lo que se enseñaba era la etiqueta, así que un 409 perfectamente
+     * explicado llegaba a la pantalla como «Error: inbox-other-org».
+     *
+     * Y el `detalle` se lee **aparte**, no del texto que se enseña. Con un solo
+     * valor para las dos cosas, empezar a mostrar la frase habría dejado de
+     * reconocer `expired-token` —que viaja con `message: "Unauthorized"`— y
+     * nadie habría vuelto a renovar sesión: se cerraría sola en silencio.
+     */
+    const detalle: string = json?.error ?? "";
+    const errorMsg: string = json?.message ?? json?.error ?? "Request failed";
 
-    if (errorMsg === "expired-token" && auth && retry) {
+    if (detalle === "expired-token" && auth && retry) {
       const newToken = await tryRefresh();
       if (newToken) return request<T>(path, options, false);
       throw new Error("session-expired");
@@ -185,8 +199,22 @@ async function sendForm<T>(
 
   const json = await res.json();
   if (!res.ok) {
-    const errorMsg: string = json?.error ?? json?.message ?? "Request failed";
-    if (errorMsg === "expired-token" && retry) {
+    /**
+     * Dos campos con dos oficios, y hay que no confundirlos.
+     *
+     * `message` es la frase para leer —«That list belongs to another
+     * organization»— y `error` la etiqueta para el código —`inbox-other-org`—.
+     * Lo que se enseñaba era la etiqueta, así que un 409 perfectamente
+     * explicado llegaba a la pantalla como «Error: inbox-other-org».
+     *
+     * Y el `detalle` se lee **aparte**, no del texto que se enseña. Con un solo
+     * valor para las dos cosas, empezar a mostrar la frase habría dejado de
+     * reconocer `expired-token` —que viaja con `message: "Unauthorized"`— y
+     * nadie habría vuelto a renovar sesión: se cerraría sola en silencio.
+     */
+    const detalle: string = json?.error ?? "";
+    const errorMsg: string = json?.message ?? json?.error ?? "Request failed";
+    if (detalle === "expired-token" && retry) {
       const newToken = await tryRefresh();
       if (newToken) return sendForm<T>(method, path, form, false);
       throw new Error("session-expired");

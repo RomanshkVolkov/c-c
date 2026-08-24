@@ -58,9 +58,16 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
     fetchProjects().catch(() => {});
   }, [fetchProjects, orgId]);
 
+  // Cada vez que cambia la organización, no sólo si el árbol está vacío.
+  //
+  // Lo tenía en «si está vacío», y el árbol que quedaba en memoria podía ser de
+  // **otra organización**: el navegador lo recarga al cambiar de org, pero en
+  // Ajustes no está montado. El panel acababa ofreciendo las listas de otra
+  // organización como bandeja de esta integración, y elegir una devolvía
+  // `inbox-other-org` sin que nada explicara por qué.
   useEffect(() => {
-    if (tree.length === 0) void fetchTree();
-  }, [tree.length, fetchTree]);
+    void fetchTree();
+  }, [orgId, fetchTree]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -167,7 +174,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
               proyecto={p}
               canManage={canManage}
               miembros={miembros}
-              listas={listasDelArbol(tree)}
+              listas={listasDelArbol(tree, p.orgId)}
               ruta={rutaDeLista(tree, p.listId)}
               onRotated={setClave}
             />

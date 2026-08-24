@@ -56,6 +56,40 @@ describe("la ruta de una lista", () => {
   });
 });
 
+describe("acotar a una organización", () => {
+  // Un árbol con dos organizaciones dentro es el estado normal de esta pantalla:
+  // el que quedó cargado puede no ser el de la organización que se está mirando.
+  const MEZCLADO = [
+    ...ARBOL,
+    {
+      id: "esp-9",
+      orgId: "org-2",
+      name: "Otro cliente",
+      color: "#000",
+      lists: [{ id: "li-ajena", name: "Bugs" }],
+      folders: [],
+      people: [],
+    },
+  ] as unknown as SpaceTree[];
+
+  it("sin organización, salen todas", () => {
+    expect(listasDelArbol(MEZCLADO)).toHaveLength(4);
+  });
+
+  // Ofrecer la lista de otra organización como bandeja es enseñarle el trabajo
+  // de un cliente a quien no tiene nada que ver. El servidor lo rechaza, pero
+  // llegar a que lo rechace ya es un fallo de la pantalla.
+  it("con organización, la de fuera no está", () => {
+    const ids = listasDelArbol(MEZCLADO, "org-1").map((l) => l.id);
+    expect(ids).not.toContain("li-ajena");
+    expect(ids).toHaveLength(3);
+  });
+
+  it("y si el árbol entero es de otra, no queda ninguna", () => {
+    expect(listasDelArbol(MEZCLADO, "org-3")).toEqual([]);
+  });
+});
+
 describe("las listas del árbol", () => {
   it("están todas, las anidadas también", () => {
     expect(listasDelArbol(ARBOL).map((l) => l.id)).toEqual([
