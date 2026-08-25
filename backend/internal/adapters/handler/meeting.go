@@ -3,6 +3,8 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -13,6 +15,7 @@ import (
 
 type MeetingHandler interface {
 	List(w http.ResponseWriter, r *http.Request)
+	Agenda(w http.ResponseWriter, r *http.Request)
 	Create(w http.ResponseWriter, r *http.Request)
 	Update(w http.ResponseWriter, r *http.Request)
 	Delete(w http.ResponseWriter, r *http.Request)
@@ -115,6 +118,30 @@ func (h *meetingHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.MeetingResponse]{Success: true, Data: out})
+}
+
+// Agenda: las ocurrencias concretas de una ventana, para el calendario.
+//
+// Las expande el servidor y no la app: la regla —con sus dos cambios de hora al
+// año— tiene una sola implementación, y es la que ya está probada.
+func (h *meetingHandler) Agenda(w http.ResponseWriter, r *http.Request) {
+	orgID := chi.URLParam(r, "orgId")
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	if _, member := user.RoleInOrg(orgID); !member && !user.Superadmin {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	dias, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	out, err := h.svc.Agenda(orgID, time.Now(), dias)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to build the agenda", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.MeetingOccurrence]{Success: true, Data: out})
 }
 
 func (h *meetingHandler) Create(w http.ResponseWriter, r *http.Request) {

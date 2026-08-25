@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CalendarClock, Loader2, Pause, Play, Plus, Trash2, Users } from "lucide-react";
+import { CalendarClock, CalendarDays, List, Loader2, Pause, Play, Plus, Trash2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useMeetingsStore, type Meeting, type MeetingDraft } from "@/store/meetings.store";
+import ItemCalendar, { type CalendarItem } from "@/components/ItemCalendar";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { horaDual, reglaLegible } from "@/lib/horas";
@@ -30,9 +31,14 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
   const fetch = useMeetingsStore((s) => s.fetch);
   const create = useMeetingsStore((s) => s.create);
 
+  const agenda = useMeetingsStore((s) => s.agenda);
+  const fetchAgenda = useMeetingsStore((s) => s.fetchAgenda);
+
   const [miembros, setMiembros] = useState<OrgMember[]>([]);
   const [creando, setCreando] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  /** Lista o calendario. La lista primero: es donde se edita. */
+  const [vista, setVista] = useState<"lista" | "calendario">("lista");
 
   useEffect(() => {
     if (orgId) fetch(orgId).catch(() => {});
@@ -41,6 +47,12 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
   useEffect(() => {
     if (orgId) listMembers(orgId).then(setMiembros).catch(() => {});
   }, [orgId, listMembers]);
+
+  // Sólo al mirar el calendario: expandir dos meses de repeticiones para una
+  // pantalla que nadie ha abierto es trabajo tirado.
+  useEffect(() => {
+    if (orgId && vista === "calendario") fetchAgenda(orgId).catch(() => {});
+  }, [orgId, vista, fetchAgenda, meetings]);
 
   const crear = async (draft: MeetingDraft) => {
     if (!orgId) return;
@@ -67,8 +79,24 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
 
       <div className="flex items-center gap-2">
         <Label className="text-sm font-medium">Recurring meetings</Label>
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            size="sm"
+            variant={vista === "lista" ? "secondary" : "ghost"}
+            onClick={() => setVista("lista")}
+          >
+            <List className="mr-1 size-3" /> List
+          </Button>
+          <Button
+            size="sm"
+            variant={vista === "calendario" ? "secondary" : "ghost"}
+            onClick={() => setVista("calendario")}
+          >
+            <CalendarDays className="mr-1 size-3" /> Calendar
+          </Button>
+        </div>
         {canManage && !creando && (
-          <Button size="sm" variant="outline" className="ml-auto" onClick={() => setCreando(true)}>
+          <Button size="sm" variant="outline" onClick={() => setCreando(true)}>
             <Plus className="mr-1 size-3" /> New
           </Button>
         )}
@@ -82,7 +110,28 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
         />
       )}
 
-      {loading && meetings.length === 0 ? (
+      {vista === "calendario" ? (
+        <ItemCalendar
+          items={agenda.map(
+            (o, i): CalendarItem => ({
+              // El id lleva el índice porque una reunión aparece **muchas
+              // veces** en el mes, y el calendario necesita distinguirlas.
+              id: `${o.meetingId}#${i}`,
+              title: o.spaceName ? `${o.title} · #${o.spaceName}` : o.title,
+              at: o.at,
+              // Las pausadas se pintan apagadas en vez de esconderse: una
+              // reunión pausada por error es invisible justo donde se buscaría.
+              dotClass: o.paused ? "bg-muted-foreground/40" : "bg-primary",
+              label: new Date(o.at).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              }),
+            }),
+          )}
+          onOpen={() => setVista("lista")}
+          noun="meeting"
+        />
+      ) : loading && meetings.length === 0 ? (
         <p className="flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" /> Reading…
         </p>

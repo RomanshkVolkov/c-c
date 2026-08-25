@@ -132,6 +132,18 @@ type MeetingResponse struct {
 	ExcludedUserIDs []string `json:"excludedUserIds"`
 }
 
+// MeetingOccurrence es una vez concreta de una reunión, para pintar el
+// calendario. Las expande el servidor: ver `occurrencesBetween`.
+type MeetingOccurrence struct {
+	MeetingID string    `json:"meetingId"`
+	Title     string    `json:"title"`
+	SpaceID   string    `json:"spaceId,omitempty"`
+	SpaceName string    `json:"spaceName,omitempty"`
+	Timezone  string    `json:"timezone"`
+	Paused    bool      `json:"paused"`
+	At        time.Time `json:"at"`
+}
+
 // MeetingRing es lo que viaja por SSE cuando llega la hora.
 //
 // Lleva la sala ya resuelta por nombre —como VoiceRing— para que la tarjeta se

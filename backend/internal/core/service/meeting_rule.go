@@ -201,6 +201,31 @@ func nextOccurrence(m domain.MeetingReminder, after time.Time, loc *time.Locatio
 	return time.Time{}, ErrBadFreq
 }
 
+// occurrencesBetween: todas las veces que toca entre dos instantes.
+//
+// Existe para pintar el calendario, y vive **aquí** y no en la app por una
+// razón concreta: expandir las repeticiones en el frontend obligaría a escribir
+// una segunda implementación de la misma regla, con sus dos cambios de hora al
+// año. Dos implementaciones acaban discrepando, y la forma en que se nota es la
+// peor posible — el calendario dice martes, el timbre suena el miércoles, y
+// nadie sabe cuál de los dos miente.
+//
+// `max` es un tope defensivo: sin él, una regla que devolviera siempre el mismo
+// instante giraría para siempre.
+func occurrencesBetween(m domain.MeetingReminder, desde, hasta time.Time, loc *time.Location, max int) []time.Time {
+	out := []time.Time{}
+	cursor := desde
+	for len(out) < max {
+		siguiente, err := nextOccurrence(m, cursor, loc)
+		if err != nil || siguiente.After(hasta) {
+			break
+		}
+		out = append(out, siguiente)
+		cursor = siguiente
+	}
+	return out
+}
+
 // vencida dice si una ocurrencia que ya pasó todavía merece sonar.
 //
 // Dentro de la gracia, sí: el disparador mira cada treinta segundos y llegar

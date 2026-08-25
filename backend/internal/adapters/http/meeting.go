@@ -39,6 +39,8 @@ func InitMeetingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		// Verla es de cualquier miembro: saber cuándo se reúne tu equipo no es
 		// información de administración.
 		r.Get("/", h.List)
+		// El calendario: las repeticiones ya expandidas.
+		r.Get("/agenda", h.Agenda)
 		r.Post("/", h.Create)
 	})
 	r.Route("/api/v1/meetings/{id}", func(r chi.Router) {

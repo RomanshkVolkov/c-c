@@ -71,8 +71,29 @@ export interface ReunionEntrante {
   expiresAt: string;
 }
 
+/**
+ * Una vez concreta de una reunión, para el calendario.
+ *
+ * Las expande **el servidor**. Hacerlo aquí obligaría a reescribir la regla de
+ * repetición en TypeScript —con sus dos cambios de hora al año— y dos
+ * implementaciones acaban discrepando: el calendario diría martes y el timbre
+ * sonaría el miércoles, sin forma de saber cuál miente.
+ */
+export interface MeetingOccurrence {
+  meetingId: string;
+  title: string;
+  spaceId?: string;
+  spaceName?: string;
+  timezone: string;
+  paused: boolean;
+  at: string;
+}
+
 interface MeetingsState {
   meetings: Meeting[];
+  /** Las ocurrencias de la ventana que se está pintando. */
+  agenda: MeetingOccurrence[];
+  fetchAgenda: (orgId: string, days?: number) => Promise<void>;
   loading: boolean;
   /** La reunión que está sonando ahora mismo, si hay alguna. */
   entrante: ReunionEntrante | null;
@@ -91,8 +112,16 @@ let relojEntrante: ReturnType<typeof setTimeout> | null = null;
 
 export const useMeetingsStore = create<MeetingsState>((set, get) => ({
   meetings: [],
+  agenda: [],
   loading: false,
   entrante: null,
+
+  fetchAgenda: async (orgId, days = 60) => {
+    const res = await api.get<APIResponse<MeetingOccurrence[]>>(
+      `/api/v1/organizations/${orgId}/meetings/agenda?days=${days}`,
+    );
+    set({ agenda: res.data ?? [] });
+  },
 
   alSonar: (t) => {
     if (relojEntrante) clearTimeout(relojEntrante);

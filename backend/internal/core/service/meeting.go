@@ -226,6 +226,47 @@ func (s *MeetingService) List(orgID string) ([]domain.MeetingResponse, error) {
 	return out, nil
 }
 
+// Agenda expande las reuniones en sus ocurrencias concretas de una ventana.
+//
+// Las pausadas van incluidas y **marcadas**: quitarlas del calendario haría
+// que una reunión pausada por error fuera invisible justo en la pantalla donde
+// se iría a buscarla.
+func (s *MeetingService) Agenda(orgID string, desde time.Time, dias int) ([]domain.MeetingOccurrence, error) {
+	if dias <= 0 || dias > 120 {
+		dias = 60
+	}
+	hasta := desde.AddDate(0, 0, dias)
+
+	reuniones, err := s.repo.ListByOrg(orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := []domain.MeetingOccurrence{}
+	for _, m := range reuniones {
+		loc, err := zonaDe(m.Timezone)
+		if err != nil {
+			continue
+		}
+		base := domain.MeetingOccurrence{
+			MeetingID: m.ID, Title: m.Title, Timezone: m.Timezone, Paused: m.Paused,
+		}
+		if m.SpaceID != nil {
+			base.SpaceID = *m.SpaceID
+			if sp, err := s.spaces.FindSpace(*m.SpaceID); err == nil {
+				base.SpaceName = sp.Name
+			}
+		}
+		// Un tope por reunión: una diaria a dos meses son sesenta filas, y
+		// varias diarias no pueden convertir esto en miles.
+		for _, cuando := range occurrencesBetween(m, desde, hasta, loc, dias+1) {
+			ocurrencia := base
+			ocurrencia.At = cuando
+			out = append(out, ocurrencia)
+		}
+	}
+	return out, nil
+}
+
 // ─── El disparo ─────────────────────────────────────────────────────────────
 
 // destinatarios: todos los de la organización menos quien pidió no recibirla.
