@@ -18,6 +18,7 @@ import { useNotificationsStore } from "@/store/notifications.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
 import { useMeetingsStore, type ReunionEntrante } from "@/store/meetings.store";
+import { useMyWorkStore } from "@/store/mywork.store";
 
 type Payload = {
   reportId?: string;
@@ -354,8 +355,15 @@ export function useReportEvents() {
           // Task board changes ride the same org-scoped stream. Refetch only when
           // the event belongs to the list currently on screen — a busy org would
           // otherwise reload the board on every unrelated card someone touches.
-          const p = parse(data) as { listId?: string };
+          const p = parse(data) as { listId?: string; taskId?: string };
           const store = useTasksStore.getState();
+          // Lo borrado se quita **antes** de mirar la lista en pantalla: «My
+          // work» junta tareas de todas las listas, así que un borrado en otra
+          // le dejaría la fila puesta y sólo al abrirla se sabría que ya no
+          // está. Es local y barato — la fila no puede seguir existiendo.
+          if (event === "task:delete" && p.taskId) {
+            useMyWorkStore.getState().olvidar(p.taskId);
+          }
           if (!store.activeListId) return;
           if (p.listId && p.listId !== store.activeListId) return;
           store.refreshBoard();

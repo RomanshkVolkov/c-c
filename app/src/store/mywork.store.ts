@@ -64,6 +64,19 @@ interface MyWorkState {
   load: (orgId: string | null) => Promise<void>;
   /** Follow or unfollow, and drop the row when it leaves the lens you're in. */
   setWatching: (taskId: string, on: boolean) => Promise<void>;
+  /**
+   * Esa tarea ya no existe: quítala de aquí.
+   *
+   * Sin esto, borrar desde «My work» dejaba la tarjeta en pantalla —esta lista
+   * la sirve su propio endpoint, y refrescar el tablero no la toca— así que
+   * seguía pulsable y lo único que decía que había desaparecido era un «not
+   * found» al abrirla. Quien lo veía volvía a borrar, y en una lista de tareas
+   * parecidas el segundo intento se lleva la equivocada.
+   *
+   * Local y no una recarga: la fila ya no puede estar, y pedir la lista entera
+   * para quitar una que sabemos que se fue es más lento y puede fallar.
+   */
+  olvidar: (taskId: string) => void;
 }
 
 export const useMyWorkStore = create<MyWorkState>()(
@@ -98,6 +111,9 @@ export const useMyWorkStore = create<MyWorkState>()(
           set({ error: String(e), loading: false, tasks: [] });
         }
       },
+
+      olvidar: (taskId) =>
+        set((s) => ({ tasks: s.tasks.filter((t) => t.id !== taskId) })),
 
       setWatching: async (taskId, on) => {
         const path = `/api/v1/tasks/${taskId}/watch`;

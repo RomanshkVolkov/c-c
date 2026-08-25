@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { api, apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useMyWorkStore } from "@/store/mywork.store";
 import type { APIResponse } from "@/types/auth";
 
 /** Where a dragged node lands relative to the row it was dropped on. */
@@ -603,6 +604,11 @@ export const useTasksStore = create<TasksState>()(
       deleteTask: async (id) => {
         await api.delete<APIResponse<unknown>>(`/api/v1/tasks/${id}`);
         if (get().openTaskId === id) set({ openTaskId: null, detail: null });
+        // «My work» sirve sus filas por su cuenta, así que `refreshBoard` no la
+        // toca: borrando desde ahí la tarjeta se quedaba en pantalla y sólo al
+        // abrirla se sabía que ya no estaba. Se quita aquí y no en la pantalla
+        // que borra, para que valga sea cual sea el sitio desde el que se borre.
+        useMyWorkStore.getState().olvidar(id);
         await get().refreshBoard();
         await get().fetchTree();
       },
