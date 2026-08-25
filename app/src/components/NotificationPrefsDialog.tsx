@@ -38,6 +38,12 @@ const OPCIONES: { key: keyof InboxPrefs; label: string; hint: string; invertida?
     hint: "Work assigned to you, andstatus changes on what you carry — including anything an agent does through the MCP server.",
     invertida: true,
   },
+  {
+    key: "meetingsQuiet",
+    label: "Meeting reminders",
+    hint: "Recurring meetings your organization scheduled. They ring like a call at the time they start.",
+    invertida: true,
+  },
 ];
 
 /** Si el interruptor se ve encendido. Ver `invertida` arriba. */
@@ -143,6 +149,7 @@ export default function NotificationPrefsDialog({
   // dialog that lies before it is even used.
   const actual: InboxPrefs = prefs ?? {
     mentions: true, dms: true, comments: true, reports: true, messages: true, workQuiet: false,
+    meetingsQuiet: false,
   };
 
   const alternar = async (key: keyof InboxPrefs) => {
@@ -168,6 +175,12 @@ export default function NotificationPrefsDialog({
           {OPCIONES.map((o) => (
             <button
               key={o.key}
+              // Un interruptor, y que lo diga. El control visual es un `span`
+              // decorativo, así que sin esto un lector de pantalla lee la
+              // opción y **no** si está encendida — que es la única
+              // información que hay aquí.
+              role="switch"
+              aria-checked={encendida(actual, o)}
               onClick={() => void alternar(o.key)}
               disabled={busy}
               className="flex w-full items-start gap-3 rounded px-2 py-2 text-left hover:bg-accent"

@@ -47,6 +47,15 @@ export interface InboxPrefs {
   workQuiet?: boolean;
   /** Lo corriente de los canales que sigues. Sólo llega de ahí. */
   messages: boolean;
+  /**
+   * Invertido como `workQuiet`, y por lo mismo: apaga los recordatorios de
+   * reuniones periódicas.
+   *
+   * Existe porque una reunión suena **y vuelve a sonar cada semana**. Un aviso
+   * suelto que no interesa se ignora una vez; uno recurrente que no se puede
+   * callar acaba con la campana entera silenciada.
+   */
+  meetingsQuiet?: boolean;
 }
 
 interface InboxState {
