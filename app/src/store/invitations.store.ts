@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api } from "@/lib/api";
+import { api, refreshAccessToken } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
 import type { Invitation } from "@/types/organization";
 
@@ -8,7 +8,14 @@ interface InvitationsState {
   loading: boolean;
 
   fetchMine: () => Promise<void>;
-  accept: (id: string) => Promise<void>;
+  /**
+   * Aceptar, y **renovar la sesión** antes de dar la operación por terminada.
+   *
+   * Devuelve si la renovación salió: sin token nuevo la invitación está
+   * aceptada en el servidor y la app sigue sin poder ver nada, y quien llame
+   * tiene que poder decirlo en vez de enseñar una pantalla vacía.
+   */
+  accept: (id: string) => Promise<{ renovado: boolean }>;
   decline: (id: string) => Promise<void>;
   reset: () => void;
 }
@@ -35,6 +42,17 @@ export const useInvitationsStore = create<InvitationsState>()((set) => ({
     const res = await api.post<APIResponse<unknown>>(`/api/v1/invitations/${id}/accept`, {}, true);
     if (!res.success) throw new Error(res.error ?? "Accept failed");
     set((s) => ({ pending: s.pending.filter((i) => i.id !== id) }));
+
+    // El token **lleva dentro** a qué organizaciones perteneces, y todo lo que
+    // autoriza —el árbol, los canales, la voz— se resuelve contra eso y no
+    // contra la base. Así que aceptar creaba la membresía en el servidor y
+    // dejaba en la mano una credencial que seguía diciendo que no perteneces a
+    // nada: la app se veía vacía hasta cerrar sesión y volver a entrar.
+    //
+    // Es la peor primera impresión posible — alguien acaba de aceptar y no ve
+    // nada, y lo natural es pensar que no le dieron permisos.
+    const renovado = (await refreshAccessToken()) !== null;
+    return { renovado };
   },
 
   decline: async (id) => {

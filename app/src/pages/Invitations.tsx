@@ -23,8 +23,18 @@ export default function Invitations() {
   const onAccept = async (id: string, orgName: string) => {
     setBusy(id);
     try {
-      await accept(id);
-      toast.success(`Joined ${orgName}`);
+      const { renovado } = await accept(id);
+      // Si no se pudo renovar la sesión, la invitación **sí** quedó aceptada —
+      // decir «no se pudo» sería mentir y llevaría a reintentar sobre una
+      // invitación ya gastada. Lo que falta es la credencial nueva, y eso se
+      // arregla volviendo a entrar.
+      if (renovado) {
+        toast.success(`Joined ${orgName}`);
+      } else {
+        toast.warning(`Joined ${orgName}`, {
+          description: "Sign out and back in to finish getting access.",
+        });
+      }
       await fetchOrgs(); // the new org appears in the switcher immediately
     } catch (e) {
       toast.error("Could not accept", {

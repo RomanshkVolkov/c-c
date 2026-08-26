@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { api } from "@/lib/api";
+import { api, refreshAccessToken } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
 import type {
   Organization,
@@ -94,6 +94,11 @@ export const useOrgsStore = create<OrgsState>()(
         if (!res.success || !res.data)
           throw new Error(res.error ?? "Failed to create organization");
         const org = res.data;
+        // Mismo motivo que al aceptar una invitación: la pertenencia viaja
+        // dentro del token, así que sin renovarlo la organización recién creada
+        // se abriría vacía —y quien la crea es justo quien no puede achacarlo a
+        // «aún no me han dado permisos»—.
+        await refreshAccessToken();
         set((s) => ({ orgs: [...s.orgs, org], currentOrgId: org.id }));
         return org;
       },
