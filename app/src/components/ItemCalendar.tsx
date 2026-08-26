@@ -28,6 +28,14 @@ export interface CalendarItem {
 }
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/**
+ * Cuántos caben en un día antes de resumir.
+ *
+ * Tres es lo que entra sin que la fila crezca de más. El resto no desaparece:
+ * sale un «+N more» que abre el día entero debajo.
+ */
+const MAX_POR_DIA = 3;
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 export default function ItemCalendar({
@@ -97,30 +105,60 @@ export default function ItemCalendar({
         ))}
         {cells.map((d, i) => {
           const k = dayKey(d);
-          const items = byDay.get(k) ?? [];
+          const delDia = byDay.get(k) ?? [];
           const inMonth = d.getMonth() === cursor.getMonth();
+          const visibles = delDia.slice(0, MAX_POR_DIA);
+          const ocultos = delDia.length - visibles.length;
           return (
-            <button
+            // Una celda y no un botón: dentro va uno por elemento, y anidar
+            // botones no es HTML válido — el de fuera se comería sus clics.
+            <div
               key={i}
-              onClick={() => items.length && setSelected(k === selected ? null : k)}
-              className={`min-h-[74px] bg-background p-1.5 text-left align-top transition-colors ${
+              className={`flex min-h-[104px] flex-col gap-0.5 bg-background p-1.5 align-top ${
                 inMonth ? "" : "opacity-40"
-              } ${items.length ? "hover:bg-accent/50 cursor-pointer" : "cursor-default"} ${
-                k === selected ? "ring-2 ring-primary ring-inset" : ""
-              }`}
+              } ${k === selected ? "ring-1 ring-inset ring-primary/60" : ""}`}
             >
-              <div className="flex items-center justify-between">
-                <span className={`text-xs ${k === today ? "font-bold text-primary" : "text-muted-foreground"}`}>
-                  {d.getDate()}
-                </span>
-                {items.length > 0 && <span className="text-xs text-muted-foreground">{items.length}</span>}
-              </div>
-              <div className="mt-1 flex flex-wrap gap-0.5">
-                {items.slice(0, 8).map((r) => (
-                  <span key={r.id} className={`h-1.5 w-1.5 rounded-full ${r.dotClass}`} />
-                ))}
-              </div>
-            </button>
+              <span
+                className={`mb-0.5 grid size-5 shrink-0 place-items-center rounded-full text-xs ${
+                  k === today
+                    ? "bg-primary font-semibold text-primary-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {d.getDate()}
+              </span>
+
+              {/* El título, dentro del día.
+                  Antes la celda pintaba puntos de seis píxeles y un número en la
+                  esquina, y para saber **qué** había que hacer clic en el día. Un
+                  calendario que no dice qué tienes ese día obliga a abrir los
+                  treinta y uno para enterarse. */}
+              {visibles.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => onOpen(r.id)}
+                  title={r.label ? `${r.label} · ${r.title}` : r.title}
+                  className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] hover:bg-accent"
+                >
+                  <span className={`size-1.5 shrink-0 rounded-full ${r.dotClass}`} />
+                  {r.label && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{r.label}</span>
+                  )}
+                  <span className="truncate">{r.title}</span>
+                </button>
+              ))}
+
+              {/* Lo que no cabe se dice, no se esconde: sin esto, un día con seis
+                  cosas se lee como un día con tres. */}
+              {ocultos > 0 && (
+                <button
+                  onClick={() => setSelected(k === selected ? null : k)}
+                  className="rounded px-1 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  +{ocultos} more
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
