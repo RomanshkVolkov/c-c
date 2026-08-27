@@ -85,8 +85,13 @@ func (s *DMService) publish(toUserID, orgID, conversationID, messageID, actorID 
 		if de != "" {
 			titulo = de + " te escribió"
 		}
-		s.notifier.Notify(toUserID, orgID, "dm:message",
-			titulo, "", "/dm?c="+conversationID, domain.ViaApp)
+		s.notifier.Notify(domain.Aviso{
+			UserID: toUserID, OrgID: orgID, Kind: "dm:message",
+			Title: titulo, Body: "", Link: "/dm?c=" + conversationID, Via: domain.ViaApp,
+			// El rótulo es el nombre a secas, sin el «te escribió» del título:
+			// plegados, tres directos de Ana son «Ana», no «Ana te escribió».
+			Group: domain.DMGroup(conversationID), Label: de,
+		})
 	}
 }
 

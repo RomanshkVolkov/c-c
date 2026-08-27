@@ -32,6 +32,27 @@ type Notification struct {
 	// caso corriente y es también lo que tienen todas las filas anteriores a
 	// esta columna, lo que es correcto: no fueron de un agente.
 	Via string `gorm:"type:varchar(10)" json:"via,omitempty"`
+	// GroupKey es de qué conversación es esto: el canal, el directo, la ficha.
+	// Vacío significa «no agrupable» y se pinta suelto, como antes de que la
+	// campana plegara nada. Ver notification_group.go — nunca se escribe a mano.
+	//
+	// El índice va compuesto y no suelto: toda consulta llega ya estrechada por
+	// usuario y organización, y el `read_at` al final deja el recuento de no
+	// leídas por conversación resuelto dentro del propio índice.
+	GroupKey string `gorm:"type:varchar(64);index:idx_notif_group,priority:3" json:"groupKey,omitempty"`
+	// GroupLabel es cómo se llama ese grupo para un humano: «#portento», «Ana»,
+	// el título de la tarea.
+	//
+	// Un campo aparte porque **el rótulo no se puede derivar con una sola
+	// regla**: en un canal vive en el título de la fila y en una tarea vive en
+	// el cuerpo, con el título diciendo qué pasó. Los papeles se invierten según
+	// la familia, y sin este campo la pantalla tendría que conocer esa
+	// inversión — además de deshacer envoltorios como «Mentioned in ». Eso es
+	// cirugía de cadenas sobre texto pensado para leerse, que es exactamente lo
+	// que se quiso evitar.
+	//
+	// No se indexa: es presentación, nunca se busca por él.
+	GroupLabel string `gorm:"type:varchar(120)" json:"groupLabel,omitempty"`
 }
 
 // NotificationPrefs is what somebody wants to be told about.

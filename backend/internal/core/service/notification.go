@@ -10,7 +10,7 @@ import (
 // depend on the act and not on the store, and so a service constructed without
 // one simply doesn't record — which is what every existing test does.
 type Notifier interface {
-	Notify(userID, orgID, kind, title, body, link, via string)
+	Notify(a domain.Aviso)
 }
 
 type NotificationService struct {
@@ -24,22 +24,39 @@ func NewNotificationService(repo *repository.NotificationRepository) *Notificati
 // Notify records one. Errors are swallowed on purpose: failing to write the
 // inbox row must never fail the message that caused it — being told late is a
 // nuisance, not being able to speak is a fault.
-// `via` es por dónde entró la acción; ver domain/via.go. Es un parámetro y no
-// un campo del contexto porque el compilador no se olvida de los parámetros: si
-// mañana otra cosa escribe notificaciones, tiene que contestar de dónde viene.
-func (s *NotificationService) Notify(userID, orgID, kind, title, body, link, via string) {
-	if s == nil || s.repo == nil || userID == "" {
+//
+// Recibe un struct y ya no siete cadenas sueltas. Con nueve, `title`, `body`,
+// `link`, `via`, `group` y `label` son todas del mismo tipo y el compilador deja
+// pasar dos intercambiadas sin decir nada — un aviso que dice el cuerpo donde va
+// el título llega a la campana de todo el mundo.
+//
+// El struct tiene su propio precio, y conviene nombrarlo: un literal que se
+// olvide de `Group` compila igual, así que **un sitio nuevo que notifique
+// produciría filas no agrupables en silencio**. De ahí la red de abajo.
+func (s *NotificationService) Notify(a domain.Aviso) {
+	if s == nil || s.repo == nil || a.UserID == "" {
 		return
 	}
 	// Checked here rather than at every call site: the services that publish
 	// events should not each have to remember what somebody wants, and one of
 	// them forgetting would be a preference that silently does nothing.
-	if prefs, err := s.repo.Prefs(userID); err == nil && !prefs.Allows(kind) {
+	if prefs, err := s.repo.Prefs(a.UserID); err == nil && !prefs.Allows(a.Kind) {
 		return
 	}
+	// La red: si quien llama no puso clave, se deduce de la clase y el enlace.
+	// Un sitio olvidadizo produce una fila agrupable igualmente, y si su enlace
+	// no tiene forma conocida se queda suelta — como antes de que esto
+	// existiera. Nunca acaba en el grupo de otro.
+	group := a.Group
+	if group == "" {
+		group = domain.DeriveGroup(a.Kind, a.Link)
+	}
 	n := &domain.Notification{
-		UserID: userID, OrgID: orgID, Kind: kind, Title: title, Body: body, Link: link,
-		Via: domain.NormalizeVia(via),
+		UserID: a.UserID, OrgID: a.OrgID, Kind: a.Kind,
+		Title: a.Title, Body: a.Body, Link: a.Link,
+		Via:        domain.NormalizeVia(a.Via),
+		GroupKey:   group,
+		GroupLabel: a.Label,
 	}
 	_ = s.repo.Add(n)
 }

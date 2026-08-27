@@ -47,7 +47,7 @@ function idFromLink(link: string, param: string): string {
  * sería peor que la lista plana de la que venimos.
  */
 export function groupKeyOf(
-  n: Pick<InboxItem, "kind" | "link"> & { groupKey?: string },
+  n: Pick<InboxItem, "kind" | "link" | "groupKey">,
 ): string {
   if (n.groupKey) return n.groupKey;
 
@@ -195,7 +195,7 @@ export function summarize(g: NotificationGroup): GroupSummary {
  * «Mentioned in ». Quitar ese envoltorio es lo único que se hace a mano, y es
  * temporal — con la columna, esto se queda en una línea.
  */
-function labelOf(n: InboxItem & { groupLabel?: string }): string {
+function labelOf(n: InboxItem): string {
   if (n.groupLabel) return n.groupLabel;
 
   switch (familyOf(n.kind)) {

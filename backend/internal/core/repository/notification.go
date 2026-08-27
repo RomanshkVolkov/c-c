@@ -45,6 +45,21 @@ func (r *NotificationRepository) Feed(userID, orgID string, limit int) (domain.N
 		Where("read_at IS NULL").Count(&out.Unread).Error; err != nil {
 		return out, err
 	}
+
+	// Las filas escritas antes de que existiera la columna no traen clave. Se
+	// deduce **al leer**, no con un backfill: así no hace falta migrar datos ni
+	// escribir SQL de un motor concreto, y la columna guardada sigue siendo la
+	// verdad — el día que un enlace cambie de forma, la deducción se rompe y lo
+	// almacenado no.
+	//
+	// Aquí y no en la app para que exista **una sola** gramática de claves. Con
+	// una copia en el cliente, el día que discreparan, las filas viejas y las
+	// nuevas del mismo canal formarían dos grupos.
+	for i := range out.Items {
+		if out.Items[i].GroupKey == "" {
+			out.Items[i].GroupKey = domain.DeriveGroup(out.Items[i].Kind, out.Items[i].Link)
+		}
+	}
 	return out, nil
 }
 

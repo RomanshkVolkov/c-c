@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 
+	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -121,7 +122,14 @@ func (a *avisos) repartir(quienes []string, via, orgID, itemID, actorID, clase, 
 			continue
 		}
 		vistos[uid] = true
-		a.inbox.Notify(uid, orgID, clase, titulo, cuerpo, enlace, via)
+		a.inbox.Notify(domain.Aviso{
+			UserID: uid, OrgID: orgID, Kind: clase,
+			Title: titulo, Body: cuerpo, Link: enlace, Via: via,
+			// En esta familia los papeles se invierten: el cuerpo es el nombre
+			// de la ficha —lo que da nombre al grupo— y el título dice qué pasó
+			// («Bea replied», «Moved to Done»).
+			Group: domain.ItemGroup(itemID), Label: cuerpo,
+		})
 	}
 }
 

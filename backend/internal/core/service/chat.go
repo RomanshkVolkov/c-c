@@ -112,8 +112,15 @@ func (s *ChatService) anotarAvisos(orgID, spaceID, actorID, cuerpo string, menti
 		// ViaApp fijo: hoy ninguna herramienta del MCP escribe en un canal. El
 		// día que exista una, este servicio tendrá que recibir el contexto de
 		// la petición — si no, un mensaje del agente se pintará como tuyo.
-		s.notifier.Notify(uid, orgID, "chat:mention",
-			"Mentioned in "+donde, linea, "/chat?space="+spaceID, domain.ViaApp)
+		s.notifier.Notify(domain.Aviso{
+			UserID: uid, OrgID: orgID, Kind: "chat:mention",
+			Title: "Mentioned in " + donde, Body: linea,
+			Link: "/chat?space=" + spaceID, Via: domain.ViaApp,
+			// Mismo grupo que un mensaje corriente: una mención pasa **en el
+			// canal**, no en un sitio aparte. El rótulo va sin el envoltorio,
+			// que es del título de la fila y no del nombre del canal.
+			Group: domain.ChannelGroup(spaceID), Label: donde,
+		})
 	}
 
 	// Y a quien sigue el canal, por lo corriente. Sólo a quien lo sigue: avisar
@@ -132,8 +139,12 @@ func (s *ChatService) anotarAvisos(orgID, spaceID, actorID, cuerpo string, menti
 		if uid == actorID || nombrados[uid] {
 			continue
 		}
-		s.notifier.Notify(uid, orgID, "chat:message",
-			donde, linea, "/chat?space="+spaceID, domain.ViaApp)
+		s.notifier.Notify(domain.Aviso{
+			UserID: uid, OrgID: orgID, Kind: "chat:message",
+			Title: donde, Body: linea,
+			Link: "/chat?space=" + spaceID, Via: domain.ViaApp,
+			Group: domain.ChannelGroup(spaceID), Label: donde,
+		})
 	}
 }
 

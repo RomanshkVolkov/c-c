@@ -366,7 +366,13 @@ func (s *MeetingService) anunciar(m domain.MeetingReminder, now time.Time) {
 			})
 		}
 		if s.inbox != nil {
-			s.inbox.Notify(uid, m.OrgID, "meeting:reminder", m.Title, cuerpo, enlace, "")
+			s.inbox.Notify(domain.Aviso{
+				UserID: uid, OrgID: m.OrgID, Kind: "meeting:reminder",
+				Title: m.Title, Body: cuerpo, Link: enlace,
+				// Por **la reunión**, no por su sala: dos reuniones semanales
+				// distintas del mismo canal no son la misma cosa.
+				Group: domain.MeetingGroup(m.ID), Label: m.Title,
+			})
 		}
 	}
 }

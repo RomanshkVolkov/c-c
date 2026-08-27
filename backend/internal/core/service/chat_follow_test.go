@@ -25,13 +25,28 @@ import (
 // que sí te buscaba. Seguir es cómo se dice «este sitio me importa».
 
 type avisoEspiado struct {
-	userID, kind, via string
+	userID, kind, via, grupo string
 }
 
 type notificadorEspia struct{ avisos []avisoEspiado }
 
-func (n *notificadorEspia) Notify(userID, orgID, kind, title, body, link, via string) {
-	n.avisos = append(n.avisos, avisoEspiado{userID, kind, via})
+func (n *notificadorEspia) Notify(a domain.Aviso) {
+	n.avisos = append(n.avisos, avisoEspiado{a.UserID, a.Kind, a.Via, a.Group})
+}
+
+// gruposDe: con qué clave de agrupación salió cada aviso de esa clase.
+//
+// El espía guarda el grupo **tal como lo puso quien notifica**, sin la red del
+// servicio que lo deduce cuando falta: aquí interesa que el sitio que avisa lo
+// esté poniendo de verdad, no que alguien lo rescate después.
+func (n *notificadorEspia) gruposDe(kind string) []string {
+	var out []string
+	for _, a := range n.avisos {
+		if a.kind == kind {
+			out = append(out, a.grupo)
+		}
+	}
+	return out
 }
 
 // viasDe: con qué etiqueta llegó cada aviso de esa clase.

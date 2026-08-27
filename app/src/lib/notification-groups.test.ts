@@ -94,7 +94,7 @@ describe("plegar la lista", () => {
   // Lo viejo —sin columna— con lo nuevo, en el mismo grupo. Es lo que hace que
   // el histórico se pliegue sin migrar nada.
   it("lo que trae clave y lo que no, si son del mismo sitio", () => {
-    const g = groupInbox([item({ id: "a", groupKey: "space:s1" } as never), item({ id: "b" })]);
+    const g = groupInbox([item({ id: "a", groupKey: "space:s1" }), item({ id: "b" })]);
     expect(g).toHaveLength(1);
   });
 
@@ -132,6 +132,16 @@ describe("plegar la lista", () => {
 });
 
 describe("cómo se lee un grupo plegado", () => {
+  // El servidor manda el rótulo desde que existe la columna, y gana: es el que
+  // sabe que «#portento» y «Mentioned in #portento» son el mismo sitio sin tener
+  // que deshacer envoltorios sobre texto pensado para leerse.
+  it("el rótulo del servidor gana al deducido del título", () => {
+    const s = summarize(
+      grupo([item({ id: "a", title: "Mentioned in #viejo", groupLabel: "#portento" })]),
+    );
+    expect(s.title).toBe("#portento");
+  });
+
   it("en un canal, el nombre y el último mensaje", () => {
     const s = summarize(grupo([item({ id: "a" }), item({ id: "b" })]));
     expect(s.title).toBe("#portento");

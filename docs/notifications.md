@@ -87,6 +87,90 @@ que el diseño anterior evitaba — y la válvula es el interruptor «Channels y
 follow», que apaga la clase entera. Si llega ese día, el arreglo no es volver
 atrás sino agrupar: un aviso por canal y por rato, no uno por línea.
 
+**Ese día llegó** (27/08/2026) y está hecho: ver §2 ter.
+
+## 2 ter · Plegar: una fila por conversación
+
+Diez mensajes de un canal son **una fila** con el nombre, el último mensaje y un
+contador, que se despliega y se vuelve a plegar. Pulsar la cabecera marca el
+grupo entero leído y lleva a la conversación — abrir algo **es** haberlo leído;
+dejar el contador puesto obligaría a volver a la campana a limpiarlo a mano.
+
+### La clave, y por qué no se escribe a mano
+
+Cada fila lleva `GroupKey` (`space:<id>`, `dm:<id>`, `item:<id>`,
+`meeting:<id>`) y `GroupLabel` (cómo se llama para un humano). Las claves salen
+**siempre** de las constructoras de `domain/notification_group.go`.
+
+Si un sitio escribiera `"space:"+id` y otro `"space-"+id`, los dos serían
+válidos, ninguno daría error y sus avisos **nunca se agruparían juntos**. Un
+fallo sin excepción, sin log y sin más síntoma que ver dos filas del mismo canal
+en el panel. La gramática tiene que ser imposible de falsificar.
+
+**Dos campos y no uno** porque el rótulo no se deriva con una sola regla: en un
+canal vive en el `Title` de la fila, y en una tarea vive en el `Body` mientras el
+`Title` dice qué pasó («Bea replied»). Los papeles se invierten según la familia.
+
+### La regla que parece un detalle y no lo es
+
+> **La familia sale del `Kind`. El id sale del enlace. Nunca al revés.**
+
+`meeting:reminder` usa **el mismo enlace** que un mensaje de canal
+(`/chat?space=X`). Deducir la familia del enlace metería «empieza la daily»
+dentro del grupo de mensajes de esa sala. Hay una prueba dedicada a esto en los
+dos lados —`domain/notification_group_test.go` y
+`app/src/lib/notification-groups.test.ts`— porque es lo que a alguien le va a
+apetecer «simplificar».
+
+Y por eso los recordatorios **antiguos** no se agrupan: su fila no contiene la
+identidad de la reunión por ningún sitio, así que no hay nada que deducir. Los
+nuevos sí, porque `meeting.go` pasa `MeetingGroup(m.ID)`.
+
+### El histórico, sin migrar nada
+
+`Feed` rellena la clave **al leer** las filas que no la tengan, con
+`DeriveGroup(kind, link)`. Sin backfill, sin SQL de un motor concreto, y la
+columna guardada sigue siendo la verdad: el día que un enlace cambie de forma,
+la deducción se rompe y lo almacenado no.
+
+Esa deducción vive **en el servidor**. En el cliente habría dos algoritmos
+obligados a estar de acuerdo para siempre, y el día que discreparan las filas
+viejas y las nuevas del mismo canal formarían dos grupos — un fallo que se ve
+raro y no se explica. La app conserva una deducción propia sólo como red para
+builds más nuevas que el backend; el servidor manda siempre (`groupKey` gana).
+
+### Decisiones de la pantalla, con su porqué
+
+- **Se parte en {sin leer, leídas} y *después* se agrupa.** Un grupo con las dos
+  cosas no se puede colocar: arriba subiría lo ya leído por encima del rótulo
+  «Read», abajo escondería avisos nuevos debajo de él.
+- **Orden por el miembro más nuevo**, nunca por tamaño: un canal charlatán y
+  viejo se plantaría arriba para siempre.
+- **Un grupo de uno se pinta como antes** — sin galón ni contador. Un «(1)» con
+  un triángulo que despliega la fila que ya estás mirando es puro adorno.
+- **En un directo se cuenta, no se enseña el texto**: «2 new messages». El
+  servidor manda el cuerpo vacío a propósito (ver `dm.go`) y la cabecera no
+  puede destaparlo. Hay una prueba que lo vigila.
+- **El estado de apertura va por clave de grupo.** `releerBandeja()` reemplaza el
+  array entero en cada evento; indexado por índice o por id de fila, cada mensaje
+  que llegara cerraría el grupo que el usuario acaba de abrir.
+- **El icono es el de la familia**, salvo que haya una mención dentro: entonces
+  la arroba. Es lo único que decide si tienes que abrirlo ya.
+- **Sin ventana temporal**: partiría el mismo canal en dos grupos, que se lee
+  peor que uno solo.
+
+### Lo que falta
+
+El contador y los miembros salen de la **página** de 50 que devuelve `Feed`, que
+no pagina. Con un canal muy hablador, otras conversaciones se caen de la página
+enteras. Lo cierran dos cosas que van juntas y todavía no están:
+
+1. `Groups []GroupTally` en la respuesta, con un `GROUP BY` sobre toda la
+   bandeja — contadores de verdad.
+2. `POST /notifications/read` aceptando `{group}` — porque con contadores
+   verdaderos, marcar sólo los ids de la página deja el badge en 35 mientras la
+   fila dice cero. **La 1 sin la 2 destapa la mentira.**
+
 ## 3 · Las clases y sus interruptores
 
 Una clase de notificación necesita cuatro cosas alineadas o queda a medias:
@@ -213,3 +297,5 @@ notificación de `report:new` apuntó a un reporte que no estaba en ninguna part
 | Pintar el panel | `app/src/components/NotificationsPanel.tsx` (`CLASES`) |
 | Los interruptores | `app/src/components/NotificationPrefsDialog.tsx` (`OPCIONES`) |
 | Refrescar la campana en vivo | `releerBandeja()` en `app/src/hooks/use-report-events.ts` |
+| Cómo se agrupa (la gramática de claves) | `backend/internal/core/domain/notification_group.go` |
+| Cómo se pliega y se lee un grupo | `app/src/lib/notification-groups.ts` |

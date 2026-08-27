@@ -29,6 +29,17 @@ export interface InboxItem {
    * dice de dónde vino, no quién tenía permiso.
    */
   via?: string;
+  /**
+   * De qué conversación es, para plegarla con las suyas. Lo manda el servidor;
+   * ver `lib/notification-groups.ts`.
+   *
+   * Ausente en las filas anteriores a esta columna **y en las que el servidor no
+   * supo agrupar** —un recordatorio de reunión de antes, por ejemplo—. Sin ella
+   * la fila se pinta suelta, que es como estaba todo antes de plegar nada.
+   */
+  groupKey?: string;
+  /** Cómo se llama esa conversación: «#portento», «Ana», el título de la tarea. */
+  groupLabel?: string;
 }
 
 export interface InboxPrefs {
