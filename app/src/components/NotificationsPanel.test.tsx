@@ -113,17 +113,136 @@ describe("el panel de notificaciones", () => {
   });
 });
 
+describe("plegar lo del mismo sitio", () => {
+  /**
+   * Dos mensajes del mismo canal, que es el caso que motivó todo esto.
+   *
+   * Con instantes distintos a propósito: la cabecera enseña el **más nuevo**, y
+   * con la misma marca de tiempo en los dos no habría forma de saber cuál es —
+   * la prueba pasaría o fallaría según el orden del array, que no es la regla.
+   */
+  const mismoCanal = () => [
+    {
+      ...n("c1", "chat:message", "#portento"),
+      link: "/chat?space=s1", body: "Ana: lo primero",
+      createdAt: "2026-08-27T10:00:00Z",
+    },
+    {
+      ...n("c2", "chat:message", "#portento"),
+      link: "/chat?space=s1", body: "Ana: lo último",
+      createdAt: "2026-08-27T11:00:00Z",
+    },
+  ];
+
+  /** El contador del grupo, no el del panel: los dos dicen números. */
+  const contador = () =>
+    screen.getByText("#portento").closest("button")!.querySelector(".bg-primary\\/15")?.textContent;
+
+  it("una fila con contador, no dos", () => {
+    items.current = mismoCanal();
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    expect(contador()).toBe("2");
+    // Lo viejo no se ve hasta abrir: eso es plegar.
+    expect(screen.queryByText("Ana: lo primero")).toBeNull();
+    expect(screen.getByText("Ana: lo último")).toBeTruthy();
+  });
+
+  it("y al abrirla salen las dos", () => {
+    items.current = mismoCanal();
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    fireEvent.click(screen.getByLabelText(/^Expand /));
+    expect(screen.getByText("Ana: lo primero")).toBeTruthy();
+  });
+
+  it("volver a pulsar la cierra", () => {
+    items.current = mismoCanal();
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    fireEvent.click(screen.getByLabelText(/^Expand /));
+    fireEvent.click(screen.getByLabelText(/^Collapse /));
+    expect(screen.queryByText("Ana: lo primero")).toBeNull();
+  });
+
+  // Abrir la conversación es haberla leído: dejar el contador puesto obligaría
+  // a volver a la campana a limpiarlo a mano.
+  it("pulsar la cabecera marca el grupo entero y lleva al canal", () => {
+    items.current = mismoCanal();
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    fireEvent.click(screen.getByText("#portento"));
+    expect(markRead).toHaveBeenCalledWith(["c1", "c2"]);
+    expect(navigate).toHaveBeenCalledWith("/chat?space=s1");
+  });
+
+  // El estado de apertura va por clave de grupo. Indexado por índice o por id de
+  // fila, cada mensaje que llegara cerraría el grupo que estás mirando —
+  // invisible en desarrollo, insufrible en un canal vivo.
+  it("un aviso nuevo no cierra el grupo que tenías abierto", () => {
+    items.current = mismoCanal();
+    const r = render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    fireEvent.click(screen.getByLabelText(/^Expand /));
+
+    // `releerBandeja()` reemplaza el array entero en cada evento, y el feed
+    // llega **del más nuevo al más viejo** — así que el mensaje que acaba de
+    // entrar va delante. Ponerlo al final haría que la prueba pasara con el
+    // estado indexado por el id de la primera fila, que es justo el fallo.
+    items.current = [
+      {
+        ...n("c3", "chat:message", "#portento"),
+        link: "/chat?space=s1", body: "Ana: y otra",
+        createdAt: "2026-08-27T12:00:00Z",
+      },
+      ...mismoCanal(),
+    ];
+    r.rerender(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    expect(screen.getByText("Ana: lo primero")).toBeTruthy();
+  });
+
+  // Que te nombren dentro de un canal charlatán es lo único que decide si hay
+  // que abrirlo ya.
+  it("una mención dentro se ve sin abrir", () => {
+    items.current = [
+      { ...n("c1", "chat:message", "#portento"), link: "/chat?space=s1" },
+      { ...n("m1", "chat:mention", "Mentioned in #portento"), link: "/chat?space=s1" },
+    ];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    // El envoltorio «Mentioned in » no es el nombre del canal.
+    expect(screen.getByText("#portento")).toBeTruthy();
+    expect(screen.queryByText("Mentioned in #portento")).toBeNull();
+    // Y el icono lo dice: la arroba en vez del almohadilla del canal. Es lo
+    // único que distingue «hay mensajes» de «te nombraron ahí dentro».
+    const cabecera = screen.getByText("#portento").closest("button")!;
+    expect(cabecera.querySelector(".lucide-at-sign")).not.toBeNull();
+  });
+
+  // Un aviso suelto no puede llevar más adornos que información.
+  it("una sola notificación se pinta como siempre", () => {
+    items.current = [{ ...n("c1", "chat:message", "#portento"), link: "/chat?space=s1" }];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    expect(screen.queryByLabelText(/^Expand /)).toBeNull();
+  });
+});
+
 describe("de quién fue", () => {
+  // Reescrito al agrupar: antes los dos avisos tenían enlaces distintos, así
+  // que no se plegaban y la prueba **pasaba por accidente**. Ahora comparten
+  // ficha, se pliegan, y se afirma la regla nueva — la cabecera avisa de que
+  // dentro hay algo de un agente, con una frase distinta de la de una fila.
   it("marca lo que escribió el agente, y sólo eso", async () => {
     items.current = [
-      conAgente("a1", "task:comment", "Claude respondió"),
-      n("h1", "task:comment", "Bea respondió"),
+      { ...conAgente("a1", "task:comment", "Claude respondió"), link: "/tasks?task=t9" },
+      { ...n("h1", "task:comment", "Bea respondió"), link: "/tasks?task=t9" },
     ];
     render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
 
-    // Un solo chip: el que dice quién lo hizo. Sin esto, un agente moviendo
+    // La cabecera lo dice sin abrir, y dice cuántos.
+    expect(await screen.findByTitle(/Includes 1 written by an agent/)).toBeTruthy();
+    // Plegado no se ve ninguna fila suelta con su chip.
+    expect(screen.queryByTitle(/^Written by an agent/)).toBeNull();
+
+    fireEvent.click(screen.getByLabelText(/^Expand /));
+
+    // Y dentro, exactamente uno: el del agente. Sin esto, un agente moviendo
     // trabajo en tu tablero es indistinguible de un compañero haciéndolo.
-    const chips = await screen.findAllByTitle(/Written by an agent/);
+    const chips = await screen.findAllByTitle(/^Written by an agent/);
     expect(chips).toHaveLength(1);
     expect(chips[0].textContent).toContain("agent");
   });

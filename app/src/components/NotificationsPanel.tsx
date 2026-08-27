@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AtSign, Bot, CalendarClock, CheckSquare, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
+import { AtSign, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
+import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
 import { useInboxStore, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
@@ -64,15 +65,34 @@ export default function NotificationsPanel({
   const markRead = useInboxStore((s) => s.markRead);
   const markAllRead = useInboxStore((s) => s.markAllRead);
   const [pestana, setPestana] = useState<Pestana>("all");
+  /**
+   * Qué grupos están abiertos, **por clave de grupo**.
+   *
+   * Ni por índice ni por id de fila: `releerBandeja()` reemplaza el array entero
+   * cada vez que llega un evento, así que cualquier otra llave cerraría el grupo
+   * que el usuario acaba de abrir en cuanto alguien escriba. Invisible en
+   * desarrollo, insufrible en un canal vivo.
+   */
+  const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
+
+  const alternar = (clave: string) =>
+    setAbiertos((prev) => {
+      const siguiente = new Set(prev);
+      if (!siguiente.delete(clave)) siguiente.add(clave);
+      return siguiente;
+    });
 
   const { sinLeer, leidas } = useMemo(() => {
     const suyas =
       pestana === "all"
         ? items
         : items.filter((n) => (CLASES[n.kind] ?? DESCONOCIDA).grupo === pestana);
+    // Se parte **antes** de agrupar. Un grupo con leídas y sin leer a la vez no
+    // se puede colocar: arriba subiría lo ya leído por encima del rótulo «Read»,
+    // y abajo escondería avisos nuevos debajo de él.
     return {
-      sinLeer: suyas.filter((n) => !n.readAt),
-      leidas: suyas.filter((n) => n.readAt),
+      sinLeer: groupInbox(suyas.filter((n) => !n.readAt)),
+      leidas: groupInbox(suyas.filter((n) => n.readAt)),
     };
   }, [items, pestana]);
 
@@ -83,6 +103,20 @@ export default function NotificationsPanel({
     if (n.link) {
       onOpenChange(false);
       navigate(n.link);
+    }
+  };
+
+  /**
+   * Pulsar la cabecera de un grupo: se leen todas y se va donde ocurrió lo
+   * último. Abrir la conversación **es** haberla leído; dejar el contador
+   * puesto obligaría a volver a la campana a limpiarlo a mano.
+   */
+  const abrirGrupo = (g: NotificationGroup) => {
+    const { link } = summarize(g);
+    void markRead(g.items.map((n) => n.id));
+    if (link) {
+      onOpenChange(false);
+      navigate(link);
     }
   };
 
@@ -142,8 +176,15 @@ export default function NotificationsPanel({
             </p>
           )}
 
-          {sinLeer.map((n) => (
-            <Fila key={n.id} n={n} onClick={() => abrir(n)} />
+          {sinLeer.map((g) => (
+            <Bloque
+              key={g.key}
+              g={g}
+              abierto={abiertos.has(g.key)}
+              onAlternar={() => alternar(g.key)}
+              onAbrirGrupo={() => abrirGrupo(g)}
+              onAbrir={abrir}
+            />
           ))}
 
           {leidas.length > 0 && (
@@ -151,8 +192,16 @@ export default function NotificationsPanel({
               <p className="px-2 pb-0.5 pt-2 text-[10.5px] uppercase tracking-wider text-muted-foreground">
                 Read
               </p>
-              {leidas.map((n) => (
-                <Fila key={n.id} n={n} leida onClick={() => abrir(n)} />
+              {leidas.map((g) => (
+                <Bloque
+                  key={g.key}
+                  g={g}
+                  leida
+                  abierto={abiertos.has(g.key)}
+                  onAlternar={() => alternar(g.key)}
+                  onAbrirGrupo={() => abrirGrupo(g)}
+                  onAbrir={abrir}
+                />
               ))}
             </>
           )}
@@ -163,6 +212,99 @@ export default function NotificationsPanel({
           Clicking a system notification opens the thread here, in the app.
         </p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Un grupo en la lista.
+ *
+ * Si es uno solo se pinta **exactamente como antes**: sin galón, sin contador y
+ * sin sangrado. Un «(1)» junto a un triángulo que despliega la fila que ya estás
+ * mirando es cromo puro, y además dejaría cada notificación suelta con más
+ * adornos que información.
+ */
+function Bloque({
+  g,
+  leida,
+  abierto,
+  onAlternar,
+  onAbrirGrupo,
+  onAbrir,
+}: {
+  g: NotificationGroup;
+  leida?: boolean;
+  abierto: boolean;
+  onAlternar: () => void;
+  onAbrirGrupo: () => void;
+  onAbrir: (n: InboxItem) => void;
+}) {
+  if (g.alone) return <Fila n={g.items[0]} leida={leida} onClick={() => onAbrir(g.items[0])} />;
+
+  const s = summarize(g);
+  const clase = CLASES[g.items[0].kind] ?? DESCONOCIDA;
+  // El icono es el de la familia y no cambia al entrar otro mensaje. La única
+  // excepción es una mención: «alguien te nombró ahí dentro» es lo que decide si
+  // tienes que abrirlo ya.
+  const Icono = s.mention ? AtSign : clase.icono;
+  const idLista = `grupo-${g.key}`;
+
+  return (
+    <div className={cn(leida && "opacity-55")}>
+      {/* Dos botones hermanos y no uno dentro de otro: anidarlos es HTML
+          inválido, y el de fuera se comería los clics del de dentro. */}
+      <div className="flex items-start gap-1 rounded-lg hover:bg-accent/60">
+        <button
+          onClick={onAlternar}
+          aria-expanded={abierto}
+          aria-controls={idLista}
+          aria-label={`${abierto ? "Collapse" : "Expand"} ${s.title}`}
+          className="mt-2 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
+        >
+          {abierto ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+        </button>
+
+        <button
+          onClick={onAbrirGrupo}
+          className="grid min-w-0 flex-1 grid-cols-[22px_minmax(0,1fr)_10px] items-start gap-2 py-2 pr-2 text-left"
+        >
+          <Icono className={cn("mt-0.5 size-4", s.mention ? "text-primary" : clase.color)} />
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5">
+              <span className="truncate text-[13px] font-semibold">{s.title}</span>
+              <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">
+                {s.count}
+              </span>
+              <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">
+                {clase.tag}
+              </span>
+              {s.agent && (
+                // Frase distinta de la de una fila suelta a propósito: dice que
+                // hay algo de un agente **dentro**, no que lo sea la cabecera.
+                <span
+                  title={`Includes ${g.items.filter((n) => n.via === "mcp").length} written by an agent through the MCP server`}
+                  className="flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground"
+                >
+                  <Bot className="size-2.5" /> agent
+                </span>
+              )}
+              <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
+                {desde(g.items.reduce((a, b) => (b.createdAt > a.createdAt ? b : a)).createdAt)}
+              </span>
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{s.detail}</span>
+          </span>
+          <span className={cn("mt-1.5 size-2 rounded-full", !leida ? "bg-primary" : "bg-transparent")} />
+        </button>
+      </div>
+
+      {abierto && (
+        <div id={idLista} role="group" className="ml-6 border-l pl-1">
+          {g.items.map((n) => (
+            <Fila key={n.id} n={n} leida={leida} onClick={() => onAbrir(n)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
