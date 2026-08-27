@@ -42,6 +42,19 @@ export interface InboxItem {
   groupLabel?: string;
 }
 
+/**
+ * Cuántos avisos hay de una conversación, contados sobre **toda** la bandeja.
+ *
+ * El feed trae una página de 50 y no pagina, así que contar los miembros que
+ * llegaron diría «#portento (50)» habiendo trescientos guardados.
+ */
+export interface GroupTally {
+  key: string;
+  label: string;
+  total: number;
+  unread: number;
+}
+
 export interface InboxPrefs {
   mentions: boolean;
   dms: boolean;
@@ -72,11 +85,22 @@ export interface InboxPrefs {
 interface InboxState {
   items: InboxItem[];
   unread: number;
+  /** Recuento por conversación sobre toda la bandeja, no sobre la página. */
+  groups: GroupTally[];
   loading: boolean;
   orgId: string | null;
 
   load: (orgId: string | null) => Promise<void>;
   markRead: (ids: string[]) => Promise<void>;
+  /**
+   * Toda una conversación de una vez, **por clave y no por ids**.
+   *
+   * Los ids que tiene el cliente son los que cupieron en la página: con un grupo
+   * de cuarenta y siete y una página de doce, marcar por ids dejaría la fila
+   * diciendo cero y el badge en treinta y cinco. Quien sabe cuántas hay es el
+   * servidor.
+   */
+  markReadGroup: (key: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   prefs: InboxPrefs | null;
   loadPrefs: () => Promise<void>;
@@ -86,6 +110,7 @@ interface InboxState {
 export const useInboxStore = create<InboxState>((set, get) => ({
   items: [],
   unread: 0,
+  groups: [],
   loading: false,
   orgId: null,
 
@@ -93,11 +118,15 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     set({ loading: true, orgId });
     try {
       const q = orgId ? `?orgId=${orgId}&limit=50` : "?limit=50";
-      const res = await api.get<APIResponse<{ items: InboxItem[]; unread: number }>>(
-        `/api/v1/notifications/${q}`,
-        true,
-      );
-      set({ items: res.data?.items ?? [], unread: res.data?.unread ?? 0, loading: false });
+      const res = await api.get<
+        APIResponse<{ items: InboxItem[]; unread: number; groups?: GroupTally[] }>
+      >(`/api/v1/notifications/${q}`, true);
+      set({
+        items: res.data?.items ?? [],
+        unread: res.data?.unread ?? 0,
+        groups: res.data?.groups ?? [],
+        loading: false,
+      });
     } catch {
       // Silent: an inbox that failed to load is a badge that doesn't update,
       // not something to interrupt somebody with.
@@ -116,6 +145,30 @@ export const useInboxStore = create<InboxState>((set, get) => ({
         s.items.some((i) => i.id === id && !i.readAt)).length) };
     });
     await api.post<APIResponse<unknown>>("/api/v1/notifications/read", { ids }, true);
+  },
+
+  markReadGroup: async (key) => {
+    if (!key) return;
+    // Optimista igual que `markRead`, y con la misma aritmética no negativa:
+    // se limpian **todas** las de esa conversación que hubiera cargadas, y el
+    // contador baja por las que estaban sin leer.
+    set((s) => {
+      const suyas = s.items.filter((i) => i.groupKey === key && !i.readAt);
+      return {
+        items: s.items.map((i) => (i.groupKey === key ? { ...i, readAt: i.readAt ?? "now" } : i)),
+        // El tally es del servidor y sabe cuántas hay de verdad; si está, manda.
+        unread: Math.max(
+          0,
+          s.unread - (s.groups.find((g) => g.key === key)?.unread ?? suyas.length),
+        ),
+        groups: s.groups.map((g) => (g.key === key ? { ...g, unread: 0 } : g)),
+      };
+    });
+    await api.post<APIResponse<unknown>>(
+      "/api/v1/notifications/read",
+      { group: key, orgId: get().orgId ?? "" },
+      true,
+    );
   },
 
   prefs: null,

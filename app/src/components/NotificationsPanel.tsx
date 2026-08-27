@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AtSign, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
-import { useInboxStore, type InboxItem } from "@/store/inbox.store";
+import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +63,8 @@ export default function NotificationsPanel({
   const items = useInboxStore((s) => s.items);
   const unread = useInboxStore((s) => s.unread);
   const markRead = useInboxStore((s) => s.markRead);
+  const markReadGroup = useInboxStore((s) => s.markReadGroup);
+  const tallies = useInboxStore((s) => s.groups);
   const markAllRead = useInboxStore((s) => s.markAllRead);
   const [pestana, setPestana] = useState<Pestana>("all");
   /**
@@ -113,7 +115,9 @@ export default function NotificationsPanel({
    */
   const abrirGrupo = (g: NotificationGroup) => {
     const { link } = summarize(g);
-    void markRead(g.items.map((n) => n.id));
+    // Por clave y no por los ids que haya a mano: la página trae 50 y el grupo
+    // puede tener trescientos. Quien sabe cuántas hay es el servidor.
+    void markReadGroup(g.key);
     if (link) {
       onOpenChange(false);
       navigate(link);
@@ -180,6 +184,7 @@ export default function NotificationsPanel({
             <Bloque
               key={g.key}
               g={g}
+              tally={tallies.find((t) => t.key === g.key)}
               abierto={abiertos.has(g.key)}
               onAlternar={() => alternar(g.key)}
               onAbrirGrupo={() => abrirGrupo(g)}
@@ -197,6 +202,7 @@ export default function NotificationsPanel({
                   key={g.key}
                   g={g}
                   leida
+                  tally={tallies.find((t) => t.key === g.key)}
                   abierto={abiertos.has(g.key)}
                   onAlternar={() => alternar(g.key)}
                   onAbrirGrupo={() => abrirGrupo(g)}
@@ -227,6 +233,7 @@ export default function NotificationsPanel({
 function Bloque({
   g,
   leida,
+  tally,
   abierto,
   onAlternar,
   onAbrirGrupo,
@@ -234,6 +241,8 @@ function Bloque({
 }: {
   g: NotificationGroup;
   leida?: boolean;
+  /** Lo que el servidor cuenta de esta conversación, si lo mandó. */
+  tally?: GroupTally;
   abierto: boolean;
   onAlternar: () => void;
   onAbrirGrupo: () => void;
@@ -242,6 +251,13 @@ function Bloque({
   if (g.alone) return <Fila n={g.items[0]} leida={leida} onClick={() => onAbrir(g.items[0])} />;
 
   const s = summarize(g);
+  // El contador del servidor manda: cuenta la bandeja entera y no la página.
+  // Sin él —una fila de las antiguas, sin clave guardada— se usa lo que hay
+  // cargado, que es lo que teníamos antes de contar de verdad.
+  const cuantas = leida ? tally?.total ?? s.count : tally?.unread ?? s.count;
+  // Y si el servidor dice que hay más de las que llegaron, se dice: enseñar 47 y
+  // desplegar 12 sin avisar parece que faltan.
+  const faltan = (tally?.total ?? g.items.length) - g.items.length;
   const clase = CLASES[g.items[0].kind] ?? DESCONOCIDA;
   // El icono es el de la familia y no cambia al entrar otro mensaje. La única
   // excepción es una mención: «alguien te nombró ahí dentro» es lo que decide si
@@ -273,7 +289,7 @@ function Bloque({
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[13px] font-semibold">{s.title}</span>
               <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">
-                {s.count}
+                {cuantas}
               </span>
               <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">
                 {clase.tag}
@@ -303,6 +319,11 @@ function Bloque({
           {g.items.map((n) => (
             <Fila key={n.id} n={n} leida={leida} onClick={() => onAbrir(n)} />
           ))}
+          {faltan > 0 && (
+            <p className="px-2 py-1 text-[10.5px] text-muted-foreground">
+              Showing {g.items.length} of {tally?.total}. Older ones stay in the conversation.
+            </p>
+          )}
         </div>
       )}
     </div>

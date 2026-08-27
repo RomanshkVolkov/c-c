@@ -159,17 +159,34 @@ builds más nuevas que el backend; el servidor manda siempre (`groupKey` gana).
 - **Sin ventana temporal**: partiría el mismo canal en dos grupos, que se lee
   peor que uno solo.
 
-### Lo que falta
+### Contar de verdad, y marcar de verdad
 
-El contador y los miembros salen de la **página** de 50 que devuelve `Feed`, que
-no pagina. Con un canal muy hablador, otras conversaciones se caen de la página
-enteras. Lo cierran dos cosas que van juntas y todavía no están:
+`Feed` devuelve además `groups: []GroupTally` — un `GROUP BY group_key` sobre
+**toda** la bandeja, no sobre la página de 50. Sin eso, «#portento (50)» con
+trescientos guardados sería una cifra inventada.
 
-1. `Groups []GroupTally` en la respuesta, con un `GROUP BY` sobre toda la
-   bandeja — contadores de verdad.
-2. `POST /notifications/read` aceptando `{group}` — porque con contadores
-   verdaderos, marcar sólo los ids de la página deja el badge en 35 mientras la
-   fila dice cero. **La 1 sin la 2 destapa la mentira.**
+Y por eso `POST /notifications/read` acepta `{group, orgId}` además de `{ids}`:
+**las dos cosas van juntas, y separarlas sería peor que no hacer ninguna.** El
+cliente sólo tiene los ids que le cupieron en la página, así que con contadores
+verdaderos y marcado por ids, pulsar una fila de 47 la dejaría diciendo cero
+mientras el badge se queda en 35. Una mentira visible.
+
+Como en `MarkRead`, la clave de grupo se acota al llamante **dentro de la
+consulta**: suelta, dejaría marcar la bandeja de otra persona.
+
+Al desplegar, si el servidor cuenta más de los que llegaron, se dice —«Showing 12
+of 47»—. Enseñar 47 y desplegar 12 sin avisar parece que faltan avisos.
+
+### Lo que sigue capado
+
+- **Los recuentos sólo cubren las filas con clave guardada.** Las antiguas se
+  agrupan al pintarse —la clave se deduce al leer— pero contarlas exigiría
+  deducir dentro de SQL, que es la clase de lógica que no se puede probar sin
+  base de datos. Su contador sale de la página, y son pocas: las viejas.
+- **Expandir enseña sólo lo que cupo en la página.** Lo que se hace con un grupo
+  de 47 es abrirlo y darlo por leído, no leer 47 filas en un desplegable.
+- **Sin paginación.** Si algún día hace falta, el sitio es `Feed`, y el cursor
+  natural es `created_at` con el id como desempate.
 
 ## 3 · Las clases y sus interruptores
 

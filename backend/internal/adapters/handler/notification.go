@@ -89,13 +89,27 @@ func (h *notificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		IDs []string `json:"ids"`
+		// Group marca de una vez todo lo no leído de una conversación.
+		//
+		// Hace falta porque el cliente sólo tiene los ids de la página: con un
+		// grupo de cuarenta y siete y una página de doce, marcar por ids dejaría
+		// la fila diciendo cero y el badge en treinta y cinco.
+		Group string `json:"group"`
+		OrgID string `json:"orgId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
 	// Scoped to the caller inside the query, not checked here: ids alone would
-	// otherwise let anybody mark somebody else's inbox read.
+	// otherwise let anybody mark somebody else's inbox read. Lo mismo vale para
+	// la clave de grupo: sin acotarla, sería la bandeja de cualquiera.
+	if req.Group != "" {
+		if err := h.svc.MarkReadGroup(user.UserID, req.OrgID, req.Group); err != nil {
+			SendErrorResponse(w, http.StatusInternalServerError, "Failed to mark read", err.Error())
+			return
+		}
+	}
 	if err := h.svc.MarkRead(user.UserID, req.IDs); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to mark read", err.Error())
 		return

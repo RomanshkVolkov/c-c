@@ -10,11 +10,15 @@ import type { InboxItem } from "@/store/inbox.store";
  * recorte que no hace, y uno deja de mirar.
  */
 
-const { markRead, markAllRead, navigate, items } = vi.hoisted(() => ({
+const { markRead, markReadGroup, markAllRead, navigate, items, groups } = vi.hoisted(() => ({
   markRead: vi.fn().mockResolvedValue(undefined),
+  markReadGroup: vi.fn().mockResolvedValue(undefined),
   markAllRead: vi.fn().mockResolvedValue(undefined),
   navigate: vi.fn(),
   items: { current: [] as InboxItem[] },
+  // Lo que el servidor cuenta de cada conversación, mirando la bandeja entera.
+  // Vacío por defecto: la mayoría de las pruebas no hablan de contadores.
+  groups: { current: [] as { key: string; label: string; total: number; unread: number }[] },
 }));
 
 vi.mock("@/store/inbox.store", () => ({
@@ -22,7 +26,9 @@ vi.mock("@/store/inbox.store", () => ({
     sel({
       items: items.current,
       unread: items.current.filter((n) => !n.readAt).length,
+      groups: groups.current,
       markRead,
+      markReadGroup,
       markAllRead,
     }),
 }));
@@ -32,6 +38,8 @@ const { default: NotificationsPanel } = await import("@/components/Notifications
 
 afterEach(() => {
   cleanup();
+  groups.current = [];
+  markReadGroup.mockClear();
   markRead.mockClear();
   markAllRead.mockClear();
   navigate.mockClear();
@@ -168,7 +176,9 @@ describe("plegar lo del mismo sitio", () => {
     items.current = mismoCanal();
     render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
     fireEvent.click(screen.getByText("#portento"));
-    expect(markRead).toHaveBeenCalledWith(["c1", "c2"]);
+    // Por clave y no por ids: los ids que tiene la app son los que cupieron en
+    // la página, y el grupo puede tener trescientos.
+    expect(markReadGroup).toHaveBeenCalledWith("space:s1");
     expect(navigate).toHaveBeenCalledWith("/chat?space=s1");
   });
 
@@ -211,6 +221,33 @@ describe("plegar lo del mismo sitio", () => {
     // único que distingue «hay mensajes» de «te nombraron ahí dentro».
     const cabecera = screen.getByText("#portento").closest("button")!;
     expect(cabecera.querySelector(".lucide-at-sign")).not.toBeNull();
+  });
+
+  // El contador dice lo que hay en la base, no lo que cupo en la página. Sin
+  // esto, «#portento (2)» con trescientos guardados es una cifra inventada.
+  it("el contador del servidor manda sobre lo que llegó", () => {
+    items.current = mismoCanal();
+    groups.current = [{ key: "space:s1", label: "#portento", total: 47, unread: 12 }];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    expect(contador()).toBe("12");
+  });
+
+  // Enseñar 47 y desplegar 2 sin decir nada parece que faltan avisos.
+  it("y al abrirlo dice cuántos se están viendo", () => {
+    items.current = mismoCanal();
+    groups.current = [{ key: "space:s1", label: "#portento", total: 47, unread: 12 }];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    fireEvent.click(screen.getByLabelText(/^Expand /));
+    expect(screen.getByText(/Showing 2 of 47/)).toBeTruthy();
+  });
+
+  // Y cuando están todos, no se dice nada: sería ruido.
+  it("sin nada escondido no avisa de nada", () => {
+    items.current = mismoCanal();
+    groups.current = [{ key: "space:s1", label: "#portento", total: 2, unread: 2 }];
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    fireEvent.click(screen.getByLabelText(/^Expand /));
+    expect(screen.queryByText(/Showing/)).toBeNull();
   });
 
   // Un aviso suelto no puede llevar más adornos que información.

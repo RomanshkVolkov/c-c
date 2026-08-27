@@ -60,7 +60,49 @@ func (r *NotificationRepository) Feed(userID, orgID string, limit int) (domain.N
 			out.Items[i].GroupKey = domain.DeriveGroup(out.Items[i].Kind, out.Items[i].Link)
 		}
 	}
+
+	// Y el recuento por conversación, sobre la bandeja entera y no sobre la
+	// página: es lo que hace que «#portento (12)» sea verdad cuando hay
+	// trescientos guardados. Un `GROUP BY` sobre el índice compuesto.
+	//
+	// Sólo las filas que ya tienen clave guardada. Las antiguas se agrupan al
+	// pintarse —la clave se deduce arriba— pero contarlas aquí exigiría deducir
+	// dentro de SQL, que es la clase de lógica que no se puede probar sin base
+	// de datos. Su contador sale de la página, y es un número pequeño porque son
+	// las viejas.
+	var tallies []domain.GroupTally
+	if err := q.Session(&gorm.Session{}).
+		Select("group_key AS key, MAX(group_label) AS label, COUNT(*) AS total, " +
+			"COUNT(CASE WHEN read_at IS NULL THEN 1 END) AS unread").
+		Where("group_key <> ''").
+		Group("group_key").
+		Scan(&tallies).Error; err != nil {
+		return out, err
+	}
+	out.Groups = tallies
 	return out, nil
+}
+
+// MarkReadGroup marca de una vez todo lo no leído de una conversación.
+//
+// Existe porque el cliente sólo tiene los ids que le cupieron en la página: si
+// un grupo tiene cuarenta y siete y la página trajo doce, marcar por ids deja la
+// fila diciendo cero y el badge en treinta y cinco. Una mentira visible, y justo
+// la que destapan los contadores de arriba al ser verdaderos.
+//
+// Acotado al llamante **dentro de la consulta**, igual que `MarkRead`: una clave
+// de grupo suelta dejaría marcar la bandeja de otro.
+func (r *NotificationRepository) MarkReadGroup(userID, orgID, group string) error {
+	if group == "" {
+		return nil
+	}
+	now := time.Now()
+	q := r.db.Model(&domain.Notification{}).
+		Where("user_id = ? AND group_key = ? AND read_at IS NULL", userID, group)
+	if orgID != "" {
+		q = q.Where("org_id = ?", orgID)
+	}
+	return q.Update("read_at", now).Error
 }
 
 // MarkRead is scoped to the caller: ids alone would let anybody mark somebody

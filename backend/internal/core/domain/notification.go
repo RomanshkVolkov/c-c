@@ -137,4 +137,22 @@ func (p NotificationPrefs) Allows(kind string) bool {
 type NotificationFeed struct {
 	Items  []Notification `json:"items"`
 	Unread int64          `json:"unread"`
+	// Groups es el recuento por conversación sobre **toda** la bandeja, no sobre
+	// la página.
+	//
+	// La página trae 50 filas y no pagina, así que contar los miembros que
+	// llegaron diría «#portento (50)» habiendo trescientos. Peor que el número:
+	// con un canal muy hablador, otras conversaciones se caen de la página
+	// enteras y ni siquiera aparecen.
+	Groups []GroupTally `json:"groups,omitempty"`
+}
+
+// GroupTally: cuántos avisos hay de una conversación, mirando la bandeja entera.
+type GroupTally struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Total int64  `json:"total"`
+	// Unread es lo que se pinta en la fila plegada: la campana es una superficie
+	// de no-leídos, y un total dejaría un grupo recién leído diciendo «(47)».
+	Unread int64 `json:"unread"`
 }

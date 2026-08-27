@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The badge has to mean "since you last read it".
@@ -92,5 +92,70 @@ describe("las preferencias", () => {
     // Sin preferencias el diálogo abre con los valores por defecto, que es lo
     // que de verdad tiene alguien que nunca las tocó.
     expect(useInboxStore.getState().prefs).toBeNull();
+  });
+});
+
+describe("marcar una conversación entera", () => {
+  beforeEach(() => {
+    post.mockClear();
+    useInboxStore.setState({
+      items: [
+        { id: "a", groupKey: "space:s1", readAt: null },
+        { id: "b", groupKey: "space:s1", readAt: null },
+        { id: "c", groupKey: "dm:c7", readAt: null },
+      ] as never,
+      unread: 40,
+      groups: [
+        { key: "space:s1", label: "#portento", total: 47, unread: 35 },
+        { key: "dm:c7", label: "Ana", total: 1, unread: 1 },
+      ],
+      orgId: "org-9",
+    });
+  });
+
+  // Por clave y no por ids: los que tiene la app son los que cupieron en la
+  // página. Marcando por ids, la fila diría cero y el badge se quedaría en 35.
+  it("lo pide por clave, no por los ids que tenga a mano", async () => {
+    await useInboxStore.getState().markReadGroup("space:s1");
+    const [url, cuerpo] = post.mock.calls[0] as [string, Record<string, unknown>];
+    expect(url).toBe("/api/v1/notifications/read");
+    expect(cuerpo.group).toBe("space:s1");
+    expect(cuerpo).not.toHaveProperty("ids");
+  });
+
+  // El servidor sabe cuántas hay de verdad; la app sólo ve las cargadas.
+  it("el contador baja por las que hay en la base, no por las cargadas", async () => {
+    await useInboxStore.getState().markReadGroup("space:s1");
+    expect(useInboxStore.getState().unread).toBe(5); // 40 − 35, no 40 − 2
+  });
+
+  it("y deja esa conversación a cero", async () => {
+    await useInboxStore.getState().markReadGroup("space:s1");
+    const g = useInboxStore.getState().groups.find((x) => x.key === "space:s1");
+    expect(g?.unread).toBe(0);
+  });
+
+  it("sin tocar las demás", async () => {
+    await useInboxStore.getState().markReadGroup("space:s1");
+    const s = useInboxStore.getState();
+    expect(s.items.find((i) => i.id === "c")?.readAt).toBeNull();
+    expect(s.groups.find((x) => x.key === "dm:c7")?.unread).toBe(1);
+  });
+
+  it("marca las suyas que estén cargadas", async () => {
+    await useInboxStore.getState().markReadGroup("space:s1");
+    const s = useInboxStore.getState();
+    expect(s.items.filter((i) => i.groupKey === "space:s1").every((i) => i.readAt)).toBe(true);
+  });
+
+  it("nunca baja de cero", async () => {
+    useInboxStore.setState({ unread: 3 });
+    await useInboxStore.getState().markReadGroup("space:s1");
+    expect(useInboxStore.getState().unread).toBe(0);
+  });
+
+  it("una clave vacía no manda nada", async () => {
+    await useInboxStore.getState().markReadGroup("");
+    expect(post).not.toHaveBeenCalled();
   });
 });

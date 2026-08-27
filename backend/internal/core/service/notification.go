@@ -77,6 +77,12 @@ func (s *NotificationService) MarkRead(userID string, ids []string) error {
 	return s.repo.MarkRead(userID, ids)
 }
 
+// MarkReadGroup: toda una conversación de una vez. Ver el repositorio — existe
+// porque el cliente sólo tiene los ids que le cupieron en la página.
+func (s *NotificationService) MarkReadGroup(userID, orgID, group string) error {
+	return s.repo.MarkReadGroup(userID, orgID, group)
+}
+
 func (s *NotificationService) MarkAllRead(userID, orgID string) error {
 	return s.repo.MarkAllRead(userID, orgID)
 }
