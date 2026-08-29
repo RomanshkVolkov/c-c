@@ -1,0 +1,15 @@
+{
+  "action": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "close": "Close",
+    "edit": "Edit"
+  },
+  "language": {
+    "label": "Language",
+    "system": "System",
+    "en": "English",
+    "es": "Español"
+  }
+}

@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronsUpDown, KeyRound, Bot, Bell, LogOut, Moon, CheckCircle2, Download, Loader2,
+  Languages,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useThemeStore, type ThemePreference } from "@/store/theme.store";
+import { useLocaleStore, type LocalePreference } from "@/store/locale.store";
 import { useUpdaterStore } from "@/store/updater.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { useAuth } from "@/hooks/use-auth";
@@ -22,6 +24,21 @@ import { cn } from "@/lib/utils";
  * one row that opens, the sidebar ends with who you are and the rest is a
  * decision you have to make on purpose.
  */
+
+/**
+ * Los idiomas, con la misma forma que los temas y por el mismo motivo: «Auto» y
+ * «Auto, ahora mismo castellano» son respuestas distintas, y un botón que rota
+ * no deja decir cuál de las dos es.
+ *
+ * Los nombres van **cada uno en su idioma** —«English», «Español»— y no
+ * traducidos: quien busca su idioma en una lista lo busca escrito como él lo
+ * escribe, no como lo escribe el idioma que no entiende.
+ */
+const IDIOMAS: { key: LocalePreference; label: string }[] = [
+  { key: "system", label: "Auto" },
+  { key: "en", label: "English" },
+  { key: "es", label: "Español" },
+];
 
 const TEMAS: { key: ThemePreference; label: string }[] = [
   { key: "system", label: "Auto" },
@@ -45,6 +62,8 @@ export default function AccountMenu({
   const org = useOrgsStore((s) => s.currentOrg());
   const preference = useThemeStore((s) => s.preference);
   const setPreference = useThemeStore((s) => s.setPreference);
+  const idioma = useLocaleStore((s) => s.preference);
+  const setIdioma = useLocaleStore((s) => s.setPreference);
   const version = useAppVersion();
   const available = useUpdaterStore((s) => s.available);
   const checking = useUpdaterStore((s) => s.checking);
@@ -114,6 +133,26 @@ export default function AccountMenu({
                   )}
                 >
                   {t.label}
+                </button>
+              ))}
+            </span>
+          </div>
+
+          <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
+            <Languages className="size-3.5 shrink-0" /> Language
+            <span className="ml-auto flex gap-0.5">
+              {IDIOMAS.map((l) => (
+                <button
+                  key={l.key}
+                  onClick={() => setIdioma(l.key)}
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[11px]",
+                    idioma === l.key
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  {l.label}
                 </button>
               ))}
             </span>

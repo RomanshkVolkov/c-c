@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 /**
  * The account menu, and the two things it exists to fix.
@@ -20,6 +20,7 @@ const { MemoryRouter } = await import("react-router-dom");
 const { default: AccountMenu } = await import("@/components/AccountMenu");
 const { useAuthStore } = await import("@/store/auth.store");
 const { useConnectionStore } = await import("@/store/connection.store");
+const { useLocaleStore } = await import("@/store/locale.store");
 
 beforeEach(() => {
   useAuthStore.setState({
@@ -55,12 +56,39 @@ describe("el menú de cuenta", () => {
     expect(screen.getByText("Log out")).toBeTruthy();
   });
 
+  /**
+   * La fila de un ajuste, no el menú entero.
+   *
+   * Tema e idioma ofrecen los dos un «Auto», así que buscarlo suelto encuentra
+   * los dos y la prueba deja de decir de cuál habla.
+   */
+  const fila = (etiqueta: string) => within(screen.getByText(etiqueta).closest("div")!);
+
   it("ofrece los tres temas a la vez, no un botón que cicla", () => {
     montar();
     abrir();
     // Con un botón que cicla no se puede distinguir «auto, ahora oscuro» de
     // «oscuro», y son respuestas distintas.
-    for (const t of ["Auto", "Light", "Dark"]) expect(screen.getByText(t)).toBeTruthy();
+    for (const t of ["Auto", "Light", "Dark"]) expect(fila("Theme").getByText(t)).toBeTruthy();
+  });
+
+  // El idioma se elige igual, y por lo mismo.
+  it("y los tres idiomas, con cada nombre en su idioma", () => {
+    montar();
+    abrir();
+    // «English» y «Español», no «Inglés» y «Spanish»: quien busca el suyo en una
+    // lista lo busca escrito como él lo escribe.
+    for (const l of ["Auto", "English", "Español"]) {
+      expect(fila("Language").getByText(l)).toBeTruthy();
+    }
+  });
+
+  it("elegir un idioma lo guarda", () => {
+    montar();
+    abrir();
+    fireEvent.click(fila("Language").getByText("Español"));
+    expect(useLocaleStore.getState().preference).toBe("es");
+    expect(useLocaleStore.getState().resolved).toBe("es");
   });
 
   it("el punto mira el stream, no la última petición", () => {

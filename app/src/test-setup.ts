@@ -42,3 +42,30 @@ if (!window.matchMedia) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function () {};
 }
+
+/**
+ * Las pruebas se leen en inglés, pase lo que pase.
+ *
+ * Cientos de aserciones buscan texto literal —`getByText("Save")`— y el idioma
+ * de la interfaz sale del sistema cuando nadie ha elegido. Sin fijarlo aquí, la
+ * suite entera pasaría en una máquina en inglés y se caería en una en
+ * castellano, que es el peor fallo posible: no dice nada de lo que se estaba
+ * probando y depende de quién la ejecute.
+ *
+ * El inglés y no otro porque es el idioma base del catálogo — el único que se
+ * sabe completo. Una prueba que quiera comprobar el castellano tiene que
+ * cambiarlo a propósito, y hacerlo a propósito es justo lo correcto.
+ *
+ * También fija el locale de `Intl`: las fechas y las horas se formatean con el
+ * del sistema, así que una aserción sobre «9:00» o «05:00 PM» tiene el mismo
+ * problema. Ver `lib/horas.test.ts`, que ya lo sortea leyendo la hora como
+ * número en vez de como texto.
+ */
+Object.defineProperty(navigator, "languages", {
+  value: ["en-US"],
+  configurable: true,
+});
+Object.defineProperty(navigator, "language", {
+  value: "en-US",
+  configurable: true,
+});
