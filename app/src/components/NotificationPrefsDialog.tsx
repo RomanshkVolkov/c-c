@@ -17,13 +17,13 @@ import { cn } from "@/lib/utils";
  */
 
 /**
- * `invertida` existe por una sola opción, y es deuda de esquema hecha visible:
+ * `inverted` existe por una sola opción, y es deuda de esquema hecha visible:
  * `workQuiet` se guarda al revés porque una columna nueva sobre filas que ya
  * existen nace en el cero de su tipo, y al derecho habría llegado apagada para
  * todo el que ya tuviera preferencias. Aquí se le da la vuelta para que el
  * interruptor diga lo que hace, en vez de arrastrar la negación a la pantalla.
  */
-const OPCIONES: { key: keyof InboxPrefs; label: string; hint: string; invertida?: boolean }[] = [
+const OPTIONS: { key: keyof InboxPrefs; label: string; hint: string; inverted?: boolean }[] = [
   { key: "dms", label: "Direct messages", hint: "Somebody writes to you privately." },
   { key: "comments", label: "Comments", hint: "Somebody comments on work you are on." },
   { key: "reports", label: "New reports", hint: "A client raises something through a channel." },
@@ -36,19 +36,19 @@ const OPCIONES: { key: keyof InboxPrefs; label: string; hint: string; invertida?
     key: "workQuiet",
     label: "Your work",
     hint: "Work assigned to you, andstatus changes on what you carry — including anything an agent does through the MCP server.",
-    invertida: true,
+    inverted: true,
   },
   {
     key: "meetingsQuiet",
     label: "Meeting reminders",
     hint: "Recurring meetings your organization scheduled. They ring like a call at the time they start.",
-    invertida: true,
+    inverted: true,
   },
 ];
 
-/** Si el interruptor se ve encendido. Ver `invertida` arriba. */
-const encendida = (p: InboxPrefs, o: (typeof OPCIONES)[number]) =>
-  o.invertida ? !p[o.key] : Boolean(p[o.key]);
+/** Si el interruptor se ve encendido. Ver `inverted` arriba. */
+const isOn = (p: InboxPrefs, o: (typeof OPTIONS)[number]) =>
+  o.inverted ? !p[o.key] : Boolean(p[o.key]);
 
 /**
  * Si esta máquina llegó a enseñar cada aviso, y si no, por qué.
@@ -172,7 +172,7 @@ export default function NotificationPrefsDialog({
         </DialogHeader>
 
         <div className="space-y-1">
-          {OPCIONES.map((o) => (
+          {OPTIONS.map((o) => (
             <button
               key={o.key}
               // Un interruptor, y que lo diga. El control visual es un `span`
@@ -180,7 +180,7 @@ export default function NotificationPrefsDialog({
               // opción y **no** si está encendida — que es la única
               // información que hay aquí.
               role="switch"
-              aria-checked={encendida(actual, o)}
+              aria-checked={isOn(actual, o)}
               onClick={() => void alternar(o.key)}
               disabled={busy}
               className="flex w-full items-start gap-3 rounded px-2 py-2 text-left hover:bg-accent"
@@ -188,12 +188,12 @@ export default function NotificationPrefsDialog({
               <span
                 aria-hidden
                 className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors ${
-                  encendida(actual, o) ? "bg-primary" : "bg-muted"
+                  isOn(actual, o) ? "bg-primary" : "bg-muted"
                 }`}
               >
                 <span
                   className={`size-3 rounded-full bg-background transition-transform ${
-                    encendida(actual, o) ? "translate-x-3" : ""
+                    isOn(actual, o) ? "translate-x-3" : ""
                   }`}
                 />
               </span>

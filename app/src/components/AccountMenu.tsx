@@ -34,13 +34,13 @@ import { cn } from "@/lib/utils";
  * traducidos: quien busca su idioma en una lista lo busca escrito como él lo
  * escribe, no como lo escribe el idioma que no entiende.
  */
-const IDIOMAS: { key: LocalePreference; label: string }[] = [
+const LANGUAGES: { key: LocalePreference; label: string }[] = [
   { key: "system", label: "Auto" },
   { key: "en", label: "English" },
   { key: "es", label: "Español" },
 ];
 
-const TEMAS: { key: ThemePreference; label: string }[] = [
+const THEMES: { key: ThemePreference; label: string }[] = [
   { key: "system", label: "Auto" },
   { key: "light", label: "Light" },
   { key: "dark", label: "Dark" },
@@ -62,8 +62,8 @@ export default function AccountMenu({
   const org = useOrgsStore((s) => s.currentOrg());
   const preference = useThemeStore((s) => s.preference);
   const setPreference = useThemeStore((s) => s.setPreference);
-  const idioma = useLocaleStore((s) => s.preference);
-  const setIdioma = useLocaleStore((s) => s.setPreference);
+  const language = useLocaleStore((s) => s.preference);
+  const setLanguage = useLocaleStore((s) => s.setPreference);
   const version = useAppVersion();
   const available = useUpdaterStore((s) => s.available);
   const checking = useUpdaterStore((s) => s.checking);
@@ -121,7 +121,7 @@ export default function AccountMenu({
           <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
             <Moon className="size-3.5 shrink-0" /> Theme
             <span className="ml-auto flex gap-0.5">
-              {TEMAS.map((t) => (
+              {THEMES.map((t) => (
                 <button
                   key={t.key}
                   onClick={() => setPreference(t.key)}
@@ -141,13 +141,13 @@ export default function AccountMenu({
           <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
             <Languages className="size-3.5 shrink-0" /> Language
             <span className="ml-auto flex gap-0.5">
-              {IDIOMAS.map((l) => (
+              {LANGUAGES.map((l) => (
                 <button
                   key={l.key}
-                  onClick={() => setIdioma(l.key)}
+                  onClick={() => setLanguage(l.key)}
                   className={cn(
                     "rounded px-1.5 py-0.5 text-[11px]",
-                    idioma === l.key
+                    language === l.key
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-accent hover:text-foreground",
                   )}

@@ -19,9 +19,9 @@ import { cn } from "@/lib/utils";
  * avisos quiero» es donde la pregunta se contesta sola.
  */
 
-type Pestana = "all" | "talk" | "tasks" | "system";
+type Tab = "all" | "talk" | "tasks" | "system";
 
-const PESTANAS: { key: Pestana; label: string }[] = [
+const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
   // «Talk» y no «Mentions», que es como lo llama el prototipo: aquí caen
   // también los directos y los mensajes de los canales que sigues, y ninguno de
@@ -33,22 +33,22 @@ const PESTANAS: { key: Pestana; label: string }[] = [
 ];
 
 /** A qué pestaña pertenece cada clase, y con qué cara se dibuja. */
-const CLASES: Record<string, { grupo: Pestana; tag: string; icono: typeof AtSign; color: string }> = {
-  "chat:mention": { grupo: "talk", tag: "mention", icono: AtSign, color: "text-primary" },
-  "dm:message": { grupo: "talk", tag: "direct", icono: MessageSquare, color: "text-primary" },
-  "chat:message": { grupo: "talk", tag: "channel", icono: Hash, color: "text-muted-foreground" },
-  "task:comment": { grupo: "tasks", tag: "comment", icono: CheckSquare, color: "text-foreground" },
-  "task:assigned": { grupo: "tasks", tag: "assigned", icono: UserPlus, color: "text-primary" },
-  "task:status": { grupo: "tasks", tag: "status", icono: CheckSquare, color: "text-muted-foreground" },
-  "report:new": { grupo: "system", tag: "report", icono: Zap, color: "text-warning" },
-  // Sin esta entrada caería en DESCONOCIDA: funcionaría, pero sin etiqueta y en
+const KINDS: Record<string, { group: Tab; tag: string; icon: typeof AtSign; color: string }> = {
+  "chat:mention": { group: "talk", tag: "mention", icon: AtSign, color: "text-primary" },
+  "dm:message": { group: "talk", tag: "direct", icon: MessageSquare, color: "text-primary" },
+  "chat:message": { group: "talk", tag: "channel", icon: Hash, color: "text-muted-foreground" },
+  "task:comment": { group: "tasks", tag: "comment", icon: CheckSquare, color: "text-foreground" },
+  "task:assigned": { group: "tasks", tag: "assigned", icon: UserPlus, color: "text-primary" },
+  "task:status": { group: "tasks", tag: "status", icon: CheckSquare, color: "text-muted-foreground" },
+  "report:new": { group: "system", tag: "report", icon: Zap, color: "text-warning" },
+  // Sin esta entrada caería en UNKNOWN_KIND: funcionaría, pero sin etiqueta y en
   // «System», que es donde se guarda lo que no se supo clasificar.
   "meeting:reminder": {
-    grupo: "talk", tag: "meeting", icono: CalendarClock, color: "text-primary",
+    group: "talk", tag: "meeting", icon: CalendarClock, color: "text-primary",
   },
 };
 
-const DESCONOCIDA = { grupo: "system" as Pestana, tag: "", icono: Info, color: "text-muted-foreground" };
+const UNKNOWN_KIND = { group: "system" as Tab, tag: "", icon: Info, color: "text-muted-foreground" };
 
 export default function NotificationsPanel({
   open,
@@ -66,7 +66,7 @@ export default function NotificationsPanel({
   const markReadGroup = useInboxStore((s) => s.markReadGroup);
   const tallies = useInboxStore((s) => s.groups);
   const markAllRead = useInboxStore((s) => s.markAllRead);
-  const [pestana, setPestana] = useState<Pestana>("all");
+  const [tab, setTab] = useState<Tab>("all");
   /**
    * Qué grupos están abiertos, **por clave de grupo**.
    *
@@ -75,32 +75,32 @@ export default function NotificationsPanel({
    * que el usuario acaba de abrir en cuanto alguien escriba. Invisible en
    * desarrollo, insufrible en un canal vivo.
    */
-  const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
+  const [expanded, setAbiertos] = useState<Set<string>>(new Set());
 
-  const alternar = (clave: string) =>
+  const toggle = (clave: string) =>
     setAbiertos((prev) => {
-      const siguiente = new Set(prev);
-      if (!siguiente.delete(clave)) siguiente.add(clave);
-      return siguiente;
+      const next = new Set(prev);
+      if (!next.delete(clave)) next.add(clave);
+      return next;
     });
 
-  const { sinLeer, leidas } = useMemo(() => {
-    const suyas =
-      pestana === "all"
+  const { unreadGroups, readGroups } = useMemo(() => {
+    const mine =
+      tab === "all"
         ? items
-        : items.filter((n) => (CLASES[n.kind] ?? DESCONOCIDA).grupo === pestana);
+        : items.filter((n) => (KINDS[n.kind] ?? UNKNOWN_KIND).group === tab);
     // Se parte **antes** de agrupar. Un grupo con leídas y sin leer a la vez no
     // se puede colocar: arriba subiría lo ya leído por encima del rótulo «Read»,
     // y abajo escondería avisos nuevos debajo de él.
     return {
-      sinLeer: groupInbox(suyas.filter((n) => !n.readAt)),
-      leidas: groupInbox(suyas.filter((n) => n.readAt)),
+      unreadGroups: groupInbox(mine.filter((n) => !n.readAt)),
+      readGroups: groupInbox(mine.filter((n) => n.readAt)),
     };
-  }, [items, pestana]);
+  }, [items, tab]);
 
   if (!open) return null;
 
-  const abrir = (n: InboxItem) => {
+  const openOne = (n: InboxItem) => {
     void markRead([n.id]);
     if (n.link) {
       onOpenChange(false);
@@ -113,7 +113,7 @@ export default function NotificationsPanel({
    * último. Abrir la conversación **es** haberla leído; dejar el contador
    * puesto obligaría a volver a la campana a limpiarlo a mano.
    */
-  const abrirGrupo = (g: NotificationGroup) => {
+  const openGroup = (g: NotificationGroup) => {
     const { link } = summarize(g);
     // Por clave y no por los ids que haya a mano: la página trae 50 y el grupo
     // puede tener trescientos. Quien sabe cuántas hay es el servidor.
@@ -157,13 +157,13 @@ export default function NotificationsPanel({
         </div>
 
         <div className="flex gap-0.5 border-b px-2.5 py-2">
-          {PESTANAS.map((t) => (
+          {TABS.map((t) => (
             <button
               key={t.key}
-              onClick={() => setPestana(t.key)}
+              onClick={() => setTab(t.key)}
               className={cn(
                 "rounded-md px-2.5 py-1 text-xs",
-                pestana === t.key
+                tab === t.key
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground hover:text-foreground",
               )}
@@ -174,39 +174,39 @@ export default function NotificationsPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2.5 pt-1.5">
-          {sinLeer.length === 0 && leidas.length === 0 && (
+          {unreadGroups.length === 0 && readGroups.length === 0 && (
             <p className="px-2.5 py-5 text-center text-xs text-muted-foreground">
               Nothing pending in this organization.
             </p>
           )}
 
-          {sinLeer.map((g) => (
-            <Bloque
+          {unreadGroups.map((g) => (
+            <GroupRow
               key={g.key}
               g={g}
               tally={tallies.find((t) => t.key === g.key)}
-              abierto={abiertos.has(g.key)}
-              onAlternar={() => alternar(g.key)}
-              onAbrirGrupo={() => abrirGrupo(g)}
-              onAbrir={abrir}
+              abierto={expanded.has(g.key)}
+              onToggle={() => toggle(g.key)}
+              onOpenGroup={() => openGroup(g)}
+              onOpen={openOne}
             />
           ))}
 
-          {leidas.length > 0 && (
+          {readGroups.length > 0 && (
             <>
               <p className="px-2 pb-0.5 pt-2 text-[10.5px] uppercase tracking-wider text-muted-foreground">
                 Read
               </p>
-              {leidas.map((g) => (
-                <Bloque
+              {readGroups.map((g) => (
+                <GroupRow
                   key={g.key}
                   g={g}
-                  leida
+                  isRead
                   tally={tallies.find((t) => t.key === g.key)}
-                  abierto={abiertos.has(g.key)}
-                  onAlternar={() => alternar(g.key)}
-                  onAbrirGrupo={() => abrirGrupo(g)}
-                  onAbrir={abrir}
+                  abierto={expanded.has(g.key)}
+                  onToggle={() => toggle(g.key)}
+                  onOpenGroup={() => openGroup(g)}
+                  onOpen={openOne}
                 />
               ))}
             </>
@@ -230,50 +230,50 @@ export default function NotificationsPanel({
  * mirando es cromo puro, y además dejaría cada notificación suelta con más
  * adornos que información.
  */
-function Bloque({
+function GroupRow({
   g,
-  leida,
+  isRead,
   tally,
   abierto,
-  onAlternar,
-  onAbrirGrupo,
-  onAbrir,
+  onToggle,
+  onOpenGroup,
+  onOpen,
 }: {
   g: NotificationGroup;
-  leida?: boolean;
+  isRead?: boolean;
   /** Lo que el servidor cuenta de esta conversación, si lo mandó. */
   tally?: GroupTally;
   abierto: boolean;
-  onAlternar: () => void;
-  onAbrirGrupo: () => void;
-  onAbrir: (n: InboxItem) => void;
+  onToggle: () => void;
+  onOpenGroup: () => void;
+  onOpen: (n: InboxItem) => void;
 }) {
-  if (g.alone) return <Fila n={g.items[0]} leida={leida} onClick={() => onAbrir(g.items[0])} />;
+  if (g.alone) return <Row n={g.items[0]} isRead={isRead} onClick={() => onOpen(g.items[0])} />;
 
   const s = summarize(g);
   // El contador del servidor manda: cuenta la bandeja entera y no la página.
   // Sin él —una fila de las antiguas, sin clave guardada— se usa lo que hay
   // cargado, que es lo que teníamos antes de contar de verdad.
-  const cuantas = leida ? tally?.total ?? s.count : tally?.unread ?? s.count;
+  const count = isRead ? tally?.total ?? s.count : tally?.unread ?? s.count;
   // Y si el servidor dice que hay más de las que llegaron, se dice: enseñar 47 y
   // desplegar 12 sin avisar parece que faltan.
-  const faltan = (tally?.total ?? g.items.length) - g.items.length;
-  const clase = CLASES[g.items[0].kind] ?? DESCONOCIDA;
+  const hidden = (tally?.total ?? g.items.length) - g.items.length;
+  const kind = KINDS[g.items[0].kind] ?? UNKNOWN_KIND;
   // El icono es el de la familia y no cambia al entrar otro mensaje. La única
   // excepción es una mención: «alguien te nombró ahí dentro» es lo que decide si
   // tienes que abrirlo ya.
-  const Icono = s.mention ? AtSign : clase.icono;
-  const idLista = `grupo-${g.key}`;
+  const Icon = s.mention ? AtSign : kind.icon;
+  const listId = `group-${g.key}`;
 
   return (
-    <div className={cn(leida && "opacity-55")}>
+    <div className={cn(isRead && "opacity-55")}>
       {/* Dos botones hermanos y no uno dentro de otro: anidarlos es HTML
           inválido, y el de fuera se comería los clics del de dentro. */}
       <div className="flex items-start gap-1 rounded-lg hover:bg-accent/60">
         <button
-          onClick={onAlternar}
+          onClick={onToggle}
           aria-expanded={abierto}
-          aria-controls={idLista}
+          aria-controls={listId}
           aria-label={`${abierto ? "Collapse" : "Expand"} ${s.title}`}
           className="mt-2 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
         >
@@ -281,18 +281,18 @@ function Bloque({
         </button>
 
         <button
-          onClick={onAbrirGrupo}
+          onClick={onOpenGroup}
           className="grid min-w-0 flex-1 grid-cols-[22px_minmax(0,1fr)_10px] items-start gap-2 py-2 pr-2 text-left"
         >
-          <Icono className={cn("mt-0.5 size-4", s.mention ? "text-primary" : clase.color)} />
+          <Icon className={cn("mt-0.5 size-4", s.mention ? "text-primary" : kind.color)} />
           <span className="min-w-0">
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[13px] font-semibold">{s.title}</span>
               <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">
-                {cuantas}
+                {count}
               </span>
               <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">
-                {clase.tag}
+                {kind.tag}
               </span>
               {s.agent && (
                 // Frase distinta de la de una fila suelta a propósito: dice que
@@ -310,16 +310,16 @@ function Bloque({
             </span>
             <span className="mt-0.5 block truncate text-xs text-muted-foreground">{s.detail}</span>
           </span>
-          <span className={cn("mt-1.5 size-2 rounded-full", !leida ? "bg-primary" : "bg-transparent")} />
+          <span className={cn("mt-1.5 size-2 rounded-full", !isRead ? "bg-primary" : "bg-transparent")} />
         </button>
       </div>
 
       {abierto && (
-        <div id={idLista} role="group" className="ml-6 border-l pl-1">
+        <div id={listId} role="group" className="ml-6 border-l pl-1">
           {g.items.map((n) => (
-            <Fila key={n.id} n={n} leida={leida} onClick={() => onAbrir(n)} />
+            <Row key={n.id} n={n} isRead={isRead} onClick={() => onOpen(n)} />
           ))}
-          {faltan > 0 && (
+          {hidden > 0 && (
             <p className="px-2 py-1 text-[10.5px] text-muted-foreground">
               Showing {g.items.length} of {tally?.total}. Older ones stay in the conversation.
             </p>
@@ -330,30 +330,30 @@ function Bloque({
   );
 }
 
-function Fila({ n, leida, onClick }: { n: InboxItem; leida?: boolean; onClick: () => void }) {
-  const clase = CLASES[n.kind] ?? DESCONOCIDA;
-  const Icono = clase.icono;
+function Row({ n, isRead, onClick }: { n: InboxItem; isRead?: boolean; onClick: () => void }) {
+  const kind = KINDS[n.kind] ?? UNKNOWN_KIND;
+  const Icon = kind.icon;
   return (
     <button
       onClick={onClick}
       className={cn(
         "grid w-full grid-cols-[26px_minmax(0,1fr)_10px] items-center gap-2.5 rounded-lg p-2 text-left hover:bg-accent/40",
-        leida && "opacity-55",
+        isRead && "opacity-55",
       )}
     >
       <span className="flex size-[26px] items-center justify-center rounded-lg bg-accent">
-        <Icono className={cn("size-3.5", clase.color)} />
+        <Icon className={cn("size-3.5", kind.color)} />
       </span>
       <span className="min-w-0">
         <span className="flex items-baseline gap-1.5">
           <span className="truncate text-[12.5px] font-semibold">{n.title}</span>
-          {clase.tag && (
+          {kind.tag && (
             <span className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground">
-              {clase.tag}
+              {kind.tag}
             </span>
           )}
           {/* Lo escribió un agente por MCP. Chip aparte y no otro icono: la
-              clase dice *qué* pasó y esto dice *quién* lo hizo, que son dos
+              la clase dice *qué* pasó y esto dice *quién* lo hizo, que son dos
               preguntas y se leen mejor separadas. Lo declara el cliente que
               escribió, así que informa; no acredita nada. */}
           {n.via === "mcp" && (
