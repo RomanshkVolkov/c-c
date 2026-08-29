@@ -7,11 +7,19 @@ export const REPORT_STATUSES: ReportStatus[] = [
   "closed",
 ];
 
-export const STATUS_LABELS: Record<ReportStatus, string> = {
-  open: "Open",
-  in_progress: "In progress",
-  done: "Done",
-  closed: "Closed",
+/**
+ * Cómo se llama cada estado, **por clave de catálogo**.
+ *
+ * El identificador es el que manda: `done` es un estado, «Hecha» es cómo se lee
+ * hoy en esta pantalla. Guardar aquí la palabra traducida ataría la lógica al
+ * idioma — y el repositorio ya avisa en cuatro sitios de que renombrar una
+ * columna no cambia lo que esa columna *es*.
+ */
+export const STATUS_LABEL_KEYS: Record<ReportStatus, string> = {
+  open: "work:status.open",
+  in_progress: "work:status.in_progress",
+  done: "work:status.done",
+  closed: "work:status.closed",
 };
 
 /**
@@ -42,19 +50,19 @@ export function normalizeStatus(s: string): ReportStatus {
 export type ReportCategory = "bug" | "ui" | "performance" | "data" | "other";
 export type ReportPriority = "low" | "medium" | "high" | "urgent";
 
-export const CATEGORY_LABELS: Record<ReportCategory, string> = {
-  bug: "Error",
-  ui: "Interface",
-  performance: "Performance",
-  data: "Data",
-  other: "Other",
+export const CATEGORY_LABEL_KEYS: Record<ReportCategory, string> = {
+  bug: "work:category.bug",
+  ui: "work:category.ui",
+  performance: "work:category.performance",
+  data: "work:category.data",
+  other: "work:category.other",
 };
 
-export const PRIORITY_LABELS: Record<ReportPriority, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
+export const PRIORITY_LABEL_KEYS: Record<ReportPriority, string> = {
+  low: "work:priority.low",
+  medium: "work:priority.medium",
+  high: "work:priority.high",
+  urgent: "work:priority.urgent",
 };
 
 /** What GET /api/v1/reports/taxonomy answers. */

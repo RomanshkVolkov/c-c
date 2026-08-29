@@ -1,0 +1,32 @@
+{
+  "group": {
+    "work": "Trabajo",
+    "talk": "Conversación",
+    "platform": "Plataforma"
+  },
+  "item": {
+    "overview": "Resumen",
+    "myWork": "Mi trabajo",
+    "notes": "Notas",
+    "channels": "Canales",
+    "directMessages": "Mensajes directos",
+    "servers": "Servidores",
+    "diagnostics": "Diagnóstico",
+    "users": "Usuarios"
+  },
+  "devTools": {
+    "image": "Imagen",
+    "requests": "Peticiones",
+    "tokens": "Tokens"
+  },
+  "account": {
+    "theme": "Tema",
+    "themeAuto": "Auto",
+    "themeLight": "Claro",
+    "themeDark": "Oscuro",
+    "language": "Idioma",
+    "languageAuto": "Auto",
+    "changePassword": "Cambiar contraseña",
+    "logOut": "Salir"
+  }
+}

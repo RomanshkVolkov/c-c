@@ -1,0 +1,21 @@
+{
+  "status": {
+    "open": "Abierta",
+    "in_progress": "En curso",
+    "done": "Hecha",
+    "closed": "Cerrada"
+  },
+  "category": {
+    "bug": "Error",
+    "ui": "Interfaz",
+    "performance": "Rendimiento",
+    "data": "Datos",
+    "other": "Otro"
+  },
+  "priority": {
+    "low": "Baja",
+    "medium": "Media",
+    "high": "Alta",
+    "urgent": "Urgente"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "status": {
+    "open": "Open",
+    "in_progress": "In progress",
+    "done": "Done",
+    "closed": "Closed"
+  },
+  "category": {
+    "bug": "Error",
+    "ui": "Interface",
+    "performance": "Performance",
+    "data": "Data",
+    "other": "Other"
+  },
+  "priority": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "urgent": "Urgent"
+  }
+}

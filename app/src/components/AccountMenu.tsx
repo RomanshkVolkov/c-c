@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -35,15 +36,18 @@ import { cn } from "@/lib/utils";
  * escribe, no como lo escribe el idioma que no entiende.
  */
 const LANGUAGES: { key: LocalePreference; label: string }[] = [
-  { key: "system", label: "Auto" },
+  // «Auto» sí se traduce —es una palabra del producto— pero los nombres de los
+  // idiomas **no**: quien busca el suyo en una lista lo busca escrito como él lo
+  // escribe, no como lo escribe el idioma que no entiende.
+  { key: "system", label: "" },
   { key: "en", label: "English" },
   { key: "es", label: "Español" },
 ];
 
-const THEMES: { key: ThemePreference; label: string }[] = [
-  { key: "system", label: "Auto" },
-  { key: "light", label: "Light" },
-  { key: "dark", label: "Dark" },
+const THEMES: { key: ThemePreference; labelKey: string }[] = [
+  { key: "system", labelKey: "nav:account.themeAuto" },
+  { key: "light", labelKey: "nav:account.themeLight" },
+  { key: "dark", labelKey: "nav:account.themeDark" },
 ];
 
 export default function AccountMenu({
@@ -60,6 +64,7 @@ export default function AccountMenu({
   const session = useAuthStore((s) => s.session);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const org = useOrgsStore((s) => s.currentOrg());
+  const { t } = useTranslation();
   const preference = useThemeStore((s) => s.preference);
   const setPreference = useThemeStore((s) => s.setPreference);
   const language = useLocaleStore((s) => s.preference);
@@ -119,27 +124,27 @@ export default function AccountMenu({
               cycling control you cannot tell "auto, currently dark" from
               "dark", and those are different answers. */}
           <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
-            <Moon className="size-3.5 shrink-0" /> Theme
+            <Moon className="size-3.5 shrink-0" /> {t("nav:account.theme")}
             <span className="ml-auto flex gap-0.5">
-              {THEMES.map((t) => (
+              {THEMES.map((theme) => (
                 <button
-                  key={t.key}
-                  onClick={() => setPreference(t.key)}
+                  key={theme.key}
+                  onClick={() => setPreference(theme.key)}
                   className={cn(
                     "rounded px-1.5 py-0.5 text-[11px]",
-                    preference === t.key
+                    preference === theme.key
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  {t.label}
+                  {t(theme.labelKey)}
                 </button>
               ))}
             </span>
           </div>
 
           <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
-            <Languages className="size-3.5 shrink-0" /> Language
+            <Languages className="size-3.5 shrink-0" /> {t("nav:account.language")}
             <span className="ml-auto flex gap-0.5">
               {LANGUAGES.map((l) => (
                 <button
@@ -152,14 +157,14 @@ export default function AccountMenu({
                       : "hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  {l.label}
+                  {l.label || t("nav:account.languageAuto")}
                 </button>
               ))}
             </span>
           </div>
 
           <button className={item} onClick={() => { setOpen(false); onChangePassword(); }}>
-            <KeyRound className="size-3.5 shrink-0" /> Change password
+            <KeyRound className="size-3.5 shrink-0" /> {t("nav:account.changePassword")}
           </button>
           <button className={item} onClick={() => { setOpen(false); onConnectMcp(); }}>
             <Bot className="size-3.5 shrink-0" /> Connect Claude Code
@@ -204,7 +209,7 @@ export default function AccountMenu({
               navigate("/login");
             }}
           >
-            <LogOut className="size-3.5 shrink-0" /> Log out
+            <LogOut className="size-3.5 shrink-0" /> {t("nav:account.logOut")}
           </button>
         </div>
       )}

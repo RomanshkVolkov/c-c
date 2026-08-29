@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -59,26 +60,26 @@ import { cn } from "@/lib/utils";
 // Ten equal rows made everything look equally important, which is another way
 // of saying nothing did.
 const NAV_ITEMS = [
-  { label: "Overview", path: "/overview", icon: LayoutDashboard, guest: false, group: "work" },
-  { label: "My work", path: "/my-work", icon: Inbox, guest: false, group: "work" },
+  { labelKey: "nav:item.overview", path: "/overview", icon: LayoutDashboard, guest: false, group: "work" },
+  { labelKey: "nav:item.myWork", path: "/my-work", icon: Inbox, guest: false, group: "work" },
   // Sin entrada para tareas: el árbol de espacios de aquí abajo **es** esa
   // navegación. Una fila «Tareas» que lleva a la última lista abierta compite
   // con el árbol por el mismo trabajo y deja al usuario sin saber cuál manda.
-  { label: "Notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
-  { label: "Channels", path: "/chat", icon: Hash, guest: false, group: "talk" },
-  { label: "Direct messages", path: "/dm", icon: MessagesSquare, guest: false, group: "talk" },
+  { labelKey: "nav:item.notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
+  { labelKey: "nav:item.channels", path: "/chat", icon: Hash, guest: false, group: "talk" },
+  { labelKey: "nav:item.directMessages", path: "/dm", icon: MessagesSquare, guest: false, group: "talk" },
   // The dashboard is the servers screen; named for what it holds rather than
   // for the layout it happens to use.
-  { label: "Servers", path: "/dashboard", icon: Server, guest: false, group: "platform" },
-  { label: "Diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
-  { label: "Users", path: "/users", icon: Users, guest: false, superadmin: true, group: "platform" },
+  { labelKey: "nav:item.servers", path: "/dashboard", icon: Server, guest: false, group: "platform" },
+  { labelKey: "nav:item.diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
+  { labelKey: "nav:item.users", path: "/users", icon: Users, guest: false, superadmin: true, group: "platform" },
 ];
 
 /** Rendered in this order; a group with nothing in it draws nothing at all. */
-const GROUPS: { key: string; label: string }[] = [
-  { key: "work", label: "Work" },
-  { key: "talk", label: "Talk" },
-  { key: "platform", label: "Platform" },
+const GROUPS: { key: string; labelKey: string }[] = [
+  { key: "work", labelKey: "nav:group.work" },
+  { key: "talk", labelKey: "nav:group.talk" },
+  { key: "platform", labelKey: "nav:group.platform" },
 ];
 
 /**
@@ -92,13 +93,14 @@ const GROUPS: { key: string; label: string }[] = [
  * part of the app that does anything, and they are how the guest flow starts.
  */
 const DEV_TOOLS = [
-  { label: "Image", path: "/devtools/image", icon: ImageDown, guest: true },
-  { label: "Requests", path: "/devtools/requests", icon: Send, guest: false },
-  { label: "Tokens", path: "/devtools/tokens", icon: KeyRound, guest: true },
+  { labelKey: "nav:devTools.image", path: "/devtools/image", icon: ImageDown, guest: true },
+  { labelKey: "nav:devTools.requests", path: "/devtools/requests", icon: Send, guest: false },
+  { labelKey: "nav:devTools.tokens", path: "/devtools/tokens", icon: KeyRound, guest: true },
 ];
 
 /** DevTools, folded into one row that opens onto the tools you can use. */
 function DevToolsMenu() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const authed = useAuthStore((s) => !!s.accessToken);
@@ -124,14 +126,14 @@ function DevToolsMenu() {
       </SidebarMenuButton>
       {open && (
         <SidebarMenuSub>
-          {tools.map((t) => (
-            <SidebarMenuSubItem key={t.path}>
+          {tools.map((tool) => (
+            <SidebarMenuSubItem key={tool.path}>
               <SidebarMenuSubButton
-                isActive={pathname.startsWith(t.path)}
-                onClick={() => navigate(t.path)}
+                isActive={pathname.startsWith(tool.path)}
+                onClick={() => navigate(tool.path)}
               >
-                <t.icon className="size-3.5" />
-                <span>{t.label}</span>
+                <tool.icon className="size-3.5" />
+                <span>{t(tool.labelKey)}</span>
               </SidebarMenuSubButton>
             </SidebarMenuSubItem>
           ))}
@@ -142,6 +144,7 @@ function DevToolsMenu() {
 }
 
 export default function AppSidebar() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const authed = useAuthStore((s) => !!s.accessToken);
@@ -212,7 +215,7 @@ export default function AppSidebar() {
           if (deEsteGrupo.length === 0 && !conHerramientas) return null;
           return (
             <SidebarGroup key={grupo.key}>
-              <SidebarGroupLabel>{grupo.label}</SidebarGroupLabel>
+              <SidebarGroupLabel>{t(grupo.labelKey)}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {deEsteGrupo.map((item) => {
@@ -230,11 +233,11 @@ export default function AppSidebar() {
                       <SidebarMenuItem key={item.path}>
                         <SidebarMenuButton
                           isActive={pathname.startsWith(item.path)}
-                          tooltip={badge ? `${item.label} (${badge})` : item.label}
+                          tooltip={badge ? `${t(item.labelKey)} (${badge})` : t(item.labelKey)}
                           onClick={() => navigate(item.path)}
                         >
                           <item.icon className="size-4" />
-                          <span>{item.label}</span>
+                          <span>{t(item.labelKey)}</span>
                           {badge &&
                             (item.path === "/dashboard" ? (
                               <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">

@@ -1,0 +1,32 @@
+{
+  "group": {
+    "work": "Work",
+    "talk": "Talk",
+    "platform": "Platform"
+  },
+  "item": {
+    "overview": "Overview",
+    "myWork": "My work",
+    "notes": "Notes",
+    "channels": "Channels",
+    "directMessages": "Direct messages",
+    "servers": "Servers",
+    "diagnostics": "Diagnostics",
+    "users": "Users"
+  },
+  "devTools": {
+    "image": "Image",
+    "requests": "Requests",
+    "tokens": "Tokens"
+  },
+  "account": {
+    "theme": "Theme",
+    "themeAuto": "Auto",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "language": "Language",
+    "languageAuto": "Auto",
+    "changePassword": "Change password",
+    "logOut": "Log out"
+  }
+}

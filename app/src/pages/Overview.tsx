@@ -8,7 +8,9 @@ import { useDMStore } from "@/store/dm.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useServers } from "@/hooks/use-servers";
 import { desde, iniciales } from "@/lib/desde";
-import { normalizeStatus, STATUS_LABELS } from "@/types/report";
+import { useTranslation } from "react-i18next";
+
+import { normalizeStatus, STATUS_LABEL_KEYS } from "@/types/report";
 import type { APIResponse } from "@/types/auth";
 import type { OpenTask } from "@/types/task";
 import type { ReportListItem, ReportListResult } from "@/types/report";
@@ -29,6 +31,7 @@ import type { ReportListItem, ReportListResult } from "@/types/report";
 const CERRADOS = new Set(["resolved", "closed"]);
 
 export default function Overview() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const orgId = useOrgsStore((s) => s.currentOrgId);
   const orgName = useOrgsStore((s) => s.currentOrg()?.name ?? "");
@@ -129,7 +132,7 @@ export default function Overview() {
                 titulo={r.title}
                 meta={r.folio || r.projectName}
                 metaMono
-                estado={STATUS_LABELS[r.status]}
+                estado={t(STATUS_LABEL_KEYS[r.status])}
                 prioridad={r.priority}
                 onClick={() => navigate(`/reports?report=${r.id}`)}
               />

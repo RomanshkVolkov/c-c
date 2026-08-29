@@ -2,9 +2,13 @@ import i18next from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import enCommon from "@/locales/en/common.json";
+import enNav from "@/locales/en/nav.json";
 import enNotifications from "@/locales/en/notifications.json";
+import enWork from "@/locales/en/work.json";
 import esCommon from "@/locales/es/common.json";
+import esNav from "@/locales/es/nav.json";
 import esNotifications from "@/locales/es/notifications.json";
+import esWork from "@/locales/es/work.json";
 import type { Locale } from "@/store/locale.store";
 
 /**
@@ -22,8 +26,8 @@ import type { Locale } from "@/store/locale.store";
 
 /** El inglés manda: si una clave no está aquí, no está en ninguna parte. */
 const recursos = {
-  en: { common: enCommon, notifications: enNotifications },
-  es: { common: esCommon, notifications: esNotifications },
+  en: { common: enCommon, nav: enNav, notifications: enNotifications, work: enWork },
+  es: { common: esCommon, nav: esNav, notifications: esNotifications, work: esWork },
 } as const;
 
 /**
@@ -57,7 +61,7 @@ export function initI18n(lng: Locale = "en") {
     lng,
     fallbackLng: "en",
     defaultNS: "common",
-    ns: ["common", "notifications"],
+    ns: ["common", "nav", "notifications", "work"],
     // Sin escapado: React ya escapa todo lo que pinta, y volver a hacerlo aquí
     // convierte un apóstrofo en `&#39;` dentro de la propia frase.
     interpolation: { escapeValue: false },

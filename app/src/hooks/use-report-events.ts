@@ -6,7 +6,9 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import { apiUrl, refreshAccessToken } from "@/lib/api";
-import { STATUS_LABELS, normalizeStatus } from "@/types/report";
+import i18next from "i18next";
+
+import { STATUS_LABEL_KEYS, normalizeStatus } from "@/types/report";
 import { useAuthStore } from "@/store/auth.store";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -317,7 +319,12 @@ export function useReportEvents() {
           // state using the spelling the rest of the UI stopped using.
           const raw = moved.status;
           toast.message("Report status changed", {
-            description: raw ? STATUS_LABELS[normalizeStatus(String(raw))] : undefined,
+            // `i18next.t` y no el hook: esto no es un componente, es el
+            // repartidor de eventos. Lee el idioma que esté puesto en ese
+            // momento, que es lo correcto para un aviso que se emite una vez.
+            description: raw
+              ? i18next.t(STATUS_LABEL_KEYS[normalizeStatus(String(raw))])
+              : undefined,
           });
           refresh();
           break;
