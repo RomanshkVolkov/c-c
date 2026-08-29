@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import i18next from "i18next";
+
 import { LOCALES } from "@/store/locale.store";
 
 /**
@@ -75,5 +77,34 @@ describe("los catálogos", () => {
     const en = JSON.stringify(catalogo("en", "common"));
     const es = JSON.stringify(catalogo("es", "common"));
     expect(es).not.toBe(en);
+  });
+});
+
+describe("el catálogo en marcha", () => {
+  // La reserva es la red de la red: los catálogos se mantienen a la par por la
+  // prueba de arriba, así que una clave que falte no debería existir. Cuando
+  // exista igualmente —una clave escrita a mano con una errata, una rama que
+  // alguien olvidó— tiene que salir en inglés y no un hueco.
+  it("una clave que falte en castellano sale en inglés", () => {
+    expect(i18next.options.fallbackLng).toContain("en");
+  });
+
+  it("y traduce de verdad cuando se le pide en castellano", () => {
+    expect(i18next.t("notifications:tab.all", { lng: "es" })).toBe("Todo");
+    expect(i18next.t("notifications:tab.all", { lng: "en" })).toBe("All");
+  });
+
+  // El plural del castellano no es el del inglés en todos los casos, y el
+  // catálogo tiene formas separadas: si alguien las colapsa, esto se cae.
+  it("el plural cambia con la cantidad", () => {
+    const una = i18next.t("notifications:byAgent_group", { count: 1, lng: "es" });
+    const varias = i18next.t("notifications:byAgent_group", { count: 3, lng: "es" });
+    // Comparar las dos frases enteras no vale: **difieren por el número
+    // interpolado** aunque el plural esté colapsado, así que la prueba pasaría
+    // con una sola forma. Y «escritos» contiene «escrito», de modo que buscar
+    // el singular tampoco distingue. Lo que separa las dos formas es que la del
+    // singular **no** lleva la ese.
+    expect(una).not.toContain("escritos");
+    expect(varias).toContain("escritos");
   });
 });

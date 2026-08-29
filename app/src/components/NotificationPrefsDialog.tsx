@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,27 +24,13 @@ import { cn } from "@/lib/utils";
  * todo el que ya tuviera preferencias. Aquí se le da la vuelta para que el
  * interruptor diga lo que hace, en vez de arrastrar la negación a la pantalla.
  */
-const OPTIONS: { key: keyof InboxPrefs; label: string; hint: string; inverted?: boolean }[] = [
-  { key: "dms", label: "Direct messages", hint: "Somebody writes to you privately." },
-  { key: "comments", label: "Comments", hint: "Somebody comments on work you are on." },
-  { key: "reports", label: "New reports", hint: "A client raises something through a channel." },
-  {
-    key: "messages",
-    label: "Channels you follow",
-    hint: "Ordinary messages in a channel you chose to follow. Being named always reaches you.",
-  },
-  {
-    key: "workQuiet",
-    label: "Your work",
-    hint: "Work assigned to you, andstatus changes on what you carry — including anything an agent does through the MCP server.",
-    inverted: true,
-  },
-  {
-    key: "meetingsQuiet",
-    label: "Meeting reminders",
-    hint: "Recurring meetings your organization scheduled. They ring like a call at the time they start.",
-    inverted: true,
-  },
+const OPTIONS: { key: keyof InboxPrefs; labelKey: string; hintKey: string; inverted?: boolean }[] = [
+  { key: "dms", labelKey: "notifications:prefs.dms", hintKey: "notifications:prefs.dmsHint" },
+  { key: "comments", labelKey: "notifications:prefs.comments", hintKey: "notifications:prefs.commentsHint" },
+  { key: "reports", labelKey: "notifications:prefs.reports", hintKey: "notifications:prefs.reportsHint" },
+  { key: "messages", labelKey: "notifications:prefs.messages", hintKey: "notifications:prefs.messagesHint" },
+  { key: "workQuiet", labelKey: "notifications:prefs.work", hintKey: "notifications:prefs.workHint", inverted: true },
+  { key: "meetingsQuiet", labelKey: "notifications:prefs.meetings", hintKey: "notifications:prefs.meetingsHint", inverted: true },
 ];
 
 /** Si el interruptor se ve encendido. Ver `inverted` arriba. */
@@ -135,6 +122,7 @@ export default function NotificationPrefsDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const prefs = useInboxStore((s) => s.prefs);
   const loadPrefs = useInboxStore((s) => s.loadPrefs);
   const savePrefs = useInboxStore((s) => s.savePrefs);
@@ -198,16 +186,15 @@ export default function NotificationPrefsDialog({
                 />
               </span>
               <span className="min-w-0">
-                <span className="block text-sm">{o.label}</span>
-                <span className="block text-xs text-muted-foreground">{o.hint}</span>
+                <span className="block text-sm">{t(o.labelKey)}</span>
+                <span className="block text-xs text-muted-foreground">{t(o.hintKey)}</span>
               </span>
             </button>
           ))}
         </div>
 
         <p className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-          Being mentioned always reaches you. It is the one thing worth
-          interrupting somebody for, so it is not a setting.
+          {t("notifications:prefs.mentionsAlways")}
         </p>
 
         <RegistroDeEntrega />

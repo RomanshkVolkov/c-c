@@ -15,7 +15,7 @@ watchSystemTheme();
 // instante después se ve como un parpadeo, y encima con el texto moviéndose.
 // `initI18n` lee la preferencia ya rehidratada; `apply` la vuelve a resolver por
 // si el arranque fue antes de que el almacenamiento contestara.
-initI18n();
+initI18n(useLocaleStore.getState().resolved);
 useLocaleStore.getState().apply();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

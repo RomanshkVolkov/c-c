@@ -1,3 +1,5 @@
+import { initI18n } from "@/lib/i18n";
+
 /**
  * Lo que jsdom no trae y la app da por hecho.
  *
@@ -69,3 +71,13 @@ Object.defineProperty(navigator, "language", {
   value: "en-US",
   configurable: true,
 });
+
+/**
+ * Y el catálogo arrancado, o `t()` devuelve la clave.
+ *
+ * Sin esto, una pantalla traducida pinta `notifications:tab.talk` donde debería
+ * poner «Talk», y cada prueba que busque texto se cae con un mensaje que habla
+ * de otra cosa. Arranca en inglés por lo mismo que arriba: es el idioma en el
+ * que están escritas las aserciones.
+ */
+initI18n();

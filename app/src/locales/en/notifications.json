@@ -1,0 +1,46 @@
+{
+  "title": "Notifications",
+  "markAllRead": "Mark all read",
+  "empty": "Nothing pending in this organization.",
+  "read": "Read",
+  "footer": "Clicking a system notification opens the thread here, in the app.",
+  "expand": "Expand {{name}}",
+  "collapse": "Collapse {{name}}",
+  "showing": "Showing {{shown}} of {{total}}. Older ones stay in the conversation.",
+  "byAgent": "Written by an agent through the MCP server",
+  "byAgent_group_one": "Includes {{count}} written by an agent through the MCP server",
+  "byAgent_group_other": "Includes {{count}} written by an agent through the MCP server",
+  "agent": "agent",
+  "tab": {
+    "all": "All",
+    "talk": "Talk",
+    "tasks": "Tasks",
+    "system": "System"
+  },
+  "kind": {
+    "mention": "mention",
+    "direct": "direct",
+    "channel": "channel",
+    "comment": "comment",
+    "assigned": "assigned",
+    "status": "status",
+    "report": "report",
+    "meeting": "meeting"
+  },
+  "prefs": {
+    "title": "What reaches you",
+    "dms": "Direct messages",
+    "dmsHint": "Somebody writes to you privately.",
+    "comments": "Comments",
+    "commentsHint": "Somebody comments on work you are on.",
+    "reports": "New reports",
+    "reportsHint": "A client raises something through a channel.",
+    "messages": "Channels you follow",
+    "messagesHint": "Ordinary messages in a channel you chose to follow. Being named always reaches you.",
+    "work": "Your work",
+    "workHint": "Work assigned to you, and status changes on what you carry — including anything an agent does through the MCP server.",
+    "meetings": "Meeting reminders",
+    "meetingsHint": "Recurring meetings your organization scheduled. They ring like a call at the time they start.",
+    "mentionsAlways": "Being mentioned always reaches you. It is the one thing worth interrupting somebody for, so it is not a setting."
+  }
+}

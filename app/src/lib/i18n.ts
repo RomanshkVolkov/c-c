@@ -2,8 +2,10 @@ import i18next from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import enCommon from "@/locales/en/common.json";
+import enNotifications from "@/locales/en/notifications.json";
 import esCommon from "@/locales/es/common.json";
-import { useLocaleStore, type Locale } from "@/store/locale.store";
+import esNotifications from "@/locales/es/notifications.json";
+import type { Locale } from "@/store/locale.store";
 
 /**
  * El catálogo, y la única forma de arrancarlo.
@@ -20,8 +22,8 @@ import { useLocaleStore, type Locale } from "@/store/locale.store";
 
 /** El inglés manda: si una clave no está aquí, no está en ninguna parte. */
 const recursos = {
-  en: { common: enCommon },
-  es: { common: esCommon },
+  en: { common: enCommon, notifications: enNotifications },
+  es: { common: esCommon, notifications: esNotifications },
 } as const;
 
 /**
@@ -38,15 +40,24 @@ function avisarDeClaveAusente(idiomas: readonly string[], ns: string, clave: str
   console.error(`i18n: falta «${ns}:${clave}» en ${idiomas.join(", ")}`);
 }
 
-export function initI18n() {
+/**
+ * Arranca el catálogo en el idioma que se le diga.
+ *
+ * El idioma **entra por parámetro** y no se lee del store: el store importa
+ * `applyLocale` de aquí, así que leerlo desde aquí cerraría un ciclo entre los
+ * dos módulos. Con un ciclo, quién queda a medio evaluar depende de quién se
+ * importe primero — y eso cambia entre la aplicación y las pruebas, que es la
+ * peor clase de diferencia.
+ */
+export function initI18n(lng: Locale = "en") {
   if (i18next.isInitialized) return i18next;
 
   void i18next.use(initReactI18next).init({
     resources: recursos,
-    lng: useLocaleStore.getState().resolved,
+    lng,
     fallbackLng: "en",
     defaultNS: "common",
-    ns: ["common"],
+    ns: ["common", "notifications"],
     // Sin escapado: React ya escapa todo lo que pinta, y volver a hacerlo aquí
     // convierte un apóstrofo en `&#39;` dentro de la propia frase.
     interpolation: { escapeValue: false },

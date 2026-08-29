@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { InboxItem } from "@/store/inbox.store";
 
 /**
@@ -208,6 +208,17 @@ describe("plegar lo del mismo sitio", () => {
 
   // Que te nombren dentro de un canal charlatán es lo único que decide si hay
   // que abrirlo ya.
+  // La cabecera de un grupo lleva su etiqueta igual que una fila suelta. Sin
+  // esta prueba, un fallo al traducirla dejaría la clave cruda en pantalla
+  // —«notifications:kind.channel»— y ninguna prueba lo notaría.
+  it("la cabecera del grupo lleva su etiqueta, traducida", () => {
+    items.current = mismoCanal();
+    render(<NotificationsPanel open onOpenChange={() => {}} onOpenPrefs={() => {}} />);
+    const cabecera = screen.getByText("#portento").closest("button")!;
+    expect(within(cabecera).getByText("channel")).toBeTruthy();
+    expect(cabecera.textContent).not.toContain("notifications:");
+  });
+
   it("una mención dentro se ve sin abrir", () => {
     items.current = [
       { ...n("c1", "chat:message", "#portento"), link: "/chat?space=s1" },

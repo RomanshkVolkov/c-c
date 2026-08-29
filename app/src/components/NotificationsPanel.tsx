@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AtSign, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
+import { useTranslation } from "react-i18next";
 import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
@@ -21,34 +22,42 @@ import { cn } from "@/lib/utils";
 
 type Tab = "all" | "talk" | "tasks" | "system";
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "all", label: "All" },
+/**
+ * Las pestañas, por clave. El rótulo sale del catálogo al pintarlas.
+ *
+ * La clave es la que manda —es la que agrupa las clases y la que se compara— y
+ * el texto es sólo cómo se lee. Guardar aquí la palabra traducida haría que
+ * cambiar de idioma cambiara la lógica.
+ */
+const TABS: { key: Tab; labelKey: string }[] = [
+  { key: "all", labelKey: "notifications:tab.all" },
   // «Talk» y no «Mentions», que es como lo llama el prototipo: aquí caen
   // también los directos y los mensajes de los canales que sigues, y ninguno de
   // los dos te nombra. Una pestaña que promete menciones y trae mensajes
   // corrientes deja de servir para encontrar quién te buscaba.
-  { key: "talk", label: "Talk" },
-  { key: "tasks", label: "Tasks" },
-  { key: "system", label: "System" },
+  { key: "talk", labelKey: "notifications:tab.talk" },
+  { key: "tasks", labelKey: "notifications:tab.tasks" },
+  { key: "system", labelKey: "notifications:tab.system" },
 ];
 
 /** A qué pestaña pertenece cada clase, y con qué cara se dibuja. */
-const KINDS: Record<string, { group: Tab; tag: string; icon: typeof AtSign; color: string }> = {
-  "chat:mention": { group: "talk", tag: "mention", icon: AtSign, color: "text-primary" },
-  "dm:message": { group: "talk", tag: "direct", icon: MessageSquare, color: "text-primary" },
-  "chat:message": { group: "talk", tag: "channel", icon: Hash, color: "text-muted-foreground" },
-  "task:comment": { group: "tasks", tag: "comment", icon: CheckSquare, color: "text-foreground" },
-  "task:assigned": { group: "tasks", tag: "assigned", icon: UserPlus, color: "text-primary" },
-  "task:status": { group: "tasks", tag: "status", icon: CheckSquare, color: "text-muted-foreground" },
-  "report:new": { group: "system", tag: "report", icon: Zap, color: "text-warning" },
+const KINDS: Record<string, { group: Tab; tagKey: string; icon: typeof AtSign; color: string }> = {
+  "chat:mention": { group: "talk", tagKey: "notifications:kind.mention", icon: AtSign, color: "text-primary" },
+  "dm:message": { group: "talk", tagKey: "notifications:kind.direct", icon: MessageSquare, color: "text-primary" },
+  "chat:message": { group: "talk", tagKey: "notifications:kind.channel", icon: Hash, color: "text-muted-foreground" },
+  "task:comment": { group: "tasks", tagKey: "notifications:kind.comment", icon: CheckSquare, color: "text-foreground" },
+  "task:assigned": { group: "tasks", tagKey: "notifications:kind.assigned", icon: UserPlus, color: "text-primary" },
+  "task:status": { group: "tasks", tagKey: "notifications:kind.status", icon: CheckSquare, color: "text-muted-foreground" },
+  "report:new": { group: "system", tagKey: "notifications:kind.report", icon: Zap, color: "text-warning" },
   // Sin esta entrada caería en UNKNOWN_KIND: funcionaría, pero sin etiqueta y en
   // «System», que es donde se guarda lo que no se supo clasificar.
   "meeting:reminder": {
-    group: "talk", tag: "meeting", icon: CalendarClock, color: "text-primary",
+    group: "talk", tagKey: "notifications:kind.meeting", icon: CalendarClock, color: "text-primary",
   },
 };
 
-const UNKNOWN_KIND = { group: "system" as Tab, tag: "", icon: Info, color: "text-muted-foreground" };
+// Sin etiqueta a propósito: no hay palabra honesta para «no sé qué es esto».
+const UNKNOWN_KIND = { group: "system" as Tab, tagKey: "", icon: Info, color: "text-muted-foreground" };
 
 export default function NotificationsPanel({
   open,
@@ -59,6 +68,7 @@ export default function NotificationsPanel({
   onOpenChange: (v: boolean) => void;
   onOpenPrefs: () => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const items = useInboxStore((s) => s.items);
   const unread = useInboxStore((s) => s.unread);
@@ -131,7 +141,7 @@ export default function NotificationsPanel({
       <div className="absolute inset-0 bg-black/35" onClick={() => onOpenChange(false)} />
       <div className="absolute right-3 top-11 flex max-h-[calc(100%-3.5rem)] w-[392px] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
         <div className="flex items-center gap-2.5 border-b px-3.5 py-2.5">
-          <span className="font-semibold">Notifications</span>
+          <span className="font-semibold">{t("notifications:title")}</span>
           {unread > 0 && (
             <span className="rounded-full bg-primary px-1.5 text-[10px] font-medium leading-4 text-primary-foreground">
               {unread > 99 ? "99+" : unread}
@@ -140,11 +150,11 @@ export default function NotificationsPanel({
           <div className="ml-auto flex items-center gap-2.5 text-[11.5px] text-muted-foreground">
             {unread > 0 && (
               <button className="hover:text-foreground" onClick={() => void markAllRead()}>
-                Mark all read
+                {t("notifications:markAllRead")}
               </button>
             )}
             <button
-              title="Notification settings"
+              title={t("notifications:prefs.title")}
               className="hover:text-foreground"
               onClick={() => {
                 onOpenChange(false);
@@ -157,18 +167,18 @@ export default function NotificationsPanel({
         </div>
 
         <div className="flex gap-0.5 border-b px-2.5 py-2">
-          {TABS.map((t) => (
+          {TABS.map((pestana) => (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
+              key={pestana.key}
+              onClick={() => setTab(pestana.key)}
               className={cn(
                 "rounded-md px-2.5 py-1 text-xs",
-                tab === t.key
+                tab === pestana.key
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {t.label}
+              {t(pestana.labelKey)}
             </button>
           ))}
         </div>
@@ -176,7 +186,7 @@ export default function NotificationsPanel({
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2.5 pt-1.5">
           {unreadGroups.length === 0 && readGroups.length === 0 && (
             <p className="px-2.5 py-5 text-center text-xs text-muted-foreground">
-              Nothing pending in this organization.
+              {t("notifications:empty")}
             </p>
           )}
 
@@ -195,7 +205,7 @@ export default function NotificationsPanel({
           {readGroups.length > 0 && (
             <>
               <p className="px-2 pb-0.5 pt-2 text-[10.5px] uppercase tracking-wider text-muted-foreground">
-                Read
+                {t("notifications:read")}
               </p>
               {readGroups.map((g) => (
                 <GroupRow
@@ -215,7 +225,7 @@ export default function NotificationsPanel({
 
         <p className="flex items-start gap-2.5 border-t px-3.5 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0 text-primary" />
-          Clicking a system notification opens the thread here, in the app.
+          {t("notifications:footer")}
         </p>
       </div>
     </div>
@@ -250,6 +260,7 @@ function GroupRow({
 }) {
   if (g.alone) return <Row n={g.items[0]} isRead={isRead} onClick={() => onOpen(g.items[0])} />;
 
+  const { t } = useTranslation();
   const s = summarize(g);
   // El contador del servidor manda: cuenta la bandeja entera y no la página.
   // Sin él —una fila de las antiguas, sin clave guardada— se usa lo que hay
@@ -274,7 +285,9 @@ function GroupRow({
           onClick={onToggle}
           aria-expanded={abierto}
           aria-controls={listId}
-          aria-label={`${abierto ? "Collapse" : "Expand"} ${s.title}`}
+          aria-label={t(abierto ? "notifications:collapse" : "notifications:expand", {
+            name: s.title,
+          })}
           className="mt-2 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
         >
           {abierto ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -292,16 +305,18 @@ function GroupRow({
                 {count}
               </span>
               <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">
-                {kind.tag}
+                {t(kind.tagKey)}
               </span>
               {s.agent && (
                 // Frase distinta de la de una fila suelta a propósito: dice que
                 // hay algo de un agente **dentro**, no que lo sea la cabecera.
                 <span
-                  title={`Includes ${g.items.filter((n) => n.via === "mcp").length} written by an agent through the MCP server`}
+                  title={t("notifications:byAgent_group", {
+                    count: g.items.filter((n) => n.via === "mcp").length,
+                  })}
                   className="flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground"
                 >
-                  <Bot className="size-2.5" /> agent
+                  <Bot className="size-2.5" /> {t("notifications:agent")}
                 </span>
               )}
               <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
@@ -321,7 +336,7 @@ function GroupRow({
           ))}
           {hidden > 0 && (
             <p className="px-2 py-1 text-[10.5px] text-muted-foreground">
-              Showing {g.items.length} of {tally?.total}. Older ones stay in the conversation.
+              {t("notifications:showing", { shown: g.items.length, total: tally?.total })}
             </p>
           )}
         </div>
@@ -331,6 +346,7 @@ function GroupRow({
 }
 
 function Row({ n, isRead, onClick }: { n: InboxItem; isRead?: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
   const kind = KINDS[n.kind] ?? UNKNOWN_KIND;
   const Icon = kind.icon;
   return (
@@ -347,9 +363,9 @@ function Row({ n, isRead, onClick }: { n: InboxItem; isRead?: boolean; onClick: 
       <span className="min-w-0">
         <span className="flex items-baseline gap-1.5">
           <span className="truncate text-[12.5px] font-semibold">{n.title}</span>
-          {kind.tag && (
+          {kind.tagKey && (
             <span className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground">
-              {kind.tag}
+              {t(kind.tagKey)}
             </span>
           )}
           {/* Lo escribió un agente por MCP. Chip aparte y no otro icono: la
@@ -358,11 +374,11 @@ function Row({ n, isRead, onClick }: { n: InboxItem; isRead?: boolean; onClick: 
               escribió, así que informa; no acredita nada. */}
           {n.via === "mcp" && (
             <span
-              title="Written by an agent through the MCP server"
+              title={t("notifications:byAgent")}
               className="flex shrink-0 items-center gap-0.5 rounded border border-primary/40 px-1 text-[10px] text-primary"
             >
               <Bot className="size-2.5" />
-              agent
+              {t("notifications:agent")}
             </span>
           )}
           <span className="ml-auto shrink-0 whitespace-nowrap text-[10.5px] text-muted-foreground">

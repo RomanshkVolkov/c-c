@@ -1,0 +1,46 @@
+{
+  "title": "Notificaciones",
+  "markAllRead": "Marcar todo leído",
+  "empty": "Nada pendiente en esta organización.",
+  "read": "Leídas",
+  "footer": "Al pulsar un aviso, el hilo se abre aquí, dentro de la aplicación.",
+  "expand": "Desplegar {{name}}",
+  "collapse": "Plegar {{name}}",
+  "showing": "Se ven {{shown}} de {{total}}. El resto sigue en la conversación.",
+  "byAgent": "Lo escribió un agente por el servidor MCP",
+  "byAgent_group_one": "Incluye {{count}} escrito por un agente por el servidor MCP",
+  "byAgent_group_other": "Incluye {{count}} escritos por un agente por el servidor MCP",
+  "agent": "agente",
+  "tab": {
+    "all": "Todo",
+    "talk": "Conversación",
+    "tasks": "Tareas",
+    "system": "Sistema"
+  },
+  "kind": {
+    "mention": "mención",
+    "direct": "directo",
+    "channel": "canal",
+    "comment": "comentario",
+    "assigned": "asignada",
+    "status": "estado",
+    "report": "reporte",
+    "meeting": "reunión"
+  },
+  "prefs": {
+    "title": "Qué te llega",
+    "dms": "Mensajes directos",
+    "dmsHint": "Alguien te escribe en privado.",
+    "comments": "Comentarios",
+    "commentsHint": "Alguien comenta en algo en lo que estás.",
+    "reports": "Reportes nuevos",
+    "reportsHint": "Un cliente levanta algo por su canal.",
+    "messages": "Canales que sigues",
+    "messagesHint": "Los mensajes corrientes de un canal que decidiste seguir. Que te nombren te llega siempre.",
+    "work": "Tu trabajo",
+    "workHint": "Lo que te asignan y los cambios de estado de lo que llevas — incluido lo que haga un agente por el servidor MCP.",
+    "meetings": "Recordatorios de reuniones",
+    "meetingsHint": "Las reuniones periódicas de tu organización. Suenan como una llamada a la hora de empezar.",
+    "mentionsAlways": "Que te mencionen te llega siempre. Es lo único que merece interrumpir a alguien, así que no es un ajuste."
+  }
+}
