@@ -26,6 +26,7 @@ import type { OrgMember } from "@/types/organization";
  * a server's.
  */
 export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
+  const { t } = useT();
   const projects = useReportsStore((s) => s.projects);
   const fetchProjects = useReportsStore((s) => s.fetchProjects);
   const createProject = useReportsStore((s) => s.createProject);
@@ -96,7 +97,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
       setCreando(false);
       setClave(key);
     } catch (e) {
-      toast.error("Could not create it", { description: String(e) });
+      toast.error(t("org:errCreate"), { description: String(e) });
     } finally {
       setBusy(false);
     }
@@ -106,10 +107,9 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
     <section className="space-y-3">
       {clave && (
         <div className="rounded border border-warning/50 bg-warning/10 p-3 text-xs">
-          <p className="font-medium">This is the only time this key is shown. Save it now.</p>
+          <p className="font-medium">{t("org:keyShownOnce")}</p>
           <p className="mt-1 text-muted-foreground">
-            The server keeps a hash of it and nothing else, so it cannot be read back —
-            losing it means rotating and updating whatever was using it.
+            {t("org:keyHashOnly")}
           </p>
           <div className="mt-2 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded bg-background px-2 py-1 font-mono">
@@ -117,7 +117,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
             </code>
             <CopyId id={clave} label="key" />
             <Button size="sm" variant="ghost" onClick={() => setClave(null)}>
-              I saved it
+              {t("org:iSavedIt")}
             </Button>
           </div>
         </div>
@@ -132,7 +132,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
       </p>
 
       <div className="flex items-center gap-2">
-        <Label className="text-sm font-medium">Report projects</Label>
+        <Label className="text-sm font-medium">{t("org:reportProjects")}</Label>
         {canManage && !creando && (
           <Button size="sm" variant="outline" className="ml-auto" onClick={() => setCreando(true)}>
             <Plus className="mr-1 size-3" /> New
@@ -146,18 +146,18 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
             autoFocus
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
-            placeholder="Name — the client or system this is for"
+            placeholder={t("org:integrationNamePlaceholder")}
             className="max-w-sm"
           />
           <p className="text-xs text-muted-foreground">
-            No origin is checked — a server sends none. The key is the whole of it.
+            {t("org:noOriginChecked")}
           </p>
           <div className="flex gap-2">
             <Button size="sm" onClick={crear} disabled={!nombre.trim() || busy}>
-              {busy && <Loader2 className="mr-1 size-3 animate-spin" />} Create
+              {busy && <Loader2 className="mr-1 size-3 animate-spin" />} {t("org:create")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setCreando(false)}>
-              Cancel
+              {t("org:cancel")}
             </Button>
           </div>
         </div>
@@ -165,7 +165,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
 
       {mios.length === 0 ? (
         <p className="rounded-xl border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
-          Nothing is wired to this organization yet.
+          {t("org:nothingWired")}
         </p>
       ) : (
         <ul className="space-y-3">
@@ -204,8 +204,8 @@ function FichaIntegracion({
   ruta: string | null;
   onRotated: (clave: string) => void;
 }) {
-  const confirm = useConfirm();
   const { t } = useT();
+  const confirm = useConfirm();
   const updateProject = useReportsStore((s) => s.updateProject);
   const rotateProjectKey = useReportsStore((s) => s.rotateProjectKey);
   const setProjectActive = useReportsStore((s) => s.setProjectActive);
@@ -278,7 +278,7 @@ function FichaIntegracion({
       await updateProject(p.id, cambios);
       setEditando(false);
     } catch (e) {
-      toast.error("Could not save it", { description: String(e) });
+      toast.error(t("org:errSave"), { description: String(e) });
     } finally {
       setGuardando(false);
     }
@@ -288,8 +288,8 @@ function FichaIntegracion({
     const ok = await confirm({
       title: `Rotate the key for "${p.name}"?`,
       description:
-        "Whatever is using the old key stops being able to post the moment this happens. You get the new one once.",
-      confirmText: "Rotate",
+        t("org:rotateBody"),
+      confirmText: t("org:rotate"),
       destructive: true,
     });
     if (!ok) return;
@@ -304,8 +304,8 @@ function FichaIntegracion({
     const ok = await confirm({
       title: `Delete "${p.name}"?`,
       description:
-        "Its channel stops accepting anything. Work already raised through it stays where it is.",
-      confirmText: "Delete",
+        t("org:deleteIntegrationBody"),
+      confirmText: t("org:delete"),
       destructive: true,
     });
     if (ok) deleteProject(p.id).catch((e) => toast.error(String(e)));
@@ -335,20 +335,20 @@ function FichaIntegracion({
             autoFocus
             value={borrador.name}
             onChange={(e) => setBorrador({ ...borrador, name: e.target.value })}
-            placeholder="Name"
+            placeholder={t("org:namePlaceholder")}
             className="max-w-sm"
           />
           {p.platform === "web" && (
             <Input
               value={borrador.allowedOrigins}
               onChange={(e) => setBorrador({ ...borrador, allowedOrigins: e.target.value })}
-              placeholder="https://one.example, https://two.example"
+              placeholder={t("org:originsPlaceholder")}
               className="max-w-lg text-xs"
             />
           )}
           <div className="flex flex-wrap gap-2">
             <label className="text-xs text-muted-foreground">
-              Per hour
+              {t("org:perHour")}
               <Input
                 value={borrador.rateLimitPerHour}
                 onChange={(e) => setBorrador({ ...borrador, rateLimitPerHour: e.target.value })}
@@ -357,7 +357,7 @@ function FichaIntegracion({
               />
             </label>
             <label className="text-xs text-muted-foreground">
-              Per reporter
+              {t("org:perReporter")}
               <Input
                 value={borrador.rateLimitPerReporterPerHour}
                 onChange={(e) =>
@@ -368,16 +368,16 @@ function FichaIntegracion({
               />
             </label>
             <label className="min-w-56 flex-1 text-xs text-muted-foreground">
-              Webhook
+              {t("org:webhook")}
               <Input
                 value={borrador.webhookUrl}
                 onChange={(e) => setBorrador({ ...borrador, webhookUrl: e.target.value })}
-                placeholder="https://example.com/hooks/cac"
+                placeholder={t("org:webhookPlaceholder")}
                 className="mt-1 h-8 text-xs"
               />
             </label>
             <label className="min-w-48 flex-1 text-xs text-muted-foreground">
-              {p.webhookConfigured ? "Replace the signing secret" : "Signing secret"}
+              {p.webhookConfigured ? t("org:replaceSecret") : t("org:signingSecret")}
               <Input
                 type="password"
                 value={borrador.webhookSecret}
@@ -387,7 +387,7 @@ function FichaIntegracion({
               />
             </label>
             <label className="min-w-56 flex-1 text-xs text-muted-foreground">
-              Reports arrive in
+              {t("org:reportsArriveIn")}
               <select
                 value={borrador.listId}
                 onChange={(e) => setBorrador({ ...borrador, listId: e.target.value })}
@@ -405,7 +405,7 @@ function FichaIntegracion({
               </select>
             </label>
             <label className="min-w-48 flex-1 text-xs text-muted-foreground">
-              Default assignee
+              {t("org:defaultAssignee")}
               <select
                 value={borrador.defaultAssigneeUserId}
                 onChange={(e) =>
@@ -427,14 +427,14 @@ function FichaIntegracion({
               {guardando && <Loader2 className="mr-1 size-3 animate-spin" />} Save
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEditando(false)}>
-              Cancel
+              {t("org:cancel")}
             </Button>
           </div>
         </div>
       ) : (
         <dl className="grid gap-2 px-3.5 py-3 text-xs sm:grid-cols-2">
           <div>
-            <dt className="uppercase tracking-wide text-muted-foreground">Ingest key</dt>
+            <dt className="uppercase tracking-wide text-muted-foreground">{t("org:ingestKey")}</dt>
             <dd className="mt-0.5 flex items-center gap-2">
               <span className="text-muted-foreground">
                 shown once, when created or rotated
@@ -448,7 +448,7 @@ function FichaIntegracion({
           </div>
           <div>
             <dt className="uppercase tracking-wide text-muted-foreground">
-              {p.platform === "web" ? "Allowed origins" : "Origin"}
+              {p.platform === "web" ? t("org:allowedOrigins") : t("org:origin")}
             </dt>
             <dd className="mt-0.5 break-words">
               {p.platform === "web"
@@ -459,13 +459,13 @@ function FichaIntegracion({
             </dd>
           </div>
           <div>
-            <dt className="uppercase tracking-wide text-muted-foreground">Limits</dt>
+            <dt className="uppercase tracking-wide text-muted-foreground">{t("org:limits")}</dt>
             <dd className="mt-0.5">
               {p.rateLimitPerHour}/h in total · {p.rateLimitPerReporterPerHour}/h per reporter
             </dd>
           </div>
           <div>
-            <dt className="uppercase tracking-wide text-muted-foreground">Webhook</dt>
+            <dt className="uppercase tracking-wide text-muted-foreground">{t("org:webhook")}</dt>
             <dd className="mt-0.5 break-all">
               {p.webhookUrl ? (
                 <>
@@ -500,7 +500,7 @@ function FichaIntegracion({
             </dd>
           </div>
           <div>
-            <dt className="uppercase tracking-wide text-muted-foreground">Default assignee</dt>
+            <dt className="uppercase tracking-wide text-muted-foreground">{t("org:defaultAssignee")}</dt>
             <dd className="mt-0.5">
               {responsable ? `@${responsable.username}` : (
                 <span className="text-muted-foreground">nobody</span>
@@ -508,7 +508,7 @@ function FichaIntegracion({
             </dd>
           </div>
           <div>
-            <dt className="uppercase tracking-wide text-muted-foreground">Created</dt>
+            <dt className="uppercase tracking-wide text-muted-foreground">{t("org:created")}</dt>
             <dd className="mt-0.5">{desde(p.createdAt)}</dd>
           </div>
         </dl>
@@ -530,7 +530,7 @@ function FichaIntegracion({
                 setProjectActive(p.id, !p.isActive).catch((e) => toast.error(String(e)))
               }
             >
-              <Power className="mr-1 size-3" /> {p.isActive ? "Pause" : "Resume"}
+              <Power className="mr-1 size-3" /> {p.isActive ? t("org:pause") : t("org:resume")}
             </Button>
             <Button
               size="sm"

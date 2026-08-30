@@ -37,16 +37,16 @@ const ROLES: OrgRole[] = ["admin", "member", "viewer"];
 
 /** The four jobs this screen does, in the order you usually come for them. */
 const PESTANAS = [
-  { key: "members", label: "Members" },
-  { key: "invites", label: "Invitations" },
-  { key: "spaces", label: "Spaces" },
+  { key: "members", labelKey: "org:tab.members" },
+  { key: "invites", labelKey: "org:tab.invites" },
+  { key: "spaces", labelKey: "org:tab.spaces" },
   // The report projects: another system holds an ingest key and pushes work in.
   // They belong to the organization, which is why they are here and not on a
   // server's screen.
-  { key: "integrations", label: "Integrations" },
+  { key: "integrations", labelKey: "org:tab.integrations" },
   // Las reuniones periódicas: lo que suena a una hora sin que nadie lo pida.
-  { key: "meetings", label: "Meetings" },
-  { key: "general", label: "General" },
+  { key: "meetings", labelKey: "org:tab.meetings" },
+  { key: "general", labelKey: "org:tab.general" },
 ] as const;
 
 type Pestana = (typeof PESTANAS)[number]["key"];
@@ -118,7 +118,7 @@ export default function OrganizationSettings() {
       setMembers(m);
       setInvites(i);
     } catch (e) {
-      toast.error("Failed to load organization", {
+      toast.error(t("org:errLoad"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -133,7 +133,7 @@ export default function OrganizationSettings() {
   if (!current) {
     return (
       <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-        No organization selected.
+        {t("org:none")}
       </div>
     );
   }
@@ -144,7 +144,7 @@ export default function OrganizationSettings() {
       await updateMemberRole(orgId, userId, next);
       setMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role: next } : m)));
     } catch (e) {
-      toast.error("Could not change role", {
+      toast.error(t("org:errRole"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -155,7 +155,7 @@ export default function OrganizationSettings() {
     const ok = await confirm({
       title: `Remove @${m.username}?`,
       description: `They will lose access to ${current.name} and its resources.`,
-      confirmText: "Remove",
+      confirmText: t("org:remove"),
       destructive: true,
     });
     if (!ok) return;
@@ -164,7 +164,7 @@ export default function OrganizationSettings() {
       setMembers((prev) => prev.filter((x) => x.userId !== m.userId));
       toast.success(`Removed @${m.username}`);
     } catch (e) {
-      toast.error("Could not remove member", {
+      toast.error(t("org:errRemove"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -203,7 +203,7 @@ export default function OrganizationSettings() {
             <span className="ml-auto flex shrink-0 items-center gap-2">
               <OrgSwitcher variant="button" />
               <Button size="sm" onClick={() => setPestana("invites")}>
-                Invite
+                {t("org:invite")}
               </Button>
             </span>
           )}
@@ -217,20 +217,20 @@ export default function OrganizationSettings() {
             the invitation list is not the first thing between you and the
             member you came to find. */}
         <nav className="mb-4 flex gap-4 border-b text-sm">
-          {PESTANAS.filter((t) => t.key !== "invites" || canManage).map((t) => (
+          {PESTANAS.filter((p) => p.key !== "invites" || canManage).map((p) => (
             <button
-              key={t.key}
-              onClick={() => setPestana(t.key)}
+              key={p.key}
+              onClick={() => setPestana(p.key)}
               className={cn(
                 "border-b-2 pb-2",
-                t.key === pestana
+                p.key === pestana
                   ? "border-primary font-medium text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {t.label}
-              {cuentas[t.key] !== undefined && (
-                <span className="ml-1.5 text-xs text-muted-foreground">{cuentas[t.key]}</span>
+              {t(p.labelKey)}
+              {cuentas[p.key] !== undefined && (
+                <span className="ml-1.5 text-xs text-muted-foreground">{cuentas[p.key]}</span>
               )}
             </button>
           ))}
@@ -263,12 +263,12 @@ export default function OrganizationSettings() {
                 <Input
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Search by user or email"
+                  placeholder={t("org:searchMember")}
                   className="h-8 bg-card pl-7 text-xs"
                 />
               </span>
               <select
-                aria-label="Role"
+                aria-label={t("org:role")}
                 value={filtroRol}
                 onChange={(e) => setFiltroRol(e.target.value)}
                 // A bordered chip and not a filled control: it narrows what is
@@ -299,11 +299,11 @@ export default function OrganizationSettings() {
               <Table className="[&_td]:px-3.5 [&_td]:py-2.5 [&_th]:px-3.5">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead className="w-40">Role</TableHead>
-                    <TableHead className="w-28">Activity</TableHead>
-                    <TableHead className="text-right w-16">Actions</TableHead>
+                    <TableHead>{t("org:thUser")}</TableHead>
+                    <TableHead>{t("org:thEmail")}</TableHead>
+                    <TableHead className="w-40">{t("org:thRole")}</TableHead>
+                    <TableHead className="w-28">{t("org:thActivity")}</TableHead>
+                    <TableHead className="text-right w-16">{t("org:thActions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

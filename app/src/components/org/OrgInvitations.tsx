@@ -1,3 +1,5 @@
+import { Trans } from "react-i18next";
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { Mail, UserPlus, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
@@ -48,6 +50,7 @@ export default function OrgInvitations({
   defaultRole: OrgRole;
   onAdded: () => void;
 }) {
+  const { t } = useT();
   const confirm = useConfirm();
   const createInvitation = useOrgsStore((s) => s.createInvitation);
   const revokeInvitation = useOrgsStore((s) => s.revokeInvitation);
@@ -74,7 +77,7 @@ export default function OrgInvitations({
       setInvites(() => []);
       listOrgInvitations(orgId).then((i) => setInvites(() => i)).catch(() => {});
     } catch (e) {
-      toast.error("Could not send invitation", {
+      toast.error(t("org:errInvite"), {
         description: e instanceof Error ? e.message : undefined,
       });
     }
@@ -88,7 +91,7 @@ export default function OrgInvitations({
       limpiar();
       onAdded();
     } catch (e) {
-      toast.error("Could not add the user", {
+      toast.error(t("org:errAddUser"), {
         description: e instanceof Error ? e.message : undefined,
       });
     }
@@ -102,7 +105,7 @@ export default function OrgInvitations({
       setInvites(() => frescas);
       toast.success(`Invitation to @${inv.invitedUser} renewed`);
     } catch (e) {
-      toast.error("Could not resend the invitation", {
+      toast.error(t("org:errResend"), {
         description: e instanceof Error ? e.message : undefined,
       });
     } finally {
@@ -113,8 +116,8 @@ export default function OrgInvitations({
   const revocar = async (inv: Invitation) => {
     const ok = await confirm({
       title: `Revoke invitation to @${inv.invitedUser}?`,
-      description: "They will no longer be able to accept it.",
-      confirmText: "Revoke",
+      description: t("org:revokeBody"),
+      confirmText: t("org:revoke"),
       destructive: true,
     });
     if (!ok) return;
@@ -122,7 +125,7 @@ export default function OrgInvitations({
       await revokeInvitation(orgId, inv.id);
       setInvites((prev) => prev.filter((x) => x.id !== inv.id));
     } catch (e) {
-      toast.error("Could not revoke invitation", {
+      toast.error(t("org:errRevoke"), {
         description: e instanceof Error ? e.message : undefined,
       });
     }
@@ -132,14 +135,14 @@ export default function OrgInvitations({
     <div className="space-y-4">
       {canManage && (
         <section className="space-y-3 rounded-xl border bg-card p-4">
-          <Label className="text-sm font-medium">Invite someone</Label>
+          <Label className="text-sm font-medium">{t("org:inviteSomeone")}</Label>
           <div className="flex flex-wrap items-start gap-2">
             <div className="min-w-56 flex-1">
               <UserPicker
                 key={pickerKey}
                 scope="platform"
                 onSelect={setPicked}
-                placeholder="Search by @username…"
+                placeholder={t("org:searchByUsername")}
               />
             </div>
             <Select value={role} onValueChange={(v) => v && setRole(v as OrgRole)}>
@@ -155,27 +158,25 @@ export default function OrgInvitations({
               </SelectContent>
             </Select>
             <Button variant="outline" onClick={anadirDirecto} disabled={!picked}>
-              Add directly
+              {t("org:addDirectly")}
             </Button>
             <Button onClick={invitar} disabled={!picked}>
-              <UserPlus className="mr-1 size-4" /> Send invitation
+              <UserPlus className="mr-1 size-4" /> {t("org:sendInvitation")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            <strong>Add directly</strong> assigns the person right away.{" "}
-            <strong>Invite</strong> sends them a request they accept from their own app — no
-            email needed.
+            <Trans t={t} i18nKey="org:inviteExplain" components={{ 1: <strong />, 3: <strong /> }} />
           </p>
         </section>
       )}
 
       <section className="space-y-2">
         <Label className="flex items-center gap-1.5 text-sm font-medium">
-          <Mail className="size-4" /> Pending ({invites.length})
+          <Mail className="size-4" /> {t("org:pending", { count: invites.length })}
         </Label>
         {invites.length === 0 ? (
           <p className="rounded-xl border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-            No pending invitations.
+            {t("org:noPending")}
           </p>
         ) : (
           <ul className="divide-y overflow-hidden rounded-xl border bg-card">
@@ -208,7 +209,7 @@ export default function OrgInvitations({
                         size="sm"
                         onClick={() => reenviar(inv)}
                         disabled={ocupado === inv.id}
-                        title="Give it a fresh 14 days"
+                        title={t("org:freshDays")}
                       >
                         <RotateCw className="mr-1 size-3" /> Resend
                       </Button>
@@ -217,7 +218,7 @@ export default function OrgInvitations({
                         size="sm"
                         className="text-destructive hover:text-destructive"
                         onClick={() => revocar(inv)}
-                        title="Revoke"
+                        title={t("org:revoke")}
                       >
                         <X className="mr-1 size-3" /> Revoke
                       </Button>

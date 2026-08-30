@@ -26,6 +26,7 @@ import type { OrgMember } from "@/types/organization";
  * verdad* para cada quien, y a quién le va a sonar.
  */
 export default function OrgMeetings({ canManage }: { canManage: boolean }) {
+  const { t } = useT();
   const orgId = useOrgsStore((s) => s.currentOrgId);
   const listMembers = useOrgsStore((s) => s.listMembers);
   const meetings = useMeetingsStore((s) => s.meetings);
@@ -63,7 +64,7 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
       await create(orgId, draft);
       setCreando(false);
     } catch (e) {
-      toast.error("Couldn't create the meeting", { description: String(e) });
+      toast.error(t("org:errCreateMeeting"), { description: String(e) });
     } finally {
       setGuardando(false);
     }
@@ -73,14 +74,11 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
     <section className="space-y-3">
       {/* Lo que hay que saber antes de crear una, no después. */}
       <p className="max-w-[660px] text-xs leading-relaxed text-muted-foreground">
-        A meeting reminder rings. At the time you set, everyone in the organization gets a
-        card with a sound — like a call — and a button to join the room if you pick one.
-        The time is kept as a time of day in a zone, so it stays at that hour when the
-        clocks change.
+        {t("org:meetingsExplain")}
       </p>
 
       <div className="flex items-center gap-2">
-        <Label className="text-sm font-medium">Recurring meetings</Label>
+        <Label className="text-sm font-medium">{t("org:recurringMeetings")}</Label>
         <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
@@ -139,8 +137,7 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
         </p>
       ) : meetings.length === 0 ? (
         <p className="rounded-xl border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
-          Nothing scheduled. A reminder is for the meetings that repeat — the daily, the
-          weekly review — so nobody has to remember them.
+          {t("org:nothingScheduled")}
         </p>
       ) : (
         <ul className="space-y-3">
@@ -181,6 +178,7 @@ function Formulario({
   onCancel: () => void;
   onSave: (d: MeetingDraft) => void;
 }) {
+  const { t } = useT();
   const tree = useTasksStore((s) => s.tree);
   // La sala general primero: es la que va a querer la mayoría de reuniones de
   // toda la organización.
@@ -219,13 +217,13 @@ function Formulario({
         autoFocus
         value={titulo}
         onChange={(e) => setTitulo(e.target.value)}
-        placeholder="What it is — «Daily standup»"
+        placeholder={t("org:meetingNamePlaceholder")}
         className="max-w-sm"
       />
 
       <div className="flex flex-wrap gap-3">
         <label className="text-xs text-muted-foreground">
-          Time
+          {t("org:time")}
           <Input
             type="time"
             value={hora}
@@ -234,28 +232,28 @@ function Formulario({
           />
         </label>
         <label className="min-w-52 flex-1 text-xs text-muted-foreground">
-          Time zone
+          {t("org:timeZone")}
           <Input
             value={zona}
             onChange={(e) => setZona(e.target.value)}
-            placeholder="America/Mexico_City"
+            placeholder={t("org:timeZonePlaceholder")}
             className="mt-1 h-8 text-xs"
           />
         </label>
         <label className="text-xs text-muted-foreground">
-          Repeats
+          {t("org:repeats")}
           <select
             value={freq}
             onChange={(e) => setFreq(e.target.value as Meeting["freq"])}
             className="mt-1 h-8 w-28 rounded-md border bg-background px-2 text-xs"
           >
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
+            <option value="daily">{t("org:daily")}</option>
+            <option value="weekly">{t("org:weekly")}</option>
+            <option value="monthly">{t("org:monthly")}</option>
           </select>
         </label>
         <label className="text-xs text-muted-foreground">
-          Every
+          {t("org:every")}
           <Input
             type="number"
             min={1}
@@ -290,7 +288,7 @@ function Formulario({
           ))}
           {dias.length === 0 && (
             <span className="self-center text-xs text-destructive">
-              Pick a day, or it would never come round.
+              {t("org:pickADay")}
             </span>
           )}
         </div>
@@ -298,7 +296,7 @@ function Formulario({
 
       {freq === "monthly" && (
         <label className="block text-xs text-muted-foreground">
-          Day of the month
+          {t("org:dayOfMonth")}
           <Input
             type="number"
             min={1}
@@ -309,19 +307,19 @@ function Formulario({
           />
           {/* Lo que pasa en los meses cortos, dicho antes de que sorprenda. */}
           {diaDelMes > 28 && (
-            <span className="ml-2">In shorter months it rings on the last day.</span>
+            <span className="ml-2">{t("org:lastDayNote")}</span>
           )}
         </label>
       )}
 
       <label className="block max-w-sm text-xs text-muted-foreground">
-        Room to join
+        {t("org:roomToJoin")}
         <select
           value={sala}
           onChange={(e) => setSala(e.target.value)}
           className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
         >
-          <option value="">None — just a reminder</option>
+          <option value="">{t("org:noRoom")}</option>
           {salas.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -340,7 +338,7 @@ function Formulario({
           {guardando && <Loader2 className="mr-1 size-3 animate-spin" />} Create
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {t("org:cancel")}
         </Button>
       </div>
     </div>
@@ -377,7 +375,7 @@ function Ficha({
     try {
       await setExcluded(m.id, orgId, fuera);
     } catch (e) {
-      toast.error("Couldn't save who it reaches", { description: String(e) });
+      toast.error(t("org:errReach"), { description: String(e) });
     }
   };
 
@@ -385,8 +383,8 @@ function Ficha({
     if (!orgId) return;
     const ok = await confirm({
       title: `Delete "${m.title}"?`,
-      description: "It stops ringing. Nothing else is affected.",
-      confirmText: "Delete",
+      description: t("org:deleteMeetingBody"),
+      confirmText: t("org:delete"),
       destructive: true,
     });
     if (ok) remove(m.id, orgId).catch((e) => toast.error(String(e)));
@@ -416,7 +414,7 @@ function Ficha({
 
       <dl className="grid gap-2 px-3.5 py-3 text-xs sm:grid-cols-2">
         <div>
-          <dt className="uppercase tracking-wide text-muted-foreground">Rings at</dt>
+          <dt className="uppercase tracking-wide text-muted-foreground">{t("org:ringsAt")}</dt>
           {/* Las dos horas: la suya y la tuya. Enseñar sólo una obliga a
               convertir de cabeza, que es donde la gente se equivoca al quedar. */}
           <dd className="mt-0.5">
@@ -427,7 +425,7 @@ function Ficha({
           </dd>
         </div>
         <div>
-          <dt className="uppercase tracking-wide text-muted-foreground">Reaches</dt>
+          <dt className="uppercase tracking-wide text-muted-foreground">{t("org:reaches")}</dt>
           <dd className="mt-0.5 flex items-center gap-2">
             <span>
               {convocados} of {miembros.length}
@@ -439,7 +437,7 @@ function Ficha({
                 className="h-6 px-1.5"
                 onClick={() => setAbriendoGente((v) => !v)}
               >
-                <Users className="mr-1 size-3" /> {abriendoGente ? "Done" : "Change"}
+                <Users className="mr-1 size-3" /> {abriendoGente ? t("org:done") : t("org:change")}
               </Button>
             )}
           </dd>
@@ -451,8 +449,7 @@ function Ficha({
           {/* Marcados por defecto, y quien entre en la organización mañana
               entra marcado: lo que se guarda es quién se quitó. */}
           <p className="mb-2 text-xs text-muted-foreground">
-            Everyone is included by default, and anyone who joins the organization later is
-            too. Unticking someone is what gets remembered.
+            {t("org:everyoneByDefault")}
           </p>
           <ul className="flex flex-wrap gap-2">
             {miembros.map((x) => {
@@ -481,7 +478,7 @@ function Ficha({
       {canManage && (
         <div className="flex flex-wrap items-center gap-2 border-t px-3.5 py-2">
           <span className="flex-1 text-[11px] text-muted-foreground">
-            {m.paused ? "Not ringing" : "Next: "}
+            {m.paused ? t("org:notRinging") : t("org:next")}
             {!m.paused && new Date(m.nextFireAt).toLocaleDateString(undefined, {
               weekday: "short",
               day: "numeric",

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -24,6 +25,7 @@ export default function OrgGeneral({
   org: Organization;
   canManage: boolean;
 }) {
+  const { t } = useT();
   const updateOrg = useOrgsStore((s) => s.updateOrg);
   const deleteOrg = useOrgsStore((s) => s.deleteOrg);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
@@ -36,7 +38,7 @@ export default function OrgGeneral({
     try {
       await updateOrg(org.id, { name: nombre.trim() || org.name, ...patch });
     } catch (e) {
-      toast.error("Could not save it", { description: String(e) });
+      toast.error(t("org:errSave"), { description: String(e) });
     }
   };
 
@@ -82,9 +84,9 @@ export default function OrgGeneral({
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <section className="space-y-3 rounded-xl border bg-card p-4">
-        <h2 className="text-sm font-medium">Identity</h2>
+        <h2 className="text-sm font-medium">{t("org:identity")}</h2>
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Name</label>
+          <label className="text-xs text-muted-foreground">{t("org:name")}</label>
           <Input
             value={nombre}
             disabled={!canManage}
@@ -95,9 +97,9 @@ export default function OrgGeneral({
         {/* The slug is shown and not editable: URLs and integrations are built
             on it, and changing it would break links that already exist
             somewhere nobody here can see. */}
-        <Campo label="Identifier" value={org.slug} mono />
+        <Campo label={t("org:identifier")} value={org.slug} mono />
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Domain</label>
+          <label className="text-xs text-muted-foreground">{t("org:domain")}</label>
           <Input
             defaultValue={org.domain ?? ""}
             disabled={!canManage}
@@ -106,7 +108,7 @@ export default function OrgGeneral({
           />
         </div>
         <Campo
-          label="Created"
+          label={t("org:created")}
           value={new Date(org.createdAt).toLocaleDateString(undefined, {
             day: "numeric",
             month: "short",
@@ -116,11 +118,11 @@ export default function OrgGeneral({
       </section>
 
       <section className="space-y-2 rounded-xl border bg-card p-4">
-        <h2 className="text-sm font-medium">Rules</h2>
+        <h2 className="text-sm font-medium">{t("org:rules")}</h2>
         <div className="flex items-center gap-2 py-1.5">
-          <span className="flex-1 text-sm">Default role when inviting</span>
+          <span className="flex-1 text-sm">{t("org:defaultRole")}</span>
           <select
-            aria-label="Default role"
+            aria-label={t("org:defaultRoleAria")}
             disabled={!canManage}
             value={org.defaultInviteRole ?? "member"}
             onChange={(e) => guardar({ defaultInviteRole: e.target.value as OrgRole })}
@@ -134,12 +136,12 @@ export default function OrgGeneral({
         <Interruptor
           on={org.clientsSeeOnlyTheirSpace}
           onChange={() => guardar({ clientsSeeOnlyTheirSpace: !org.clientsSeeOnlyTheirSpace })}
-          label="Clients see only their own space"
+          label={t("org:clientsOwnSpace")}
         />
         <Interruptor
           on={org.guestsCanUseDevTools}
           onChange={() => guardar({ guestsCanUseDevTools: !org.guestsCanUseDevTools })}
-          label="Guests can use DevTools"
+          label={t("org:guestsDevTools")}
         />
         {/* Shown off and disabled rather than hidden: it is on the roadmap, and
             a control that is missing reads as "not possible" while one that is
@@ -148,15 +150,13 @@ export default function OrgGeneral({
       </section>
 
       <section className="space-y-3 rounded-xl border border-destructive/40 bg-card p-4">
-        <h2 className="text-sm font-medium text-destructive">Danger zone</h2>
+        <h2 className="text-sm font-medium text-destructive">{t("org:dangerZone")}</h2>
         <p className="text-xs text-muted-foreground">
-          Transferring changes who can bill and manage members. Deleting removes its
-          spaces, tasks and channels; reports arriving through its integrations stop
-          being accepted.
+          {t("org:dangerBody")}
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled title="Not available yet">
-            Transfer
+          <Button size="sm" variant="outline" disabled title={t("org:notAvailableYet")}>
+            {t("org:transfer")}
           </Button>
           <Button
             size="sm"
@@ -166,10 +166,10 @@ export default function OrgGeneral({
             // Only a platform superadmin, and the server refuses it to anybody
             // else regardless. Disabled rather than hidden so an org admin can
             // see that the door exists and who to ask.
-            title={superadmin ? undefined : "Only a platform superadmin can delete an organization"}
+            title={superadmin ? undefined : t("org:onlySuperadminDeletes")}
             onClick={() => setBorrar(true)}
           >
-            Delete organization
+            {t("org:deleteOrg")}
           </Button>
         </div>
       </section>
