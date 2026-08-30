@@ -82,5 +82,23 @@
     "everyMonths_one": "Every month",
     "everyMonths_other": "Every {{count}} months",
     "onDay": "day {{day}}"
+  },
+  "crash": {
+    "title": "Something broke on this screen",
+    "lead": "It is not the fault of what you were doing. The app stopped drawing and this is what it said:",
+    "filed": "Already filed as a card in cac — no need to report it.",
+    "failed": "The card could not be filed, so this text is the only record: copy it.",
+    "filing": "Filing it in cac…",
+    "noSession": "Not filed in cac (no session).",
+    "reload": "Reload",
+    "carryOn": "Try to carry on",
+    "cardFailed": "This card could not be opened.",
+    "noColumns": "This board returned no columns",
+    "joined": "You are now a member of {{org}}",
+    "joinFailed": "Could not add you",
+    "columnMissing": "«{{column}}» does not exist in {{list}}",
+    "noReporter": "Nobody reported this, so your comment will not notify anyone at the client. It shows on their board if they open it.",
+    "notAMember": "You do not belong to this organization, so nobody can mention you or message you here.",
+    "addMe": "Add me"
   }
 }

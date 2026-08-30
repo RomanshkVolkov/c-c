@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   X,
@@ -98,7 +99,7 @@ export default function TaskDetailDrawer() {
             <Loader2 className="mr-2 size-4 animate-spin" /> Loading task…
           </div>
         ) : !detail ? (
-          <NoSePudo id={openTaskId} motivo={detailError} onClose={closeTask} />
+          <CouldNotOpen id={openTaskId} reason={detailError} onClose={closeTask} />
         ) : (
           <Content />
         )}
@@ -237,6 +238,7 @@ function CommentItem({
 }
 
 function Content() {
+  const { t } = useT();
   const detail = useTasksStore((s) => s.detail)!;
   const closeTask = useTasksStore((s) => s.closeTask);
   const updateTask = useTasksStore((s) => s.updateTask);
@@ -284,7 +286,7 @@ function Content() {
       .then((c) => {
         if (!vivo) return;
         setColumnas(c);
-        if (c.length === 0) setFallo("Este tablero no devolvió columnas");
+        if (c.length === 0) setFallo(t("common:crash.noColumns"));
       })
       .catch((e) => vivo && setFallo(String(e)));
     return () => {
@@ -752,10 +754,7 @@ function Content() {
             {sinDestinatario && (
               <p className="flex items-start gap-1.5 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-warning-foreground">
                 <Info className="mt-px size-3.5 shrink-0" />
-                <span>
-                  Nadie reportó esto, así que tu comentario no le va a avisar a nadie del
-                  cliente. Aparece en su tablero si lo abre.
-                </span>
+                <span>{t("common:crash.noReporter")}</span>
               </p>
             )}
             <MarkdownEditor
@@ -1061,55 +1060,56 @@ function Content() {
  * del **motivo** y no del id: si mañana fallan cuarenta reportes por lo mismo,
  * es un problema, no cuarenta.
  */
-function NoSePudo({
+function CouldNotOpen({
   id,
-  motivo,
+  reason,
   onClose,
 }: {
   id: string;
-  motivo: string | null;
+  reason: string | null;
   onClose: () => void;
 }) {
-  const [fichado, setFichado] = useState<Fichado>("no");
+  const { t } = useT();
+  const [filed, setFichado] = useState<Fichado>("no");
   const yaFichado = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!motivo || yaFichado.current === motivo) return;
-    yaFichado.current = motivo;
+    if (!reason || yaFichado.current === reason) return;
+    yaFichado.current = reason;
     void (async () => {
       setFichado("filing");
       setFichado(
         await fileCrash({
-          title: `No abre una tarjeta: ${motivo}`,
+          title: `No abre una tarjeta: ${reason}`,
           description: [
-            `**El detalle de un item no cargó.**`,
+            `**An item detail failed to load.**`,
             "",
-            `Motivo del servidor: \`${motivo}\``,
+            `Server reason: \`${reason}\``,
             `Item: \`${id}\``,
-            `Ruta: \`${rutaActual()}\``,
+            `Route: \`${rutaActual()}\``,
           ].join("\n"),
-          key: signature(`detail-failed: ${motivo}`),
+          key: signature(`detail-failed: ${reason}`),
         }),
       );
     })();
-  }, [motivo, id]);
+  }, [reason, id]);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-      <p className="text-sm">No se pudo abrir esta tarjeta.</p>
-      {motivo && (
+      <p className="text-sm">{t("common:crash.cardFailed")}</p>
+      {reason && (
         <pre className="max-w-lg overflow-auto rounded border bg-muted/40 px-2 py-1 text-xs">
-          {motivo}
+          {reason}
         </pre>
       )}
       <p className="text-xs text-muted-foreground">
-        {fichado === "done"
-          ? "Ya quedó anotado como tarjeta en cac."
-          : fichado === "failed"
-            ? "No se pudo anotar en cac, así que este texto es el único registro."
-            : fichado === "filing"
-              ? "Anotándolo en cac…"
-              : "No se anotó en cac (sin sesión)."}
+        {filed === "done"
+          ? t("common:crash.filed")
+          : filed === "failed"
+            ? t("common:crash.failed")
+            : filed === "filing"
+              ? t("common:crash.filing")
+              : t("common:crash.noSession")}
       </p>
       <Button size="sm" variant="outline" onClick={onClose}>
         Close

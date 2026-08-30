@@ -98,10 +98,10 @@ export default function OrganizationSettings() {
     if (!orgId || !myId) return;
     try {
       await addMember(orgId, { userId: myId, role: "admin" });
-      toast.success(`Ya eres miembro de ${current?.name}`);
+      toast.success(t("common:crash.joined", { org: current?.name }));
       refresh();
     } catch (e) {
-      toast.error("No se pudo añadir", {
+      toast.error(t("common:crash.joinFailed"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -248,12 +248,9 @@ export default function OrganizationSettings() {
                 messageable. Without this there was no way in at all from the app. */}
             {canManage && !iAmAMember && (
               <div className="flex items-center gap-2 rounded-lg border border-dashed p-2 text-xs">
-                <span className="text-muted-foreground">
-                  No perteneces a esta organización, así que nadie puede mencionarte ni
-                  escribirte aquí.
-                </span>
+                <span className="text-muted-foreground">{t("common:crash.notAMember")}</span>
                 <Button size="sm" variant="outline" className="ml-auto" onClick={joinSelf}>
-                  Añadirme
+                  {t("common:crash.addMe")}
                 </Button>
               </div>
             )}

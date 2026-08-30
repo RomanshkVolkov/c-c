@@ -410,7 +410,7 @@ export function useReportEvents() {
           const linea =
             p.authorName && p.preview
               ? `${p.authorName}: ${p.preview}`
-              : p.preview || (p.authorName ? `${p.authorName} escribió` : "New message in the channel");
+              : p.preview || (p.authorName ? i18next.t("notifications:wrote", { who: p.authorName }) : "New message in the channel");
 
           // Being named is different from a message arriving: it is addressed
           // to you, so it interrupts even while you are looking at the channel

@@ -42,5 +42,6 @@
     "meetings": "Meeting reminders",
     "meetingsHint": "Recurring meetings your organization scheduled. They ring like a call at the time they start.",
     "mentionsAlways": "Being mentioned always reaches you. It is the one thing worth interrupting somebody for, so it is not a setting."
-  }
+  },
+  "wrote": "{{who}} wrote"
 }

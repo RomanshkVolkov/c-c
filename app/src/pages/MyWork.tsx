@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
@@ -114,7 +115,7 @@ export default function MyWork() {
       const columnas = await statusesOf(t.listId);
       const destino = columnas.find((c) => normalizeStatus(c.status) === columna);
       if (!destino) {
-        throw new Error(`«${columna}» no existe en ${t.listName}`);
+        throw new Error(i18next.t("common:crash.columnMissing", { column: columna, list: t.listName }));
       }
       // Sin vecinos: se añade al final. Es el sitio menos sorprendente cuando
       // la columna de la que vienes ni siquiera es del mismo tablero.

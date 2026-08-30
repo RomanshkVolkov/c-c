@@ -67,7 +67,7 @@ const montar = (extra: Record<string, unknown>) => {
 };
 
 /** El aviso, buscado por lo que significa y no por su texto exacto. */
-const aviso = () => screen.queryByText(/no le va a avisar a nadie/i);
+const aviso = () => screen.queryByText(/will not notify anyone/i);
 
 beforeEach(() => cleanup());
 afterEach(cleanup);

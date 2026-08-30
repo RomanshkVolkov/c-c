@@ -53,7 +53,7 @@ describe("when a render throws", () => {
         <Boom message="algo explotó" />
       </ErrorBoundary>,
     );
-    expect(screen.getByText(/Algo se rompió/)).toBeTruthy();
+    expect(screen.getByText(/Something broke/i)).toBeTruthy();
     // The message itself, because that is what somebody would otherwise have to
     // photograph and send.
     expect(screen.getByText(/algo explotó/)).toBeTruthy();

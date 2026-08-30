@@ -42,5 +42,6 @@
     "meetings": "Recordatorios de reuniones",
     "meetingsHint": "Las reuniones periódicas de tu organización. Suenan como una llamada a la hora de empezar.",
     "mentionsAlways": "Que te mencionen te llega siempre. Es lo único que merece interrumpir a alguien, así que no es un ajuste."
-  }
+  },
+  "wrote": "{{who}} escribió"
 }

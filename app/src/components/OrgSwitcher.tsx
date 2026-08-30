@@ -60,7 +60,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
   // Rol, gente y espacios en una línea. Vivía en un bloque propio encima de
   // esta fila, que repetía el nombre de la organización dos veces seguidas; es
   // información de la misma cosa, así que va con ella.
-  const seña = current
+  const hint = current
     ? [
         current.role,
         // El plural lo pone el catálogo, no un ternario: «1 espacio» y «2
@@ -115,9 +115,9 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
                 <span className="truncate text-[12.5px] font-semibold">
                   {current?.name ?? "No organization"}
                 </span>
-                {seña && (
+                {hint && (
                   <span className="truncate text-[10.5px] capitalize text-muted-foreground">
-                    {seña}
+                    {hint}
                   </span>
                 )}
               </div>

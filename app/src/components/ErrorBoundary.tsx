@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
 
@@ -48,17 +49,22 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
     this.setState({ filed: "filing" });
     this.setState({
       filed: await fileCrash({
-        title: `Pantallazo: ${error.message}`,
+        // El cuerpo del reporte va **en inglés y a secas**: no lo lee quien
+        // sufrió el fallo sino quien lo arregla, y el tablero ya está en inglés
+        // por contrato. Traducirlo partiría los reportes en dos idiomas según
+        // quién tuviera la app en qué, que es justo lo que no se quiere al
+        // buscar un fallo repetido.
+        title: `Crash: ${error.message}`,
         description: [
           `**${error.name}: ${error.message}**`,
           "",
-          `Ruta: \`${rutaActual()}\``,
+          `Route: \`${rutaActual()}\``,
           "",
           "```",
-          (error.stack ?? "sin stack").split("\n").slice(0, 12).join("\n"),
+          (error.stack ?? "no stack").split("\n").slice(0, 12).join("\n"),
           "```",
           "",
-          "Componentes:",
+          "Components:",
           "```",
           (info.componentStack ?? "").split("\n").slice(0, 12).join("\n").trim(),
           "```",
@@ -72,38 +78,44 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
     const { error, filed } = this.state;
     if (!error) return this.props.children;
 
+    // `i18next.t` y no el hook: esto es un componente de clase —tiene que
+    // serlo, `componentDidCatch` no existe en función— así que no hay hook que
+    // valga. La pérdida es que esta pantalla no se repinta si cambias de idioma
+    // mientras la miras, y eso da igual: es una pantalla de la que se sale
+    // recargando.
+    const t = i18next.t;
+
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background p-6">
         <div className="max-w-lg space-y-3">
-          <h1 className="text-lg font-medium">Algo se rompió en esta pantalla</h1>
+          <h1 className="text-lg font-medium">{t("common:crash.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            No es culpa de lo que estabas haciendo. La app dejó de dibujar y esto es lo
-            que dijo:
+            {t("common:crash.lead")}
           </p>
           <pre className="max-h-40 overflow-auto rounded border bg-muted/40 p-2 text-xs">
             {error.name}: {error.message}
           </pre>
           <p className="text-xs text-muted-foreground">
             {filed === "done"
-              ? "Ya quedó anotado como tarjeta en cac — no hace falta que lo reportes."
+              ? t("common:crash.filed")
               : filed === "failed"
-                ? "No se pudo anotar la tarjeta, así que este texto es el único registro: cópialo."
+                ? t("common:crash.failed")
                 : filed === "filing"
-                  ? "Anotándolo en cac…"
-                  : "No se anotó en cac (sin sesión)."}
+                  ? t("common:crash.filing")
+                  : t("common:crash.noSession")}
           </p>
           <div className="flex gap-2 pt-1">
             <button
               className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground"
               onClick={() => window.location.reload()}
             >
-              Recargar
+              {t("common:crash.reload")}
             </button>
             <button
               className="rounded border px-3 py-1.5 text-sm"
               onClick={() => this.setState({ error: null, filed: "no" })}
             >
-              Intentar seguir
+              {t("common:crash.carryOn")}
             </button>
           </div>
         </div>

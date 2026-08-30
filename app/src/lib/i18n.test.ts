@@ -108,3 +108,90 @@ describe("el catálogo en marcha", () => {
     expect(varias).toContain("escritos");
   });
 });
+
+/**
+ * La interfaz no habla dos idiomas a la vez.
+ *
+ * Éste no es el fallo de una traducción que falta sino el contrario: frases
+ * escritas directamente en castellano dentro de una aplicación en inglés,
+ * puestas ahí por quien las escribió pensando en castellano. Se veían en la
+ * pantalla de fallo, en el cajón de una tarjeta y en los ajustes de la
+ * organización, y nadie las reportó nunca — quien las leía asumía que la app
+ * era así.
+ *
+ * Se buscan las letras que el inglés no tiene. Es una heurística, no una
+ * gramática: se le escapa una frase en castellano sin tildes ni eñes. A cambio
+ * no tiene falsos positivos que haya que ir apagando, que es lo que mata a un
+ * guardián de éstos.
+ */
+describe("un solo idioma en el código", () => {
+  const RAIZ_SRC = join(process.cwd(), "src");
+
+  /** Los `.ts` y `.tsx` de la aplicación, sin pruebas ni catálogos. */
+  function fuentes(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const ruta = join(dir, e.name);
+      if (e.isDirectory()) return e.name === "locales" ? [] : fuentes(ruta);
+      if (!/\.tsx?$/.test(e.name) || e.name.includes(".test.")) return [];
+      return [ruta];
+    });
+  }
+
+  /**
+   * El fichero sin sus comentarios.
+   *
+   * Los comentarios **sí** van en castellano: es la regla del repositorio, y
+   * son la mitad de la prosa de estos ficheros. Descartarlos por cómo empieza
+   * la línea no vale —lo probé—: la segunda línea de un bloque `{/* … *\/}` de
+   * JSX empieza por texto normal, así que medio repositorio salía como fuga.
+   * Hay que llevar la cuenta de si se está dentro de un bloque, que es lo que
+   * hace esto: se recorre carácter a carácter y se sustituye lo comentado por
+   * espacios, para que los números de línea sigan siendo los del fichero.
+   */
+  function sinComentarios(src: string): string {
+    let fuera = "";
+    let bloque = false;
+    for (let i = 0; i < src.length; i++) {
+      const dos = src.slice(i, i + 2);
+      if (bloque) {
+        if (dos === "*/") { bloque = false; fuera += "  "; i++; continue; }
+        fuera += src[i] === "\n" ? "\n" : " ";
+        continue;
+      }
+      if (dos === "/*") { bloque = true; fuera += "  "; i++; continue; }
+      // `//` de una línea, pero no el de `https://`: sin esa salvedad se
+      // comería el resto de cualquier línea con una URL dentro.
+      if (dos === "//" && src[i - 1] !== ":") {
+        while (i < src.length && src[i] !== "\n") { fuera += " "; i++; }
+        fuera += "\n";
+        continue;
+      }
+      fuera += src[i];
+    }
+    return fuera;
+  }
+
+  // El nombre de un idioma se escribe en ese idioma, en cualquier catálogo del
+  // mundo: el selector dice «Español», no «Spanish», y eso es lo correcto.
+  const PERMITIDO = [
+    /"Español"/,
+    // Y este otro no es texto de la interfaz sino un patrón contra **filas ya
+    // guardadas**: los avisos de mensaje directo que escribió el servidor
+    // antes de todo esto llevan el título en castellano. Traducir esas filas
+    // no se puede —ya están escritas— así que hay que seguir sabiendo
+    // reconocerlas. Ver `labelOf` en `notification-groups.ts`.
+    / te escribió\$\//,
+  ];
+
+  it("ninguna frase en castellano fuera de los catálogos", () => {
+    const fugas: string[] = [];
+    for (const fichero of fuentes(RAIZ_SRC)) {
+      sinComentarios(readFileSync(fichero, "utf-8")).split("\n").forEach((linea, i) => {
+        if (!/[áéíóúñ¿¡ÁÉÍÓÚÑ]/.test(linea)) return;
+        if (PERMITIDO.some((p) => p.test(linea))) return;
+        fugas.push(`${fichero.replace(RAIZ_SRC, "src")}:${i + 1}: ${linea.trim()}`);
+      });
+    }
+    expect(fugas).toEqual([]);
+  });
+});

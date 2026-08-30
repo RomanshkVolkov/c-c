@@ -82,5 +82,23 @@
     "everyMonths_one": "Cada mes",
     "everyMonths_other": "Cada {{count}} meses",
     "onDay": "el día {{day}}"
+  },
+  "crash": {
+    "title": "Algo se rompió en esta pantalla",
+    "lead": "No es culpa de lo que estabas haciendo. La app dejó de dibujar y esto es lo que dijo:",
+    "filed": "Ya quedó anotado como tarjeta en cac — no hace falta que lo reportes.",
+    "failed": "No se pudo anotar la tarjeta, así que este texto es el único registro: cópialo.",
+    "filing": "Anotándolo en cac…",
+    "noSession": "No se anotó en cac (sin sesión).",
+    "reload": "Recargar",
+    "carryOn": "Intentar seguir",
+    "cardFailed": "No se pudo abrir esta tarjeta.",
+    "noColumns": "Este tablero no devolvió columnas",
+    "joined": "Ya eres miembro de {{org}}",
+    "joinFailed": "No se pudo añadir",
+    "columnMissing": "«{{column}}» no existe en {{list}}",
+    "noReporter": "Nadie reportó esto, así que tu comentario no le va a avisar a nadie del cliente. Aparece en su tablero si lo abre.",
+    "notAMember": "No perteneces a esta organización, así que nadie puede mencionarte ni escribirte aquí.",
+    "addMe": "Añadirme"
   }
 }
