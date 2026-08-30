@@ -140,6 +140,7 @@ lo que ya está hecho, que es distinto y es lo que se rompe solo.
 | `core/i18n/i18n_test.go` | Que la `q` de `Accept-Language` mande sobre el orden del texto |
 | `service/notification_locale_test.go` | Que el aviso se escriba en el idioma de quien lo lee |
 | `lib/api-errors.test.ts` | Un código que Go o Rust emiten y el catálogo no conoce |
+| `lib/i18n.test.ts` · avisos | Un `toast` con la frase escrita a mano |
 
 Dos detalles de cómo están hechas, porque el primer intento de cada una estaba
 mal:
@@ -150,6 +151,13 @@ mal:
   normal y medio repositorio salía como fuga. En TypeScript hay un escáner que
   lleva la cuenta de si está dentro de un bloque; en Go se parsea el árbol con
   `go/parser` y se miran **sólo los literales de cadena**, que ahí sí es exacto.
+- **Las plantillas tampoco se ven a simple vista.** El guardián de los avisos
+  se escribió al final y encontró **veintiuna** frases escritas a mano que
+  habían sobrevivido a todas las pasadas anteriores, por una razón tonta: eran
+  `` toast.success(`Removed ${server.name}`) `` y las búsquedas iban detrás de
+  comillas dobles. Mira sólo el primer argumento, que es el que se lee grande;
+  el `description` casi siempre lleva el error crudo del servidor, y ése no se
+  traduce.
 - **Las tildes no bastan.** `"Cargando…"` llevaba meses en el cajón de una
   tarjeta y el guardián lo daba por bueno. Hay además una lista corta de
   palabras — deliberadamente corta: una lista larga acaba marcando código
