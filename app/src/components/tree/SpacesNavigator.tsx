@@ -201,6 +201,7 @@ function Reordenable({
  * spaces can change which client sees the work.
  */
 function MoveToSpace({ currentSpaceId, onPick }: { currentSpaceId: string; onPick: (id: string) => void }) {
+  const { t } = useT();
   const tree = useTasksStore((s) => s.tree);
   // Sin la sala general: no acepta listas ni carpetas, así que ofrecerla como
   // destino sería ofrecer un movimiento que el servidor rechaza.
@@ -209,7 +210,7 @@ function MoveToSpace({ currentSpaceId, onPick }: { currentSpaceId: string; onPic
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
-        <FolderInput className="size-4" /> Move to space
+        <FolderInput className="size-4" /> {t("work:tree.moveToSpace")}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         {otros.map((s) => (
@@ -232,6 +233,7 @@ const avisando = (p: Promise<unknown>) =>
 // ─── Left navigator: spaces → folders → lists ────────────────────────────────
 
 export default function SpacesNavigator() {
+  const { t } = useT();
   const tree = useTasksStore((s) => s.tree);
   /**
    * Sin la sala general: aquí se organiza trabajo, y ella no lo tiene.
@@ -284,7 +286,7 @@ export default function SpacesNavigator() {
 
   const addSpace = () => {
     if (!currentOrgId) {
-      toast.error("Pick an organization first");
+      toast.error(t("work:tree.pickOrg"));
       return;
     }
     setAddingSpace(true);
@@ -298,13 +300,13 @@ export default function SpacesNavigator() {
           size="icon-xs"
           variant="ghost"
           className="ml-auto"
-          title={ordenando ? "Finish rearranging" : "Rearrange"}
+          title={ordenando ? t("work:tree.finishRearranging") : t("work:tree.rearrange")}
           aria-pressed={ordenando}
           onClick={() => setOrdenando((v) => !v)}
         >
           {ordenando ? <LockOpen className="size-3.5 text-primary" /> : <Lock className="size-3.5" />}
         </Button>
-        <Button size="icon-xs" variant="ghost" title="New space" onClick={addSpace}>
+        <Button size="icon-xs" variant="ghost" title={t("work:tree.newSpace")} onClick={addSpace}>
           <Plus className="size-3.5" />
         </Button>
       </SidebarGroupLabel>
@@ -328,7 +330,7 @@ export default function SpacesNavigator() {
           // somebody off for something they were shown they could not do.
           if (arrastrado.spaceId !== destino.spaceId) return;
           dropNode(arrastrado, destino, where as DropWhere).catch((err) =>
-            toast.error("Could not move it", { description: String(err) }),
+            toast.error(t("work:tree.couldNotMove"), { description: String(err) }),
           );
         }}
       >
@@ -338,7 +340,7 @@ export default function SpacesNavigator() {
           </p>
         )}
         {loading && tree.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
+          <p className="px-3 py-2 text-xs text-muted-foreground">{t("work:tree.loading")}</p>
         ) : espaciosDeTrabajo.length === 0 ? (
           <p className="px-3 py-3 text-xs text-muted-foreground">
             No spaces yet. Create one to start organizing work.
@@ -349,7 +351,7 @@ export default function SpacesNavigator() {
         {addingSpace && currentOrgId && (
           <InlineName
             mode="create"
-            placeholder="New space"
+            placeholder={t("work:tree.newSpace")}
             onSubmit={(name) => avisando(createSpace(currentOrgId, name))}
             onClose={() => setAddingSpace(false)}
           />
@@ -357,7 +359,7 @@ export default function SpacesNavigator() {
         <DragOverlay dropAnimation={null}>
           {arrastrando ? (
             <div className="rounded bg-background/95 px-2 py-1 text-xs shadow ring-1 ring-border">
-              {arrastrando.kind === "folder" ? "Folder" : "List"}
+              {arrastrando.kind === "folder" ? t("work:tree.folder") : t("work:tree.list")}
               {/* What travels with it. A folder that quietly takes eleven other
                   things is worth saying out loud before it lands. */}
               {arrastrando.arrastra > 0 && (
@@ -377,6 +379,7 @@ export default function SpacesNavigator() {
 }
 
 function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>["tree"][number] }) {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   const openDoc = useTasksStore((s) => s.openDoc);
   const activeDoc = useTasksStore((s) => s.activeDoc);
@@ -406,7 +409,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         <InlineName
           mode="rename"
           defaultValue={space.name}
-          placeholder="Space name"
+          placeholder={t("work:tree.spaceName")}
           onSubmit={(name) => avisando(renameSpace(space.id, name))}
           onClose={() => setRenaming(false)}
         />
@@ -416,7 +419,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           onClick={() => setOpen((v) => !v)}
           className="text-muted-foreground hover:text-foreground"
           aria-expanded={open}
-          aria-label={`${open ? "Collapse" : "Expand"} ${space.name}`}
+          aria-label={open ? t("work:tree.collapse", { name: space.name }) : t("work:tree.expand", { name: space.name })}
         >
           {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
         </button>
@@ -427,14 +430,14 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         {/* A bound space is one a client can see into. The list already said so;
             without this the space it hangs under looked like any other. */}
         {space.projectId && (
-          <Eye className="size-3 shrink-0 text-primary" aria-label="A client can see this space" />
+          <Eye className="size-3 shrink-0 text-primary" aria-label={t("work:tree.clientSeesSpace")} />
         )}
         <button
           className={cn(
             "flex-1 truncate text-left text-sm font-medium hover:underline",
             activeDoc?.kind === "space" && activeDoc.id === space.id && "text-primary",
           )}
-          title="Open overview"
+          title={t("work:tree.openOverview")}
           onClick={() => openDoc("space", space.id, space.name)}
         >
           {space.name}
@@ -446,7 +449,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <button className="text-muted-foreground hover:text-foreground" aria-label="Space menu">
+              <button className="text-muted-foreground hover:text-foreground" aria-label={t("work:tree.spaceMenu")}>
                 <MoreHorizontal className="size-3.5" />
               </button>
             }
@@ -458,48 +461,48 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
                   empezarA("folder");
                 }}
               >
-                <FolderPlus className="size-4" /> New folder
+                <FolderPlus className="size-4" /> {t("work:tree.newFolder")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   empezarA("list");
                 }}
               >
-                <ListChecks className="size-4" /> New list
+                <ListChecks className="size-4" /> {t("work:tree.newList")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   setRenaming(true);
                 }}
               >
-                <Pencil className="size-4" /> Rename
+                <Pencil className="size-4" /> {t("work:tree.rename")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setChannelOpen(true)}>
-                <Eye className="size-4" /> Channel{space.projectId ? "" : "…"}
+                <Eye className="size-4" /> {t("work:tree.channel")}{space.projectId ? "" : "…"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => moveSpace(space.id, "up").catch((e) => toast.error(String(e)))}>
-                <ArrowUp className="size-4" /> Move up
+                <ArrowUp className="size-4" /> {t("work:tree.moveUp")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => moveSpace(space.id, "down").catch((e) => toast.error(String(e)))}>
-                <ArrowDown className="size-4" /> Move down
+                <ArrowDown className="size-4" /> {t("work:tree.moveDown")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => sortChildren("space", space.id).catch((e) => toast.error(String(e)))}
               >
-                <ArrowDownAZ className="size-4" /> Sort A–Z
+                <ArrowDownAZ className="size-4" /> {t("work:tree.sortAZ")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   const ok = await confirm({
-                    title: `Delete space "${space.name}"?`,
-                    description: "Deletes its folders, lists and every task inside. This can't be undone.",
-                    confirmText: "Delete",
+                    title: t("work:tree.deleteSpaceTitle", { name: space.name }),
+                    description: t("work:tree.deleteSpaceBody"),
+                    confirmText: t("work:tree.delete"),
                     destructive: true,
                   });
                   if (ok) deleteSpace(space.id).catch((e) => toast.error(String(e)));
                 }}
               >
-                <Trash2 className="size-4 text-destructive" /> Delete space
+                <Trash2 className="size-4 text-destructive" /> {t("work:tree.deleteSpace")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
@@ -530,7 +533,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           {adding && (
             <InlineName
               mode="create"
-              placeholder={adding === "folder" ? "New folder" : "New list"}
+              placeholder={adding === "folder" ? t("work:tree.newFolder") : t("work:tree.newList")}
               canNest={adding === "folder"}
               onSubmit={(name, dentroDe) =>
                 avisando(
@@ -543,7 +546,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             />
           )}
           {!adding && space.folders.length === 0 && space.lists.length === 0 && (
-            <p className="px-2 py-1 text-xs text-muted-foreground">Empty</p>
+            <p className="px-2 py-1 text-xs text-muted-foreground">{t("work:tree.empty")}</p>
           )}
         </div>
       )}
@@ -607,6 +610,7 @@ function FolderNode({
   spaceName?: string;
   spaceProjectId?: string;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   const [adding, setAdding] = useState<null | "folder" | "list">(null);
   const [renaming, setRenaming] = useState(false);
@@ -630,7 +634,7 @@ function FolderNode({
         <InlineName
           mode="rename"
           defaultValue={folder.name}
-          placeholder="Folder name"
+          placeholder={t("work:tree.folderName")}
           onSubmit={(name) => avisando(renameFolder(folder.id, name))}
           onClose={() => setRenaming(false)}
         />
@@ -641,7 +645,7 @@ function FolderNode({
           onClick={() => setOpen((v) => !v)}
           className="text-muted-foreground hover:text-foreground"
           aria-expanded={open}
-          aria-label={`${open ? "Collapse" : "Expand"} ${folder.name}`}
+          aria-label={open ? t("work:tree.collapse", { name: folder.name }) : t("work:tree.expand", { name: folder.name })}
         >
           {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </button>
@@ -651,7 +655,7 @@ function FolderNode({
             "flex-1 truncate text-left text-sm hover:underline",
             activeDoc?.kind === "folder" && activeDoc.id === folder.id && "text-primary",
           )}
-          title="Open overview"
+          title={t("work:tree.openOverview")}
           onClick={() => openDoc("folder", folder.id, folder.name)}
         >
           {folder.name}
@@ -662,7 +666,7 @@ function FolderNode({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <button className="text-muted-foreground hover:text-foreground" aria-label="Folder menu">
+              <button className="text-muted-foreground hover:text-foreground" aria-label={t("work:tree.folderMenu")}>
                 <MoreHorizontal className="size-3.5" />
               </button>
             }
@@ -674,39 +678,39 @@ function FolderNode({
                   empezarA("folder");
                 }}
               >
-                <FolderPlus className="size-4" /> New folder
+                <FolderPlus className="size-4" /> {t("work:tree.newFolder")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   empezarA("list");
                 }}
               >
-                <ListChecks className="size-4" /> New list
+                <ListChecks className="size-4" /> {t("work:tree.newList")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   setRenaming(true);
                 }}
               >
-                <Pencil className="size-4" /> Rename
+                <Pencil className="size-4" /> {t("work:tree.rename")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => moveFolder(folder.id, "up").catch((e) => toast.error(String(e)))}>
-                <ArrowUp className="size-4" /> Move up
+                <ArrowUp className="size-4" /> {t("work:tree.moveUp")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => moveFolder(folder.id, "down").catch((e) => toast.error(String(e)))}>
-                <ArrowDown className="size-4" /> Move down
+                <ArrowDown className="size-4" /> {t("work:tree.moveDown")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() =>
                   duplicateFolder(folder.id, `${folder.name} copy`).catch((e) => toast.error(String(e)))
                 }
               >
-                <Copy className="size-4" /> Duplicate
+                <Copy className="size-4" /> {t("work:tree.duplicate")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => sortChildren("folder", folder.id).catch((e) => toast.error(String(e)))}
               >
-                <ArrowDownAZ className="size-4" /> Sort A–Z
+                <ArrowDownAZ className="size-4" /> {t("work:tree.sortAZ")}
               </DropdownMenuItem>
               <MoveToSpace
                 currentSpaceId={spaceId}
@@ -717,15 +721,15 @@ function FolderNode({
               <DropdownMenuItem
                 onClick={async () => {
                   const ok = await confirm({
-                    title: `Delete folder "${folder.name}"?`,
-                    description: "Its lists move up to the space — no tasks are deleted.",
-                    confirmText: "Delete folder",
+                    title: t("work:tree.deleteFolderTitle", { name: folder.name }),
+                    description: t("work:tree.deleteFolderBody"),
+                    confirmText: t("work:tree.deleteFolder"),
                     destructive: true,
                   });
                   if (ok) deleteFolder(folder.id).catch((e) => toast.error(String(e)));
                 }}
               >
-                <Trash2 className="size-4 text-destructive" /> Delete folder
+                <Trash2 className="size-4 text-destructive" /> {t("work:tree.deleteFolder")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
@@ -757,7 +761,7 @@ function FolderNode({
           {adding && (
             <InlineName
               mode="create"
-              placeholder={adding === "folder" ? "New folder" : "New list"}
+              placeholder={adding === "folder" ? t("work:tree.newFolder") : t("work:tree.newList")}
               canNest={adding === "folder"}
               onSubmit={(name, dentroDe) =>
                 avisando(
@@ -820,7 +824,7 @@ function ListNode({
       <InlineName
         mode="rename"
         defaultValue={list.name}
-        placeholder="List name"
+        placeholder={t("work:tree.listName")}
         onSubmit={(name) => avisando(renameList(list.id, name))}
         onClose={() => setRenaming(false)}
       />
@@ -849,7 +853,7 @@ function ListNode({
       {channel && (
         <Eye
           className="size-3 shrink-0 text-primary"
-          aria-label="A client can see this list"
+          aria-label={t("work:tree.clientSeesList")}
         />
       )}
       {docIndex[docKey("list", list.id)] && (
@@ -873,7 +877,7 @@ function ListNode({
           render={
             <button
               className="text-muted-foreground hover:text-foreground"
-              aria-label="List menu"
+              aria-label={t("work:tree.listMenu")}
               onClick={(e) => e.stopPropagation()}
             >
               <MoreHorizontal className="size-3.5" />
@@ -888,7 +892,7 @@ function ListNode({
                 navigate("/tasks");
               }}
             >
-              <KanbanSquare className="size-4" /> Open the board
+              <KanbanSquare className="size-4" /> {t("work:tree.openBoard")}
             </DropdownMenuItem>
             {/* Faltaba, y el diálogo llevaba tiempo montado unas líneas más
                 abajo sin nada que lo abriera: el canal sólo se podía configurar
@@ -899,7 +903,7 @@ function ListNode({
                 Y el nombre importa: «Channel» en cac ya son los canales de
                 chat, así que nadie lo buscaba aquí. */}
             <DropdownMenuItem onClick={() => setChannelOpen(true)}>
-              <Eye className="size-4" /> Client reports{channel ? "" : "…"}
+              <Eye className="size-4" /> {t("work:tree.clientReports")}{channel ? "" : "…"}
             </DropdownMenuItem>
             <MoveToSpace
               currentSpaceId={spaceId}
@@ -910,20 +914,20 @@ function ListNode({
                 setRenaming(true);
               }}
             >
-              <Pencil className="size-4" /> Rename
+              <Pencil className="size-4" /> {t("work:tree.rename")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={async () => {
                 const ok = await confirm({
-                  title: `Delete list "${list.name}"?`,
+                  title: t("work:tree.deleteListTitle", { name: list.name }),
                   description: t("common:count.deletesTasks", { count: list.taskCount }),
-                  confirmText: "Delete list",
+                  confirmText: t("work:tree.deleteList"),
                   destructive: true,
                 });
                 if (ok) deleteList(list.id).catch((e) => toast.error(String(e)));
               }}
             >
-              <Trash2 className="size-4 text-destructive" /> Delete list
+              <Trash2 className="size-4 text-destructive" /> {t("work:tree.deleteList")}
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

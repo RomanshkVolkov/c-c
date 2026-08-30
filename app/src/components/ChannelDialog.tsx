@@ -1,3 +1,6 @@
+import { Trans } from "react-i18next";
+
+import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { Eye, KeyRound, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -57,6 +60,7 @@ export default function ChannelDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useT();
   const confirm = useConfirm();
   const projects = useTasksStore((s) => s.channels);
   const fetchProjects = useTasksStore((s) => s.fetchChannels);
@@ -96,7 +100,7 @@ export default function ChannelDialog({
         setWebhookUrl(c?.webhookUrl ?? "");
         setOrigins(c?.allowedOrigins ?? []);
       })
-      .catch((e) => toast.error("Couldn't read the channel", { description: String(e) }))
+      .catch((e) => toast.error(t("channel:errRead"), { description: String(e) }))
       .finally(() => setLoading(false));
   }, [open, kind, id, fetchChannel, fetchProjects]);
 
@@ -110,7 +114,7 @@ export default function ChannelDialog({
     if (!channel?.listId) return null;
     // Puede estar en otra organización o haberse borrado; decirlo es mejor que
     // enseñar un uuid, que es lo que se enseñaba.
-    return rutaDeLista(tree, channel.listId) ?? "a list outside this organization";
+    return rutaDeLista(tree, channel.listId) ?? t("channel:outsideOrg");
   }, [channel, tree]);
 
   /**
@@ -143,9 +147,9 @@ export default function ChannelDialog({
       await setChannelInbox(libreElegida, id);
       setLibreElegida("");
       setChannel(await fetchChannel(kind, id));
-      toast.success("Its reports will arrive here from now on");
+      toast.success(t("channel:okPointed"));
     } catch (e) {
-      toast.error("Couldn't point it here", { description: String(e) });
+      toast.error(t("channel:errPoint"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -157,9 +161,9 @@ export default function ChannelDialog({
     try {
       await setChannelInbox(channel.id, id);
       setChannel(await fetchChannel(kind, id));
-      toast.success("Their reports will arrive here from now on");
+      toast.success(t("channel:okMoved"));
     } catch (e) {
-      toast.error("Couldn't move the inbox", { description: String(e) });
+      toast.error(t("channel:errMove"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -171,9 +175,9 @@ export default function ChannelDialog({
       await bindNode(kind, id, name, bindTo);
       const c = await fetchChannel(kind, id);
       setChannel(c);
-      toast.success(bindTo ? "Bound to the channel" : "Unbound");
+      toast.success(bindTo ? t("channel:okBound") : t("channel:okUnbound"));
     } catch (e) {
-      toast.error("Couldn't change the binding", { description: String(e) });
+      toast.error(t("channel:errBind"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -193,9 +197,9 @@ export default function ChannelDialog({
         webhookSecret,
       });
       setWebhookSecret("");
-      toast.success("Channel updated");
+      toast.success(t("channel:okUpdated"));
     } catch (e) {
-      toast.error("Couldn't update the channel", { description: String(e) });
+      toast.error(t("channel:errUpdate"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -210,10 +214,10 @@ export default function ChannelDialog({
       setBindTo(out.project.id);
       setRevealed({
         title: out.project.name,
-        secrets: [{ name: "ingest_key", label: "Ingest key", value: out.ingestKey }],
+        secrets: [{ name: "ingest_key", label: t("channel:ingestKey"), value: out.ingestKey }],
       });
     } catch (e) {
-      toast.error("Couldn't open the channel", { description: String(e) });
+      toast.error(t("channel:errOpen"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -221,11 +225,9 @@ export default function ChannelDialog({
 
   const rotate = async () => {
     const ok = await confirm({
-      title: `Rotate the key for ${channel?.name}?`,
-      description:
-        "Anything still using the old key stops working the moment you confirm — their widget, " +
-        "their server, whatever posts reports. Nothing warns them.",
-      confirmText: "Rotate",
+      title: t("channel:rotateTitle", { name: channel?.name }),
+      description: t("channel:rotateWarning"),
+      confirmText: t("channel:rotateConfirm"),
       destructive: true,
     });
     if (!ok) return;
@@ -234,10 +236,10 @@ export default function ChannelDialog({
       const key = await rotateChannelKey(kind, id);
       setRevealed({
         title: channel?.name ?? name,
-        secrets: [{ name: "ingest_key", label: "New ingest key", value: key }],
+        secrets: [{ name: "ingest_key", label: t("channel:newIngestKey"), value: key }],
       });
     } catch (e) {
-      toast.error("Couldn't rotate the key", { description: String(e) });
+      toast.error(t("channel:errRotate"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -248,10 +250,10 @@ export default function ChannelDialog({
       <DialogContent className="max-h-[85vh] overflow-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Eye className="size-4" /> Channel · {name}
+            <Eye className="size-4" /> {t("channel:title", { name })}
           </DialogTitle>
           <DialogDescription>
-            How work from a client reaches this {kind}, and what they can see of it.
+            {t("channel:subtitle", { kind })}
           </DialogDescription>
         </DialogHeader>
 
@@ -263,22 +265,22 @@ export default function ChannelDialog({
           />
         ) : loading ? (
           <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Reading…
+            <Loader2 className="size-4 animate-spin" /> {t("channel:reading")}
           </p>
         ) : (
           <div className="space-y-5">
             {/* ── Which client this belongs to ── */}
             <section className="space-y-2">
-              <Label>Belongs to</Label>
+              <Label>{t("channel:belongsTo")}</Label>
               <div className="flex items-center gap-2">
                 <Select value={bindTo || "none"} onValueChange={(v) => setBindTo(v && v !== "none" ? v : "")}>
                   <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="No client" />
+                    <SelectValue placeholder={t("channel:noClient")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No client — internal work</SelectItem>
+                    <SelectItem value="none">{t("channel:noClientInternal")}</SelectItem>
                     {ajeno && (
-                      <SelectItem value={ajeno.id}>{ajeno.name} — another organization</SelectItem>
+                      <SelectItem value={ajeno.id}>{t("channel:otherOrg", { name: ajeno.name })}</SelectItem>
                     )}
                     {projects.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
@@ -288,14 +290,18 @@ export default function ChannelDialog({
                   </SelectContent>
                 </Select>
                 <Button size="sm" onClick={bind} disabled={saving}>
-                  Save
+                  {t("channel:save")}
                 </Button>
               </div>
 
               {inherited && (
                 <p className="text-xs text-muted-foreground">
-                  Inherited from <span className="font-medium">{inheritedFrom}</span>. Picking a
-                  client here overrides it for this list only.
+                  <Trans
+                    t={t}
+                    i18nKey="channel:inherited"
+                    values={{ from: inheritedFrom }}
+                    components={{ 1: <span className="font-medium" /> }}
+                  />
                 </p>
               )}
 
@@ -307,14 +313,12 @@ export default function ChannelDialog({
                   los reportes aparecían en otro sitio. */}
               {kind === "list" && bindTo && (
                 <p className="text-xs text-muted-foreground">
-                  Work created here will be visible to them unless marked internal. Where their
-                  reports <em>arrive</em> is set below.
+                  <Trans t={t} i18nKey="channel:listVisible" components={{ 1: <em /> }} />
                 </p>
               )}
               {kind === "space" && bindTo && (
                 <p className="text-xs text-muted-foreground">
-                  Every list under this space inherits the client, so work created in any of them
-                  is visible to them by default.
+                  {t("channel:spaceInherits")}
                 </p>
               )}
             </section>
@@ -326,19 +330,22 @@ export default function ChannelDialog({
                 lista de un cliente y no se sabía si sus reportes caían dentro. */}
             {kind === "list" && (
               <section className="space-y-2 border-t pt-4">
-                <Label>Reports that arrive here</Label>
+                <Label>{t("channel:arrivesHere")}</Label>
                 {aquiCaen.length > 0 ? (
                   <p className="text-sm">
                     <span className="font-medium">
                       {aquiCaen.map((c) => c.name).join(", ")}
                     </span>{" "}
                     <span className="text-muted-foreground">
-                      {aquiCaen.length === 1 ? "delivers" : "deliver"} into this list.
+                      {/* El verbo concuerda con cuántas integraciones entregan, y
+                          eso no es una ese pegada: en castellano «entrega» y
+                          «entregan» cambian por dentro. Lo decide el catálogo. */}
+                      {t("channel:delivers", { count: aquiCaen.length })}
                     </span>
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Nothing delivers here — no integration is pointed at this list.
+                    {t("channel:nothingDelivers")}
                   </p>
                 )}
 
@@ -351,16 +358,17 @@ export default function ChannelDialog({
                       <span className="font-medium">{channel.name}</span>{" "}
                       {bandeja ? (
                         <>
-                          delivers into <span className="font-medium">{bandeja}</span>.
+                          {t("channel:deliversInto")}{" "}
+                          <span className="font-medium">{bandeja}</span>.
                         </>
                       ) : (
                         <span className="text-warning">
-                          delivers nowhere — anything it sends is being lost.
+                          {t("channel:deliversNowhere")}
                         </span>
                       )}
                     </p>
                     <Button size="sm" variant="outline" onClick={moverBandeja} disabled={saving}>
-                      Send its reports here instead
+                      {t("channel:sendHereInstead")}
                     </Button>
                   </div>
                 )}
@@ -373,7 +381,7 @@ export default function ChannelDialog({
                   <div className="flex items-center gap-2">
                     <Select value={libreElegida} onValueChange={(v) => setLibreElegida(v ?? "")}>
                       <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="An integration with no inbox yet…" />
+                        <SelectValue placeholder={t("channel:noInboxYet")} />
                       </SelectTrigger>
                       <SelectContent>
                         {libres.map((p) => (
@@ -384,7 +392,7 @@ export default function ChannelDialog({
                       </SelectContent>
                     </Select>
                     <Button size="sm" onClick={apuntarAqui} disabled={saving || !libreElegida}>
-                      Point it here
+                      {t("channel:pointItHere")}
                     </Button>
                   </div>
                 )}
@@ -393,7 +401,7 @@ export default function ChannelDialog({
                     se mueven, así que el histórico se queda partido en dos. */}
                 {(libres.length > 0 || (channel && channel.listId !== id)) && (
                   <p className="text-xs text-muted-foreground">
-                    From now on. Reports already filed stay where they are.
+                    {t("channel:fromNowOn")}
                   </p>
                 )}
               </section>
@@ -403,18 +411,18 @@ export default function ChannelDialog({
                 hace falta decir dónde se pone, o se busca aquí y no está. */}
             {kind === "space" && channel && (
               <section className="space-y-1 border-t pt-4">
-                <Label>Reports arrive in</Label>
+                <Label>{t("channel:arriveIn")}</Label>
                 <p className="text-sm">
                   {bandeja ? (
                     <span className="font-medium">{bandeja}</span>
                   ) : (
                     <span className="text-warning">
-                      Nowhere — anything {channel.name} sends is being lost.
+                      {t("channel:nowhereLost", { name: channel.name })}
                     </span>
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  A space isn't an inbox: open the list you want and point it there.
+                  {t("channel:spaceIsNotInbox")}
                 </p>
               </section>
             )}
@@ -424,17 +432,15 @@ export default function ChannelDialog({
               kind === "space" ? (
                 <section className="space-y-2 rounded-md border border-dashed p-3">
                   <p className="text-sm">
-                    No channel yet. Opening one gives you a key a client's app or widget posts
-                    reports with.
+                    {t("channel:noChannelYet")}
                   </p>
                   <Button size="sm" onClick={open_} disabled={saving}>
-                    <KeyRound className="mr-1 size-3" /> Open a channel
+                    <KeyRound className="mr-1 size-3" /> {t("channel:openChannel")}
                   </Button>
                 </section>
               ) : (
                 <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                  This list reaches no channel. Bind it to one above, or open a channel on the
-                  space it belongs to — a list inherits, it doesn't own.
+                  {t("channel:listReachesNone")}
                 </p>
               )
             ) : (
@@ -447,20 +453,24 @@ export default function ChannelDialog({
                   {/* The slug is half of every folio a client quotes, which is why
                       it isn't editable here. */}
                   <p className="text-xs text-muted-foreground">
-                    Reports are named <code>{channel.slug}-7</code>, so the slug can't change.
+                    <Trans
+                      t={t}
+                      i18nKey="channel:slugFixed"
+                      values={{ example: `${channel.slug}-7` }}
+                      components={{ 1: <code /> }}
+                    />
                   </p>
 
                   {channel.platform === "web" && (
                     <p className="flex items-start gap-1.5 rounded-md bg-warning/10 p-2 text-xs text-warning">
                       <TriangleAlert className="mt-0.5 size-3 shrink-0" />
-                      This key ships inside the browser widget, so treat it as public. It can only
-                      file reports — it can't read or triage them, by design.
+                      {t("channel:widgetKeyPublic")}
                     </p>
                   )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">Reports per hour</Label>
+                      <Label className="text-xs">{t("channel:perHour")}</Label>
                       <Input
                         type="number"
                         value={perHour}
@@ -468,7 +478,7 @@ export default function ChannelDialog({
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Per person, per hour</Label>
+                      <Label className="text-xs">{t("channel:perReporter")}</Label>
                       <Input
                         type="number"
                         value={perReporter}
@@ -482,34 +492,35 @@ export default function ChannelDialog({
                   )}
 
                   <div className="space-y-1">
-                    <Label className="text-xs">Webhook URL</Label>
+                    <Label className="text-xs">{t("channel:webhookUrl")}</Label>
                     <Input
                       value={webhookUrl}
                       onChange={(e) => setWebhookUrl(e.target.value)}
                       placeholder="https://…"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Where their app hears about new reports and replies. Clearing this stops
-                      those events — and nothing on their side can tell that they stopped.
+                      {t("channel:webhookHelp")}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">
-                      Webhook signing secret
+                      {t("channel:webhookSecret")}
                       {channel.webhookConfigured && (
-                        <span className="ml-1 text-muted-foreground">· one is set</span>
+                        <span className="ml-1 text-muted-foreground">
+                          {t("channel:webhookSecretSet")}
+                        </span>
                       )}
                     </Label>
                     <Input
                       value={webhookSecret}
                       onChange={(e) => setWebhookSecret(e.target.value)}
-                      placeholder="Leave empty to keep the current one"
+                      placeholder={t("channel:webhookSecretKeep")}
                     />
                   </div>
 
                   <div className="flex items-center gap-2 pt-1">
                     <Button size="sm" onClick={save} disabled={saving}>
-                      Save changes
+                      {t("channel:saveChanges")}
                     </Button>
                     <Button
                       size="sm"
@@ -518,7 +529,7 @@ export default function ChannelDialog({
                       onClick={rotate}
                       disabled={saving}
                     >
-                      <RefreshCw className="mr-1 size-3" /> Rotate key
+                      <RefreshCw className="mr-1 size-3" /> {t("channel:rotateKey")}
                     </Button>
                   </div>
                 </section>

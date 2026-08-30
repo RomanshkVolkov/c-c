@@ -1,5 +1,6 @@
 import "i18next";
 
+import type channel from "@/locales/en/channel.json";
 import type common from "@/locales/en/common.json";
 import type nav from "@/locales/en/nav.json";
 import type notifications from "@/locales/en/notifications.json";
@@ -30,6 +31,7 @@ declare module "i18next" {
       nav: typeof nav;
       notifications: typeof notifications;
       work: typeof work;
+      channel: typeof channel;
     };
     // Sin `null`: una clave que existe siempre devuelve texto, y quien la use no
     // tiene que defenderse de un valor que no puede llegar.
