@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -64,11 +65,19 @@ describe("el texto que llega a la pantalla", () => {
     await expect(api.get("/x")).rejects.toThrow("That list belongs to another organization.");
   });
 
-  // Endpoints viejos que sólo mandan la etiqueta: enseñarla es mejor que un
-  // «Request failed» que no dice nada.
-  it("si no hay frase, se enseña la etiqueta", async () => {
+  /**
+   * Endpoints viejos que sólo mandan la etiqueta.
+   *
+   * Esto afirmaba que se enseñaba **la etiqueta** —«no-channel»— con el
+   * argumento de que era mejor que un «Request failed» que no dice nada. Sigue
+   * siendo el mismo argumento, sólo que ahora hay algo mejor todavía: la
+   * etiqueta es la clave del catálogo, así que sale la frase entera y en el
+   * idioma de quien mira. Ver `frasePara` en `api.ts`.
+   */
+  it("si no hay frase, la etiqueta se traduce en vez de enseñarse cruda", async () => {
     fetchMock.mockResolvedValue(respuesta(400, { success: false, error: "no-channel" }));
-    await expect(api.get("/x")).rejects.toThrow("no-channel");
+    await expect(api.get("/x")).rejects.toThrow(i18next.t("errors:no-channel"));
+    await expect(api.get("/x")).rejects.not.toThrow("no-channel");
   });
 
   it("y si no hay ninguna de las dos, algo se dice", async () => {
@@ -115,7 +124,11 @@ describe("el token caducado se sigue reconociendo", () => {
     fetchMock.mockResolvedValue(
       respuesta(401, { success: false, message: "Unauthorized", error: "invalid-token" }),
     );
-    await expect(api.get("/x")).rejects.toThrow("Unauthorized");
+    // Lo que se afirma es **que no se reintentó**, no qué frase salió: la
+    // frase la traduce ahora el catálogo por la etiqueta, y atarla aquí haría
+    // que esta prueba —que va de renovación de sesión— se cayera cada vez que
+    // alguien reescribe un mensaje de error.
+    await expect(api.get("/x")).rejects.toThrow();
     // Una sola petición: no hubo intento de renovar.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(setAuth).not.toHaveBeenCalled();

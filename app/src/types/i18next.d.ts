@@ -4,6 +4,7 @@ import type channel from "@/locales/en/channel.json";
 import type chat from "@/locales/en/chat.json";
 import type common from "@/locales/en/common.json";
 import type org from "@/locales/en/org.json";
+import type errors from "@/locales/en/errors.json";
 import type nav from "@/locales/en/nav.json";
 import type notifications from "@/locales/en/notifications.json";
 import type work from "@/locales/en/work.json";
@@ -36,6 +37,7 @@ declare module "i18next" {
       channel: typeof channel;
       chat: typeof chat;
       org: typeof org;
+      errors: typeof errors;
     };
     // Sin `null`: una clave que existe siempre devuelve texto, y quien la use no
     // tiene que defenderse de un valor que no puede llegar.
