@@ -507,6 +507,11 @@
     "confirmation": "Confirmación",
     "cancel": "Cancelar",
     "errDeleteOrg": "No se pudo borrar",
-    "deleteIt": "Borrarla"
+    "deleteIt": "Borrarla",
+    "errSavePrefs": "No se pudo guardar",
+    "notifications": "Notificaciones",
+    "preview": "Vista previa",
+    "openWithSystem": "Abrir con tu sistema",
+    "nothingHere": "Aquí no hay nada"
   }
 }

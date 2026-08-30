@@ -146,7 +146,7 @@ export default function NotificationPrefsDialog({
     try {
       await savePrefs({ ...actual, [key]: !actual[key] });
     } catch (e) {
-      toast.error("Could not save it", { description: String(e) });
+      toast.error(t("common:last.errSavePrefs"), { description: String(e) });
     } finally {
       setBusy(false);
     }
@@ -156,7 +156,7 @@ export default function NotificationPrefsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Notifications</DialogTitle>
+          <DialogTitle>{t("common:last.notifications")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-1">

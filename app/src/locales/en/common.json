@@ -507,6 +507,11 @@
     "confirmation": "Confirmation",
     "cancel": "Cancel",
     "errDeleteOrg": "Could not delete it",
-    "deleteIt": "Delete it"
+    "deleteIt": "Delete it",
+    "errSavePrefs": "Could not save it",
+    "notifications": "Notifications",
+    "preview": "Preview",
+    "openWithSystem": "Open with your system",
+    "nothingHere": "Nothing here"
   }
 }

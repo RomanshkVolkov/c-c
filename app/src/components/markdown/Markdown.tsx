@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -52,6 +53,7 @@ export default function Markdown({
    */
   onInternalLink?: (href: string) => boolean;
 }) {
+  const { t } = useT();
   const [zoomed, setZoomed] = useState<{ src: string; alt: string } | null>(null);
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
 
@@ -78,7 +80,7 @@ export default function Markdown({
             return (
               <a
                 href={href}
-                title={isPdf ? "Preview" : isFile ? "Open with your system" : undefined}
+                title={isPdf ? t("common:last.preview") : isFile ? t("common:last.openWithSystem") : undefined}
                 onClick={(e) => {
                   e.preventDefault();
                   if (!href) return;

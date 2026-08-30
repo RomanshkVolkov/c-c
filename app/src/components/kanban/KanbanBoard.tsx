@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   DndContext,
@@ -97,9 +98,10 @@ export default function KanbanBoard<T extends KanbanItem>({
   renderItem,
   onMove,
   puedeSoltar,
-  emptyColumnHint = "Nothing here",
+  emptyColumnHint,
   className,
 }: Props<T>) {
+  const { t } = useT();
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -184,7 +186,7 @@ export default function KanbanBoard<T extends KanbanItem>({
             column={col}
             items={byColumn.get(col.id) ?? []}
             renderItem={renderItem}
-            emptyHint={col.emptyHint ?? emptyColumnHint}
+            emptyHint={col.emptyHint ?? emptyColumnHint ?? t("common:last.nothingHere")}
             // Sólo mientras hay algo en el aire: en reposo no hay tarjeta de la
             // que decir si cabe, y pintar columnas en rojo sin motivo sería
             // avisar de un problema que nadie tiene.

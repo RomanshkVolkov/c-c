@@ -1,3 +1,4 @@
+import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -495,9 +496,7 @@ function MessageToTask({
         if (channelOfList) {
           const share = await confirm({
             title: t("chat:clientSeesTitle"),
-            description:
-              "This came from the team's channel, which the client never sees. Making the card " +
-              "visible puts its text on their board and takes one of their ticket numbers.",
+            description: t("chat:clientSeesBody"),
             confirmText: t("chat:visibleToThem"),
             cancelText: t("chat:internal"),
           });
@@ -520,7 +519,7 @@ function MessageToTask({
 
 /** A card needs a title, and a message's first line is the closest thing it has. */
 function firstLine(body: string): string {
-  const line = body.split("\n").find((l) => l.trim().length > 0)?.trim() ?? "Message";
+  const line = body.split("\n").find((l) => l.trim().length > 0)?.trim() ?? i18next.t("common:misc.message");
   return line.length > 120 ? line.slice(0, 117) + "…" : line;
 }
 
