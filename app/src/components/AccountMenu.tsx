@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useThemeStore, type ThemePreference } from "@/store/theme.store";
 import { useLocaleStore, type LocalePreference } from "@/store/locale.store";
+import { chooseLocale } from "@/lib/locale-sync";
 import { useUpdaterStore } from "@/store/updater.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { useAuth } from "@/hooks/use-auth";
@@ -68,7 +69,7 @@ export default function AccountMenu({
   const preference = useThemeStore((s) => s.preference);
   const setPreference = useThemeStore((s) => s.setPreference);
   const language = useLocaleStore((s) => s.preference);
-  const setLanguage = useLocaleStore((s) => s.setPreference);
+
   const version = useAppVersion();
   const available = useUpdaterStore((s) => s.available);
   const checking = useUpdaterStore((s) => s.checking);
@@ -149,7 +150,7 @@ export default function AccountMenu({
               {LANGUAGES.map((l) => (
                 <button
                   key={l.key}
-                  onClick={() => setLanguage(l.key)}
+                  onClick={() => void chooseLocale(l.key)}
                   className={cn(
                     "rounded px-1.5 py-0.5 text-[11px]",
                     language === l.key

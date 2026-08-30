@@ -269,6 +269,10 @@ export async function refreshSession(): Promise<void> {
     const json = parse(reply);
     if (reply.status < 400 && json?.success && json?.data) {
       useAuthStore.getState().setSession(json.data);
+      // El idioma que trae la sesión manda sobre el guardado aquí: ver
+      // `locale-sync.ts`. Importado en caliente porque este módulo es el que
+      // aquél importa, y al revés sería un ciclo.
+      void import("@/lib/locale-sync").then((m) => m.adoptServerLocale(json.data));
     }
   } catch {
     // best-effort

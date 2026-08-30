@@ -1,3 +1,4 @@
+import { adoptServerLocale } from "@/lib/locale-sync";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -19,6 +20,8 @@ export function useAuth() {
 
     const { session, accessToken, refreshToken } = res.data;
     setAuth(session, accessToken, refreshToken);
+    // Entrar en la aplicación es enterarse de en qué idioma la lees.
+    adoptServerLocale(session);
     return res.data;
   };
 

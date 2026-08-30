@@ -6,6 +6,8 @@ export interface Session {
   email?: string;
   superadmin?: boolean;
   mustChangePassword?: boolean;
+  /** In which language this person reads cac; empty means "ask the machine". */
+  locale?: string;
 }
 
 export interface AuthResponse {
