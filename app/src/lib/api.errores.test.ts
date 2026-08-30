@@ -72,7 +72,7 @@ describe("el texto que llega a la pantalla", () => {
    * argumento de que era mejor que un «Request failed» que no dice nada. Sigue
    * siendo el mismo argumento, sólo que ahora hay algo mejor todavía: la
    * etiqueta es la clave del catálogo, así que sale la frase entera y en el
-   * idioma de quien mira. Ver `frasePara` en `api.ts`.
+   * idioma de quien mira. Ver `phraseFor` en `server-errors.ts`.
    */
   it("si no hay frase, la etiqueta se traduce en vez de enseñarse cruda", async () => {
     fetchMock.mockResolvedValue(respuesta(400, { success: false, error: "no-channel" }));

@@ -44,5 +44,17 @@
   "user-not-found": "That user doesn't exist.",
   "viewer-read-only": "You can look, but not change anything here.",
   "wrong-type": "That file type isn't accepted.",
-  "inbox-other-org": "That list belongs to another organization."
+  "inbox-other-org": "That list belongs to another organization.",
+  "voice-not-in-room": "You aren't in any room.",
+  "voice-no-mic": "No microphone was found.",
+  "voice-mic-thread-died": "The microphone failed to start.",
+  "voice-mic-timeout": "The microphone didn't open in fifteen seconds.",
+  "voice-share-pending": "Screen sharing is already being asked for — answer the system dialog.",
+  "voice-no-screen-capture": "This system can't capture the screen.",
+  "voice-screen-denied": "The system didn't grant the screen.",
+  "voice-share-unanswered": "Nobody answered the share dialog.",
+  "voice-screen-thread-died": "Screen capture failed. Check the voice lab's engine log.",
+  "voice-screen-timeout": "Screen capture didn't respond.",
+  "voice-camera-thread-died": "The camera failed. Check the voice lab's engine log.",
+  "voice-camera-no-frames": "The camera delivered no image."
 }

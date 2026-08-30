@@ -37,6 +37,19 @@ de idioma al instante al cambiar la preferencia, sin ida y vuelta. Las claves de
 error están igualmente en `internal/core/i18n/catalog.go`, porque el día que un
 correo saliente las necesite ya estarán.
 
+Lo hace `phraseFor` en `lib/server-errors.ts`, y tiene **tres emisores**: los
+handlers de Go, el motor de voz de Rust (`voice-no-mic`, `voice-screen-denied`) y
+el propio cliente. Módulo aparte y no un rincón de `api.ts` justamente por el
+segundo: el store de voz no tiene por qué importar el cliente HTTP entero.
+
+La regla que lo hace seguro: **una etiqueta que no esté en el catálogo se queda
+con el texto que llegó**, no con la etiqueta cruda. Un servidor —o un binario del
+motor— más nuevo puede inventar un código que esta versión no conoce, y
+«Error: widget-exploded» es peor que la frase en inglés que ese emisor ya mandó.
+La pertenencia se comprueba con un `in` contra el catálogo inglés, no
+preguntándole a i18next si devolvió la clave: lo segundo es una heurística que
+una traducción parecida a su clave rompería, y además no deja tipar nada.
+
 ## 2 · Qué NO se traduce, y por qué
 
 Esta sección es la que más ahorra: casi todo el trabajo mal hecho de una
@@ -126,6 +139,7 @@ lo que ya está hecho, que es distinto y es lo que se rompe solo.
 | `core/i18n/leaks_test.go` | Castellano en un literal de Go fuera del catálogo |
 | `core/i18n/i18n_test.go` | Que la `q` de `Accept-Language` mande sobre el orden del texto |
 | `service/notification_locale_test.go` | Que el aviso se escriba en el idioma de quien lo lee |
+| `lib/api-errors.test.ts` | Un código que Go o Rust emiten y el catálogo no conoce |
 
 Dos detalles de cómo están hechas, porque el primer intento de cada una estaba
 mal:
@@ -184,6 +198,12 @@ Tres decisiones que parecen detalles y no lo son:
 
 ## 7 · Lo que queda
 
-- El catálogo de errores en el cliente, tecleado por la etiqueta de código (§1).
-- Los `Err(...)` de Rust que acaban en un toast.
-- La cola larga de pantallas pequeñas.
+Nada del alcance planeado. Lo que sí falta es **mirarlo**: el castellano ocupa
+entre un 15 % y un 25 % más que el inglés, y ninguna de estas pruebas comprueba
+que quepa donde tiene que caber. Los sitios donde se va a notar son los botones
+estrechos y las cabeceras de tabla.
+
+Y una deuda concreta que este trabajo dejó a la vista: `voice.store.ts`,
+`VoiceStage.tsx` y `OrgMeetings.tsx` siguen con identificadores en castellano
+—`compartiendo`, `sordo`, `Ficha`, `Formulario`—. Se renombra lo que se toca al
+pasar, no de golpe.

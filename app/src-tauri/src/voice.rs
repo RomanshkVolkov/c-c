@@ -302,7 +302,7 @@ pub async fn voice_set_mic(enabled: bool) -> Result<(), String> {
         let guard = SESION.lock().unwrap();
         match guard.as_ref() {
             Some(s) => s.micro.clone(),
-            None => return Err("no estás en ninguna sala".into()),
+            None => return Err("voice-not-in-room".into()),
         }
     };
     SILENCIADO.store(!enabled, std::sync::atomic::Ordering::Relaxed);
@@ -853,7 +853,7 @@ fn arrancar_captura(
         let dispositivo = match dispositivo {
             Some(d) => d,
             None => {
-                let _ = listo_tx.send(Err("no hay micrófono".into()));
+                let _ = listo_tx.send(Err("voice-no-mic".into()));
                 return;
             }
         };
@@ -964,11 +964,11 @@ fn arrancar_captura(
         Ok(Ok(())) => Ok(StreamGuard(Some(fin_tx))),
         Ok(Err(e)) => Err(e),
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            Err("el hilo del micrófono murió al arrancar".into())
+            Err("voice-mic-thread-died".into())
         }
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
             nota("micro: quince segundos sin abrir el dispositivo, se abandona");
-            Err("el micrófono no abrió en quince segundos".into())
+            Err("voice-mic-timeout".into())
         }
     }
 }
@@ -1487,14 +1487,14 @@ pub async fn voice_share_screen() -> Result<VideoState, String> {
         let guard = SESION.lock().unwrap();
         match guard.as_ref() {
             Some(s) => s.room.clone(),
-            None => return Err("no estás en ninguna sala".into()),
+            None => return Err("voice-not-in-room".into()),
         }
     };
     if COMPARTIENDO.load(std::sync::atomic::Ordering::Relaxed) {
         return Ok(estado_video());
     }
     if PANTALLA.load(std::sync::atomic::Ordering::Relaxed) {
-        return Err("ya se está pidiendo la pantalla: contesta al diálogo del sistema".into());
+        return Err("voice-share-pending".into());
     }
 
     // La resolución la dicta la pantalla que el sistema conceda, así que la
@@ -1529,7 +1529,7 @@ pub async fn voice_stop_share() -> Result<VideoState, String> {
         let guard = SESION.lock().unwrap();
         match guard.as_ref() {
             Some(s) => s.room.clone(),
-            None => return Err("no estás en ninguna sala".into()),
+            None => return Err("voice-not-in-room".into()),
         }
     };
     // Primero la bandera: es la que para el hilo de captura, y pararlo antes de
@@ -1696,7 +1696,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         opciones.set_include_cursor(true);
         let Some(mut cap) = DesktopCapturer::new(opciones) else {
             nota("pantalla: este sistema no trae capturador");
-            let _ = primera_tx.send(Err("este sistema no sabe capturar la pantalla".into()));
+            let _ = primera_tx.send(Err("voice-no-screen-capture".into()));
             return;
         };
         // En Wayland la lista trae una entrada de relleno y la elección real la
@@ -1817,7 +1817,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                     // `Permanent` es que dijo que no.
                     if format!("{e:?}").contains("Permanent") {
                         nota(format!("pantalla: el sistema la denegó ({e:?})"));
-                        let _ = primera_tx.send(Err("el sistema no concedió la pantalla".into()));
+                        let _ = primera_tx.send(Err("voice-screen-denied".into()));
                         break;
                     }
                 }
@@ -1825,7 +1825,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
             }
             if fuente.is_none() && std::time::Instant::now() > limite {
                 nota("pantalla: nadie contestó al diálogo en un minuto");
-                let _ = primera_tx.send(Err("nadie contestó al diálogo de compartir".into()));
+                let _ = primera_tx.send(Err("voice-share-unanswered".into()));
                 break;
             }
             std::thread::sleep(cada);
@@ -1842,10 +1842,10 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         Ok(Err(e)) => Err(e),
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
             nota("pantalla: el hilo de captura murió sin decir nada");
-            Err("el hilo de la pantalla murió; mira el diario del laboratorio de voz".into())
+            Err("voice-screen-thread-died".into())
         }
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err("la captura de pantalla no respondió".into())
+            Err("voice-screen-timeout".into())
         }
     }
 }
@@ -2216,10 +2216,10 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
         // ninguna imagen» ante un hilo muerto costó cinco versiones.
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
             nota("cámara: el hilo de captura murió sin decir nada");
-            Err("el hilo de la cámara murió; mira el diario del laboratorio de voz".into())
+            Err("voice-camera-thread-died".into())
         }
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err("la cámara no entregó ninguna imagen".into())
+            Err("voice-camera-no-frames".into())
         }
     }
 }

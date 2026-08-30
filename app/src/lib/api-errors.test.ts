@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 import i18next from "i18next";
 
 import errorsEn from "@/locales/en/errors.json";
-import { frasePara } from "@/lib/api";
+import { phraseFor } from "@/lib/server-errors";
 
 /**
  * El error del servidor, en el idioma de quien lo lee.
@@ -78,19 +78,45 @@ describe("las etiquetas de error", () => {
     expect("widget-exploded" in errorsEn).toBe(false);
   });
 
-  // Las dos ramas de `frasePara`, que es donde vive la decisión.
+  // Las dos ramas de `phraseFor`, que es donde vive la decisión.
   it("un código conocido gana a la frase del servidor", () => {
-    const dicho = frasePara("not-found", "Not found");
+    const dicho = phraseFor("not-found", "Not found");
     expect(dicho).toBe(i18next.t("errors:not-found"));
     expect(dicho).not.toBe("Not found");
   });
 
   it("uno desconocido conserva la frase del servidor, no la etiqueta", () => {
-    expect(frasePara("widget-exploded", "The widget exploded")).toBe("The widget exploded");
+    expect(phraseFor("widget-exploded", "The widget exploded")).toBe("The widget exploded");
   });
 
   // Sin código —hay respuestas que no lo traen— tampoco puede quedarse en blanco.
   it("sin código, la frase del servidor", () => {
-    expect(frasePara("", "Request failed")).toBe("Request failed");
+    expect(phraseFor("", "Request failed")).toBe("Request failed");
+  });
+
+  /**
+   * Y los que emite el motor de voz, que es un tercer sitio que puede inventar
+   * códigos: Go, Rust y el catálogo tienen que estar de acuerdo, y el que se
+   * queda atrás no avisa — sale la etiqueta cruda en un toast.
+   */
+  it("cubren también lo que emite el motor de voz", () => {
+    const raiz = join(process.cwd(), "src-tauri", "src");
+    let salida = "";
+    try {
+      salida = execSync(`grep -rhoE 'Err\\("voice-[a-z-]+"' ${raiz}`, { encoding: "utf-8" });
+    } catch {
+      return; // sin el crate a mano, esta prueba no aplica
+    }
+    const codigos = [
+      ...new Set(
+        salida
+          .split("\n")
+          .map((l) => l.match(/"(voice-[a-z-]+)"/)?.[1])
+          .filter((c): c is string => Boolean(c)),
+      ),
+    ];
+    expect(codigos.length).toBeGreaterThan(5);
+    const faltan = codigos.filter((c) => !(c in errorsEn));
+    expect(faltan).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { phraseFor } from "@/lib/server-errors";
 import { create } from "zustand";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { api } from "@/lib/api";
@@ -216,6 +217,24 @@ function pararReloj(cual: "saliente" | "entrante") {
   else relojEntrante = null;
 }
 
+/**
+ * Lo que devuelve el motor de voz, en el idioma de quien lo lee.
+ *
+ * El proceso de Rust ya no manda frases sino **etiquetas** —`voice-no-mic`—,
+ * por el mismo motivo que el servidor: quien las escribió pensaba en castellano
+ * y salían en castellano dentro de una aplicación en inglés. La etiqueta es la
+ * clave del catálogo, así que la frase la pone quien la va a leer.
+ *
+ * Se reutiliza `phraseFor`, que ya sabe la regla importante: una etiqueta que
+ * esta versión no conozca se queda con el texto que llegó, no con la etiqueta
+ * cruda. El motor y la interfaz se despliegan juntos, pero no siempre — un
+ * binario viejo con una app nueva es un estado real.
+ */
+function deRust(e: unknown): string {
+  const crudo = e instanceof Error ? e.message : String(e);
+  return phraseFor(crudo, crudo);
+}
+
 export const useVoice = create<VoiceState>((set, get) => ({
   ...VACIO,
   entrante: null,
@@ -256,8 +275,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
       }
       set({ estado: "dentro", yo, mic: true });
     } catch (e) {
-      const motivo = e instanceof Error ? e.message : String(e);
-      set({ ...VACIO, error: motivo, errorSpaceId: spaceId });
+      set({ ...VACIO, error: deRust(e), errorSpaceId: spaceId });
     }
   },
 
@@ -345,7 +363,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
       // sonara es la peor de las mentiras posibles aquí.
       set({
         llamando: null,
-        error: e instanceof Error ? e.message : String(e),
+        error: deRust(e),
         errorSpaceId: get().spaceId,
       });
       return;
@@ -447,7 +465,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
       await invoke("voice_set_camera", { enabled: siguiente });
       set({ cam: siguiente, error: null, errorSpaceId: null });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e), errorSpaceId: get().spaceId });
+      set({ error: deRust(e), errorSpaceId: get().spaceId });
     }
   },
 
@@ -468,7 +486,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
       await invoke(siguiente ? "voice_share_screen" : "voice_stop_share");
       set({ compartiendo: siguiente, error: null, errorSpaceId: null });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e), errorSpaceId: get().spaceId });
+      set({ error: deRust(e), errorSpaceId: get().spaceId });
     }
   },
 

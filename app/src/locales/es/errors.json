@@ -44,5 +44,17 @@
   "user-not-found": "Ese usuario no existe.",
   "viewer-read-only": "Aquí puedes mirar, pero no cambiar nada.",
   "wrong-type": "Ese tipo de fichero no se acepta.",
-  "inbox-other-org": "Esa lista es de otra organización."
+  "inbox-other-org": "Esa lista es de otra organización.",
+  "voice-not-in-room": "No estás en ninguna sala.",
+  "voice-no-mic": "No se encontró ningún micrófono.",
+  "voice-mic-thread-died": "El micrófono no arrancó.",
+  "voice-mic-timeout": "El micrófono no abrió en quince segundos.",
+  "voice-share-pending": "Ya se está pidiendo la pantalla — contesta al diálogo del sistema.",
+  "voice-no-screen-capture": "Este sistema no sabe capturar la pantalla.",
+  "voice-screen-denied": "El sistema no concedió la pantalla.",
+  "voice-share-unanswered": "Nadie contestó al diálogo de compartir.",
+  "voice-screen-thread-died": "Falló la captura de pantalla. Mira el diario del motor en el laboratorio de voz.",
+  "voice-screen-timeout": "La captura de pantalla no respondió.",
+  "voice-camera-thread-died": "Falló la cámara. Mira el diario del motor en el laboratorio de voz.",
+  "voice-camera-no-frames": "La cámara no entregó ninguna imagen."
 }
