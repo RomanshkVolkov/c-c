@@ -101,7 +101,7 @@ export default function ConnectMcpDialog({
         },
         true,
       );
-      if (!res.success || !res.data) throw new Error(res.error ?? "Failed");
+      if (!res.success || !res.data) throw new Error(res.error ?? t("common:last.failed"));
       setMinted(res.data);
       load();
     } catch (e) {
@@ -119,7 +119,7 @@ export default function ConnectMcpDialog({
         `/api/v1/auth/tokens/${tok.id}`,
         { scopes: editScopes },
       );
-      if (!res.success) throw new Error(res.error ?? "Failed");
+      if (!res.success) throw new Error(res.error ?? t("common:last.failed"));
       setEditing(null);
       load();
       toast.success(`Permissions updated for "${tok.name}"`);

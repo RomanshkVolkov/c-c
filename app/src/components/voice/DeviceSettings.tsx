@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Check, Loader2, Mic, Video } from "lucide-react";
@@ -24,6 +25,7 @@ interface Dispositivo {
 }
 
 export default function DeviceSettings() {
+  const { t } = useT();
   const [lista, setLista] = useState<{ mics: Dispositivo[]; cams: Dispositivo[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cambiando, setCambiando] = useState<string | null>(null);
@@ -65,7 +67,7 @@ export default function DeviceSettings() {
       )}
       {lista && (
         <>
-          <Grupo icono={Mic} titulo="Microphone" vacio="No microphone found">
+          <Grupo icono={Mic} titulo={t("common:last.microphone")} vacio={t("common:last.noMicrophone")}>
             {lista.mics.map((d) => (
               <Fila
                 key={d.id}
@@ -75,7 +77,7 @@ export default function DeviceSettings() {
               />
             ))}
           </Grupo>
-          <Grupo icono={Video} titulo="Camera" vacio="No camera found">
+          <Grupo icono={Video} titulo={t("common:last.camera")} vacio={t("common:last.noCamera")}>
             {lista.cams.map((d) => (
               <Fila
                 key={d.id}

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Bell } from "lucide-react";
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
  * app tried, not whether the desktop did anything with it.
  */
 export default function NotificationCheck() {
+  const { t } = useT();
   const [testing, setTesting] = useState(false);
 
   const sendTest = async () => {
@@ -24,22 +26,22 @@ export default function NotificationCheck() {
       let granted = await isPermissionGranted();
       if (!granted) granted = (await requestPermission()) === "granted";
       if (!granted) {
-        toast.error("The system refused permission", {
+        toast.error(t("common:last.permissionRefused"), {
           description: "cac can't post notifications on this desktop.",
         });
         return;
       }
       sendNotification({
         title: "cac — test",
-        body: "If you can see this, notifications work.",
+        body: t("common:last.testBody"),
       });
       // Deliberately not "sent": the plugin hands it to the desktop and doesn't
       // hear back, so claiming success would be a guess. Only you can confirm.
-      toast.success("Handed to the system", {
-        description: "If nothing appeared, the desktop is silencing it — check its notification settings.",
+      toast.success(t("common:last.handedToSystem"), {
+        description: t("common:last.handedToSystemBody"),
       });
     } catch (e) {
-      toast.error("Couldn't send it", {
+      toast.error(t("common:last.couldNotSend"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -53,7 +55,7 @@ export default function NotificationCheck() {
         <Bell className="mr-1 size-3" /> Send a test notification
       </Button>
       <span className="text-xs text-muted-foreground">
-        Checks that this desktop will show one at all.
+        {t("common:last.checksDesktop")}
       </span>
     </div>
   );

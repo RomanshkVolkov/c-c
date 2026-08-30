@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { WifiOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ function ago(ts: number | null): string {
  * reopens the SSE stream on a fresh socket) without killing the process.
  */
 export default function ConnectionBanner() {
+  const { t } = useT();
   // Primitive selectors only: markOk() runs on every successful request, so
   // subscribing to the whole store would re-render the shell constantly.
   const failing = useConnectionStore(selectDegraded);
@@ -58,11 +60,11 @@ export default function ConnectionBanner() {
     <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-error/30 bg-error/10 px-4 py-2 text-sm">
       <WifiOff className="h-4 w-4 shrink-0 text-error" />
       <span className="font-medium text-error">
-        {failing ? "Connection problems" : "Live updates stopped"}
+        {failing ? t("common:last.connectionProblems") : t("common:last.liveUpdatesStopped")}
       </span>
       <span className="text-muted-foreground">
         {failing
-          ? `${lastError ?? "Requests are failing"} · ${failures} failed · last response ${ago(lastOkAt)}`
+          ? `${lastError ?? t("common:last.requestsFailing")} · ${failures} failed · last response ${ago(lastOkAt)}`
           : `The event stream is ${stream}; the board won't refresh on its own`}
       </span>
       <Button
@@ -72,7 +74,7 @@ export default function ConnectionBanner() {
         onClick={() => window.location.reload()}
       >
         <RefreshCw className="mr-1 h-3.5 w-3.5" />
-        Reconnect
+        {t("common:last.reconnect")}
       </Button>
     </div>
   );

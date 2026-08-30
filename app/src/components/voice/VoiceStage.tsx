@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { AlertCircle, Loader2, MessageSquare, Minimize2, Volume2, X } from "lucide-react";
 import { iniciales } from "@/lib/desde";
@@ -23,6 +24,7 @@ import { useVoice } from "@/store/voice.store";
  * cuelga. Por eso el store lleva dos estados y no uno (ver `voice.store.ts`).
  */
 export default function VoiceStage({ spaceName }: { spaceName: string }) {
+  const { t } = useT();
   const estado = useVoice((s) => s.estado);
   const gente = useVoice((s) => s.gente);
   const hablando = useVoice((s) => s.hablando);
@@ -102,12 +104,12 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
           onClick={() => setChat((v) => !v)}
           className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
         >
-          <MessageSquare className="size-[15px]" /> {chat ? "Hide chat" : "Chat"}
+          <MessageSquare className="size-[15px]" /> {chat ? t("common:last.hideChat") : t("common:last.chat")}
         </button>
         <button
           type="button"
           onClick={cerrarEscenario}
-          title="Back to the channel — you stay connected"
+          title={t("common:last.backToChannel")}
           className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
         >
           <Minimize2 className="size-[15px]" /> Minimize
@@ -134,7 +136,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                 <VideoLienzo identity={pantalla} fuente="screen" />
                 <span className="absolute bottom-3 left-3 rounded-full bg-background/70 px-2.5 py-1 text-xs font-semibold text-primary">
                   {pantalla === yo
-                    ? "You are sharing"
+                    ? t("common:last.youAreSharing")
                     : `${dentro.find((p) => p.identity === pantalla)?.name ?? pantalla} is sharing`}
                 </span>
                 {pantalla === yo && (
@@ -142,7 +144,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                     onClick={() => void alternarCompartir()}
                     className="absolute bottom-3 right-3 rounded-full border border-destructive/50 bg-background/80 px-3 py-1 text-xs font-semibold text-destructive"
                   >
-                    Stop sharing
+                    {t("common:last.stopSharing")}
                   </button>
                 )}
                 {/* Las caras, encima y arriba a la derecha.
@@ -156,7 +158,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                   <button
                     type="button"
                     onClick={() => setCarasAMano(true)}
-                    title="Show participants"
+                    title={t("common:last.showParticipants")}
                     className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-background/40 p-1 backdrop-blur-sm transition-opacity hover:opacity-100"
                   >
                     {dentro.map((p) => {
@@ -254,7 +256,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
           <button
             type="button"
             onClick={limpiarError}
-            aria-label="Dismiss"
+            aria-label={t("common:last.dismiss")}
             className="ml-1 shrink-0 rounded p-0.5 hover:bg-destructive/20"
           >
             <X className="size-3.5" />

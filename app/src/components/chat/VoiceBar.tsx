@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { Loader2, Mic, MicOff, Volume2 } from "lucide-react";
 import { iniciales } from "@/lib/desde";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ import { useVoice } from "@/store/voice.store";
  * la llamada entera —eso es ahora `VoiceStage`—; aquí sólo está la puerta.
  */
 export default function VoiceBar({ spaceId }: { spaceId: string }) {
+  const { t } = useT();
   const enSala = useVoice((s) => s.spaceId);
   const estado = useVoice((s) => s.estado);
   const mic = useVoice((s) => s.mic);
@@ -28,7 +30,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
       <span className="flex shrink-0 items-center gap-2">
         <button
           onClick={abrirEscenario}
-          title="Back to the call"
+          title={t("common:last.backToCall")}
           className="flex h-8 items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-3.5 text-[13px] font-semibold text-success"
         >
           <span className="size-1.5 rounded-full bg-success" /> Back to call
@@ -38,7 +40,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
             justo el retraso que hace que te oigan. */}
         <button
           onClick={() => void alternarMic()}
-          title={mic ? "Mute your microphone" : "Unmute your microphone"}
+          title={mic ? t("common:last.mute") : t("common:last.unmute")}
           aria-pressed={!mic}
           className={cn(
             "grid size-8 place-items-center rounded-lg border bg-card hover:bg-accent",
@@ -63,7 +65,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
     <button
       onClick={() => void entrar(spaceId)}
       disabled={estado === "entrando"}
-      title={fallo ?? "Join the voice channel"}
+      title={fallo ?? t("common:last.joinVoiceChannel")}
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 rounded-lg border pl-2 pr-3 text-[13px] font-semibold",
         fallo
@@ -93,7 +95,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
       ) : (
         <Volume2 className="size-3.5" />
       )}
-      Join voice
+      {t("common:last.joinVoice")}
     </button>
   );
 }

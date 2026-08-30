@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Check, Copy, Lock } from "lucide-react";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ export default function RevealedSecrets({
   secrets: Once[];
   onDone: () => void;
 }) {
+  const { t } = useT();
   const [copied, setCopied] = useState<string | null>(null);
   const [places, setPlaces] = useState<OpVault[] | null>(null);
   const [placeKey, setPlaceKey] = useState("");
@@ -107,7 +109,7 @@ export default function RevealedSecrets({
       <div>
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">
-          Shown once — these can't be retrieved later, only rotated or replaced.
+          {t("common:last.shownOnce")}
         </p>
       </div>
 
@@ -140,7 +142,7 @@ export default function RevealedSecrets({
         places.length > 0 && (
           <div className="flex items-end gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Save in</Label>
+              <Label className="text-xs">{t("common:last.saveIn")}</Label>
               {/* A list, not a text box: the old default was "Private", which
                   only exists in some accounts — a business one usually has
                   "Employee" and named vaults, so typing it failed at save time. */}

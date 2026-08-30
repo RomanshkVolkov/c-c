@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useRef } from "react";
 import { Maximize2, Minimize2, TerminalSquare, X } from "lucide-react";
 import { useTerminals } from "@/store/terminal.store";
@@ -20,6 +21,7 @@ const PUNTO: Record<string, string> = {
 };
 
 export default function TerminalPanel() {
+  const { t } = useT();
   const { sesiones, activa, abierto, maximizado, alto } = useTerminals();
   const activar = useTerminals((s) => s.activar);
   const cerrar = useTerminals((s) => s.cerrar);
@@ -104,14 +106,14 @@ export default function TerminalPanel() {
         </div>
         <button
           onClick={() => setMaximizado(!maximizado)}
-          title={maximizado ? "Restore" : "Maximize"}
+          title={maximizado ? t("common:last.restore") : t("common:last.maximize")}
           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           {maximizado ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
         </button>
         <button
           onClick={cerrarTodas}
-          title="Close every session"
+          title={t("common:last.closeEverySession")}
           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <X className="size-3.5" />
