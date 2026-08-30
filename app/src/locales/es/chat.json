@@ -1,0 +1,22 @@
+{
+  "followingTitle": "Te avisa de cada mensaje de aquí",
+  "notFollowingTitle": "Saliste de este canal — aquí sólo te avisan las menciones",
+  "following": "Siguiendo",
+  "follow": "Seguir",
+  "emptyTeamOnly": "Todavía no hay nada. Este canal es sólo del equipo — nunca llega a un cliente.",
+  "placeholder": "Escríbele al equipo — con # citas una tarjeta, con @ nombras a alguien",
+  "send": "Enviar",
+  "save": "Guardar",
+  "cancel": "Cancelar",
+  "edit": "Editar",
+  "messageActions": "Acciones del mensaje",
+  "withdrawTitle": "¿Retirar este mensaje?",
+  "withdrawBody": "Deja de salir en el canal para todo el mundo.",
+  "withdraw": "Retirar",
+  "createTask": "Crear una tarea",
+  "clientSeesTitle": "¿Puede verlo el cliente?",
+  "clientSeesBody": "Esto viene del canal del equipo, que el cliente no ve nunca. Hacer visible la tarjeta la pone en su tablero y gasta uno de sus números de ticket.",
+  "visibleToThem": "Visible para él",
+  "internal": "Interno",
+  "message": "Mensaje"
+}

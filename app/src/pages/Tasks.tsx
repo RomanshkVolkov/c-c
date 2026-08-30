@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -123,6 +124,7 @@ function dotForStatus(
 // ─── Board ────────────────────────────────────────────────────────────────────
 
 function Board() {
+  const { t } = useT();
   // Board vs list is a per-user viewing preference, not shared state — keeping
   // it local means two people can look at the same list differently.
   const [view, setView] = useState<"board" | "list" | "calendar">("board");
@@ -164,7 +166,7 @@ function Board() {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="text-sm text-muted-foreground">
-          Pick a list on the left, or create one to get started.
+          {t("work:board.pickAList")}
         </p>
       </div>
     );
@@ -179,7 +181,7 @@ function Board() {
   if (!board) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <p className="text-sm text-muted-foreground">Could not load this board.</p>
+        <p className="text-sm text-muted-foreground">{t("work:board.couldNotLoad")}</p>
         <Button size="sm" variant="outline" onClick={() => refreshBoard()}>
           <RefreshCw className="size-3 mr-1" /> Retry
         </Button>
@@ -208,11 +210,11 @@ function Board() {
         className="flex w-full items-center gap-1 rounded px-1 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
         onClick={async () => {
           const title = await prompt({
-            title: "New task",
-            label: "Title",
-            confirmText: "Create",
+            title: t("work:board.newTaskTitle"),
+            label: t("work:board.newTaskLabel"),
+            confirmText: t("work:board.create"),
             description: channelOfList
-              ? "This list belongs to a client. You'll choose next whether they see it."
+              ? t("work:board.clientListHint")
               : undefined,
           });
           if (!title) return;
@@ -223,12 +225,10 @@ function Board() {
           let visibility: ItemVisibility | undefined;
           if (channelOfList) {
             const share = await confirm({
-              title: "Can the client see this?",
-              description:
-                "Visible puts it on their board and takes one of their ticket numbers — permanently, " +
-                "even if you withdraw it later. Internal keeps it to the team.",
-              confirmText: "Visible to them",
-              cancelText: "Internal",
+              title: t("work:board.clientSeesTitle"),
+              description: t("work:board.clientSeesBody"),
+              confirmText: t("work:board.visibleToThem"),
+              cancelText: t("work:board.internal"),
             });
             visibility = share ? "public" : "internal";
           }
@@ -270,13 +270,13 @@ function Board() {
             </button>
           ))}
         </div>
-        <TaxonomyPicker label="Any kind" value={category} options={categories} onChange={setCategory} />
-        <TaxonomyPicker label="Any area" value={area} options={areas} onChange={setArea} />
+        <TaxonomyPicker label={t("work:board.anyKind")} value={category} options={categories} onChange={setCategory} />
+        <TaxonomyPicker label={t("work:board.anyArea")} value={area} options={areas} onChange={setArea} />
         <Button
           size="sm"
           variant="ghost"
           className="h-7 text-xs"
-          title="This list's overview"
+          title={t("work:board.overview")}
           onClick={() => openDoc("list", board.list.id, board.list.name)}
         >
           <FileText className="mr-1 size-3" /> Overview
@@ -285,7 +285,7 @@ function Board() {
           size="icon-xs"
           variant="ghost"
           className="ml-auto"
-          title="Refresh"
+          title={t("work:board.refresh")}
           disabled={loading}
           onClick={() => refreshBoard()}
         >
@@ -298,10 +298,10 @@ function Board() {
           <KanbanBoard
             columns={columns}
             items={items}
-            emptyColumnHint="No tasks"
+            emptyColumnHint={t("work:board.noTasks")}
             onMove={({ itemId, toColumnId, afterId, beforeId }) =>
               moveTask(itemId, toColumnId, afterId, beforeId).catch((e) =>
-                toast.error("Could not move task", { description: String(e) }),
+                toast.error(t("work:board.errMove"), { description: String(e) }),
               )
             }
             renderItem={(item, dragging) => (
@@ -352,6 +352,7 @@ function ListView({
   board: NonNullable<ReturnType<typeof useTasksStore.getState>["board"]>;
   onOpen: (id: string) => void;
 }) {
+  const { t } = useT();
   return (
     <div className="h-full overflow-auto p-4">
       {board.statuses.map((status) => {
@@ -364,7 +365,7 @@ function ListView({
               <span className="text-xs text-muted-foreground">{rows.length}</span>
             </div>
             {rows.length === 0 ? (
-              <p className="px-1 py-2 text-xs text-muted-foreground">Empty</p>
+              <p className="px-1 py-2 text-xs text-muted-foreground">{t("work:board.empty")}</p>
             ) : (
               <div className="divide-y rounded-md border">
                 {rows.map((t) => (
@@ -433,6 +434,7 @@ function TaskCardView({
   dragging?: boolean;
   onOpen: () => void;
 }) {
+  const { t } = useT();
   const priority = priorityMeta(card.priority);
   return (
     <div
@@ -481,7 +483,7 @@ function TaskCardView({
               "flex items-center gap-0.5",
               card.subtaskDone === card.subtaskCount && "text-success",
             )}
-            title="Subtasks completed"
+            title={t("work:board.subtasksDone")}
           >
             <ListChecks className="size-3" />
             {card.subtaskDone}/{card.subtaskCount}

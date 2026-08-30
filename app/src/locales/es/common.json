@@ -25,7 +25,17 @@
   "voice": {
     "inChannel_one": "{{people}} está hablando en este canal.",
     "inChannel_other": "{{people}} están hablando en este canal.",
-    "join": "Entrar"
+    "join": "Entrar",
+    "mute": "Silenciar tu micrófono",
+    "unmute": "Quitarle el silencio a tu micrófono",
+    "undeafen": "Volver a oír",
+    "deafen": "Ensordecer — dejar de oír y de que te oigan",
+    "cameraOff": "Apagar tu cámara",
+    "cameraOn": "Encender tu cámara",
+    "stopSharing": "Dejar de compartir la pantalla",
+    "share": "Compartir tu pantalla",
+    "settings": "Ajustes de audio y vídeo",
+    "leave": "Salir de la llamada"
   },
   "count": {
     "members_one": "{{count}} miembro",
@@ -125,5 +135,19 @@
     "errClipboard": "No se pudo leer la imagen del portapapeles",
     "errClipboardBody": "Prueba con el botón de adjuntar, o guárdala en un fichero y suéltalo aquí.",
     "writeInMarkdown": "Escribe en markdown…"
+  },
+  "palette": {
+    "newTask": "Tarea nueva",
+    "newSpace": "Espacio nuevo",
+    "tasks": "Tareas",
+    "channels": "Canales",
+    "dms": "Mensajes directos",
+    "notes": "Notas",
+    "people": "Gente",
+    "search": "Buscar",
+    "searchPlaceholder": "Busca tareas, mensajes, notas, gente…",
+    "create": "Crear",
+    "typeTwoLetters": "O escribe al menos dos letras para buscar.",
+    "nothingFound": "No se encontró nada."
   }
 }

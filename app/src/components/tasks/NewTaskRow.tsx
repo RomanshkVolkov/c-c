@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
@@ -30,6 +31,7 @@ export default function NewTaskRow({
    */
   onCreated?: () => void;
 }) {
+  const { t } = useT();
   const tree = useTasksStore((s) => s.tree);
   const createTaskIn = useTasksStore((s) => s.createTaskIn);
   const orgId = useOrgsStore((s) => s.currentOrgId);
@@ -79,13 +81,13 @@ export default function NewTaskRow({
   const preguntaVisibilidad = !!destino?.channel;
 
   const crear = async () => {
-    const t = title.trim();
-    if (!t || !listId || busy) return;
+    const limpio = title.trim();
+    if (!limpio || !listId || busy) return;
     setBusy(true);
     try {
       await createTaskIn({
         listId,
-        title: t,
+        title: limpio,
         priority,
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
         assigneeIds: assignee ? [assignee] : [],
@@ -96,7 +98,7 @@ export default function NewTaskRow({
       setTitle("");
       onCreated?.();
     } catch (e) {
-      toast.error("Could not create it", { description: String(e) });
+      toast.error(t("work:board.errCreate"), { description: String(e) });
     } finally {
       setBusy(false);
     }
@@ -117,14 +119,14 @@ export default function NewTaskRow({
               onClose();
             }
           }}
-          placeholder="What needs doing?"
-          aria-label="Task title"
+          placeholder={t("work:board.whatNeedsDoing")}
+          aria-label={t("work:board.taskTitle")}
           className="h-8 w-full bg-transparent text-sm outline-none"
         />
         {busy && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
         <button
           onClick={onClose}
-          aria-label="Close the composer"
+          aria-label={t("work:board.closeComposer")}
           className="shrink-0 text-muted-foreground hover:text-foreground"
         >
           <X className="size-4" />
@@ -133,7 +135,7 @@ export default function NewTaskRow({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
         <select
-          aria-label="Where it goes"
+          aria-label={t("work:board.whereItGoes")}
           value={listId}
           onChange={(e) => setListId(e.target.value)}
           className="h-7 max-w-[16rem] rounded border bg-background px-1.5"
@@ -146,7 +148,7 @@ export default function NewTaskRow({
         </select>
 
         <select
-          aria-label="Priority"
+          aria-label={t("work:board.priority")}
           value={priority}
           onChange={(e) => setPriority(e.target.value as TaskPriority)}
           className="h-7 rounded border bg-background px-1.5"
@@ -160,19 +162,19 @@ export default function NewTaskRow({
 
         <input
           type="date"
-          aria-label="Due date"
+          aria-label={t("work:board.dueDate")}
           value={dueAt}
           onChange={(e) => setDueAt(e.target.value)}
           className="h-7 rounded border bg-background px-1.5"
         />
 
         <select
-          aria-label="Assignee"
+          aria-label={t("work:board.assignee")}
           value={assignee}
           onChange={(e) => setAssignee(e.target.value)}
           className="h-7 rounded border bg-background px-1.5"
         >
-          <option value="">Nobody yet</option>
+          <option value="">{t("work:board.nobodyYet")}</option>
           {people.map((p) => (
             <option key={p.id} value={p.id}>
               {p.username}
@@ -182,7 +184,7 @@ export default function NewTaskRow({
 
         {preguntaVisibilidad && (
           <select
-            aria-label="Visibility"
+            aria-label={t("work:board.visibility")}
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as ItemVisibility | "")}
             className="h-7 rounded border bg-background px-1.5"
@@ -190,8 +192,8 @@ export default function NewTaskRow({
             {/* The empty option is the server's default and says so out loud:
                 in a list bound to a client, work is theirs to see unless
                 somebody decides otherwise. */}
-            <option value="">The client sees it</option>
-            <option value="internal">Internal only</option>
+            <option value="">{t("work:board.clientSeesIt")}</option>
+            <option value="internal">{t("work:board.internalOnly")}</option>
           </select>
         )}
 

@@ -25,7 +25,17 @@
   "voice": {
     "inChannel_one": "{{people}} is talking in this channel.",
     "inChannel_other": "{{people}} are talking in this channel.",
-    "join": "Join"
+    "join": "Join",
+    "mute": "Mute your microphone",
+    "unmute": "Unmute your microphone",
+    "undeafen": "Undeafen",
+    "deafen": "Deafen — stop hearing and being heard",
+    "cameraOff": "Turn your camera off",
+    "cameraOn": "Turn your camera on",
+    "stopSharing": "Stop sharing your screen",
+    "share": "Share your screen",
+    "settings": "Audio and video settings",
+    "leave": "Leave the call"
   },
   "count": {
     "members_one": "{{count}} member",
@@ -125,5 +135,19 @@
     "errClipboard": "Couldn't read the image from the clipboard",
     "errClipboardBody": "Try the attach button, or save it to a file and drop it in.",
     "writeInMarkdown": "Write in markdown…"
+  },
+  "palette": {
+    "newTask": "New task",
+    "newSpace": "New space",
+    "tasks": "Tasks",
+    "channels": "Channels",
+    "dms": "Direct messages",
+    "notes": "Notes",
+    "people": "People",
+    "search": "Search",
+    "searchPlaceholder": "Search tasks, messages, notes, people…",
+    "create": "Create",
+    "typeTwoLetters": "Or type at least two letters to search.",
+    "nothingFound": "Nothing found."
   }
 }

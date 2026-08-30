@@ -2,11 +2,13 @@ import i18next, { type ParseKeys } from "i18next";
 import { initReactI18next, useTranslation } from "react-i18next";
 
 import enChannel from "@/locales/en/channel.json";
+import enChat from "@/locales/en/chat.json";
 import enCommon from "@/locales/en/common.json";
 import enNav from "@/locales/en/nav.json";
 import enNotifications from "@/locales/en/notifications.json";
 import enWork from "@/locales/en/work.json";
 import esChannel from "@/locales/es/channel.json";
+import esChat from "@/locales/es/chat.json";
 import esCommon from "@/locales/es/common.json";
 import esNav from "@/locales/es/nav.json";
 import esNotifications from "@/locales/es/notifications.json";
@@ -34,7 +36,7 @@ import type { Locale } from "@/store/locale.store";
  * lista repetida, añadir un espacio y olvidarse de uno de los tres deja las
  * claves de ese espacio sin tipar — es decir, sin la red.
  */
-export const NAMESPACES = ["common", "nav", "notifications", "work", "channel"] as const;
+export const NAMESPACES = ["common", "nav", "notifications", "work", "channel", "chat"] as const;
 
 /**
  * Una clave que existe, dicho por el compilador.
@@ -48,8 +50,8 @@ export type MessageKey = ParseKeys<typeof NAMESPACES>;
 
 /** El inglés manda: si una clave no está aquí, no está en ninguna parte. */
 const recursos = {
-  en: { common: enCommon, nav: enNav, notifications: enNotifications, work: enWork, channel: enChannel },
-  es: { common: esCommon, nav: esNav, notifications: esNotifications, work: esWork, channel: esChannel },
+  en: { common: enCommon, nav: enNav, notifications: enNotifications, work: enWork, channel: enChannel, chat: enChat },
+  es: { common: esCommon, nav: esNav, notifications: esNotifications, work: esWork, channel: esChannel, chat: esChat },
 } as const;
 
 /**

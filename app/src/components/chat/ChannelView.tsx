@@ -42,6 +42,7 @@ import type { ItemVisibility } from "@/types/task";
  * the feature.
  */
 export default function ChannelView({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+  const { t } = useT();
   const messages = useChatStore((s) => s.messages);
   const loading = useChatStore((s) => s.loading);
   const hasMore = useChatStore((s) => s.hasMore);
@@ -161,8 +162,8 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           onClick={() => setFollowing(spaceId, !sigo).catch((e) => toast.error(String(e)))}
           title={
             sigo
-              ? "You get a notification for every message here"
-              : "You left this channel — only mentions notify you here"
+              ? t("chat:followingTitle")
+              : t("chat:notFollowingTitle")
           }
           className={cn(
             "ml-auto flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
@@ -172,7 +173,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           )}
         >
           {sigo ? <Bell className="size-3" /> : <BellOff className="size-3" />}
-          {sigo ? "Following" : "Follow"}
+          {sigo ? t("chat:following") : t("chat:follow")}
         </button>
       </header>
 
@@ -188,7 +189,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           </div>
         ) : messages.length === 0 ? (
           <p className="pt-6 text-center text-xs text-muted-foreground">
-            Nothing here yet. This channel is only for the team — it never reaches a client.
+            {t("chat:emptyTeamOnly")}
           </p>
         ) : (
           <div className="space-y-3">
@@ -226,7 +227,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           // The rule that keeps the four ways of writing in cac apart, said
           // where the decision is actually made rather than in a doc nobody
           // opens. If people don't know where to write, the feature failed.
-          placeholder="Message the team — # cites a card, @ names somebody"
+          placeholder={t("chat:placeholder")}
         />
         <div className="mt-1 flex justify-end">
           <Button size="sm" onClick={send} disabled={sending || !draft.trim()}>
@@ -235,7 +236,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
             ) : (
               <Send className="mr-1 size-3" />
             )}
-            Send
+            {t("chat:send")}
           </Button>
         </div>
       </div>
@@ -262,6 +263,7 @@ function Message({
   cards: () => { id: string; seq: number; title: string }[];
   people: () => { id: string; username: string }[];
 }) {
+  const { t } = useT();
   const session = useAuthStore((s) => s.session);
   const edit = useChatStore((s) => s.edit);
   const withdraw = useChatStore((s) => s.withdraw);
@@ -365,10 +367,10 @@ function Message({
             <div className="flex gap-2">
               <Button size="sm" onClick={save} disabled={saving || !draft.trim()}>
                 {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
-                Save
+                {t("chat:save")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
-                Cancel
+                {t("chat:cancel")}
               </Button>
             </div>
           </div>
@@ -384,7 +386,7 @@ function Message({
                 sola diana abre una lista con los nombres de las cosas. */}
             <DropdownMenu>
               <DropdownMenuTrigger
-                aria-label="Message actions"
+                aria-label={t("chat:messageActions")}
                 className="absolute right-1 top-1 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100"
               >
                 <ChevronDown className="size-3.5" />
@@ -400,15 +402,15 @@ function Message({
                       }}
                     >
                       <Pencil className="size-4" />
-                      Edit
+                      {t("chat:edit")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={async () => {
                         const ok = await confirm({
-                          title: "Withdraw this message?",
-                          description: "It stops showing in the channel for everyone.",
-                          confirmText: "Withdraw",
+                          title: t("chat:withdrawTitle"),
+                          description: t("chat:withdrawBody"),
+                          confirmText: t("chat:withdraw"),
                           destructive: true,
                         });
                         if (!ok) return;
@@ -416,7 +418,7 @@ function Message({
                       }}
                     >
                       <Trash2 className="size-4" />
-                      Withdraw
+                      {t("chat:withdraw")}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -451,6 +453,7 @@ function MessageToTask({
   spaceId: string;
   spaceName: string;
 }) {
+  const { t } = useT();
   const activeListId = useTasksStore((s) => s.activeListId);
   const tree = useTasksStore((s) => s.tree);
   const createTask = useTasksStore((s) => s.createTask);
@@ -491,12 +494,12 @@ function MessageToTask({
         let visibility: ItemVisibility | undefined;
         if (channelOfList) {
           const share = await confirm({
-            title: "Can the client see this?",
+            title: t("chat:clientSeesTitle"),
             description:
               "This came from the team's channel, which the client never sees. Making the card " +
               "visible puts its text on their board and takes one of their ticket numbers.",
-            confirmText: "Visible to them",
-            cancelText: "Internal",
+            confirmText: t("chat:visibleToThem"),
+            cancelText: t("chat:internal"),
           });
           visibility = share ? "public" : "internal";
         }
@@ -510,7 +513,7 @@ function MessageToTask({
       }}
     >
       <Plus className="size-4" />
-      Create a task
+      {t("chat:createTask")}
     </DropdownMenuItem>
   );
 }

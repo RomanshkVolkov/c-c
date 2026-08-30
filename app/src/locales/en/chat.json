@@ -1,0 +1,22 @@
+{
+  "followingTitle": "You get a notification for every message here",
+  "notFollowingTitle": "You left this channel — only mentions notify you here",
+  "following": "Following",
+  "follow": "Follow",
+  "emptyTeamOnly": "Nothing here yet. This channel is only for the team — it never reaches a client.",
+  "placeholder": "Message the team — # cites a card, @ names somebody",
+  "send": "Send",
+  "save": "Save",
+  "cancel": "Cancel",
+  "edit": "Edit",
+  "messageActions": "Message actions",
+  "withdrawTitle": "Withdraw this message?",
+  "withdrawBody": "It stops showing in the channel for everyone.",
+  "withdraw": "Withdraw",
+  "createTask": "Create a task",
+  "clientSeesTitle": "Can the client see this?",
+  "clientSeesBody": "This came from the team's channel, which the client never sees. Making the card visible puts it on their board and spends one of their ticket numbers.",
+  "visibleToThem": "Visible to them",
+  "internal": "Internal",
+  "message": "Message"
+}

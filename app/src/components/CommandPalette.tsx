@@ -1,3 +1,4 @@
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -55,20 +56,20 @@ const VACIO: Results = { tasks: [], notes: [], people: [], messages: [], dms: []
  * second place to get it wrong.
  */
 const ACCIONES = [
-  { key: "task", label: "New task", icon: Plus, to: "/my-work?new=1" },
-  { key: "space", label: "New space", icon: Boxes, to: "/my-work?newSpace=1" },
+  { key: "task", labelKey: "common:palette.newTask", icon: Plus, to: "/my-work?new=1" },
+  { key: "space", labelKey: "common:palette.newSpace", icon: Boxes, to: "/my-work?newSpace=1" },
   // No "new folder" or "new list" here. Both need a parent, and a palette entry
   // that then asks "inside what?" would be a second place deciding something
   // the tree already decides — with its own idea of what is allowed. The tree
   // is two clicks away and knows the answer.
 ] as const;
 
-const GRUPOS: { key: keyof Results; label: string; icon: typeof Search }[] = [
-  { key: "tasks", label: "Tasks", icon: KanbanSquare },
-  { key: "messages", label: "Channels", icon: Hash },
-  { key: "dms", label: "Direct messages", icon: MessageSquare },
-  { key: "notes", label: "Notes", icon: NotebookPen },
-  { key: "people", label: "People", icon: User },
+const GRUPOS: { key: keyof Results; labelKey: MessageKey; icon: typeof Search }[] = [
+  { key: "tasks", labelKey: "common:palette.tasks", icon: KanbanSquare },
+  { key: "messages", labelKey: "common:palette.channels", icon: Hash },
+  { key: "dms", labelKey: "common:palette.dms", icon: MessageSquare },
+  { key: "notes", labelKey: "common:palette.notes", icon: NotebookPen },
+  { key: "people", labelKey: "common:palette.people", icon: User },
 ];
 
 export default function CommandPalette({
@@ -78,6 +79,7 @@ export default function CommandPalette({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useT();
   const [q, setQ] = useState("");
   const [res, setRes] = useState<Results>(VACIO);
   const [loading, setLoading] = useState(false);
@@ -136,8 +138,8 @@ export default function CommandPalette({
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search tasks, messages, notes, people…"
-            aria-label="Search"
+            placeholder={t("common:palette.searchPlaceholder")}
+            aria-label={t("common:palette.search")}
             className="h-11 w-full bg-transparent text-sm outline-none"
           />
           {loading && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
@@ -147,7 +149,7 @@ export default function CommandPalette({
           {q.trim().length < 2 ? (
             <>
               <p className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Create
+                {t("common:palette.create")}
               </p>
               {ACCIONES.map((a) => (
                 <button
@@ -156,22 +158,22 @@ export default function CommandPalette({
                   className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm hover:bg-accent"
                 >
                   <a.icon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="flex-1">{a.label}</span>
+                  <span className="flex-1">{t(a.labelKey)}</span>
                   <CornerDownLeft className="size-3 text-muted-foreground" />
                 </button>
               ))}
               <p className="px-3 pb-2 pt-3 text-center text-xs text-muted-foreground">
-                Or type at least two letters to search.
+                {t("common:palette.typeTwoLetters")}
               </p>
             </>
           ) : total === 0 && !loading ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">Nothing found.</p>
+            <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t("common:palette.nothingFound")}</p>
           ) : (
             GRUPOS.map((g) =>
               res[g.key].length === 0 ? null : (
                 <section key={g.key} className="mb-1">
                   <p className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {g.label}
+                    {t(g.labelKey)}
                   </p>
                   {res[g.key].map((h) => (
                     <button

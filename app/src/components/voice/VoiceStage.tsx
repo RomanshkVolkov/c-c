@@ -266,15 +266,15 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
 
       <VoiceControls
         mic={mic}
-        sordo={sordo}
+        deafened={sordo}
         cam={cam}
-        compartiendo={compartiendo}
+        sharing={compartiendo}
         onMic={() => void alternarMic()}
-        onSordera={() => void alternarSordera()}
+        onDeafen={() => void alternarSordera()}
         onCam={() => void alternarCam()}
-        onCompartir={() => void alternarCompartir()}
-        onAjustes={() => setAjustes((v) => !v)}
-        onSalir={() => void salir()}
+        onShare={() => void alternarCompartir()}
+        onSettings={() => setAjustes((v) => !v)}
+        onLeave={() => void salir()}
       />
     </div>
   );

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import type { LucideIcon } from "lucide-react";
 import {
   HeadphoneOff,
@@ -24,19 +25,19 @@ import { cn } from "@/lib/utils";
  * igual de «activo» que de «error».
  */
 
-function Redondo({
-  icono: Icono,
-  etiqueta,
-  activo,
-  tono = "peligro",
+function Round({
+  icon: Icon,
+  label,
+  active,
+  tone = "danger",
   onClick,
   disabled,
 }: {
-  icono: LucideIcon;
-  etiqueta: string;
-  activo?: boolean;
+  icon: LucideIcon;
+  label: string;
+  active?: boolean;
   /** De qué color se enciende: rojo para apagar algo, cian para encenderlo. */
-  tono?: "peligro" | "primario";
+  tone?: "danger" | "primary";
   onClick?: () => void;
   disabled?: boolean;
 }) {
@@ -45,67 +46,68 @@ function Redondo({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={etiqueta}
-      aria-pressed={activo ?? false}
-      title={etiqueta}
+      aria-label={label}
+      aria-pressed={active ?? false}
+      title={label}
       className={cn(
         "grid size-11.5 place-items-center rounded-full border transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "disabled:cursor-not-allowed disabled:opacity-40",
-        activo
-          ? tono === "peligro"
+        active
+          ? tone === "danger"
             ? "border-destructive bg-destructive/10 text-destructive"
             : "border-primary bg-primary/15 text-primary"
           : "border-border bg-card text-foreground hover:bg-accent",
       )}
     >
-      <Icono className="size-5" />
+      <Icon className="size-5" />
     </button>
   );
 }
 
 export default function VoiceControls({
   mic,
-  sordo,
+  deafened,
   cam,
-  compartiendo,
+  sharing,
   onMic,
-  onSordera,
+  onDeafen,
   onCam,
-  onCompartir,
-  onAjustes,
-  onSalir,
+  onShare,
+  onSettings,
+  onLeave,
 }: {
   mic: boolean;
-  sordo: boolean;
+  deafened: boolean;
   cam: boolean;
-  compartiendo: boolean;
+  sharing: boolean;
   onMic: () => void;
-  onSordera: () => void;
+  onDeafen: () => void;
   onCam?: () => void;
-  onCompartir?: () => void;
-  onAjustes?: () => void;
-  onSalir: () => void;
+  onShare?: () => void;
+  onSettings?: () => void;
+  onLeave: () => void;
 }) {
+  const { t } = useT();
   return (
     <div className="flex h-21 shrink-0 items-center justify-center gap-2.5 border-t bg-sidebar">
-      <Redondo
-        icono={mic ? Mic : MicOff}
-        etiqueta={mic ? "Mute your microphone" : "Unmute your microphone"}
-        activo={!mic}
+      <Round
+        icon={mic ? Mic : MicOff}
+        label={mic ? t("common:voice.mute") : t("common:voice.unmute")}
+        active={!mic}
         onClick={onMic}
       />
-      <Redondo
-        icono={sordo ? HeadphoneOff : Headphones}
-        etiqueta={sordo ? "Undeafen" : "Deafen — stop hearing and being heard"}
-        activo={sordo}
-        onClick={onSordera}
+      <Round
+        icon={deafened ? HeadphoneOff : Headphones}
+        label={deafened ? t("common:voice.undeafen") : t("common:voice.deafen")}
+        active={deafened}
+        onClick={onDeafen}
       />
-      <Redondo
-        icono={cam ? Video : VideoOff}
-        etiqueta={cam ? "Turn your camera off" : "Turn your camera on"}
-        tono="primario"
-        activo={cam}
+      <Round
+        icon={cam ? Video : VideoOff}
+        label={cam ? t("common:voice.cameraOff") : t("common:voice.cameraOn")}
+        tone="primary"
+        active={cam}
         onClick={onCam}
         disabled={!onCam}
       />
@@ -115,26 +117,26 @@ export default function VoiceControls({
           alguien eso son tres botones que no responden, y lo primero que se
           reportó de la v1.6.38 fue justo eso. Una barra que crece luego cuesta
           menos que una que miente ahora. */}
-      {onCompartir && (
-        <Redondo
-          icono={MonitorUp}
-          etiqueta={compartiendo ? "Stop sharing your screen" : "Share your screen"}
-          tono="primario"
-          activo={compartiendo}
-          onClick={onCompartir}
+      {onShare && (
+        <Round
+          icon={MonitorUp}
+          label={sharing ? t("common:voice.stopSharing") : t("common:voice.share")}
+          tone="primary"
+          active={sharing}
+          onClick={onShare}
         />
       )}
-      {onAjustes && (
-        <Redondo icono={SlidersHorizontal} etiqueta="Audio and video settings" onClick={onAjustes} />
+      {onSettings && (
+        <Round icon={SlidersHorizontal} label={t("common:voice.settings")} onClick={onSettings} />
       )}
 
       <span className="mx-1.5 h-7 w-px bg-border" />
 
       <button
         type="button"
-        onClick={onSalir}
-        aria-label="Leave the call"
-        title="Leave the call"
+        onClick={onLeave}
+        aria-label={t("common:voice.leave")}
+        title={t("common:voice.leave")}
         className={cn(
           "flex h-11.5 items-center gap-2 rounded-full bg-destructive px-5 text-sm font-bold text-background",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
