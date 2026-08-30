@@ -1,3 +1,5 @@
+import i18next from "i18next";
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
@@ -26,6 +28,7 @@ type State =
  * the specifics on the hub page.
  */
 export default function K8sStatusBadge({ serverId }: { serverId: string }) {
+  const { t } = useT();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
@@ -52,7 +55,12 @@ export default function K8sStatusBadge({ serverId }: { serverId: string }) {
         ];
         setState(
           issues.length === 0
-            ? { kind: "healthy", detail: `${nodes.length} node(s) ready` }
+            ? {
+                kind: "healthy",
+                // `i18next.t` y no el hook: esto corre dentro de un efecto que
+                // consulta el clúster, no al pintar.
+                detail: i18next.t("common:count.nodesReady", { count: nodes.length }),
+              }
             : { kind: "issues", count: issues.length, detail: issues.join("\n") },
         );
       })
@@ -78,7 +86,7 @@ export default function K8sStatusBadge({ serverId }: { serverId: string }) {
     case "issues":
       return (
         <Badge variant="secondary" title={state.detail}>
-          {state.count} issue{state.count > 1 ? "s" : ""}
+          {t("common:count.issues", { count: state.count })}
         </Badge>
       );
     case "unknown":

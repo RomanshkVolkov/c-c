@@ -1,3 +1,4 @@
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,13 +42,22 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 export default function ItemCalendar({
   items,
   onOpen,
-  noun = "item",
+  countKey = "common:count.items",
 }: {
   items: CalendarItem[];
   onOpen: (id: string) => void;
-  /** What one of these is called, for "3 report(s)" vs "3 card(s)". */
-  noun?: string;
+  /**
+   * Cómo se cuentan estos elementos: «3 tarjetas», «3 reuniones».
+   *
+   * Antes esto era un sustantivo suelto al que la vista le pegaba «(s)». Eso
+   * sólo funciona en inglés y sólo para los plurales regulares: en castellano
+   * «reunión» hace «reuniones», con acento que desaparece. Ahora entra la
+   * **clave del mensaje entero**, con el número dentro, y cada idioma decide
+   * dónde va y qué forma toma.
+   */
+  countKey?: MessageKey;
 }) {
+  const { t } = useT();
   const [cursor, setCursor] = useState(() => {
     const n = new Date();
     return new Date(n.getFullYear(), n.getMonth(), 1);
@@ -166,8 +176,8 @@ export default function ItemCalendar({
       {selected && selectedItems.length > 0 && (
         <div className="rounded-lg border p-3 space-y-2">
           <p className="text-sm font-medium">
-            {new Date(selectedItems[0].at).toLocaleDateString()} · {selectedItems.length}{" "}
-            {noun}(s)
+            {new Date(selectedItems[0].at).toLocaleDateString()} ·{" "}
+            {t(countKey, { count: selectedItems.length })}
           </p>
           {selectedItems.map((r) => (
             <button

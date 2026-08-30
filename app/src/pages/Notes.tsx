@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -162,6 +163,7 @@ function EmptyState() {
  * visually apart for that reason.
  */
 function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { t } = useT();
   const confirm = useConfirm();
   const items = useNotesStore((s) => s.trash);
   const loading = useNotesStore((s) => s.loadingTrash);
@@ -179,7 +181,7 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
       title: `Permanently delete "${title || "Untitled"}"?`,
       description:
         subpages > 0
-          ? `This also deletes ${subpages} subpage${subpages > 1 ? "s" : ""}. This cannot be undone.`
+          ? t("common:count.deletesSubpages", { count: subpages })
           : "This cannot be undone.",
       confirmText: "Delete forever",
       destructive: true,
@@ -211,7 +213,7 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
                 <p className="truncate text-sm">{it.title || "Untitled"}</p>
                 <p className="text-xs text-muted-foreground">
                   {new Date(it.deletedAt).toLocaleString()}
-                  {it.subpages > 0 && ` · ${it.subpages} subpage${it.subpages > 1 ? "s" : ""}`}
+                  {it.subpages > 0 && ` · ${t("common:count.subpages", { count: it.subpages })}`}
                 </p>
               </div>
               <Button
@@ -219,7 +221,7 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
                 variant="outline"
                 onClick={() =>
                   restoreNote(it.id)
-                    .then((n) => toast.success(`Restored ${n} page${n === 1 ? "" : "s"}`))
+                    .then((n) => toast.success(t("common:count.restoredPages", { count: n })))
                     .catch((e) => toast.error("Could not restore", { description: String(e) }))
                 }
               >
@@ -251,7 +253,7 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
               });
               if (!ok) return;
               emptyTrash()
-                .then((n) => toast.success(`Deleted ${n} page${n === 1 ? "" : "s"}`))
+                .then((n) => toast.success(t("common:count.deletedPages", { count: n })))
                 .catch((e) => toast.error("Could not empty the trash", { description: String(e) }));
             }}
           >
@@ -282,6 +284,7 @@ interface ExportSummary {
  * the button says so rather than failing halfway.
  */
 function ExportButton() {
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
 
   const run = async () => {
@@ -300,10 +303,10 @@ function ExportButton() {
       });
       if (!res) return; // picker dismissed
       const failed = res.failedAttachments
-        ? ` · ${res.failedAttachments} attachment${res.failedAttachments === 1 ? "" : "s"} failed`
+        ? ` · ${t("common:count.attachmentsFailed", { count: res.failedAttachments })}`
         : "";
-      toast.success(`Exported ${res.pages} page${res.pages === 1 ? "" : "s"}`, {
-        description: `${res.attachments} attachment${res.attachments === 1 ? "" : "s"} · ${res.dir}${failed}`,
+      toast.success(t("common:count.exportedPages", { count: res.pages }), {
+        description: `${t("common:count.attachments", { count: res.attachments })} · ${res.dir}${failed}`,
       });
     } catch (e) {
       toast.error("Export failed", { description: e instanceof Error ? e.message : String(e) });
@@ -465,6 +468,7 @@ function TreeDnd({ children }: { children: React.ReactNode }) {
 }
 
 function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const prompt = usePrompt();
@@ -590,7 +594,7 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
                     title: `Delete "${note.title || "Untitled"}"?`,
                     description:
                       count > 0
-                        ? `This also removes ${count} subpage${count > 1 ? "s" : ""}. You can restore them from the trash.`
+                        ? t("common:count.removesSubpages", { count })
                         : "You can restore it from the trash.",
                     confirmText: "Delete",
                     destructive: true,

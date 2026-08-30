@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { Building2, ChevronsUpDown, Check, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
   const setCurrentOrg = useOrgsStore((s) => s.setCurrentOrg);
   const createOrg = useOrgsStore((s) => s.createOrg);
   const current = orgs.find((o) => o.id === currentOrgId) ?? null;
+  const { t } = useT();
   const espacios = useTasksStore((s) => s.tree.length);
   // Rol, gente y espacios en una línea. Vivía en un bloque propio encima de
   // esta fila, que repetía el nombre de la organización dos veces seguidas; es
@@ -61,10 +63,11 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
   const seña = current
     ? [
         current.role,
-        current.memberCount
-          ? `${current.memberCount} member${current.memberCount === 1 ? "" : "s"}`
-          : "",
-        espacios ? `${espacios} space${espacios === 1 ? "" : "s"}` : "",
+        // El plural lo pone el catálogo, no un ternario: «1 espacio» y «2
+        // espacios» no se diferencian en una ese, y hay idiomas con más de dos
+        // formas.
+        current.memberCount ? t("common:count.members", { count: current.memberCount }) : "",
+        espacios ? t("common:count.spaces", { count: espacios }) : "",
       ]
         .filter(Boolean)
         .join(" · ")

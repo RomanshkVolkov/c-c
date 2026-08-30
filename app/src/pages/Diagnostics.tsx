@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import {
   Activity,
@@ -138,6 +139,7 @@ export default function Diagnostics() {
 }
 
 function BatchCard({ batch }: { batch: TelemetryEventView }) {
+  const { t } = useT();
   const [showDevice, setShowDevice] = useState(false);
   const [showBeats, setShowBeats] = useState(false);
 
@@ -187,7 +189,8 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
           className="w-full border-b px-3 py-1 text-left text-xs text-muted-foreground hover:bg-accent/50"
           onClick={() => setShowBeats((v) => !v)}
         >
-          {showBeats ? "Hide" : "Show"} {beats} heartbeat{beats === 1 ? "" : "s"}
+          {t(showBeats ? "common:count.hide" : "common:count.show")}{" "}
+          {t("common:count.heartbeats", { count: beats })}
         </button>
       )}
       <ul className="divide-y">

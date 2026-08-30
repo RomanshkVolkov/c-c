@@ -129,7 +129,7 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
             }),
           )}
           onOpen={() => setVista("lista")}
-          noun="meeting"
+          countKey="common:count.meetings"
         />
       ) : loading && meetings.length === 0 ? (
         <p className="flex items-center gap-2 px-3 py-6 text-sm text-muted-foreground">

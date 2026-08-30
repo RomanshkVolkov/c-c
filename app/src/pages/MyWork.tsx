@@ -294,7 +294,7 @@ export default function MyWork() {
                   label: `#${t.seq}`,
                 }))}
               onOpen={(id) => openTask(id).catch(() => {})}
-              noun="task"
+              countKey="common:count.tasks"
             />
           ) : vista === "board" ? (
             <KanbanBoard

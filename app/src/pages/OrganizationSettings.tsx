@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ const PESTANAS = [
 type Pestana = (typeof PESTANAS)[number]["key"];
 
 export default function OrganizationSettings() {
+  const { t } = useT();
   const [pestana, setPestana] = useState<Pestana>("members");
   const espacios = useTasksStore((s) => s.tree.length);
   const current = useOrgsStore((s) => s.currentOrg());
@@ -187,8 +189,8 @@ export default function OrganizationSettings() {
               Your role: {current.role}
               {superadmin && " · superadmin"}
               {current.memberCount > 0 &&
-                ` · ${current.memberCount} member${current.memberCount === 1 ? "" : "s"}`}
-              {espacios > 0 && ` · ${espacios} space${espacios === 1 ? "" : "s"}`}
+                ` · ${t("common:count.members", { count: current.memberCount })}`}
+              {espacios > 0 && ` · ${t("common:count.spaces", { count: espacios })}`}
               {current.createdAt &&
                 ` · created ${new Date(current.createdAt).toLocaleDateString(undefined, {
                   day: "numeric",

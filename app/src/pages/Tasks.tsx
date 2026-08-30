@@ -321,7 +321,7 @@ function Board() {
         ) : view === "calendar" ? (
           <div className="h-full overflow-auto p-4">
             <ItemCalendar
-              noun="card"
+              countKey="common:count.cards"
               onOpen={openTask}
               items={visible.map((t) => ({
                 id: t.id,

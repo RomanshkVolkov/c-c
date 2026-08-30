@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -156,6 +157,7 @@ function timeSince(ts: number | null): string {
 }
 
 export default function ServerStats() {
+  const { t } = useT();
   const navigate = useNavigate();
   const { state } = useLocation();
   const locationState = state as LocationState | null;
@@ -361,7 +363,7 @@ export default function ServerStats() {
                 onClick={() => setShowStopped(true)}
                 className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
               >
-                {hiddenStopped} stopped container{hiddenStopped > 1 ? "s" : ""} hidden — show
+                {t("common:count.hiddenContainers", { count: hiddenStopped })} — show
               </button>
             )}
 

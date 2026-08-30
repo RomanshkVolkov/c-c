@@ -29,7 +29,7 @@ const item = (id: string, dia: number, extra: Partial<CalendarItem> = {}): Calen
 
 const pintar = (items: CalendarItem[], onOpen = vi.fn()) => {
   vi.setSystemTime(HOY);
-  render(<ItemCalendar items={items} onOpen={onOpen} noun="task" />);
+  render(<ItemCalendar items={items} onOpen={onOpen} countKey="common:count.tasks" />);
   return onOpen;
 };
 

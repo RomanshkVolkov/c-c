@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Inbox, KeyRound, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
@@ -204,6 +205,7 @@ function FichaIntegracion({
   onRotated: (clave: string) => void;
 }) {
   const confirm = useConfirm();
+  const { t } = useT();
   const updateProject = useReportsStore((s) => s.updateProject);
   const rotateProjectKey = useReportsStore((s) => s.rotateProjectKey);
   const setProjectActive = useReportsStore((s) => s.setProjectActive);
@@ -323,7 +325,7 @@ function FichaIntegracion({
           {p.isActive ? "active" : "paused"}
         </Badge>
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-          {p.reportsThisMonth ?? 0} report{(p.reportsThisMonth ?? 0) === 1 ? "" : "s"} this month
+          {t("common:count.reportsThisMonth", { count: p.reportsThisMonth ?? 0 })}
         </span>
       </div>
 

@@ -6,6 +6,7 @@
  * here unchanged: any difference in behaviour at this point is a mistake in the
  * move, not a decision.
  */
+import { useT } from "@/lib/i18n";
 import { createContext, useContext, useEffect, useState } from "react";
 import {
   DndContext,
@@ -788,6 +789,7 @@ function ListNode({
   spaceName?: string;
   spaceProjectId?: string;
 }) {
+  const { t } = useT();
   const activeListId = useTasksStore((s) => s.activeListId);
   const selectList = useTasksStore((s) => s.selectList);
   const setScope = useMyWorkStore((s) => s.setScope);
@@ -914,7 +916,7 @@ function ListNode({
               onClick={async () => {
                 const ok = await confirm({
                   title: `Delete list "${list.name}"?`,
-                  description: `Deletes its ${list.taskCount} task(s) and columns. This can't be undone.`,
+                  description: t("common:count.deletesTasks", { count: list.taskCount }),
                   confirmText: "Delete list",
                   destructive: true,
                 });
