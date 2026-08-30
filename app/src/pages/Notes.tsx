@@ -72,6 +72,7 @@ import DropZone from "@/components/dnd/DropZone";
  * here. Creating, moving and deleting still need a live connection.
  */
 export default function Notes() {
+  const { t } = useT();
   const navigate = useNavigate();
   const { id } = useParams();
   const fetchTree = useNotesStore((s) => s.fetchTree);
@@ -121,10 +122,10 @@ export default function Notes() {
 
   useEffect(() => {
     if (!conflictNotice) return;
-    toast.warning("Saved as a conflict copy", {
-      description: `Another device changed this page first — your edit is safe in "${conflictNotice.conflictTitle}".`,
+    toast.warning(t("work:notes.conflictTitle"), {
+      description: t("work:notes.conflictBody", { name: conflictNotice.conflictTitle }),
       action: {
-        label: "Open",
+        label: t("work:notes.open"),
         onClick: () => navigate(`/notes/${conflictNotice.conflictId}`),
       },
     });
@@ -141,12 +142,13 @@ export default function Notes() {
 }
 
 function EmptyState() {
+  const { t } = useT();
   return (
     <div className="flex flex-1 items-center justify-center">
       <div className="text-center">
         <FileText className="mx-auto size-8 text-muted-foreground/50" />
         <p className="mt-2 text-sm text-muted-foreground">
-          Pick a page, or create one to start writing.
+          {t("work:notes.pickAPage")}
         </p>
       </div>
     </div>
@@ -178,16 +180,16 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
 
   const purge = async (id: string, title: string, subpages: number) => {
     const ok = await confirm({
-      title: `Permanently delete "${title || "Untitled"}"?`,
+      title: t("work:notes.purgeTitle", { name: title || t("work:notes.untitled") }),
       description:
         subpages > 0
           ? t("common:count.deletesSubpages", { count: subpages })
-          : "This cannot be undone.",
-      confirmText: "Delete forever",
+          : t("work:notes.cannotUndo"),
+      confirmText: t("work:notes.deleteForever"),
       destructive: true,
     });
     if (!ok) return;
-    purgeNote(id).catch((e) => toast.error("Could not delete", { description: String(e) }));
+    purgeNote(id).catch((e) => toast.error(t("work:notes.errDelete"), { description: String(e) }));
   };
 
   return (
@@ -204,13 +206,13 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
           )}
           {!loading && items.length === 0 && (
             <p className="px-1 py-2 text-xs text-muted-foreground">
-              Nothing deleted. Pages you delete land here first.
+              {t("work:notes.trashEmpty")}
             </p>
           )}
           {items.map((it) => (
             <div key={it.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/50">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm">{it.title || "Untitled"}</p>
+                <p className="truncate text-sm">{it.title || t("work:notes.untitled")}</p>
                 <p className="text-xs text-muted-foreground">
                   {new Date(it.deletedAt).toLocaleString()}
                   {it.subpages > 0 && ` · ${t("common:count.subpages", { count: it.subpages })}`}
@@ -222,7 +224,7 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
                 onClick={() =>
                   restoreNote(it.id)
                     .then((n) => toast.success(t("common:count.restoredPages", { count: n })))
-                    .catch((e) => toast.error("Could not restore", { description: String(e) }))
+                    .catch((e) => toast.error(t("work:notes.errRestore"), { description: String(e) }))
                 }
               >
                 <RotateCcw className="size-3" /> Restore
@@ -231,7 +233,7 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
                 size="icon-xs"
                 variant="ghost"
                 className="text-destructive/70 hover:text-destructive"
-                title="Delete forever"
+                title={t("work:notes.deleteForever")}
                 onClick={() => purge(it.id, it.title, it.subpages)}
               >
                 <Trash2 className="size-3" />
@@ -246,18 +248,18 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
             className="self-start text-destructive"
             onClick={async () => {
               const ok = await confirm({
-                title: "Empty the trash?",
-                description: `This permanently deletes everything in it. This cannot be undone.`,
-                confirmText: "Empty trash",
+                title: t("work:notes.emptyTrashTitle"),
+                description: t("work:notes.emptyTrashBody"),
+                confirmText: t("work:notes.emptyTrash"),
                 destructive: true,
               });
               if (!ok) return;
               emptyTrash()
                 .then((n) => toast.success(t("common:count.deletedPages", { count: n })))
-                .catch((e) => toast.error("Could not empty the trash", { description: String(e) }));
+                .catch((e) => toast.error(t("work:notes.errEmptyTrash"), { description: String(e) }));
             }}
           >
-            Empty trash
+            {t("work:notes.emptyTrash")}
           </Button>
         )}
       </DialogContent>
@@ -289,8 +291,8 @@ function ExportButton() {
 
   const run = async () => {
     if (!("__TAURI_INTERNALS__" in window)) {
-      toast.error("Export needs the desktop app", {
-        description: "A browser tab can't write a folder to disk.",
+      toast.error(t("work:notes.exportNeedsDesktop"), {
+        description: t("work:notes.exportNeedsDesktopBody"),
       });
       return;
     }
@@ -309,7 +311,7 @@ function ExportButton() {
         description: `${t("common:count.attachments", { count: res.attachments })} · ${res.dir}${failed}`,
       });
     } catch (e) {
-      toast.error("Export failed", { description: e instanceof Error ? e.message : String(e) });
+      toast.error(t("work:notes.exportFailed"), { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(false);
     }
@@ -319,7 +321,7 @@ function ExportButton() {
     <Button
       size="icon-xs"
       variant="ghost"
-      title="Export all pages as markdown"
+      title={t("work:notes.exportTitle")}
       disabled={busy}
       onClick={run}
     >
@@ -331,6 +333,7 @@ function ExportButton() {
 // ─── Navigator ──────────────────────────────────────────────────────────────
 
 function Navigator({ onSearch }: { onSearch: () => void }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const tree = useNotesStore((s) => s.tree);
   const loading = useNotesStore((s) => s.loadingTree);
@@ -360,15 +363,15 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/10">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
-        <span className="text-sm font-medium">Notes</span>
-        <Button size="icon-xs" variant="ghost" className="ml-auto" title="Search (⌘P)" onClick={onSearch}>
+        <span className="text-sm font-medium">{t("work:notes.title")}</span>
+        <Button size="icon-xs" variant="ghost" className="ml-auto" title={t("work:notes.search")} onClick={onSearch}>
           <Search className="size-3.5" />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Trash" onClick={() => setTrashOpen(true)}>
+        <Button size="icon-xs" variant="ghost" title={t("work:notes.trash")} onClick={() => setTrashOpen(true)}>
           <Trash2 className="size-3.5" />
         </Button>
         <ExportButton />
-        <Button size="icon-xs" variant="ghost" title="New page" onClick={addRoot}>
+        <Button size="icon-xs" variant="ghost" title={t("work:notes.newPage")} onClick={addRoot}>
           <Plus className="size-3.5" />
         </Button>
       </header>
@@ -382,7 +385,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
         {favorites.length > 0 && (
           <section className="mb-1 border-b pb-1">
             <h2 className="px-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Favorites
+              {t("work:notes.favorites")}
             </h2>
             {favorites.map((f) => (
               <button
@@ -394,7 +397,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
                 onClick={() => navigate(`/notes/${f.id}`)}
               >
                 <Star className="size-3 shrink-0 fill-current text-amber-500" />
-                <span className="truncate">{f.title || "Untitled"}</span>
+                <span className="truncate">{f.title || t("work:notes.untitled")}</span>
               </button>
             ))}
           </section>
@@ -403,7 +406,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
           <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
         ) : roots.length === 0 ? (
           <p className="px-3 py-3 text-xs text-muted-foreground">
-            No pages yet. Create one to start writing.
+            {t("work:notes.noPages")}
           </p>
         ) : (
           <TreeDnd>
@@ -427,6 +430,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
  * row, so the intent is whatever the user is visibly pointing at.
  */
 function TreeDnd({ children }: { children: React.ReactNode }) {
+  const { t } = useT();
   const tree = useNotesStore((s) => s.tree);
   const dropNote = useNotesStore((s) => s.dropNote);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -451,7 +455,7 @@ function TreeDnd({ children }: { children: React.ReactNode }) {
         if (!e.over) return;
         const [where, targetId] = String(e.over.id).split(":");
         dropNote(String(e.active.id), targetId, where as DropWhere).catch((err) =>
-          toast.error("Could not move the page", { description: String(err) }),
+          toast.error(t("work:notes.errMove"), { description: String(err) }),
         );
       }}
     >
@@ -459,7 +463,7 @@ function TreeDnd({ children }: { children: React.ReactNode }) {
       <DragOverlay dropAnimation={null}>
         {dragging ? (
           <div className="rounded bg-background/95 px-2 py-1 text-sm shadow ring-1 ring-border">
-            {draggedTitle || "Untitled"}
+            {draggedTitle || t("work:notes.untitled")}
           </div>
         ) : null}
       </DragOverlay>
@@ -547,13 +551,13 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
           )}
           onClick={() => navigate(`/notes/${note.id}`)}
         >
-          {note.title || "Untitled"}
+          {note.title || t("work:notes.untitled")}
         </button>
         {note.favorite && <Star className="size-3 shrink-0 fill-current text-amber-500" />}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <button className="text-muted-foreground opacity-0 group-hover:opacity-100" aria-label="Page menu">
+              <button className="text-muted-foreground opacity-0 group-hover:opacity-100" aria-label={t("work:notes.pageMenu")}>
                 <MoreHorizontal className="size-3.5" />
               </button>
             }
@@ -566,37 +570,41 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
                   if (n) navigate(`/notes/${n.id}`);
                 }}
               >
-                <Plus className="size-4" /> New subpage
+                <Plus className="size-4" /> {t("work:notes.newSubpage")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  const t = await prompt({ title: "Rename page", label: "Title", defaultValue: note.title });
-                  if (t) renameNote(note.id, t).catch((e) => toast.error(String(e)));
+                  const nuevo = await prompt({
+                    title: t("work:notes.renameTitle"),
+                    label: t("work:notes.renameLabel"),
+                    defaultValue: note.title,
+                  });
+                  if (nuevo) renameNote(note.id, nuevo).catch((e) => toast.error(String(e)));
                 }}
               >
-                <Pencil className="size-4" /> Rename
+                <Pencil className="size-4" /> {t("work:notes.rename")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => toggleFavorite(note.id)}>
                 <Star className={cn("size-4", note.favorite && "fill-current text-amber-500")} />
-                {note.favorite ? "Remove from favorites" : "Add to favorites"}
+                {note.favorite ? t("work:notes.removeFavorite") : t("work:notes.addFavorite")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => move("up")}>
-                <ArrowUp className="size-4" /> Move up
+                <ArrowUp className="size-4" /> {t("work:notes.moveUp")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => move("down")}>
-                <ArrowDown className="size-4" /> Move down
+                <ArrowDown className="size-4" /> {t("work:notes.moveDown")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
                 onClick={async () => {
                   const count = descendantsOf(note.id).length - 1;
                   const ok = await confirm({
-                    title: `Delete "${note.title || "Untitled"}"?`,
+                    title: t("work:notes.deleteTitle", { name: note.title || t("work:notes.untitled") }),
                     description:
                       count > 0
                         ? t("common:count.removesSubpages", { count })
-                        : "You can restore it from the trash.",
-                    confirmText: "Delete",
+                        : t("work:notes.restoreFromTrash"),
+                    confirmText: t("work:notes.delete"),
                     destructive: true,
                   });
                   if (!ok) return;
@@ -608,7 +616,7 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
                     .catch((e) => toast.error(String(e)));
                 }}
               >
-                <Trash2 className="size-4" /> Delete
+                <Trash2 className="size-4" /> {t("work:notes.delete")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>

@@ -100,5 +100,30 @@
     "noReporter": "Nobody reported this, so your comment will not notify anyone at the client. It shows on their board if they open it.",
     "notAMember": "You do not belong to this organization, so nobody can mention you or message you here.",
     "addMe": "Add me"
+  },
+  "editor": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "code": "Code",
+    "heading": "Heading",
+    "bulletList": "Bullet list",
+    "numberedList": "Numbered list",
+    "checklist": "Checklist",
+    "quote": "Quote",
+    "table": "Table",
+    "collapsible": "Collapsible section",
+    "link": "Link",
+    "attachFile": "Attach file",
+    "dragBlock": "Drag to move this block",
+    "editLink": "Edit link",
+    "addLink": "Add link",
+    "apply": "Apply",
+    "errPastedImage": "Couldn't attach the pasted image",
+    "errPastedImageBody": "Try the attach button, or paste it again.",
+    "errAttach": "Couldn't attach {{name}}",
+    "errAttachBody": "Nothing was added. Try again.",
+    "errClipboard": "Couldn't read the image from the clipboard",
+    "errClipboardBody": "Try the attach button, or save it to a file and drop it in.",
+    "writeInMarkdown": "Write in markdown…"
   }
 }

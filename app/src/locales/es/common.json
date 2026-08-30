@@ -100,5 +100,30 @@
     "noReporter": "Nadie reportó esto, así que tu comentario no le va a avisar a nadie del cliente. Aparece en su tablero si lo abre.",
     "notAMember": "No perteneces a esta organización, así que nadie puede mencionarte ni escribirte aquí.",
     "addMe": "Añadirme"
+  },
+  "editor": {
+    "bold": "Negrita",
+    "italic": "Cursiva",
+    "code": "Código",
+    "heading": "Encabezado",
+    "bulletList": "Lista de puntos",
+    "numberedList": "Lista numerada",
+    "checklist": "Lista de comprobación",
+    "quote": "Cita",
+    "table": "Tabla",
+    "collapsible": "Sección plegable",
+    "link": "Enlace",
+    "attachFile": "Adjuntar un fichero",
+    "dragBlock": "Arrastra para mover este bloque",
+    "editLink": "Editar el enlace",
+    "addLink": "Añadir un enlace",
+    "apply": "Aplicar",
+    "errPastedImage": "No se pudo adjuntar la imagen pegada",
+    "errPastedImageBody": "Prueba con el botón de adjuntar, o pégala otra vez.",
+    "errAttach": "No se pudo adjuntar {{name}}",
+    "errAttachBody": "No se añadió nada. Inténtalo otra vez.",
+    "errClipboard": "No se pudo leer la imagen del portapapeles",
+    "errClipboardBody": "Prueba con el botón de adjuntar, o guárdala en un fichero y suéltalo aquí.",
+    "writeInMarkdown": "Escribe en markdown…"
   }
 }

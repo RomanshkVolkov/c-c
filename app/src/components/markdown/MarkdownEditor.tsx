@@ -1,3 +1,5 @@
+import { useT } from "@/lib/i18n";
+import i18next from "i18next";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import DragHandle from "@tiptap/extension-drag-handle-react";
@@ -200,7 +202,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   {
     value,
     onChange,
-    placeholder = "Write in markdown…",
+    placeholder,
     onUpload,
     onFiles,
     collapsible = false,
@@ -215,6 +217,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   },
   ref,
 ) {
+  const { t } = useT();
   // Enter manda, y por eso el handler se lee por ref: se instala una vez en la
   // extensión y `send` cambia en cada render con el borrador que cierra dentro.
   const onSubmitRef = useRef(onSubmit);
@@ -400,8 +403,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           // A dead reference is worse than no image: drop it and say so, instead
           // of leaving something that looks fine until the next reload.
           retargetImage(ed, src, null, null);
-          toast.error("Couldn't attach the pasted image", {
-            description: "Try the attach button, or paste it again.",
+          toast.error(i18next.t("common:editor.errPastedImage"), {
+            description: i18next.t("common:editor.errPastedImageBody"),
           });
         } finally {
           done();
@@ -433,8 +436,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         ed.chain().focus().insertContent(`[${res.fileName}](${res.url})`).run();
       }
     } catch {
-      toast.error(`Couldn't attach ${file.name}`, {
-        description: "Nothing was added. Try again.",
+      toast.error(i18next.t("common:editor.errAttach", { name: file.name }), {
+        description: i18next.t("common:editor.errAttachBody"),
       });
     } finally {
       done();
@@ -514,8 +517,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       void (async () => {
         const file = await readClipboardImage();
         if (!file) {
-          toast.error("Couldn't read the image from the clipboard", {
-            description: "Try the attach button, or save it to a file and drop it in.",
+          toast.error(i18next.t("common:editor.errClipboard"), {
+            description: i18next.t("common:editor.errClipboardBody"),
           });
           return;
         }
@@ -572,7 +575,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
               className="flex size-5 cursor-grab items-center justify-center rounded
                          text-muted-foreground/60 hover:bg-accent hover:text-foreground
                          active:cursor-grabbing"
-              title="Drag to move this block"
+              title={t("common:editor.dragBlock")}
             >
               <GripVertical className="size-3.5" />
             </div>
@@ -581,7 +584,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         <EditorContent editor={editor} />
         {editor.isEmpty && (
           <p className="pointer-events-none -mt-[1.6rem] text-sm text-muted-foreground/60">
-            {placeholder}
+            {placeholder ?? t("common:editor.writeInMarkdown")}
           </p>
         )}
       </div>
@@ -600,6 +603,7 @@ function Toolbar({
   onPickFile?: (file: File) => void;
   collapsible?: boolean;
 }) {
+  const { t } = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const prompt = usePrompt();
 
@@ -630,26 +634,26 @@ function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b px-2 py-1">
-      <Btn icon={Bold} label="Bold" active={editor.isActive("bold")}
+      <Btn icon={Bold} label={t("common:editor.bold")} active={editor.isActive("bold")}
         onClick={() => editor.chain().focus().toggleBold().run()} />
-      <Btn icon={Italic} label="Italic" active={editor.isActive("italic")}
+      <Btn icon={Italic} label={t("common:editor.italic")} active={editor.isActive("italic")}
         onClick={() => editor.chain().focus().toggleItalic().run()} />
-      <Btn icon={Code} label="Code" active={editor.isActive("code")}
+      <Btn icon={Code} label={t("common:editor.code")} active={editor.isActive("code")}
         onClick={() => editor.chain().focus().toggleCode().run()} />
       <span className="mx-1 h-4 w-px bg-border" />
-      <Btn icon={Heading2} label="Heading" active={editor.isActive("heading", { level: 2 })}
+      <Btn icon={Heading2} label={t("common:editor.heading")} active={editor.isActive("heading", { level: 2 })}
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
-      <Btn icon={List} label="Bullet list" active={editor.isActive("bulletList")}
+      <Btn icon={List} label={t("common:editor.bulletList")} active={editor.isActive("bulletList")}
         onClick={() => editor.chain().focus().toggleBulletList().run()} />
-      <Btn icon={ListOrdered} label="Numbered list" active={editor.isActive("orderedList")}
+      <Btn icon={ListOrdered} label={t("common:editor.numberedList")} active={editor.isActive("orderedList")}
         onClick={() => editor.chain().focus().toggleOrderedList().run()} />
-      <Btn icon={ListChecks} label="Checklist" active={editor.isActive("taskList")}
+      <Btn icon={ListChecks} label={t("common:editor.checklist")} active={editor.isActive("taskList")}
         onClick={() => editor.chain().focus().toggleTaskList().run()} />
-      <Btn icon={Quote} label="Quote" active={editor.isActive("blockquote")}
+      <Btn icon={Quote} label={t("common:editor.quote")} active={editor.isActive("blockquote")}
         onClick={() => editor.chain().focus().toggleBlockquote().run()} />
       <Btn
         icon={TableIcon}
-        label="Table"
+        label={t("common:editor.table")}
         active={editor.isActive("table")}
         onClick={() =>
           editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
@@ -658,7 +662,7 @@ function Toolbar({
       {collapsible && (
         <Btn
           icon={ChevronRight}
-          label="Collapsible section"
+          label={t("common:editor.collapsible")}
           active={editor.isActive("details")}
           onClick={() => {
             if (editor.isActive("details")) editor.chain().focus().unsetDetails().run();
@@ -666,17 +670,17 @@ function Toolbar({
           }}
         />
       )}
-      <Btn icon={Link2} label="Link" active={editor.isActive("link")}
+      <Btn icon={Link2} label={t("common:editor.link")} active={editor.isActive("link")}
         onClick={async () => {
           const prev = editor.getAttributes("link").href as string | undefined;
           // allowEmpty: clearing the field is how you remove an existing link,
           // which has to stay distinguishable from cancelling (null).
           const url = await prompt({
-            title: prev ? "Edit link" : "Add link",
+            title: prev ? t("common:editor.editLink") : t("common:editor.addLink"),
             label: "URL",
             defaultValue: prev ?? "https://",
             allowEmpty: true,
-            confirmText: "Apply",
+            confirmText: t("common:editor.apply"),
           });
           if (url === null) return;
           if (url.trim() === "") {
@@ -688,7 +692,7 @@ function Toolbar({
       {onPickFile && (
         <>
           <span className="mx-1 h-4 w-px bg-border" />
-          <Btn icon={Paperclip} label="Attach file" onClick={() => fileRef.current?.click()} />
+          <Btn icon={Paperclip} label={t("common:editor.attachFile")} onClick={() => fileRef.current?.click()} />
           <input
             ref={fileRef}
             type="file"
