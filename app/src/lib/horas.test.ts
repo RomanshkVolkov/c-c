@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import i18next from "i18next";
+
 import { diasLegibles, horaDual, horaLegible, reglaLegible } from "@/lib/horas";
+import { NAMESPACES } from "@/lib/i18n";
 
 /**
  * La misma hora, dicha en dos zonas.
@@ -109,26 +112,73 @@ describe("los días de la semana", () => {
     expect(diasLegibles("1,x,9,3")).toBe("Mon, Wed");
     expect(diasLegibles(undefined)).toBe("");
   });
+
+  /**
+   * Los nombres salen de `Intl`, y ésta es la prueba de que salen de ahí y no
+   * de una tabla inglesa: en castellano el lunes no se llama «Mon». Se compara
+   * contra el inglés en vez de contra un literal porque los nombres cortos los
+   * fija la plataforma —«lun», «lun.»— y clavarlos aquí sería una prueba de la
+   * versión de ICU, no del código.
+   */
+  it("y en castellano no son los de inglés", () => {
+    expect(diasLegibles("1,3", "es")).not.toBe(diasLegibles("1,3", "en"));
+  });
+
+  // El orden es del código, no del idioma: si alguien se lleva la ordenación
+  // dentro del formateador, esto lo caza.
+  it("el orden de la semana se respeta en los dos idiomas", () => {
+    expect(diasLegibles("0,1", "es").indexOf(diasLegibles("1", "es"))).toBe(0);
+  });
 });
 
 describe("la regla en una línea", () => {
+  // La `t` de verdad, con el catálogo cargado por `test-setup.ts`: una falsa
+  // que devolviera la clave probaría el armazón y no las frases.
+  const t = i18next.getFixedT(null, NAMESPACES) as never;
+  const es = i18next.getFixedT("es", NAMESPACES) as never;
+
   it("la diaria", () => {
-    expect(reglaLegible({ freq: "daily", interval: 1 })).toBe("Daily");
+    expect(reglaLegible({ freq: "daily", interval: 1 }, t)).toBe("Daily");
   });
 
   it("la semanal con sus días", () => {
-    expect(reglaLegible({ freq: "weekly", interval: 1, weekdays: "1,3" })).toBe(
+    expect(reglaLegible({ freq: "weekly", interval: 1, weekdays: "1,3" }, t)).toBe(
       "Weekly · Mon, Wed",
     );
   });
 
   it("la quincenal se distingue de la semanal", () => {
-    const q = reglaLegible({ freq: "weekly", interval: 2, weekdays: "1" });
+    const q = reglaLegible({ freq: "weekly", interval: 2, weekdays: "1" }, t);
     expect(q).toContain("2");
     expect(q).not.toBe("Weekly · Mon");
   });
 
   it("la mensual dice qué día", () => {
-    expect(reglaLegible({ freq: "monthly", interval: 1, monthDay: 15 })).toBe("Monthly · day 15");
+    expect(reglaLegible({ freq: "monthly", interval: 1, monthDay: 15 }, t)).toBe(
+      "Monthly · day 15",
+    );
+  });
+
+  // Lo que no sobrevivía a la concatenación: en castellano el número y el
+  // sustantivo no caen donde caían, y el intervalo 1 no se dice «cada 1».
+  it("en castellano dice la frase entera, no las palabras sueltas", () => {
+    expect(reglaLegible({ freq: "weekly", interval: 1 }, es, "es")).toBe("Semanal");
+    expect(reglaLegible({ freq: "weekly", interval: 2 }, es, "es")).toBe("Cada 2 semanas");
+    expect(reglaLegible({ freq: "monthly", interval: 1, monthDay: 15 }, es, "es")).toBe(
+      "Mensual · el día 15",
+    );
+  });
+
+  // El idioma del texto y el de los días son el mismo argumento o no lo son:
+  // una regla medio traducida es el fallo característico de esto.
+  it("los días de la regla van en el idioma de la regla", () => {
+    const regla = reglaLegible({ freq: "weekly", interval: 1, weekdays: "1,3" }, es, "es");
+    expect(regla).toContain(diasLegibles("1,3", "es"));
+    expect(regla).not.toContain("Mon");
+  });
+
+  // Una frecuencia que esta versión no conoce no puede dejar la insignia vacía.
+  it("una frecuencia desconocida se enseña tal cual", () => {
+    expect(reglaLegible({ freq: "hourly" }, t)).toBe("hourly");
   });
 });

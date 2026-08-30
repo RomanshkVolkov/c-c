@@ -70,5 +70,17 @@
     "meetings_other": "{{count}} meetings",
     "items_one": "{{count}} item",
     "items_other": "{{count}} items"
+  },
+  "recurrence": {
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "everyDays_one": "Every day",
+    "everyDays_other": "Every {{count}} days",
+    "everyWeeks_one": "Every week",
+    "everyWeeks_other": "Every {{count}} weeks",
+    "everyMonths_one": "Every month",
+    "everyMonths_other": "Every {{count}} months",
+    "onDay": "day {{day}}"
   }
 }

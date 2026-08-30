@@ -70,5 +70,17 @@
     "meetings_other": "{{count}} reuniones",
     "items_one": "{{count}} elemento",
     "items_other": "{{count}} elementos"
+  },
+  "recurrence": {
+    "daily": "Diaria",
+    "weekly": "Semanal",
+    "monthly": "Mensual",
+    "everyDays_one": "Cada día",
+    "everyDays_other": "Cada {{count}} días",
+    "everyWeeks_one": "Cada semana",
+    "everyWeeks_other": "Cada {{count}} semanas",
+    "everyMonths_one": "Cada mes",
+    "everyMonths_other": "Cada {{count}} meses",
+    "onDay": "el día {{day}}"
   }
 }

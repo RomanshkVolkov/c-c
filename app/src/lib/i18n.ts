@@ -116,4 +116,16 @@ export function useT() {
   return useTranslation(NAMESPACES);
 }
 
+/**
+ * La función de traducir, para quien la recibe por parámetro.
+ *
+ * Las funciones de `lib/` que arman una frase —la regla de una reunión, la
+ * lista de quién está hablando— necesitan traducir sin volverse componentes.
+ * Llamar a `i18next.t` desde dentro lo resolvería, pero entonces el resultado
+ * no cambiaría al cambiar de idioma hasta que algo más provocara un repintado:
+ * el hook es lo que suscribe a la pantalla, y una función suelta no lo tiene.
+ * Recibiendo la `t` de quien pinta, la suscripción es la de esa pantalla.
+ */
+export type Translate = ReturnType<typeof useT>["t"];
+
 export default i18next;

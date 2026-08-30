@@ -1,3 +1,5 @@
+import type { Translate } from "@/lib/i18n";
+
 /**
  * La misma hora, dicha dos veces.
  *
@@ -77,9 +79,36 @@ export function horaLegible(instante: string | Date, timeZone: string): string {
   return mismaZona ? alla : `${alla} · ${aqui}`;
 }
 
-/** Los días de la semana de "1,3,5", dichos como los diría una persona. */
-export function diasLegibles(weekdays: string | undefined): string {
-  const nombres = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/**
+ * Los nombres cortos de los días, en el idioma que se pida.
+ *
+ * Salen de `Intl`, no de una tabla: mantener a mano siete nombres por idioma es
+ * prometer que alguien se acordará de añadir la fila cuando entre el tercero.
+ * Se formatea una semana de referencia —el 7 de enero de 2024 fue domingo— en
+ * UTC, para que el desfase de quien mira no corra los días uno.
+ */
+const nombresDeDia = new Map<string, string[]>();
+
+function diasDe(lng: string): string[] {
+  const guardado = nombresDeDia.get(lng);
+  if (guardado) return guardado;
+  const fmt = new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" });
+  const nombres = Array.from({ length: 7 }, (_, d) =>
+    fmt.format(new Date(Date.UTC(2024, 0, 7 + d))),
+  );
+  nombresDeDia.set(lng, nombres);
+  return nombres;
+}
+
+/**
+ * Los días de la semana de "1,3,5", dichos como los diría una persona.
+ *
+ * La lista la junta `Intl.ListFormat` en modo `unit`, que es el de una
+ * enumeración corta sin conjunción: en inglés y en castellano da «Mon, Wed» y
+ * «lun, mié», pero en un idioma que separe distinto lo hará distinto, y pegar
+ * comas a mano no.
+ */
+export function diasLegibles(weekdays: string | undefined, lng = "en"): string {
   const dias = (weekdays ?? "")
     .split(",")
     .map((d) => d.trim())
@@ -92,30 +121,49 @@ export function diasLegibles(weekdays: string | undefined): string {
   // Ordenados de lunes a domingo, que es como se lee una semana de trabajo —
   // el domingo es el 0 pero nadie empieza la semana nombrándolo.
   dias.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
-  return dias.map((d) => nombres[d]).join(", ");
+  const nombres = diasDe(lng);
+  return new Intl.ListFormat(lng, { style: "short", type: "unit" }).format(
+    dias.map((d) => nombres[d]),
+  );
 }
 
-/** La regla entera en una línea: «Weekly · Mon, Wed · 09:00 CST». */
-export function reglaLegible(m: {
-  freq: string;
-  interval?: number;
-  weekdays?: string;
-  monthDay?: number;
-}): string {
-  const cada = (m.interval ?? 1) > 1 ? `Every ${m.interval} ` : "";
+/**
+ * La regla entera en una línea: «Weekly · Mon, Wed», «Cada 2 semanas · lun».
+ *
+ * Antes esto concatenaba `"Every " + interval + " " + "weeks"`, y esa forma no
+ * sobrevive a un segundo idioma: el número no cae en el mismo sitio, el
+ * sustantivo cambia de género, y «cada 1 semana» no se dice. Cada caso es aquí
+ * **un mensaje entero** con el número dentro, y el catálogo decide su forma.
+ *
+ * `t` entra por parámetro para que esto siga siendo una función pura sobre la
+ * que se pueda escribir una prueba sin montar media aplicación.
+ */
+export function reglaLegible(
+  m: { freq: string; interval?: number; weekdays?: string; monthDay?: number },
+  t: Translate,
+  lng = "en",
+): string {
+  const cada = m.interval ?? 1;
+  const partes: string[] = [];
   switch (m.freq) {
     case "daily":
-      return cada ? `${cada}days` : "Daily";
+      partes.push(cada > 1 ? t("common:recurrence.everyDays", { count: cada }) : t("common:recurrence.daily"));
+      break;
     case "weekly": {
-      const dias = diasLegibles(m.weekdays);
-      const base = cada ? `${cada}weeks` : "Weekly";
-      return dias ? `${base} · ${dias}` : base;
+      partes.push(cada > 1 ? t("common:recurrence.everyWeeks", { count: cada }) : t("common:recurrence.weekly"));
+      const dias = diasLegibles(m.weekdays, lng);
+      if (dias) partes.push(dias);
+      break;
     }
     case "monthly": {
-      const base = cada ? `${cada}months` : "Monthly";
-      return m.monthDay ? `${base} · day ${m.monthDay}` : base;
+      partes.push(cada > 1 ? t("common:recurrence.everyMonths", { count: cada }) : t("common:recurrence.monthly"));
+      if (m.monthDay) partes.push(t("common:recurrence.onDay", { day: m.monthDay }));
+      break;
     }
     default:
+      // Una frecuencia que esta versión no conoce: enseñar el identificador es
+      // feo, pero es información; una cadena vacía sería una regla invisible.
       return m.freq;
   }
+  return partes.join(" · ");
 }

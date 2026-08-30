@@ -1,3 +1,5 @@
+import { useLocaleStore } from "@/store/locale.store";
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CalendarClock, CalendarDays, List, Loader2, Pause, Play, Plus, Trash2, Users } from "lucide-react";
@@ -355,6 +357,8 @@ function Ficha({
   canManage: boolean;
   miembros: OrgMember[];
 }) {
+  const { t } = useT();
+  const { resolved: lng } = useLocaleStore();
   const confirm = useConfirm();
   const orgId = useOrgsStore((s) => s.currentOrgId);
   const update = useMeetingsStore((s) => s.update);
@@ -396,7 +400,7 @@ function Ficha({
           {m.title}
         </span>
         <Badge variant="secondary" className="text-[10px]">
-          {reglaLegible(m)}
+          {reglaLegible(m, t, lng)}
         </Badge>
         {m.paused && (
           <Badge variant="outline" className="text-[10px]">
