@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"github.com/guz-studio/cac/backend/internal/core/i18n"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,7 +71,22 @@ func (s *AuthService) Me(userID string) (*domain.Session, error) {
 		Username:           user.Username,
 		Superadmin:         user.IsSuperadmin,
 		MustChangePassword: user.MustChangePassword,
+		Locale:             user.Locale,
 	}, nil
+}
+
+// SetLocale guarda en qué idioma lee cac esta persona.
+//
+// Lo desconocido se guarda como vacío en vez de rechazarse: el efecto de un
+// idioma que no hablamos y el de no haber elegido son el mismo —el inglés—, y
+// un error aquí sólo conseguiría que la pantalla de ajustes tuviera que saber
+// la lista de idiomas para no enseñarlo.
+func (s *AuthService) SetLocale(userID, locale string) error {
+	guardado := ""
+	if l, ok := i18n.Known(locale); ok {
+		guardado = string(l)
+	}
+	return s.repo.UpdateUser(userID, map[string]any{"locale": guardado})
 }
 
 // ChangePassword verifies the caller's current password and sets a new one,

@@ -26,6 +26,20 @@ type User struct {
 	// superadmin provisions or resets the password (so admins don't retain
 	// knowledge of a working password), cleared when the user sets their own.
 	MustChangePassword bool `gorm:"default:false" json:"mustChangePassword"`
+	// Locale is which language this person reads cac in: "en", "es", or empty
+	// for "whatever their machine says".
+	//
+	// It lives on the server and not only in the client for a reason that is
+	// not the obvious one. Following you between machines is the small half.
+	// The big half is that **the server writes rows for you**: an inbox
+	// notification is one row per recipient, written once and read months
+	// later, so without knowing who is going to read it the phrase is frozen
+	// in the language of whoever caused it.
+	//
+	// Empty rather than a default of "en": there is a real difference between
+	// "I chose English" and "I never chose", and only the second one should
+	// follow the operating system.
+	Locale string `gorm:"type:varchar(5)" json:"locale,omitempty"`
 }
 
 // ─── JWT ─────────────────────────────────────────────────────────────────────
@@ -142,6 +156,16 @@ type Session struct {
 	// Exposed so an automated caller can check what it may do *before* trying it,
 	// which is what makes a dry run possible without writing anything.
 	Scopes []string `json:"scopes,omitempty"`
+	// Locale as stored on the server; empty means "ask the machine".
+	Locale string `json:"locale,omitempty"`
+}
+
+// SetLocaleRequest is the whole of the language endpoint: one field.
+//
+// A locale of "" is a valid value and not a missing one — it is how you say
+// "go back to following my system". That is why there is no `required` here.
+type SetLocaleRequest struct {
+	Locale string `json:"locale"`
 }
 
 type ChangePasswordRequest struct {

@@ -16,6 +16,7 @@ type AuthHandler interface {
 	RefreshToken(w http.ResponseWriter, r *http.Request)
 	Me(w http.ResponseWriter, r *http.Request)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
+	SetLocale(w http.ResponseWriter, r *http.Request)
 }
 
 // loginLimiter throttles failed logins per username to blunt brute force. A
@@ -135,6 +136,28 @@ func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// attempt a write to find out.
 	session.Scopes = claims.Scopes
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.Session]{Success: true, Data: session})
+}
+
+// SetLocale: en qué idioma quiere leer cac quien llama.
+//
+// Sobre sí mismo y nada más: no hay forma de cambiarle el idioma a otro, ni
+// siquiera siendo superadmin. Es una preferencia de lectura, no un permiso.
+func (h *authHandler) SetLocale(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value(repository.UserContextKey).(*domain.ClaimsJWT)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-token")
+		return
+	}
+	req, err := ValidateRequest[domain.SetLocaleRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	if err := h.authService.SetLocale(claims.UserID, req.Locale); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Could not save the language", "locale-not-saved")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Language saved"})
 }
 
 func (h *authHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {

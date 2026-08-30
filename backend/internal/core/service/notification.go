@@ -2,6 +2,7 @@ package service
 
 import (
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/i18n"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -51,9 +52,15 @@ func (s *NotificationService) Notify(a domain.Aviso) {
 	if group == "" {
 		group = domain.DeriveGroup(a.Kind, a.Link)
 	}
+	// El título, en el idioma **de quien lo va a leer**.
+	//
+	// Aquí y no en quien llama, porque aquí es el único sitio que sabe quién es
+	// el destinatario: chat y directos publican un evento para varias personas
+	// y cada una puede leer en un idioma distinto. La fila se escribe una vez y
+	// se lee meses después, así que ésta es la única oportunidad.
 	n := &domain.Notification{
 		UserID: a.UserID, OrgID: a.OrgID, Kind: a.Kind,
-		Title: a.Title, Body: a.Body, Link: a.Link,
+		Title: titleFor(a, s.repo.LocaleOf(a.UserID)), Body: a.Body, Link: a.Link,
 		Via:        domain.NormalizeVia(a.Via),
 		GroupKey:   group,
 		GroupLabel: a.Label,
@@ -85,4 +92,23 @@ func (s *NotificationService) MarkReadGroup(userID, orgID, group string) error {
 
 func (s *NotificationService) MarkAllRead(userID, orgID string) error {
 	return s.repo.MarkAllRead(userID, orgID)
+}
+
+// titleFor decide qué frase acaba escrita en la fila.
+//
+// Aparte y pura porque es lo único de todo esto que se puede probar sin una
+// base de datos, y en este repositorio las pruebas que necesitan una se saltan
+// en integración continua. Una regla que sólo se comprueba en la máquina de
+// quien la escribió no está comprobada.
+//
+// La clave manda sobre el título ya escrito. Lo contrario —preferir `Title` si
+// viene— haría que un sitio que pusiera los dos se tradujera o no según el
+// orden en que alguien tocara el struct, que es la peor clase de regla.
+func titleFor(a domain.Aviso, locale string) string {
+	if a.TitleKey == "" {
+		// Sin clave, el título es contenido: el nombre de un reporte, el de una
+		// tarjeta. Eso no se traduce ni debe.
+		return a.Title
+	}
+	return i18n.T(i18n.Resolve(locale), a.TitleKey, a.TitleArgs)
 }

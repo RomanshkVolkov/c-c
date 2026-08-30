@@ -81,13 +81,18 @@ func (s *DMService) publish(toUserID, orgID, conversationID, messageID, actorID 
 		//
 		// ViaApp fijo, por lo mismo que en chat.go: ninguna herramienta del MCP
 		// escribe directos. Si alguna llega, este servicio necesita el contexto.
-		titulo := "New direct message"
+		// La frase no se arma aquí sino en el notificador, que es el único que
+		// sabe en qué idioma lee `toUserID`. Antes esta línea decía «te
+		// escribió» en castellano dentro de una aplicación en inglés, que era
+		// el mismo fallo visto desde el otro lado.
+		clave, args := "notify.dm.new", map[string]string(nil)
 		if de != "" {
-			titulo = de + " te escribió"
+			clave, args = "notify.dm.wrote", map[string]string{"who": de}
 		}
 		s.notifier.Notify(domain.Aviso{
 			UserID: toUserID, OrgID: orgID, Kind: "dm:message",
-			Title: titulo, Body: "", Link: "/dm?c=" + conversationID, Via: domain.ViaApp,
+			TitleKey: clave, TitleArgs: args,
+			Body: "", Link: "/dm?c=" + conversationID, Via: domain.ViaApp,
 			// El rótulo es el nombre a secas, sin el «te escribió» del título:
 			// plegados, tres directos de Ana son «Ana», no «Ana te escribió».
 			Group: domain.DMGroup(conversationID), Label: de,

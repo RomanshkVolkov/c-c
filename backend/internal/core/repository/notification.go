@@ -143,6 +143,23 @@ func (r *NotificationRepository) Prefs(userID string) (domain.NotificationPrefs,
 	return p, nil
 }
 
+// LocaleOf: en qué idioma lee esta persona.
+//
+// Una consulta más por aviso, y va justo al lado de la de preferencias, que ya
+// se hacía. Se podrían juntar en una, y no se juntan a propósito: la
+// preferencia decide **si** se escribe la fila y el idioma **cómo**, y meterlas
+// en el mismo `SELECT` ataría dos cosas que cambian por separado.
+//
+// Un error se traga y devuelve vacío: no saber el idioma de alguien no puede
+// impedir que le llegue su aviso, sólo hacer que llegue en inglés.
+func (r *NotificationRepository) LocaleOf(userID string) string {
+	var locale string
+	_ = r.db.Model(&domain.User{}).
+		Where("id = ?", userID).
+		Pluck("locale", &locale).Error
+	return locale
+}
+
 func (r *NotificationRepository) SavePrefs(p domain.NotificationPrefs) error {
 	return r.db.Save(&p).Error
 }

@@ -28,6 +28,7 @@ func InitAuthRoutes(db *gorm.DB, r *chi.Mux) {
 		r.With(middleware.RefreshMiddleware).Post("/refresh", h.RefreshToken)
 		r.With(middleware.AuthMiddleware).Get("/me", h.Me)
 		r.With(middleware.AuthMiddleware).Post("/change-password", h.ChangePassword)
+		r.With(middleware.AuthMiddleware).Patch("/locale", h.SetLocale)
 		// Token management is JWT-only in practice: minting/revoking are non-GET,
 		// which the middleware refuses for PATs.
 		r.With(middleware.AuthMiddleware).Get("/tokens", tokens.List)

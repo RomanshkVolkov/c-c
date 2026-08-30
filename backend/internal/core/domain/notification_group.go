@@ -127,4 +127,16 @@ type Aviso struct {
 	Group string
 	// Label: cómo se llama esa conversación para un humano.
 	Label string
+	// TitleKey y TitleArgs: el título **sin escribir todavía**.
+	//
+	// Puestos, mandan sobre `Title`: el servicio los resuelve en el idioma de
+	// quien va a leer la fila, que no es el de quien la provocó. Ana escribe en
+	// castellano y a Bob le llega «Ana wrote to you» — eso es lo que no se
+	// puede hacer si la frase se arma en el sitio que la causa.
+	//
+	// `Title` sigue existiendo y sigue valiendo: hay avisos cuyo título es
+	// contenido de una persona —el nombre de un reporte— y ésos no se traducen
+	// ni se deben traducir.
+	TitleKey  string
+	TitleArgs map[string]string
 }
