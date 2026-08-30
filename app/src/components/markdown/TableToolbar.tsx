@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
 import {
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
  */
 
 export default function TableToolbar({ editor }: { editor: Editor }) {
+  const { t } = useT();
   const Btn = ({
     icon: Icon,
     label,
@@ -61,21 +63,21 @@ export default function TableToolbar({ editor }: { editor: Editor }) {
       className="flex items-center gap-0.5 rounded-md border bg-popover p-1 shadow-md"
     >
       <Columns3 className="mx-1 size-3 text-muted-foreground/60" />
-      <Btn icon={ArrowLeftToLine} label="Column before"
+      <Btn icon={ArrowLeftToLine} label={t("common:servers.columnBefore")}
         onClick={() => editor.chain().focus().addColumnBefore().run()} />
-      <Btn icon={ArrowRightToLine} label="Column after"
+      <Btn icon={ArrowRightToLine} label={t("common:servers.columnAfter")}
         onClick={() => editor.chain().focus().addColumnAfter().run()} />
-      <Btn icon={Trash2} label="Delete column" destructive
+      <Btn icon={Trash2} label={t("common:servers.deleteColumn")} destructive
         onClick={() => editor.chain().focus().deleteColumn().run()} />
 
       <span className="mx-1 h-4 w-px bg-border" />
 
       <Rows3 className="mx-1 size-3 text-muted-foreground/60" />
-      <Btn icon={ArrowUpToLine} label="Row above"
+      <Btn icon={ArrowUpToLine} label={t("common:servers.rowAbove")}
         onClick={() => editor.chain().focus().addRowBefore().run()} />
-      <Btn icon={ArrowDownToLine} label="Row below"
+      <Btn icon={ArrowDownToLine} label={t("common:servers.rowBelow")}
         onClick={() => editor.chain().focus().addRowAfter().run()} />
-      <Btn icon={Trash2} label="Delete row" destructive
+      <Btn icon={Trash2} label={t("common:servers.deleteRow")} destructive
         onClick={() => editor.chain().focus().deleteRow().run()} />
 
       <span className="mx-1 h-4 w-px bg-border" />
@@ -83,9 +85,9 @@ export default function TableToolbar({ editor }: { editor: Editor }) {
       {/* Markdown always writes a header row, so this is really "should the
           first row read as a heading" — worth having, since a table pasted
           without one otherwise promotes its first row of data. */}
-      <Btn icon={Heading} label="Toggle header row"
+      <Btn icon={Heading} label={t("common:servers.toggleHeaderRow")}
         onClick={() => editor.chain().focus().toggleHeaderRow().run()} />
-      <Btn icon={Trash2} label="Delete table" destructive
+      <Btn icon={Trash2} label={t("common:servers.deleteTable")} destructive
         onClick={() => editor.chain().focus().deleteTable().run()} />
     </BubbleMenu>
   );

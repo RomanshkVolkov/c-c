@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Mail, Check, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +8,7 @@ import { useInvitationsStore } from "@/store/invitations.store";
 import { useOrgsStore } from "@/store/orgs.store";
 
 export default function Invitations() {
+  const { t } = useT();
   const pending = useInvitationsStore((s) => s.pending);
   const loading = useInvitationsStore((s) => s.loading);
   const fetchMine = useInvitationsStore((s) => s.fetchMine);
@@ -32,12 +34,12 @@ export default function Invitations() {
         toast.success(`Joined ${orgName}`);
       } else {
         toast.warning(`Joined ${orgName}`, {
-          description: "Sign out and back in to finish getting access.",
+          description: t("common:misc.signOutToFinish"),
         });
       }
       await fetchOrgs(); // the new org appears in the switcher immediately
     } catch (e) {
-      toast.error("Could not accept", {
+      toast.error(t("common:misc.errAccept"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -50,7 +52,7 @@ export default function Invitations() {
     try {
       await decline(id);
     } catch (e) {
-      toast.error("Could not decline", {
+      toast.error(t("common:misc.errDecline"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -63,7 +65,7 @@ export default function Invitations() {
       <div className="flex-1 overflow-auto p-6 space-y-4 max-w-2xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <Mail className="h-6 w-6 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">Invitations</h1>
+          <h1 className="text-xl font-semibold">{t("common:misc.invitations")}</h1>
         </div>
 
         {loading && pending.length === 0 ? (
@@ -71,7 +73,7 @@ export default function Invitations() {
             <Loader2 className="inline size-4 animate-spin" /> Loading…
           </p>
         ) : pending.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No pending invitations.</p>
+          <p className="text-sm text-muted-foreground">{t("common:misc.noPendingInvites")}</p>
         ) : (
           <div className="space-y-2">
             {pending.map((inv) => (

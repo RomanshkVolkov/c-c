@@ -50,6 +50,7 @@ export const NAMESPACES = ["common", "nav", "notifications", "work", "channel", 
  */
 export type MessageKey = ParseKeys<typeof NAMESPACES>;
 
+
 /** El inglés manda: si una clave no está aquí, no está en ninguna parte. */
 const recursos = {
   en: { common: enCommon, nav: enNav, notifications: enNotifications, work: enWork, channel: enChannel, chat: enChat, org: enOrg },

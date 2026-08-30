@@ -119,7 +119,7 @@ function DevToolsMenu() {
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={dentro}
-        tooltip="DevTools"
+        tooltip={t("common:misc.devtools")}
         onClick={() => {
           // Clicking the parent both opens the list and goes somewhere: a row
           // that only expands makes you click twice to reach anything.
@@ -128,7 +128,7 @@ function DevToolsMenu() {
         }}
       >
         <Wrench className="size-4" />
-        <span>DevTools</span>
+        <span>{t("common:misc.devtools")}</span>
         <ChevronRight className={cn("ml-auto size-3.5 transition-transform", open && "rotate-90")} />
       </SidebarMenuButton>
       {open && (
@@ -294,7 +294,7 @@ export default function AppSidebar() {
             )}
           >
             <Building2 className="size-4 shrink-0" />
-            <span className="truncate">Organization</span>
+            <span className="truncate">{t("common:misc.organization")}</span>
             <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
               people · invitations
             </span>
@@ -306,7 +306,7 @@ export default function AppSidebar() {
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
           >
             <Mail className="size-4 shrink-0" />
-            <span className="truncate">Invitations for you</span>
+            <span className="truncate">{t("common:misc.invitationsForYou")}</span>
             <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
               {pendingInvites}
             </span>
@@ -327,9 +327,9 @@ export default function AppSidebar() {
         {!authed && (
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Login" onClick={() => navigate("/login")}>
+              <SidebarMenuButton tooltip={t("common:misc.login")} onClick={() => navigate("/login")}>
                 <LogIn className="size-4" />
-                <span>Login</span>
+                <span>{t("common:misc.login")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

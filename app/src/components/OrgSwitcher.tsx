@@ -87,7 +87,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
       setName("");
       setDialogOpen(false);
     } catch (e) {
-      toast.error("Failed to create organization", {
+      toast.error(t("common:misc.errCreateOrg"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -100,7 +100,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
           {variant === "button" ? (
             <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
               <Building2 className="size-4" />
-              Switch organization
+              {t("common:misc.switchOrg")}
               <ChevronsUpDown className="size-3.5 opacity-60" />
             </DropdownMenuTrigger>
           ) : (
@@ -113,7 +113,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
               </div>
               <div className="flex flex-1 flex-col gap-0.5 overflow-hidden text-left leading-none">
                 <span className="truncate text-[12.5px] font-semibold">
-                  {current?.name ?? "No organization"}
+                  {current?.name ?? t("common:misc.noOrganization")}
                 </span>
                 {hint && (
                   <span className="truncate text-[10.5px] capitalize text-muted-foreground">
@@ -130,7 +130,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
           >
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Organizations
+                {t("common:misc.organizations")}
               </DropdownMenuLabel>
               {orgs.map((o) => (
                 <DropdownMenuItem key={o.id} onClick={() => setCurrentOrg(o.id)}>
@@ -141,14 +141,14 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
               ))}
               {orgs.length === 0 && (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                  No organizations yet
+                  {t("common:misc.noOrgsYet")}
                 </div>
               )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setDialogOpen(true)}>
               <Plus className="size-4" />
-              Create organization
+              {t("common:misc.createOrg")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -158,14 +158,14 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create organization</DialogTitle>
+            <DialogTitle>{t("common:misc.createOrg")}</DialogTitle>
             <DialogDescription>
               Separates servers, collections and reports by company. You become
               its admin.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
-            <Label>Name</Label>
+            <Label>{t("common:misc.name")}</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -181,10 +181,10 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
+              {t("common:misc.cancel")}
             </Button>
             <Button onClick={handleCreate} disabled={submitting || !name.trim()}>
-              {submitting ? "Creating…" : "Create"}
+              {submitting ? t("common:misc.creating") : t("common:misc.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

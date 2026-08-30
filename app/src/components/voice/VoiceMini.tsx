@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { Mic, MicOff, PhoneOff } from "lucide-react";
 import { useTasksStore } from "@/store/tasks.store";
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
  * silenciarse sin buscar dónde.
  */
 export default function VoiceMini({ compacto }: { compacto?: boolean }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const spaceId = useVoice((s) => s.spaceId);
   const estado = useVoice((s) => s.estado);
@@ -40,7 +42,7 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
       <button
         onClick={volver}
         title={`Voice connected · ${nombre ?? "back to the call"}`}
-        aria-label="Back to the call"
+        aria-label={t("common:servers.backToCall")}
         className="mx-auto my-1 grid size-8 place-items-center rounded-lg border border-success/35 bg-success/[.07]"
       >
         <span className="size-2 rounded-full bg-success" />
@@ -52,16 +54,16 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
     <div className="m-2 flex flex-col gap-2 rounded-lg border border-success/35 bg-success/[.07] p-2 px-2.5">
       <button
         onClick={volver}
-        title="Back to the call"
+        title={t("common:servers.backToCall")}
         className="flex min-w-0 items-center gap-2 text-left"
       >
         <span className="size-1.5 shrink-0 rounded-full bg-success" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-semibold text-success">
-            {nombre ?? "Voice"}
+            {nombre ?? t("common:servers.voice")}
           </span>
           <span className="block text-xs text-muted-foreground">
-            {estado === "entrando" ? "Connecting…" : "Voice connected"}
+            {estado === "entrando" ? t("common:servers.connecting") : t("common:servers.voiceConnected")}
           </span>
         </span>
       </button>
@@ -75,12 +77,12 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
           )}
         >
           {mic ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
-          {mic ? "Mute" : "Unmute"}
+          {mic ? t("common:servers.mute") : t("common:servers.unmute")}
         </button>
         <button
           onClick={() => void salir()}
-          title="Disconnect"
-          aria-label="Disconnect"
+          title={t("common:servers.disconnect")}
+          aria-label={t("common:servers.disconnect")}
           className="grid h-7 w-8.5 place-items-center rounded-md border border-destructive/40 bg-destructive/10 text-destructive"
         >
           <PhoneOff className="size-3.5" />

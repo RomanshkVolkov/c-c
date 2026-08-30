@@ -1,3 +1,9 @@
+import i18next from "i18next";
+import { Trans } from "react-i18next";
+
+import type common from "@/locales/en/common.json";
+import { useT, type MessageKey } from "@/lib/i18n";
+
 /**
  * The permissions a token can carry, in one place.
  *
@@ -10,54 +16,60 @@
  * drops anything it doesn't recognize, silently — a typo here would mint a
  * token whose permission does nothing).
  */
+/**
+ * La clave del detalle, acotada al bloque `scopes` del catálogo.
+ *
+ * No es `MessageKey` porque quien la consume es `<Trans>`, que tipa su
+ * `i18nKey` contra **un** espacio de nombres y no contra la tupla entera. Y
+ * tampoco es «todas las claves de `common`»: eso son más de setecientas, y la
+ * unión resultante hace que TypeScript se rinda con «union type too complex».
+ * Acotada al bloque queda una unión de catorce que sigue saliendo del catálogo,
+ * así que una errata tampoco compila.
+ */
+type ScopeDetailKey = `scopes.${keyof (typeof common)["scopes"] & string}`;
+
 export interface ScopeOption {
   id: string;
-  label: string;
-  detail: React.ReactNode;
+  labelKey: MessageKey;
+  /** Sin el prefijo `common:`: la consume `<Trans>`, que lo tipa por espacio. */
+  detailKey: ScopeDetailKey;
 }
 
 export const SCOPES: ScopeOption[] = [
   {
     id: "tasks:write",
-    label: "Create tasks and comments",
-    detail: "Append-only: it can add, never replace what someone wrote. Also builds the tree — spaces, folders and lists — so a new project can be set up in one go.",
+    labelKey: "common:scopes.tasksWrite",
+    detailKey: "scopes.tasksWriteDetail",
   },
   {
     id: "tasks:manage",
-    label: "Change existing tasks",
-    detail: "Move them between columns, and overwrite title, description or priority. Also corrects or withdraws comments you wrote — never anyone else's. Needed to mark work as done.",
+    labelKey: "common:scopes.tasksManage",
+    detailKey: "scopes.tasksManageDetail",
   },
   {
     id: "notes:write",
-    label: "Create pages in Notes",
-    detail: "Append-only: adds a new page, never touches one that already exists. What a migration from another notes app needs.",
+    labelKey: "common:scopes.notesWrite",
+    detailKey: "scopes.notesWriteDetail",
   },
   {
     id: "notes:manage",
-    label: "Change existing pages",
-    detail: "Overwrites a page's title or body outright — the note's own conflict/history safeguards still apply, but the content changes.",
+    labelKey: "common:scopes.notesManage",
+    detailKey: "scopes.notesManageDetail",
   },
   {
     id: "reports:write",
-    label: "Reply to reports",
-    detail: "Append-only: add a comment or attach an image to a report.",
+    labelKey: "common:scopes.reportsWrite",
+    detailKey: "scopes.reportsWriteDetail",
   },
   {
     id: "reports:manage",
-    label: "Triage reports",
-    detail: (
-      <>
-        Change status, assignee, priority, category or area, remove a report's
-        screenshots, and correct or withdraw comments{" "}
-        <span className="text-foreground">you</span> wrote — never anyone else's,
-        which cac refuses outright.
-      </>
-    ),
+    labelKey: "common:scopes.reportsManage",
+    detailKey: "scopes.reportsManageDetail",
   },
   {
     id: "collections:write",
-    label: "Create request collections",
-    detail: "Leaves a described API ready to run. Creating only — editing, deleting and sharing one stay out of reach, sharing because it reaches other people.",
+    labelKey: "common:scopes.collectionsWrite",
+    detailKey: "scopes.collectionsWriteDetail",
   },
 ];
 
@@ -71,6 +83,7 @@ export function ScopeChecklist({
   /** Drops the explanations — for the edit row, where they've been read once. */
   compact?: boolean;
 }) {
+  const { t } = useT();
   return (
     <div className={compact ? "grid grid-cols-2 gap-1" : "grid grid-cols-2 gap-2"}>
       {SCOPES.map((s) => (
@@ -82,8 +95,20 @@ export function ScopeChecklist({
             onChange={(e) => onToggle(s.id, e.target.checked)}
           />
           <span>
-            <span className="text-foreground">{s.label}</span>
-            {!compact && <span className="block">{s.detail}</span>}
+            <span className="text-foreground">{t(s.labelKey)}</span>
+            {!compact && (
+              <span className="block">
+                {/* `Trans` para todas y no sólo para la que lleva marcado: una
+                    de las siete resalta un «tú» y las otras seis no, y tener dos
+                    caminos de pintado significa que el día que otra necesite
+                    énfasis alguien lo añadirá al camino equivocado. */}
+                <Trans
+                  ns="common"
+                  i18nKey={s.detailKey}
+                  components={{ 1: <span className="text-foreground" /> }}
+                />
+              </span>
+            )}
           </span>
         </label>
       ))}
@@ -95,6 +120,9 @@ export function ScopeChecklist({
 export function describeScopes(scopes: string[] | undefined): string {
   if (!scopes || scopes.length === 0) return "read-only";
   return scopes
-    .map((id) => SCOPES.find((s) => s.id === id)?.label ?? id)
+    .map((id) => {
+      const scope = SCOPES.find((s) => s.id === id);
+      return scope ? i18next.t(scope.labelKey) : id;
+    })
     .join(" · ");
 }

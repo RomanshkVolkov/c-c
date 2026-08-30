@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { KeyRound, Loader2, Check, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -55,6 +56,7 @@ export default function SshKeyDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useT();
   const [agents, setAgents] = useState<SshAgent[]>([]);
   const [agent, setAgent] = useState<string | null>(null);
   const [keys, setKeys] = useState<SshKeyItem[]>([]);
@@ -102,10 +104,10 @@ export default function SshKeyDialog({
     setSaving(true);
     try {
       await invoke("set_server_ssh_key", { serverId, publicKey: selected ?? "" });
-      toast.success(selected ? "SSH key linked" : "SSH key unlinked");
+      toast.success(selected ? t("common:misc.sshLinked") : t("common:misc.sshUnlinked"));
       onOpenChange(false);
     } catch (e) {
-      toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
+      toast.error(t("common:misc.errSave"), { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setSaving(false);
     }
@@ -119,7 +121,7 @@ export default function SshKeyDialog({
             <KeyRound className="size-4" /> SSH key for {serverName}
           </DialogTitle>
           <DialogDescription>
-            Pick the key this server uses, from the ones your SSH agent holds
+            {t("common:misc.sshLead")}
             (1Password exposes its vault keys here). The private key never leaves
             the agent — cac only remembers which one to offer.
           </DialogDescription>
@@ -127,7 +129,7 @@ export default function SshKeyDialog({
 
         {agents.length > 1 && (
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Agent</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{t("common:misc.agent")}</p>
             <div className="flex flex-wrap gap-1">
               {agents.map((a) => (
                 <button
@@ -173,7 +175,7 @@ export default function SshKeyDialog({
               onClick={() => setSelected(null)}
             >
               <span className="flex-1">
-                Let the agent decide
+                {t("common:misc.letAgentDecide")}
                 <span className="block text-xs text-muted-foreground">
                   Default. Fails on servers that cut off after a few key attempts.
                 </span>

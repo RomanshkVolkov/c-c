@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -27,6 +28,7 @@ import type { Server } from "@/types/server";
 import type { K8sHealth, K8sRoutesResponse } from "@/types/k8s";
 
 export default function K8sHub({ server }: { server: Server }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const orgs = useOrgsStore((s) => s.orgs);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
@@ -46,7 +48,7 @@ export default function K8sHub({ server }: { server: Server }) {
         api.get<APIResponse<K8sRoutesResponse>>(`/api/v1/servers/${server.id}/k8s/routes`),
         api.get<APIResponse<K8sHealth>>(`/api/v1/servers/${server.id}/k8s/health`),
       ]);
-      if (!r.success || !h.success) throw new Error(r.error ?? h.error ?? "Failed");
+      if (!r.success || !h.success) throw new Error(r.error ?? h.error ?? t("common:misc.failed"));
       setRoutes(r.data ?? null);
       setHealth(h.data ?? null);
     } catch (e) {
@@ -98,7 +100,7 @@ export default function K8sHub({ server }: { server: Server }) {
 
             {/* Gateways */}
             {routes && routes.gateways.length > 0 && (
-              <Section title="Gateways" icon={<Globe className="size-4" />}>
+              <Section title={t("common:misc.gateways")} icon={<Globe className="size-4" />}>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {routes.gateways.map((g) => (
                     <div
@@ -156,7 +158,7 @@ export default function K8sHub({ server }: { server: Server }) {
 
             {/* Health */}
             {health && (
-              <Section title="Cluster health" icon={<ServerIcon className="size-4" />}>
+              <Section title={t("common:misc.clusterHealth")} icon={<ServerIcon className="size-4" />}>
                 <div className="flex flex-wrap gap-2">
                   {health.nodes.map((n) => (
                     <Badge key={n.name} variant={n.ready ? "default" : "destructive"} className="gap-1">
@@ -195,7 +197,7 @@ export default function K8sHub({ server }: { server: Server }) {
 
             {/* Workloads (only the unhealthy stand out) */}
             {health && health.workloads.length > 0 && (
-              <Section title="Workloads" icon={<Boxes className="size-4" />}>
+              <Section title={t("common:misc.workloads")} icon={<Boxes className="size-4" />}>
                 <div className="grid gap-1.5 sm:grid-cols-2">
                   {[...health.workloads]
                     .sort((a, b) => Number(a.healthy) - Number(b.healthy))
@@ -220,7 +222,7 @@ export default function K8sHub({ server }: { server: Server }) {
 
             {/* Certificates */}
             {health && health.certs.length > 0 && (
-              <Section title="Certificates" icon={<ShieldCheck className="size-4" />}>
+              <Section title={t("common:misc.certificates")} icon={<ShieldCheck className="size-4" />}>
                 <div className="space-y-1.5">
                   {health.certs.map((c) => {
                     const warn = !c.ready || (c.daysLeft != null && c.daysLeft < 21);

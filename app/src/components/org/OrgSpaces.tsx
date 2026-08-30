@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
@@ -40,6 +41,7 @@ function aplanar(fs: FolderTree[]): { folders: number; lists: ListSummary[] } {
 }
 
 export default function OrgSpaces({ canManage = false }: { canManage?: boolean }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const prompt = usePrompt();
   const tree = useTasksStore((s) => s.tree);
@@ -64,13 +66,13 @@ export default function OrgSpaces({ canManage = false }: { canManage?: boolean }
     if (!orgId) return;
     // Y no `window.prompt`: en la webview de Tauri sale un cuadro nativo sin
     // tema y titulado «tauri://localhost».
-    const nombre = await prompt({ title: "New space", label: "Name" });
+    const nombre = await prompt({ title: t("common:misc.newSpace"), label: t("common:misc.name") });
     if (!nombre?.trim()) return;
     setCreando(true);
     try {
       await createSpace(orgId, nombre.trim());
     } catch (e) {
-      toast.error("Could not create the space", {
+      toast.error(t("common:misc.errCreateSpace"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -82,7 +84,7 @@ export default function OrgSpaces({ canManage = false }: { canManage?: boolean }
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm text-muted-foreground">
-          Who sees each space, and which channel it answers to.
+          {t("common:misc.spacesLead")}
         </p>
         {canManage && (
           <Button size="sm" variant="outline" className="ml-auto" onClick={nuevo} disabled={creando}>
@@ -93,7 +95,7 @@ export default function OrgSpaces({ canManage = false }: { canManage?: boolean }
 
       {tree.length === 0 ? (
         <p className="rounded-xl border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
-          No spaces in this organization.
+          {t("common:misc.noSpaces")}
         </p>
       ) : (
         <ul className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(290px,1fr))]">
@@ -127,15 +129,15 @@ export default function OrgSpaces({ canManage = false }: { canManage?: boolean }
                     etiqueta suelto, los valores de cada ficha caen en un sitio
                     distinto y la rejilla deja de leerse en vertical. */}
                 <dl className="grid grid-cols-[78px_1fr] gap-x-2.5 gap-y-1.5 text-xs">
-                  <dt className="text-muted-foreground">Channel</dt>
+                  <dt className="text-muted-foreground">{t("common:misc.channel")}</dt>
                   <dd className="min-w-0 truncate">#{sp.name}</dd>
 
-                  <dt className="text-muted-foreground">Tasks</dt>
+                  <dt className="text-muted-foreground">{t("common:misc.tasks")}</dt>
                   <dd className="min-w-0 truncate text-muted-foreground">
                     {todas} · {abiertas} open
                   </dd>
 
-                  <dt className="text-muted-foreground">Access</dt>
+                  <dt className="text-muted-foreground">{t("common:misc.access")}</dt>
                   <dd className="min-w-0 truncate text-muted-foreground">
                     {visible
                       ? sp.projectId
@@ -165,7 +167,7 @@ export default function OrgSpaces({ canManage = false }: { canManage?: boolean }
                     className="ml-auto shrink-0 text-[11.5px] text-primary hover:underline"
                     onClick={() => navigate(`/tasks?space=${sp.id}`)}
                   >
-                    Manage
+                    {t("common:misc.manage")}
                   </button>
                 </div>
               </li>

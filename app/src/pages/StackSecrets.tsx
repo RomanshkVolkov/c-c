@@ -449,7 +449,7 @@ export default function StackSecrets() {
         </Button>
         <div className="flex items-center gap-3 flex-1">
           <Shield className="h-5 w-5 text-muted-foreground" />
-          <span className="font-semibold text-lg">GitHub Secrets</span>
+          <span className="font-semibold text-lg">{t("common:servers.githubSecrets")}</span>
           <Badge variant="secondary">{stackName}</Badge>
           <span className="text-sm text-muted-foreground">{server.name}</span>
         </div>
@@ -461,7 +461,7 @@ export default function StackSecrets() {
           <CardHeader>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <KeyRound className="h-4 w-4" />
-              GitHub Personal Access Token
+              {t("common:servers.githubPat")}
               {tokenConfigured === true && (
                 <Badge variant="default" className="ml-2">
                   {t("common:servers.configured")}
@@ -966,7 +966,10 @@ export default function StackSecrets() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Delete {deleteConfirm.type === "secret" ? "Secret" : "Variable"}
+              {t("common:servers.deleteThing", {
+                what:
+                  deleteConfirm.type === "secret" ? t("common:servers.secret") : t("common:servers.variable"),
+              })}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">

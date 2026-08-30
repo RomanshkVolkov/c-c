@@ -194,11 +194,11 @@ export default function AccountMenu({
                 available
                   ? installUpdate()
                   : checkForUpdate()
-                      .then((i) => !i && toast.success("Already the latest"))
+                      .then((i) => !i && toast.success(t("common:misc.alreadyLatest")))
                       .catch((e) => toast.error(String(e)))
               }
             >
-              {checking ? <Loader2 className="size-3 animate-spin" /> : available ? "Install" : "Check"}
+              {checking ? <Loader2 className="size-3 animate-spin" /> : available ? t("common:misc.install") : t("common:misc.check")}
             </button>
           </div>
 
@@ -228,7 +228,7 @@ export default function AccountMenu({
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span
               className={cn("size-1.5 shrink-0 rounded-full", vivo ? "bg-success" : "bg-destructive")}
-              title={vivo ? "Receiving live updates" : "Not receiving live updates"}
+              title={vivo ? t("common:misc.receivingLive") : t("common:misc.notReceivingLive")}
             />
             <span className="truncate">
               {rol}

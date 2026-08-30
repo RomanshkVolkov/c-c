@@ -633,6 +633,7 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
 const AUTOSAVE_DELAY_MS = 500;
 
 function NoteEditorPane({ id }: { id: string }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const detail = useNotesStore((s) => s.detail);
   const loading = useNotesStore((s) => s.loadingDetail);
@@ -673,7 +674,7 @@ function NoteEditorPane({ id }: { id: string }) {
       try {
         await saveBody(id, nextBody);
       } catch (e) {
-        toast.error("Could not save", { description: String(e) });
+        toast.error(t("work:notes.errSaveNote"), { description: String(e) });
       } finally {
         setSaving(false);
         // Without this, `timer.current` keeps pointing at an already-fired
@@ -729,7 +730,7 @@ function NoteEditorPane({ id }: { id: string }) {
   if (!note) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Could not load this page.
+        {t("work:notes.couldNotLoadPage")}
       </div>
     );
   }
@@ -741,9 +742,9 @@ function NoteEditorPane({ id }: { id: string }) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => {
-            if (title !== note.title) renameNote(id, title || "Untitled").catch((e) => toast.error(String(e)));
+            if (title !== note.title) renameNote(id, title || t("work:notes.untitled")).catch((e) => toast.error(String(e)));
           }}
-          placeholder="Untitled"
+          placeholder={t("work:notes.untitled")}
           className="h-8 border-none px-1 text-sm font-medium shadow-none focus-visible:ring-0"
         />
         <span className="shrink-0 text-xs text-muted-foreground">
@@ -760,12 +761,12 @@ function NoteEditorPane({ id }: { id: string }) {
         <Button
           size="icon-xs"
           variant="ghost"
-          title="Link to a page (⌘K)"
+          title={t("work:notes.linkToPage")}
           onClick={() => setLinkPickerOpen(true)}
         >
           <Link2 className="size-3.5" />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Close" onClick={() => navigate("/notes")}>
+        <Button size="icon-xs" variant="ghost" title={t("work:notes.close")} onClick={() => navigate("/notes")}>
           <X className="size-3.5" />
         </Button>
       </header>
@@ -780,7 +781,7 @@ function NoteEditorPane({ id }: { id: string }) {
             collapsible
             blockTools
             minHeight="24rem"
-            placeholder="Write… (⌘K to link another page)"
+            placeholder={t("work:notes.writePlaceholder")}
           />
           {/* Optional chaining and not a bare read: this comes from a cache
               that outlives the build that wrote it, and a whole screen going
@@ -788,7 +789,7 @@ function NoteEditorPane({ id }: { id: string }) {
           {!loading && detail && (detail.backlinks?.length ?? 0) > 0 && (
             <section className="mt-8 space-y-2 border-t pt-4">
               <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Linked from
+                {t("work:notes.linkedFrom")}
               </h2>
               <ul className="space-y-1">
                 {detail.backlinks?.map((b) => (
@@ -797,7 +798,7 @@ function NoteEditorPane({ id }: { id: string }) {
                       className="truncate text-left text-sm text-primary underline decoration-primary/40 hover:decoration-primary"
                       onClick={() => navigate(`/notes/${b.id}`)}
                     >
-                      {b.title || "Untitled"}
+                      {b.title || t("work:notes.untitled")}
                     </button>
                   </li>
                 ))}
@@ -833,6 +834,7 @@ function SearchDialog({
   onOpenChange: (v: boolean) => void;
   onPick: (id: string) => void;
 }) {
+  const { t } = useT();
   const query = useNotesStore((s) => s.searchQuery);
   const results = useNotesStore((s) => s.searchResults);
   const searching = useNotesStore((s) => s.searching);
@@ -855,7 +857,7 @@ function SearchDialog({
           autoFocus
           value={query}
           onChange={(e) => search(e.target.value)}
-          placeholder="Search by title or content…"
+          placeholder={t("work:notes.searchNotes")}
         />
         <div className="max-h-80 space-y-0.5 overflow-auto">
           {searching && <p className="px-1 py-2 text-xs text-muted-foreground">Searching…</p>}
@@ -870,14 +872,14 @@ function SearchDialog({
                   onOpenChange(false);
                 }}
               >
-                <span className="truncate text-sm font-medium">{r.title || "Untitled"}</span>
+                <span className="truncate text-sm font-medium">{r.title || t("work:notes.untitled")}</span>
                 {r.excerpt && (
                   <span className="truncate text-xs text-muted-foreground">{r.excerpt}</span>
                 )}
               </button>
             ))}
           {!searching && query.trim() && results.length === 0 && (
-            <p className="px-1 py-2 text-xs text-muted-foreground">No matches.</p>
+            <p className="px-1 py-2 text-xs text-muted-foreground">{t("work:notes.noMatches")}</p>
           )}
         </div>
       </DialogContent>
@@ -906,6 +908,7 @@ function NoteLinkPicker({
   onPick: (id: string, title: string) => void;
   onCreate: (title: string) => void | Promise<void>;
 }) {
+  const { t } = useT();
   const findNotes = useNotesStore((s) => s.findNotes);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{ id: string; title: string; excerpt: string }[]>([]);
@@ -956,7 +959,7 @@ function NoteLinkPicker({
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by title or content…"
+          placeholder={t("work:notes.searchNotes")}
         />
         <div className="max-h-80 space-y-0.5 overflow-auto">
           {searching && <p className="px-1 py-2 text-xs text-muted-foreground">Searching…</p>}
@@ -966,11 +969,11 @@ function NoteLinkPicker({
                 key={r.id}
                 className="flex w-full flex-col rounded-md px-2 py-1.5 text-left hover:bg-accent"
                 onClick={() => {
-                  onPick(r.id, r.title || "Untitled");
+                  onPick(r.id, r.title || t("work:notes.untitled"));
                   onOpenChange(false);
                 }}
               >
-                <span className="truncate text-sm font-medium">{r.title || "Untitled"}</span>
+                <span className="truncate text-sm font-medium">{r.title || t("work:notes.untitled")}</span>
                 {r.excerpt && (
                   <span className="truncate text-xs text-muted-foreground">{r.excerpt}</span>
                 )}
@@ -990,7 +993,7 @@ function NoteLinkPicker({
           )}
           {!searching && !trimmed && (
             <p className="px-1 py-2 text-xs text-muted-foreground">
-              Type to search, or enter a new title to create a page.
+              {t("work:notes.typeToSearch")}
             </p>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useT } from "@/lib/i18n";
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,10 +19,10 @@ import type { NewServerInput } from "@/hooks/use-servers";
 import type { Server } from "@/types/server";
 
 const schema = z.object({
-  name: z.string().min(1, "Required"),
-  host: z.string().min(1, "Required"),
+  name: z.string().min(1, "common:servers.required"),
+  host: z.string().min(1, "common:servers.required"),
   sshPort: z.number().min(1).max(65535),
-  sshUser: z.string().min(1, "Required"),
+  sshUser: z.string().min(1, "common:servers.required"),
   type: z.enum(["docker-swarm", "kubernetes"]),
   agentPort: z.number().min(1).max(65535),
 });
@@ -86,7 +86,7 @@ export default function EditServerDialog({
           <div className="space-y-1.5">
             <Label>{t("common:servers.thName")}</Label>
             <Input {...register("name")} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
-            {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+            {errors.name && <p className="text-xs text-destructive">{t(errors.name.message as MessageKey)}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -98,12 +98,12 @@ export default function EditServerDialog({
               autoCorrect="off"
               spellCheck={false}
             />
-            {errors.host && <p className="text-xs text-destructive">{errors.host.message}</p>}
+            {errors.host && <p className="text-xs text-destructive">{t(errors.host.message as MessageKey)}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>SSH user</Label>
+              <Label>{t("common:servers.sshUserLower")}</Label>
               <Input
                 {...register("sshUser")}
                 autoCapitalize="none"
@@ -112,18 +112,18 @@ export default function EditServerDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>SSH port</Label>
+              <Label>{t("common:servers.sshPortLower")}</Label>
               <Input type="number" {...register("sshPort", { valueAsNumber: true })} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Agent port</Label>
+              <Label>{t("common:servers.agentPortLower")}</Label>
               <Input type="number" {...register("agentPort", { valueAsNumber: true })} />
             </div>
             <div className="space-y-1.5">
-              <Label>Type</Label>
+              <Label>{t("common:servers.type")}</Label>
               <select
                 {...register("type")}
                 className="h-9 w-full rounded-md border bg-transparent px-2 text-sm"
@@ -138,10 +138,10 @@ export default function EditServerDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("common:servers.cancel")}
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving…" : "Save"}
+              {isSubmitting ? t("common:servers.saving") : t("common:servers.save")}
             </Button>
           </DialogFooter>
         </form>

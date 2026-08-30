@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ArrowLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils";
  * enter — so it stays off until there is an answer for that.
  */
 export default function DMThread({ onBack }: { onBack: () => void }) {
+  const { t } = useT();
   const messages = useDMStore((s) => s.messages);
   const conversationId = useDMStore((s) => s.conversationId);
   const conversations = useDMStore((s) => s.conversations);
@@ -86,12 +88,12 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <button
           className="text-muted-foreground hover:text-foreground"
-          title="Back to channels"
+          title={t("common:misc.backToChannels")}
           onClick={onBack}
         >
           <ArrowLeft className="size-4" />
         </button>
-        <h2 className="truncate text-sm font-medium">{other?.username ?? "Conversation"}</h2>
+        <h2 className="truncate text-sm font-medium">{other?.username ?? t("common:misc.conversation")}</h2>
         <span className="ml-auto text-xs text-muted-foreground">private</span>
       </header>
 
@@ -107,7 +109,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
           </div>
         ) : messages.length === 0 ? (
           <p className="pt-6 text-center text-xs text-muted-foreground">
-            Nothing here yet. Only the two of you can read this.
+            {t("common:misc.dmEmpty")}
           </p>
         ) : (
           <div className="space-y-3">
@@ -129,7 +131,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
           onChange={setDraft}
           minHeight="3rem"
           onSubmit={send}
-          placeholder={other ? `Message ${other.username}` : "Message"}
+          placeholder={other ? t("common:misc.messageTo", { name: other.username }) : t("common:misc.message")}
         />
         <div className="mt-1 flex justify-end">
           <Button size="sm" onClick={send} disabled={sending || !draft.trim()}>
@@ -138,7 +140,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
             ) : (
               <Send className="mr-1 size-3" />
             )}
-            Send
+            {t("common:misc.send")}
           </Button>
         </div>
       </div>
@@ -155,6 +157,7 @@ function DMLine({
   conversationId: string;
   grouped: boolean;
 }) {
+  const { t } = useT();
   const session = useAuthStore((s) => s.session);
   const edit = useDMStore((s) => s.edit);
   const withdraw = useDMStore((s) => s.withdraw);
@@ -224,10 +227,10 @@ function DMLine({
             <div className="flex gap-2">
               <Button size="sm" onClick={save} disabled={saving || !draft.trim()}>
                 {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
-                Save
+                {t("common:misc.save")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
-                Cancel
+                {t("common:misc.cancel")}
               </Button>
             </div>
           </div>
@@ -240,7 +243,7 @@ function DMLine({
             {mine && (
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  aria-label="Message actions"
+                  aria-label={t("common:misc.messageActions")}
                   className="absolute right-1 top-1 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100"
                 >
                   <ChevronDown className="size-3.5" />
@@ -248,15 +251,15 @@ function DMLine({
                 <DropdownMenuContent align="end" className="min-w-40">
                   <DropdownMenuItem onClick={() => setEditing(true)}>
                     <Pencil className="size-4" />
-                    Edit
+                    {t("common:misc.edit")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
                     onClick={async () => {
                       const ok = await confirm({
-                        title: "Withdraw this message?",
-                        description: "It stops showing for both of you.",
-                        confirmText: "Withdraw",
+                        title: t("common:misc.withdrawTitle"),
+                        description: t("common:misc.withdrawDmBody"),
+                        confirmText: t("common:misc.withdraw"),
                         destructive: true,
                       });
                       if (!ok) return;
@@ -264,7 +267,7 @@ function DMLine({
                     }}
                   >
                     <Trash2 className="size-4" />
-                    Withdraw
+                    {t("common:misc.withdraw")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

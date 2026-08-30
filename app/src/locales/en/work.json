@@ -193,7 +193,16 @@
     "exportTitle": "Export all pages as markdown",
     "exportNeedsDesktop": "Export needs the desktop app",
     "exportNeedsDesktopBody": "A browser tab can't write a folder to disk.",
-    "exportFailed": "Export failed"
+    "exportFailed": "Export failed",
+    "errSaveNote": "Could not save",
+    "couldNotLoadPage": "Could not load this page.",
+    "linkToPage": "Link to a page (⌘K)",
+    "close": "Close",
+    "writePlaceholder": "Write… (⌘K to link another page)",
+    "linkedFrom": "Linked from",
+    "searchNotes": "Search by title or content…",
+    "noMatches": "No matches.",
+    "typeToSearch": "Type to search, or enter a new title to create a page."
   },
   "board": {
     "pickAList": "Pick a list on the left, or create one to get started.",

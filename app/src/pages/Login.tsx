@@ -1,3 +1,4 @@
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,13 +20,14 @@ import {
 import { Brand } from "@/components/brand/Brand";
 
 const schema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  username: z.string().min(1, "common:misc.usernameRequired"),
+  password: z.string().min(8, "common:misc.passwordMin8"),
 });
 
 type FormData = z.infer<typeof schema>;
 
 export default function Login() {
+  const { t } = useT();
   const navigate = useNavigate();
   const { login } = useAuth();
   const continueAsGuest = useAuthStore((s) => s.continueAsGuest);
@@ -48,7 +50,7 @@ export default function Login() {
       await login(data.username, data.password);
       navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed");
+      setError(err instanceof Error ? err.message : t("common:misc.authFailed"));
     }
   };
 
@@ -60,13 +62,13 @@ export default function Login() {
             <Brand />
           </CardTitle>
           <CardDescription>
-            VPS Control Plane — Sign in to continue
+            {t("common:misc.signInLead")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">{t("common:misc.username")}</Label>
               <Input
                 id="username"
                 placeholder="admin"
@@ -78,13 +80,13 @@ export default function Login() {
               />
               {errors.username && (
                 <p className="text-sm text-destructive">
-                  {errors.username.message}
+                  {t(errors.username.message as MessageKey)}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("common:misc.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -93,7 +95,7 @@ export default function Login() {
               />
               {errors.password && (
                 <p className="text-sm text-destructive">
-                  {errors.password.message}
+                  {t(errors.password.message as MessageKey)}
                 </p>
               )}
             </div>
@@ -105,7 +107,7 @@ export default function Login() {
             )}
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Sign in"}
+              {isSubmitting ? t("common:misc.signingIn") : t("common:misc.signIn")}
             </Button>
           </form>
 
@@ -120,7 +122,7 @@ export default function Login() {
             className="mt-4 w-full"
             onClick={enterAsGuest}
           >
-            Continue as guest
+            {t("common:misc.continueAsGuest")}
           </Button>
           <p className="mt-2 text-center text-xs text-muted-foreground">
             Guest access is limited to the on-device tools (Image Tool, Crypto Tools).

@@ -1,4 +1,4 @@
-import { useT } from "@/lib/i18n";
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,10 +20,10 @@ import { Label } from "@/components/ui/label";
 import type { NewServerInput } from "@/hooks/use-servers";
 
 const schema = z.object({
-  name: z.string().min(1, "Required"),
-  host: z.string().min(1, "Required"),
+  name: z.string().min(1, "common:servers.required"),
+  host: z.string().min(1, "common:servers.required"),
   sshPort: z.number().min(1).max(65535),
-  sshUser: z.string().min(1, "Required"),
+  sshUser: z.string().min(1, "common:servers.required"),
   type: z.enum(["docker-swarm", "kubernetes"]),
   agentPort: z.number().min(1).max(65535),
 });
@@ -85,7 +85,7 @@ export default function AddServerDialog({ onCreated }: Props) {
               <Input placeholder="prod-01" {...register("name")} />
               {errors.name && (
                 <p className="text-xs text-destructive">
-                  {errors.name.message}
+                  {t(errors.name.message as MessageKey)}
                 </p>
               )}
             </div>
@@ -94,7 +94,7 @@ export default function AddServerDialog({ onCreated }: Props) {
               <Input placeholder="192.168.1.10" {...register("host")} />
               {errors.host && (
                 <p className="text-xs text-destructive">
-                  {errors.host.message}
+                  {t(errors.host.message as MessageKey)}
                 </p>
               )}
             </div>
@@ -106,7 +106,7 @@ export default function AddServerDialog({ onCreated }: Props) {
               <Input placeholder="root" {...register("sshUser")} />
               {errors.sshUser && (
                 <p className="text-xs text-destructive">
-                  {errors.sshUser.message}
+                  {t(errors.sshUser.message as MessageKey)}
                 </p>
               )}
             </div>

@@ -1,3 +1,4 @@
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { FileText, Loader2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
@@ -8,10 +9,18 @@ import { openAttachment } from "@/lib/media";
 import CopyId from "@/components/CopyId";
 import { useTasksStore } from "@/store/tasks.store";
 
-const KIND_LABEL: Record<string, string> = {
-  space: "Space",
-  folder: "Folder",
-  list: "List",
+/**
+ * Cómo se titula el resumen de cada clase de nodo, **por frase entera**.
+ *
+ * Antes era el sustantivo suelto y la vista le pegaba « overview» detrás. En
+ * castellano ese pegado no existe: es «del espacio» y «de la carpeta», con
+ * género distinto. La clave que falte cae a una frase genérica, que es fea pero
+ * dice algo — lo contrario de un título a medias.
+ */
+const KIND_LABEL: Record<string, MessageKey> = {
+  space: "common:servers.overviewOfSpace",
+  folder: "common:servers.overviewOfFolder",
+  list: "common:servers.overviewOfList",
 };
 
 /**
@@ -25,6 +34,7 @@ const KIND_LABEL: Record<string, string> = {
  * fight the live refresh.
  */
 export default function DocView() {
+  const { t } = useT();
   const target = useTasksStore((s) => s.activeDoc);
   const doc = useTasksStore((s) => s.doc);
   const loading = useTasksStore((s) => s.loadingDoc);
@@ -62,7 +72,7 @@ export default function DocView() {
       await saveDoc(draft);
       setEditing(false);
     } catch (e) {
-      toast.error("Could not save the overview", { description: String(e) });
+      toast.error(t("common:servers.errSaveOverview"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -74,13 +84,15 @@ export default function DocView() {
         <FileText className="size-4 shrink-0 text-muted-foreground" />
         <h1 className="truncate text-sm font-medium">{target.name}</h1>
         <span className="rounded bg-muted px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted-foreground">
-          {KIND_LABEL[target.kind] ?? target.kind} overview
+          {KIND_LABEL[target.kind]
+            ? t(KIND_LABEL[target.kind])
+            : t("common:servers.overviewOf", { kind: target.kind })}
         </span>
         <CopyId id={target.id} label={target.kind} />
 
         {doc?.doc?.updatedByName && !editing && (
           <span className="hidden text-xs text-muted-foreground sm:inline">
-            edited by {doc.doc.updatedByName}
+            {t("common:servers.editedBy", { name: doc.doc.updatedByName })}
           </span>
         )}
 
@@ -88,10 +100,10 @@ export default function DocView() {
           {!editing && (
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(true)}>
               <Pencil className="mr-1 size-3" />
-              {body ? "Edit" : "Write one"}
+              {body ? t("common:servers.edit") : t("common:servers.writeOne")}
             </Button>
           )}
-          <Button size="icon-xs" variant="ghost" title="Close" onClick={closeDoc}>
+          <Button size="icon-xs" variant="ghost" title={t("common:servers.close")} onClick={closeDoc}>
             <X className="size-3.5" />
           </Button>
         </div>
@@ -101,7 +113,7 @@ export default function DocView() {
         <div className="mx-auto w-full max-w-3xl">
           {loading && !doc ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Loading…
+              <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
             </p>
           ) : editing ? (
             <div className="space-y-2">
@@ -112,13 +124,13 @@ export default function DocView() {
                 collapsible
                 blockTools
                 minHeight="24rem"
-                placeholder="What is this for? Links, decisions, how to run it…"
+                placeholder={t("common:servers.overviewPlaceholder")}
                 autoFocus
               />
               <div className="flex gap-2">
                 <Button size="sm" onClick={save} disabled={saving}>
                   {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
-                  Save
+                  {t("common:servers.save")}
                 </Button>
                 <Button
                   size="sm"
@@ -128,7 +140,7 @@ export default function DocView() {
                     setEditing(false);
                   }}
                 >
-                  Cancel
+                  {t("common:servers.cancel")}
                 </Button>
               </div>
             </div>
@@ -139,10 +151,10 @@ export default function DocView() {
           ) : (
             <div className="py-16 text-center">
               <p className="text-sm text-muted-foreground">
-                No overview yet. Describe what lives here — links, decisions, how to run it.
+                {t("common:servers.noOverview")}
               </p>
               <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}>
-                <Pencil className="mr-1 size-3" /> Write one
+                <Pencil className="mr-1 size-3" /> {t("common:servers.writeOne")}
               </Button>
             </div>
           )}
@@ -150,7 +162,7 @@ export default function DocView() {
           {!editing && doc && doc.attachments.length > 0 && (
             <section className="mt-8 space-y-2 border-t pt-4">
               <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Files
+                {t("common:servers.files")}
               </h2>
               <ul className="space-y-1">
                 {doc.attachments.map((a) => (

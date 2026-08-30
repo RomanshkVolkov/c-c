@@ -193,7 +193,16 @@
     "exportTitle": "Exportar todas las páginas a markdown",
     "exportNeedsDesktop": "Exportar necesita la app de escritorio",
     "exportNeedsDesktopBody": "Una pestaña del navegador no puede escribir una carpeta en el disco.",
-    "exportFailed": "Falló la exportación"
+    "exportFailed": "Falló la exportación",
+    "errSaveNote": "No se pudo guardar",
+    "couldNotLoadPage": "No se pudo cargar esta página.",
+    "linkToPage": "Enlazar a una página (⌘K)",
+    "close": "Cerrar",
+    "writePlaceholder": "Escribe… (⌘K para enlazar otra página)",
+    "linkedFrom": "Enlazada desde",
+    "searchNotes": "Busca por título o contenido…",
+    "noMatches": "Nada coincide.",
+    "typeToSearch": "Escribe para buscar, o pon un título nuevo para crear una página."
   },
   "board": {
     "pickAList": "Elige una lista de la izquierda, o crea una para empezar.",
