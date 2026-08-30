@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -42,6 +43,7 @@ export default function EditServerDialog({
   onSave: (id: string, payload: NewServerInput) => Promise<unknown>;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -76,19 +78,19 @@ export default function EditServerDialog({
         <DialogHeader>
           <DialogTitle>Edit {server.name}</DialogTitle>
           <DialogDescription>
-            Connection details cac uses to reach this machine.
+            {t("common:servers.connectionDetails")}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label>Name</Label>
+            <Label>{t("common:servers.thName")}</Label>
             <Input {...register("name")} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
 
           <div className="space-y-1.5">
-            <Label>Host</Label>
+            <Label>{t("common:servers.host")}</Label>
             <Input
               {...register("host")}
               placeholder="192.168.1.10"

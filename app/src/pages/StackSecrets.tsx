@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -71,6 +72,7 @@ function inferOwnerRepo(image: string): { owner: string; repo: string } | null {
 }
 
 export default function StackSecrets() {
+  const { t } = useT();
   const navigate = useNavigate();
   const { state } = useLocation();
   const locationState = state as LocationState | null;
@@ -462,12 +464,12 @@ export default function StackSecrets() {
               GitHub Personal Access Token
               {tokenConfigured === true && (
                 <Badge variant="default" className="ml-2">
-                  Configured
+                  {t("common:servers.configured")}
                 </Badge>
               )}
               {tokenConfigured === false && (
                 <Badge variant="destructive" className="ml-2">
-                  Not configured
+                  {t("common:servers.notConfigured")}
                 </Badge>
               )}
             </CardTitle>
@@ -494,7 +496,7 @@ export default function StackSecrets() {
                   onClick={handleLoadFromOnePassword}
                   disabled={opLoading || !opReference.trim()}
                 >
-                  {opLoading ? "Loading..." : opStored ? "Update" : "Load"}
+                  {opLoading ? t("common:servers.loading") : opStored ? t("common:servers.update") : t("common:servers.load")}
                 </Button>
                 {opStored && (
                   <Button
@@ -505,7 +507,7 @@ export default function StackSecrets() {
                     <RefreshCw
                       className={`h-3 w-3 mr-1 ${opLoading ? "animate-spin" : ""}`}
                     />
-                    Refresh
+                    {t("common:servers.refresh")}
                   </Button>
                 )}
               </div>
@@ -516,7 +518,7 @@ export default function StackSecrets() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs">Or paste manually</Label>
+              <Label className="text-xs">{t("common:servers.orPasteManually")}</Label>
               <div className="flex gap-2">
                 <Input
                   type="password"
@@ -530,7 +532,7 @@ export default function StackSecrets() {
                   onClick={handleSetToken}
                   disabled={tokenLoading || !tokenInput.trim()}
                 >
-                  {tokenConfigured ? "Update" : "Save"}
+                  {tokenConfigured ? t("common:servers.update") : t("common:servers.save")}
                 </Button>
                 {tokenConfigured && (
                   <Button
@@ -538,7 +540,7 @@ export default function StackSecrets() {
                     onClick={handleDeleteToken}
                     disabled={tokenLoading}
                   >
-                    Remove
+                    {t("common:servers.remove")}
                   </Button>
                 )}
               </div>
@@ -554,12 +556,12 @@ export default function StackSecrets() {
         {/* Repository */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Repository</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("common:servers.repository")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex gap-3 items-end">
               <div className="flex-1 space-y-1">
-                <Label className="text-xs">Owner</Label>
+                <Label className="text-xs">{t("common:servers.owner")}</Label>
                 <Input
                   placeholder="owner"
                   value={owner}
@@ -569,7 +571,7 @@ export default function StackSecrets() {
               </div>
               <span className="pb-2 text-muted-foreground">/</span>
               <div className="flex-1 space-y-1">
-                <Label className="text-xs">Repository</Label>
+                <Label className="text-xs">{t("common:servers.repository")}</Label>
                 <Input
                   placeholder="repo"
                   value={repo}
@@ -633,7 +635,7 @@ export default function StackSecrets() {
                       }
                     >
                       <Plus className="h-3 w-3 mr-1" />
-                      New Secret
+                      {t("common:servers.newSecret")}
                     </Button>
                   </div>
                   {secretsError && (
@@ -641,20 +643,20 @@ export default function StackSecrets() {
                   )}
                   {secretsLoading ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
-                      Loading...
+                      {t("common:servers.loading")}
                     </p>
                   ) : secrets.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
-                      No secrets found.
+                      {t("common:servers.noSecrets")}
                     </p>
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Updated</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead>{t("common:servers.thName")}</TableHead>
+                          <TableHead>{t("common:servers.thCreated")}</TableHead>
+                          <TableHead>{t("common:servers.thUpdated")}</TableHead>
+                          <TableHead className="text-right">{t("common:servers.thActions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -688,7 +690,7 @@ export default function StackSecrets() {
                                   })
                                 }
                               >
-                                Update
+                                {t("common:servers.update")}
                               </Button>
                               <Button
                                 variant="ghost"
@@ -698,7 +700,7 @@ export default function StackSecrets() {
                                   openDeleteConfirm("secret", secret.name)
                                 }
                               >
-                                Delete
+                                {t("common:servers.delete")}
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -726,7 +728,7 @@ export default function StackSecrets() {
                       }
                     >
                       <Plus className="h-3 w-3 mr-1" />
-                      New Variable
+                      {t("common:servers.newVariable")}
                     </Button>
                   </div>
                   {variablesError && (
@@ -734,21 +736,21 @@ export default function StackSecrets() {
                   )}
                   {variablesLoading ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
-                      Loading...
+                      {t("common:servers.loading")}
                     </p>
                   ) : variables.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-8 text-center">
-                      No variables found.
+                      {t("common:servers.noVariables")}
                     </p>
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Value</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Updated</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead>{t("common:servers.thName")}</TableHead>
+                          <TableHead>{t("common:servers.thValue")}</TableHead>
+                          <TableHead>{t("common:servers.thCreated")}</TableHead>
+                          <TableHead>{t("common:servers.thUpdated")}</TableHead>
+                          <TableHead className="text-right">{t("common:servers.thActions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -785,7 +787,7 @@ export default function StackSecrets() {
                                   })
                                 }
                               >
-                                Edit
+                                {t("common:servers.edit")}
                               </Button>
                               <Button
                                 variant="ghost"
@@ -795,7 +797,7 @@ export default function StackSecrets() {
                                   openDeleteConfirm("variable", v.name)
                                 }
                               >
-                                Delete
+                                {t("common:servers.delete")}
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -822,14 +824,14 @@ export default function StackSecrets() {
           <DialogHeader>
             <DialogTitle>
               {secretDialog.isNew
-                ? "New Secret"
+                ? t("common:servers.newSecret")
                 : `Update Secret: ${secretDialog.name}`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {secretDialog.isNew && (
               <div className="space-y-1">
-                <Label>Name</Label>
+                <Label>{t("common:servers.thName")}</Label>
                 <Input
                   placeholder="SECRET_NAME"
                   value={secretDialog.name}
@@ -844,10 +846,10 @@ export default function StackSecrets() {
               </div>
             )}
             <div className="space-y-1">
-              <Label>Value</Label>
+              <Label>{t("common:servers.thValue")}</Label>
               <Input
                 type="password"
-                placeholder="Secret value"
+                placeholder={t("common:servers.secretValue")}
                 value={secretDialog.value}
                 onChange={(e) =>
                   setSecretDialog((d) => ({ ...d, value: e.target.value }))
@@ -866,7 +868,7 @@ export default function StackSecrets() {
               }
               disabled={secretDialog.saving}
             >
-              Cancel
+              {t("common:servers.cancel")}
             </Button>
             <Button
               onClick={handleSaveSecret}
@@ -876,7 +878,7 @@ export default function StackSecrets() {
                 !secretDialog.value.trim()
               }
             >
-              {secretDialog.saving ? "Saving..." : "Save"}
+              {secretDialog.saving ? t("common:servers.saving") : t("common:servers.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -895,13 +897,13 @@ export default function StackSecrets() {
             <DialogTitle>
               {varDialog.exists
                 ? `Edit Variable: ${varDialog.name}`
-                : "New Variable"}
+                : t("common:servers.newVariable")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {!varDialog.exists && (
               <div className="space-y-1">
-                <Label>Name</Label>
+                <Label>{t("common:servers.thName")}</Label>
                 <Input
                   placeholder="VARIABLE_NAME"
                   value={varDialog.name}
@@ -916,9 +918,9 @@ export default function StackSecrets() {
               </div>
             )}
             <div className="space-y-1">
-              <Label>Value</Label>
+              <Label>{t("common:servers.thValue")}</Label>
               <Input
-                placeholder="Variable value"
+                placeholder={t("common:servers.variableValue")}
                 value={varDialog.value}
                 onChange={(e) =>
                   setVarDialog((d) => ({ ...d, value: e.target.value }))
@@ -937,7 +939,7 @@ export default function StackSecrets() {
               }
               disabled={varDialog.saving}
             >
-              Cancel
+              {t("common:servers.cancel")}
             </Button>
             <Button
               onClick={handleSaveVariable}
@@ -947,7 +949,7 @@ export default function StackSecrets() {
                 !varDialog.value.trim()
               }
             >
-              {varDialog.saving ? "Saving..." : "Save"}
+              {varDialog.saving ? t("common:servers.saving") : t("common:servers.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1007,7 +1009,7 @@ export default function StackSecrets() {
               }
               disabled={deleteConfirm.deleting}
             >
-              Cancel
+              {t("common:servers.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1017,7 +1019,7 @@ export default function StackSecrets() {
                 deleteConfirm.input !== `delete ${deleteConfirm.name}`
               }
             >
-              {deleteConfirm.deleting ? "Deleting..." : "Delete"}
+              {deleteConfirm.deleting ? t("common:servers.deleting") : t("common:servers.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

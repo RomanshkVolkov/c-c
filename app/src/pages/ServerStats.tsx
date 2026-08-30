@@ -271,7 +271,7 @@ export default function ServerStats() {
         </Button>
         <div className="flex items-center gap-3 flex-1">
           <Activity className="h-5 w-5 text-muted-foreground" />
-          <span className="font-semibold text-lg">Resource monitor</span>
+          <span className="font-semibold text-lg">{t("common:servers.resourceMonitor")}</span>
           <span className="text-sm text-muted-foreground">{server.name}</span>
           <span className="font-mono text-xs text-muted-foreground">
             {server.host}:{server.agentPort}
@@ -291,7 +291,7 @@ export default function ServerStats() {
             <RefreshCw
               className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`}
             />
-            Refresh
+            {t("common:servers.refresh")}
           </Button>
           <Button
             variant="outline"
@@ -301,12 +301,12 @@ export default function ServerStats() {
             {polling ? (
               <>
                 <Pause className="h-4 w-4 mr-1" />
-                Pause
+                {t("common:servers.pause")}
               </>
             ) : (
               <>
                 <Play className="h-4 w-4 mr-1" />
-                Resume
+                {t("common:servers.resume")}
               </>
             )}
           </Button>
@@ -332,7 +332,7 @@ export default function ServerStats() {
                   checked={showStopped}
                   onChange={(e) => setShowStopped(e.target.checked)}
                 />
-                Show stopped
+                {t("common:servers.showStopped")}
               </label>
             </CardTitle>
           </CardHeader>
@@ -342,7 +342,7 @@ export default function ServerStats() {
               <Input
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter by container, service or stack..."
+                placeholder={t("common:servers.filterContainers")}
                 className="pl-9 pr-9"
               />
               {filter && (
@@ -350,7 +350,7 @@ export default function ServerStats() {
                   type="button"
                   onClick={() => setFilter("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label="Clear filter"
+                  aria-label={t("common:servers.clearFilter")}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -370,8 +370,8 @@ export default function ServerStats() {
             {stats.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 {loading
-                  ? "Loading..."
-                  : "No swarm-managed containers on this node."}
+                  ? t("common:servers.loading")
+                  : t("common:servers.noSwarmContainers")}
               </p>
             ) : filtered.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
@@ -382,35 +382,35 @@ export default function ServerStats() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>
-                      <SortableHead label="Container" sortKey="container" active={sortKey} dir={sortDir} onSort={handleSort} />
+                      <SortableHead label={t("common:servers.thContainer")} sortKey="container" active={sortKey} dir={sortDir} onSort={handleSort} />
                     </TableHead>
                     <TableHead>
-                      <SortableHead label="Service" sortKey="service" active={sortKey} dir={sortDir} onSort={handleSort} />
+                      <SortableHead label={t("common:servers.thService")} sortKey="service" active={sortKey} dir={sortDir} onSort={handleSort} />
                     </TableHead>
                     <TableHead>
-                      <SortableHead label="Stack" sortKey="stack" active={sortKey} dir={sortDir} onSort={handleSort} />
+                      <SortableHead label={t("common:servers.thStack")} sortKey="stack" active={sortKey} dir={sortDir} onSort={handleSort} />
                     </TableHead>
-                    <TableHead>Node</TableHead>
+                    <TableHead>{t("common:servers.thNode")}</TableHead>
                     <TableHead>
-                      <SortableHead label="State" sortKey="state" active={sortKey} dir={sortDir} onSort={handleSort} />
+                      <SortableHead label={t("common:servers.thState")} sortKey="state" active={sortKey} dir={sortDir} onSort={handleSort} />
                     </TableHead>
                     <TableHead>
                       <SortableHead label="CPU" sortKey="cpu" active={sortKey} dir={sortDir} onSort={handleSort} />
                     </TableHead>
                     <TableHead>
-                      <SortableHead label="Memory" sortKey="mem" active={sortKey} dir={sortDir} onSort={handleSort} />
+                      <SortableHead label={t("common:servers.thMemory")} sortKey="mem" active={sortKey} dir={sortDir} onSort={handleSort} />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortableHead label="Net Rx" sortKey="netRx" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                      <SortableHead label={t("common:servers.thNetRx")} sortKey="netRx" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortableHead label="Net Tx" sortKey="netTx" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                      <SortableHead label={t("common:servers.thNetTx")} sortKey="netTx" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortableHead label="Disk R" sortKey="diskR" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                      <SortableHead label={t("common:servers.thDiskR")} sortKey="diskR" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
                     </TableHead>
                     <TableHead className="text-right">
-                      <SortableHead label="Disk W" sortKey="diskW" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
+                      <SortableHead label={t("common:servers.thDiskW")} sortKey="diskW" active={sortKey} dir={sortDir} onSort={handleSort} align="right" />
                     </TableHead>
                   </TableRow>
                 </TableHeader>

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,6 +35,7 @@ interface Props {
 }
 
 export default function AddServerDialog({ onCreated }: Props) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +56,7 @@ export default function AddServerDialog({ onCreated }: Props) {
       reset();
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("common:servers.unknownError"));
     }
   };
 
@@ -63,13 +65,13 @@ export default function AddServerDialog({ onCreated }: Props) {
       <DialogTrigger>
         <Button size="sm" className="gap-2" onClick={() => setOpen(true)}>
           <Plus className="h-4 w-4" />
-          Add Server
+          {t("common:servers.addServer")}
         </Button>
       </DialogTrigger>
 
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add Server</DialogTitle>
+          <DialogTitle>{t("common:servers.addServer")}</DialogTitle>
           <DialogDescription>
             SSH access uses your local SSH agent (1Password recommended). No
             keys are stored or sent by this app.
@@ -79,7 +81,7 @@ export default function AddServerDialog({ onCreated }: Props) {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label>Name</Label>
+              <Label>{t("common:servers.thName")}</Label>
               <Input placeholder="prod-01" {...register("name")} />
               {errors.name && (
                 <p className="text-xs text-destructive">
@@ -100,7 +102,7 @@ export default function AddServerDialog({ onCreated }: Props) {
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
-              <Label>SSH User</Label>
+              <Label>{t("common:servers.sshUser")}</Label>
               <Input placeholder="root" {...register("sshUser")} />
               {errors.sshUser && (
                 <p className="text-xs text-destructive">
@@ -109,17 +111,17 @@ export default function AddServerDialog({ onCreated }: Props) {
               )}
             </div>
             <div className="space-y-1">
-              <Label>SSH Port</Label>
+              <Label>{t("common:servers.sshPort")}</Label>
               <Input type="number" {...register("sshPort", { valueAsNumber: true })} />
             </div>
             <div className="space-y-1">
-              <Label>Agent Port</Label>
+              <Label>{t("common:servers.agentPort")}</Label>
               <Input type="number" {...register("agentPort", { valueAsNumber: true })} />
             </div>
           </div>
 
           <div className="space-y-1">
-            <Label>Type</Label>
+            <Label>{t("common:servers.type")}</Label>
             <select
               {...register("type")}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -141,10 +143,10 @@ export default function AddServerDialog({ onCreated }: Props) {
               variant="outline"
               onClick={() => setOpen(false)}
             >
-              Cancel
+              {t("common:servers.cancel")}
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Adding..." : "Add Server"}
+              {isSubmitting ? t("common:servers.adding") : t("common:servers.addServer")}
             </Button>
           </DialogFooter>
         </form>

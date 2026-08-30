@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState, useEffect, useRef, useMemo } from "react";
 import AnsiToHtml from "ansi-to-html";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -85,6 +86,7 @@ function LogsPanel({
   agentPort: number;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [logs, setLogs] = useState<string[]>([]);
   const [status, setStatus] = useState<
     "connecting" | "connected" | "reconnecting" | "error"
@@ -145,11 +147,11 @@ function LogsPanel({
           <span
             className={`h-2 w-2 rounded-full ${status === "connected" ? "bg-success" : status === "error" ? "bg-destructive" : "bg-yellow-500 animate-pulse"}`}
           />
-          {status === "connecting" && "Connecting..."}
-          {status === "connected" && "Streaming"}
-          {status === "reconnecting" && "Reconnecting..."}
+          {status === "connecting" && t("common:servers.connecting")}
+          {status === "connected" && t("common:servers.streaming")}
+          {status === "reconnecting" && t("common:servers.reconnecting")}
           {status === "error" &&
-            "Connection failed — agent may be unreachable or endpoint not available"}
+            t("common:servers.connectionFailed")}
         </div>
         {/* overflow-auto, not just -y: server logs are column-aligned tables and
             a long row has to scroll here rather than widen the page. And
@@ -157,7 +159,7 @@ function LogsPanel({
             readable table into rubble. */}
         <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 h-100 overflow-auto whitespace-pre font-mono text-sm text-green-400">
           {logs.length === 0 ? (
-            <span className="text-muted-foreground">Waiting for logs...</span>
+            <span className="text-muted-foreground">{t("common:servers.waitingForLogs")}</span>
           ) : (
             logs.map((line, i) => (
               <div
@@ -192,6 +194,7 @@ function ServicesTab({
   onSecretsClick: (svc: SwarmService) => void;
   onShellClick: (svc: SwarmService) => void;
 }) {
+  const { t } = useT();
   const needle = filter.trim().toLowerCase();
   const filtered = needle
     ? services.filter((s) => {
@@ -207,7 +210,7 @@ function ServicesTab({
         <Input
           value={filter}
           onChange={(e) => onFilterChange(e.target.value)}
-          placeholder="Filter by name, image or stack..."
+          placeholder={t("common:servers.filterServices")}
           className="pl-9 pr-9"
         />
         {filter && (
@@ -215,7 +218,7 @@ function ServicesTab({
             type="button"
             onClick={() => onFilterChange("")}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            aria-label="Clear filter"
+            aria-label={t("common:servers.clearFilter")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -224,7 +227,7 @@ function ServicesTab({
 
       {services.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center">
-          No services found.
+          {t("common:servers.noServices")}
         </p>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center">
@@ -265,17 +268,18 @@ function ServicesTable({
   onSecretsClick: (svc: SwarmService) => void;
   onShellClick: (svc: SwarmService) => void;
 }) {
+  const { t } = useT();
   return (
     <Table>
       <TableHeader className="block">
         <TableRow className="flex w-full">
-          <TableHead className="flex-2 min-w-0">Name</TableHead>
-          <TableHead className="flex-3 min-w-0">Image</TableHead>
-          <TableHead className="flex-3 min-w-0">Stack</TableHead>
-          <TableHead className="flex-1 min-w-0">Replicas</TableHead>
-          <TableHead className="flex-1 min-w-0">Status</TableHead>
-          <TableHead className="flex-2 min-w-0">Updated</TableHead>
-          <TableHead className="flex-3 min-w-0 text-right">Actions</TableHead>
+          <TableHead className="flex-2 min-w-0">{t("common:servers.thName")}</TableHead>
+          <TableHead className="flex-3 min-w-0">{t("common:servers.thImage")}</TableHead>
+          <TableHead className="flex-3 min-w-0">{t("common:servers.thStack")}</TableHead>
+          <TableHead className="flex-1 min-w-0">{t("common:servers.thReplicas")}</TableHead>
+          <TableHead className="flex-1 min-w-0">{t("common:servers.thStatus")}</TableHead>
+          <TableHead className="flex-2 min-w-0">{t("common:servers.thUpdated")}</TableHead>
+          <TableHead className="flex-3 min-w-0 text-right">{t("common:servers.thActions")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody className="block max-h-105 overflow-y-auto">
@@ -330,7 +334,7 @@ function ServicesTable({
                 onClick={() => onLogsClick(svc)}
               >
                 <Terminal className="h-3 w-3 mr-1" />
-                Logs
+                {t("common:servers.logs")}
               </Button>
               <Button
                 variant="ghost"
@@ -343,23 +347,23 @@ function ServicesTable({
                     );
                     toast.success(`Restarting ${svc.name}`);
                   } catch (e) {
-                    toast.error("Restart failed", {
+                    toast.error(t("common:servers.restartFailed"), {
                       description: e instanceof Error ? e.message : String(e),
                     });
                   }
                 }}
               >
                 <RotateCcw className="h-3 w-3 mr-1" />
-                Restart
+                {t("common:servers.restart")}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onShellClick(svc)}
-                title="Open a shell inside this service's container"
+                title={t("common:servers.shellTitle")}
               >
                 <SquareTerminal className="h-3 w-3 mr-1" />
-                Shell
+                {t("common:servers.shell")}
               </Button>
               <Button
                 variant="ghost"
@@ -367,7 +371,7 @@ function ServicesTable({
                 onClick={() => onSecretsClick(svc)}
               >
                 <KeyRound className="h-3 w-3 mr-1" />
-                Secrets
+                {t("common:servers.secrets")}
               </Button>
             </TableCell>
           </TableRow>
@@ -378,10 +382,11 @@ function ServicesTable({
 }
 
 function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
+  const { t } = useT();
   if (nodes.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">
-        No nodes found.
+        {t("common:servers.noNodes")}
       </p>
     );
   }
@@ -389,11 +394,11 @@ function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Hostname</TableHead>
-          <TableHead>Role</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Availability</TableHead>
-          <TableHead>Engine</TableHead>
+          <TableHead>{t("common:servers.thHostname")}</TableHead>
+          <TableHead>{t("common:servers.thRole")}</TableHead>
+          <TableHead>{t("common:servers.thStatus")}</TableHead>
+          <TableHead>{t("common:servers.thAvailability")}</TableHead>
+          <TableHead>{t("common:servers.thEngine")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -450,6 +455,7 @@ export default function ServerManage() {
 }
 
 function SwarmManage({ server }: { server: Server }) {
+  const { t } = useT();
   const navigate = useNavigate();
   const confirm = useConfirm();
 
@@ -467,9 +473,12 @@ function SwarmManage({ server }: { server: Server }) {
     const vivas = useTerminals.getState().sesiones.filter((s) => s.estado === "viva");
     if (vivas.length > 0) {
       const ok = await confirm({
-        title: vivas.length === 1 ? "Close the open terminal?" : `Close ${vivas.length} open terminals?`,
-        description: "Leaving this screen ends the sessions. Anything still running in them stops.",
-        confirmText: "Leave",
+        title:
+          vivas.length === 1
+            ? t("common:servers.closeOneTerminal")
+            : t("common:servers.closeManyTerminals", { count: vivas.length }),
+        description: t("common:servers.closeTerminalsBody"),
+        confirmText: t("common:servers.leave"),
         destructive: true,
       });
       if (!ok) return;
@@ -513,11 +522,11 @@ function SwarmManage({ server }: { server: Server }) {
         <Button
           variant="outline"
           size="sm"
-          title="Open a shell on this machine over SSH"
+          title={t("common:servers.terminalTitle")}
           onClick={() => abrirTerminal(server, { kind: "host" })}
         >
           <SquareTerminal className="h-4 w-4 mr-1" />
-          Terminal
+          {t("common:servers.terminal")}
         </Button>
         <Button
           variant="outline"
@@ -529,7 +538,7 @@ function SwarmManage({ server }: { server: Server }) {
           }
         >
           <Activity className="h-4 w-4 mr-1" />
-          Stats
+          {t("common:servers.stats")}
         </Button>
         <Button
           variant="outline"
@@ -540,7 +549,7 @@ function SwarmManage({ server }: { server: Server }) {
           <RefreshCw
             className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`}
           />
-          Refresh
+          {t("common:servers.refresh")}
         </Button>
       </header>
 
@@ -575,7 +584,7 @@ function SwarmManage({ server }: { server: Server }) {
           <CardContent className="pt-4">
             {loading ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
-                Loading...
+                {t("common:servers.loading")}
               </p>
             ) : tab === "services" ? (
               <ServicesTab
