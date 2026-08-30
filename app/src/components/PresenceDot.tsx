@@ -1,4 +1,4 @@
-import { useTranslation } from "react-i18next";
+import { useT } from "@/lib/i18n";
 import { activo, desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ export default function PresenceDot({
   lastSeenAt?: string | null;
   className?: string;
 }) {
-  const { t } = useTranslation();
+  const { t } = useT();
   const aqui = activo(lastSeenAt);
   return (
     <span

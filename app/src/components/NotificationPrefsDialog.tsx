@@ -1,4 +1,4 @@
-import { useTranslation } from "react-i18next";
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
  * todo el que ya tuviera preferencias. Aquí se le da la vuelta para que el
  * interruptor diga lo que hace, en vez de arrastrar la negación a la pantalla.
  */
-const OPTIONS: { key: keyof InboxPrefs; labelKey: string; hintKey: string; inverted?: boolean }[] = [
+const OPTIONS: { key: keyof InboxPrefs; labelKey: MessageKey; hintKey: MessageKey; inverted?: boolean }[] = [
   { key: "dms", labelKey: "notifications:prefs.dms", hintKey: "notifications:prefs.dmsHint" },
   { key: "comments", labelKey: "notifications:prefs.comments", hintKey: "notifications:prefs.commentsHint" },
   { key: "reports", labelKey: "notifications:prefs.reports", hintKey: "notifications:prefs.reportsHint" },
@@ -122,7 +122,7 @@ export default function NotificationPrefsDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useT();
   const prefs = useInboxStore((s) => s.prefs);
   const loadPrefs = useInboxStore((s) => s.loadPrefs);
   const savePrefs = useInboxStore((s) => s.savePrefs);

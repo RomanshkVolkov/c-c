@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, CheckSquare, MessageSquare, Server as ServerIcon } from "lucide-react";
@@ -8,7 +9,6 @@ import { useDMStore } from "@/store/dm.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useServers } from "@/hooks/use-servers";
 import { desde, iniciales } from "@/lib/desde";
-import { useTranslation } from "react-i18next";
 
 import { normalizeStatus, STATUS_LABEL_KEYS } from "@/types/report";
 import type { APIResponse } from "@/types/auth";
@@ -31,7 +31,7 @@ import type { ReportListItem, ReportListResult } from "@/types/report";
 const CERRADOS = new Set(["resolved", "closed"]);
 
 export default function Overview() {
-  const { t } = useTranslation();
+  const { t } = useT();
   const navigate = useNavigate();
   const orgId = useOrgsStore((s) => s.currentOrgId);
   const orgName = useOrgsStore((s) => s.currentOrg()?.name ?? "");

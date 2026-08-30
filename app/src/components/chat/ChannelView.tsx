@@ -1,4 +1,4 @@
-import { useTranslation } from "react-i18next";
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2, Volume2 } from "lucide-react";
@@ -570,7 +570,7 @@ function VozEnCurso({ spaceId }: { spaceId: string }) {
   const entrar = useVoice((s) => s.entrar);
   if (!dentro?.length || (enSala === spaceId && estado !== "fuera")) return null;
 
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useT();
   const nombres = dentro.map((p) => p.name || p.identity);
 
   return (

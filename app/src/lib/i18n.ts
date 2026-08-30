@@ -1,5 +1,5 @@
-import i18next from "i18next";
-import { initReactI18next } from "react-i18next";
+import i18next, { type ParseKeys } from "i18next";
+import { initReactI18next, useTranslation } from "react-i18next";
 
 import enCommon from "@/locales/en/common.json";
 import enNav from "@/locales/en/nav.json";
@@ -23,6 +23,26 @@ import type { Locale } from "@/store/locale.store";
  * producto, así que es el único que se sabe completo. Una clave que falte en
  * castellano sale en inglés — feo, pero legible, que es mejor que un hueco.
  */
+
+/**
+ * Todos los espacios de nombres, en una lista y en un solo sitio.
+ *
+ * Se declara aquí porque la usan tres cosas que tienen que estar de acuerdo: el
+ * arranque, el hook que usan las pantallas, y los tipos de las claves. Con la
+ * lista repetida, añadir un espacio y olvidarse de uno de los tres deja las
+ * claves de ese espacio sin tipar — es decir, sin la red.
+ */
+export const NAMESPACES = ["common", "nav", "notifications", "work"] as const;
+
+/**
+ * Una clave que existe, dicho por el compilador.
+ *
+ * Sirve para las tablas que guardan claves en vez de texto —las pestañas, las
+ * entradas del menú, las etiquetas de estado—. Declarar ese campo como `string`
+ * dejaba pasar cualquier cosa y devolvía el agujero que estos tipos vienen a
+ * tapar: la errata se pintaba en pantalla y nadie se enteraba.
+ */
+export type MessageKey = ParseKeys<typeof NAMESPACES>;
 
 /** El inglés manda: si una clave no está aquí, no está en ninguna parte. */
 const recursos = {
@@ -61,7 +81,7 @@ export function initI18n(lng: Locale = "en") {
     lng,
     fallbackLng: "en",
     defaultNS: "common",
-    ns: ["common", "nav", "notifications", "work"],
+    ns: [...NAMESPACES],
     // Sin escapado: React ya escapa todo lo que pinta, y volver a hacerlo aquí
     // convierte un apóstrofo en `&#39;` dentro de la propia frase.
     interpolation: { escapeValue: false },
@@ -79,6 +99,21 @@ export function applyLocale(locale: Locale) {
   if (i18next.isInitialized && i18next.language !== locale) {
     void i18next.changeLanguage(locale);
   }
+}
+
+/**
+ * El hook que usan las pantallas, con **los cuatro espacios cargados**.
+ *
+ * `useTranslation()` a secas sólo deja escribir claves del espacio por defecto,
+ * así que `t("nav:account.theme")` no compilaría — y esconder eso pasando la
+ * lista en cada pantalla sería repetir en cincuenta sitios algo que se olvida
+ * en el cincuenta y uno.
+ *
+ * A cambio de una línea, cualquier clave de cualquier espacio se autocompleta y
+ * una mal escrita **no compila**.
+ */
+export function useT() {
+  return useTranslation(NAMESPACES);
 }
 
 export default i18next;

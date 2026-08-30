@@ -1,8 +1,8 @@
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AtSign, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
-import { useTranslation } from "react-i18next";
 import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,7 @@ type Tab = "all" | "talk" | "tasks" | "system";
  * el texto es sólo cómo se lee. Guardar aquí la palabra traducida haría que
  * cambiar de idioma cambiara la lógica.
  */
-const TABS: { key: Tab; labelKey: string }[] = [
+const TABS: { key: Tab; labelKey: MessageKey }[] = [
   { key: "all", labelKey: "notifications:tab.all" },
   // «Talk» y no «Mentions», que es como lo llama el prototipo: aquí caen
   // también los directos y los mensajes de los canales que sigues, y ninguno de
@@ -41,7 +41,7 @@ const TABS: { key: Tab; labelKey: string }[] = [
 ];
 
 /** A qué pestaña pertenece cada clase, y con qué cara se dibuja. */
-const KINDS: Record<string, { group: Tab; tagKey: string; icon: typeof AtSign; color: string }> = {
+const KINDS: Record<string, { group: Tab; tagKey?: MessageKey; icon: typeof AtSign; color: string }> = {
   "chat:mention": { group: "talk", tagKey: "notifications:kind.mention", icon: AtSign, color: "text-primary" },
   "dm:message": { group: "talk", tagKey: "notifications:kind.direct", icon: MessageSquare, color: "text-primary" },
   "chat:message": { group: "talk", tagKey: "notifications:kind.channel", icon: Hash, color: "text-muted-foreground" },
@@ -57,7 +57,9 @@ const KINDS: Record<string, { group: Tab; tagKey: string; icon: typeof AtSign; c
 };
 
 // Sin etiqueta a propósito: no hay palabra honesta para «no sé qué es esto».
-const UNKNOWN_KIND = { group: "system" as Tab, tagKey: "", icon: Info, color: "text-muted-foreground" };
+// Sin `tagKey`: no hay palabra honesta para «no sé qué es esto», y una cadena
+// vacía sería una clave de catálogo que no existe.
+const UNKNOWN_KIND = { group: "system" as Tab, icon: Info, color: "text-muted-foreground" };
 
 export default function NotificationsPanel({
   open,
@@ -68,7 +70,7 @@ export default function NotificationsPanel({
   onOpenChange: (v: boolean) => void;
   onOpenPrefs: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useT();
   const navigate = useNavigate();
   const items = useInboxStore((s) => s.items);
   const unread = useInboxStore((s) => s.unread);
@@ -260,7 +262,7 @@ function GroupRow({
 }) {
   if (g.alone) return <Row n={g.items[0]} isRead={isRead} onClick={() => onOpen(g.items[0])} />;
 
-  const { t } = useTranslation();
+  const { t } = useT();
   const s = summarize(g);
   // El contador del servidor manda: cuenta la bandeja entera y no la página.
   // Sin él —una fila de las antiguas, sin clave guardada— se usa lo que hay
@@ -304,9 +306,11 @@ function GroupRow({
               <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium leading-4 text-primary">
                 {count}
               </span>
-              <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">
-                {t(kind.tagKey)}
-              </span>
+              {kind.tagKey && (
+                <span className="shrink-0 rounded bg-muted px-1 text-[10px] leading-4 text-muted-foreground">
+                  {t(kind.tagKey)}
+                </span>
+              )}
               {s.agent && (
                 // Frase distinta de la de una fila suelta a propósito: dice que
                 // hay algo de un agente **dentro**, no que lo sea la cabecera.
@@ -346,7 +350,7 @@ function GroupRow({
 }
 
 function Row({ n, isRead, onClick }: { n: InboxItem; isRead?: boolean; onClick: () => void }) {
-  const { t } = useTranslation();
+  const { t } = useT();
   const kind = KINDS[n.kind] ?? UNKNOWN_KIND;
   const Icon = kind.icon;
   return (

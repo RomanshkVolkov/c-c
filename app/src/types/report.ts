@@ -1,3 +1,5 @@
+import type { MessageKey } from "@/lib/i18n";
+
 export type ReportStatus = "open" | "in_progress" | "done" | "closed";
 
 export const REPORT_STATUSES: ReportStatus[] = [
@@ -15,7 +17,7 @@ export const REPORT_STATUSES: ReportStatus[] = [
  * idioma — y el repositorio ya avisa en cuatro sitios de que renombrar una
  * columna no cambia lo que esa columna *es*.
  */
-export const STATUS_LABEL_KEYS: Record<ReportStatus, string> = {
+export const STATUS_LABEL_KEYS: Record<ReportStatus, MessageKey> = {
   open: "work:status.open",
   in_progress: "work:status.in_progress",
   done: "work:status.done",
@@ -50,7 +52,7 @@ export function normalizeStatus(s: string): ReportStatus {
 export type ReportCategory = "bug" | "ui" | "performance" | "data" | "other";
 export type ReportPriority = "low" | "medium" | "high" | "urgent";
 
-export const CATEGORY_LABEL_KEYS: Record<ReportCategory, string> = {
+export const CATEGORY_LABEL_KEYS: Record<ReportCategory, MessageKey> = {
   bug: "work:category.bug",
   ui: "work:category.ui",
   performance: "work:category.performance",
@@ -58,7 +60,7 @@ export const CATEGORY_LABEL_KEYS: Record<ReportCategory, string> = {
   other: "work:category.other",
 };
 
-export const PRIORITY_LABEL_KEYS: Record<ReportPriority, string> = {
+export const PRIORITY_LABEL_KEYS: Record<ReportPriority, MessageKey> = {
   low: "work:priority.low",
   medium: "work:priority.medium",
   high: "work:priority.high",

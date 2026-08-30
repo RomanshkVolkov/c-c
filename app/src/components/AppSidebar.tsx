@@ -1,4 +1,4 @@
-import { useTranslation } from "react-i18next";
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -59,7 +59,14 @@ import { cn } from "@/lib/utils";
 // actually doing: their work, the developer tools, and running the platform.
 // Ten equal rows made everything look equally important, which is another way
 // of saying nothing did.
-const NAV_ITEMS = [
+const NAV_ITEMS: {
+  labelKey: MessageKey;
+  path: string;
+  icon: typeof LayoutDashboard;
+  guest: boolean;
+  superadmin?: boolean;
+  group: string;
+}[] = [
   { labelKey: "nav:item.overview", path: "/overview", icon: LayoutDashboard, guest: false, group: "work" },
   { labelKey: "nav:item.myWork", path: "/my-work", icon: Inbox, guest: false, group: "work" },
   // Sin entrada para tareas: el árbol de espacios de aquí abajo **es** esa
@@ -76,7 +83,7 @@ const NAV_ITEMS = [
 ];
 
 /** Rendered in this order; a group with nothing in it draws nothing at all. */
-const GROUPS: { key: string; labelKey: string }[] = [
+const GROUPS: { key: string; labelKey: MessageKey }[] = [
   { key: "work", labelKey: "nav:group.work" },
   { key: "talk", labelKey: "nav:group.talk" },
   { key: "platform", labelKey: "nav:group.platform" },
@@ -92,7 +99,7 @@ const GROUPS: { key: string; labelKey: string }[] = [
  * Rendered whether or not there is a session: signed out these are the only
  * part of the app that does anything, and they are how the guest flow starts.
  */
-const DEV_TOOLS = [
+const DEV_TOOLS: { labelKey: MessageKey; path: string; icon: typeof ImageDown; guest: boolean }[] = [
   { labelKey: "nav:devTools.image", path: "/devtools/image", icon: ImageDown, guest: true },
   { labelKey: "nav:devTools.requests", path: "/devtools/requests", icon: Send, guest: false },
   { labelKey: "nav:devTools.tokens", path: "/devtools/tokens", icon: KeyRound, guest: true },
@@ -100,7 +107,7 @@ const DEV_TOOLS = [
 
 /** DevTools, folded into one row that opens onto the tools you can use. */
 function DevToolsMenu() {
-  const { t } = useTranslation();
+  const { t } = useT();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const authed = useAuthStore((s) => !!s.accessToken);
@@ -144,7 +151,7 @@ function DevToolsMenu() {
 }
 
 export default function AppSidebar() {
-  const { t } = useTranslation();
+  const { t } = useT();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const authed = useAuthStore((s) => !!s.accessToken);

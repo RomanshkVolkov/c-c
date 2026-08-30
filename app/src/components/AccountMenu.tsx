@@ -1,4 +1,4 @@
-import { useTranslation } from "react-i18next";
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -44,7 +44,7 @@ const LANGUAGES: { key: LocalePreference; label: string }[] = [
   { key: "es", label: "Español" },
 ];
 
-const THEMES: { key: ThemePreference; labelKey: string }[] = [
+const THEMES: { key: ThemePreference; labelKey: MessageKey }[] = [
   { key: "system", labelKey: "nav:account.themeAuto" },
   { key: "light", labelKey: "nav:account.themeLight" },
   { key: "dark", labelKey: "nav:account.themeDark" },
@@ -64,7 +64,7 @@ export default function AccountMenu({
   const session = useAuthStore((s) => s.session);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const org = useOrgsStore((s) => s.currentOrg());
-  const { t } = useTranslation();
+  const { t } = useT();
   const preference = useThemeStore((s) => s.preference);
   const setPreference = useThemeStore((s) => s.setPreference);
   const language = useLocaleStore((s) => s.preference);

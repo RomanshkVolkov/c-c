@@ -6,6 +6,7 @@ import {
   PRIORITY_LABEL_KEYS,
   STATUS_LABEL_KEYS,
 } from "@/types/report";
+import type { MessageKey } from "@/lib/i18n";
 
 /**
  * Cada identificador apunta a su propia palabra.
@@ -20,7 +21,7 @@ import {
  */
 
 /** Los mapas, con el trozo del catálogo que les corresponde. */
-const MAPAS: [string, Record<string, string>, string][] = [
+const MAPAS: [string, Record<string, MessageKey>, string][] = [
   ["estado", STATUS_LABEL_KEYS, "work:status"],
   ["categoría", CATEGORY_LABEL_KEYS, "work:category"],
   ["prioridad", PRIORITY_LABEL_KEYS, "work:priority"],
