@@ -1,4 +1,7 @@
 import i18next from "i18next";
+
+import { useT, type MessageKey } from "@/lib/i18n";
+import { STATUS_LABEL_KEYS } from "@/types/report";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
@@ -29,12 +32,12 @@ import { cn } from "@/lib/utils";
  * not "forty tasks" but "three for this client, two for that one".
  */
 
-const LENSES: { key: WorkLens; label: string }[] = [
-  { key: "assigned", label: "Assigned to me" },
-  { key: "created", label: "Created by me" },
-  { key: "watching", label: "Following" },
-  { key: "clients", label: "From clients" },
-  { key: "all", label: "All" },
+const LENSES: { key: WorkLens; labelKey: MessageKey }[] = [
+  { key: "assigned", labelKey: "work:myWork.lens.assigned" },
+  { key: "created", labelKey: "work:myWork.lens.created" },
+  { key: "watching", labelKey: "work:myWork.lens.watching" },
+  { key: "clients", labelKey: "work:myWork.lens.clients" },
+  { key: "all", labelKey: "work:myWork.lens.all" },
 ];
 
 /**
@@ -47,10 +50,10 @@ const LENSES: { key: WorkLens; label: string }[] = [
  * boards as there are lists.
  */
 const VISTAS = [
-  { key: "list", label: "List", icon: List },
-  { key: "board", label: "Board", icon: KanbanSquare },
-  { key: "calendar", label: "Calendar", icon: CalendarDays },
-] as const;
+  { key: "list", labelKey: "work:myWork.view.list", icon: List },
+  { key: "board", labelKey: "work:myWork.view.board", icon: KanbanSquare },
+  { key: "calendar", labelKey: "work:myWork.view.calendar", icon: CalendarDays },
+] as const satisfies readonly { key: string; labelKey: MessageKey; icon: unknown }[];
 
 type Vista = (typeof VISTAS)[number]["key"];
 
@@ -62,17 +65,18 @@ type Vista = (typeof VISTAS)[number]["key"];
  * hecha: un reporte se puede cerrar sin arreglarlo, y por la integración
  * server-to-server llegan así de verdad.
  */
-const ESTADOS: { status: ReportStatus; label: string; punto: string }[] = [
-  { status: "open", label: "Open", punto: "bg-muted-foreground" },
-  { status: "in_progress", label: "In progress", punto: "bg-primary" },
-  { status: "done", label: "Done", punto: "bg-success" },
-  { status: "closed", label: "Closed", punto: "bg-muted-foreground/60" },
+const ESTADOS: { status: ReportStatus; punto: string }[] = [
+  { status: "open", punto: "bg-muted-foreground" },
+  { status: "in_progress", punto: "bg-primary" },
+  { status: "done", punto: "bg-success" },
+  { status: "closed", punto: "bg-muted-foreground/60" },
 ];
 
 /** Terminadas y cerradas sólo se piden cuando pides «todos los estados». */
 const CERRADOS: ReportStatus[] = ["done", "closed"];
 
 export default function MyWork() {
+  const { t } = useT();
   const [vista, setVista] = useState<Vista>("list");
   const [creando, setCreando] = useState(false);
   const [params, setParams] = useSearchParams();
@@ -175,7 +179,7 @@ export default function MyWork() {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 border-b px-4 pt-3">
         <div className="flex items-baseline gap-2">
-          <h1 className="text-lg font-semibold">My work</h1>
+          <h1 className="text-lg font-semibold">{t("work:myWork.title")}</h1>
           <span className="text-xs text-muted-foreground">
             {loading ? "…" : `${visibles.length} visible`}
           </span>
@@ -188,10 +192,10 @@ export default function MyWork() {
           <button
             onClick={() => setIncludeClosed(!includeClosed)}
             className="flex items-center gap-1.5 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-            title={includeClosed ? "Hide finished work" : "Show finished work too"}
+            title={includeClosed ? t("work:myWork.hideFinished") : t("work:myWork.showFinished")}
           >
             {includeClosed ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-            {includeClosed ? "All states" : "Open only"}
+            {includeClosed ? t("work:myWork.allStates") : t("work:myWork.openOnly")}
           </button>
         </div>
         {scope && (
@@ -199,11 +203,11 @@ export default function MyWork() {
             <button
               onClick={() => setScope(null)}
               className="flex items-center gap-1 self-start rounded-full border bg-accent/40 px-2 py-0.5 text-xs hover:bg-accent"
-              title="Show everything again"
+              title={t("work:myWork.showEverything")}
             >
               {/* Says out loud that you are seeing part of it. A filtered list with
                   nothing announcing the filter reads as "there is nothing here". */}
-              {scope.kind === "list" ? "List" : "Space"}: {scope.name}
+              {scope.kind === "list" ? t("work:myWork.scopeList") : t("work:myWork.scopeSpace")}: {scope.name}
               <X className="size-3" />
             </button>
             {/* El id, para dárselo a un agente. El tablero de Tasks ya lo
@@ -225,7 +229,7 @@ export default function MyWork() {
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {l.label}
+              {t(l.labelKey)}
             </button>
           ))}
           <span className="ml-auto flex gap-0.5 pb-1.5">
@@ -233,7 +237,7 @@ export default function MyWork() {
               <button
                 key={v.key}
                 onClick={() => setVista(v.key)}
-                title={v.label}
+                title={t(v.labelKey)}
                 aria-pressed={v.key === vista}
                 className={cn(
                   "rounded px-1.5 py-1",
@@ -276,8 +280,8 @@ export default function MyWork() {
         ) : visibles.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {lens === "watching"
-              ? "You are not following anything. Open a task and follow it to keep an eye on it without taking it."
-              : "Nothing here."}
+              ? t("work:myWork.nothingFollowed")
+              : t("work:myWork.nothingHere")}
           </p>
         ) : (
           vista === "calendar" ? (
@@ -306,12 +310,12 @@ export default function MyWork() {
                 const fuera = !includeClosed && CERRADOS.includes(col.status);
                 return {
                   id: col.status,
-                  title: col.label,
+                  title: t(STATUS_LABEL_KEYS[col.status]),
                   // El guion en vez del cero, y el porqué escrito abajo: «0»
                   // afirmaría que no hay ninguna, y lo que pasa es que no se
                   // preguntó.
                   accessory: fuera ? <span className="text-muted-foreground">—</span> : undefined,
-                  emptyHint: fuera ? "Not asked for — showing open only" : undefined,
+                  emptyHint: fuera ? t("work:myWork.notAsked") : undefined,
                 };
               })}
               items={visibles.map((t) => ({
@@ -330,7 +334,7 @@ export default function MyWork() {
               puedeSoltar={(t, columna) =>
                 puedeIr(transiciones, normalizeStatus(t.status), columna as ReportStatus)
               }
-              emptyColumnHint="Nothing"
+              emptyColumnHint={t("work:myWork.nothing")}
             />
           ) : (
           <div className="space-y-5">

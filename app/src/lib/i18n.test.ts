@@ -183,11 +183,30 @@ describe("un solo idioma en el código", () => {
     / te escribió\$\//,
   ];
 
+  /**
+   * Las tildes no bastan, y lo demostró un caso real: `"Cargando…"` llevaba
+   * meses en el cajón de una tarjeta y este guardián lo daba por bueno porque
+   * no tiene ni tilde ni eñe.
+   *
+   * La lista es corta y deliberadamente conservadora — sólo palabras que en
+   * inglés no existen o no significan nada parecido. Una lista larga acaba
+   * marcando código legítimo, y un guardián que ladra de más se apaga.
+   */
+  const PALABRAS = new RegExp(
+    "\\b(" +
+      [
+        "Cargando", "Guardar", "Cancelar", "Borrar", "Buscar", "Enviar",
+        "Nombre", "Cerrar", "Abrir", "Nuevo", "Nueva", "Ninguno", "Ninguna",
+        "Elige", "Escribe", "Todav", "Selecciona", "Pulsa",
+      ].join("|") +
+      ")\\b",
+  );
+
   it("ninguna frase en castellano fuera de los catálogos", () => {
     const fugas: string[] = [];
     for (const fichero of fuentes(RAIZ_SRC)) {
       sinComentarios(readFileSync(fichero, "utf-8")).split("\n").forEach((linea, i) => {
-        if (!/[áéíóúñ¿¡ÁÉÍÓÚÑ]/.test(linea)) return;
+        if (!/[áéíóúñ¿¡ÁÉÍÓÚÑ]/.test(linea) && !PALABRAS.test(linea)) return;
         if (PERMITIDO.some((p) => p.test(linea))) return;
         fugas.push(`${fichero.replace(RAIZ_SRC, "src")}:${i + 1}: ${linea.trim()}`);
       });

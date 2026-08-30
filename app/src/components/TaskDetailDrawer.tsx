@@ -125,6 +125,7 @@ function CommentItem({
   /** Whether this card's thread is one a client can read at all. */
   clientReads: boolean;
 }) {
+  const { t } = useT();
   const session = useAuthStore((s) => s.session);
   const editComment = useTasksStore((s) => s.editComment);
   const deleteComment = useTasksStore((s) => s.deleteComment);
@@ -144,7 +145,7 @@ function CommentItem({
       await editComment(taskId, c.id, body);
       setEditing(false);
     } catch (e) {
-      toast.error("Could not save the comment", { description: String(e) });
+      toast.error(t("work:task.errSaveComment"), { description: String(e) });
     } finally {
       setSaving(false);
     }
@@ -164,25 +165,25 @@ function CommentItem({
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{commentByline(c.author, c.authorName)}</span>
         <span>{new Date(c.createdAt).toLocaleString()}</span>
-        {edited && <span className="italic">edited</span>}
+        {edited && <span className="italic">{t("work:task.edited")}</span>}
         {clientReads && (
           <span
             className={cn("flex items-center gap-1", internal ? "text-muted-foreground" : "text-primary")}
             title={
               internal
-                ? "Only the team can see this"
-                : "The client can read this on their own board"
+                ? t("work:task.onlyTeam")
+                : t("work:task.clientCanRead")
             }
           >
             {internal ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-            {internal ? "internal" : "client sees this"}
+            {internal ? t("work:task.internal") : t("work:task.clientSees")}
           </span>
         )}
         {mine && !editing && (
           <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               className="hover:text-foreground"
-              title="Edit comment"
+              title={t("work:task.editComment")}
               onClick={() => {
                 setDraft(c.body);
                 setEditing(true);
@@ -192,13 +193,12 @@ function CommentItem({
             </button>
             <button
               className="hover:text-destructive"
-              title="Delete comment"
+              title={t("work:task.deleteComment")}
               onClick={async () => {
                 const ok = await confirm({
-                  title: "Delete this comment?",
-                  description:
-                    "It stops showing in this thread, and to the client if they could see it.",
-                  confirmText: "Delete",
+                  title: t("work:task.deleteCommentTitle"),
+                  description: t("work:task.deleteCommentBody"),
+                  confirmText: t("work:task.delete"),
                   destructive: true,
                 });
                 if (!ok) return;
@@ -223,10 +223,10 @@ function CommentItem({
           <div className="flex gap-2">
             <Button size="sm" onClick={save} disabled={saving || !draft.trim()}>
               {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
-              Save
+              {t("work:task.save")}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
-              Cancel
+              {t("work:task.cancel")}
             </Button>
           </div>
         </div>
@@ -320,11 +320,11 @@ function Content() {
   const quitar = async (a: { id: string; fileName: string }) => {
     const inUse = task.description.includes(a.id);
     const ok = await confirm({
-      title: `Remove "${a.fileName}"?`,
+      title: t("work:task.removeAttachmentTitle", { name: a.fileName }),
       description: inUse
-        ? "It's still referenced from the description — that image will stop loading."
-        : "Removes it from this task's attachment list.",
-      confirmText: "Remove",
+        ? t("work:task.removeAttachmentInUse")
+        : t("work:task.removeAttachmentPlain"),
+      confirmText: t("work:task.remove"),
       destructive: true,
     });
     if (!ok) return;
@@ -401,7 +401,7 @@ function Content() {
       await addComment(task.id, body, clientReads && commentInternal ? "internal" : undefined);
       setComment("");
     } catch (e) {
-      toast.error("Could not comment", { description: String(e) });
+      toast.error(t("work:task.errComment"), { description: String(e) });
     } finally {
       setSending(false);
     }
@@ -420,7 +420,7 @@ function Content() {
               <button
                 className="underline hover:text-foreground"
                 onClick={() => openTask(detail.parent!.id)}
-                title="Open parent task"
+                title={t("work:task.openParent")}
               >
                 #{detail.parent.seq} {detail.parent.title}
               </button>
@@ -440,12 +440,12 @@ function Content() {
             not after. */}
         {task.projectId && task.visibility !== "internal" && (
           <span className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
-            <Eye className="size-3" /> visible to the client
+            <Eye className="size-3" /> {t("work:task.visibleToClient")}
           </span>
         )}
         {/* The id the MCP tools take, so it can be handed to an agent. */}
         <CopyId id={task.id} label="task" />
-        <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={closeTask} aria-label="Close">
+        <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={closeTask} aria-label={t("work:task.close")}>
           <X className="size-4" />
         </Button>
       </header>
@@ -466,11 +466,11 @@ function Content() {
         <section className="space-y-2">
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Description
+              {t("work:task.description")}
             </h3>
             {!editingDesc && (
               <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditingDesc(true)}>
-                Edit
+                {t("work:task.edit")}
               </Button>
             )}
           </div>
@@ -492,7 +492,7 @@ function Content() {
                       .catch((e) => toast.error(String(e)));
                   }}
                 >
-                  Save
+                  {t("work:task.save")}
                 </Button>
                 <Button
                   size="sm"
@@ -502,14 +502,14 @@ function Content() {
                     setEditingDesc(false);
                   }}
                 >
-                  Cancel
+                  {t("work:task.cancel")}
                 </Button>
               </div>
             </div>
           ) : task.description ? (
             <Markdown>{task.description}</Markdown>
           ) : (
-            <p className="text-sm text-muted-foreground">No description yet.</p>
+            <p className="text-sm text-muted-foreground">{t("work:task.noDescription")}</p>
           )}
         </section>
 
@@ -517,7 +517,7 @@ function Content() {
         {detail.attachments.length > 0 && (
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Attachments
+              {t("work:task.attachments")}
             </h3>
             {/* Las imágenes se ven, no se listan.
                 
@@ -547,7 +547,7 @@ function Content() {
                       </button>
                       <button
                         className="absolute right-1 top-1 rounded bg-background/80 p-1 text-muted-foreground opacity-0 transition-opacity group-hover/img:opacity-100 hover:text-destructive"
-                        title="Remove attachment"
+                        title={t("work:task.removeAttachment")}
                         onClick={() => void quitar(a)}
                       >
                         <Trash2 className="size-3" />
@@ -583,7 +583,7 @@ function Content() {
                   )}
                   <button
                     className="ml-auto shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
-                    title="Remove attachment"
+                    title={t("work:task.removeAttachment")}
                     onClick={() => void quitar(a)}
                   >
                     <Trash2 className="size-3" />
@@ -603,12 +603,12 @@ function Content() {
         {task.projectId && (
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Reported
+              {t("work:task.reported")}
             </h3>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
               {(task.reporterName || task.reporterEmail) && (
                 <>
-                  <dt className="text-muted-foreground">By</dt>
+                  <dt className="text-muted-foreground">{t("work:task.by")}</dt>
                   <dd className="break-words">
                     {task.reporterName || task.reporterEmail}
                     {task.reporterName && task.reporterEmail && (
@@ -619,7 +619,7 @@ function Content() {
               )}
               {task.url && (
                 <>
-                  <dt className="text-muted-foreground">On</dt>
+                  <dt className="text-muted-foreground">{t("work:task.on")}</dt>
                   <dd className="break-all">
                     {/* Their page, not ours: opened outside rather than routed
                         into the app, which would only 404. */}
@@ -636,7 +636,7 @@ function Content() {
               )}
               {task.userAgent && (
                 <>
-                  <dt className="text-muted-foreground">Using</dt>
+                  <dt className="text-muted-foreground">{t("work:task.using")}</dt>
                   <dd className="break-words" title={task.userAgent}>
                     {describeAgent(task.userAgent)}
                     {task.viewport && (
@@ -647,12 +647,12 @@ function Content() {
               )}
               {task.category && (
                 <>
-                  <dt className="text-muted-foreground">Kind</dt>
+                  <dt className="text-muted-foreground">{t("work:task.kind")}</dt>
                   <dd>
                     {task.category}
                     {task.area && <span className="text-muted-foreground"> · {task.area}</span>}
                     {task.origin === "system" && (
-                      <span className="text-muted-foreground"> · filed automatically</span>
+                      <span className="text-muted-foreground"> · {t("work:task.filedAutomatically")}</span>
                     )}
                   </dd>
                 </>
@@ -667,7 +667,7 @@ function Content() {
         {detail.telemetry && (
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Before it broke
+              {t("work:task.beforeItBroke")}
             </h3>
             <TelemetryTimeline data={detail.telemetry} />
           </section>
@@ -678,7 +678,7 @@ function Content() {
         <section className="space-y-2">
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Subtasks{" "}
+              {t("work:task.subtasks")}{" "}
               {detail.subtasks.length > 0 && (
                 <span className="normal-case">
                   ({detail.subtasks.filter((t) => doneStatusIds.has(t.statusId)).length}/
@@ -691,16 +691,20 @@ function Content() {
               variant="ghost"
               className="h-6 px-2 text-xs"
               onClick={async () => {
-                const t = await prompt({ title: "New subtask", label: "Title", confirmText: "Create" });
-                if (t) createSubtask(task.id, t).catch((e) => toast.error(String(e)));
+                const titulo = await prompt({
+                  title: t("work:task.newSubtaskTitle"),
+                  label: t("work:task.newSubtaskLabel"),
+                  confirmText: t("work:task.create"),
+                });
+                if (titulo) createSubtask(task.id, titulo).catch((e) => toast.error(String(e)));
               }}
             >
-              + Add
+              {t("work:task.addSubtask")}
             </Button>
           </div>
           {detail.subtasks.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Break this task down into steps, or use a checklist in the description.
+              {t("work:task.noSubtasks")}
             </p>
           ) : (
             <div className="divide-y rounded-md border">
@@ -709,13 +713,13 @@ function Content() {
                 return (
                   <div key={st.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
                     <button
-                      title={done ? "Reopen" : "Mark complete"}
+                      title={done ? t("work:task.reopen") : t("work:task.markComplete")}
                       onClick={() => {
                         // Toggle against the list's own columns, so this works
                         // whatever the user named them.
                         const target = done ? firstOpenStatusId : firstDoneStatusId;
                         if (!target) {
-                          toast.error("This list has no column for that");
+                          toast.error(t("work:task.noColumnForThat"));
                           return;
                         }
                         moveTask(st.id, target, "", "").catch((e) => toast.error(String(e)));
@@ -771,15 +775,15 @@ function Content() {
               people={mentionsAllowed(clientReads, commentInternal) ? people : undefined}
               placeholder={
                 mentionsAllowed(clientReads, commentInternal)
-                  ? "Write a comment… (markdown, @ names somebody)"
-                  : "Write a comment… the client reads this thread"
+                  ? t("work:task.writeComment")
+                  : t("work:task.writeCommentClient")
               }
               minHeight="5rem"
             />
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={send} disabled={sending || !comment.trim()}>
                 {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-                <span className="ml-1">{clientReads && commentInternal ? "Comment internally" : "Comment"}</span>
+                <span className="ml-1">{clientReads && commentInternal ? t("work:task.commentInternally") : t("work:task.comment")}</span>
               </Button>
               {clientReads && (
                 <button
@@ -793,12 +797,12 @@ function Content() {
                   onClick={() => setCommentInternal((v) => !v)}
                   title={
                     commentInternal
-                      ? "Only the team will see this"
-                      : "The client reads this thread — switch to keep it internal"
+                      ? t("work:task.onlyTeamWillSee")
+                      : t("work:task.clientReadsSwitch")
                   }
                 >
                   {commentInternal ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-                  {commentInternal ? "Internal note" : "The client reads this"}
+                  {commentInternal ? t("work:task.internalNote") : t("work:task.theClientReads")}
                 </button>
               )}
             </div>
@@ -817,7 +821,7 @@ function Content() {
             push a horizontal scrollbar into a panel nobody scrolls sideways. */}
         <div className="space-y-3 text-sm [&>*]:min-w-0">
           <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Check className="size-3.5" /> Status
+            <Check className="size-3.5" /> {t("work:task.status")}
           </span>
           <div>
             <DropdownMenu>
@@ -834,13 +838,13 @@ function Content() {
               <DropdownMenuContent align="start">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    Move to column
+                    {t("work:task.moveToColumn")}
                   </DropdownMenuLabel>
                   {/* Sin columnas hay algo roto, y decirlo aquí es lo único
                       que separa «no se puede mover» de «el menú está vacío». */}
                   {columnas.length === 0 && (
                     <DropdownMenuItem disabled className="text-destructive">
-                      {fallo ?? "Cargando…"}
+                      {fallo ?? t("work:task.loadingColumns")}
                     </DropdownMenuItem>
                   )}
                   {columnas.map((s) => (
@@ -932,7 +936,11 @@ function Content() {
                   ))}
                   <DropdownMenuItem
                     onClick={async () => {
-                      const name = await prompt({ title: "New tag", label: "Name", confirmText: "Create" });
+                      const name = await prompt({
+                        title: t("work:task.newTagTitle"),
+                        label: t("work:task.newTagLabel"),
+                        confirmText: t("work:task.create"),
+                      });
                       if (!name) return;
                       const created = await createTag(task.orgId, name, "#8B5CF6");
                       if (created) {
@@ -942,7 +950,7 @@ function Content() {
                       }
                     }}
                   >
-                    + New tag
+                    {t("work:task.newTag")}
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
@@ -950,7 +958,7 @@ function Content() {
           </div>
 
           <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Users className="size-3.5" /> Assignees
+            <Users className="size-3.5" /> {t("work:task.assignees")}
           </span>
           <div className="flex flex-wrap items-center gap-1">
             {detail.assignees.map((a) => (
@@ -962,7 +970,7 @@ function Content() {
                       assigneeIds: detail.assignees.filter((x) => x.id !== a.id).map((x) => x.id),
                     }).catch((e) => toast.error(String(e)))
                   }
-                  aria-label={`Remove ${a.username}`}
+                  aria-label={t("work:task.removeAssignee", { name: a.username })}
                 >
                   <X className="size-3" />
                 </button>
@@ -971,7 +979,7 @@ function Content() {
             <div className="w-44">
               <UserPicker
                 scope="org"
-                placeholder="Assign…"
+                placeholder={t("work:task.assign")}
                 onSelect={(u) => {
                   if (detail.assignees.some((a) => a.id === u.id)) return;
                   updateTask(task.id, {
@@ -983,7 +991,7 @@ function Content() {
           </div>
 
           <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Calendar className="size-3.5" /> Due
+            <Calendar className="size-3.5" /> {t("work:task.due")}
           </span>
           <div>
             <input
@@ -1009,15 +1017,15 @@ function Content() {
           className="text-destructive hover:text-destructive"
           onClick={async () => {
             const ok = await confirm({
-              title: `Delete task "${task.title}"?`,
-              description: "Removes it with its comments and attachments. This can't be undone.",
-              confirmText: "Delete",
+              title: t("work:task.deleteTaskTitle", { name: task.title }),
+              description: t("work:task.deleteTaskBody"),
+              confirmText: t("work:task.delete"),
               destructive: true,
             });
             if (ok) deleteTask(task.id).catch((e) => toast.error(String(e)));
           }}
         >
-          <Trash2 className="size-3 mr-1" /> Delete task
+          <Trash2 className="size-3 mr-1" /> {t("work:task.deleteTask")}
         </Button>
         {task.projectId && task.visibility !== "internal" && (
           <Button
@@ -1026,21 +1034,19 @@ function Content() {
             className="text-xs"
             onClick={async () => {
               const ok = await confirm({
-                title: "Take this off the client's board?",
-                description:
-                  "They stop seeing it. Its ticket number stays spent — they may already have quoted it — " +
-                  "so their numbering keeps a gap.",
-                confirmText: "Withdraw",
+                title: t("work:task.withdrawTitle"),
+                description: t("work:task.withdrawBody"),
+                confirmText: t("work:task.withdraw"),
               });
               if (!ok) return;
               updateTask(task.id, { visibility: "internal" }).catch((e) => toast.error(String(e)));
             }}
           >
-            <EyeOff className="size-3 mr-1" /> Withdraw
+            <EyeOff className="size-3 mr-1" /> {t("work:task.withdraw")}
           </Button>
         )}
         <span className="ml-auto text-xs text-muted-foreground">
-          Updated {new Date(task.updatedAt).toLocaleString()}
+          {t("work:task.updated", { when: new Date(task.updatedAt).toLocaleString() })}
         </span>
       </footer>
     </>
