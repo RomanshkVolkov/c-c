@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Check, Plus, Trash2, Pencil, Loader2, TriangleAlert } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -55,6 +56,7 @@ export default function ConnectMcpDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useT();
   const confirm = useConfirm();
   const [tokens, setTokens] = useState<AccessToken[]>([]);
   const [loading, setLoading] = useState(false);
@@ -103,44 +105,44 @@ export default function ConnectMcpDialog({
       setMinted(res.data);
       load();
     } catch (e) {
-      toast.error("Could not create token", {
+      toast.error(t("common:admin.errCreateToken"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
   };
 
-  const saveScopes = async (t: AccessToken) => {
+  const saveScopes = async (tok: AccessToken) => {
     try {
       // The secret is untouched — this is what the token may do, not who it is,
       // so nothing anywhere has to be re-pasted.
       const res = await api.patch<APIResponse<AccessToken>>(
-        `/api/v1/auth/tokens/${t.id}`,
+        `/api/v1/auth/tokens/${tok.id}`,
         { scopes: editScopes },
       );
       if (!res.success) throw new Error(res.error ?? "Failed");
       setEditing(null);
       load();
-      toast.success(`Permissions updated for "${t.name}"`);
+      toast.success(`Permissions updated for "${tok.name}"`);
     } catch (e) {
-      toast.error("Could not update permissions", {
+      toast.error(t("common:admin.errUpdateScopes"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
   };
 
-  const revoke = async (t: AccessToken) => {
+  const revoke = async (tok: AccessToken) => {
     const ok = await confirm({
-      title: `Revoke "${t.name}"?`,
-      description: "Any MCP client or script using this token stops working immediately.",
-      confirmText: "Revoke",
+      title: `Revoke "${tok.name}"?`,
+      description: t("common:admin.revokeBody"),
+      confirmText: t("common:admin.revoke"),
       destructive: true,
     });
     if (!ok) return;
     try {
-      await api.delete<APIResponse<unknown>>(`/api/v1/auth/tokens/${t.id}`);
-      setTokens((prev) => prev.filter((x) => x.id !== t.id));
+      await api.delete<APIResponse<unknown>>(`/api/v1/auth/tokens/${tok.id}`);
+      setTokens((prev) => prev.filter((x) => x.id !== tok.id));
     } catch (e) {
-      toast.error("Could not revoke", {
+      toast.error(t("common:admin.errRevoke"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -175,9 +177,9 @@ export default function ConnectMcpDialog({
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Connect Claude Code</DialogTitle>
+          <DialogTitle>{t("common:admin.connectClaude")}</DialogTitle>
           <DialogDescription>
-            Lets an AI assistant read your reports, tasks, notes and device diagnostics
+            {t("common:admin.connectLead")}
             live. Read access is always granted; it can create or change tasks and notes
             only if you check the matching permission below.
           </DialogDescription>
@@ -188,19 +190,19 @@ export default function ConnectMcpDialog({
             <div className="space-y-3 rounded-lg border p-3">
               <p className="flex items-start gap-1.5 text-xs text-warning">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                Copy the token now — it is shown once and cac doesn't store it.
+                {t("common:admin.copyTokenNow")}
               </p>
-              <CopyField label="Token" value={minted.value} />
+              <CopyField label={t("common:admin.token")} value={minted.value} />
               <CopyField label="Command (Claude Code)" value={cmd} />
               <CopyField label="Or paste into claude_desktop_config.json" value={jsonSnippet} />
               <Button variant="outline" size="sm" onClick={() => setMinted(null)}>
-                Done
+                {t("common:admin.done")}
               </Button>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
               <div className="space-y-1.5">
-                <Label>Token name</Label>
+                <Label>{t("common:admin.tokenName")}</Label>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -213,7 +215,7 @@ export default function ConnectMcpDialog({
                   its own "my reports" view with a token that grants nothing. */}
               <ScopeChecklist selected={scopes} onToggle={toggleScope} />
               <p className="text-xs text-muted-foreground">
-                Without any of these, the token can only read — which already covers
+                {t("common:admin.readOnlyNote")}
                 listing and opening reports, tasks and notes. Deleting anything, and
                 minting tokens, stay refused in every case.
               </p>
@@ -232,27 +234,27 @@ export default function ConnectMcpDialog({
                 <Loader2 className="inline size-3 animate-spin" /> Loading…
               </p>
             ) : tokens.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No tokens yet.</p>
+              <p className="text-xs text-muted-foreground">{t("common:admin.noTokens")}</p>
             ) : (
               <div className="divide-y rounded-lg border">
-                {tokens.map((t) => (
-                  <div key={t.id} className="px-3 py-2 text-sm">
+                {tokens.map((tok) => (
+                  <div key={tok.id} className="px-3 py-2 text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-medium">{t.name}</span>
-                      <code className="text-xs text-muted-foreground">{t.preview}</code>
+                      <span className="truncate font-medium">{tok.name}</span>
+                      <code className="text-xs text-muted-foreground">{tok.preview}</code>
                       <span className="ml-auto text-xs text-muted-foreground">
-                        {t.lastUsedAt
-                          ? `used ${new Date(t.lastUsedAt).toLocaleDateString()}`
+                        {tok.lastUsedAt
+                          ? `used ${new Date(tok.lastUsedAt).toLocaleDateString()}`
                           : "never used"}
-                        {t.expiresAt && ` · expires ${new Date(t.expiresAt).toLocaleDateString()}`}
+                        {tok.expiresAt && ` · expires ${new Date(tok.expiresAt).toLocaleDateString()}`}
                       </span>
                       <Button
                         size="icon-xs"
                         variant="ghost"
-                        title="Change permissions"
+                        title={t("common:admin.changePermissions")}
                         onClick={() => {
-                          setEditing(editing === t.id ? null : t.id);
-                          setEditScopes(t.scopes ?? []);
+                          setEditing(editing === tok.id ? null : tok.id);
+                          setEditScopes(tok.scopes ?? []);
                         }}
                       >
                         <Pencil className="size-3" />
@@ -261,13 +263,13 @@ export default function ConnectMcpDialog({
                         size="icon-xs"
                         variant="ghost"
                         className="text-destructive/70 hover:text-destructive"
-                        onClick={() => revoke(t)}
-                        title="Revoke"
+                        onClick={() => revoke(tok)}
+                        title={t("common:admin.revoke")}
                       >
                         <Trash2 className="size-3" />
                       </Button>
                     </div>
-                    {editing === t.id ? (
+                    {editing === tok.id ? (
                       <div className="mt-2 space-y-2 rounded border bg-muted/30 p-2">
                         <ScopeChecklist
                           selected={editScopes}
@@ -279,19 +281,19 @@ export default function ConnectMcpDialog({
                           compact
                         />
                         <p className="text-xs text-muted-foreground">
-                          The token itself doesn't change — nothing holding it has to be
+                          {t("common:admin.tokenUnchanged")}
                           updated.
                         </p>
                         <div className="flex gap-2">
-                          <Button size="sm" onClick={() => saveScopes(t)}>Save</Button>
+                          <Button size="sm" onClick={() => saveScopes(tok)}>{t("common:admin.save")}</Button>
                           <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
-                            Cancel
+                            {t("common:admin.cancel")}
                           </Button>
                         </div>
                       </div>
                     ) : (
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {describeScopes(t.scopes)}
+                        {describeScopes(tok.scopes)}
                       </p>
                     )}
                   </div>
@@ -301,7 +303,7 @@ export default function ConnectMcpDialog({
           </div>
 
           <div className="space-y-1 rounded-lg border p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">What the assistant can do</p>
+            <p className="font-medium text-foreground">{t("common:admin.whatAssistantCanDo")}</p>
             <p>
               Always: list projects and reports, open a report with its telemetry, list
               devices and pull a device's diagnostics timeline, browse tasks and read
@@ -314,7 +316,7 @@ export default function ConnectMcpDialog({
               title/body, triage a report, and correct or withdraw your own replies.
             </p>
             <p className="pt-1">
-              <Badge variant="secondary" className="text-xs">Note</Badge> whatever it reads
+              <Badge variant="secondary" className="text-xs">{t("common:admin.note")}</Badge> whatever it reads
               (reports, device telemetry, task and note content) is sent to your AI client.
             </p>
           </div>

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Users as UsersIcon, Plus, Trash2, Pencil, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import type { AdminUser } from "@/types/user";
 
 export default function Users() {
+  const { t } = useT();
   const users = useUsersStore((s) => s.users);
   const loading = useUsersStore((s) => s.loading);
   const error = useUsersStore((s) => s.error);
@@ -45,8 +47,8 @@ export default function Users() {
   const handleDelete = async (u: AdminUser) => {
     const ok = await confirm({
       title: `Delete user @${u.username}?`,
-      description: "This permanently removes the user and all their org memberships. This can't be undone.",
-      confirmText: "Delete",
+      description: t("common:admin.deleteUserBody"),
+      confirmText: t("common:admin.delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -54,7 +56,7 @@ export default function Users() {
       await deleteUser(u.id);
       toast.success(`Deleted @${u.username}`);
     } catch (e) {
-      toast.error("Could not delete user", {
+      toast.error(t("common:admin.errDeleteUser"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -66,7 +68,7 @@ export default function Users() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <UsersIcon className="h-6 w-6 text-muted-foreground" />
-            <h1 className="text-xl font-semibold">Users</h1>
+            <h1 className="text-xl font-semibold">{t("common:admin.users")}</h1>
           </div>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4 mr-1" /> New user
@@ -83,11 +85,11 @@ export default function Users() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Username</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("common:admin.thUsername")}</TableHead>
+                <TableHead>{t("common:admin.thName")}</TableHead>
+                <TableHead>{t("common:admin.thEmail")}</TableHead>
+                <TableHead>{t("common:admin.thRole")}</TableHead>
+                <TableHead className="text-right">{t("common:admin.thActions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -100,7 +102,7 @@ export default function Users() {
               ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
-                    No users yet.
+                    {t("common:admin.noUsers")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -115,7 +117,7 @@ export default function Users() {
                           <ShieldCheck className="size-3" /> Superadmin
                         </Badge>
                       ) : (
-                        <Badge variant="secondary">User</Badge>
+                        <Badge variant="secondary">{t("common:admin.user")}</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-right space-x-1">
@@ -128,7 +130,7 @@ export default function Users() {
                         className="text-destructive hover:text-destructive"
                         onClick={() => handleDelete(u)}
                         disabled={u.id === meId}
-                        title={u.id === meId ? "You can't delete yourself" : "Delete user"}
+                        title={u.id === meId ? t("common:admin.cantDeleteYourself") : t("common:admin.deleteUser")}
                       >
                         <Trash2 className="size-3" />
                       </Button>
@@ -154,6 +156,7 @@ function CreateUserDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useT();
   const createUser = useUsersStore((s) => s.createUser);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -185,7 +188,7 @@ function CreateUserDialog({
       reset();
       onOpenChange(false);
     } catch (e) {
-      toast.error("Could not create user", {
+      toast.error(t("common:admin.errCreateUser"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -197,7 +200,7 @@ function CreateUserDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New user</DialogTitle>
+          <DialogTitle>{t("common:admin.newUser")}</DialogTitle>
           <DialogDescription>
             Creates a platform user. Share the credentials with them; they can be
             invited to organizations afterward.
@@ -205,7 +208,7 @@ function CreateUserDialog({
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label>Username</Label>
+            <Label>{t("common:admin.username")}</Label>
             <Input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -217,8 +220,8 @@ function CreateUserDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Password</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="min 8 chars" />
+            <Label>{t("common:admin.password")}</Label>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("common:admin.min8")} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -249,12 +252,12 @@ function CreateUserDialog({
           </label>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common:admin.cancel")}</Button>
           <Button
             onClick={submit}
             disabled={submitting || username.trim().length < 3 || password.length < 8}
           >
-            {submitting ? "Creating…" : "Create"}
+            {submitting ? t("common:admin.creating") : t("common:admin.create")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -263,6 +266,7 @@ function CreateUserDialog({
 }
 
 function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: () => void }) {
+  const { t } = useT();
   const updateUser = useUsersStore((s) => s.updateUser);
   const meId = useAuthStore((s) => s.session?.id);
   const [name, setName] = useState("");
@@ -293,7 +297,7 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
       toast.success(`Updated @${user.username}`);
       onClose();
     } catch (e) {
-      toast.error("Could not update user", {
+      toast.error(t("common:admin.errUpdateUser"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {
@@ -306,16 +310,16 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit @{user?.username}</DialogTitle>
-          <DialogDescription>Leave password blank to keep it unchanged.</DialogDescription>
+          <DialogDescription>{t("common:admin.blankKeeps")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Name</Label>
+              <Label>{t("common:admin.thName")}</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Email</Label>
+              <Label>{t("common:admin.thEmail")}</Label>
               <Input
                 type="email"
                 value={email}
@@ -328,7 +332,7 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
           </div>
           <div className="space-y-1.5">
             <Label>New password (optional)</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="unchanged" />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("common:admin.unchanged")} />
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -338,16 +342,16 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
               disabled={user?.id === meId}
               className="size-4"
             />
-            Superadmin
+            {t("common:admin.superadmin")}
             {user?.id === meId && (
               <span className="text-xs text-muted-foreground">(can't change your own)</span>
             )}
           </label>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{t("common:admin.cancel")}</Button>
           <Button onClick={submit} disabled={submitting || !!password && password.length < 8}>
-            {submitting ? "Saving…" : "Save"}
+            {submitting ? t("common:admin.saving") : t("common:admin.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import {
   Plus,
@@ -42,6 +43,7 @@ export default function IntegrationsSection({
   canAdmin: boolean;
   canReveal: boolean;
 }) {
+  const { t } = useT();
   const confirm = useConfirm();
   const [items, setItems] = useState<Integration[]>([]);
   const [dialog, setDialog] = useState<{ open: boolean; editing: Integration | null }>({
@@ -67,8 +69,8 @@ export default function IntegrationsSection({
   const remove = async (it: Integration) => {
     const ok = await confirm({
       title: `Delete integration "${it.name}"?`,
-      description: "Removes the tile and its stored credentials.",
-      confirmText: "Delete",
+      description: t("common:admin.deleteTileBody"),
+      confirmText: t("common:admin.delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -76,7 +78,7 @@ export default function IntegrationsSection({
       await api.delete<APIResponse<unknown>>(`${base}/${it.id}`);
       setItems((prev) => prev.filter((x) => x.id !== it.id));
     } catch (e) {
-      toast.error("Could not delete", { description: e instanceof Error ? e.message : String(e) });
+      toast.error(t("common:admin.errDelete"), { description: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -99,7 +101,7 @@ export default function IntegrationsSection({
       </div>
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No integrations yet.</p>
+        <p className="text-xs text-muted-foreground">{t("common:admin.noIntegrations")}</p>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
           {items.map((it) => (
@@ -145,6 +147,7 @@ function IntegrationTile({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useT();
   const [revealed, setRevealed] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -158,7 +161,7 @@ function IntegrationTile({
         const res = await api.post<APIResponse<{ path: string }>>(`${base}/${it.id}/launch`, {}, true);
         if (res.data?.path) href = apiUrl(res.data.path);
       } catch (e) {
-        toast.error("Could not open through cac", {
+        toast.error(t("common:admin.errOpenThrough"), {
           description: e instanceof Error ? e.message : String(e),
         });
         return;
@@ -176,7 +179,7 @@ function IntegrationTile({
       const res = await api.post<APIResponse<{ secret: string }>>(`${base}/${it.id}/reveal`, {}, true);
       setRevealed(res.data?.secret ?? "");
     } catch (e) {
-      toast.error("Could not reveal", { description: e instanceof Error ? e.message : String(e) });
+      toast.error(t("common:admin.errReveal"), { description: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -196,14 +199,14 @@ function IntegrationTile({
         </button>
         <Badge variant="secondary" className="text-xs">{it.kind}</Badge>
         {it.authMethod === "header" && (
-          <Badge className="text-xs" title="Opens signed in through cac">SSO</Badge>
+          <Badge className="text-xs" title={t("common:admin.ssoTitle")}>SSO</Badge>
         )}
         {canAdmin && (
           <>
-            <button className="text-muted-foreground hover:text-foreground" onClick={onEdit} title="Edit">
+            <button className="text-muted-foreground hover:text-foreground" onClick={onEdit} title={t("common:admin.edit")}>
               <Pencil className="size-3.5" />
             </button>
-            <button className="text-destructive/70 hover:text-destructive" onClick={onDelete} title="Delete">
+            <button className="text-destructive/70 hover:text-destructive" onClick={onDelete} title={t("common:admin.delete")}>
               <Trash2 className="size-3.5" />
             </button>
           </>
@@ -222,7 +225,7 @@ function IntegrationTile({
               <pre className="flex-1 overflow-auto rounded bg-muted/50 px-2 py-1 text-xs whitespace-pre-wrap break-all">
                 {revealed || "(empty)"}
               </pre>
-              <Button size="icon-xs" variant="ghost" onClick={copy} title="Copy">
+              <Button size="icon-xs" variant="ghost" onClick={copy} title={t("common:admin.copy")}>
                 {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
               </Button>
             </div>
@@ -244,6 +247,7 @@ function IntegrationDialog({
   editing: Integration | null;
   onClose: (changed: boolean) => void;
 }) {
+  const { t } = useT();
   const [kind, setKind] = useState(editing?.kind ?? "generic");
   const [name, setName] = useState(editing?.name ?? "");
   const [url, setUrl] = useState(editing?.url ?? "");
@@ -284,7 +288,7 @@ function IntegrationDialog({
       }
       onClose(true);
     } catch (e) {
-      toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
+      toast.error(t("common:admin.errSave"), { description: e instanceof Error ? e.message : String(e) });
       setSubmitting(false);
     }
   };
@@ -293,15 +297,17 @@ function IntegrationDialog({
     <Dialog open onOpenChange={(v) => !v && onClose(false)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{editing ? `Edit ${editing.name}` : "Add integration"}</DialogTitle>
+          <DialogTitle>
+            {editing ? t("common:admin.editIntegration", { name: editing.name }) : t("common:admin.addIntegration")}
+          </DialogTitle>
           <DialogDescription>
-            A tool for this cluster. Credentials are encrypted and revealed only on demand.
+            {t("common:admin.integrationLead")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           {!editing && (
             <div className="space-y-1.5">
-              <Label>Kind</Label>
+              <Label>{t("common:admin.kind")}</Label>
               <select
                 value={kind}
                 onChange={(e) => pickKind(e.target.value)}
@@ -314,11 +320,11 @@ function IntegrationDialog({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label>Name</Label>
+            <Label>{t("common:admin.thName")}</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Grafana" autoFocus />
           </div>
           <div className="space-y-1.5">
-            <Label>URL</Label>
+            <Label>{t("common:admin.url")}</Label>
             <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://grafana.example" />
           </div>
           <label className="flex items-start gap-2 text-sm">
@@ -346,14 +352,14 @@ function IntegrationDialog({
               placeholder={editing?.hasSecret ? "•••• (unchanged)" : "user/pass or token"}
             />
             <p className="text-xs text-muted-foreground">
-              Stored encrypted. {editing?.hasSecret && "Leave blank to keep the current one."}
+              {t("common:admin.storedEncrypted")} {editing?.hasSecret && t("common:admin.leaveBlankKeep")}
             </p>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onClose(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onClose(false)}>{t("common:admin.cancel")}</Button>
           <Button onClick={submit} disabled={submitting || !name.trim() || !url.trim()}>
-            {submitting ? "Saving…" : "Save"}
+            {submitting ? t("common:admin.saving") : t("common:admin.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -105,7 +105,7 @@ export default function Overview() {
     <div className="flex-1 overflow-auto px-6 py-5">
       <div className="flex flex-col gap-3.5">
         <div className="flex items-baseline gap-2.5">
-          <h2 className="text-[19px] font-semibold">Overview</h2>
+          <h2 className="text-[19px] font-semibold">{t("common:admin.overview")}</h2>
           <span className="text-xs text-muted-foreground">
             {orgName}
             {orgName && " · "}
@@ -120,11 +120,11 @@ export default function Overview() {
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
           <Tarjeta
             icono={<CalendarClock className="size-3.5 text-warning" />}
-            titulo="Open reports"
+            titulo={t("common:admin.openReports")}
             cuenta={reportes.length}
             enlace="See all →"
             onEnlace={() => navigate("/reports")}
-            vacio="Nothing came in."
+            vacio={t("common:admin.nothingCameIn")}
           >
             {reportes.slice(0, 5).map((r) => (
               <Fila
@@ -141,11 +141,11 @@ export default function Overview() {
 
           <Tarjeta
             icono={<CheckSquare className="size-3.5 text-primary" />}
-            titulo="Open tasks"
+            titulo={t("common:admin.openTasks")}
             cuenta={tareas.length}
             enlace="See all →"
             onEnlace={() => navigate("/my-work")}
-            vacio="Nothing pending."
+            vacio={t("common:admin.nothingPending")}
           >
             {tareas.slice(0, 5).map((t) => (
               <Fila
@@ -162,11 +162,11 @@ export default function Overview() {
 
         <Tarjeta
           icono={<MessageSquare className="size-3.5 text-destructive" />}
-          titulo="Unread"
+          titulo={t("common:admin.unread")}
           cuenta={sinLeer.reduce((n, u) => n + u.n, 0)}
           enlace="Go to Talk →"
           onEnlace={() => navigate("/chat")}
-          vacio="Nothing waiting for you."
+          vacio={t("common:admin.nothingWaiting")}
         >
           {sinLeer.slice(0, 6).map((u) => (
             <button
@@ -190,11 +190,11 @@ export default function Overview() {
 
         <Tarjeta
           icono={<ServerIcon className="size-3.5 text-muted-foreground" />}
-          titulo="Infrastructure"
+          titulo={t("common:admin.infrastructure")}
           cuenta={servers.length}
           enlace="Open →"
           onEnlace={() => navigate("/dashboard")}
-          vacio="No servers registered."
+          vacio={t("common:admin.noServersRegistered")}
         >
           <div className="flex flex-wrap gap-x-6 gap-y-2 px-2 py-1.5 text-sm">
             <Cifra n={servers.length} de="server" />

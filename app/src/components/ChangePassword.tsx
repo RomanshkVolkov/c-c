@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +19,7 @@ import type { APIResponse } from "@/types/auth";
 /** The shared form. On success it mints a fresh token, refreshes the session
  *  (clearing any must-change flag) and reloads the organizations. */
 export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
+  const { t } = useT();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -37,7 +39,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
         { currentPassword: current, newPassword: next },
         true,
       );
-      if (!res.success) throw new Error(res.error ?? "Change failed");
+      if (!res.success) throw new Error(res.error ?? t("common:admin.changeFailed"));
 
       // A forced change is the first thing a new account does, and its token
       // was minted before an admin added it to any organization — the `orgs`
@@ -49,7 +51,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
       await refreshAccessToken();
       await refreshSession();
       await useOrgsStore.getState().fetchOrgs();
-      toast.success("Password changed");
+      toast.success(t("common:admin.passwordChanged"));
       onDone?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -61,7 +63,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Current password</Label>
+        <Label>{t("common:admin.currentPassword")}</Label>
         <Input
           type="password"
           value={current}
@@ -70,17 +72,17 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
         />
       </div>
       <div className="space-y-1.5">
-        <Label>New password</Label>
+        <Label>{t("common:admin.newPassword")}</Label>
         <Input
           type="password"
           value={next}
           autoComplete="new-password"
-          placeholder="min 8 characters"
+          placeholder={t("common:admin.min8chars")}
           onChange={(e) => setNext(e.target.value)}
         />
       </div>
       <div className="space-y-1.5">
-        <Label>Confirm new password</Label>
+        <Label>{t("common:admin.confirmNewPassword")}</Label>
         <Input
           type="password"
           value={confirmPw}
@@ -88,15 +90,15 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
           onChange={(e) => setConfirmPw(e.target.value)}
         />
         {confirmPw.length > 0 && next !== confirmPw && (
-          <p className="text-xs text-destructive">Passwords don't match.</p>
+          <p className="text-xs text-destructive">{t("common:admin.passwordsDontMatch")}</p>
         )}
         {next.length > 0 && next === current && (
-          <p className="text-xs text-destructive">New password must differ from the current one.</p>
+          <p className="text-xs text-destructive">{t("common:admin.mustDiffer")}</p>
         )}
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button className="w-full" onClick={submit} disabled={!valid || submitting}>
-        {submitting ? "Saving…" : "Change password"}
+        {submitting ? t("common:admin.saving") : t("common:admin.changePassword")}
       </Button>
     </div>
   );
@@ -105,15 +107,16 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
 /** Full-screen blocker shown after login when the account must set a new
  *  password (admin-provisioned or reset). No way past it but to change. */
 export function ForcedChangePassword() {
+  const { t } = useT();
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-4 rounded-xl border p-6">
         <div className="flex items-center gap-2">
           <KeyRound className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Set a new password</h1>
+          <h1 className="text-lg font-semibold">{t("common:admin.setNewPassword")}</h1>
         </div>
         <p className="text-sm text-muted-foreground">
-          Your password was set by an administrator. Choose your own to continue.
+          {t("common:admin.setByAdmin")}
         </p>
         <ChangePasswordForm />
       </div>
@@ -129,12 +132,13 @@ export function ChangePasswordDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t } = useT();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Change password</DialogTitle>
-          <DialogDescription>Enter your current password and a new one.</DialogDescription>
+          <DialogTitle>{t("common:admin.changePassword")}</DialogTitle>
+          <DialogDescription>{t("common:admin.enterCurrentAndNew")}</DialogDescription>
         </DialogHeader>
         <ChangePasswordForm onDone={() => onOpenChange(false)} />
       </DialogContent>

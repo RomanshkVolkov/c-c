@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { Activity, KeyRound, Network, Pencil, RefreshCw, Rocket, Server, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -34,6 +35,7 @@ interface AgentResult {
 }
 
 export default function Dashboard() {
+  const { t } = useT();
   const navigate = useNavigate();
   const { servers, loading, createServer, updateServer, deleteServer, refresh } = useServers();
   const confirm = useConfirm();
@@ -53,8 +55,8 @@ export default function Dashboard() {
     const ok = await confirm({
       title: `Delete "${server.name}"?`,
       description:
-        "Removes it from cac. The machine and anything running on it are untouched.",
-      confirmText: "Delete",
+        t("common:admin.deleteServerBody"),
+      confirmText: t("common:admin.delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -62,7 +64,7 @@ export default function Dashboard() {
       await deleteServer(server.id);
       toast.success(`Removed ${server.name}`);
     } catch (e) {
-      toast.error("Could not delete", {
+      toast.error(t("common:admin.errDelete"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -114,7 +116,7 @@ export default function Dashboard() {
       <main className="flex-1 space-y-5 p-6">
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0">
-            <h2 className="text-[19px] font-semibold">Servers</h2>
+            <h2 className="text-[19px] font-semibold">{t("common:admin.servers")}</h2>
             <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
               Registered VPS instances. Deploy and update use your local SSH agent;
               no key leaves your machine.
@@ -128,7 +130,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Servers</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("common:admin.totalServers")}</CardTitle>
               <Server className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -139,7 +141,7 @@ export default function Dashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Agents online</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("common:admin.agentsOnline")}</CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -155,7 +157,7 @@ export default function Dashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Cluster Types</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("common:admin.clusterTypes")}</CardTitle>
               <Network className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -191,20 +193,20 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">{t("common:admin.loading")}</p>
             ) : servers.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
-                No servers yet. Add one to get started.
+                {t("common:admin.noServers")}
               </p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Host</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("common:admin.thName")}</TableHead>
+                    <TableHead>{t("common:admin.thHost")}</TableHead>
+                    <TableHead>{t("common:admin.thType")}</TableHead>
+                    <TableHead>{t("common:admin.thStatus")}</TableHead>
+                    <TableHead className="text-right">{t("common:admin.thActions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -237,7 +239,7 @@ export default function Dashboard() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            title="SSH key (1Password)"
+                            title={t("common:admin.sshKey")}
                             onClick={() => setKeyFor(server)}
                           >
                             <KeyRound className="h-3 w-3" />
@@ -245,7 +247,7 @@ export default function Dashboard() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            title="Edit server"
+                            title={t("common:admin.editServer")}
                             onClick={() => setEditing(server)}
                           >
                             <Pencil className="h-3 w-3" />
@@ -253,7 +255,7 @@ export default function Dashboard() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            title="Delete server"
+                            title={t("common:admin.deleteServer")}
                             className="text-destructive hover:text-destructive"
                             onClick={() => removeServer(server)}
                           >
@@ -271,7 +273,7 @@ export default function Dashboard() {
                               ) : (
                                 <Rocket className="h-3 w-3 mr-1" />
                               )}
-                              {server.status === "error" ? "Retry Deploy" : "Deploy Agent"}
+                              {server.status === "error" ? t("common:admin.retryDeploy") : t("common:admin.deployAgent")}
                             </Button>
                           )}
                           {isSwarm && server.status === "online" && (
@@ -286,7 +288,7 @@ export default function Dashboard() {
                                   isBusy && busy?.kind === "update" ? "animate-spin" : ""
                                 }`}
                               />
-                              {isBusy && busy?.kind === "update" ? "Updating..." : "Update Agent"}
+                              {isBusy && busy?.kind === "update" ? t("common:admin.updating") : t("common:admin.updateAgent")}
                             </Button>
                           )}
                           {isSwarm && server.status === "online" && (
@@ -300,7 +302,7 @@ export default function Dashboard() {
                               }
                             >
                               <Activity className="h-3 w-3 mr-1" />
-                              Stats
+                              {t("common:admin.stats")}
                             </Button>
                           )}
                           <Button
@@ -308,7 +310,7 @@ export default function Dashboard() {
                             size="sm"
                             onClick={() => navigate(`/servers/${server.id}`, { state: server })}
                           >
-                            Manage
+                            {t("common:admin.manage")}
                           </Button>
                         </TableCell>
                       </TableRow>
