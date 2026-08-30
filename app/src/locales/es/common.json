@@ -11,5 +11,20 @@
     "system": "El del sistema",
     "en": "English",
     "es": "Español"
+  },
+  "time": {
+    "never": "nunca",
+    "now": "ahora"
+  },
+  "presence": {
+    "activeRecently": "activo hace poco",
+    "notActiveRecently": "sin actividad reciente",
+    "lastSeen": "activo {{when}}",
+    "noActivity": "sin actividad reciente"
+  },
+  "voice": {
+    "inChannel_one": "{{people}} está hablando en este canal.",
+    "inChannel_other": "{{people}} están hablando en este canal.",
+    "join": "Entrar"
   }
 }

@@ -1,20 +1,50 @@
+import i18next from "i18next";
+
 /**
  * Cuánto hace, dicho como lo diría alguien.
  *
  * Vive aquí y no en la pantalla que lo estrenó porque la de organización lo usa
  * en dos sitios que no se hablan entre sí —la actividad de un miembro y la edad
  * de una invitación— y dos copias divergen a la primera corrección.
+ *
+ * Lo dice **`Intl`**, no el catálogo. Un tiempo relativo lleva dentro un plural
+ * y una preposición que cambian con el número y con el idioma —«hace 1 minuto»,
+ * «hace 2 minutos», «1 minute ago»— y ponerlo a mano era escribir una tabla de
+ * formas que la plataforma ya trae para todos los idiomas. Lo que sí queda en el
+ * catálogo son las dos palabras que no son tiempo: «nunca» y «ahora».
  */
 export function desde(iso?: string | null): string {
-  if (!iso) return "never";
+  if (!iso) return i18next.t("common:time.never");
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (min < 2) return "now";
-  if (min < 60) return `${min} min ago`;
+  // «Ahora» y no «hace 0 minutos»: por debajo de dos minutos la cifra no aporta
+  // nada y la frase se lee peor.
+  if (min < 2) return i18next.t("common:time.now");
+  if (min < 60) return relativo(-min, "minute");
   const h = Math.floor(min / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.floor(h / 24);
-  if (d === 1) return "yesterday";
-  return `${d} d ago`;
+  if (h < 24) return relativo(-h, "hour");
+  return relativo(-Math.floor(h / 24), "day");
+}
+
+/**
+ * El formateador, uno por idioma y reutilizado.
+ *
+ * Construir un `Intl.RelativeTimeFormat` cuesta lo suyo, y esto se llama una vez
+ * por fila de una lista que se repinta al llegar cada evento.
+ *
+ * `numeric: "auto"` es lo que convierte «hace 1 día» en «ayer» — y en «yesterday»
+ * cuando toca. Era una rama escrita a mano; ahora la pone quien sabe hacerlo en
+ * los dos idiomas.
+ */
+const formateadores = new Map<string, Intl.RelativeTimeFormat>();
+
+function relativo(valor: number, unidad: Intl.RelativeTimeFormatUnit): string {
+  const lng = i18next.language || "en";
+  let f = formateadores.get(lng);
+  if (!f) {
+    f = new Intl.RelativeTimeFormat(lng, { numeric: "auto", style: "short" });
+    formateadores.set(lng, f);
+  }
+  return f.format(valor, unidad);
 }
 
 /**
@@ -44,8 +74,10 @@ export function faltan(iso?: string | null): string {
   if (!iso) return "";
   const h = Math.floor((new Date(iso).getTime() - Date.now()) / 3_600_000);
   if (h < 0) return "";
-  if (h < 24) return `${Math.max(h, 1)} h left`;
-  return `${Math.floor(h / 24)} d left`;
+  // Al menos una hora: «en 0 horas» para algo que vence en cuarenta minutos
+  // suena a que ya venció.
+  if (h < 24) return relativo(Math.max(h, 1), "hour");
+  return relativo(Math.floor(h / 24), "day");
 }
 
 /** Si un plazo ya pasó. Un `expiresAt` ausente nunca vence. */

@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    // ES2021 por `Intl.ListFormat`, que une una lista de nombres como lo hace
+    // cada idioma. El motor —WebKit en el escritorio— lo trae desde hace años;
+    // lo que faltaba eran sus tipos.
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
 

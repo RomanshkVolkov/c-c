@@ -11,5 +11,20 @@
     "system": "System",
     "en": "English",
     "es": "Español"
+  },
+  "time": {
+    "never": "never",
+    "now": "now"
+  },
+  "presence": {
+    "activeRecently": "active recently",
+    "notActiveRecently": "not active recently",
+    "lastSeen": "active {{when}}",
+    "noActivity": "no recent activity"
+  },
+  "voice": {
+    "inChannel_one": "{{people}} is talking in this channel.",
+    "inChannel_other": "{{people}} are talking in this channel.",
+    "join": "Join"
   }
 }

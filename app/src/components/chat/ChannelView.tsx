@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2, Volume2 } from "lucide-react";
@@ -21,7 +22,7 @@ import { useOrgsStore } from "@/store/orgs.store";
 import { activo } from "@/lib/desde";
 import VoiceBar from "@/components/chat/VoiceBar";
 import VoiceStage from "@/components/voice/VoiceStage";
-import { quienHabla } from "@/components/voice/frase";
+import { joinNames } from "@/lib/people-list";
 import { useVoice } from "@/store/voice.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { api } from "@/lib/api";
@@ -569,17 +570,26 @@ function VozEnCurso({ spaceId }: { spaceId: string }) {
   const entrar = useVoice((s) => s.entrar);
   if (!dentro?.length || (enSala === spaceId && estado !== "fuera")) return null;
 
-  const quien = quienHabla(dentro.map((p) => p.name || p.identity));
+  const { t, i18n } = useTranslation();
+  const nombres = dentro.map((p) => p.name || p.identity);
 
   return (
     <div className="mx-3 mb-2 flex shrink-0 items-center gap-2.5 rounded-lg border border-dashed border-success/30 bg-success/5 px-3 py-2.5 text-[13px] text-muted-foreground">
       <Volume2 className="size-[15px] shrink-0 text-success" />
-      <span className="min-w-0 truncate">{quien} talking in this channel.</span>
+      {/* La frase entera, con su plural, sale del catálogo: el verbo concuerda
+          con cuántos son y partirla por la mitad la deja sin arreglo posible en
+          un idioma que ordene distinto. */}
+      <span className="min-w-0 truncate">
+        {t("common:voice.inChannel", {
+          people: joinNames(nombres, i18n.language),
+          count: nombres.length,
+        })}
+      </span>
       <button
         onClick={() => void entrar(spaceId)}
         className="ml-auto shrink-0 font-semibold text-success hover:underline"
       >
-        Join
+        {t("common:voice.join")}
       </button>
     </div>
   );

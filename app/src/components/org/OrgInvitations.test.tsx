@@ -66,7 +66,15 @@ describe("invitaciones de la organización", () => {
     expect(screen.getAllByText("expired")).toHaveLength(1);
     // Sin fijar el número: el plazo pierde los milisegundos que van de crear la
     // invitación a leerla, y 13 días exactos se leen como 12.
-    expect(screen.getByText(/^\d+ d left$/)).toBeTruthy();
+    //
+    // Y sin fijar el formato: lo escribe `Intl` según el idioma, así que el
+    // texto exacto es cosa de la plataforma y cambia entre versiones. Lo que sí
+    // decidimos es que mire **al futuro** —«in 12 days», no «12 days ago»— y que
+    // hable de días.
+    // El texto empieza por «in», que es lo que separa un plazo por vencer de uno
+    // ya vencido. Buscando sólo un número se encontraban varias cosas.
+    const plazo = screen.getByText(/^in\s+\d+/i);
+    expect(plazo.textContent).not.toMatch(/ago/i);
   });
 
   it("dice quién invitó y cuándo", () => {
