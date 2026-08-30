@@ -83,7 +83,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
     setSubmitting(true);
     try {
       const org = await createOrg({ name: trimmed });
-      toast.success(`Organization "${org.name}" created`);
+      toast.success(t("common:last.orgCreated", { name: org.name }));
       setName("");
       setDialogOpen(false);
     } catch (e) {

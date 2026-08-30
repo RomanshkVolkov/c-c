@@ -122,7 +122,7 @@ export default function ConnectMcpDialog({
       if (!res.success) throw new Error(res.error ?? t("common:last.failed"));
       setEditing(null);
       load();
-      toast.success(`Permissions updated for "${tok.name}"`);
+      toast.success(t("common:last.permsUpdated", { name: tok.name }));
     } catch (e) {
       toast.error(t("common:admin.errUpdateScopes"), {
         description: e instanceof Error ? e.message : String(e),

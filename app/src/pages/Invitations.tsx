@@ -31,9 +31,9 @@ export default function Invitations() {
       // invitación ya gastada. Lo que falta es la credencial nueva, y eso se
       // arregla volviendo a entrar.
       if (renovado) {
-        toast.success(`Joined ${orgName}`);
+        toast.success(t("common:last.joinedOrg", { name: orgName }));
       } else {
-        toast.warning(`Joined ${orgName}`, {
+        toast.warning(t("common:last.joinedOrg", { name: orgName }), {
           description: t("common:misc.signOutToFinish"),
         });
       }

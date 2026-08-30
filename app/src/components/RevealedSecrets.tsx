@@ -78,7 +78,7 @@ export default function RevealedSecrets({
   const copy = async (s: Once) => {
     await navigator.clipboard.writeText(s.value);
     setCopied(s.name);
-    toast.success(`${s.label} copied`);
+    toast.success(t("common:last.copied", { what: s.label }));
   };
 
   const saveToOnePassword = async () => {
@@ -94,9 +94,9 @@ export default function RevealedSecrets({
         fields: secrets.map((s) => [s.name, s.value]),
       });
       setRefs(out);
-      toast.success("Saved to 1Password");
+      toast.success(t("common:last.savedTo1Password"));
     } catch (e) {
-      toast.error("Could not save to 1Password", {
+      toast.error(t("common:last.errSaveTo1Password"), {
         description: e instanceof Error ? e.message : String(e),
       });
     } finally {

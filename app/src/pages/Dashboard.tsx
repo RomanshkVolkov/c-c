@@ -62,7 +62,7 @@ export default function Dashboard() {
     if (!ok) return;
     try {
       await deleteServer(server.id);
-      toast.success(`Removed ${server.name}`);
+      toast.success(t("common:last.serverRemoved", { name: server.name }));
     } catch (e) {
       toast.error(t("common:admin.errDelete"), {
         description: e instanceof Error ? e.message : String(e),

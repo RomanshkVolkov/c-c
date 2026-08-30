@@ -180,7 +180,7 @@ export default function OrgGeneral({
         orgName={org.name}
         onConfirm={async () => {
           await deleteOrg(org.id);
-          toast.success(`${org.name} deleted`);
+          toast.success(t("common:last.orgDeleted", { name: org.name }));
           navigate("/my-work");
         }}
       />

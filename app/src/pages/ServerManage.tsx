@@ -345,7 +345,7 @@ function ServicesTable({
                       `${agentBase(host, agentPort)}/api/v1/services/${svc.id}/force-update`,
                       { method: "POST" },
                     );
-                    toast.success(`Restarting ${svc.name}`);
+                    toast.success(t("common:last.restarting", { name: svc.name }));
                   } catch (e) {
                     toast.error(t("common:servers.restartFailed"), {
                       description: e instanceof Error ? e.message : String(e),

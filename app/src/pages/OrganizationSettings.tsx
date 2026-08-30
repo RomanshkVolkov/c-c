@@ -162,7 +162,7 @@ export default function OrganizationSettings() {
     try {
       await removeMember(orgId, m.userId);
       setMembers((prev) => prev.filter((x) => x.userId !== m.userId));
-      toast.success(`Removed @${m.username}`);
+      toast.success(t("common:last.memberRemoved", { name: m.username }));
     } catch (e) {
       toast.error(t("org:errRemove"), {
         description: e instanceof Error ? e.message : String(e),

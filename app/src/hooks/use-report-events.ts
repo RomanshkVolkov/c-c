@@ -303,7 +303,7 @@ export function useReportEvents() {
             break;
           }
           const desc = `${p.folio ?? ""} ${p.title ?? ""}`.trim();
-          toast.info("New report", { description: desc });
+          toast.info(i18next.t("common:last.newReport"), { description: desc });
           notify("report:new", "New report", desc || "A new report was filed", p.reportId);
           releerBandeja();
           refresh();
@@ -318,7 +318,7 @@ export function useReportEvents() {
           // Folded through the same map as the board, so the toast can't name a
           // state using the spelling the rest of the UI stopped using.
           const raw = moved.status;
-          toast.message("Report status changed", {
+          toast.message(i18next.t("common:last.reportStatusChanged"), {
             // `i18next.t` y no el hook: esto no es un componente, es el
             // repartidor de eventos. Lee el idioma que esté puesto en ese
             // momento, que es lo correcto para un aviso que se emite una vez.
@@ -417,14 +417,14 @@ export function useReportEvents() {
           // — the one case where the "you can already see it" rule is wrong.
           const me = useAuthStore.getState().session?.id;
           if (me && p.mentions?.includes(me)) {
-            toast.message(`You were mentioned in ${where}`);
+            toast.message(i18next.t("common:last.mentionedIn", { where }));
             notify("chat:mention", `Mentioned in ${where}`, linea);
             break;
           }
 
           const chat = useChatStore.getState();
           if (chat.panelOpen && chat.spaceId === p.spaceId) break;
-          toast.message(`New message in ${where}`);
+          toast.message(i18next.t("common:last.newMessageIn", { where }));
           notify("chat:message", where, linea);
           break;
         }

@@ -37,6 +37,15 @@ const espacios = readdirSync(join(RAIZ, "en"))
   .filter((f) => f.endsWith(".json"))
   .map((f) => f.replace(/\.json$/, ""));
 
+/** Los `.ts` y `.tsx` de la aplicación, sin pruebas ni catálogos. */
+function fuentes(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const ruta = join(dir, e.name);
+    if (e.isDirectory()) return e.name === "locales" ? [] : fuentes(ruta);
+    if (!/\.tsx?$/.test(e.name) || e.name.includes(".test.")) return [];
+    return [ruta];
+  });
+}
 describe("los catálogos", () => {
   it("tienen los mismos ficheros en los dos idiomas", () => {
     for (const locale of LOCALES) {
@@ -127,15 +136,7 @@ describe("el catálogo en marcha", () => {
 describe("un solo idioma en el código", () => {
   const RAIZ_SRC = join(process.cwd(), "src");
 
-  /** Los `.ts` y `.tsx` de la aplicación, sin pruebas ni catálogos. */
-  function fuentes(dir: string): string[] {
-    return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-      const ruta = join(dir, e.name);
-      if (e.isDirectory()) return e.name === "locales" ? [] : fuentes(ruta);
-      if (!/\.tsx?$/.test(e.name) || e.name.includes(".test.")) return [];
-      return [ruta];
-    });
-  }
+
 
   /**
    * El fichero sin sus comentarios.
@@ -210,6 +211,41 @@ describe("un solo idioma en el código", () => {
         if (PERMITIDO.some((p) => p.test(linea))) return;
         fugas.push(`${fichero.replace(RAIZ_SRC, "src")}:${i + 1}: ${linea.trim()}`);
       });
+    }
+    expect(fugas).toEqual([]);
+  });
+});
+
+/**
+ * Ningún aviso con la frase escrita a mano.
+ *
+ * Un `toast.error("Could not save")` es la forma más fácil de volver a dejar la
+ * aplicación medio traducida: compila, funciona, se ve bien en inglés, y no lo
+ * caza ninguna de las otras redes — no lleva plural, no lleva tildes, y el
+ * compilador no tiene nada que decir sobre una cadena.
+ *
+ * Se mira sólo el **primer argumento**, que es el que se lee grande. El
+ * `description` casi siempre lleva el error crudo del servidor y ése no se
+ * traduce ni debe.
+ */
+describe("los avisos", () => {
+  const RAIZ = join(process.cwd(), "src");
+
+  // Los instrumentos van en inglés a conciencia; ver `docs/idiomas.md`.
+  const INSTRUMENTOS = /\/(devtools|VoiceLab|CryptoTools|RequestClient|ImageTool)/;
+
+  it("ninguno lleva la frase escrita a mano", () => {
+    const fugas: string[] = [];
+    for (const fichero of fuentes(RAIZ)) {
+      if (INSTRUMENTOS.test(fichero)) continue;
+      readFileSync(fichero, "utf-8")
+        .split("\n")
+        .forEach((linea, i) => {
+          // Una comilla justo detrás del paréntesis: la frase, y no una
+          // variable ni una llamada a `t`.
+          if (!/toast\.(error|success|warning|info|message)\(\s*["`]/.test(linea)) return;
+          fugas.push(`${fichero.replace(RAIZ, "src")}:${i + 1}: ${linea.trim()}`);
+        });
     }
     expect(fugas).toEqual([]);
   });

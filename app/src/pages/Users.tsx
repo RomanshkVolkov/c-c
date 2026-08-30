@@ -54,7 +54,7 @@ export default function Users() {
     if (!ok) return;
     try {
       await deleteUser(u.id);
-      toast.success(`Deleted @${u.username}`);
+      toast.success(t("common:last.userDeleted", { name: u.username }));
     } catch (e) {
       toast.error(t("common:admin.errDeleteUser"), {
         description: e instanceof Error ? e.message : String(e),
@@ -184,7 +184,7 @@ function CreateUserDialog({
         email: email.trim() || undefined,
         isSuperadmin,
       });
-      toast.success(`Created @${username.trim()}`);
+      toast.success(t("common:last.userCreated", { name: username.trim() }));
       reset();
       onOpenChange(false);
     } catch (e) {
@@ -294,7 +294,7 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
         isSuperadmin,
         ...(password ? { password } : {}),
       });
-      toast.success(`Updated @${user.username}`);
+      toast.success(t("common:last.userUpdated", { name: user.username }));
       onClose();
     } catch (e) {
       toast.error(t("common:admin.errUpdateUser"), {

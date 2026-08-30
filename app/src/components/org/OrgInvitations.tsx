@@ -72,7 +72,7 @@ export default function OrgInvitations({
     if (!picked) return;
     try {
       await createInvitation(orgId, { userId: picked.id, role });
-      toast.success(`Invited @${picked.username} to ${orgName}`);
+      toast.success(t("common:last.invitedTo", { who: picked.username, org: orgName }));
       limpiar();
       setInvites(() => []);
       listOrgInvitations(orgId).then((i) => setInvites(() => i)).catch(() => {});
@@ -87,7 +87,7 @@ export default function OrgInvitations({
     if (!picked) return;
     try {
       await addMember(orgId, { userId: picked.id, role });
-      toast.success(`@${picked.username} added to ${orgName}`);
+      toast.success(t("common:last.addedTo", { who: picked.username, org: orgName }));
       limpiar();
       onAdded();
     } catch (e) {
@@ -103,7 +103,7 @@ export default function OrgInvitations({
       await resendInvitation(orgId, inv.id);
       const frescas = await listOrgInvitations(orgId);
       setInvites(() => frescas);
-      toast.success(`Invitation to @${inv.invitedUser} renewed`);
+      toast.success(t("common:last.inviteRenewed", { who: inv.invitedUser }));
     } catch (e) {
       toast.error(t("org:errResend"), {
         description: e instanceof Error ? e.message : undefined,
