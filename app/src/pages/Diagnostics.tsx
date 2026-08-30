@@ -29,6 +29,7 @@ function relativeTime(iso: string): string {
 }
 
 export default function Diagnostics() {
+  const { t } = useT();
   const devices = useTelemetryStore((s) => s.devices);
   const loadingDevices = useTelemetryStore((s) => s.loadingDevices);
   const error = useTelemetryStore((s) => s.error);
@@ -53,7 +54,7 @@ export default function Diagnostics() {
           <Button
             size="icon-xs"
             variant="ghost"
-            title="Refresh"
+            title={t("common:last.refresh")}
             disabled={loadingDevices}
             onClick={() => void fetchDevices()}
           >
@@ -69,7 +70,7 @@ export default function Diagnostics() {
             <p className="px-2 py-2 text-xs text-muted-foreground">Loading…</p>
           ) : devices.length === 0 ? (
             <p className="px-2 py-2 text-xs text-muted-foreground">
-              No device telemetry yet.
+              {t("common:last.noTelemetry")}
             </p>
           ) : (
             devices.map((d) => (
@@ -123,7 +124,7 @@ export default function Diagnostics() {
           </div>
         ) : timeline.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-sm text-muted-foreground">No events for this device.</p>
+            <p className="text-sm text-muted-foreground">{t("common:last.noEvents")}</p>
           </div>
         ) : (
           <div className="flex-1 overflow-auto p-4 space-y-3 max-w-4xl w-full mx-auto">
@@ -174,7 +175,7 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
             onClick={() => setShowDevice((v) => !v)}
           >
             {showDevice ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-            Device context
+            {t("common:last.deviceContext")}
           </button>
           {showDevice && (
             <pre className="max-h-56 overflow-auto bg-muted/40 px-3 py-2 text-xs whitespace-pre-wrap break-all">

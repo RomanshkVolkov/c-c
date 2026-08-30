@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
@@ -27,6 +28,7 @@ export default function PdfPreview({
   fileName: string;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const holder = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState(0);
   const [current, setCurrent] = useState(1);
@@ -129,7 +131,7 @@ export default function PdfPreview({
               className="rounded p-0.5 hover:bg-white/20 disabled:opacity-30"
               disabled={current <= 1}
               onClick={() => scrollToPage(current - 1)}
-              aria-label="Previous page"
+              aria-label={t("common:last.previousPage")}
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -138,7 +140,7 @@ export default function PdfPreview({
               className="rounded p-0.5 hover:bg-white/20 disabled:opacity-30"
               disabled={current >= pages}
               onClick={() => scrollToPage(current + 1)}
-              aria-label="Next page"
+              aria-label={t("common:last.nextPage")}
             >
               <ChevronRight className="size-4" />
             </button>
@@ -160,7 +162,7 @@ export default function PdfPreview({
             variant="ghost"
             className="text-white hover:bg-white/20 hover:text-white"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common:last.close")}
           >
             <X className="size-4" />
           </Button>

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useMemo } from "react";
 import { AlertTriangle, Terminal, Wifi, Navigation, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ const COLOR = {
 } as const;
 
 export default function TelemetryTimeline({ data }: { data: ReportTelemetry }) {
+  const { t } = useT();
   const entries = useMemo(() => flatten(data), [data]);
   const ctx = data.context;
   const snap = data.snapshot;
@@ -34,7 +36,7 @@ export default function TelemetryTimeline({ data }: { data: ReportTelemetry }) {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-medium">Telemetry</h3>
+      <h3 className="text-sm font-medium">{t("common:last.telemetry")}</h3>
 
       {ctx && Object.keys(ctx).length > 0 && (
         <div className="rounded-md border p-2 text-xs">
@@ -73,10 +75,10 @@ export default function TelemetryTimeline({ data }: { data: ReportTelemetry }) {
                   type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(e.copy);
-                    toast.success("Copied");
+                    toast.success(t("common:last.copied"));
                   }}
                   className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label="Copy entry"
+                  aria-label={t("common:last.copyEntry")}
                 >
                   <Copy className="h-3 w-3 text-muted-foreground" />
                 </button>

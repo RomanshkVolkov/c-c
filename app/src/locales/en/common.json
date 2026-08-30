@@ -488,6 +488,25 @@
     "liveUpdatesStopped": "Live updates stopped",
     "requestsFailing": "Requests are failing",
     "reconnect": "Reconnect",
-    "failed": "Failed"
+    "failed": "Failed",
+    "refresh": "Refresh",
+    "noTelemetry": "No device telemetry yet.",
+    "noEvents": "No events for this device.",
+    "deviceContext": "Device context",
+    "errGeneralRoom": "Couldn't open the general room",
+    "channels": "Channels",
+    "channelsInSpaces": "Channels live in spaces. Create a space to start one.",
+    "channelChat": "Channel chat",
+    "telemetry": "Telemetry",
+    "copied": "Copied",
+    "copyEntry": "Copy entry",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "close": "Close",
+    "deleteOrgBody": "This deletes its spaces, its tasks and its channels. Reports arriving through its integrations stop being accepted.",
+    "confirmation": "Confirmation",
+    "cancel": "Cancel",
+    "errDeleteOrg": "Could not delete it",
+    "deleteIt": "Delete it"
   }
 }

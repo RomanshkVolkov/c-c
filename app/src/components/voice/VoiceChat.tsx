@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 
@@ -33,6 +34,7 @@ export default function VoiceChat({
   spaceName: string;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const messages = useChatStore((s) => s.messages);
   const cargando = useChatStore((s) => s.loading);
   const abierto = useChatStore((s) => s.spaceId);
@@ -71,11 +73,11 @@ export default function VoiceChat({
   return (
     <aside className="flex w-85 shrink-0 flex-col overflow-hidden rounded-xl border bg-card/95 backdrop-blur">
       <header className="flex h-11 shrink-0 items-center border-b px-3">
-        <span className="text-[13px] font-semibold">Channel chat</span>
+        <span className="text-[13px] font-semibold">{t("common:last.channelChat")}</span>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Hide chat"
+          aria-label={t("common:last.hideChat")}
           className="ml-auto grid size-6 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <X className="size-[15px]" />

@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -27,6 +28,7 @@ export default function DeleteOrgDialog({
   orgName: string;
   onConfirm: () => Promise<void>;
 }) {
+  const { t } = useT();
   const frase = `delete/${orgName}`;
   const [escrito, setEscrito] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,8 +46,7 @@ export default function DeleteOrgDialog({
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          This deletes its spaces, its tasks and its channels. Reports arriving through
-          its integrations stop being accepted. It cannot be undone.
+          {t("common:last.deleteOrgBody")} It cannot be undone.
         </p>
 
         <div className="space-y-1.5">
@@ -57,14 +58,14 @@ export default function DeleteOrgDialog({
             value={escrito}
             onChange={(e) => setEscrito(e.target.value)}
             placeholder={frase}
-            aria-label="Confirmation"
+            aria-label={t("common:last.confirmation")}
             className="font-mono text-sm"
           />
         </div>
 
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="ghost" onClick={() => cerrar(false)}>
-            Cancel
+            {t("common:last.cancel")}
           </Button>
           <Button
             size="sm"
@@ -78,13 +79,13 @@ export default function DeleteOrgDialog({
                 await onConfirm();
                 cerrar(false);
               } catch (e) {
-                toast.error("Could not delete it", { description: String(e) });
+                toast.error(t("common:last.errDeleteOrg"), { description: String(e) });
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Delete it
+            {t("common:last.deleteIt")}
           </Button>
         </div>
       </DialogContent>

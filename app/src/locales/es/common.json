@@ -488,6 +488,25 @@
     "liveUpdatesStopped": "Se pararon las actualizaciones en directo",
     "requestsFailing": "Las peticiones están fallando",
     "reconnect": "Reconectar",
-    "failed": "Falló"
+    "failed": "Falló",
+    "refresh": "Refrescar",
+    "noTelemetry": "Todavía no hay telemetría de dispositivos.",
+    "noEvents": "No hay eventos de este dispositivo.",
+    "deviceContext": "Contexto del dispositivo",
+    "errGeneralRoom": "No se pudo abrir la sala general",
+    "channels": "Canales",
+    "channelsInSpaces": "Los canales viven en los espacios. Crea un espacio para empezar uno.",
+    "channelChat": "Chat del canal",
+    "telemetry": "Telemetría",
+    "copied": "Copiado",
+    "copyEntry": "Copiar la entrada",
+    "previousPage": "Página anterior",
+    "nextPage": "Página siguiente",
+    "close": "Cerrar",
+    "deleteOrgBody": "Esto borra sus espacios, sus tareas y sus canales. Los reportes que lleguen por sus integraciones dejan de aceptarse.",
+    "confirmation": "Confirmación",
+    "cancel": "Cancelar",
+    "errDeleteOrg": "No se pudo borrar",
+    "deleteIt": "Borrarla"
   }
 }

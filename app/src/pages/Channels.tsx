@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Hash, Megaphone, MessagesSquare, Volume2 } from "lucide-react";
@@ -25,6 +26,7 @@ import { cn } from "@/lib/utils";
  * a link to a conversation is a link, and coming back to it restores it.
  */
 export default function Channels() {
+  const { t } = useT();
   const tree = useTasksStore((s) => s.tree);
   const unread = useChatStore((s) => s.unreadBySpace);
   const fetchUnread = useChatStore((s) => s.fetchUnread);
@@ -59,7 +61,7 @@ export default function Channels() {
     try {
       await abrirSalaGeneral(orgId);
     } catch (e) {
-      toast.error("Couldn't open the general room", { description: String(e) });
+      toast.error(t("common:last.errGeneralRoom"), { description: String(e) });
     }
   };
 
@@ -100,12 +102,12 @@ export default function Channels() {
         )}
       >
         <header className="flex h-12 shrink-0 items-center border-b px-3">
-          <span className="text-sm font-medium">Channels</span>
+          <span className="text-sm font-medium">{t("common:last.channels")}</span>
         </header>
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-1">
           {tree.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-foreground">
-              Channels live in spaces. Create a space to start one.
+              {t("common:last.channelsInSpaces")}
             </p>
           ) : (
             [...(general ? [general] : []), ...canales].map((s) => {
