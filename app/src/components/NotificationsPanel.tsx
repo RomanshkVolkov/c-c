@@ -260,9 +260,12 @@ function GroupRow({
   onOpenGroup: () => void;
   onOpen: (n: InboxItem) => void;
 }) {
+  // Antes del return, por lo mismo que en `VozEnCurso`: un grupo de uno salía
+  // con un hook menos que uno de varios, y la campana se caía en cuanto una
+  // conversación pasaba de un mensaje a dos.
+  const { t } = useT();
   if (g.alone) return <Row n={g.items[0]} isRead={isRead} onClick={() => onOpen(g.items[0])} />;
 
-  const { t } = useT();
   const s = summarize(g);
   // El contador del servidor manda: cuenta la bandeja entera y no la página.
   // Sin él —una fila de las antiguas, sin clave guardada— se usa lo que hay

@@ -566,13 +566,20 @@ function QuienAnda() {
  * existe es ruido.
  */
 function VozEnCurso({ spaceId }: { spaceId: string }) {
+  // Todos los hooks **antes** del primer return, sin excepción.
+  //
+  // `useT` estaba debajo del corte de abajo, y eso es lo que rompía: cuando no
+  // hay nadie en la sala este componente salía con cuatro hooks, y cuando
+  // entraba alguien corría cinco. React lleva la cuenta por posición, así que
+  // el sexto render lanzaba «rendered more hooks than during the previous
+  // render» y se caía la pantalla entera de canales.
   const dentro = useVoice((s) => s.ocupacion[spaceId]);
   const enSala = useVoice((s) => s.spaceId);
   const estado = useVoice((s) => s.estado);
   const entrar = useVoice((s) => s.entrar);
+  const { t, i18n } = useT();
   if (!dentro?.length || (enSala === spaceId && estado !== "fuera")) return null;
 
-  const { t, i18n } = useT();
   const nombres = dentro.map((p) => p.name || p.identity);
 
   return (
