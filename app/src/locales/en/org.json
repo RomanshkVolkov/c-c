@@ -8,7 +8,7 @@
     "general": "General"
   },
   "errLoad": "Failed to load organization",
-  "none": "No organization selected.",
+  "none": "none",
   "invite": "Invite",
   "errRole": "Could not change role",
   "errRemove": "Could not remove member",
@@ -107,5 +107,21 @@
   "change": "Change",
   "everyoneByDefault": "Everyone is included by default, and anyone who joins the organization later is too. Unticking someone is what gets remembered.",
   "notRinging": "Not ringing",
-  "next": "Next: "
+  "next": "Next: ",
+  "lead": "Each integration receives reports from an external system, server to server: it holds an ingest key and sends no Origin, so the key is the whole of it. The key is shown once — when it is created, and when it is rotated.",
+  "new": "New",
+  "shownOnceShort": "shown once, when created or rotated",
+  "serverToServer": "server to server",
+  "fromBrowser": "from a browser",
+  "active": "active",
+  "paused": "paused",
+  "noOriginsListed": "none — nothing can post until one is listed",
+  "originNotChecked": "not checked; a server sends none. The key is the whole of it.",
+  "limitsLine": "{{perHour}}/h in total · {{perReporter}}/h per reporter",
+  "signed": "signed",
+  "unsigned": "unsigned",
+  "edit": "Edit",
+  "yourRole": "Your role: {{role}}",
+  "createdOn": "created {{when}}",
+  "reportsArriveInShort": "Reports arrive in"
 }

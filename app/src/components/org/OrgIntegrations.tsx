@@ -126,16 +126,14 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
       {/* Lo que hay que saber antes de crear una, no después: de dónde llega
           esto y cuándo se puede leer la llave. */}
       <p className="max-w-[660px] text-xs leading-relaxed text-muted-foreground">
-        Each integration receives reports from an external system, server to server: it
-        holds an ingest key and sends no Origin, so the key is the whole of it. The key
-        is shown once — when it is created, and when it is rotated.
+        {t("org:lead")}
       </p>
 
       <div className="flex items-center gap-2">
         <Label className="text-sm font-medium">{t("org:reportProjects")}</Label>
         {canManage && !creando && (
           <Button size="sm" variant="outline" className="ml-auto" onClick={() => setCreando(true)}>
-            <Plus className="mr-1 size-3" /> New
+            <Plus className="mr-1 size-3" /> {t("org:new")}
           </Button>
         )}
       </div>
@@ -319,10 +317,10 @@ function FichaIntegracion({
         </span>
         <span className="truncate font-mono text-[11px] text-muted-foreground">{p.slug}</span>
         <Badge variant="secondary" className="text-[10px]">
-          {p.platform === "app" ? "server to server" : "from a browser"}
+          {p.platform === "app" ? t("org:serverToServer") : t("org:fromBrowser")}
         </Badge>
         <Badge variant="outline" className="text-[10px]">
-          {p.isActive ? "active" : "paused"}
+          {p.isActive ? t("org:active") : t("org:paused")}
         </Badge>
         <span className="ml-auto shrink-0 text-xs text-muted-foreground">
           {t("common:count.reportsThisMonth", { count: p.reportsThisMonth ?? 0 })}
@@ -437,7 +435,7 @@ function FichaIntegracion({
             <dt className="uppercase tracking-wide text-muted-foreground">{t("org:ingestKey")}</dt>
             <dd className="mt-0.5 flex items-center gap-2">
               <span className="text-muted-foreground">
-                shown once, when created or rotated
+                {t("org:shownOnceShort")}
               </span>
               {canManage && (
                 <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={rotar}>
@@ -454,14 +452,17 @@ function FichaIntegracion({
               {p.platform === "web"
                 ? p.allowedOrigins.length > 0
                   ? p.allowedOrigins.join(", ")
-                  : "none — nothing can post until one is listed"
-                : "not checked; a server sends none. The key is the whole of it."}
+                  : t("org:noOriginsListed")
+                : t("org:originNotChecked")}
             </dd>
           </div>
           <div>
             <dt className="uppercase tracking-wide text-muted-foreground">{t("org:limits")}</dt>
             <dd className="mt-0.5">
-              {p.rateLimitPerHour}/h in total · {p.rateLimitPerReporterPerHour}/h per reporter
+              {t("org:limitsLine", {
+                perHour: p.rateLimitPerHour,
+                perReporter: p.rateLimitPerReporterPerHour,
+              })}
             </dd>
           </div>
           <div>
@@ -471,11 +472,11 @@ function FichaIntegracion({
                 <>
                   {p.webhookUrl}
                   <span className="text-muted-foreground">
-                    {p.webhookConfigured ? " · signed" : " · unsigned"}
+                    {` · ${p.webhookConfigured ? t("org:signed") : t("org:unsigned")}`}
                   </span>
                 </>
               ) : (
-                <span className="text-muted-foreground">none</span>
+                <span className="text-muted-foreground">{t("org:none")}</span>
               )}
             </dd>
           </div>
@@ -483,7 +484,7 @@ function FichaIntegracion({
               podía ver: dónde acaba lo que manda. */}
           <div>
             <dt className="flex items-center gap-1 uppercase tracking-wide text-muted-foreground">
-              <Inbox className="size-3" /> Reports arrive in
+              <Inbox className="size-3" /> {t("org:reportsArriveInShort")}
             </dt>
             <dd className="mt-0.5">
               {ruta ? (
@@ -491,7 +492,7 @@ function FichaIntegracion({
               ) : p.listId ? (
                 // Hay bandeja, pero no es de esta organización o ya no existe.
                 // Decirlo es mejor que pintar el uuid que se pintaba antes.
-                <span className="text-warning">a list outside this organization</span>
+                <span className="text-warning">{t("channel:outsideOrg")}</span>
               ) : (
                 <span className="text-destructive">
                   nowhere — anything it sends is being lost
@@ -521,7 +522,7 @@ function FichaIntegracion({
         {canManage && !editando && (
           <span className="flex shrink-0 items-center gap-1">
             <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
-              <Pencil className="mr-1 size-3" /> Edit
+              <Pencil className="mr-1 size-3" /> {t("org:edit")}
             </Button>
             <Button
               size="sm"
@@ -538,7 +539,7 @@ function FichaIntegracion({
               className="text-destructive hover:text-destructive"
               onClick={borrar}
             >
-              <Trash2 className="mr-1 size-3" /> Delete
+              <Trash2 className="mr-1 size-3" /> {t("org:delete")}
             </Button>
           </span>
         )}

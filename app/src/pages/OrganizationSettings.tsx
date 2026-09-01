@@ -187,13 +187,13 @@ export default function OrganizationSettings() {
                 line. A date matters more than it looks: it is what separates a
                 real place from one somebody made by accident last week. */}
             <p className="text-xs text-muted-foreground">
-              Your role: {current.role}
+              {t("org:yourRole", { role: current.role })}
               {superadmin && " · superadmin"}
               {current.memberCount > 0 &&
                 ` · ${t("common:count.members", { count: current.memberCount })}`}
               {espacios > 0 && ` · ${t("common:count.spaces", { count: espacios })}`}
               {current.createdAt &&
-                ` · created ${fechaConAno(current.createdAt)}`}
+                ` · ${t("org:createdOn", { when: fechaConAno(current.createdAt) })}`}
             </p>
           </div>
           {canManage && (

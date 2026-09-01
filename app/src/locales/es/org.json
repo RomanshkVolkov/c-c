@@ -8,7 +8,7 @@
     "general": "General"
   },
   "errLoad": "No se pudo cargar la organización",
-  "none": "No hay ninguna organización elegida.",
+  "none": "ninguno",
   "invite": "Invitar",
   "errRole": "No se pudo cambiar el rol",
   "errRemove": "No se pudo quitar al miembro",
@@ -107,5 +107,21 @@
   "change": "Cambiar",
   "everyoneByDefault": "Todo el mundo entra por omisión, y quien se una a la organización mañana también. Lo que se recuerda es a quién se desmarcó.",
   "notRinging": "No suena",
-  "next": "La próxima: "
+  "next": "La próxima: ",
+  "lead": "Cada integración recibe reportes de un sistema externo, de servidor a servidor: tiene una llave de ingesta y no manda ningún Origin, así que la llave lo es todo. La llave se enseña una vez — al crearla y al rotarla.",
+  "new": "Nueva",
+  "shownOnceShort": "se enseña una vez, al crearla y al rotarla",
+  "serverToServer": "de servidor a servidor",
+  "fromBrowser": "desde un navegador",
+  "active": "activa",
+  "paused": "en pausa",
+  "noOriginsListed": "ninguno — nada puede publicar hasta que se liste uno",
+  "originNotChecked": "no se comprueba; un servidor no manda ninguno. La llave lo es todo.",
+  "limitsLine": "{{perHour}}/h en total · {{perReporter}}/h por reportante",
+  "signed": "firmado",
+  "unsigned": "sin firmar",
+  "edit": "Editar",
+  "yourRole": "Tu rol: {{role}}",
+  "createdOn": "creada el {{when}}",
+  "reportsArriveInShort": "Los reportes caen en"
 }
