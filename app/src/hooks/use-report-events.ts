@@ -245,10 +245,14 @@ export function useReportEvents() {
       void chat.fetchUnread();
       // Sólo el canal que está a la vista: recargar los demás sería pedir el
       // historial entero de la organización cada vez que parpadea la red.
-      if (chat.panelOpen && chat.spaceId) void chat.fetch(chat.spaceId);
+      //
+      // Y `refrescar`, no `fetch`: éste último vacía la lista —está escrito para
+      // cambiar de canal— y usarlo aquí tiraba el historial que alguien había
+      // cargado subiendo, cada vez que volvía a la ventana.
+      if (chat.panelOpen && chat.spaceId) void chat.refrescar();
 
       const dm = useDMStore.getState();
-      if (dm.conversationId) void dm.open(dm.conversationId);
+      if (dm.conversationId) void dm.refrescar();
 
       // Y la campana, que faltaba: sin esto un aviso emitido durante una caída
       // no se recuperaba nunca, ni volviendo a la ventana.

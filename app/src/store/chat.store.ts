@@ -50,7 +50,18 @@ interface ChatState {
 
   openPanel: (spaceId: string) => Promise<void>;
   closePanel: () => void;
+  /** Abrir un canal: vacía lo que hubiera y trae la primera página. */
   fetch: (spaceId: string) => Promise<void>;
+  /**
+   * Volver a pedir el canal que ya está abierto, **sin vaciarlo**.
+   *
+   * `fetch` está escrito para cambiar de canal, donde vaciar es lo correcto. Pero
+   * lo llamaba también todo lo demás —enviar, editar, borrar, un mensaje que
+   * llega, volver a la ventana— y ahí vaciar es destructivo: tira todas las
+   * páginas viejas que alguien había cargado subiendo, reinicia `hasMore` y deja
+   * la lista en blanco mientras vuelve la respuesta.
+   */
+  refrescar: () => Promise<void>;
   fetchOlder: () => Promise<void>;
   post: (spaceId: string, body: string) => Promise<void>;
   edit: (spaceId: string, messageId: string, body: string) => Promise<void>;
@@ -108,6 +119,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  /**
+   * Refresca el canal abierto fundiendo la primera página con lo que ya hay.
+   *
+   * Se funde por id y se reordena por fecha, en vez de reemplazar: quien tenía
+   * cinco páginas cargadas las conserva, y los mensajes editados o borrados en el
+   * intervalo se corrigen igual porque la página nueva pisa a la vieja.
+   */
+  refrescar: async () => {
+    const spaceId = get().spaceId;
+    if (!spaceId) return;
+    const res = await api.get<{ data: ChatMessage[] }>(
+      `/api/v1/task-spaces/${spaceId}/chat?limit=${PAGE}`,
+    );
+    const frescos = res.data ?? [];
+    // Una respuesta tardía de un canal del que ya se salió no puede pintar aquí.
+    if (get().spaceId !== spaceId) return;
+    set((prev) => {
+      const porId = new Map(prev.messages.map((m) => [m.id, m]));
+      for (const m of frescos) porId.set(m.id, m);
+      // Lo que el servidor ya no manda **y cae dentro de la ventana que acaba de
+      // devolver** se ha borrado; fuera de esa ventana son páginas viejas que
+      // siguen siendo válidas y no se tocan.
+      const masViejoFresco = frescos[0]?.createdAt;
+      const vivos = [...porId.values()].filter(
+        (m) =>
+          !masViejoFresco ||
+          m.createdAt < masViejoFresco ||
+          frescos.some((f) => f.id === m.id),
+      );
+      vivos.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return { messages: vivos };
+    });
+  },
+
   fetchOlder: async () => {
     const { spaceId, messages, hasMore, loadingOlder } = get();
     if (!spaceId || !hasMore || loadingOlder || messages.length === 0) return;
@@ -136,17 +181,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Refetch rather than append the response: the server assigns the timestamp,
     // and a locally-appended line would sort wrong against anything that landed
     // in between.
-    await get().fetch(spaceId);
+    await get().refrescar();
   },
 
   edit: async (spaceId, messageId, body) => {
     await api.patch(`/api/v1/task-spaces/${spaceId}/chat/${messageId}`, { body });
-    await get().fetch(spaceId);
+    await get().refrescar();
   },
 
   withdraw: async (spaceId, messageId) => {
     await api.delete(`/api/v1/task-spaces/${spaceId}/chat/${messageId}`);
-    await get().fetch(spaceId);
+    await get().refrescar();
   },
 
   markRead: async (spaceId) => {
@@ -197,7 +242,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const s = get();
     if (s.panelOpen && s.spaceId === spaceId) {
       // You are looking at it, so it is read the moment it lands.
-      await s.fetch(spaceId);
+      await s.refrescar();
       await s.markRead(spaceId);
       return;
     }

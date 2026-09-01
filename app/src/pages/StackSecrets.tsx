@@ -439,8 +439,14 @@ export default function StackSecrets() {
   const canLoad = tokenConfigured && owner.trim() !== "" && repo.trim() !== "";
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b px-6 py-3 flex items-center gap-3">
+    /* `min-h-0` y el desbordamiento dentro, no `min-h-screen`.
+       
+       Con `min-h-screen` esta pantalla crecía y empujaba a la página entera, que
+       es lo que hacía antes toda la aplicación. Desde que el armazón tiene techo
+       —ver `AppLayout`— crecer ya no es una opción: lo que sobra se recorta. El
+       contenido va en su propia caja con scroll, como el resto de pantallas. */
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
+      <header className="shrink-0 border-b px-6 py-3 flex items-center gap-3">
         <Button
           variant="ghost"
           size="sm"
@@ -456,7 +462,7 @@ export default function StackSecrets() {
         </div>
       </header>
 
-      <main className="flex-1 p-6 space-y-4 max-w-4xl mx-auto w-full">
+      <main className="min-h-0 flex-1 overflow-auto p-6 space-y-4 max-w-4xl mx-auto w-full">
         {/* Token Configuration */}
         <Card>
           <CardHeader>

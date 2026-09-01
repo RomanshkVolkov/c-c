@@ -18,5 +18,6 @@
   "clientSeesBody": "This came from the team's channel, which the client never sees. Making the card visible puts it on their board and spends one of their ticket numbers.",
   "visibleToThem": "Visible to them",
   "internal": "Internal",
-  "message": "Message"
+  "message": "Message",
+  "newMessages": "New messages"
 }

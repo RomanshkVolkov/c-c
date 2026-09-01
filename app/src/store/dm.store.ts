@@ -46,7 +46,17 @@ interface DMState {
 
   fetchConversations: () => Promise<void>;
   openWith: (orgId: string, userId: string) => Promise<string>;
+  /** Abrir una conversación: vacía lo que hubiera y trae la primera página. */
   open: (conversationId: string) => Promise<void>;
+  /**
+   * Volver a pedir la conversación abierta, **sin vaciarla**.
+   *
+   * Gemela de `chat.store → refrescar`, y por lo mismo: `open` vacía porque está
+   * escrita para cambiar de conversación, y llamarla desde enviar, editar,
+   * borrar o un mensaje que llega tiraba el historial cargado y dejaba la lista
+   * en blanco mientras volvía la respuesta.
+   */
+  refrescar: () => Promise<void>;
   fetchOlder: () => Promise<void>;
   post: (conversationId: string, body: string) => Promise<void>;
   edit: (conversationId: string, messageId: string, body: string) => Promise<void>;
@@ -102,6 +112,31 @@ export const useDMStore = create<DMState>((set, get) => ({
     }
   },
 
+  refrescar: async () => {
+    const conversationId = get().conversationId;
+    if (!conversationId) return;
+    const res = await api.get<{ data: DMMessage[] }>(
+      `/api/v1/dm/${conversationId}/messages?limit=${PAGE}`,
+    );
+    const frescos = res.data ?? [];
+    if (get().conversationId !== conversationId) return;
+    set((prev) => {
+      const porId = new Map(prev.messages.map((m) => [m.id, m]));
+      for (const m of frescos) porId.set(m.id, m);
+      // Lo desaparecido **dentro de la ventana que acaba de llegar** se borró;
+      // lo de más atrás son páginas viejas que siguen valiendo.
+      const masViejoFresco = frescos[0]?.createdAt;
+      const vivos = [...porId.values()].filter(
+        (m) =>
+          !masViejoFresco ||
+          m.createdAt < masViejoFresco ||
+          frescos.some((f) => f.id === m.id),
+      );
+      vivos.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return { messages: vivos };
+    });
+  },
+
   fetchOlder: async () => {
     const { conversationId, messages, hasMore, loadingOlder } = get();
     if (!conversationId || !hasMore || loadingOlder || messages.length === 0) return;
@@ -126,17 +161,17 @@ export const useDMStore = create<DMState>((set, get) => ({
 
   post: async (conversationId, body) => {
     await api.post(`/api/v1/dm/${conversationId}/messages`, { body }, true);
-    await get().open(conversationId);
+    await get().refrescar();
   },
 
   edit: async (conversationId, messageId, body) => {
     await api.patch(`/api/v1/dm/${conversationId}/messages/${messageId}`, { body });
-    await get().open(conversationId);
+    await get().refrescar();
   },
 
   withdraw: async (conversationId, messageId) => {
     await api.delete(`/api/v1/dm/${conversationId}/messages/${messageId}`);
-    await get().open(conversationId);
+    await get().refrescar();
   },
 
   markRead: async (conversationId) => {
@@ -151,7 +186,7 @@ export const useDMStore = create<DMState>((set, get) => ({
   onIncoming: async (conversationId) => {
     if (get().conversationId === conversationId) {
       // You are looking at it, so it is read the moment it lands.
-      await get().open(conversationId);
+      await get().refrescar();
       return;
     }
     await get().fetchConversations();

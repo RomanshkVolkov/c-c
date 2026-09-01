@@ -1,7 +1,8 @@
+import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
 import i18next from "i18next";
 import { useT } from "@/lib/i18n";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2, Volume2 } from "lucide-react";
 import {
@@ -83,10 +84,6 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
     fetchFollowing().catch(() => {});
   }, [fetchPeople, fetchFollowing]);
 
-  const scroller = useRef<HTMLDivElement>(null);
-  // How tall the list was before an older page landed, so the view can stay put.
-  const heightBefore = useRef<number | null>(null);
-
   // Following the space the person navigated to.
   useEffect(() => {
     if (openSpaceId === spaceId) return;
@@ -95,25 +92,14 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
       .catch((e) => toast.error(String(e)));
   }, [spaceId, openSpaceId, fetch, markRead]);
 
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    if (heightBefore.current !== null) {
-      // An older page was prepended. Jumping to the bottom here would throw the
-      // person back down to the newest message every time they scroll up.
-      el.scrollTop = el.scrollHeight - heightBefore.current;
-      heightBefore.current = null;
-      return;
-    }
-    el.scrollTop = el.scrollHeight;
-  }, [messages]);
-
-  const onScroll = () => {
-    const el = scroller.current;
-    if (!el || el.scrollTop > 40 || !hasMore || loadingOlder) return;
-    heightBefore.current = el.scrollHeight;
-    fetchOlder().catch((e) => toast.error(String(e)));
-  };
+  const { caja, enScroll, alFinal, hayNuevos } = useAnclajeDeScroll({
+    items: messages,
+    hayMas: hasMore,
+    cargando: loadingOlder,
+    cargarAnteriores: () => {
+      fetchOlder().catch((e) => toast.error(String(e)));
+    },
+  });
 
   const send = async () => {
     const body = draft.trim();
@@ -179,7 +165,8 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
         </button>
       </header>
 
-      <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={caja} onScroll={enScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
         {loadingOlder && (
           <div className="flex justify-center pb-2">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -210,6 +197,23 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
             ))}
           </div>
         )}
+      </div>
+      {/* «Nuevos ↓», y sólo cuando llega algo mientras lees hacia arriba.
+          
+          Es la mitad que hace usable leer historia: sin ella, o te arranca de
+          donde estás en cada mensaje, o se acumulan sin que lo sepas. Flota
+          sobre la lista para no empujar el contenido y mover lo que estás
+          leyendo, que sería el mismo fallo por otro camino. */}
+      {hayNuevos && (
+        <button
+          onClick={alFinal}
+          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1
+                     rounded-full border bg-primary px-3 py-1 text-xs font-medium
+                     text-primary-foreground shadow-lg"
+        >
+          {t("chat:newMessages")} <ChevronDown className="size-3" />
+        </button>
+      )}
       </div>
 
       <VozEnCurso spaceId={spaceId} />

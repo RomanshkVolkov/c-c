@@ -82,9 +82,28 @@ export default function AppLayout() {
 
 
   return (
-    <SidebarProvider>
+    /* El techo de toda la aplicación, y va aquí y no en `components/ui/`.
+       
+       shadcn deja el marco en `min-h-svh`: altura **mínima**, que es lo correcto
+       para una página que crece y se lee haciendo scroll. cac no es eso — es un
+       armazón donde cada panel desborda dentro de lo suyo — y sin techo el
+       `overflow-y-auto` de la lista de un chat **nunca se activa**: quien hacía
+       scroll era el documento.
+       
+       De ahí salían tres cosas que parecían tres bugs: el área de escribir
+       quedaba bajo el pliegue, `scrollTop = scrollHeight` era un no-op sobre un
+       elemento que no desborda —por eso un canal abría arriba del todo— y el
+       `onScroll` que carga mensajes antiguos no se disparaba jamás.
+       
+       Por `className` y no editando `components/ui/sidebar.tsx`: eso es shadcn
+       copiado, y cambiarlo allí se pierde la próxima vez que se regenere. */
+    <SidebarProvider className="h-svh overflow-hidden">
       <AppSidebar />
-      <SidebarInset>
+      {/* `min-h-0` por lo mismo que el `min-w-0` que ya trae: un elemento flex
+          se niega a encogerse por debajo de su contenido, así que sin esto el
+          techo de arriba no llega hasta abajo. El comentario de shadcn explica
+          el caso horizontal; éste es el mismo en vertical. */}
+      <SidebarInset className="min-h-0">
         <ConnectionBanner />
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="md:hidden" />

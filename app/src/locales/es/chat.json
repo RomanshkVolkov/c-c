@@ -18,5 +18,6 @@
   "clientSeesBody": "Esto viene del canal del equipo, que el cliente no ve nunca. Hacer visible la tarjeta la pone en su tablero y gasta uno de sus números de ticket.",
   "visibleToThem": "Visible para él",
   "internal": "Interno",
-  "message": "Mensaje"
+  "message": "Mensaje",
+  "newMessages": "Mensajes nuevos"
 }
