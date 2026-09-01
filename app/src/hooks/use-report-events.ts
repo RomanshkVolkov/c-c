@@ -370,7 +370,17 @@ export function useReportEvents() {
           // está. Es local y barato — la fila no puede seguir existiendo.
           if (event === "task:delete" && p.taskId) {
             useMyWorkStore.getState().olvidar(p.taskId);
+          } else if (p.taskId) {
+            // Lo demás —mover, asignar, cambiar prioridad— también le importa a
+            // «My work», que junta tareas de todas las listas. Antes se quedaba
+            // fuera porque el corte de abajo mira la lista en pantalla y esta
+            // vista no tiene ninguna.
+            useMyWorkStore.getState().refrescarSiEsNuestra(p.taskId);
           }
+          // Y los contadores del árbol, que no dependen de qué tablero mires:
+          // mover cinco tarjetas a Hecho cambia el «12 abiertas» de esa lista
+          // estés donde estés.
+          store.marcarArbolViejo();
           if (!store.activeListId) return;
           if (p.listId && p.listId !== store.activeListId) return;
           store.refreshBoard();

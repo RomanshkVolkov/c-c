@@ -84,7 +84,26 @@ interface MyWorkState {
    * para quitar una que sabemos que se fue es más lento y puede fallar.
    */
   olvidar: (taskId: string) => void;
+  /**
+   * Algo pasó con una tarea. Si es una de las que tenemos, se recarga.
+   *
+   * «My work» junta tareas de todas las listas, así que no tiene lista activa —
+   * y el manejador de eventos se cortaba justo por eso, dejándola con lo que
+   * hubiera cargado al abrirla. Mover una tarjeta desde otra sesión, o desde el
+   * MCP, no cambiaba nada aquí hasta recargar la ventana entera.
+   */
+  refrescarSiEsNuestra: (taskId: string) => void;
 }
+
+/**
+ * Un respiro antes de recargar.
+ *
+ * Mover cinco tarjetas seguidas —lo normal cuando alguien ordena su tablero, y
+ * exactamente lo que hace el MCP— son cinco eventos en un segundo. Sin esto
+ * serían cinco peticiones para llegar al mismo sitio.
+ */
+const COALESCE_MS = 400;
+let temporizador: ReturnType<typeof setTimeout> | null = null;
 
 export const useMyWorkStore = create<MyWorkState>()(
   persist(
@@ -136,6 +155,23 @@ export const useMyWorkStore = create<MyWorkState>()(
 
       olvidar: (taskId) =>
         set((s) => ({ tasks: s.tasks.filter((t) => t.id !== taskId) })),
+
+      refrescarSiEsNuestra: (taskId) => {
+        // Sólo si ya la tenemos. Una organización con movimiento emite eventos
+        // de tarjetas que a ti no te tocan, y recargar por cada una convertiría
+        // esta pantalla en una encuesta continua.
+        //
+        // El precio de esa decisión, escrito para que nadie lo descubra solo:
+        // una tarea que **entra** en tu trabajo —alguien te la asigna— no está
+        // en la lista todavía, así que no se refresca sola. Eso sí llega a la
+        // campana, que es donde de verdad hace falta enterarse.
+        if (!get().tasks.some((t) => t.id === taskId)) return;
+        if (temporizador) clearTimeout(temporizador);
+        temporizador = setTimeout(() => {
+          temporizador = null;
+          void get().load(get().loadedOrgId);
+        }, COALESCE_MS);
+      },
 
       setWatching: async (taskId, on) => {
         const path = `/api/v1/tasks/${taskId}/watch`;

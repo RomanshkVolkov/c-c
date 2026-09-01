@@ -63,6 +63,15 @@ interface TasksState {
   detailError: string | null;
 
   fetchTree: () => Promise<void>;
+  /**
+   * Los contadores del árbol han quedado viejos.
+   *
+   * El «12 abiertas» de cada lista no se recalculaba nunca con un evento: se
+   * movían cinco tarjetas a Hecho y el número seguía igual hasta recargar la
+   * ventana. Con retardo porque ordenar un tablero son varios eventos seguidos
+   * y todos llevan al mismo sitio.
+   */
+  marcarArbolViejo: () => void;
   fetchTags: () => Promise<void>;
   selectList: (listId: string) => Promise<void>;
   refreshBoard: () => Promise<void>;
@@ -240,6 +249,10 @@ export interface ChannelPatch {
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** Lo mismo que en «My work», y por lo mismo: ordenar un tablero son ráfagas. */
+const ARBOL_COALESCE_MS = 800;
+let temporizadorArbol: ReturnType<typeof setTimeout> | null = null;
+
 export const useTasksStore = create<TasksState>()(
   persist(
     (set, get) => ({
@@ -258,6 +271,17 @@ export const useTasksStore = create<TasksState>()(
       detail: null,
       loadingDetail: false,
       detailError: null,
+
+      marcarArbolViejo: () => {
+        // Sin árbol cargado no hay contadores que corregir: quien no ha abierto
+        // esa pantalla no paga nada por esto.
+        if (get().tree.length === 0) return;
+        if (temporizadorArbol) clearTimeout(temporizadorArbol);
+        temporizadorArbol = setTimeout(() => {
+          temporizadorArbol = null;
+          void get().fetchTree();
+        }, ARBOL_COALESCE_MS);
+      },
 
       fetchTree: async () => {
         set({ loadingTree: true, error: null });
