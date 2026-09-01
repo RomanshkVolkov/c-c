@@ -49,22 +49,28 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
     this.setState({ filed: "filing" });
     this.setState({
       filed: await fileCrash({
-        // El cuerpo del reporte va **en inglés y a secas**: no lo lee quien
-        // sufrió el fallo sino quien lo arregla, y el tablero ya está en inglés
-        // por contrato. Traducirlo partiría los reportes en dos idiomas según
-        // quién tuviera la app en qué, que es justo lo que no se quiere al
-        // buscar un fallo repetido.
-        title: `Crash: ${error.message}`,
+        // El cuerpo va **en castellano y sin `t()`**, y no por descuido.
+        //
+        // No lo lee quien sufrió el fallo sino quien lo arregla, así que lo que
+        // importa es que todas las tarjetas estén en el mismo idioma — y el
+        // tablero de cac está en castellano, entero. Pasarlo por el catálogo lo
+        // partiría en dos según qué idioma tuviera puesto cada quien, que es
+        // justo lo que estorba al buscar un fallo repetido.
+        //
+        // (La primera versión de esto decía «el tablero está en inglés por
+        // contrato». Era falso: lo del contrato son los comentarios de sistema
+        // en el tablero *del cliente*, no éste.)
+        title: `Pantallazo: ${error.message}`,
         description: [
           `**${error.name}: ${error.message}**`,
           "",
-          `Route: \`${rutaActual()}\``,
+          `Ruta: \`${rutaActual()}\``,
           "",
           "```",
-          (error.stack ?? "no stack").split("\n").slice(0, 12).join("\n"),
+          (error.stack ?? "sin stack").split("\n").slice(0, 12).join("\n"),
           "```",
           "",
-          "Components:",
+          "Componentes:",
           "```",
           (info.componentStack ?? "").split("\n").slice(0, 12).join("\n").trim(),
           "```",

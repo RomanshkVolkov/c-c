@@ -1088,11 +1088,11 @@ function CouldNotOpen({
         await fileCrash({
           title: `No abre una tarjeta: ${reason}`,
           description: [
-            `**An item detail failed to load.**`,
+            `**El detalle de un item no cargó.**`,
             "",
-            `Server reason: \`${reason}\``,
+            `Motivo del servidor: \`${reason}\``,
             `Item: \`${id}\``,
-            `Route: \`${rutaActual()}\``,
+            `Ruta: \`${rutaActual()}\``,
           ].join("\n"),
           key: signature(`detail-failed: ${reason}`),
         }),

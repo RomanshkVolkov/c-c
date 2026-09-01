@@ -35,7 +35,13 @@
     "stopSharing": "Dejar de compartir la pantalla",
     "share": "Compartir tu pantalla",
     "settings": "Ajustes de audio y vídeo",
-    "leave": "Salir de la llamada"
+    "leave": "Salir de la llamada",
+    "reportAudio": "Reportar un problema de audio",
+    "reporting": "Enviando lo que sabe el motor…",
+    "reportFiled": "Enviado — quedó una tarjeta en el tablero",
+    "reportFailed": "No se pudo enviar",
+    "reportFailedBody": "Abre el laboratorio de voz y copia el diario a mano.",
+    "reportNoSession": "No hay nada que reportar: no estás en una llamada"
   },
   "count": {
     "members_one": "{{count}} miembro",

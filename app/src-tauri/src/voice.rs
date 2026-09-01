@@ -323,6 +323,47 @@ pub async fn voice_set_mic(enabled: bool) -> Result<(), String> {
 /// silencio. Parar el dispositivo daría un corte audible al volver.
 static SILENCIADO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+// ─── Lo que hace falta para contestar «¿por qué no se me oye?» ────────────────
+//
+// Nada de esto se medía, y por eso el caso de la v1.6.5x fue imposible: se sabía
+// que alguien no se oía y **ninguna otra cosa**. Con esto, un botón dentro de la
+// llamada puede decir si el micrófono entrega muestras, si esas muestras traen
+// señal o son ceros, y si lo capturado llega de verdad a publicarse — que son
+// tres fallos distintos con el mismo síntoma.
+
+/// Cuántas tramas ha aceptado el SDK. Si se queda quieta, no estás subiendo.
+static TRAMAS_PUBLICADAS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// El pico de la última trama capturada, en tanto por mil de la escala completa.
+///
+/// Entero y atómico para poder leerlo desde otro hilo sin candado. Distingue el
+/// fallo más engañoso de todos: capturar perfectamente y entregar silencio.
+static PICO_MILESIMAS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Si el bucle de publicación sigue vivo. Ver dónde se pone en falso: un
+/// `capture_frame` rechazado lo mataba **en silencio**, y ése es exactamente el
+/// modo de fallo que no se podía ver desde fuera.
+static PUBLICANDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Lo último que dijo el micrófono al romperse, si dijo algo.
+static ULTIMO_FALLO_CAPTURA: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+
+/// Con qué formato quedó abierto el micrófono, para poder contarlo.
+static FORMATO_ENTRADA: LazyLock<Mutex<Option<FormatoEntrada>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+#[derive(Clone, serde::Serialize)]
+pub struct FormatoEntrada {
+    pub dispositivo: String,
+    pub ritmo: u32,
+    pub canales: u16,
+    pub formato: String,
+    /// El ritmo que la fuente publicada espera. Si no coincide con `ritmo`, la
+    /// trama viaja diciendo una cosa hacia algo que espera otra.
+    pub ritmo_de_la_fuente: u32,
+    pub coincide: bool,
+}
+
 /// El micrófono y la cámara elegidos a mano, si alguien eligió.
 ///
 /// Fuera de la sesión y no dentro porque **sobreviven a la llamada**: quien
@@ -770,6 +811,46 @@ fn probar_camara() -> Vec<String> {
 ///
 /// `async` porque lo exige la regla de `voice_set_mic` — y aunque éste no toca
 /// el SDK, la excepción hay que escribirla a mano y no vale la pena.
+/// Todo lo que el motor sabe de tu audio, en una sola llamada.
+///
+/// Existe por un caso concreto: alguien no se oía, oía a los demás
+/// perfectamente, y **no había forma de saber por qué**. Se sabía el síntoma y
+/// nada más. Las tres causas posibles —el micrófono no entrega muestras, las
+/// entrega en silencio, o lo capturado no llega a publicarse— dan exactamente
+/// el mismo síntoma visto desde fuera, y ninguna dejaba rastro.
+///
+/// Los tres campos que las separan son `pico_milesimas`, `tramas_publicadas` y
+/// `publicando`:
+///
+/// - pico a 0 con tramas subiendo → captura, pero **entrega silencio**.
+/// - tramas quietas y `publicando` en falso → capturó y **dejó de publicar**.
+/// - pico con señal y tramas subiendo → sube de verdad, y el problema está en
+///   el servidor o en el oído del otro.
+///
+/// Y `formato_entrada.coincide` en falso es el desajuste de ritmo, que se traga
+/// la voz entera sin dar ni un error.
+#[tauri::command]
+pub async fn voice_report() -> serde_json::Value {
+    let formato = FORMATO_ENTRADA.lock().unwrap().clone();
+    let sesion_viva = SESION.lock().unwrap().is_some();
+    serde_json::json!({
+        "sesionViva": sesion_viva,
+        "yo": YO.lock().unwrap().clone(),
+        "silenciado": SILENCIADO.load(std::sync::atomic::Ordering::Relaxed),
+        "sordo": SORDO.load(std::sync::atomic::Ordering::Relaxed),
+        "camara": CAMARA.load(std::sync::atomic::Ordering::Relaxed),
+        "compartiendo": COMPARTIENDO.load(std::sync::atomic::Ordering::Relaxed),
+        "publicando": PUBLICANDO.load(std::sync::atomic::Ordering::Relaxed),
+        "tramasPublicadas": TRAMAS_PUBLICADAS.load(std::sync::atomic::Ordering::Relaxed),
+        "picoMilesimas": PICO_MILESIMAS.load(std::sync::atomic::Ordering::Relaxed),
+        "ultimoFalloCaptura": ULTIMO_FALLO_CAPTURA.lock().unwrap().clone(),
+        "formatoEntrada": formato,
+        "micElegido": MIC_ELEGIDO.lock().unwrap().clone(),
+        // El diario entero: es lo que cuenta la historia de cómo se llegó aquí.
+        "diario": DIARIO.lock().unwrap().iter().cloned().collect::<Vec<_>>(),
+    })
+}
+
 #[tauri::command]
 pub async fn voice_diagnostics() -> Vec<String> {
     DIARIO.lock().unwrap().iter().cloned().collect()
@@ -867,6 +948,38 @@ fn arrancar_captura(
         let entrada_rate = config.sample_rate();
         let entrada_canales = config.channels() as usize;
 
+        // Qué micrófono se abrió y con qué. Esto no se escribía en ninguna
+        // parte, y es la primera pregunta de cualquier diagnóstico: que en
+        // Discord funcione no dice qué dispositivo abrió cac.
+        // En cpal 0.18 el nombre legible es el `Display`; `name()` no existe.
+        let nombre_disp = dispositivo.to_string();
+        let coincide = entrada_rate == SAMPLE_RATE;
+        nota(format!(
+            "micro: «{nombre_disp}» a {} Hz, {} canal(es), {:?}",
+            entrada_rate,
+            config.channels(),
+            config.sample_format()
+        ));
+        if !coincide {
+            // El desajuste que se traga la voz entera. La fuente publicada se
+            // creó a `SAMPLE_RATE` fijo y aquí se está capturando a otro ritmo
+            // **sin resamplear**: la trama viaja declarando un ritmo hacia algo
+            // que espera otro. Se anota bien fuerte porque el síntoma —nadie te
+            // oye, ningún error— no se parece en nada a la causa.
+            nota(format!(
+                "micro: ¡OJO! el dispositivo va a {} Hz y la fuente publicada espera {} Hz, y no hay resampleo",
+                entrada_rate, SAMPLE_RATE
+            ));
+        }
+        *FORMATO_ENTRADA.lock().unwrap() = Some(FormatoEntrada {
+            dispositivo: nombre_disp,
+            ritmo: entrada_rate,
+            canales: config.channels(),
+            formato: format!("{:?}", config.sample_format()),
+            ritmo_de_la_fuente: SAMPLE_RATE,
+            coincide,
+        });
+
         let (tramas_tx, mut tramas_rx) = mpsc::unbounded_channel::<Vec<i16>>();
         let mut acumulador: Vec<i16> = Vec::with_capacity(MUESTRAS_POR_TRAMA * 2);
 
@@ -887,10 +1000,23 @@ fn arrancar_captura(
                 while acumulador.len() >= MUESTRAS_POR_TRAMA {
                     let resto = acumulador.split_off(MUESTRAS_POR_TRAMA);
                     let trama = std::mem::replace(&mut acumulador, resto);
+                    // El pico, sobre las muestras que **de verdad** se envían.
+                    // Medirlo antes del silenciado diría que hay señal mientras
+                    // se publican ceros, que es la mentira más cara aquí.
+                    let pico = trama.iter().map(|m| m.unsigned_abs() as u32).max().unwrap_or(0);
+                    PICO_MILESIMAS.store(pico * 1000 / i16::MAX as u32, std::sync::atomic::Ordering::Relaxed);
                     let _ = tramas_tx.send(trama);
                 }
             },
-            |e| eprintln!("voz: error de captura: {e}"),
+            // Al diario y guardado, no a un `eprintln!`. En una app empaquetada
+            // de Windows stderr no va a ninguna parte: si el flujo se rompe a
+            // mitad —que es lo que pasa cuando el sistema retira el
+            // dispositivo— el fallo se perdía entero.
+            |e| {
+                let linea = format!("{e}");
+                nota(format!("micro: el flujo de captura falló: {linea}"));
+                *ULTIMO_FALLO_CAPTURA.lock().unwrap() = Some(linea);
+            },
             None,
         );
         let stream = match stream {
@@ -915,6 +1041,7 @@ fn arrancar_captura(
             // cómo esté configurado el observador de niveles del SFU.
             let mut hablando = false;
             let mut ultima_voz = std::time::Instant::now();
+            PUBLICANDO.store(true, std::sync::atomic::Ordering::Relaxed);
 
             while let Some(datos) = tramas_rx.recv().await {
                 if hay_voz(&datos) {
@@ -938,10 +1065,21 @@ fn arrancar_captura(
                     num_channels: 1,
                     samples_per_channel: MUESTRAS_POR_TRAMA as u32,
                 };
-                if fuente.capture_frame(&trama).await.is_err() {
+                // Antes esto era `if …is_err() { break; }` a secas: el SDK
+                // rechazaba la trama, el bucle se salía **sin decir nada**, y
+                // desde fuera todo seguía igual —micrófono abierto, pista
+                // publicada, interfaz intacta— mientras no subía ni un byte.
+                if let Err(e) = fuente.capture_frame(&trama).await {
+                    let linea = format!("{e}");
+                    nota(format!(
+                        "micro: el SDK rechazó una trama y se deja de publicar: {linea}"
+                    ));
+                    *ULTIMO_FALLO_CAPTURA.lock().unwrap() = Some(linea);
                     break;
                 }
+                TRAMAS_PUBLICADAS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
+            PUBLICANDO.store(false, std::sync::atomic::Ordering::Relaxed);
         });
 
         let _ = fin_rx.recv();

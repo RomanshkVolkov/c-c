@@ -203,9 +203,29 @@ describe("un solo idioma en el código", () => {
       ")\\b",
   );
 
+  /**
+   * Lo que se escribe **para el tablero** no es interfaz.
+   *
+   * Una tarjeta de fallo la lee quien la arregla, no quien la sufrió, y el
+   * tablero de cac está en castellano entero. Pasar esos cuerpos por el
+   * catálogo los partiría en dos idiomas según qué tuviera puesto cada quien —
+   * y buscar un fallo repetido entre tarjetas en dos idiomas es peor que
+   * leerlas todas en uno.
+   *
+   * Es una tercera categoría, distinta de «interfaz» y de «instrumento»: un
+   * documento generado para consumo interno. Va por fichero y no por línea
+   * porque estos tres existen para eso y nada más.
+   */
+  const DOCUMENTOS = [
+    "lib/voice-report.ts",
+    "components/ErrorBoundary.tsx",
+    "components/TaskDetailDrawer.tsx",
+  ];
+
   it("ninguna frase en castellano fuera de los catálogos", () => {
     const fugas: string[] = [];
     for (const fichero of fuentes(RAIZ_SRC)) {
+      if (DOCUMENTOS.some((d) => fichero.endsWith(d))) continue;
       sinComentarios(readFileSync(fichero, "utf-8")).split("\n").forEach((linea, i) => {
         if (!/[áéíóúñ¿¡ÁÉÍÓÚÑ]/.test(linea) && !PALABRAS.test(linea)) return;
         if (PERMITIDO.some((p) => p.test(linea))) return;

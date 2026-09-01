@@ -35,7 +35,13 @@
     "stopSharing": "Stop sharing your screen",
     "share": "Share your screen",
     "settings": "Audio and video settings",
-    "leave": "Leave the call"
+    "leave": "Leave the call",
+    "reportAudio": "Report an audio problem",
+    "reporting": "Sending what the engine knows…",
+    "reportFiled": "Sent — a card landed on the board",
+    "reportFailed": "Couldn't send it",
+    "reportFailedBody": "Open the voice lab and copy the engine log by hand.",
+    "reportNoSession": "Nothing to report: you aren't in a call"
   },
   "count": {
     "members_one": "{{count}} member",
