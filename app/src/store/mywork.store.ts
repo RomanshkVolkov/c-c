@@ -53,6 +53,13 @@ const LENS_QUERY: Record<WorkLens, string> = {
 interface MyWorkState {
   lens: WorkLens;
   scope: WorkScope | null;
+  /**
+   * La organización de la que son las tareas que hay cargadas.
+   *
+   * Sólo para saber **cuándo cambia**. No se persiste: al arrancar no hay nada
+   * cargado, así que la primera carga siempre es un cambio.
+   */
+  loadedOrgId: string | null;
   includeClosed: boolean;
   tasks: OpenTask[];
   loading: boolean;
@@ -84,6 +91,7 @@ export const useMyWorkStore = create<MyWorkState>()(
     (set, get) => ({
       lens: "assigned",
       scope: null,
+      loadedOrgId: null,
       includeClosed: false,
       tasks: [],
       loading: false,
@@ -94,6 +102,20 @@ export const useMyWorkStore = create<MyWorkState>()(
       setIncludeClosed: (includeClosed) => set({ includeClosed }),
 
       load: async (orgId) => {
+        // Cambiar de organización tira el filtro de lista o espacio.
+        //
+        // Una lista es de una organización concreta, así que al cambiar se
+        // quedaba filtrando por algo que ahí no existe: la pantalla salía vacía
+        // y parecía que no tenías trabajo, no que había un filtro puesto. Y el
+        // rótulo del filtro decía el nombre de una lista de la organización
+        // anterior, que es peor todavía.
+        //
+        // Sólo cuando **cambia**, y no en cada carga: `load` corre también al
+        // cambiar de lente o al pedir los estados cerrados, y ahí tirar el
+        // filtro sería quitarle a alguien algo que acaba de poner.
+        if (orgId !== get().loadedOrgId) {
+          set({ scope: null, loadedOrgId: orgId });
+        }
         set({ loading: true, error: null });
         try {
           const partes = [
