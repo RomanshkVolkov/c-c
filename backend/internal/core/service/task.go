@@ -647,7 +647,7 @@ func (s *TaskService) MoveTask(ctx context.Context, id, userID string, req domai
 	// mover una tarjeta de sitio, no una noticia.
 	if task.Status != next {
 		s.avisos.estado(domain.ViaFrom(ctx), task.OrgID, id, userID,
-			"Moved to "+string(next), task.Title)
+			domain.FraseDeEstado(string(next)), task.Title)
 	}
 	return nil
 }

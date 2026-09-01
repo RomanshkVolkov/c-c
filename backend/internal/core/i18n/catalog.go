@@ -22,6 +22,51 @@ var catalogo = map[string]map[Locale]string{
 		ES: "Mensaje directo nuevo",
 	},
 
+	"notify.report.new": {
+		EN: "New report · {{folio}}",
+		ES: "Reporte nuevo · {{folio}}",
+	},
+	"notify.reply.new": {
+		EN: "New reply",
+		ES: "Respuesta nueva",
+	},
+	"notify.reply.by": {
+		EN: "{{who}} replied",
+		ES: "{{who}} respondió",
+	},
+	"notify.reply.client": {
+		EN: "The client replied",
+		ES: "El cliente respondió",
+	},
+	"notify.item.moved": {
+		EN: "Moved to {{status}}",
+		ES: "Movida a {{status}}",
+	},
+	"notify.chat.mentioned": {
+		EN: "Mentioned in {{where}}",
+		ES: "Te nombraron en {{where}}",
+	},
+	"notify.item.assigned": {
+		EN: "Assigned to you",
+		ES: "Te la asignaron",
+	},
+	"notify.item.moved.open": {
+		EN: "Reopened",
+		ES: "Reabierta",
+	},
+	"notify.item.moved.in_progress": {
+		EN: "Moved to In progress",
+		ES: "Movida a En curso",
+	},
+	"notify.item.moved.done": {
+		EN: "Marked as done",
+		ES: "Marcada como hecha",
+	},
+	"notify.item.moved.closed": {
+		EN: "Closed",
+		ES: "Cerrada",
+	},
+
 	// ── Errores de la API ───────────────────────────────────────────────────
 	"unauthorized": {
 		EN: "Unauthorized",

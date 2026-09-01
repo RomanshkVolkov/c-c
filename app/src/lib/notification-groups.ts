@@ -190,10 +190,19 @@ export function summarize(g: NotificationGroup): GroupSummary {
  * renombrado se cure con el siguiente mensaje: el rótulo va congelado en cada
  * fila, igual que hoy va congelado el título.
  *
- * Mientras el servidor no mande `groupLabel`, se apaña con lo que hay: en chat
- * el título ya es «#canal», salvo cuando te nombraron, que llega envuelto en
- * «Mentioned in ». Quitar ese envoltorio es lo único que se hace a mano, y es
- * temporal — con la columna, esto se queda en una línea.
+ * El servidor ya manda `groupLabel`, así que lo normal es la primera línea.
+ *
+ * Lo de abajo es **sólo para filas viejas**, y conviene decir de cuándo son
+ * porque de otro modo parece código muerto que alguien borrará:
+ *
+ * - `^Mentioned in ` — anteriores a que `chat.go` mandara clave y rótulo.
+ * - ` te escribió$` — anteriores a la v1.6.59, cuando el servidor escribía los
+ *   directos **en castellano** dentro de una aplicación en inglés. Ése era el
+ *   bug; estas filas son lo que quedó de él.
+ *
+ * Las dos se quedan mientras haya bandejas con historia: una fila guardada ya
+ * está escrita y no se reescribe. No se les añaden más idiomas — el que llegue
+ * después trae `groupLabel` y no pasa por aquí.
  */
 function labelOf(n: InboxItem): string {
   if (n.groupLabel) return n.groupLabel;

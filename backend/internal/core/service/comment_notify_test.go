@@ -147,13 +147,17 @@ func TestElReporteNuevoVaAlResponsableYSiNoHayATodos(t *testing.T) {
 		orgs:  repository.NewOrganizationRepository(db),
 	}
 
-	a.reporteNuevo(domain.ViaApp, "org-1", "item-1", bea, "New report · portento-84", "Algo falla")
+	a.reporteNuevo(domain.ViaApp, "org-1", "item-1", bea,
+		domain.Frase{Clave: "notify.report.new", Args: map[string]string{"folio": "portento-84"}},
+		"Algo falla")
 	if quienes := avisadosDe(espia, "report:new"); len(quienes) != 1 || quienes[0] != bea {
 		t.Errorf("con responsable puesto va sólo a él; fue a %v", quienes)
 	}
 
 	espia.avisos = nil
-	a.reporteNuevo(domain.ViaApp, "org-1", "item-1", "", "New report · portento-85", "Otra cosa")
+	a.reporteNuevo(domain.ViaApp, "org-1", "item-1", "",
+		domain.Frase{Clave: "notify.report.new", Args: map[string]string{"folio": "portento-85"}},
+		"Otra cosa")
 	if quienes := avisadosDe(espia, "report:new"); len(quienes) != 3 {
 		t.Errorf("sin responsable no puede quedarse sin avisar a nadie; fue a %v", quienes)
 	}

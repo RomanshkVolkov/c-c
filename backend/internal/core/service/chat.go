@@ -114,7 +114,9 @@ func (s *ChatService) anotarAvisos(orgID, spaceID, actorID, cuerpo string, menti
 		// la petición — si no, un mensaje del agente se pintará como tuyo.
 		s.notifier.Notify(domain.Aviso{
 			UserID: uid, OrgID: orgID, Kind: "chat:mention",
-			Title: "Mentioned in " + donde, Body: linea,
+			TitleKey:  "notify.chat.mentioned",
+			TitleArgs: map[string]string{"where": donde},
+			Body:      linea,
 			Link: "/chat?space=" + spaceID, Via: domain.ViaApp,
 			// Mismo grupo que un mensaje corriente: una mención pasa **en el
 			// canal**, no en un sitio aparte. El rótulo va sin el envoltorio,

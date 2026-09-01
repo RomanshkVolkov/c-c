@@ -268,7 +268,8 @@ func (s *ReportService) Ingest(ctx context.Context, project *domain.ReportProjec
 		responsable = *project.DefaultAssigneeUserID
 	}
 	s.avisos.reporteNuevo(domain.ViaFrom(ctx), project.OrgID, report.ID, responsable,
-		"New report · "+folio, report.Title)
+		domain.Frase{Clave: "notify.report.new", Args: map[string]string{"folio": folio}},
+		report.Title)
 
 	return &domain.IngestReportResult{
 		ID:     report.ID,
@@ -658,7 +659,7 @@ func (s *ReportService) Update(ctx context.Context, actor, actorUserID, reportID
 			"reportId": reportID, "status": report.Status,
 		})
 		s.avisos.estado(domain.ViaFrom(ctx), report.OrgID, reportID, actorUserID,
-			"Moved to "+string(report.Status), report.Title)
+			domain.FraseDeEstado(string(report.Status)), report.Title)
 	}
 	return s.Detail(reportID, actorIsPerson(actor))
 }

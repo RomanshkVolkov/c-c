@@ -39,7 +39,7 @@ type avisos struct {
 // el mismo fallo que este codebase ya quitó del chat y de los directos. Cuando
 // habla un cliente no hay a quién saltarse —no tiene usuario en cac— y por eso
 // le llega a todo el mundo, que es la intención.
-func (a *avisos) comentario(externo bool, via, orgID, itemID, actorID, titulo, cuerpo string) {
+func (a *avisos) comentario(externo bool, via, orgID, itemID, actorID string, titulo domain.Frase, cuerpo string) {
 	if a == nil || a.inbox == nil || orgID == "" || itemID == "" {
 		return
 	}
@@ -62,7 +62,7 @@ func (a *avisos) comentario(externo bool, via, orgID, itemID, actorID, titulo, c
 // la cuenta de ese cliente. Y a toda la organización cuando no hay ninguno
 // puesto — sin ese respaldo, un proyecto sin responsable no avisaría a nadie,
 // que es el mismo agujero de antes con otra forma.
-func (a *avisos) reporteNuevo(via, orgID, itemID, responsable, titulo, cuerpo string) {
+func (a *avisos) reporteNuevo(via, orgID, itemID, responsable string, titulo domain.Frase, cuerpo string) {
 	if a == nil || a.inbox == nil || orgID == "" || itemID == "" {
 		return
 	}
@@ -94,7 +94,8 @@ func (a *avisos) asignada(via, orgID, itemID, actorID string, nuevos []string, t
 	if a == nil || a.inbox == nil || orgID == "" || len(nuevos) == 0 {
 		return
 	}
-	a.repartir(nuevos, via, orgID, itemID, actorID, "task:assigned", "Assigned to you", titulo)
+	a.repartir(nuevos, via, orgID, itemID, actorID, "task:assigned",
+		domain.Frase{Clave: "notify.item.assigned"}, titulo)
 }
 
 // estado avisa de que algo que te toca cambió de columna.
@@ -103,7 +104,7 @@ func (a *avisos) asignada(via, orgID, itemID, actorID string, nuevos []string, t
 // lleva la tarjeta o la sigue, no a todo el mundo. Lo dispara tanto el equipo
 // como un tenant por server-to-server, así que un cliente cerrando un ticket
 // también llega aquí — que es justamente lo que nadie se enteraba.
-func (a *avisos) estado(via, orgID, itemID, actorID, titulo, cuerpo string) {
+func (a *avisos) estado(via, orgID, itemID, actorID string, titulo domain.Frase, cuerpo string) {
 	if a == nil || a.inbox == nil || orgID == "" || itemID == "" {
 		return
 	}
@@ -114,7 +115,7 @@ func (a *avisos) estado(via, orgID, itemID, actorID, titulo, cuerpo string) {
 	a.repartir(quienes, via, orgID, itemID, actorID, "task:status", titulo, cuerpo)
 }
 
-func (a *avisos) repartir(quienes []string, via, orgID, itemID, actorID, clase, titulo, cuerpo string) {
+func (a *avisos) repartir(quienes []string, via, orgID, itemID, actorID, clase string, titulo domain.Frase, cuerpo string) {
 	enlace := "/tasks?task=" + itemID
 	vistos := make(map[string]bool, len(quienes))
 	for _, uid := range quienes {
@@ -124,10 +125,12 @@ func (a *avisos) repartir(quienes []string, via, orgID, itemID, actorID, clase, 
 		vistos[uid] = true
 		a.inbox.Notify(domain.Aviso{
 			UserID: uid, OrgID: orgID, Kind: clase,
-			Title: titulo, Body: cuerpo, Link: enlace, Via: via,
+			TitleKey: titulo.Clave, TitleArgs: titulo.Args,
+			Body: cuerpo, Link: enlace, Via: via,
 			// En esta familia los papeles se invierten: el cuerpo es el nombre
 			// de la ficha —lo que da nombre al grupo— y el título dice qué pasó
-			// («Bea replied», «Moved to Done»).
+			// («Bea respondió», «Marcada como hecha»), y por clave: quién la
+			// lee decide en qué idioma, no quién la provoca.
 			Group: domain.ItemGroup(itemID), Label: cuerpo,
 		})
 	}
@@ -139,12 +142,12 @@ func (a *avisos) repartir(quienes []string, via, orgID, itemID, actorID, clase, 
 // un vistazo si le toca. Sin nombre, «The client replied» — nunca inventando
 // uno, porque el nombre de alguien de fuera lo *afirma* su tenant y esta app no
 // tiene forma de comprobarlo.
-func tituloDeRespuesta(externo bool, nombre string) string {
+func tituloDeRespuesta(externo bool, nombre string) domain.Frase {
 	if !externo {
-		return "New reply"
+		return domain.Frase{Clave: "notify.reply.new"}
 	}
 	if n := strings.TrimSpace(nombre); n != "" {
-		return n + " replied"
+		return domain.Frase{Clave: "notify.reply.by", Args: map[string]string{"who": n}}
 	}
-	return "The client replied"
+	return domain.Frase{Clave: "notify.reply.client"}
 }

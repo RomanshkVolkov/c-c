@@ -140,3 +140,38 @@ type Aviso struct {
 	TitleKey  string
 	TitleArgs map[string]string
 }
+
+// Frase es un título **sin escribir todavía**: la clave del catálogo y sus
+// huecos.
+//
+// Existe para que los servicios que provocan un aviso dejen de armar la frase.
+// El que la provoca no sabe quién la va a leer —chat y directos publican para
+// varias personas a la vez— y una fila de la bandeja se escribe una vez y se lee
+// meses después. Quien resuelve el idioma es `Notify`, que es el único punto que
+// conoce al destinatario.
+type Frase struct {
+	Clave string
+	Args  map[string]string
+}
+
+// FraseDeEstado dice a qué columna se movió algo.
+//
+// **Una clave entera por estado**, no una plantilla con el nombre dentro. La
+// primera versión metía el rótulo como argumento, y eso obligaba a resolver una
+// clave dentro de otra: una mini-lengua en el catálogo por cuatro frases.
+//
+// Con una clave por caso, cada idioma escribe la oración completa y con la
+// concordancia que le toque — «Moved to Done», «Movida a Hecha»— que es la misma
+// regla que ya siguen los plurales y la regla de una reunión.
+//
+// El identificador nunca sale: antes esto concatenaba `"Moved to " + next` y
+// escribía literalmente «Moved to in_progress», que ya estaba mal en inglés.
+// Un estado que el catálogo no conozca cae en la clave genérica.
+func FraseDeEstado(estado string) Frase {
+	switch estado {
+	case "open", "in_progress", "done", "closed":
+		return Frase{Clave: "notify.item.moved." + estado}
+	default:
+		return Frase{Clave: "notify.item.moved", Args: map[string]string{"status": estado}}
+	}
+}

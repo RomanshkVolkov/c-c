@@ -67,6 +67,64 @@ func TestNadieAvisaSinDecirDeQueConversacionEs(t *testing.T) {
 	}
 }
 
+// Y nadie escribe la frase donde no sabe quién la va a leer.
+//
+// El hermano de la prueba de arriba, y por el mismo motivo: un `Aviso` con el
+// título ya escrito compila igual, y **produce una fila en inglés en la bandeja
+// de alguien que eligió castellano** sin que nada se queje. Pasó de verdad: la
+// v1.6.59 metió toda la maquinaria de `TitleKey` y migró sólo los mensajes
+// directos; los otros cuatro sitios se quedaron escribiendo la frase y nadie se
+// enteró hasta que alguien miró su campana.
+//
+// La regla mira si detrás de `Title:` hay **una comilla**. Un `Title:` con una
+// variable detrás es contenido de una persona —el nombre de un canal, el de una
+// reunión— y eso no se traduce ni debe.
+func TestNadieEscribeLaFraseQueOtroVaALeer(t *testing.T) {
+	ficheros, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const apertura = "Notify(domain.Aviso{"
+	encontrados := 0
+
+	for _, f := range ficheros {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		fuente, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		texto := string(fuente)
+
+		for i := 0; ; {
+			j := strings.Index(texto[i:], apertura)
+			if j < 0 {
+				break
+			}
+			inicio := i + j
+			literal, fin := literalHasta(texto, inicio+len(apertura))
+			if fin < 0 {
+				t.Fatalf("%s: no se pudo leer el literal que empieza en %d", f, inicio)
+			}
+			encontrados++
+			if k := strings.Index(literal, "Title:"); k >= 0 {
+				resto := strings.TrimSpace(literal[k+len("Title:"):])
+				if strings.HasPrefix(resto, `"`) || strings.HasPrefix(resto, "`") {
+					t.Errorf("%s: un aviso con la frase ya escrita — usa `TitleKey` para que "+
+						"la escriba quien la va a leer:\n%s", f, recorte(literal))
+				}
+			}
+			i = fin
+		}
+	}
+
+	if encontrados == 0 {
+		t.Fatal("no se encontró ningún aviso: ¿cambió la forma de notificar?")
+	}
+}
+
 // literalHasta devuelve el contenido del literal de struct que empieza en `desde`
 // (justo tras la llave de apertura) y el índice donde acaba.
 func literalHasta(texto string, desde int) (string, int) {
