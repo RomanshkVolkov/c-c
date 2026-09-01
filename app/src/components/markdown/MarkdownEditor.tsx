@@ -538,7 +538,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     if (value !== current) {
       editor.commands.setContent(value, { emitUpdate: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, editor]);
 
   if (!editor) {

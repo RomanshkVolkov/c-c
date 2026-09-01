@@ -48,11 +48,6 @@ export default function AppLayout() {
   // Live report notifications (SSE) for the whole authenticated shell.
   useReportEvents();
 
-  // Block the whole shell until an admin-provisioned/reset password is changed.
-  if (authed && mustChangePassword) {
-    return <ForcedChangePassword />;
-  }
-
   // ⌘K anywhere, and Escape closes it because the dialog handles that itself.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const panelOpen = useNotifUI((s) => s.panelOpen);
@@ -70,6 +65,21 @@ export default function AppLayout() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Todo lo de arriba son hooks, y **por eso el corte va aquí abajo**.
+  //
+  // Estaba justo encima de los seis anteriores, y eso convertía el alta de
+  // cualquier persona nueva en un pantallazo: un admin le pone contraseña,
+  // entra, ve esta pantalla —el componente corre con seis hooks menos—, la
+  // cambia, `mustChangePassword` pasa a falso, y el mismo componente vuelve a
+  // dibujarse con seis hooks más. React lleva la cuenta por posición y tira la
+  // aplicación entera, que además es ésta: `AppLayout` envuelve todo.
+  //
+  // Lo encontró `react-hooks/rules-of-hooks` a los cinco minutos de existir.
+  if (authed && mustChangePassword) {
+    return <ForcedChangePassword />;
+  }
+
 
   return (
     <SidebarProvider>
