@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -28,6 +29,7 @@ import { useOrgsStore } from "@/store/orgs.store";
  *   de la respuesta, no un paso previo que el que enlaza deba dar.
  */
 export default function DirectMessages() {
+  const { t } = useT();
   const abierta = useDMStore((s) => s.conversationId);
   const open = useDMStore((s) => s.open);
   const openWith = useDMStore((s) => s.openWith);
@@ -72,7 +74,7 @@ export default function DirectMessages() {
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          Pick somebody to write to.
+          {t("common:misc.pickSomebody")}
         </div>
       )}
     </div>

@@ -454,7 +454,15 @@
     "sshLead": "Pick the key this server uses, from the ones your SSH agent holds.",
     "agent": "Agent",
     "letAgentDecide": "Let the agent decide",
-    "passwordMin8": "Password must be at least 8 characters"
+    "passwordMin8": "Password must be at least 8 characters",
+    "startConversation": "Start a conversation",
+    "nobodyElse": "Nobody else in this organization yet.",
+    "noNotificationsYet": "Nothing yet. Everything that arrives is recorded here, whether or not the system showed it.",
+    "createOrgLeadFull": "Separates servers, collections and reports by company. You become its admin.",
+    "agentDecideHelp": "Default. Fails on servers that cut off after a few key attempts.",
+    "noSpacesYet": "No spaces yet. Create one to start organizing work.",
+    "everyoneHere": "Everyone is already here.",
+    "pickSomebody": "Pick somebody to write to."
   },
   "scopes": {
     "tasksWrite": "Create tasks and comments",

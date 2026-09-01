@@ -48,6 +48,7 @@ const isOn = (p: InboxPrefs, o: (typeof OPTIONS)[number]) =>
  * panel obligaba a leer la lista dos veces para encontrar lo mismo.
  */
 function RegistroDeEntrega() {
+  const { t } = useT();
   const items = useNotificationsStore((s) => s.items);
   const clear = useNotificationsStore((s) => s.clear);
   const [abierto, setAbierto] = useState(false);
@@ -77,8 +78,7 @@ function RegistroDeEntrega() {
         <div className="max-h-56 overflow-auto border-t">
           {items.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              Nothing yet. Everything that arrives is recorded here, whether or not the
-              system showed it.
+              {t("common:misc.noNotificationsYet")}
             </p>
           ) : (
             <ul className="divide-y">

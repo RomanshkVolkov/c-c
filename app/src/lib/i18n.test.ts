@@ -46,6 +46,39 @@ function fuentes(dir: string): string[] {
     return [ruta];
   });
 }
+/**
+ * El fichero sin sus comentarios.
+ *
+ * Los comentarios **sí** van en castellano: es la regla del repositorio, y
+ * son la mitad de la prosa de estos ficheros. Descartarlos por cómo empieza
+ * la línea no vale —lo probé—: la segunda línea de un bloque `{/* … *\/}` de
+ * JSX empieza por texto normal, así que medio repositorio salía como fuga.
+ * Hay que llevar la cuenta de si se está dentro de un bloque, que es lo que
+ * hace esto: se recorre carácter a carácter y se sustituye lo comentado por
+ * espacios, para que los números de línea sigan siendo los del fichero.
+ */
+function sinComentarios(src: string): string {
+  let fuera = "";
+  let bloque = false;
+  for (let i = 0; i < src.length; i++) {
+    const dos = src.slice(i, i + 2);
+    if (bloque) {
+      if (dos === "*/") { bloque = false; fuera += "  "; i++; continue; }
+      fuera += src[i] === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (dos === "/*") { bloque = true; fuera += "  "; i++; continue; }
+    // `//` de una línea, pero no el de `https://`: sin esa salvedad se
+    // comería el resto de cualquier línea con una URL dentro.
+    if (dos === "//" && src[i - 1] !== ":") {
+      while (i < src.length && src[i] !== "\n") { fuera += " "; i++; }
+      fuera += "\n";
+      continue;
+    }
+    fuera += src[i];
+  }
+  return fuera;
+}
 describe("los catálogos", () => {
   it("tienen los mismos ficheros en los dos idiomas", () => {
     for (const locale of LOCALES) {
@@ -138,39 +171,7 @@ describe("un solo idioma en el código", () => {
 
 
 
-  /**
-   * El fichero sin sus comentarios.
-   *
-   * Los comentarios **sí** van en castellano: es la regla del repositorio, y
-   * son la mitad de la prosa de estos ficheros. Descartarlos por cómo empieza
-   * la línea no vale —lo probé—: la segunda línea de un bloque `{/* … *\/}` de
-   * JSX empieza por texto normal, así que medio repositorio salía como fuga.
-   * Hay que llevar la cuenta de si se está dentro de un bloque, que es lo que
-   * hace esto: se recorre carácter a carácter y se sustituye lo comentado por
-   * espacios, para que los números de línea sigan siendo los del fichero.
-   */
-  function sinComentarios(src: string): string {
-    let fuera = "";
-    let bloque = false;
-    for (let i = 0; i < src.length; i++) {
-      const dos = src.slice(i, i + 2);
-      if (bloque) {
-        if (dos === "*/") { bloque = false; fuera += "  "; i++; continue; }
-        fuera += src[i] === "\n" ? "\n" : " ";
-        continue;
-      }
-      if (dos === "/*") { bloque = true; fuera += "  "; i++; continue; }
-      // `//` de una línea, pero no el de `https://`: sin esa salvedad se
-      // comería el resto de cualquier línea con una URL dentro.
-      if (dos === "//" && src[i - 1] !== ":") {
-        while (i < src.length && src[i] !== "\n") { fuera += " "; i++; }
-        fuera += "\n";
-        continue;
-      }
-      fuera += src[i];
-    }
-    return fuera;
-  }
+
 
   // El nombre de un idioma se escribe en ese idioma, en cualquier catálogo del
   // mundo: el selector dice «Español», no «Spanish», y eso es lo correcto.
@@ -265,6 +266,64 @@ describe("los avisos", () => {
           // variable ni una llamada a `t`.
           if (!/toast\.(error|success|warning|info|message)\(\s*["`]/.test(linea)) return;
           fugas.push(`${fichero.replace(RAIZ, "src")}:${i + 1}: ${linea.trim()}`);
+        });
+    }
+    expect(fugas).toEqual([]);
+  });
+});
+
+/**
+ * Prosa suelta en JSX, sin traducir.
+ *
+ * Es la tercera forma de dejarse una cadena, y la que sobrevivió a todos los
+ * barridos: no lleva atributo ni comillas, así que ni `placeholder=` ni `"…"`
+ * la encuentran. En integraciones había un párrafo de tres líneas explicando
+ * qué es una llave de ingesta, en inglés, debajo de seis pestañas traducidas.
+ *
+ * Se busca **texto de tres o más palabras** entre etiquetas. Menos de tres deja
+ * fuera el ruido —una palabra suelta suele ser un nombre propio o parte de una
+ * expresión partida— y desde tres ya es una frase que alguien escribió para que
+ * la lean.
+ */
+describe("la prosa de las pantallas", () => {
+  const RAIZ = join(process.cwd(), "src");
+
+  // Los instrumentos van en inglés a conciencia; ver `docs/idiomas.md`.
+  const INSTRUMENTOS = /\/(devtools|VoiceLab|CryptoTools|RequestClient|ImageTool)/;
+
+  /**
+   * `components/ui/` es shadcn, copiado y regenerable.
+   *
+   * Su prosa —el texto para lectores de pantalla de un cajón lateral— no la
+   * escribimos nosotros, y traducirla nos separa de la fuente: la próxima vez
+   * que se actualice un componente habría que volver a meter el cambio a mano.
+   * Es poco texto y ninguno de él decide nada.
+   */
+  const PRESTADO = /\/components\/ui\//;
+
+  /**
+   * Nombres propios y jerga que no se traducen, con su razón:
+   *
+   * - Docker y GitHub nombran sus cosas así, y traducirlas aleja la pantalla de
+   *   su propia documentación.
+   * - «COMMAND» y «CONTROL» son el nombre del producto.
+   */
+  const PERMITIDO =
+    /Docker Swarm|Claude Code|COMMAND|CONTROL|GitHub|Personal Access Token|LiveKit|PipeWire/;
+
+  it("ninguna frase suelta sin pasar por el catálogo", () => {
+    const fugas: string[] = [];
+    for (const fichero of fuentes(RAIZ)) {
+      if (INSTRUMENTOS.test(fichero) || PRESTADO.test(fichero)) continue;
+      sinComentarios(readFileSync(fichero, "utf-8"))
+        .split("\n")
+        .forEach((linea, i) => {
+          // Entre `>` y `<`, o una línea de texto plano dentro de un bloque JSX.
+          const suelto = linea.match(/>\s*([A-Z][a-zA-Z',.!?—-]*(?:\s+[a-zA-Z',.!?—-]+){2,})\s*</);
+          const solo = linea.match(/^\s{6,}([A-Z][a-zA-Z',.!?—-]*(?:\s+[a-zA-Z',.!?—-]+){2,})\s*$/);
+          const texto = suelto?.[1] ?? solo?.[1];
+          if (!texto || PERMITIDO.test(texto)) return;
+          fugas.push(`${fichero.replace(RAIZ, "src")}:${i + 1}: ${texto}`);
         });
     }
     expect(fugas).toEqual([]);

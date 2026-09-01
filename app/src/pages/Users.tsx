@@ -75,8 +75,7 @@ export default function Users() {
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
-          Platform users. New users start with no organizations — they only see what
-          they create or are invited to.
+          {t("common:admin.usersLead")}
         </p>
 
         {error && <p className="text-sm text-destructive">{error}</p>}

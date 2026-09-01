@@ -160,8 +160,7 @@ export default function OrgSwitcher({ variant = "sidebar" }: { variant?: "sideba
           <DialogHeader>
             <DialogTitle>{t("common:misc.createOrg")}</DialogTitle>
             <DialogDescription>
-              Separates servers, collections and reports by company. You become
-              its admin.
+              {t("common:misc.createOrgLeadFull")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">

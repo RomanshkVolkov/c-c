@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
@@ -20,6 +21,7 @@ import { useAuthStore } from "@/store/auth.store";
  * opening a conversation re-checks that you actually share it.
  */
 export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
+  const { t } = useT();
   const conversations = useDMStore((s) => s.conversations);
   const fetchConversations = useDMStore((s) => s.fetchConversations);
   const openConversation = useDMStore((s) => s.open);
@@ -135,7 +137,7 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
       {fresh.length > 0 && (
         <>
           <p className="px-2 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            Start a conversation
+            {t("common:misc.startConversation")}
           </p>
           <ul className="space-y-0.5">
             {fresh.map((p) => (
@@ -155,7 +157,7 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
 
       {threads.length === 0 && fresh.length === 0 && (
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          Nobody else in this organization yet.
+          {t("common:misc.nobodyElse")}
         </p>
       )}
     </div>

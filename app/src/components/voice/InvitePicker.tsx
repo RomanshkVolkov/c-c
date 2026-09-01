@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Phone, UserPlus } from "lucide-react";
 import { iniciales } from "@/lib/desde";
@@ -16,6 +17,7 @@ import { useVoice } from "@/store/voice.store";
  * pitido gratis para los dos.
  */
 export default function InvitePicker({ onClose }: { onClose: () => void }) {
+  const { t } = useT();
   const orgId = useOrgsStore((s) => s.currentOrgId);
   // Se lee `byOrg` y no `current()` porque un selector que devuelve un array
   // nuevo cada vez repinta para siempre — ver el comentario de `NOBODY` en
@@ -38,7 +40,7 @@ export default function InvitePicker({ onClose }: { onClose: () => void }) {
     <div className="absolute right-4 top-14 z-50 w-64 rounded-lg border bg-popover p-1 shadow-lg">
       {fuera.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-          Everyone is already here.
+          {t("common:misc.everyoneHere")}
         </p>
       ) : (
         <ul className="max-h-72 overflow-y-auto">

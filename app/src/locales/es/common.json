@@ -454,7 +454,15 @@
     "sshLead": "Elige la llave que usa este servidor, de las que tiene tu agente SSH.",
     "agent": "Agente",
     "letAgentDecide": "Que decida el agente",
-    "passwordMin8": "La contraseña tiene que tener al menos 8 caracteres"
+    "passwordMin8": "La contraseña tiene que tener al menos 8 caracteres",
+    "startConversation": "Empezar una conversación",
+    "nobodyElse": "Todavía no hay nadie más en esta organización.",
+    "noNotificationsYet": "Todavía nada. Aquí queda todo lo que llega, lo haya enseñado el sistema o no.",
+    "createOrgLeadFull": "Separa servidores, colecciones y reportes por empresa. Te conviertes en su administrador.",
+    "agentDecideHelp": "Lo normal. Falla en servidores que cortan tras unos cuantos intentos de llave.",
+    "noSpacesYet": "Todavía no hay espacios. Crea uno para empezar a organizar el trabajo.",
+    "everyoneHere": "Ya está todo el mundo aquí.",
+    "pickSomebody": "Elige a quién escribirle."
   },
   "scopes": {
     "tasksWrite": "Crear tareas y comentarios",

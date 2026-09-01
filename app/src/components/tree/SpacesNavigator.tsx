@@ -343,7 +343,7 @@ export default function SpacesNavigator() {
           <p className="px-3 py-2 text-xs text-muted-foreground">{t("work:tree.loading")}</p>
         ) : espaciosDeTrabajo.length === 0 ? (
           <p className="px-3 py-3 text-xs text-muted-foreground">
-            No spaces yet. Create one to start organizing work.
+            {t("common:misc.noSpacesYet")}
           </p>
         ) : (
           espaciosDeTrabajo.map((space) => <SpaceNode key={space.id} space={space} />)

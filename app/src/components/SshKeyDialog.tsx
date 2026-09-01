@@ -177,7 +177,7 @@ export default function SshKeyDialog({
               <span className="flex-1">
                 {t("common:misc.letAgentDecide")}
                 <span className="block text-xs text-muted-foreground">
-                  Default. Fails on servers that cut off after a few key attempts.
+                  {t("common:misc.agentDecideHelp")}
                 </span>
               </span>
               {selected === null && <Check className="size-4" />}
