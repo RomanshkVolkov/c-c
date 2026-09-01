@@ -352,7 +352,13 @@ static ULTIMO_FALLO_CAPTURA: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| 
 static FORMATO_ENTRADA: LazyLock<Mutex<Option<FormatoEntrada>>> =
     LazyLock::new(|| Mutex::new(None));
 
+// `camelCase` al salir. Sin esto `ritmo_de_la_fuente` viaja con el nombre de
+// Rust, el TypeScript lo busca en `ritmoDeLaFuente` y no lo encuentra — y el
+// veredicto salía diciendo «la fuente espera **undefined** Hz». Los demás
+// campos son de una sola palabra y colaban por casualidad, que es lo que hizo
+// que sólo se rompiera uno.
 #[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FormatoEntrada {
     pub dispositivo: String,
     pub ritmo: u32,
@@ -982,21 +988,43 @@ fn arrancar_captura(
 
         let (tramas_tx, mut tramas_rx) = mpsc::unbounded_channel::<Vec<i16>>();
         let mut acumulador: Vec<i16> = Vec::with_capacity(MUESTRAS_POR_TRAMA * 2);
+        // El acumulador guarda muestras **ya remuestreadas a `SAMPLE_RATE`**,
+        // así que una trama de `MUESTRAS_POR_TRAMA` son siempre 10 ms de los que
+        // la fuente espera, venga el dispositivo al ritmo que venga.
+        let mut fase = Fase::default();
 
         let stream = dispositivo.build_input_stream(
             config.config(),
             move |datos: &[f32], _: &cpal::InputCallbackInfo| {
                 // A mono, promediando: publicar sólo el canal izquierdo pierde
                 // la mitad de la señal en micrófonos estéreo.
-                for trozo in datos.chunks(entrada_canales) {
-                    let media = trozo.iter().sum::<f32>() / trozo.len() as f32;
-                    let muestra = if SILENCIADO.load(std::sync::atomic::Ordering::Relaxed) {
-                        0
-                    } else {
-                        (media.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
-                    };
-                    acumulador.push(muestra);
-                }
+                // A mono, promediando: publicar sólo el canal izquierdo pierde
+                // la mitad de la señal en micrófonos estéreo.
+                //
+                // Y **al ritmo de la fuente**, que es lo que faltaba. La fuente
+                // se crea a `SAMPLE_RATE` fijo y el dispositivo entrega al suyo;
+                // sin esto, un micrófono a 44 100 Hz —lo normal en Windows 10 con
+                // auriculares USB— hacía que el SDK rechazara la primera trama
+                // con «sample_rate and num_channels don't match» y se dejara de
+                // publicar **en silencio**: capturabas bien y no te oía nadie.
+                //
+                // Interpolación lineal y no un remuestreador de verdad: esto es
+                // voz camino de Opus, que va a recodificarla entera. El aliasing
+                // que introduce queda por debajo de lo que el códec ya hace, y a
+                // cambio no entra una dependencia ni trabajo de más en el
+                // callback de audio, donde tardar es un corte.
+                let mudo = SILENCIADO.load(std::sync::atomic::Ordering::Relaxed);
+                let cuadros: Vec<f32> = datos
+                    .chunks(entrada_canales)
+                    .map(|t| t.iter().sum::<f32>() / t.len() as f32)
+                    .collect();
+                remuestrear(
+                    &cuadros,
+                    entrada_rate as f32 / SAMPLE_RATE as f32,
+                    &mut fase,
+                    mudo,
+                    &mut acumulador,
+                );
                 while acumulador.len() >= MUESTRAS_POR_TRAMA {
                     let resto = acumulador.split_off(MUESTRAS_POR_TRAMA);
                     let trama = std::mem::replace(&mut acumulador, resto);
@@ -1061,7 +1089,10 @@ fn arrancar_captura(
 
                 let trama = AudioFrame {
                     data: datos.into(),
-                    sample_rate: entrada_rate,
+                    // `SAMPLE_RATE` y no el del dispositivo: lo que va en `data`
+                    // ya viene remuestreado, y declarar el del dispositivo es
+                    // exactamente lo que rompía.
+                    sample_rate: SAMPLE_RATE,
                     num_channels: 1,
                     samples_per_channel: MUESTRAS_POR_TRAMA as u32,
                 };
@@ -1125,6 +1156,64 @@ fn arrancar_captura(
 ///
 /// Con las muestras puestas a cero por `SILENCIADO`, esto da cero solo:
 /// silenciarse apaga el indicador sin ningún caso especial.
+/// Por dónde va el remuestreo entre un bloque y el siguiente.
+///
+/// Dos cosas y las dos hacen falta. `pos` es la fracción de cuadro pendiente;
+/// sin ella la fase se reinicia en cada callback de cpal y sale un clic cada
+/// pocos milisegundos. `ultimo` es el último cuadro del bloque anterior, y sin
+/// él la muestra que cae en la frontera se interpola contra sí misma —un
+/// escalón plano— en vez de contra el cuadro que viene: otro codo, más pequeño
+/// pero en el mismo sitio, cada vez.
+#[derive(Default)]
+struct Fase {
+    /// Relativa al primer cuadro del bloque actual. Puede ser negativa (en
+    /// `[-1, 0)`), que significa «entre el último del anterior y el primero de
+    /// éste».
+    pos: f32,
+    ultimo: f32,
+}
+
+/// Lleva un bloque de cuadros mono al ritmo de la fuente.
+///
+/// Aparte y pura porque es la única parte de la captura que se puede probar sin
+/// una tarjeta de sonido, y porque lo que hace mal no se ve: se oye. Un fallo
+/// aquí no lanza nada — sale voz con clics, o metálica, o con la velocidad
+/// cambiada, y para cuando alguien lo describe ya no se sabe de dónde venía.
+///
+/// La muestra que cae justo en el borde **se aplaza** al bloque siguiente, que
+/// es cuando se conoce su vecina. Aplazar una muestra cuesta veinte
+/// microsegundos de latencia; inventarla cuesta un codo audible por bloque.
+fn remuestrear(cuadros: &[f32], paso: f32, fase: &mut Fase, mudo: bool, salida: &mut Vec<i16>) {
+    let n = cuadros.len();
+    if n == 0 {
+        return;
+    }
+    let mut pos = fase.pos;
+    // Hasta `n - 1` y no hasta `n`: la última posición necesita el cuadro que
+    // todavía no ha llegado.
+    while pos < (n - 1) as f32 {
+        let i = pos.floor();
+        let frac = pos - i;
+        let a = if i < 0.0 {
+            fase.ultimo
+        } else {
+            cuadros[i as usize]
+        };
+        let b = cuadros[(i + 1.0) as usize];
+        let media = a + (b - a) * frac;
+        salida.push(if mudo {
+            0
+        } else {
+            (media.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+        });
+        pos += paso;
+    }
+    // Relativa al primer cuadro del bloque que viene, que es el índice `n` de
+    // éste. Queda en `[-1, -1 + paso)`, y ese `-1` es lo que apunta a `ultimo`.
+    fase.pos = pos - n as f32;
+    fase.ultimo = cuadros[n - 1];
+}
+
 fn hay_voz(muestras: &[i16]) -> bool {
     if muestras.is_empty() {
         return false;
@@ -2674,5 +2763,144 @@ mod pruebas {
     #[test]
     fn sin_par_nominado_no_inventa_nada() {
         assert_eq!(rtt_nominado(&[par(false, 0.120)]), None);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_remuestreo {
+    use super::*;
+
+    /// Bloques del tamaño que entrega una tarjeta de verdad.
+    ///
+    /// **No** de 10 ms redondos, y ahí estuvo el primer intento fallido de esta
+    /// prueba: 44100/48000 es 0,91875 exacto, así que un bloque de 441 cuadros
+    /// da exactamente 480 muestras y el arrastre vale cero **siempre**. Con ese
+    /// tamaño pasaba con y sin arrastre, o sea que no probaba nada.
+    ///
+    /// cpal entrega lo que el dispositivo le dé —512 es de lo más común en
+    /// WASAPI—, y ahí es donde el arrastre importa.
+    const POR_BLOQUE: usize = 512;
+
+    fn bloques(rate: u32, cuantos: usize) -> Vec<Vec<f32>> {
+        (0..cuantos)
+            .map(|b| {
+                (0..POR_BLOQUE)
+                    .map(|i| {
+                        // Una senoide de 440 Hz continua entre bloques: los
+                        // fallos de fase se ven en una onda y en una rampa
+                        // monótona pasan desapercibidos.
+                        let n = (b * POR_BLOQUE + i) as f32;
+                        (n * 2.0 * std::f32::consts::PI * 440.0 / rate as f32).sin() * 0.5
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn correr(rate: u32, cuantos: usize) -> Vec<i16> {
+        let paso = rate as f32 / SAMPLE_RATE as f32;
+        let mut salida = Vec::new();
+        let mut fase = Fase::default();
+        for b in bloques(rate, cuantos) {
+            remuestrear(&b, paso, &mut fase, false, &mut salida);
+        }
+        salida
+    }
+
+    /// El salto más grande entre dos muestras seguidas. En una senoide limpia es
+    /// su pendiente máxima; un codo de resampleo lo dispara por encima.
+    fn salto(v: &[i16]) -> i32 {
+        v.windows(2)
+            .map(|p| (p[1] as i32 - p[0] as i32).abs())
+            .max()
+            .unwrap()
+    }
+
+    /// Al mismo ritmo la cuenta no cambia (salvo la muestra que se aplaza).
+    #[test]
+    fn a_48k_no_cambia_la_cuenta() {
+        let n = correr(48_000, 10).len();
+        assert!((POR_BLOQUE * 10 - 1..=POR_BLOQUE * 10).contains(&n), "dio {n}");
+    }
+
+    /// El caso que rompía: 44 100 tiene que salir como 48 000. Si sale más
+    /// corto o más largo, la voz va acelerada o lenta.
+    #[test]
+    fn de_44k_salen_48k() {
+        let n = correr(44_100, 100).len();
+        let esperadas = (POR_BLOQUE * 100) as f32 * 48_000.0 / 44_100.0;
+        assert!(
+            (n as f32 - esperadas).abs() <= 2.0,
+            "de 44100 salieron {n} muestras y se esperaban unas {esperadas:.0}"
+        );
+    }
+
+    /// La pendiente máxima de la propia onda, que es el suelo de todo esto.
+    ///
+    /// A 440 Hz, media escala y 48 kHz de salida: `2π·440/48000 · 0,5 · 32767`.
+    /// Un remuestreo transparente se queda **en** ese número; cualquier codo lo
+    /// pasa. Es lo que convierte «el audio suena raro» en algo medible.
+    const PENDIENTE_DE_LA_ONDA: i32 = 943;
+
+    /// El remuestreo no añade nada audible: el salto más grande que sale es el
+    /// de la onda, no uno suyo.
+    #[test]
+    fn lo_que_sale_es_la_onda_y_no_un_codo() {
+        let maximo = salto(&correr(44_100, 20));
+        assert!(
+            maximo <= PENDIENTE_DE_LA_ONDA + 10,
+            "el salto máximo fue {maximo} y la onda sola da {PENDIENTE_DE_LA_ONDA}"
+        );
+    }
+
+    /// **La que importa.** Sin arrastre de fase, cada bloque reempieza en la
+    /// muestra 0 y aparece una discontinuidad cada 512 cuadros: un clic
+    /// constante que suena a «micrófono malo» y no a bug.
+    ///
+    /// Se compara contra la pendiente de la onda y no «el doble del bueno»: el
+    /// bueno ya está en el suelo físico, así que pedirle al roto que lo doble es
+    /// pedir un codo enorme. Lo que hay que afirmar es que el roto **se sale** de
+    /// lo que la onda puede dar, y el bueno no.
+    #[test]
+    fn sin_arrastrar_la_fase_aparecen_codos() {
+        let paso = 44_100f32 / SAMPLE_RATE as f32;
+        let mut sin = Vec::new();
+        for b in bloques(44_100, 20) {
+            // Fase nueva en cada bloque: el bug.
+            remuestrear(&b, paso, &mut Fase::default(), false, &mut sin);
+        }
+
+        assert!(
+            salto(&sin) > PENDIENTE_DE_LA_ONDA + 100,
+            "sin arrastrar la fase el salto fue {}, y debería salirse de {PENDIENTE_DE_LA_ONDA}",
+            salto(&sin)
+        );
+        assert!(salto(&correr(44_100, 20)) <= PENDIENTE_DE_LA_ONDA + 10);
+    }
+
+    /// Silenciado son ceros, pero **la fase sigue corriendo**: si se parara, al
+    /// quitar el silencio la voz saldría desfasada con un chasquido.
+    #[test]
+    fn mudo_da_ceros_sin_perder_la_fase() {
+        let paso = 44_100f32 / SAMPLE_RATE as f32;
+        let (mut mudo, mut normal) = (Vec::new(), Vec::new());
+        let (mut fm, mut fnorm) = (Fase::default(), Fase::default());
+        for b in bloques(44_100, 5) {
+            remuestrear(&b, paso, &mut fm, true, &mut mudo);
+            remuestrear(&b, paso, &mut fnorm, false, &mut normal);
+        }
+        assert!(mudo.iter().all(|&m| m == 0));
+        assert_eq!(mudo.len(), normal.len());
+        assert_eq!(fm.pos, fnorm.pos);
+    }
+
+    /// Un bloque vacío no puede colgar el bucle ni mover la fase.
+    #[test]
+    fn un_bloque_vacio_no_hace_nada() {
+        let mut salida = Vec::new();
+        let mut fase = Fase::default();
+        remuestrear(&[], 0.91875, &mut fase, false, &mut salida);
+        assert!(salida.is_empty());
+        assert_eq!(fase.pos, 0.0);
     }
 }
