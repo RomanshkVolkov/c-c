@@ -41,7 +41,17 @@
     "reportFiled": "Enviado — quedó una tarjeta en el tablero",
     "reportFailed": "No se pudo enviar",
     "reportFailedBody": "Abre el laboratorio de voz y copia el diario a mano.",
-    "reportNoSession": "No hay nada que reportar: no estás en una llamada"
+    "reportNoSession": "No hay nada que reportar: no estás en una llamada",
+    "reportTitle": "Reportar un problema de audio",
+    "reportChecking": "Preguntándole al motor…",
+    "reportWhatWeSee": "Lo que ve el motor",
+    "reportWhatIsSent": "Ver exactamente lo que se va a mandar",
+    "reportNote": "¿Algo que añadir? (opcional)",
+    "reportNotePlaceholder": "«dejaron de oírme a mitad»",
+    "reportSend": "Mandarlo",
+    "reportCancel": "Cancelar",
+    "reportPrivacy": "No se manda audio — sólo nombres de dispositivo, contadores y el diario del motor.",
+    "reportNothingWrong": "Aquí no se ve nada raro. Puedes mandarlo igual si algo va mal."
   },
   "count": {
     "members_one": "{{count}} miembro",

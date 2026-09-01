@@ -41,7 +41,17 @@
     "reportFiled": "Sent — a card landed on the board",
     "reportFailed": "Couldn't send it",
     "reportFailedBody": "Open the voice lab and copy the engine log by hand.",
-    "reportNoSession": "Nothing to report: you aren't in a call"
+    "reportNoSession": "Nothing to report: you aren't in a call",
+    "reportTitle": "Report an audio problem",
+    "reportChecking": "Asking the engine…",
+    "reportWhatWeSee": "What the engine sees",
+    "reportWhatIsSent": "See exactly what will be sent",
+    "reportNote": "Anything to add? (optional)",
+    "reportNotePlaceholder": "«they stopped hearing me halfway through»",
+    "reportSend": "Send it",
+    "reportCancel": "Cancel",
+    "reportPrivacy": "No audio is sent — only device names, counters and the engine log.",
+    "reportNothingWrong": "Nothing looks wrong here. You can send it anyway if something is off."
   },
   "count": {
     "members_one": "{{count}} member",

@@ -41,10 +41,14 @@ const SANO = {
 
 /** El cuerpo de la tarjeta que se habría fichado. */
 async function cuerpoDe(cambios: Record<string, unknown>) {
-  const { reportarAudio } = await import("@/lib/voice-report");
+  const { recogerAudio, enviarAudio } = await import("@/lib/voice-report");
   invoke.mockResolvedValueOnce({ ...SANO, ...cambios });
-  await reportarAudio();
-  return ultima();
+  // Recoger y enviar van separados desde que el botón pregunta antes de
+  // fichar. Se prueban juntos porque lo que importa es lo que acaba en la
+  // tarjeta, que es lo mismo por los dos caminos.
+  const borrador = await recogerAudio();
+  await enviarAudio(borrador);
+  return { ...ultima(), veredicto: borrador.veredicto };
 }
 
 describe("el veredicto", () => {
@@ -130,10 +134,26 @@ describe("el veredicto", () => {
   });
 
   // Sin motor, el reporte sigue valiendo: que alguien lo pulsara ya es un dato.
-  it("si el motor no contesta, se ficha igualmente", async () => {
-    const { reportarAudio } = await import("@/lib/voice-report");
+  it("si el motor no contesta, se puede fichar igualmente", async () => {
+    const { recogerAudio, enviarAudio } = await import("@/lib/voice-report");
     invoke.mockRejectedValueOnce(new Error("sin motor"));
-    await expect(reportarAudio()).resolves.toBe("done");
-    expect(fileCrash).toHaveBeenCalled();
+    const borrador = await recogerAudio();
+    expect(borrador.sinMotor).toBe(true);
+    await expect(enviarAudio(borrador)).resolves.toBe("done");
+  });
+
+  /**
+   * El veredicto está **antes** de mandar nada.
+   *
+   * Es lo que convierte el diálogo en algo útil por sí solo: quien lo abre y lee
+   * «estabas silenciado» lo arregla y cierra sin fichar. Si esto se rompiera,
+   * volveríamos a un botón que sólo sirve para crear tarjetas.
+   */
+  it("se puede leer el diagnóstico sin fichar nada", async () => {
+    const { recogerAudio } = await import("@/lib/voice-report");
+    invoke.mockResolvedValueOnce({ ...SANO, silenciado: true, picoMilesimas: 0 });
+    const borrador = await recogerAudio();
+    expect(borrador.veredicto).toContain("silenciado");
+    expect(fileCrash).not.toHaveBeenCalled();
   });
 });

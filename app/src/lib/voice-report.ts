@@ -12,8 +12,18 @@ import { fileCrash, signature, type Fichado } from "@/lib/file-crash";
  * pestaña correcta la llamada ya terminó.
  *
  * Así que el botón está **dentro de la llamada**, que es el único momento en el
- * que el motor sabe todo lo que hace falta, y es una sola pulsación sin
- * formulario. Un formulario es una barrera justo cuando menos paciencia hay.
+ * que el motor sabe todo lo que hace falta.
+ *
+ * Pero **pregunta antes de mandar**, y la primera versión no lo hacía. El
+ * razonamiento de entonces era «un formulario es una barrera justo cuando menos
+ * paciencia hay», y confundía dos cosas: no pedirte que rellenes nada, que está
+ * bien, con no preguntarte nada, que no. Esto **crea una tarjeta en un tablero
+ * compartido** y manda el nombre de tu micrófono y el diario de tu máquina; las
+ * dos cosas se confirman, y se enseñan antes.
+ *
+ * Y el diálogo resultó valer por sí solo: el veredicto se calcula **antes** de
+ * mandar nada, así que quien lo abre y lee «estabas silenciado» lo arregla y
+ * cierra sin fichar. La mitad de los reportes que no hacen falta se evitan ahí.
  *
  * **No viaja ni un byte de audio.** Van nombres de dispositivo, ritmos,
  * formatos, contadores y el diario del motor — que es texto que escribimos
@@ -121,33 +131,55 @@ function cuerpo(r: Reporte, nota: string): string {
     .join("\n");
 }
 
+/** Lo que se va a mandar, antes de mandarlo. */
+export interface Borrador {
+  titulo: string;
+  /** La frase de arriba, la que contesta «¿qué me pasa?». */
+  veredicto: string;
+  /** El markdown entero, para que se pueda leer antes de aceptar. */
+  cuerpo: string;
+  clave: string;
+  /** Si el motor no contestó. Se puede mandar igualmente. */
+  sinMotor: boolean;
+}
+
 /**
- * Junta, ficha y devuelve qué pasó.
+ * Recoge y arma el borrador. **No manda nada.**
  *
- * La clave de idempotencia lleva el dispositivo y el veredicto: dos personas
- * con el mismo fallo caen en la misma tarjeta, y la misma persona pulsando tres
- * veces seguidas —que es lo que hace alguien frustrado— no abre tres.
+ * Separado de `enviar` a propósito: es lo que permite enseñarlo antes, y es lo
+ * que hace que el veredicto sirva aunque nunca se llegue a fichar.
  */
-export async function reportarAudio(nota = ""): Promise<Fichado> {
+export async function recogerAudio(nota = ""): Promise<Borrador> {
   let r: Reporte;
   try {
     r = await invoke<Reporte>("voice_report");
   } catch {
     // Sin motor no hay datos, pero el reporte sigue valiendo: que alguien
-    // pulsara el botón ya es la información de que algo iba mal.
-    return fileCrash({
-      title: "Audio: no se pudo leer el estado del motor de voz",
-      description: `Alguien pulsó reportar en una llamada y \`voice_report\` falló.\n\n\`${navigator.userAgent}\``,
-      key: signature("voice-report-sin-motor"),
-    });
+    // llegara hasta aquí ya es la información de que algo iba mal.
+    return {
+      titulo: "Audio: no se pudo leer el estado del motor de voz",
+      veredicto: "No se pudo leer el estado del motor de voz.",
+      cuerpo: `Alguien abrió el reporte en una llamada y \`voice_report\` falló.\n\n\`${navigator.userAgent}\``,
+      clave: signature("voice-report-sin-motor"),
+      sinMotor: true,
+    };
   }
   const f = r.formatoEntrada;
-  const titulo = f
-    ? `Audio: ${f.ritmo} Hz · ${f.dispositivo}`.slice(0, 120)
-    : "Audio: no se abrió el micrófono";
-  return fileCrash({
-    title: titulo,
-    description: cuerpo(r, nota.trim()),
-    key: signature(`voice:${f?.dispositivo ?? "?"}:${f?.ritmo ?? 0}:${veredicto(r).slice(0, 40)}`),
-  });
+  return {
+    titulo: f
+      ? `Audio: ${f.ritmo} Hz · ${f.dispositivo}`.slice(0, 120)
+      : "Audio: no se abrió el micrófono",
+    veredicto: veredicto(r),
+    cuerpo: cuerpo(r, nota.trim()),
+    // La clave lleva el dispositivo y el veredicto: dos personas con el mismo
+    // fallo caen en la misma tarjeta, y la misma persona mandándolo tres veces
+    // —que es lo que hace alguien frustrado— no abre tres.
+    clave: signature(`voice:${f?.dispositivo ?? "?"}:${f?.ritmo ?? 0}:${veredicto(r).slice(0, 40)}`),
+    sinMotor: false,
+  };
+}
+
+/** Y esto sí ficha, con lo que ya se enseñó. */
+export function enviarAudio(b: Borrador): Promise<Fichado> {
+  return fileCrash({ title: b.titulo, description: b.cuerpo, key: b.clave });
 }

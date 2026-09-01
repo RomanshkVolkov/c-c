@@ -3,7 +3,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   HeadphoneOff,
   LifeBuoy,
-  Loader2,
   Headphones,
   Mic,
   MicOff,
@@ -14,8 +13,8 @@ import {
   VideoOff,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 
+import VoiceReportDialog from "@/components/voice/VoiceReportDialog";
 import { cn } from "@/lib/utils";
 
 /**
@@ -99,30 +98,6 @@ export default function VoiceControls({
   const { t } = useT();
   const [reportando, setReportando] = useState(false);
 
-  /**
-   * «No se me oye», en una pulsación y desde dentro de la llamada.
-   *
-   * Aquí y no en un menú de ajustes porque es el único momento en que el motor
-   * sabe lo que hace falta —qué micrófono abrió, a qué ritmo, si sube algo y si
-   * ese algo trae señal— y porque quien tiene el problema está en una reunión y
-   * no va a ir a buscarlo. Sin formulario: una caja de texto delante es una
-   * barrera justo cuando menos paciencia hay.
-   */
-  const reportar = async () => {
-    setReportando(true);
-    try {
-      const { reportarAudio } = await import("@/lib/voice-report");
-      const salida = await reportarAudio();
-      if (salida === "done") toast.success(t("common:voice.reportFiled"));
-      else if (salida === "failed") {
-        toast.error(t("common:voice.reportFailed"), {
-          description: t("common:voice.reportFailedBody"),
-        });
-      }
-    } finally {
-      setReportando(false);
-    }
-  };
   return (
     <div className="flex h-21 shrink-0 items-center justify-center gap-2.5 border-t bg-sidebar">
       <Round
@@ -166,13 +141,13 @@ export default function VoiceControls({
       {/* El botón de reportar va **entre los controles y el de colgar**, no
           escondido en un menú: si alguien tiene que buscarlo, no lo pulsa. */}
       <Round
-        icon={reportando ? Loader2 : LifeBuoy}
+        icon={LifeBuoy}
         label={t("common:voice.reportAudio")}
         tone="primary"
-        spinning={reportando}
-        onClick={() => void reportar()}
-        disabled={reportando}
+        active={reportando}
+        onClick={() => setReportando(true)}
       />
+      <VoiceReportDialog open={reportando} onOpenChange={setReportando} />
 
       <span className="mx-1.5 h-7 w-px bg-border" />
 
