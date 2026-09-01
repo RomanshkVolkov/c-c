@@ -84,7 +84,7 @@ export default function K8sHub({ server }: { server: Server }) {
         </Button>
       </header>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6 max-w-5xl mx-auto w-full">
+      <div className="min-h-0 flex-1 overflow-auto p-6 space-y-6 max-w-5xl mx-auto w-full">
         {error && (
           <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" /> {error}

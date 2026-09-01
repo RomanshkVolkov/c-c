@@ -62,7 +62,7 @@ export default function Diagnostics() {
             <RefreshCw className={cn("size-3", loadingDevices && "animate-spin")} />
           </Button>
         </header>
-        <div className="flex-1 overflow-auto p-2 space-y-1.5">
+        <div className="min-h-0 flex-1 overflow-auto p-2 space-y-1.5">
           {error ? (
             <div className="px-2 py-2 text-xs text-destructive flex items-center gap-1.5">
               <AlertCircle className="size-3" /> {error}
@@ -128,7 +128,7 @@ export default function Diagnostics() {
             <p className="text-sm text-muted-foreground">{t("common:last.noEvents")}</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-auto p-4 space-y-3 max-w-4xl w-full mx-auto">
+          <div className="min-h-0 flex-1 overflow-auto p-4 space-y-3 max-w-4xl w-full mx-auto">
             <h2 className="font-mono text-sm">{selectedDeviceId}</h2>
             {timeline.map((batch) => (
               <BatchCard key={batch.id} batch={batch} />

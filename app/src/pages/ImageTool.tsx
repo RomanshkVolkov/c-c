@@ -237,7 +237,7 @@ export default function ImageTool() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-auto p-6 space-y-4 max-w-5xl mx-auto w-full">
+      <div className="min-h-0 flex-1 overflow-auto p-6 space-y-4 max-w-5xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <ImageDown className="h-6 w-6 text-muted-foreground" />
           <h1 className="text-xl font-semibold">Image Tool</h1>

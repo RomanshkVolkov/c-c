@@ -19,5 +19,7 @@
   "visibleToThem": "Visible para él",
   "internal": "Interno",
   "message": "Mensaje",
-  "newMessages": "Mensajes nuevos"
+  "newMessages": "Mensajes nuevos",
+  "loading": "Cargando…",
+  "emptyChannel": "Todavía no hay nada en #{{name}}."
 }

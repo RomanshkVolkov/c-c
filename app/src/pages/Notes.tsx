@@ -377,7 +377,7 @@ function Navigator({ onSearch }: { onSearch: () => void }) {
         </Button>
       </header>
       <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} />
-      <div className="flex-1 overflow-auto py-1">
+      <div className="min-h-0 flex-1 overflow-auto py-1">
         {error && (
           <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-destructive">
             <AlertCircle className="size-3" /> {error}

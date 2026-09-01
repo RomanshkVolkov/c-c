@@ -104,7 +104,7 @@ export default function Channels() {
         <header className="flex h-12 shrink-0 items-center border-b px-3">
           <span className="text-sm font-medium">{t("common:last.channels")}</span>
         </header>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-1">
+        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1">
           {tree.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-foreground">
               {t("common:last.channelsInSpaces")}

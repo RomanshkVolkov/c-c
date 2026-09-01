@@ -313,7 +313,7 @@ export default function ServerStats() {
         </div>
       </header>
 
-      <main className="flex-1 p-6 overflow-auto space-y-4">
+      <main className="min-h-0 flex-1 p-6 overflow-auto space-y-4">
         {error && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}

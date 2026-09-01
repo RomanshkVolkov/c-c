@@ -176,7 +176,7 @@ export default function OrganizationSettings() {
       {/* Full width. The design uses the pane it is given; centring this in a
           3xl column left the members table squeezed and the rest of the screen
           empty. */}
-      <div className="w-full flex-1 space-y-6 overflow-auto px-8 py-6">
+      <div className="min-h-0 w-full flex-1 space-y-6 overflow-auto px-8 py-6">
         <div className="flex items-start gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-sm font-semibold uppercase text-primary">
             {current.name.slice(0, 1)}

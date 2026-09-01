@@ -112,7 +112,7 @@ export default function Dashboard() {
     // primera pantalla fuera trabajo; eso lo contesta Resumen, que es la
     // pantalla en la que abre la app. Aquí sólo estorbaba entre el título y
     // lo que se viene a hacer.
-    <div className="flex flex-1 flex-col overflow-auto">
+    <div className="min-h-0 flex flex-1 flex-col overflow-auto">
       <main className="flex-1 space-y-5 p-6">
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0">

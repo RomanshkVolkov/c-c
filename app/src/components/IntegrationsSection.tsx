@@ -222,7 +222,7 @@ function IntegrationTile({
             </Button>
           ) : (
             <div className="flex items-center gap-1.5">
-              <pre className="flex-1 overflow-auto rounded bg-muted/50 px-2 py-1 text-xs whitespace-pre-wrap break-all">
+              <pre className="min-h-0 flex-1 overflow-auto rounded bg-muted/50 px-2 py-1 text-xs whitespace-pre-wrap break-all">
                 {revealed || "(empty)"}
               </pre>
               <Button size="icon-xs" variant="ghost" onClick={copy} title={t("common:admin.copy")}>

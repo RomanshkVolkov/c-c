@@ -103,7 +103,7 @@ export default function Overview() {
   const enLinea = servers.filter((s) => s.status === "online").length;
 
   return (
-    <div className="flex-1 overflow-auto px-6 py-5">
+    <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
       <div className="flex flex-col gap-3.5">
         <div className="flex items-baseline gap-2.5">
           <h2 className="text-[19px] font-semibold">{t("common:admin.overview")}</h2>

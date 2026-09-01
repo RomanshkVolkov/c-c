@@ -575,7 +575,7 @@ export default function CryptoTools() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 overflow-auto p-6 space-y-4 max-w-4xl mx-auto w-full">
+      <div className="min-h-0 flex-1 overflow-auto p-6 space-y-4 max-w-4xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <KeyRound className="h-5 w-5 text-muted-foreground" />
           <h1 className="text-xl font-semibold">Tokens</h1>

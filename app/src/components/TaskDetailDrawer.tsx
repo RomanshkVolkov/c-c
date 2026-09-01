@@ -452,7 +452,7 @@ function Content() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-      <div className="min-w-0 flex-1 space-y-5 overflow-auto p-4 lg:px-8">
+      <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-auto p-4 lg:px-8">
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}

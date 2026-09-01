@@ -85,14 +85,23 @@ export default function VoiceChat({
         </button>
       </header>
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      {/* `min-h-0`, que es lo que faltaba.
+          
+          Un elemento flex se niega a encogerse por debajo de su contenido, así
+          que sin esto la lista no desbordaba: crecía, la columna crecía con
+          ella, y el `overflow-hidden` del `aside` **se comía el compositor**.
+          
+          Y explica lo otro: `scrollIntoView` desplaza el ancestro que sí
+          desborda, así que al no desbordar ésta movía otra cosa. De ahí que
+          apareciera scroll donde no tocaba en cuanto el chat crecía. */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {cargando && messages.length === 0 ? (
           <p className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" /> Loading…
+            <Loader2 className="size-3.5 animate-spin" /> {t("chat:loading")}
           </p>
         ) : messages.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">
-            Nothing in #{spaceName} yet.
+            {t("chat:emptyChannel", { name: spaceName })}
           </p>
         ) : (
           messages.map((m) => (

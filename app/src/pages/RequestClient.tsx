@@ -245,7 +245,7 @@ function CollectionsSidebar() {
           <RefreshCw className={cn("size-3", remoteLoading && "animate-spin")} />
         </Button>
       </header>
-      <div className="flex-1 overflow-auto py-1">
+      <div className="min-h-0 flex-1 overflow-auto py-1">
         <LocalSection />
         <OwnedSection items={personal} loading={remoteLoading} error={remoteError} />
         {orgGroups.map((g) => (
@@ -1497,7 +1497,7 @@ function RequestEditor({
     }`;
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-4 max-w-5xl mx-auto w-full">
+    <div className="min-h-0 flex-1 overflow-auto p-6 space-y-4 max-w-5xl mx-auto w-full">
       {/* Local requests said nothing at all, so there was no way to tell what
           you were about to edit: something only you have, or something the
           whole team is using. They are also the ones nobody backs up — living
