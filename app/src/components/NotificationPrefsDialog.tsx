@@ -1,3 +1,4 @@
+import { hora } from "@/lib/fechas";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -89,7 +90,7 @@ function RegistroDeEntrega() {
                     <p className="flex items-center gap-2 text-xs">
                       <span className="truncate font-medium">{n.title}</span>
                       <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                        {new Date(n.at).toLocaleTimeString()}
+                        {hora(n.at)}
                       </span>
                     </p>
                     <p className={cn("flex items-center gap-1 text-[11px]", d.className)}>

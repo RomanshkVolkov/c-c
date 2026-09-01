@@ -1,3 +1,4 @@
+import { fecha, mesYAno } from "@/lib/fechas";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -86,7 +87,7 @@ export default function ItemCalendar({
     });
   }, [cursor]);
 
-  const monthLabel = cursor.toLocaleString(undefined, { month: "long", year: "numeric" });
+  const monthLabel = mesYAno(cursor);
   const today = dayKey(new Date());
   const selectedItems = selected ? (byDay.get(selected) ?? []) : [];
 
@@ -176,7 +177,7 @@ export default function ItemCalendar({
       {selected && selectedItems.length > 0 && (
         <div className="rounded-lg border p-3 space-y-2">
           <p className="text-sm font-medium">
-            {new Date(selectedItems[0].at).toLocaleDateString()} ·{" "}
+            {fecha(selectedItems[0].at)} ·{" "}
             {t(countKey, { count: selectedItems.length })}
           </p>
           {selectedItems.map((r) => (

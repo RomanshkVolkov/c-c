@@ -1,3 +1,4 @@
+import { fechaLarga } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -109,11 +110,7 @@ export default function Overview() {
           <span className="text-xs text-muted-foreground">
             {orgName}
             {orgName && " · "}
-            {new Date().toLocaleDateString(undefined, {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-            })}
+            {fechaLarga(new Date())}
           </span>
         </div>
 

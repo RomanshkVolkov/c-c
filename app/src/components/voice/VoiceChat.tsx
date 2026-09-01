@@ -1,3 +1,4 @@
+import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
@@ -102,10 +103,7 @@ export default function VoiceChat({
               <div className="min-w-0">
                 <div className="text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground">{m.authorName}</span>{" "}
-                  {new Date(m.createdAt).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
+                  {horaCorta(m.createdAt)}
                 </div>
                 {/* En texto plano a propósito: ver el comentario de arriba. */}
                 <div className="whitespace-pre-wrap break-words text-[13px]">{m.body}</div>

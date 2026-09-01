@@ -1,3 +1,4 @@
+import { horaCorta } from "@/lib/fechas";
 import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -334,10 +335,7 @@ function Message({
             {mine ? "You" : m.authorName || "unknown"}
           </span>
           <span>
-            {new Date(m.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {horaCorta(m.createdAt)}
           </span>
           {edited && <span className="italic">edited</span>}
         </div>

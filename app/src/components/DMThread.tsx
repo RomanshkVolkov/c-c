@@ -1,3 +1,4 @@
+import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -204,7 +205,7 @@ function DMLine({
             {mine ? "You" : m.authorName || "unknown"}
           </span>
           <span>
-            {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {horaCorta(m.createdAt)}
           </span>
           {edited && <span className="italic">edited</span>}
         </div>

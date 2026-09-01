@@ -1,3 +1,4 @@
+import { diaYMes } from "@/lib/fechas";
 import type { OpenTask } from "@/types/task";
 import { priorityMeta } from "@/types/task";
 import { cn } from "@/lib/utils";
@@ -20,9 +21,9 @@ export function cuando(iso?: string | null): { texto: string; vencida: boolean }
   const dias = Math.round((dia(d) - dia(hoy)) / 86_400_000);
   if (dias === 0) return { texto: "today", vencida: true };
   if (dias === -1) return { texto: "yesterday", vencida: true };
-  if (dias < -1) return { texto: d.toLocaleDateString(undefined, { day: "numeric", month: "short" }), vencida: true };
+  if (dias < -1) return { texto: diaYMes(d), vencida: true };
   if (dias === 1) return { texto: "tomorrow", vencida: false };
-  return { texto: d.toLocaleDateString(undefined, { day: "numeric", month: "short" }), vencida: false };
+  return { texto: diaYMes(d), vencida: false };
 }
 
 export default function TaskCardMini({ task, onOpen }: { task: OpenTask; onOpen: () => void }) {

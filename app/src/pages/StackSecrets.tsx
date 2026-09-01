@@ -1,3 +1,4 @@
+import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -667,12 +668,12 @@ export default function StackSecrets() {
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
                               {secret.created_at
-                                ? new Date(secret.created_at).toLocaleString()
+                                ? fechaYHora(secret.created_at)
                                 : "—"}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
                               {secret.updated_at
-                                ? new Date(secret.updated_at).toLocaleString()
+                                ? fechaYHora(secret.updated_at)
                                 : "—"}
                             </TableCell>
                             <TableCell className="text-right space-x-1">
@@ -764,12 +765,12 @@ export default function StackSecrets() {
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
                               {v.created_at
-                                ? new Date(v.created_at).toLocaleString()
+                                ? fechaYHora(v.created_at)
                                 : "—"}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
                               {v.updated_at
-                                ? new Date(v.updated_at).toLocaleString()
+                                ? fechaYHora(v.updated_at)
                                 : "—"}
                             </TableCell>
                             <TableCell className="text-right space-x-1">

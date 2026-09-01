@@ -1,3 +1,4 @@
+import { fecha } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -394,7 +395,7 @@ function ListView({
                     )}
                     {t.dueAt && (
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {new Date(t.dueAt).toLocaleDateString()}
+                        {fecha(t.dueAt)}
                       </span>
                     )}
                     <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">

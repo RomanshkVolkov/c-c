@@ -1,3 +1,4 @@
+import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import {
@@ -153,7 +154,7 @@ function BatchCard({ batch }: { batch: TelemetryEventView }) {
     <div className="rounded-lg border">
       <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs">
         <span className="text-muted-foreground">
-          {new Date(batch.receivedAt).toLocaleString()}
+          {fechaYHora(batch.receivedAt)}
         </span>
         <span className="text-muted-foreground">· {relativeTime(batch.receivedAt)}</span>
         <span className="ml-auto flex items-center gap-2">

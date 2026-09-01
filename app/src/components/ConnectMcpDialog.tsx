@@ -1,3 +1,4 @@
+import { fecha } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Check, Plus, Trash2, Pencil, Loader2, TriangleAlert } from "lucide-react";
@@ -244,9 +245,9 @@ export default function ConnectMcpDialog({
                       <code className="text-xs text-muted-foreground">{tok.preview}</code>
                       <span className="ml-auto text-xs text-muted-foreground">
                         {tok.lastUsedAt
-                          ? `used ${new Date(tok.lastUsedAt).toLocaleDateString()}`
+                          ? `used ${fecha(tok.lastUsedAt)}`
                           : "never used"}
-                        {tok.expiresAt && ` · expires ${new Date(tok.expiresAt).toLocaleDateString()}`}
+                        {tok.expiresAt && ` · expires ${fecha(tok.expiresAt)}`}
                       </span>
                       <Button
                         size="icon-xs"

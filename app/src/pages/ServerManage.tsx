@@ -1,3 +1,4 @@
+import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useState, useEffect, useRef, useMemo } from "react";
 import AnsiToHtml from "ansi-to-html";
@@ -338,7 +339,7 @@ function ServicesTable({
               <ServiceStatusBadge replicas={svc.replicas} />
             </TableCell>
             <TableCell className="flex-2 min-w-0 text-xs text-muted-foreground">
-              {new Date(svc.updatedAt).toLocaleString()}
+              {fechaYHora(svc.updatedAt)}
             </TableCell>
             <TableCell className="w-96 shrink-0 text-right space-x-1 whitespace-nowrap">
               <Button

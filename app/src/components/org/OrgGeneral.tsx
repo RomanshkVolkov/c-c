@@ -1,3 +1,4 @@
+import { fechaConAno } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -109,11 +110,7 @@ export default function OrgGeneral({
         </div>
         <Campo
           label={t("org:created")}
-          value={new Date(org.createdAt).toLocaleDateString(undefined, {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })}
+          value={fechaConAno(org.createdAt)}
         />
       </section>
 

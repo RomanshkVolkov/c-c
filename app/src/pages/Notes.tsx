@@ -1,3 +1,4 @@
+import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -214,7 +215,7 @@ function TrashDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm">{it.title || t("work:notes.untitled")}</p>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(it.deletedAt).toLocaleString()}
+                  {fechaYHora(it.deletedAt)}
                   {it.subpages > 0 && ` · ${t("common:count.subpages", { count: it.subpages })}`}
                 </p>
               </div>

@@ -1,3 +1,4 @@
+import { fechaConAno } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useTasksStore } from "@/store/tasks.store";
@@ -192,11 +193,7 @@ export default function OrganizationSettings() {
                 ` · ${t("common:count.members", { count: current.memberCount })}`}
               {espacios > 0 && ` · ${t("common:count.spaces", { count: espacios })}`}
               {current.createdAt &&
-                ` · created ${new Date(current.createdAt).toLocaleDateString(undefined, {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}`}
+                ` · created ${fechaConAno(current.createdAt)}`}
             </p>
           </div>
           {canManage && (

@@ -1,3 +1,4 @@
+import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -164,7 +165,7 @@ function CommentItem({
     >
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{commentByline(c.author, c.authorName)}</span>
-        <span>{new Date(c.createdAt).toLocaleString()}</span>
+        <span>{fechaYHora(c.createdAt)}</span>
         {edited && <span className="italic">{t("work:task.edited")}</span>}
         {clientReads && (
           <span
@@ -1046,7 +1047,7 @@ function Content() {
           </Button>
         )}
         <span className="ml-auto text-xs text-muted-foreground">
-          {t("work:task.updated", { when: new Date(task.updatedAt).toLocaleString() })}
+          {t("work:task.updated", { when: fechaYHora(task.updatedAt) })}
         </span>
       </footer>
     </>

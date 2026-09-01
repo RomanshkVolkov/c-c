@@ -1,3 +1,4 @@
+import { fechaLegible, horaCorta } from "@/lib/fechas";
 import { useLocaleStore } from "@/store/locale.store";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
@@ -122,10 +123,7 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
               // Las pausadas se pintan apagadas en vez de esconderse: una
               // reunión pausada por error es invisible justo donde se buscaría.
               dotClass: o.paused ? "bg-muted-foreground/40" : "bg-primary",
-              label: new Date(o.at).toLocaleTimeString([], {
-                hour: "numeric",
-                minute: "2-digit",
-              }),
+              label: horaCorta(o.at),
             }),
           )}
           onOpen={() => setVista("lista")}
@@ -479,11 +477,7 @@ function Ficha({
         <div className="flex flex-wrap items-center gap-2 border-t px-3.5 py-2">
           <span className="flex-1 text-[11px] text-muted-foreground">
             {m.paused ? t("org:notRinging") : t("org:next")}
-            {!m.paused && new Date(m.nextFireAt).toLocaleDateString(undefined, {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-            })}
+            {!m.paused && fechaLegible(m.nextFireAt)}
           </span>
           <Button
             size="sm"
