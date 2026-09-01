@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -104,6 +105,48 @@ export default function AccountMenu({
   const item =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground";
 
+  /**
+   * Una fila de opciones: el rótulo arriba, los botones debajo.
+   *
+   * En una sola línea no caben. El menú se dimensionó con «Theme · Auto Light
+   * Dark» —tres palabras cortas— y la fila del idioma tiene la misma forma con
+   * etiquetas más largas: en castellano «Español» se salía por el borde
+   * derecho, cortada.
+   *
+   * Apilar y no ensanchar, y tampoco un submenú. Ensanchar arregla el idioma de
+   * hoy y se vuelve a romper con el tercero, o con una traducción más larga de
+   * «Auto». Un submenú escala pero esconde cuál está puesto, y en un selector de
+   * idioma ver «Español» marcado de un vistazo es medio valor de la pantalla.
+   * Apilado cabe siempre, no esconde nada, y los botones se reparten el ancho.
+   */
+  const filaDeOpciones = (
+    icono: ReactNode,
+    rotulo: string,
+    opciones: { key: string; label: string; activo: boolean; onClick: () => void }[],
+  ) => (
+    <div className="w-full space-y-1 rounded px-2 py-1.5">
+      <span className="flex items-center gap-2 text-xs text-muted-foreground">
+        {icono} {rotulo}
+      </span>
+      <span className="flex gap-0.5">
+        {opciones.map((o) => (
+          <button
+            key={o.key}
+            onClick={o.onClick}
+            className={cn(
+              "flex-1 rounded px-1.5 py-1 text-[11px]",
+              o.activo
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-accent hover:text-foreground",
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+
   return (
     <div ref={caja} className="relative">
       {open && (
@@ -124,45 +167,27 @@ export default function AccountMenu({
           {/* Three choices at once rather than a button that cycles: with a
               cycling control you cannot tell "auto, currently dark" from
               "dark", and those are different answers. */}
-          <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
-            <Moon className="size-3.5 shrink-0" /> {t("nav:account.theme")}
-            <span className="ml-auto flex gap-0.5">
-              {THEMES.map((theme) => (
-                <button
-                  key={theme.key}
-                  onClick={() => setPreference(theme.key)}
-                  className={cn(
-                    "rounded px-1.5 py-0.5 text-[11px]",
-                    preference === theme.key
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-accent hover:text-foreground",
-                  )}
-                >
-                  {t(theme.labelKey)}
-                </button>
-              ))}
-            </span>
-          </div>
+          {filaDeOpciones(
+            <Moon className="size-3.5 shrink-0" />,
+            t("nav:account.theme"),
+            THEMES.map((theme) => ({
+              key: theme.key,
+              label: t(theme.labelKey),
+              activo: preference === theme.key,
+              onClick: () => setPreference(theme.key),
+            })),
+          )}
 
-          <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
-            <Languages className="size-3.5 shrink-0" /> {t("nav:account.language")}
-            <span className="ml-auto flex gap-0.5">
-              {LANGUAGES.map((l) => (
-                <button
-                  key={l.key}
-                  onClick={() => void chooseLocale(l.key)}
-                  className={cn(
-                    "rounded px-1.5 py-0.5 text-[11px]",
-                    language === l.key
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-accent hover:text-foreground",
-                  )}
-                >
-                  {l.label || t("nav:account.languageAuto")}
-                </button>
-              ))}
-            </span>
-          </div>
+          {filaDeOpciones(
+            <Languages className="size-3.5 shrink-0" />,
+            t("nav:account.language"),
+            LANGUAGES.map((l) => ({
+              key: l.key,
+              label: l.label || t("nav:account.languageAuto"),
+              activo: language === l.key,
+              onClick: () => void chooseLocale(l.key),
+            })),
+          )}
 
           <button className={item} onClick={() => { setOpen(false); onChangePassword(); }}>
             <KeyRound className="size-3.5 shrink-0" /> {t("nav:account.changePassword")}

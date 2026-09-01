@@ -279,7 +279,20 @@ function ServicesTable({
           <TableHead className="flex-1 min-w-0">{t("common:servers.thReplicas")}</TableHead>
           <TableHead className="flex-1 min-w-0">{t("common:servers.thStatus")}</TableHead>
           <TableHead className="flex-2 min-w-0">{t("common:servers.thUpdated")}</TableHead>
-          <TableHead className="flex-3 min-w-0 text-right">{t("common:servers.thActions")}</TableHead>
+          {/* Ancho fijo, y en la cabecera **y** en el cuerpo o se desalinean:
+              esto es una tabla hecha con flex, así que cada celda calcula su
+              ancho por su cuenta.
+
+              Fijo y no proporcional porque su contenido no es texto que pueda
+              truncarse: son cuatro botones, y recortar uno lo deja inservible.
+              Con `flex-3` la columna se quedaba corta en cuanto las etiquetas
+              crecían —«Restart» son siete caracteres y «Reiniciar» nueve— y
+              «Secrets» salía cortado contra el borde con una barra de scroll
+              horizontal.
+
+              La variación de ancho entre idiomas se la llevan nombre, imagen y
+              stack, que ya truncan y enseñan el valor entero en un tooltip. */}
+          <TableHead className="w-96 shrink-0 text-right">{t("common:servers.thActions")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody className="block max-h-105 overflow-y-auto">
@@ -327,7 +340,7 @@ function ServicesTable({
             <TableCell className="flex-2 min-w-0 text-xs text-muted-foreground">
               {new Date(svc.updatedAt).toLocaleString()}
             </TableCell>
-            <TableCell className="flex-3 min-w-0 text-right space-x-1">
+            <TableCell className="w-96 shrink-0 text-right space-x-1 whitespace-nowrap">
               <Button
                 variant="ghost"
                 size="sm"
