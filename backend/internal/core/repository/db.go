@@ -91,6 +91,7 @@ func DBConnection() {
 		&domain.TaskComment{},
 		&domain.TaskAttachment{},
 		&domain.Doc{},
+		&domain.DocTab{},
 		&domain.DocAttachment{},
 		&domain.Note{},
 		&domain.NoteAttachment{},
@@ -152,6 +153,7 @@ func DBConnection() {
 	backfillAttachmentRefs(db)
 	backfillIngestedItems(db)
 	migrateItems(db)
+	backfillDocTabs(db)
 }
 
 // backfillAttachmentRefs repoints attachments written before the proxy existed.

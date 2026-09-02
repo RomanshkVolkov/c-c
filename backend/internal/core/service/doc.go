@@ -46,6 +46,53 @@ func (s *DocService) Save(orgID string, kind domain.DocOwnerKind, id, body, user
 	return d, nil
 }
 
+// Tabs: las cuatro secciones, con las vacías incluidas.
+func (s *DocService) Tabs(docID string) ([]domain.DocTab, error) { return s.repo.Tabs(docID) }
+
+// SaveTab guarda una sección y limpia los adjuntos que dejaron de citarse.
+//
+// La limpieza mira **el documento entero**, no sólo la pestaña que se guarda: un
+// fichero citado desde Overview y desde Runbook no puede borrarse porque una de
+// las dos lo suelte.
+func (s *DocService) SaveTab(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, body, userID string,
+) (*domain.Doc, error) {
+	antes := ""
+	if doc, err := s.repo.Find(kind, ownerID); err == nil && doc != nil {
+		if tabs, err := s.repo.Tabs(doc.ID); err == nil {
+			for _, t := range tabs {
+				if t.Key == key {
+					antes = t.Body
+				}
+			}
+		}
+	}
+	doc, err := s.repo.SaveTab(orgID, kind, ownerID, key, body, userID)
+	if err != nil {
+		return nil, err
+	}
+	if antes != body {
+		s.dropRemovedAttachments(doc.ID, antes, s.allTabsText(doc.ID))
+	}
+	return doc, nil
+}
+
+// Todo el markdown del documento junto, para decidir si un adjunto sigue citado.
+func (s *DocService) allTabsText(docID string) string {
+	tabs, err := s.repo.Tabs(docID)
+	if err != nil {
+		// Sin poder leerlas, no se borra nada: perder un fichero por un error de
+		// lectura es peor que dejar uno huérfano.
+		return ""
+	}
+	var todo string
+	for _, t := range tabs {
+		todo += t.Body
+	}
+	return todo
+}
+
 func (s *DocService) HasDoc(orgID string) (map[string]bool, error) { return s.repo.HasDoc(orgID) }
 
 func (s *DocService) FindByID(id string) (*domain.Doc, error) { return s.repo.FindByID(id) }

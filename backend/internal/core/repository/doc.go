@@ -86,6 +86,69 @@ func (r *DocRepository) Save(orgID string, kind domain.DocOwnerKind, id, body, u
 	return r.FindByID(existing.ID)
 }
 
+// Tabs devuelve las cuatro secciones de un documento, **siempre las cuatro**.
+//
+// Las que no existen vuelven vacías en vez de faltar: una pestaña sin contenido
+// se pinta en gris y no se oculta, porque su ausencia dice algo del proyecto.
+// Resolver eso aquí evita que cada pantalla tenga que acordarse.
+func (r *DocRepository) Tabs(docID string) ([]domain.DocTab, error) {
+	var guardadas []domain.DocTab
+	if err := r.db.Where("doc_id = ?", docID).Find(&guardadas).Error; err != nil {
+		return nil, err
+	}
+	out := domain.ResolveDocTabs(docID, guardadas)
+	for i := range out {
+		if out[i].UpdatedBy != "" {
+			out[i].UpdatedByName = r.AuthorName(out[i].UpdatedBy)
+		}
+	}
+	return out, nil
+}
+
+// SaveTab guarda una sección, creando el documento si aún no existía.
+//
+// Crear el documento aquí y no exigirlo antes: escribir en una pestaña de una
+// lista que nunca tuvo documentación es la forma normal de empezar uno, y pedir
+// dos llamadas para eso sólo traslada el problema a quien llame.
+func (r *DocRepository) SaveTab(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, body, userID string,
+) (*domain.Doc, error) {
+	doc, err := r.Find(kind, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		doc = &domain.Doc{OrgID: orgID, OwnerKind: kind, OwnerID: ownerID, UpdatedBy: userID}
+		doc.ID = uuid.NewString()
+		if err := r.db.Create(doc).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	var existente domain.DocTab
+	err = r.db.Where("doc_id = ? AND key = ?", doc.ID, key).First(&existente).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: body, UpdatedBy: userID}
+		t.ID = uuid.NewString()
+		if err := r.db.Create(t).Error; err != nil {
+			return nil, err
+		}
+		return doc, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	// `Updates` con mapa y no con struct: con struct, un cuerpo vaciado a
+	// propósito es el valor cero y GORM no lo escribiría — vaciar una sección
+	// dejaría de funcionar sin que nada se queje.
+	if err := r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
+		Updates(map[string]any{"body": body, "updated_by": userID}).Error; err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
 // HasDoc reports which of the given nodes carry a non-empty document, so the
 // navigator can mark them without shipping every body.
 func (r *DocRepository) HasDoc(orgID string) (map[string]bool, error) {

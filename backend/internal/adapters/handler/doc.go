@@ -19,6 +19,7 @@ import (
 type DocHandler interface {
 	Get(w http.ResponseWriter, r *http.Request)
 	Save(w http.ResponseWriter, r *http.Request)
+	SaveTab(w http.ResponseWriter, r *http.Request)
 	Index(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
@@ -82,7 +83,10 @@ func (h *docHandler) resolveDoc(w http.ResponseWriter, r *http.Request) (*domain
 }
 
 type docResponse struct {
-	Doc         *domain.Doc            `json:"doc"`
+	Doc *domain.Doc `json:"doc"`
+	// Siempre las cuatro, también las vacías: la pantalla las pinta todas y una
+	// que faltara la obligaría a inventarla.
+	Tabs        []domain.DocTab        `json:"tabs"`
 	Attachments []domain.DocAttachment `json:"attachments"`
 }
 
@@ -98,11 +102,46 @@ func (h *docHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	// A node without a document is normal: answer with an empty one so the client
 	// renders the same editor instead of special-casing "not created yet".
-	out := docResponse{Doc: d, Attachments: []domain.DocAttachment{}}
+	out := docResponse{Doc: d, Tabs: []domain.DocTab{}, Attachments: []domain.DocAttachment{}}
 	if d != nil {
 		if atts, err := h.svc.Attachments(d.ID); err == nil {
 			out.Attachments = atts
 		}
+		if tabs, err := h.svc.Tabs(d.ID); err == nil {
+			out.Tabs = tabs
+		}
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
+}
+
+// SaveTab guarda una sola sección.
+func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
+	kind, id, orgID, ok := h.resolveOwner(w, r)
+	if !ok {
+		return
+	}
+	key := chi.URLParam(r, "tab")
+	if !domain.IsDocTabKey(key) {
+		SendErrorResponse(w, http.StatusBadRequest, "Unknown section", "bad-doc-tab")
+		return
+	}
+	req, err := ValidateRequest[domain.SaveDocRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	doc, err := h.svc.SaveTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the document", err.Error())
+		return
+	}
+	out := docResponse{Doc: doc, Tabs: []domain.DocTab{}, Attachments: []domain.DocAttachment{}}
+	if tabs, err := h.svc.Tabs(doc.ID); err == nil {
+		out.Tabs = tabs
+	}
+	if atts, err := h.svc.Attachments(doc.ID); err == nil {
+		out.Attachments = atts
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
 }

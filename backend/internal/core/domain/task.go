@@ -243,6 +243,78 @@ type Doc struct {
 	UpdatedByName string `gorm:"-" json:"updatedByName,omitempty"`
 }
 
+// DocTabKey nombra cada una de las cuatro secciones de un documento.
+//
+// Fijas y en este orden, y **ninguna se oculta cuando está vacía**: su ausencia
+// es información. Que un proyecto no tenga runbook es un dato sobre el proyecto,
+// no una pestaña que estorbe.
+type DocTabKey string
+
+const (
+	DocOverview  DocTabKey = "overview"
+	DocRunbook   DocTabKey = "runbook"
+	DocDecisions DocTabKey = "decisions"
+	DocLinks     DocTabKey = "links"
+)
+
+// DocTabKeys es el orden en que se pintan, y la lista que valida una petición.
+var DocTabKeys = []DocTabKey{DocOverview, DocRunbook, DocDecisions, DocLinks}
+
+// IsDocTabKey evita que una ruta invente una sección.
+func IsDocTabKey(k string) bool {
+	for _, v := range DocTabKeys {
+		if string(v) == k {
+			return true
+		}
+	}
+	return false
+}
+
+// ResolveDocTabs completa lo que la base devolvió hasta las cuatro secciones.
+//
+// Pura y en el dominio, no dentro de la consulta, porque es **la regla** y no un
+// detalle de almacenamiento: siempre están las cuatro y siempre en este orden,
+// también las vacías. Una pestaña sin contenido se pinta en gris y no se oculta,
+// porque su ausencia dice algo del proyecto — que no tiene runbook es un dato.
+//
+// Aparte también para poder probarla: las pruebas de repositorio de este
+// proyecto se saltan cuando no hay base de datos, y en integración continua no
+// hay ninguna. Una regla que sólo se comprueba en la máquina de quien la escribió
+// no está comprobada.
+func ResolveDocTabs(docID string, stored []DocTab) []DocTab {
+	byKey := make(map[DocTabKey]DocTab, len(stored))
+	for _, t := range stored {
+		byKey[t.Key] = t
+	}
+	out := make([]DocTab, 0, len(DocTabKeys))
+	for _, k := range DocTabKeys {
+		if t, ok := byKey[k]; ok {
+			out = append(out, t)
+			continue
+		}
+		out = append(out, DocTab{DocID: docID, Key: k})
+	}
+	return out
+}
+
+// DocTab es una sección de un documento.
+//
+// Tabla aparte y no cuatro columnas en `Doc` por dos razones que llegan después:
+// cada pestaña tendrá su propia procedencia —una puede ser el reflejo de un
+// `.md` de un repositorio mientras las otras se escriben a mano— y su propia
+// frescura, porque «quién tocó esto por última vez» se pregunta por sección y no
+// por documento entero.
+type DocTab struct {
+	BaseModel
+	DocID string    `gorm:"type:varchar(36);not null;index:idx_doctab,unique" json:"docId"`
+	Key   DocTabKey `gorm:"type:varchar(20);not null;index:idx_doctab,unique" json:"key"`
+	// Markdown, el mismo formato que usan las tareas: un editor y un renderizador
+	// sirven para los dos.
+	Body          string `gorm:"type:text" json:"body"`
+	UpdatedBy     string `gorm:"type:varchar(36)" json:"updatedBy"`
+	UpdatedByName string `gorm:"-" json:"updatedByName,omitempty"`
+}
+
 // DocAttachment is a file cited from a document.
 //
 // Kept apart from TaskAttachment instead of making that table polymorphic: the
