@@ -147,6 +147,17 @@ type AuthResponse struct {
 type Session struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+	// Name es el nombre con el que se le llama a alguien, y va **junto al**
+	// usuario, no en su lugar.
+	//
+	// El usuario es el identificador: es lo que se escribe tras una arroba, lo
+	// que se busca en el selector, y lo que no cambia. El nombre es cómo se lee.
+	// Enseñar «rvolkov» donde cabe «Romanshk Volkov» hace que una lista de gente
+	// se lea como una tabla de la base de datos.
+	//
+	// Puede venir vacío —nadie está obligado a ponerlo— y quien lo pinte tiene
+	// que caer al usuario. Ver `nombreDe` en el cliente.
+	Name string `json:"name,omitempty"`
 	// Email is shown in the account menu, where the username alone is not
 	// enough to tell two accounts apart on a shared machine.
 	Email              string `json:"email,omitempty"`

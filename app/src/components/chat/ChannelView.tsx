@@ -1,3 +1,4 @@
+import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
 import i18next from "i18next";
@@ -547,10 +548,10 @@ function QuienAnda() {
   return (
     <span
       className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-      title={`Active recently: ${aqui.map((p) => p.username).join(", ")}`}
+      title={`Active recently: ${aqui.map(nombreDe).join(", ")}`}
     >
       <span className="size-1.5 rounded-full bg-success" />
-      {aqui.slice(0, 3).map((p) => p.username).join(", ")}
+      {aqui.slice(0, 3).map(nombreDe).join(", ")}
       {aqui.length > 3 && ` +${aqui.length - 3}`}
     </span>
   );

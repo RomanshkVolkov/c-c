@@ -17,6 +17,8 @@ export interface Organization {
 export interface OrgMember {
   userId: string;
   username: string;
+  /** Cómo se le llama. Puede faltar; ver `nombreDe`. */
+  name?: string;
   email?: string;
   role: OrgRole;
   /** Absent means the account has done nothing since this began being kept. */

@@ -431,16 +431,16 @@ type EnsureGeneralSpaceRequest struct {
 
 // SpaceTree is the whole left-hand navigator in one round-trip.
 type SpaceTree struct {
-	ID        string        `json:"id"`
-	OrgID     string        `json:"orgId"`
-	Name      string        `json:"name"`
-	Color     string        `json:"color"`
-	ProjectID string        `json:"projectId,omitempty"`
+	ID        string `json:"id"`
+	OrgID     string `json:"orgId"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+	ProjectID string `json:"projectId,omitempty"`
 	// Kind viaja para que la app sepa cuál anclar arriba en Channels y cuál
 	// esconder en el navegador de tareas. Ver domain.SpaceKindGeneral.
-	Kind string `json:"kind,omitempty"`
-	Folders   []FolderTree  `json:"folders"`
-	Lists     []ListSummary `json:"lists"` // lists directly under the space
+	Kind    string        `json:"kind,omitempty"`
+	Folders []FolderTree  `json:"folders"`
+	Lists   []ListSummary `json:"lists"` // lists directly under the space
 	// People es quién tiene trabajo asignado aquí dentro. Es la única
 	// pertenencia real que tiene un espacio: no hay tabla de miembros por
 	// espacio —quien está en la organización llega a todos— así que «quién está
@@ -452,6 +452,17 @@ type SpaceTree struct {
 type SpacePerson struct {
 	UserID   string `json:"userId"`
 	Username string `json:"username"`
+	// Name es el nombre con el que se le llama a alguien, y va **junto al**
+	// usuario, no en su lugar.
+	//
+	// El usuario es el identificador: es lo que se escribe tras una arroba, lo
+	// que se busca en el selector, y lo que no cambia. El nombre es cómo se lee.
+	// Enseñar «rvolkov» donde cabe «Romanshk Volkov» hace que una lista de gente
+	// se lea como una tabla de la base de datos.
+	//
+	// Puede venir vacío —nadie está obligado a ponerlo— y quien lo pinte tiene
+	// que caer al usuario. Ver `nombreDe` en el cliente.
+	Name string `json:"name,omitempty"`
 }
 
 type FolderTree struct {

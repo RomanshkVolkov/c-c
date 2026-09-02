@@ -182,7 +182,7 @@ func (r *OrganizationRepository) GetMembership(orgID, userID string) (*domain.Or
 func (r *OrganizationRepository) ListMembers(orgID string) ([]domain.MemberResponse, error) {
 	var out []domain.MemberResponse
 	err := r.db.Raw(`
-		SELECT m.user_id, u.username, u.email, m.role, u.last_seen_at
+		SELECT m.user_id, u.username, u.name, u.email, m.role, u.last_seen_at
 		FROM org_memberships m
 		JOIN users u ON u.id = m.user_id
 		WHERE m.org_id = ?

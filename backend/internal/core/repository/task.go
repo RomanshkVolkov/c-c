@@ -225,15 +225,16 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		SpaceID  string
 		UserID   string
 		Username string
+		Name     string
 		N        int64
 	}
 	var personas []personRow
 	r.db.Table("items AS i").
-		Select("l.space_id AS space_id, u.id AS user_id, u.username AS username, COUNT(*) AS n").
+		Select("l.space_id AS space_id, u.id AS user_id, u.username AS username, u.name AS name, COUNT(*) AS n").
 		Joins("JOIN task_lists l ON l.id = i.list_id").
 		Joins("JOIN users u ON u.id = i.assignee_user_id").
 		Where("l.space_id IN ? AND i.archived_at IS NULL AND i.status NOT IN ('resolved','closed')", spaceIDs).
-		Group("l.space_id, u.id, u.username").
+		Group("l.space_id, u.id, u.username, u.name").
 		Order("n DESC").Scan(&personas)
 	// Un tope por espacio: la ficha dibuja unas pocas caras y el resto se cuenta.
 	// Sale ordenado por carga, así que las que llegan son las que más sostienen.
@@ -243,7 +244,7 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 		if len(peopleBy[p.SpaceID]) >= carasPorEspacio {
 			continue
 		}
-		peopleBy[p.SpaceID] = append(peopleBy[p.SpaceID], domain.SpacePerson{UserID: p.UserID, Username: p.Username})
+		peopleBy[p.SpaceID] = append(peopleBy[p.SpaceID], domain.SpacePerson{UserID: p.UserID, Username: p.Username, Name: p.Name})
 	}
 
 	// Space bindings, so a list can inherit one without a query per list.
@@ -274,7 +275,7 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 	for _, s := range spaces {
 		tree := domain.SpaceTree{
 			ID: s.ID, OrgID: s.OrgID, Name: s.Name, Color: s.Color, ProjectID: spaceProject[s.ID],
-			Kind: s.Kind,
+			Kind:    s.Kind,
 			Folders: []domain.FolderTree{}, Lists: []domain.ListSummary{},
 			People: peopleBy[s.ID],
 		}

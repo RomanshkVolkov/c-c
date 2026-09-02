@@ -145,10 +145,21 @@ type UpdateMemberRequest struct {
 }
 
 type MemberResponse struct {
-	UserID   string  `json:"userId"`
-	Username string  `json:"username"`
-	Email    string  `json:"email,omitempty"`
-	Role     OrgRole `json:"role"`
+	UserID   string `json:"userId"`
+	Username string `json:"username"`
+	// Name es el nombre con el que se le llama a alguien, y va **junto al**
+	// usuario, no en su lugar.
+	//
+	// El usuario es el identificador: es lo que se escribe tras una arroba, lo
+	// que se busca en el selector, y lo que no cambia. El nombre es cómo se lee.
+	// Enseñar «rvolkov» donde cabe «Romanshk Volkov» hace que una lista de gente
+	// se lea como una tabla de la base de datos.
+	//
+	// Puede venir vacío —nadie está obligado a ponerlo— y quien lo pinte tiene
+	// que caer al usuario. Ver `nombreDe` en el cliente.
+	Name  string  `json:"name,omitempty"`
+	Email string  `json:"email,omitempty"`
+	Role  OrgRole `json:"role"`
 	// LastSeenAt is what the members table shows as activity. Absent means the
 	// account has not been used since this started being recorded, which the
 	// screen says as "never" rather than inventing a date.

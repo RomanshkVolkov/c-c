@@ -1,3 +1,4 @@
+import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
@@ -82,7 +83,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
         >
           <ArrowLeft className="size-4" />
         </button>
-        <h2 className="truncate text-sm font-medium">{other?.username ?? t("common:misc.conversation")}</h2>
+        <h2 className="truncate text-sm font-medium">{other ? nombreDe(other) : t("common:misc.conversation")}</h2>
         <span className="ml-auto text-xs text-muted-foreground">private</span>
       </header>
 

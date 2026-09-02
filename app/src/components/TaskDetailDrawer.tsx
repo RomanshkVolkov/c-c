@@ -1,3 +1,4 @@
+import { nombreDe } from "@/lib/nombres";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -964,7 +965,7 @@ function Content() {
           <div className="flex flex-wrap items-center gap-1">
             {detail.assignees.map((a) => (
               <Badge key={a.id} variant="secondary" className="gap-1 text-xs">
-                {a.username}
+                {nombreDe(a)}
                 <button
                   onClick={() =>
                     updateTask(task.id, {

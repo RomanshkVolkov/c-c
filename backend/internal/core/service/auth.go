@@ -51,6 +51,7 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 		Session: domain.Session{
 			ID:                 user.ID,
 			Username:           user.Username,
+			Name:               user.Name,
 			Email:              user.Email,
 			Superadmin:         user.IsSuperadmin,
 			MustChangePassword: user.MustChangePassword,
@@ -69,6 +70,7 @@ func (s *AuthService) Me(userID string) (*domain.Session, error) {
 		ID:                 user.ID,
 		Email:              user.Email,
 		Username:           user.Username,
+		Name:               user.Name,
 		Superadmin:         user.IsSuperadmin,
 		MustChangePassword: user.MustChangePassword,
 		Locale:             user.Locale,
@@ -230,7 +232,7 @@ func (s *AuthService) SearchUsers(query, excludeUserID string, limit int) ([]dom
 	}
 	out := make([]domain.UserSummary, len(users))
 	for i, u := range users {
-		out[i] = domain.UserSummary{ID: u.ID, Username: u.Username, LastSeenAt: u.LastSeenAt}
+		out[i] = domain.UserSummary{ID: u.ID, Username: u.Username, Name: u.Name, LastSeenAt: u.LastSeenAt}
 	}
 	return out, nil
 }
@@ -244,7 +246,7 @@ func (s *AuthService) SearchUsersInOrg(query, orgID, excludeUserID string, limit
 	}
 	out := make([]domain.UserSummary, len(users))
 	for i, u := range users {
-		out[i] = domain.UserSummary{ID: u.ID, Username: u.Username, LastSeenAt: u.LastSeenAt}
+		out[i] = domain.UserSummary{ID: u.ID, Username: u.Username, Name: u.Name, LastSeenAt: u.LastSeenAt}
 	}
 	return out, nil
 }

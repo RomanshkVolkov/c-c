@@ -1,6 +1,8 @@
 export interface Session {
   id: string;
   username: string;
+  /** Cómo se le llama. Puede faltar; ver `nombreDe`. */
+  name?: string;
   /** Shown in the account menu: the username alone does not tell two accounts
    *  apart on a shared machine. */
   email?: string;

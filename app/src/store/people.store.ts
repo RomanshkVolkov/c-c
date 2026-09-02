@@ -7,6 +7,8 @@ import type { APIResponse } from "@/types/auth";
 export interface Person {
   id: string;
   username: string;
+  /** Cómo se le llama. Puede faltar; ver `nombreDe`. */
+  name?: string;
   /** Cuándo dio señales por última vez; ausente si nunca. Ver `activo()`. */
   lastSeenAt?: string | null;
 }

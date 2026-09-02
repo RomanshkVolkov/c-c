@@ -1,3 +1,4 @@
+import { nombreDe } from "@/lib/nombres";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -177,7 +178,7 @@ export default function NewTaskRow({
           <option value="">{t("work:board.nobodyYet")}</option>
           {people.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.username}
+              {nombreDe(p)}
             </option>
           ))}
         </select>

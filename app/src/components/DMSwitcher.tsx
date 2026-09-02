@@ -1,3 +1,4 @@
+import { nombreDe } from "@/lib/nombres";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -122,7 +123,7 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
                 }}
               >
                 <PresenceDot lastSeenAt={c.lastSeenAt} />
-                <span className="truncate">{c.username}</span>
+                <span className="truncate">{nombreDe(c)}</span>
                 {c.unread > 0 && (
                   <span className="ml-auto rounded-full bg-primary px-1 text-[10px] font-medium leading-4 text-primary-foreground">
                     {c.unread > 99 ? "99+" : c.unread}
@@ -147,7 +148,7 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
                   onClick={() => start(p.id)}
                 >
                   <PresenceDot lastSeenAt={p.lastSeenAt} />
-                  <span className="truncate">{p.username}</span>
+                  <span className="truncate">{nombreDe(p)}</span>
                 </button>
               </li>
             ))}

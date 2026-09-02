@@ -1,3 +1,4 @@
+import { nombreDe, inicialesDe } from "@/lib/nombres";
 import type { ReactNode } from "react";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
@@ -153,10 +154,10 @@ export default function AccountMenu({
         <div className="absolute bottom-full left-0 right-0 mb-1 rounded-md border bg-popover p-1 shadow-lg">
           <div className="flex items-center gap-2 px-2 py-1.5">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
-              {session.username.slice(0, 2)}
+              {inicialesDe(session)}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold">{session.username}</p>
+              <p className="truncate text-xs font-semibold">{nombreDe(session)}</p>
               {session.email && (
                 <p className="truncate text-[11px] text-muted-foreground">{session.email}</p>
               )}
@@ -246,10 +247,10 @@ export default function AccountMenu({
         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
-          {session.username.slice(0, 2)}
+          {inicialesDe(session)}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-semibold">{session.username}</span>
+          <span className="block truncate text-xs font-semibold">{nombreDe(session)}</span>
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span
               className={cn("size-1.5 shrink-0 rounded-full", vivo ? "bg-success" : "bg-destructive")}

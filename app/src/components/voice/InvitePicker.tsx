@@ -1,3 +1,4 @@
+import { nombreDe } from "@/lib/nombres";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Phone, UserPlus } from "lucide-react";
@@ -55,9 +56,9 @@ export default function InvitePicker({ onClose }: { onClose: () => void }) {
                 className="flex w-full items-center gap-2.5 rounded px-2 py-1.5 text-left text-[13px] hover:bg-accent"
               >
                 <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-[10px] font-bold text-accent-foreground">
-                  {iniciales(p.username)}
+                  {iniciales(nombreDe(p))}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{p.username}</span>
+                <span className="min-w-0 flex-1 truncate">{nombreDe(p)}</span>
                 <Phone className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
             </li>

@@ -155,6 +155,17 @@ type ShareInfo struct {
 type UserSummary struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+	// Name es el nombre con el que se le llama a alguien, y va **junto al**
+	// usuario, no en su lugar.
+	//
+	// El usuario es el identificador: es lo que se escribe tras una arroba, lo
+	// que se busca en el selector, y lo que no cambia. El nombre es cómo se lee.
+	// Enseñar «rvolkov» donde cabe «Romanshk Volkov» hace que una lista de gente
+	// se lea como una tabla de la base de datos.
+	//
+	// Puede venir vacío —nadie está obligado a ponerlo— y quien lo pinte tiene
+	// que caer al usuario. Ver `nombreDe` en el cliente.
+	Name string `json:"name,omitempty"`
 	// LastSeenAt es lo que pinta el punto de actividad. Sale del `domain.User`
 	// que ya se lee para construir esto — se estaba descartando en el mapeo.
 	//
