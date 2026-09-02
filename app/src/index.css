@@ -287,6 +287,24 @@
   .prose-editor :where(h1, h2, h3) {
     @apply mt-4 mb-2 font-semibold leading-tight first:mt-0;
   }
+  /* Tipografía de lectura, sólo para un documento.
+   *
+   * Un panel de tarea se lee en diagonal buscando un dato; un documento se lee
+   * de arriba abajo. Eso pide dos cosas que en un panel estorban: texto más
+   * grande con más aire entre líneas, y **medida corta** — una línea que cruza
+   * una pantalla de 27 pulgadas obliga a los ojos a buscar dónde empieza la
+   * siguiente, y se abandona la lectura sin saber por qué.
+   *
+   * Encima de `.md-body`, no en su lugar: hereda todo lo demás —el
+   * `overflow-wrap`, las listas, el código— y sólo cambia lo que distingue leer
+   * de consultar. */
+  .prose-doc .md-body {
+    @apply mx-auto max-w-[68ch] text-[15px] leading-[1.75];
+  }
+  .prose-doc .md-body h2 { @apply mt-8 text-[17px]; }
+  .prose-doc .md-body h3 { @apply mt-6 text-[13px]; }
+  .prose-doc .md-body p { @apply my-3; }
+
   .md-body h1, .prose-editor h1 { @apply text-lg; }
   .md-body h2, .prose-editor h2 { @apply text-base; }
   .md-body h3, .prose-editor h3 { @apply text-sm uppercase tracking-wide text-muted-foreground; }

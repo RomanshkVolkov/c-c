@@ -333,9 +333,30 @@ export interface Doc {
   updatedAt: string;
 }
 
+/**
+ * Las cuatro secciones de un documento, fijas y en este orden.
+ *
+ * Ninguna se oculta cuando está vacía: su ausencia es información. Que un
+ * proyecto no tenga runbook es un dato sobre el proyecto.
+ */
+export const DOC_TABS = ["overview", "runbook", "decisions", "links"] as const;
+export type DocTabKey = (typeof DOC_TABS)[number];
+
+export interface DocTab {
+  id: string;
+  docId: string;
+  key: DocTabKey;
+  body: string;
+  updatedBy: string;
+  updatedByName?: string;
+  updatedAt: string;
+}
+
 export interface DocResponse {
-  /** null until the node's overview is written for the first time. */
+  /** null until the node's document is written for the first time. */
   doc: Doc | null;
+  /** Siempre las cuatro, también las vacías. Vacío sólo si `doc` es null. */
+  tabs: DocTab[];
   attachments: DocAttachment[];
 }
 

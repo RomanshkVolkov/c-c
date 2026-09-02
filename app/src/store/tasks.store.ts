@@ -30,7 +30,7 @@ import type {
   TaskDetail,
   TaskTag,
   ItemVisibility,
-  Doc,
+  DocTabKey,
   DocAttachment,
   DocOwnerKind,
   DocResponse,
@@ -212,7 +212,8 @@ interface TasksState {
   fetchDocIndex: () => Promise<void>;
   openDoc: (kind: DocOwnerKind, id: string, name: string) => Promise<void>;
   closeDoc: () => void;
-  saveDoc: (body: string) => Promise<void>;
+  /** Guarda una sección; por omisión la primera, que es la que ya existía. */
+  saveDoc: (body: string, tab?: DocTabKey) => Promise<void>;
   uploadDocAttachment: (file: File) => Promise<{ url: string; fileName: string } | null>;
 }
 
@@ -726,10 +727,13 @@ export const useTasksStore = create<TasksState>()(
 
       closeDoc: () => set({ activeDoc: null, doc: null }),
 
-      saveDoc: async (body) => {
+      saveDoc: async (body, tab = "overview") => {
         const target = get().activeDoc;
         if (!target) return;
-        await api.put<APIResponse<Doc>>(`/api/v1/docs/${target.kind}/${target.id}`, { body });
+        await api.put<APIResponse<DocResponse>>(
+          `/api/v1/docs/${target.kind}/${target.id}/tabs/${tab}`,
+          { body },
+        );
         await get().openDoc(target.kind, target.id, target.name);
         await get().fetchDocIndex(); // the node may have just gained (or lost) its mark
       },

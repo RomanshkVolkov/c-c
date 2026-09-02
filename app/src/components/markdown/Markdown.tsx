@@ -1,3 +1,4 @@
+import { slugify } from "@/lib/headings";
 import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -68,6 +69,16 @@ export default function Markdown({
         // home.
         rehypePlugins={allowHtml ? [rehypeRaw, [rehypeSanitize, noteSchema]] : []}
         components={{
+          // Los encabezados llevan ancla, con **la misma** función que usa el
+          // índice de un documento: si cada uno calculara su slug, el índice
+          // apuntaría a anclas que no existen. Inofensivo donde no se usa —
+          // una tarea o una nota se quedan con un atributo de más.
+          h2: ({ children }) => (
+            <h2 id={slugify(String(children))}>{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 id={slugify(String(children))}>{children}</h3>
+          ),
           // Links must not navigate the webview away from the app; hand them to
           // the OS browser instead.
           a: ({ href, children }) => {

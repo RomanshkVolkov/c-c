@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
-import DocView from "@/components/DocView";
+import DocTabs from "@/components/docs/DocTabs";
 import CopyId from "@/components/CopyId";
 import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -69,7 +69,7 @@ export default function Tasks() {
 
   return (
     <div className="flex-1 flex min-h-0">
-      {activeDoc ? <DocView /> : <Board />}
+      {activeDoc ? <DocTabs /> : <Board />}
     </div>
   );
 }

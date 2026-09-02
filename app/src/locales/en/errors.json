@@ -57,5 +57,6 @@
   "voice-screen-timeout": "Screen capture didn't respond.",
   "voice-camera-thread-died": "The camera failed. Check the voice lab's engine log.",
   "voice-camera-no-frames": "The camera delivered no image.",
-  "profile-not-saved": "Your profile couldn't be saved."
+  "profile-not-saved": "Your profile couldn't be saved.",
+  "bad-doc-tab": "That isn't one of the document's sections."
 }

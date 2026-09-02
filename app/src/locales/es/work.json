@@ -235,5 +235,24 @@
     "visibility": "Visibilidad",
     "clientSeesIt": "El cliente la ve",
     "internalOnly": "Sólo interna"
+  },
+  "docs": {
+    "overview": "Resumen",
+    "runbook": "Runbook",
+    "decisions": "Decisiones",
+    "links": "Enlaces",
+    "overviewHint": "Qué es esto",
+    "runbookHint": "Cómo se levanta",
+    "decisionsHint": "Qué se decidió",
+    "linksHint": "Dónde está cada cosa",
+    "emptyTab": "Todavía no hay nada aquí.",
+    "writeIt": "Escribirlo",
+    "onThisPage": "En esta página",
+    "edit": "Editar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "saved": "Guardado",
+    "errSave": "No se pudo guardar esta sección",
+    "placeholder": "¿Para qué es esto? Enlaces, decisiones, cómo se levanta…"
   }
 }
