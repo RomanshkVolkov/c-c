@@ -92,6 +92,7 @@ func DBConnection() {
 		&domain.TaskAttachment{},
 		&domain.Doc{},
 		&domain.DocTab{},
+		&domain.DocVersion{},
 		&domain.DocAttachment{},
 		&domain.Note{},
 		&domain.NoteAttachment{},

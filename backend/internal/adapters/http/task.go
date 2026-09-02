@@ -196,6 +196,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Put("/{kind}/{ownerId}", docH.Save)
 		r.Put("/{kind}/{ownerId}/tabs/{tab}", docH.SaveTab)
 		r.Patch("/{kind}/{ownerId}", docH.Patch)
+		r.Get("/{kind}/{ownerId}/versions", docH.Versions)
+		r.Post("/{kind}/{ownerId}/versions/{versionId}/restore", docH.Restore)
 		r.Post("/{id}/attachments", docH.UploadAttachment)
 		r.Delete("/{id}/attachments/{attachmentId}", docH.DeleteAttachment)
 	})

@@ -131,3 +131,47 @@ func TestDocIsStale(t *testing.T) {
 		}
 	})
 }
+
+// Cuándo un guardado se funde con la entrada anterior.
+//
+// Es lo que decide si el historial se puede leer. El autoguardado dispara cada
+// pocos segundos: sin fusionar, una tarde de escritura deja trescientas
+// entradas idénticas y nadie encuentra el punto al que quería volver.
+func TestDocVersionMerges(t *testing.T) {
+	ahora := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	entrada := func(autor string, cuando time.Time) *DocVersion {
+		v := &DocVersion{AuthorID: autor}
+		v.CreatedAt = cuando
+		return v
+	}
+
+	t.Run("la misma persona escribiendo seguido se funde", func(t *testing.T) {
+		if !DocVersionMerges(entrada("ana", ahora.Add(-time.Minute)), "ana", ahora) {
+			t.Fatal("una sesión de escritura es una entrada, no cien")
+		}
+	})
+
+	// Agrupar a dos autores borraría de quién fue cada cambio, que es la mitad
+	// de para qué sirve el historial.
+	t.Run("otra persona nunca se funde, por cerca que esté", func(t *testing.T) {
+		if DocVersionMerges(entrada("bea", ahora.Add(-time.Second)), "ana", ahora) {
+			t.Fatal("dos autores son dos cambios")
+		}
+	})
+
+	t.Run("pasada la ventana ya es otro cambio", func(t *testing.T) {
+		if DocVersionMerges(entrada("ana", ahora.Add(-DocVersionMerge)), "ana", ahora) {
+			t.Fatal("diez minutos clavados ya no son la misma sesión")
+		}
+		if !DocVersionMerges(entrada("ana", ahora.Add(-DocVersionMerge+time.Second)), "ana", ahora) {
+			t.Fatal("un segundo antes, todavía sí")
+		}
+	})
+
+	// La primera edición de una sección no tiene con qué fundirse.
+	t.Run("sin entrada previa no se funde", func(t *testing.T) {
+		if DocVersionMerges(nil, "ana", ahora) {
+			t.Fatal("no hay nada anterior que reescribir")
+		}
+	})
+}

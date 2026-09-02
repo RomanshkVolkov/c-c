@@ -99,6 +99,26 @@ func (s *DocService) allTabsText(docID string) string {
 	return todo
 }
 
+// Versions: el historial de una sección.
+func (s *DocService) Versions(docID string, key domain.DocTabKey) ([]domain.DocVersion, error) {
+	return s.repo.Versions(docID, key, domain.DocVersionKeep)
+}
+
+// Restore devuelve una sección a un estado anterior.
+//
+// Restaurar **es** un guardado, no una operación aparte: pasa por `SaveTab`, así
+// que el texto que se está pisando entra al historial como cualquier otro. Sin
+// eso, deshacer sería la única acción de la que no se puede volver.
+func (s *DocService) Restore(
+	orgID string, kind domain.DocOwnerKind, ownerID string, docID, versionID, userID string,
+) (*domain.Doc, error) {
+	v, err := s.repo.FindVersion(docID, versionID)
+	if err != nil {
+		return nil, err
+	}
+	return s.SaveTab(orgID, kind, ownerID, v.Key, v.Body, userID)
+}
+
 func (s *DocService) HasDoc(orgID string) (map[string]domain.DocMark, error) {
 	return s.repo.HasDoc(orgID)
 }

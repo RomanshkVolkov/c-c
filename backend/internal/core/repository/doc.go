@@ -140,6 +140,13 @@ func (r *DocRepository) SaveTab(
 	if err != nil {
 		return nil, err
 	}
+	// Nada que guardar si nada cambió. El autoguardado dispara por tiempo, no
+	// por cambio, así que sin esto cada latido escribiría una fila y correría la
+	// ventana del historial sobre un texto idéntico.
+	if existente.Body == body {
+		return doc, nil
+	}
+	r.guardarVersion(doc.ID, key, existente.Body, userID)
 	// `Updates` con mapa y no con struct: con struct, un cuerpo vaciado a
 	// propósito es el valor cero y GORM no lo escribiría — vaciar una sección
 	// dejaría de funcionar sin que nada se queje.
@@ -148,6 +155,76 @@ func (r *DocRepository) SaveTab(
 		return nil, err
 	}
 	return doc, nil
+}
+
+// guardarVersion apunta el texto **anterior** antes de pisarlo.
+//
+// Se fusiona con la última entrada de la misma persona dentro de la ventana en
+// vez de añadir otra: el autoguardado dispara cada pocos segundos, y una fila
+// por pulsación deja un historial ilegible, que es un historial que no sirve
+// para volver a ningún sitio. Al fusionar se conserva el cuerpo **más viejo**
+// de la ventana, que es el punto al que alguien querría regresar.
+//
+// Un error aquí no impide guardar: perder una entrada del historial es malo,
+// perder lo que la persona acaba de escribir es peor.
+func (r *DocRepository) guardarVersion(docID string, key domain.DocTabKey, anterior, userID string) {
+	if anterior == "" {
+		return
+	}
+	var ultima domain.DocVersion
+	err := r.db.Where("doc_id = ? AND key = ?", docID, key).
+		Order("created_at DESC").First(&ultima).Error
+	if err == nil && domain.DocVersionMerges(&ultima, userID, time.Now()) {
+		// Ya hay una entrada de esta sesión: lo que guarda es el texto de antes
+		// de empezar, así que no se toca. Sólo se corre la fecha para que la
+		// ventana se mida desde la última pulsación.
+		r.db.Model(&domain.DocVersion{}).Where("id = ?", ultima.ID).
+			Update("created_at", time.Now())
+		return
+	}
+	v := &domain.DocVersion{DocID: docID, Key: key, Body: anterior, AuthorID: userID}
+	v.ID = uuid.NewString()
+	if err := r.db.Create(v).Error; err != nil {
+		return
+	}
+	r.podarVersiones(docID, key)
+}
+
+// podarVersiones deja las más recientes y tira el resto.
+func (r *DocRepository) podarVersiones(docID string, key domain.DocTabKey) {
+	var ids []string
+	if err := r.db.Model(&domain.DocVersion{}).
+		Where("doc_id = ? AND key = ?", docID, key).
+		Order("created_at DESC").Offset(domain.DocVersionKeep).
+		Pluck("id", &ids).Error; err != nil || len(ids) == 0 {
+		return
+	}
+	r.db.Where("id IN ?", ids).Delete(&domain.DocVersion{})
+}
+
+// Versions: el historial de una sección, lo más reciente primero.
+func (r *DocRepository) Versions(docID string, key domain.DocTabKey, limit int) ([]domain.DocVersion, error) {
+	var out []domain.DocVersion
+	if err := r.db.Where("doc_id = ? AND key = ?", docID, key).
+		Order("created_at DESC").Limit(limit).Find(&out).Error; err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].AuthorName = r.AuthorName(out[i].AuthorID)
+	}
+	return out, nil
+}
+
+// FindVersion busca una entrada, comprobando que es del documento que dice.
+//
+// El documento se pasa aparte y se comprueba aquí: sin eso, un id de versión de
+// otra organización restauraría texto ajeno sobre este documento.
+func (r *DocRepository) FindVersion(docID, versionID string) (*domain.DocVersion, error) {
+	var v domain.DocVersion
+	if err := r.db.Where("id = ? AND doc_id = ?", versionID, docID).First(&v).Error; err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 // HasDoc reports which of the given nodes carry a non-empty document, so the

@@ -23,6 +23,8 @@ type DocHandler interface {
 	SaveTab(w http.ResponseWriter, r *http.Request)
 	Index(w http.ResponseWriter, r *http.Request)
 	Patch(w http.ResponseWriter, r *http.Request)
+	Versions(w http.ResponseWriter, r *http.Request)
+	Restore(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
 	RawAttachment(w http.ResponseWriter, r *http.Request)
@@ -136,6 +138,59 @@ func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
 	doc, err := h.svc.SaveTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the document", err.Error())
+		return
+	}
+	out := docResponse{Doc: doc, Tabs: []domain.DocTab{}, Attachments: []domain.DocAttachment{}}
+	if tabs, err := h.svc.Tabs(doc.ID); err == nil {
+		out.Tabs = tabs
+	}
+	if atts, err := h.svc.Attachments(doc.ID); err == nil {
+		out.Attachments = atts
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
+}
+
+// Versions lista el historial de una sección.
+func (h *docHandler) Versions(w http.ResponseWriter, r *http.Request) {
+	kind, id, _, ok := h.resolveOwner(w, r)
+	if !ok {
+		return
+	}
+	key := r.URL.Query().Get("tab")
+	if !domain.IsDocTabKey(key) {
+		SendErrorResponse(w, http.StatusBadRequest, "Unknown section", "bad-doc-tab")
+		return
+	}
+	d, err := h.svc.Get(kind, id)
+	// Un nodo sin documento no es un error: todavía no se ha escrito nada, así
+	// que el historial está vacío y ésa es la respuesta correcta.
+	if err != nil || d == nil {
+		SendResult(w, http.StatusOK, domain.APIResponse[[]domain.DocVersion]{Success: true, Data: []domain.DocVersion{}})
+		return
+	}
+	vs, err := h.svc.Versions(d.ID, domain.DocTabKey(key))
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load the history", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.DocVersion]{Success: true, Data: vs})
+}
+
+// Restore devuelve una sección a un estado anterior.
+func (h *docHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	kind, id, orgID, ok := h.resolveOwner(w, r)
+	if !ok {
+		return
+	}
+	d, err := h.svc.Get(kind, id)
+	if err != nil || d == nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	user, _ := currentUser(r)
+	doc, err := h.svc.Restore(orgID, kind, id, d.ID, chi.URLParam(r, "versionId"), user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "That version is not part of this document", "bad-doc-version")
 		return
 	}
 	out := docResponse{Doc: doc, Tabs: []domain.DocTab{}, Attachments: []domain.DocAttachment{}}

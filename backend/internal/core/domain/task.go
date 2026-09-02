@@ -386,6 +386,62 @@ type DocTab struct {
 	UpdatedByName string `gorm:"-" json:"updatedByName,omitempty"`
 }
 
+// DocVersion es una foto de una sección tal como se guardó.
+//
+// Existe por el autoguardado, no a pesar de él: escribir sin un botón de guardar
+// sólo es cómodo si equivocarse tiene vuelta atrás. Sin historial, el
+// autoguardado convierte un borrado accidental en algo irrecuperable, que es
+// peor que el botón que quitó.
+type DocVersion struct {
+	BaseModel
+	DocID string    `gorm:"type:varchar(36);not null;index:idx_docver,priority:1" json:"docId"`
+	Key   DocTabKey `gorm:"type:varchar(20);not null;index:idx_docver,priority:2" json:"key"`
+	// El texto **anterior** al guardado, no el nuevo.
+	//
+	// Una versión sirve para volver, y a lo que se quiere volver es a lo que
+	// había antes de la edición que salió mal. Guardar el estado nuevo obligaría
+	// a leer la fila siguiente para restaurar, y la última no tendría ninguna.
+	Body       string `gorm:"type:text" json:"body"`
+	AuthorID   string `gorm:"type:varchar(36)" json:"authorId"`
+	AuthorName string `gorm:"-"               json:"authorName,omitempty"`
+}
+
+// DocVersionMerge es cuánto se agrupan los guardados de una misma persona.
+//
+// El autoguardado dispara cada pocos segundos: una fila por pulsación deja un
+// historial de trescientas entradas por tarde, que es un historial que no se
+// puede leer y por tanto no sirve para volver a ningún sitio. Dentro de esta
+// ventana se reescribe la última fila en vez de añadir otra, así que lo que
+// queda es «una sesión de escritura, una entrada».
+//
+// Diez minutos porque es la escala a la que un cambio deja de ser «lo que estoy
+// escribiendo» y pasa a ser «lo que escribí antes».
+const DocVersionMerge = 10 * time.Minute
+
+// DocVersionMerges dice si un guardado se funde con la última entrada.
+//
+// La regla, aparte de la consulta que la usa, por la misma razón que
+// `ResolveDocTabs`: las pruebas de repositorio se saltan sin base de datos y en
+// integración continua no hay ninguna. Y ésta decide si el historial se puede
+// leer o no, que es lo único que lo hace útil.
+//
+// Se funde sólo con **la misma persona**: dos autores en la misma ventana son
+// dos cambios distintos, y agruparlos borraría de quién fue cada uno, que es la
+// mitad de para qué sirve el historial.
+func DocVersionMerges(last *DocVersion, userID string, now time.Time) bool {
+	if last == nil || last.AuthorID != userID {
+		return false
+	}
+	return now.Sub(last.CreatedAt) < DocVersionMerge
+}
+
+// DocVersionKeep es cuántas entradas se conservan por sección.
+//
+// Un tope y no un borrado por antigüedad: lo que hace falta es poder volver unos
+// cuantos pasos, y una sección que nadie toca en un año no tiene por qué perder
+// su historia sólo porque el año pasó.
+const DocVersionKeep = 50
+
 // DocAttachment is a file cited from a document.
 //
 // Kept apart from TaskAttachment instead of making that table polymorphic: the
