@@ -382,6 +382,22 @@ export interface DocTab {
   updatedAt: string;
 }
 
+/**
+ * Una foto de una sección tal como se guardó.
+ *
+ * `body` es el texto **anterior** al guardado, no el nuevo: a lo que se quiere
+ * volver es a lo que había antes de la edición que salió mal.
+ */
+export interface DocVersion {
+  id: string;
+  docId: string;
+  key: DocTabKey;
+  body: string;
+  authorId: string;
+  authorName?: string;
+  createdAt: string;
+}
+
 export interface DocResponse {
   /** null until the node's document is written for the first time. */
   doc: Doc | null;

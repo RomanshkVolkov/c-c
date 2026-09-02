@@ -59,5 +59,6 @@
   "voice-camera-no-frames": "The camera delivered no image.",
   "profile-not-saved": "Your profile couldn't be saved.",
   "bad-doc-tab": "That isn't one of the document's sections.",
-  "not-a-colleague": "That person isn't in this organization."
+  "not-a-colleague": "That person isn't in this organization.",
+  "bad-doc-version": "That version isn't part of this document."
 }

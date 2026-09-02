@@ -272,6 +272,42 @@
     "pinEmpty": "Fijar una línea sobre el tablero",
     "pinTitle": "Fijar una línea sobre el tablero",
     "pinLabel": "La línea",
-    "pinWhy": "Lo que hay que saber antes de coger una tarjeta. Vacío para quitarla."
+    "pinWhy": "Lo que hay que saber antes de coger una tarjeta. Vacío para quitarla.",
+    "history": "Historial",
+    "noHistory": "Todavía no hay versiones anteriores",
+    "restore": "Restaurar",
+    "restoreTitle": "¿Restaurar esta versión?",
+    "restored": "Restaurado",
+    "restoreWhy": "Esta sección vuelve a como estaba el {{date}}. Lo que hay ahora queda en el historial, así que esto también se puede deshacer.",
+    "save_guardando": "Guardando…",
+    "save_guardado": "Guardado",
+    "save_error": "Sin guardar",
+    "done": "Listo"
+  },
+  "docTemplates": {
+    "title": "Aquí no hay nada escrito todavía",
+    "why": "Elige una forma de empezar, o escribe desde cero. Sólo se rellena el resumen — las otras tres siguen vacías hasta que alguien tenga algo que poner en ellas.",
+    "blank": "Empezar en blanco",
+    "use": "Usar ésta",
+    "project": {
+      "name": "Proyecto",
+      "hint": "Qué es, cómo está montado, qué necesita para arrancar",
+      "body": "## Qué es esto\n\nUn párrafo: qué hace este proyecto y para quién.\n\n## Cómo está repartido\n\n- `` — \n- `` — \n\n## Variables de entorno\n\nAquí nunca va un valor. Una referencia que no se puede filtrar tampoco caduca.\n\n| Clave | Dónde se define | Quién la tiene | Bóveda |\n| --- | --- | --- | --- |\n|  |  |  |  |\n\n## A quién preguntar\n\n"
+    },
+    "service": {
+      "name": "Servicio",
+      "hint": "Algo que corre: dónde vive, cómo se llega, qué se rompe",
+      "body": "## Qué hace\n\n\n## Dónde corre\n\n| | |\n| --- | --- |\n| Host | |\n| Región | |\n| Registros | |\n\n## Cómo se llega\n\n\n## Qué se rompe normalmente\n\n- \n"
+    },
+    "client": {
+      "name": "Cliente",
+      "hint": "Quiénes son, qué se acordó, quién habla con ellos",
+      "body": "## Quiénes son\n\n\n## Qué se acordó\n\n- Alcance: \n- Fechas: \n- Fuera de alcance: \n\n## Quién habla con ellos\n\n\n## Qué les importa\n\n"
+    },
+    "integration": {
+      "name": "Integración",
+      "hint": "Otro sistema: qué intercambia, credenciales, qué pasa cuando se cae",
+      "body": "## Qué intercambia\n\n\n## Credenciales\n\nSólo referencias — nunca un valor.\n\n| Clave | Dónde se define | Quién la tiene | Bóveda |\n| --- | --- | --- | --- |\n|  |  |  |  |\n\n## Cuando se cae\n\nQué hace la app, y qué debería hacer alguien al respecto.\n\n"
+    }
   }
 }

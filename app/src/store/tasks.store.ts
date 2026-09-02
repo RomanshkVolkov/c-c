@@ -33,6 +33,7 @@ import type {
   Doc,
   DocMark,
   DocTabKey,
+  DocVersion,
   DocAttachment,
   DocOwnerKind,
   DocResponse,
@@ -213,6 +214,10 @@ interface TasksState {
   loadingDoc: boolean;
   fetchDocIndex: () => Promise<void>;
   /** Responsable, revisión y línea fijada. Sin el campo, no se toca. */
+  /** El historial de una sección, lo más reciente primero. */
+  docVersions: (tab: DocTabKey) => Promise<DocVersion[]>;
+  /** Devuelve una sección a un estado anterior. Restaurar también es un guardado. */
+  restoreDoc: (versionId: string) => Promise<void>;
   patchDoc: (fields: {
     maintainerId?: string;
     pinnedLine?: string;
@@ -759,12 +764,42 @@ export const useTasksStore = create<TasksState>()(
       saveDoc: async (body, tab = "overview") => {
         const target = get().activeDoc;
         if (!target) return;
-        await api.put<APIResponse<DocResponse>>(
+        const res = await api.put<APIResponse<DocResponse>>(
           `/api/v1/docs/${target.kind}/${target.id}/tabs/${tab}`,
           { body },
         );
-        await get().openDoc(target.kind, target.id, target.name);
+        // Se adopta la respuesta en vez de volver a pedir el documento.
+        //
+        // Con autoguardado esto ocurre cada par de segundos mientras alguien
+        // escribe: una petición de más cada vez, y un `doc` nuevo que reinicia
+        // el índice lateral y el resto de la pantalla en mitad de una frase.
+        // El PUT ya devuelve el documento entero.
+        if (res.success && res.data && get().activeDoc?.id === target.id) {
+          set({ doc: res.data });
+        }
         await get().fetchDocIndex(); // the node may have just gained (or lost) its mark
+      },
+
+      docVersions: async (tab) => {
+        const target = get().activeDoc;
+        if (!target) return [];
+        const res = await api.get<APIResponse<DocVersion[]>>(
+          `/api/v1/docs/${target.kind}/${target.id}/versions?tab=${tab}`,
+        );
+        return res.success && res.data ? res.data : [];
+      },
+
+      restoreDoc: async (versionId) => {
+        const target = get().activeDoc;
+        if (!target) return;
+        const res = await api.post<APIResponse<DocResponse>>(
+          `/api/v1/docs/${target.kind}/${target.id}/versions/${versionId}/restore`,
+          {},
+        );
+        if (res.success && res.data && get().activeDoc?.id === target.id) {
+          set({ doc: res.data });
+        }
+        await get().fetchDocIndex();
       },
 
       uploadDocAttachment: async (file) => {

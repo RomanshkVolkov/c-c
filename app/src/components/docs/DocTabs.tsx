@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Loader2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
 import DocHeader from "@/components/docs/DocHeader";
+import DocHistory from "@/components/docs/DocHistory";
+import SaveChip from "@/components/docs/SaveChip";
+import TemplatePicker from "@/components/docs/TemplatePicker";
+import { useAutoguardado } from "@/hooks/use-autoguardado";
 import DocToc from "@/components/docs/DocToc";
 import Markdown from "@/components/markdown/Markdown";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
@@ -50,9 +54,34 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const [activa, setActiva] = useState<DocTabKey>("overview");
   const [editando, setEditando] = useState(false);
   const [borrador, setBorrador] = useState("");
-  const [guardando, setGuardando] = useState(false);
+  // Cuando alguien pulsa «empezar en blanco» sobre un nodo sin nada escrito: no
+  // hay documento que enseñar y tampoco hay que volver a ofrecer las plantillas.
+  const [saltarPlantillas, setSaltarPlantillas] = useState(false);
 
   const cuerpo = doc?.tabs?.find((x) => x.key === activa)?.body ?? "";
+  const sinNada = !doc?.tabs?.some((x) => x.body);
+
+  /**
+   * A qué sección pertenece el borrador, que **no** siempre es la activa.
+   *
+   * Al cambiar de pestaña se apaga el editor, y apagarlo fuerza un guardado de
+   * lo que quedaba pendiente. Para entonces `activa` ya es la nueva mientras el
+   * texto sigue siendo el de la vieja: sin esto, cambiar de Resumen a Runbook
+   * escribía el resumen encima del runbook. Se pierde el runbook entero y nadie
+   * lo ve hasta que va a leerlo.
+   *
+   * Esta referencia sólo avanza cuando el borrador adopta un texto nuevo, que es
+   * después de ese guardado — así que el guardado sale con la sección correcta.
+   */
+  const seccionDelBorrador = useRef<DocTabKey>(activa);
+
+  // El guardado va por tiempo, no por botón. Ver `use-autoguardado`: lo delicado
+  // no es el temporizador, es no perder lo que se escribe mientras uno viaja.
+  const { estado, adoptar } = useAutoguardado(
+    borrador,
+    (texto) => saveDoc(texto, seccionDelBorrador.current),
+    editando,
+  );
 
   // Cambiar de nodo o de sección no puede arrastrar un borrador a medias.
   useEffect(() => {
@@ -65,22 +94,14 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   useEffect(() => {
     if (editando) return;
     setBorrador(cuerpo);
-  }, [cuerpo, editando]);
+    seccionDelBorrador.current = activa;
+    // Restaurar una versión o cambiar de sección trae texto que nadie escribió
+    // aquí: sin decírselo al autoguardado, lo tomaría por una edición y lo
+    // volvería a mandar, escribiendo una versión idéntica en el historial.
+    adoptar(cuerpo);
+  }, [cuerpo, editando, adoptar, activa]);
 
   if (!target) return null;
-
-  const guardar = async () => {
-    setGuardando(true);
-    try {
-      await saveDoc(borrador, activa);
-      setEditando(false);
-      toast.success(t("work:docs.saved"));
-    } catch (e) {
-      toast.error(t("work:docs.errSave"), { description: String(e) });
-    } finally {
-      setGuardando(false);
-    }
-  };
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -157,21 +178,14 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
               placeholder={t("work:docs.placeholder")}
               autoFocus
             />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => void guardar()} disabled={guardando}>
-                {guardando && <Loader2 className="mr-1 size-3 animate-spin" />}
-                {t("work:docs.save")}
+            {/* Ya no hay «Guardar» ni «Cancelar»: se guarda solo, así que
+                cancelar no cancelaría nada. Para deshacer está el historial,
+                que es lo que hace soportable escribir sin botón. */}
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setEditando(false)}>
+                {t("work:docs.done")}
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setBorrador(cuerpo);
-                  setEditando(false);
-                }}
-              >
-                {t("work:docs.cancel")}
-              </Button>
+              <SaveChip estado={estado} />
             </div>
           </div>
         ) : (
@@ -183,6 +197,11 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                 <div className="prose-doc">
                   <Markdown allowHtml>{cuerpo}</Markdown>
                 </div>
+              ) : sinNada && !saltarPlantillas ? (
+                // Las plantillas sólo cuando el documento entero está vacío. En
+                // una pestaña suelta de un documento que ya existe estorban:
+                // ahí lo que falta es un runbook, no un proyecto.
+                <TemplatePicker onWritten={() => setSaltarPlantillas(true)} />
               ) : (
                 <div className="py-12 text-center">
                   <p className="text-sm text-muted-foreground">{t("work:docs.emptyTab")}</p>
@@ -207,6 +226,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
             <Pencil className="mr-1 size-3" /> {t("work:docs.edit")}
           </Button>
+          <DocHistory tab={activa} />
           {doc?.attachments && doc.attachments.length > 0 && (
             <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
               {doc.attachments.map((a) => (

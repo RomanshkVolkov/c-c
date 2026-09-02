@@ -272,6 +272,42 @@
     "pinEmpty": "Pin a line above the board",
     "pinTitle": "Pin a line above the board",
     "pinLabel": "The line",
-    "pinWhy": "What somebody needs to know before picking up a card. Leave it empty to remove it."
+    "pinWhy": "What somebody needs to know before picking up a card. Leave it empty to remove it.",
+    "history": "History",
+    "noHistory": "No earlier versions yet",
+    "restore": "Restore",
+    "restoreTitle": "Restore this version?",
+    "restored": "Restored",
+    "restoreWhy": "This section goes back to how it was on {{date}}. What's there now is kept in the history, so this can be undone too.",
+    "save_guardando": "Saving…",
+    "save_guardado": "Saved",
+    "save_error": "Not saved",
+    "done": "Done"
+  },
+  "docTemplates": {
+    "title": "Nothing written here yet",
+    "why": "Pick a shape to start from, or write from scratch. Only the overview gets filled — the other three stay empty until somebody has something to put in them.",
+    "blank": "Start blank",
+    "use": "Use this",
+    "project": {
+      "name": "Project",
+      "hint": "What this is, how it's built, what it needs to run",
+      "body": "## What this is\n\nOne paragraph: what this project does and who it's for.\n\n## How it's laid out\n\n- `` — \n- `` — \n\n## Environment variables\n\nNever put values here. A reference that can't leak doesn't expire either.\n\n| Key | Where it's set | Who has it | Vault |\n| --- | --- | --- | --- |\n|  |  |  |  |\n\n## Who to ask\n\n"
+    },
+    "service": {
+      "name": "Service",
+      "hint": "A running thing: where it lives, how to reach it, what breaks",
+      "body": "## What it does\n\n\n## Where it runs\n\n| | |\n| --- | --- |\n| Host | |\n| Region | |\n| Logs | |\n\n## How to reach it\n\n\n## What usually breaks\n\n- \n"
+    },
+    "client": {
+      "name": "Client",
+      "hint": "Who they are, what was agreed, who talks to them",
+      "body": "## Who they are\n\n\n## What was agreed\n\n- Scope: \n- Deadlines: \n- Out of scope: \n\n## Who talks to them\n\n\n## What they care about\n\n"
+    },
+    "integration": {
+      "name": "Integration",
+      "hint": "Another system: what it exchanges, credentials, what happens when it's down",
+      "body": "## What it exchanges\n\n\n## Credentials\n\nReferences only — never a value.\n\n| Key | Where it's set | Who has it | Vault |\n| --- | --- | --- | --- |\n|  |  |  |  |\n\n## When it's down\n\nWhat the app does, and what somebody should do about it.\n\n"
+    }
   }
 }
