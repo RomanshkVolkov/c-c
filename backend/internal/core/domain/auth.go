@@ -201,6 +201,22 @@ type CreateUserRequest struct {
 
 // UpdateUserRequest patches a user. Nil fields are left unchanged; an empty
 // password string means "don't rotate".
+// UpdateProfileRequest es lo que alguien puede cambiar **de sí mismo**.
+//
+// Tipo aparte de `UpdateUserRequest` a propósito, y no una comprobación dentro
+// del handler: aquél lleva `Password` e `IsSuperadmin`, y reutilizarlo dejaría
+// a un endpoint sin privilegios recibiendo campos que no debe aceptar. Que no
+// existan en la estructura es una garantía; que un `if` los ignore es una
+// costumbre que alguien romperá al añadir el campo siguiente.
+//
+// La contraseña tiene su propio camino —`/auth/change-password`, que pide la
+// actual— y el rol sólo lo cambia un superadmin.
+type UpdateProfileRequest struct {
+	Name *string `json:"name"  validate:"omitempty,max=120"`
+	// Vacío es «bórralo», igual que en el de administración. Ver `nuevoValidador`.
+	Email *string `json:"email" validate:"omitempty,emailorblank,max=255"`
+}
+
 type UpdateUserRequest struct {
 	Password string `json:"password"     validate:"omitempty,min=8"`
 	// Vacío no es «no lo mandes»: es «bórralo». Ver `nuevoValidador`.

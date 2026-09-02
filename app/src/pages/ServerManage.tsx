@@ -133,15 +133,26 @@ function LogsPanel({
   }, [logs]);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+    // `shrink-0`: el panel tiene su alto y no lo negocia. Quien cede es la
+    // tabla de arriba, que puede desplazarse dentro de lo suyo.
+    <Card className="flex shrink-0 flex-col">
+      <CardHeader className="flex shrink-0 flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Terminal className="h-4 w-4" />
-          Logs — {service.name}
+          {t("common:servers.logsOf", { name: service.name })}
         </CardTitle>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
+        <span className="flex items-center gap-1">
+          {/* Limpiar la vista, que no existía: un servicio hablador llena las
+              quinientas líneas en un minuto y no había forma de dejarlo en
+              blanco para ver qué pasa **a partir de ahora**. No corta el flujo
+              —sigue conectado— sólo vacía lo que hay en pantalla. */}
+          <Button variant="ghost" size="sm" onClick={() => setLogs([])} disabled={logs.length === 0}>
+            {t("common:servers.clearLogs")}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </span>
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
@@ -158,7 +169,13 @@ function LogsPanel({
             a long row has to scroll here rather than widen the page. And
             whitespace-pre so those columns stay lined up — wrapping turns a
             readable table into rubble. */}
-        <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 h-100 overflow-auto whitespace-pre font-mono text-sm text-green-400">
+        {/* Alto máximo, no fijo.
+            
+            Con `h-100` el panel reservaba veinticinco rem hubiera o no logs, y
+            entre eso y la tabla de arriba no cabían los dos: `main` recorta lo
+            que sobra y lo que sobraba era este panel. Con `max-h` se queda
+            pequeño mientras hay poco y deja de robar sitio. */}
+        <div className="bg-linear-to-r from-zinc-700 to-zinc-900 rounded-md p-3 max-h-100 min-h-32 overflow-auto whitespace-pre font-mono text-sm text-green-400">
           {logs.length === 0 ? (
             <span className="text-muted-foreground">{t("common:servers.waitingForLogs")}</span>
           ) : (
@@ -296,7 +313,7 @@ function ServicesTable({
           <TableHead className="w-96 shrink-0 text-right">{t("common:servers.thActions")}</TableHead>
         </TableRow>
       </TableHeader>
-      <TableBody className="block max-h-105 overflow-y-auto">
+      <TableBody className="block">
         {services.map((svc) => (
           <TableRow key={svc.id} className="flex w-full">
             <TableCell className="flex-2 min-w-0 font-medium truncate">
@@ -578,8 +595,13 @@ function SwarmManage({ server }: { server: Server }) {
           </div>
         )}
 
-        <Card>
-          <CardHeader className="pb-0">
+        {/* `min-h-0 flex-1`: la tarjeta cede sitio cuando se abre el panel de
+            logs, en vez de empujarlo fuera. `main` es `overflow-hidden`, así que
+            lo que no cabe **se recorta** — y lo que se recortaba era la cabecera
+            del panel de abajo, con su botón de cerrar dentro. De ahí que no se
+            pudiera cerrar. */}
+        <Card className="flex min-h-0 flex-1 flex-col">
+          <CardHeader className="shrink-0 pb-0">
             <div className="flex border-b -mx-6 px-6">
               <button
                 className={tabClass("services")}
@@ -595,7 +617,7 @@ function SwarmManage({ server }: { server: Server }) {
               </button>
             </div>
           </CardHeader>
-          <CardContent className="pt-4">
+          <CardContent className="min-h-0 flex-1 overflow-auto pt-4">
             {loading ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 {t("common:servers.loading")}

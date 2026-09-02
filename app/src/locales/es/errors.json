@@ -56,5 +56,6 @@
   "voice-screen-thread-died": "Falló la captura de pantalla. Mira el diario del motor en el laboratorio de voz.",
   "voice-screen-timeout": "La captura de pantalla no respondió.",
   "voice-camera-thread-died": "Falló la cámara. Mira el diario del motor en el laboratorio de voz.",
-  "voice-camera-no-frames": "La cámara no entregó ninguna imagen."
+  "voice-camera-no-frames": "La cámara no entregó ninguna imagen.",
+  "profile-not-saved": "No se pudo guardar tu perfil."
 }

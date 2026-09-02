@@ -91,6 +91,24 @@ func (s *AuthService) SetLocale(userID, locale string) error {
 	return s.repo.UpdateUser(userID, map[string]any{"locale": guardado})
 }
 
+// UpdateProfile cambia lo que alguien puede cambiar de sí mismo.
+//
+// Sin `nil` no se toca nada, que es lo que permite mandar sólo el campo que se
+// editó. Y no comparte camino con `UpdateUser`: aquél acepta rol y contraseña.
+func (s *AuthService) UpdateProfile(userID string, req domain.UpdateProfileRequest) error {
+	fields := map[string]any{}
+	if req.Name != nil {
+		fields["name"] = *req.Name
+	}
+	if req.Email != nil {
+		fields["email"] = *req.Email
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return s.repo.UpdateUser(userID, fields)
+}
+
 // ChangePassword verifies the caller's current password and sets a new one,
 // clearing the must-change flag. Used both for the forced first-login change
 // and voluntary changes.

@@ -16,6 +16,7 @@ type AuthHandler interface {
 	RefreshToken(w http.ResponseWriter, r *http.Request)
 	Me(w http.ResponseWriter, r *http.Request)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
+	UpdateMe(w http.ResponseWriter, r *http.Request)
 	SetLocale(w http.ResponseWriter, r *http.Request)
 }
 
@@ -158,6 +159,29 @@ func (h *authHandler) SetLocale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Language saved"})
+}
+
+// UpdateMe: tus propios datos, y sólo los tuyos.
+//
+// El id sale del token y **no** de la ruta: con `/users/{id}` habría que
+// comprobar que el id es el tuyo, y esa comprobación se puede olvidar. Aquí no
+// hay nada que olvidar porque no hay id que mandar.
+func (h *authHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value(repository.UserContextKey).(*domain.ClaimsJWT)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-token")
+		return
+	}
+	req, err := ValidateRequest[domain.UpdateProfileRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	if err := h.authService.UpdateProfile(claims.UserID, req); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Could not save your profile", "profile-not-saved")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Profile updated"})
 }
 
 func (h *authHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {

@@ -284,7 +284,10 @@
     "close": "Close",
     "editedBy": "edited by {{name}}",
     "noOverview": "No overview yet. Describe what lives here — links, decisions, how to run it.",
-    "files": "Files"
+    "files": "Files",
+    "logsOf": "Logs — {{name}}",
+    "clearLogs": "Clear",
+    "logsCleared": "Log view cleared"
   },
   "admin": {
     "users": "Users",

@@ -28,5 +28,21 @@
     "languageAuto": "Auto",
     "changePassword": "Change password",
     "logOut": "Log out"
+  },
+  "profile": {
+    "title": "Profile",
+    "lead": "How you appear to the rest of the team.",
+    "name": "Name",
+    "namePlaceholder": "Jane Doe",
+    "nameHelp": "What people see instead of your username, in channels, mentions and members lists. Leave it empty and your username is used.",
+    "email": "Email",
+    "emailHelp": "Only to tell two accounts apart on a shared machine. cac sends no mail.",
+    "username": "Username",
+    "usernameHelp": "Your identifier: it's what you type after an @, and it can't be changed here.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Profile saved",
+    "errSave": "Could not save your profile",
+    "changePassword": "Change password"
   }
 }

@@ -4,6 +4,7 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  UserRound,
   ChevronsUpDown, KeyRound, Bot, Bell, LogOut, Moon, CheckCircle2, Download, Loader2,
   Languages,
 } from "lucide-react";
@@ -190,6 +191,17 @@ export default function AccountMenu({
             })),
           )}
 
+          {/* Encima de «cambiar la contraseña» porque es lo que se busca más:
+              la contraseña se toca una vez, el nombre se pone al entrar. */}
+          <button
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              navigate("/profile");
+            }}
+          >
+            <UserRound className="size-3.5 shrink-0" /> {t("nav:profile.title")}
+          </button>
           <button className={item} onClick={() => { setOpen(false); onChangePassword(); }}>
             <KeyRound className="size-3.5 shrink-0" /> {t("nav:account.changePassword")}
           </button>

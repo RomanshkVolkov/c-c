@@ -11,6 +11,7 @@ import ImageTool from "@/pages/ImageTool";
 import RequestClient from "@/pages/RequestClient";
 import CryptoTools from "@/pages/CryptoTools";
 import VoiceLab from "@/pages/VoiceLab";
+import Profile from "@/pages/Profile";
 import Users from "@/pages/Users";
 import OrganizationSettings from "@/pages/OrganizationSettings";
 import Invitations from "@/pages/Invitations";
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="/organization" element={<OrganizationSettings />} />
           <Route path="/invitations" element={<Invitations />} />
           <Route path="/diagnostics" element={<Diagnostics />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/users" element={<Users />} />
         </Route>
         {/* On-device tools — reachable as a guest (no backend/sign-in).

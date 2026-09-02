@@ -284,7 +284,10 @@
     "close": "Cerrar",
     "editedBy": "editado por {{name}}",
     "noOverview": "Todavía no hay resumen. Describe qué vive aquí — enlaces, decisiones, cómo se levanta.",
-    "files": "Ficheros"
+    "files": "Ficheros",
+    "logsOf": "Logs — {{name}}",
+    "clearLogs": "Limpiar",
+    "logsCleared": "Vista de logs limpiada"
   },
   "admin": {
     "users": "Usuarios",

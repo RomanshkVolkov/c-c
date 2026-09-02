@@ -28,5 +28,21 @@
     "languageAuto": "Auto",
     "changePassword": "Cambiar contraseña",
     "logOut": "Salir"
+  },
+  "profile": {
+    "title": "Perfil",
+    "lead": "Cómo te ve el resto del equipo.",
+    "name": "Nombre",
+    "namePlaceholder": "Ana García",
+    "nameHelp": "Lo que la gente ve en vez de tu usuario, en los canales, las menciones y las listas de miembros. Si lo dejas vacío se usa tu usuario.",
+    "email": "Correo",
+    "emailHelp": "Sólo para distinguir dos cuentas en una máquina compartida. cac no manda correo.",
+    "username": "Usuario",
+    "usernameHelp": "Tu identificador: es lo que se escribe tras una arroba, y no se cambia desde aquí.",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Perfil guardado",
+    "errSave": "No se pudo guardar tu perfil",
+    "changePassword": "Cambiar la contraseña"
   }
 }

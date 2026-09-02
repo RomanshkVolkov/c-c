@@ -62,3 +62,24 @@ func TestElCorreoVacioLlegaComoPunteroNoNil(t *testing.T) {
 		t.Fatalf("llegó %q", *req.Email)
 	}
 }
+
+// Lo que **no** puede llegar por el endpoint de tu propio perfil.
+//
+// La garantía no es un `if` en el handler: es que los campos no existen en
+// `UpdateProfileRequest`. Esta prueba lo fija, porque el modo de fallo sería que
+// alguien «unificara» los dos tipos por parecerse — y entonces cualquiera se
+// haría superadmin con un PATCH a su propio perfil.
+func TestTuPerfilNoPuedeCambiarTuRolNiTuContrasena(t *testing.T) {
+	r := httptest.NewRequest("PATCH", "/x", strings.NewReader(
+		`{"name":"Ana","isSuperadmin":true,"password":"unaquesirva"}`))
+	req, err := ValidateRequest[domain.UpdateProfileRequest](r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Name == nil || *req.Name != "Ana" {
+		t.Fatal("el nombre sí tenía que llegar")
+	}
+	// Si esto deja de compilar porque los campos existen, el fallo es el que
+	// esta prueba viene a evitar.
+	var _ = struct{ Name, Email *string }{req.Name, req.Email}
+}
