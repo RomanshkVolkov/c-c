@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -21,6 +22,7 @@ type DocHandler interface {
 	Save(w http.ResponseWriter, r *http.Request)
 	SaveTab(w http.ResponseWriter, r *http.Request)
 	Index(w http.ResponseWriter, r *http.Request)
+	Patch(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
 	RawAttachment(w http.ResponseWriter, r *http.Request)
@@ -146,6 +148,34 @@ func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
 }
 
+// Patch cambia lo que rodea al documento: responsable, revisión y línea fijada.
+//
+// Aparte del guardado del texto a propósito. Marcar revisado es un gesto de un
+// clic sobre algo que no se ha tocado, y meterlo en la misma llamada que el
+// cuerpo obligaría a mandar el markdown entero para decir «sigue siendo verdad».
+func (h *docHandler) Patch(w http.ResponseWriter, r *http.Request) {
+	kind, id, orgID, ok := h.resolveOwner(w, r)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.PatchDocRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	d, err := h.svc.Patch(orgID, kind, id, user.UserID, req)
+	if errors.Is(err, service.ErrNotAColleague) {
+		SendErrorResponse(w, http.StatusBadRequest, "That person is not in this organization", "not-a-colleague")
+		return
+	}
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the document", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.Doc]{Success: true, Data: d})
+}
+
 func (h *docHandler) Save(w http.ResponseWriter, r *http.Request) {
 	kind, id, orgID, ok := h.resolveOwner(w, r)
 	if !ok {
@@ -179,7 +209,7 @@ func (h *docHandler) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, member := user.RoleInOrg(orgID); !member && !user.Superadmin {
-		SendResult(w, http.StatusOK, domain.APIResponse[map[string]bool]{Success: true, Data: map[string]bool{}})
+		SendResult(w, http.StatusOK, domain.APIResponse[map[string]domain.DocMark]{Success: true, Data: map[string]domain.DocMark{}})
 		return
 	}
 	have, err := h.svc.HasDoc(orgID)
@@ -187,7 +217,7 @@ func (h *docHandler) Index(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list documents", err.Error())
 		return
 	}
-	SendResult(w, http.StatusOK, domain.APIResponse[map[string]bool]{Success: true, Data: have})
+	SendResult(w, http.StatusOK, domain.APIResponse[map[string]domain.DocMark]{Success: true, Data: have})
 }
 
 func (h *docHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {

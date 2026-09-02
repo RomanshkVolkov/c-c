@@ -1,12 +1,17 @@
 package service
 
 import (
+	"errors"
 	"strings"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
+
+// ErrNotAColleague: el responsable propuesto no está en la organización.
+var ErrNotAColleague = errors.New("that person is not in this organization")
 
 type DocService struct {
 	repo *repository.DocRepository
@@ -75,6 +80,7 @@ func (s *DocService) SaveTab(
 	if antes != body {
 		s.dropRemovedAttachments(doc.ID, antes, s.allTabsText(doc.ID))
 	}
+	s.stampAuthor(doc)
 	return doc, nil
 }
 
@@ -93,7 +99,9 @@ func (s *DocService) allTabsText(docID string) string {
 	return todo
 }
 
-func (s *DocService) HasDoc(orgID string) (map[string]bool, error) { return s.repo.HasDoc(orgID) }
+func (s *DocService) HasDoc(orgID string) (map[string]domain.DocMark, error) {
+	return s.repo.HasDoc(orgID)
+}
 
 func (s *DocService) FindByID(id string) (*domain.Doc, error) { return s.repo.FindByID(id) }
 
@@ -140,8 +148,58 @@ func (s *DocService) dropRemovedAttachments(docID, before, after string) {
 	}
 }
 
-// stampAuthor fills the display name for "last edited by", which the row only
-// stores as an id.
+// stampAuthor fills the display names the row only stores as ids, and resuelve
+// la frescura, que depende de qué día es hoy y por eso no está guardada.
 func (s *DocService) stampAuthor(d *domain.Doc) {
+	if d == nil {
+		return
+	}
 	d.UpdatedByName = s.repo.AuthorName(d.UpdatedBy)
+	if d.MaintainerID != "" {
+		d.MaintainerName = s.repo.AuthorName(d.MaintainerID)
+	}
+	if d.ReviewedBy != "" {
+		d.ReviewedByName = s.repo.AuthorName(d.ReviewedBy)
+	}
+	d.Stale = domain.DocIsStale(d.ReviewedAt, d.UpdatedAt, time.Now())
+}
+
+// Patch cambia responsable, revisión y línea fijada.
+//
+// El responsable se comprueba contra la organización: apuntar a alguien de fuera
+// deja un documento cuyo dueño nadie puede ver y que por tanto nadie va a
+// revisar nunca. Vaciarlo sí se permite —«esto no tiene dueño» es un estado
+// real, y el índice lo pinta en rojo justamente para que se note.
+func (s *DocService) Patch(
+	orgID string, kind domain.DocOwnerKind, ownerID, userID string, req domain.PatchDocRequest,
+) (*domain.Doc, error) {
+	fields := map[string]any{}
+	if req.MaintainerID != nil {
+		quien := strings.TrimSpace(*req.MaintainerID)
+		if quien != "" && !s.repo.IsMember(orgID, quien) {
+			return nil, ErrNotAColleague
+		}
+		fields["maintainer_id"] = quien
+	}
+	if req.PinnedLine != nil {
+		fields["pinned_line"] = strings.TrimSpace(*req.PinnedLine)
+	}
+	if req.Reviewed != nil {
+		if *req.Reviewed {
+			ahora := time.Now()
+			fields["reviewed_at"] = ahora
+			// Quién lo confirmó, y no quién lo pidió: la firma es la mitad del
+			// dato. «Revisado» sin nombre no se le puede preguntar a nadie.
+			fields["reviewed_by"] = userID
+		} else {
+			fields["reviewed_at"] = nil
+			fields["reviewed_by"] = ""
+		}
+	}
+	d, err := s.repo.Patch(orgID, kind, ownerID, fields)
+	if err != nil {
+		return nil, err
+	}
+	s.stampAuthor(d)
+	return d, nil
 }

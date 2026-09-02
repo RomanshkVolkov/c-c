@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // Las cuatro secciones, siempre y en orden.
 //
@@ -74,4 +77,57 @@ func TestSoloValenLasCuatroClaves(t *testing.T) {
 			t.Errorf("%q no debería valer", k)
 		}
 	}
+}
+
+// La frescura de un documento.
+//
+// Es la regla que decide si sale el aviso ámbar, y sale de una resta: si la
+// resta se hiciera desde el campo equivocado, el aviso saltaría en el momento
+// equivocado — que es la única forma de que un aviso deje de servir.
+func TestDocIsStale(t *testing.T) {
+	ahora := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	hace := func(d time.Duration) *time.Time { x := ahora.Add(-d); return &x }
+
+	t.Run("revisado ayer no está viejo", func(t *testing.T) {
+		if DocIsStale(hace(24*time.Hour), ahora.Add(-400*24*time.Hour), ahora) {
+			t.Fatal("una revisión de ayer manda sobre un texto de hace un año")
+		}
+	})
+
+	// El caso que hace útil el campo: se corrige una errata y el documento
+	// parece fresco sin que nadie haya comprobado que los pasos funcionan.
+	t.Run("editado ayer pero sin revisar desde hace un año sí está viejo", func(t *testing.T) {
+		if !DocIsStale(hace(400*24*time.Hour), ahora.Add(-24*time.Hour), ahora) {
+			t.Fatal("editar no es revisar")
+		}
+	})
+
+	t.Run("escrito ayer y nunca revisado no está viejo", func(t *testing.T) {
+		if DocIsStale(nil, ahora.Add(-24*time.Hour), ahora) {
+			t.Fatal("teñir de ámbar algo escrito ayer enseña a ignorar el color")
+		}
+	})
+
+	t.Run("escrito hace un año y nunca revisado sí está viejo", func(t *testing.T) {
+		if !DocIsStale(nil, ahora.Add(-400*24*time.Hour), ahora) {
+			t.Fatal("sin revisión se cuenta desde que se escribió")
+		}
+	})
+
+	// Un documento que todavía no se ha guardado nunca llega con la fecha cero.
+	// Sin esta rama, la resta contra el año 1 lo declararía viejo de nacimiento.
+	t.Run("sin ninguna fecha no está viejo", func(t *testing.T) {
+		if DocIsStale(nil, time.Time{}, ahora) {
+			t.Fatal("un documento vacío no es un documento sin revisar")
+		}
+	})
+
+	t.Run("justo en el umbral ya está viejo", func(t *testing.T) {
+		if !DocIsStale(hace(DocStaleAfter), ahora.Add(-time.Hour), ahora) {
+			t.Fatal("noventa días clavados cuentan")
+		}
+		if DocIsStale(hace(DocStaleAfter-time.Minute), ahora.Add(-time.Hour), ahora) {
+			t.Fatal("un minuto antes, todavía no")
+		}
+	})
 }

@@ -195,6 +195,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		// usando, y escribe en la pestaña que le corresponde.
 		r.Put("/{kind}/{ownerId}", docH.Save)
 		r.Put("/{kind}/{ownerId}/tabs/{tab}", docH.SaveTab)
+		r.Patch("/{kind}/{ownerId}", docH.Patch)
 		r.Post("/{id}/attachments", docH.UploadAttachment)
 		r.Delete("/{id}/attachments/{attachmentId}", docH.DeleteAttachment)
 	})

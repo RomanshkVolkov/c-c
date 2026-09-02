@@ -241,6 +241,77 @@ type Doc struct {
 	Body          string `gorm:"type:text" json:"body"`
 	UpdatedBy     string `gorm:"type:varchar(36)" json:"updatedBy"`
 	UpdatedByName string `gorm:"-" json:"updatedByName,omitempty"`
+
+	// Quién responde de este documento.
+	//
+	// El nombre es desafortunado y es a propósito: `OwnerKind`/`OwnerID` de
+	// arriba son el **nodo** del que cuelga el documento, no una persona.
+	// Renombrar aquéllos es una migración que este cambio no necesita, así que
+	// la persona se llama `Maintainer` en el modelo y «Owner» en la pantalla,
+	// que es como la llama quien la usa.
+	MaintainerID   string `gorm:"type:varchar(36);index" json:"maintainerId,omitempty"`
+	MaintainerName string `gorm:"-"                      json:"maintainerName,omitempty"`
+
+	// Cuándo alguien confirmó por última vez que esto sigue siendo verdad.
+	//
+	// Distinto de `UpdatedAt`: editar no es revisar. Se puede corregir una errata
+	// sin comprobar que los pasos siguen funcionando, y es justo la diferencia
+	// que hace útil el aviso.
+	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
+	ReviewedBy     string     `gorm:"type:varchar(36)" json:"reviewedBy,omitempty"`
+	ReviewedByName string     `gorm:"-"                json:"reviewedByName,omitempty"`
+
+	// Una línea sobre el tablero: lo que hay que saber antes de coger una tarjeta.
+	//
+	// Corta a la fuerza. Si cupiera un párrafo se llenaría de párrafos, y un
+	// banner que se lee se convierte en un banner que se ignora.
+	PinnedLine string `gorm:"type:varchar(280)" json:"pinnedLine,omitempty"`
+
+	// Calculado, no guardado: depende de qué día es hoy. Guardarlo obligaría a
+	// una tarea que recorriera la tabla cada noche para poner al día algo que se
+	// deduce de una resta.
+	Stale bool `gorm:"-" json:"stale"`
+}
+
+// DocMark es lo que el navegador necesita saber de un documento sin cargarlo.
+//
+// Era un booleano —«tiene documentación o no»— y se quedó corto en cuanto la
+// línea fijada tuvo que aparecer sobre el tablero: el tablero no carga el
+// documento, y hacerle una petición más por cada lista para leer una línea de
+// texto es un coste que no hace falta pagar. Se resuelve en la consulta que ya
+// recorre todos los documentos de la organización.
+//
+// Sigue siendo *verdadero* en JSON para un cliente antiguo, que sólo mira si la
+// clave está: un objeto también es verdadero.
+type DocMark struct {
+	Written    bool   `json:"written"`
+	PinnedLine string `json:"pinnedLine,omitempty"`
+	Stale      bool   `json:"stale,omitempty"`
+}
+
+// DocStaleAfter es cuánto aguanta un documento sin que nadie lo confirme.
+//
+// Noventa días porque es el orden de magnitud en que un runbook deja de ser
+// verdad sin que nadie lo note: un cambio de host, una variable nueva, un paso
+// que ya no hace falta. Menos, y el aviso salta tan a menudo que se aprende a
+// no verlo.
+const DocStaleAfter = 90 * 24 * time.Hour
+
+// DocIsStale dice si hace falta que alguien vuelva a mirarlo.
+//
+// Un documento que **nunca** se revisó no está viejo por eso: acaba de
+// escribirse. Teñir de ámbar algo escrito ayer enseña a ignorar el color, que es
+// exactamente lo que no puede pasar. Sin revisión se cuenta desde que se
+// escribió, que es cuando se supo por última vez que era verdad.
+func DocIsStale(reviewedAt *time.Time, writtenAt, now time.Time) bool {
+	desde := writtenAt
+	if reviewedAt != nil {
+		desde = *reviewedAt
+	}
+	if desde.IsZero() {
+		return false
+	}
+	return now.Sub(desde) >= DocStaleAfter
 }
 
 // DocTabKey nombra cada una de las cuatro secciones de un documento.
@@ -345,6 +416,21 @@ func (a *DocAttachment) NormalizeURL() {
 
 type SaveDocRequest struct {
 	Body string `json:"body"`
+}
+
+// PatchDocRequest cambia lo que rodea al documento, no su texto.
+//
+// Todo puntero: sin el campo no se toca nada, que es lo que permite mandar sólo
+// lo que se editó. Un `""` explícito sí borra — quitar el responsable o la línea
+// fijada tiene que ser posible.
+//
+// `Reviewed` es un booleano y no una fecha a propósito. «Marcar revisado» es la
+// acción; dejar que el cliente ponga la fecha que quiera le deja mentir sobre la
+// frescura, y que el dato sea cierto es todo el valor que tiene el chip.
+type PatchDocRequest struct {
+	MaintainerID *string `json:"maintainerId" validate:"omitempty,max=36"`
+	PinnedLine   *string `json:"pinnedLine"   validate:"omitempty,max=280"`
+	Reviewed     *bool   `json:"reviewed"`
 }
 
 // ─── Requests ─────────────────────────────────────────────────────────────────

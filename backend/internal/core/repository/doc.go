@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -151,15 +152,47 @@ func (r *DocRepository) SaveTab(
 
 // HasDoc reports which of the given nodes carry a non-empty document, so the
 // navigator can mark them without shipping every body.
-func (r *DocRepository) HasDoc(orgID string) (map[string]bool, error) {
+func (r *DocRepository) HasDoc(orgID string) (map[string]domain.DocMark, error) {
 	var rows []domain.Doc
-	if err := r.db.Select("owner_kind", "owner_id", "body").
-		Where("org_id = ? AND body <> ''", orgID).Find(&rows).Error; err != nil {
+	if err := r.db.Select("id", "owner_kind", "owner_id", "body", "pinned_line", "maintainer_id", "reviewed_at", "updated_at").
+		Where("org_id = ?", orgID).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make(map[string]bool, len(rows))
+	// «Tiene documentación» dejó de poder leerse de `body`.
+	//
+	// Desde que el texto vive en pestañas, un documento nuevo tiene el `body`
+	// vacío y sólo la pestaña escrita: preguntar por `body` marcaba los viejos y
+	// se saltaba todos los que se escriban a partir de ahora. Una consulta más,
+	// agrupada, en vez de una por documento.
+	conTexto := map[string]bool{}
+	type fila struct {
+		DocID string
+		N     int64
+	}
+	var cuantas []fila
+	r.db.Model(&domain.DocTab{}).
+		Select("doc_id, count(*) as n").
+		Where("doc_id IN (?) AND body <> ''", r.db.Model(&domain.Doc{}).Select("id").Where("org_id = ?", orgID)).
+		Group("doc_id").Scan(&cuantas)
+	for _, c := range cuantas {
+		conTexto[c.DocID] = c.N > 0
+	}
+
+	ahora := time.Now()
+	out := make(map[string]domain.DocMark, len(rows))
 	for _, d := range rows {
-		out[string(d.OwnerKind)+":"+d.OwnerID] = true
+		tiene := conTexto[d.ID] || d.Body != ""
+		// Un documento sin una palabra escrita pero con responsable o con línea
+		// fijada sigue siendo un documento: alguien lo reclamó. Esconderlo del
+		// navegador sería esconder justo el estado que hay que arreglar.
+		if !tiene && d.MaintainerID == "" && d.PinnedLine == "" {
+			continue
+		}
+		out[string(d.OwnerKind)+":"+d.OwnerID] = domain.DocMark{
+			Written:    tiene,
+			PinnedLine: d.PinnedLine,
+			Stale:      domain.DocIsStale(d.ReviewedAt, d.UpdatedAt, ahora),
+		}
 	}
 	return out, nil
 }
@@ -195,4 +228,49 @@ func (r *DocRepository) FindAttachment(id string) (*domain.DocAttachment, error)
 
 func (r *DocRepository) DeleteAttachment(id string) error {
 	return r.db.Delete(&domain.DocAttachment{}, "id = ?", id).Error
+}
+
+// Patch cambia los metadatos de un documento, creándolo si aún no había.
+//
+// Crear aquí por la misma razón que `SaveTab`: poner responsable a una lista que
+// todavía no tiene documentación es una forma normal de empezar una —«esto es
+// mío, ya lo escribiré»— y exigir que exista primero sólo traslada el problema
+// a quien llame.
+func (r *DocRepository) Patch(
+	orgID string, kind domain.DocOwnerKind, ownerID string, fields map[string]any,
+) (*domain.Doc, error) {
+	doc, err := r.Find(kind, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		doc = &domain.Doc{OrgID: orgID, OwnerKind: kind, OwnerID: ownerID}
+		doc.ID = uuid.NewString()
+		if err := r.db.Create(doc).Error; err != nil {
+			return nil, err
+		}
+	}
+	if len(fields) > 0 {
+		// Mapa y no struct: quitar el responsable o vaciar la línea fijada son
+		// valores cero, y con struct GORM los ignoraría — borrar dejaría de
+		// funcionar sin que nada se queje.
+		if err := r.db.Model(&domain.Doc{}).Where("id = ?", doc.ID).
+			Updates(fields).Error; err != nil {
+			return nil, err
+		}
+	}
+	return r.FindByID(doc.ID)
+}
+
+// IsMember dice si alguien pertenece a una organización.
+//
+// Aquí y no llamando al repositorio de organizaciones para no atar los dos: lo
+// único que hace falta es esta pregunta, y es una fila.
+func (r *DocRepository) IsMember(orgID, userID string) bool {
+	var n int64
+	if err := r.db.Model(&domain.OrgMembership{}).
+		Where("org_id = ? AND user_id = ?", orgID, userID).Count(&n).Error; err != nil {
+		return false
+	}
+	return n > 0
 }
