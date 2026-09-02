@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
 import DocTabs from "@/components/docs/DocTabs";
 import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
+import PinnedLine from "@/components/docs/PinnedLine";
 import CopyId from "@/components/CopyId";
 import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -286,6 +287,8 @@ function Board({
           <RefreshCw className={cn("size-3", loading && "animate-spin")} />
         </Button>
       </header>
+
+      <PinnedLine listId={board.list.id} />
 
       <div className="min-h-0 flex-1">
         {view === "board" ? (

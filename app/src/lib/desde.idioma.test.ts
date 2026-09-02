@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import i18next from "i18next";
 
 import { desde, faltan } from "@/lib/desde";
@@ -16,7 +16,14 @@ import { desde, faltan } from "@/lib/desde";
  */
 
 const haceMin = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
-const enHoras = (n: number) => new Date(Date.now() + n * 3_600_000).toISOString();
+// El reloj congelado, y no `Date.now()` dos veces.
+//
+// `faltan` vuelve a leer la hora para restar, así que entre construir la fecha y
+// medirla pasa una fracción de milisegundo: cinco horas se redondean hacia abajo
+// a cuatro cuando las dos lecturas caen a los lados de un milisegundo. El fallo
+// era del test, no del cálculo, y aparecía una vez de cada tantas.
+const AHORA = new Date("2026-09-02T12:00:00.000Z");
+const enHoras = (n: number) => new Date(AHORA.getTime() + n * 3_600_000).toISOString();
 
 afterEach(() => void i18next.changeLanguage("en"));
 
@@ -67,10 +74,13 @@ describe("cuánto hace", () => {
 
 describe("cuánto falta", () => {
   it("mira al futuro, no al pasado", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(AHORA);
     const queda = faltan(enHoras(5));
     // Un plazo que vence **en** cinco horas, no que venció hace cinco.
     expect(queda).not.toContain("ago");
     expect(queda).toMatch(/5/);
+    vi.useRealTimers();
   });
 
   it("lo ya vencido no dice nada", () => {

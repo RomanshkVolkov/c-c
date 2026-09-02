@@ -259,6 +259,19 @@
     "cancel": "Cancelar",
     "saved": "Guardado",
     "errSave": "No se pudo guardar esta sección",
-    "placeholder": "¿Para qué es esto? Enlaces, decisiones, cómo se levanta…"
+    "placeholder": "¿Para qué es esto? Enlaces, decisiones, cómo se levanta…",
+    "noOwner": "Sin responsable",
+    "clearOwner": "Dejarlo sin responsable",
+    "reassignOwner": "Cambiar de responsable",
+    "markReviewed": "Marcar revisado",
+    "reviewedOn": "Revisado el {{date}}",
+    "neverReviewed": "Sin revisar nunca",
+    "staleSinceReview": "Nadie lo ha confirmado en {{days}} días. Quien lo lea no tiene forma de saber si sigue funcionando.",
+    "staleNeverReviewed": "Escrito hace {{days}} días y nunca confirmado. Quien lo lea no tiene forma de saber si sigue funcionando.",
+    "pinnedAboveBoard": "Fijado sobre el tablero",
+    "pinEmpty": "Fijar una línea sobre el tablero",
+    "pinTitle": "Fijar una línea sobre el tablero",
+    "pinLabel": "La línea",
+    "pinWhy": "Lo que hay que saber antes de coger una tarjeta. Vacío para quitarla."
   }
 }

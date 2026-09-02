@@ -30,6 +30,8 @@ import type {
   TaskDetail,
   TaskTag,
   ItemVisibility,
+  Doc,
+  DocMark,
   DocTabKey,
   DocAttachment,
   DocOwnerKind,
@@ -204,12 +206,18 @@ interface TasksState {
 
   // ── Docs: one markdown overview per space/folder/list ──
   /** Which nodes carry a document, keyed `kind:id` — drives the navigator mark. */
-  docIndex: Record<string, boolean>;
+  docIndex: Record<string, DocMark>;
   /** The node whose overview is on screen; null when a board is. */
   activeDoc: { kind: DocOwnerKind; id: string; name: string } | null;
   doc: DocResponse | null;
   loadingDoc: boolean;
   fetchDocIndex: () => Promise<void>;
+  /** Responsable, revisión y línea fijada. Sin el campo, no se toca. */
+  patchDoc: (fields: {
+    maintainerId?: string;
+    pinnedLine?: string;
+    reviewed?: boolean;
+  }) => Promise<void>;
   openDoc: (kind: DocOwnerKind, id: string, name: string) => Promise<void>;
   closeDoc: () => void;
   /** Guarda una sección; por omisión la primera, que es la que ya existía. */
@@ -702,7 +710,7 @@ export const useTasksStore = create<TasksState>()(
         const orgId = useOrgsStore.getState().currentOrgId;
         if (!orgId) return;
         try {
-          const res = await api.get<APIResponse<Record<string, boolean>>>(
+          const res = await api.get<APIResponse<Record<string, DocMark>>>(
             `/api/v1/docs/?orgId=${orgId}`,
           );
           set({ docIndex: res.success && res.data ? res.data : {} });
@@ -726,6 +734,27 @@ export const useTasksStore = create<TasksState>()(
       },
 
       closeDoc: () => set({ activeDoc: null, doc: null }),
+
+      patchDoc: async (fields) => {
+        const target = get().activeDoc;
+        if (!target) return;
+        const res = await api.patch<APIResponse<Doc>>(
+          `/api/v1/docs/${target.kind}/${target.id}`,
+          fields,
+        );
+        // Se funde en vez de recargar: el cuerpo de las pestañas no cambia y
+        // volver a pedirlo haría parpadear el texto que se está leyendo.
+        if (res.success && res.data) {
+          const doc = get().doc;
+          set({
+            doc: doc
+              ? { ...doc, doc: res.data }
+              : { doc: res.data, tabs: [], attachments: [] },
+          });
+        }
+        // El navegador pinta la línea fijada y el aviso de frescura.
+        await get().fetchDocIndex();
+      },
 
       saveDoc: async (body, tab = "overview") => {
         const target = get().activeDoc;

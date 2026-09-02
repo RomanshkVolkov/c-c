@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FileText, Loader2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
+import DocHeader from "@/components/docs/DocHeader";
 import DocToc from "@/components/docs/DocToc";
 import Markdown from "@/components/markdown/Markdown";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
@@ -110,6 +111,11 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           <X className="size-3.5" />
         </Button>
       </header>
+
+      {/* Responsable y frescura, entre el título y las pestañas: pertenecen al
+          documento entero, no a la sección que se esté mirando. Sólo cuando ya
+          existe — en un nodo sin nada escrito todavía no hay nada que revisar. */}
+      {doc?.doc && <DocHeader doc={doc.doc} />}
 
       {/* Las cuatro, siempre. La vacía en gris — ver el comentario de arriba. */}
       <nav className="flex shrink-0 gap-4 border-b px-4 text-sm">

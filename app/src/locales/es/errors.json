@@ -58,5 +58,6 @@
   "voice-camera-thread-died": "Falló la cámara. Mira el diario del motor en el laboratorio de voz.",
   "voice-camera-no-frames": "La cámara no entregó ninguna imagen.",
   "profile-not-saved": "No se pudo guardar tu perfil.",
-  "bad-doc-tab": "Esa no es una de las secciones del documento."
+  "bad-doc-tab": "Esa no es una de las secciones del documento.",
+  "not-a-colleague": "Esa persona no está en esta organización."
 }

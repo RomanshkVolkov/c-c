@@ -331,6 +331,36 @@ export interface Doc {
   updatedByName?: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Quién responde de este documento.
+   *
+   * `maintainer` y no `owner` porque `ownerKind`/`ownerId` de arriba ya son el
+   * **nodo** del que cuelga, no una persona. En pantalla se llama «Owner», que
+   * es como lo llama quien lo usa.
+   */
+  maintainerId?: string;
+  maintainerName?: string;
+  /** Cuándo alguien confirmó que sigue siendo verdad. Editar no es revisar. */
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  /** Una línea sobre el tablero. Corta a la fuerza, o se deja de leer. */
+  pinnedLine?: string;
+  /** Lo calcula el servidor: la regla de los 90 días vive en un solo sitio. */
+  stale: boolean;
+}
+
+/**
+ * Lo que el navegador sabe de un documento sin cargarlo.
+ *
+ * Lleva la línea fijada porque el tablero la pinta y el tablero no carga el
+ * documento: pedirlo entero para leer una línea sería una petición más por cada
+ * lista que se abre.
+ */
+export interface DocMark {
+  written: boolean;
+  pinnedLine?: string;
+  stale?: boolean;
 }
 
 /**

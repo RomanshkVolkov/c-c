@@ -259,6 +259,19 @@
     "cancel": "Cancel",
     "saved": "Saved",
     "errSave": "Could not save this section",
-    "placeholder": "What is this for? Links, decisions, how to run it…"
+    "placeholder": "What is this for? Links, decisions, how to run it…",
+    "noOwner": "No owner",
+    "clearOwner": "Leave without an owner",
+    "reassignOwner": "Reassign owner",
+    "markReviewed": "Mark reviewed",
+    "reviewedOn": "Reviewed {{date}}",
+    "neverReviewed": "Never reviewed",
+    "staleSinceReview": "Nobody has confirmed this in {{days}} days. Whoever reads it next has no way to know whether it still works.",
+    "staleNeverReviewed": "Written {{days}} days ago and never confirmed since. Whoever reads it next has no way to know whether it still works.",
+    "pinnedAboveBoard": "Pinned above the board",
+    "pinEmpty": "Pin a line above the board",
+    "pinTitle": "Pin a line above the board",
+    "pinLabel": "The line",
+    "pinWhy": "What somebody needs to know before picking up a card. Leave it empty to remove it."
   }
 }
