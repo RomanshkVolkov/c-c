@@ -10,6 +10,7 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { openAttachment } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import CopyId from "@/components/CopyId";
+import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
 import { useTasksStore } from "@/store/tasks.store";
 import { DOC_TABS, type DocTabKey } from "@/types/task";
 
@@ -35,7 +36,7 @@ const ROTULOS: Record<DocTabKey, { label: MessageKey; hint: MessageKey }> = {
 /** El índice sólo donde aporta. En una lista de entradas repetiría lo que se ve. */
 const CON_INDICE: DocTabKey[] = ["overview", "runbook"];
 
-export default function DocTabs() {
+export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "docs">) => void }) {
   const { t } = useT();
   const target = useTasksStore((s) => s.activeDoc);
   const doc = useTasksStore((s) => s.doc);
@@ -43,6 +44,7 @@ export default function DocTabs() {
   const saveDoc = useTasksStore((s) => s.saveDoc);
   const upload = useTasksStore((s) => s.uploadDocAttachment);
   const closeDoc = useTasksStore((s) => s.closeDoc);
+  const board = useTasksStore((s) => s.board);
 
   const [activa, setActiva] = useState<DocTabKey>("overview");
   const [editando, setEditando] = useState(false);
@@ -85,6 +87,19 @@ export default function DocTabs() {
         <FileText className="size-4 shrink-0 text-muted-foreground" />
         <h1 className="truncate text-sm font-medium">{target.name}</h1>
         <CopyId id={target.id} label={target.kind} />
+        {/* El grupo de las cuatro sólo cuando hay tablero al que volver: la
+            documentación de un espacio o una carpeta no tiene tarjetas detrás,
+            y ofrecer «Board» ahí llevaría a la lista de otra cosa. */}
+        {target.kind === "list" && board?.list.id === target.id ? (
+          <ViewSwitch
+            value="docs"
+            onChange={(v) => {
+              if (v === "docs") return;
+              onView(v);
+              closeDoc();
+            }}
+          />
+        ) : null}
         <Button
           size="icon-xs"
           variant="ghost"

@@ -234,7 +234,13 @@
     "nobodyYet": "Todavía nadie",
     "visibility": "Visibilidad",
     "clientSeesIt": "El cliente la ve",
-    "internalOnly": "Sólo interna"
+    "internalOnly": "Sólo interna",
+    "view": {
+      "board": "Tablero",
+      "list": "Lista",
+      "calendar": "Calendario",
+      "docs": "Documentación"
+    }
   },
   "docs": {
     "overview": "Resumen",

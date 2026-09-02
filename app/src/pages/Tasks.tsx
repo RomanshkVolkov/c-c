@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
 import DocTabs from "@/components/docs/DocTabs";
+import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
 import CopyId from "@/components/CopyId";
 import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -66,10 +67,16 @@ export default function Tasks() {
   // same node rather than something to show beside it.
   const activeDoc = useTasksStore((s) => s.activeDoc);
 
+  // La vista vive aquí y no dentro del tablero porque `docs` es una de las
+  // cuatro: si viviera abajo, abrir la documentación desmontaría el tablero y
+  // volver te dejaría siempre en Board, hubieras estado donde hubieras estado.
+  // Es preferencia de quien mira, no estado compartido — dos personas pueden
+  // ver la misma lista de formas distintas.
+  const [view, setView] = useState<Exclude<ListView, "docs">>("board");
 
   return (
     <div className="flex-1 flex min-h-0">
-      {activeDoc ? <DocTabs /> : <Board />}
+      {activeDoc ? <DocTabs onView={setView} /> : <Board view={view} setView={setView} />}
     </div>
   );
 }
@@ -124,11 +131,14 @@ function dotForStatus(
 
 // ─── Board ────────────────────────────────────────────────────────────────────
 
-function Board() {
+function Board({
+  view,
+  setView,
+}: {
+  view: Exclude<ListView, "docs">;
+  setView: (v: Exclude<ListView, "docs">) => void;
+}) {
   const { t } = useT();
-  // Board vs list is a per-user viewing preference, not shared state — keeping
-  // it local means two people can look at the same list differently.
-  const [view, setView] = useState<"board" | "list" | "calendar">("board");
   // The report taxonomy, as a filter over the cards already on screen. Client
   // work carries it and internal work doesn't, so the controls only appear when
   // there is something to filter by — an always-visible pair of empty selects
@@ -257,31 +267,14 @@ function Board() {
         <Badge variant="secondary" className="text-xs">
           {board.tasks.length} tasks
         </Badge>
-        <div className="ml-2 flex rounded-md border p-0.5">
-          {(["board", "list", "calendar"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={cn(
-                "rounded px-2 py-0.5 text-xs capitalize",
-                view === v ? "bg-accent text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
+        <ViewSwitch
+          value={view}
+          onChange={(v) =>
+            v === "docs" ? openDoc("list", board.list.id, board.list.name) : setView(v)
+          }
+        />
         <TaxonomyPicker label={t("work:board.anyKind")} value={category} options={categories} onChange={setCategory} />
         <TaxonomyPicker label={t("work:board.anyArea")} value={area} options={areas} onChange={setArea} />
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 text-xs"
-          title={t("work:board.overview")}
-          onClick={() => openDoc("list", board.list.id, board.list.name)}
-        >
-          <FileText className="mr-1 size-3" /> Overview
-        </Button>
         <Button
           size="icon-xs"
           variant="ghost"
