@@ -191,8 +191,9 @@ type CreateUserRequest struct {
 // UpdateUserRequest patches a user. Nil fields are left unchanged; an empty
 // password string means "don't rotate".
 type UpdateUserRequest struct {
-	Password     string  `json:"password"     validate:"omitempty,min=8"`
-	Email        *string `json:"email"       validate:"omitempty,email,max=255"`
+	Password string `json:"password"     validate:"omitempty,min=8"`
+	// Vacío no es «no lo mandes»: es «bórralo». Ver `nuevoValidador`.
+	Email        *string `json:"email"       validate:"omitempty,emailorblank,max=255"`
 	Name         *string `json:"name"        validate:"omitempty,max=120"`
 	IsSuperadmin *bool   `json:"isSuperadmin"`
 }
