@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search, Loader2, KanbanSquare, NotebookPen, User, Hash, MessageSquare,
-  Plus, Boxes, CornerDownLeft,
+  Plus, Boxes, CornerDownLeft, FileText,
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
@@ -35,13 +35,14 @@ interface Hit {
 
 interface Results {
   tasks: Hit[];
+  docs: Hit[];
   notes: Hit[];
   people: Hit[];
   messages: Hit[];
   dms: Hit[];
 }
 
-const VACIO: Results = { tasks: [], notes: [], people: [], messages: [], dms: [] };
+const VACIO: Results = { tasks: [], docs: [], notes: [], people: [], messages: [], dms: [] };
 
 /**
  * What you can do from here, as opposed to what you can find.
@@ -66,6 +67,10 @@ const ACCIONES = [
 
 const GRUPOS: { key: keyof Results; labelKey: MessageKey; icon: typeof Search }[] = [
   { key: "tasks", labelKey: "common:palette.tasks", icon: KanbanSquare },
+  // Justo detrás de las tareas: quien busca «cómo se despliega esto» está
+  // buscando documentación, y tenerla al final de cinco grupos es tenerla
+  // escondida.
+  { key: "docs", labelKey: "common:palette.docs", icon: FileText },
   { key: "messages", labelKey: "common:palette.channels", icon: Hash },
   { key: "dms", labelKey: "common:palette.dms", icon: MessageSquare },
   { key: "notes", labelKey: "common:palette.notes", icon: NotebookPen },
@@ -112,7 +117,14 @@ export default function CommandPalette({
           `/api/v1/search/?${org}q=${encodeURIComponent(q)}`,
           true,
         );
-        if (mio === pedido.current) setRes(r.data ?? VACIO);
+        // Sobre `VACIO`, no en su lugar.
+        //
+        // La app se instala por su cuenta y el backend despliega por la suya, así
+        // que hay ratos en que una versión nueva habla con un servidor viejo que
+        // todavía no manda alguna de estas listas. Sin esto, un campo que falta
+        // deja un `undefined` donde se espera un array y tumba la paleta entera
+        // — no la categoría nueva: **toda** la búsqueda.
+        if (mio === pedido.current) setRes({ ...VACIO, ...(r.data ?? {}) });
       } catch {
         if (mio === pedido.current) setRes(VACIO);
       } finally {

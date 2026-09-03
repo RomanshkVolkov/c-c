@@ -338,5 +338,18 @@
     "badge": "DECISIÓN",
     "open": "Ver la entrada",
     "saved": "Registrada"
+  },
+  "docIndex": {
+    "title": "Toda la documentación",
+    "filter": "Filtra por nombre o ruta",
+    "needsAttention": "Necesita atención",
+    "document": "Documento",
+    "where": "Dónde",
+    "owner": "Responsable",
+    "lastReviewed": "Última revisión",
+    "tasks": "Tareas",
+    "nothing": "Ningún documento coincide",
+    "undocumented_one": "{{count}} lista sin documentación",
+    "undocumented_other": "{{count}} listas sin documentación"
   }
 }

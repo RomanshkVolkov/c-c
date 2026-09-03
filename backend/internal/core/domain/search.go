@@ -25,6 +25,7 @@ const (
 	SearchPerson  SearchKind = "person"
 	SearchMessage SearchKind = "message"
 	SearchDM      SearchKind = "dm"
+	SearchDoc     SearchKind = "doc"
 )
 
 // SearchResults keeps the sources apart all the way to the client.
@@ -43,4 +44,10 @@ type SearchResults struct {
 	People   []SearchHit `json:"people"`
 	Messages []SearchHit `json:"messages"`
 	DMs      []SearchHit `json:"dms"`
+	// Docs va aparte igual que el resto, y por la misma razón: aunque hoy la
+	// documentación se lea con pertenecer a la organización —como una tarea—,
+	// mezclarla en la lista de tareas ataría las dos reglas a la misma consulta,
+	// y la de documentación es la que va a cambiar si algún día hay permisos por
+	// documento.
+	Docs []SearchHit `json:"docs"`
 }

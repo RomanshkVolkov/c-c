@@ -114,4 +114,23 @@ describe("la paleta", () => {
     expect(screen.getByText("Tasks")).toBeTruthy();
     expect(screen.getByText("Direct messages")).toBeTruthy();
   });
+
+  /**
+   * Un servidor que no manda todas las categorías.
+   *
+   * La app se instala por su cuenta y el backend despliega por la suya, así que
+   * siempre hay un rato en que una versión nueva habla con un servidor viejo.
+   * Una categoría que falta deja un `undefined` donde se espera una lista, y lo
+   * que se cae no es esa categoría: es la búsqueda entera.
+   */
+  it("una respuesta a la que le falta una categoría no tumba la paleta", async () => {
+    get.mockResolvedValue({
+      success: true,
+      // Sin `docs`, como contestaría un backend anterior a esa categoría.
+      data: { tasks: [{ kind: "task", id: "t", title: "sigue saliendo", link: "/tasks" }] },
+    });
+    montar();
+    escribir("algo");
+    expect(await screen.findByText("sigue saliendo")).toBeTruthy();
+  });
 });

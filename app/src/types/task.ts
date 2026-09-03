@@ -368,6 +368,10 @@ export interface DocMark {
   written: boolean;
   pinnedLine?: string;
   stale?: boolean;
+  /** Para el índice de la organización; el resto lo pone el árbol. */
+  maintainerId?: string;
+  maintainerName?: string;
+  reviewedAt?: string;
 }
 
 /**

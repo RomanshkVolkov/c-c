@@ -17,6 +17,7 @@ import OrganizationSettings from "@/pages/OrganizationSettings";
 import Invitations from "@/pages/Invitations";
 import Diagnostics from "@/pages/Diagnostics";
 import Tasks from "@/pages/Tasks";
+import DocIndexPage from "@/pages/DocIndexPage";
 import Notes from "@/pages/Notes";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import DevTools from "@/pages/DevTools";
@@ -67,6 +68,7 @@ export default function App() {
               so the translation is exact. See ReportsRedirect. */}
           <Route path="/reports" element={<ReportsRedirect />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/docs" element={<DocIndexPage />} />
           <Route path="/my-work" element={<MyWork />} />
           <Route path="/chat" element={<Channels />} />
           <Route path="/dm" element={<DirectMessages />} />

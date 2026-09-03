@@ -12,7 +12,8 @@
     "directMessages": "Direct messages",
     "servers": "Servers",
     "diagnostics": "Diagnostics",
-    "users": "Users"
+    "users": "Users",
+    "docs": "All docs"
   },
   "devTools": {
     "image": "Image",

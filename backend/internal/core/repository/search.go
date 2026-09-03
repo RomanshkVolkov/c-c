@@ -64,6 +64,44 @@ func (r *SearchRepository) Notes(query, ownerID string, limit int) ([]domain.Sea
 	return out, err
 }
 
+// Docs de la organización, buscando en el texto de las secciones.
+//
+// Se busca en `doc_tabs` y no en `docs`: desde que el documento se reparte en
+// cuatro pestañas, el cuerpo de la fila padre está vacío en todos los nuevos, y
+// una búsqueda contra él encontraría sólo los de antes.
+//
+// El nombre del nodo se resuelve con tres `LEFT JOIN` y no con tres consultas:
+// un documento cuelga de un espacio, una carpeta o una lista, y sin el nombre la
+// fila del resultado sería un identificador que nadie reconoce.
+func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.SearchHit, error) {
+	out := []domain.SearchHit{}
+	if orgID == "" {
+		return out, nil
+	}
+	type row struct {
+		OwnerKind, OwnerID, Key, Name string
+	}
+	var rows []row
+	err := r.db.Table("doc_tabs").
+		Select(`docs.owner_kind AS owner_kind, docs.owner_id AS owner_id, doc_tabs.key AS key,
+			COALESCE(task_spaces.name, task_folders.name, task_lists.name, '') AS name`).
+		Joins("JOIN docs ON docs.id = doc_tabs.doc_id").
+		Joins("LEFT JOIN task_spaces ON docs.owner_kind = 'space' AND task_spaces.id = docs.owner_id").
+		Joins("LEFT JOIN task_folders ON docs.owner_kind = 'folder' AND task_folders.id = docs.owner_id").
+		Joins("LEFT JOIN task_lists ON docs.owner_kind = 'list' AND task_lists.id = docs.owner_id").
+		Where("docs.org_id = ?", orgID).
+		Where("LOWER(doc_tabs.body) LIKE ?", like(query)).
+		Order("doc_tabs.updated_at DESC").Limit(limit).Scan(&rows).Error
+	for _, x := range rows {
+		out = append(out, domain.SearchHit{
+			Kind: domain.SearchDoc, ID: x.OwnerID, Title: x.Name,
+			Where: x.Key,
+			Link:  "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID + "&tab=" + x.Key,
+		})
+	}
+	return out, err
+}
+
 // People you share an organization with.
 func (r *SearchRepository) People(query, orgID, excludeID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}

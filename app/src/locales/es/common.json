@@ -164,7 +164,8 @@
     "searchPlaceholder": "Busca tareas, mensajes, notas, gente…",
     "create": "Crear",
     "typeTwoLetters": "O escribe al menos dos letras para buscar.",
-    "nothingFound": "No se encontró nada."
+    "nothingFound": "No se encontró nada.",
+    "docs": "Documentación"
   },
   "servers": {
     "connecting": "Conectando…",

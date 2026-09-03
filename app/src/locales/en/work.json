@@ -338,5 +338,18 @@
     "badge": "DECISION",
     "open": "See the entry",
     "saved": "Recorded"
+  },
+  "docIndex": {
+    "title": "All docs",
+    "filter": "Filter by name or path",
+    "needsAttention": "Needs attention",
+    "document": "Document",
+    "where": "Where",
+    "owner": "Owner",
+    "lastReviewed": "Last reviewed",
+    "tasks": "Tasks",
+    "nothing": "No documents match",
+    "undocumented_one": "{{count}} list with no docs",
+    "undocumented_other": "{{count}} lists with no docs"
   }
 }

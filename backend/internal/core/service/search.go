@@ -26,6 +26,7 @@ func (s *SearchService) Search(query, orgID, userID string, limit int) (domain.S
 	var out domain.SearchResults
 	out.Tasks, out.Notes = []domain.SearchHit{}, []domain.SearchHit{}
 	out.People, out.Messages, out.DMs = []domain.SearchHit{}, []domain.SearchHit{}, []domain.SearchHit{}
+	out.Docs = []domain.SearchHit{}
 
 	if len(strings.TrimSpace(query)) < 2 {
 		return out, nil
@@ -48,6 +49,9 @@ func (s *SearchService) Search(query, orgID, userID string, limit int) (domain.S
 		return out, err
 	}
 	if out.DMs, err = s.repo.DMs(query, userID, limit); err != nil {
+		return out, err
+	}
+	if out.Docs, err = s.repo.Docs(query, orgID, limit); err != nil {
 		return out, err
 	}
 	return out, nil

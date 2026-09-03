@@ -11,6 +11,7 @@ import {
   MessagesSquare,
   ChevronRight,
   LayoutDashboard,
+  FileText,
   NotebookPen,
   ImageDown,
   Send,
@@ -72,6 +73,10 @@ const NAV_ITEMS: {
   // Sin entrada para tareas: el árbol de espacios de aquí abajo **es** esa
   // navegación. Una fila «Tareas» que lleva a la última lista abierta compite
   // con el árbol por el mismo trabajo y deja al usuario sin saber cuál manda.
+  // La documentación sí tiene fila propia, al contrario que las tareas: el
+  // árbol de abajo navega por espacios, y la pregunta que contesta esta pantalla
+  // —«qué está sin revisar»— cruza todos.
+  { labelKey: "nav:item.docs", path: "/docs", icon: FileText, guest: false, group: "work" },
   { labelKey: "nav:item.notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
   { labelKey: "nav:item.channels", path: "/chat", icon: Hash, guest: false, group: "talk" },
   { labelKey: "nav:item.directMessages", path: "/dm", icon: MessagesSquare, guest: false, group: "talk" },
