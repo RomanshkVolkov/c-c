@@ -25,6 +25,7 @@ type DocHandler interface {
 	Patch(w http.ResponseWriter, r *http.Request)
 	Versions(w http.ResponseWriter, r *http.Request)
 	AddDecision(w http.ResponseWriter, r *http.Request)
+	AppendTab(w http.ResponseWriter, r *http.Request)
 	Restore(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
@@ -165,6 +166,31 @@ func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
 	}
 	out := h.completa(doc)
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
+}
+
+// AppendTab añade al final de una sección, sin pisar a quien la esté editando.
+func (h *docHandler) AppendTab(w http.ResponseWriter, r *http.Request) {
+	kind, id, orgID, ok := h.resolveOwner(w, r)
+	if !ok {
+		return
+	}
+	key := chi.URLParam(r, "tab")
+	if !domain.IsDocTabKey(key) {
+		SendErrorResponse(w, http.StatusBadRequest, "Unknown section", "bad-doc-tab")
+		return
+	}
+	req, err := ValidateRequest[domain.SaveDocRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	doc, err := h.svc.AppendTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the document", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: h.completa(doc)})
 }
 
 // AddDecision apunta una decisión en el registro de un documento.

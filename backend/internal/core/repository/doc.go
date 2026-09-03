@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -225,6 +226,59 @@ func (r *DocRepository) FindVersion(docID, versionID string) (*domain.DocVersion
 		return nil, err
 	}
 	return &v, nil
+}
+
+// AppendTab añade al final de una sección sin leerla antes.
+//
+// Y ésa es toda la razón de que exista, en vez de dejar que quien llama lea,
+// concatene y guarde: mientras eso viaja, la persona que tenga ese documento
+// abierto está autoguardando cada segundo y medio. Una escritura basada en una
+// lectura de hace medio segundo le borra el párrafo que acaba de escribir, y no
+// se entera nadie. La concatenación la hace la base, sobre la fila.
+//
+// No pasa por el historial a propósito: guardar sólo se apunta cuando alguien
+// **edita**, y lo que llega de un mensaje no es una edición de nadie. Apuntarlo
+// llenaría el historial de entradas que no corresponden a ninguna sesión de
+// escritura, que es lo que hace ilegible un historial.
+func (r *DocRepository) AppendTab(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, texto, userID string,
+) (*domain.Doc, error) {
+	if strings.TrimSpace(texto) == "" {
+		return r.Find(kind, ownerID)
+	}
+	doc, err := r.Patch(orgID, kind, ownerID, nil)
+	if err != nil {
+		return nil, err
+	}
+	var existente domain.DocTab
+	err = r.db.Where("doc_id = ? AND key = ?", doc.ID, key).First(&existente).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: texto, UpdatedBy: userID}
+		t.ID = uuid.NewString()
+		if err := r.db.Create(t).Error; err != nil {
+			return nil, err
+		}
+		return doc, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	// La concatenación en SQL, sobre la fila: es lo que hace que no haya lectura
+	// que pueda quedarse vieja. Dos líneas en blanco porque en markdown una sola
+	// pega el párrafo nuevo al anterior.
+	if err := r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
+		Updates(map[string]any{
+			// `COALESCE` y no `body ||` a secas: en Postgres, `NULL || 'x'` es
+			// `NULL`. Una fila con el cuerpo nulo —las hay, de antes de que esta
+			// tabla existiera— se vaciaría en vez de crecer, y el texto que
+			// hubiera se perdería sin que nada fallara.
+			"body":       gorm.Expr("COALESCE(body, '') || ?", "\n\n"+texto),
+			"updated_by": userID,
+		}).Error; err != nil {
+		return nil, err
+	}
+	return doc, nil
 }
 
 // HasDoc reports which of the given nodes carry a non-empty document, so the

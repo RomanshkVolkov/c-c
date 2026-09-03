@@ -84,6 +84,20 @@ func (s *DocService) SaveTab(
 	return doc, nil
 }
 
+// AppendTab añade al final de una sección. Ver el repositorio para por qué no
+// es leer, concatenar y guardar.
+func (s *DocService) AppendTab(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, texto, userID string,
+) (*domain.Doc, error) {
+	doc, err := s.repo.AppendTab(orgID, kind, ownerID, key, texto, userID)
+	if err != nil {
+		return nil, err
+	}
+	s.stampAuthor(doc)
+	return doc, nil
+}
+
 // Todo el markdown del documento junto, para decidir si un adjunto sigue citado.
 func (s *DocService) allTabsText(docID string) string {
 	tabs, err := s.repo.Tabs(docID)
