@@ -119,6 +119,56 @@ func (s *DocService) Restore(
 	return s.SaveTab(orgID, kind, ownerID, v.Key, v.Body, userID)
 }
 
+// ErrDecisionUnaddressed: el origen no trae con qué volver.
+var ErrDecisionUnaddressed = errors.New("a decision needs somewhere to come back to")
+
+// Decisions: el registro de un documento.
+func (s *DocService) Decisions(docID string) ([]domain.Decision, error) {
+	return s.repo.Decisions(docID)
+}
+
+// AddDecision apunta una decisión en el documento de un nodo.
+//
+// Crea el documento si no había, igual que `SaveTab`: decidir algo sobre un
+// proyecto que nadie documentó todavía es la forma más natural de que empiece a
+// haber documentación, y pedir que exista antes sólo mueve el problema.
+func (s *DocService) AddDecision(
+	orgID string, kind domain.DocOwnerKind, ownerID, userID, commentID string, req domain.DecisionRequest,
+) (*domain.Decision, error) {
+	if !domain.DecisionIsAddressed(req) {
+		return nil, ErrDecisionUnaddressed
+	}
+	// `Patch` sin campos crea el documento y devuelve el que ya hubiera.
+	doc, err := s.repo.Patch(orgID, kind, ownerID, nil)
+	if err != nil {
+		return nil, err
+	}
+	d := &domain.Decision{
+		DocID: doc.ID, Title: strings.TrimSpace(req.Title), Body: req.Body,
+		Tag: strings.TrimSpace(req.Tag), AuthorID: userID,
+		Origin:          domain.DecisionOrigin(req.Origin),
+		OriginTaskID:    req.OriginTaskID,
+		OriginMessageID: req.OriginMessageID,
+		OriginChannelID: req.OriginChannelID,
+		OriginCommentID: commentID,
+	}
+	return s.repo.AddDecision(d)
+}
+
+// DecisionFromTask apunta una decisión tomada dentro de una tarjeta.
+//
+// El documento sale de la **lista** a la que pertenece la tarea: se decide donde
+// se estaba trabajando y se guarda donde alguien va a ir a buscarlo. Sin esto,
+// una decisión tomada en un hilo se queda en ese hilo, que es exactamente lo que
+// pasa hoy y por lo que la misma discusión se repite cada pocos meses.
+func (s *DocService) DecisionFromTask(
+	orgID, listID, taskID, userID, commentID string, req domain.DecisionRequest,
+) (*domain.Decision, error) {
+	req.Origin = string(domain.DecisionFromTask)
+	req.OriginTaskID = taskID
+	return s.AddDecision(orgID, domain.DocOwnerList, listID, userID, commentID, req)
+}
+
 func (s *DocService) HasDoc(orgID string) (map[string]domain.DocMark, error) {
 	return s.repo.HasDoc(orgID)
 }

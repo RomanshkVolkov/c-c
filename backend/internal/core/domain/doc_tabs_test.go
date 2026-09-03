@@ -175,3 +175,51 @@ func TestDocVersionMerges(t *testing.T) {
 		}
 	})
 }
+
+// Que una decisión traiga con qué volver.
+//
+// El origen es lo único que separa un registro de decisiones de una lista de
+// frases sueltas: dentro de tres meses, lo que hace que alguien se fíe de una
+// entrada es poder abrir la discusión que la produjo. Un origen que dice «task»
+// y no trae tarea es un enlace que no lleva a ninguna parte, o sea, ninguno.
+func TestDecisionIsAddressed(t *testing.T) {
+	t.Run("de una tarea, con su tarea", func(t *testing.T) {
+		if !DecisionIsAddressed(DecisionRequest{Origin: "task", OriginTaskID: "t1"}) {
+			t.Fatal("hay a dónde volver")
+		}
+	})
+
+	t.Run("de una tarea sin tarea, no", func(t *testing.T) {
+		if DecisionIsAddressed(DecisionRequest{Origin: "task"}) {
+			t.Fatal("un enlace de vuelta a ninguna parte no es un origen")
+		}
+	})
+
+	t.Run("de un mensaje, con su mensaje", func(t *testing.T) {
+		if !DecisionIsAddressed(DecisionRequest{Origin: "message", OriginMessageID: "m1"}) {
+			t.Fatal("hay a dónde volver")
+		}
+		if DecisionIsAddressed(DecisionRequest{Origin: "message", OriginChannelID: "c1"}) {
+			t.Fatal("el canal solo no encuentra el mensaje")
+		}
+	})
+
+	// «Se decidió aquí» también es una procedencia, y no la ausencia de una:
+	// dice que no salió de ninguna discusión previa, que es un dato.
+	t.Run("escrita en la propia pestaña se basta", func(t *testing.T) {
+		if !DecisionIsAddressed(DecisionRequest{Origin: "doc"}) {
+			t.Fatal("escribirla ahí es su origen")
+		}
+	})
+
+	// Sin esto, un origen inventado pasaría por bueno y la entrada quedaría en
+	// un registro del que no se puede borrar nada.
+	t.Run("un origen que no existe no vale", func(t *testing.T) {
+		if DecisionIsAddressed(DecisionRequest{Origin: "email", OriginTaskID: "t1"}) {
+			t.Fatal("sólo hay tres orígenes")
+		}
+		if DecisionIsAddressed(DecisionRequest{}) {
+			t.Fatal("sin origen tampoco")
+		}
+	})
+}

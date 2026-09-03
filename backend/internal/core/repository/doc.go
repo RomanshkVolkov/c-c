@@ -351,3 +351,61 @@ func (r *DocRepository) IsMember(orgID, userID string) bool {
 	}
 	return n > 0
 }
+
+// AddDecision apunta una decisión. No hay editar ni borrar: ver `Decision`.
+//
+// Si ya hay una escrita con ese mismo comentario, se devuelve la que había en
+// vez de escribir otra. El registro no se puede podar, así que un reintento que
+// dejara dos entradas idénticas las dejaría para siempre.
+func (r *DocRepository) AddDecision(d *domain.Decision) (*domain.Decision, error) {
+	if d.OriginCommentID != "" {
+		var ya domain.Decision
+		if err := r.db.Where("origin_comment_id = ?", d.OriginCommentID).First(&ya).Error; err == nil {
+			return &ya, nil
+		}
+	}
+	d.ID = uuid.NewString()
+	if d.DecidedAt.IsZero() {
+		d.DecidedAt = time.Now()
+	}
+	if err := r.db.Create(d).Error; err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// Decisions: el registro de un documento, lo más reciente primero.
+//
+// El título de la tarea de origen se resuelve aquí: sin él, el enlace de vuelta
+// sería un identificador, y nadie reconoce una tarea por su uuid.
+func (r *DocRepository) Decisions(docID string) ([]domain.Decision, error) {
+	var out []domain.Decision
+	if err := r.db.Where("doc_id = ?", docID).
+		Order("decided_at DESC").Find(&out).Error; err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].AuthorName = r.AuthorName(out[i].AuthorID)
+		switch out[i].Origin {
+		case domain.DecisionFromTask:
+			r.db.Model(&domain.Task{}).Select("title").
+				Where("id = ?", out[i].OriginTaskID).Scan(&out[i].OriginTitle)
+		case domain.DecisionFromMessage:
+			// Un canal **es** un espacio: el chat cuelga del espacio y no tiene
+			// tabla propia (ver `ChatMessage.SpaceID`). El nombre que se pinta en
+			// «en #Portento» es el del espacio.
+			r.db.Model(&domain.TaskSpace{}).Select("name").
+				Where("id = ?", out[i].OriginChannelID).Scan(&out[i].OriginTitle)
+		}
+	}
+	return out, nil
+}
+
+// DocForList resuelve el documento de la lista a la que pertenece una tarea.
+//
+// Es lo que hace que una decisión tomada en una tarjeta aterrice en la
+// documentación del proyecto sin que nadie tenga que copiarla: se decide donde
+// se estaba trabajando y se guarda donde se va a buscar.
+func (r *DocRepository) DocForList(listID string) (*domain.Doc, error) {
+	return r.Find(domain.DocOwnerList, listID)
+}

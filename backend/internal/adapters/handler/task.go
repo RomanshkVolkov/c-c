@@ -101,6 +101,10 @@ type taskHandler struct {
 	chat *service.ChatService
 	// dms is the private half of the same conversation surface.
 	dms *service.DMService
+	// docs es la documentación del proyecto, aquí sólo para `/decision`: lo que
+	// se decide en una tarjeta se apunta en el documento de su lista, y esta
+	// pantalla es donde se decide.
+	docs *service.DocService
 	// voice acuña las entradas a las salas del SFU. Puede no estar configurado:
 	// una instalación sin voz es legítima y el handler lo dice con un 501.
 	voice *service.VoiceService
@@ -121,8 +125,9 @@ func NewTaskHandler(
 	images *imageservice.Client,
 	store *mediastore.Store,
 	voice *service.VoiceService,
+	docs *service.DocService,
 ) TaskHandler {
-	return &taskHandler{svc: svc, channels: channels, chat: chat, dms: dms, repo: repo, images: images, store: store, voice: voice}
+	return &taskHandler{svc: svc, channels: channels, chat: chat, dms: dms, repo: repo, images: images, store: store, voice: voice, docs: docs}
 }
 
 func mapTaskError(w http.ResponseWriter, err error) bool {
@@ -1008,9 +1013,29 @@ func (h *taskHandler) AddComment(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	if _, err := h.svc.AddComment(r.Context(), t.ID, user.UserID, req.Body, req.Visibility); err != nil {
+	// El origen se pone aquí y no se acepta del cliente: una decisión que dice
+	// venir de otra tarea sería un enlace de vuelta que miente, y la procedencia
+	// es lo único que hace que este registro valga algo.
+	if req.Decision != nil && !domain.DecisionIsAddressed(domain.DecisionRequest{
+		Title: req.Decision.Title, Origin: string(domain.DecisionFromTask), OriginTaskID: t.ID,
+	}) {
+		SendErrorResponse(w, http.StatusBadRequest, "A decision needs somewhere to come back to", "decision-no-origin")
+		return
+	}
+	c, err := h.svc.AddComment(r.Context(), t.ID, user.UserID, req.Body, req.Visibility)
+	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to add comment", err.Error())
 		return
+	}
+	// La entrada va atada al comentario: reintentar no deja dos en un registro
+	// del que no se puede borrar nada. Ver `AddDecision` en el repositorio.
+	if req.Decision != nil && h.docs != nil {
+		if _, err := h.docs.DecisionFromTask(
+			t.OrgID, t.ListID, t.ID, user.UserID, c.ID, *req.Decision,
+		); err != nil {
+			SendErrorResponse(w, http.StatusInternalServerError, "Failed to record the decision", err.Error())
+			return
+		}
 	}
 	detail, err := h.svc.Detail(t.ID)
 	if err != nil {

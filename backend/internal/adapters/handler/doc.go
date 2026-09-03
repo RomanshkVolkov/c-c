@@ -24,6 +24,7 @@ type DocHandler interface {
 	Index(w http.ResponseWriter, r *http.Request)
 	Patch(w http.ResponseWriter, r *http.Request)
 	Versions(w http.ResponseWriter, r *http.Request)
+	AddDecision(w http.ResponseWriter, r *http.Request)
 	Restore(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
@@ -90,8 +91,38 @@ type docResponse struct {
 	Doc *domain.Doc `json:"doc"`
 	// Siempre las cuatro, también las vacías: la pantalla las pinta todas y una
 	// que faltara la obligaría a inventarla.
-	Tabs        []domain.DocTab        `json:"tabs"`
+	Tabs []domain.DocTab `json:"tabs"`
+	// El registro va con el documento y no en su propia petición: es una de las
+	// cuatro pestañas, y quien abre el documento va a verla igual que las otras.
+	Decisions   []domain.Decision      `json:"decisions"`
 	Attachments []domain.DocAttachment `json:"attachments"`
+}
+
+// nuevaRespuesta: listas vacías y no `null`, para que el cliente no las invente.
+func nuevaRespuesta(d *domain.Doc) docResponse {
+	return docResponse{
+		Doc: d, Tabs: []domain.DocTab{},
+		Decisions: []domain.Decision{}, Attachments: []domain.DocAttachment{},
+	}
+}
+
+// completa rellena el documento entero. Un fallo al leer una parte no tumba la
+// respuesta: se devuelve lo que sí se pudo leer.
+func (h *docHandler) completa(doc *domain.Doc) docResponse {
+	out := nuevaRespuesta(doc)
+	if doc == nil {
+		return out
+	}
+	if tabs, err := h.svc.Tabs(doc.ID); err == nil {
+		out.Tabs = tabs
+	}
+	if ds, err := h.svc.Decisions(doc.ID); err == nil {
+		out.Decisions = ds
+	}
+	if atts, err := h.svc.Attachments(doc.ID); err == nil {
+		out.Attachments = atts
+	}
+	return out
 }
 
 func (h *docHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -106,15 +137,7 @@ func (h *docHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	// A node without a document is normal: answer with an empty one so the client
 	// renders the same editor instead of special-casing "not created yet".
-	out := docResponse{Doc: d, Tabs: []domain.DocTab{}, Attachments: []domain.DocAttachment{}}
-	if d != nil {
-		if atts, err := h.svc.Attachments(d.ID); err == nil {
-			out.Attachments = atts
-		}
-		if tabs, err := h.svc.Tabs(d.ID); err == nil {
-			out.Tabs = tabs
-		}
-	}
+	out := h.completa(d)
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
 }
 
@@ -140,14 +163,32 @@ func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the document", err.Error())
 		return
 	}
-	out := docResponse{Doc: doc, Tabs: []domain.DocTab{}, Attachments: []domain.DocAttachment{}}
-	if tabs, err := h.svc.Tabs(doc.ID); err == nil {
-		out.Tabs = tabs
-	}
-	if atts, err := h.svc.Attachments(doc.ID); err == nil {
-		out.Attachments = atts
-	}
+	out := h.completa(doc)
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
+}
+
+// AddDecision apunta una decisión en el registro de un documento.
+func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
+	kind, id, orgID, ok := h.resolveOwner(w, r)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.DecisionRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	if _, err := h.svc.AddDecision(orgID, kind, id, user.UserID, "", req); err != nil {
+		if errors.Is(err, service.ErrDecisionUnaddressed) {
+			SendErrorResponse(w, http.StatusBadRequest, "A decision needs somewhere to come back to", "decision-no-origin")
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to record the decision", err.Error())
+		return
+	}
+	d, _ := h.svc.Get(kind, id)
+	SendResult(w, http.StatusCreated, domain.APIResponse[docResponse]{Success: true, Data: h.completa(d)})
 }
 
 // Versions lista el historial de una sección.
@@ -193,13 +234,7 @@ func (h *docHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusNotFound, "That version is not part of this document", "bad-doc-version")
 		return
 	}
-	out := docResponse{Doc: doc, Tabs: []domain.DocTab{}, Attachments: []domain.DocAttachment{}}
-	if tabs, err := h.svc.Tabs(doc.ID); err == nil {
-		out.Tabs = tabs
-	}
-	if atts, err := h.svc.Attachments(doc.ID); err == nil {
-		out.Attachments = atts
-	}
+	out := h.completa(doc)
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
 }
 

@@ -62,7 +62,10 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		repository.GetEnv("LIVEKIT_API_KEY", ""),
 		repository.GetEnv("LIVEKIT_API_SECRET", ""),
 	)
-	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store, voice)
+	// Un solo servicio de documentación para las dos rutas: el de abajo sirve el
+	// documento, y las tarjetas lo necesitan para `/decision`.
+	docSvc := service.NewDocService(repository.NewDocRepository(db))
+	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store, voice, docSvc)
 
 	// The navigator: spaces → folders → lists.
 	r.Route("/api/v1/task-spaces", func(r chi.Router) {
@@ -184,9 +187,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 
 	// Docs: one markdown overview per space/folder/list, sharing the task
 	// module's image-service client and media store.
-	docH := handler.NewDocHandler(
-		service.NewDocService(repository.NewDocRepository(db)), images, store,
-	)
+	docH := handler.NewDocHandler(docSvc, images, store)
 	r.Route("/api/v1/docs", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", docH.Index) // ?orgId= — which nodes have a document
@@ -196,6 +197,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Put("/{kind}/{ownerId}", docH.Save)
 		r.Put("/{kind}/{ownerId}/tabs/{tab}", docH.SaveTab)
 		r.Patch("/{kind}/{ownerId}", docH.Patch)
+		r.Post("/{kind}/{ownerId}/decisions", docH.AddDecision)
 		r.Get("/{kind}/{ownerId}/versions", docH.Versions)
 		r.Post("/{kind}/{ownerId}/versions/{versionId}/restore", docH.Restore)
 		r.Post("/{id}/attachments", docH.UploadAttachment)

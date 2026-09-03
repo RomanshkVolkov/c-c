@@ -93,6 +93,7 @@ func DBConnection() {
 		&domain.Doc{},
 		&domain.DocTab{},
 		&domain.DocVersion{},
+		&domain.Decision{},
 		&domain.DocAttachment{},
 		&domain.Note{},
 		&domain.NoteAttachment{},
@@ -127,6 +128,17 @@ func DBConnection() {
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency
 		ON tasks (list_id, idempotency_key) WHERE idempotency_key <> ''`).Error; err != nil {
 		lg.Error("idempotency index: " + err.Error())
+	}
+
+	// Una decisión escrita desde un comentario se escribe una sola vez.
+	//
+	// El registro es append-only: no hay borrar, así que un reintento que dejara
+	// dos entradas idénticas dejaría dos para siempre. Parcial por lo mismo que
+	// el de arriba: las decisiones escritas en la propia pestaña no traen
+	// comentario y no pueden colisionar entre ellas.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_decisions_comment
+		ON decisions (origin_comment_id) WHERE origin_comment_id <> ''`).Error; err != nil {
+		lg.Error("decision comment index: " + err.Error())
 	}
 
 	// La sala general es una por organización, y lo garantiza la base.

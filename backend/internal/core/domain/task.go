@@ -442,6 +442,84 @@ func DocVersionMerges(last *DocVersion, userID string, now time.Time) bool {
 // su historia sólo porque el año pasó.
 const DocVersionKeep = 50
 
+// DecisionOrigin dice de dónde salió una decisión.
+//
+// Obligatorio, y ésa es la regla que le da valor a la pestaña. Una decisión sin
+// procedencia es una frase suelta: dentro de tres meses nadie sabrá qué se
+// discutió para llegar a ella, y lo que se hace con una frase que no se puede
+// comprobar es ignorarla.
+type DecisionOrigin string
+
+const (
+	DecisionFromTask    DecisionOrigin = "task"
+	DecisionFromMessage DecisionOrigin = "message"
+	// DecisionFromDoc: escrita en la propia pestaña. También es una procedencia
+	// —«se decidió aquí»— y no la ausencia de una.
+	DecisionFromDoc DecisionOrigin = "doc"
+)
+
+// Decision es una entrada del registro de un documento.
+//
+// **Append-only.** No hay editar ni borrar, y no es una carencia: un registro
+// que se puede reescribir no es un registro. Se corrige añadiendo, que además
+// deja ver que hubo una corrección — que suele ser el dato interesante.
+type Decision struct {
+	BaseModel
+	DocID string `gorm:"type:varchar(36);not null;index" json:"docId"`
+	// Lo que se decidió, en una línea. El cuerpo es el porqué.
+	Title      string    `gorm:"type:varchar(200);not null" json:"title"`
+	Body       string    `gorm:"type:text"                  json:"body"`
+	Tag        string    `gorm:"type:varchar(40)"           json:"tag,omitempty"`
+	AuthorID   string    `gorm:"type:varchar(36)"           json:"authorId"`
+	AuthorName string    `gorm:"-"                          json:"authorName,omitempty"`
+	DecidedAt  time.Time `json:"decidedAt"`
+
+	Origin          DecisionOrigin `gorm:"type:varchar(20);not null" json:"origin"`
+	OriginTaskID    string         `gorm:"type:varchar(36)"          json:"originTaskId,omitempty"`
+	OriginMessageID string         `gorm:"type:varchar(36)"          json:"originMessageId,omitempty"`
+	OriginChannelID string         `gorm:"type:varchar(36)"          json:"originChannelId,omitempty"`
+	// Resueltos al leer, para que el enlace de vuelta se pueda pintar con
+	// palabras y no con un identificador.
+	OriginTitle string `gorm:"-" json:"originTitle,omitempty"`
+
+	// Con qué comentario se escribió, y sólo para no escribirla dos veces.
+	//
+	// No es la procedencia —ésa es la tarea, que es lo que alguien querría
+	// abrir—: es la clave que hace que un reintento no deje dos entradas
+	// idénticas en un registro del que no se puede borrar nada.
+	OriginCommentID string `gorm:"type:varchar(36)" json:"-"`
+}
+
+// DecisionRequest es una decisión tal como la manda quien la toma.
+type DecisionRequest struct {
+	Title string `json:"title" validate:"required,min=1,max=200"`
+	Body  string `json:"body"  validate:"omitempty"`
+	Tag   string `json:"tag"   validate:"omitempty,max=40"`
+	// El origen es obligatorio: ver el comentario de `DecisionOrigin`.
+	Origin          string `json:"origin"          validate:"required,oneof=task message doc"`
+	OriginTaskID    string `json:"originTaskId"    validate:"omitempty,max=36"`
+	OriginMessageID string `json:"originMessageId" validate:"omitempty,max=36"`
+	OriginChannelID string `json:"originChannelId" validate:"omitempty,max=36"`
+}
+
+// DecisionIsAddressed comprueba que el origen trae con qué volver.
+//
+// «task» sin id de tarea es lo mismo que no tener origen: el enlace de vuelta no
+// lleva a ninguna parte. Se comprueba aquí y no con etiquetas de validación
+// porque la regla es condicional —qué campo hace falta depende de cuál sea el
+// origen— y expresarla en una etiqueta la deja ilegible.
+func DecisionIsAddressed(r DecisionRequest) bool {
+	switch DecisionOrigin(r.Origin) {
+	case DecisionFromTask:
+		return r.OriginTaskID != ""
+	case DecisionFromMessage:
+		return r.OriginMessageID != ""
+	case DecisionFromDoc:
+		return true
+	}
+	return false
+}
+
 // DocAttachment is a file cited from a document.
 //
 // Kept apart from TaskAttachment instead of making that table polymorphic: the
@@ -634,6 +712,13 @@ type TaskCommentRequest struct {
 	// On an item no client can see this is ignored — there is nobody to show it
 	// to, and every comment is internal by definition.
 	Visibility ItemVisibility `json:"visibility" validate:"omitempty,oneof=internal public"`
+	// Decision convierte este comentario en una entrada del registro del
+	// proyecto, además de publicarlo.
+	//
+	// En la misma petición y no en dos: son un solo gesto —«esto se decidió»— y
+	// partirlo deja el estado a medias cuando la segunda falla, que en un
+	// registro del que no se puede borrar es peor que no haberlo escrito.
+	Decision *DecisionRequest `json:"decision" validate:"omitempty"`
 }
 
 // ─── Responses ────────────────────────────────────────────────────────────────
