@@ -287,6 +287,15 @@ type DocMark struct {
 	Written    bool   `json:"written"`
 	PinnedLine string `json:"pinnedLine,omitempty"`
 	Stale      bool   `json:"stale,omitempty"`
+	// Dueño y revisión, para el índice de la organización.
+	//
+	// Aquí y no en una ruta propia porque el índice no necesita nada más: el
+	// árbol —con los nombres, las rutas y los recuentos de tarjetas— ya lo tiene
+	// el cliente cargado para pintar el navegador. Una consulta nueva volvería a
+	// recorrer la misma jerarquía para devolver lo que ya está en memoria.
+	MaintainerID   string     `json:"maintainerId,omitempty"`
+	MaintainerName string     `json:"maintainerName,omitempty"`
+	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
 }
 
 // DocStaleAfter es cuánto aguanta un documento sin que nadie lo confirme.

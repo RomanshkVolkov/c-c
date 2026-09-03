@@ -73,11 +73,16 @@ export function useAutoguardado(
     // durante el guardado se quedaría sin guardar hasta la siguiente pulsación
     // — y si esa pulsación no llega porque la persona terminó, se pierde.
     //
-    // **Sólo si el guardado salió bien.** Reintentar tras un fallo se llama a sí
-    // mismo para siempre: `confirmado` no avanza, así que la condición nunca deja
-    // de cumplirse. Sin red, esto colgaba la pestaña entera. Tras un error se
-    // espera a la siguiente pulsación, que es cuando puede haber vuelto.
-    if (fue && ultimo.current !== confirmado.current) void empujar();
+    // Dos frenos, y los dos hacen falta porque esto se llama a sí mismo:
+    //
+    //   - `fue`: tras un fallo no se reintenta. Sin red, `confirmado` no avanza
+    //     y la condición no dejaría de cumplirse nunca — colgaba la pestaña.
+    //   - contra `enviado` y no contra `confirmado`: `enviado` es una
+    //     instantánea de esta llamada, así que la cadena termina aunque la
+    //     contabilidad de `confirmado` se rompiera. Comparar contra un valor que
+    //     otra parte del hook mantiene es fiarlo todo a que esa parte esté bien,
+    //     y el precio de que no lo esté es un bucle infinito en el navegador.
+    if (fue && ultimo.current !== enviado) void empujar();
   }, []);
 
   useEffect(() => {

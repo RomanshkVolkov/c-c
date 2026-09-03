@@ -14,17 +14,24 @@ import { useAutoguardado } from "@/hooks/use-autoguardado";
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-/** Un guardado que se puede resolver a mano, para poner dos en el aire. */
+/** Un guardado que se puede resolver —o romper— a mano, para poner dos en el aire. */
 function guardadoControlado() {
   const enviados: string[] = [];
   let soltar: (() => void) | null = null;
+  let romper: ((e: Error) => void) | null = null;
   const guardar = vi.fn(async (t: string) => {
     enviados.push(t);
-    await new Promise<void>((res) => {
+    await new Promise<void>((res, rej) => {
       soltar = res;
+      romper = rej;
     });
   });
-  return { guardar, enviados, terminar: () => soltar?.() };
+  return {
+    guardar,
+    enviados,
+    terminar: () => soltar?.(),
+    fallar: () => romper?.(new Error("sin red")),
+  };
 }
 
 describe("el autoguardado", () => {
@@ -120,6 +127,91 @@ describe("el autoguardado", () => {
       rerender({ t: "lo que ya había", on: false });
     });
     expect(guardar).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Guardado una vez, no se vuelve a mandar solo.
+   *
+   * El temporizador dispara por **tiempo**, no por cambio: sin recordar qué se
+   * confirmó, el editor abierto mandaría el mismo texto cada segundo y medio
+   * mientras esté abierto. No se pierde nada, pero es una petición por segundo y
+   * medio por cada documento abierto, para siempre.
+   */
+  it("con el editor abierto y nadie escribiendo, no se manda nada más", async () => {
+    const guardar = vi.fn(async () => {});
+    const { rerender } = renderHook(({ t }) => useAutoguardado(t, guardar, true), {
+      initialProps: { t: "" },
+    });
+    rerender({ t: "una cosa" });
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(guardar).toHaveBeenCalledTimes(1);
+
+    // El editor sigue abierto y nadie toca nada.
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(guardar).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Tras un fallo no se insiste de inmediato.
+   *
+   * Si el guardado falló, lo más probable es que el siguiente también falle: sin
+   * red, reintentar en el acto es golpear a un servidor que no está y gastar la
+   * batería en ello. Se espera a la siguiente pulsación, que es cuando puede
+   * haber vuelto.
+   */
+  it("tras un fallo espera a que alguien escriba, no reintenta solo", async () => {
+    const { guardar, enviados, fallar } = guardadoControlado();
+    const { rerender } = renderHook(({ t }) => useAutoguardado(t, guardar, true), {
+      initialProps: { t: "" },
+    });
+    rerender({ t: "uno" });
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    // Sigue escribiendo, y el primero se cae.
+    rerender({ t: "uno y dos" });
+    await act(async () => {
+      fallar();
+    });
+    expect(enviados).toEqual(["uno"]);
+
+    // Y en cuanto alguien vuelve a tocar algo, sale lo pendiente.
+    rerender({ t: "uno y dos y tres" });
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(enviados).toEqual(["uno", "uno y dos y tres"]);
+  });
+
+  /**
+   * Cerrar después de guardar no vuelve a guardar.
+   *
+   * Al apagarse se fuerza un guardado de lo pendiente, y «pendiente» se decide
+   * comparando con lo último que el servidor confirmó. Sin recordarlo, cerrar el
+   * editor manda otra vez el texto que se acaba de guardar — una petición de más
+   * cada vez que alguien cierra un documento, con el servidor escribiendo la
+   * misma fila para nada.
+   */
+  it("guardar y luego cerrar no manda el mismo texto dos veces", async () => {
+    const guardar = vi.fn(async () => {});
+    const { rerender } = renderHook(
+      ({ t, on }) => useAutoguardado(t, guardar, on),
+      { initialProps: { t: "", on: true } },
+    );
+    rerender({ t: "lo escrito", on: true });
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(guardar).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rerender({ t: "lo escrito", on: false });
+    });
+    expect(guardar).toHaveBeenCalledTimes(1);
   });
 
   it("un texto que no cambió no se manda", async () => {

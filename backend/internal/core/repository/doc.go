@@ -309,6 +309,13 @@ func (r *DocRepository) HasDoc(orgID string) (map[string]domain.DocMark, error) 
 		conTexto[c.DocID] = c.N > 0
 	}
 
+	// Los nombres de los dueños, de una vez.
+	//
+	// `HasDoc` corre en cada cambio de organización y detrás de cada guardado, y
+	// resolver el nombre documento a documento era una consulta por fila en un
+	// camino que se recorre constantemente.
+	nombres := r.authorNames(rows)
+
 	ahora := time.Now()
 	out := make(map[string]domain.DocMark, len(rows))
 	for _, d := range rows {
@@ -323,9 +330,39 @@ func (r *DocRepository) HasDoc(orgID string) (map[string]domain.DocMark, error) 
 			Written:    tiene,
 			PinnedLine: d.PinnedLine,
 			Stale:      domain.DocIsStale(d.ReviewedAt, d.UpdatedAt, ahora),
+			// El nombre resuelto y no sólo el id: el índice pinta «sin dueño» en
+			// rojo, y para eso hace falta saber de quién es cuando sí lo tiene.
+			MaintainerID:   d.MaintainerID,
+			MaintainerName: nombres[d.MaintainerID],
+			ReviewedAt:     d.ReviewedAt,
 		}
 	}
 	return out, nil
+}
+
+// authorNames resuelve de una vez los nombres de quienes mantienen estos
+// documentos. Ver el comentario en `HasDoc`.
+func (r *DocRepository) authorNames(docs []domain.Doc) map[string]string {
+	ids := make([]string, 0, len(docs))
+	visto := map[string]bool{}
+	for _, d := range docs {
+		if d.MaintainerID != "" && !visto[d.MaintainerID] {
+			visto[d.MaintainerID] = true
+			ids = append(ids, d.MaintainerID)
+		}
+	}
+	out := map[string]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	type fila struct{ ID, Username string }
+	var filas []fila
+	r.db.Table("users").Select("id", "COALESCE(username,'') as username").
+		Where("id IN ?", ids).Scan(&filas)
+	for _, f := range filas {
+		out[f.ID] = f.Username
+	}
+	return out
 }
 
 // AuthorName resolves the "last edited by" label. Kept in the repository next to
