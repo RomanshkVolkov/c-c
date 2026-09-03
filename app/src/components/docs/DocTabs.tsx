@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Loader2, Pencil, X } from "lucide-react";
+import { FileText, Gavel, Loader2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
+import DecisionForm from "@/components/docs/DecisionForm";
+import DecisionList from "@/components/docs/DecisionList";
 import DocHeader from "@/components/docs/DocHeader";
 import DocHistory from "@/components/docs/DocHistory";
 import SaveChip from "@/components/docs/SaveChip";
@@ -49,6 +51,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const saveDoc = useTasksStore((s) => s.saveDoc);
   const upload = useTasksStore((s) => s.uploadDocAttachment);
   const closeDoc = useTasksStore((s) => s.closeDoc);
+  const addDecision = useTasksStore((s) => s.addDecision);
   const board = useTasksStore((s) => s.board);
 
   const [activa, setActiva] = useState<DocTabKey>("overview");
@@ -57,6 +60,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   // Cuando alguien pulsa «empezar en blanco» sobre un nodo sin nada escrito: no
   // hay documento que enseñar y tampoco hay que volver a ofrecer las plantillas.
   const [saltarPlantillas, setSaltarPlantillas] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
 
   const cuerpo = doc?.tabs?.find((x) => x.key === activa)?.body ?? "";
   const sinNada = !doc?.tabs?.some((x) => x.body);
@@ -141,7 +145,13 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
       {/* Las cuatro, siempre. La vacía en gris — ver el comentario de arriba. */}
       <nav className="flex shrink-0 gap-4 border-b px-4 text-sm">
         {DOC_TABS.map((k) => {
-          const vacia = !doc?.tabs?.find((x) => x.key === k)?.body;
+          // La de decisiones no se mide por su markdown —no tiene—: se mide
+          // por si hay entradas. Sin esto siempre saldría en gris, incluso con
+          // el registro lleno.
+          const vacia =
+            k === "decisions"
+              ? (doc?.decisions?.length ?? 0) === 0
+              : !doc?.tabs?.find((x) => x.key === k)?.body;
           return (
             <button
               key={k}
@@ -188,6 +198,11 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
               <SaveChip estado={estado} />
             </div>
           </div>
+        ) : activa === "decisions" ? (
+          // El registro no es markdown: cada entrada lleva fecha, autor y de
+          // dónde salió, y en un markdown suelto eso se escribe a mano, se
+          // escribe mal y se deja de escribir.
+          <DecisionList decisions={doc?.decisions ?? []} />
         ) : (
           <div className="mx-auto flex w-full max-w-4xl gap-8">
             <div className="min-w-0 flex-1">
@@ -221,7 +236,15 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
         )}
       </div>
 
-      {!editando && cuerpo && (
+      {activa === "decisions" && (
+        <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
+          <Button size="sm" variant="ghost" onClick={() => setRegistrando(true)}>
+            <Gavel className="mr-1 size-3" /> {t("work:decisions.record")}
+          </Button>
+        </footer>
+      )}
+
+      {!editando && cuerpo && activa !== "decisions" && (
         <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
           <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
             <Pencil className="mr-1 size-3" /> {t("work:docs.edit")}
@@ -244,6 +267,14 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           )}
         </footer>
       )}
+      <DecisionForm
+        open={registrando}
+        onOpenChange={setRegistrando}
+        onSubmit={async (d) => {
+          await addDecision(d);
+          toast.success(t("work:decisions.saved"));
+        }}
+      />
     </div>
   );
 }

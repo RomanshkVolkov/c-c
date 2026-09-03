@@ -60,5 +60,6 @@
   "profile-not-saved": "No se pudo guardar tu perfil.",
   "bad-doc-tab": "Esa no es una de las secciones del documento.",
   "not-a-colleague": "Esa persona no está en esta organización.",
-  "bad-doc-version": "Esa versión no es de este documento."
+  "bad-doc-version": "Esa versión no es de este documento.",
+  "decision-no-origin": "Una decisión necesita algo a lo que volver."
 }

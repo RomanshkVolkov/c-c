@@ -309,5 +309,23 @@
       "hint": "Another system: what it exchanges, credentials, what happens when it's down",
       "body": "## What it exchanges\n\n\n## Credentials\n\nReferences only — never a value.\n\n| Key | Where it's set | Who has it | Vault |\n| --- | --- | --- | --- |\n|  |  |  |  |\n\n## When it's down\n\nWhat the app does, and what somebody should do about it.\n\n"
     }
+  },
+  "decisions": {
+    "fromTask": "From {{what}}",
+    "fromMessage": "From a message in #{{where}}",
+    "writtenHere": "Written here",
+    "empty": "Nothing decided here yet",
+    "emptyWhy": "Entries land here from a task with /decision, or you can write one now. They can't be edited or deleted afterwards — a log you can rewrite isn't a log.",
+    "record": "Record a decision",
+    "title": "What was decided",
+    "titleHint": "One line. The why goes below.",
+    "body": "Why",
+    "tag": "Tag",
+    "tagHint": "Optional: architecture, vendor, scope…",
+    "save": "Record it",
+    "noUndo": "This can't be edited or deleted afterwards. Corrections are made by adding another entry.",
+    "badge": "DECISION",
+    "open": "See the entry",
+    "saved": "Recorded"
   }
 }

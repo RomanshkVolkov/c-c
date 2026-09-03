@@ -17,6 +17,7 @@ import {
   Users,
   Pencil,
   Info,
+  Gavel,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
@@ -42,6 +43,7 @@ import PdfPreview from "@/components/PdfPreview";
 import CopyId from "@/components/CopyId";
 import TelemetryTimeline from "@/components/TelemetryTimeline";
 import { commentByline } from "@/lib/byline";
+import DecisionForm, { type DecisionDraft } from "@/components/docs/DecisionForm";
 import { describeAgent } from "@/lib/user-agent";
 import { useTasksStore } from "@/store/tasks.store";
 import { usePeopleStore } from "@/store/people.store";
@@ -157,13 +159,24 @@ function CommentItem({
   // comment is internal, and a badge on all of them says nothing.
   const internal = clientReads && c.visibility === "internal";
 
+  // El único sitio donde aparece el violeta, y por eso significa algo: «esto no
+  // es un comentario cualquiera». Con la palabra puesta además del color — quien
+  // no distingue el violeta también tiene que poder verlo.
+  const esDecision = !!c.decisionId;
+
   return (
     <div
       className={cn(
         "group rounded-md border p-2.5",
         internal && "border-dashed bg-muted/40",
+        esDecision && "border-[#9B87F5]/40 bg-[#9B87F5]/[.07]",
       )}
     >
+      {esDecision && (
+        <span className="mb-1 block text-[11.5px] font-bold uppercase tracking-wide text-[#C4B5FD]">
+          {t("work:decisions.badge")}
+        </span>
+      )}
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{commentByline(c.author, c.authorName)}</span>
         <span>{fechaYHora(c.createdAt)}</span>
@@ -381,6 +394,7 @@ function Content() {
   // the one here have to be the same conversation, or both are misleading.
   const clientReads = Boolean(task.projectId) && task.visibility !== "internal";
   const [commentInternal, setCommentInternal] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
   // El cliente puede leer esto, pero **no hay a quién avisar**.
   //
   // El webhook sale igual; lo que no hay es destinatario. Los receptores
@@ -395,12 +409,17 @@ function Content() {
   // Con el comentario en modo interno no se enseña: ahí nadie espera aviso.
   const sinDestinatario = clientReads && !commentInternal && !task.reporterId;
 
-  const send = async () => {
+  const send = async (decision?: DecisionDraft) => {
     const body = comment.trim();
     if (!body) return;
     setSending(true);
     try {
-      await addComment(task.id, body, clientReads && commentInternal ? "internal" : undefined);
+      await addComment(
+        task.id,
+        body,
+        clientReads && commentInternal ? "internal" : undefined,
+        decision,
+      );
       setComment("");
     } catch (e) {
       toast.error(t("work:task.errComment"), { description: String(e) });
@@ -411,6 +430,11 @@ function Content() {
 
   return (
     <>
+      <DecisionForm
+        open={registrando}
+        onOpenChange={setRegistrando}
+        onSubmit={(d) => send(d)}
+      />
       {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
       {zoom && <Lightbox {...zoom} onClose={() => setZoom(null)} />}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
@@ -783,10 +807,24 @@ function Content() {
               minHeight="5rem"
             />
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={send} disabled={sending || !comment.trim()}>
+              <Button size="sm" onClick={() => void send()} disabled={sending || !comment.trim()}>
                 {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
                 <span className="ml-1">{clientReads && commentInternal ? t("work:task.commentInternally") : t("work:task.comment")}</span>
               </Button>
+              {/* Publicar y registrar, en un gesto.
+                  El comentario es lo que se lee hoy y la entrada es lo que se
+                  busca dentro de seis meses; pedir las dos cosas por separado
+                  significa que la segunda no se hace nunca. */}
+              <button
+                type="button"
+                disabled={sending || !comment.trim()}
+                onClick={() => setRegistrando(true)}
+                title={t("work:decisions.record")}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                <Gavel className="size-3" />
+                {t("work:decisions.record")}
+              </button>
               {clientReads && (
                 <button
                   type="button"

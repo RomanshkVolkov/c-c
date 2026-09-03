@@ -309,5 +309,23 @@
       "hint": "Otro sistema: qué intercambia, credenciales, qué pasa cuando se cae",
       "body": "## Qué intercambia\n\n\n## Credenciales\n\nSólo referencias — nunca un valor.\n\n| Clave | Dónde se define | Quién la tiene | Bóveda |\n| --- | --- | --- | --- |\n|  |  |  |  |\n\n## Cuando se cae\n\nQué hace la app, y qué debería hacer alguien al respecto.\n\n"
     }
+  },
+  "decisions": {
+    "fromTask": "De {{what}}",
+    "fromMessage": "De un mensaje en #{{where}}",
+    "writtenHere": "Escrita aquí",
+    "empty": "Aquí no se ha decidido nada todavía",
+    "emptyWhy": "Las entradas llegan desde una tarea con /decision, o puedes escribir una ahora. Después no se pueden editar ni borrar — un registro que se puede reescribir no es un registro.",
+    "record": "Registrar una decisión",
+    "title": "Qué se decidió",
+    "titleHint": "Una línea. El porqué va debajo.",
+    "body": "Por qué",
+    "tag": "Etiqueta",
+    "tagHint": "Opcional: arquitectura, proveedor, alcance…",
+    "save": "Registrarla",
+    "noUndo": "Esto no se puede editar ni borrar después. Las correcciones se hacen añadiendo otra entrada.",
+    "badge": "DECISIÓN",
+    "open": "Ver la entrada",
+    "saved": "Registrada"
   }
 }

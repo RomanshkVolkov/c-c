@@ -212,6 +212,13 @@ export interface TaskComment {
   visibility?: ItemVisibility;
   /** `system` is a status line cac wrote, not somebody's words. */
   kind?: "user" | "system";
+  /**
+   * La entrada del registro que salió de este comentario, si salió alguna.
+   *
+   * El id y no un booleano: un booleano diría que hubo una decisión sin decir
+   * cuál, y lo que hace falta desde el hilo es poder abrirla.
+   */
+  decisionId?: string;
   body: string;
   attachments: TaskAttachment[];
   createdAt: string;
@@ -398,11 +405,44 @@ export interface DocVersion {
   createdAt: string;
 }
 
+/**
+ * De dónde salió una decisión. Obligatorio, y ésa es la regla que le da valor
+ * a la pestaña: una decisión sin procedencia es una frase suelta, y lo que se
+ * hace con una frase que no se puede comprobar es ignorarla.
+ */
+export type DecisionOrigin = "task" | "message" | "doc";
+
+/**
+ * Una entrada del registro de un documento.
+ *
+ * **Append-only**: no hay editar ni borrar, y no es una carencia. Un registro
+ * que se puede reescribir no es un registro. Se corrige añadiendo, que además
+ * deja ver que hubo una corrección.
+ */
+export interface Decision {
+  id: string;
+  docId: string;
+  title: string;
+  body: string;
+  tag?: string;
+  authorId: string;
+  authorName?: string;
+  decidedAt: string;
+  origin: DecisionOrigin;
+  originTaskId?: string;
+  originMessageId?: string;
+  originChannelId?: string;
+  /** El nombre de la tarea o del canal, ya resuelto: nadie reconoce un uuid. */
+  originTitle?: string;
+}
+
 export interface DocResponse {
   /** null until the node's document is written for the first time. */
   doc: Doc | null;
   /** Siempre las cuatro, también las vacías. Vacío sólo si `doc` es null. */
   tabs: DocTab[];
+  /** El registro. Va con el documento: es una de las cuatro pestañas. */
+  decisions: Decision[];
   attachments: DocAttachment[];
 }
 

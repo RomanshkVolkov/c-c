@@ -56,6 +56,7 @@ const conDocumento = () =>
         { id: "t1", docId: "d1", key: "overview", body: "# Lo escrito", updatedBy: "yo", updatedAt: "" },
         { id: "t2", docId: "d1", key: "runbook", body: "1. Parar", updatedBy: "yo", updatedAt: "" },
       ],
+      decisions: [],
       attachments: [],
     },
   });

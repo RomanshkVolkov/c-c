@@ -166,7 +166,13 @@ interface TasksState {
   closeTask: () => void;
   updateTask: (id: string, patch: UpdateTaskPayload) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  addComment: (taskId: string, body: string, visibility?: ItemVisibility) => Promise<void>;
+  addComment: (
+    taskId: string,
+    body: string,
+    visibility?: ItemVisibility,
+    /** Con esto, además de publicarse queda en el registro del proyecto. */
+    decision?: { title: string; body: string; tag: string },
+  ) => Promise<void>;
   editComment: (taskId: string, commentId: string, body: string) => Promise<void>;
   deleteComment: (taskId: string, commentId: string) => Promise<void>;
   uploadAttachment: (taskId: string, file: File) => Promise<{ url: string; fileName: string } | null>;
@@ -214,6 +220,8 @@ interface TasksState {
   loadingDoc: boolean;
   fetchDocIndex: () => Promise<void>;
   /** Responsable, revisión y línea fijada. Sin el campo, no se toca. */
+  /** Apunta una decisión en el registro del documento abierto. */
+  addDecision: (d: { title: string; body: string; tag: string }) => Promise<void>;
   /** El historial de una sección, lo más reciente primero. */
   docVersions: (tab: DocTabKey) => Promise<DocVersion[]>;
   /** Devuelve una sección a un estado anterior. Restaurar también es un guardado. */
@@ -651,13 +659,22 @@ export const useTasksStore = create<TasksState>()(
         await get().fetchTree();
       },
 
-      addComment: async (taskId, body, visibility) => {
+      addComment: async (taskId, body, visibility, decision) => {
         const res = await api.post<APIResponse<TaskDetail>>(
           `/api/v1/tasks/${taskId}/comments`,
           // Sent only when a choice was made, like createTask: the server's
           // default is "the client reads it too", and inventing a value here
           // would either hide a reply from them or publish a team note.
-          { body, ...(visibility ? { visibility } : {}) },
+          //
+          // La decisión viaja en la misma petición y no en una segunda: son un
+          // solo gesto, y partirlo deja el estado a medias cuando la segunda
+          // falla — en un registro del que no se puede borrar, eso es peor que
+          // no haberla escrito. El origen lo pone el servidor.
+          {
+            body,
+            ...(visibility ? { visibility } : {}),
+            ...(decision ? { decision: { ...decision, origin: "task" } } : {}),
+          },
           true,
         );
         if (res.success && res.data && get().openTaskId === taskId) set({ detail: res.data });
@@ -754,7 +771,7 @@ export const useTasksStore = create<TasksState>()(
           set({
             doc: doc
               ? { ...doc, doc: res.data }
-              : { doc: res.data, tabs: [], attachments: [] },
+              : { doc: res.data, tabs: [], decisions: [], attachments: [] },
           });
         }
         // El navegador pinta la línea fijada y el aviso de frescura.
@@ -778,6 +795,21 @@ export const useTasksStore = create<TasksState>()(
           set({ doc: res.data });
         }
         await get().fetchDocIndex(); // the node may have just gained (or lost) its mark
+      },
+
+      addDecision: async (d) => {
+        const target = get().activeDoc;
+        if (!target) return;
+        const res = await api.post<APIResponse<DocResponse>>(
+          `/api/v1/docs/${target.kind}/${target.id}/decisions`,
+          // El origen lo pone quien llama, nunca el formulario: escrita desde el
+          // documento, la procedencia es «se decidió aquí».
+          { ...d, origin: "doc" },
+        );
+        if (res.success && res.data && get().activeDoc?.id === target.id) {
+          set({ doc: res.data });
+        }
+        await get().fetchDocIndex();
       },
 
       docVersions: async (tab) => {
