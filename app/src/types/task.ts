@@ -446,5 +446,16 @@ export interface DocResponse {
   attachments: DocAttachment[];
 }
 
+/**
+ * Que un `kind` que viene de una URL sea uno de los tres.
+ *
+ * El enlace de compartir llega escrito en un mensaje, y un mensaje lo escribe
+ * cualquiera: sin comprobarlo, un `?doc=usuarios:algo` acabaría llamando a una
+ * ruta inventada.
+ */
+export function isDocOwnerKind(k: string): k is DocOwnerKind {
+  return k === "space" || k === "folder" || k === "list";
+}
+
 /** Key used by the "which nodes have a document" index. */
 export const docKey = (kind: DocOwnerKind, id: string) => `${kind}:${id}`;

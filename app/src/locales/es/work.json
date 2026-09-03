@@ -282,7 +282,18 @@
     "save_guardando": "Guardando…",
     "save_guardado": "Guardado",
     "save_error": "Sin guardar",
-    "done": "Listo"
+    "done": "Listo",
+    "saveToDocs": "Guardar en la documentación",
+    "savedToDoc": "Guardado en la documentación",
+    "fromChannel": "del canal #{{where}}",
+    "openAListFirst": "Abre una lista de #{{where}} para guardar mensajes en su documentación",
+    "share": "Compartir",
+    "wholeDoc": "Todo el documento",
+    "thisSection": "Esta sección",
+    "whereTo": "Busca canales y personas",
+    "noWhere": "No hay nada que coincida",
+    "shared": "Enviado a {{where}}",
+    "errShare": "No se pudo compartir"
   },
   "docTemplates": {
     "title": "Aquí no hay nada escrito todavía",

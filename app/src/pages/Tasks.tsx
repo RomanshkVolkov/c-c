@@ -27,7 +27,7 @@ import { useTasksStore } from "@/store/tasks.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useReportsStore } from "@/store/reports.store";
 import { normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
-import { priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
+import { isDocOwnerKind, priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
 
 export default function Tasks() {
@@ -62,6 +62,22 @@ export default function Tasks() {
     setParams({}, { replace: true });
     openTask(id).catch(() => {});
   }, [params, setParams, openTask]);
+
+  // ?doc=<kind>:<id> — el enlace que se pega en un canal al compartir.
+  //
+  // Se consume una sola vez, igual que ?task=: si se quedara en la URL, cerrar
+  // el documento lo reabriría en el mismo instante.
+  const openDoc = useTasksStore((s) => s.openDoc);
+  useEffect(() => {
+    const ref = params.get("doc");
+    if (!ref) return;
+    const [kind, id] = ref.split(":");
+    setParams({}, { replace: true });
+    if (!id || !isDocOwnerKind(kind)) return;
+    // El nombre lo pone el documento al cargar; aquí todavía no se sabe, y
+    // poner el identificador en el título sería peor que dejarlo vacío.
+    openDoc(kind, id, "").catch(() => {});
+  }, [params, setParams, openDoc]);
 
   // A document takes over the right pane: it belongs to a space or folder, which
   // have no board of their own, and for a list it's an alternative view of the

@@ -29,6 +29,7 @@ vi.mock("@/components/markdown/Markdown", () => ({
 }));
 vi.mock("@/components/docs/DocHeader", () => ({ default: () => null }));
 vi.mock("@/components/docs/DocHistory", () => ({ default: () => null }));
+vi.mock("@/components/docs/ShareDoc", () => ({ default: () => null }));
 vi.mock("@/components/docs/DocToc", () => ({ default: () => null }));
 vi.mock("@/components/CopyId", () => ({ default: () => null }));
 vi.mock("@/components/tasks/ViewSwitch", () => ({ default: () => null }));

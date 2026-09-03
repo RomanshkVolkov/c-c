@@ -14,8 +14,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
+import MessageToDoc from "@/components/chat/MessageToDoc";
 import Markdown from "@/components/markdown/Markdown";
-import { taskIdFromHref } from "@/components/markdown/card-menu";
+import { docRefFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useChatStore } from "@/store/chat.store";
 import { usePeopleStore } from "@/store/people.store";
@@ -31,6 +32,7 @@ import { useVoice } from "@/store/voice.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { isDocOwnerKind } from "@/types/task";
 import type { ItemVisibility } from "@/types/task";
 
 /**
@@ -284,10 +286,20 @@ function Message({
    * attachment and browser paths Markdown already has, so an ordinary link in a
    * message still behaves like a link.
    */
+  const openDoc = useTasksStore((s) => s.openDoc);
+
   const openCited = (href: string) => {
     const id = taskIdFromHref(href);
     if (id) {
       openTask(id).catch((e) => toast.error(String(e)));
+      return true;
+    }
+    // Un documento compartido se abre dentro, igual que una tarjeta. Sin esto
+    // el enlace caería a la rama del navegador y sacaría a la persona de la app
+    // para enseñarle una URL que sólo significa algo aquí dentro.
+    const ref = docRefFromHref(href);
+    if (ref && isDocOwnerKind(ref.kind)) {
+      openDoc(ref.kind, ref.id, "").catch((e) => toast.error(String(e)));
       return true;
     }
     // A mention names a person rather than pointing somewhere. Claimed anyway,
@@ -397,6 +409,12 @@ function Message({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-40">
                 <MessageToTask body={m.body} spaceId={spaceId} spaceName={spaceName} />
+                <MessageToDoc
+                  body={m.body}
+                  messageId={m.id}
+                  spaceId={spaceId}
+                  spaceName={spaceName}
+                />
                 {mine && (
                   <>
                     <DropdownMenuItem

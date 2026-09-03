@@ -282,7 +282,18 @@
     "save_guardando": "Saving…",
     "save_guardado": "Saved",
     "save_error": "Not saved",
-    "done": "Done"
+    "done": "Done",
+    "saveToDocs": "Save to the project docs",
+    "savedToDoc": "Saved to the docs",
+    "fromChannel": "from the #{{where}} channel",
+    "openAListFirst": "Open a list in #{{where}} to save messages into its docs",
+    "share": "Share",
+    "wholeDoc": "Whole doc",
+    "thisSection": "This section",
+    "whereTo": "Search channels and people",
+    "noWhere": "Nothing matches",
+    "shared": "Sent to {{where}}",
+    "errShare": "Couldn't share it"
   },
   "docTemplates": {
     "title": "Nothing written here yet",

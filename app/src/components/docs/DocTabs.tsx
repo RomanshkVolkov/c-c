@@ -6,6 +6,7 @@ import DecisionForm from "@/components/docs/DecisionForm";
 import DecisionList from "@/components/docs/DecisionList";
 import DocHeader from "@/components/docs/DocHeader";
 import DocHistory from "@/components/docs/DocHistory";
+import ShareDoc from "@/components/docs/ShareDoc";
 import SaveChip from "@/components/docs/SaveChip";
 import TemplatePicker from "@/components/docs/TemplatePicker";
 import { useAutoguardado } from "@/hooks/use-autoguardado";
@@ -126,15 +127,17 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
             }}
           />
         ) : null}
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          className="ml-auto"
-          title={t("work:docs.cancel")}
-          onClick={closeDoc}
-        >
-          <X className="size-3.5" />
-        </Button>
+        <div className="ml-auto flex items-center gap-1">
+          {doc?.doc && <ShareDoc doc={doc.doc} nombre={target.name} tab={activa} />}
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            title={t("work:docs.cancel")}
+            onClick={closeDoc}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </div>
       </header>
 
       {/* Responsable y frescura, entre el título y las pestañas: pertenecen al

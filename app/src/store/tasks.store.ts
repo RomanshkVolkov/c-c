@@ -220,6 +220,31 @@ interface TasksState {
   loadingDoc: boolean;
   fetchDocIndex: () => Promise<void>;
   /** Responsable, revisión y línea fijada. Sin el campo, no se toca. */
+  /**
+   * Añade texto al final de una sección de **otro** nodo.
+   *
+   * Aparte de `saveDoc` porque no toca el documento abierto: guardar un mensaje
+   * en la documentación se hace desde el chat, con el documento cerrado.
+   */
+  appendToDoc: (
+    kind: DocOwnerKind,
+    id: string,
+    tab: DocTabKey,
+    text: string,
+  ) => Promise<void>;
+  /** Apunta una decisión en el registro de otro nodo, con su procedencia. */
+  addDecisionTo: (
+    kind: DocOwnerKind,
+    id: string,
+    d: {
+      title: string;
+      body: string;
+      tag: string;
+      origin: "message" | "doc";
+      originMessageId?: string;
+      originChannelId?: string;
+    },
+  ) => Promise<void>;
   /** Apunta una decisión en el registro del documento abierto. */
   addDecision: (d: { title: string; body: string; tag: string }) => Promise<void>;
   /** El historial de una sección, lo más reciente primero. */
@@ -795,6 +820,30 @@ export const useTasksStore = create<TasksState>()(
           set({ doc: res.data });
         }
         await get().fetchDocIndex(); // the node may have just gained (or lost) its mark
+      },
+
+      appendToDoc: async (kind, id, tab, text) => {
+        await api.post<APIResponse<DocResponse>>(
+          `/api/v1/docs/${kind}/${id}/tabs/${tab}/append`,
+          { body: text },
+        );
+        // Puede que el nodo acabe de estrenar documentación, y el navegador lo
+        // marca.
+        await get().fetchDocIndex();
+        // Y si resulta que es el documento que se tiene delante, hay que verlo.
+        const abierto = get().activeDoc;
+        if (abierto && abierto.kind === kind && abierto.id === id) {
+          await get().openDoc(kind, id, abierto.name);
+        }
+      },
+
+      addDecisionTo: async (kind, id, d) => {
+        await api.post<APIResponse<DocResponse>>(`/api/v1/docs/${kind}/${id}/decisions`, d);
+        await get().fetchDocIndex();
+        const abierto = get().activeDoc;
+        if (abierto && abierto.kind === kind && abierto.id === id) {
+          await get().openDoc(kind, id, abierto.name);
+        }
       },
 
       addDecision: async (d) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardHref, taskIdFromHref } from "./card-menu";
+import { cardHref, docHref, docRefFromHref, taskIdFromHref } from "./card-menu";
 
 // Citing a card is the reason this chat exists instead of a Slack channel, and
 // the whole mechanism is one link: written by the picker, read back by the
@@ -43,5 +43,60 @@ describe("what must not be claimed as a citation", () => {
 
   it("does not match an external host that happens to have /tasks", () => {
     expect(taskIdFromHref("https://evil.example.com/tasks?task=abc")).toBeNull();
+  });
+});
+
+/**
+ * El enlace a un documento compartido.
+ *
+ * Se escribe dentro de un mensaje, así que lo lee el mismo renderizador que
+ * cualquier otro enlace pegado en el chat. Dos formas de romperlo, y las dos son
+ * silenciosas: reclamar enlaces que no son nuestros —y sacar a la gente del
+ * navegador para enseñarle una pantalla vacía—, o no reconocer los propios y
+ * abrir la app fuera de la app.
+ */
+describe("el enlace a un documento", () => {
+  it("va y vuelve", () => {
+    expect(docRefFromHref(docHref("list", "l1"))).toEqual({
+      kind: "list",
+      id: "l1",
+      tab: undefined,
+    });
+  });
+
+  it("la sección viaja con él", () => {
+    expect(docRefFromHref(docHref("space", "s1", "runbook"))).toEqual({
+      kind: "space",
+      id: "s1",
+      tab: "runbook",
+    });
+  });
+
+  /**
+   * El fallo que ya se cometió una vez con las tarjetas.
+   *
+   * El segundo caso es el que de verdad lo comprueba: con un solo parámetro, un
+   * prefijo laxo falla igualmente por casualidad —lo que queda tras recortar no
+   * parsea—, y la prueba pasaría con el error dentro. Con dos parámetros sí
+   * parsea, y entonces un enlace externo perfectamente bueno deja de abrir el
+   * navegador y abre una pantalla vacía.
+   */
+  it("un enlace externo no es nuestro", () => {
+    expect(docRefFromHref("https://ejemplo.com/tasks?doc=list:l1")).toBeNull();
+    expect(docRefFromHref("https://ejemplo.com/tasks?a=1&doc=list:l1")).toBeNull();
+    expect(taskIdFromHref("https://ejemplo.com/tasks?a=1&task=t1")).toBeNull();
+  });
+
+  it("una cita de tarjeta no es un documento, ni al revés", () => {
+    expect(docRefFromHref(cardHref("t1"))).toBeNull();
+    expect(taskIdFromHref(docHref("list", "l1"))).toBeNull();
+  });
+
+  // Un `doc` a medias llega si alguien edita el mensaje a mano. Mejor no
+  // reconocerlo que llamar a una ruta con la mitad de los datos.
+  it("un identificador a medias no vale", () => {
+    expect(docRefFromHref("/tasks?doc=list")).toBeNull();
+    expect(docRefFromHref("/tasks?doc=:l1")).toBeNull();
+    expect(docRefFromHref("/tasks?doc=")).toBeNull();
   });
 });

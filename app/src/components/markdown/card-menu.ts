@@ -54,6 +54,28 @@ export function taskIdFromHref(href: string): string | null {
   return id || null;
 }
 
+/**
+ * El enlace a un documento compartido, y cómo se lee de vuelta.
+ *
+ * Junto al de las tarjetas y con el mismo criterio: prefijo exacto, no «acaba
+ * en /tasks». La versión laxa reclamaba `https://ejemplo.com/tasks?doc=1` y un
+ * enlace externo perfectamente bueno dejaba de abrir el navegador.
+ */
+export function docHref(kind: string, id: string, tab?: string): string {
+  return `/tasks?doc=${kind}:${id}` + (tab ? `&tab=${tab}` : "");
+}
+
+export function docRefFromHref(href: string): { kind: string; id: string; tab?: string } | null {
+  const prefix = "/tasks?";
+  if (!href.startsWith(prefix)) return null;
+  const q = new URLSearchParams(href.slice(prefix.length));
+  const ref = q.get("doc");
+  if (!ref) return null;
+  const [kind, id] = ref.split(":");
+  if (!kind || !id) return null;
+  return { kind, id, tab: q.get("tab") ?? undefined };
+}
+
 function matching(cards: CardRef[], query: string): CardRef[] {
   const q = query.toLowerCase().trim();
   const hits = q
