@@ -350,6 +350,7 @@
     "tasks": "Tareas",
     "nothing": "Ningún documento coincide",
     "undocumented_one": "{{count}} lista sin documentación",
-    "undocumented_other": "{{count}} listas sin documentación"
+    "undocumented_other": "{{count}} listas sin documentación",
+    "noneYet": "Todavía no hay nada documentado. Elige una lista de abajo para escribir la primera."
   }
 }

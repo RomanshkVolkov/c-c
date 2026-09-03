@@ -104,6 +104,9 @@ export default function DocIndex() {
     };
   }, [tree, docIndex, filtro, soloViejos]);
 
+  // Si existe alguno en toda la organización, al margen del filtro.
+  const hayAlguno = Object.keys(docIndex).length > 0;
+
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
@@ -170,9 +173,13 @@ export default function DocIndex() {
           </TableBody>
         </Table>
 
+        {/* «Nada coincide» y «nada escrito» son dos cosas distintas y hasta
+            ahora decían lo mismo. Con la organización entera sin documentar
+            —que es como empieza todo el mundo—, la tabla vacía parecía un
+            filtro mal puesto en vez de una invitación a escribir la primera. */}
         {conDoc.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            {t("work:docIndex.nothing")}
+            {t(hayAlguno ? "work:docIndex.nothing" : "work:docIndex.noneYet")}
           </p>
         )}
 

@@ -4,16 +4,18 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { STATUS_LABEL_KEYS } from "@/types/report";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertCircle, CalendarDays, Eye, EyeOff, KanbanSquare, List, Loader2, X } from "lucide-react";
+import { AlertCircle, CalendarDays, Eye, EyeOff, FileText, KanbanSquare, List, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import CopyId from "@/components/CopyId";
 import { useReportsStore } from "@/store/reports.store";
 import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ItemCalendar from "@/components/ItemCalendar";
+import PinnedLine from "@/components/docs/PinnedLine";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
 import TaskCardMini, { cuando } from "@/components/tasks/TaskCardMini";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useNavigate } from "react-router-dom";
 import { useTasksStore } from "@/store/tasks.store";
 import { priorityMeta } from "@/types/task";
 import type { OpenTask } from "@/types/task";
@@ -94,6 +96,10 @@ export default function MyWork() {
   const load = useMyWorkStore((s) => s.load);
   const orgId = useOrgsStore((s) => s.currentOrgId);
   const openTask = useTasksStore((s) => s.openTask);
+  // El documento se pinta en `/tasks`, así que hay que ir allí además de
+  // abrirlo. Abrirlo sin navegar deja el estado puesto y la pantalla igual.
+  const openDocEnTareas = useTasksStore((s) => s.openDoc);
+  const navigate = useNavigate();
   const statusesOf = useTasksStore((s) => s.statusesOf);
   const moveTask = useTasksStore((s) => s.moveTask);
 
@@ -232,7 +238,7 @@ export default function MyWork() {
               {t(l.labelKey)}
             </button>
           ))}
-          <span className="ml-auto flex gap-0.5 pb-1.5">
+          <span className="ml-auto flex items-center gap-0.5 pb-1.5">
             {VISTAS.map((v) => (
               <button
                 key={v.key}
@@ -249,9 +255,34 @@ export default function MyWork() {
                 <v.icon className="size-3.5" />
               </button>
             ))}
+            {/* La documentación, detrás de un divisor.
+                Aquí y no sólo en el tablero porque **aquí** es donde se aterriza
+                al pulsar una lista en el árbol: el tablero está a dos clics, en
+                el menú de la fila. Una cuarta vista que sólo existiera allí es
+                una cuarta vista que no ve nadie.
+                Sólo con una lista delante: la documentación cuelga de un nodo, y
+                «mi trabajo» sin acotar cruza todos. */}
+            {scope?.kind === "list" && (
+              <>
+                <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
+                <button
+                  onClick={() => {
+                    void openDocEnTareas("list", scope.id, scope.name).catch(() => {});
+                    navigate("/tasks");
+                  }}
+                  title={t("work:board.view.docs")}
+                  className="rounded px-1.5 py-1 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                >
+                  <FileText className="size-3.5" />
+                </button>
+              </>
+            )}
           </span>
         </nav>
       </header>
+
+      {/* Lo que hay que saber antes de coger una tarjeta, donde se cogen. */}
+      {scope?.kind === "list" && <PinnedLine listId={scope.id} />}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {creando && (

@@ -350,6 +350,7 @@
     "tasks": "Tasks",
     "nothing": "No documents match",
     "undocumented_one": "{{count}} list with no docs",
-    "undocumented_other": "{{count}} lists with no docs"
+    "undocumented_other": "{{count}} lists with no docs",
+    "noneYet": "Nothing is documented yet. Pick a list below to write its first page."
   }
 }
