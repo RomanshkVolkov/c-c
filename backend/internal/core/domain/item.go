@@ -258,6 +258,17 @@ type ItemComment struct {
 	//                         that tenant, and must never be shown without
 	//                         naming who asserted them.
 	//   neither             → the reporter
+	// DecisionID ata este comentario a la entrada del registro que lo acompaña.
+	//
+	// Vacío en casi todos: sólo lo llevan los que se escribieron con
+	// `/decision`. Es lo que permite pintarlo distinto —«esto no es un
+	// comentario cualquiera»— y, sobre todo, enlazar de la tarjeta a la entrada.
+	// La procedencia ya iba en la otra dirección; ésta es la de vuelta, y sin
+	// ella nadie que lea el hilo sabe que aquello quedó registrado en algún sitio.
+	//
+	// El id y no un booleano por eso mismo: un booleano diría que hubo una
+	// decisión sin decir cuál, que es media respuesta.
+	DecisionID         string  `gorm:"type:varchar(36)"       json:"decisionId,omitempty"`
 	AuthorUserID       *string `gorm:"type:varchar(36)"       json:"authorUserId,omitempty"`
 	AuthorProjectID    *string `gorm:"type:varchar(36);index" json:"-"`
 	AuthorExternalID   string  `gorm:"type:varchar(255)"      json:"-"`

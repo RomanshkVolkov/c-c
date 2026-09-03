@@ -1005,6 +1005,13 @@ func (r *TaskRepository) UpdateComment(id, body string) error {
 	return r.db.Model(&domain.TaskComment{}).Where("id = ?", id).Update("body", body).Error
 }
 
+// SetCommentDecision ata un comentario a su entrada del registro. Ver
+// `MarkCommentDecision` en el servicio para por qué son dos pasos.
+func (r *TaskRepository) SetCommentDecision(commentID, decisionID string) error {
+	return r.db.Model(&domain.TaskComment{}).Where("id = ?", commentID).
+		Update("decision_id", decisionID).Error
+}
+
 func (r *TaskRepository) FindComment(id string) (*domain.TaskComment, error) {
 	var c domain.TaskComment
 	if err := r.db.First(&c, "id = ?", id).Error; err != nil {

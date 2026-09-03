@@ -11,6 +11,7 @@ import (
 	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
 	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 )
@@ -1030,11 +1031,15 @@ func (h *taskHandler) AddComment(w http.ResponseWriter, r *http.Request) {
 	// La entrada va atada al comentario: reintentar no deja dos en un registro
 	// del que no se puede borrar nada. Ver `AddDecision` en el repositorio.
 	if req.Decision != nil && h.docs != nil {
-		if _, err := h.docs.DecisionFromTask(
-			t.OrgID, t.ListID, t.ID, user.UserID, c.ID, *req.Decision,
-		); err != nil {
+		d, err := h.docs.DecisionFromTask(t.OrgID, t.ListID, t.ID, user.UserID, c.ID, *req.Decision)
+		if err != nil {
 			SendErrorResponse(w, http.StatusInternalServerError, "Failed to record the decision", err.Error())
 			return
+		}
+		// El enlace de vuelta: de la tarjeta a la entrada. Sin esto, quien lea el
+		// hilo no sabe que aquello quedó registrado en ningún sitio.
+		if err := h.svc.MarkCommentDecision(c.ID, d.ID); err != nil {
+			lg.Error("marking the comment as a decision: " + err.Error())
 		}
 	}
 	detail, err := h.svc.Detail(t.ID)

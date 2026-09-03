@@ -740,7 +740,7 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 		// this and the detail did not, so opening a card whose priority came from
 		// the report side handed the app a value its own table had no entry for —
 		// and reading a field off that undefined took the whole screen down.
-		Task:      withTaskWirePriority(*t),
+		Task: withTaskWirePriority(*t),
 		// Vacíos cuando el item no está en ninguna lista. La pantalla lo pinta
 		// como lo que es —una tarjeta sin sitio— en vez de no pintar nada.
 		ListName:  nombreDe(list),
@@ -969,6 +969,17 @@ func (s *TaskService) AddComment(ctx context.Context, taskID, userID, body strin
 		})
 	}
 	return c, nil
+}
+
+// MarkCommentDecision ata un comentario ya publicado a su entrada del registro.
+//
+// En dos pasos y no en uno porque la entrada necesita el id del comentario para
+// no escribirse dos veces, y el comentario necesita el de la entrada para
+// enlazarla: cada uno nace del otro. El comentario se publica primero porque es
+// lo que la persona ve; si el segundo paso fallara, queda un comentario sin
+// marca y no una entrada huérfana en un registro del que no se puede borrar.
+func (s *TaskService) MarkCommentDecision(commentID, decisionID string) error {
+	return s.repo.SetCommentDecision(commentID, decisionID)
 }
 
 func (s *TaskService) FindComment(id string) (*domain.TaskComment, error) {
