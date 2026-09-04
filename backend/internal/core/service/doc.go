@@ -10,8 +10,12 @@ import (
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
-// ErrNotAColleague: el responsable propuesto no está en la organización.
-var ErrNotAColleague = errors.New("that person is not in this organization")
+var (
+	// ErrNotAColleague: el responsable propuesto no está en la organización.
+	ErrNotAColleague = errors.New("that person is not in this organization")
+	// ErrDocConflict: alguien guardó esa sección entre la lectura y el guardado.
+	ErrDocConflict = errors.New("this section changed since you read it")
+)
 
 type DocService struct {
 	repo *repository.DocRepository
@@ -61,17 +65,28 @@ func (s *DocService) Tabs(docID string) ([]domain.DocTab, error) { return s.repo
 // las dos lo suelte.
 func (s *DocService) SaveTab(
 	orgID string, kind domain.DocOwnerKind, ownerID string,
-	key domain.DocTabKey, body, userID string,
+	key domain.DocTabKey, body, userID string, baseHash *string,
 ) (*domain.Doc, error) {
-	antes := ""
+	antes, hashActual := "", ""
 	if doc, err := s.repo.Find(kind, ownerID); err == nil && doc != nil {
 		if tabs, err := s.repo.Tabs(doc.ID); err == nil {
 			for _, t := range tabs {
 				if t.Key == key {
-					antes = t.Body
+					antes, hashActual = t.Body, t.BodyHash
 				}
 			}
 		}
+	}
+	// Alguien guardó entre la lectura y esto. Se rechaza en vez de aplicar:
+	// aplicarlo borraría su párrafo sin que nadie se entere, que con un agente
+	// escribiendo por MCP deja de ser un caso raro. Ver `DocSaveConflicts`.
+	//
+	// Rechazar y no archivar la versión perdedora aparte —como hacen las notas,
+	// que crean una página hija— porque una pestaña no tiene dónde ponerla, y
+	// porque quien llama sigue teniendo su texto: devolverle el actual le deja
+	// fundir en un solo viaje.
+	if domain.DocSaveConflicts(hashActual, baseHash) {
+		return nil, ErrDocConflict
 	}
 	doc, err := s.repo.SaveTab(orgID, kind, ownerID, key, body, userID)
 	if err != nil {
@@ -130,7 +145,10 @@ func (s *DocService) Restore(
 	if err != nil {
 		return nil, err
 	}
-	return s.SaveTab(orgID, kind, ownerID, v.Key, v.Body, userID)
+	// Sin `baseHash`: restaurar es deliberado —alguien eligió esta versión de una
+	// lista— así que lo que haya ahora es justamente lo que se quiere reemplazar,
+	// y va al historial como cualquier otro guardado.
+	return s.SaveTab(orgID, kind, ownerID, v.Key, v.Body, userID, nil)
 }
 
 // ErrDecisionUnaddressed: el origen no trae con qué volver.
@@ -147,10 +165,24 @@ func (s *DocService) Decisions(docID string) ([]domain.Decision, error) {
 // proyecto que nadie documentó todavía es la forma más natural de que empiece a
 // haber documentación, y pedir que exista antes sólo mueve el problema.
 func (s *DocService) AddDecision(
-	orgID string, kind domain.DocOwnerKind, ownerID, userID, commentID string, req domain.DecisionRequest,
+	orgID string, kind domain.DocOwnerKind, ownerID, userID, commentID, via string, req domain.DecisionRequest,
 ) (*domain.Decision, error) {
 	if !domain.DecisionIsAddressed(req) {
 		return nil, ErrDecisionUnaddressed
+	}
+	// Quién la tomó, si no es quien la escribe. Ver `DecisionRequest.DecidedBy`.
+	autor := userID
+	if strings.TrimSpace(req.DecidedBy) != "" {
+		quienes := s.repo.MembersMatching(orgID, req.DecidedBy)
+		if len(quienes) != 1 {
+			return nil, &ErrNoSuchColleague{
+				Buscado: req.DecidedBy,
+				// Con varias coincidencias se ofrecen ésas; sin ninguna, todas.
+				// En los dos casos lo que hace falta es una lista de la que elegir.
+				Opciones: aQuienesSePuedeNombrar(quienes, s.repo.OrgMemberNames(orgID)),
+			}
+		}
+		autor = quienes[0].ID
 	}
 	// `Patch` sin campos crea el documento y devuelve el que ya hubiera.
 	doc, err := s.repo.Patch(orgID, kind, ownerID, nil)
@@ -159,7 +191,7 @@ func (s *DocService) AddDecision(
 	}
 	d := &domain.Decision{
 		DocID: doc.ID, Title: strings.TrimSpace(req.Title), Body: req.Body,
-		Tag: strings.TrimSpace(req.Tag), AuthorID: userID,
+		Tag: strings.TrimSpace(req.Tag), AuthorID: autor, Via: via,
 		Origin:          domain.DecisionOrigin(req.Origin),
 		OriginTaskID:    req.OriginTaskID,
 		OriginMessageID: req.OriginMessageID,
@@ -176,11 +208,37 @@ func (s *DocService) AddDecision(
 // una decisión tomada en un hilo se queda en ese hilo, que es exactamente lo que
 // pasa hoy y por lo que la misma discusión se repite cada pocos meses.
 func (s *DocService) DecisionFromTask(
-	orgID, listID, taskID, userID, commentID string, req domain.DecisionRequest,
+	orgID, listID, taskID, userID, commentID, via string, req domain.DecisionRequest,
 ) (*domain.Decision, error) {
 	req.Origin = string(domain.DecisionFromTask)
 	req.OriginTaskID = taskID
-	return s.AddDecision(orgID, domain.DocOwnerList, listID, userID, commentID, req)
+	return s.AddDecision(orgID, domain.DocOwnerList, listID, userID, commentID, via, req)
+}
+
+// ErrNoSuchColleague: el nombre no identifica a una persona, y dice a quiénes sí.
+type ErrNoSuchColleague struct {
+	Buscado  string
+	Opciones []string
+}
+
+func (e *ErrNoSuchColleague) Error() string {
+	if len(e.Opciones) == 0 {
+		return "no member of this organization is called " + e.Buscado
+	}
+	return "\"" + e.Buscado + "\" does not name exactly one member of this organization. Try: " +
+		strings.Join(e.Opciones, ", ")
+}
+
+// aQuienesSePuedeNombrar: las coincidencias si las hubo, y si no, todo el equipo.
+func aQuienesSePuedeNombrar(quienes []repository.Miembro, todos []string) []string {
+	if len(quienes) == 0 {
+		return todos
+	}
+	out := make([]string, 0, len(quienes))
+	for _, m := range quienes {
+		out = append(out, m.Nombre)
+	}
+	return out
 }
 
 func (s *DocService) HasDoc(orgID string) (map[string]domain.DocMark, error) {

@@ -264,6 +264,13 @@ var patWritable = []struct {
 	// bring images across instead of leaving them served by the tool being
 	// abandoned, which is the whole point of migrating.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/[^/]+/attachments/?$`), domain.ScopeNotesWrite},
+	// Documentación: añadir al final de una sección y registrar una decisión.
+	//
+	// Las dos sólo añaden. `append` concatena en la base sin leer antes, así que
+	// no puede pisar a quien tenga el documento abierto autoguardando; y el
+	// registro de decisiones es append-only por diseño.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/tabs/[^/]+/append/?$`), domain.ScopeDocsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/decisions/?$`), domain.ScopeDocsWrite},
 	// Creating a collection, so an agent that just described an API can leave it
 	// ready to run. Sharing one is not here on purpose: that reaches other
 	// people, and it should take a person to decide.
@@ -286,6 +293,18 @@ var patWritable = []struct {
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/move/?$`), domain.ScopeTasksManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/notes/[^/]+$`), domain.ScopeNotesManage},
+	// Reemplazar una sección entera, y poner dueño o línea fijada.
+	//
+	// El `PUT` pisa el cuerpo, que es exactamente lo que separa Manage de Write.
+	// Va con detección de conflicto: sin el hash de lo que se leyó, el servidor
+	// lo rechaza en vez de borrar lo que otro escribió mientras tanto.
+	//
+	// El `PATCH` alcanza dueño y línea fijada, **no** «revisado»: el handler lo
+	// exige de un superadmin, así que un token nunca puede firmar una revisión
+	// aunque llegue por aquí. La restricción vive ahí y no en esta tabla porque
+	// depende de un campo del cuerpo, y esta tabla sólo ve método y ruta.
+	{http.MethodPut, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/tabs/[^/]+$`), domain.ScopeDocsManage},
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+$`), domain.ScopeReportsManage},
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/[^/]+$`), domain.ScopeReportsManage},
 	// Correcting or withdrawing a comment. Under manage rather than write

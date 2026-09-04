@@ -1031,7 +1031,8 @@ func (h *taskHandler) AddComment(w http.ResponseWriter, r *http.Request) {
 	// La entrada va atada al comentario: reintentar no deja dos en un registro
 	// del que no se puede borrar nada. Ver `AddDecision` en el repositorio.
 	if req.Decision != nil && h.docs != nil {
-		d, err := h.docs.DecisionFromTask(t.OrgID, t.ListID, t.ID, user.UserID, c.ID, *req.Decision)
+		d, err := h.docs.DecisionFromTask(
+			t.OrgID, t.ListID, t.ID, user.UserID, c.ID, domain.ViaFrom(r.Context()), *req.Decision)
 		if err != nil {
 			SendErrorResponse(w, http.StatusInternalServerError, "Failed to record the decision", err.Error())
 			return

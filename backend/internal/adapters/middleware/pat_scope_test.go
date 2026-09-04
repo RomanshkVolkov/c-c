@@ -50,6 +50,14 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPatch, "/api/v1/tasks/abc/comments/xyz", domain.ScopeTasksManage},
 		{http.MethodDelete, "/api/v1/tasks/abc/comments/xyz", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/collections/", domain.ScopeCollectionsWrite},
+		// Documentación. Añadir al final y registrar una decisión sólo agregan:
+		// `append` concatena en la base sin leer antes, así que no puede pisar a
+		// quien esté escribiendo, y el registro es append-only por diseño.
+		{http.MethodPost, "/api/v1/docs/list/abc/tabs/runbook/append", domain.ScopeDocsWrite},
+		{http.MethodPost, "/api/v1/docs/space/abc/decisions", domain.ScopeDocsWrite},
+		// Reemplazar una sección entera, y poner dueño o línea fijada.
+		{http.MethodPut, "/api/v1/docs/list/abc/tabs/overview", domain.ScopeDocsManage},
+		{http.MethodPatch, "/api/v1/docs/folder/abc", domain.ScopeDocsManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -70,6 +78,17 @@ func TestAppendScopeCannotChangeExistingWork(t *testing.T) {
 		scope, _ := patScopeFor(req(http.MethodPatch, path))
 		if scope == domain.ScopeTasksWrite {
 			t.Errorf("%s must not be reachable with the append-only scope", path)
+		}
+	}
+	// Lo mismo en documentación: reemplazar una sección borra lo que hubiera, y
+	// poner dueño cambia de quién es. Ninguna de las dos es añadir.
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPut, "/api/v1/docs/list/abc/tabs/overview"},
+		{http.MethodPatch, "/api/v1/docs/list/abc"},
+	} {
+		scope, _ := patScopeFor(req(c.method, c.path))
+		if scope == domain.ScopeDocsWrite {
+			t.Errorf("%s %s must not be reachable with the append-only scope", c.method, c.path)
 		}
 	}
 }

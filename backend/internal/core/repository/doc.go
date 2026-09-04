@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -131,7 +133,7 @@ func (r *DocRepository) SaveTab(
 	var existente domain.DocTab
 	err = r.db.Where("doc_id = ? AND key = ?", doc.ID, key).First(&existente).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: body, UpdatedBy: userID}
+		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: body, BodyHash: HashBody(body), UpdatedBy: userID}
 		t.ID = uuid.NewString()
 		if err := r.db.Create(t).Error; err != nil {
 			return nil, err
@@ -152,7 +154,7 @@ func (r *DocRepository) SaveTab(
 	// propósito es el valor cero y GORM no lo escribiría — vaciar una sección
 	// dejaría de funcionar sin que nada se queje.
 	if err := r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
-		Updates(map[string]any{"body": body, "updated_by": userID}).Error; err != nil {
+		Updates(map[string]any{"body": body, "body_hash": HashBody(body), "updated_by": userID}).Error; err != nil {
 		return nil, err
 	}
 	return doc, nil
@@ -254,7 +256,7 @@ func (r *DocRepository) AppendTab(
 	var existente domain.DocTab
 	err = r.db.Where("doc_id = ? AND key = ?", doc.ID, key).First(&existente).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: texto, UpdatedBy: userID}
+		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: texto, BodyHash: HashBody(texto), UpdatedBy: userID}
 		t.ID = uuid.NewString()
 		if err := r.db.Create(t).Error; err != nil {
 			return nil, err
@@ -277,6 +279,17 @@ func (r *DocRepository) AppendTab(
 			"updated_by": userID,
 		}).Error; err != nil {
 		return nil, err
+	}
+	// El hash, después y sobre lo que quedó: la concatenación la hizo la base
+	// —justamente para no leer antes— así que aquí todavía no se sabe el
+	// resultado. Calcularlo sobre lo que se creía que había dejaría un hash que
+	// no corresponde a ninguna versión, y entonces el siguiente guardado con
+	// conflicto se rechazaría o se aceptaría por razones inventadas.
+	var quedo string
+	if err := r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
+		Select("body").Scan(&quedo).Error; err == nil {
+		r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
+			Update("body_hash", HashBody(quedo))
 	}
 	return doc, nil
 }
@@ -355,15 +368,27 @@ func (r *DocRepository) authorNames(docs []domain.Doc) map[string]string {
 	if len(ids) == 0 {
 		return out
 	}
-	type fila struct{ ID, Username string }
+	type fila struct{ ID, Nombre string }
 	var filas []fila
-	r.db.Table("users").Select("id", "COALESCE(username,'') as username").
+	r.db.Table("users").Select("id", nombreVisible+" as nombre").
 		Where("id IN ?", ids).Scan(&filas)
 	for _, f := range filas {
-		out[f.ID] = f.Username
+		out[f.ID] = f.Nombre
 	}
 	return out
 }
+
+// nombreVisible: cómo se llama a alguien, no cómo entra.
+//
+// El nombre y sólo si no lo hay, el usuario. Toda la documentación pinta bylines
+// —quién editó, de quién es, quién firmó una decisión, quién dejó una versión— y
+// hasta ahora todas enseñaban `username`: «rvolkov» donde cabe «Romanshk
+// Volkov». Un identificador de acceso no es la forma de llamar a una persona.
+//
+// `NULLIF` porque la columna existe desde antes que el hábito de rellenarla: hay
+// filas con el nombre vacío, y `COALESCE` sobre `”` devuelve la cadena vacía en
+// vez de caer al usuario.
+const nombreVisible = "COALESCE(NULLIF(name, ''), username, '')"
 
 // AuthorName resolves the "last edited by" label. Kept in the repository next to
 // the other SQL rather than adding a user dependency to the doc service.
@@ -372,7 +397,7 @@ func (r *DocRepository) AuthorName(userID string) string {
 		return ""
 	}
 	var name string
-	r.db.Table("users").Select("COALESCE(username,'')").Where("id = ?", userID).Scan(&name)
+	r.db.Table("users").Select(nombreVisible).Where("id = ?", userID).Scan(&name)
 	return name
 }
 
@@ -428,6 +453,53 @@ func (r *DocRepository) Patch(
 		}
 	}
 	return r.FindByID(doc.ID)
+}
+
+// Miembro es un nombre y su id, para resolver «lo decidió Jose».
+type Miembro struct {
+	ID     string
+	Nombre string
+}
+
+// MembersMatching busca a una persona de la organización por cómo se la llama.
+//
+// Coincidencia exacta y sin distinguir mayúsculas, contra el nombre **o** el
+// usuario: quien escribe «Jose Guzman» y quien escribe «jguzman» se refieren a la
+// misma persona, y hacer que un agente adivine cuál de los dos campos mirar es
+// pedirle que conozca el esquema.
+//
+// Devuelve todas las coincidencias a propósito. Con dos personas que se llaman
+// igual, elegir una por orden de tabla firma una decisión con el nombre
+// equivocado en un registro que no se puede borrar; quien llama tiene que
+// enterarse y desempatar.
+func (r *DocRepository) MembersMatching(orgID, query string) []Miembro {
+	var out []Miembro
+	q := strings.TrimSpace(query)
+	if orgID == "" || q == "" {
+		return out
+	}
+	r.db.Table("users").
+		Select("users.id as id, "+nombreVisible+" as nombre").
+		Joins("JOIN org_memberships m ON m.user_id = users.id AND m.org_id = ?", orgID).
+		Where("LOWER(users.name) = LOWER(?) OR LOWER(users.username) = LOWER(?)", q, q).
+		Scan(&out)
+	return out
+}
+
+// OrgMemberNames lista a quién se puede nombrar, para que un fallo sirva.
+//
+// Un «no encontré a esa persona» a secas deja a un agente adivinando. Con la
+// lista delante, corrige en el siguiente intento en vez de probar variantes.
+func (r *DocRepository) OrgMemberNames(orgID string) []string {
+	var out []string
+	if orgID == "" {
+		return out
+	}
+	r.db.Table("users").
+		Select(nombreVisible).
+		Joins("JOIN org_memberships m ON m.user_id = users.id AND m.org_id = ?", orgID).
+		Order("2").Limit(60).Scan(&out)
+	return out
 }
 
 // IsMember dice si alguien pertenece a una organización.
@@ -499,4 +571,14 @@ func (r *DocRepository) Decisions(docID string) ([]domain.Decision, error) {
 // se estaba trabajando y se guarda donde se va a buscar.
 func (r *DocRepository) DocForList(listID string) (*domain.Doc, error) {
 	return r.Find(domain.DocOwnerList, listID)
+}
+
+// HashBody identifica una versión de un texto.
+//
+// El mismo sha256 que usan las notas (`service.hashBody`), duplicado aquí en vez
+// de compartido porque el repositorio no importa el servicio y darle la vuelta a
+// esa dependencia por una línea sería peor que la línea.
+func HashBody(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
 }

@@ -94,6 +94,17 @@ const (
 	ScopeNotesManage   = "notes:manage"
 	ScopeReportsWrite  = "reports:write"
 	ScopeReportsManage = "reports:manage"
+	// ScopeDocsWrite/ScopeDocsManage, con el mismo corte. Añadir al final de una
+	// sección no puede borrar el párrafo de nadie, así que un agente que deja
+	// escrito lo que acaba de tocar sólo necesita Write. Manage es reemplazar una
+	// sección entera y decidir de quién es el documento.
+	//
+	// Marcar «revisado» **no** está en ninguno de los dos, y no es un descuido:
+	// ver el handler. Ese campo dice que una persona confirmó que esto sigue
+	// siendo verdad, y un token que pudiera firmarlo lo convertiría en «alguien
+	// tocó esto», que ya lo dice la fecha de modificación.
+	ScopeDocsWrite  = "docs:write"
+	ScopeDocsManage = "docs:manage"
 	// No matching Manage: a token may create a collection and nothing else.
 	// Editing, deleting and sharing one all reach work a person already owns,
 	// and sharing reaches other people — that stays a human decision.
@@ -105,6 +116,7 @@ func ValidScope(s string) bool {
 	case ScopeTasksWrite, ScopeTasksManage,
 		ScopeNotesWrite, ScopeNotesManage,
 		ScopeReportsWrite, ScopeReportsManage,
+		ScopeDocsWrite, ScopeDocsManage,
 		ScopeCollectionsWrite:
 		return true
 	default:

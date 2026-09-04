@@ -159,7 +159,17 @@ func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r)
-	doc, err := h.svc.SaveTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID)
+	doc, err := h.svc.SaveTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID, req.BaseHash)
+	if errors.Is(err, service.ErrDocConflict) {
+		// 409 con el documento entero dentro: quien llama necesita el cuerpo
+		// actual y su hash para fundir, y hacerle pedirlo aparte es un viaje más
+		// en el que puede volver a cambiar.
+		d, _ := h.svc.Get(kind, id)
+		SendResult(w, http.StatusConflict, domain.APIResponse[docResponse]{
+			Success: false, Error: "doc-conflict", Data: h.completa(d),
+		})
+		return
+	}
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the document", err.Error())
 		return
@@ -205,9 +215,18 @@ func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r)
-	if _, err := h.svc.AddDecision(orgID, kind, id, user.UserID, "", req); err != nil {
+	// `via` viene de la cabecera que pone el MCP, así que la entrada queda
+	// marcada como transcrita por un agente. Ver `Decision.Via`.
+	if _, err := h.svc.AddDecision(orgID, kind, id, user.UserID, "", domain.ViaFrom(r.Context()), req); err != nil {
 		if errors.Is(err, service.ErrDecisionUnaddressed) {
 			SendErrorResponse(w, http.StatusBadRequest, "A decision needs somewhere to come back to", "decision-no-origin")
+			return
+		}
+		var noEsta *service.ErrNoSuchColleague
+		if errors.As(err, &noEsta) {
+			// El mensaje trae la lista de a quién sí se puede nombrar: sin ella,
+			// quien llama se queda probando variantes del mismo nombre.
+			SendErrorResponse(w, http.StatusBadRequest, noEsta.Error(), "no-such-colleague")
 			return
 		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to record the decision", err.Error())
@@ -280,6 +299,20 @@ func (h *docHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r)
+	// Firmar una revisión no es editar.
+	//
+	// El chip de frescura vale porque hay **una persona** detrás diciendo «lo he
+	// mirado y sigue funcionando». Si lo pudiera firmar cualquiera que pase por
+	// aquí —incluido un agente con el token de su dueño— el campo pasaría a decir
+	// «alguien tocó esto», que ya lo dice la fecha de modificación.
+	//
+	// Superadmin mientras no haya rol de admin de organización, que es el dueño
+	// natural de esta firma. Los demás campos del PATCH no cambian.
+	if domain.DocPatchSignsAReview(req) && !user.Superadmin {
+		SendErrorResponse(w, http.StatusForbidden,
+			"Only a superadmin can mark a document reviewed", "reviewed-needs-superadmin")
+		return
+	}
 	d, err := h.svc.Patch(orgID, kind, id, user.UserID, req)
 	if errors.Is(err, service.ErrNotAColleague) {
 		SendErrorResponse(w, http.StatusBadRequest, "That person is not in this organization", "not-a-colleague")

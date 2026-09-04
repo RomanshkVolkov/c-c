@@ -390,9 +390,36 @@ type DocTab struct {
 	Key   DocTabKey `gorm:"type:varchar(20);not null;index:idx_doctab,unique" json:"key"`
 	// Markdown, el mismo formato que usan las tareas: un editor y un renderizador
 	// sirven para los dos.
-	Body          string `gorm:"type:text" json:"body"`
+	Body string `gorm:"type:text" json:"body"`
+	// BodyHash es de qué versión viene lo que se está leyendo.
+	//
+	// Quien guarda lo devuelve, y si para entonces el del servidor ya es otro es
+	// que alguien guardó en medio: aplicar el nuevo encima borraría lo suyo sin
+	// que nadie se entere. Con un agente escribiendo por MCP mientras una persona
+	// tiene el documento abierto, eso deja de ser un caso raro.
+	BodyHash      string `gorm:"type:varchar(64)" json:"bodyHash,omitempty"`
 	UpdatedBy     string `gorm:"type:varchar(36)" json:"updatedBy"`
 	UpdatedByName string `gorm:"-" json:"updatedByName,omitempty"`
+}
+
+// DocSaveConflicts dice si un guardado llega tarde.
+//
+// Pura y en el dominio porque es **la regla** que decide si se pierde texto, y
+// porque las pruebas de repositorio de este proyecto se saltan sin base de datos
+// — en integración continua no hay ninguna, así que una regla comprobada sólo
+// ahí no está comprobada.
+//
+// Se mira `actual` y no `base`: una sección sin hash todavía —nunca guardada, o
+// escrita antes de que esto existiera— no tiene contra qué comparar y no puede
+// producir un conflicto falso. Pero en cuanto el servidor **sí** tiene uno, quien
+// no manda ninguno está exactamente igual de atrasado que quien manda uno
+// equivocado: su copia es anterior al primer hash que se escribió, que sigue
+// siendo una versión que no vio.
+func DocSaveConflicts(actual string, base *string) bool {
+	if actual == "" {
+		return false
+	}
+	return base == nil || *base != actual
 }
 
 // DocVersion es una foto de una sección tal como se guardó.
@@ -497,6 +524,14 @@ type Decision struct {
 	// abrir—: es la clave que hace que un reintento no deje dos entradas
 	// idénticas en un registro del que no se puede borrar nada.
 	OriginCommentID string `gorm:"type:varchar(36)" json:"-"`
+
+	// Via dice por dónde entró: la app, o un agente por MCP.
+	//
+	// En la fila y no sólo en el aviso, al contrario que en el resto del
+	// codebase, porque este registro **no se puede borrar**. Quien lo lea dentro
+	// de un año tiene que poder distinguir lo que tecleó una persona de lo que
+	// transcribió un agente, y para entonces el aviso hace mucho que se leyó.
+	Via string `gorm:"type:varchar(20)" json:"via,omitempty"`
 }
 
 // DecisionRequest es una decisión tal como la manda quien la toma.
@@ -509,6 +544,28 @@ type DecisionRequest struct {
 	OriginTaskID    string `json:"originTaskId"    validate:"omitempty,max=36"`
 	OriginMessageID string `json:"originMessageId" validate:"omitempty,max=36"`
 	OriginChannelID string `json:"originChannelId" validate:"omitempty,max=36"`
+	// DecidedBy es quién la tomó, cuando no es quien la escribe.
+	//
+	// El caso que lo pide: la decisión se tomó fuera de cac —un correo, una
+	// llamada— y quien la apunta es un agente. Firmarla con el dueño del token
+	// diría que la tomó él, que es falso y además es lo que alguien creerá
+	// cuando la lea. Se acepta el nombre o el usuario de un miembro de la
+	// organización; el servidor lo resuelve.
+	DecidedBy string `json:"decidedBy" validate:"omitempty,max=120"`
+}
+
+// DocPatchSignsAReview dice si este cambio incluye firmar una revisión.
+//
+// Con nombre propio y aquí porque es una **firma**, no un campo más: dice que una
+// persona confirmó que el documento sigue siendo verdad, y por eso el handler la
+// exige de un superadmin mientras no haya rol de admin de organización.
+//
+// Mira el puntero y no su valor. Quitar una revisión —`false`— también cambia lo
+// que el documento afirma sobre sí mismo: deja en verde algo que estaba en ámbar,
+// o al revés. Guardar sólo el caso `true` es el error fácil, y deja media puerta
+// abierta.
+func DocPatchSignsAReview(r PatchDocRequest) bool {
+	return r.Reviewed != nil
 }
 
 // DecisionIsAddressed comprueba que el origen trae con qué volver.
@@ -559,6 +616,9 @@ func (a *DocAttachment) NormalizeURL() {
 
 type SaveDocRequest struct {
 	Body string `json:"body"`
+	// BaseHash es el `bodyHash` que traía la sección al leerla. Ver
+	// `DocSaveConflicts`. Se ignora al añadir al final: ahí no hay nada que pisar.
+	BaseHash *string `json:"baseHash"`
 }
 
 // PatchDocRequest cambia lo que rodea al documento, no su texto.

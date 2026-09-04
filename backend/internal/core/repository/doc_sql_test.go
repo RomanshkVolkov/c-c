@@ -184,6 +184,57 @@ func TestDocSQL(t *testing.T) {
 		}
 	})
 
+	// El hash tiene que corresponder a lo que quedó en la fila, no a lo que quien
+	// escribió creía que estaba dejando: al añadir al final la concatenación la
+	// hace la base —justamente para no leer antes— así que el resultado sólo se
+	// conoce después. Un hash que no corresponde a ninguna versión hace que el
+	// siguiente guardado se acepte o se rechace por razones inventadas.
+	t.Run("el hash corresponde al cuerpo que quedó", func(t *testing.T) {
+		hashDe := func(k domain.DocTabKey) (string, string) {
+			tabs, err := r.Tabs(doc().ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, x := range tabs {
+				if x.Key == k {
+					return x.BodyHash, x.Body
+				}
+			}
+			return "", ""
+		}
+
+		// Después de guardar, y **antes** de añadir nada.
+		//
+		// Comprobarlo sólo al final no dice nada: el `append` reescribe el hash,
+		// así que un `SaveTab` que no lo escribiera pasaría igual. Y sin hash al
+		// guardar, `DocSaveConflicts` devuelve siempre `false` — la detección de
+		// conflictos queda apagada para toda sección que nadie haya ampliado, en
+		// silencio y para siempre.
+		if _, err := r.SaveTab("o1", domain.DocOwnerList, l.ID, domain.DocDecisions, "uno", "u1"); err != nil {
+			t.Fatal(err)
+		}
+		if h, b := hashDe(domain.DocDecisions); h == "" || h != HashBody(b) {
+			t.Fatalf("crear la sección no dejó hash: %q para %q", h, b)
+		}
+
+		// Y otra vez, que es un camino distinto: la primera escritura **crea** la
+		// fila y la segunda la actualiza. Comprobar sólo la primera deja la mitad
+		// sin mirar, y es la mitad por la que pasa todo lo demás.
+		if _, err := r.SaveTab("o1", domain.DocOwnerList, l.ID, domain.DocDecisions, "uno corregido", "u1"); err != nil {
+			t.Fatal(err)
+		}
+		if h, b := hashDe(domain.DocDecisions); h != HashBody(b) {
+			t.Fatalf("volver a guardar dejó un hash viejo: %q para %q", h, b)
+		}
+
+		if _, err := r.AppendTab("o1", domain.DocOwnerList, l.ID, domain.DocDecisions, "dos", "u1"); err != nil {
+			t.Fatal(err)
+		}
+		if h, b := hashDe(domain.DocDecisions); h != HashBody(b) {
+			t.Fatalf("añadir dejó un hash que no es el de lo que hay: %q para %q", h, b)
+		}
+	})
+
 	t.Run("el índice marca la lista con documentación", func(t *testing.T) {
 		m, err := r.HasDoc("o1")
 		if err != nil {

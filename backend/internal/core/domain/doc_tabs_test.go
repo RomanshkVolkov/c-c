@@ -223,3 +223,86 @@ func TestDecisionIsAddressed(t *testing.T) {
 		}
 	})
 }
+
+// Cuándo un guardado llega tarde.
+//
+// Es la regla que decide si se pierde texto. Con un agente escribiendo por MCP
+// mientras alguien tiene el documento abierto, equivocarse aquí no da un error:
+// borra un párrafo en silencio.
+func TestDocSaveConflicts(t *testing.T) {
+	hash := func(s string) *string { return &s }
+
+	t.Run("el hash que se leyó sigue siendo el actual", func(t *testing.T) {
+		if DocSaveConflicts("abc", hash("abc")) {
+			t.Fatal("nadie guardó en medio")
+		}
+	})
+
+	t.Run("otro hash es que alguien guardó en medio", func(t *testing.T) {
+		if !DocSaveConflicts("abc", hash("def")) {
+			t.Fatal("aplicarlo borraría lo que escribió el otro")
+		}
+	})
+
+	/**
+	 * Una sección que el servidor todavía no ha hasheado.
+	 *
+	 * Nunca guardada, o escrita antes de que esto existiera. No hay contra qué
+	 * comparar, así que no puede haber conflicto — sin esto, el primer guardado
+	 * de cada sección vieja se rechazaría y no habría forma de desatascarlo.
+	 */
+	t.Run("sin hash en el servidor nunca hay conflicto", func(t *testing.T) {
+		if DocSaveConflicts("", nil) {
+			t.Fatal("no hay versión previa que perder")
+		}
+		if DocSaveConflicts("", hash("lo que sea")) {
+			t.Fatal("tampoco importa lo que traiga quien guarda")
+		}
+	})
+
+	// El caso que se cuela si se mira `base` en vez de `actual`: quien no manda
+	// hash teniendo el servidor uno está exactamente igual de atrasado que quien
+	// manda uno equivocado — su copia es anterior al primer hash que se escribió.
+	t.Run("no mandar hash con el servidor teniéndolo también es llegar tarde", func(t *testing.T) {
+		if !DocSaveConflicts("abc", nil) {
+			t.Fatal("una copia anterior al primer hash sigue siendo una versión que no vio")
+		}
+	})
+}
+
+// Qué cambios de un documento son una firma.
+//
+// «Revisado» dice que una persona confirmó que esto sigue siendo verdad, y por
+// eso el handler lo exige de un superadmin. Poner dueño o fijar una línea no
+// afirma nada sobre el contenido: los hace cualquier miembro.
+func TestDocPatchSignsAReview(t *testing.T) {
+	si, no := true, false
+	texto := "ojo con el host nuevo"
+	quien := "u1"
+
+	t.Run("marcar revisado es firmar", func(t *testing.T) {
+		if !DocPatchSignsAReview(PatchDocRequest{Reviewed: &si}) {
+			t.Fatal("es la firma que sostiene el chip de frescura")
+		}
+	})
+
+	// El error fácil: guardar sólo el caso `true` y dejar que cualquiera pueda
+	// **quitar** una revisión, que pone en ámbar algo que estaba en verde.
+	t.Run("quitarla también", func(t *testing.T) {
+		if !DocPatchSignsAReview(PatchDocRequest{Reviewed: &no}) {
+			t.Fatal("borrar una firma cambia lo que el documento afirma de sí mismo")
+		}
+	})
+
+	t.Run("dueño y línea fijada no lo son", func(t *testing.T) {
+		if DocPatchSignsAReview(PatchDocRequest{MaintainerID: &quien}) {
+			t.Fatal("poner responsable no afirma nada sobre el contenido")
+		}
+		if DocPatchSignsAReview(PatchDocRequest{PinnedLine: &texto}) {
+			t.Fatal("fijar una línea tampoco")
+		}
+		if DocPatchSignsAReview(PatchDocRequest{}) {
+			t.Fatal("un cambio vacío menos todavía")
+		}
+	})
+}
