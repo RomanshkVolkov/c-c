@@ -12,6 +12,31 @@ type RequestOptions = RequestInit & { auth?: boolean };
 
 let refreshPromise: Promise<string | null> | null = null;
 
+/**
+ * El error del servidor, con su código puesto además de su frase.
+ *
+ * La frase es para leer y está **traducida**, así que reconocer un caso concreto
+ * mirándola funciona en un idioma y falla en el otro — y falla en silencio, que
+ * es el peor sitio donde puede estar ese fallo. El código no se traduce.
+ *
+ * Sigue siendo un `Error` corriente: quien no necesite el código lo trata como
+ * siempre.
+ */
+export interface ErrorDeApi extends Error {
+  code?: string;
+}
+
+function errorDeApi(codigo: string, mensaje: string): ErrorDeApi {
+  const e: ErrorDeApi = new Error(phraseFor(codigo, mensaje));
+  e.code = codigo;
+  return e;
+}
+
+/** El código que trajo un error del servidor, si lo trajo. */
+export function codigoDe(e: unknown): string {
+  return (e as ErrorDeApi | null)?.code ?? "";
+}
+
 /** What every transport returns: status plus the raw body, nothing else. */
 interface Reply {
   status: number;
@@ -159,7 +184,7 @@ async function request<T>(path: string, options: RequestOptions = {}, retry = tr
       throw new Error("session-expired");
     }
 
-    throw new Error(phraseFor(detalle, errorMsg));
+    throw errorDeApi(detalle, errorMsg);
   }
 
   return json as T;
@@ -222,7 +247,7 @@ async function sendForm<T>(
       if (newToken) return sendForm<T>(method, path, form, false);
       throw new Error("session-expired");
     }
-    throw new Error(phraseFor(detalle, errorMsg));
+    throw errorDeApi(detalle, errorMsg);
   }
   return json as T;
 }

@@ -1,12 +1,12 @@
-mod crypto_tools;
 mod api_client;
-mod media;
-mod sse;
+mod crypto_tools;
 mod http_client;
 mod image;
 mod mcp;
+mod media;
 mod notes_export;
 mod pty;
+mod sse;
 mod video_frames;
 mod voice;
 
@@ -122,7 +122,9 @@ fn op_read(reference: &str) -> Result<String, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let msg = if stderr.contains("not currently signed in") || stderr.contains("session expired") {
+        let msg = if stderr.contains("not currently signed in")
+            || stderr.contains("session expired")
+        {
             "1Password session expired. Run `op signin` (or open the 1Password desktop app) and try again.".to_string()
         } else if stderr.is_empty() {
             format!("op read exited with status {}", output.status)
@@ -166,7 +168,10 @@ struct OpVault {
 fn op_list_vaults() -> Vec<OpVault> {
     use std::process::Command;
 
-    let accounts = match Command::new("op").args(["account", "list", "--format", "json"]).output() {
+    let accounts = match Command::new("op")
+        .args(["account", "list", "--format", "json"])
+        .output()
+    {
         Ok(o) if o.status.success() => o.stdout,
         _ => return vec![],
     };
@@ -177,8 +182,16 @@ fn op_list_vaults() -> Vec<OpVault> {
 
     let mut out = vec![];
     for a in accounts.as_array().unwrap_or(&vec![]) {
-        let url = a.get("url").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let email = a.get("email").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let url = a
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let email = a
+            .get("email")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         if url.is_empty() {
             continue;
         }
@@ -238,13 +251,17 @@ fn op_item_create(
     }
 
     let op_err = |e: std::io::Error| match e.kind() {
-        std::io::ErrorKind::NotFound => "1Password CLI (op) not found. Install from https://developer.1password.com/docs/cli/".to_string(),
+        std::io::ErrorKind::NotFound => {
+            "1Password CLI (op) not found. Install from https://developer.1password.com/docs/cli/"
+                .to_string()
+        }
         _ => format!("Failed to execute op: {e}"),
     };
     let friendly = |stderr: &str, status: std::process::ExitStatus| {
         let s = stderr.trim();
         if s.contains("not currently signed in") || s.contains("session expired") {
-            "1Password session expired. Run `op signin` (or open the desktop app) and try again.".to_string()
+            "1Password session expired. Run `op signin` (or open the desktop app) and try again."
+                .to_string()
         } else if s.is_empty() {
             format!("op exited with {status}")
         } else {
@@ -256,11 +273,21 @@ fn op_item_create(
     // --account on every call: with more than one account signed in, letting op
     // pick means the item can land somewhere the user never chose.
     let tpl_out = Command::new("op")
-        .args(["item", "template", "get", "API Credential", "--account", &account])
+        .args([
+            "item",
+            "template",
+            "get",
+            "API Credential",
+            "--account",
+            &account,
+        ])
         .output()
         .map_err(op_err)?;
     if !tpl_out.status.success() {
-        return Err(friendly(&String::from_utf8_lossy(&tpl_out.stderr), tpl_out.status));
+        return Err(friendly(
+            &String::from_utf8_lossy(&tpl_out.stderr),
+            tpl_out.status,
+        ));
     }
     let mut tpl: serde_json::Value = serde_json::from_slice(&tpl_out.stdout)
         .map_err(|e| format!("Unexpected op template: {e}"))?;
@@ -291,11 +318,16 @@ fn op_item_create(
     // The category lives in the template; passing --category too is an error.
     let out = Command::new("op")
         .args([
-            "item", "create",
-            "--account", &account,
-            "--vault", &vault,
-            "--title", &title,
-            "--format", "json",
+            "item",
+            "create",
+            "--account",
+            &account,
+            "--vault",
+            &vault,
+            "--title",
+            &title,
+            "--format",
+            "json",
         ])
         .arg("--template")
         .arg(&path)
@@ -310,7 +342,10 @@ fn op_item_create(
     // would make the reference ambiguous.
     let parsed: serde_json::Value =
         serde_json::from_slice(&out.stdout).map_err(|e| format!("Unexpected op output: {e}"))?;
-    let id = parsed.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+    let id = parsed
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
     if id.is_empty() {
         return Err("op created the item but returned no id".into());
     }
@@ -321,7 +356,6 @@ fn op_item_create(
 }
 
 // ─── SSH agent keys ───────────────────────────────────────────────────────────
-
 
 // ─── SSH agent discovery ─────────────────────────────────────────────────────
 //
@@ -412,7 +446,10 @@ fn expand_tilde(path: &str) -> String {
 fn agent_candidates() -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
 
-    if let Some(sock) = std::env::var("SSH_AUTH_SOCK").ok().filter(|s| !s.is_empty()) {
+    if let Some(sock) = std::env::var("SSH_AUTH_SOCK")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
         out.push((sock, "Inherited from the environment".into()));
     }
     if let Some(sock) = identity_agent_from_ssh_config() {
@@ -427,7 +464,9 @@ fn agent_candidates() -> Vec<(String, String)> {
             "1Password".into(),
         ));
         out.push((
-            home.join(".1password/agent.sock").to_string_lossy().to_string(),
+            home.join(".1password/agent.sock")
+                .to_string_lossy()
+                .to_string(),
             "1Password".into(),
         ));
     }
@@ -489,7 +528,11 @@ fn probe_agent(socket: &str) -> AgentProbe {
         return AgentProbe::Keys(0);
     }
     if !out.status.success() {
-        return if exists { AgentProbe::Refused } else { AgentProbe::Missing };
+        return if exists {
+            AgentProbe::Refused
+        } else {
+            AgentProbe::Missing
+        };
     }
     AgentProbe::Keys(stdout.lines().filter(|l| !l.trim().is_empty()).count())
 }
@@ -542,12 +585,10 @@ fn run_ssh_add(flag: &str, socket: Option<&str>) -> Result<String, String> {
     if let Some(sock) = socket {
         cmd.env("SSH_AUTH_SOCK", sock);
     }
-    let output = cmd
-        .output()
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => "`ssh-add` not found on PATH.".to_string(),
-            _ => format!("Failed to execute ssh-add: {e}"),
-        })?;
+    let output = cmd.output().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => "`ssh-add` not found on PATH.".to_string(),
+        _ => format!("Failed to execute ssh-add: {e}"),
+    })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     if !output.status.success() {
@@ -568,7 +609,6 @@ fn run_ssh_add(flag: &str, socket: Option<&str>) -> Result<String, String> {
     }
     Ok(stdout)
 }
-
 
 /// What to tell the user when no agent answers. Lists the sockets we tried,
 /// because "could not open a connection" alone gives them nothing to act on.
@@ -616,12 +656,7 @@ fn list_agent_ssh_keys(socket: Option<String>) -> Result<Vec<SshKeyItem>, String
     let fingerprints: Vec<String> = prints
         .lines()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            l.split_whitespace()
-                .nth(1)
-                .unwrap_or_default()
-                .to_string()
-        })
+        .map(|l| l.split_whitespace().nth(1).unwrap_or_default().to_string())
         .collect();
 
     Ok(listing
@@ -635,7 +670,11 @@ fn list_agent_ssh_keys(socket: Option<String>) -> Result<Vec<SshKeyItem>, String
             let title = parts.next().unwrap_or("(no title)").trim().to_string();
             SshKeyItem {
                 public_key: line.to_string(),
-                title: if title.is_empty() { "(no title)".into() } else { title },
+                title: if title.is_empty() {
+                    "(no title)".into()
+                } else {
+                    title
+                },
                 fingerprint: fingerprints.get(i).cloned().unwrap_or_default(),
                 key_type,
             }
@@ -776,14 +815,10 @@ fn ssh_run(
     if let Some(sock) = resolve_agent_socket() {
         cmd.env("SSH_AUTH_SOCK", sock);
     }
-    let output = cmd
-        .output()
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => {
-                "`ssh` binary not found on PATH.".to_string()
-            }
-            _ => format!("Failed to execute ssh: {e}"),
-        })?;
+    let output = cmd.output().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => "`ssh` binary not found on PATH.".to_string(),
+        _ => format!("Failed to execute ssh: {e}"),
+    })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -794,7 +829,8 @@ fn ssh_run(
             " (your SSH agent offered more keys than the server allows before the right one. Pick this server's key with the key button in the servers table so cac offers only that one)"
         } else if trimmed.contains("Permission denied") {
             " (is your 1Password SSH agent unlocked and the key authorized on this server?)"
-        } else if trimmed.contains("Connection refused") || trimmed.contains("Connection timed out") {
+        } else if trimmed.contains("Connection refused") || trimmed.contains("Connection timed out")
+        {
             " (host unreachable or SSH port closed)"
         } else {
             ""
@@ -818,16 +854,16 @@ fn update_swarm_manage_agent(
     identity_key: Option<String>,
 ) -> Result<SshOutput, String> {
     let service_name = service.unwrap_or_else(|| "cac_swarm-manage".to_string());
-    let remote = format!(
-        "docker service update --force --image {AGENT_IMAGE} {service_name}"
-    );
+    let remote = format!("docker service update --force --image {AGENT_IMAGE} {service_name}");
     {
         // Resolve (and stage) the key only for this call; the guard wipes it.
         let staged = match identity_key.as_deref().filter(|k| !k.trim().is_empty()) {
             Some(k) => Some(stage_public_key(k)?),
             None => None,
         };
-        let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+        let identity = staged
+            .as_ref()
+            .map(|s| s.path.to_string_lossy().into_owned());
         ssh_run(&host, ssh_port, &ssh_user, &remote, identity.as_deref())
     }
 }
@@ -872,7 +908,9 @@ rm -f /tmp/swarm-manage.yml"
             Some(k) => Some(stage_public_key(k)?),
             None => None,
         };
-        let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+        let identity = staged
+            .as_ref()
+            .map(|s| s.path.to_string_lossy().into_owned());
         ssh_run(&host, ssh_port, &ssh_user, &remote, identity.as_deref())
     }
 }
@@ -915,8 +953,9 @@ fn refresh_github_token_from_1password(
     server_id: String,
     cache: tauri::State<TokenCache>,
 ) -> Result<(), String> {
-    let reference = keychain_get_ref(&server_id)
-        .map_err(|_| "No 1Password reference saved for this server. Use 'Load from 1Password' first.".to_string())?;
+    let reference = keychain_get_ref(&server_id).map_err(|_| {
+        "No 1Password reference saved for this server. Use 'Load from 1Password' first.".to_string()
+    })?;
     let token = op_read(&reference)?;
     keychain_set(&server_id, &token)?;
     cache.set(&server_id, &token);
@@ -1220,9 +1259,8 @@ async fn compress_image(
     max_width: Option<u32>,
     format: String,
 ) -> Result<image::CompressResult, String> {
-    let fmt: image::OutputFormat =
-        serde_json::from_value(serde_json::Value::String(format))
-            .map_err(|e| format!("Invalid format: {e}"))?;
+    let fmt: image::OutputFormat = serde_json::from_value(serde_json::Value::String(format))
+        .map_err(|e| format!("Invalid format: {e}"))?;
 
     let opts = image::CompressOptions {
         quality,
@@ -1315,7 +1353,11 @@ async fn api_request(req: api_client::ApiRequest) -> Result<api_client::ApiRespo
 /// Mirrors the frontend's session into Rust. The media protocol handler runs
 /// outside any UI request, so it has no other way to learn the current token.
 #[tauri::command]
-fn set_session(state: tauri::State<'_, media::Session>, token: Option<String>, base_url: Option<String>) {
+fn set_session(
+    state: tauri::State<'_, media::Session>,
+    token: Option<String>,
+    base_url: Option<String>,
+) {
     if let Ok(mut t) = state.token.lock() {
         *t = token;
     }
@@ -1362,7 +1404,11 @@ async fn open_attachment(
         .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' '))
         .collect();
     let mut target = std::env::temp_dir();
-    target.push(format!("cac-{}-{}", ephemeral_suffix(), if safe.is_empty() { "file".into() } else { safe }));
+    target.push(format!(
+        "cac-{}-{}",
+        ephemeral_suffix(),
+        if safe.is_empty() { "file".into() } else { safe }
+    ));
     std::fs::write(&target, &bytes).map_err(|e| format!("Could not write the file: {e}"))?;
 
     app.opener()
@@ -1391,9 +1437,8 @@ async fn send_http_request(
     headers: Vec<http_client::KeyValue>,
     body: Option<String>,
 ) -> Result<http_client::HttpResponse, String> {
-    let m: http_client::HttpMethod =
-        serde_json::from_value(serde_json::Value::String(method))
-            .map_err(|e| format!("Invalid method: {e}"))?;
+    let m: http_client::HttpMethod = serde_json::from_value(serde_json::Value::String(method))
+        .map_err(|e| format!("Invalid method: {e}"))?;
 
     let req = http_client::HttpRequest {
         method: m,
@@ -1428,8 +1473,7 @@ async fn save_file(
         return Ok(false);
     };
 
-    std::fs::write(path.as_path().ok_or("Invalid path")?, &data)
-        .map_err(|e| e.to_string())?;
+    std::fs::write(path.as_path().ok_or("Invalid path")?, &data).map_err(|e| e.to_string())?;
 
     Ok(true)
 }
@@ -1506,30 +1550,27 @@ pub fn run() {
         .manage(media::Session::default())
         // Attachments are served under our own scheme so an <img> can carry
         // credentials in a header instead of the URL. See media.rs.
-        .register_asynchronous_uri_scheme_protocol(
-            video_frames::SCHEME,
-            |_ctx, req, responder| {
-                // Fuera del hilo de la interfaz, y esto **no** es una
-                // optimización.
-                //
-                // La primera versión era síncrona, con el argumento de que aquí
-                // no hay red de por medio y sólo hay que comprimir algo que ya
-                // está en memoria. Pero comprimir cuesta once milisegundos y el
-                // manejador síncrono corre en el hilo que atiende al webview:
-                // con la pantalla pidiendo tramas seguidas, la ventana deja de
-                // responder y acaba muriendo. Pasó en la v1.6.38.
-                //
-                // Y en el **pool** de hilos bloqueantes, no en un hilo nuevo por
-                // petición. Con treinta peticiones por segundo y por mosaico,
-                // crear y destruir un hilo cada vez cuesta más que el trabajo
-                // que hace; además el búfer que `comprimir` reutiliza es
-                // `thread_local`, y con un hilo distinto cada vez no se
-                // reutilizaría nunca.
-                tauri::async_runtime::spawn_blocking(move || {
-                    responder.respond(video_frames::servir(&req))
-                });
-            },
-        )
+        .register_asynchronous_uri_scheme_protocol(video_frames::SCHEME, |_ctx, req, responder| {
+            // Fuera del hilo de la interfaz, y esto **no** es una
+            // optimización.
+            //
+            // La primera versión era síncrona, con el argumento de que aquí
+            // no hay red de por medio y sólo hay que comprimir algo que ya
+            // está en memoria. Pero comprimir cuesta once milisegundos y el
+            // manejador síncrono corre en el hilo que atiende al webview:
+            // con la pantalla pidiendo tramas seguidas, la ventana deja de
+            // responder y acaba muriendo. Pasó en la v1.6.38.
+            //
+            // Y en el **pool** de hilos bloqueantes, no en un hilo nuevo por
+            // petición. Con treinta peticiones por segundo y por mosaico,
+            // crear y destruir un hilo cada vez cuesta más que el trabajo
+            // que hace; además el búfer que `comprimir` reutiliza es
+            // `thread_local`, y con un hilo distinto cada vez no se
+            // reutilizaría nunca.
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(video_frames::servir(&req))
+            });
+        })
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |ctx, req, responder| {
             use tauri::Manager;
             let state = ctx.app_handle().state::<media::Session>();
@@ -1578,7 +1619,9 @@ pub fn run() {
                         // su propio selector.
                         inner.connect_permission_request(|_, req| {
                             use webkit2gtk::glib::object::Cast;
-                            use webkit2gtk::{DeviceInfoPermissionRequest, UserMediaPermissionRequest};
+                            use webkit2gtk::{
+                                DeviceInfoPermissionRequest, UserMediaPermissionRequest,
+                            };
                             if req.downcast_ref::<UserMediaPermissionRequest>().is_some()
                                 || req.downcast_ref::<DeviceInfoPermissionRequest>().is_some()
                             {
@@ -1654,7 +1697,6 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-
 #[cfg(test)]
 mod agent_tests {
     use super::parse_identity_agent;
@@ -1677,7 +1719,10 @@ Host *
     #[test]
     fn handles_equals_quotes_and_case() {
         let cfg = "IdentityAgent=\"~/.1password/agent.sock\"\n";
-        assert_eq!(parse_identity_agent(cfg).as_deref(), Some("~/.1password/agent.sock"));
+        assert_eq!(
+            parse_identity_agent(cfg).as_deref(),
+            Some("~/.1password/agent.sock")
+        );
         let cfg = "  identityagent   /tmp/a.sock\n";
         assert_eq!(parse_identity_agent(cfg).as_deref(), Some("/tmp/a.sock"));
     }
@@ -1688,6 +1733,9 @@ Host *
         assert_eq!(parse_identity_agent("IdentityAgent none\n"), None);
         // A different keyword that merely starts the same way.
         assert_eq!(parse_identity_agent("IdentityAgentFoo /x\n"), None);
-        assert_eq!(parse_identity_agent("IdentityFile ~/.ssh/id_ed25519\n"), None);
+        assert_eq!(
+            parse_identity_agent("IdentityFile ~/.ssh/id_ed25519\n"),
+            None
+        );
     }
 }

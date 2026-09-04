@@ -13,7 +13,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  * Es el fallo característico de esta clase de código y no se ve mirándolo.
  */
 
-const saveDoc = vi.fn(async () => {});
+const saveDoc = vi.fn(async () => "hash-nuevo");
 
 vi.mock("@/lib/api", () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -39,8 +39,8 @@ const estado = {
   doc: {
     doc: { id: "d1", orgId: "o1", stale: false },
     tabs: [
-      { id: "t1", docId: "d1", key: "overview", body: "el resumen" },
-      { id: "t2", docId: "d1", key: "runbook", body: "el runbook" },
+      { id: "t1", docId: "d1", key: "overview", body: "el resumen", bodyHash: "hash-resumen" },
+      { id: "t2", docId: "d1", key: "runbook", body: "el runbook", bodyHash: "hash-runbook" },
     ],
     attachments: [],
   },
@@ -81,8 +81,11 @@ describe("cambiar de sección con algo escrito", () => {
     fireEvent.click(screen.getByText("Runbook"));
 
     await waitFor(() => expect(saveDoc).toHaveBeenCalled());
-    expect(saveDoc).toHaveBeenCalledWith("el resumen, corregido", "overview");
+    // Con el texto, la sección **y el hash** de donde se escribió. Los tres se
+    // fijan a la vez y por la misma razón: mandar el hash del runbook con el
+    // texto del resumen haría que el servidor lo rechazara o, peor, lo aceptara.
+    expect(saveDoc).toHaveBeenCalledWith("el resumen, corregido", "overview", "hash-resumen");
     // Y desde luego no en la que se acaba de abrir.
-    expect(saveDoc).not.toHaveBeenCalledWith(expect.anything(), "runbook");
+    expect(saveDoc).not.toHaveBeenCalledWith(expect.anything(), "runbook", expect.anything());
   });
 });

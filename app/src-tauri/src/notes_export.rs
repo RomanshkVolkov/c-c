@@ -143,7 +143,10 @@ pub async fn run(base: &str, token: &str, dest: PathBuf) -> Result<ExportSummary
         .map_err(|e| e.to_string())?;
 
     let res = client
-        .get(format!("{}/api/v1/notes/export", base.trim_end_matches('/')))
+        .get(format!(
+            "{}/api/v1/notes/export",
+            base.trim_end_matches('/')
+        ))
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await
@@ -274,7 +277,10 @@ mod tests {
 
     #[test]
     fn slug_is_safe_and_readable() {
-        assert_eq!(slugify("Chapter 3: Kubernetes / etcd"), "Chapter 3 Kubernetes etcd");
+        assert_eq!(
+            slugify("Chapter 3: Kubernetes / etcd"),
+            "Chapter 3 Kubernetes etcd"
+        );
         assert_eq!(slugify("  "), "Untitled");
         assert_eq!(slugify(""), "Untitled");
         // A leading dot would hide the file on unix.
@@ -348,7 +354,10 @@ mod tests {
         );
 
         let nested = std::fs::read_to_string(root.join("Kubernetes/etcd quorum.md")).unwrap();
-        assert!(nested.starts_with("# etcd: quorum\n"), "title kept verbatim, not slugified");
+        assert!(
+            nested.starts_with("# etcd: quorum\n"),
+            "title kept verbatim, not slugified"
+        );
 
         // An empty title still produces a file rather than silently vanishing.
         assert!(root.join("Untitled.md").exists());
@@ -365,7 +374,10 @@ mod tests {
         );
         let body = "![shot](/api/v1/notes/n1/attachments/a1/raw)";
 
-        assert_eq!(rewrite_links(body, 0, &local), "![shot](_attachments/a1-shot.png)");
+        assert_eq!(
+            rewrite_links(body, 0, &local),
+            "![shot](_attachments/a1-shot.png)"
+        );
         assert_eq!(
             rewrite_links(body, 2, &local),
             "![shot](../../_attachments/a1-shot.png)"

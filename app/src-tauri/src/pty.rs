@@ -35,9 +35,13 @@ use crate::{resolve_agent_socket, stage_public_key, EphemeralIdentity};
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PtyEvent {
-    Data { b64: String },
+    Data {
+        b64: String,
+    },
     /// La sesión terminó. Sin esto la pestaña se queda muda y parece colgada.
-    Exit { code: u32 },
+    Exit {
+        code: u32,
+    },
 }
 
 /// Dónde se abre la shell.
@@ -170,7 +174,9 @@ pub fn pty_open(
         Some(k) => Some(stage_public_key(&k)?),
         None => None,
     };
-    let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+    let identity = staged
+        .as_ref()
+        .map(|s| s.path.to_string_lossy().into_owned());
 
     let mut cmd = CommandBuilder::new("ssh");
     for a in ssh_args(&host, ssh_port, &ssh_user, identity.as_deref()) {

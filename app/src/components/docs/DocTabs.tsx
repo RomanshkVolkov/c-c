@@ -15,6 +15,7 @@ import Markdown from "@/components/markdown/Markdown";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import { Button } from "@/components/ui/button";
 import { useT, type MessageKey } from "@/lib/i18n";
+import { codigoDe } from "@/lib/api";
 import { openAttachment } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import CopyId from "@/components/CopyId";
@@ -53,6 +54,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const upload = useTasksStore((s) => s.uploadDocAttachment);
   const closeDoc = useTasksStore((s) => s.closeDoc);
   const addDecision = useTasksStore((s) => s.addDecision);
+  const openDoc = useTasksStore((s) => s.openDoc);
   const board = useTasksStore((s) => s.board);
 
   const [activa, setActiva] = useState<DocTabKey>("overview");
@@ -63,7 +65,9 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const [saltarPlantillas, setSaltarPlantillas] = useState(false);
   const [registrando, setRegistrando] = useState(false);
 
-  const cuerpo = doc?.tabs?.find((x) => x.key === activa)?.body ?? "";
+  const seccion = doc?.tabs?.find((x) => x.key === activa);
+  const cuerpo = seccion?.body ?? "";
+  const hashDeLaSeccion = seccion?.bodyHash;
   const sinNada = !doc?.tabs?.some((x) => x.body);
 
   /**
@@ -79,18 +83,53 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
    * después de ese guardado — así que el guardado sale con la sección correcta.
    */
   const seccionDelBorrador = useRef<DocTabKey>(activa);
+  /**
+   * De qué versión salió el borrador.
+   *
+   * Va con la sección y por la misma razón: se fija cuando el borrador adopta un
+   * texto, no cuando cambia la pestaña activa. Sin él el servidor rechaza el
+   * guardado —una petición sin hash es, para él, una copia anterior a la primera
+   * versión que se hasheó— y con el de otra sección rechazaría también.
+   */
+  const hashDelBorrador = useRef<string | undefined>(undefined);
+  // Alguien guardó esta sección mientras se escribía. Ver el `catch` de abajo.
+  const [chocado, setChocado] = useState(false);
 
   // El guardado va por tiempo, no por botón. Ver `use-autoguardado`: lo delicado
   // no es el temporizador, es no perder lo que se escribe mientras uno viaja.
   const { estado, adoptar } = useAutoguardado(
     borrador,
-    (texto) => saveDoc(texto, seccionDelBorrador.current),
-    editando,
+    async (texto) => {
+      try {
+        hashDelBorrador.current = await saveDoc(
+          texto,
+          seccionDelBorrador.current,
+          hashDelBorrador.current,
+        );
+      } catch (e) {
+        // Alguien —o un agente por MCP— guardó esta sección mientras se escribía.
+        //
+        // El editor **se queda abierto con el borrador dentro**. Cerrarlo sería
+        // tirar lo que la persona acaba de escribir para proteger lo que escribió
+        // otra, que es cambiar una pérdida por otra. Lo que se para es el
+        // autoguardado: seguir intentándolo con cada tecla es fallar en bucle.
+        if (codigoDe(e) === "doc-conflict") {
+          setChocado(true);
+          return;
+        }
+        throw e;
+      }
+    },
+    // Con un choque encima no se vuelve a intentar: el siguiente guardado
+    // fallaría igual, y quien escribe necesita decidir antes qué hacer con su
+    // texto.
+    editando && !chocado,
   );
 
   // Cambiar de nodo o de sección no puede arrastrar un borrador a medias.
   useEffect(() => {
     setEditando(false);
+    setChocado(false);
   }, [target?.kind, target?.id, activa]);
 
   // Adoptar lo guardado, pero **nunca encima de lo que se está escribiendo**.
@@ -100,11 +139,12 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
     if (editando) return;
     setBorrador(cuerpo);
     seccionDelBorrador.current = activa;
+    hashDelBorrador.current = hashDeLaSeccion;
     // Restaurar una versión o cambiar de sección trae texto que nadie escribió
     // aquí: sin decírselo al autoguardado, lo tomaría por una edición y lo
     // volvería a mandar, escribiendo una versión idéntica en el historial.
     adoptar(cuerpo);
-  }, [cuerpo, editando, adoptar, activa]);
+  }, [cuerpo, editando, adoptar, activa, hashDeLaSeccion]);
 
   if (!target) return null;
 
@@ -191,6 +231,24 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
               placeholder={t("work:docs.placeholder")}
               autoFocus
             />
+            {chocado && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/[.07] px-3 py-2 text-xs">
+                <p className="font-medium text-foreground">{t("work:docs.conflict")}</p>
+                <p className="mt-0.5 text-muted-foreground">{t("work:docs.conflictWhy")}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 h-6 text-xs"
+                  onClick={() => {
+                    setChocado(false);
+                    setEditando(false);
+                    if (target) void openDoc(target.kind, target.id, target.name).catch(() => {});
+                  }}
+                >
+                  {t("work:docs.discardAndReload")}
+                </Button>
+              </div>
+            )}
             {/* Ya no hay «Guardar» ni «Cancelar»: se guarda solo, así que
                 cancelar no cancelaría nada. Para deshacer está el historial,
                 que es lo que hace soportable escribir sin botón. */}

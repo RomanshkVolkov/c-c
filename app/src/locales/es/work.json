@@ -294,7 +294,10 @@
     "whereTo": "Busca canales y personas",
     "noWhere": "No hay nada que coincida",
     "shared": "Enviado a {{where}}",
-    "errShare": "No se pudo compartir"
+    "errShare": "No se pudo compartir",
+    "conflict": "Sin guardar: alguien llegó antes",
+    "conflictWhy": "Esta sección cambió mientras escribías, así que tu texto no se aplicó — habría borrado el suyo. Tu borrador sigue aquí: copia lo que necesites y recarga para ver su versión.",
+    "discardAndReload": "Descartar el mío y recargar"
   },
   "docTemplates": {
     "title": "Aquí no hay nada escrito todavía",
@@ -338,7 +341,8 @@
     "noUndo": "Esto no se puede editar ni borrar después. Las correcciones se hacen añadiendo otra entrada.",
     "badge": "DECISIÓN",
     "open": "Ver la entrada",
-    "saved": "Registrada"
+    "saved": "Registrada",
+    "viaAgent": "transcrita por un agente"
   },
   "docIndex": {
     "title": "Toda la documentación",

@@ -60,8 +60,7 @@ pub fn compress(raw: &[u8], opts: &CompressOptions) -> Result<CompressResult, St
     let original_bytes = raw.len();
     let quality = opts.quality.unwrap_or(85).clamp(1, 100);
 
-    let img = image::load_from_memory(raw)
-        .map_err(|e| format!("Unsupported format: {e}"))?;
+    let img = image::load_from_memory(raw).map_err(|e| format!("Unsupported format: {e}"))?;
 
     let img = match opts.max_width {
         Some(max_w) if img.width() > max_w => {
@@ -88,8 +87,8 @@ pub fn compress(raw: &[u8], opts: &CompressOptions) -> Result<CompressResult, St
 fn encode(img: &DynamicImage, format: &OutputFormat, quality: u8) -> Result<Vec<u8>, String> {
     match format {
         OutputFormat::Webp => {
-            let encoder = webp::Encoder::from_image(img)
-                .map_err(|e| format!("WebP encoder: {e}"))?;
+            let encoder =
+                webp::Encoder::from_image(img).map_err(|e| format!("WebP encoder: {e}"))?;
             Ok(encoder.encode(quality as f32).to_vec())
         }
         OutputFormat::Jpeg => {

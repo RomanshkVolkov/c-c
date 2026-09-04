@@ -314,6 +314,11 @@ func (h *docHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d, err := h.svc.Patch(orgID, kind, id, user.UserID, req)
+	var noEsta *service.ErrNoSuchColleague
+	if errors.As(err, &noEsta) {
+		SendErrorResponse(w, http.StatusBadRequest, noEsta.Error(), "no-such-colleague")
+		return
+	}
 	if errors.Is(err, service.ErrNotAColleague) {
 		SendErrorResponse(w, http.StatusBadRequest, "That person is not in this organization", "not-a-colleague")
 		return

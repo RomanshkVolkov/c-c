@@ -14,12 +14,25 @@ const patch = vi.fn(async (_p: string, body: unknown) => ({
   data: { id: "d1", orgId: "o1", ...(body as object), stale: false },
 }));
 const get = vi.fn(async (_p: string) => ({ success: true, data: {} }));
+// El PUT devuelve el documento entero, con el hash nuevo de la sección guardada.
+const put = vi.fn(async (_p: string, _b: unknown) => ({
+  success: true,
+  data: {
+    doc: { id: "d1", orgId: "o1", stale: false },
+    tabs: [
+      { id: "t1", docId: "d1", key: "overview", body: "nuevo", bodyHash: "hash-nuevo" },
+      { id: "t2", docId: "d1", key: "runbook", body: "otro", bodyHash: "hash-otro" },
+    ],
+    decisions: [],
+    attachments: [],
+  },
+}));
 
 vi.mock("@/lib/api", () => ({
   api: {
     get: (p: string) => get(p),
     post: vi.fn(async () => ({ success: true, data: {} })),
-    put: vi.fn(async () => ({ success: true, data: {} })),
+    put: (p: string, b: unknown) => put(p, b),
     patch: (p: string, b: unknown) => patch(p, b),
     delete: vi.fn(async () => ({ success: true, data: {} })),
   },
@@ -64,7 +77,45 @@ const conDocumento = () =>
 beforeEach(() => {
   patch.mockClear();
   get.mockClear();
+  put.mockClear();
   conDocumento();
+});
+
+/**
+ * Guardar devuelve el hash de lo que acaba de quedar.
+ *
+ * Quien está escribiendo no relee el documento —adoptarlo encima de un borrador
+ * es justo lo que no puede pasar— así que si el hash no vuelve por aquí, el
+ * siguiente guardado manda el de antes y el servidor lo rechaza por chocar con
+ * la escritura anterior de esa misma persona. Deja de guardarse todo, a la
+ * segunda vez.
+ */
+describe("saveDoc", () => {
+  it("devuelve el hash de la sección que se guardó, no el de otra", async () => {
+    expect(await useTasksStore.getState().saveDoc("nuevo", "overview", "hash-viejo")).toBe(
+      "hash-nuevo",
+    );
+    // La segunda, y a propósito: con una sola sección, coger «la primera» de la
+    // respuesta acierta por casualidad y la prueba pasaría con el error dentro.
+    expect(await useTasksStore.getState().saveDoc("otro", "runbook", "hash-viejo")).toBe(
+      "hash-otro",
+    );
+  });
+
+  it("manda el hash que se le dio", async () => {
+    await useTasksStore.getState().saveDoc("nuevo", "runbook", "hash-viejo");
+    expect(put).toHaveBeenCalledWith("/api/v1/docs/list/l1/tabs/runbook", {
+      body: "nuevo",
+      baseHash: "hash-viejo",
+    });
+  });
+
+  // Una sección que nunca se guardó no tiene hash, y mandar uno vacío haría que
+  // el servidor lo comparase contra nada.
+  it("sin hash no manda el campo", async () => {
+    await useTasksStore.getState().saveDoc("nuevo", "overview");
+    expect(put).toHaveBeenCalledWith("/api/v1/docs/list/l1/tabs/overview", { body: "nuevo" });
+  });
 });
 
 describe("patchDoc", () => {

@@ -126,14 +126,14 @@ pub fn hmac_sign(input: &str, key: &str, algorithm: &str) -> Result<HashResult, 
 
     let hash = match algorithm {
         "hmac-sha256" => {
-            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(key.as_bytes())
-                .map_err(|e| e.to_string())?;
+            let mut mac =
+                Hmac::<sha2::Sha256>::new_from_slice(key.as_bytes()).map_err(|e| e.to_string())?;
             mac.update(input.as_bytes());
             hex::encode(mac.finalize().into_bytes())
         }
         "hmac-sha512" => {
-            let mut mac = Hmac::<sha2::Sha512>::new_from_slice(key.as_bytes())
-                .map_err(|e| e.to_string())?;
+            let mut mac =
+                Hmac::<sha2::Sha512>::new_from_slice(key.as_bytes()).map_err(|e| e.to_string())?;
             mac.update(input.as_bytes());
             hex::encode(mac.finalize().into_bytes())
         }
@@ -168,7 +168,9 @@ pub fn argon2_hash(input: &str) -> Result<String, String> {
 pub fn argon2_verify(input: &str, hash: &str) -> Result<bool, String> {
     use argon2::{password_hash::PasswordHash, Argon2, PasswordVerifier};
     let parsed = PasswordHash::new(hash).map_err(|e| e.to_string())?;
-    Ok(Argon2::default().verify_password(input.as_bytes(), &parsed).is_ok())
+    Ok(Argon2::default()
+        .verify_password(input.as_bytes(), &parsed)
+        .is_ok())
 }
 
 // ─── Base64 encode / decode ──────────────────────────────────────────────────
@@ -178,7 +180,9 @@ pub fn base64_encode(input: &str) -> String {
 }
 
 pub fn base64_decode(input: &str) -> Result<String, String> {
-    let bytes = B64.decode(input).map_err(|e| format!("Base64 decode: {e}"))?;
+    let bytes = B64
+        .decode(input)
+        .map_err(|e| format!("Base64 decode: {e}"))?;
     String::from_utf8(bytes).map_err(|e| format!("UTF-8 decode: {e}"))
 }
 
@@ -201,8 +205,16 @@ fn urlencoding_encode(input: &str) -> String {
             }
             _ => {
                 out.push('%');
-                out.push(char::from_digit((byte >> 4) as u32, 16).unwrap().to_ascii_uppercase());
-                out.push(char::from_digit((byte & 0xf) as u32, 16).unwrap().to_ascii_uppercase());
+                out.push(
+                    char::from_digit((byte >> 4) as u32, 16)
+                        .unwrap()
+                        .to_ascii_uppercase(),
+                );
+                out.push(
+                    char::from_digit((byte & 0xf) as u32, 16)
+                        .unwrap()
+                        .to_ascii_uppercase(),
+                );
             }
         }
     }
@@ -216,11 +228,8 @@ fn urlencoding_decode(input: &str) -> Result<String, String> {
         if b == b'%' {
             let hi = chars.next().ok_or("Incomplete percent encoding")?;
             let lo = chars.next().ok_or("Incomplete percent encoding")?;
-            let val = u8::from_str_radix(
-                &format!("{}{}", hi as char, lo as char),
-                16,
-            )
-            .map_err(|e| format!("Invalid percent encoding: {e}"))?;
+            let val = u8::from_str_radix(&format!("{}{}", hi as char, lo as char), 16)
+                .map_err(|e| format!("Invalid percent encoding: {e}"))?;
             bytes.push(val);
         } else if b == b'+' {
             bytes.push(b' ');

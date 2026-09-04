@@ -68,9 +68,9 @@ pub async fn execute(req: ApiRequest) -> Result<ApiResponse, String> {
 
     let mut builder = client()?
         .request(method, &req.url)
-        .timeout(Duration::from_millis(req.timeout_ms.unwrap_or(
-            DEFAULT_TIMEOUT.as_millis() as u64,
-        )));
+        .timeout(Duration::from_millis(
+            req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT.as_millis() as u64),
+        ));
 
     for (k, v) in &req.headers {
         if !k.is_empty() {
@@ -102,7 +102,6 @@ pub async fn execute(req: ApiRequest) -> Result<ApiResponse, String> {
 
     Ok(ApiResponse { status, body })
 }
-
 
 #[cfg(test)]
 mod tests {

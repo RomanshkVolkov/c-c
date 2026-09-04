@@ -118,7 +118,15 @@ pub fn guardar(
     let clave = (identidad.to_string(), fuente);
     let mut guard = ULTIMAS.lock().unwrap();
     let seq = guard.get(&clave).map_or(1, |c| c.seq + 1);
-    guard.insert(clave, Cruda { seq, ancho, alto, planos: std::sync::Arc::new(planos) });
+    guard.insert(
+        clave,
+        Cruda {
+            seq,
+            ancho,
+            alto,
+            planos: std::sync::Arc::new(planos),
+        },
+    );
 }
 
 /// Quita el relleno del final de cada fila y deja los tres planos pegados.
@@ -152,12 +160,18 @@ fn empaquetar(
 
 /// Esta persona dejó de publicar esto.
 pub fn olvidar(identidad: &str, fuente: Fuente) {
-    ULTIMAS.lock().unwrap().remove(&(identidad.to_string(), fuente));
+    ULTIMAS
+        .lock()
+        .unwrap()
+        .remove(&(identidad.to_string(), fuente));
 }
 
 /// Esta persona se fue: se va todo lo suyo, publicara lo que publicara.
 pub fn olvidar_persona(identidad: &str) {
-    ULTIMAS.lock().unwrap().retain(|(quien, _), _| quien != identidad);
+    ULTIMAS
+        .lock()
+        .unwrap()
+        .retain(|(quien, _), _| quien != identidad);
 }
 
 /// Al salir de la sala. Sin esto, entrar a otra enseñaría durante un instante
@@ -215,7 +229,10 @@ pub fn pedido_de(uri: &str) -> Option<(String, Fuente)> {
     if id.is_empty() {
         return None;
     }
-    let fuente = partes.next().and_then(Fuente::de_texto).unwrap_or(Fuente::Camara);
+    let fuente = partes
+        .next()
+        .and_then(Fuente::de_texto)
+        .unwrap_or(Fuente::Camara);
     Some((id.to_string(), fuente))
 }
 
@@ -325,7 +342,12 @@ fn comprimir(planos: &[u8], ancho: u32, alto: u32) -> Option<Vec<u8>> {
 
         let mut salida = Vec::with_capacity(planos.len() / 8);
         Encoder::new(&mut salida, CALIDAD)
-            .encode(&entrelazado[..w * h * 3], ancho as u16, alto as u16, ColorType::Ycbcr)
+            .encode(
+                &entrelazado[..w * h * 3],
+                ancho as u16,
+                alto as u16,
+                ColorType::Ycbcr,
+            )
             .ok()?;
         Some(salida)
     })

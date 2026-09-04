@@ -388,6 +388,13 @@ export interface DocTab {
   docId: string;
   key: DocTabKey;
   body: string;
+  /**
+   * De qué versión viene este texto.
+   *
+   * Se devuelve al guardar; si para entonces el del servidor ya es otro, alguien
+   * escribió en medio y el guardado se rechaza en vez de borrarle el párrafo.
+   */
+  bodyHash?: string;
   updatedBy: string;
   updatedByName?: string;
   updatedAt: string;
@@ -438,6 +445,14 @@ export interface Decision {
   originChannelId?: string;
   /** El nombre de la tarea o del canal, ya resuelto: nadie reconoce un uuid. */
   originTitle?: string;
+  /**
+   * Por dónde entró: la app, o un agente por MCP.
+   *
+   * El registro no se puede borrar, así que quien lo lea dentro de un año tiene
+   * que poder distinguir lo que tecleó una persona de lo que transcribió un
+   * agente.
+   */
+  via?: string;
 }
 
 export interface DocResponse {

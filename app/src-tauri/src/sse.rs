@@ -261,7 +261,10 @@ mod tests {
             .json()
             .await
             .expect("login json");
-        let token = login["data"]["accessToken"].as_str().expect("token").to_string();
+        let token = login["data"]["accessToken"]
+            .as_str()
+            .expect("token")
+            .to_string();
 
         let resp = http
             .get(format!("{api}/events"))
@@ -280,25 +283,45 @@ mod tests {
             let org: serde_json::Value = c
                 .get("http://localhost:8099/api/v1/organizations/")
                 .header("Authorization", format!("Bearer {t}"))
-                .send().await.unwrap().json().await.unwrap();
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
             let org_id = org["data"][0]["id"].as_str().unwrap().to_string();
             let sp: serde_json::Value = c
                 .post("http://localhost:8099/api/v1/task-spaces/")
                 .header("Authorization", format!("Bearer {t}"))
                 .json(&serde_json::json!({"orgId": org_id, "name": "sse"}))
-                .send().await.unwrap().json().await.unwrap();
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
             let sp_id = sp["data"]["id"].as_str().unwrap().to_string();
             let li: serde_json::Value = c
-                .post(format!("http://localhost:8099/api/v1/task-spaces/{sp_id}/lists"))
+                .post(format!(
+                    "http://localhost:8099/api/v1/task-spaces/{sp_id}/lists"
+                ))
                 .header("Authorization", format!("Bearer {t}"))
                 .json(&serde_json::json!({"name": "l"}))
-                .send().await.unwrap().json().await.unwrap();
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
             let li_id = li["data"]["id"].as_str().unwrap().to_string();
             let _ = c
-                .post(format!("http://localhost:8099/api/v1/task-lists/{li_id}/tasks"))
+                .post(format!(
+                    "http://localhost:8099/api/v1/task-lists/{li_id}/tasks"
+                ))
                 .header("Authorization", format!("Bearer {t}"))
                 .json(&serde_json::json!({"title": "desde sse"}))
-                .send().await;
+                .send()
+                .await;
         });
 
         let mut stream = resp.bytes_stream();

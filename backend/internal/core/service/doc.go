@@ -323,6 +323,23 @@ func (s *DocService) Patch(
 		}
 		fields["maintainer_id"] = quien
 	}
+	// Por nombre, para quien no tiene la lista de gente delante. Vacío sigue
+	// significando «déjalo sin dueño», igual que por id.
+	if req.Maintainer != nil {
+		nombre := strings.TrimSpace(*req.Maintainer)
+		if nombre == "" {
+			fields["maintainer_id"] = ""
+		} else {
+			quienes := s.repo.MembersMatching(orgID, nombre)
+			if len(quienes) != 1 {
+				return nil, &ErrNoSuchColleague{
+					Buscado:  nombre,
+					Opciones: aQuienesSePuedeNombrar(quienes, s.repo.OrgMemberNames(orgID)),
+				}
+			}
+			fields["maintainer_id"] = quienes[0].ID
+		}
+	}
 	if req.PinnedLine != nil {
 		fields["pinned_line"] = strings.TrimSpace(*req.PinnedLine)
 	}

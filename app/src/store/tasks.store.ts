@@ -259,7 +259,8 @@ interface TasksState {
   openDoc: (kind: DocOwnerKind, id: string, name: string) => Promise<void>;
   closeDoc: () => void;
   /** Guarda una sección; por omisión la primera, que es la que ya existía. */
-  saveDoc: (body: string, tab?: DocTabKey) => Promise<void>;
+  /** Devuelve el hash de la versión que acaba de quedar, para el siguiente guardado. */
+  saveDoc: (body: string, tab?: DocTabKey, baseHash?: string) => Promise<string | undefined>;
   uploadDocAttachment: (file: File) => Promise<{ url: string; fileName: string } | null>;
 }
 
@@ -803,12 +804,15 @@ export const useTasksStore = create<TasksState>()(
         await get().fetchDocIndex();
       },
 
-      saveDoc: async (body, tab = "overview") => {
+      saveDoc: async (body, tab = "overview", baseHash) => {
         const target = get().activeDoc;
         if (!target) return;
         const res = await api.put<APIResponse<DocResponse>>(
           `/api/v1/docs/${target.kind}/${target.id}/tabs/${tab}`,
-          { body },
+          // El hash de la versión que se estaba editando. Sin él, el servidor lo
+          // trata como una copia anterior a la primera versión hasheada — que es
+          // exactamente lo que es— y rechaza. Ver `DocSaveConflicts`.
+          { body, ...(baseHash ? { baseHash } : {}) },
         );
         // Se adopta la respuesta en vez de volver a pedir el documento.
         //
@@ -820,6 +824,14 @@ export const useTasksStore = create<TasksState>()(
           set({ doc: res.data });
         }
         await get().fetchDocIndex(); // the node may have just gained (or lost) its mark
+        // El hash de lo que acaba de quedar.
+        //
+        // Se devuelve en vez de dejar que quien edita lo relea del estado porque
+        // mientras se escribe **no** relee nada: adoptar el documento del
+        // servidor encima de un borrador es justo lo que no puede pasar. Sin
+        // esto, el segundo autoguardado mandaría el hash de antes del primero y
+        // chocaría contra su propia escritura.
+        return res.data?.tabs?.find((x) => x.key === tab)?.bodyHash;
       },
 
       appendToDoc: async (kind, id, tab, text) => {

@@ -88,6 +88,10 @@ fn api_patch(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
     api_write(cfg, "PATCH", path, body)
 }
 
+fn api_put(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
+    api_write(cfg, "PUT", path, body)
+}
+
 /// Multipart write, for the endpoints that accept files. Comments take
 /// multipart even when they carry only text — one format for the whole family,
 /// rather than JSON here and multipart there depending on attachments.
@@ -124,6 +128,19 @@ fn api_form(cfg: &Cfg, method: &str, path: &str, fields: Vec<(&str, String)>) ->
             .await
             .map_err(|e| format!("bad response from cac: {e}"))?;
         if !status.is_success() {
+            // Un choque de versiones no es un fallo del que haya que informar en
+            // prosa: es la respuesta, y trae dentro lo que hace falta para
+            // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
+            // pedir el documento, y en ese viaje puede cambiar otra vez.
+            if status.as_u16() == 409 {
+                return Ok(json!({
+                    "conflict": true,
+                    "reason": "Someone saved this section after you read it. \
+                               Merge your text into the `doc` below and send the \
+                               new `bodyHash` — writing over it would delete what they wrote.",
+                    "doc": body.get("data").cloned().unwrap_or(Value::Null),
+                }));
+            }
             return Err(explain_write_failure(status, &body));
         }
         Ok(body.get("data").cloned().unwrap_or(Value::Null))
@@ -196,6 +213,19 @@ fn api_upload(
             .await
             .map_err(|e| format!("bad response from cac: {e}"))?;
         if !status.is_success() {
+            // Un choque de versiones no es un fallo del que haya que informar en
+            // prosa: es la respuesta, y trae dentro lo que hace falta para
+            // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
+            // pedir el documento, y en ese viaje puede cambiar otra vez.
+            if status.as_u16() == 409 {
+                return Ok(json!({
+                    "conflict": true,
+                    "reason": "Someone saved this section after you read it. \
+                               Merge your text into the `doc` below and send the \
+                               new `bodyHash` — writing over it would delete what they wrote.",
+                    "doc": body.get("data").cloned().unwrap_or(Value::Null),
+                }));
+            }
             return Err(explain_write_failure(status, &body));
         }
         Ok(body.get("data").cloned().unwrap_or(Value::Null))
@@ -227,6 +257,19 @@ fn api_delete(cfg: &Cfg, path: &str) -> Result<Value, String> {
             .await
             .map_err(|e| format!("bad response from cac: {e}"))?;
         if !status.is_success() {
+            // Un choque de versiones no es un fallo del que haya que informar en
+            // prosa: es la respuesta, y trae dentro lo que hace falta para
+            // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
+            // pedir el documento, y en ese viaje puede cambiar otra vez.
+            if status.as_u16() == 409 {
+                return Ok(json!({
+                    "conflict": true,
+                    "reason": "Someone saved this section after you read it. \
+                               Merge your text into the `doc` below and send the \
+                               new `bodyHash` — writing over it would delete what they wrote.",
+                    "doc": body.get("data").cloned().unwrap_or(Value::Null),
+                }));
+            }
             return Err(explain_write_failure(status, &body));
         }
         Ok(body.get("data").cloned().unwrap_or(Value::Null))
@@ -250,6 +293,7 @@ fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, 
             .map_err(|e| e.to_string())?;
         let req = match method {
             "PATCH" => client.patch(&url),
+            "PUT" => client.put(&url),
             _ => client.post(&url),
         };
         let res = req
@@ -266,6 +310,19 @@ fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, 
             .await
             .map_err(|e| format!("bad response from cac: {e}"))?;
         if !status.is_success() {
+            // Un choque de versiones no es un fallo del que haya que informar en
+            // prosa: es la respuesta, y trae dentro lo que hace falta para
+            // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
+            // pedir el documento, y en ese viaje puede cambiar otra vez.
+            if status.as_u16() == 409 {
+                return Ok(json!({
+                    "conflict": true,
+                    "reason": "Someone saved this section after you read it. \
+                               Merge your text into the `doc` below and send the \
+                               new `bodyHash` — writing over it would delete what they wrote.",
+                    "doc": body.get("data").cloned().unwrap_or(Value::Null),
+                }));
+            }
             return Err(explain_write_failure(status, &body));
         }
         Ok(body.get("data").cloned().unwrap_or(Value::Null))
@@ -336,6 +393,31 @@ fn dry_run(cfg: &Cfg, scope: &str, target: Result<Value, String>) -> Result<Valu
             "The target could not be read; check the id."
         }
     }))
+}
+
+/// El nodo del que cuelga un documento, validado antes de construir una ruta.
+///
+/// El `kind` se comprueba contra los tres que existen en vez de interpolarlo: un
+/// valor inventado saldría de aquí metido en una URL, y lo que contesta el
+/// servidor a una ruta que no existe no le dice a nadie qué escribió mal.
+fn doc_target(args: &Value) -> Result<(String, String), String> {
+    let kind = arg_str(args, "kind").ok_or("kind is required (space, folder or list)")?;
+    if !matches!(kind.as_str(), "space" | "folder" | "list") {
+        return Err(format!("unknown kind `{kind}`: use space, folder or list"));
+    }
+    let id = arg_str(args, "ownerId").ok_or("ownerId is required")?;
+    Ok((kind, urlencode(&id)))
+}
+
+/// Igual con la sección: son cuatro y fijas.
+fn doc_tab(args: &Value) -> Result<String, String> {
+    let tab = arg_str(args, "tab").ok_or("tab is required")?;
+    if !matches!(tab.as_str(), "overview" | "runbook" | "decisions" | "links") {
+        return Err(format!(
+            "unknown section `{tab}`: use overview, runbook, decisions or links"
+        ));
+    }
+    Ok(tab)
 }
 
 fn arg_bool(args: &Value, key: &str) -> bool {
@@ -760,6 +842,90 @@ fn tool_defs() -> Value {
                     "dryRun": { "type": "boolean", "description": "Validate without writing." }
                 },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "list_docs",
+            "description": "Which spaces, folders and lists carry project documentation, who is responsible for each, and which ones nobody has confirmed in over 90 days. Start here when asked what is documented or what is out of date.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "orgId": { "type": "string" } },
+                "required": ["orgId"]
+            }
+        },
+        {
+            "name": "get_doc",
+            "description": "One node's documentation: its four fixed sections (overview, runbook, decisions, links), who maintains it, when it was last reviewed, and its decision log. Each section carries a `bodyHash` — pass it back to write_doc_tab so a save that arrives late is refused instead of deleting someone's work.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string", "description": "The id of the space, folder or list. Use list_task_spaces to find it." }
+                },
+                "required": ["kind", "ownerId"]
+            }
+        },
+        {
+            "name": "append_doc_tab",
+            "description": "Add text to the end of a section without touching what is already there. Prefer this over write_doc_tab: it cannot delete anything, so it is safe while somebody has the document open. Needs a token with the `docs:write` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"] },
+                    "text": { "type": "string", "description": "Markdown. Lands after a blank line, so it reads as a new paragraph or section." },
+                    "dryRun": { "type": "boolean", "description": "Validate the target and the token's permission without writing." }
+                },
+                "required": ["kind", "ownerId", "tab", "text"]
+            }
+        },
+        {
+            "name": "record_decision",
+            "description": "Add an entry to a project's decision log: what was decided, why, and who decided it. For decisions taken outside cac — a client's email, a call — where there is no task or message to link back to. The log is append-only: entries cannot be edited or deleted afterwards, so write it as it should read in a year. Needs a token with the `docs:write` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "title": { "type": "string", "description": "What was decided, in one line." },
+                    "body": { "type": "string", "description": "Why. The reasoning is what makes the entry worth keeping." },
+                    "tag": { "type": "string", "description": "Optional: architecture, vendor, scope…" },
+                    "decidedBy": { "type": "string", "description": "The name or username of the person in this organization who made the call, when it wasn't you. Signing it with the token's owner would say they decided it, which is what whoever reads it will believe." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "title"]
+            }
+        },
+        {
+            "name": "write_doc_tab",
+            "description": "Replace a section's markdown outright. Read it with get_doc first and pass that section's `bodyHash` — without a matching hash the save is refused, because somebody may have written into it since. On a refusal the result carries `conflict: true` and the current document, so merge and send again. Prefer append_doc_tab when you only mean to add. Needs a token with the `docs:manage` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"] },
+                    "body": { "type": "string", "description": "Markdown. Replaces the section entirely." },
+                    "baseHash": { "type": "string", "description": "The `bodyHash` this section had when you read it. Omit only for a section that has never been saved." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "tab", "body"]
+            }
+        },
+        {
+            "name": "update_doc",
+            "description": "Set who is responsible for a document, or the one line pinned above that list's board. Cannot mark a document reviewed — that says a person confirmed it still works, and only a superadmin signs it from the app. Needs a token with the `docs:manage` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "owner": { "type": "string", "description": "Name or username of a member of this organization. Empty string leaves it without one." },
+                    "pinnedLine": { "type": "string", "description": "What somebody needs to know before picking up a card from this list. Empty string removes it." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId"]
             }
         }
     ])
@@ -1345,6 +1511,104 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "bodyHash": note.and_then(|n| n.get("bodyHash")),
                 "conflict": data.get("conflict"),
             }))
+        }
+
+        // ─── Documentación de proyecto ────────────────────────────────────
+        //
+        // La otra mitad de la documentación. Todo lo demás lo escribe una persona
+        // con la app abierta; esto es para que un agente que acaba de tocar el
+        // runbook de un servicio pueda dejarlo escrito, en vez de que se quede sin
+        // escribir.
+        "list_docs" => {
+            let org = arg_str(args, "orgId").ok_or("orgId is required")?;
+            let data = api_get(cfg, &format!("/api/v1/docs/?orgId={}", urlencode(&org)))?;
+            Ok(json!({ "docs": data }))
+        }
+
+        "get_doc" => {
+            let (kind, id) = doc_target(args)?;
+            let data = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}"))?;
+            Ok(data)
+        }
+
+        "append_doc_tab" => {
+            let (kind, id) = doc_target(args)?;
+            let tab = doc_tab(args)?;
+            let text = arg_str(args, "text").ok_or("text is required")?;
+            let path = format!("/api/v1/docs/{kind}/{id}/tabs/{tab}/append");
+            if arg_bool(args, "dryRun") {
+                return dry_run(
+                    cfg,
+                    "docs:write",
+                    api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
+                );
+            }
+            api_post(cfg, &path, json!({ "body": text }))
+        }
+
+        "record_decision" => {
+            let (kind, id) = doc_target(args)?;
+            let title = arg_str(args, "title").ok_or("title is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(
+                    cfg,
+                    "docs:write",
+                    api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
+                );
+            }
+            // El origen lo pone esta herramienta y no quien la llama: una decisión
+            // que dijera venir de una tarea sería un enlace de vuelta que miente,
+            // en un registro del que no se puede borrar nada.
+            let mut body = json!({ "title": title, "origin": "doc" });
+            for (k, v) in [("body", "body"), ("tag", "tag"), ("decidedBy", "decidedBy")] {
+                if let Some(x) = arg_str(args, k) {
+                    body[v] = json!(x);
+                }
+            }
+            api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/decisions"), body)
+        }
+
+        "write_doc_tab" => {
+            let (kind, id) = doc_target(args)?;
+            let tab = doc_tab(args)?;
+            let text = arg_str(args, "body").ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(
+                    cfg,
+                    "docs:manage",
+                    api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
+                );
+            }
+            let mut body = json!({ "body": text });
+            if let Some(h) = arg_str(args, "baseHash") {
+                body["baseHash"] = json!(h);
+            }
+            api_put(cfg, &format!("/api/v1/docs/{kind}/{id}/tabs/{tab}"), body)
+        }
+
+        "update_doc" => {
+            let (kind, id) = doc_target(args)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(
+                    cfg,
+                    "docs:manage",
+                    api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
+                );
+            }
+            let mut body = json!({});
+            // `arg_str` sobre una cadena vacía la devuelve tal cual, y eso importa:
+            // vacío significa «quítalo», que es la única forma de dejar un
+            // documento sin dueño o de retirar la línea del tablero.
+            if let Some(o) = arg_str(args, "owner") {
+                body["maintainer"] = json!(o);
+            }
+            if let Some(l) = arg_str(args, "pinnedLine") {
+                body["pinnedLine"] = json!(l);
+            }
+            if body.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                return Err("Nothing to change: send owner and/or pinnedLine".into());
+            }
+            api_patch(cfg, &format!("/api/v1/docs/{kind}/{id}"), body)
         }
 
         other => Err(format!("unknown tool: {other}")),

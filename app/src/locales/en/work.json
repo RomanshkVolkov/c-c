@@ -294,7 +294,10 @@
     "whereTo": "Search channels and people",
     "noWhere": "Nothing matches",
     "shared": "Sent to {{where}}",
-    "errShare": "Couldn't share it"
+    "errShare": "Couldn't share it",
+    "conflict": "Not saved: someone else got there first",
+    "conflictWhy": "This section changed while you were writing, so your text was not applied — it would have deleted theirs. Your draft is still here: copy what you need, then reload to see their version.",
+    "discardAndReload": "Discard mine and reload"
   },
   "docTemplates": {
     "title": "Nothing written here yet",
@@ -338,7 +341,8 @@
     "noUndo": "This can't be edited or deleted afterwards. Corrections are made by adding another entry.",
     "badge": "DECISION",
     "open": "See the entry",
-    "saved": "Recorded"
+    "saved": "Recorded",
+    "viaAgent": "transcribed by an agent"
   },
   "docIndex": {
     "title": "All docs",

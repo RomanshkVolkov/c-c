@@ -632,8 +632,16 @@ type SaveDocRequest struct {
 // frescura, y que el dato sea cierto es todo el valor que tiene el chip.
 type PatchDocRequest struct {
 	MaintainerID *string `json:"maintainerId" validate:"omitempty,max=36"`
-	PinnedLine   *string `json:"pinnedLine"   validate:"omitempty,max=280"`
-	Reviewed     *bool   `json:"reviewed"`
+	// Maintainer es el mismo campo, dicho por su nombre.
+	//
+	// Dos campos y no uno que adivine: la app tiene el id porque acaba de
+	// pintar la lista de gente, y un agente sólo tiene «Jose Guzman». Aceptar
+	// las dos cosas en un solo campo obliga a decidir por la forma de la
+	// cadena, que es cómo se acaba tratando el nombre de alguien como un
+	// identificador fallido.
+	Maintainer *string `json:"maintainer" validate:"omitempty,max=120"`
+	PinnedLine *string `json:"pinnedLine"   validate:"omitempty,max=280"`
+	Reviewed   *bool   `json:"reviewed"`
 }
 
 // ─── Requests ─────────────────────────────────────────────────────────────────

@@ -482,7 +482,11 @@
     "reportsManage": "Triage reports",
     "reportsManageDetail": "Change status, assignee, priority, category or area, remove a report's screenshots, and correct or withdraw comments <1>you</1> wrote — never anyone else's, which cac refuses outright.",
     "collectionsWrite": "Create request collections",
-    "collectionsWriteDetail": "Leaves a described API ready to run. Creating only — editing, deleting and sharing one stay out of reach, sharing because it reaches other people."
+    "collectionsWriteDetail": "Leaves a described API ready to run. Creating only — editing, deleting and sharing one stay out of reach, sharing because it reaches other people.",
+    "docsWrite": "Add to project docs",
+    "docsWriteDetail": "Append-only: adds to the end of a section and records decisions, and can never delete what somebody else wrote. Safe while a person has the document open.",
+    "docsManage": "Rewrite project docs",
+    "docsManageDetail": "Replaces a whole section and decides who a document belongs to. A save that arrives after somebody else's is refused rather than applied, but this is still the permission that can overwrite work. It cannot mark a document reviewed — that says a person confirmed it, and only a superadmin signs it."
   },
   "last": {
     "hideChat": "Hide chat",

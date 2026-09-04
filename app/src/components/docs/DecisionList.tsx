@@ -1,4 +1,4 @@
-import { CheckSquare, Gavel, Hash } from "lucide-react";
+import { Bot, CheckSquare, Gavel, Hash } from "lucide-react";
 
 import { fecha } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
@@ -67,6 +67,17 @@ export default function DecisionList({ decisions }: { decisions: Decision[] }) {
           <header className="flex items-center gap-2 text-xs text-muted-foreground">
             <time className="tabular-nums">{fecha(d.decidedAt)}</time>
             <span>{d.authorName}</span>
+            {/* Quién la escribió, cuando no la tecleó una persona.
+                El registro no se puede borrar, así que quien lo lea dentro de un
+                año tiene que poder distinguir lo que alguien escribió a mano de
+                lo que un agente transcribió de un correo. Sin esto, las dos
+                cosas se leen igual. */}
+            {d.via === "mcp" && (
+              <span className="flex items-center gap-1">
+                <Bot className="size-3" />
+                {t("work:decisions.viaAgent")}
+              </span>
+            )}
             {d.tag && (
               <span className="ml-auto rounded-full bg-muted px-2 py-0.5">{d.tag}</span>
             )}

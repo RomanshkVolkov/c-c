@@ -1031,8 +1031,15 @@ fn arrancar_captura(
                     // El pico, sobre las muestras que **de verdad** se envían.
                     // Medirlo antes del silenciado diría que hay señal mientras
                     // se publican ceros, que es la mentira más cara aquí.
-                    let pico = trama.iter().map(|m| m.unsigned_abs() as u32).max().unwrap_or(0);
-                    PICO_MILESIMAS.store(pico * 1000 / i16::MAX as u32, std::sync::atomic::Ordering::Relaxed);
+                    let pico = trama
+                        .iter()
+                        .map(|m| m.unsigned_abs() as u32)
+                        .max()
+                        .unwrap_or(0);
+                    PICO_MILESIMAS.store(
+                        pico * 1000 / i16::MAX as u32,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     let _ = tramas_tx.send(trama);
                 }
             },
@@ -1132,9 +1139,7 @@ fn arrancar_captura(
     match listo_rx.recv_timeout(std::time::Duration::from_secs(15)) {
         Ok(Ok(())) => Ok(StreamGuard(Some(fin_tx))),
         Ok(Err(e)) => Err(e),
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            Err("voice-mic-thread-died".into())
-        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("voice-mic-thread-died".into()),
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
             nota("micro: quince segundos sin abrir el dispositivo, se abandona");
             Err("voice-mic-timeout".into())
@@ -2071,9 +2076,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
             nota("pantalla: el hilo de captura murió sin decir nada");
             Err("voice-screen-thread-died".into())
         }
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err("voice-screen-timeout".into())
-        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err("voice-screen-timeout".into()),
     }
 }
 
@@ -2415,10 +2418,8 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             ultimo_fallo
         };
         nota(format!("cámara: se apaga a media llamada — {porque}"));
-        if let (Some(canal), Some(yo)) = (
-            CANAL.lock().unwrap().clone(),
-            YO.lock().unwrap().clone(),
-        ) {
+        if let (Some(canal), Some(yo)) = (CANAL.lock().unwrap().clone(), YO.lock().unwrap().clone())
+        {
             let _ = canal.send(VoiceEvent::Video {
                 identity: yo,
                 source: crate::video_frames::Fuente::Camara.como_texto().into(),
@@ -2445,9 +2446,7 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             nota("cámara: el hilo de captura murió sin decir nada");
             Err("voice-camera-thread-died".into())
         }
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err("voice-camera-no-frames".into())
-        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err("voice-camera-no-frames".into()),
     }
 }
 
@@ -2820,7 +2819,10 @@ mod pruebas_remuestreo {
     #[test]
     fn a_48k_no_cambia_la_cuenta() {
         let n = correr(48_000, 10).len();
-        assert!((POR_BLOQUE * 10 - 1..=POR_BLOQUE * 10).contains(&n), "dio {n}");
+        assert!(
+            (POR_BLOQUE * 10 - 1..=POR_BLOQUE * 10).contains(&n),
+            "dio {n}"
+        );
     }
 
     /// El caso que rompía: 44 100 tiene que salir como 48 000. Si sale más

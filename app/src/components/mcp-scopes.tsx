@@ -67,6 +67,16 @@ export const SCOPES: ScopeOption[] = [
     detailKey: "scopes.reportsManageDetail",
   },
   {
+    id: "docs:write",
+    labelKey: "common:scopes.docsWrite",
+    detailKey: "scopes.docsWriteDetail",
+  },
+  {
+    id: "docs:manage",
+    labelKey: "common:scopes.docsManage",
+    detailKey: "scopes.docsManageDetail",
+  },
+  {
     id: "collections:write",
     labelKey: "common:scopes.collectionsWrite",
     detailKey: "scopes.collectionsWriteDetail",

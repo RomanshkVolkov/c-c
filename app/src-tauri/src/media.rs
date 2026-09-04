@@ -54,10 +54,7 @@ fn percent_decode(input: &str) -> String {
 /// macOS, `http://cacmedia.localhost/<path>` on Windows) and the frontend helper
 /// percent-encodes the whole path, so both are normalized here.
 pub fn backend_path(uri: &str) -> Option<String> {
-    let after_scheme = uri
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or(uri);
+    let after_scheme = uri.split_once("://").map(|(_, rest)| rest).unwrap_or(uri);
     // Drop the host component, whatever it is.
     let path = after_scheme.split_once('/').map(|(_, p)| p).unwrap_or("");
     let decoded = percent_decode(path);
@@ -82,7 +79,11 @@ fn deny(status: u16) -> Response<Vec<u8>> {
 }
 
 /// Fetches the attachment and answers the webview.
-pub async fn serve(session_token: Option<String>, base: Option<String>, req: Request<Vec<u8>>) -> Response<Vec<u8>> {
+pub async fn serve(
+    session_token: Option<String>,
+    base: Option<String>,
+    req: Request<Vec<u8>>,
+) -> Response<Vec<u8>> {
     let Some(path) = backend_path(&req.uri().to_string()) else {
         return deny(400);
     };
@@ -167,27 +168,57 @@ mod tests {
         let login: serde_json::Value = http
             .post(format!("{api}/auth/login"))
             .json(&serde_json::json!({"username":"admin","password":"admin1234"}))
-            .send().await.unwrap().json().await.unwrap();
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         let token = login["data"]["accessToken"].as_str().unwrap().to_string();
         let auth = format!("Bearer {token}");
 
-        let org: serde_json::Value = http.get(format!("{api}/organizations/"))
-            .header("Authorization", &auth).send().await.unwrap().json().await.unwrap();
+        let org: serde_json::Value = http
+            .get(format!("{api}/organizations/"))
+            .header("Authorization", &auth)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         let org_id = org["data"][0]["id"].as_str().unwrap();
-        let sp: serde_json::Value = http.post(format!("{api}/task-spaces/"))
+        let sp: serde_json::Value = http
+            .post(format!("{api}/task-spaces/"))
             .header("Authorization", &auth)
             .json(&serde_json::json!({"orgId": org_id, "name": "media"}))
-            .send().await.unwrap().json().await.unwrap();
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         let sp_id = sp["data"]["id"].as_str().unwrap();
-        let li: serde_json::Value = http.post(format!("{api}/task-spaces/{sp_id}/lists"))
+        let li: serde_json::Value = http
+            .post(format!("{api}/task-spaces/{sp_id}/lists"))
             .header("Authorization", &auth)
             .json(&serde_json::json!({"name":"l"}))
-            .send().await.unwrap().json().await.unwrap();
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         let li_id = li["data"]["id"].as_str().unwrap();
-        let tk: serde_json::Value = http.post(format!("{api}/task-lists/{li_id}/tasks"))
+        let tk: serde_json::Value = http
+            .post(format!("{api}/task-lists/{li_id}/tasks"))
             .header("Authorization", &auth)
             .json(&serde_json::json!({"title":"media"}))
-            .send().await.unwrap().json().await.unwrap();
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         let tk_id = tk["data"]["id"].as_str().unwrap();
 
         let png: Vec<u8> = base64_decode_png();
@@ -199,8 +230,16 @@ mod tests {
             .post(format!("{api}/tasks/{tk_id}/attachments"))
             .header("Authorization", &auth)
             .multipart(reqwest::multipart::Form::new().part("file", part))
-            .send().await.unwrap().json().await.unwrap();
-        let url = up["data"]["url"].as_str().expect("attachment url").to_string();
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let url = up["data"]["url"]
+            .as_str()
+            .expect("attachment url")
+            .to_string();
 
         // Exactly what the webview requests: our scheme, no credentials in it.
         let req = tauri::http::Request::builder()

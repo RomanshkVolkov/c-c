@@ -14,6 +14,7 @@ import { fecha } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { nombreDe } from "@/lib/nombres";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth.store";
 import { usePeopleStore } from "@/store/people.store";
 import { useTasksStore } from "@/store/tasks.store";
 import type { Doc } from "@/types/task";
@@ -85,6 +86,7 @@ export default function DocHeader({ doc }: { doc: Doc }) {
   const gente = byOrg[doc.orgId] ?? [];
   const [guardando, setGuardando] = useState(false);
   const prompt = usePrompt();
+  const soySuperadmin = useAuthStore((s) => s.session?.superadmin ?? false);
 
   useEffect(() => {
     fetchPeople(doc.orgId).catch(() => {});
@@ -184,15 +186,22 @@ export default function DocHeader({ doc }: { doc: Doc }) {
               : t("work:docs.staleNeverReviewed", { days: dias ?? 0 })}
           </p>
           <div className="mt-2 flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 text-xs"
-              disabled={guardando}
-              onClick={() => void aplicar({ reviewed: true })}
-            >
-              {t("work:docs.markReviewed")}
-            </Button>
+            {/* Firmar una revisión dice que **una persona** confirmó que esto
+                sigue siendo verdad. Mientras no haya rol de admin de
+                organización lo firma un superadmin; para el resto el aviso es
+                informativo, y ofrecer un botón que el servidor va a rechazar es
+                peor que no ofrecerlo. */}
+            {soySuperadmin && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-xs"
+                disabled={guardando}
+                onClick={() => void aplicar({ reviewed: true })}
+              >
+                {t("work:docs.markReviewed")}
+              </Button>
+            )}
             <OwnerPicker
               doc={doc}
               gente={gente}

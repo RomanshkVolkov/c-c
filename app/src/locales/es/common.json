@@ -482,7 +482,11 @@
     "reportsManage": "Clasificar reportes",
     "reportsManageDetail": "Cambiar estado, asignado, prioridad, categoría o área, quitar las capturas de un reporte, y corregir o retirar los comentarios que escribiste <1>tú</1> — nunca los de otro, cosa que cac rechaza de plano.",
     "collectionsWrite": "Crear colecciones de peticiones",
-    "collectionsWriteDetail": "Deja una API descrita y lista para lanzar. Sólo crear — editar, borrar y compartir una se quedan fuera; compartir, porque llega a otras personas."
+    "collectionsWriteDetail": "Deja una API descrita y lista para lanzar. Sólo crear — editar, borrar y compartir una se quedan fuera; compartir, porque llega a otras personas.",
+    "docsWrite": "Añadir a la documentación",
+    "docsWriteDetail": "Sólo añade: escribe al final de una sección y registra decisiones, y nunca puede borrar lo que escribió otro. Seguro aunque alguien tenga el documento abierto.",
+    "docsManage": "Reescribir la documentación",
+    "docsManageDetail": "Reemplaza una sección entera y decide de quién es un documento. Un guardado que llega después del de otra persona se rechaza en vez de aplicarse, pero éste sigue siendo el permiso que puede pisar trabajo. No puede marcar un documento como revisado: eso dice que una persona lo confirmó, y sólo lo firma un superadmin."
   },
   "last": {
     "hideChat": "Ocultar el chat",
