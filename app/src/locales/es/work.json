@@ -58,7 +58,8 @@
     "deleteFolderTitle": "¿Borrar la carpeta «{{name}}»?",
     "deleteFolderBody": "Sus listas suben al espacio — no se borra ninguna tarea.",
     "deleteListTitle": "¿Borrar la lista «{{name}}»?",
-    "delete": "Borrar"
+    "delete": "Borrar",
+    "openDocs": "Documentación"
   },
   "myWork": {
     "title": "Mi trabajo",

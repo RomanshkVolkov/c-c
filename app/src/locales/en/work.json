@@ -58,7 +58,8 @@
     "deleteFolderTitle": "Delete folder \"{{name}}\"?",
     "deleteFolderBody": "Its lists move up to the space — no tasks are deleted.",
     "deleteListTitle": "Delete list \"{{name}}\"?",
-    "delete": "Delete"
+    "delete": "Delete",
+    "openDocs": "Docs"
   },
   "myWork": {
     "title": "My work",

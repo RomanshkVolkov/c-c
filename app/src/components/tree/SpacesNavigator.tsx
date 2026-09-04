@@ -382,6 +382,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const { t } = useT();
   const [open, setOpen] = useState(true);
   const openDoc = useTasksStore((s) => s.openDoc);
+  const navigate = useNavigate();
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
   const confirm = useConfirm();
@@ -438,7 +439,12 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             activeDoc?.kind === "space" && activeDoc.id === space.id && "text-primary",
           )}
           title={t("work:tree.openOverview")}
-          onClick={() => openDoc("space", space.id, space.name)}
+          onClick={() => {
+            void openDoc("space", space.id, space.name).catch(() => {});
+            // Sin esto no pasaba nada salvo que ya estuvieras en `/tasks`, que
+            // es la única pantalla que pinta un documento.
+            navigate("/tasks");
+          }}
         >
           {space.name}
         </button>
@@ -621,6 +627,7 @@ function FolderNode({
   };
   const confirm = useConfirm();
   const openDoc = useTasksStore((s) => s.openDoc);
+  const navigate = useNavigate();
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
   const {
@@ -656,7 +663,10 @@ function FolderNode({
             activeDoc?.kind === "folder" && activeDoc.id === folder.id && "text-primary",
           )}
           title={t("work:tree.openOverview")}
-          onClick={() => openDoc("folder", folder.id, folder.name)}
+          onClick={() => {
+            void openDoc("folder", folder.id, folder.name).catch(() => {});
+            navigate("/tasks");
+          }}
         >
           {folder.name}
         </button>
@@ -800,6 +810,7 @@ function ListNode({
   const navigate = useNavigate();
   const confirm = useConfirm();
   const docIndex = useTasksStore((s) => s.docIndex);
+  const openDocDeLista = useTasksStore((s) => s.openDoc);
   const { renameList, deleteList, moveListToSpace } = useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -893,6 +904,19 @@ function ListNode({
               }}
             >
               <KanbanSquare className="size-4" /> {t("work:tree.openBoard")}
+            </DropdownMenuItem>
+            {/* Faltaba, y era el sitio obvio: una lista tiene tablero y tiene
+                documentación, y sólo una de las dos se podía abrir desde aquí.
+                Con `navigate`, porque abrir un documento sólo cambia el estado
+                — sin ir a la pantalla que lo pinta no pasa nada visible. */}
+            <DropdownMenuItem
+              onClick={() => {
+                selectList(list.id);
+                void openDocDeLista("list", list.id, list.name).catch(() => {});
+                navigate("/tasks");
+              }}
+            >
+              <FileText className="size-4" /> {t("work:tree.openDocs")}
             </DropdownMenuItem>
             {/* Faltaba, y el diálogo llevaba tiempo montado unas líneas más
                 abajo sin nada que lo abriera: el canal sólo se podía configurar
