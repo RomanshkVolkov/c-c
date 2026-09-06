@@ -563,6 +563,9 @@
     "restarting": "Restarting {{name}}",
     "userDeleted": "Deleted @{{name}}",
     "userCreated": "Created @{{name}}",
-    "userUpdated": "Updated @{{name}}"
+    "userUpdated": "Updated @{{name}}",
+    "micLevel": "Microphone level",
+    "micOpening": "Opening the microphone…",
+    "micRateMismatch": "This device runs at {{device}} Hz and the call expects {{source}} Hz."
   }
 }

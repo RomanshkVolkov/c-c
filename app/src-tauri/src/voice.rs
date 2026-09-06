@@ -835,6 +835,138 @@ fn probar_camara() -> Vec<String> {
 ///
 /// Y `formato_entrada.coincide` en falso es el desajuste de ritmo, que se traga
 /// la voz entera sin dar ni un error.
+/// Hasta cuándo sigue abierta la prueba del micrófono, en milisegundos de reloj.
+///
+/// El medidor se pide mientras el panel está abierto y **se renueva en cada
+/// lectura**. Así no hace falta un comando de parar: si la pantalla se cierra,
+/// se cambia de sección o la ventana muere, nadie renueva y el flujo se cierra
+/// solo. Un «parar» que hay que acordarse de llamar es un micrófono abierto
+/// olvidado, y eso es una luz encendida en la cámara de alguien.
+static PRUEBA_HASTA: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PRUEBA_VIVA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PRUEBA_PICO: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static PRUEBA_FORMATO: LazyLock<Mutex<Option<FormatoEntrada>>> =
+    LazyLock::new(|| Mutex::new(None));
+static PRUEBA_FALLO: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+
+fn ahora_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Cuánto vive la prueba sin que nadie vuelva a preguntar.
+const PRUEBA_MARGEN_MS: u64 = 1_500;
+
+/// El nivel que entra por el micrófono, ahora mismo.
+///
+/// Contesta la pregunta que hoy sólo se puede responder llamando a alguien y
+/// preguntándole si se te oye — o sea, después de haberle hecho perder el rato.
+///
+/// **Durante una llamada no abre nada.** La captura ya está midiendo el pico de
+/// cada trama, y sobre las muestras que de verdad se envían, que es un dato
+/// mejor: abrir un segundo flujo sobre el mismo dispositivo puede fallar en
+/// algunos sistemas y, donde no falla, mediría una señal distinta de la que
+/// viaja. Fuera de la llamada sí se abre uno de prueba, que se apaga solo.
+#[tauri::command]
+pub async fn voice_mic_level() -> serde_json::Value {
+    // En llamada: lo que ya se está midiendo, y el formato real con el que se
+    // abrió — que no es el que dice el desplegable, y esa diferencia fue media
+    // investigación del fallo de «no se me oye».
+    if PUBLICANDO.load(std::sync::atomic::Ordering::Relaxed) {
+        return serde_json::json!({
+            "enLlamada": true,
+            "picoMilesimas": PICO_MILESIMAS.load(std::sync::atomic::Ordering::Relaxed),
+            "formatoEntrada": FORMATO_ENTRADA.lock().unwrap().clone(),
+            "error": ULTIMO_FALLO_CAPTURA.lock().unwrap().clone(),
+        });
+    }
+
+    PRUEBA_HASTA.store(ahora_ms() + PRUEBA_MARGEN_MS, std::sync::atomic::Ordering::Relaxed);
+    if !PRUEBA_VIVA.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        std::thread::spawn(|| {
+            if let Err(e) = medir_microfono() {
+                *PRUEBA_FALLO.lock().unwrap() = Some(e);
+            }
+            PRUEBA_VIVA.store(false, std::sync::atomic::Ordering::SeqCst);
+            PRUEBA_PICO.store(0, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+    serde_json::json!({
+        "enLlamada": false,
+        "picoMilesimas": PRUEBA_PICO.load(std::sync::atomic::Ordering::Relaxed),
+        "formatoEntrada": PRUEBA_FORMATO.lock().unwrap().clone(),
+        "error": PRUEBA_FALLO.lock().unwrap().clone(),
+    })
+}
+
+/// Abre el micrófono elegido y va dejando el pico hasta que nadie renueva.
+///
+/// La elección es **la misma** que hace la llamada —el de a mano si sigue
+/// existiendo, y si no el del sistema— y eso es el punto: un medidor que
+/// probara otro dispositivo diría que todo está bien mientras la llamada abre
+/// uno que no funciona.
+fn medir_microfono() -> Result<(), String> {
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+    *PRUEBA_FALLO.lock().unwrap() = None;
+    let host = cpal::default_host();
+    let elegido = MIC_ELEGIDO.lock().unwrap().clone();
+    let dispositivo = elegido
+        .and_then(|id| {
+            host.input_devices()
+                .ok()?
+                .find(|d| id_de(d).as_ref() == Some(&id))
+        })
+        .or_else(|| host.default_input_device())
+        .ok_or_else(|| "no hay ningún micrófono".to_string())?;
+
+    let config = dispositivo
+        .default_input_config()
+        .map_err(|e| format!("el micrófono no dice su formato: {e}"))?;
+    let ritmo = config.sample_rate();
+    *PRUEBA_FORMATO.lock().unwrap() = Some(FormatoEntrada {
+        dispositivo: dispositivo.to_string(),
+        ritmo,
+        canales: config.channels(),
+        formato: format!("{:?}", config.sample_format()),
+        ritmo_de_la_fuente: SAMPLE_RATE,
+        coincide: ritmo == SAMPLE_RATE,
+    });
+
+    let stream = dispositivo
+        .build_input_stream(
+            config.config(),
+            move |datos: &[f32], _: &cpal::InputCallbackInfo| {
+                let pico = datos.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+                PRUEBA_PICO.store(
+                    (pico.clamp(0.0, 1.0) * 1000.0) as u32,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            },
+            |e| {
+                *PRUEBA_FALLO.lock().unwrap() = Some(format!("{e}"));
+            },
+            None,
+        )
+        .map_err(|e| format!("no se pudo abrir el micrófono: {e}"))?;
+    stream
+        .play()
+        .map_err(|e| format!("no se pudo arrancar la captura: {e}"))?;
+
+    // Se cierra al dejar de preguntar. Y con un tope duro además del margen: si
+    // algo dejara la fecha corriéndose para siempre, el micrófono seguiría
+    // abierto para siempre.
+    let limite = ahora_ms() + 60_000;
+    while ahora_ms() < PRUEBA_HASTA.load(std::sync::atomic::Ordering::Relaxed)
+        && ahora_ms() < limite
+    {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn voice_report() -> serde_json::Value {
     let formato = FORMATO_ENTRADA.lock().unwrap().clone();

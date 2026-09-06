@@ -132,7 +132,16 @@ fn api_form(cfg: &Cfg, method: &str, path: &str, fields: Vec<(&str, String)>) ->
             // prosa: es la respuesta, y trae dentro lo que hace falta para
             // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
             // pedir el documento, y en ese viaje puede cambiar otra vez.
-            if status.as_u16() == 409 {
+            //
+            // Por el **código**, no por el 409 a secas. Mirando sólo el estado,
+            // esta rama se tragaba cualquier otro 409 —mover una tarjeta por una
+            // ruta que la máquina de estados no permite, por ejemplo— y lo
+            // devolvía como si hubiera ido bien: quien llamara veía «hecho» y no
+            // había pasado nada. Un fallo que se anuncia como éxito es peor que
+            // el fallo.
+            if status.as_u16() == 409
+                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+            {
                 return Ok(json!({
                     "conflict": true,
                     "reason": "Someone saved this section after you read it. \
@@ -217,7 +226,16 @@ fn api_upload(
             // prosa: es la respuesta, y trae dentro lo que hace falta para
             // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
             // pedir el documento, y en ese viaje puede cambiar otra vez.
-            if status.as_u16() == 409 {
+            //
+            // Por el **código**, no por el 409 a secas. Mirando sólo el estado,
+            // esta rama se tragaba cualquier otro 409 —mover una tarjeta por una
+            // ruta que la máquina de estados no permite, por ejemplo— y lo
+            // devolvía como si hubiera ido bien: quien llamara veía «hecho» y no
+            // había pasado nada. Un fallo que se anuncia como éxito es peor que
+            // el fallo.
+            if status.as_u16() == 409
+                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+            {
                 return Ok(json!({
                     "conflict": true,
                     "reason": "Someone saved this section after you read it. \
@@ -261,7 +279,16 @@ fn api_delete(cfg: &Cfg, path: &str) -> Result<Value, String> {
             // prosa: es la respuesta, y trae dentro lo que hace falta para
             // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
             // pedir el documento, y en ese viaje puede cambiar otra vez.
-            if status.as_u16() == 409 {
+            //
+            // Por el **código**, no por el 409 a secas. Mirando sólo el estado,
+            // esta rama se tragaba cualquier otro 409 —mover una tarjeta por una
+            // ruta que la máquina de estados no permite, por ejemplo— y lo
+            // devolvía como si hubiera ido bien: quien llamara veía «hecho» y no
+            // había pasado nada. Un fallo que se anuncia como éxito es peor que
+            // el fallo.
+            if status.as_u16() == 409
+                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+            {
                 return Ok(json!({
                     "conflict": true,
                     "reason": "Someone saved this section after you read it. \
@@ -314,7 +341,16 @@ fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, 
             // prosa: es la respuesta, y trae dentro lo que hace falta para
             // resolverlo. Convertirlo en texto obligaría a quien llama a volver a
             // pedir el documento, y en ese viaje puede cambiar otra vez.
-            if status.as_u16() == 409 {
+            //
+            // Por el **código**, no por el 409 a secas. Mirando sólo el estado,
+            // esta rama se tragaba cualquier otro 409 —mover una tarjeta por una
+            // ruta que la máquina de estados no permite, por ejemplo— y lo
+            // devolvía como si hubiera ido bien: quien llamara veía «hecho» y no
+            // había pasado nada. Un fallo que se anuncia como éxito es peor que
+            // el fallo.
+            if status.as_u16() == 409
+                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+            {
                 return Ok(json!({
                     "conflict": true,
                     "reason": "Someone saved this section after you read it. \

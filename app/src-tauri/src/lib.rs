@@ -1690,6 +1690,7 @@ pub fn run() {
             voice::voice_diagnostics,
             voice::voice_test_camera,
             voice::voice_report,
+            voice::voice_mic_level,
             voice::voice_list_devices,
             voice::voice_set_device,
         ])

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Check, Loader2, Mic, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
+import MicLevel from "@/components/voice/MicLevel";
 
 /**
  * Elegir micrófono y cámara sin salirse de la llamada.
@@ -67,7 +68,18 @@ export default function DeviceSettings() {
       )}
       {lista && (
         <>
-          <Grupo icono={Mic} titulo={t("common:last.microphone")} vacio={t("common:last.noMicrophone")}>
+          <Grupo
+            icono={Mic}
+            titulo={t("common:last.microphone")}
+            vacio={t("common:last.noMicrophone")}
+            /* Encima de la lista y fuera de ella: lo primero que se quiere saber
+               al abrir esto es si entra algo; cuál elegir es la pregunta
+               siguiente, y sólo si la respuesta es no.
+               Aparte de `children` porque `Grupo` los cuenta para decidir si
+               enseña «no hay ninguno» — con el medidor dentro, ese aviso no
+               saldría nunca— y porque un `div` dentro de un `ul` no es HTML. */
+            encabezado={<MicLevel />}
+          >
             {lista.mics.map((d) => (
               <Fila
                 key={d.id}
@@ -97,11 +109,13 @@ function Grupo({
   icono: Icono,
   titulo,
   vacio,
+  encabezado,
   children,
 }: {
   icono: typeof Mic;
   titulo: string;
   vacio: string;
+  encabezado?: React.ReactNode;
   children: React.ReactNode[];
 }) {
   return (
@@ -109,6 +123,7 @@ function Grupo({
       <p className="flex items-center gap-1.5 px-3 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
         <Icono className="size-3" /> {titulo}
       </p>
+      {encabezado}
       {/* «No hay ninguna» dicho con palabras. Una sección vacía sin más se lee
           como que la app no terminó de cargar. */}
       {children.length === 0 ? (
