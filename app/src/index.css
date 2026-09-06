@@ -308,6 +308,22 @@
   .md-body h1, .prose-editor h1 { @apply text-lg; }
   .md-body h2, .prose-editor h2 { @apply text-base; }
   .md-body h3, .prose-editor h3 { @apply text-sm uppercase tracking-wide text-muted-foreground; }
+  /* Un enlace tiene que parecer un enlace **mientras se escribe**.
+   *
+   * Tailwind desnuda los `<a>` a propósito («opt-in en vez de opt-out»), y aquí
+   * sólo se volvían a vestir en el mensaje ya enviado, porque el renderizador lo
+   * hace componente a componente. En el compositor no los vestía nadie: pegabas
+   * una URL, el editor la reconocía y la convertía en enlace de verdad, y en
+   * pantalla seguía siendo texto plano. No había forma de saber si había
+   * enganchado hasta después de enviarlo.
+   *
+   * Los mismos colores que usa el mensaje enviado, para que escribir y leer no
+   * enseñen dos cosas distintas. */
+  .md-body a, .prose-editor a {
+    @apply text-primary underline decoration-primary/40;
+  }
+  .prose-editor a:hover { @apply decoration-primary; }
+
   .md-body p, .prose-editor p { @apply my-2 first:mt-0 last:mb-0; }
   .md-body :where(ul, ol), .prose-editor :where(ul, ol) { @apply my-2 pl-5; }
   .md-body ul, .prose-editor ul { @apply list-disc; }
