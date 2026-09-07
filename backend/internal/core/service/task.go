@@ -1076,7 +1076,52 @@ func (s *TaskService) FindAttachment(id string) (*domain.TaskAttachment, error) 
 	return s.repo.FindAttachment(id)
 }
 
-func (s *TaskService) DeleteAttachment(id string) error { return s.repo.DeleteAttachment(id) }
+// DeleteAttachment quita el fichero **y la cita que lo señalaba**.
+//
+// Cierra el círculo que `dropRemovedAttachments` abrió por un lado: aquél borra
+// el fichero cuando se quita su imagen del texto, y faltaba el otro sentido.
+// Sin esto, borrar un adjunto citado dejaba un enlace muerto en la descripción
+// que ya nadie podía reparar salvo editando el markdown a mano — y el caso en
+// que ocurre es el peor: dos imágenes idénticas pegadas por error, se borra una
+// y resulta ser la que el texto señalaba.
+//
+// La cita se quita antes de borrar la fila. Si se hiciera después y algo fallara
+// en medio, quedaría el enlace muerto que esto viene a evitar; al revés, lo peor
+// que puede pasar es un adjunto sin citar, que es lo que ya pasaba y no rompe
+// nada de lo que se lee.
+func (s *TaskService) DeleteAttachment(id string) error {
+	if a, err := s.repo.FindAttachment(id); err == nil && a != nil {
+		s.limpiarCitas(a.ItemID, id)
+	}
+	return s.repo.DeleteAttachment(id)
+}
+
+// limpiarCitas quita las referencias a un adjunto de la descripción y de cada
+// comentario.
+//
+// De los comentarios también: dejarlos fuera reproduce el mismo enlace muerto un
+// nivel más abajo, donde encima nadie lo va a buscar. Un fallo al escribir uno
+// no aborta el resto — quedarse a medias sería peor que terminar mal.
+func (s *TaskService) limpiarCitas(taskID, attachmentID string) {
+	if t, err := s.repo.FindTask(taskID); err == nil && strings.Contains(t.Description, attachmentID) {
+		limpia := domain.StripAttachmentCitations(t.Description, attachmentID)
+		if err := s.repo.UpdateTask(taskID, map[string]any{"description": limpia}); err != nil {
+			lg.Error("stripping attachment citation from " + taskID + ": " + err.Error())
+		}
+	}
+	cs, err := s.repo.Comments(taskID)
+	if err != nil {
+		return
+	}
+	for _, c := range cs {
+		if !strings.Contains(c.Body, attachmentID) {
+			continue
+		}
+		if err := s.repo.UpdateComment(c.ID, domain.StripAttachmentCitations(c.Body, attachmentID)); err != nil {
+			lg.Error("stripping attachment citation from comment " + c.ID + ": " + err.Error())
+		}
+	}
+}
 
 // OrgIDForTask is what the attachment proxy authorizes against: it runs outside
 // the JWT middleware, so it resolves the owning org itself.

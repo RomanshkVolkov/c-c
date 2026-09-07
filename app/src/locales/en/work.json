@@ -105,7 +105,7 @@
     "errSaveComment": "Could not save the comment",
     "errComment": "Could not comment",
     "removeAttachmentTitle": "Remove \"{{name}}\"?",
-    "removeAttachmentInUse": "It's still referenced from the description — that image will stop loading.",
+    "removeAttachmentInUse": "The description shows this image. Removing the file also removes it from the text — the rest of what you wrote stays.",
     "removeAttachmentPlain": "Removes it from this task's attachment list.",
     "remove": "Remove",
     "removeAttachment": "Remove attachment",
@@ -154,7 +154,8 @@
     "withdrawTitle": "Take this off the client's board?",
     "withdrawBody": "They stop seeing it. Its ticket number stays spent — they may already have quoted it — so their numbering keeps a gap.",
     "withdraw": "Withdraw",
-    "updated": "Updated {{when}}"
+    "updated": "Updated {{when}}",
+    "citedHere": "in the text"
   },
   "notes": {
     "title": "Notes",

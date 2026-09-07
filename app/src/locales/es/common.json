@@ -566,6 +566,8 @@
     "userUpdated": "@{{name}} actualizado",
     "micLevel": "Nivel del micrófono",
     "micOpening": "Abriendo el micrófono…",
-    "micRateMismatch": "Este dispositivo va a {{device}} Hz y la llamada espera {{source}} Hz."
+    "micRateMismatch": "Este dispositivo va a {{device}} Hz y la llamada espera {{source}} Hz.",
+    "imageGone": "La imagen ya no está",
+    "imageGoneNamed": "«{{name}}» ya no está"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -63,5 +63,29 @@ describe("una url en un mensaje", () => {
     const regla = css.match(/\.md-body a[^{]*\{[^}]*\}/)?.[0] ?? "";
     expect(regla).toMatch(/\.prose-editor a/);
     expect(regla).toMatch(/underline/);
+  });
+});
+
+/**
+ * Una cita que apunta a un adjunto borrado.
+ *
+ * Es lo que queda del fallo aunque se arregle el borrado: los textos que ya
+ * tienen un enlace muerto de antes siguen ahí, y ningún arreglo del borrado los
+ * repara. Un icono roto no dice qué falta, ni que faltaba a propósito, ni que
+ * alguien lo quitó — y donde se ve es en un reporte, que es lo que alguien lee
+ * meses después.
+ */
+describe("una imagen que ya no está", () => {
+  it("se lee, en vez de salir como un icono roto", async () => {
+    render(<Markdown>{"antes\n\n![captura del error](/api/v1/tasks/t1/attachments/x/raw)\n\ndespués"}</Markdown>);
+    const img = document.querySelector("img");
+    expect(img).toBeTruthy();
+    // El navegador de la prueba no carga nada, así que el fallo se provoca.
+    await act(async () => {
+      img!.dispatchEvent(new Event("error"));
+    });
+    expect(document.querySelector("img")).toBeNull();
+    // Y con el texto alternativo dentro: es la única pista de qué se perdió.
+    expect(screen.getByText(/captura del error/)).toBeTruthy();
   });
 });

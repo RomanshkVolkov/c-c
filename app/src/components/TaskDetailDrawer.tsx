@@ -571,6 +571,17 @@ function Content() {
                           className="max-h-40 max-w-64 object-contain"
                         />
                       </button>
+                      {/* Cuál de las dos cita el texto.
+                          Con dos capturas idénticas —el caso que da origen a
+                          esto: se pega la imagen dos veces— se llamaban igual y
+                          pesaban lo mismo, así que borrar «la repetida» era
+                          pulsar a ciegas en una de las dos. La marca lo
+                          convierte en una elección. */}
+                      {task.description.includes(a.id) && (
+                        <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-background/85 px-1 text-[10px] text-muted-foreground">
+                          {t("work:task.citedHere")}
+                        </span>
+                      )}
                       <button
                         className="absolute right-1 top-1 rounded bg-background/80 p-1 text-muted-foreground opacity-0 transition-opacity group-hover/img:opacity-100 hover:text-destructive"
                         title={t("work:task.removeAttachment")}
@@ -604,7 +615,7 @@ function Content() {
                   <span className="shrink-0 text-muted-foreground">{Math.round(a.bytes / 1024)} KB</span>
                   {task.description.includes(a.id) && (
                     <span className="shrink-0 rounded bg-muted px-1 text-xs text-muted-foreground">
-                      in description
+                      {t("work:task.citedHere")}
                     </span>
                   )}
                   <button

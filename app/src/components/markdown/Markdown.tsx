@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Paperclip } from "lucide-react";
+import { ImageOff, Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
 import Lightbox from "@/components/Lightbox";
@@ -118,18 +118,13 @@ export default function Markdown({
           },
           // Capped at max-h-80 so a screenshot doesn't push the rest of the
           // comment off the screen; clicking it lifts that cap.
-          img: ({ src, alt }) => {
-            const resolved = mediaSrc(typeof src === "string" ? src : undefined);
-            return (
-              <img
-                src={resolved}
-                alt={alt ?? ""}
-                loading="lazy"
-                onClick={() => resolved && setZoomed({ src: resolved, alt: alt ?? "" })}
-                className="my-2 max-h-80 cursor-zoom-in rounded-md border object-contain"
-              />
-            );
-          },
+          img: ({ src, alt }) => (
+            <Imagen
+              src={mediaSrc(typeof src === "string" ? src : undefined)}
+              alt={alt ?? ""}
+              onZoom={setZoomed}
+            />
+          ),
         }}
       >
         {children}
@@ -145,3 +140,48 @@ export default function Markdown({
  * would be trapped by any ancestor with a transform or its own scroll — and
  * comments live inside exactly that kind of drawer.
  */
+
+/**
+ * Una imagen del texto, y qué se enseña cuando ya no está.
+ *
+ * Un `<img>` que no carga sale como un icono roto: no dice qué falta, ni que
+ * faltaba a propósito, ni que alguien lo borró. Y donde más se ve es en un
+ * reporte, que es el artefacto que se lee meses después.
+ *
+ * El fallo se detecta al cargar y no antes porque no hay forma de saberlo antes:
+ * la única prueba de que un adjunto sigue existiendo es pedirlo.
+ */
+function Imagen({
+  src,
+  alt,
+  onZoom,
+}: {
+  src?: string;
+  alt: string;
+  onZoom: (v: { src: string; alt: string }) => void;
+}) {
+  const { t } = useT();
+  const [roto, setRoto] = useState(false);
+
+  if (!src || roto) {
+    return (
+      <span className="my-2 inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground">
+        <ImageOff className="size-3.5 shrink-0" />
+        {/* El texto alternativo si lo hay: quien escribió «captura del error»
+            dejó ahí la única pista de qué se perdió. */}
+        {alt ? t("common:last.imageGoneNamed", { name: alt }) : t("common:last.imageGone")}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onError={() => setRoto(true)}
+      onClick={() => onZoom({ src, alt })}
+      className="my-2 max-h-80 cursor-zoom-in rounded-md border object-contain"
+    />
+  );
+}

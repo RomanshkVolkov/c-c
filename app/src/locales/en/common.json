@@ -566,6 +566,8 @@
     "userUpdated": "Updated @{{name}}",
     "micLevel": "Microphone level",
     "micOpening": "Opening the microphone…",
-    "micRateMismatch": "This device runs at {{device}} Hz and the call expects {{source}} Hz."
+    "micRateMismatch": "This device runs at {{device}} Hz and the call expects {{source}} Hz.",
+    "imageGone": "Image no longer available",
+    "imageGoneNamed": "“{{name}}” is no longer available"
   }
 }

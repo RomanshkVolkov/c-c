@@ -105,7 +105,7 @@
     "errSaveComment": "No se pudo guardar el comentario",
     "errComment": "No se pudo comentar",
     "removeAttachmentTitle": "¿Quitar «{{name}}»?",
-    "removeAttachmentInUse": "La descripción todavía lo referencia — esa imagen dejará de cargar.",
+    "removeAttachmentInUse": "La descripción enseña esta imagen. Al quitar el fichero se quita también del texto — el resto de lo que escribiste se queda.",
     "removeAttachmentPlain": "Lo quita de la lista de adjuntos de esta tarea.",
     "remove": "Quitar",
     "removeAttachment": "Quitar el adjunto",
@@ -154,7 +154,8 @@
     "withdrawTitle": "¿Quitar esto del tablero del cliente?",
     "withdrawBody": "Deja de verlo. Su número de ticket se queda gastado —puede que ya lo haya citado— así que su numeración conserva el hueco.",
     "withdraw": "Retirar",
-    "updated": "Actualizada el {{when}}"
+    "updated": "Actualizada el {{when}}",
+    "citedHere": "en el texto"
   },
   "notes": {
     "title": "Notas",
