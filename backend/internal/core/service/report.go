@@ -586,7 +586,10 @@ func (s *ReportService) Update(ctx context.Context, actor, actorUserID, reportID
 	}
 
 	if req.Status != nil && *req.Status != report.Status {
-		if !report.Status.CanTransitionTo(*req.Status) {
+		// Por el flujo de la ficha: esta ruta la usan tanto la pantalla de
+		// reportes como un tenant por su API, y por ella pasan las dos clases.
+		// Una nota interna en una lista de cliente se mueve como lo que es.
+		if !domain.CanTransition(report.Flow(), report.Status, *req.Status) {
 			return nil, fmt.Errorf("%w: %s → %s", ErrInvalidTransition, report.Status, *req.Status)
 		}
 		old := report.Status

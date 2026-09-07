@@ -640,6 +640,7 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 	// our dashboard.
 	q := r.db.Table("items t").
 		Select(`t.id, t.seq, t.title, t.priority, t.due_at, t.updated_at, t.status,
+			t.project_id, t.visibility,
 			l.id AS list_id, l.name AS list_name,
 			sp.id AS space_id, sp.name AS space_name`).
 		Joins("JOIN task_lists l ON l.id = t.list_id").
@@ -708,6 +709,7 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 		st := domain.BoardStatusFor(out[i].ListID, out[i].Status)
 		out[i].StatusName, out[i].StatusKind = st.Name, st.Kind
 		out[i].Priority = out[i].Priority.TaskWire()
+		out[i].Flow = domain.FlowFor(out[i].ProjectID, out[i].Visibility)
 	}
 	if len(out) == 0 {
 		return out, nil
@@ -884,6 +886,9 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 			Category:        string(t.Category),
 			Area:            t.Area,
 			CreatedAt:       t.CreatedAt,
+			// Qué máquina la gobierna, resuelta aquí y no en el cliente. Ver
+			// `TaskCard.Flow`.
+			Flow: t.Flow(),
 		}
 	}
 	return cards, nil
@@ -919,6 +924,10 @@ func (r *TaskRepository) Subtasks(parentID string) ([]domain.TaskCard, error) {
 			Tags:           []domain.TaskTag{},
 			Assignees:      []domain.UserSummary{},
 			UpdatedAt:      t.UpdatedAt,
+			// Igual que en el tablero: la tarjeta dice qué máquina la gobierna.
+			// Aquí importa más que en ningún sitio — el check de las subtareas
+			// es lo que estaba roto por aplicarles la máquina del cliente.
+			Flow: t.Flow(),
 		}
 	}
 	return out, nil

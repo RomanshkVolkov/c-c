@@ -227,6 +227,26 @@ func (i *Item) IsVisibleToChannel() bool {
 	return i.ProjectID != "" && i.Visibility != VisibilityInternal
 }
 
+// Flow dice qué máquina de estados gobierna esta ficha. Ver `ItemFlow`.
+//
+// Se deduce de si alguien de fuera la ve, y no de un campo aparte, porque es
+// **la misma pregunta**: las reglas estrictas existen para proteger lo que un
+// cliente tiene delante. Un campo suelto podría decir una cosa mientras la
+// visibilidad dice otra, y entonces habría que decidir cuál gana.
+func (i *Item) Flow() ItemFlow { return FlowFor(i.ProjectID, i.Visibility) }
+
+// FlowFor es la misma regla para quien tiene los dos campos y no la ficha entera.
+//
+// La lista de «lo que me toca» los lee sueltos de una consulta con `JOIN`, y
+// fabricar un `Item` a medias sólo para preguntarle sería inventarse una ficha.
+// Una función y dos llamantes, en vez de la regla escrita dos veces.
+func FlowFor(projectID string, v ItemVisibility) ItemFlow {
+	if projectID != "" && v != VisibilityInternal {
+		return FlowClient
+	}
+	return FlowInternal
+}
+
 // ItemComment is one message on an item, internal or public.
 type ItemComment struct {
 	BaseModel

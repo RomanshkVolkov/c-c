@@ -607,10 +607,15 @@ func (s *TaskService) MoveTask(ctx context.Context, id, userID string, req domai
 	if err != nil {
 		return err
 	}
-	// The same machine the report side has always used. A board that let a card
-	// take a route the API refuses would show a state the server disagrees with
-	// until the next refresh.
-	if task.Status != next && !task.Status.CanTransitionTo(next) {
+	// La máquina que corresponde a **esta ficha**, no la del cliente para todas.
+	//
+	// Un tablero que dejara mover una tarjeta por una ruta que la API rechaza
+	// enseñaría un estado con el que el servidor no está de acuerdo hasta el
+	// siguiente refresco — por eso el cliente consulta el mismo mapa. Lo que
+	// faltaba era que hubiera dos: aplicarle a una tarea interna las reglas que
+	// protegen a un cliente dejó el check de las subtareas sin hacer nada, porque
+	// Open → Done no existe ahí. Ver `ItemFlow`.
+	if !domain.CanTransition(task.Flow(), task.Status, next) {
 		return ErrBadTransition
 	}
 

@@ -137,6 +137,8 @@ export interface OpenTask {
    * `pending` y `resolved`.
    */
   status: string;
+  /** Qué máquina de estados la gobierna. Ver `ItemFlow`. */
+  flow?: ItemFlow;
   statusName: string;
   statusKind: TaskStatusKind;
   listId: string;
@@ -171,6 +173,13 @@ export interface TaskCard {
   area?: string;
   /** When it arrived — what the calendar view groups by. */
   createdAt: string;
+  /**
+   * Qué máquina de estados la gobierna. Ver `ItemFlow`.
+   *
+   * En la tarjeta y no en el tablero porque un tablero **mezcla** las dos
+   * clases: trabajo interno y tickets de un cliente conviven en la misma lista.
+   */
+  flow?: ItemFlow;
 }
 
 export interface BoardResponse {
@@ -473,6 +482,20 @@ export interface DocResponse {
  * distintas y ya tenían distinto valor por defecto, tablero una y lista la otra.
  */
 export type TaskView = "board" | "list" | "calendar";
+
+/**
+ * Qué máquina de estados gobierna una ficha.
+ *
+ * `client` es la estricta: protege lo que alguien de fuera tiene delante — un
+ * ticket suyo no salta de recién recibido a resuelto, y cerrado es el final.
+ * `internal` es un tablero corriente, donde una tarjeta se mueve donde haga
+ * falta y lo cerrado por error se reabre.
+ *
+ * **Lo decide el servidor y viaja en la tarjeta.** Deducirlo aquí a partir del
+ * proyecto y la visibilidad sería tener dos versiones de la misma regla, que es
+ * justo lo que el endpoint de transiciones existe para evitar.
+ */
+export type ItemFlow = "client" | "internal";
 
 /**
  * Que un `kind` que viene de una URL sea uno de los tres.

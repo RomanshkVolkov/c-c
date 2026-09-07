@@ -379,6 +379,7 @@ function Content() {
   );
   const firstDoneStatusId = columnas.find((s) => s.kind === "done")?.id ?? "";
   const firstOpenStatusId = columnas.find((s) => s.kind !== "done")?.id ?? "";
+
   const tagIds = new Set(detail.tags.map((t) => t.id));
 
   const saveTitle = () => {
@@ -754,6 +755,14 @@ function Content() {
                       onClick={() => {
                         // Toggle against the list's own columns, so this works
                         // whatever the user named them.
+                        //
+                        // El salto directo Open ↔ Done es legal porque **una
+                        // subtarea siempre es interna**: el servidor le borra el
+                        // proyecto al crearla, para no gastar un folio del cliente
+                        // en una línea de checklist. Con la máquina del cliente
+                        // aplicada a todo, este mismo botón no hacía nada en
+                        // ninguna de las dos direcciones —esa transición no existe
+                        // ahí— y no decía por qué. Ver `ItemFlow`.
                         const target = done ? firstOpenStatusId : firstDoneStatusId;
                         if (!target) {
                           toast.error(t("work:task.noColumnForThat"));

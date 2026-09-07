@@ -885,6 +885,18 @@ type TaskCard struct {
 	// CreatedAt drives the calendar view, which groups by the day something was
 	// filed — the question that view answers is "what came in that week".
 	CreatedAt time.Time `json:"createdAt"`
+	// Flow dice qué máquina de estados gobierna esta tarjeta.
+	//
+	// Va la **respuesta** y no los datos con los que se deduce —el proyecto y la
+	// visibilidad— a propósito: la regla es del servidor, y mandarle al cliente
+	// con qué calcularla es cómo se acaba teniendo dos versiones de la misma
+	// regla que un día dejan de coincidir. Es la razón por la que el mapa de
+	// transiciones se sirve por un endpoint en vez de escribirse en los dos
+	// lados.
+	//
+	// Un tablero mezcla las dos clases —trabajo interno y tickets de un cliente
+	// en la misma lista— así que esto no puede ser del tablero: es de la tarjeta.
+	Flow ItemFlow `json:"flow"`
 }
 
 type BoardResponse struct {
@@ -968,6 +980,15 @@ type OpenTask struct {
 	// card raised in cac shows its `seq`; one that belongs to a tenant shows the
 	// number *they* see, because that is the one anybody will quote at you.
 	Folio string `json:"folio,omitempty"`
+	// Flow dice qué máquina de estados la gobierna. Ver `ItemFlow`.
+	//
+	// «Mi trabajo» cruza listas, así que mezcla las dos clases más todavía que
+	// un tablero: aplicarles una sola máquina obliga a elegir a quién mentirle.
+	Flow ItemFlow `gorm:"-" json:"flow"`
+	// Con qué se decide, leídos de la consulta y fuera del JSON: lo que el
+	// cliente necesita es la respuesta, no los ingredientes.
+	ProjectID  string         `gorm:"column:project_id" json:"-"`
+	Visibility ItemVisibility `gorm:"column:visibility" json:"-"`
 }
 
 type TaskCommentResponse struct {

@@ -99,6 +99,72 @@ func (s ReportStatus) CanTransitionTo(to ReportStatus) bool {
 // shared endpoint the Tauri app consumes.
 func ReportTransitions() map[ReportStatus][]ReportStatus { return reportTransitions }
 
+// ─── Dos máquinas, y por qué ─────────────────────────────────────────────────
+
+// ItemFlow dice qué reglas gobiernan una ficha.
+//
+// La tabla es una desde que reportes y tareas se unificaron, pero las reglas no
+// pueden serlo. La máquina de arriba es estricta a propósito: protege lo que un
+// **cliente** ve. Un ticket suyo no puede saltar de recién recibido a resuelto
+// sin que nadie lo haya tocado, y cerrado es el final del camino porque reabrir
+// algo que ya se le dijo que estaba cerrado es una promesa rota.
+//
+// Nada de eso aplica a una tarea que alguien levantó aquí dentro. Ahí un tablero
+// es un tablero: se arrastra donde haga falta, y se reabre lo que se cerró por
+// error. Aplicarle la máquina del cliente convirtió el check de las subtareas en
+// un botón que no hacía nada — Open → Done no existe— sin decir por qué.
+type ItemFlow string
+
+const (
+	// FlowClient: alguien de fuera lo ve. Manda la máquina estricta.
+	FlowClient ItemFlow = "client"
+	// FlowInternal: trabajo levantado en cac. Se mueve libremente.
+	FlowInternal ItemFlow = "internal"
+)
+
+// internalTransitions: de cualquier sitio a cualquier sitio.
+//
+// Escrito entero y no calculado, para que se lea de un vistazo qué permite —la
+// misma razón por la que el de arriba también se escribe entero— y para que
+// añadir un estado obligue a decidir aquí en vez de heredar «todo vale» por
+// descuido.
+//
+// **Cerrado no es terminal aquí**, y es la diferencia que más se nota: en el
+// flujo de un cliente lo es, porque cerrar es algo que se le comunicó. Cerrar
+// una tarea interna por error y no poder deshacerlo sería un fallo, no una
+// garantía.
+var internalTransitions = map[ReportStatus][]ReportStatus{
+	ReportPending:    {ReportInProgress, ReportResolved, ReportClosed},
+	ReportInProgress: {ReportPending, ReportResolved, ReportClosed},
+	ReportResolved:   {ReportPending, ReportInProgress, ReportClosed},
+	ReportClosed:     {ReportPending, ReportInProgress, ReportResolved},
+}
+
+// TransitionsFor: el mapa que gobierna este flujo.
+func TransitionsFor(f ItemFlow) map[ReportStatus][]ReportStatus {
+	if f == FlowInternal {
+		return internalTransitions
+	}
+	return reportTransitions
+}
+
+// CanTransition sustituye a `CanTransitionTo` allí donde el flujo importa.
+//
+// El método de `ReportStatus` se queda: sólo conoce el estado, y por tanto sólo
+// puede contestar por la máquina del cliente. Lo que faltaba era **preguntar por
+// la ficha**, no por su estado.
+func CanTransition(f ItemFlow, from, to ReportStatus) bool {
+	if from.Canonical() == to.Canonical() {
+		return true
+	}
+	for _, allowed := range TransitionsFor(f)[from.Canonical()] {
+		if allowed == to.Canonical() {
+			return true
+		}
+	}
+	return false
+}
+
 // ─── Folio ────────────────────────────────────────────────────────────────────
 
 // Folio is a report's public name: `acme-7`, the project's slug and its

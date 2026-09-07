@@ -170,6 +170,11 @@ function Board({
 
   // La máquina de estados del servidor, para no ofrecer destinos imposibles.
   const transiciones = useReportsStore((s) => s.transitions);
+  const transicionesInternas = useReportsStore((s) => s.internalTransitions);
+  // Ante la duda, la estricta: proteger de más no rompe nada de nadie, y es lo
+  // que contesta un servidor anterior a que existieran las dos.
+  const mapaDe = (flow?: string) =>
+    flow === "internal" && transicionesInternas ? transicionesInternas : transiciones;
   const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
   useEffect(() => {
     fetchTransitions().catch(() => {});
@@ -332,7 +337,12 @@ function Board({
               const de = estadoDeColumna(item.columnId);
               const a = estadoDeColumna(aColumna);
               if (!de || !a) return true;
-              return puedeIr(transiciones, de, a);
+              // La máquina de **esta** tarjeta. Un tablero mezcla trabajo
+              // interno y tickets de un cliente, así que preguntar con una sola
+              // para todas obligaba a elegir a quién mentirle: con la estricta,
+              // una tarea interna no podía ir de Open a Done; con la otra, el
+              // ticket de un cliente saltaría a resuelto sin tocarlo.
+              return puedeIr(mapaDe(item.flow), de, a);
             }}
           />
         ) : view === "calendar" ? (

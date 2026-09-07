@@ -149,6 +149,11 @@ export default function MyWork() {
   // cada montaje no cuesta nada. Estaba escrita desde hace tiempo y no la
   // llamaba nadie.
   const transiciones = useReportsStore((s) => s.transitions);
+  const transicionesInternas = useReportsStore((s) => s.internalTransitions);
+  // Ante la duda, la estricta: proteger de más no rompe nada de nadie, y es lo
+  // que contesta un servidor anterior a que existieran las dos.
+  const mapaDe = (flow?: string) =>
+    flow === "internal" && transicionesInternas ? transicionesInternas : transiciones;
   const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
   useEffect(() => {
     fetchTransitions().catch(() => {});
@@ -370,7 +375,11 @@ export default function MyWork() {
               // comparación es directa: el mapa que trae `fetchTransitions`
               // viene plegado en las dos direcciones por el mismo motivo.
               puedeSoltar={(t, columna) =>
-                puedeIr(transiciones, normalizeStatus(t.status), columna as ReportStatus)
+                // La máquina de **esa** fila. Aquí se cruzan listas, así que se
+                // mezclan trabajo interno y tickets de cliente más todavía que
+                // en un tablero: con una sola máquina para todas había que
+                // elegir a quién mentirle.
+                puedeIr(mapaDe(t.flow), normalizeStatus(t.status), columna as ReportStatus)
               }
               emptyColumnHint={t("work:myWork.nothing")}
             />

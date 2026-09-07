@@ -20,6 +20,8 @@ interface ReportsState {
   projects: ReportProject[];
   reports: ReportListItem[];
   transitions: TransitionsMap | null;
+  /** La máquina de las tareas internas. Null si el servidor todavía no la sirve. */
+  internalTransitions: TransitionsMap | null;
   loading: boolean;
   /** Last load failure, so the board can say "couldn't load" instead of "empty". */
   error: string | null;
@@ -116,6 +118,7 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
   projects: [],
   reports: [],
   transitions: null,
+  internalTransitions: null,
   loading: false,
   error: null,
   projectFilter: "",
@@ -225,18 +228,32 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
 
   fetchTransitions: async () => {
     if (get().transitions) return;
-    const res = await api.get<APIResponse<TransitionsMap>>("/api/v1/reports/transitions", true);
-    if (!res.success || !res.data) return;
+    // Las dos máquinas: la estricta protege lo que ve un cliente, la interna es
+    // un tablero corriente. Un tablero mezcla las dos clases de ficha, así que
+    // hacen falta ambas y cada tarjeta dice cuál le toca. Ver `ItemFlow`.
+    const [cliente, interna] = await Promise.all([
+      api.get<APIResponse<TransitionsMap>>("/api/v1/reports/transitions", true),
+      api.get<APIResponse<TransitionsMap>>("/api/v1/reports/transitions?flow=internal", true),
+    ]);
+    if (!cliente.success || !cliente.data) return;
     // Both the keys and the values need folding: the board looks up the allowed
     // moves by the status it holds, so a map still keyed "pending" would answer
     // "nothing is allowed" for every card and quietly disable drag-and-drop.
-    const folded = Object.fromEntries(
-      Object.entries(res.data).map(([from, to]) => [
-        normalizeStatus(from),
-        (to as string[]).map(normalizeStatus),
-      ]),
-    ) as TransitionsMap;
-    set({ transitions: folded });
+    const plegar = (m: TransitionsMap) =>
+      Object.fromEntries(
+        Object.entries(m).map(([from, to]) => [
+          normalizeStatus(from),
+          (to as string[]).map(normalizeStatus),
+        ]),
+      ) as TransitionsMap;
+    set({
+      transitions: plegar(cliente.data),
+      // Un servidor anterior a esto ignora el parámetro y contesta la estricta.
+      // Quedarse con ella es lo correcto: proteger de más no rompe nada, y el
+      // check de las subtareas seguirá como estaba hasta que el servidor
+      // despliegue — que es de donde venimos, no una regresión.
+      internalTransitions: interna.success && interna.data ? plegar(interna.data) : null,
+    });
   },
 
   setCategoryFilter: (c) => {

@@ -207,10 +207,24 @@ func (h *reportAdminHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Transitions exposes the server-side state machine so the app never duplicates
 // it (portento drift gotcha fixed at the source).
+//
+// `?flow=internal` pide la máquina de las tareas levantadas aquí dentro; sin él
+// contesta la estricta, la que protege lo que ve un cliente.
+//
+// **Un parámetro y no una forma nueva**, aunque devolver las dos de una vez
+// sería más cómodo. Este endpoint lleva desde siempre contestando un mapa plano,
+// y una app instalada lo lee así: si pasara a contestar `{client:…, internal:…}`
+// buscaría los estados en la raíz, no encontraría ninguno, y **rechazaría todos
+// los arrastres** — una app vieja se quedaría con el tablero congelado sin decir
+// por qué. Se actualiza a mano, así que ese rato dura lo que tarde cada uno.
 func (h *reportAdminHandler) Transitions(w http.ResponseWriter, r *http.Request) {
+	flujo := domain.FlowClient
+	if r.URL.Query().Get("flow") == string(domain.FlowInternal) {
+		flujo = domain.FlowInternal
+	}
 	SendResult(w, http.StatusOK, domain.APIResponse[map[domain.ReportStatus][]domain.ReportStatus]{
 		Success: true,
-		Data:    domain.ReportTransitions(),
+		Data:    domain.TransitionsFor(flujo),
 	})
 }
 
