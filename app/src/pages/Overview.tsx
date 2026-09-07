@@ -60,8 +60,17 @@ export default function Overview() {
         setReportes(items.filter((r) => !CERRADOS.has(r.status)));
       })
       .catch(() => {});
+    // Con `orgId`, como los reportes de arriba.
+    //
+    // Sin él, el servidor contesta con **todas** las organizaciones a las que
+    // perteneces —hace bien: es su valor por defecto— y esta tarjeta era la
+    // única de la pantalla que se salía del selector. El síntoma no era ver de
+    // más: era que «ver más» lleva a «Mi trabajo», que sí acota, así que las
+    // tareas de las otras organizaciones aparecían aquí y desaparecían al
+    // pulsar. Una pantalla que enseña algo y luego lo esconde al ampliarla no se
+    // lee como un filtro: se lee como que se han perdido.
     api
-      .get<APIResponse<OpenTask[]>>(`/api/v1/tasks/?limit=50`, true)
+      .get<APIResponse<OpenTask[]>>(`/api/v1/tasks/?limit=50&orgId=${orgId}`, true)
       .then((res) => setTareas(res.success && res.data ? res.data : []))
       .catch(() => {});
     fetchUnread().catch(() => {});

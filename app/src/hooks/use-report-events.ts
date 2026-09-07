@@ -16,7 +16,6 @@ import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
 import { useConnectionStore } from "@/store/connection.store";
-import { usePendingStore } from "@/store/pending.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
@@ -285,13 +284,6 @@ export function useReportEvents() {
 
     /** One frame → toasts, notifications and refetches. Transport-agnostic. */
     const handle = (event: string, data: string) => {
-      // The dashboard's pending lists go stale on anything that changes a
-      // report or a task, whichever branch below handles it. The store
-      // debounces and ignores this until the dashboard has been opened once,
-      // so a user who never goes there pays nothing.
-      if (event.startsWith("report:") || event.startsWith("task:")) {
-        usePendingStore.getState().markStale();
-      }
       // La campana, en un solo sitio y antes del conmutador.
       //
       // Estaba repartida en tres ramas y faltaba en cinco. Ponerla aquí evita
