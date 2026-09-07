@@ -123,5 +123,9 @@
   "edit": "Edit",
   "yourRole": "Your role: {{role}}",
   "createdOn": "created {{when}}",
-  "reportsArriveInShort": "Reports arrive in"
+  "reportsArriveInShort": "Reports arrive in",
+  "membership": {
+    "added": "You were added to {{org}}",
+    "removed": "You no longer belong to {{org}}"
+  }
 }

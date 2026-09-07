@@ -6,6 +6,7 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import { apiUrl, refreshAccessToken } from "@/lib/api";
+import { adoptarMembresia } from "@/lib/membresia";
 import i18next from "i18next";
 
 import { STATUS_LABEL_KEYS, normalizeStatus } from "@/types/report";
@@ -440,6 +441,33 @@ export function useReportEvents() {
           if (chat.panelOpen && chat.spaceId === p.spaceId) break;
           toast.message(i18next.t("common:last.newMessageIn", { where }));
           notify("chat:message", where, linea);
+          break;
+        }
+        /**
+         * Te han metido en una organización, o te han sacado.
+         *
+         * Dirigido por el servidor a **la persona**, que es la única forma de
+         * que llegue: el hub reparte por organización y quien acaba de entrar
+         * todavía no la está escuchando. Ése era exactamente el fallo.
+         *
+         * Lo que hay que hacer al oírlo está en `adoptarMembresia`, con nombre
+         * propio: el orden es la regla y ahí se puede comprobar.
+         */
+        case "org:membership": {
+          const p = parse(data) as Payload & {
+            orgId?: string;
+            orgName?: string;
+            joined?: boolean;
+          };
+          void adoptarMembresia();
+          // El nombre lo manda el servidor porque quien lo recibe no puede
+          // consultarlo: al entrar todavía no tiene permiso, y al salir ya no.
+          const donde = p.orgName || i18next.t("common:misc.organization");
+          toast.info(
+            p.joined
+              ? i18next.t("org:membership.added", { org: donde })
+              : i18next.t("org:membership.removed", { org: donde }),
+          );
           break;
         }
         case "dm:message": {

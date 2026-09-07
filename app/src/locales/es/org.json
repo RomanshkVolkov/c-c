@@ -123,5 +123,9 @@
   "edit": "Editar",
   "yourRole": "Tu rol: {{role}}",
   "createdOn": "creada el {{when}}",
-  "reportsArriveInShort": "Los reportes caen en"
+  "reportsArriveInShort": "Los reportes caen en",
+  "membership": {
+    "added": "Te han añadido a {{org}}",
+    "removed": "Ya no perteneces a {{org}}"
+  }
 }

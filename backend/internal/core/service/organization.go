@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -17,10 +18,54 @@ var (
 
 type OrganizationService struct {
 	repo *repository.OrganizationRepository
+	// hub avisa a **la persona**, no a la organización.
+	//
+	// Puede ser nil: hay un sitio que construye este servicio sólo para
+	// comprobar permisos y no tiene hub que darle. Sin él todo sigue
+	// funcionando; lo que se pierde es el aviso, que es exactamente lo que
+	// pasaba antes.
+	hub *events.Hub
 }
 
 func NewOrganizationService(repo *repository.OrganizationRepository) *OrganizationService {
 	return &OrganizationService{repo: repo}
+}
+
+// WithHub le da voz al servicio. Aparte del constructor para no obligar a los
+// dos sitios que sólo lo usan para comprobar permisos a inventarse un hub.
+func (s *OrganizationService) WithHub(h *events.Hub) *OrganizationService {
+	s.hub = h
+	return s
+}
+
+// avisarDeMembresia le cuenta a alguien que ha entrado o salido.
+//
+// **Dirigido a la persona y no a la organización**, que es la única forma de que
+// funcione: el hub reparte por organización, y quien acaba de entrar todavía no
+// la está escuchando — ése era justo el problema. Al salir pasa lo contrario y
+// es peor: seguiría viendo una organización a la que ya no pertenece, y cada
+// llamada daría error sin explicar por qué.
+//
+// El nombre viaja dentro porque quien lo recibe **no puede consultarlo**: al
+// entrar todavía no tiene permiso para leer esa organización, y al salir ya no
+// lo tiene. Un aviso que dice «te han añadido a algo» no es un aviso.
+func (s *OrganizationService) avisarDeMembresia(orgID, userID string, dentro bool) {
+	if s.hub == nil || orgID == "" || userID == "" {
+		return
+	}
+	nombre := ""
+	if o, err := s.repo.FindByID(orgID); err == nil && o != nil {
+		nombre = o.Name
+	}
+	s.hub.Publish(events.Event{
+		Type:   "org:membership",
+		UserID: userID,
+		Data: map[string]any{
+			"orgId":   orgID,
+			"orgName": nombre,
+			"joined":  dentro,
+		},
+	})
 }
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -166,7 +211,11 @@ func (s *OrganizationService) AddMember(callerID, orgID string, req domain.AddMe
 	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin); err != nil {
 		return err
 	}
-	return s.repo.UpsertMember(orgID, req.UserID, req.Role)
+	if err := s.repo.UpsertMember(orgID, req.UserID, req.Role); err != nil {
+		return err
+	}
+	s.avisarDeMembresia(orgID, req.UserID, true)
+	return nil
 }
 
 func (s *OrganizationService) UpdateMemberRole(callerID, orgID, targetID string, req domain.UpdateMemberRequest, superadmin bool) error {
@@ -192,7 +241,11 @@ func (s *OrganizationService) RemoveMember(callerID, orgID, targetID string, sup
 	if err := s.guardLastAdmin(orgID, targetID); err != nil {
 		return err
 	}
-	return s.repo.RemoveMember(orgID, targetID)
+	if err := s.repo.RemoveMember(orgID, targetID); err != nil {
+		return err
+	}
+	s.avisarDeMembresia(orgID, targetID, false)
+	return nil
 }
 
 // guardLastAdmin returns ErrLastAdmin if targetID is the org's only admin.

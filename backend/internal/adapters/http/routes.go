@@ -21,7 +21,6 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	r.Use(middleware.Recovery)
 
 	InitAuthRoutes(db, r)
-	InitOrganizationRoutes(db, r)
 	InitServerRoutes(db, r)
 	InitCollectionRoutes(db, r)
 	// One hub for the whole process: reports and tasks both broadcast on it, and
@@ -36,6 +35,9 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 		lg.Warn("events: VALKEY_ADDR not set — live notifications only reach clients " +
 			"connected to this pod, which is wrong with more than one replica")
 	}
+	// Después del hub, y no antes: añadir a alguien a una organización tiene que
+	// poder avisarle **a él**, y para eso el servicio necesita voz.
+	InitOrganizationRoutes(db, r, hub)
 	InitReportRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub)
 	InitNotificationRoutes(db, r)
