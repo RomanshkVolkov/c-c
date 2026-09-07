@@ -14,6 +14,7 @@ import PinnedLine from "@/components/docs/PinnedLine";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
 import TaskCardMini, { cuando } from "@/components/tasks/TaskCardMini";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
+import type { TaskView } from "@/types/task";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useNavigate } from "react-router-dom";
 import { useTasksStore } from "@/store/tasks.store";
@@ -55,9 +56,11 @@ const VISTAS = [
   { key: "list", labelKey: "work:myWork.view.list", icon: List },
   { key: "board", labelKey: "work:myWork.view.board", icon: KanbanSquare },
   { key: "calendar", labelKey: "work:myWork.view.calendar", icon: CalendarDays },
-] as const satisfies readonly { key: string; labelKey: MessageKey; icon: unknown }[];
+] as const satisfies readonly { key: TaskView; labelKey: MessageKey; icon: unknown }[];
 
-type Vista = (typeof VISTAS)[number]["key"];
+// El tipo lo pone `types/task`, y el `satisfies` de arriba lo comprueba: añadir
+// una vista a la tabla sin añadirla a la unión deja de compilar, en vez de
+// guardar en disco un valor que luego nadie sabe pintar.
 
 /**
  * Las cuatro columnas, por **estado** y no por clase.
@@ -79,7 +82,11 @@ const CERRADOS: ReportStatus[] = ["done", "closed"];
 
 export default function MyWork() {
   const { t } = useT();
-  const [vista, setVista] = useState<Vista>("list");
+  // Del store, no de la pantalla: es una preferencia de quien mira y tiene que
+  // sobrevivir al arranque. Quien prefiere el kanban lo prefiere siempre, y
+  // volver a la lista cada vez es pedirle el mismo clic todos los días.
+  const vista = useMyWorkStore((s) => s.vista);
+  const setVista = useMyWorkStore((s) => s.setVista);
   const [creando, setCreando] = useState(false);
   const [params, setParams] = useSearchParams();
   useEffect(() => {

@@ -466,6 +466,15 @@ export interface DocResponse {
 }
 
 /**
+ * Las tres formas de mirar un montón de tarjetas.
+ *
+ * Compartida por el tablero de una lista y por «Mi trabajo» — son las mismas
+ * tres— aunque **cada pantalla recuerda la suya**: contestan preguntas
+ * distintas y ya tenían distinto valor por defecto, tablero una y lista la otra.
+ */
+export type TaskView = "board" | "list" | "calendar";
+
+/**
  * Que un `kind` que viene de una URL sea uno de los tres.
  *
  * El enlace de compartir llega escrito en un mensaje, y un mensaje lo escribe

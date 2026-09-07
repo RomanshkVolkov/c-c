@@ -84,12 +84,16 @@ export default function Tasks() {
   // same node rather than something to show beside it.
   const activeDoc = useTasksStore((s) => s.activeDoc);
 
-  // La vista vive aquí y no dentro del tablero porque `docs` es una de las
-  // cuatro: si viviera abajo, abrir la documentación desmontaría el tablero y
-  // volver te dejaría siempre en Board, hubieras estado donde hubieras estado.
-  // Es preferencia de quien mira, no estado compartido — dos personas pueden
-  // ver la misma lista de formas distintas.
-  const [view, setView] = useState<Exclude<ListView, "docs">>("board");
+  // La vista vive en el store y no aquí por dos razones que se juntan.
+  //
+  // `docs` es una de las cuatro: si viviera dentro del tablero, abrir la
+  // documentación lo desmontaría y volver te dejaría siempre en Board, hubieras
+  // estado donde hubieras estado. Y además tiene que sobrevivir al arranque —
+  // quien prefiere el kanban lo prefiere siempre. Sigue siendo de quien mira y
+  // no del equipo: se guarda en local, así que dos personas pueden ver la misma
+  // lista de formas distintas.
+  const view = useTasksStore((s) => s.boardView);
+  const setView = useTasksStore((s) => s.setBoardView);
 
   return (
     <div className="flex-1 flex min-h-0">

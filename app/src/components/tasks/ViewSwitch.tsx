@@ -1,5 +1,6 @@
 import { useT, type MessageKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import type { TaskView } from "@/types/task";
 
 /**
  * Las cuatro vistas de una lista, en un solo grupo.
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils";
  * enseñan las tarjetas, la cuarta enseña lo que se escribió sobre ellas.
  */
 
-export type ListView = "board" | "list" | "calendar" | "docs";
+export type ListView = TaskView | "docs";
 
 const ROTULOS: Record<ListView, MessageKey> = {
   board: "work:board.view.board",

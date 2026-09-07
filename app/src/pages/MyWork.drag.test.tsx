@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { OpenTask } from "@/types/task";
 
@@ -19,7 +19,7 @@ import type { OpenTask } from "@/types/task";
  */
 
 const { estado, statusesOf, moveTask, load } = vi.hoisted(() => ({
-  estado: { current: { tasks: [] as OpenTask[], includeClosed: true } },
+  estado: { current: { tasks: [] as OpenTask[], includeClosed: true, vista: "board" } },
   statusesOf: vi.fn(),
   moveTask: vi.fn(),
   load: vi.fn(),
@@ -31,6 +31,12 @@ vi.mock("@/store/mywork.store", () => ({
       const s = {
         lens: "all", scope: null, tasks: estado.current.tasks, loading: false, error: null,
         includeClosed: estado.current.includeClosed,
+        // Desde que la vista se recuerda entre arranques vive en el store, y el
+        // doble de un store no re-renderiza al cambiarlo: pulsar «Board» dejaba
+        // la pantalla en la lista. Esta prueba es del arrastre en el tablero,
+        // no de cómo se llega a él, así que se entra directamente.
+        vista: estado.current.vista,
+        setVista: vi.fn(),
         setLens: vi.fn(), setScope: vi.fn(), setIncludeClosed: vi.fn(),
         load, setWatching: vi.fn(),
       };
@@ -98,14 +104,13 @@ const columnasDe = (listId: string) => [
 ];
 
 const montar = (tasks: OpenTask[]) => {
-  estado.current = { tasks, includeClosed: true };
+  estado.current = { tasks, includeClosed: true, vista: "board" };
   render(
     <MemoryRouter>
       <MyWork />
     </MemoryRouter>,
   );
   // La vista arranca en lista; el tablero es el que tiene arrastre.
-  fireEvent.click(screen.getByTitle("Board"));
 };
 
 // Todo se rearma aquí y no al declararlo: `restoreMocks: true` en la config de

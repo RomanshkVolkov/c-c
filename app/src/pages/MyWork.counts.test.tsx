@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { OpenTask } from "@/types/task";
 
@@ -14,7 +14,7 @@ import type { OpenTask } from "@/types/task";
  */
 
 const { estado } = vi.hoisted(() => ({
-  estado: { current: { tasks: [] as OpenTask[], includeClosed: false } },
+  estado: { current: { tasks: [] as OpenTask[], includeClosed: false, vista: "board" } },
 }));
 
 vi.mock("@/store/mywork.store", () => ({
@@ -23,6 +23,14 @@ vi.mock("@/store/mywork.store", () => ({
       const s = {
         lens: "all", scope: null, tasks: estado.current.tasks, loading: false, error: null,
         includeClosed: estado.current.includeClosed,
+        // La vista vive en el store desde que se recuerda entre arranques, así
+        // que el doble también tiene que tenerla: sin ella, la pantalla recibe
+        // `undefined` y cae a la lista, y estas pruebas —que son del tablero—
+        // se quedan mirando otra cosa.
+        vista: estado.current.vista,
+        setVista: (v: string) => {
+          estado.current.vista = v;
+        },
         setLens: vi.fn(), setScope: vi.fn(), setIncludeClosed: vi.fn(),
         load: vi.fn().mockResolvedValue(undefined), setWatching: vi.fn(),
       };
@@ -53,13 +61,18 @@ const tarea = (id: string, status: string): OpenTask =>
   }) as unknown as OpenTask;
 
 const enTablero = (tasks: OpenTask[], includeClosed: boolean) => {
-  estado.current = { tasks, includeClosed };
+  // Se arranca ya en el tablero en vez de pulsar «Board».
+  //
+  // Desde que la vista se recuerda entre arranques vive en el store, y el doble
+  // de un store no re-renderiza al cambiarlo — el clic dejaba la pantalla en la
+  // lista. Estas pruebas son de las cuentas del tablero, no de cómo se llega a
+  // él, así que se entra directamente.
+  estado.current = { tasks, includeClosed, vista: "board" };
   render(
     <MemoryRouter>
       <MyWork />
     </MemoryRouter>,
   );
-  fireEvent.click(screen.getByTitle("Board"));
 };
 
 describe("las cuentas del tablero de Mi trabajo", () => {

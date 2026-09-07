@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { api } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
-import type { OpenTask } from "@/types/task";
+import type { OpenTask, TaskView } from "@/types/task";
+
 
 /**
  * "My work": everything open across every space, asked one question at a time.
@@ -68,6 +69,19 @@ interface MyWorkState {
   setLens: (lens: WorkLens) => void;
   setScope: (scope: WorkScope | null) => void;
   setIncludeClosed: (on: boolean) => void;
+  /**
+   * Cómo prefiere mirar esta persona: lista, tablero o calendario.
+   *
+   * Aquí y no en la pantalla porque tiene que sobrevivir al arranque, y este
+   * store ya persiste. **Aparte de la del tablero de una lista**: son dos
+   * preguntas distintas —«qué me toca a mí» y «cómo va este proyecto»— y ya
+   * tenían dos respuestas por defecto distintas, lista y tablero. Una sola
+   * preferencia compartida haría que elegir calendario aquí cambiara el tablero
+   * de un proyecto, que es una sorpresa que nadie pidió.
+   */
+  vista: TaskView;
+  setVista: (v: TaskView) => void;
+
   load: (orgId: string | null) => Promise<void>;
   /** Follow or unfollow, and drop the row when it leaves the lens you're in. */
   setWatching: (taskId: string, on: boolean) => Promise<void>;
@@ -109,6 +123,9 @@ export const useMyWorkStore = create<MyWorkState>()(
   persist(
     (set, get) => ({
       lens: "assigned",
+      // Lista de salida, que es lo que había: «qué me toca» se lee de arriba
+      // abajo. Quien prefiera otra cosa la elige una vez y se le respeta.
+      vista: "list",
       scope: null,
       loadedOrgId: null,
       includeClosed: false,
@@ -120,7 +137,9 @@ export const useMyWorkStore = create<MyWorkState>()(
       setScope: (scope) => set({ scope }),
       setIncludeClosed: (includeClosed) => set({ includeClosed }),
 
-      load: async (orgId) => {
+      setVista: (v) => set({ vista: v }),
+
+  load: async (orgId) => {
         // Cambiar de organización tira el filtro de lista o espacio.
         //
         // Una lista es de una organización concreta, así que al cambiar se
@@ -191,7 +210,11 @@ export const useMyWorkStore = create<MyWorkState>()(
       // The scope is not kept: it is where you clicked a moment ago, and
       // reopening the app pointed at a list you no longer remember choosing is
       // a filter that looks like missing data.
-      partialize: (s) => ({ lens: s.lens, includeClosed: s.includeClosed }),
+      // La vista sí, y por lo mismo que la lente: es una preferencia de quien
+      // mira, no un sitio donde se estaba. Quien prefiere el kanban lo prefiere
+      // siempre, y volver a la lista en cada arranque es pedirle el mismo clic
+      // todos los días.
+      partialize: (s) => ({ lens: s.lens, includeClosed: s.includeClosed, vista: s.vista }),
     },
   ),
 );

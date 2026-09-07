@@ -33,6 +33,7 @@ import type {
   Doc,
   DocMark,
   DocTabKey,
+  TaskView,
   DocVersion,
   DocAttachment,
   DocOwnerKind,
@@ -214,6 +215,20 @@ interface TasksState {
   // ── Docs: one markdown overview per space/folder/list ──
   /** Which nodes carry a document, keyed `kind:id` — drives the navigator mark. */
   docIndex: Record<string, DocMark>;
+  /**
+   * Cómo prefiere mirar un tablero esta persona.
+   *
+   * **Local, y no compartido con el equipo**: dos personas pueden mirar la misma
+   * lista de formas distintas, y quien prefiere el kanban lo prefiere siempre.
+   * Sin persistir, cada arranque le pedía el mismo clic.
+   *
+   * Aparte de la de «Mi trabajo» a propósito: son dos preguntas distintas —«cómo
+   * va este proyecto» y «qué me toca a mí»— y ya tenían distinto valor por
+   * defecto. Compartir una sola haría que elegir calendario en una cambiara la
+   * otra, que es una sorpresa que nadie pidió.
+   */
+  boardView: TaskView;
+  setBoardView: (v: TaskView) => void;
   /** The node whose overview is on screen; null when a board is. */
   activeDoc: { kind: DocOwnerKind; id: string; name: string } | null;
   doc: DocResponse | null;
@@ -313,6 +328,7 @@ export const useTasksStore = create<TasksState>()(
       loadingBoard: false,
       openTaskId: null,
       docIndex: {},
+      boardView: "board",
       activeDoc: null,
       doc: null,
       loadingDoc: false,
@@ -754,6 +770,8 @@ export const useTasksStore = create<TasksState>()(
         await get().refreshOpenTask();
       },
 
+      setBoardView: (v) => set({ boardView: v }),
+
       fetchDocIndex: async () => {
         const orgId = useOrgsStore.getState().currentOrgId;
         if (!orgId) return;
@@ -1012,7 +1030,11 @@ export const useTasksStore = create<TasksState>()(
     {
       name: "cac-tasks",
       // Only the navigation position is worth persisting; data is always fetched.
-      partialize: (s) => ({ activeListId: s.activeListId, activeDoc: s.activeDoc }),
+      partialize: (s) => ({
+        activeListId: s.activeListId,
+        activeDoc: s.activeDoc,
+        boardView: s.boardView,
+      }),
     },
   ),
 );
