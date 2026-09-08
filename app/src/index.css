@@ -299,7 +299,21 @@
    * `overflow-wrap`, las listas, el código— y sólo cambia lo que distingue leer
    * de consultar. */
   .prose-doc .md-body {
-    @apply mx-auto max-w-[68ch] text-[15px] leading-[1.75];
+    @apply text-[15px] leading-[1.75];
+  }
+  /* La medida corta es para **la prosa**, no para todo.
+   *
+   * Estaba puesta en el cuerpo entero, y entonces una tabla de cincuenta
+   * variables tenía que caber en 68 caracteres: las columnas se estrujaban y
+   * `overflow-wrap: anywhere` las hacía «caber» partiendo las palabras a mitad
+   * — «Almac/enami/ento». La tabla nunca llegaba a desbordar, así que su propio
+   * deslizamiento no se activaba nunca.
+   *
+   * Ahora se limita lo que se lee de corrido, y lo que no —tablas, bloques de
+   * código, imágenes— usa el ancho del panel. Que es lo que hace cualquier
+   * lector de documentación, y por esto. */
+  .prose-doc .md-body > :where(p, ul, ol, blockquote, h1, h2, h3, hr) {
+    @apply mx-auto max-w-[68ch];
   }
   .prose-doc .md-body h2 { @apply mt-8 text-[17px]; }
   .prose-doc .md-body h3 { @apply mt-6 text-[13px]; }
@@ -348,7 +362,20 @@
      the panel — the same reason the wrapping above exists, for the one piece of
      content that legitimately can't be narrowed. */
   .md-body table, .prose-editor table { @apply my-2 w-full border-collapse text-xs; }
-  .md-body table { @apply block max-w-full overflow-x-auto; }
+  /* `w-max` y no `w-full`: con `w-full` la tabla se obliga a caber en su
+   * contenedor, y con `overflow-wrap: anywhere` siempre lo consigue —rompiendo
+   * palabras— así que el `overflow-x-auto` de al lado no se activaba jamás.
+   * Pidiendo su ancho natural, o cabe o se desliza, que son las dos respuestas
+   * correctas. */
+  .md-body table { @apply block w-max min-w-full max-w-full overflow-x-auto; }
+  /* Dentro de una celda las palabras no se parten.
+   *
+   * `anywhere` está puesto en el cuerpo por una razón buena —una URL pegada sin
+   * puntos de corte ensanchaba el panel entero y sacaba una barra horizontal—
+   * pero en una celda estrecha destroza cualquier palabra larga. Aquí no hace
+   * falta: la tabla ya tiene su propio deslizamiento, así que lo que desborde se
+   * contiene ahí y no en la pantalla. */
+  .md-body th, .md-body td { overflow-wrap: normal; }
   .md-body :where(th, td), .prose-editor :where(th, td) {
     @apply border border-border px-2 py-1 text-left;
   }

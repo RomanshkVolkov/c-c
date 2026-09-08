@@ -89,3 +89,40 @@ describe("una imagen que ya no está", () => {
     expect(screen.getByText(/captura del error/)).toBeTruthy();
   });
 });
+
+/**
+ * Una tabla no es prosa, y no se le aplica la medida de lectura.
+ *
+ * Estaba puesta en el cuerpo entero: una tabla de cincuenta variables tenía que
+ * caber en 68 caracteres, las columnas se estrujaban, y `overflow-wrap:
+ * anywhere` las hacía «caber» partiendo las palabras a mitad — «Almac/enami/
+ * ento». Como siempre lograba caber, su propio deslizamiento no se activaba
+ * nunca. El editor no tenía el problema, así que escribir y leer enseñaban dos
+ * cosas distintas.
+ *
+ * Se lee el CSS porque jsdom no aplica Tailwind ni calcula anchos: aquí no hay
+ * forma de medir una columna. Lo que se puede fijar es que la regla no vuelva a
+ * abarcar la tabla, que es de donde venía todo.
+ */
+describe("la medida de lectura de un documento", () => {
+  const css = () => readFileSync(resolve(__dirname, "../../index.css"), "utf8");
+
+  it("no se le aplica al cuerpo entero", () => {
+    const regla = css().match(/\.prose-doc \.md-body \{[^}]*\}/)?.[0] ?? "";
+    expect(regla).not.toMatch(/max-w-\[68ch\]/);
+  });
+
+  it("sino sólo a lo que se lee de corrido", () => {
+    const regla = css().match(/\.prose-doc \.md-body > :where\([^)]*\)[^{]*\{[^}]*\}/)?.[0] ?? "";
+    expect(regla).toMatch(/max-w-\[68ch\]/);
+    // Una tabla y un bloque de código usan el ancho del panel.
+    expect(regla).not.toMatch(/table|pre/);
+  });
+
+  // Con las palabras partidas la tabla siempre cabía, así que su deslizamiento
+  // no llegaba a activarse: el síntoma era texto destrozado, no una barra.
+  it("y en una celda las palabras no se parten", () => {
+    const regla = css().match(/\.md-body th, \.md-body td \{[^}]*\}/)?.[0] ?? "";
+    expect(regla).toMatch(/overflow-wrap:\s*normal/);
+  });
+});
