@@ -109,6 +109,7 @@ export default function MyWork() {
   const navigate = useNavigate();
   const statusesOf = useTasksStore((s) => s.statusesOf);
   const moveTask = useTasksStore((s) => s.moveTask);
+  const updateTask = useTasksStore((s) => s.updateTask);
 
   /**
    * Arrastrar una tarjeta a otra columna, aquí, significa **cambiarle el estado
@@ -199,7 +200,7 @@ export default function MyWork() {
         <div className="flex items-baseline gap-2">
           <h1 className="text-lg font-semibold">{t("work:myWork.title")}</h1>
           <span className="text-xs text-muted-foreground">
-            {loading ? "…" : `${visibles.length} visible`}
+            {loading ? "…" : t("work:myWork.visible", { count: visibles.length })}
           </span>
           <button
             onClick={() => setCreando(true)}
@@ -341,6 +342,28 @@ export default function MyWork() {
                   dotClass: priorityMeta(t.priority).className,
                   label: `#${t.seq}`,
                 }))}
+              // Lo que no tiene fecha, debajo en vez de descartado.
+              //
+              // Casi nadie pone vencimientos, así que esta vista enseñaba **una**
+              // de sesenta y cinco tareas mientras la cabecera decía sesenta y
+              // cinco. No estaba filtrando: estaba escondiendo.
+              sinFecha={visibles
+                .filter((t) => !t.dueAt)
+                .map((t) => ({
+                  id: t.id,
+                  title: t.title,
+                  at: "",
+                  dotClass: priorityMeta(t.priority).className,
+                  label: `#${t.seq}`,
+                }))}
+              // Arrastrar una a un día le pone el vencimiento. Es la única forma
+              // de ponerlo sin abrir la tarjeta, y lo que convierte esta vista en
+              // el sitio donde se planifica en vez de uno donde se mira.
+              onSchedule={(id, iso) =>
+                updateTask(id, { dueAt: new Date(iso).toISOString() }).catch((e) =>
+                  toast.error(String(e)),
+                )
+              }
               onOpen={(id) => openTask(id).catch(() => {})}
               countKey="common:count.tasks"
             />

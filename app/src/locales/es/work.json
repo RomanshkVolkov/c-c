@@ -85,7 +85,9 @@
     "nothingFollowed": "No sigues nada. Abre una tarea y síguela para vigilarla sin quedártela.",
     "nothingHere": "Aquí no hay nada.",
     "notAsked": "No lo pediste — se enseña sólo lo abierto",
-    "nothing": "Nada"
+    "nothing": "Nada",
+    "visible_one": "{{count}} visible",
+    "visible_other": "{{count}} visibles"
   },
   "task": {
     "edited": "editado",

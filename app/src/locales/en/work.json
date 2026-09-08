@@ -85,7 +85,9 @@
     "nothingFollowed": "You are not following anything. Open a task and follow it to keep an eye on it without taking it.",
     "nothingHere": "Nothing here.",
     "notAsked": "Not asked for — showing open only",
-    "nothing": "Nothing"
+    "nothing": "Nothing",
+    "visible_one": "{{count}} visible",
+    "visible_other": "{{count}} visible"
   },
   "task": {
     "edited": "edited",

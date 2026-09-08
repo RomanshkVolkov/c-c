@@ -573,5 +573,11 @@
     "clearDate": "Sin fecha",
     "previousMonth": "Mes anterior",
     "nextMonth": "Mes siguiente"
+  },
+  "calendar": {
+    "undated_one": "{{count}} sin fecha",
+    "undated_other": "{{count}} sin fecha",
+    "undatedDrag_one": "{{count}} sin fecha — arrástrala a un día para ponérsela",
+    "undatedDrag_other": "{{count}} sin fecha — arrastra una a un día para ponérsela"
   }
 }

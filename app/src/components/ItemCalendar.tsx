@@ -1,4 +1,22 @@
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { GripVertical } from "lucide-react";
+
 import { fecha, mesYAno } from "@/lib/fechas";
+import {
+  claveDeDia as dayKey,
+  comoISO,
+  inicialesDeLaSemana,
+  rejillaDeMes,
+} from "@/lib/mes";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -29,8 +47,6 @@ export interface CalendarItem {
   label?: string;
 }
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 /**
  * Cuántos caben en un día antes de resumir.
  *
@@ -38,14 +54,35 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
  * sale un «+N more» que abre el día entero debajo.
  */
 const MAX_POR_DIA = 3;
-const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 export default function ItemCalendar({
   items,
+  sinFecha = [],
+  onSchedule,
   onOpen,
   countKey = "common:count.items",
 }: {
   items: CalendarItem[];
+  /**
+   * Lo que no tiene fecha, y por tanto no cabe en ningún día.
+   *
+   * Va debajo del mes en vez de descartarse. Descartarlo en silencio es lo que
+   * hacía esta vista: de sesenta y cinco tareas se veía **una**, mientras la
+   * cabecera seguía diciendo sesenta y cinco. Un calendario que esconde el 98%
+   * de lo que hay no está filtrando, está mintiendo.
+   */
+  sinFecha?: CalendarItem[];
+  /**
+   * Poner fecha arrastrando una tarjeta de la tira a un día.
+   *
+   * Sin esto la tira sería una lista de reproches: «aquí tienes lo que no puedo
+   * enseñarte». Con esto el calendario deja de ser algo que se mira y pasa a ser
+   * donde se planifica, que es lo que le faltaba para servir de algo.
+   *
+   * Opcional: el calendario del tablero coloca por fecha de creación, y ésa no
+   * se cambia arrastrando nada.
+   */
+  onSchedule?: (id: string, iso: string) => void;
   onOpen: (id: string) => void;
   /**
    * Cómo se cuentan estos elementos: «3 tarjetas», «3 reuniones».
@@ -64,6 +101,17 @@ export default function ItemCalendar({
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
   const [selected, setSelected] = useState<string | null>(null);
+  const [arrastrando, setArrastrando] = useState<string | null>(null);
+  // Los mismos sensores que el tablero: puntero **y teclado**. El arrastre HTML5
+  // nativo no tiene lo segundo, y esta es la única forma de poner una fecha sin
+  // abrir la tarjeta — dejarla fuera del teclado la haría inalcanzable para
+  // quien no usa ratón.
+  const sensores = useSensors(
+    // Ocho píxeles antes de considerarlo arrastre: sin el umbral, un clic con la
+    // mano poco firme mueve la tarjeta en vez de abrirla.
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const byDay = useMemo(() => {
     const m = new Map<string, CalendarItem[]>();
@@ -74,18 +122,9 @@ export default function ItemCalendar({
     return m;
   }, [items]);
 
-  // Build the 6-week grid starting on Monday.
-  const cells = useMemo(() => {
-    const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-    const offset = (first.getDay() + 6) % 7; // Mon=0
-    const start = new Date(first);
-    start.setDate(first.getDate() - offset);
-    return Array.from({ length: 42 }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      return d;
-    });
-  }, [cursor]);
+  // La rejilla vive en `lib/mes`: la usan este calendario y el selector de
+  // fecha, y es aritmética llena de bordes que se prueba mejor sola.
+  const cells = useMemo(() => rejillaDeMes(cursor), [cursor]);
 
   const monthLabel = mesYAno(cursor);
   const today = dayKey(new Date());
@@ -108,8 +147,19 @@ export default function ItemCalendar({
         </div>
       </div>
 
+      <DndContext
+        sensors={sensores}
+        collisionDetection={pointerWithin}
+        onDragStart={(e) => setArrastrando(String(e.active.id))}
+        onDragEnd={(e) => {
+          setArrastrando(null);
+          // `over` es el día sobre el que se soltó; su id **es** la fecha.
+          if (onSchedule && e.over) onSchedule(String(e.active.id), String(e.over.id));
+        }}
+        onDragCancel={() => setArrastrando(null)}
+      >
       <div className="grid grid-cols-7 gap-px rounded-lg overflow-hidden border bg-border">
-        {WEEKDAYS.map((w) => (
+        {inicialesDeLaSemana().map((w) => (
           <div key={w} className="bg-muted px-2 py-1 text-center text-xs font-medium text-muted-foreground">
             {w}
           </div>
@@ -123,8 +173,10 @@ export default function ItemCalendar({
           return (
             // Una celda y no un botón: dentro va uno por elemento, y anidar
             // botones no es HTML válido — el de fuera se comería sus clics.
-            <div
+            <Dia
               key={i}
+              iso={comoISO(d)}
+              aceptaSoltar={!!onSchedule && arrastrando !== null}
               className={`flex min-h-[104px] flex-col gap-0.5 bg-background p-1.5 align-top ${
                 inMonth ? "" : "opacity-40"
               } ${k === selected ? "ring-1 ring-inset ring-primary/60" : ""}`}
@@ -169,10 +221,32 @@ export default function ItemCalendar({
                   +{ocultos} more
                 </button>
               )}
-            </div>
+            </Dia>
           );
         })}
       </div>
+
+      {/* Lo que no tiene fecha, debajo y a mano. Ver el comentario de `sinFecha`. */}
+      {sinFecha.length > 0 && (
+        <div className="rounded-lg border p-3">
+          <p className="mb-2 text-xs text-muted-foreground">
+            {onSchedule
+              ? t("common:calendar.undatedDrag", { count: sinFecha.length })
+              : t("common:calendar.undated", { count: sinFecha.length })}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {sinFecha.map((r) => (
+              <SinFecha
+                key={r.id}
+                item={r}
+                arrastrable={!!onSchedule}
+                onOpen={() => onOpen(r.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      </DndContext>
 
       {selected && selectedItems.length > 0 && (
         <div className="rounded-lg border p-3 space-y-2">
@@ -194,5 +268,76 @@ export default function ItemCalendar({
         </div>
       )}
     </div>
+  );
+}
+
+/** Un día del mes, que además puede recibir una tarjeta soltada encima. */
+function Dia({
+  iso,
+  aceptaSoltar,
+  className,
+  children,
+}: {
+  iso: string;
+  aceptaSoltar: boolean;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: iso, disabled: !aceptaSoltar });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} ${isOver ? "ring-1 ring-inset ring-primary" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Una tarjeta sin fecha, de la tira de abajo.
+ *
+ * El asa es aparte del título: el título abre y el asa arrastra. Con todo el
+ * bloque arrastrable, abrir una tarjeta se convierte en una apuesta sobre si la
+ * mano se movió tres píxeles.
+ */
+function SinFecha({
+  item,
+  arrastrable,
+  onOpen,
+}: {
+  item: CalendarItem;
+  arrastrable: boolean;
+  onOpen: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: item.id,
+    disabled: !arrastrable,
+  });
+  return (
+    <span
+      ref={setNodeRef}
+      style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
+      className={`flex max-w-64 items-center gap-1 rounded-md border px-1.5 py-1 text-[11px] ${
+        isDragging ? "z-50 opacity-80 shadow-lg" : ""
+      }`}
+    >
+      {arrastrable && (
+        <button
+          {...listeners}
+          {...attributes}
+          className="shrink-0 cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="size-3" />
+        </button>
+      )}
+      <span className={`size-1.5 shrink-0 rounded-full ${item.dotClass}`} />
+      <button onClick={onOpen} className="flex min-w-0 items-center gap-1 text-left">
+        {item.label && (
+          <span className="shrink-0 text-[10px] text-muted-foreground">{item.label}</span>
+        )}
+        <span className="truncate">{item.title}</span>
+      </button>
+    </span>
   );
 }
