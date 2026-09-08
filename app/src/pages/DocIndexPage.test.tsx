@@ -10,6 +10,9 @@ import { cleanup, render, screen } from "@testing-library/react";
  * documentación no funciona».
  */
 
+const navegado: string[] = [];
+vi.mock("react-router-dom", () => ({ useNavigate: () => (r: string) => navegado.push(r) }));
+
 const estado: Record<string, unknown> = {
   activeDoc: null,
   doc: null,
@@ -24,6 +27,8 @@ const estado: Record<string, unknown> = {
   docVersions: vi.fn(async () => []),
   restoreDoc: vi.fn(),
   addDecision: vi.fn(),
+  selectList: vi.fn(),
+  setBoardView: vi.fn(),
 };
 
 vi.mock("@/store/tasks.store", () => ({
@@ -36,6 +41,11 @@ vi.mock("@/components/docs/DocHeader", () => ({ default: () => null }));
 vi.mock("@/components/docs/DocHistory", () => ({ default: () => null }));
 vi.mock("@/components/docs/ShareDoc", () => ({ default: () => null }));
 vi.mock("@/components/docs/DocToc", () => ({ default: () => null }));
+vi.mock("@/components/tasks/ViewSwitch", () => ({
+  default: ({ onChange }: { onChange: (v: string) => void }) => (
+    <button onClick={() => onChange("board")}>ir al tablero</button>
+  ),
+}));
 vi.mock("@/components/CopyId", () => ({ default: () => null }));
 vi.mock("@/components/markdown/MarkdownEditor", () => ({ default: () => null }));
 
@@ -55,5 +65,29 @@ describe("la pantalla de documentación", () => {
     render(<DocIndexPage />);
     expect(screen.getByText("Portento")).toBeTruthy();
     expect(screen.queryByText("All docs")).toBeNull();
+  });
+});
+
+/**
+ * El conmutador dice «Tablero», así que tiene que llevar al tablero.
+ *
+ * Antes sólo cerraba el documento y te dejaba en el índice de documentación:
+ * pulsabas «Tablero» y aparecía una tabla. Eso no se lee como un filtro, se lee
+ * como que la app hizo otra cosa — y encima el estado quedaba distinto del que
+ * tenías antes de entrar.
+ */
+describe("volver al tablero desde un documento", () => {
+  it("selecciona la lista, fija la vista y va a la pantalla del tablero", () => {
+    navegado.length = 0;
+    estado.activeDoc = { kind: "list", id: "l1", name: "Portento" };
+    render(<DocIndexPage />);
+    screen.getByText("ir al tablero").click();
+
+    // La lista, antes de ir: abrir el tablero sin seleccionarla mostraría la que
+    // estuviera abierta de antes, que es peor que no ir.
+    expect(estado.selectList).toHaveBeenCalledWith("l1");
+    expect(estado.setBoardView).toHaveBeenCalledWith("board");
+    expect(estado.closeDoc).toHaveBeenCalled();
+    expect(navegado).toEqual(["/tasks"]);
   });
 });

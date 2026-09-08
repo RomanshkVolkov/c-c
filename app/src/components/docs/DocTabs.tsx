@@ -55,7 +55,6 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const closeDoc = useTasksStore((s) => s.closeDoc);
   const addDecision = useTasksStore((s) => s.addDecision);
   const openDoc = useTasksStore((s) => s.openDoc);
-  const board = useTasksStore((s) => s.board);
 
   const [activa, setActiva] = useState<DocTabKey>("overview");
   const [editando, setEditando] = useState(false);
@@ -152,12 +151,19 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
     <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <FileText className="size-4 shrink-0 text-muted-foreground" />
-        <h1 className="truncate text-sm font-medium">{target.name}</h1>
+        {/* `min-w-0` además de `truncate`: dentro de un flex, un hijo no baja de
+            su ancho de contenido sin esto, así que el nombre empujaba a los
+            botones fuera de la ventana en vez de recortarse él. */}
+        <h1 className="min-w-0 truncate text-sm font-medium">{target.name}</h1>
         <CopyId id={target.id} label={target.kind} />
-        {/* El grupo de las cuatro sólo cuando hay tablero al que volver: la
-            documentación de un espacio o una carpeta no tiene tarjetas detrás,
-            y ofrecer «Board» ahí llevaría a la lista de otra cosa. */}
-        {target.kind === "list" && board?.list.id === target.id ? (
+        {/* El grupo de las cuatro sólo para la documentación de una **lista**:
+            un espacio o una carpeta no tienen tarjetas detrás, y ofrecer
+            «Tablero» ahí llevaría a la lista de otra cosa.
+            Y no se pide además que ese tablero esté ya cargado: entrando por
+            «Documentación» de la barra lateral no lo está, y el conmutador
+            desaparecía sin explicación. Quien lo pulsa selecciona la lista, que
+            es lo que lo carga. */}
+        {target.kind === "list" ? (
           <ViewSwitch
             value="docs"
             onChange={(v) => {
@@ -167,7 +173,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
             }}
           />
         ) : null}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {doc?.doc && <ShareDoc doc={doc.doc} nombre={target.name} tab={activa} />}
           <Button
             size="icon-xs"
@@ -186,7 +192,12 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
       {doc?.doc && <DocHeader doc={doc.doc} />}
 
       {/* Las cuatro, siempre. La vacía en gris — ver el comentario de arriba. */}
-      <nav className="flex shrink-0 gap-4 border-b px-4 text-sm">
+      {/* Se desliza antes que recortarse.
+          Cuatro pestañas con su pista al lado no caben en una ventana estrecha, y
+          lo que se perdía era la última —«Enlaces»— sin ninguna señal de que
+          estuviera ahí. La pista desaparece primero porque es lo prescindible; el
+          deslizamiento es la red por si aun así no caben. */}
+      <nav className="flex shrink-0 gap-4 overflow-x-auto border-b px-4 text-sm">
         {DOC_TABS.map((k) => {
           // La de decisiones no se mide por su markdown —no tiene—: se mide
           // por si hay entradas. Sin esto siempre saldría en gris, incluso con
@@ -200,7 +211,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
               key={k}
               onClick={() => setActiva(k)}
               className={cn(
-                "flex items-baseline gap-1.5 border-b-2 pb-2 pt-2",
+                "flex shrink-0 items-baseline gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-2",
                 k === activa
                   ? "border-primary font-medium text-foreground"
                   : "border-transparent hover:text-foreground",
@@ -208,7 +219,9 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
               )}
             >
               {t(ROTULOS[k].label)}
-              <span className="text-[11px] text-muted-foreground/70">{t(ROTULOS[k].hint)}</span>
+              <span className="hidden text-[11px] text-muted-foreground/70 md:inline">
+                {t(ROTULOS[k].hint)}
+              </span>
             </button>
           );
         })}
@@ -265,7 +278,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           // escribe mal y se deja de escribir.
           <DecisionList decisions={doc?.decisions ?? []} />
         ) : (
-          <div className="mx-auto flex w-full max-w-4xl gap-8">
+          <div className="mx-auto flex w-full min-w-0 max-w-4xl gap-8">
             <div className="min-w-0 flex-1">
               {cuerpo ? (
                 // Medida de línea corta y texto más grande: es un documento,

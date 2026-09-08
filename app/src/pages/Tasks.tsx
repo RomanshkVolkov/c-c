@@ -69,6 +69,7 @@ export default function Tasks() {
   // Se consume una sola vez, igual que ?task=: si se quedara en la URL, cerrar
   // el documento lo reabriría en el mismo instante.
   const openDoc = useTasksStore((s) => s.openDoc);
+  const selectList = useTasksStore((s) => s.selectList);
   useEffect(() => {
     const ref = params.get("doc");
     if (!ref) return;
@@ -98,7 +99,22 @@ export default function Tasks() {
 
   return (
     <div className="flex-1 flex min-h-0">
-      {activeDoc ? <DocTabs onView={setView} /> : <Board view={view} setView={setView} />}
+      {activeDoc ? (
+        <DocTabs
+          onView={(v) => {
+            // La lista del documento, no la que estuviera abierta.
+            //
+            // Se puede llegar aquí con un documento de otra lista —desde el
+            // árbol, o desde un enlace compartido— y cerrar sin seleccionarla
+            // dejaba el tablero de otra cosa en pantalla. Se lee como que la app
+            // se equivocó de sitio.
+            if (activeDoc.kind === "list") void selectList(activeDoc.id).catch(() => {});
+            setView(v);
+          }}
+        />
+      ) : (
+        <Board view={view} setView={setView} />
+      )}
     </div>
   );
 }
