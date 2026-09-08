@@ -53,27 +53,23 @@ async function ensureNotifyPermission(): Promise<boolean> {
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-/**
- * Is the window in front of the user right now?
+/*
+ * Aquí vivía una puerta: «si la ventana tiene el foco, no mandes nada al
+ * escritorio, que ya lo estás viendo». Se ha quitado, y merece contarse porque
+ * la idea suena razonable.
  *
- * Not `document.hidden`, which is what this used to ask. The Page Visibility
- * API is driven by the compositor, and on WebKitGTK — the webview on Linux — a
- * window that's minimised or on another workspace can still report itself
- * visible. The gate never opened, so no notification was ever sent, and nothing
- * anywhere recorded that a decision had been made.
+ * No lo es, por dos motivos. **Tener el foco no es estar mirando eso**: con cac
+ * delante en la pantalla de servidores, un directo que llega es exactamente lo
+ * que hay que anunciar, y la puerta lo silenciaba. Y cada rama de abajo ya
+ * contesta la pregunta buena —«¿estás mirando *este* canal, *esta*
+ * conversación?»— y se salta el aviso ella misma; las menciones se saltan
+ * incluso eso, a propósito.
  *
- * Tauri knows, because it owns the window. In a plain browser there is no
- * window to ask, so fall back to the old question.
+ * Así que la puerta no añadía precisión: le quitaba. Su efecto real era que en
+ * un gestor de ventanas donde la app pasa mucho tiempo enfocada no salía ni un
+ * aviso del sistema en todo el día, mientras el navegador de al lado sí los
+ * sacaba — que es como se descubrió.
  */
-async function windowIsFocused(): Promise<boolean> {
-  if (!inTauri) return !document.hidden;
-  try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    return await getCurrentWindow().isFocused();
-  } catch {
-    return false; // can't tell → notify, rather than swallow it
-  }
-}
 
 // Fallback (browser, no Tauri) only — in the app the stream lives in Rust.
 const MAX_BACKOFF_MS = 30_000;
@@ -202,10 +198,6 @@ export function useReportEvents() {
     const notify = (kind: string, title: string, body: string, reportId?: string) => {
       void (async () => {
         const log = useNotificationsStore.getState().add;
-        if (await windowIsFocused()) {
-          log({ kind, title, body, delivery: "focused", reportId });
-          return;
-        }
         if (!canNotify) {
           log({ kind, title, body, reportId, delivery: "failed", error: "permission not granted" });
           return;

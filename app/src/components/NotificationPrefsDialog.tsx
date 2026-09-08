@@ -112,6 +112,7 @@ function RegistroDeEntrega() {
 /** Cómo se llama cada desenlace, y con qué cara se dibuja. */
 const DELIVERY: Record<Delivery, { label: string; icon: typeof Eye; className: string }> = {
   os: { label: "sent to the system", icon: MonitorSmartphone, className: "text-muted-foreground" },
+  // Histórico: ya no se produce. Se pinta porque hay filas guardadas con él.
   focused: { label: "you were here — the window had focus, so nothing was sent", icon: Eye, className: "text-muted-foreground" },
   failed: { label: "not delivered", icon: TriangleAlert, className: "text-destructive" },
 };

@@ -16,7 +16,14 @@ import { persist } from "zustand/middleware";
 export type Delivery =
   /** Handed to the OS and it took it. */
   | "os"
-  /** Deliberately not sent: the window was focused, so you already saw it. */
+  /**
+   * Ya no se produce: era «la ventana tenía el foco, así que ya lo viste».
+   *
+   * Se queda en el tipo porque este registro **se persiste**: hay filas
+   * guardadas con este valor, y quitarlo dejaría al panel buscando una etiqueta
+   * que no existe y reventando al pintarlas. Ver por qué se quitó la puerta en
+   * `use-report-events`.
+   */
   | "focused"
   /** Tried and the platform refused. `error` says what it said. */
   | "failed";
