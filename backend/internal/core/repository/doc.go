@@ -378,18 +378,6 @@ func (r *DocRepository) authorNames(docs []domain.Doc) map[string]string {
 	return out
 }
 
-// nombreVisible: cómo se llama a alguien, no cómo entra.
-//
-// El nombre y sólo si no lo hay, el usuario. Toda la documentación pinta bylines
-// —quién editó, de quién es, quién firmó una decisión, quién dejó una versión— y
-// hasta ahora todas enseñaban `username`: «rvolkov» donde cabe «Romanshk
-// Volkov». Un identificador de acceso no es la forma de llamar a una persona.
-//
-// `NULLIF` porque la columna existe desde antes que el hábito de rellenarla: hay
-// filas con el nombre vacío, y `COALESCE` sobre `”` devuelve la cadena vacía en
-// vez de caer al usuario.
-const nombreVisible = "COALESCE(NULLIF(name, ''), username, '')"
-
 // AuthorName resolves the "last edited by" label. Kept in the repository next to
 // the other SQL rather than adding a user dependency to the doc service.
 func (r *DocRepository) AuthorName(userID string) string {

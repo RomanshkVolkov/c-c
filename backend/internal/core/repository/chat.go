@@ -168,7 +168,7 @@ func (r *ChatRepository) Rotulos(spaceID, autorID string) (canal, autor string) 
 	}
 	r.db.Raw(`SELECT
 			(SELECT COALESCE(name, '') FROM task_spaces WHERE id = ?) AS canal,
-			(SELECT COALESCE(username, '') FROM users WHERE id = ?) AS autor`,
+			(SELECT `+nombreVisible+` FROM users WHERE id = ?) AS autor`,
 		spaceID, autorID).Scan(&fila)
 	return fila.Canal, fila.Autor
 }

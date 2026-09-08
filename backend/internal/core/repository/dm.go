@@ -119,7 +119,7 @@ func (r *DMRepository) List(conversationID string, before time.Time, limit int) 
 // que ponerlo no toca la decisión de dejar el cuerpo fuera.
 func (r *DMRepository) NombreDe(userID string) string {
 	var nombre string
-	r.db.Raw(`SELECT COALESCE(username, '') FROM users WHERE id = ?`, userID).Scan(&nombre)
+	r.db.Raw(`SELECT `+nombreVisible+` FROM users WHERE id = ?`, userID).Scan(&nombre)
 	return nombre
 }
 
