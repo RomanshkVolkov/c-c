@@ -28,7 +28,7 @@ import i18next from "i18next";
  * interfaz cambia y el formato la sigue, que es lo que la gente espera de un
  * ajuste que se llama «idioma».
  */
-function paraFormatear(): string {
+export function paraFormatear(): string {
   const elegido = i18next.language || "en";
   const delSistema =
     typeof navigator !== "undefined" ? (navigator.language ?? "") : "";

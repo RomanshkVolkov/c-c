@@ -10,10 +10,18 @@ import { describe, expect, it } from "vitest";
 
 const { cuando } = await import("@/components/tasks/TaskCardMini");
 
+/**
+ * Un vencimiento tal y como la app lo guarda: **el día a medianoche UTC**.
+ *
+ * Antes esto devolvía «ahora, más N días», que es un instante y no una fecha. La
+ * diferencia no se notaba mientras se leía con los captadores locales; en cuanto
+ * el vencimiento pasó a leerse como el día que se eligió, un «hoy» de las siete
+ * de la tarde en México salía como mañana — porque en UTC ya lo era.
+ */
 const dias = (n: number) => {
   const d = new Date();
   d.setDate(d.getDate() + n);
-  return d.toISOString();
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();
 };
 
 describe("el vencimiento en palabras", () => {

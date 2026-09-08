@@ -45,6 +45,8 @@ import TelemetryTimeline from "@/components/TelemetryTimeline";
 import { commentByline } from "@/lib/byline";
 import DecisionForm, { type DecisionDraft } from "@/components/docs/DecisionForm";
 import { describeAgent } from "@/lib/user-agent";
+import DatePicker from "@/components/DatePicker";
+import { comoISO, diaDeVencimiento } from "@/lib/mes";
 import { useTasksStore } from "@/store/tasks.store";
 import { usePeopleStore } from "@/store/people.store";
 import { mentionsAllowed } from "@/components/markdown/mention-scope";
@@ -1054,15 +1056,19 @@ function Content() {
             <Calendar className="size-3.5" /> {t("work:task.due")}
           </span>
           <div>
-            <input
-              type="date"
-              value={task.dueAt ? task.dueAt.slice(0, 10) : ""}
-              onChange={(e) =>
+            {/* `slice(0,10)` sobre el instante guardado daba el día anterior en
+                cualquier zona al oeste de Greenwich. Ver `diaDeVencimiento`. */}
+            <DatePicker
+              value={(() => {
+                const d = diaDeVencimiento(task.dueAt);
+                return d ? comoISO(d) : "";
+              })()}
+              onChange={(v) =>
                 updateTask(task.id, {
-                  dueAt: e.target.value ? new Date(e.target.value).toISOString() : null,
+                  dueAt: v ? new Date(v).toISOString() : null,
                 }).catch((err) => toast.error(String(err)))
               }
-              className="rounded border bg-transparent px-2 py-0.5 text-xs"
+              className="text-xs"
             />
           </div>
         </div>

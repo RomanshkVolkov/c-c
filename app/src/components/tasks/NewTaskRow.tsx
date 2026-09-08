@@ -1,5 +1,6 @@
 import { nombreDe } from "@/lib/nombres";
 import { useT } from "@/lib/i18n";
+import DatePicker from "@/components/DatePicker";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
@@ -161,12 +162,11 @@ export default function NewTaskRow({
           ))}
         </select>
 
-        <input
-          type="date"
-          aria-label={t("work:board.dueDate")}
+        <DatePicker
           value={dueAt}
-          onChange={(e) => setDueAt(e.target.value)}
-          className="h-7 rounded border bg-background px-1.5"
+          onChange={setDueAt}
+          placeholder={t("work:board.dueDate")}
+          className="h-7"
         />
 
         <select
