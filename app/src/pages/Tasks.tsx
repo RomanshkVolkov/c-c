@@ -26,7 +26,7 @@ import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useReportsStore } from "@/store/reports.store";
-import { normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
+import { faltanSubtareas, normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { isDocOwnerKind, priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
 
@@ -171,6 +171,7 @@ function Board({
   // La máquina de estados del servidor, para no ofrecer destinos imposibles.
   const transiciones = useReportsStore((s) => s.transitions);
   const transicionesInternas = useReportsStore((s) => s.internalTransitions);
+  const exigeSubtareas = useOrgsStore((s) => s.currentOrg()?.doneNeedsSubtasksDone ?? false);
   // Ante la duda, la estricta: proteger de más no rompe nada de nadie, y es lo
   // que contesta un servidor anterior a que existieran las dos.
   const mapaDe = (flow?: string) =>
@@ -337,6 +338,12 @@ function Board({
               const de = estadoDeColumna(item.columnId);
               const a = estadoDeColumna(aColumna);
               if (!de || !a) return true;
+              // Lo que pide la organización, comprobado antes de dejar soltar:
+              // si no, la tarjeta viaja, la rechazan y vuelve sola — que se lee
+              // como que la app va mal, no como una regla.
+              if (faltanSubtareas(exigeSubtareas, a, item.subtaskCount, item.subtaskDone)) {
+                return false;
+              }
               // La máquina de **esta** tarjeta. Un tablero mezcla trabajo
               // interno y tickets de un cliente, así que preguntar con una sola
               // para todas obligaba a elegir a quién mentirle: con la estricta,

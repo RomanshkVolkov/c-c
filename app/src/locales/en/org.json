@@ -127,5 +127,6 @@
   "membership": {
     "added": "You were added to {{org}}",
     "removed": "You no longer belong to {{org}}"
-  }
+  },
+  "doneNeedsSubtasks": "Finish subtasks before marking a task done"
 }

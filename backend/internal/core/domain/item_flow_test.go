@@ -117,3 +117,65 @@ func TestUnaSubtareaEsInterna(t *testing.T) {
 		t.Fatal("marcar hecha una subtarea abierta es exactamente esto")
 	}
 }
+
+// Dar por hecha una tarea que aún tiene subtareas abiertas.
+//
+// Es una regla de equipo, no de quien arrastra la tarjeta, y por eso se enciende
+// en la organización. Apagada de salida: cerrar el padre a sabiendas es legítimo
+// — a veces lo que queda ya no hace falta.
+func TestSubtareasAbiertasBloqueanHecho(t *testing.T) {
+	t.Run("apagada, nada estorba", func(t *testing.T) {
+		if SubtasksBlockDone(false, ReportResolved, 3, 1) {
+			t.Fatal("sin la regla encendida no se impide nada")
+		}
+	})
+
+	t.Run("encendida, con subtareas abiertas no se puede", func(t *testing.T) {
+		if !SubtasksBlockDone(true, ReportResolved, 3, 1) {
+			t.Fatal("quedan dos por hacer")
+		}
+	})
+
+	t.Run("y con todas hechas sí", func(t *testing.T) {
+		if SubtasksBlockDone(true, ReportResolved, 3, 3) {
+			t.Fatal("no queda ninguna abierta")
+		}
+	})
+
+	/**
+	 * **Cerrado no es hecho**, y la regla no lo toca.
+	 *
+	 * «Hecho» dice que se terminó todo; «cerrado» dice que no se va a hacer. Un
+	 * guard que impidiera cerrar dejaría atrapada exactamente la tarea que se
+	 * quiere abandonar, que es cuando más falta hace poder cerrarla.
+	 */
+	t.Run("cerrar nunca se bloquea", func(t *testing.T) {
+		if SubtasksBlockDone(true, ReportClosed, 3, 0) {
+			t.Fatal("abandonar algo a medias es justamente para lo que sirve cerrar")
+		}
+	})
+
+	t.Run("moverse a Open o In progress tampoco", func(t *testing.T) {
+		for _, d := range []ReportStatus{ReportPending, ReportInProgress} {
+			if SubtasksBlockDone(true, d, 3, 0) {
+				t.Fatalf("%q no es dar nada por hecho", d)
+			}
+		}
+	})
+
+	// Los dos vocabularios conviven mientras haya apps instaladas viejas: una
+	// anterior al renombrado manda «done» donde ahora se dice `resolved`, y sin
+	// plegarlo la regla no se aplicaría — justo para quien no ha actualizado.
+	t.Run("el nombre viejo de «hecho» cuenta igual", func(t *testing.T) {
+		if !SubtasksBlockDone(true, "done", 3, 1) {
+			t.Fatal("una app sin actualizar se saltaría la regla entera")
+		}
+	})
+
+	// Una tarea sin subtareas no tiene nada pendiente por definición.
+	t.Run("sin subtareas no hay nada que exigir", func(t *testing.T) {
+		if SubtasksBlockDone(true, ReportResolved, 0, 0) {
+			t.Fatal("no hay ninguna abierta porque no hay ninguna")
+		}
+	})
+}

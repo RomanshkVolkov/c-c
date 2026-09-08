@@ -909,6 +909,21 @@ func orEmptyUsers(v []domain.UserSummary) []domain.UserSummary {
 }
 
 // Subtasks returns a task's children as cards, ordered like the board.
+// SubtaskProgress: cuántas subtareas tiene una tarea y cuántas están terminadas.
+//
+// «Terminada» incluye cerrada, igual que en el tablero: una subtarea que nadie
+// va a hacer no es trabajo pendiente. Contarla como abierta dejaría al padre
+// atrapado por algo que ya se decidió no hacer.
+func (r *TaskRepository) SubtaskProgress(parentID string) (total, done int64) {
+	var fila struct{ Total, Done int64 }
+	r.db.Table("items t").
+		Select(`COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE t.status IN ('resolved','closed')) AS done`).
+		Where("t.parent_id = ? AND t.archived_at IS NULL AND t.deleted_at IS NULL", parentID).
+		Scan(&fila)
+	return fila.Total, fila.Done
+}
+
 func (r *TaskRepository) Subtasks(parentID string) ([]domain.TaskCard, error) {
 	var tasks []domain.Task
 	if err := r.db.Where("parent_id = ? AND archived_at IS NULL", parentID).

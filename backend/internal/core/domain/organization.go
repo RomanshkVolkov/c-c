@@ -53,6 +53,14 @@ type Organization struct {
 	// GuestsCanUseDevTools is how somebody without an account reaches the
 	// on-device tools and nothing else.
 	GuestsCanUseDevTools bool `json:"guestsCanUseDevTools"`
+	// DoneNeedsSubtasksDone impide dar por hecha una tarea con subtareas
+	// abiertas.
+	//
+	// Apagado de salida, porque cerrar el padre a sabiendas es una decisión
+	// legítima: a veces lo que queda ya no hace falta. Encendido, la disciplina
+	// vale más que la excepción — y es una decisión de equipo, no de quien
+	// arrastra la tarjeta, por eso vive aquí.
+	DoneNeedsSubtasksDone bool `json:"doneNeedsSubtasksDone"`
 }
 
 // OrgMembership joins a user to an organization with a role. Composite PK
@@ -112,6 +120,7 @@ type UpdateOrganizationRequest struct {
 	DefaultInviteRole        *OrgRole `json:"defaultInviteRole" validate:"omitempty,oneof=admin member viewer"`
 	ClientsSeeOnlyTheirSpace *bool    `json:"clientsSeeOnlyTheirSpace"`
 	GuestsCanUseDevTools     *bool    `json:"guestsCanUseDevTools"`
+	DoneNeedsSubtasksDone    *bool    `json:"doneNeedsSubtasksDone"`
 }
 
 type OrganizationResponse struct {
@@ -133,6 +142,7 @@ type OrganizationResponse struct {
 	DefaultInviteRole        OrgRole `json:"defaultInviteRole,omitempty"`
 	ClientsSeeOnlyTheirSpace bool    `json:"clientsSeeOnlyTheirSpace"`
 	GuestsCanUseDevTools     bool    `json:"guestsCanUseDevTools"`
+	DoneNeedsSubtasksDone    bool    `json:"doneNeedsSubtasksDone"`
 }
 
 type AddMemberRequest struct {

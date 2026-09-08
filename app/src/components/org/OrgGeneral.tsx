@@ -140,6 +140,11 @@ export default function OrgGeneral({
           onChange={() => guardar({ guestsCanUseDevTools: !org.guestsCanUseDevTools })}
           label={t("org:guestsDevTools")}
         />
+        <Interruptor
+          on={org.doneNeedsSubtasksDone}
+          onChange={() => guardar({ doneNeedsSubtasksDone: !org.doneNeedsSubtasksDone })}
+          label={t("org:doneNeedsSubtasks")}
+        />
         {/* Shown off and disabled rather than hidden: it is on the roadmap, and
             a control that is missing reads as "not possible" while one that is
             greyed reads as "not yet". */}

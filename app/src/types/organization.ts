@@ -12,6 +12,14 @@ export interface Organization {
   defaultInviteRole?: OrgRole;
   clientsSeeOnlyTheirSpace: boolean;
   guestsCanUseDevTools: boolean;
+  /**
+   * Impide dar por hecha una tarea con subtareas abiertas.
+   *
+   * Apagado de salida: cerrar el padre a sabiendas es legítimo — a veces lo que
+   * queda ya no hace falta. Es una decisión de equipo y no de quien arrastra la
+   * tarjeta, y por eso vive en la organización.
+   */
+  doneNeedsSubtasksDone: boolean;
 }
 
 export interface OrgMember {

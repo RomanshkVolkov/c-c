@@ -713,3 +713,21 @@ type ReportDetailResponse struct {
 	// null when none was captured or it has been purged. Only in the detail view.
 	Telemetry json.RawMessage `json:"telemetry,omitempty"`
 }
+
+// SubtasksBlockDone dice si una tarea no puede darse por hecha todavía.
+//
+// **Sólo «hecho», nunca «cerrado».** Son cosas distintas: hecho dice que se
+// terminó todo, cerrado dice que no se va a hacer. Un guard que impidiera cerrar
+// dejaría atrapada exactamente la tarea que se quiere abandonar — que es cuando
+// más falta hace poder cerrarla.
+//
+// Pura y aquí porque la comprueban los dos lados: el servidor la impone y el
+// tablero la consulta antes de dejar soltar la tarjeta. Escrita dos veces sería
+// una regla que un día deja de coincidir consigo misma, y el síntoma sería una
+// tarjeta que se mueve y vuelve sola.
+func SubtasksBlockDone(required bool, target ReportStatus, total, done int64) bool {
+	if !required || target.Canonical() != ReportResolved {
+		return false
+	}
+	return total > done
+}

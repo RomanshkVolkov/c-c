@@ -127,5 +127,6 @@
   "membership": {
     "added": "Te han añadido a {{org}}",
     "removed": "Ya no perteneces a {{org}}"
-  }
+  },
+  "doneNeedsSubtasks": "Terminar las subtareas antes de dar por hecha una tarea"
 }

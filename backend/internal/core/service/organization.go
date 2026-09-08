@@ -138,6 +138,7 @@ func (s *OrganizationService) Create(callerID string, req domain.CreateOrganizat
 		Domain: org.Domain, DefaultInviteRole: org.DefaultInviteRole,
 		ClientsSeeOnlyTheirSpace: org.ClientsSeeOnlyTheirSpace,
 		GuestsCanUseDevTools:     org.GuestsCanUseDevTools,
+		DoneNeedsSubtasksDone:    org.DoneNeedsSubtasksDone,
 	}, nil
 }
 
@@ -173,6 +174,9 @@ func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOr
 	if req.GuestsCanUseDevTools != nil {
 		org.GuestsCanUseDevTools = *req.GuestsCanUseDevTools
 	}
+	if req.DoneNeedsSubtasksDone != nil {
+		org.DoneNeedsSubtasksDone = *req.DoneNeedsSubtasksDone
+	}
 	if err := s.repo.Update(org); err != nil {
 		return nil, err
 	}
@@ -182,6 +186,7 @@ func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOr
 		Domain: org.Domain, DefaultInviteRole: org.DefaultInviteRole,
 		ClientsSeeOnlyTheirSpace: org.ClientsSeeOnlyTheirSpace,
 		GuestsCanUseDevTools:     org.GuestsCanUseDevTools,
+		DoneNeedsSubtasksDone:    org.DoneNeedsSubtasksDone,
 	}, nil
 }
 

@@ -182,9 +182,21 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 	// Mismo trato que ya recibe `ErrInvalidTransition` del lado de reportes, que
 	// es literalmente la misma máquina de estados.
 	case errors.Is(err, service.ErrBadTransition):
+		// El mensaje ya no puede decir «Open y Done no son adyacentes» a secas:
+		// desde que hay dos máquinas, en una tarea interna **sí** lo son. Decirlo
+		// para todos mandaría a buscar por el sitio equivocado justo a quien se
+		// topa con la regla que protege a un cliente.
 		SendErrorResponse(w, http.StatusConflict,
-			"That move is not allowed from the current state. Open and Done are not "+
-				"adjacent: a card passes through In progress.", "bad-transition")
+			"That move is not allowed from the current state. On something a client "+
+				"can see, a card passes through In progress and a closed one stays closed.",
+			"bad-transition")
+	// 409 por lo mismo: el estado del tablero es lo que impide el movimiento, no
+	// un permiso ni una petición mal formada.
+	case errors.Is(err, service.ErrSubtasksOpen):
+		SendErrorResponse(w, http.StatusConflict,
+			"This task still has open subtasks, and this organization asks for them "+
+				"to be finished first. Close them, or close this task instead of "+
+				"marking it done.", "subtasks-open")
 	// 400 y no 409: aquí no hay conflicto con ningún estado, es que el id de
 	// columna no nombra nada. Petición malformada.
 	case errors.Is(err, service.ErrBadStatus):

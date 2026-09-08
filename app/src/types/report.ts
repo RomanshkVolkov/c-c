@@ -287,3 +287,30 @@ export interface ReportTelemetry {
   snapshot?: Record<string, unknown>;
   context?: Record<string, unknown>;
 }
+
+/**
+ * Si una tarjeta no puede darse por hecha todavía.
+ *
+ * La misma regla que impone el servidor: sólo «hecho», nunca «cerrado». Son
+ * cosas distintas — hecho dice que se terminó todo, cerrado dice que no se va a
+ * hacer— y un guard que impidiera cerrar dejaría atrapada exactamente la tarea
+ * que se quiere abandonar.
+ *
+ * **La misma regla en dos vocabularios**, que es donde está la trampa: aquí el
+ * estado terminado se llama `done` y en el servidor `resolved`. Copiar la
+ * condición del servidor tal cual daría una comparación que nunca se cumple, y
+ * el guard no impediría nada sin que nada fallara.
+ *
+ * Se comprueba también aquí porque el servidor la impone: sin esto la tarjeta se
+ * suelta, viaja, la rechazan y vuelve sola a su sitio. Un movimiento que se
+ * deshace solo se lee como que la app va mal, no como una regla.
+ */
+export function faltanSubtareas(
+  exigido: boolean,
+  destino: ReportStatus,
+  total = 0,
+  hechas = 0,
+): boolean {
+  if (!exigido || normalizeStatus(destino) !== "done") return false;
+  return total > hechas;
+}

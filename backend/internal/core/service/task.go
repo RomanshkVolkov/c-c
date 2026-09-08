@@ -23,6 +23,9 @@ var (
 	ErrBadStatus = errors.New("unknown status")
 	// ErrBadTransition: the move is one the shared state machine refuses.
 	ErrBadTransition = errors.New("that move is not allowed from the current state")
+	// ErrSubtasksOpen: la organización pide terminar las subtareas antes de dar
+	// por hecha la tarea que las contiene.
+	ErrSubtasksOpen = errors.New("this task still has open subtasks")
 )
 
 type TaskService struct {
@@ -617,6 +620,20 @@ func (s *TaskService) MoveTask(ctx context.Context, id, userID string, req domai
 	// Open → Done no existe ahí. Ver `ItemFlow`.
 	if !domain.CanTransition(task.Flow(), task.Status, next) {
 		return ErrBadTransition
+	}
+
+	// Dar por hecha una tarea con subtareas abiertas, si la organización lo pide.
+	//
+	// Se comprueba aquí y no sólo en la pantalla porque el tablero no es la única
+	// puerta: el MCP mueve tarjetas, y un tenant también. Una regla que sólo
+	// vigila la interfaz es una regla que no está.
+	if s.orgs != nil && task.OrgID != "" {
+		if org, err := s.orgs.FindByID(task.OrgID); err == nil && org != nil {
+			total, hechas := s.repo.SubtaskProgress(id)
+			if domain.SubtasksBlockDone(org.DoneNeedsSubtasksDone, next, total, hechas) {
+				return ErrSubtasksOpen
+			}
+		}
 	}
 
 	// Sticky, which is the report semantics rather than the task one: the date
