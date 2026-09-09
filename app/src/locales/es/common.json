@@ -572,7 +572,8 @@
     "pickADate": "Elegir fecha",
     "clearDate": "Sin fecha",
     "previousMonth": "Mes anterior",
-    "nextMonth": "Mes siguiente"
+    "nextMonth": "Mes siguiente",
+    "statusNow": "Ahora: {{state}}"
   },
   "calendar": {
     "undated_one": "{{count}} sin fecha",

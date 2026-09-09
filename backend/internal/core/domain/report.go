@@ -276,8 +276,16 @@ type ReportEventTarget struct {
 	// Who filed it, in the host app's own terms. Carried on every event so a
 	// receiver can route a notification without keeping its own
 	// report → user index or calling back to ask.
-	ReporterID    string
-	ReporterName  string
+	ReporterID   string
+	ReporterName string
+	// Title es cómo se llama la ficha, para que un aviso pueda nombrarla.
+	//
+	// Sin esto el cliente sólo tenía un identificador, y de ahí salían avisos
+	// como «cambió el estado de un reporte» — cierto, inútil, y con tres
+	// reportes abiertos ni siquiera dice cuál. Es el mismo arreglo que ya se
+	// hizo con el chat, donde el servidor pasó a mandar el canal y el autor
+	// porque la consola anunciaba «un mensaje en un canal».
+	Title         string
 	WebhookURL    string
 	WebhookSecret string
 }

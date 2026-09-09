@@ -152,6 +152,19 @@ func emitItemEvent(hub *events.Hub, repo *repository.ReportRepository,
 		lg.Warn("evento " + eventType + " de " + itemID + " sin destino: " + err.Error())
 		return
 	}
+	// Cómo se llama la ficha, en **todos** los eventos y sin que cada emisor se
+	// acuerde. El cliente sólo tiene un identificador, y con él lo mejor que
+	// puede decir es «cambió el estado de un reporte»: cierto, inútil, y con tres
+	// abiertos ni siquiera dice cuál.
+	//
+	// No pisa lo que ya venga puesto: un emisor que sepa más que esto —porque
+	// tiene la ficha delante— manda lo suyo y aquí no se le contradice.
+	if _, ya := data["folio"]; !ya && target.Folio != "" {
+		data["folio"] = target.Folio
+	}
+	if _, ya := data["title"]; !ya && target.Title != "" {
+		data["title"] = target.Title
+	}
 	if hub != nil {
 		hub.Publish(events.Event{Type: eventType, OrgID: target.OrgID, Data: data})
 	}

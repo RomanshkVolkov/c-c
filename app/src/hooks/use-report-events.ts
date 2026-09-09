@@ -51,6 +51,25 @@ async function ensureNotifyPermission(): Promise<boolean> {
   }
 }
 
+/**
+ * Cómo se llama la ficha de la que va un aviso.
+ *
+ * El folio primero porque es lo que se cita —«portento-89»— y el título detrás
+ * porque es lo que se reconoce. Sin esto, lo mejor que se podía decir era
+ * «cambió el estado de un reporte»: cierto, inútil, y con tres abiertos ni
+ * siquiera dice cuál — o sea, hay que abrir la app para saber si te importaba,
+ * que es lo que un aviso viene a evitar.
+ *
+ * El servidor manda los dos en **todos** los eventos de ficha justamente para
+ * esto. Es el mismo arreglo que ya se hizo con el chat, donde la consola sólo
+ * tenía un id de espacio y anunciaba «un mensaje en un canal».
+ *
+ * Fuera del conmutador y exportada para poder probarla: una copia en la prueba
+ * pasaría verde mientras ésta se va por otro lado.
+ */
+export const nombreDeFicha = (p: { folio?: unknown; title?: unknown }): string =>
+  [p.folio, p.title].filter((x) => typeof x === "string" && x).join(" · ");
+
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /*
@@ -307,14 +326,23 @@ export function useReportEvents() {
           // Folded through the same map as the board, so the toast can't name a
           // state using the spelling the rest of the UI stopped using.
           const raw = moved.status;
-          toast.message(i18next.t("common:last.reportStatusChanged"), {
-            // `i18next.t` y no el hook: esto no es un componente, es el
-            // repartidor de eventos. Lee el idioma que esté puesto en ese
-            // momento, que es lo correcto para un aviso que se emite una vez.
-            description: raw
-              ? i18next.t(STATUS_LABEL_KEYS[normalizeStatus(String(raw))])
-              : undefined,
-          });
+          // `i18next.t` y no el hook: esto no es un componente, es el
+          // repartidor de eventos. Lee el idioma que esté puesto en ese
+          // momento, que es lo correcto para un aviso que se emite una vez.
+          const estado = raw
+            ? i18next.t(STATUS_LABEL_KEYS[normalizeStatus(String(raw))])
+            : "";
+          // Qué cambió arriba y a qué estado abajo. Al revés —«cambió el estado
+          // de un reporte» de título— el aviso ocupaba dos líneas para no decir
+          // de cuál de los tres abiertos estaba hablando.
+          toast.message(
+            nombreDeFicha(moved) || i18next.t("common:last.reportStatusChanged"),
+            {
+              description: estado
+                ? i18next.t("common:last.statusNow", { state: estado })
+                : i18next.t("common:last.reportStatusChanged"),
+            },
+          );
           refresh();
           break;
         }
@@ -335,8 +363,9 @@ export function useReportEvents() {
               : p.from && p.from.startsWith("project:")
                 ? "The client's app replied"
                 : "Someone on the team replied";
-          toast.message(who);
-          notify("report:comment", "New reply", who, p.reportId);
+          const cual = nombreDeFicha(p);
+          toast.message(cual || who, { description: cual ? who : undefined });
+          notify("report:comment", cual || "New reply", who, p.reportId);
           refresh();
           break;
         }
