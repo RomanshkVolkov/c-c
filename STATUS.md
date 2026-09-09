@@ -6,15 +6,35 @@ Tracking doc — open items, in-progress work, and decisions from rolling conver
 
 | Item | Context | Owner |
 |---|---|---|
-| Cut a new app release tag | The backend now rejects `sshPrivateKey` on `POST /api/v1/servers/` and the `deploy-agent`/`update-agent` endpoints are gone. Any installed app older than commit `36c870e` will break when interacting with servers. | jose |
-| Verify 1Password reference works on next release | The new "Load from 1Password" button in the Stack Secrets page reads via `op read op://Vault/Item/credential`. Requires `op` CLI installed + signed in. Smoke-test once the new release is installed. | jose |
+| Verificar la v1.6.68 instalada | Lleva el medidor de micrófono, el selector de fecha propio, el check de subtareas, los avisos de membresía y el adjunto citado. Nada de eso está comprobado a mano. | jose |
+| Merge `a1-step3-rename` | La rama sigue viva. Renombra lo *almacenado* a `open`/`done`; una app vieja mostraría un tablero vacío. | jose confirma |
+| Rodar la imagen nueva de `swarm-manage` | El endpoint de stats por tarea ya está; hace falta el botón «Update Agent» por servidor para que la app pueda consumirlo. | jose |
 
-## 🟡 In progress (uncommitted)
+## 🟡 Sin soltar
 
-| Item | Files | Notes |
-|---|---|---|
-| swarm-manage per-task stats endpoint | `swarm-manage/internal/core/domain/swarm.go`, `swarm-manage/internal/core/repository/docker.go`, `swarm-manage/internal/core/service/swarm.go`, `swarm-manage/internal/adapters/handler/swarm.go`, `swarm-manage/internal/adapters/http/routes.go` | New `GET /api/v1/services/{id}/stats` proxying Docker's `/tasks` + `/containers/{id}/stats?stream=false` per running task. Computes CPU% from one-shot precpu sample; subtracts page cache from mem usage for a more RSS-like figure. Stats calls fan out concurrently (one goroutine per task). |
-| Rebuilt deploy/update agent in the desktop app via SSH | `app/src-tauri/src/lib.rs`, `app/src/pages/Dashboard.tsx` | Two new Tauri commands `deploy_swarm_manage_agent` / `update_swarm_manage_agent` shell out to `ssh` with `BatchMode=yes` + `StrictHostKeyChecking=accept-new`. Auth comes from the OS SSH agent (1Password via `SSH_AUTH_SOCK`), no keys stored anywhere. Dashboard regains the Deploy/Update buttons but now calls these local commands instead of the removed backend endpoints. |
+Cinco commits en `main` sin empujar, todos de esta tanda: el calendario con la
+tira de «sin fecha», el nombre de quien escribe en la campana, la tabla que
+partía palabras, la puerta del foco de los avisos, y que un aviso diga de qué
+ficha habla.
+
+Empujar despliega el backend. Después, `/soltar` — el orden importa.
+
+## 📄 Documentación por proyecto
+
+El handoff de `.design-project-docs/` entero salvo el PR 7. Un documento por nodo
+con cuatro pestañas fijas (resumen, runbook, decisiones, enlaces), responsable y
+frescura a 90 días, autoguardado con historial, plantillas, decisiones con
+procedencia, compartir al chat y volver desde él, e índice de la organización.
+
+| Abierto | Por qué |
+|---|---|
+| PR 7 — GitHub | **No se empieza** hasta que existan la App de organización y el receptor de webhook. Es infraestructura, no código de app. |
+| `DocView.tsx` sigue en el repo | Se borra cuando las pestañas estén verificadas a mano contra el backend desplegado. |
+| `/doc` en el compositor | El menú `/` está escrito contra el DOM, no contra React: meter ahí un selector de documento es un PR propio, no una línea. |
+
+El MCP ya escribe documentación: seis herramientas con dos permisos separados
+(`docs:write` sólo añade, `docs:manage` puede pisar), y guardar a la vez ya no
+borra lo del otro.
 
 ## 📮 Reports — cac as the single home for bug reports
 
