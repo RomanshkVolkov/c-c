@@ -133,11 +133,20 @@ func searchDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This list is the **search query's footprint**, not the data these cases
+	// write: docs and folders are here because `SearchDocs` joins `doc_tabs`,
+	// `docs` and `task_folders`, even though nothing below creates one. So it
+	// has to move whenever search grows a source.
+	//
+	// It didn't, twice: docs and folders were missing since the day documents
+	// landed, and the test failed on every run — except that it never ran. It
+	// skips without a database, and CI has never had one (card #38).
 	if err := db.AutoMigrate(
 		&domain.Organization{}, &domain.User{}, &domain.OrgMembership{},
-		&domain.TaskSpace{}, &domain.TaskList{}, &domain.Item{},
+		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.Item{},
 		&domain.Note{}, &domain.ChatMessage{},
 		&domain.DMConversation{}, &domain.DMMessage{},
+		&domain.Doc{}, &domain.DocTab{},
 	); err != nil {
 		t.Fatal(err)
 	}

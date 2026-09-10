@@ -61,15 +61,21 @@ es estar mirando eso. La puerta que había («si tiene el foco, no avises») est
 quitada a propósito; no la vuelvas a poner.
 → Guardián: `app/src/hooks/avisos-del-sistema.test.tsx` («la puerta del foco»).
 
-## El CI no corre ninguna prueba
+## El CI corre las pruebas del backend, y sólo ésas
 
-Ningún workflow de `.github/workflows/` ejecuta tests: `backend.yml` construye la
-imagen y despliega, `swarm-manage.yml` construye, y `app-release.yml` empaqueta.
-**Verificar en local es la única red que hay** (tarjeta #38).
+`backend.yml` tiene por delante un trabajo `test` con Postgres de verdad, y el
+despliegue depende de él: rojo no sale a producción. Es lo que pedía la tarjeta
+#38, y al encenderlo salió una prueba que llevaba meses roja sin que nadie
+pudiera verlo.
 
-Las pruebas del backend que necesitan Postgres se **saltan** sin base (`t.Skip("no
-database configured")` cuando no hay `DB_HOST`), así que un `go test ./...` en
-verde no significa que se hayan corrido todas.
+**El resto no tiene red.** `swarm-manage.yml` construye, `app-release.yml`
+empaqueta, y ni `app/` ni `transcriber/` corren sus suites en ninguna parte.
+Para esos dos, verificar en local sigue siendo lo único que hay.
+
+Y ojo con el verde de `go test` **en local**: las pruebas que necesitan Postgres
+se **saltan** sin base (`t.Skip("no database configured")` cuando no hay
+`DB_HOST`), y son treinta ficheros. Sin `DB_HOST` puesto, un verde no significa
+que se hayan corrido todas — en CI ya no puede pasar, en tu máquina sí.
 
 ## La puerta de verificación
 

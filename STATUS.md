@@ -92,6 +92,22 @@ Plan: `~/.claude/plans/compressed-cooking-pond.md`.
 | Merge `a1-step3-rename` — renames what's *stored* to `open`/`done`. Gated on **v1.5.1 being installed everywhere**: an older console would show an empty board | jose confirms, then cac session |
 | Create the portento tenant in the console → yields the credentials the portento repo needs | jose |
 
+## ✅ El CI ya corre las pruebas del backend
+
+Tarjeta #38, cerrada. `backend.yml` lleva un trabajo `test` con Postgres 16 por
+delante de `build-push`, así que **rojo no despliega**. Antes este workflow
+empujaba a producción solo, sin que nadie mirase.
+
+Al encenderlo salió lo que la tarjeta avisaba que saldría:
+`TestSearchNeverReturnsSomebodyElsesDirectMessages` llevaba roja desde el día que
+aterrizaron los documentos. El test se construye su propio esquema a mano y esa
+lista es **la huella de la consulta de búsqueda**, no de los datos que escribe:
+le faltaban `docs`, `doc_tabs` y `task_folders`, que la búsqueda une. Nadie podía
+verlo porque sin base la prueba se salta.
+
+Lo que sigue sin red: `app/` y `transcriber/` no corren sus suites en ningún
+sitio. Es un workflow corto y aparte, no una línea más en éste.
+
 ## ⏳ Planned (next iterations)
 
 ### App UI for container stats

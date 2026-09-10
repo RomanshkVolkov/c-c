@@ -8,8 +8,65 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Las pruebas van **delante del despliegue**, y ésa es la única razón de que
+  # este trabajo exista: este workflow empuja a producción solo, sin que nadie
+  # mire, así que hasta ahora un backend roto se desplegaba igual.
+  #
+  # Con Postgres de verdad, y no es un lujo: treinta ficheros de prueba se
+  # *saltan* solos cuando no encuentran base (`t.Skip("no database configured")`),
+  # así que un verde sin ella no quiere decir nada. Es la tarjeta #38, y al
+  # encenderla salió lo que tenía que salir: una prueba llevaba meses roja sin
+  # que nadie pudiera verlo.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          # Las pruebas se conectan a esta base para poder crear las suyas de
+          # usar y tirar; el usuario `postgres` puede crear bases.
+          POSTGRES_DB: cac
+        ports:
+          - 5432:5432
+        # Sin esto el trabajo arranca antes que la base y la primera prueba se
+        # salta —no falla— dejando el verde de siempre.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Vet
+        working-directory: backend
+        run: go vet ./...
+
+      - name: Test
+        working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: cac
+          DB_SSLMODE: disable
+        run: go test ./internal/...
+
   build-push:
     runs-on: ubuntu-latest
+    # La puerta. Un `workflow_dispatch` de emergencia también la pasa: si hay
+    # que desplegar con las pruebas rojas, se revierte lo que las puso rojas.
+    needs: test
     permissions:
       contents: read
       packages: write
