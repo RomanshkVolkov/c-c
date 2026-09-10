@@ -12,7 +12,7 @@ Tracking doc — open items, in-progress work, and decisions from rolling conver
 
 ## 🟢 Al día
 
-Nada sin empujar. La app va por la **v1.6.69** («que los avisen avisen») y el
+Nada sin empujar. La app va por la **v1.6.69** («que los avisos avisen») y el
 backend está desplegado con los rangos numéricos. Lo que hay en `main` desde esa
 release no toca la app: el spike de transcripción, la puerta de pruebas del CI y
 el cambio de `rank`.
