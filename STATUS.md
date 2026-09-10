@@ -10,14 +10,12 @@ Tracking doc — open items, in-progress work, and decisions from rolling conver
 | Merge `a1-step3-rename` | La rama sigue viva. Renombra lo *almacenado* a `open`/`done`; una app vieja mostraría un tablero vacío. | jose confirma |
 | Rodar la imagen nueva de `swarm-manage` | El endpoint de stats por tarea ya está; hace falta el botón «Update Agent» por servidor para que la app pueda consumirlo. | jose |
 
-## 🟡 Sin soltar
+## 🟢 Al día
 
-Cinco commits en `main` sin empujar, todos de esta tanda: el calendario con la
-tira de «sin fecha», el nombre de quien escribe en la campana, la tabla que
-partía palabras, la puerta del foco de los avisos, y que un aviso diga de qué
-ficha habla.
-
-Empujar despliega el backend. Después, `/soltar` — el orden importa.
+Nada sin empujar. La app va por la **v1.6.69** («que los avisen avisen») y el
+backend está desplegado con los rangos numéricos. Lo que hay en `main` desde esa
+release no toca la app: el spike de transcripción, la puerta de pruebas del CI y
+el cambio de `rank`.
 
 ## 📄 Documentación por proyecto
 
