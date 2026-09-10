@@ -29,6 +29,16 @@ jobs:
           # Las pruebas se conectan a esta base para poder crear las suyas de
           # usar y tirar; el usuario `postgres` puede crear bases.
           POSTGRES_DB: cac
+          # **Igual que producción**, que está en `C`/`UTF8` (comprobado el
+          # 9-sep-2026 contra el clúster). CI existe para predecir producción,
+          # así que la colación tiene que ser la misma: hay consultas que
+          # ordenan texto (`ORDER BY LOWER(name)`, por ejemplo) y su resultado
+          # depende de ella.
+          #
+          # El rango de los tableros ya no: es `NUMERIC` desde el 10-sep-2026 y
+          # la suite pasa entera con las dos colaciones. Esto se queda por lo
+          # otro.
+          POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
         ports:
           - 5432:5432
         # Sin esto el trabajo arranca antes que la base y la primera prueba se

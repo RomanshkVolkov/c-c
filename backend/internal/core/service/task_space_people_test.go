@@ -123,9 +123,9 @@ func arbolDB(t *testing.T) (*gorm.DB, func()) {
 		('u-ana','ana','a@x.io','x',?,?), ('u-bea','bea','b@x.io','x',?,?),
 		('u-caro','caro','c@x.io','x',?,?)`, ahora, ahora, ahora, ahora, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at) VALUES
-		('esp-a','org-1','Uno','#fff','m',?,?), ('esp-b','org-1','Dos','#fff','n',?,?)`, ahora, ahora, ahora, ahora))
+		('esp-a','org-1','Uno','#fff','0.5',?,?), ('esp-b','org-1','Dos','#fff','0.6',?,?)`, ahora, ahora, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_lists (id, space_id, name, rank, created_at, updated_at) VALUES
-		('lis-a','esp-a','L','m',?,?), ('lis-b','esp-b','M','m',?,?)`, ahora, ahora, ahora, ahora))
+		('lis-a','esp-a','L','0.5',?,?), ('lis-b','esp-b','M','0.5',?,?)`, ahora, ahora, ahora, ahora))
 
 	ins := func(id, lista, estado string, quien *string, archivada bool) {
 		var arch any

@@ -175,22 +175,22 @@ func branchDB(t *testing.T) (*gorm.DB, func()) {
 	p := &domain.ReportProject{OrgID: "org-1", Name: "Cliente", Slug: "cliente", IngestKeyHash: []byte("h")}
 	p.ID = proj
 	// space-1 is bound to a client, which is what makes the visibility test real.
-	sp1 := &domain.TaskSpace{OrgID: "org-1", Name: "Uno", Rank: "U", ProjectID: &proj}
+	sp1 := &domain.TaskSpace{OrgID: "org-1", Name: "Uno", Rank: "0.5", ProjectID: &proj}
 	sp1.ID = "space-1"
-	sp2 := &domain.TaskSpace{OrgID: "org-1", Name: "Dos", Rank: "V"}
+	sp2 := &domain.TaskSpace{OrgID: "org-1", Name: "Dos", Rank: "0.6"}
 	sp2.ID = "space-2"
-	spOtra := &domain.TaskSpace{OrgID: "org-2", Name: "Ajeno", Rank: "U"}
+	spOtra := &domain.TaskSpace{OrgID: "org-2", Name: "Ajeno", Rank: "0.5"}
 	spOtra.ID = "space-otra"
-	padre := &domain.TaskFolder{SpaceID: "space-2", Name: "Padre", Rank: "U"}
+	padre := &domain.TaskFolder{SpaceID: "space-2", Name: "Padre", Rank: "0.5"}
 	padre.ID = "fo-padre"
 	hijoID := "fo-padre"
-	hijo := &domain.TaskFolder{SpaceID: "space-2", ParentFolderID: &hijoID, Name: "Hijo", Rank: "U"}
+	hijo := &domain.TaskFolder{SpaceID: "space-2", ParentFolderID: &hijoID, Name: "Hijo", Rank: "0.5"}
 	hijo.ID = "fo-hijo"
 	foHijo := "fo-hijo"
 	// Con atado propio: es lo que la copia no debe llevarse.
-	li1 := &domain.TaskList{SpaceID: "space-2", FolderID: &foHijo, Name: "Lista", Rank: "U", ProjectID: &proj}
+	li1 := &domain.TaskList{SpaceID: "space-2", FolderID: &foHijo, Name: "Lista", Rank: "0.5", ProjectID: &proj}
 	li1.ID = "li-1"
-	suelta := &domain.TaskList{SpaceID: "space-1", Name: "Suelta", Rank: "V"}
+	suelta := &domain.TaskList{SpaceID: "space-1", Name: "Suelta", Rank: "0.6"}
 	suelta.ID = "li-suelta"
 	filas = append(filas, org1, org2, p, sp1, sp2, spOtra, padre, hijo, li1, suelta)
 	for _, m := range filas {

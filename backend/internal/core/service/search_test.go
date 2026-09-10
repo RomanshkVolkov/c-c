@@ -153,9 +153,9 @@ func searchDB(t *testing.T) (*gorm.DB, func()) {
 
 	org := &domain.Organization{Name: "Uno", Slug: "uno"}
 	org.ID = "org-1"
-	sp := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "U"}
+	sp := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "0.5"}
 	sp.ID = "space-1"
-	li := &domain.TaskList{SpaceID: "space-1", Name: "Lista", Rank: "U"}
+	li := &domain.TaskList{SpaceID: "space-1", Name: "Lista", Rank: "0.5"}
 	li.ID = "list-1"
 	it := &domain.Item{OrgID: "org-1", ListID: "list-1", Title: "Una tarea cualquiera", Status: domain.ReportPending}
 	it.ID = "it-1"

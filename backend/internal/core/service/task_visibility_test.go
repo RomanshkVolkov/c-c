@@ -139,9 +139,9 @@ func visibilityDB(t *testing.T) (*gorm.DB, func()) {
 	org.ID = "org-1"
 	proj := &domain.ReportProject{OrgID: "org-1", Name: "Cliente", Slug: "cliente", IngestKeyHash: []byte("h")}
 	proj.ID = "proj-1"
-	space := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "U"}
+	space := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "0.5"}
 	space.ID = "space-1"
-	list := &domain.TaskList{SpaceID: "space-1", Name: "Lista", Rank: "U"}
+	list := &domain.TaskList{SpaceID: "space-1", Name: "Lista", Rank: "0.5"}
 	list.ID = "list-1"
 	for _, m := range []any{org, proj, space, list} {
 		if err := db.Create(m).Error; err != nil {
@@ -352,9 +352,9 @@ func TestACardCanMoveToAnotherList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	other := &domain.TaskList{SpaceID: "space-2", Name: "Otra", Rank: "U"}
+	other := &domain.TaskList{SpaceID: "space-2", Name: "Otra", Rank: "0.5"}
 	other.ID = "list-2"
-	space2 := &domain.TaskSpace{OrgID: "org-1", Name: "Segundo", Rank: "V"}
+	space2 := &domain.TaskSpace{OrgID: "org-1", Name: "Segundo", Rank: "0.6"}
 	space2.ID = "space-2"
 	for _, m := range []any{space2, other} {
 		if err := db.Create(m).Error; err != nil {
@@ -414,9 +414,9 @@ func TestACardCannotMoveToAnotherOrgsList(t *testing.T) {
 
 	elsewhere := &domain.Organization{Name: "Otra", Slug: "otra"}
 	elsewhere.ID = "org-2"
-	theirSpace := &domain.TaskSpace{OrgID: "org-2", Name: "Suyo", Rank: "U"}
+	theirSpace := &domain.TaskSpace{OrgID: "org-2", Name: "Suyo", Rank: "0.5"}
 	theirSpace.ID = "space-theirs"
-	theirList := &domain.TaskList{SpaceID: "space-theirs", Name: "Suya", Rank: "U"}
+	theirList := &domain.TaskList{SpaceID: "space-theirs", Name: "Suya", Rank: "0.5"}
 	theirList.ID = "list-theirs"
 	for _, m := range []any{elsewhere, theirSpace, theirList} {
 		if err := db.Create(m).Error; err != nil {

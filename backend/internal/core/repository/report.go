@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/rank"
 	"gorm.io/gorm"
 )
 
@@ -41,6 +42,25 @@ func (r *ReportRepository) CreateWithSeq(report *domain.Report) error {
 			return err
 		}
 		report.Seq = maxSeq + 1
+
+		// Un reporte es una tarjeta como cualquier otra, así que necesita un
+		// sitio en el tablero. No lo tenía: hasta el 10-sep-2026 se guardaba con
+		// el rango vacío, y **todos empataban** — el orden entre ellos lo
+		// decidía Postgres de una consulta a otra. Salió al pasar la columna a
+		// `NUMERIC`, que ya no acepta la cadena vacía.
+		//
+		// Va **encima** de lo que ya hay, que es donde la cadena vacía los ponía
+		// y por tanto donde la gente los ve hoy: el cambio arregla la
+		// inestabilidad sin mover nada de sitio. Que un reporte del cliente
+		// entre por arriba o por abajo es una decisión de producto, no el efecto
+		// secundario de un cambio de tipo.
+		if report.Rank == "" {
+			var first string
+			tx.Model(&domain.Item{}).
+				Where("list_id = ? AND status = ?", report.ListID, report.Status).
+				Order("rank ASC").Limit(1).Pluck("rank", &first)
+			report.Rank = rank.Between("", first)
+		}
 		return tx.Create(report).Error
 	})
 }

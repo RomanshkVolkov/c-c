@@ -249,7 +249,7 @@ func ringDB(t *testing.T) (*gorm.DB, func()) {
 	must(db.Exec(`INSERT INTO organizations (id, name, slug, created_at, updated_at)
 		VALUES ('org-1','Uno','uno',?,?), ('org-2','Dos','dos',?,?)`, ahora, ahora, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
-		VALUES ('esp-1','org-1','Nuestro','#fff','m',?,?)`, ahora, ahora))
+		VALUES ('esp-1','org-1','Nuestro','#fff','0.5',?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO org_memberships (org_id, user_id, role, created_at)
 		VALUES ('org-1','u-ana','member',?),
 		       ('org-1','u-bea','member',?),

@@ -140,9 +140,9 @@ func backfillDB(t *testing.T) (*gorm.DB, func()) {
 	must(db.Exec(`INSERT INTO organizations (id, name, slug, created_at, updated_at)
 		VALUES ('org-1','Uno','uno',?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
-		VALUES ('esp-1','org-1','Portento','#fff','m',?,?)`, ahora, ahora))
+		VALUES ('esp-1','org-1','Portento','#fff','0.5',?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_lists (id, space_id, name, rank, created_at, updated_at)
-		VALUES ('lista-1','esp-1','tasks','m',?,?), ('lista-2','esp-1','otra','n',?,?)`,
+		VALUES ('lista-1','esp-1','tasks','0.5',?,?), ('lista-2','esp-1','otra','0.6',?,?)`,
 		ahora, ahora, ahora, ahora))
 	must(db.Exec(`INSERT INTO report_projects (id, org_id, name, slug, ingest_key_hash, is_active, list_id, created_at, updated_at)
 		VALUES ('proj-1','org-1','Portento','portento','\x00',true,'lista-1',?,?)`, ahora, ahora))

@@ -61,6 +61,19 @@ es estar mirando eso. La puerta que había («si tiene el foco, no avises») est
 quitada a propósito; no la vuelvas a poner.
 → Guardián: `app/src/hooks/avisos-del-sistema.test.tsx` («la puerta del foco»).
 
+**El rango de un tablero es un `NUMERIC`, y tiene que seguir siéndolo.** Hasta
+el 10-sep-2026 era texto en base 62 (`0-9A-Za-z`) y lo ordenaba Postgres con
+`ORDER BY rank`, así que el orden dependía de la colación: con una de locale
+(glibc `en_US.utf8`) las cajas se entremezclan y **el segundo elemento de un
+contenedor se pinta antes que el primero** —los primeros rangos eran «U» y «k»—.
+Producción estaba en `C` y acertaba, pero nada en el esquema lo pedía. A un
+número no hay colación que aplicarle. Devolver la columna a `varchar`
+reintroduce el fallo entero **sin romper ninguna otra prueba**, porque en una
+base `C` seguiría saliendo bien.
+→ Guardián: `repository.TestEveryRankColumnIsNumeric`. Y una fila sin rango no
+revienta la inserción porque la columna tiene `default:0.5`; los caminos que
+saben dónde va la tarjeta le ponen el suyo.
+
 ## El CI corre las pruebas del backend, y sólo ésas
 
 `backend.yml` tiene por delante un trabajo `test` con Postgres de verdad, y el

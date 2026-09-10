@@ -108,6 +108,34 @@ verlo porque sin base la prueba se salta.
 Lo que sigue sin red: `app/` y `transcriber/` no corren sus suites en ningún
 sitio. Es un workflow corto y aparte, no una línea más en éste.
 
+## 🔢 El orden de un tablero ya no depende de cómo se instaló Postgres
+
+`rank` pasó de `varchar` en base 62 a `NUMERIC`. Salió tirando del hilo de la
+tarjeta #38: el CI nuevo, con Postgres de Debian/glibc, hacía fallar la
+ordenación de carpetas, y debajo estaba esto — `core/rank` reparte claves sobre
+`0-9A-Za-z` y da por hecho el orden de bytes, pero quien las ordena es Postgres
+con `ORDER BY rank`, y ahí manda la colación. Con una de locale, **el segundo
+elemento de cualquier contenedor se pinta antes que el primero** (los primeros
+rangos eran «U» y «k»).
+
+**Producción no estaba rota**: comprobado en `dwit_kb`, todas las bases están en
+`C` y ordenaban bien. Pero por suerte, no por diseño — nada en el esquema lo
+pedía. A un número no hay colación que aplicarle.
+
+| Qué | Dónde |
+|---|---|
+| Alfabeto `0-9`, una clave es el número que escribe | `core/rank` — el algoritmo no cambió, era agnóstico del alfabeto |
+| Migración de datos, antes de `AutoMigrate` | `repository/rank_migration.go` — conserva el orden que la gente ve hoy |
+| La columna, con `default:0.5` | Una fila sin rango tiene sitio en vez de reventar la inserción |
+| Un reporte ya no nace sin rango | `CreateWithSeq` — antes se guardaban con `''`, **todos empatados**, y el orden entre ellos lo decidía Postgres de una consulta a otra |
+
+La suite entera pasa con las dos colaciones, que es la prueba de que la
+dependencia se fue. 16 mutantes muertos entre el paquete (8), la migración (6) y
+el guardián de tipo (2); dos salieron vivos y se investigaron.
+
+La app no se toca: nunca calcula un rango. Arrastrar manda ids de vecinos
+(`afterId`/`beforeId`) y el rango lo deriva el servidor.
+
 ## ⏳ Planned (next iterations)
 
 ### App UI for container stats

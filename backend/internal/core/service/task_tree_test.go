@@ -171,11 +171,11 @@ func treeDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	org := &domain.Organization{Name: "Árbol", Slug: "arbol"}
 	org.ID = "org-1"
-	space := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "U"}
+	space := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "0.5"}
 	space.ID = "space-1"
-	a := &domain.TaskFolder{SpaceID: "space-1", Name: "A", Rank: "U"}
+	a := &domain.TaskFolder{SpaceID: "space-1", Name: "A", Rank: "0.5"}
 	a.ID = "fo-a"
-	b := &domain.TaskFolder{SpaceID: "space-1", Name: "B", Rank: "V"}
+	b := &domain.TaskFolder{SpaceID: "space-1", Name: "B", Rank: "0.6"}
 	b.ID = "fo-b"
 	for _, m := range []any{org, space, a, b} {
 		if err := db.Create(m).Error; err != nil {
@@ -205,7 +205,7 @@ func TestSortingPutsFoldersFirstAndThenNames(t *testing.T) {
 	// folders — it must still end up below them.
 	db.Model(&domain.TaskFolder{}).Where("id = ?", "fo-a").Update("name", "Zeta")
 	db.Model(&domain.TaskFolder{}).Where("id = ?", "fo-b").Update("name", "alfa")
-	lista := &domain.TaskList{SpaceID: "space-1", Name: "Abeja", Rank: "A"}
+	lista := &domain.TaskList{SpaceID: "space-1", Name: "Abeja", Rank: "0.1"}
 	lista.ID = "li-x"
 	if err := db.Create(lista).Error; err != nil {
 		t.Fatal(err)

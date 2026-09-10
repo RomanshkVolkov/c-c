@@ -257,9 +257,9 @@ func myWorkDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	org := &domain.Organization{Name: "Uno", Slug: "uno"}
 	org.ID = "org-1"
-	sp := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "U"}
+	sp := &domain.TaskSpace{OrgID: "org-1", Name: "Espacio", Rank: "0.5"}
 	sp.ID = "space-1"
-	li := &domain.TaskList{SpaceID: "space-1", Name: "Lista", Rank: "U"}
+	li := &domain.TaskList{SpaceID: "space-1", Name: "Lista", Rank: "0.5"}
 	li.ID = "list-1"
 	for _, m := range []any{org, sp, li} {
 		if err := db.Create(m).Error; err != nil {

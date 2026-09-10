@@ -252,7 +252,7 @@ func chatFollowDB(t *testing.T) (*gorm.DB, func()) {
 		('org-1','11111111-1111-4111-8111-111111111111','admin',?), ('org-1','22222222-2222-4222-8222-222222222222','member',?), ('org-1','33333333-3333-4333-8333-333333333333','member',?)`,
 		ahora, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
-		VALUES ('esp-1','org-1','Uno','#fff','m',?,?), ('esp-2','org-1','Dos','#fff','n',?,?)`,
+		VALUES ('esp-1','org-1','Uno','#fff','0.5',?,?), ('esp-2','org-1','Dos','#fff','0.6',?,?)`,
 		ahora, ahora, ahora, ahora))
 	// Otra organización con su propia persona: la pertenencia es lo que decide
 	// quién recibe, así que hace falta alguien de fuera para probar que no cruza.
@@ -263,7 +263,7 @@ func chatFollowDB(t *testing.T) (*gorm.DB, func()) {
 	must(db.Exec(`INSERT INTO org_memberships (org_id, user_id, role, created_at)
 		VALUES ('org-2','44444444-4444-4444-8444-444444444444','admin',?)`, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
-		VALUES ('esp-otra','org-2','Ajeno','#fff','m',?,?)`, ahora, ahora))
+		VALUES ('esp-otra','org-2','Ajeno','#fff','0.5',?,?)`, ahora, ahora))
 
 	return db, func() {
 		if inner, _ := db.DB(); inner != nil {

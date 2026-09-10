@@ -196,7 +196,14 @@ type Item struct {
 	// ── From the task side, now available to everything ──
 	// Rank orders the board by hand. Fractional, so moving one card is one
 	// UPDATE — see core/rank. Never sent to a client: it computes no order.
-	Rank string `gorm:"type:varchar(64);index" json:"-"`
+	//
+	// `default:0.5` es el mismo sitio que le toca al primer elemento de un
+	// contenedor vacío (`rank.First`), y está para que a una fila creada sin
+	// rango le quede un sitio definido en vez de reventar la inserción: la
+	// columna es `NUMERIC` y no acepta la cadena vacía, que es lo que escribía
+	// quien se olvidaba. Los caminos que sí saben dónde va la tarjeta —crear
+	// una tarea, ingerir un reporte— asignan el suyo y no llegan aquí.
+	Rank string `gorm:"type:numeric;index;default:0.5" json:"-"`
 	// IdempotencyKey is unique per list, via a partial index (the empty string
 	// is the "not supplied" value and must not collide with itself).
 	IdempotencyKey string     `gorm:"type:varchar(120);index" json:"-"`

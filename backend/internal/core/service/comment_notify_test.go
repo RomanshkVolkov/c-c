@@ -341,11 +341,11 @@ func avisosDB(t *testing.T) (*gorm.DB, func()) {
 		('org-1',?,'admin',?), ('org-1',?,'member',?), ('org-1',?,'member',?)`,
 		ana, ahora, bea, ahora, caro, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
-		VALUES ('esp-1','org-1','Uno','#fff','m',?,?)`, ahora, ahora))
+		VALUES ('esp-1','org-1','Uno','#fff','0.5',?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO report_projects (id, org_id, name, slug, ingest_key_hash, is_active, created_at, updated_at)
 		VALUES ('proj-1','org-1','Portento','portento','\x00',true,?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_lists (id, space_id, name, rank, project_id, created_at, updated_at)
-		VALUES ('lista-1','esp-1','tasks','m','proj-1',?,?)`, ahora, ahora))
+		VALUES ('lista-1','esp-1','tasks','0.5','proj-1',?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO items (id, org_id, project_id, list_id, seq, title, description,
 		status, category, priority, origin, visibility, reporter_id, reporter_name, created_at, updated_at)
 		VALUES ('item-1','org-1','proj-1','lista-1',84,'Desplegar leyenda','...',

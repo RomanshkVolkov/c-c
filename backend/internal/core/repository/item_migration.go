@@ -7,6 +7,7 @@ import (
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
+	"github.com/guz-studio/cac/backend/internal/core/rank"
 )
 
 // Filling the unified `items` tables from the two they replace.
@@ -294,7 +295,7 @@ func backfillProjectLists(db *gorm.DB) error {
 			}
 			list = &found
 		} else {
-			list.Rank = "U"
+			list.Rank = rank.First
 			if err := db.Create(list).Error; err != nil {
 				return err
 			}
@@ -318,7 +319,7 @@ func reportsSpaceFor(db *gorm.DB, orgID string) (string, error) {
 	if !isNotFound(err) {
 		return "", err
 	}
-	space = domain.TaskSpace{OrgID: orgID, Name: name, Rank: "U"}
+	space = domain.TaskSpace{OrgID: orgID, Name: name, Rank: rank.First}
 	if err := db.Create(&space).Error; err != nil {
 		return "", err
 	}
@@ -329,6 +330,16 @@ func isNotFound(err error) bool { return err == gorm.ErrRecordNotFound }
 
 // copyReportsToItems brings the channel side across, soft-deleted rows included:
 // a withdrawn report is still part of the record, and its number is still spent.
+// copyReportsToItems trae los reportes de la tabla vieja.
+//
+// El rango se calcula aquí en vez de copiarse: los reportes nunca tuvieron uno.
+// Se guardaban con la cadena vacía, así que **todos empataban** y el orden entre
+// ellos lo decidía Postgres de una consulta a otra. Se reparten dentro de su
+// columna y por antigüedad, que es el único orden que estas filas traen.
+//
+// (Los comentarios de dentro del SQL van en inglés: viven en un literal de Go y
+// `i18n.TestElServidorNoEscribeEnCastellano` no puede distinguirlos del texto
+// que lee una persona.)
 func copyReportsToItems(db *gorm.DB) error {
 	return db.Exec(`
 		INSERT INTO items (
@@ -344,7 +355,14 @@ func copyReportsToItems(db *gorm.DB) error {
 			r.title, r.description, r.status, r.category, r.priority, r.area, r.origin,
 			r.url, r.user_agent, r.viewport, r.telemetry, r.telemetry_purge_at,
 			r.reporter_name, r.reporter_email, r.reporter_id,
-			'', '', r.resolved_at, '', r.deleted_at
+			-- A place on the board, spread within its own column; see above.
+			('0.' || lpad(
+				(row_number() OVER (
+					PARTITION BY COALESCE(p.list_id, ''), r.status ORDER BY r.created_at))::text,
+				greatest(length((count(*) OVER (
+					PARTITION BY COALESCE(p.list_id, ''), r.status))::text), 1),
+				'0'))::numeric,
+			'', r.resolved_at, '', r.deleted_at
 		FROM reports r
 		-- LEFT, not INNER. ReportProject has no soft-delete, so a deleted project
 		-- leaves its reports pointing at nothing. Those rows are already
@@ -373,6 +391,10 @@ func copyReportsToItems(db *gorm.DB) error {
 
 // copyTasksToItems folds the configurable columns onto the shared state machine.
 //
+// El rango se conserva tal cual y sólo cambia de tipo. La conversión funciona
+// porque `migrateRanks` ya pasó por la tabla `tasks`: corre antes de
+// `AutoMigrate`, y esto corre después. Ver `rank_migration.go`.
+//
 // The mapping reads the column's `kind`, never its name — the whole reason kind
 // exists is that someone renaming "Done" to "Shipped" must not change what the
 // column means.
@@ -395,7 +417,8 @@ func copyTasksToItems(db *gorm.DB) error {
 			'other',
 			CASE t.priority WHEN 'normal' THEN 'medium' ELSE t.priority END,
 			'', 'internal',
-			t.rank, t.idempotency_key, t.parent_id, t.start_at, t.due_at, t.completed_at,
+			-- Same rank, new type; see above.
+			t.rank::numeric, t.idempotency_key, t.parent_id, t.start_at, t.due_at, t.completed_at,
 			t.created_by_id, t.archived_at
 		FROM tasks t
 		-- Same reasoning as above: a stray row must be carried, not silently

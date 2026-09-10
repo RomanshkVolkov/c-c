@@ -224,9 +224,9 @@ func ingestDB(t *testing.T, que conQue) (*gorm.DB, func()) {
 	must(db.Exec(`INSERT INTO organizations (id, name, slug, created_at, updated_at)
 		VALUES ('org-1','Uno','uno',?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
-		VALUES ('esp-1','org-1','Portento','#fff','m',?,?)`, ahora, ahora))
+		VALUES ('esp-1','org-1','Portento','#fff','0.5',?,?)`, ahora, ahora))
 	must(db.Exec(`INSERT INTO task_lists (id, space_id, name, rank, project_id, created_at, updated_at)
-		VALUES ('lista-1','esp-1','tasks','m','proj-1',?,?), ('lista-2','esp-1','otra','n',NULL,?,?)`,
+		VALUES ('lista-1','esp-1','tasks','0.5','proj-1',?,?), ('lista-2','esp-1','otra','0.6',NULL,?,?)`,
 		ahora, ahora, ahora, ahora))
 
 	lista := "'lista-1'"

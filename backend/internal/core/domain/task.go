@@ -17,7 +17,7 @@ type TaskSpace struct {
 	OrgID string `gorm:"type:varchar(36);index;not null" json:"orgId"`
 	Name  string `gorm:"type:varchar(120);not null"      json:"name"`
 	Color string `gorm:"type:varchar(20)"                json:"color"`
-	Rank  string `gorm:"type:varchar(64);index"          json:"-"`
+	Rank  string `gorm:"type:numeric;index;default:0.5"          json:"-"`
 	// ProjectID binds everything under this space to a tenant's channel, unless a
 	// list below says otherwise. Set here when a whole space is one client's work.
 	ProjectID *string `gorm:"type:varchar(36);index" json:"projectId,omitempty"`
@@ -51,7 +51,7 @@ type TaskFolder struct {
 	// exactly that reason: the absent value already means the right thing.
 	ParentFolderID *string `gorm:"type:varchar(36);index" json:"parentFolderId,omitempty"`
 	Name           string  `gorm:"type:varchar(120);not null" json:"name"`
-	Rank           string  `gorm:"type:varchar(64);index"     json:"-"`
+	Rank           string  `gorm:"type:numeric;index;default:0.5"     json:"-"`
 }
 
 type TaskList struct {
@@ -60,7 +60,7 @@ type TaskList struct {
 	// FolderID nil = the list sits directly under the space.
 	FolderID *string `gorm:"type:varchar(36);index" json:"folderId,omitempty"`
 	Name     string  `gorm:"type:varchar(120);not null" json:"name"`
-	Rank     string  `gorm:"type:varchar(64);index"     json:"-"`
+	Rank     string  `gorm:"type:numeric;index;default:0.5"     json:"-"`
 	// ProjectID binds this list to a tenant's channel and overrides the space's.
 	//
 	// Which way this points matters. It used to be the project that named its
@@ -91,7 +91,7 @@ type TaskStatus struct {
 	Name   string         `gorm:"type:varchar(60);not null"       json:"name"`
 	Color  string         `gorm:"type:varchar(20)"                json:"color"`
 	Kind   TaskStatusKind `gorm:"type:varchar(20);default:'open'" json:"kind"`
-	Rank   string         `gorm:"type:varchar(64);index"          json:"-"`
+	Rank   string         `gorm:"type:numeric;index;default:0.5"          json:"-"`
 	// Status es el estado canónico que esta columna representa: `pending`,
 	// `in_progress`, `resolved` o `closed`.
 	//

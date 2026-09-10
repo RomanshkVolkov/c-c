@@ -59,6 +59,10 @@ func DBConnection() {
 		sqlDB.SetConnMaxLifetime(30 * time.Minute)
 	}
 
+	// Antes de `AutoMigrate` a propósito: convierte los rangos de texto a número
+	// para que el cambio de tipo que viene detrás sea posible. Ver rank_migration.go.
+	migrateRanks(db)
+
 	if err := db.AutoMigrate(
 		&domain.User{},
 		&domain.Organization{},

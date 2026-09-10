@@ -220,6 +220,11 @@ func countEverything(t *testing.T, db *gorm.DB) map[string]int64 {
 
 // seedOldWorld builds the two modules as they are today, including the rows that
 // are easy to get wrong.
+// seedOldWorld deja la base como estaba antes de unificar, y **después pasa la
+// migración de rangos**, que es el orden en el que arranca el binario: los
+// rangos se convierten a número antes de `AutoMigrate`, y la copia a `items`
+// ocurre bastante después. Sembrar sin ese paso ensayaría un estado que
+// producción no tiene.
 func seedOldWorld(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	mk := func(v any) {
@@ -270,13 +275,13 @@ func seedOldWorld(t *testing.T, db *gorm.DB) {
 	}
 
 	// ── The task side, with a renamed column ──
-	space := &domain.TaskSpace{OrgID: "org-1", Name: "Producto", Rank: "U"}
+	space := &domain.TaskSpace{OrgID: "org-1", Name: "Producto", Rank: "0.5"}
 	space.ID = "space-1"
 	mk(space)
-	list := &domain.TaskList{SpaceID: "space-1", Name: "Sprint", Rank: "U"}
+	list := &domain.TaskList{SpaceID: "space-1", Name: "Sprint", Rank: "0.5"}
 	list.ID = "list-1"
 	mk(list)
-	shipped := &domain.TaskStatus{ListID: "list-1", Name: "Shipped", Kind: domain.StatusKindDone, Rank: "U"}
+	shipped := &domain.TaskStatus{ListID: "list-1", Name: "Shipped", Kind: domain.StatusKindDone, Rank: "0.5"}
 	shipped.ID = "st-done"
 	mk(shipped)
 
@@ -313,6 +318,12 @@ func seedOldWorld(t *testing.T, db *gorm.DB) {
 	}
 
 	mk(&domain.ItemAssignee{ItemID: "task-done", UserID: "u-1"})
+
+	// El orden del arranque, no un adorno: los rangos se pasan a número antes
+	// de `AutoMigrate`, y la copia a `items` ocurre después. Sin esto la
+	// fixture ensayaría una base con `tasks.rank` en texto, que producción no
+	// tiene desde el primer arranque de esta versión.
+	migrateRanks(db)
 }
 
 func itemMigrationDB(t *testing.T) (*gorm.DB, func()) {
@@ -812,7 +823,7 @@ func TestABoardWorksOnTheUnifiedTable(t *testing.T) {
 	// Moving it: through the repository the way the service does.
 	done := domain.ReportResolved
 	now := time.Now()
-	if err := repo.MoveTask(fresh.ID, done, "V", &now); err != nil {
+	if err := repo.MoveTask(fresh.ID, done, "0.6", &now); err != nil {
 		t.Fatal(err)
 	}
 	var moved domain.Item
