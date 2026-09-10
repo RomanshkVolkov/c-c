@@ -1,0 +1,35 @@
+[project]
+name = "cac-transcriber"
+version = "0.1.0"
+description = "Bot que entra a una sala de LiveKit, captura el audio y lo transcribe"
+requires-python = ">=3.12,<3.13"
+
+# La fase 0 es un spike y sólo necesita hablar con el SFU: nada de modelo, nada
+# de servidor. Lo pesado (faster-whisper) vive en el extra `stt` para que la
+# imagen del spike pese lo que pesa un cliente de WebRTC y no dos gigas.
+dependencies = [
+    "livekit>=1.1,<2",
+    "livekit-api>=1.0,<2",
+]
+
+[project.optional-dependencies]
+stt = [
+    "faster-whisper>=1.2,<2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["transcriber"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

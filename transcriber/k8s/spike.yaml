@@ -1,0 +1,53 @@
+# Fase 0 — la única pregunta que este manifiesto contesta:
+# **¿llega el media de WebRTC desde un pod normal hasta la IP que anuncia el SFU?**
+#
+# Por eso NO lleva `hostNetwork`. LiveKit sí lo lleva y anuncia su IP externa
+# (`use_external_ip: true`, descubierta por STUN). Un pod de la red de Cilium
+# que quiera mandarle UDP a esa IP tiene que salir del VPC y volver, y ese
+# rebote es justo lo que puede no existir. Si este Job sale con 0, existe.
+#
+# Si sale con 1, en este orden:
+#   1. `rtc.tcp_port` (7881) desde el pod — peor latencia, pero conecta.
+#   2. añadir la IP privada del nodo a los candidatos (`rtc.node_ip`).
+#   3. si ninguna vale, el plan cambia a Egress y se re-planifica.
+# Lo que se acabe haciendo se anota en `5-livekit.yaml` como medida, no como idea.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: transcriber-spike
+  namespace: default
+spec:
+  # Sin reintentos: un fallo aquí es el resultado del experimento, no un
+  # transitorio que valga la pena volver a probar solo.
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      containers:
+        - name: spike
+          image: ghcr.io/guz-studio/cac-transcriber:spike
+          args: ["--room", "voice:REEMPLAZAR", "--seconds", "120"]
+          env:
+            - name: LIVEKIT_URL
+              value: ws://livekit.default.svc.cluster.local:7880
+            # Sólo estas dos claves, no el `cac-secret` entero por `envFrom`:
+            # un pod que sólo escucha no tiene por qué llevarse encima la URL
+            # de la base de datos.
+            - name: LIVEKIT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cac-secret
+                  key: LIVEKIT_API_KEY
+            - name: LIVEKIT_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cac-secret
+                  key: LIVEKIT_API_SECRET
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              memory: 512Mi

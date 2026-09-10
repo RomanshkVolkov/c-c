@@ -36,6 +36,37 @@ El MCP ya escribe documentación: seis herramientas con dos permisos separados
 (`docs:write` sólo añade, `docs:manage` puede pisar), y guardar a la vez ya no
 borra lo del otro.
 
+## 🎙️ Transcripción y resumen de llamadas
+
+Plan: `~/.claude/plans/genera-un-plan-robusto-wise-elephant.md`. Un bot entra a la
+sala como participante visible, captura una pista por persona, transcribe con
+`faster-whisper` en el host y guarda el texto cifrado con el `REPORTS_KEK`.
+
+**El orden de las fases cambió (9-sep-2026): el resumen con IA va al final.** El
+plan lo ponía en la fase 2; ahora es lo último. Sale gratis porque la degradación
+ya estaba diseñada — sin resumidor, `Enabled()==false` deja la llamada en `ready`
+con `SummaryError="summarizer-not-configured"`, y el transcript, que es lo
+valioso, ya está. Orden nuevo: **0 → 1 → 3 → 4 → 5 → 2**.
+
+| Fase | Qué | Estado |
+|---|---|---|
+| 0 | Spike: ¿llega el media desde un pod? + `rtf` del modelo | **escrita, sin medir** |
+| 1 | Worker completo + ancla en el backend | no empezada |
+| 3 | App: consentimiento + chip REC | no empezada |
+| 4 | App: panel «Llamadas» + notificación | no empezada |
+| 5 | Lectura desde fuera y la línea en el canal | no empezada |
+| 2 | Resumidor (Mistral, ZDR) — **al final** | no empezada |
+
+La fase 0 es una puerta, no un trámite: si el media no llega desde un pod y no lo
+arreglan ni `rtc.tcp_port` ni `rtc.node_ip`, **el plan cambia a Egress y se
+re-planifica**. No se escribe backend hasta saberlo. Las dos medidas y lo que
+significan, en `docs/transcripcion.md`.
+
+| Abierto | Owner |
+|---|---|
+| Desplegar `transcriber/k8s/spike.yaml` y entrar a una sala real | jose (mi `kubectl` apunta a minikube) |
+| Grabar ~30 min de llamada real por pistas para el `rtf` | jose |
+
 ## 📮 Reports — cac as the single home for bug reports
 
 Consolidating three independent report modules (portento's `bug-tickets`, cac's
