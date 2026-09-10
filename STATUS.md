@@ -51,6 +51,7 @@ valioso, ya está. Orden nuevo: **0 → 1 → 3 → 4 → 5 → 2**.
 | Fase | Qué | Estado |
 |---|---|---|
 | 0 | Spike: ¿llega el media desde un pod? + `rtf` del modelo | **escrita, sin medir** |
+| — | `merge.py` y el filtro de `stt.py` — puros, valen con bot o con Egress | hechos, 20 mutantes muertos |
 | 1 | Worker completo + ancla en el backend | no empezada |
 | 3 | App: consentimiento + chip REC | no empezada |
 | 4 | App: panel «Llamadas» + notificación | no empezada |

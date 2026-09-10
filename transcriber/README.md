@@ -9,6 +9,12 @@ Hoy esto es **la fase 0**: un spike, no un worker. Contesta una sola pregunta
 —si el media llega desde un pod— y para eso no hace falta ni servidor ni
 modelo. Lo que hay ya está en su forma definitiva; lo que falta, falta entero.
 
+Además del spike hay dos módulos escritos que **no dependen de esa respuesta**:
+`merge.py` y el filtro de `stt.py` se hacen igual si la captura acaba siendo por
+Egress en vez de por bot. Son también los dos sitios donde un fallo no se ve —
+un transcript mal cosido o con basura dentro no revienta nada, sólo miente— así
+que se escriben con las pruebas por delante y se mutan.
+
 Lo medido va a `docs/transcripcion.md`. El porqué del diseño, al plan.
 
 ## Correr el spike
@@ -50,7 +56,7 @@ Mutadas con `/mutar` (plan en `/tmp`, `"cwd": "transcriber"`).
 ## Lo que falta para ser un worker
 
 De la fase 1, y en el plan con detalle: `jobs.py` (la máquina de estados),
-`stt.py` (+ filtro de alucinaciones), `merge.py` (puro, el más mutado),
-`delivery.py` (reintentos y outbox de 24 h), `storage.py` (PVC 0700 y borrado
-seguro), `api.py` (`/v1/jobs*`, `/healthz`, `/metrics`), el `Dockerfile.model`
-con el CT2 horneado, y el `docker-compose` de desarrollo.
+el enchufe del modelo en `stt.py`, `delivery.py` (reintentos y outbox de 24 h),
+`storage.py` (PVC 0700 y borrado seguro), `api.py` (`/v1/jobs*`, `/healthz`,
+`/metrics`), el relleno de huecos del `recorder`, el `Dockerfile.model` con el
+CT2 horneado, y el `docker-compose` de desarrollo.
