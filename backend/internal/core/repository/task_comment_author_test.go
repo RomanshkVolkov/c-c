@@ -28,7 +28,7 @@ func seedThread(t *testing.T, db *gorm.DB) string {
 	t.Helper()
 	project := &domain.ReportProject{
 		Name: "Portento", Slug: "portento", OrgID: "org-1",
-		IngestKeyHash: []byte("unused-here"), Platform: "app",
+		IngestKeyHash: []byte("unused-here"),
 	}
 	project.ID = "pr-1"
 	if err := db.Create(project).Error; err != nil {
@@ -200,7 +200,7 @@ func TestAFolioIsCutAtTheLastHyphen(t *testing.T) {
 	// and a sequence of "geolocation-4".
 	project := &domain.ReportProject{
 		Name: "TDS", Slug: "tds-geolocation", OrgID: "org-1",
-		IngestKeyHash: []byte("h"), Platform: "app",
+		IngestKeyHash: []byte("h"),
 	}
 	project.ID = "pr-2"
 	if err := db.Create(project).Error; err != nil {

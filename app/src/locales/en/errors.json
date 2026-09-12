@@ -31,7 +31,6 @@
   "not-found": "That doesn't exist, or isn't yours to see.",
   "not-in-cluster": "That machine isn't in this cluster.",
   "not-the-author": "You can only change what you wrote.",
-  "origin-not-allowed": "That origin isn't on the allowed list.",
   "pat-unsupported": "A personal token can't do that.",
   "rate-limited": "Too many requests. Wait a moment and try again.",
   "same-password": "The new password has to differ from the current one.",

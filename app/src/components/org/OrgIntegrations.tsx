@@ -83,16 +83,7 @@ export default function OrgIntegrations({ canManage }: { canManage: boolean }) {
     if (!n || busy) return;
     setBusy(true);
     try {
-      // Siempre server-to-server: lo que se integra hoy es otro servidor, no un
-      // navegador. Las que ya existan en "web" se siguen leyendo y editando tal
-      // cual —el servidor sigue vigilando sus orígenes— pero no se crean más.
-      const key = await createProject({
-        name: n,
-        platform: "app",
-        // Nadie manda Origin desde un servidor, así que la lista se queda vacía
-        // en vez de guardar algo que no se comprueba nunca.
-        allowedOrigins: [],
-      });
+      const key = await createProject({ name: n });
       setNombre("");
       setCreando(false);
       setClave(key);
@@ -213,7 +204,6 @@ function FichaIntegracion({
   const [guardando, setGuardando] = useState(false);
   const [borrador, setBorrador] = useState({
     name: p.name,
-    allowedOrigins: p.allowedOrigins.join(", "),
     rateLimitPerHour: String(p.rateLimitPerHour),
     rateLimitPerReporterPerHour: String(p.rateLimitPerReporterPerHour),
     webhookUrl: p.webhookUrl ?? "",
@@ -242,10 +232,6 @@ function FichaIntegracion({
     const nombre = borrador.name.trim();
     if (nombre && nombre !== p.name) cambios.name = nombre;
 
-    if (p.platform === "web") {
-      const origenes = borrador.allowedOrigins.split(",").map((o) => o.trim()).filter(Boolean);
-      if (origenes.join(",") !== p.allowedOrigins.join(",")) cambios.allowedOrigins = origenes;
-    }
     const porHora = Number(borrador.rateLimitPerHour);
     if (porHora > 0 && porHora !== p.rateLimitPerHour) cambios.rateLimitPerHour = porHora;
     const porReportero = Number(borrador.rateLimitPerReporterPerHour);
@@ -317,7 +303,7 @@ function FichaIntegracion({
         </span>
         <span className="truncate font-mono text-[11px] text-muted-foreground">{p.slug}</span>
         <Badge variant="secondary" className="text-[10px]">
-          {p.platform === "app" ? t("org:serverToServer") : t("org:fromBrowser")}
+          {t("org:serverToServer")}
         </Badge>
         <Badge variant="outline" className="text-[10px]">
           {p.isActive ? t("org:active") : t("org:paused")}
@@ -336,14 +322,6 @@ function FichaIntegracion({
             placeholder={t("org:namePlaceholder")}
             className="max-w-sm"
           />
-          {p.platform === "web" && (
-            <Input
-              value={borrador.allowedOrigins}
-              onChange={(e) => setBorrador({ ...borrador, allowedOrigins: e.target.value })}
-              placeholder={t("org:originsPlaceholder")}
-              className="max-w-lg text-xs"
-            />
-          )}
           <div className="flex flex-wrap gap-2">
             <label className="text-xs text-muted-foreground">
               {t("org:perHour")}
@@ -445,16 +423,8 @@ function FichaIntegracion({
             </dd>
           </div>
           <div>
-            <dt className="uppercase tracking-wide text-muted-foreground">
-              {p.platform === "web" ? t("org:allowedOrigins") : t("org:origin")}
-            </dt>
-            <dd className="mt-0.5 break-words">
-              {p.platform === "web"
-                ? p.allowedOrigins.length > 0
-                  ? p.allowedOrigins.join(", ")
-                  : t("org:noOriginsListed")
-                : t("org:originNotChecked")}
-            </dd>
+            <dt className="uppercase tracking-wide text-muted-foreground">{t("org:origin")}</dt>
+            <dd className="mt-0.5 break-words">{t("org:originNotChecked")}</dd>
           </div>
           <div>
             <dt className="uppercase tracking-wide text-muted-foreground">{t("org:limits")}</dt>

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -18,14 +19,12 @@ func keyReq(method, path, key string) *http.Request {
 	return r
 }
 
-// resolver stands in for the repository: "srv-key" is a server-to-server
-// project, "web-key" is one whose key ships inside a browser widget.
+// resolver stands in for the repository. Ya sólo hay un tipo de clave: la de un
+// proyecto que vive en un servidor. Hubo un segundo —la que viajaba dentro del
+// widget del navegador— y se retiró con él el 11-sep-2026.
 func resolver(key string) (*domain.ReportProject, error) {
-	switch key {
-	case "srv-key":
-		return &domain.ReportProject{BaseModel: domain.BaseModel{ID: "proj-1"}, Name: "portento", Slug: "portento", Platform: "app", OrgID: "org-1"}, nil
-	case "web-key":
-		return &domain.ReportProject{BaseModel: domain.BaseModel{ID: "proj-2"}, Name: "boaty", Slug: "boaty", Platform: "web", OrgID: "org-1"}, nil
+	if key == "srv-key" {
+		return &domain.ReportProject{BaseModel: domain.BaseModel{ID: "proj-1"}, Name: "portento", Slug: "portento", OrgID: "org-1"}, nil
 	}
 	return nil, http.ErrNoLocation
 }
@@ -96,20 +95,6 @@ func TestProjectKeyCarriesNoOrgMembership(t *testing.T) {
 	}
 }
 
-// A "web" project's key is printed inside the widget the browser downloads, and
-// the Origin allowlist that guards it is skipped for requests that send no
-// Origin header at all (ingest.go) — a curl passes. Write-only that is an
-// accepted trade against a rate limit; reading every report is not.
-func TestABrowserWidgetKeyCannotReadTheBoard(t *testing.T) {
-	code, claims := run(t, keyReq(http.MethodGet, "/api/v1/reports/", "web-key"))
-	if code != http.StatusForbidden {
-		t.Errorf("GET with a web project's key → %d, want 403", code)
-	}
-	if claims != nil {
-		t.Error("the request reached the handler")
-	}
-}
-
 // The key is scoped to reports. Reaching tasks, notes or token minting with it
 // would turn a tenant's credential into an account.
 func TestProjectKeyReachesNothingButReports(t *testing.T) {
@@ -158,13 +143,12 @@ func TestUnknownKeyAndNoKey(t *testing.T) {
 	}
 }
 
-// The refusals must say which one happened; "Unauthorized" for all three is how
-// an integrator spends an afternoon on a key that was simply the wrong kind.
+// The refusals must say which one happened; "Unauthorized" for both is how an
+// integrator spends an afternoon on a key that was simply the wrong kind.
 func TestRefusalsAreDistinguishable(t *testing.T) {
 	seen := map[string]bool{}
 	for _, c := range []struct{ key, path string }{
 		{"nope", "/api/v1/reports/"},
-		{"web-key", "/api/v1/reports/"},
 		{"srv-key", "/api/v1/notes/"},
 	} {
 		rec := httptest.NewRecorder()
@@ -179,5 +163,34 @@ func TestRefusalsAreDistinguishable(t *testing.T) {
 				c.key, c.path, body.Error, strings.TrimSpace(rec.Body.String()))
 		}
 		seen[body.Error] = true
+	}
+}
+
+// Toda clave de proyecto es de servidor, y no puede volver a haber una segunda
+// clase.
+//
+// El fallo que esto vigila no se parece a los demás: no es una rama mal escrita
+// sino **un campo que vuelve**. Si `ReportProject` recupera un `Platform` o unos
+// `AllowedOrigins`, al principio no lo lee nadie y ninguna prueba de
+// comportamiento se entera; la asimetría sólo reaparece cuando alguien, meses
+// después, escribe el `if` que los consulta. Para entonces el porqué se perdió.
+//
+// Lo que había: una clave «web» viajaba dentro del widget que el navegador se
+// descargaba, así que era pública por diseño, y lo único que la guardaba era una
+// lista de orígenes que la comprobación se saltaba entera para cualquier
+// petición sin cabecera `Origin` — o sea, para cualquier `curl`. Se aceptaba
+// porque esa clave era de sólo escritura. Por eso no podía leer ni clasificar, y
+// por eso hacía falta distinguirla.
+//
+// El widget se retiró el 11-sep-2026 y con él la distinción. Si hiciera falta
+// otra vez, lo que hay que recuperar no es el campo: es el candado que lo
+// acompañaba.
+func TestNoSecondClassOfProjectKeyComesBack(t *testing.T) {
+	forma := reflect.TypeOf(domain.ReportProject{})
+	for _, prohibido := range []string{"Platform", "AllowedOrigins"} {
+		if _, hay := forma.FieldByName(prohibido); hay {
+			t.Errorf("ReportProject.%s ha vuelto: una clave de proyecto vuelve a poder ser pública, "+
+				"y nada comprueba que no pueda leer", prohibido)
+		}
 	}
 }

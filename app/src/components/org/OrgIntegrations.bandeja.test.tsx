@@ -79,8 +79,6 @@ const INTEGRACION = {
   orgId: "org-1",
   name: "boaty",
   slug: "boaty",
-  platform: "app",
-  allowedOrigins: [],
   rateLimitPerHour: 500,
   rateLimitPerReporterPerHour: 7,
   isActive: true,

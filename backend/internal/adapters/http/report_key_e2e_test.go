@@ -237,7 +237,7 @@ func TestATenantReplyIsNamedInCacAndAnonymousToTheReporter(t *testing.T) {
 	if got := view.Data.Comments[0].Author; got != "team" {
 		t.Errorf("reporter sees author %q, want \"team\" (\"you\" would show them their own words as a reply)", got)
 	}
-	// The discriminator stays a closed union for the published widget, and the
+	// The discriminator stays a closed union for whoever consumes it, and the
 	// name rides alongside it — that is the whole reason for the second field.
 	if got := view.Data.Comments[0].AuthorName; got != "José" {
 		t.Errorf("reporter sees authorName %q, want the person who answered", got)
@@ -503,7 +503,7 @@ func TestTheReporterIsNamedOnTheirOwnComments(t *testing.T) {
 	}
 	proj := mkProject(t, db, "proj-n", "portento", org.ID, "pk_e2e_named")
 	rep := mkReport(t, db, "rep-n", proj.ID, "broken")
-	// mkReport files it as "u1"; give it a human name like a real widget does.
+	// mkReport files it as "u1"; give it a human name like a real tenant does.
 	if err := db.Model(rep).Update("reporter_name", "Romanshk Volkov").Error; err != nil {
 		t.Fatal(err)
 	}
@@ -962,17 +962,17 @@ func TestATenantRelayingTheReporterIsReadAsTheReporter(t *testing.T) {
 	}
 
 	// The other half of the rule the contract hands integrators: a reporter
-	// comment that came through the public widget carries no externalId and is
+	// comment that came through the reporter's own route carries no externalId and is
 	// nobody's to edit. Without this the documented predicate would be half
 	// true, and they'd show a button that 403s.
-	widget := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, Body: "from the widget"}
-	widget.ID = "c-widget"
-	if err := db.Create(widget).Error; err != nil {
+	delReportero := &domain.ReportComment{ItemID: rep.ID, Kind: domain.CommentKindUser, Body: "from the reporter"}
+	delReportero.ID = "c-reporter"
+	if err := db.Create(delReportero).Error; err != nil {
 		t.Fatal(err)
 	}
 	form, ct = editForm(text("not yours"))
 	req, _ = http.NewRequest(http.MethodPatch,
-		srv.URL+"/api/v1/reports/"+rep.ID+"/comments/"+widget.ID, form)
+		srv.URL+"/api/v1/reports/"+rep.ID+"/comments/"+delReportero.ID, form)
 	req.Header.Set("X-Ingest-Key", key)
 	req.Header.Set("Content-Type", ct)
 	resp, err = http.DefaultClient.Do(req)
@@ -981,7 +981,7 @@ func TestATenantRelayingTheReporterIsReadAsTheReporter(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("editing a widget-filed comment → %d, want 403", resp.StatusCode)
+		t.Errorf("editing a reporter-filed comment → %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -1091,7 +1091,7 @@ func mkProject(t *testing.T, db *gorm.DB, id, slug, orgID, key string) *domain.R
 	// built from the slug, so a test that searched for the slug would flag the
 	// ticket number as a leak.
 	p := &domain.ReportProject{
-		OrgID: orgID, Name: strings.ToUpper(slug) + " Support", Slug: slug, Platform: "app",
+		OrgID: orgID, Name: strings.ToUpper(slug) + " Support", Slug: slug,
 		IngestKeyHash: repository.HashIngestKey(key), IsActive: true,
 	}
 	p.ID = id

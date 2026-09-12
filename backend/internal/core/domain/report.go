@@ -1,39 +1,11 @@
 package domain
 
 import (
-	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 )
-
-// ─── JSON column type ─────────────────────────────────────────────────────────
-
-// StringList persists a []string as JSON (used for allowed_origins). Mirrors the
-// KeyValueList pattern already used for collection request fields.
-type StringList []string
-
-func (s *StringList) Scan(v any) error {
-	if v == nil {
-		*s = nil
-		return nil
-	}
-	switch b := v.(type) {
-	case []byte:
-		return json.Unmarshal(b, s)
-	case string:
-		return json.Unmarshal([]byte(b), s)
-	}
-	return fmt.Errorf("StringList: unsupported scan type %T", v)
-}
-
-func (s StringList) Value() (driver.Value, error) {
-	if s == nil {
-		return "[]", nil
-	}
-	return json.Marshal(s)
-}
 
 // ─── State machine ────────────────────────────────────────────────────────────
 
@@ -303,12 +275,11 @@ const (
 // reports. The ingest key is write-only and shown to the admin exactly once.
 type ReportProject struct {
 	BaseModel
-	OrgID            string     `gorm:"type:varchar(36);index;not null"        json:"orgId"`
-	Name             string     `gorm:"type:varchar(120);not null"             json:"name"`
-	Slug             string     `gorm:"type:varchar(120);uniqueIndex;not null" json:"slug"`
-	IngestKeyHash    []byte     `gorm:"type:bytea;not null"                    json:"-"`
-	AllowedOrigins   StringList `gorm:"type:jsonb"                             json:"allowedOrigins"`
-	RateLimitPerHour int        `gorm:"default:20"                             json:"rateLimitPerHour"`
+	OrgID            string `gorm:"type:varchar(36);index;not null"        json:"orgId"`
+	Name             string `gorm:"type:varchar(120);not null"             json:"name"`
+	Slug             string `gorm:"type:varchar(120);uniqueIndex;not null" json:"slug"`
+	IngestKeyHash    []byte `gorm:"type:bytea;not null" json:"-"`
+	RateLimitPerHour int    `gorm:"default:20"         json:"rateLimitPerHour"`
 	// RateLimitPerReporterPerHour caps one person, where RateLimitPerHour caps
 	// the whole project. Without it a single reporter can spend the project's
 	// entire hourly budget and lock out everyone else — which is a worse outage
@@ -316,14 +287,10 @@ type ReportProject struct {
 	// the ones with something to report.
 	//
 	// There is no "off": it only applies to reports that carry a reporter id, so
-	// an anonymous widget is governed by the project ceiling alone and needs no
-	// switch.
+	// a report that arrives without one is governed by the project ceiling alone
+	// and needs no switch.
 	RateLimitPerReporterPerHour int  `gorm:"default:10" json:"rateLimitPerReporterPerHour"`
 	IsActive                    bool `gorm:"default:true"                           json:"isActive"`
-	// Platform distinguishes a browser project ("web": widget reports, Origin/CORS
-	// enforced) from a native app project ("app": headless telemetry, no Origin
-	// guard). Defaults to "web" for every pre-existing project.
-	Platform string `gorm:"type:varchar(10);default:'web'" json:"platform"`
 	// DefaultAssigneeUserID: new reports are born assigned to this agent
 	// (portento's DEFAULT_ASSIGNEE_ID behavior).
 	DefaultAssigneeUserID *string `gorm:"type:varchar(36)" json:"defaultAssigneeUserId,omitempty"`
@@ -359,16 +326,14 @@ type ReportImage = ItemAttachment
 // ─── Requests / Responses (report_projects admin) ─────────────────────────────
 
 type CreateReportProjectRequest struct {
-	OrgID                       string   `json:"orgId"                 validate:"required"`
-	Name                        string   `json:"name"                  validate:"required,min=1,max=120"`
-	Slug                        string   `json:"slug"                  validate:"omitempty,min=1,max=120"`
-	Platform                    string   `json:"platform"              validate:"omitempty,oneof=web app"`
-	AllowedOrigins              []string `json:"allowedOrigins"        validate:"omitempty,dive,url"`
-	RateLimitPerHour            int      `json:"rateLimitPerHour"      validate:"omitempty,min=1,max=10000"`
-	RateLimitPerReporterPerHour int      `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
-	DefaultAssigneeUserID       string   `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
-	WebhookURL                  string   `json:"webhookUrl"            validate:"omitempty,url"`
-	WebhookSecret               string   `json:"webhookSecret"         validate:"omitempty,min=16,max=120"`
+	OrgID                       string `json:"orgId"                 validate:"required"`
+	Name                        string `json:"name"                  validate:"required,min=1,max=120"`
+	Slug                        string `json:"slug"                  validate:"omitempty,min=1,max=120"`
+	RateLimitPerHour            int    `json:"rateLimitPerHour"      validate:"omitempty,min=1,max=10000"`
+	RateLimitPerReporterPerHour int    `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
+	DefaultAssigneeUserID       string `json:"defaultAssigneeUserId" validate:"omitempty,uuid4"`
+	WebhookURL                  string `json:"webhookUrl"            validate:"omitempty,url"`
+	WebhookSecret               string `json:"webhookSecret"         validate:"omitempty,min=16,max=120"`
 }
 
 // UpdateReportProjectRequest es un PATCH de verdad: **lo que no mandas no se
@@ -376,8 +341,7 @@ type CreateReportProjectRequest struct {
 //
 // Todo puntero por eso. Antes eran valores, y omitir un campo lo reseteaba: un
 // `PATCH` que sólo quisiera cambiar la bandeja **borraba el webhook y su
-// secreto**, vaciaba los orígenes permitidos y devolvía los límites a su
-// defecto. Nada de eso avisaba.
+// secreto** y devolvía los límites a su defecto. Nada de eso avisaba.
 //
 // La regla, ahora explícita en los tres estados que puede tener un campo:
 //
@@ -387,11 +351,10 @@ type CreateReportProjectRequest struct {
 //
 // Borrar algo sin haberlo pedido es peor que obligar a pedirlo.
 type UpdateReportProjectRequest struct {
-	Name                        *string   `json:"name"             validate:"omitempty,min=1,max=120"`
-	AllowedOrigins              *[]string `json:"allowedOrigins"   validate:"omitempty,dive,url"`
-	RateLimitPerHour            *int      `json:"rateLimitPerHour" validate:"omitempty,min=1,max=10000"`
-	RateLimitPerReporterPerHour *int      `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
-	IsActive                    *bool     `json:"isActive"`
+	Name                        *string `json:"name"             validate:"omitempty,min=1,max=120"`
+	RateLimitPerHour            *int    `json:"rateLimitPerHour" validate:"omitempty,min=1,max=10000"`
+	RateLimitPerReporterPerHour *int    `json:"rateLimitPerReporterPerHour" validate:"omitempty,min=0,max=10000"`
+	IsActive                    *bool   `json:"isActive"`
 	// "" borra el responsable por defecto; un uuid lo pone.
 	DefaultAssigneeUserID *string `json:"defaultAssigneeUserId" validate:"omitempty"`
 	// ListID mueve la bandeja: en qué lista aparecen los reportes que llegan
@@ -410,16 +373,14 @@ type UpdateReportProjectRequest struct {
 }
 
 type ReportProjectResponse struct {
-	ID                          string   `json:"id"`
-	OrgID                       string   `json:"orgId"`
-	Name                        string   `json:"name"`
-	Slug                        string   `json:"slug"`
-	Platform                    string   `json:"platform"`
-	AllowedOrigins              []string `json:"allowedOrigins"`
-	RateLimitPerHour            int      `json:"rateLimitPerHour"`
-	RateLimitPerReporterPerHour int      `json:"rateLimitPerReporterPerHour"`
-	IsActive                    bool     `json:"isActive"`
-	DefaultAssigneeUserID       *string  `json:"defaultAssigneeUserId,omitempty"`
+	ID                          string  `json:"id"`
+	OrgID                       string  `json:"orgId"`
+	Name                        string  `json:"name"`
+	Slug                        string  `json:"slug"`
+	RateLimitPerHour            int     `json:"rateLimitPerHour"`
+	RateLimitPerReporterPerHour int     `json:"rateLimitPerReporterPerHour"`
+	IsActive                    bool    `json:"isActive"`
+	DefaultAssigneeUserID       *string `json:"defaultAssigneeUserId,omitempty"`
 	// ListID is where this channel's incoming reports land.
 	ListID     *string `json:"listId,omitempty"`
 	WebhookURL string  `json:"webhookUrl"`

@@ -69,25 +69,13 @@ func (s *ReportProjectService) Create(req domain.CreateReportProjectRequest) (*d
 		return nil, err
 	}
 
-	// Native "app" projects have no browser Origin; ignore any origins sent.
-	platform := req.Platform
-	if platform == "" {
-		platform = "web"
-	}
-	origins := req.AllowedOrigins
-	if platform == "app" {
-		origins = nil
-	}
-
 	p := &domain.ReportProject{
 		OrgID:                       req.OrgID,
 		Name:                        req.Name,
 		Slug:                        slug,
 		WebhookURL:                  req.WebhookURL,
 		WebhookSecret:               req.WebhookSecret,
-		Platform:                    platform,
 		IngestKeyHash:               hash,
-		AllowedOrigins:              domain.StringList(origins),
 		RateLimitPerHour:            defaultRateLimit(req.RateLimitPerHour),
 		RateLimitPerReporterPerHour: defaultReporterRateLimit(req.RateLimitPerReporterPerHour),
 		IsActive:                    true,
@@ -189,9 +177,6 @@ func aplicarCambios(p *domain.ReportProject, req domain.UpdateReportProjectReque
 	if req.Name != nil {
 		p.Name = *req.Name
 	}
-	if req.AllowedOrigins != nil {
-		p.AllowedOrigins = domain.StringList(*req.AllowedOrigins)
-	}
 	if req.RateLimitPerHour != nil {
 		p.RateLimitPerHour = defaultRateLimit(*req.RateLimitPerHour)
 	}
@@ -261,17 +246,11 @@ func ProjectResponse(p *domain.ReportProject) *domain.ReportProjectResponse {
 }
 
 func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectResponse {
-	origins := []string(p.AllowedOrigins)
-	if origins == nil {
-		origins = []string{}
-	}
 	return &domain.ReportProjectResponse{
 		ID:                          p.ID,
 		OrgID:                       p.OrgID,
 		Name:                        p.Name,
 		Slug:                        p.Slug,
-		Platform:                    p.Platform,
-		AllowedOrigins:              origins,
 		RateLimitPerHour:            p.RateLimitPerHour,
 		RateLimitPerReporterPerHour: p.RateLimitPerReporterPerHour,
 		IsActive:                    p.IsActive,

@@ -64,8 +64,12 @@ func redactQuery(uri string) string {
 	return path + "?" + values.Encode()
 }
 
-// CORS adds permissive CORS headers (suitable for local Tauri app). The public
-// ingest endpoint is exempt: it does per-project CORS (allowed_origins) itself.
+// CORS adds permissive CORS headers (suitable for local Tauri app). La ingesta
+// pública está exenta y sigue estándolo, aunque la razón cambió: ya no hace un
+// CORS por proyecto —la lista de orígenes se fue con el widget— pero sus
+// preflights los contesta `ingest.Preflight`, que anuncia sus propias cabeceras
+// (`X-Ingest-Key`) y responde 204. Dejarla caer aquí haría que este `OPTIONS`
+// de 200 se comiera aquél.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/ingest/") {

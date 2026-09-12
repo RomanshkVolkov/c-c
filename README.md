@@ -45,15 +45,14 @@ GitHub workflows under `.github/workflows/`:
 
 ## Integrations
 
-- [Adopting cac](./docs/integrations/adopting-cac.md) — how an app connects, and how one already using the widget moves across: which platform to pick and why the key's reach depends on it, the migration order (there is a step that must not be brought forward), what to register.
-- [Tenant UI reference](./docs/integrations/tenant-ui-reference.md) — the screens to build when you replace the widget: the two audiences, the board, the image proxy, the webhook receiver. Structure and decisions, taken from portento.
+- [Adopting cac](./docs/integrations/adopting-cac.md) — how an app connects: the credential and what it reaches, the order to do things in, what to register.
+- [Tenant UI reference](./docs/integrations/tenant-ui-reference.md) — the screens a tenant builds on top of the contract: the two audiences, the board, the image proxy, the webhook receiver. Structure and decisions, taken from portento.
 - [Server-to-server](./docs/integrations/server-to-server.md) — how a tenant app runs its own bug board in cac with its project's ingest key: credential and what it reaches, operations, reporter vs assignee, webhook, rate limits, error codes. The contract, kept next to the code that implements it.
-- [Capture widget](./widget/README.md) — the browser side: embeddable reporter, ingest key in the page, Origin allowlist.
 
 ## Proposals (not implemented)
 
 - [Groups & multi-user sharing](./docs/proposals/groups-and-sharing.md) — evolution of the data model from single-user to group-based resource ownership.
-- [Organizations + reports module](./docs/proposals/organizations-and-reports.md) — org scopes (separate the two companies across servers/collections) + multi-tenant bug-report tracker: Go ingest, Tauri triage console, embeddable capture widget, images via image-service, S3 via Terraform.
+- [Organizations + reports module](./docs/proposals/organizations-and-reports.md) — org scopes (separate the two companies across servers/collections) + multi-tenant bug-report tracker: Go ingest, Tauri triage console, images via image-service, S3 via Terraform.
 
 ## Local development
 
@@ -74,9 +73,11 @@ cd app && bun install && bun run tauri dev
 
 Copyright © 2026 Romanshk Volkov.
 
-- **Core** (`backend/`, `app/`, `swarm-manage/`, `infra/`) — [AGPL-3.0-or-later](LICENSE).
-  Copyleft that also covers network use: if you run a modified version as a
-  service, you must offer its source to its users.
-- **Widget** (`widget/`, published as `@g-studio/report-widget`) —
-  [MIT](widget/LICENSE). It is embedded into third-party sites, so it stays
-  permissive: dropping it into your page never affects your own licensing.
+Everything (`backend/`, `app/`, `swarm-manage/`, `infra/`) is
+[AGPL-3.0-or-later](LICENSE) — copyleft that also covers network use: if you run
+a modified version as a service, you must offer its source to its users.
+
+The one exception was the capture widget, MIT so that embedding it in someone
+else's page never touched their licensing. It was retired on 11-sep-2026 when
+reports became server-to-server only, and with it went the last piece of cac
+that ran in somebody else's browser.

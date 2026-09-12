@@ -81,7 +81,6 @@ Plan: `~/.claude/plans/compressed-cooking-pond.md`.
 | `reporterId` filter | Lets a tenant build "my reports" without cac indexing per user |
 | Outbound webhook | Per project, HMAC-signed (`X-Cac-Signature`), all five report events |
 | Provisioning | In the console (*Reports → Projects*): integration type, rate limit and webhook |
-| Widget | `@g-studio/report-widget@0.7.0` published — `ReportInput` takes `category`/`priority`/`area`, `WidgetConfig` takes `defaultArea` |
 
 **Open items:**
 
@@ -133,6 +132,43 @@ el guardián de tipo (2); dos salieron vivos y se investigaron.
 
 La app no se toca: nunca calcula un rango. Arrastrar manda ids de vecinos
 (`afterId`/`beforeId`) y el rango lo deriva el servidor.
+
+## 🧹 El widget, retirado — y con él la credencial pública
+
+Ya no se hacen apps con widget: todo entra server-to-server. Borrado `widget/`
+(11 ficheros, ~1.774 líneas) y, lo que importaba de verdad, **el modelo de
+credencial que arrastraba**.
+
+Había dos clases de proyecto. La `web` entregaba su llave dentro del navegador
+—pública por diseño— y sólo la guardaba una lista de orígenes que la
+comprobación **se saltaba entera** para cualquier petición sin cabecera
+`Origin`, o sea para cualquier `curl`. Por eso una llave así no podía leer ni
+clasificar. Y la columna tenía `default:'web'`: un proyecto creado sin decir
+nada nacía con la credencial débil.
+
+Ahora hay una sola clase, y ninguna llave anda suelta por un navegador.
+→ Guardián: `middleware.TestNoSecondClassOfProjectKeyComesBack`.
+
+Comprobado en producción antes de tocar nada: los 3 proyectos vivos son `app`
+con la lista de orígenes vacía, y para ellos la comprobación ya devolvía `true`
+sin mirar nada. **El borrado no cambia comportamiento de nadie.**
+
+| Se fue | Se queda |
+|---|---|
+| `platform`, `allowed_origins` (columnas borradas con migración propia) | `projectKeyMayReach` — acota la llave a rutas de reportes, no era del widget |
+| La lista de orígenes, su CORS por proyecto y sus dos errores | El CORS reflejado y el `?token=`: los usa la vista del reportero |
+| `OriginsEditor`, el aviso de «llave pública», 6 claves de idioma | |
+
+**La frontera que no se cruzó, y por qué.** Las rutas para que el reportero vea
+su propio reporte parecían del widget. No lo son: **170 comentarios han entrado
+por ahí** — portento 113, salud-en-casa 38, boaty 7 — y los tres son
+server-to-server. Pintan su propia pantalla con el `token` que la ingesta les
+devuelve. Quitarlas habría roto tres integraciones vivas.
+
+| Abierto | |
+|---|---|
+| `tds-geolocation` | El único proyecto `web`, app abandonada, 0 reportes. Al irse la distinción su llave pasaría a poder leer. Dejarla inerte con `is_active = false` es reversible y de una línea. |
+| npm | `@g-studio/report-widget` sigue publicado, sin tocar, por si se refina más adelante. |
 
 ## ⏳ Planned (next iterations)
 

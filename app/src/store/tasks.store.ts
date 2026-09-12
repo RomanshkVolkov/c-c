@@ -187,7 +187,7 @@ interface TasksState {
   // node belongs to, *configuring* changes how that channel behaves.
   bindNode: (kind: ChannelOwner, id: string, name: string, projectId: string) => Promise<void>;
   fetchChannel: (kind: ChannelOwner, id: string) => Promise<ReportProject | null>;
-  createChannel: (spaceId: string, req: NewChannel) => Promise<CreateReportProjectResult | null>;
+  createChannel: (spaceId: string, req?: NewChannel) => Promise<CreateReportProjectResult | null>;
   updateChannel: (kind: ChannelOwner, id: string, req: ChannelPatch) => Promise<void>;
   rotateChannelKey: (kind: ChannelOwner, id: string) => Promise<string>;
   /**
@@ -288,8 +288,6 @@ const channelBase = (kind: ChannelOwner, id: string) =>
 /** What opening a channel needs. The space supplies the org and the name. */
 export interface NewChannel {
   name?: string;
-  platform: "web" | "app";
-  allowedOrigins?: string[];
   webhookUrl?: string;
   webhookSecret?: string;
 }
@@ -303,7 +301,6 @@ export interface NewChannel {
  */
 export interface ChannelPatch {
   name: string;
-  allowedOrigins?: string[];
   rateLimitPerHour?: number;
   rateLimitPerReporterPerHour?: number;
   webhookUrl?: string;

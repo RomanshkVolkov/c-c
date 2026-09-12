@@ -4,10 +4,10 @@ Cómo una aplicación cliente ("inquilino") usa cac como su gestor de bugs desde
 propio backend: recibe los reportes de sus usuarios, opera su tablero y responde,
 todo con la credencial que ya tiene.
 
-Es una de las dos formas de integrarse. La otra es el **widget** (`widget/README.md`),
-que se incrusta en el navegador y solo sabe crear reportes. La diferencia que manda
-sobre todo lo demás: **aquí la credencial no viaja al navegador**, y por eso puede
-leer.
+Es la única forma de integrarse desde el 11-sep-2026. Hubo otra —un widget que se
+incrustaba en el navegador y sólo sabía crear reportes— y lo que la separaba de
+ésta es lo que sigue explicando el diseño: **aquí la credencial no viaja al
+navegador**, y por eso puede leer.
 
 > Contrato estable. Si algo de aquí no coincide con el comportamiento real, es un bug
 > del documento o del código — no una excepción que haya que descubrir integrando.
@@ -33,38 +33,23 @@ un reporte.** En qué tablero aterriza y a quién se le avisa lo decide cac a
 partir del proyecto, y podemos reorganizarlo por dentro sin que cambie nada de
 este contrato — no hay ningún campo de enrutado que puedas o debas enviar.
 
-**Solo funciona con proyectos `platform: "app"`.** Un proyecto `web` responde:
+Toda llave de proyecto es de servidor, y de ahí sale que pueda leer.
 
-```json
-403  {"error": "key-not-server-to-server"}
-```
+Hubo una segunda clase, la del widget, y su llave iba impresa dentro del
+JavaScript que descargaba el navegador: cualquiera que visitara la página podía
+leerla. Que sirviera para *crear* reportes era un coste aceptado, acotado por el
+límite de tasa; que sirviera para *leer* habría sido publicar el tablero. Por eso
+aquella llave no podía leer, y por eso hacía falta distinguir dos clases. Sin
+navegador no hace falta ninguna.
 
-No es burocracia: la key de un proyecto `web` va impresa dentro del JavaScript que
-descarga el navegador, así que cualquiera que visite la página puede leerla. Que
-sirva para *crear* reportes es un costo aceptado, acotado por el límite de tasa. Que
-sirviera para *leer* sería publicar el tablero. La puerta está en
-`internal/adapters/middleware/report_key.go`.
+---
 
-### Qué alcanza
+### No hay regla de Origin
 
-Acotada a **un** proyecto. Las organizaciones del llamador se dejan vacías a
-propósito, para que ninguna comprobación caiga de vuelta en "es miembro de la org" y
-le entregue los proyectos vecinos. Las dos únicas puertas de autorización viven en
-`internal/adapters/handler/report_admin.go` (`authorize()` y `List`), y las dos
-preguntan lo mismo: *¿este reporte es de mi proyecto?*
-
-Fuera de `/api/v1/reports` responde `403 endpoint-not-key-reachable`. Tareas, notas,
-usuarios y la administración de proyectos quedan fuera: es la credencial de un
-tablero, no una cuenta.
-
-### La regla de Origin no te aplica
-
-Un proyecto `app` está **exento**. No hay navegador que mande la cabecera `Origin`,
-y los orígenes que llegaran a estar registrados en un proyecto así quedan inertes.
-
-Para proyectos `web` sí es ley: si la lista no está vacía, es la única entrada, y
-eso incluye a quien **no manda** la cabecera (un `curl` replicando la key del
-widget) — `origin-missing` y `origin-not-allowed` según el caso.
+Ya no se comprueba ninguna. Existió una lista de orígenes permitidos para guardar
+la llave del widget, y tenía una grieta conocida: **se saltaba entera** para las
+peticiones que no mandaban cabecera `Origin`, o sea para cualquier `curl`. Se fue
+con el widget, y con ella los errores `origin-missing` y `origin-not-allowed`.
 
 ---
 
@@ -581,8 +566,6 @@ Los que vas a ver de verdad, con lo que significan:
 | `invalid-key` / `invalid-ingest-key` | 401 | Key desconocida, o el proyecto está inactivo — no se distingue a propósito |
 | `key-not-server-to-server` | 403 | El proyecto es `web`; su key no puede leer ni triar |
 | `endpoint-not-key-reachable` | 403 | Ese endpoint no está al alcance de una key de proyecto |
-| `origin-missing` | 403 | El proyecto tiene orígenes registrados y no mandaste `Origin` |
-| `origin-not-allowed` | 403 | El `Origin` que mandaste no está en la lista |
 | `rate-limited` | 429 | El proyecto llegó a su tope por hora |
 | `rate-limited-reporter` | 429 | Esa persona llegó a su tope por hora |
 | `not-found` | 404 | El reporte no existe **o no es de tu proyecto** — la misma respuesta, para no confirmar que existe |

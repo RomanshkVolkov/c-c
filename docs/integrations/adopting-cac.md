@@ -1,74 +1,55 @@
 # Adoptar cac en una aplicación
 
-Cómo se conecta una app al módulo de reportes, y cómo se muda una que ya usa el
-widget. El **contrato** —endpoints, credencial, autoría, webhook, límites— vive
-en [server-to-server.md](./server-to-server.md); esto es el orden en que se hace,
+Cómo se conecta una app al módulo de reportes. El **contrato** —endpoints,
+credencial, autoría, webhook, límites— vive en
+[server-to-server.md](./server-to-server.md); esto es el orden en que se hace,
 que es donde están las trampas.
 
-Portento es la referencia trabajada: hizo esta mudanza entera y sus decisiones
-están anotadas en su repo, en `docs/integracion-cac.md`.
+Portento es la referencia trabajada: hizo esta integración entera y sus
+decisiones están anotadas en su repo, en `docs/integracion-cac.md`.
 
 ---
 
-## 1. Elige la forma antes que nada
+## 1. Sólo hay una forma, y por qué
 
-Hay dos, y no es una preferencia de estilo: **determinan qué puede hacer la
-credencial**.
+Tu servidor guarda una key y habla con cac. La key **nunca** sale de ahí: no
+viaja al navegador, no entra en una `NEXT_PUBLIC_*`, no se compila dentro de un
+bundle. Con eso alcanza a crear, leer, responder y triar los reportes de su
+proyecto.
 
-| | `platform: web` (widget) | `platform: app` (server-to-server) |
-|---|---|---|
-| Dónde vive la key | en la página, pública | en tu servidor, secreta |
-| Qué alcanza | **sólo crear** reportes | crear, leer, responder y triar |
-| Quién reporta | cualquiera, sin cuenta | tus usuarios, con la identidad que tú afirmas |
-| Qué la protege | lista de orígenes + límite de tasa | que la key nunca sale de tu servidor |
+Hubo una segunda forma —un widget embebible con la key dentro de la página— y se
+retiró el 11-sep-2026. Vale la pena saber por qué, porque explica el diseño que
+queda:
 
-**La regla que decide:** ¿el formulario está detrás de un login?
+Una key que viaja en el JavaScript que descarga el navegador es **pública por
+construcción**: abrir las herramientas de desarrollo basta para tenerla. Que
+pudiera *crear* un reporte era un riesgo acotado —lo peor es ruido contra un
+límite de tasa—. Que pudiera *leer* habría sido entregar todos los reportes del
+proyecto a quien mirase el código fuente. Por eso aquella key era de sólo
+escritura, y por eso hacían falta dos clases de proyecto.
 
-Si lo está, **server-to-server, siempre**. Un widget público detrás de una
-sesión paga el precio de seguridad de la anonimia sin comprar nada a cambio:
-tus reporters ya están identificados, y tú ya tienes un servidor que puede
-guardar un secreto.
+Lo que la guardaba era una lista de orígenes permitidos, y ahí estaba la grieta:
+la comprobación **se saltaba entera** para cualquier petición que no mandara
+cabecera `Origin` — o sea, para cualquier `curl`. Era un trato aceptado a
+sabiendas mientras la key fuese de sólo escritura.
 
-El widget es para lo que no puede ser de otra forma: una página pública, alguien
-sin cuenta.
+Sin navegador no hay nada de eso: una sola clase de proyecto, una sola clase de
+key, y ninguna lista de orígenes que mantener.
 
-### Por qué la key de un proyecto `web` no puede leer
-
-cac lo rechaza explícitamente (`middleware/report_key.go`). Esa key viaja dentro
-del JavaScript que descarga el navegador — es pública por construcción, y abrir
-las herramientas de desarrollo basta para tenerla.
-
-Que pudiera **crear** un reporte es un riesgo acotado: lo peor es ruido contra un
-límite de tasa. Que pudiera **leer** sería entregar todos los reportes del
-proyecto a quien mire el código fuente. Por eso son dos cosas distintas y no un
-interruptor de confianza.
+→ Guardián: `middleware.TestNoSecondClassOfProjectKeyComesBack`.
 
 ---
 
-## 2. Mudar un widget a server-to-server
+## 2. Tu interfaz, contra el contrato
 
-El orden importa, y hay un paso que **no** se puede adelantar.
+cac no pinta nada para tus usuarios. El tablero, el hilo del reporte y la
+pantalla de «mi reporte» los construyes tú, leyendo de cac. Las pantallas y las
+decisiones que ya se tomaron una vez están en
+[tenant-ui-reference.md](./tenant-ui-reference.md).
 
-> **No cambies el proyecto a `platform: app` mientras el widget siga montado.**
->
-> Ese cambio hace dos cosas a la vez: exime al proyecto de la regla de orígenes
-> y habilita lectura y triage con su key. Si la key todavía está en el navegador
-> —una `NEXT_PUBLIC_*` o equivalente—, acabas con una credencial pública que lee
-> y modifica todos tus reportes. Es exactamente la combinación que el rechazo
-> del punto anterior existe para evitar.
-
-Secuencia sin ventana de riesgo:
-
-1. **Escribe el cliente en tu servidor.** Con la key en una env de runtime, no
-   de build. Contrato en [server-to-server.md](./server-to-server.md).
-2. **Pinta el tablero y el hilo en tu propia interfaz**, leyendo de cac.
-3. **Quita el widget** y su `NEXT_PUBLIC_*`. Ya nada del navegador lleva la key.
-4. **Ahora sí, cambia el proyecto a `app`** en la consola y rota la key — la
-   anterior estuvo publicada, dala por comprometida.
-
-Cambiar la plataforma **al final** conserva el historial: los reportes que ya
-existen siguen en el mismo proyecto. Crear un proyecto nuevo también evitaría la
-ventana de riesgo, pero parte el tablero en dos.
+Para la vista del reportero, la ingesta te devuelve un `token` por reporte en la
+respuesta de creación: guárdalo y con él tu usuario puede ver el suyo y
+responder, sin cuenta en cac.
 
 ---
 

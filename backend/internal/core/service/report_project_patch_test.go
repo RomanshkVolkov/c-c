@@ -22,9 +22,8 @@ func configurado() *domain.ReportProject {
 	lista := "lista-vieja"
 	responsable := "u-ana"
 	return &domain.ReportProject{
-		OrgID:                       "org-1",
-		Name:                        "boaty",
-		AllowedOrigins:              domain.StringList{"https://boaty.app"},
+		OrgID: "org-1",
+		Name:  "boaty",
 		// A propósito distintos de los valores por defecto —20 y 10—: con los
 		// del defecto, reiniciar el campo y dejarlo en paz dan el mismo
 		// resultado y la prueba no distingue. Un mutante lo demostró.
@@ -54,9 +53,6 @@ func TestMoverLaBandejaNoTocaElResto(t *testing.T) {
 	}
 	if p.WebhookSecret == "" {
 		t.Error("se borró el secreto del webhook, y con él la firma")
-	}
-	if len(p.AllowedOrigins) != 1 {
-		t.Errorf("se vaciaron los orígenes: %v", p.AllowedOrigins)
 	}
 	if p.RateLimitPerHour != 500 || p.RateLimitPerReporterPerHour != 7 {
 		t.Errorf("se reiniciaron los límites: %d y %d",
@@ -120,16 +116,6 @@ func TestElResponsableSeQuitaConElVacio(t *testing.T) {
 	aplicarCambios(p, domain.UpdateReportProjectRequest{DefaultAssigneeUserID: txt("")})
 	if p.DefaultAssigneeUserID != nil {
 		t.Errorf("tenía que quedarse sin responsable: %v", p.DefaultAssigneeUserID)
-	}
-}
-
-// Los orígenes se pueden vaciar a propósito, que no es lo mismo que omitirlos.
-func TestLosOrigenesSeVacianSiSeMandaVacio(t *testing.T) {
-	p := configurado()
-	vacios := []string{}
-	aplicarCambios(p, domain.UpdateReportProjectRequest{AllowedOrigins: &vacios})
-	if len(p.AllowedOrigins) != 0 {
-		t.Errorf("una lista vacía explícita tiene que vaciarlos: %v", p.AllowedOrigins)
 	}
 }
 

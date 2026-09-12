@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -111,9 +110,13 @@ func NewIngestHandler(projects *repository.ReportProjectRepository, svc *service
 	}
 }
 
-// Preflight answers CORS preflight. The project isn't known yet (no key on a
-// preflight), so it echoes the Origin permissively; the actual POST enforces
-// the project's allowed_origins.
+// Preflight answers CORS preflight, permisivo: refleja el Origin que venga.
+//
+// Ya no hay nada que comprobar contra él. Hasta el 11-sep-2026 un proyecto
+// «web» traía una lista de orígenes permitidos, y el POST la aplicaba; era lo
+// único que guardaba una clave que viajaba dentro del navegador. Sin widget no
+// hay claves en navegadores, y quien llega aquí desde uno es el reportero
+// mirando su propio reporte, que se identifica con su token.
 func (h *ingestHandler) Preflight(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
 	if origin != "" {
@@ -124,49 +127,6 @@ func (h *ingestHandler) Preflight(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Ingest-Key")
 	w.Header().Set("Access-Control-Max-Age", "3600")
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// allowedOrigin is the Origin rule, in one place because it has to mean the
-// same thing at every door.
-//
-// A native project ("app") is exempt outright: there is no browser, so there is
-// no Origin to check, and the console does not even show the field for one. Any
-// origins stored against such a project are leftovers, and must not become a
-// rule nobody can see.
-//
-// For a browser project an empty allowlist allows anything — that is what the
-// field says.
-//
-// A NON-empty allowlist is law: the request must carry an Origin, and it must
-// be one of them. The older version only checked requests that happened to send
-// one, which made the list guard browsers and nothing else — the key is printed
-// inside the widget the browser downloads, so anyone could read it and replay
-// it with curl, which sends no Origin and sailed straight through. Registering
-// an origin now means "only these", not "these, plus anyone not using a
-// browser".
-func allowedOrigin(w http.ResponseWriter, r *http.Request, project *domain.ReportProject) bool {
-	if project.Platform == "app" {
-		return true
-	}
-	allowed := []string(project.AllowedOrigins)
-	if len(allowed) == 0 {
-		return true
-	}
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		// Named apart from the mismatch case: "you sent none" and "yours isn't
-		// on the list" are different problems with different fixes, and the
-		// caller can't see the list to tell them apart.
-		SendErrorResponse(w, http.StatusForbidden,
-			"This project only accepts requests from its allowed origins, and this request sent no Origin header",
-			"origin-missing")
-		return false
-	}
-	if !slices.Contains(allowed, origin) {
-		SendErrorResponse(w, http.StatusForbidden, "Origin not allowed", "origin-not-allowed")
-		return false
-	}
-	return true
 }
 
 func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
@@ -183,10 +143,6 @@ func (h *ingestHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Same response for unknown/inactive keys — don't leak which.
 		SendErrorResponse(w, http.StatusUnauthorized, "Invalid ingest key", "invalid-key")
-		return
-	}
-
-	if !allowedOrigin(w, r, project) {
 		return
 	}
 
@@ -265,9 +221,6 @@ func (h *ingestHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Invalid ingest key", "invalid-key")
 		return
 	}
-	if !allowedOrigin(w, r, project) {
-		return
-	}
 
 	// Cap the body before reading it: a batch is bounded, and this is an
 	// unauthenticated-by-JWT endpoint.
@@ -294,7 +247,8 @@ func (h *ingestHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusAccepted, domain.APIResponse[any]{Success: true, Message: "Accepted"})
 }
 
-// echoCORS reflects the Origin so the widget (cross-origin) can read reporter
+// echoCORS reflects the Origin so the reporter's own view (cross-origin, en el
+// navegador del cliente) can read reporter
 // responses. The report token is the real auth; CORS isn't the boundary here.
 func echoCORS(w http.ResponseWriter, r *http.Request) {
 	if o := r.Header.Get("Origin"); o != "" {

@@ -118,7 +118,6 @@ func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 		// both look right while the row never changes.
 		Updates(map[string]any{
 			"name":                             p.Name,
-			"allowed_origins":                  p.AllowedOrigins,
 			"rate_limit_per_hour":              p.RateLimitPerHour,
 			"rate_limit_per_reporter_per_hour": p.RateLimitPerReporterPerHour,
 			"is_active":                        p.IsActive,

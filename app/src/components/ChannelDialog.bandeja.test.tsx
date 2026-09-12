@@ -98,8 +98,6 @@ const proyecto = (extra: Partial<ReportProject>) =>
     orgId: "org-1",
     name: "boaty",
     slug: "boaty",
-    platform: "app",
-    allowedOrigins: [],
     rateLimitPerHour: 500,
     rateLimitPerReporterPerHour: 7,
     isActive: true,

@@ -2,7 +2,7 @@ import { Trans } from "react-i18next";
 
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
-import { Eye, KeyRound, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { Eye, KeyRound, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import OriginsEditor, { cleanOrigins } from "@/components/OriginsEditor";
 import RevealedSecrets, { type Once } from "@/components/RevealedSecrets";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useTasksStore, type ChannelOwner } from "@/store/tasks.store";
@@ -81,7 +80,6 @@ export default function ChannelDialog({
   const [perReporter, setPerReporter] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
-  const [origins, setOrigins] = useState<string[]>([]);
   /** La integración libre elegida en el desplegable, aún sin apuntar. */
   const [libreElegida, setLibreElegida] = useState("");
 
@@ -98,7 +96,6 @@ export default function ChannelDialog({
         setPerHour(String(c?.rateLimitPerHour ?? ""));
         setPerReporter(String(c?.rateLimitPerReporterPerHour ?? ""));
         setWebhookUrl(c?.webhookUrl ?? "");
-        setOrigins(c?.allowedOrigins ?? []);
       })
       .catch((e) => toast.error(t("channel:errRead"), { description: String(e) }))
       .finally(() => setLoading(false));
@@ -188,7 +185,6 @@ export default function ChannelDialog({
     try {
       await updateChannel(kind, id, {
         name: channel?.name ?? name,
-        allowedOrigins: cleanOrigins(origins),
         rateLimitPerHour: Number(perHour) || undefined,
         rateLimitPerReporterPerHour: perReporter === "" ? undefined : Number(perReporter),
         webhookUrl,
@@ -208,7 +204,7 @@ export default function ChannelDialog({
   const open_ = async () => {
     setSaving(true);
     try {
-      const out = await createChannel(id, { platform: "app" });
+      const out = await createChannel(id);
       if (!out) return;
       setChannel(out.project);
       setBindTo(out.project.id);
@@ -461,13 +457,6 @@ export default function ChannelDialog({
                     />
                   </p>
 
-                  {channel.platform === "web" && (
-                    <p className="flex items-start gap-1.5 rounded-md bg-warning/10 p-2 text-xs text-warning">
-                      <TriangleAlert className="mt-0.5 size-3 shrink-0" />
-                      {t("channel:widgetKeyPublic")}
-                    </p>
-                  )}
-
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs">{t("channel:perHour")}</Label>
@@ -486,10 +475,6 @@ export default function ChannelDialog({
                       />
                     </div>
                   </div>
-
-                  {channel.platform === "web" && (
-                    <OriginsEditor value={origins} onChange={setOrigins} />
-                  )}
 
                   <div className="space-y-1">
                     <Label className="text-xs">{t("channel:webhookUrl")}</Label>

@@ -243,7 +243,7 @@ func seedOldWorld(t *testing.T, db *gorm.DB) {
 
 	proj := &domain.ReportProject{
 		OrgID: "org-1", Name: "Acme Support", Slug: "acme",
-		IngestKeyHash: []byte("h"), IsActive: true, Platform: "app",
+		IngestKeyHash: []byte("h"), IsActive: true,
 	}
 	proj.ID = "proj-1"
 	mk(proj)

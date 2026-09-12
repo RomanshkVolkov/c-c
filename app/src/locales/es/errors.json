@@ -31,7 +31,6 @@
   "not-found": "Eso no existe, o no es tuyo para verlo.",
   "not-in-cluster": "Esa máquina no está en este clúster.",
   "not-the-author": "Sólo puedes cambiar lo que escribiste tú.",
-  "origin-not-allowed": "Ese origen no está en la lista de permitidos.",
   "pat-unsupported": "Un token personal no puede hacer eso.",
   "rate-limited": "Demasiadas peticiones. Espera un momento y reinténtalo.",
   "same-password": "La contraseña nueva tiene que ser distinta de la actual.",

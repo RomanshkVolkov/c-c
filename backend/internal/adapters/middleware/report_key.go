@@ -25,12 +25,17 @@ type ProjectKeyResolver func(key string) (*domain.ReportProject, error)
 // credential — it names exactly one project, it already exists, and the console
 // can already rotate it.
 //
-// Only for `platform: "app"` projects, and this is the load-bearing part. A
-// "web" project's key ships inside the widget, and the Origin allowlist that
-// guards it is skipped entirely for requests that send no Origin header
-// (see ingest.go) — which is every curl. That is an accepted trade for a
-// write-only key whose worst case is spam against a rate limit. It would not be
-// an accepted trade for reading every report the project has.
+// Toda clave de proyecto es de servidor, y de ahí sale que pueda leer.
+//
+// Hubo un segundo tipo: la clave de un proyecto «web» viajaba dentro del widget
+// que el navegador se descargaba, así que era pública por diseño, y sólo la
+// guardaba una lista de orígenes que se saltaba entera para cualquier petición
+// sin cabecera `Origin` — o sea, para cualquier `curl`. Aquello se aceptaba
+// porque la clave era de sólo escritura; leer todos los reportes del proyecto
+// no se habría aceptado nunca. El widget se retiró el 11-sep-2026 y con él esa
+// rama: ya no hay ninguna clave que ande suelta por un navegador.
+//
+// → Guardián: `TestNoSecondClassOfProjectKeyComesBack`.
 func ReportKeyOrAuth(resolve ProjectKeyResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -47,13 +52,6 @@ func ReportKeyOrAuth(resolve ProjectKeyResolver) func(http.Handler) http.Handler
 			// which fails closed, but as an empty list rather than a refusal.
 			if err != nil || project == nil || project.ID == "" {
 				handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-ingest-key")
-				return
-			}
-			if project.Platform != "app" {
-				handler.SendErrorResponse(w, http.StatusForbidden,
-					"This project's key is public (it ships in the browser widget), so it cannot read or triage. "+
-						"Use a server-to-server project, or a personal access token.",
-					"key-not-server-to-server")
 				return
 			}
 			if !projectKeyMayReach(r) {

@@ -1,6 +1,6 @@
 # La interfaz de un inquilino, como referencia
 
-Qué pantallas hay que construir en tu app cuando reemplazas el widget por
+Qué pantallas hay que construir en tu app sobre la integración
 server-to-server, y por qué cada una existe. Sacado de portento, que es la
 integración completa: [contrato](./server-to-server.md) ·
 [cómo se adopta](./adopting-cac.md).
@@ -119,8 +119,10 @@ No es sólo seguridad. Merece decirse porque justifica el trabajo:
 
 ## Lo que se pierde
 
-- **Reportar sin cuenta.** Si necesitas eso en una página pública, el widget
-  sigue siendo la respuesta correcta — con su propio proyecto `platform: web`.
+- **Reportar sin cuenta.** El widget lo daba y se retiró el 11-sep-2026; hoy
+  quien reporta pasa por tu app. Para una página pública sin sesión habría que
+  decidir cómo se identifica a quien escribe antes que nada, que es la pregunta
+  de la que colgaba todo el diseño de aquella credencial pública.
 
 ---
 

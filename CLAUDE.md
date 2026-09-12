@@ -2,7 +2,7 @@
 
 Monorepo: `app/` (Tauri 2 + React 19, el cliente de escritorio), `backend/` (Go +
 chi + GORM + Postgres, la API en `cac.guz-studio.dev`), `swarm-manage/` (agente
-por host), `widget/` (reporter embebible), `infra/`.
+por host), `infra/`.
 
 Los comentarios del código de este repo son buenos y explican el *por qué*. Aquí
 sólo va lo que no cabe en un comentario porque no tiene un sitio único donde

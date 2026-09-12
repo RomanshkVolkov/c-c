@@ -30,9 +30,8 @@ vi.mock("@/lib/api", () => ({ api: { patch, get, post: vi.fn(), delete: vi.fn() 
 const { useReportsStore } = await import("@/store/reports.store");
 
 const PROYECTO = {
-  id: "p1", orgId: "o", name: "Portento", slug: "portento",
-  allowedOrigins: [], rateLimitPerHour: 60, rateLimitPerReporterPerHour: 10,
-  isActive: true, platform: "app" as const,
+  id: "p1", orgId: "o", name: "Portento", slug: "portento", rateLimitPerHour: 60, rateLimitPerReporterPerHour: 10,
+  isActive: true,
   webhookUrl: "https://example.com/hooks/cac", webhookConfigured: true,
   defaultAssigneeUserId: "u-ana", createdAt: new Date().toISOString(),
   reportsThisMonth: 3,
