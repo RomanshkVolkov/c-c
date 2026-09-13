@@ -51,12 +51,36 @@ como medida y no como idea:
    pistas tardías, una imagen de 2 GB con Chrome dentro, y un participante que
    nadie ve — por eso es el plan B y no el A.
 
+#### Medido el 12-sep-2026 — **pasa**
+
 | Medida | Resultado |
 |---|---|
-| Conecta (WebSocket + sala) | *sin medir* |
-| Primera muestra de audio | *sin medir* |
-| Segundos de audio por pista en 120 s | *sin medir* |
-| Vía ICE que ganó | *sin medir* |
+| Conecta (WebSocket + sala) | **0,73 s** |
+| Primera muestra de audio | **1,18 s** |
+| Segundos de audio en 120 s de escucha | **119,52 s** (99%, sin cortes) |
+| Salida del Job | **0** |
+
+El media llega. **No hace falta `rtc.tcp_port` ni `rtc.node_ip`**, y el plan no
+cambia a Egress: el bot participante se sostiene tal como está diseñado.
+
+Cómo se midió, porque cambia lo que la medida significa: el Job levanta **dos**
+bots en el mismo pod — el grabador, con su token de sólo escucha, y un suplente
+(`spike-speaker`) que publica un tono de 440 Hz. Sin él no habría audio que
+contar: en un pod no hay nadie hablando.
+
+Eso deja la prueba en pod → SFU → pod, y **es la pregunta entera**: el grabador
+nunca habla con un navegador, sólo con el SFU, así que su camino es el mismo
+venga el audio de donde venga. Lo que el suplente sustituye es a la persona, no
+al SFU.
+
+Y el grabador llevaba `can_publish: False` durante toda la medida, que es lo que
+la hace honesta: demuestra que un token de **sólo escucha** recibe media por ese
+camino. Darle permiso de publicar para simplificar habría medido algo que no es
+lo que se despliega.
+
+Lo que esto no cubre: un cliente real publicando desde fuera del clúster. Su
+audio llega al SFU por otro camino que este Job no ejercita — pero ése es el
+camino que ya funciona todos los días, y no es el que estaba en duda.
 
 ### (b) ¿Cuánto tarda el modelo en este hardware?
 

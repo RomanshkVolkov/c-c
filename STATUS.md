@@ -170,6 +170,29 @@ devuelve. Quitarlas habría roto tres integraciones vivas.
 | `tds-geolocation` | El único proyecto `web`, app abandonada, 0 reportes. Al irse la distinción su llave pasaría a poder leer. Dejarla inerte con `is_active = false` es reversible y de una línea. |
 | npm | `@g-studio/report-widget` sigue publicado, sin tocar, por si se refina más adelante. |
 
+## 🎙️ Transcripción — la fase 0 pasa su primera puerta
+
+**(a) ¿Llega el media desde un pod al SFU? Sí**, medido el 12-sep-2026: conecta
+en 0,73 s, primera muestra a 1,18 s, y **119,52 s de audio en 120 s** de
+escucha, sin cortes. No hacen falta `rtc.tcp_port` ni `rtc.node_ip`, y **el plan
+no cambia a Egress**: el bot participante se sostiene.
+
+Para medirlo hizo falta un **suplente del humano** (`spike_speaker.py`): el spike
+cuenta audio recibido, y en un pod no hay nadie hablando. Publica un tono y el
+grabador lo escucha — con su token de sólo escucha intacto, que es lo que hace
+la medida honesta. El precedente que abre (una función que acuña tokens con
+permiso de publicar) queda cerrado con un guardián que mira **la firma** de
+`mint`, no un caso suelto: `test_el_grabador_no_puede_publicar_le_pases_lo_que_le_pases`.
+
+De paso salieron dos cosas que impedían siquiera intentarlo: el Job apuntaba a
+`ghcr.io/guz-studio/…` cuando la organización es `romanshkvolkov`, y nadie
+construía la imagen. Ahora la construye `transcriber.yml`, con las pruebas del
+worker por delante.
+
+**(b) El `rtf` del modelo sigue sin medir**, y esa sí necesita material humano:
+~30 min de llamada real grabada por pistas, y `tools/bench_stt.py`. Objetivo
+≥ 3× tiempo real con `large-v3-turbo` int8; por debajo se baja a `medium`.
+
 ## ⏳ Planned (next iterations)
 
 ### App UI for container stats
