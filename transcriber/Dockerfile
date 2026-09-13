@@ -16,7 +16,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml ./
 COPY transcriber/ ./transcriber/
-RUN uv pip install --system --no-cache .
+COPY tools/ ./tools/
+
+# Vacío para la imagen del spike, `[stt]` para la del banco de pruebas. El
+# modelo pesa dos gigas y el spike no lo usa: pagar esa descarga en cada intento
+# de medir si llega el media sería pagarla para nada.
+ARG EXTRAS=""
+RUN uv pip install --system --no-cache ".${EXTRAS}"
 
 # Sin argumentos por defecto: la sala la pone quien lanza el trabajo.
 ENTRYPOINT ["python", "-m", "transcriber"]

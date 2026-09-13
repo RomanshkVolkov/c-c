@@ -64,3 +64,15 @@ jobs:
           # Cuando exista el worker entero llevará su propia etiqueta y ésta se
           # podrá retirar.
           tags: ghcr.io/romanshkvolkov/c-c/transcriber:spike
+
+      # La misma imagen con `faster-whisper` dentro, para medir el `rtf` en el
+      # hardware real — que es el único sitio donde ese número significa algo.
+      # Va aparte y no en la del spike porque arrastra dos gigas de modelo.
+      - name: Build and push (banco de pruebas)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./transcriber
+          push: true
+          build-args: |
+            EXTRAS=[stt]
+          tags: ghcr.io/romanshkvolkov/c-c/transcriber:bench
