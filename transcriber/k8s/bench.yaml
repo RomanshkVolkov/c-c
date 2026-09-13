@@ -1,0 +1,70 @@
+# Puerta (b) de la fase 0: ¿cuánto tarda el modelo en este hardware?
+#
+# Corre aquí y no en un portátil porque el número sólo significa algo sobre los
+# 8 vCPU EPYC del nodo real. Es lo que decide si se usa `large-v3-turbo` o hay
+# que bajar a `medium`.
+#
+# Es un **Job y no un `kubectl exec`**, y eso viene de un error que costó caro:
+# un proceso lanzado por `exec` muere cuando containerd cierra el flujo, y
+# `nohup` no protege de eso. Al creerlo muerto se relanzó encima y acabaron tres
+# medidas peleándose por la misma CPU, con el nodo a triple de carga durante una
+# hora y un resultado que no valía nada. Como Job, el proceso es PID 1 de su
+# contenedor: nadie de fuera lo mata, y `kubectl logs -f` dice por dónde va.
+#
+#   kubectl apply -f transcriber/k8s/bench.yaml
+#   kubectl logs -f job/transcriber-bench
+#
+# El audio se lo baja él: 21 minutos de LibriVox en castellano, dominio público.
+# Es habla continua, así que da un `rtf` **pesimista a propósito** — las pistas
+# reales son casi todo silencio y el VAD se lo salta. Si pasa aquí, pasa allí.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: transcriber-bench
+  namespace: default
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 7200
+  template:
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      volumes:
+        - name: audio
+          emptyDir: {}
+      initContainers:
+        # Baja y convierte a lo que produce el grabador: 16 kHz mono int16.
+        - name: fetch
+          image: alpine:3.20
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache ffmpeg curl >/dev/null
+              curl -sS -o /audio/cap.mp3 \
+                https://ia600805.us.archive.org/31/items/guerraylapaz1_2412_librivox/guerraypaz1_29_tolstoy_64kb.mp3
+              ffmpeg -loglevel error -y -i /audio/cap.mp3 -ac 1 -ar 16000 \
+                -c:a pcm_s16le /audio/es_denso.wav
+              rm -f /audio/cap.mp3
+              ls -lh /audio/es_denso.wav
+          volumeMounts:
+            - name: audio
+              mountPath: /audio
+      containers:
+        - name: bench
+          image: ghcr.io/romanshkvolkov/c-c/transcriber:bench
+          args: ["tools/bench_stt.py", "/audio/es_denso.wav", "--threads", "6"]
+          command: ["python", "-u"]
+          volumeMounts:
+            - name: audio
+              mountPath: /audio
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              # Seis hilos es lo que pide el plan: quedan dos para LiveKit, el
+              # backend y Postgres, que comparten este host.
+              cpu: "6"
+              memory: 6Gi

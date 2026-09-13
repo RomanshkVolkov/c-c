@@ -24,6 +24,10 @@ from faster_whisper import WhisperModel
 # sobre este hardware, se baja a `medium`.
 TARGET_SPEEDUP = 3.0
 
+# Cada cuánto decir por dónde va. No es cosmético: sin esto la única forma de
+# saber si sigue trabajando es adivinar.
+PROGRESS_EVERY_SECONDS = 20.0
+
 
 def audio_seconds(path: Path) -> float:
     with wave.open(str(path), "rb") as wav:
@@ -39,6 +43,11 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
+    print(
+        f"  cargando {args.model} int8 con {args.threads} hilos"
+        " (la primera vez se lo descarga, ~1,5 GB)",
+        flush=True,
+    )
     loading = time.monotonic()
     model = WhisperModel(
         args.model,
@@ -65,7 +74,26 @@ def main() -> int:
             word_timestamps=False,
         )
         # `transcribe` es perezoso: hasta que no se recorre, no ha trabajado.
-        count = sum(1 for _ in segments)
+        #
+        # Y se recorre contando, no con `sum(1 for _ in …)`, porque cada segmento
+        # trae su posición en el audio (`end`) y con eso se sabe por dónde va.
+        # Una medida que tarda minutos y no dice nada hasta el final es
+        # indistinguible de una colgada — y eso ya costó una hora de nodo al
+        # triple de carga, por relanzar encima de algo que seguía vivo.
+        count = 0
+        ultimo_aviso = started
+        for segment in segments:
+            count += 1
+            ahora = time.monotonic()
+            if ahora - ultimo_aviso >= PROGRESS_EVERY_SECONDS:
+                corrido = ahora - started
+                print(
+                    f"  … {segment.end / 60:5.1f} / {seconds / 60:.1f} min de audio"
+                    f"   en {corrido / 60:5.1f} min"
+                    f"   ({segment.end / corrido:.2f}× por ahora)",
+                    flush=True,
+                )
+                ultimo_aviso = ahora
         elapsed = time.monotonic() - started
         tracks.append(
             {
