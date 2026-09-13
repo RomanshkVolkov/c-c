@@ -1,0 +1,66 @@
+name: transcriber
+
+# Construye la imagen del worker de transcripción y la publica en GHCR, igual
+# que hace `backend.yml` con la suya.
+#
+# Existe porque sin ella la fase 0 no se puede ni intentar: el Job del spike
+# (`transcriber/k8s/spike.yaml`) apunta a una etiqueta que nadie construía, así
+# que se quedaba en `ImagePullBackOff`. En el nodo no hay con qué construir
+# —sólo `ctr`, que importa pero no construye, y sin sudo— y meter la imagen a
+# mano dejaría el clúster con algo que no está en ningún sitio.
+#
+# **No despliega nada.** Publica la imagen y ya; el Job se lanza a mano cuando
+# hay alguien en la sala, que es media prueba del experimento.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "transcriber/**"
+      - ".github/workflows/transcriber.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # La suite del worker no la corre nadie más (tarjeta #69). Aquí sí, y por
+      # delante de la publicación: una imagen que no pasa sus pruebas no llega
+      # al registro.
+      - name: Test
+        working-directory: transcriber
+        run: uv run --frozen pytest -q
+
+  build-push:
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./transcriber
+          push: true
+          # `spike` y no `latest`: esto es la imagen de la fase 0, sin modelo.
+          # Cuando exista el worker entero llevará su propia etiqueta y ésta se
+          # podrá retirar.
+          tags: ghcr.io/romanshkvolkov/c-c/transcriber:spike

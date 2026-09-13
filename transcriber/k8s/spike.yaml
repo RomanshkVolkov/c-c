@@ -27,8 +27,10 @@ spec:
       enableServiceLinks: false
       containers:
         - name: spike
-          image: ghcr.io/guz-studio/cac-transcriber:spike
-          args: ["--room", "voice:REEMPLAZAR", "--seconds", "120"]
+          image: ghcr.io/romanshkvolkov/c-c/transcriber:spike
+          # `--speak` levanta el suplente que publica el tono. Sin él no hay
+          # audio que medir: en un pod no hay nadie hablando. Ver spike_speaker.
+          args: ["--room", "voice:REEMPLAZAR", "--seconds", "120", "--speak"]
           env:
             - name: LIVEKIT_URL
               value: ws://livekit.default.svc.cluster.local:7880

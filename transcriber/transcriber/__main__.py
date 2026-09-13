@@ -33,6 +33,11 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--call-id", default="spike")
     parser.add_argument("--started-by", default="spike")
     parser.add_argument("--json", action="store_true", help="el informe en JSON")
+    parser.add_argument(
+        "--speak",
+        action="store_true",
+        help="levanta también el suplente que publica un tono (ver spike_speaker)",
+    )
     return parser.parse_args()
 
 
@@ -91,7 +96,49 @@ async def _run() -> int:
     )
     logging.info("entro a %s como %s por %s", args.room, BOT_IDENTITY, url)
 
-    report = await Recorder(url, token).run(args.seconds)
+    # El suplente del humano. Sin alguien que publique no hay audio que medir, y
+    # en un pod no hay nadie. Va en una tarea aparte y **su fallo se grita**: si
+    # reventara en silencio, el grabador diría «no llegó audio» y daríamos por
+    # rota la red cuando lo roto era el emisor.
+    hablante = None
+    if args.speak:
+        from .spike_speaker import mint_speaker, speak
+
+        hablante = asyncio.create_task(
+            speak(
+                url,
+                mint_speaker(
+                    config.require("LIVEKIT_API_KEY"),
+                    config.require("LIVEKIT_API_SECRET"),
+                    args.room,
+                    datetime.timedelta(seconds=args.seconds + 900),
+                ),
+                args.seconds + 10,
+            )
+        )
+        # Un respiro para que publique antes de que el grabador cuente.
+        await asyncio.sleep(2)
+
+    fallo_del_suplente: Exception | None = None
+    try:
+        report = await Recorder(url, token).run(args.seconds)
+    finally:
+        if hablante is not None:
+            hablante.cancel()
+            try:
+                await hablante
+            except asyncio.CancelledError:
+                pass
+            except Exception as err:  # noqa: BLE001 — hay que verlo, sea lo que sea
+                # Se anota, no se devuelve: un `return` aquí dentro se tragaría
+                # una excepción del grabador y la haría pasar por un fallo del
+                # suplente.
+                fallo_del_suplente = err
+
+    if fallo_del_suplente is not None:
+        logging.error("el suplente falló, así que la medida no vale: %s", fallo_del_suplente)
+        return 2
+
     _print(report, args.min_seconds, args.json)
     return 0 if report.got_audio(args.min_seconds) else 1
 
