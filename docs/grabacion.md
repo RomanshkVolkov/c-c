@@ -127,6 +127,38 @@ Y un aviso del arranque que **no** es un problema, para que nadie lo persiga:
 pública por STUN desde la dirección del host; el aviso es de validarla desde la
 privada secundaria, y se cancela porque ya tiene la respuesta.
 
+### La cadena entera, probada de extremo a extremo
+
+Antes de escribir una línea del backend se grabó una sala de verdad a mano, para
+que una errata en la política de IAM no apareciera después de quinientas líneas
+de Go. Dos bots en `voice:humo-egress`, `StartRoomCompositeEgress` por Twirp con
+un token `RoomRecord`, 70 segundos, y parar:
+
+```
+EGRESS_COMPLETE
+recordings/humo/prueba-egress.mp4   1,23 MB   70,4 s
+```
+
+`RoomRecord` es la concesión que LiveKit exige para `Egress.*`. Sin ella
+contesta 401, igual que pasó en su día con `ListParticipants` — conviene
+recordarlo al escribir el cliente del backend.
+
+Y la frontera de la llave acotada, comprobada en las cuatro direcciones:
+
+| La llave del grabador… | |
+|---|---|
+| lista su propio prefijo | ✅ puede |
+| lista los adjuntos de cac (`org/`) | 🚫 `AccessDenied` |
+| lee el fichero que ella misma escribió | 🚫 `AccessDenied` |
+| borra el fichero que ella misma escribió | 🚫 `AccessDenied` |
+
+Estrictamente de escritura y estrictamente en su rincón. Leer y borrar son cosa
+de cac, con las llaves que ya tenía.
+
+El grabador arrancó diciendo `cpu available: 8, max cost: 4`; con
+`room_composite_cpu_cost: 3` eso significa que **acepta una grabación y rechaza
+la segunda**, que es lo que este host aguanta.
+
 ## Lo que falta medir — la puerta de la fase 0
 
 **La pregunta abierta: ¿aguanta este host componer en tiempo real?** Chrome y
