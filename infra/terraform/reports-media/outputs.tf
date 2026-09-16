@@ -33,3 +33,14 @@ output "project_admin_command" {
     aws_s3_bucket.media.bucket,
   ])
 }
+
+output "recordings_access_key_id" {
+  description = "Llave del usuario que sube grabaciones. Va en livekit-egress-secret, no en cac-secret."
+  value       = aws_iam_access_key.recordings.id
+}
+
+output "recordings_secret_access_key" {
+  description = "Secreto del usuario que sube grabaciones."
+  value       = aws_iam_access_key.recordings.secret
+  sensitive   = true
+}

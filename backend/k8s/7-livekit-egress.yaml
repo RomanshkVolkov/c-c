@@ -1,0 +1,99 @@
+# El grabador: LiveKit Egress, que compone la videollamada y la sube a S3.
+#
+# # Por qué esto y no el bot de `transcriber/`
+#
+# El bot recibe el media **ya decodificado** (I420, ~40 MB/s por cámara). Para
+# grabar una videollamada habría que componer N pistas y re-codificarlas en
+# Python: es reescribir esto a mano y peor. Para transcribir voz el bot sigue
+# siendo lo correcto — son problemas distintos y cada uno tiene su herramienta.
+#
+# # Lo que hay que saber antes de tocarlo
+#
+# **Sin `hostNetwork`**, y eso está medido: el spike de la fase 0 (12-sep-2026,
+# `docs/transcripcion.md`) demostró que un pod normal de la red de Cilium recibe
+# el media del SFU al 99 %. Esa duda ya no existe.
+#
+# **Sin límite de CPU a propósito.** El throttling de CFS sobre un codificador en
+# tiempo real no lo hace más lento: le hace **perder fotogramas**. El techo lo
+# pone `max_cpu_utilization` del propio Egress, que rechaza peticiones nuevas
+# cuando no le caben; con `room_composite_cpu_cost: 3` sobre 8 vCPU eso significa
+# **una grabación a la vez**, que es lo que este host aguanta.
+#
+# La imagen pesa ~2 GB (lleva Chrome dentro). Se paga una vez por nodo. Como la
+# voz no depende de este pod, lo único que se pierde mientras baja es grabar.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit-egress
+  namespace: default
+spec:
+  replicas: 1
+  # Recreate y no RollingUpdate: una grabación en vuelo muere con el pod de
+  # todas formas, y dos réplicas sólo duplicarían el coste base sin salvarla.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: livekit-egress
+  template:
+    metadata:
+      labels:
+        app: livekit-egress
+    spec:
+      # La misma trampa de nombres que el SFU: k8s inyecta LIVEKIT_PORT y
+      # compañía por cada Service del namespace, y el binario las lee como suyas.
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      # Egress termina la subida a S3 al recibir SIGTERM. Dos minutos es lo que
+      # tarda en cerrar y subir un mp4 de una reunión larga.
+      terminationGracePeriodSeconds: 120
+      volumes:
+        # Chrome usa memoria compartida para componer; con el /dev/shm de 64 MB
+        # que trae un contenedor por defecto, se cae en cuanto hay varias
+        # cámaras.
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+        # El mp4 se escribe aquí y se sube al terminar. Ocho gigas dan para
+        # unas dos horas a 8 Mbps.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 8Gi
+      containers:
+        - name: egress
+          image: livekit/egress:v1.14.1@sha256:bf2b648b947349c3e9ff7aa8c718f00378d5c06af7624652a3653318e00333ce
+          env:
+            # La configuración entera va en un Secret y no en un ConfigMap
+            # porque lleva dentro las llaves de S3 y del SFU.
+            - name: EGRESS_CONFIG_BODY
+              valueFrom:
+                secretKeyRef:
+                  name: livekit-egress-secret
+                  key: EGRESS_CONFIG_BODY
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: tmp
+              mountPath: /home/egress/tmp
+          resources:
+            requests:
+              cpu: 1500m
+              memory: 1Gi
+            limits:
+              # Memoria sí, CPU no. Ver la nota de arriba.
+              memory: 4Gi
+          ports:
+            # El de salud sólo existe si `health_port` está puesto en la
+            # configuración; por defecto viene apagado. El 7980 es el servidor
+            # de plantillas de Chrome, no éste: apuntar la sonda allí daría por
+            # bueno un Egress que no puede grabar.
+            - name: health
+              containerPort: 7981
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 7981
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5

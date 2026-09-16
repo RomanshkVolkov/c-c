@@ -27,6 +27,24 @@ data:
       # Respaldo para redes que bloquean UDP. Peor latencia, pero conecta.
       tcp_port: 7881
       use_external_ip: true
+    # Redis es el bus por el que el SFU y Egress se hablan (psrpc). Sin esto no
+    # hay grabación, y con esto LiveKit entra en modo distribuido: si el bus
+    # cae, **sigue sirviendo las salas que ya tiene pero no crea nuevas**. Ése
+    # es el precio de grabar, y es un pod propio —no el Valkey de `data`— para
+    # que la voz no dependa del bus de eventos de cac ni de una contraseña
+    # copiada a mano entre namespaces.
+    #
+    # Quitar estas dos líneas apaga la grabación y nada más.
+    redis:
+      address: livekit-redis.default.svc.cluster.local:6379
+    # Explícitos aunque sean los valores por defecto, porque con grabación
+    # pasan a importar: el participante de Egress es oculto y no cuenta como
+    # gente, así que al irse todos la sala tarda `empty_timeout` en cerrarse y
+    # el vídeo se lleva ese rato en negro al final. Quien para antes es el
+    # vigilante del backend, a los 60 s.
+    room:
+      empty_timeout: 300
+      departure_timeout: 20
     # Sin `keys` aquí: llegan por LIVEKIT_KEYS desde el Secret, para que este
     # ConfigMap se pueda leer sin exponer nada.
 ---
@@ -73,7 +91,21 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: livekit
-          image: livekit/livekit-server:latest
+          # Pineado por **tag y digest**, no `latest`, y no es higiene: es lo
+          # que sostiene la grabación.
+          #
+          # Egress y el servidor hablan por psrpc con los tipos de
+          # `livekit/protocol`, así que sus versiones tienen que casar. El
+          # Egress que se despliega (v1.14.1, 14-ago-2026) pide `protocol
+          # v1.50.1`; v1.13.5 va en la misma serie v1.50.x. El siguiente
+          # servidor, v1.13.7, salta a v1.51 y **desparejaría**.
+          #
+          # Medido el 16-sep-2026: `latest` ya apuntaba a un digest distinto
+          # (`6fd3b708…`) del que corría (`3497163e…`). Con etiqueta `latest`
+          # el `imagePullPolicy` por defecto es `Always`, así que **el próximo
+          # reinicio del pod habría subido el SFU solo**. Este digest es
+          # exactamente el que ya estaba sirviendo.
+          image: livekit/livekit-server:v1.13.5@sha256:3497163e15c48fef6e7830c78716f9e9d5edc28abf7aa90b61c86e93bbc306b1
           args: ["--config", "/etc/livekit/livekit.yaml"]
           env:
             # Formato "clave: secreto". Lo consume LiveKit al arrancar.
@@ -122,3 +154,114 @@ spec:
     - name: signal
       port: 7880
       targetPort: 7880
+---
+# El bus de Egress. Un Valkey mínimo y sin memoria: lo único que guarda son
+# mensajes en vuelo entre el SFU y el grabador.
+#
+# Sin persistencia a propósito (`--save ""`, `--appendonly no`): no hay nada que
+# corromper ni que restaurar. Si se reinicia, los Egress en vuelo se dan por
+# fallidos y el reloj del backend lo ve en el siguiente latido.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit-redis
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: livekit-redis
+  template:
+    metadata:
+      labels:
+        app: livekit-redis
+    spec:
+      # La misma trampa que el SFU: k8s inyecta LIVEKIT_PORT y compañía, y no
+      # queremos ninguna de esas variables aquí tampoco.
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      containers:
+        - name: valkey
+          image: valkey/valkey:8-alpine@sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1
+          args:
+            - "--save"
+            - ""
+            - "--appendonly"
+            - "no"
+            - "--maxmemory"
+            - "64mb"
+            - "--maxmemory-policy"
+            - "allkeys-lru"
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            # Cinco segundos y no el segundo que trae el chart de Bitnami por
+            # defecto: con un plazo corto la sonda se queda huérfana cuando el
+            # contenedor está estrangulado, y PID 1 no recoge a nadie. Eso
+            # dejó 1.529 zombis en el Valkey de `data` (12-sep-2026).
+            timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit-redis
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: livekit-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+# Sólo el SFU y el grabador entran al bus.
+#
+# Es una **CiliumNetworkPolicy** y no la estándar de Kubernetes, y eso se midió:
+# el SFU corre con `hostNetwork`, así que sus paquetes salen con la IP del nodo
+# y ningún `podSelector` los describe. La tentación es poner un `ipBlock` con el
+# rango de pods — no funciona: la especificación dice que `ipBlock` es para
+# tráfico de fuera del clúster, y Cilium la cumple. Con esa policy puesta, un
+# pod cualquiera **no** alcanzaba el bus (probado el 16-sep-2026), y el SFU
+# tampoco lo habría alcanzado: la voz se habría roto al arrancar.
+#
+# `fromEntities: host` es la forma que Cilium da para decir «lo que sale de la
+# máquina», que es exactamente dónde vive el SFU.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: livekit-redis
+  namespace: default
+spec:
+  endpointSelector:
+    matchLabels:
+      app: livekit-redis
+  ingress:
+    # El SFU, que va en la red del host.
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+    # El grabador, que sí es un pod normal.
+    - fromEndpoints:
+        - matchLabels:
+            app: livekit-egress
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP

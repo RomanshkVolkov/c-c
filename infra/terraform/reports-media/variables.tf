@@ -29,3 +29,9 @@ variable "bucket_name" {
   default     = "guz-reports-media"
   description = "Nombre del bucket S3 (debe ser globalmente único). Un solo bucket para todas las orgs; los objetos se prefijan org/<slug>/project/<slug>/…"
 }
+
+variable "recordings_prefix" {
+  description = "Prefijo del bucket donde Egress deja las grabaciones. Tiene que coincidir con RECORDINGS_PREFIX del backend: la política IAM se acota a él."
+  type        = string
+  default     = "recordings"
+}
