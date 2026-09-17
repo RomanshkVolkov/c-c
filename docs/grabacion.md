@@ -10,15 +10,19 @@ El spike de transcripción eligió **bot participante** sobre Egress, y con raz�
 para lo suyo: recibir audio por pista no justificaba `redis:` en LiveKit, una
 imagen de 2 GB con Chrome dentro ni un participante oculto.
 
-Grabar la videollamada compuesta es otro problema. Una llamada de cac lleva
-hasta **tres pistas por persona** —micrófono siempre, cámara 720p, pantalla— y
-el bot recibe los fotogramas **ya decodificados** (I420, ~40 MB/s por cámara).
-Componerlos y re-codificarlos en Python sobre este host es reescribir Egress a
-mano y peor.
+Para vídeo el bot no sirve, y es un hecho del SDK, no una opinión: entrega los
+fotogramas **ya decodificados** (`VideoFrame{data, get_plane, width, height}`;
+no hay acceso al RTP). Guardarlos crudos son 41 MB/s por pista a 720p30 —diez
+gigas por minuto con cuatro— y re-codificarlos en vivo cuesta más que Egress,
+que hace lo mismo en C optimizado.
 
-Lo que era desproporcionado para transcribir es lo proporcionado para grabar. El
-bot no se retira: sigue siendo la pieza correcta para la transcripción, que
-queda aplazada.
+Egress trabaja un nivel más abajo y por eso puede escribir el flujo **sin
+tocarlo**. El bot no se retira: sigue siendo la pieza correcta para la
+transcripción, que queda aplazada.
+
+> El diseño inicial era grabar la videollamada compuesta (Room Composite). Se
+> cambió a grabar por pistas al decidirse que las cámaras no se capturan; el
+> porqué y el coste comparado están más abajo, en «El cambio de rumbo».
 
 ## Lo aplicado el 16-sep-2026
 
@@ -159,25 +163,105 @@ El grabador arrancó diciendo `cpu available: 8, max cost: 4`; con
 `room_composite_cpu_cost: 3` eso significa que **acepta una grabación y rechaza
 la segunda**, que es lo que este host aguanta.
 
+## El cambio de rumbo: no se compone, se graba por pistas
+
+Todo lo de arriba sigue en pie y **nada de la infra desplegada se tira**. Lo que
+cambia es qué se le pide al grabador, y lo decidió una frase de jose al preguntar
+qué se vuelve a mirar de una reunión grabada: *«el valor está en ver la pantalla y lo que
+alguien está explicando; me la suda verle la jeta a la gente»*.
+
+En cuanto las cámaras salen de la ecuación, el problema deja de ser «componer una
+videollamada» y pasa a ser «guardar voz y pantalla». Y eso tiene una herramienta
+mucho más barata.
+
+| | Room Composite | **Track Egress + mux** |
+|---|---|---|
+| Durante la llamada | ~3 núcleos componiendo caras que nadie mira | **~0,1 por pista**, escribe el flujo tal como llega |
+| Qué se guarda | todo, ya compuesto | micrófonos + pantalla. **Cámaras no** |
+| Calidad | por bitrate, y recomprimir después | **CRF 18 directo** al montar |
+| Al colgar | nada | mezclar audio y pegar la pantalla: minutos |
+| Transcripción futura | habría que añadirla | **sale gratis**: una pista de audio por persona |
+
+Lo que se gana no es sólo CPU: **el trabajo pesado sale de la llamada**. Y
+desaparece el bloqueo que tenía esto parado — ya no hace falta juntar a tres
+personas con cámaras para medir si el host aguanta componer, porque no hay nada
+que componer.
+
+Se descartó también el **bot participante** para vídeo, y por un hecho
+verificado: el SDK entrega los fotogramas **ya decodificados**
+(`VideoFrame{data, get_plane, width, height}`; no hay acceso a RTP ni al flujo
+codificado). Un bot tendría que re-codificar en vivo — más caro que Egress y en
+Python. Track Egress trabaja un nivel más abajo y por eso puede escribir sin
+tocar nada.
+
+### Lo que esto obliga a tener en cuenta
+
+**La app publica VP8**, y nadie lo eligió: es el valor por defecto del crate
+(`livekit` 0.8.3, `options.rs:158`; los tres `publish_track` de `voice.rs` usan
+`..Default::default()`). La pantalla sale en `.ivf`, así que el mux **tiene que
+transcodificar** a H.264. Sale barato porque una pantalla compartida es casi
+estática, pero es el camino principal, no una excepción. Publicar H.264 desde la
+app dejaría el coste en cero; es optimización posterior y no se toca hasta
+probar el encoder en los tres sistemas, porque hoy compartir pantalla funciona.
+
+**El audio lleva DTX**: en silencio no se transmiten paquetes. Un mux que alinee
+contando muestras en vez de por marca de tiempo desincroniza las voces. De ahí
+que la prueba de abajo incluya callarse a mitad.
+
+**Simulcast activo** en la pantalla (capa completa + una de 3 fps). Egress se
+suscribe como un cliente más y coge la mejor; no hay que elegir capa.
+
+### Lo primero que salió al grabar por pistas (17-sep-2026)
+
+Antes siquiera de la llamada con pantalla, una prueba con los dos bots dejó tres
+cosas que cambian el backend:
+
+**El JSON de Twirp del SFU viene en `snake_case`** (`egress_id`, `started_at`,
+`file_results`), no en `camelCase`. Un cliente escrito a mano con
+`encoding/json` y campos `camelCase` lee `nil` en silencio — que es exactamente
+lo que me pasó y me hizo creer por un momento que LiveKit no daba marcas de
+tiempo. Confirma la decisión de usar el **cliente Twirp generado** de
+`livekit/protocol`, no uno a mano.
+
+**La extensión del fichero no se adivina.** `ListParticipants` devolvió la pista
+de audio **sin `mimeType`**, así que la clave pedida fue `…-TR_xxx` a secas — y
+Egress escribió `…-TR_xxx.ogg`, poniéndole la que correspondía al códec real.
+Consecuencia para el backend: **`ObjectKey` se guarda desde
+`file_results[].filename`, nunca desde la clave que se pidió.**
+
+**El ancla de alineación existe y es precisa.** `FileInfo` trae `started_at` y
+`ended_at` en **nanosegundos Unix**, y `ended_at − started_at == duration` al
+nanosegundo:
+
+```
+started_at 1789672122339974097
+ended_at   1789672147099974098
+duration      24760000001  (24,76 s)
+```
+
+Eso es lo que el mux usa para desplazar cada pista (`adelay`), y por eso el
+diseño se sostiene.
+
 ## Lo que falta medir — la puerta de la fase 0
 
-**La pregunta abierta: ¿aguanta este host componer en tiempo real?** Chrome y
-x264 compiten con el SFU en 8 vCPU donde ya viven cac ×2, Postgres, Valkey y
-~2 cores fijos de plano de control.
+La pregunta ya no es si el host aguanta. Es **si el vídeo montado queda bien
+alineado**, que es lo único que puede salir mal en este diseño.
 
-Se mide con una llamada real de **3 personas con cámaras y una pantalla
-compartida**, 10 minutos a 1080p30/8 Mbps y 10 a 720p30/5 Mbps:
+Se graba por pistas una llamada corta: `spike_speaker` como segundo
+participante, y una persona real desde la app que **comparte pantalla con un
+cronómetro visible**, **cuenta en voz alta «uno… dos… tres»** al arrancar la
+pantalla, y **se calla 20 segundos a mitad**. Tres minutos bastan.
 
-| Medida | Cómo | Puerta |
-|---|---|---|
-| CPU del pod Egress | `cpu.stat` del cgroup | ≤ 3,5 cores a 1080p; ≤ 2,5 a 720p |
-| Ocioso del host | `vmstat 5` | ≥ 20% sostenido |
-| Latencia de los clientes | el `ms` que pinta `VoiceStage`, antes y durante | mediana +≤ 20 ms; p95 +≤ 50 ms |
-| Voz | los 3 dicen si oyen cortes | cero cortes |
-| Legibilidad | pantalla con texto pequeño, a ojo | legible |
-| Sala vacía | los 3 salen; cronómetro hasta `COMPLETE` | anotar |
+| Medida | Puerta |
+|---|---|
+| Objetos en S3 | `.ogg`×2 + `.ivf`, todos `EGRESS_COMPLETE`; anotar la unidad de `FileInfo.StartedAt` |
+| Duración del `.ogg` con el mute | ≈ tiempo de pared **±1 s**. Si no, `aresample=async=1` lo corrige: anotar cuál hizo falta |
+| Sincronía voz/imagen | el «tres» coincide con el cronómetro **≤ 300 ms** |
+| Legibilidad | texto pequeño legible a 10 fps y CRF 18; si no, subir fps |
+| Coste del mux | 10 min de 1080p con `nice` ≤ 2 min, con el host ≥ 20% ocioso |
+| Coste de Egress | 3 pistas < 0,5 núcleo (si sobra, bajar `track_cpu_cost` para que 6 personas no topen con el techo) |
+| Redis caído a mitad | ¿sigue la voz? ¿se crean salas nuevas? anotar |
 
-**Si no pasa ni a 720p**, el plan cambia a **Track Egress** (muxea sin
-decodificar, casi cero CPU) **+ composición offline con ffmpeg en rejilla
-estática**: se pierde el diseño dinámico, se gana no tocar la latencia de nadie.
-El dominio `Recording` del backend no cambia en ninguno de los dos casos.
+**Si la alineación no cuadra ni con `aresample`**, se re-planifica el mux antes
+de escribir una línea de backend. El dominio `Recording` no cambia en ningún
+caso.
