@@ -242,26 +242,112 @@ duration      24760000001  (24,76 s)
 Eso es lo que el mux usa para desplazar cada pista (`adelay`), y por eso el
 diseño se sostiene.
 
-## Lo que falta medir — la puerta de la fase 0
+### La toma de tres minutos: se monta, y sale barato (17-sep-2026)
 
-La pregunta ya no es si el host aguanta. Es **si el vídeo montado queda bien
-alineado**, que es lo único que puede salir mal en este diseño.
+Tres pistas grabadas a la vez —micro de una persona, micro del bot, pantalla
+compartida—, las tres `EGRESS_COMPLETE`:
 
-Se graba por pistas una llamada corta: `spike_speaker` como segundo
-participante, y una persona real desde la app que **comparte pantalla con un
-cronómetro visible**, **cuenta en voz alta «uno… dos… tres»** al arrancar la
-pantalla, y **se calla 20 segundos a mitad**. Tres minutos bastan.
+| Pista | Tamaño | Duración |
+|---|---|---|
+| micro (persona) | 2,85 MB | 180,03 s |
+| micro (bot) | 2,92 MB | 179,7 s |
+| pantalla | 10,3 MB | 179,7 s — **`.webm`, VP8 960×540** |
+
+**El DTX no rompe la línea de tiempo.** Era el riesgo que más pintaba: en
+silencio Opus no manda paquetes, y la duda era si el `.ogg` se encogía. No se
+encoge. El perfil del micro enseña un valle de 17 dB en los quince segundos que
+la persona estuvo callada, y el fichero sigue midiendo 180,03 s contra 180,3 s
+de pared: **el hueco se conserva donde estaba**. `aresample=async=1:first_pts=0`
+sigue en la receta como cinturón, no como tirante.
+
+La receta que montó los tres en un mp4, tal cual se corrió:
+
+```
+ffmpeg -i mic.ogg -i bot.ogg -i screen.webm -filter_complex "\
+[0:a]aresample=async=1:first_pts=0[a0];\
+[1:a]aresample=async=1:first_pts=0,adelay=396:all=1,volume=0.12[a1];\
+[a0][a1]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[aout];\
+[2:v]setpts=PTS-STARTPTS+0.452/TB[vout]" \
+-map "[vout]" -map "[aout]" \
+-c:v libx264 -preset veryfast -tune stillimage -crf 18 -r 10 -g 50 \
+-pix_fmt yuv420p -c:a aac -b:a 96k -ac 1 -movflags +faststart -y final.mp4
+```
+
+Los `396` y `452` milisegundos salen de `started_at`: son lo que cada pista
+arrancó después de la primera.
+
+**Costó 4,9 s montar 3 minutos** —unas 36 veces más rápido que el tiempo real—
+y salieron 6,67 MB para 180,156 s. Eso es **~130 MB por hora** de reunión,
+contra los ~3,6 GB/hora que habría dado componer en vivo. El texto de la
+pantalla se lee: de un fotograma suelto saqué `ascAppId: 6768794891` sin forzar
+la vista.
+
+### El ancla: medida con una claqueta, no con una persona
+
+La puerta decía «el “tres” coincide con el cronómetro ≤ 300 ms». Con una persona
+delante **esa medida no se puede hacer**: el tiempo de reacción de quien dice
+«tres» al ver el reloj es del mismo orden que lo que se busca, así que se acaba
+midiendo a la persona. En la toma real se intentó igual y salió justo eso —
+según cómo se emparejaran los teclazos con los cambios de pantalla, el desfase
+daba ~0 ms o ~250 ms, que es exactamente la diferencia entre las dos anclas. Con
+ese material no se decide nada.
+
+Lo que sí se pudo medir de esa toma, porque la persona compartió `time.is`, es
+**el ancla del vídeo contra el reloj del mundo**: el dígito de los segundos
+cambia veinte veces, y `started_at + pts` clava el segundo redondo con ~50 ms de
+error y 47 ms de dispersión — un intervalo entre fotogramas, o sea, todo lo que
+se puede pedir a 20 fps.
+
+Para el audio hizo falta cambiar la fuente. `tools/clapper.py` entra a la sala
+como un participante más y publica **micro y pantalla movidos por el mismo
+reloj**: cada 6 s, a la vez, un pitido de 60 ms y un destello blanco. En el
+origen la diferencia es cero por construcción. Y `egress_tracks.py --stagger`
+arranca los dos egress **a propósito con segundos de diferencia**, que es lo que
+convierte la claqueta en una prueba y no en una anécdota:
+
+| Toma | `started_at` micro − pantalla | Desfase medido tras alinear |
+|---|---|---|
+| `clap2` | +60 ms | **+75 ms** (dispersión 35 ms) |
+| `clap3` | **−5 777 ms** | **+64 ms** (dispersión 60 ms) |
+
+**Los egress arrancaron con 5,8 segundos de diferencia y los golpes siguieron
+coincidiendo dentro de 73 ms.** Si `started_at` no fuera un ancla de verdad, el
+error de `clap3` habría sido de casi seis segundos. La puerta de 300 ms pasa con
+holgura, y pasa por la razón correcta.
+
+Y el resto (~74 ms) **no es del grabador**: contra el horario que la propia
+claqueta imprime, el vídeo llega con 0–5 ms de error y el audio con +74 ms
+constantes en las tres tomas. Eso es la cola del `AudioSource` del emisor —
+retardo del cliente, no de la grabación. El grabador, medido contra su propia
+fuente, no mueve nada.
+
+La lectura para el mux: **se aplica `adelay`/`setpts` con la diferencia de
+`started_at`, sin corrección**. Y lo que hay que vigilar en producción es que el
+ancla siga siendo `FileInfo.started_at` del `file_results`, no el reloj del
+backend al lanzar el egress — ésos sí se separan segundos.
+
+Dos cosas más que salieron de paso, útiles para la fase 3:
+
+- **El SDK publica la pantalla a 5 fps** si no se le pone `video_encoding`
+  explícito: el preajuste de pantalla compartida asume que lo que se comparte
+  está casi quieto. Se ve en la primera toma de claqueta, donde el destello de
+  60 ms desapareció entero. No afecta al grabador —Egress escribe lo que llega—
+  pero sí a lo que la app publica.
+- **La resolución sale de quien comparte**: 1920×1080 en la toma de la persona,
+  960×540 en otra. El lienzo del mux se calcula por toma, como estaba previsto.
+
+## Lo que falta medir — lo que queda de la puerta
+
+Lo de la alineación ya está cerrado arriba. Queda lo que sólo se puede medir con
+la máquina cargada:
 
 | Medida | Puerta |
 |---|---|
-| Objetos en S3 | `.ogg`×2 + `.ivf`, todos `EGRESS_COMPLETE`; anotar la unidad de `FileInfo.StartedAt` |
-| Duración del `.ogg` con el mute | ≈ tiempo de pared **±1 s**. Si no, `aresample=async=1` lo corrige: anotar cuál hizo falta |
-| Sincronía voz/imagen | el «tres» coincide con el cronómetro **≤ 300 ms** |
-| Legibilidad | texto pequeño legible a 10 fps y CRF 18; si no, subir fps |
 | Coste del mux | 10 min de 1080p con `nice` ≤ 2 min, con el host ≥ 20% ocioso |
 | Coste de Egress | 3 pistas < 0,5 núcleo (si sobra, bajar `track_cpu_cost` para que 6 personas no topen con el techo) |
 | Redis caído a mitad | ¿sigue la voz? ¿se crean salas nuevas? anotar |
 
-**Si la alineación no cuadra ni con `aresample`**, se re-planifica el mux antes
-de escribir una línea de backend. El dominio `Recording` no cambia en ningún
-caso.
+Ninguna de las tres puede tumbar el diseño: la primera mueve un límite del
+`Deployment` del mux, la segunda un número del `values` de Egress, la tercera ya
+se sabe a medias (la voz aguantó cuando se le puso el bus). La que podía
+tumbarlo era la alineación, y no lo hace.

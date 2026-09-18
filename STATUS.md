@@ -34,37 +34,37 @@ El MCP ya escribe documentación: seis herramientas con dos permisos separados
 (`docs:write` sólo añade, `docs:manage` puede pisar), y guardar a la vez ya no
 borra lo del otro.
 
-## 🎙️ Transcripción y resumen de llamadas
+## 🎙️ Grabar la reunión (antes: transcribirla)
 
-Plan: `~/.claude/plans/genera-un-plan-robusto-wise-elephant.md`. Un bot entra a la
-sala como participante visible, captura una pista por persona, transcribe con
-`faster-whisper` en el host y guarda el texto cifrado con el `REPORTS_KEK`.
+Plan: `~/.claude/plans/precious-sleeping-sonnet.md`.
 
-**El orden de las fases cambió (9-sep-2026): el resumen con IA va al final.** El
-plan lo ponía en la fase 2; ahora es lo último. Sale gratis porque la degradación
-ya estaba diseñada — sin resumidor, `Enabled()==false` deja la llamada en `ready`
-con `SummaryError="summarizer-not-configured"`, y el transcript, que es lo
-valioso, ya está. Orden nuevo: **0 → 1 → 3 → 4 → 5 → 2**.
+**El rumbo cambió el 16-sep-2026.** La transcripción en CPU no salía a cuenta
+(`large-v3-turbo` por debajo de 0,45× en el nodo) y jose la aparcó: *«me basta
+con lograr grabar la reunión»*. Grabar vale por sí solo y deja la puerta
+abierta — las pistas `.ogg` por persona que guarda son exactamente la entrada
+que la transcripción pedía, así que ese camino pasa a costar cero.
+
+Se graba **voz y pantalla compartida. Las cámaras no**, por decisión de
+producto. Con **Track Egress**: cada pista se escribe tal como llega, sin
+decodificar (~0,1 núcleo), y al colgar un servicio mezcla el audio y lo pega a
+la pantalla. Componer en vivo habría costado ~3 núcleos durante toda la llamada
+para montar caras que nadie va a mirar.
 
 | Fase | Qué | Estado |
 |---|---|---|
-| 0 | Spike: ¿llega el media desde un pod? + `rtf` del modelo | **escrita, sin medir** |
-| — | `merge.py` y el filtro de `stt.py` — puros, valen con bot o con Egress | hechos, 20 mutantes muertos |
-| 1 | Worker completo + ancla en el backend | no empezada |
-| 3 | App: consentimiento + chip REC | no empezada |
-| 4 | App: panel «Llamadas» + notificación | no empezada |
-| 5 | Lectura desde fuera y la línea en el canal | no empezada |
-| 2 | Resumidor (Mistral, ZDR) — **al final** | no empezada |
+| 0 | Grabar por pistas y montar **a mano**, antes de escribir backend | **pasada** — ver abajo |
+| 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | siguiente |
+| 2 | Mux (`recordings-mux`) + proxy con `Range` | no empezada |
+| 3 | App: consentimiento, chip REC, panel de grabaciones | no empezada |
+| 4 | Endurecer, y el puente a la transcripción | no empezada |
 
-La fase 0 es una puerta, no un trámite: si el media no llega desde un pod y no lo
-arreglan ni `rtc.tcp_port` ni `rtc.node_ip`, **el plan cambia a Egress y se
-re-planifica**. No se escribe backend hasta saberlo. Las dos medidas y lo que
-significan, en `docs/transcripcion.md`.
+Lo que ya está desplegado y no se toca: SFU y Egress con la versión pineada por
+digest, bus Valkey propio con su `CiliumNetworkPolicy`, y un usuario IAM que
+**sólo escribe bajo `recordings/*`**. Todo con fecha en `docs/grabacion.md`.
 
-| Abierto | Owner |
-|---|---|
-| Desplegar `transcriber/k8s/spike.yaml` y entrar a una sala real | jose (mi `kubectl` apunta a minikube) |
-| Grabar ~30 min de llamada real por pistas para el `rtf` | jose |
+De la transcripción sobrevive lo puro y probado —`merge.py` y el filtro de
+`stt.py`, 20 mutantes muertos— esperando a la fase 4. Y la medida que la aparcó
+está anotada en `docs/transcripcion.md`.
 
 ## 📮 Reports — cac as the single home for bug reports
 
@@ -170,28 +170,47 @@ devuelve. Quitarlas habría roto tres integraciones vivas.
 | `tds-geolocation` | El único proyecto `web`, app abandonada, 0 reportes. Al irse la distinción su llave pasaría a poder leer. Dejarla inerte con `is_active = false` es reversible y de una línea. |
 | npm | `@g-studio/report-widget` sigue publicado, sin tocar, por si se refina más adelante. |
 
-## 🎙️ Transcripción — la fase 0 pasa su primera puerta
+## 🎙️ La fase 0 de grabación, pasada (17-sep-2026)
 
-**(a) ¿Llega el media desde un pod al SFU? Sí**, medido el 12-sep-2026: conecta
-en 0,73 s, primera muestra a 1,18 s, y **119,52 s de audio en 120 s** de
-escucha, sin cortes. No hacen falta `rtc.tcp_port` ni `rtc.node_ip`, y **el plan
-no cambia a Egress**: el bot participante se sostiene.
+**La puerta que podía tumbar el diseño era la alineación, y no la tumba.** Todo
+en `docs/grabacion.md`; lo corto:
 
-Para medirlo hizo falta un **suplente del humano** (`spike_speaker.py`): el spike
-cuenta audio recibido, y en un pod no hay nadie hablando. Publica un tono y el
-grabador lo escucha — con su token de sólo escucha intacto, que es lo que hace
-la medida honesta. El precedente que abre (una función que acuña tokens con
-permiso de publicar) queda cerrado con un guardián que mira **la firma** de
-`mint`, no un caso suelto: `test_el_grabador_no_puede_publicar_le_pases_lo_que_le_pases`.
+**Se monta, y sale barato.** Tres pistas a la vez (dos micros y una pantalla),
+las tres `EGRESS_COMPLETE`. Montar 3 minutos costó **4,9 s** —36× tiempo real—
+y salieron 6,67 MB: **~130 MB/hora**, contra ~3,6 GB/hora de componer en vivo.
+El texto pequeño de la pantalla se lee a 10 fps y CRF 18.
 
-De paso salieron dos cosas que impedían siquiera intentarlo: el Job apuntaba a
-`ghcr.io/guz-studio/…` cuando la organización es `romanshkvolkov`, y nadie
-construía la imagen. Ahora la construye `transcriber.yml`, con las pruebas del
-worker por delante.
+**El DTX no rompe la línea de tiempo.** Era el riesgo que más pintaba. El `.ogg`
+del micro enseña el valle de 17 dB donde la persona se calló, y sigue midiendo
+180,03 s contra 180,3 s de pared: el hueco se conserva donde estaba.
 
-**(b) El `rtf` del modelo sigue sin medir**, y esa sí necesita material humano:
-~30 min de llamada real grabada por pistas, y `tools/bench_stt.py`. Objetivo
-≥ 3× tiempo real con `large-v3-turbo` int8; por debajo se baja a `medium`.
+**`started_at` es un ancla de verdad**, y eso hubo que medirlo dos veces. Con
+una persona diciendo «tres» frente a un cronómetro **no se puede**: su tiempo de
+reacción es del tamaño de la medida. Así que la fuente pasó a ser una máquina —
+`tools/clapper.py` publica micro y pantalla movidos por el mismo reloj, un
+pitido y un destello **a la vez**— y `egress_tracks.py --stagger` arranca los
+dos egress con segundos de diferencia a propósito:
+
+| Toma | `started_at` micro − pantalla | Desfase medido tras alinear |
+|---|---|---|
+| `clap2` | +60 ms | +75 ms |
+| `clap3` | **−5 777 ms** | **+64 ms** |
+
+Los egress arrancaron con 5,8 segundos de diferencia y los golpes siguieron
+coincidiendo dentro de 73 ms. La puerta pedía ≤ 300 ms. Y los ~74 ms que quedan
+no son del grabador: contra el horario que la claqueta imprime, el vídeo llega
+con 0–5 ms y el audio con +74 ms constantes — la cola del emisor, no la
+grabación.
+
+Lo que queda por medir no puede tumbar nada: coste del mux con la máquina
+cargada, techo de Egress con seis personas, y Valkey caído a mitad. Mueven un
+límite de un `Deployment` o un número de un `values`.
+
+**De la transcripción**: el bot participante recibe media desde un pod sin
+tocar `rtc.tcp_port` (119,52 s de 120, medido el 12-sep-2026), y el `rtf` del
+modelo se quedó sin medir porque el rumbo cambió antes. El guardián que impide
+que `mint` acabe pudiendo publicar sigue en pie:
+`test_el_grabador_no_puede_publicar_le_pases_lo_que_le_pases`.
 
 ## ⏳ Planned (next iterations)
 

@@ -83,6 +83,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="egress_tracks")
     ap.add_argument("room", help="voice:<spaceId>")
     ap.add_argument("--seconds", type=float, default=180.0)
+    ap.add_argument("--stagger", type=float, default=0.0,
+                    help="espera entre el arranque de un egress y el siguiente")
     # El SFU va con hostNetwork: desde el nodo se le habla por localhost.
     ap.add_argument("--base", default="http://127.0.0.1:7880")
     ap.add_argument("--prefix", default="recordings/fase0")
@@ -118,7 +120,14 @@ def main() -> int:
 
     print(f"\n=== arranco {len(pistas)} egress ===")
     lanzados = []
-    for identidad, fuente, sid, _mime in pistas:
+    for n, (identidad, fuente, sid, _mime) in enumerate(pistas):
+        # `--stagger` separa los arranques a propósito. Es lo que convierte la
+        # claqueta en una prueba: si el desfase medido entre voz e imagen no se
+        # mueve cuando los dos egress arrancan con segundos de diferencia,
+        # entonces `started_at` es un ancla de verdad y no una casualidad.
+        if n and args.stagger:
+            print(f"  (espero {args.stagger:.1f} s antes del siguiente)")
+            time.sleep(args.stagger)
         clave = f"{args.prefix}/{fuente}-{identidad}-{sid}"
         r = llamar("Egress", "StartTrackEgress", {
             "room_name": args.room, "track_id": sid,
