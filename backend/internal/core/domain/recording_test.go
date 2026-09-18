@@ -181,3 +181,39 @@ func TestObjectKeysNeverReachTheClient(t *testing.T) {
 		}
 	}
 }
+
+// Un prefijo anidado sigue siendo un prefijo.
+//
+// Esto lo encontró la primera prueba contra un S3 de verdad, y no podía salir
+// antes: con `RECORDINGS_PREFIX=recordings/gate`, el prefijo pasaba por el
+// mismo saneador que una identidad y la barra se convertía en guion. La clave
+// quedaba `recordings-gate/…` — **fuera del rincón que la credencial de Egress
+// puede escribir**—, así que cada pista moría con un `AccessDenied` que sólo se
+// veía minutos después de colgar.
+//
+// Lo que se protege aquí son dos cosas a la vez: que la barra del prefijo
+// sobreviva, y que la del resto siga sin sobrevivir.
+func TestANestedPrefixKeepsItsSlashes(t *testing.T) {
+	k := RecordingTrackKey("recordings/gate", "org-1", "space-2", "rec-3",
+		"MICROPHONE", "user-4", "TR_abc")
+	if !strings.HasPrefix(k, "recordings/gate/") {
+		t.Fatalf("el prefijo perdió su barra: %s", k)
+	}
+	if RecordingFinalKey("media/recordings/", "o", "s", "r", "mp4") !=
+		"media/recordings/o/s/r/final.mp4" {
+		t.Fatalf("%s", RecordingFinalKey("media/recordings/", "o", "s", "r", "mp4"))
+	}
+	// Y la barra de una identidad **sigue sin** sobrevivir: lo que se ha
+	// relajado es el prefijo, que es configuración, no lo que viene de fuera.
+	if strings.Contains(
+		RecordingTrackKey("recordings", "o", "s", "r", "MICROPHONE", "a/b", "TR_1"),
+		"a/b") {
+		t.Fatal("una identidad con barra cambiaría el objeto de sitio")
+	}
+	// Un prefijo que se queda en nada cae al de siempre en vez de dejar la
+	// clave empezando por barra, que en S3 es un objeto con nombre raro que no
+	// aparece donde nadie lo busca.
+	if got := RecordingTrackKey("/", "o", "s", "r", "MICROPHONE", "u", "TR_1"); !strings.HasPrefix(got, RecordingPrefixDefault+"/") {
+		t.Fatalf("un prefijo vacío tiene que caer al de siempre: %s", got)
+	}
+}

@@ -53,7 +53,7 @@ para montar caras que nadie va a mirar.
 | Fase | Qué | Estado |
 |---|---|---|
 | 0 | Grabar por pistas y montar **a mano**, antes de escribir backend | **pasada** — ver abajo |
-| 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | **escrita**, sin probar contra el SFU |
+| 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | **hecha y probada contra el SFU** |
 | 2 | Mux (`recordings-mux`) + proxy con `Range` | no empezada |
 | 3 | App: consentimiento, chip REC, panel de grabaciones | no empezada |
 | 4 | Endurecer, y el puente a la transcripción | no empezada |
@@ -88,7 +88,7 @@ vuelve a hablar); y el 503 de «no está encendido» sólo sale en lo que escrib
 una instalación a la que se le apagó la grabación sigue enseñando lo que ya
 grabó.
 
-**24 mutantes muertos** repartidos en dominio (6), cliente del SFU (5), servicio
+**27 mutantes muertos** repartidos en dominio (9), cliente del SFU (5), servicio
 (11) y las etiquetas JSON (2). Los que más importan: quitar el filtro de cámaras,
 ignorar quién ganó el `ClaimTrack` —un egress por tick sobre la misma pista—,
 tratar `ENDING` como terminal, guardar la clave que se pidió en vez de la que
@@ -98,9 +98,31 @@ Y el grabador dejó de salir en «quién está en el canal»: entra a la sala co
 participante más, y sin filtrarlo una llamada donde sólo queda él parecería
 ocupada. Con respuesta real del SFU capturada, como el resto de ese fichero.
 
-**Falta probarlo contra el SFU de verdad**: dos personas en una llamada, `POST`
-desde curl, y comprobar que aparecen las filas y los objetos. Hasta eso, «escrita»
-y no «hecha».
+**Probada contra el SFU y el S3 de verdad**, y sin necesitar a nadie dentro de
+la llamada: la claqueta de la fase 0 aprendió a publicar también una pista de
+**cámara** (`tools/clapper.py --camera`), así que hace de participante completo
+y el filtro se comprueba en vivo en vez de contra un doble. El guion está en
+`TestLiveSFURecordsWhatIsInTheRoom`, que se salta solo salvo que se le dé
+`RECORDINGS_LIVE_ROOM` — así no molesta al CI y queda para repetirlo cuando
+LiveKit suba de versión.
+
+Lo que contestó el SFU de verdad: micro y pantalla **se graban**, cámara **se
+descarta**, los dos ficheros salen `complete` con la clave que Egress escribió
+(`.ogg` y `.webm`), y la grabación cierra con su `FirstMediaAt` y su
+`EgressDoneAt`. Veinticinco segundos de punta a punta.
+
+**Y encontró un fallo que ningún doble podía encontrar.** `keySegment` se
+aplicaba también al prefijo, así que `RECORDINGS_PREFIX=recordings/gate` se
+convertía en `recordings-gate`: no es que no funcionara, es que escribía **fuera
+del rincón** que la credencial de Egress tiene permitido, y cada pista moría con
+un `AccessDenied` que sólo se ve minutos después de colgar. Arreglado con
+`keyPrefix`, que conserva las barras del prefijo y sigue quitándoselas a lo que
+viene de fuera.
+→ Guardián: `domain.TestANestedPrefixKeepsItsSlashes`.
+
+Sigue sin probarse una sola cosa de la puerta: **matar el pod de Egress a
+mitad** y ver las pistas en `failed` en ≤ 30 s. Es un reinicio en producción, así
+que espera a que alguien lo diga.
 
 ## 📮 Reports — cac as the single home for bug reports
 

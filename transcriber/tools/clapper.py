@@ -128,6 +128,14 @@ async def main() -> None:
     ap = argparse.ArgumentParser(prog="clapper")
     ap.add_argument("room")
     ap.add_argument("--seconds", type=float, default=60.0)
+    # Una cámara que nadie va a mirar, publicada a propósito.
+    #
+    # Es lo que prueba **en vivo** que el grabador descarta el vídeo de cara: con
+    # dobles se comprueba que la función dice que no, pero que el SFU emita
+    # `CAMERA` con ese nombre exacto y que el reloj lo vea sólo lo contesta un
+    # LiveKit de verdad. Y a esta claqueta le cuesta una pista negra.
+    ap.add_argument("--camera", action="store_true",
+                    help="publica también una pista de cámara, que el grabador debe descartar")
     args = ap.parse_args()
 
     url = os.environ["LIVEKIT_URL"]
@@ -171,7 +179,21 @@ async def main() -> None:
             video_encoding=rtc.VideoEncoding(max_framerate=FPS, max_bitrate=1_500_000),
         ),
     )
-    print("publicadas: micro + pantalla", flush=True)
+    publicadas = "micro + pantalla"
+    if args.camera:
+        camera_source = rtc.VideoSource(320, 180)
+        await room.local_participant.publish_track(
+            rtc.LocalVideoTrack.create_video_track("clap-camera", camera_source),
+            rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_CAMERA, simulcast=False),
+        )
+        # Basta con que exista y emita algo: lo que se mide es que el grabador
+        # **no** le abra un egress, no lo que se ve en ella.
+        camera_source.capture_frame(
+            rtc.VideoFrame(320, 180, rtc.VideoBufferType.I420,
+                           bytes(b"\x40" * (320 * 180) + b"\x80" * (320 * 180 // 2)))
+        )
+        publicadas += " + cámara"
+    print("publicadas: " + publicadas, flush=True)
 
     origin = time.monotonic()
     wall = time.time()

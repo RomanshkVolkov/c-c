@@ -234,7 +234,7 @@ const RecordingPrefixDefault = "recordings"
 // buena es la que devuelve después.
 func RecordingTrackKey(prefix, orgID, spaceID, recordingID, source, identity, sid string) string {
 	return strings.Join([]string{
-		keySegment(prefix), keySegment(orgID), keySegment(spaceID), keySegment(recordingID),
+		keyPrefix(prefix), keySegment(orgID), keySegment(spaceID), keySegment(recordingID),
 		keySegment(strings.ToLower(source)) + "-" + keySegment(identity) + "-" + keySegment(sid),
 	}, "/")
 }
@@ -245,9 +245,36 @@ func RecordingTrackKey(prefix, orgID, spaceID, recordingID, source, identity, si
 // en vez de dejar dos ficheros y ninguna forma de saber cuál vale.
 func RecordingFinalKey(prefix, orgID, spaceID, recordingID, ext string) string {
 	return strings.Join([]string{
-		keySegment(prefix), keySegment(orgID), keySegment(spaceID), keySegment(recordingID),
+		keyPrefix(prefix), keySegment(orgID), keySegment(spaceID), keySegment(recordingID),
 		"final." + keySegment(strings.TrimPrefix(ext, ".")),
 	}, "/")
+}
+
+// keyPrefix limpia el prefijo **conservando sus barras**.
+//
+// El prefijo no es un tramo más: es configuración, y `recordings/gate` es una
+// cosa que alguien escribe con toda la intención. Pasarlo por `keySegment` lo
+// convertía en `recordings-gate` — que no es sólo «no funciona»: es un objeto
+// escrito **fuera del rincón** que la credencial de Egress tiene permitido, y
+// por tanto un `AccessDenied` que aparece minutos después de colgar y lejos de
+// aquí. Así salió: la primera vez que esto habló con un S3 de verdad.
+//
+// Los tramos vacíos y los `.`/`..` se caen. No es una defensa contra nada —S3
+// no resuelve rutas, así que `a/../b` es literalmente esa clave— sino contra
+// una clave imposible de encontrar en un listado.
+func keyPrefix(s string) string {
+	tramos := strings.Split(s, "/")
+	out := make([]string, 0, len(tramos))
+	for _, tramo := range tramos {
+		if tramo == "" || tramo == "." || tramo == ".." {
+			continue
+		}
+		out = append(out, keySegment(tramo))
+	}
+	if len(out) == 0 {
+		return RecordingPrefixDefault
+	}
+	return strings.Join(out, "/")
 }
 
 // keySegment deja pasar lo que puede ir en una clave de S3 sin cambiar de sitio.
