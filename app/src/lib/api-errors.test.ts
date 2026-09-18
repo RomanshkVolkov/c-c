@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -17,6 +17,60 @@ import { phraseFor } from "@/lib/server-errors";
  * sin que nada avise. Estas pruebas son lo que lo saca a la luz.
  */
 
+/**
+ * Los códigos que el backend puede mandarle a una persona.
+ *
+ * Se leen del fuente de Go, y **el fichero entero de una vez**: una llamada a
+ * `SendErrorResponse` ocupa dos o tres líneas casi siempre, así que buscarlos
+ * línea a línea —como se hacía— dejaba fuera a la mayoría. Cuando se arregló
+ * aparecieron **veinticuatro** códigos sin traducir que llevaban meses
+ * saliendo en inglés: `bad-transition`, `ring-outsider`, `subtasks-open`…
+ *
+ * `recording_internal.go` no cuenta. Sus códigos viajan por el puerto interno
+ * —el que habla con el montador— y no hay ningún camino por el que lleguen a
+ * una pantalla. Exigirles una frase sería pedir que se traduzca algo que sólo
+ * lee otro proceso.
+ */
+const SIN_LECTOR_HUMANO = ["recording_internal.go"];
+
+function ficherosGo(dir: string): string[] {
+  const out: string[] = [];
+  for (const nombre of readdirSync(dir)) {
+    const ruta = join(dir, nombre);
+    if (statSync(ruta).isDirectory()) {
+      out.push(...ficherosGo(ruta));
+    } else if (
+      nombre.endsWith(".go") &&
+      !nombre.endsWith("_test.go") &&
+      !SIN_LECTOR_HUMANO.includes(nombre)
+    ) {
+      out.push(ruta);
+    }
+  }
+  return out;
+}
+
+function codigosDelBackend(): string[] | null {
+  const raiz = join(process.cwd(), "..", "backend", "internal");
+  let ficheros: string[];
+  try {
+    ficheros = ficherosGo(raiz);
+  } catch {
+    return null;
+  }
+  const codigos = new Set<string>();
+  // El último literal entre comillas de la llamada es el código. `[^()]` casa
+  // también saltos de línea, que es lo que hace que una llamada partida en tres
+  // se vea entera; la rama `\([^()]*\)` deja pasar los paréntesis de dentro,
+  // como el `http.StatusConflict` o un `err.Error()`.
+  const patron = /SendErrorResponse\((?:[^()]|\([^()]*\))*?"([a-z][a-z0-9-]+)"\s*\)/g;
+  for (const f of ficheros) {
+    const texto = readFileSync(f, "utf-8");
+    for (const m of texto.matchAll(patron)) codigos.add(m[1]);
+  }
+  return [...codigos];
+}
+
 describe("las etiquetas de error", () => {
   /**
    * Todos los códigos que el servidor sabe emitir están en el catálogo.
@@ -26,25 +80,12 @@ describe("las etiquetas de error", () => {
    * justo el día en que esto importaría.
    */
   it("cubren lo que el servidor sabe emitir", () => {
-    const raiz = join(process.cwd(), "..", "backend", "internal");
-    let salida = "";
-    try {
-      salida = execSync(
-        `grep -rhoE 'SendErrorResponse\\([^)]*"[a-z][a-z0-9-]+"\\)' --include=*.go ${raiz}`,
-        { encoding: "utf-8" },
-      );
-    } catch {
-      return; // sin el backend a mano, esta prueba no aplica
-    }
-    const codigos = [
-      ...new Set(
-        salida
-          .split("\n")
-          .map((l) => l.match(/"([a-z][a-z0-9-]+)"\)$/)?.[1])
-          .filter((c): c is string => Boolean(c)),
-      ),
-    ];
-    expect(codigos.length).toBeGreaterThan(20);
+    const codigos = codigosDelBackend();
+    if (codigos === null) return; // sin el backend a mano, esta prueba no aplica
+    // Ochenta y pico hoy. El suelo existe para que un fallo al recogerlos
+    // —una ruta mal puesta, un regex que deja de casar— no se vea como «no
+    // falta ninguno».
+    expect(codigos.length).toBeGreaterThan(60);
     const faltan = codigos.filter((c) => !(c in errorsEn));
     expect(faltan).toEqual([]);
   });

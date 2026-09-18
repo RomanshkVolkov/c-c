@@ -138,12 +138,19 @@ jobs:
           LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          # Grabaciones. La llave del montador la comparten cac (que la exige en
+          # el puerto interno) y el propio montador (que la manda), así que el
+          # mismo valor alimenta dos secretos — igual que pasa con LiveKit.
+          # Vacía = ni se abre el puerto ni se despliega el montador.
+          RECORDINGS_MUX_KEY: ${{ secrets.RECORDINGS_MUX_KEY }}
+          RECORDINGS_MUX_ACCESS_KEY_ID: ${{ secrets.RECORDINGS_MUX_ACCESS_KEY_ID }}
+          RECORDINGS_MUX_SECRET_ACCESS_KEY: ${{ secrets.RECORDINGS_MUX_SECRET_ACCESS_KEY }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK,REPORT_TOKEN_SECRET,LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET
+          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK,REPORT_TOKEN_SECRET,LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET,RECORDINGS_MUX_KEY,RECORDINGS_MUX_ACCESS_KEY_ID,RECORDINGS_MUX_SECRET_ACCESS_KEY
           script: |
             kubectl create secret generic cac-secret \
               --from-literal=DATABASE_URL="$DATABASE_URL" \
@@ -162,6 +169,7 @@ jobs:
               --from-literal=LIVEKIT_URL="$LIVEKIT_URL" \
               --from-literal=LIVEKIT_API_KEY="$LIVEKIT_API_KEY" \
               --from-literal=LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
+              --from-literal=RECORDINGS_MUX_KEY="$RECORDINGS_MUX_KEY" \
               --dry-run=client -o yaml | kubectl apply -f -
 
             # El secreto que lee el propio LiveKit. Formato "clave: secreto",
@@ -170,6 +178,21 @@ jobs:
             if [ -n "$LIVEKIT_API_KEY" ]; then
               kubectl create secret generic livekit-secret \
                 --from-literal=LIVEKIT_KEYS="$LIVEKIT_API_KEY: $LIVEKIT_API_SECRET" \
+                --dry-run=client -o yaml | kubectl apply -f -
+            fi
+
+            # El secreto del montador. Sus llaves de AWS son **de otro usuario
+            # de IAM**: lee las pistas y sube el montaje bajo `recordings/`, y
+            # no puede borrar nada. Se omite si no hay llave, para que un
+            # despliegue sin grabación no falle.
+            if [ -n "$RECORDINGS_MUX_KEY" ]; then
+              kubectl create secret generic recordings-mux-secret \
+                --from-literal=CAC_INTERNAL_URL="http://cac-service.default.svc.cluster.local:8081" \
+                --from-literal=RECORDINGS_MUX_KEY="$RECORDINGS_MUX_KEY" \
+                --from-literal=RECORDINGS_BUCKET="$REPORTS_MEDIA_BUCKET" \
+                --from-literal=AWS_DEFAULT_REGION="$REPORTS_MEDIA_REGION" \
+                --from-literal=AWS_ACCESS_KEY_ID="$RECORDINGS_MUX_ACCESS_KEY_ID" \
+                --from-literal=AWS_SECRET_ACCESS_KEY="$RECORDINGS_MUX_SECRET_ACCESS_KEY" \
                 --dry-run=client -o yaml | kubectl apply -f -
             fi
 

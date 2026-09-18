@@ -317,6 +317,9 @@ type RecordingResponse struct {
 	Recording
 	StartedByName string           `json:"startedByName,omitempty"`
 	Tracks        []RecordingTrack `json:"tracks,omitempty"`
+	// FailedTracks: cuántas se perdieron. Es lo que separa `ready` de
+	// `partial` — hay vídeo, pero no está toda la gente.
+	FailedTracks int `json:"failedTracks,omitempty"`
 }
 
 // RecordingPolicy es lo que la app pregunta antes de pintar el botón.
@@ -340,4 +343,35 @@ type RecordingSignal struct {
 	ByName  string    `json:"byName,omitempty"`
 	Since   time.Time `json:"since"`
 	SpaceID string    `json:"spaceId,omitempty"`
+}
+
+// ─── Lo que ve el mux ────────────────────────────────────────────────────────
+
+// MuxJob es una grabación lista para montar, con lo justo para montarla.
+//
+// Un tipo aparte y no el `RecordingResponse` de la app, a propósito: lo que el
+// mux necesita —las claves de los objetos, las marcas en nanosegundos— es
+// exactamente lo que la app **no** debe ver. Compartir el tipo obligaría a
+// recordar para siempre qué campo puede salir por dónde.
+type MuxJob struct {
+	ID      string `json:"id"`
+	OrgID   string `json:"orgId"`
+	SpaceID string `json:"spaceId"`
+	// Prefix para que el mux sepa dónde subir el montaje sin adivinarlo.
+	Prefix string `json:"prefix"`
+	// FirstMediaAtNs es el cero de la línea de tiempo. De `FileInfo`, nunca de
+	// nuestro reloj: es lo que alinea las pistas dentro de 73 ms.
+	FirstMediaAtNs int64      `json:"firstMediaAtNs"`
+	Tracks         []MuxTrack `json:"tracks"`
+	// FailedTracks es lo que convierte el resultado en `partial`: hay vídeo,
+	// pero falta alguien.
+	FailedTracks int `json:"failedTracks"`
+}
+
+type MuxTrack struct {
+	Source      string `json:"source"`
+	ObjectKey   string `json:"objectKey"`
+	StartedAtNs int64  `json:"startedAtNs"`
+	EndedAtNs   int64  `json:"endedAtNs"`
+	Bytes       int64  `json:"bytes"`
 }

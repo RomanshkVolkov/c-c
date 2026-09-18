@@ -12,6 +12,7 @@ import (
 	"github.com/twitchtv/twirp"
 
 	lkclient "github.com/guz-studio/cac/backend/internal/adapters/livekit"
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
@@ -34,6 +35,8 @@ var (
 	// ErrRoomEmpty: grabar una sala vacía guardaría un fichero de silencio y
 	// dejaría el chip REC encendido para nadie.
 	ErrRoomEmpty = errors.New("nobody is in the call")
+	// ErrNoMedia: la grabación existe pero todavía no tiene fichero montado.
+	ErrNoMedia = errors.New("this recording has no media yet")
 )
 
 // RecordingService: empezar, parar y —sobre todo— el tick que descubre pistas.
@@ -52,14 +55,26 @@ type RecordingService struct {
 	// que se pueda apagar la grabación sin apagar la voz.
 	enabled    bool
 	maxMinutes int
-	// storeReady dice si hay bucket. Sin él, Egress escribiría en un sitio que
-	// nadie puede leer después.
-	storeReady bool
+	// store es el bucket: leer el montaje para servirlo, y borrarlo al borrar
+	// la grabación. **Escribir no**: quien escribe las pistas es Egress con su
+	// propia credencial, y quien escribe el montaje es el mux con la suya.
+	//
+	// Interfaz y no el `*mediastore.Store` concreto para poder doblarlo: lo que
+	// hay que poder probar sin S3 es que un `Range` sale como 206 con su
+	// `Content-Range`, y que la clave del objeto no se filtra por ningún lado.
+	store MediaStore
+}
+
+// MediaStore es lo que el servicio necesita del bucket, y nada más.
+type MediaStore interface {
+	Enabled() bool
+	GetRange(ctx context.Context, key, rng string) (*mediastore.Object, error)
+	Delete(ctx context.Context, keys ...string) error
 }
 
 func NewRecordingService(
 	repo *repository.RecordingRepository, lk lkclient.Client, hub *events.Hub,
-	prefix string, enabled, storeReady bool, maxMinutes int,
+	store MediaStore, prefix string, enabled bool, maxMinutes int,
 ) *RecordingService {
 	if prefix == "" {
 		prefix = domain.RecordingPrefixDefault
@@ -68,15 +83,15 @@ func NewRecordingService(
 		maxMinutes = 240
 	}
 	return &RecordingService{
-		repo: repo, lk: lk, hub: hub, prefix: prefix,
-		enabled: enabled, storeReady: storeReady, maxMinutes: maxMinutes,
+		repo: repo, lk: lk, hub: hub, store: store, prefix: prefix,
+		enabled: enabled, maxMinutes: maxMinutes,
 	}
 }
 
 // Enabled: las tres condiciones. Si falta una, la app esconde el botón en vez
 // de enseñar uno que siempre falla.
 func (s *RecordingService) Enabled() bool {
-	return s != nil && s.enabled && s.lk != nil && s.storeReady
+	return s != nil && s.enabled && s.lk != nil && s.store != nil && s.store.Enabled()
 }
 
 // ─── Empezar y parar ─────────────────────────────────────────────────────────
@@ -689,4 +704,158 @@ func truncate(s string) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+// ─── El protocolo del mux ────────────────────────────────────────────────────
+
+// El mux es un proceso aparte que baja las pistas, las monta con ffmpeg y sube
+// el resultado. Habla con esto por un puerto interno, y el reparto de trabajo
+// es una columna de la base —no una cola— por una razón concreta: la verdad de
+// «qué hay que montar» ya vive en Postgres, y ponerla también en una cola
+// obligaría a escribir el mismo `UPDATE` condicional en dos sitios.
+//
+// El mux **no tiene ninguna credencial de cac**: una llave y un puerto. Y no
+// puede leer el bucket entero — su usuario de IAM sólo alcanza `recordings/`.
+
+// muxLease: cuánto se reserva una grabación mientras se monta.
+//
+// Quince minutos porque montar diez minutos de llamada tarda menos de uno
+// —medido: 36× tiempo real— y lo que esto cubre no es el caso normal sino el
+// mux que se muere a mitad: hasta que el plazo vence, nadie más la coge.
+const muxLease = 15 * time.Minute
+
+// Prefix: dónde van los objetos de esta instalación. Lo necesita el mux para
+// subir el montaje sin adivinar la clave.
+func (s *RecordingService) Prefix() string { return s.prefix }
+
+// PendingMux: lo que está listo para montar.
+func (s *RecordingService) PendingMux(now time.Time, limit int) ([]domain.RecordingResponse, error) {
+	rows, err := s.repo.PendingMux(now, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.RecordingResponse, 0, len(rows))
+	for _, rec := range rows {
+		tracks, err := s.repo.Tracks(rec.ID)
+		if err != nil {
+			return nil, err
+		}
+		// Sólo las que tienen fichero. Una pista fallida no se monta, pero sí
+		// cuenta: es lo que convierte el resultado en `partial` en vez de
+		// `ready`, y quien lo mire tiene derecho a saber que falta alguien.
+		usable := make([]domain.RecordingTrack, 0, len(tracks))
+		for _, t := range tracks {
+			if t.Status == domain.TrackComplete && t.ObjectKey != "" {
+				usable = append(usable, t)
+			}
+		}
+		out = append(out, domain.RecordingResponse{
+			Recording: rec, Tracks: usable, FailedTracks: len(tracks) - len(usable),
+		})
+	}
+	return out, nil
+}
+
+// ClaimMux reserva una grabación para un mux. `false` es «otro llegó antes».
+func (s *RecordingService) ClaimMux(id string, now time.Time) (bool, error) {
+	rec, err := s.repo.FindByID(id)
+	if err != nil {
+		return false, err
+	}
+	seen := rec.MuxLeaseUntil
+	if seen != nil && seen.After(now) {
+		return false, nil // reservada y todavía en plazo
+	}
+	return s.repo.LeaseMux(id, seen, now.Add(muxLease))
+}
+
+// MuxReady cierra la grabación con su fichero montado.
+//
+// `partial` y no `ready` cuando alguna pista se perdió: hay vídeo, pero no
+// está toda la gente. Enseñarlo como completo sería mentir por omisión.
+func (s *RecordingService) MuxReady(id, key, contentType string, bytes, durationMs int64, hasScreen bool) error {
+	rec, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+	tracks, err := s.repo.Tracks(id)
+	if err != nil {
+		return err
+	}
+	estado := domain.RecordingReady
+	for _, t := range tracks {
+		if t.Status == domain.TrackFailed {
+			estado = domain.RecordingPartial
+			break
+		}
+	}
+	ok, err := s.repo.Transition(id, domain.RecordingFinalizing, estado, map[string]any{
+		"final_key": key, "final_content_type": contentType,
+		"final_bytes": bytes, "duration_ms": durationMs, "has_screen": hasScreen,
+		"mux_lease_until": nil,
+	})
+	if err != nil || !ok {
+		return err
+	}
+	rec.Status = estado
+	s.publish(rec)
+	return nil
+}
+
+// MuxFailed: el montaje no salió. **Las pistas se conservan**: son el material
+// para reintentarlo, y son la transcripción de mañana.
+func (s *RecordingService) MuxFailed(id, reason string) error {
+	rec, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+	ok, err := s.repo.Transition(id, domain.RecordingFinalizing, domain.RecordingFailed,
+		map[string]any{"error": truncate(reason), "mux_lease_until": nil})
+	if err != nil || !ok {
+		return err
+	}
+	rec.Status = domain.RecordingFailed
+	s.publish(rec)
+	return nil
+}
+
+// ─── Ver y borrar ────────────────────────────────────────────────────────────
+
+// Media abre el fichero montado, entero o por trozos.
+//
+// Pasa por cac y no por una URL del bucket: una URL firmada que se escapa de
+// una pantalla sigue valiendo hasta que caduca, y una grabación de una reunión
+// no es algo que uno quiera repartir por accidente.
+func (s *RecordingService) Media(ctx context.Context, rec *domain.Recording, rng string) (*mediastore.Object, error) {
+	if rec.FinalKey == "" {
+		return nil, ErrNoMedia
+	}
+	return s.store.GetRange(ctx, rec.FinalKey, rng)
+}
+
+// Delete borra la grabación: primero los objetos, después la fila.
+//
+// En ese orden a propósito. Si S3 falla, la fila se queda y se puede volver a
+// intentar; al revés quedarían ficheros en el bucket sin nadie que sepa que
+// existen ni cómo se llamaban.
+func (s *RecordingService) Delete(ctx context.Context, rec *domain.Recording) error {
+	tracks, err := s.repo.Tracks(rec.ID)
+	if err != nil {
+		return err
+	}
+	keys := make([]string, 0, len(tracks)+1)
+	if rec.FinalKey != "" {
+		keys = append(keys, rec.FinalKey)
+	}
+	for _, t := range tracks {
+		if t.ObjectKey != "" {
+			keys = append(keys, t.ObjectKey)
+		}
+	}
+	if len(keys) > 0 {
+		if err := s.store.Delete(ctx, keys...); err != nil {
+			return err
+		}
+	}
+	return s.repo.DeleteWithTracks(rec.ID)
 }

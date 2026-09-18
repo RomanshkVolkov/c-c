@@ -9,6 +9,7 @@ import (
 	lksdk "github.com/livekit/protocol/livekit"
 
 	lkclient "github.com/guz-studio/cac/backend/internal/adapters/livekit"
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
@@ -74,8 +75,8 @@ func TestLiveSFURecordsWhatIsInTheRoom(t *testing.T) {
 
 	// 2. El servicio entero, con la base de verdad y el SFU de verdad.
 	repo := repository.NewRecordingRepository(recordingDB(t))
-	svc := NewRecordingService(repo, lk, nil,
-		os.Getenv("RECORDINGS_PREFIX"), true, true, 240)
+	svc := NewRecordingService(repo, lk, nil, mediastore.Fake(),
+		os.Getenv("RECORDINGS_PREFIX"), true, 240)
 	spaceID := room[len("voice:"):]
 
 	rec, err := svc.Start(ctx, "org-live", spaceID, "u-live")
@@ -179,7 +180,8 @@ func TestLiveSFUSurvivesAnEgressRestart(t *testing.T) {
 	ctx := context.Background()
 
 	repo := repository.NewRecordingRepository(recordingDB(t))
-	svc := NewRecordingService(repo, lk, nil, os.Getenv("RECORDINGS_PREFIX"), true, true, 240)
+	svc := NewRecordingService(repo, lk, nil, mediastore.Fake(),
+		os.Getenv("RECORDINGS_PREFIX"), true, 240)
 
 	rec, err := svc.Start(ctx, "org-live", room[len("voice:"):], "u-live")
 	if err != nil {

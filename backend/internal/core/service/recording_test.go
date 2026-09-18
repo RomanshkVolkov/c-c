@@ -9,6 +9,8 @@ import (
 
 	lksdk "github.com/livekit/protocol/livekit"
 	"github.com/twitchtv/twirp"
+
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -211,7 +213,11 @@ func recordingDB(t *testing.T) *gorm.DB {
 func newServiceUnderTest(t *testing.T, sfu *fakeSFU) (*RecordingService, *repository.RecordingRepository) {
 	t.Helper()
 	repo := repository.NewRecordingRepository(recordingDB(t))
-	return NewRecordingService(repo, sfu, nil, "recordings", true, true, 240), repo
+	// Un almacén "encendido" de mentira: estas pruebas no leen ni escriben en
+	// S3 —quien escribe es Egress, quien monta es el mux—, sólo necesitan que
+	// `Enabled()` diga que sí.
+	store := mediastore.Fake()
+	return NewRecordingService(repo, sfu, nil, store, "recordings", true, 240), repo
 }
 
 // ─── Los guardianes ──────────────────────────────────────────────────────────
@@ -699,5 +705,210 @@ func TestAStaleListingDoesNotKillAFinishedTrack(t *testing.T) {
 	}
 	if tracks[0].Status == domain.TrackFailed {
 		t.Fatalf("una pista terminada se dio por muerta: %s", tracks[0].Error)
+	}
+}
+
+// ─── El reparto del mux ──────────────────────────────────────────────────────
+
+// dejarParaMontar deja una grabación cerrada y lista para el montador.
+func dejarParaMontar(t *testing.T, svc *RecordingService, repo *repository.RecordingRepository,
+	sfu *fakeSFU) *domain.Recording {
+	t.Helper()
+	rec, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Stop(context.Background(), rec, "test"); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC()
+	sfu.finish("TR_mic", lksdk.EgressStatus_EGRESS_COMPLETE, "recordings/o/s/r/mic.ogg", base)
+	svc.Tick(context.Background(), base.Add(10*time.Second))
+	after, err := repo.FindByID(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.EgressDoneAt == nil {
+		t.Fatalf("no quedó lista para montar: %q", after.Status)
+	}
+	return after
+}
+
+func servicioConUnaPista(t *testing.T) (*RecordingService, *repository.RecordingRepository, *fakeSFU) {
+	t.Helper()
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
+	}}
+	svc, repo := newServiceUnderTest(t, sfu)
+	return svc, repo, sfu
+}
+
+// Dos montadores no montan la misma grabación.
+//
+// El reparto es una columna de la base y no una cola, así que lo decide un
+// `UPDATE` condicional. Sin él, dos pasadas simultáneas subirían dos veces el
+// mismo fichero y la segunda pisaría a la primera a mitad de subida.
+func TestOnlyOneMuxClaimsARecording(t *testing.T) {
+	svc, repo, sfu := servicioConUnaPista(t)
+	rec := dejarParaMontar(t, svc, repo, sfu)
+	ahora := time.Now().UTC()
+
+	primero, err := svc.ClaimMux(rec.ID, ahora)
+	if err != nil || !primero {
+		t.Fatalf("el primero se la queda: %v %v", primero, err)
+	}
+	segundo, err := svc.ClaimMux(rec.ID, ahora.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if segundo {
+		t.Fatal("el segundo montador se llevó la misma grabación")
+	}
+}
+
+// Y si el montador se muere, el plazo vence y otro la recoge.
+//
+// Es lo que evita que una grabación se quede sin montar para siempre porque el
+// pod que la tenía reservada se cayó. El mutante que mata: reservarla sin
+// plazo, o no mirar si el anterior venció.
+func TestAnExpiredMuxLeaseIsTakenAgain(t *testing.T) {
+	svc, repo, sfu := servicioConUnaPista(t)
+	rec := dejarParaMontar(t, svc, repo, sfu)
+	ahora := time.Now().UTC()
+
+	if ok, err := svc.ClaimMux(rec.ID, ahora); err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	// Quince minutos y un segundo después, el que se murió ya no la tiene.
+	despues := ahora.Add(muxLease + time.Second)
+	if ok, err := svc.ClaimMux(rec.ID, despues); err != nil || !ok {
+		t.Fatalf("un plazo vencido tiene que poder recogerse: %v %v", ok, err)
+	}
+}
+
+// Lo que el montador ve: las pistas con fichero, y cuántas se perdieron.
+//
+// Una pista fallida no se monta —no hay nada que montar— pero **sí cuenta**:
+// es lo que convierte el resultado en `partial`, y quien lo mire tiene derecho
+// a saber que falta alguien.
+func TestTheMuxOnlySeesTracksWithAFile(t *testing.T) {
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1",
+			track("TR_mic", lksdk.TrackSource_MICROPHONE, false),
+			track("TR_scr", lksdk.TrackSource_SCREEN_SHARE, false)),
+	}}
+	svc, repo := newServiceUnderTest(t, sfu)
+	rec, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Stop(context.Background(), rec, "test"); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC()
+	sfu.finish("TR_mic", lksdk.EgressStatus_EGRESS_COMPLETE, "recordings/o/s/r/mic.ogg", base)
+	sfu.finish("TR_scr", lksdk.EgressStatus_EGRESS_FAILED, "", base)
+	svc.Tick(context.Background(), base.Add(10*time.Second))
+
+	jobs, err := svc.PendingMux(base.Add(20*time.Second), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("%d trabajos pendientes", len(jobs))
+	}
+	if len(jobs[0].Tracks) != 1 {
+		t.Fatalf("sólo se monta lo que tiene fichero: %d", len(jobs[0].Tracks))
+	}
+	if jobs[0].FailedTracks != 1 {
+		t.Fatalf("la pista perdida tiene que contarse: %d", jobs[0].FailedTracks)
+	}
+
+	// Y al cerrar, `partial` y no `ready`: hay vídeo, pero falta gente.
+	if err := svc.MuxReady(rec.ID, "recordings/o/s/r/final.mp4", "video/mp4", 100, 1000, true); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.FindByID(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != domain.RecordingPartial {
+		t.Fatalf("con una pista perdida es %q, no %q", domain.RecordingPartial, after.Status)
+	}
+}
+
+// Sin pistas perdidas, `ready` a secas.
+func TestAWholeRecordingBecomesReady(t *testing.T) {
+	svc, repo, sfu := servicioConUnaPista(t)
+	rec := dejarParaMontar(t, svc, repo, sfu)
+	if err := svc.MuxReady(rec.ID, "recordings/o/s/r/final.m4a", "audio/mp4", 100, 1000, false); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repo.FindByID(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != domain.RecordingReady {
+		t.Fatalf("%q", after.Status)
+	}
+	if after.FinalContentType != "audio/mp4" || after.HasScreen {
+		t.Fatalf("una llamada sin pantalla se sirve como audio: %+v", after)
+	}
+}
+
+// Una grabación reservada no vuelve a salir en la lista de pendientes.
+//
+// Sin esto, el propio montador que la está montando se la encontraría otra vez
+// en la siguiente vuelta —quince segundos después— y empezaría a montarla en
+// paralelo consigo mismo. Cuando el plazo vence sí vuelve, que es lo que la
+// rescata si el pod se murió.
+//
+// El mutante que mata: quitar el filtro del plazo de la consulta.
+func TestPendingMuxHidesWhatIsAlreadyClaimed(t *testing.T) {
+	svc, repo, sfu := servicioConUnaPista(t)
+	rec := dejarParaMontar(t, svc, repo, sfu)
+	ahora := time.Now().UTC()
+
+	if jobs, err := svc.PendingMux(ahora, 10); err != nil || len(jobs) != 1 {
+		t.Fatalf("antes de reservarla tiene que salir: %d %v", len(jobs), err)
+	}
+	if ok, err := svc.ClaimMux(rec.ID, ahora); err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	if jobs, err := svc.PendingMux(ahora.Add(time.Minute), 10); err != nil || len(jobs) != 0 {
+		t.Fatalf("reservada, no sale: %d %v", len(jobs), err)
+	}
+	// Y cuando el plazo vence, vuelve: es lo que rescata la grabación de un
+	// montador que se murió con ella en la mano.
+	if jobs, err := svc.PendingMux(ahora.Add(muxLease+time.Second), 10); err != nil || len(jobs) != 1 {
+		t.Fatalf("con el plazo vencido vuelve: %d %v", len(jobs), err)
+	}
+}
+
+// Dos réplicas que leyeron lo mismo: sólo una escribe.
+//
+// Es la carrera que el `UPDATE` condicional del repositorio existe para
+// perder. El servicio comprueba antes si está reservada, pero entre esa lectura
+// y la escritura cabe la otra réplica — comprobar en Go no vale de nada si la
+// escritura no lleva la condición encima.
+//
+// El mutante que mata: quitar el `WHERE mux_lease_until = ?` de `LeaseMux`.
+func TestTwoReplicasThatReadTheSameLeaseOnlyOneWrites(t *testing.T) {
+	svc, repo, sfu := servicioConUnaPista(t)
+	rec := dejarParaMontar(t, svc, repo, sfu)
+	ahora := time.Now().UTC()
+
+	// Las dos leen «sin reservar» a la vez.
+	visto := rec.MuxLeaseUntil // nil
+	primera, err := repo.LeaseMux(rec.ID, visto, ahora.Add(muxLease))
+	if err != nil || !primera {
+		t.Fatalf("la primera escribe: %v %v", primera, err)
+	}
+	segunda, err := repo.LeaseMux(rec.ID, visto, ahora.Add(muxLease))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if segunda {
+		t.Fatal("la segunda escribió sobre la reserva de la primera")
 	}
 }

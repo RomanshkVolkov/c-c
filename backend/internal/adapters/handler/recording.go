@@ -2,9 +2,13 @@ package handler
 
 import (
 	"errors"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	awshttp "github.com/aws/smithy-go/transport/http"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -19,6 +23,8 @@ type RecordingHandler interface {
 	Stop(http.ResponseWriter, *http.Request)
 	List(http.ResponseWriter, *http.Request)
 	Get(http.ResponseWriter, *http.Request)
+	Media(http.ResponseWriter, *http.Request)
+	Delete(http.ResponseWriter, *http.Request)
 }
 
 // SpaceFinder es lo único que este handler necesita del módulo de tareas:
@@ -186,4 +192,108 @@ func (h *recordingHandler) recording(w http.ResponseWriter, r *http.Request, nee
 		return nil, false
 	}
 	return rec, true
+}
+
+// Media sirve el fichero montado, entero o por trozos.
+//
+// Fuera del grupo del JWT porque un `<video src>` de un webview **no puede
+// mandar cabeceras**: la entrada va por `?token=`, como el proxy de los
+// adjuntos y el de las capturas. Y por aquí y no por una URL firmada del
+// bucket: una URL firmada que se escapa de una pantalla sigue valiendo hasta
+// que caduca, y esto es una reunión entera.
+func (h *recordingHandler) Media(w http.ResponseWriter, r *http.Request) {
+	rec, err := h.svc.FindByID(chi.URLParam(r, "id"))
+	if err != nil {
+		// 404 y no 403: quien no pertenece a la organización no tiene por qué
+		// enterarse de que esa grabación existe.
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	if !attachmentViewer(r, rec.OrgID) {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+
+	obj, err := h.svc.Media(r.Context(), rec, r.Header.Get("Range"))
+	if err != nil {
+		if errors.Is(err, service.ErrNoMedia) {
+			// 409 y no 404: la grabación existe y todavía se está montando.
+			// «No encontrado» mandaría a alguien a buscar un fallo que no hay.
+			SendErrorResponse(w, http.StatusConflict,
+				"This recording is still being processed", "recording-not-ready")
+			return
+		}
+		if isRangeError(err) {
+			w.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(rec.FinalBytes, 10))
+			SendErrorResponse(w, http.StatusRequestedRangeNotSatisfiable,
+				"Bad range", "bad-range")
+			return
+		}
+		SendErrorResponse(w, http.StatusBadGateway, "Failed to read the recording", err.Error())
+		return
+	}
+	defer obj.Body.Close()
+
+	// **Sin plazo de escritura.** El servidor tiene `WriteTimeout: 15s`, que
+	// está bien para un JSON y corta en seco cualquier vídeo que tarde más de
+	// quince segundos en transferirse — o sea, todos. Es el mismo arreglo que
+	// necesitó el SSE, y se ve como una descarga que se interrumpe siempre en
+	// el mismo punto.
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Time{})
+	}
+
+	ct := obj.ContentType
+	if ct == "" {
+		ct = rec.FinalContentType
+	}
+	w.Header().Set("Content-Type", ct)
+	// Sin esto el navegador no ofrece arrastrar la barra: `Accept-Ranges` es
+	// cómo se entera de que puede pedir trozos.
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Content-Length", strconv.FormatInt(obj.Size, 10))
+	// Una grabación de una reunión no se queda en la caché de nadie.
+	w.Header().Set("Cache-Control", "private, no-store")
+
+	status := http.StatusOK
+	if obj.ContentRange != "" {
+		w.Header().Set("Content-Range", obj.ContentRange)
+		status = http.StatusPartialContent
+	}
+	w.WriteHeader(status)
+	_, _ = io.Copy(w, obj.Body)
+}
+
+// Delete borra la grabación y sus ficheros. Quien la empezó, o un admin.
+func (h *recordingHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	rec, ok := h.recording(w, r, true)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	role, _ := user.RoleInOrg(rec.OrgID)
+	if rec.StartedBy != user.UserID && !user.Superadmin && role != domain.OrgRoleAdmin {
+		SendErrorResponse(w, http.StatusForbidden,
+			"Only whoever started this recording, or an admin, can delete it",
+			"not-the-recorder")
+		return
+	}
+	if err := h.svc.Delete(r.Context(), rec); err != nil {
+		// 502 y **la fila no se borra**: si S3 falló, quedarían ficheros en el
+		// bucket sin nadie que sepa que existen. Se puede reintentar.
+		SendErrorResponse(w, http.StatusBadGateway, "Failed to delete the media", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
+}
+
+// isRangeError reconoce el «ese trozo no existe» de S3.
+//
+// Por el código del error y no por el texto, que cambia con la versión del SDK.
+func isRangeError(err error) bool {
+	var re *awshttp.ResponseError
+	if errors.As(err, &re) {
+		return re.HTTPStatusCode() == http.StatusRequestedRangeNotSatisfiable
+	}
+	return strings.Contains(err.Error(), "InvalidRange")
 }

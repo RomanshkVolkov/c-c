@@ -35,6 +35,11 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+            # El puerto interno por el que habla el montador. Se abre sólo si
+            # hay llave configurada — ver `main.go`—, así que declararlo aquí no
+            # expone nada por sí mismo.
+            - containerPort: 8081
+              name: internal
           envFrom:
             - secretRef:
                 name: cac-secret
@@ -64,3 +69,5 @@ spec:
             # graba hasta que alguien se dé cuenta.
             - name: RECORDINGS_MAX_MINUTES
               value: "240"
+            - name: RECORDINGS_INTERNAL_PORT
+              value: "8081"

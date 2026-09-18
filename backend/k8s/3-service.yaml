@@ -6,6 +6,13 @@ spec:
   selector:
     app: cac-service
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8080
+    # El puerto por el que habla el montador. **No sale del clúster**: no hay
+    # ninguna regla del Gateway que lleve hasta él, y el listener ni siquiera se
+    # enciende si no hay llave configurada (ver `main.go`).
+    - name: internal
+      port: 8081
+      targetPort: 8081
   type: ClusterIP

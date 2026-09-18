@@ -44,3 +44,16 @@ output "recordings_secret_access_key" {
   value       = aws_iam_access_key.recordings.secret
   sensitive   = true
 }
+
+# Las del montador. Se leen con `terraform output -raw` para meterlas en el
+# Secret del pod; no viajan por ningún otro sitio.
+output "mux_access_key_id" {
+  description = "Llave del montador. Lee las pistas y sube el montaje; no borra."
+  value       = aws_iam_access_key.mux.id
+}
+
+output "mux_secret_access_key" {
+  description = "Secreto del montador."
+  value       = aws_iam_access_key.mux.secret
+  sensitive   = true
+}

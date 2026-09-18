@@ -16,6 +16,11 @@ dependencies = [
 stt = [
     "faster-whisper>=1.2,<2",
 ]
+# El montador sólo necesita hablar con S3: el resto —ffmpeg— va en la imagen,
+# no en las dependencias de Python.
+mux = [
+    "boto3>=1.35,<2",
+]
 
 [dependency-groups]
 dev = [

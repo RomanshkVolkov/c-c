@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"net/http"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -53,10 +54,9 @@ func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		repository.GetEnv("LIVEKIT_API_SECRET", ""),
 	)
 	svc := service.NewRecordingService(
-		repository.NewRecordingRepository(db), lk, hub,
+		repository.NewRecordingRepository(db), lk, hub, store,
 		repository.GetEnv("RECORDINGS_PREFIX", domain.RecordingPrefixDefault),
 		repository.GetEnv("RECORDINGS_ENABLED", "false") == "true",
-		store.Enabled(),
 		atoiOr(repository.GetEnv("RECORDINGS_MAX_MINUTES", "240"), 240),
 	)
 	h := handler.NewRecordingHandler(svc, repository.NewTaskRepository(db))
@@ -73,10 +73,48 @@ func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.Get)
 		r.Post("/stop", h.Stop)
+		r.Delete("/", h.Delete)
 	})
+	// Fuera del grupo del JWT: un `<video src>` de un webview no manda
+	// cabeceras, así que este autoriza por `?token=` igual que el proxy de los
+	// adjuntos. Ver `handler.Media`.
+	r.Get("/api/v1/recordings/{id}/media", h.Media)
 
 	arrancarRelojDeGrabaciones(svc)
+	guardarRouterInterno(svc)
 }
+
+// El listener interno, para el mux. `nil` si no hay llave.
+//
+// Se guarda aquí y lo sirve `main.go` en su propio `http.Server`, porque **no
+// puede compartir el del API público**: ése está detrás del Gateway, y una ruta
+// más en él sería una ruta alcanzable desde internet con sólo una cabecera.
+// Un puerto aparte es una frontera que no depende de acertar con el enrutado.
+var routerInterno http.Handler
+
+func guardarRouterInterno(svc *service.RecordingService) {
+	llave := repository.GetEnv("RECORDINGS_MUX_KEY", "")
+	if llave == "" || !svc.Enabled() {
+		// Sin llave, el listener **no se enciende**. Es lo contrario de lo que
+		// sale por descuido: con la llave vacía, una comparación ingenua
+		// dejaría entrar a cualquiera que llegue al puerto.
+		return
+	}
+	h := handler.NewRecordingInternalHandler(svc, llave)
+	r := chi.NewRouter()
+	r.Route("/internal/v1/recordings", func(r chi.Router) {
+		r.Use(handler.MuxKeyMiddleware(llave))
+		r.Get("/pending-mux", h.Pending)
+		r.Post("/{id}/claim", h.Claim)
+		r.Post("/{id}/ready", h.Ready)
+		r.Post("/{id}/failed", h.Failed)
+	})
+	routerInterno = r
+}
+
+// InternalRouter es lo que `main.go` sirve en el puerto interno, o `nil` si
+// esta instalación no tiene mux.
+func InternalRouter() http.Handler { return routerInterno }
 
 // arrancarRelojDeGrabaciones: lo mismo que el de reuniones, y por lo mismo.
 //

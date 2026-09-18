@@ -14,6 +14,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 vi.mock("@/lib/api", () => ({ api: { post, get, delete: del } }));
 
+// En el catálogo del idioma en el que corren las pruebas, que es el inglés.
+import errorsEn from "@/locales/en/errors.json";
 import { useVoice } from "./voice.store";
 
 const inicial = useVoice.getState();
@@ -327,7 +329,14 @@ describe("llamar a alguien", () => {
     post.mockResolvedValue({ success: false, error: "ring-outsider" });
     await useVoice.getState().timbrar("u-carla", "carla");
     expect(useVoice.getState().llamando).toBeNull();
-    expect(useVoice.getState().error).toContain("ring-outsider");
+    // Y lo que se enseña es la frase, no la etiqueta.
+    //
+    // Esta prueba pedía antes que apareciera `ring-outsider` crudo, y pasaba —
+    // porque ese código **no tenía traducción**. Era el fallo hecho aserción:
+    // el guardián de `api-errors` no lo veía (sólo miraba llamadas de una
+    // línea) y esto lo daba por bueno. Al traducirlo, saltó.
+    expect(useVoice.getState().error).toBe(errorsEn["ring-outsider"]);
+    expect(useVoice.getState().error).not.toContain("ring-outsider");
   });
 
   it("colgar avisa al otro lado y para el reloj", async () => {

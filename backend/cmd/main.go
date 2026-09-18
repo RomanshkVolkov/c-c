@@ -44,6 +44,33 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// El segundo servidor: el puerto interno por el que habla el mux.
+	//
+	// Aparte y no una ruta más del API público, a propósito. El público está
+	// detrás del Gateway; una ruta ahí sería alcanzable desde internet con sólo
+	// acertar una cabecera. Un puerto distinto, sin regla de entrada y con su
+	// `CiliumNetworkPolicy`, es una frontera que no depende del enrutado.
+	//
+	// `nil` cuando no hay llave configurada: una instalación sin mux no abre el
+	// puerto en absoluto.
+	var internal *http.Server
+	if h := httpRoutes.InternalRouter(); h != nil {
+		internal = &http.Server{
+			Addr:        ":" + repository.GetEnv("RECORDINGS_INTERNAL_PORT", "8081"),
+			Handler:     h,
+			ReadTimeout: 15 * time.Second,
+			// Sin `WriteTimeout`: la lista de pendientes es pequeña, pero el
+			// plazo del público ya costó una vez y aquí no aporta nada.
+			IdleTimeout: 60 * time.Second,
+		}
+		go func() {
+			log.Printf("Internal listener on %s", internal.Addr)
+			if err := internal.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Internal server failed: %v", err)
+			}
+		}()
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -60,6 +87,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	if internal != nil {
+		_ = internal.Shutdown(ctx)
+	}
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalf("Forced shutdown: %v", err)
 	}

@@ -29,6 +29,10 @@ type Object struct {
 	Body        io.ReadCloser
 	ContentType string
 	Size        int64
+	// ContentRange viene puesto sólo cuando se pidió un rango, y se devuelve
+	// tal cual: es lo que el navegador necesita para saber qué trozo recibió y
+	// cuánto mide el total.
+	ContentRange string
 }
 
 // New builds an S3 reader. When bucket/region are empty the store is disabled
@@ -76,3 +80,74 @@ func (s *Store) Get(ctx context.Context, key string) (*Object, error) {
 	}
 	return &Object{Body: out.Body, ContentType: ct, Size: size}, nil
 }
+
+// GetRange streams part of an object, for `Range` requests.
+//
+// Un vídeo de una reunión no se sirve como un adjunto: quien lo mira arrastra
+// la barra, y sin `Range` el navegador tiene que bajarse el fichero entero para
+// enseñar el minuto veinte. Se delega en S3 en vez de descartar bytes aquí —
+// leer cien megas para tirar noventa y nueve es lo mismo que no tener rango.
+//
+// `rng` es la cabecera tal cual («bytes=0-99»); vacía se comporta como `Get`.
+func (s *Store) GetRange(ctx context.Context, key, rng string) (*Object, error) {
+	if !s.Enabled() {
+		return nil, ErrDisabled
+	}
+	in := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key)}
+	if rng != "" {
+		in.Range = aws.String(rng)
+	}
+	out, err := s.client.GetObject(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	obj := &Object{Body: out.Body}
+	if out.ContentType != nil {
+		obj.ContentType = *out.ContentType
+	}
+	if out.ContentLength != nil {
+		obj.Size = *out.ContentLength
+	}
+	if out.ContentRange != nil {
+		obj.ContentRange = *out.ContentRange
+	}
+	return obj, nil
+}
+
+// Delete removes objects, one call each.
+//
+// Una grabación son unas pocas pistas más el montaje, así que el lote no
+// compensa la complejidad de `DeleteObjects` —que además pide otro permiso de
+// IAM—. Si algún día se borran grabaciones enteras a cientos, aquí es donde se
+// cambia.
+//
+// Borrar algo que ya no está **no es un error** en S3, y eso importa: un
+// reintento después de un fallo a medias tiene que poder terminar bien.
+func (s *Store) Delete(ctx context.Context, keys ...string) error {
+	if !s.Enabled() {
+		return ErrDisabled
+	}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: aws.String(s.bucket), Key: aws.String(key),
+		})
+		if err != nil {
+			return fmt.Errorf("mediastore: delete %s: %w", key, err)
+		}
+	}
+	return nil
+}
+
+// Fake devuelve un almacén que dice estar encendido y no habla con nadie.
+//
+// Existe para las pruebas del reloj de grabación, que necesitan que
+// `Enabled()` sea cierto —es una de las tres condiciones para grabar— pero no
+// tocan S3 en ningún momento: las pistas las escribe Egress y el montaje lo
+// sube el mux, cada uno con su propia credencial.
+//
+// Cualquier lectura o escritura sobre él revienta a propósito: si una prueba
+// empieza a usarlo de verdad, que se entere.
+func Fake() *Store { return &Store{client: &s3.Client{}, bucket: "fake"} }

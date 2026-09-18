@@ -134,6 +134,10 @@ async def main() -> None:
     # dobles se comprueba que la función dice que no, pero que el SFU emita
     # `CAMERA` con ese nombre exacto y que el reloj lo vea sólo lo contesta un
     # LiveKit de verdad. Y a esta claqueta le cuesta una pista negra.
+    # Sin pantalla: la llamada de sólo voz, que es la que tiene que salir como
+    # `.m4a` en vez de como un vídeo con un rectángulo negro.
+    ap.add_argument("--no-screen", action="store_true",
+                    help="no publica pantalla compartida")
     ap.add_argument("--camera", action="store_true",
                     help="publica también una pista de cámara, que el grabador debe descartar")
     args = ap.parse_args()
@@ -166,20 +170,21 @@ async def main() -> None:
         rtc.LocalAudioTrack.create_audio_track("clap-audio", audio_source),
         rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE),
     )
-    await room.local_participant.publish_track(
-        rtc.LocalVideoTrack.create_video_track("clap-video", video_source),
-        # `video_encoding` explícito: sin él el SDK elige el preajuste de
-        # pantalla compartida y publica a **5 fps**, con lo que un destello
-        # corto se cae entre dos fotogramas. No es un defecto —una pantalla
-        # quieta no necesita más—, pero aquí la resolución temporal *es* la
-        # medida. Sin simulcast por lo mismo: una capa, una verdad.
-        rtc.TrackPublishOptions(
-            source=rtc.TrackSource.SOURCE_SCREENSHARE,
-            simulcast=False,
-            video_encoding=rtc.VideoEncoding(max_framerate=FPS, max_bitrate=1_500_000),
-        ),
-    )
-    publicadas = "micro + pantalla"
+    if not args.no_screen:
+        await room.local_participant.publish_track(
+            rtc.LocalVideoTrack.create_video_track("clap-video", video_source),
+            # `video_encoding` explícito: sin él el SDK elige el preajuste de
+            # pantalla compartida y publica a **5 fps**, con lo que un destello
+            # corto se cae entre dos fotogramas. No es un defecto —una pantalla
+            # quieta no necesita más—, pero aquí la resolución temporal *es* la
+            # medida. Sin simulcast por lo mismo: una capa, una verdad.
+            rtc.TrackPublishOptions(
+                source=rtc.TrackSource.SOURCE_SCREENSHARE,
+                simulcast=False,
+                video_encoding=rtc.VideoEncoding(max_framerate=FPS, max_bitrate=1_500_000),
+            ),
+        )
+    publicadas = "micro" + ("" if args.no_screen else " + pantalla")
     if args.camera:
         camera_source = rtc.VideoSource(320, 180)
         await room.local_participant.publish_track(

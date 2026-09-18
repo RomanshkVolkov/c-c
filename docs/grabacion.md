@@ -402,6 +402,61 @@ salió: la detección bajó de 39 s a 25 s.
 recibe SIGTERM y termina sus ficheros bien. La primera vez que pasó la prueba,
 pasó por eso y no por el arreglo. Hace falta `--force --grace-period=0`.
 
+## La fase 2: el montador, y lo que costó que el lienzo acabara (18-sep-2026)
+
+La cadena entera, probada de punta a punta contra el SFU y el S3 de verdad:
+grabar → cerrar → montar → `ready` → servir un trozo.
+
+| | |
+|---|---|
+| Con pantalla | 26 s de llamada montados en **1,2 s** · `final.mp4`, 87 KB |
+| Sólo voz | 24,8 s montados en **0,3 s** · `final.m4a`, 40 KB |
+| El rango | `bytes 0-99/87679` → hay 206, y por tanto se puede buscar |
+
+A ~20× tiempo real, los diez minutos de llamada que pedía la puerta se montan en
+unos treinta segundos. El objetivo era «≤ 3 min».
+
+### `color` es una fuente infinita
+
+El generador de la receta produjo, en su primera versión, un montaje **que no
+terminaba nunca**: quince minutos de CPU y cincuenta megas de fichero para una
+grabación de tres minutos, subiendo. El lienzo negro sobre el que se superponen
+los trozos de pantalla (`color=black:...`) no se acaba solo, y `eof_action=pass`
+—que está ahí para que el lienzo sobreviva al final de cada pantalla— quita la
+otra forma de que acabe.
+
+Lo arregla un `d=` calculado desde `ended_at`, con `-shortest` de cinturón para
+cuando alguna pista no traiga esa marca. **No salió de leer el código**: salió
+de correr la receta generada sobre las pistas de la fase 0 y mirar el tamaño del
+fichero.
+→ Guardianes: `test_el_lienzo_tiene_duracion` y `test_sin_marcas_de_fin_manda_shortest`.
+
+### Una política de red que habría tirado la aplicación
+
+El plan pedía una `CiliumNetworkPolicy` de «sólo el montador llega al puerto
+interno de cac». Escrita como entrada sobre `cac-service`, **habría dejado la
+API entera sin servicio**: en Cilium, en cuanto una regla de entrada selecciona
+un endpoint, ese endpoint pasa a denegar por defecto todo lo que no esté
+nombrado — incluido el tráfico del Gateway.
+
+Está escrita al revés: una política de **salida sobre el montador**, que sólo le
+deja hablar con el DNS, con el 8081 de cac y con S3. Radio de daño: el montador.
+La frontera de verdad la ponen el puerto (no enrutado desde fuera) y la llave.
+
+Es la segunda vez que una política de red casi rompe algo que funcionaba en este
+mismo proyecto; la primera está más arriba, con el bus de LiveKit.
+
+### Tres credenciales, tres fronteras
+
+Al montador se le dio **su propio usuario de IAM**, el tercero: Egress sólo
+escribe bajo `recordings/`, el montador lee lo que aquél escribió y sube el
+`final.*` al lado, y cac —con las llaves de image-service— es el único que
+borra. **El montador no tiene `DeleteObject`** a propósito: ante un fallo a
+mitad podría llevarse por delante las pistas originales, que son el material
+para reintentarlo y la transcripción de mañana.
+
+Y no tiene ninguna credencial de cac: una llave y un puerto.
+
 ## Lo que falta medir — lo que queda de la puerta
 
 Lo de la alineación ya está cerrado arriba. Queda lo que sólo se puede medir con

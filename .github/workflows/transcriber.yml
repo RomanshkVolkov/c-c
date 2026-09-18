@@ -9,8 +9,12 @@ name: transcriber
 # —sólo `ctr`, que importa pero no construye, y sin sudo— y meter la imagen a
 # mano dejaría el clúster con algo que no está en ningún sitio.
 #
-# **No despliega nada.** Publica la imagen y ya; el Job se lanza a mano cuando
-# hay alguien en la sala, que es media prueba del experimento.
+# **Del spike no despliega nada**: publica la imagen y el Job se lanza a mano
+# cuando hay alguien en la sala, que es media prueba del experimento.
+#
+# Del **montador** sí: es un proceso que vive, no un experimento, y su
+# manifiesto tiene que seguir a su imagen. Se omite solo si no hay llave — una
+# instalación sin grabación no lo levanta.
 on:
   push:
     branches: [main]
@@ -76,3 +80,59 @@ jobs:
           build-args: |
             EXTRAS=[stt]
           tags: ghcr.io/romanshkvolkov/c-c/transcriber:bench
+
+      # Y la del montador: `boto3` para hablar con S3 y `ffmpeg` dentro. Los
+      # 200 MB de ffmpeg no los quiere ninguna de las otras dos.
+      - name: Build and push (montador)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./transcriber
+          push: true
+          build-args: |
+            EXTRAS=[mux]
+            WITH_FFMPEG=1
+          tags: ghcr.io/romanshkvolkov/c-c/transcriber:mux
+
+  deploy-mux:
+    runs-on: ubuntu-latest
+    needs: build-push
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy the manifest
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "transcriber/k8s/mux.yaml"
+          target: /tmp/mux-k8s
+          strip_components: 2
+
+      - name: Apply
+        uses: appleboy/ssh-action@v1
+        env:
+          RECORDINGS_MUX_KEY: ${{ secrets.RECORDINGS_MUX_KEY }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: RECORDINGS_MUX_KEY
+          script: |
+            # Sin llave no hay montador. El secreto lo crea `backend.yml`, que
+            # es quien tiene las llaves de AWS; si no está, este despliegue se
+            # quedaría en `CreateContainerConfigError` y nadie lo miraría.
+            if [ -z "$RECORDINGS_MUX_KEY" ] || ! kubectl get secret recordings-mux-secret >/dev/null 2>&1; then
+              echo "sin recordings-mux-secret: no se despliega el montador"
+              rm -rf /tmp/mux-k8s
+              exit 0
+            fi
+            kubectl apply -f /tmp/mux-k8s/mux.yaml
+            # Forzar el rollout: la etiqueta `:mux` no cambia, así que `apply`
+            # por sí solo dejaría el pod con la imagen vieja.
+            kubectl rollout restart deployment/recordings-mux
+            kubectl rollout status deployment/recordings-mux --timeout=120s
+            rm -rf /tmp/mux-k8s

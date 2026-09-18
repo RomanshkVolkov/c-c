@@ -1,0 +1,123 @@
+# El montador: un proceso que pregunta, baja, pega y sube.
+#
+# Una sola réplica y `Recreate`. No hace falta más —montar diez minutos de
+# llamada tarda menos de uno, medido a 36× tiempo real— y dos réplicas sólo
+# añadirían la posibilidad de que las dos cojan la misma grabación, que el
+# reparto de la base ya evita pero que no hay ninguna razón para ejercitar.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recordings-mux
+  labels:
+    app: recordings-mux
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: recordings-mux
+  template:
+    metadata:
+      labels:
+        app: recordings-mux
+    spec:
+      containers:
+        - name: mux
+          image: ghcr.io/romanshkvolkov/c-c/transcriber:mux
+          imagePullPolicy: Always
+          # `nice`: esto es trabajo de después, y comparte nodo con el SFU, con
+          # Egress y con la propia aplicación. Que una reunión tarde treinta
+          # segundos más en estar montada no lo nota nadie; que la voz se corte
+          # mientras se monta, sí.
+          command: ["nice", "-n", "10", "python", "-m", "transcriber.mux"]
+          env:
+            - name: MUX_WORKDIR
+              value: /work
+          envFrom:
+            - secretRef:
+                name: recordings-mux-secret
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              # Aquí el límite **sí** vale, al revés que en Egress: allí el
+              # throttling del CFS tira fotogramas en vivo y no hay vuelta
+              # atrás; aquí sólo hace que el montaje tarde más.
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: work
+              mountPath: /work
+          livenessProbe:
+            # El bucle toca `/tmp/alive` en cada vuelta y en cada descarga. Si
+            # se atasca —una descarga que no termina, un ffmpeg colgado—, el
+            # fichero envejece y kubernetes reinicia. Sin esto, un mux atascado
+            # se queda con el lease de una grabación durante quince minutos y
+            # nadie más la coge.
+            exec:
+              command: ["sh", "-c", "find /tmp/alive -mmin -2 | grep -q alive"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 2
+      volumes:
+        - name: work
+          emptyDir:
+            # Las pistas de una reunión larga más el montaje. En disco y no en
+            # memoria: son gigas, y la memoria del nodo se usa para lo que pasa
+            # en vivo.
+            sizeLimit: 10Gi
+---
+# El montador sólo puede hablar con tres sitios.
+#
+# **Es una política de salida sobre el montador, y no una de entrada sobre
+# `cac-service`**, que es lo que pedía el cuerpo. En Cilium, en cuanto una regla
+# de entrada selecciona un endpoint, ese endpoint pasa a **denegar por defecto**
+# todo lo que no esté nombrado: una política de «sólo el mux puede llegar al
+# 8081» habría dejado a `cac-service` sin aceptar el tráfico del Gateway, o sea,
+# la aplicación entera caída por proteger un puerto que no está enrutado.
+#
+# Ya estuvo a punto de pasar en la fase 0 con el bus de LiveKit, y está escrito
+# en `docs/grabacion.md`. Aquí el radio de daño es el montador y nada más.
+#
+# El 8081 no está enrutado desde fuera —no hay ninguna regla del Gateway que
+# lleve hasta él—, así que la frontera de verdad la ponen el puerto y la llave.
+# Esto es el tercer cerrojo, y el único que se puede poner sin arriesgar nada.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: recordings-mux-egress
+spec:
+  endpointSelector:
+    matchLabels:
+      app: recordings-mux
+  egress:
+    # El DNS del clúster, o no resuelve ni el nombre de cac ni el de S3.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # El puerto interno de cac. **Sólo ése**: el 8080 público no le hace falta
+    # para nada, y no poder llegar a él es una frontera más.
+    - toEndpoints:
+        - matchLabels:
+            app: cac-service
+      toPorts:
+        - ports:
+            - port: "8081"
+              protocol: TCP
+    # Y S3, que está fuera del clúster.
+    - toEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

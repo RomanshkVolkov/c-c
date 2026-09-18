@@ -54,7 +54,7 @@ para montar caras que nadie va a mirar.
 |---|---|---|
 | 0 | Grabar por pistas y montar **a mano**, antes de escribir backend | **pasada** — ver abajo |
 | 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | **hecha y probada contra el SFU** |
-| 2 | Mux (`recordings-mux`) + proxy con `Range` | no empezada |
+| 2 | Mux (`recordings-mux`) + proxy con `Range` | **escrita y probada de punta a punta** |
 | 3 | App: consentimiento, chip REC, panel de grabaciones | no empezada |
 | 4 | Endurecer, y el puente a la transcripción | no empezada |
 
@@ -141,6 +141,61 @@ Confundirlo con el 408 tiraría la grabación que salió bien.
 Detalle que costó un intento: `kubectl delete pod` **no** reproduce el fallo —es
 una baja ordenada y Egress termina sus ficheros bien—; hace falta `--force
 --grace-period=0`.
+
+### Y la fase 2: el montador (18-sep-2026)
+
+La cadena entera contra el SFU y el S3 de verdad —grabar, cerrar, montar,
+`ready`, servir un trozo— con el montador **de verdad**, su ffmpeg y su boto3:
+
+| | |
+|---|---|
+| Con pantalla | 26 s montados en **1,2 s** · `final.mp4` |
+| Sólo voz | 24,8 s montados en **0,3 s** · `final.m4a` |
+| El rango | `bytes 0-99/87679` → 206, o sea que se puede buscar en el vídeo |
+
+Dos cosas que sólo aparecieron al ejecutar, no al leer:
+
+**El lienzo del vídeo no terminaba nunca.** `color=` es una fuente infinita y
+`eof_action=pass` le quita la otra forma de acabar: quince minutos de CPU y
+cincuenta megas para tres minutos de grabación. Arreglado con un `d=` calculado
+y `-shortest` de cinturón.
+
+**La política de red del plan habría tirado la API.** En Cilium, una regla de
+entrada sobre `cac-service` lo vuelve denegar-por-defecto, incluido el tráfico
+del Gateway. Está escrita al revés: salida sobre el montador, que sólo puede
+hablar con el DNS, con el 8081 y con S3.
+
+Y el montador tiene **su propio usuario de IAM**, sin `DeleteObject`: ante un
+fallo no puede llevarse por delante las pistas originales.
+
+**Falta encenderlo**: `terraform apply` para crear ese usuario, tres secretos de
+GitHub (`RECORDINGS_MUX_KEY` y el par de AWS) y `RECORDINGS_ENABLED=true`. Hasta
+entonces el puerto interno no se abre y el montador no se despliega.
+
+### Un guardián que llevaba meses ciego (18-sep-2026)
+
+Al pasar la puerta de la fase 2 saltó `api-errors.test.ts`, que exige que cada
+código de error del backend tenga frase en los dos catálogos. Sólo cazó **dos**
+de los siete códigos nuevos, y mirando por qué salió lo otro: el guardián
+buscaba con `grep` **línea a línea**, y una llamada a `SendErrorResponse` ocupa
+dos o tres líneas casi siempre. Veía una minoría.
+
+Arreglado —lee cada fichero entero— aparecieron **treinta y un códigos sin
+traducir, veinticuatro de ellos anteriores a esta rama**: `bad-transition`,
+`ring-outsider`, `subtasks-open`, `superadmin-only`, `general-space-protected`…
+Todos salían en inglés aunque la app estuviera en castellano, y nadie lo había
+reportado porque el toast dice algo razonable, sólo que en el idioma que no es.
+
+Los treinta y uno traducidos en los dos catálogos, menos los dos del puerto
+interno: ésos sólo los lee el montador, y pedirles una frase sería traducir algo
+que no ve ninguna persona.
+
+Y de paso cayó una prueba que **daba el fallo por bueno**: `voice.test.ts`
+comprobaba que al rechazar una llamada saliera `ring-outsider` **crudo** — lo
+cual pasaba justamente porque no tenía traducción. Ahora comprueba que sale la
+frase.
+→ Tres mutantes muertos sobre el guardián arreglado, incluido «vuelve a mirar
+línea a línea».
 
 ## 📮 Reports — cac as the single home for bug reports
 
