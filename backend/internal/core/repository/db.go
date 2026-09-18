@@ -118,6 +118,9 @@ func DBConnection() {
 		&domain.ItemComment{},
 		&domain.ItemAttachment{},
 		&domain.MeetingReminder{}, &domain.MeetingExclusion{},
+		// Grabar la llamada: una fila por grabación, una por pista. Ver
+		// domain/recording.go.
+		&domain.Recording{}, &domain.RecordingTrack{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
@@ -157,6 +160,20 @@ func DBConnection() {
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_space_general_per_org
 		ON task_spaces (org_id) WHERE kind = 'general' AND deleted_at IS NULL`).Error; err != nil {
 		lg.Error("general space index: " + err.Error())
+	}
+
+	// Un espacio se graba una vez a la vez, y lo garantiza la base.
+	//
+	// Es el mismo argumento que la sala general de aquí arriba: dos personas
+	// pulsando «grabar» a la vez son dos INSERT en vuelo, y comprobar antes en
+	// Go no sirve porque entre la comprobación y la escritura cabe la otra. Con
+	// el índice, la segunda choca y el servicio contesta «ya se está grabando»,
+	// que es la verdad. Parcial sobre el estado vivo: las grabaciones de ayer no
+	// participan, o el índice impediría grabar un espacio por segunda vez en su
+	// vida.
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recording_active_per_space
+		ON recordings (space_id) WHERE status = 'recording'`).Error; err != nil {
+		lg.Error("active recording index: " + err.Error())
 	}
 
 	pss, err := HashPassword("ZMWmDcnawh3CQbJjMpPKoorTZv68jYuyzUojgvQpdJCmuUQ3mMNrDXiA2EKs7Jszv6uYjao8ds96uP2VU8CTKigEYZpdTDgZ78zn")

@@ -218,6 +218,19 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 // authorizeOrg enforces membership in an org. Non-members get 404 rather than
 // 403 so the API never confirms that an id exists in someone else's org.
 func (h *taskHandler) authorizeOrg(w http.ResponseWriter, r *http.Request, orgID string, needWrite bool) (*domain.ClaimsJWT, bool) {
+	return authorizeOrg(w, r, orgID, needWrite)
+}
+
+// authorizeOrg: pertenencia a la organización, y **404 antes que 403**.
+//
+// Suelta y no método porque la guarda la comparten superficies que no
+// construyen el mismo handler —las grabaciones cuelgan del mismo espacio que el
+// chat y la voz— y una guarda copiada es una guarda que se queda atrás el día
+// que alguien arregle una de las dos.
+//
+// El 404 a quien no pertenece es la parte que importa: un 403 confirmaría que
+// esa organización existe a alguien que sólo tiene su id.
+func authorizeOrg(w http.ResponseWriter, r *http.Request, orgID string, needWrite bool) (*domain.ClaimsJWT, bool) {
 	user, ok := currentUser(r)
 	if !ok {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")

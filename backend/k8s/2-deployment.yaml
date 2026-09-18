@@ -44,3 +44,23 @@ spec:
             - secretRef:
                 name: cac-valkey
                 optional: true
+          # Grabar llamadas. En el manifiesto y no en el secreto porque no son
+          # credenciales: son una decisión, y encenderla tiene que pasar por una
+          # revisión de código y no por un panel.
+          env:
+            # Apagado hasta que la app sepa enseñarlo (fase 3). Con esto en
+            # `false` el backend ni siquiera arranca el reloj: las rutas
+            # contestan 503 y la app esconde el botón.
+            - name: RECORDINGS_ENABLED
+              value: "false"
+            # El rincón del bucket donde escribe Egress. **Cambiarlo aquí sin
+            # cambiar la política de IAM deja la grabación sin sitio donde
+            # caer**: la credencial de Egress sólo puede escribir bajo este
+            # prefijo, a propósito.
+            - name: RECORDINGS_PREFIX
+              value: "recordings"
+            # Cuatro horas. No es un límite de producto: es el freno para una
+            # sala que se quedó abierta con alguien dentro sin hablar, que si no
+            # graba hasta que alguien se dé cuenta.
+            - name: RECORDINGS_MAX_MINUTES
+              value: "240"

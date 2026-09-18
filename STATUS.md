@@ -53,7 +53,7 @@ para montar caras que nadie va a mirar.
 | Fase | Qué | Estado |
 |---|---|---|
 | 0 | Grabar por pistas y montar **a mano**, antes de escribir backend | **pasada** — ver abajo |
-| 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | siguiente |
+| 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | **escrita**, sin probar contra el SFU |
 | 2 | Mux (`recordings-mux`) + proxy con `Range` | no empezada |
 | 3 | App: consentimiento, chip REC, panel de grabaciones | no empezada |
 | 4 | Endurecer, y el puente a la transcripción | no empezada |
@@ -65,6 +65,42 @@ digest, bus Valkey propio con su `CiliumNetworkPolicy`, y un usuario IAM que
 De la transcripción sobrevive lo puro y probado —`merge.py` y el filtro de
 `stt.py`, 20 mutantes muertos— esperando a la fase 4. Y la medida que la aparcó
 está anotada en `docs/transcripcion.md`.
+
+### Lo que la fase 1 dejó escrito (17-sep-2026)
+
+Backend entero menos el mux y el proxy de media, que son la fase 2. Apagado por
+defecto: `RECORDINGS_ENABLED=false` en `2-deployment.yaml`, y con eso el reloj
+**ni siquiera arranca**.
+
+| Pieza | Dónde |
+|---|---|
+| Dominio y estados | `domain/recording.go` — una sola máquina, dicho a propósito |
+| Repositorio y el índice parcial | `repository/recording.go`, `db.go` |
+| Cliente del SFU | `adapters/livekit/client.go` — clientes Twirp **generados** |
+| Servicio y reloj | `service/recording.go`, `adapters/http/recording.go` |
+| Rutas | `policy`, `list`, `start`, `get`, `stop` |
+
+Tres decisiones que cuestan explicarse y se quedaron escritas al lado del
+código: el tick es de **10 s** (en 30 cabe un «hola, ¿me oyes?» entero, y una
+sala vacía tardaría un minuto en cortarse); una **pista muteada se graba igual**
+(saltarla obligaría a detectar el unmute y perder los primeros segundos de quien
+vuelve a hablar); y el 503 de «no está encendido» sólo sale en lo que escribe —
+una instalación a la que se le apagó la grabación sigue enseñando lo que ya
+grabó.
+
+**24 mutantes muertos** repartidos en dominio (6), cliente del SFU (5), servicio
+(11) y las etiquetas JSON (2). Los que más importan: quitar el filtro de cámaras,
+ignorar quién ganó el `ClaimTrack` —un egress por tick sobre la misma pista—,
+tratar `ENDING` como terminal, guardar la clave que se pidió en vez de la que
+Egress escribió, y `json:"-"` convertido en `json:"objectKey"`.
+
+Y el grabador dejó de salir en «quién está en el canal»: entra a la sala como un
+participante más, y sin filtrarlo una llamada donde sólo queda él parecería
+ocupada. Con respuesta real del SFU capturada, como el resto de ese fichero.
+
+**Falta probarlo contra el SFU de verdad**: dos personas en una llamada, `POST`
+desde curl, y comprobar que aparecen las filas y los objetos. Hasta eso, «escrita»
+y no «hecha».
 
 ## 📮 Reports — cac as the single home for bug reports
 

@@ -96,3 +96,86 @@ func salaDelJWT(t *testing.T, cabecera string) string {
 	}
 	return claims.Video.Room
 }
+
+// La misma sala, con el grabador dentro. Capturado de un LiveKit con un Track
+// Egress en marcha: entra como un participante más, con `kind: "EGRESS"`.
+const listParticipantsConGrabador = `{"participants":[
+  {"sid":"PA_dGPhiVVJy8ev","identity":"u-ana","state":"ACTIVE","name":"Ana",
+   "joined_at":"1787383794","is_publisher":true,"kind":"STANDARD"},
+  {"sid":"PA_EGxK2mQ1","identity":"EG_jDSnrV5jWPXu","state":"ACTIVE","name":"",
+   "joined_at":"1787383801","is_publisher":false,"kind":"EGRESS"}]}`
+
+// El grabador no es alguien con quien hablar.
+//
+// LiveKit lo mete en la sala como un participante más. Sin filtrarlo, la lista
+// de canales enseñaría un «EG_jDSnrV5jWPXu» sentado en la llamada — y peor: un
+// canal donde sólo queda el grabador parecería ocupado, que es exactamente la
+// señal que hace que alguien entre a ver quién hay.
+func TestLaOcupacionNoEnseniaAlGrabador(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "ListRooms") {
+			_, _ = w.Write([]byte(listRoomsReal))
+			return
+		}
+		_, _ = w.Write([]byte(listParticipantsConGrabador))
+	}))
+	defer srv.Close()
+
+	out, err := NewVoiceService(srv.URL, "APIabc", "un-secreto-largo-de-prueba").
+		Ocupacion(context.Background(), []string{"esp-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gente := out["esp-1"]
+	if len(gente) != 1 {
+		t.Fatalf("dentro hay una persona y un grabador, y salieron %d: %+v", len(gente), gente)
+	}
+	if gente[0].Identity != "u-ana" {
+		t.Fatalf("el que sale tiene que ser la persona: %+v", gente[0])
+	}
+}
+
+// Y una sala en la que **sólo** queda el grabador está vacía.
+//
+// Es el caso que engaña: `num_participants` dice 1, así que la sala se consulta
+// y contesta con alguien dentro. Si ese alguien es el grabador, el canal no
+// tiene a nadie — y enseñarlo como ocupado invita a entrar a una llamada que ya
+// terminó.
+func TestUnaSalaConSoloElGrabadorEstaVacia(t *testing.T) {
+	const soloGrabador = `{"participants":[
+	  {"sid":"PA_EGxK2mQ1","identity":"EG_jDSnrV5jWPXu","state":"ACTIVE","name":"",
+	   "joined_at":"1787383801","is_publisher":false,"kind":"EGRESS"}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "ListRooms") {
+			_, _ = w.Write([]byte(listRoomsReal))
+			return
+		}
+		_, _ = w.Write([]byte(soloGrabador))
+	}))
+	defer srv.Close()
+
+	out, err := NewVoiceService(srv.URL, "APIabc", "un-secreto-largo-de-prueba").
+		Ocupacion(context.Background(), []string{"esp-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, hay := out["esp-1"]; hay {
+		t.Fatalf("la sala no tiene a nadie y salió en la lista: %+v", out)
+	}
+}
+
+// Y el `json.Marshal` de lo que sale no lleva `kind`.
+//
+// El filtro necesita leerlo, pero es un detalle del SFU: si se cuela en la
+// respuesta, la app empieza a poder depender de un campo que no es nuestro.
+func TestLaOcupacionNoFiltraHaciaFueraElKind(t *testing.T) {
+	b, err := json.Marshal(Ocupacion{"esp-1": {{Identity: "u-ana", Name: "Ana"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "kind") {
+		t.Fatalf("el kind del SFU no sale a la app: %s", b)
+	}
+}

@@ -41,8 +41,9 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitReportRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub)
 	InitNotificationRoutes(db, r)
-	// Las reuniones periódicas, con el único reloj de fondo de la aplicación.
+	// Las reuniones periódicas y las grabaciones: los dos relojes de fondo.
 	InitMeetingRoutes(db, r, hub)
+	InitRecordingRoutes(db, r, hub)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

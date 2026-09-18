@@ -41,7 +41,10 @@ data:
     # pasan a importar: el participante de Egress es oculto y no cuenta como
     # gente, así que al irse todos la sala tarda `empty_timeout` en cerrarse y
     # el vídeo se lleva ese rato en negro al final. Quien para antes es el
-    # vigilante del backend, a los 60 s.
+    # reloj del backend: tick de 10 s y dos ticks seguidos sin nadie humano
+    # dentro, o sea **unos 20 s** — que caben dentro del `departure_timeout` de
+    # una reconexión, así que a nadie se le corta la reunión por perder el
+    # socket un momento.
     room:
       empty_timeout: 300
       departure_timeout: 20

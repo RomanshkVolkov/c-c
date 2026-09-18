@@ -150,7 +150,16 @@ func (s *VoiceService) Ocupacion(ctx context.Context, spaceIDs []string) (Ocupac
 			continue
 		}
 		var dentro struct {
-			Participants []OcupanteResponse `json:"participants"`
+			// `kind` se lee aunque no salga en la respuesta: es lo que separa a
+			// una persona del **grabador**, que entra a la sala como un
+			// participante más. Sin filtrarlo, la lista de canales enseñaría un
+			// «EG_xxxx» sentado en la llamada y contaría como alguien con quien
+			// hablar. Ver `humans` en recording.go, que hace lo mismo del lado
+			// del reloj.
+			Participants []struct {
+				OcupanteResponse
+				Kind string `json:"kind"`
+			} `json:"participants"`
 		}
 		// La sala va **también en la concesión del token**, no sólo en el
 		// cuerpo. `ListParticipants` es una operación sobre una sala concreta y
@@ -165,7 +174,19 @@ func (s *VoiceService) Ocupacion(ctx context.Context, spaceIDs []string) (Ocupac
 			lg.Warn("voz: no se pudo listar " + sala.Name + ": " + err.Error())
 			continue
 		}
-		out[strings.TrimPrefix(sala.Name, salaPrefijo)] = dentro.Participants
+		gente := make([]OcupanteResponse, 0, len(dentro.Participants))
+		for _, p := range dentro.Participants {
+			// Vacío cuenta como persona: las versiones que no emiten `kind`
+			// para el valor por defecto están diciendo `STANDARD`.
+			if p.Kind != "" && p.Kind != "STANDARD" && p.Kind != "PARTICIPANT_KIND_STANDARD" {
+				continue
+			}
+			gente = append(gente, p.OcupanteResponse)
+		}
+		if len(gente) == 0 {
+			continue
+		}
+		out[strings.TrimPrefix(sala.Name, salaPrefijo)] = gente
 	}
 	return out, nil
 }

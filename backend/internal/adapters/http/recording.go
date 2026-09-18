@@ -1,0 +1,115 @@
+package http
+
+import (
+	"context"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
+
+	"github.com/guz-studio/cac/backend/internal/adapters/handler"
+	lkclient "github.com/guz-studio/cac/backend/internal/adapters/livekit"
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
+	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
+	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
+	"github.com/guz-studio/cac/backend/internal/core/service"
+)
+
+// Diez segundos, y **siempre**.
+//
+// Es el retraso máximo con el que empieza a grabarse quien entra a la llamada
+// tarde, y treinta se llevaría un «hola, ¿me oyes?» entero. Con treinta también
+// tardaría un minuto en pararse una sala vacía —hacen falta dos ticks— y eso es
+// un minuto de silencio guardado.
+//
+// Sin grabaciones vivas el tick es un `SELECT` sobre un índice que no devuelve
+// nada. Vale la pena.
+const latidoDeGrabaciones = 10 * time.Second
+
+// InitRecordingRoutes monta las rutas de grabación y arranca su reloj.
+func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
+	// El mismo bucket privado que las capturas y los adjuntos. Aquí sólo se
+	// comprueba que existe: quien escribe las pistas es Egress con su propia
+	// credencial, que **sólo puede escribir bajo `recordings/`**.
+	store, err := mediastore.New(
+		context.Background(),
+		repository.GetEnv("REPORTS_MEDIA_BUCKET", ""),
+		repository.GetEnv("REPORTS_MEDIA_REGION", ""),
+		repository.GetEnv("REPORTS_MEDIA_ACCESS_KEY_ID", ""),
+		repository.GetEnv("REPORTS_MEDIA_SECRET_ACCESS_KEY", ""),
+	)
+	if err != nil {
+		lg.Error("recording store init failed: " + err.Error())
+	}
+	lk := lkclient.New(
+		repository.GetEnv("LIVEKIT_URL", ""),
+		repository.GetEnv("LIVEKIT_API_KEY", ""),
+		repository.GetEnv("LIVEKIT_API_SECRET", ""),
+	)
+	svc := service.NewRecordingService(
+		repository.NewRecordingRepository(db), lk, hub,
+		repository.GetEnv("RECORDINGS_PREFIX", domain.RecordingPrefixDefault),
+		repository.GetEnv("RECORDINGS_ENABLED", "false") == "true",
+		store.Enabled(),
+		atoiOr(repository.GetEnv("RECORDINGS_MAX_MINUTES", "240"), 240),
+	)
+	h := handler.NewRecordingHandler(svc, repository.NewTaskRepository(db))
+
+	r.Route("/api/v1/task-spaces/{id}/recordings", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		// La política va primero en el fichero y en la cabeza: es lo que la app
+		// pregunta antes de decidir si el botón existe.
+		r.Get("/policy", h.Policy)
+		r.Get("/", h.List)
+		r.Post("/", h.Start)
+	})
+	r.Route("/api/v1/recordings/{id}", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/", h.Get)
+		r.Post("/stop", h.Stop)
+	})
+
+	arrancarRelojDeGrabaciones(svc)
+}
+
+// arrancarRelojDeGrabaciones: lo mismo que el de reuniones, y por lo mismo.
+//
+// Se apaga con el servidor —timbrar o arrancar egress mientras el pod se cierra
+// no es inocuo— y corre en las dos réplicas a la vez: quién se queda cada
+// grabación lo decide la base con `ClaimTick`, no este bucle.
+func arrancarRelojDeGrabaciones(svc *service.RecordingService) {
+	if !svc.Enabled() {
+		// Sin grabación configurada no hay nada que reconciliar, y una
+		// goroutine que despierta cada diez segundos para no hacer nada es una
+		// goroutine que alguien acabará persiguiendo en un perfil.
+		return
+	}
+	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		defer parar()
+		ticker := time.NewTicker(latidoDeGrabaciones)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				svc.Tick(ctx, time.Now().UTC())
+			}
+		}
+	}()
+}
+
+func atoiOr(s string, fallback int) int {
+	n, err := strconv.Atoi(s)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
