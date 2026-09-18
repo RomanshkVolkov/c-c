@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	lksdk "github.com/livekit/protocol/livekit"
+	"github.com/twitchtv/twirp"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -29,6 +31,19 @@ type fakeSFU struct {
 	stopped  []string
 	metadata []string
 	failNext bool
+	// workerDead: el pod de Egress se murió. Lo que hace LiveKit entonces —y
+	// esto está medido, no supuesto— es **nada**: el registro se queda en
+	// `EGRESS_ACTIVE` con `ended_at: 0`, `updated_at` no se mueve (tampoco se
+	// movía estando sano) y el participante del egress **sigue en la sala**.
+	// Sólo `StopEgress` lo delata.
+	workerDead bool
+	// timeoutOnce: un solo tiempo de espera agotado y después todo bien. Es el
+	// hipo de red que **no** tiene que matar una pista.
+	timeoutOnce bool
+	// stopSaysFinished: `StopEgress` contesta «ya terminó» mientras
+	// `ListEgress` todavía lo da por vivo. No es un caso inventado: son dos
+	// llamadas distintas, y la lista puede ir un paso por detrás.
+	stopSaysFinished bool
 }
 
 func (f *fakeSFU) Participants(context.Context, string) ([]*lksdk.ParticipantInfo, error) {
@@ -45,12 +60,57 @@ func (f *fakeSFU) StartTrackEgress(_ context.Context, _, sid, key string) (*lksd
 		EgressId: "EG_" + sid, Status: lksdk.EgressStatus_EGRESS_ACTIVE,
 	}
 	f.egress = append(f.egress, info)
+	// **Cada egress entra a la sala como un participante más, con su propio id
+	// por identidad.** Medido contra un LiveKit de verdad, y no es un detalle
+	// decorativo: es la única prueba de vida que hay, porque el estado del
+	// egress se queda en `ACTIVE` para siempre si el pod muere.
+	f.people = append(f.people, &lksdk.ParticipantInfo{
+		Identity: info.EgressId, Kind: lksdk.ParticipantInfo_EGRESS,
+	})
 	_ = key
 	return info, nil
 }
 
+// leave saca de la sala al participante de un egress, como hace el de verdad
+// al terminar —o al morirse.
+func (f *fakeSFU) leave(egressID string) {
+	out := f.people[:0]
+	for _, p := range f.people {
+		if p.Identity != egressID {
+			out = append(out, p)
+		}
+	}
+	f.people = out
+}
+
+// killWorker mata el pod. **Nada visible cambia**, que es justo el problema:
+// el registro sigue `EGRESS_ACTIVE` y el participante sigue en la sala. Lo
+// único que cambia es que ya no hay nadie que conteste a `StopEgress`.
+func (f *fakeSFU) killWorker() { f.workerDead = true }
+
 func (f *fakeSFU) StopEgress(_ context.Context, _, id string) (*lksdk.EgressInfo, error) {
 	f.stopped = append(f.stopped, id)
+	// Las tres respuestas que da el SFU de verdad, medidas:
+	//
+	//	cerrando           → 200 OK
+	//	ya terminado       → 412 failed_precondition
+	//	nadie al otro lado → 408 deadline_exceeded
+	//
+	// Las tres importan: contar el 412 como muerte tiraría pistas buenas.
+	if f.workerDead || f.timeoutOnce {
+		f.timeoutOnce = false
+		return nil, twirp.NewError(twirp.DeadlineExceeded, "request timed out")
+	}
+	if f.stopSaysFinished {
+		return nil, twirp.NewError(twirp.FailedPrecondition,
+			"egress with status EGRESS_COMPLETE cannot be stopped")
+	}
+	for _, e := range f.egress {
+		if e.EgressId == id && e.Status == lksdk.EgressStatus_EGRESS_COMPLETE {
+			return nil, twirp.NewError(twirp.FailedPrecondition,
+				"egress with status EGRESS_COMPLETE cannot be stopped")
+		}
+	}
 	return &lksdk.EgressInfo{EgressId: id}, nil
 }
 
@@ -70,6 +130,13 @@ func (f *fakeSFU) finish(sid string, status lksdk.EgressStatus, filename string,
 			continue
 		}
 		e.Status = status
+		// Un egress que acaba sale de la sala **ya terminal**: medido, la
+		// ventana entre las dos cosas es de 0 s.
+		if status == lksdk.EgressStatus_EGRESS_COMPLETE ||
+			status == lksdk.EgressStatus_EGRESS_FAILED ||
+			status == lksdk.EgressStatus_EGRESS_ABORTED {
+			f.leave(e.EgressId)
+		}
 		if status == lksdk.EgressStatus_EGRESS_COMPLETE {
 			e.FileResults = []*lksdk.FileInfo{{
 				Filename:  filename,
@@ -427,5 +494,210 @@ func TestOnlyOneRecordingPerSpaceAtATime(t *testing.T) {
 	_, err := svc.Start(context.Background(), "org-1", "esp-1", "u-2")
 	if err != repository.ErrAlreadyRecording {
 		t.Fatalf("la segunda tiene que chocar, y dijo: %v", err)
+	}
+}
+
+// El pod de Egress se muere y la grabación **no** se queda colgada.
+//
+// Esto no salió de ningún doble: salió de matar el pod de verdad y ver las
+// pistas en `active` durante dos minutos y medio sin que nada se enterara.
+//
+// Lo que hace LiveKit al morir un trabajador es **nada visible**: el registro
+// se queda en `EGRESS_ACTIVE` con `ended_at: 0` para siempre, `updated_at` no
+// late —no lo hace ni estando sano—, y el participante del egress sigue
+// sentado en la sala. Las tres se midieron, y las tres fallan como prueba de
+// vida. La única que funciona es preguntar: `StopEgress` contesta un tiempo de
+// espera agotado cuando nadie posee ese egress.
+//
+// Y por eso se pregunta **sólo al cerrar**: preguntarlo durante la grabación
+// sería pararla.
+//
+// El mutante que mata: no contar el fallo de `StopEgress`.
+func TestADeadEgressWorkerDoesNotHangTheRecording(t *testing.T) {
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
+	}}
+	svc, repo := newServiceUnderTest(t, sfu)
+
+	rec, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sfu.killWorker()
+	if err := svc.Stop(context.Background(), rec, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Now().UTC()
+	for i := 1; i <= 4; i++ {
+		svc.Tick(context.Background(), base.Add(time.Duration(i*15)*time.Second))
+	}
+	tracks, err := repo.Tracks(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tracks[0].Status != domain.TrackFailed {
+		t.Fatalf("la pista sigue en %q: la grabación se queda colgada y el mux no la ve nunca",
+			tracks[0].Status)
+	}
+	after, err := repo.FindByID(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Y la grabación cierra: sin una sola pista buena, `failed` con su motivo,
+	// que es mejor que `finalizing` para siempre.
+	if after.Status != domain.RecordingFailed {
+		t.Fatalf("la grabación quedó en %q", after.Status)
+	}
+}
+
+// Y no se lleva por delante a uno que está vivo.
+//
+// El riesgo del arreglo es el contrario: dar por muerta una pista que sólo
+// tardaba en subir su fichero. De ahí los veinte segundos de gracia antes de
+// empezar a preguntar y las dos respuestas malas seguidas.
+func TestALiveEgressWorkerIsNotKilledByTheProbe(t *testing.T) {
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
+	}}
+	svc, repo := newServiceUnderTest(t, sfu)
+
+	rec, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC()
+	for i := 1; i <= 5; i++ {
+		svc.Tick(context.Background(), base.Add(time.Duration(i*10)*time.Second))
+	}
+	tracks, _ := repo.Tracks(rec.ID)
+	if tracks[0].Status != domain.TrackActive {
+		t.Fatalf("una pista viva acabó en %q: %s", tracks[0].Status, tracks[0].Error)
+	}
+
+	// Y al cerrar bien tampoco: el egress contesta y acaba en COMPLETE.
+	if err := svc.Stop(context.Background(), rec, "test"); err != nil {
+		t.Fatal(err)
+	}
+	sfu.finish("TR_mic", lksdk.EgressStatus_EGRESS_COMPLETE, "recordings/o/s/r/mic.ogg", base)
+	svc.Tick(context.Background(), base.Add(120*time.Second))
+	tracks, _ = repo.Tracks(rec.ID)
+	if tracks[0].Status != domain.TrackComplete {
+		t.Fatalf("un cierre normal acabó en %q: %s", tracks[0].Status, tracks[0].Error)
+	}
+}
+
+// Y no se pregunta antes de tiempo.
+//
+// Durante la grabación, preguntar **es** parar: `StopEgress` es la señal y el
+// arma a la vez. Un sondeo mientras se graba cortaría la grabación que venía a
+// vigilar.
+func TestTheProbeNeverRunsWhileStillRecording(t *testing.T) {
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
+	}}
+	svc, _ := newServiceUnderTest(t, sfu)
+
+	if _, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1"); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC()
+	for i := 1; i <= 6; i++ {
+		svc.Tick(context.Background(), base.Add(time.Duration(i*30)*time.Second))
+	}
+	if len(sfu.stopped) != 0 {
+		t.Fatalf("se pidió parar %d egress mientras la grabación seguía viva: %v",
+			len(sfu.stopped), sfu.stopped)
+	}
+}
+
+// «Ya está terminado» no es «se murió».
+//
+// Medido contra el SFU: volver a pedir que pare un egress que ya acabó
+// contesta **412 `failed_precondition`**, no el 408 del trabajador muerto.
+// Contar cualquier error como muerte tiraría pistas buenas — y las tiraría
+// justo en el caso más normal, el de una grabación que terminó bien.
+func TestAnAlreadyFinishedEgressIsNotMistakenForADeadOne(t *testing.T) {
+	if nobodyAnswered(twirp.NewError(twirp.FailedPrecondition,
+		"egress with status EGRESS_COMPLETE cannot be stopped")) {
+		t.Fatal("un 412 dice que LiveKit sí sabe de ese egress")
+	}
+	if nobodyAnswered(errors.New("la red se cayó")) {
+		t.Fatal("un error sin código no dice nada de quién hay al otro lado")
+	}
+	if !nobodyAnswered(twirp.NewError(twirp.DeadlineExceeded, "request timed out")) {
+		t.Fatal("el tiempo de espera agotado es la señal, y es la única")
+	}
+}
+
+// Un hipo no mata una pista.
+//
+// Es la otra cara del arreglo: el 408 también sale cuando el SFU tiene un mal
+// momento. Con un solo fallo bastando, un tropiezo de red convertiría en
+// `failed` una pista cuyo fichero estaba subiendo bien.
+func TestOneTransientTimeoutDoesNotKillATrack(t *testing.T) {
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
+	}}
+	svc, repo := newServiceUnderTest(t, sfu)
+
+	rec, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Stop(context.Background(), rec, "test"); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC()
+
+	sfu.timeoutOnce = true // un solo tropiezo
+	svc.Tick(context.Background(), base.Add(15*time.Second))
+	svc.Tick(context.Background(), base.Add(30*time.Second))
+	svc.Tick(context.Background(), base.Add(45*time.Second))
+
+	tracks, err := repo.Tracks(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tracks[0].Status == domain.TrackFailed {
+		t.Fatalf("un solo tiempo de espera agotado mató la pista: %s", tracks[0].Error)
+	}
+}
+
+// La carrera entre las dos llamadas no puede matar una pista buena.
+//
+// `ListEgress` y `StopEgress` son dos preguntas distintas, y la lista puede ir
+// un paso por detrás: se puede dar el caso de que la lista todavía diga
+// «activo» y el `StopEgress` conteste **412 «ya terminó»**. Es buena noticia —
+// el fichero está escrito—, y contarla como muerte convertiría en `failed` una
+// grabación que salió bien.
+//
+// El mutante que mata: contar cualquier error del sondeo en vez de sólo el
+// tiempo de espera agotado.
+func TestAStaleListingDoesNotKillAFinishedTrack(t *testing.T) {
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
+	}}
+	svc, repo := newServiceUnderTest(t, sfu)
+
+	rec, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Stop(context.Background(), rec, "test"); err != nil {
+		t.Fatal(err)
+	}
+	// La lista sigue diciendo «activo»; el que para dice «ya terminó».
+	sfu.stopSaysFinished = true
+	base := time.Now().UTC()
+	for i := 1; i <= 4; i++ {
+		svc.Tick(context.Background(), base.Add(time.Duration(i*15)*time.Second))
+	}
+	tracks, err := repo.Tracks(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tracks[0].Status == domain.TrackFailed {
+		t.Fatalf("una pista terminada se dio por muerta: %s", tracks[0].Error)
 	}
 }

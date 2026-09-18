@@ -50,6 +50,18 @@ identificador de acceso no es cómo se llama a una persona. Buscar, mencionar e
 identificar sí van por `username`.
 → Guardián: `repository.TestNadieResuelveElNombreASuAire` y `nombres_sql_test.go`.
 
+**Un egress muerto sigue diciendo que está vivo.** Si el pod de `livekit-egress`
+se cae, LiveKit deja el registro en `EGRESS_ACTIVE` **para siempre**: ni el
+estado, ni `updated_at` —que no late ni con el egress sano—, ni la presencia del
+participante en la sala lo delatan. Las tres se midieron contra el SFU. Lo único
+que lo distingue es pedirle que pare: 408 `deadline_exceeded` si no hay nadie,
+412 `failed_precondition` si ya terminó. Y como preguntar **es** parar, sólo se
+pregunta al cerrar; mientras se graba, un pod que muere no se detecta y se
+acepta. Contar el 412 como muerte tira grabaciones buenas.
+→ Guardianes: `service.TestADeadEgressWorkerDoesNotHangTheRecording` y
+`TestAStaleListingDoesNotKillAFinishedTrack`. El porqué entero, con los números,
+en `docs/grabacion.md`.
+
 **La medida de lectura de un documento (68ch) es para la prosa**, no para tablas
 ni bloques de código: puesta al cuerpo entero, una tabla ancha «cabe» partiendo
 las palabras a mitad y su propio deslizamiento no se activa nunca.

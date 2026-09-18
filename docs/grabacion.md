@@ -336,6 +336,72 @@ Dos cosas más que salieron de paso, útiles para la fase 3:
 - **La resolución sale de quien comparte**: 1920×1080 en la toma de la persona,
   960×540 en otra. El lienzo del mux se calcula por toma, como estaba previsto.
 
+## Un egress muerto no se nota, y eso obligó a rediseñar el cierre (18-sep-2026)
+
+La última puerta de la fase 1 era «matar el pod de Egress a mitad y ver las
+pistas en `failed` en ≤ 30 s». Se hizo, y falló: las pistas se quedaron en
+`active` **157 segundos** sin que nada se enterara. Una grabación así no cierra
+nunca, no llega al mux, y no enseña ningún error.
+
+### Las cuatro señales, medidas una a una
+
+Buscando algo que distinguiera un egress vivo de uno muerto se probaron las
+cuatro que hay. **Tres no valen**, y cada una se creyó buena un rato:
+
+| Señal | Qué hace de verdad |
+|---|---|
+| `EgressInfo.status` | Se queda en **`EGRESS_ACTIVE` para siempre**, con `ended_at: 0`. Sigue así horas después |
+| `EgressInfo.updated_at` | **No late.** Con el egress sano y grabando se quedó congelado y envejeció linealmente hasta 79 s. LiveKit sólo lo toca al cambiar de estado |
+| El participante del egress | **No se va.** Cada egress entra a la sala con su id por identidad (`EG_xxx`, `kind: EGRESS`), y al morir el pod **sigue sentado ahí**: presente los 157 s que duró la prueba |
+| `StopEgress` | **Contesta.** 408 `deadline_exceeded` en 3,4 s cuando nadie posee ese egress |
+
+La tercera costó dos intentos: se escribió el arreglo entero sobre la presencia
+—parecía la señal natural, y ya se pedía la lista en cada tick— y fue la propia
+prueba contra el SFU la que lo desmintió, imprimiendo tick a tick quién estaba
+en la sala. El doble habría dicho que sí.
+
+### Preguntar es también parar
+
+`StopEgress` sirve, pero no como latido: preguntarlo **es** pararlo. Así que
+sólo se pregunta al cerrar, y de ahí sale el reparto honesto de lo que este
+diseño puede y no puede:
+
+- **Mientras se graba, un pod que se muere no se detecta.** Lo escrito antes
+  está en S3; lo de después se pierde. Con LiveKit 1.13.5 no hay forma de
+  saberlo sin romper la grabación de los que están vivos. Anotado y aceptado.
+- **Al parar, se detecta en ~25 s** y la grabación cierra —`partial` si algo se
+  salvó, `failed` si no— en vez de colgarse en `finalizing` para siempre.
+
+### Y no vale contar «cualquier error»
+
+Volver a pedir que pare tiene **tres** respuestas, y sólo una significa muerte:
+
+```
+cerrando (ENDING)    → 200 OK          · pedirlo dos veces no molesta
+ya terminado         → 412 failed_precondition «cannot be stopped»
+nadie al otro lado   → 408 deadline_exceeded, en 3,4 s
+```
+
+El 412 es buena noticia: LiveKit sabe quién es y el fichero está escrito.
+Contarlo como muerte convertiría en `failed` la grabación que salió bien — y
+pasa de verdad, porque `ListEgress` y `StopEgress` son dos preguntas distintas
+y la lista puede ir un paso por detrás. Se mira el **código** de Twirp, no el
+texto, que lleva versión e idioma del servidor.
+
+Medido esto, el periodo de gracia que se había puesto «por si acaso» sobraba, y
+salió: la detección bajó de 39 s a 25 s.
+→ Guardianes: `service.TestADeadEgressWorkerDoesNotHangTheRecording`,
+`TestAnAlreadyFinishedEgressIsNotMistakenForADeadOne`,
+`TestAStaleListingDoesNotKillAFinishedTrack`,
+`TestOneTransientTimeoutDoesNotKillATrack`,
+`TestTheProbeNeverRunsWhileStillRecording`.
+
+### Una nota sobre cómo se mata un pod
+
+`kubectl delete pod` **no** reproduce el fallo: es una baja ordenada, Egress
+recibe SIGTERM y termina sus ficheros bien. La primera vez que pasó la prueba,
+pasó por eso y no por el arreglo. Hace falta `--force --grace-period=0`.
+
 ## Lo que falta medir — lo que queda de la puerta
 
 Lo de la alineación ya está cerrado arriba. Queda lo que sólo se puede medir con
@@ -346,6 +412,7 @@ la máquina cargada:
 | Coste del mux | 10 min de 1080p con `nice` ≤ 2 min, con el host ≥ 20% ocioso |
 | Coste de Egress | 3 pistas < 0,5 núcleo (si sobra, bajar `track_cpu_cost` para que 6 personas no topen con el techo) |
 | Redis caído a mitad | ¿sigue la voz? ¿se crean salas nuevas? anotar |
+| **Egress muerto a mitad** | **hecho**: ver arriba. Se detecta al parar, en ~25 s |
 
 Ninguna de las tres puede tumbar el diseño: la primera mueve un límite del
 `Deployment` del mux, la segunda un número del `values` de Egress, la tercera ya

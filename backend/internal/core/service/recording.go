@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	lksdk "github.com/livekit/protocol/livekit"
+	"github.com/twitchtv/twirp"
 
 	lkclient "github.com/guz-studio/cac/backend/internal/adapters/livekit"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -16,6 +17,16 @@ import (
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
+
+// Dos respuestas malas seguidas antes de dar una pista por muerta, y no una:
+// un tiempo de espera agotado puede ser el SFU con un mal momento, y matar una
+// pista por eso tira material que estaba llegando bien.
+const missingTicksToFail = 2
+
+// Y el cinturón: una pista que sigue viva cinco minutos después de que la
+// grabación acabara no va a revivir. Cinco y no uno porque esto sólo actúa
+// cuando la señal buena no está disponible, y equivocarse aquí tira material.
+const finalizingGraceS = 5 * time.Minute
 
 var (
 	// ErrRecordingsDisabled: esta instalación no graba. No es un fallo.
@@ -181,18 +192,15 @@ func (s *RecordingService) Tick(ctx context.Context, now time.Time) {
 }
 
 func (s *RecordingService) tickOne(ctx context.Context, rec *domain.Recording, now time.Time) {
-	people := []*lksdk.ParticipantInfo(nil)
+	people, err := s.lk.Participants(ctx, rec.Room)
+	if err != nil {
+		// Una sala que ya no existe es una sala vacía: el SFU la tira cuando se
+		// va el último, y eso es exactamente lo que queremos detectar. Tratarlo
+		// como error dejaría la grabación abierta para siempre.
+		lg.Warn("recording: " + rec.Room + " does not answer: " + err.Error())
+		people = nil
+	}
 	if rec.Status == domain.RecordingActive {
-		var err error
-		people, err = s.lk.Participants(ctx, rec.Room)
-		if err != nil {
-			// Una sala que ya no existe es una sala vacía: el SFU la tira
-			// cuando se va el último, y eso es exactamente lo que queremos
-			// detectar. Tratarlo como error dejaría la grabación abierta para
-			// siempre.
-			lg.Warn("recording: " + rec.Room + " does not answer: " + err.Error())
-			people = nil
-		}
 		s.discover(ctx, rec, people)
 	}
 
@@ -311,6 +319,22 @@ func (s *RecordingService) reconcile(ctx context.Context, rec *domain.Recording,
 		for i := range live {
 			s.reconcileTrack(&live[i], known)
 		}
+		s.probeStopped(ctx, rec)
+		// El cinturón por si la señal de arriba no llega: una pista que sigue
+		// viva mucho después de que la grabación terminara **no va a revivir**,
+		// y dejarla así cuelga la grabación en `finalizing` para siempre — el
+		// mux no la ve nunca. Pasa cuando el SFU no contesta y no se puede
+		// mirar quién sigue en la sala.
+		if rec.EndedAt != nil && now.Sub(*rec.EndedAt) > finalizingGraceS {
+			for i := range live {
+				if domain.TrackTerminal(live[i].Status) {
+					continue
+				}
+				s.saveTrack(live[i].ID, map[string]any{
+					"status": domain.TrackFailed, "error": "still running long after the recording ended",
+				})
+			}
+		}
 	}
 
 	// ¿Queda alguna moviéndose? Se vuelve a preguntar porque el bucle de arriba
@@ -359,21 +383,15 @@ func (s *RecordingService) reconcile(ctx context.Context, rec *domain.Recording,
 }
 
 // reconcileTrack traduce lo que dice el SFU al estado de una pista.
-func (s *RecordingService) reconcileTrack(t *domain.RecordingTrack, known map[string]*lksdk.EgressInfo) {
+func (s *RecordingService) reconcileTrack(t *domain.RecordingTrack,
+	known map[string]*lksdk.EgressInfo) {
 	info, seen := known[t.EgressID]
 	if !seen {
-		// Un egress que el SFU ya no conoce es, casi siempre, el pod de Egress
-		// reiniciado: el bus no tiene persistencia, así que al volver no sabe
-		// nada de lo que estaba haciendo. Tres ticks antes de darla por perdida
-		// para no confundirlo con una respuesta incompleta.
-		if t.MissingTicks+1 >= 3 {
-			s.saveTrack(t.ID, map[string]any{
-				"status": domain.TrackFailed, "missing_ticks": t.MissingTicks + 1,
-				"error": "egress vanished",
-			})
-			return
-		}
-		s.saveTrack(t.ID, map[string]any{"missing_ticks": t.MissingTicks + 1})
+		// Un egress que el SFU ya no conoce: el bus no tiene persistencia, así
+		// que si se vació no sabe nada de lo que estaba haciendo. Tres ticks
+		// antes de darla por perdida, para no confundirlo con una respuesta
+		// incompleta.
+		s.missing(t, "egress vanished")
 		return
 	}
 
@@ -410,10 +428,101 @@ func (s *RecordingService) reconcileTrack(t *domain.RecordingTrack, known map[st
 		// STARTING, ACTIVE y **ENDING**. `ENDING` no es terminal: el fichero
 		// todavía se está cerrando, y tratarlo como acabado pondría al mux a
 		// montar un multipart a medias.
+		//
+		//
+		// **Un egress cuyo pod ha muerto se queda aquí para siempre.** Medido
+		// contra LiveKit 1.13.5: el registro sigue diciendo `EGRESS_ACTIVE` con
+		// `ended_at: 0`, y ninguna de las señales pasivas lo delata —
+		// `updated_at` no late ni siquiera cuando el egress está sano (se
+		// midió: congelado y envejeciendo mientras grababa), y el participante
+		// del egress **no se va de la sala** al morir el pod (se midió:
+		// presente los 157 s que duró la prueba). Lo único que lo distingue es
+		// preguntárselo, y eso está en `probeStopped`.
 		if t.MissingTicks != 0 {
 			s.saveTrack(t.ID, map[string]any{"missing_ticks": 0})
 		}
 	}
+}
+
+// probeStopped pregunta si alguien sigue al otro lado, y sólo al cerrar.
+//
+// Es la única señal que hay. Se midió contra el SFU: `StopEgress` sobre un
+// egress cuyo trabajador murió contesta **408 `deadline_exceeded` en 3,4 s** —
+// nadie lo posee—, mientras que sobre uno vivo termina el trabajo. Por eso no
+// sirve como latido durante la grabación: preguntarlo **es** pararlo.
+//
+// De ahí sale el reparto honesto de lo que este diseño puede y no puede:
+//
+//   - Mientras se graba, un pod de Egress que se muere **no se detecta**. Lo
+//     que se escribió antes está en S3; lo de después se pierde. Con LiveKit
+//     1.13.5 no hay forma de saberlo sin romper la grabación de los vivos.
+//   - Al parar, se detecta en ~20 s y la grabación cierra —como `partial` si
+//     algo se salvó, `failed` si no— en vez de quedarse colgada en `finalizing`
+//     para siempre, que es lo que hacía.
+//
+// **No vale contar cualquier error**, y eso también se midió. Volver a pedir
+// que pare tiene tres respuestas distintas, y sólo una significa lo que se
+// busca:
+//
+//	cerrando (ENDING)    → 200 OK, y no pasa nada por pedirlo dos veces
+//	ya terminado         → 412 failed_precondition «cannot be stopped»
+//	nadie al otro lado   → 408 deadline_exceeded, en 3,4 s
+//
+// El 412 es buena noticia —LiveKit sabe quién es y ya acabó— y contarlo como
+// muerte tiraría pistas buenas. Por eso se mira el código y no el hecho de
+// haber fallado; y por eso tampoco hace falta un periodo de gracia.
+func (s *RecordingService) probeStopped(ctx context.Context, rec *domain.Recording) {
+	if rec.Status != domain.RecordingFinalizing || rec.EndedAt == nil {
+		return
+	}
+	live, err := s.repo.LiveTracks(rec.ID)
+	if err != nil {
+		lg.Error("recording: listing live tracks to probe: " + err.Error())
+		return
+	}
+	for i := range live {
+		t := &live[i]
+		if t.EgressID == "" {
+			continue
+		}
+		_, err := s.lk.StopEgress(ctx, rec.Room, t.EgressID)
+		if err != nil && nobodyAnswered(err) {
+			n := t.ProbeFailures + 1
+			fields := map[string]any{"probe_failures": n}
+			if n >= missingTicksToFail {
+				fields["status"] = domain.TrackFailed
+				fields["error"] = truncate("nobody answers for this egress: " + err.Error())
+			}
+			s.saveTrack(t.ID, fields)
+			continue
+		}
+		if t.ProbeFailures != 0 {
+			s.saveTrack(t.ID, map[string]any{"probe_failures": 0})
+		}
+	}
+}
+
+// nobodyAnswered: el error significa «no hay nadie al otro lado».
+//
+// Por el código de Twirp y no por el texto: el texto lleva la versión y el
+// idioma del servidor, y una comparación contra él se rompe en silencio el día
+// que cambien la frase. Cualquier otro error —incluido el 412 de «ya está
+// terminado»— dice que LiveKit sí sabe de ese egress, que es lo contrario de
+// lo que se busca.
+func nobodyAnswered(err error) bool {
+	var te twirp.Error
+	return errors.As(err, &te) && te.Code() == twirp.DeadlineExceeded
+}
+
+// missing cuenta una ausencia y mata la pista a la tercera.
+func (s *RecordingService) missing(t *domain.RecordingTrack, reason string) {
+	n := t.MissingTicks + 1
+	fields := map[string]any{"missing_ticks": n}
+	if n >= missingTicksToFail {
+		fields["status"] = domain.TrackFailed
+		fields["error"] = reason
+	}
+	s.saveTrack(t.ID, fields)
 }
 
 // setFirstMedia guarda el cero de la línea de tiempo.

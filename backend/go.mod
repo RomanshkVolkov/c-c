@@ -14,6 +14,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/livekit/protocol v1.50.4
 	github.com/redis/go-redis/v9 v9.22.0
+	github.com/twitchtv/twirp v8.1.3+incompatible
 	golang.org/x/crypto v0.52.0
 	golang.org/x/text v0.37.0
 	gorm.io/driver/postgres v1.5.11
@@ -89,7 +90,6 @@ require (
 	github.com/prometheus/common v0.68.1 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
-	github.com/twitchtv/twirp v8.1.3+incompatible // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect

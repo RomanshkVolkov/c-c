@@ -88,8 +88,8 @@ vuelve a hablar); y el 503 de «no está encendido» sólo sale en lo que escrib
 una instalación a la que se le apagó la grabación sigue enseñando lo que ya
 grabó.
 
-**27 mutantes muertos** repartidos en dominio (9), cliente del SFU (5), servicio
-(11) y las etiquetas JSON (2). Los que más importan: quitar el filtro de cámaras,
+**37 mutantes muertos** repartidos en dominio (9), cliente del SFU (5), servicio
+(21) y las etiquetas JSON (2). Los que más importan: quitar el filtro de cámaras,
 ignorar quién ganó el `ClaimTrack` —un egress por tick sobre la misma pista—,
 tratar `ENDING` como terminal, guardar la clave que se pidió en vez de la que
 Egress escribió, y `json:"-"` convertido en `json:"objectKey"`.
@@ -120,9 +120,27 @@ un `AccessDenied` que sólo se ve minutos después de colgar. Arreglado con
 viene de fuera.
 → Guardián: `domain.TestANestedPrefixKeepsItsSlashes`.
 
-Sigue sin probarse una sola cosa de la puerta: **matar el pod de Egress a
-mitad** y ver las pistas en `failed` en ≤ 30 s. Es un reinicio en producción, así
-que espera a que alguien lo diga.
+**Y la última puerta —matar el pod de Egress a mitad— también pasa, pero
+obligó a rediseñar el cierre.** El primer intento dejó las pistas en `active`
+157 segundos sin que nada se enterara: una grabación así no cierra nunca y el
+mux no la ve. De las cuatro señales que LiveKit ofrece para distinguir un egress
+vivo de uno muerto, **tres no valen** y se midieron una a una — el estado se
+queda en `ACTIVE` para siempre, `updated_at` no late ni estando sano, y el
+participante del egress no se va de la sala al morir el pod. La única que sirve
+es `StopEgress`, que contesta 408 en 3,4 s cuando nadie lo posee.
+
+Pero preguntar **es** parar, así que sólo se pregunta al cerrar. El reparto
+honesto: mientras se graba, un pod que muere **no se detecta** (lo escrito antes
+está en S3, lo de después se pierde); al parar, se detecta en **25 s** y la
+grabación cierra en vez de colgarse.
+
+Y no vale contar cualquier error: «ya terminó» es un 412 y es buena noticia.
+Confundirlo con el 408 tiraría la grabación que salió bien.
+→ Todo con sus números en `docs/grabacion.md`, y cinco guardianes nuevos.
+
+Detalle que costó un intento: `kubectl delete pod` **no** reproduce el fallo —es
+una baja ordenada y Egress termina sus ficheros bien—; hace falta `--force
+--grace-period=0`.
 
 ## 📮 Reports — cac as the single home for bug reports
 

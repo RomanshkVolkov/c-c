@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	lksdk "github.com/livekit/protocol/livekit"
+
 	lkclient "github.com/guz-studio/cac/backend/internal/adapters/livekit"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
@@ -149,4 +151,113 @@ func TestLiveSFURecordsWhatIsInTheRoom(t *testing.T) {
 		t.Error("sin FirstMediaAt el mux no tiene cero de línea de tiempo")
 	}
 	t.Logf("primer media: %v  ·  egress cerrados: %v", after.FirstMediaAt, after.EgressDoneAt)
+}
+
+// Qué pasa cuando el pod de Egress se muere a mitad.
+//
+// Es la última puerta de la fase 1, y la que no se puede simular con un doble
+// de forma honesta: el doble contestaría lo que yo le diga que contesta. Lo que
+// hay que saber es qué dice **este** LiveKit cuando el egress que arrancó ya no
+// existe — y de eso depende que una grabación se quede colgada para siempre en
+// `finalizing` o que cierre con lo que tenga.
+//
+//	RECORDINGS_LIVE_ROOM=voice:… RECORDINGS_LIVE_KILL=1 \
+//	  go test ./internal/core/service/ -run LiveSFUSurvives -v
+//
+// Quien mata el pod es el guion de fuera, no esta prueba: un test que hace
+// `kubectl` contra producción es un test que alguien corre sin querer.
+func TestLiveSFUSurvivesAnEgressRestart(t *testing.T) {
+	room := os.Getenv("RECORDINGS_LIVE_ROOM")
+	if room == "" || os.Getenv("RECORDINGS_LIVE_KILL") == "" {
+		t.Skip("no live kill run: set RECORDINGS_LIVE_ROOM and RECORDINGS_LIVE_KILL")
+	}
+	lk := lkclient.New(os.Getenv("LIVEKIT_URL"), os.Getenv("LIVEKIT_API_KEY"),
+		os.Getenv("LIVEKIT_API_SECRET"))
+	if lk == nil {
+		t.Skip("no livekit keys in the environment")
+	}
+	ctx := context.Background()
+
+	repo := repository.NewRecordingRepository(recordingDB(t))
+	svc := NewRecordingService(repo, lk, nil, os.Getenv("RECORDINGS_PREFIX"), true, true, 240)
+
+	rec, err := svc.Start(ctx, "org-live", room[len("voice:"):], "u-live")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Logf("grabación %s en marcha — el guion de fuera matará el pod", rec.ID)
+
+	// Se graba un rato con el pod ya muerto —y **no se detecta**, que es lo
+	// medido: LiveKit no da ninguna señal pasiva— y después se para, que es
+	// cuando se puede preguntar. Lo que mide esta prueba es que la grabación
+	// **cierra** en vez de quedarse colgada, y en cuánto.
+	time.Sleep(45 * time.Second)
+	if err := svc.Stop(ctx, rec, "live-kill-test"); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	t.Log("parada pedida; a partir de aquí el reloj puede preguntar")
+
+	arranque := time.Now()
+	var cerrado time.Time
+	for i := 0; i < 25; i++ {
+		time.Sleep(6 * time.Second)
+		svc.Tick(ctx, time.Now().UTC())
+		vivas, err := repo.LiveTracks(rec.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		todas, _ := repo.Tracks(rec.ID)
+		estados := ""
+		for _, tr := range todas {
+			estados += " " + tr.Source + "=" + tr.Status
+		}
+		// Y lo que el SFU dice en ese mismo instante, que es lo que decide el
+		// reloj: quién sigue en la sala y en qué estado está cada egress. Sin
+		// esto, un fallo aquí sólo dice «siguieron vivas» y hay que adivinar
+		// por qué.
+		enSala := ""
+		if gente, e := lk.Participants(ctx, room); e == nil {
+			for _, p := range gente {
+				if p.Kind == lksdk.ParticipantInfo_EGRESS {
+					enSala += " " + p.Identity
+				}
+			}
+		} else {
+			enSala = " (no contesta: " + e.Error() + ")"
+		}
+		egr := ""
+		if items, e := lk.ListEgress(ctx, room); e == nil {
+			for _, it := range items {
+				egr += " " + it.EgressId + "=" + it.Status.String()
+			}
+		} else {
+			egr = " (no contesta: " + e.Error() + ")"
+		}
+		t.Logf("  t+%3.0fs %s | en sala:%s | egress:%s",
+			time.Since(arranque).Seconds(), estados, enSala, egr)
+		if len(vivas) == 0 {
+			cerrado = time.Now()
+			break
+		}
+	}
+	if cerrado.IsZero() {
+		t.Fatal("las pistas siguieron vivas: una grabación así se queda colgada para siempre")
+	}
+
+	todas, err := repo.Tracks(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tr := range todas {
+		t.Logf("  %-16s %-10s key=%q error=%q", tr.Source, tr.Status, tr.ObjectKey, tr.Error)
+	}
+	final, err := repo.FindByID(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Status == domain.RecordingFinalizing && final.EgressDoneAt == nil {
+		t.Fatal("la grabación se quedó en finalizing sin cerrar: el mux no la verá nunca")
+	}
+	t.Logf("cerró en %.0f s desde la parada, en estado %q",
+		cerrado.Sub(arranque).Seconds(), final.Status)
 }

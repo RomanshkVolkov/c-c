@@ -202,12 +202,20 @@ type RecordingTrack struct {
 	EndedAt   *time.Time `json:"endedAt,omitempty"`
 	Bytes     int64      `json:"bytes,omitempty"`
 
-	// Attempts limita los reintentos; MissingTicks cuenta los ticks en los que
-	// `ListEgress` no supo nada de este egress — que es como se ve desde aquí
-	// que el pod de Egress se reinició y perdió lo que estaba haciendo.
-	Attempts     int    `json:"-"`
-	MissingTicks int    `json:"-"`
-	Error        string `gorm:"type:varchar(400)" json:"error,omitempty"`
+	// Tres contadores, y **cada señal tiene el suyo**: compartirlos es cómo se
+	// anulan entre ellos. Con uno solo, el reconciliador lo ponía a cero en
+	// cada tick y el sondeo lo subía a uno, así que nunca llegaba al umbral y
+	// la pista no moría nunca — que era justo el fallo que se venía a arreglar.
+	//
+	//   - Attempts: cuántas veces se intentó arrancar el egress.
+	//   - MissingTicks: cuántos ticks seguidos `ListEgress` no supo nada de él
+	//     (el bus vaciado).
+	//   - ProbeFailures: cuántas veces seguidas nadie contestó al pedirle que
+	//     parara (el pod muerto). Ver `probeStopped`.
+	Attempts      int    `json:"-"`
+	MissingTicks  int    `json:"-"`
+	ProbeFailures int    `json:"-"`
+	Error         string `gorm:"type:varchar(400)" json:"error,omitempty"`
 }
 
 func (RecordingTrack) TableName() string { return "recording_tracks" }
