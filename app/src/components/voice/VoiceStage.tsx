@@ -6,10 +6,13 @@ import VoiceChat from "@/components/voice/VoiceChat";
 import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
+import RecChip from "@/components/voice/RecChip";
+import RecordingConsentDialog from "@/components/voice/RecordingConsentDialog";
 import VoiceControls from "@/components/voice/VoiceControls";
 import VideoLienzo from "@/components/voice/VideoLienzo";
 import VoiceTile from "@/components/voice/VoiceTile";
 import { cn } from "@/lib/utils";
+import { useRecordings } from "@/store/recordings.store";
 import { useVoice } from "@/store/voice.store";
 
 /**
@@ -53,6 +56,21 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const [ajustes, setAjustes] = useState(false);
   const [chat, setChat] = useState(false);
   const spaceId = useVoice((s) => s.spaceId);
+  // Quién graba lo dice **el motor**, no el botón: llega por el metadata de la
+  // sala, así que enciende el chip en todas las pantallas a la vez —incluida la
+  // de quien entró después.
+  const grabacion = useVoice((s) => s.grabacion);
+  const politica = useRecordings((s) => (spaceId ? s.policy[spaceId] : undefined));
+  const empezarGrabacion = useRecordings((s) => s.empezar);
+  const pararGrabacion = useRecordings((s) => s.parar);
+  const grabacionEnVuelo = useRecordings((s) => s.enVuelo);
+  const cargarPolitica = useRecordings((s) => s.cargarPolitica);
+  const [consintiendo, setConsintiendo] = useState(false);
+
+  // Se pregunta al entrar: de eso depende que el botón exista.
+  useEffect(() => {
+    if (spaceId) void cargarPolitica(spaceId);
+  }, [spaceId, cargarPolitica]);
 
   // Con alguien compartiendo, las caras se van **encima** de la imagen en vez
   // de ocupar una columna de 200 px al lado. El ancho es lo que se ha venido a
@@ -93,6 +111,12 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
               en el momento en que todavía no lo es. */}
           {latencia !== null && ` · ${latencia} ms`}
         </span>
+        {/* En la cabecera y no entre los mandos: lo que se está grabando es la
+            llamada entera, no un botón. Quien mire la pantalla un segundo tiene
+            que verlo sin buscarlo. */}
+        {grabacion && (
+          <RecChip by={(gente ?? []).find((p) => p.identity === grabacion.by)?.name} />
+        )}
         <div className="flex-1" />
         {/* Llamar a alguien vive aquí y no en la barra de mandos: los mandos
             son sobre ti —tu micro, tu cámara— y esto es sobre la sala. */}
@@ -277,6 +301,29 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         onShare={() => void alternarCompartir()}
         onSettings={() => setAjustes((v) => !v)}
         onLeave={() => void salir()}
+        grabando={Boolean(grabacion)}
+        grabandoEnVuelo={Boolean(grabacionEnVuelo)}
+        // Sin política, o con la grabación apagada en el servidor, **no hay
+        // botón**: pasar `undefined` es lo que hace que no se pinte.
+        onGrabar={
+          politica?.enabled && spaceId
+            ? () => {
+                if (grabacion) void pararGrabacion(grabacion.id);
+                // **Siempre pregunta** antes de empezar, aunque sea la segunda
+                // vez en la misma llamada. Ver `RecordingConsentDialog`.
+                else setConsintiendo(true);
+              }
+            : undefined
+        }
+      />
+      <RecordingConsentDialog
+        open={consintiendo}
+        onOpenChange={setConsintiendo}
+        enVuelo={Boolean(grabacionEnVuelo)}
+        onConfirm={() => {
+          if (!spaceId) return;
+          void empezarGrabacion(spaceId).then(() => setConsintiendo(false));
+        }}
       />
     </div>
   );

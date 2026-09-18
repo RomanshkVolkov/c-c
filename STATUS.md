@@ -55,7 +55,7 @@ para montar caras que nadie va a mirar.
 | 0 | Grabar por pistas y montar **a mano**, antes de escribir backend | **pasada** — ver abajo |
 | 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | **hecha y probada contra el SFU** |
 | 2 | Mux (`recordings-mux`) + proxy con `Range` | **escrita y probada de punta a punta** |
-| 3 | App: consentimiento, chip REC, panel de grabaciones | no empezada |
+| 3 | App: consentimiento, chip REC, panel de grabaciones | **piezas hechas**, falta montar el panel en el canal |
 | 4 | Endurecer, y el puente a la transcripción | no empezada |
 
 Lo que ya está desplegado y no se toca: SFU y Egress con la versión pineada por
@@ -196,6 +196,40 @@ cual pasaba justamente porque no tenía traducción. Ahora comprueba que sale la
 frase.
 → Tres mutantes muertos sobre el guardián arreglado, incluido «vuelve a mirar
 línea a línea».
+
+### La fase 3, en curso (18-sep-2026)
+
+El lado de la app. Lo que ya está y está probado:
+
+| Pieza | Qué |
+|---|---|
+| `voice.rs` | `VoiceEvent::Recording` + `recording_from_metadata` — puro, 6 pruebas, 3 mutantes |
+| `voice.store.ts` | `grabacion` en `VACIO`, para que salir de la llamada apague el chip |
+| `recordings.store.ts` | política, empezar, parar, lista, borrar, `alCambiarEstado` — 13 pruebas, 8 mutantes |
+| `RecChip` | «REC · Ana», `role="status"`, parpadeo con `motion-safe` |
+| `RecordingConsentDialog` | siempre pregunta, y **dice que las cámaras no se graban** |
+| `RecordingsPanel` | `<audio>` si es sólo voz, `<video>` si hay pantalla, `src` por el proxy |
+| catálogos `recordings.json` | en los dos idiomas, con espacio de nombres registrado |
+
+**El botón no enciende el chip.** Lo enciende el motor cuando el SFU dice que el
+metadata de la sala cambió, así que aparece en todas las pantallas a la vez —y
+en la de quien entra tarde. Pintarlo al pulsar parece más ágil y miente: si el
+servidor rechaza, la pantalla de quien pulsó diría que se está grabando y las
+demás dirían que no.
+
+Dos cosas que salieron por el camino:
+
+**`NAMESPACES` vive en tres sitios y yo toqué dos.** El propio comentario de
+`i18n.ts` lo avisa; faltaba `i18next.d.ts`, y el compilador lo cazó. De ahí salió
+un guardián nuevo, `catalogos.test.ts`: paridad de claves entre los dos idiomas,
+ninguna frase en blanco, y que **ningún fichero de catálogo se quede fuera de la
+lista** — tres mutantes muertos.
+
+**Una prueba montaba la tienda a medias** y `gente` llegaba sin definir, así que
+mi `gente.find` reventaba la barra entera. Arreglado con `?? []`, que además
+cubre el caso real: quien graba puede haberse ido de la llamada.
+
+Falta: montar el panel en `ChannelView`, el aviso al recién llegado y el toast.
 
 ## 📮 Reports — cac as the single home for bug reports
 

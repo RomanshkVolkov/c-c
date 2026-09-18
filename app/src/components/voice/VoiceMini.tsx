@@ -2,6 +2,7 @@ import { useT } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { Mic, MicOff, PhoneOff } from "lucide-react";
 import { useTasksStore } from "@/store/tasks.store";
+import RecChip from "@/components/voice/RecChip";
 import { useVoice } from "@/store/voice.store";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,12 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
   const spaceId = useVoice((s) => s.spaceId);
   const estado = useVoice((s) => s.estado);
   const mic = useVoice((s) => s.mic);
+  const grabacion = useVoice((s) => s.grabacion);
+  // `?? []` y no `gente.find` a secas: quien graba puede no estar en la lista
+  // —se fue de la llamada y la grabación sigue— y el chip tiene que aguantarlo
+  // sin nombre en vez de reventar la barra entera.
+  const gente = useVoice((s) => s.gente);
+  const nombreDeQuienGraba = (gente ?? []).find((p) => p.identity === grabacion?.by)?.name;
   const abrirEscenario = useVoice((s) => s.abrirEscenario);
   const alternarMic = useVoice((s) => s.alternarMic);
   const salir = useVoice((s) => s.salir);
@@ -65,6 +72,9 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
           <span className="block text-xs text-muted-foreground">
             {estado === "entrando" ? t("common:servers.connecting") : t("common:servers.voiceConnected")}
           </span>
+          {/* Aquí también, y no sólo en el escenario: quien minimiza la llamada
+              y sigue hablando tiene que seguir viendo que se le graba. */}
+          {grabacion && <RecChip className="mt-1" by={nombreDeQuienGraba} />}
         </span>
       </button>
       <div className="flex gap-1.5">

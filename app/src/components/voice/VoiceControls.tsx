@@ -6,8 +6,10 @@ import {
   Headphones,
   Mic,
   MicOff,
+  Circle,
   MonitorUp,
   PhoneOff,
+  Square,
   SlidersHorizontal,
   Video,
   VideoOff,
@@ -83,11 +85,19 @@ export default function VoiceControls({
   onShare,
   onSettings,
   onLeave,
+  grabando,
+  onGrabar,
+  grabandoEnVuelo,
 }: {
   mic: boolean;
   deafened: boolean;
   cam: boolean;
   sharing: boolean;
+  /** Si ya se está grabando. Lo dice el motor, no este botón. */
+  grabando?: boolean;
+  /** Ausente = esta instalación no graba, y entonces el botón no se pinta. */
+  onGrabar?: () => void;
+  grabandoEnVuelo?: boolean;
   onMic: () => void;
   onDeafen: () => void;
   onCam?: () => void;
@@ -137,6 +147,22 @@ export default function VoiceControls({
       )}
       {onSettings && (
         <Round icon={SlidersHorizontal} label={t("common:voice.settings")} onClick={onSettings} />
+      )}
+      {/* Grabar, por el mismo criterio que compartir pantalla: **no se pinta
+          hasta que haga algo**. Si el servidor no tiene grabación montada, un
+          botón apagado ahí es un botón que no responde.
+
+          Y cambia de icono —círculo a cuadrado— y no sólo de color, como todos
+          los de esta barra. */}
+      {onGrabar && (
+        <Round
+          icon={grabando ? Square : Circle}
+          label={grabando ? t("recordings:stop") : t("recordings:record")}
+          active={grabando}
+          spinning={grabandoEnVuelo}
+          onClick={onGrabar}
+          disabled={grabandoEnVuelo}
+        />
       )}
       {/* El botón de reportar va **entre los controles y el de colgar**, no
           escondido en un menú: si alguien tiene que buscarlo, no lo pulsa. */}

@@ -18,6 +18,7 @@ import { useDMStore } from "@/store/dm.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useInboxStore } from "@/store/inbox.store";
+import { useRecordings, type Recording } from "@/store/recordings.store";
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
 import { useMeetingsStore, type ReunionEntrante } from "@/store/meetings.store";
 import { useMyWorkStore } from "@/store/mywork.store";
@@ -538,6 +539,24 @@ export function useReportEvents() {
             t.title,
             t.spaceName ? `Starting now in #${t.spaceName}` : "Starting now",
           );
+          break;
+        }
+        /**
+         * El estado de una grabación cambió: empezó, paró, o ya está montada.
+         *
+         * **No enciende el chip REC** — de eso se encarga el metadata de la
+         * sala, que llega por el motor de voz y también a quien entra tarde.
+         * Esto es para las pantallas que **no** están en la llamada: la lista
+         * de grabaciones del canal pasa de «procesando…» a reproducible sola,
+         * sin que nadie recargue.
+         */
+        case "call:status": {
+          const c = parse(data) as unknown as {
+            spaceId?: string;
+            recording?: Recording | null;
+          } | null;
+          if (!c?.spaceId) break;
+          useRecordings.getState().alCambiarEstado(c.spaceId, c.recording ?? null);
           break;
         }
         case "voice.ring.cancel": {

@@ -113,9 +113,76 @@ pub enum VoiceEvent {
     SelfSpeaking {
         speaking: bool,
     },
+    /// Se está grabando esta llamada, o se ha dejado de grabar.
+    ///
+    /// Sale del **metadata de la sala**, no de un mensaje aparte, y ésa es la
+    /// diferencia que importa: LiveKit le entrega el metadata a cualquiera que
+    /// se conecte, así que quien entra tarde ve el chip REC sin que nadie tenga
+    /// que repetirle nada. Un aviso por SSE sólo llega a quien ya estaba.
+    Recording {
+        active: bool,
+        /// El id de la grabación y quién la empezó. Vacíos cuando `active` es
+        /// falso: al parar no hay nada que nombrar.
+        id: String,
+        by: String,
+        since: String,
+    },
     Disconnected {
         reason: String,
     },
+}
+
+/// Lo que dice el metadata de la sala cuando hay grabación.
+///
+/// Es el mismo objeto que escribe el backend en `markRoom`; aquí sólo se lee.
+#[derive(Debug, PartialEq)]
+pub struct RecordingSignal {
+    pub id: String,
+    pub by: String,
+    pub since: String,
+}
+
+/// Lee el metadata de la sala y dice si hay grabación.
+///
+/// Pura y aparte del bucle de eventos para poder probarla: el metadata lo
+/// escribe otro proceso, puede llegar vacío —una sala recién creada—, puede no
+/// ser JSON, y puede traer `"recording": null` cuando se acaba de parar. Los
+/// tres casos significan lo mismo y ninguno es un error.
+///
+/// **Se exigen `id` y `by`.** Un objeto presente pero a medias no enciende el
+/// chip: preferimos no avisar a avisar de una grabación que no se sabe de quién
+/// es — el aviso sin dueño es exactamente el que da miedo.
+pub fn recording_from_metadata(raw: &str) -> Option<RecordingSignal> {
+    let valor: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let rec = valor.get("recording")?;
+    let id = rec.get("id")?.as_str()?;
+    let by = rec.get("by")?.as_str()?;
+    if id.is_empty() || by.is_empty() {
+        return None;
+    }
+    Some(RecordingSignal {
+        id: id.to_string(),
+        by: by.to_string(),
+        since: rec.get("since").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+    })
+}
+
+/// El evento que corresponde a un metadata, encendido o apagado.
+fn evento_de_grabacion(raw: &str) -> VoiceEvent {
+    match recording_from_metadata(raw) {
+        Some(r) => VoiceEvent::Recording {
+            active: true,
+            id: r.id,
+            by: r.by,
+            since: r.since,
+        },
+        None => VoiceEvent::Recording {
+            active: false,
+            id: String::new(),
+            by: String::new(),
+            since: String::new(),
+        },
+    }
 }
 
 struct VoiceSession {
@@ -231,7 +298,7 @@ pub async fn voice_join(
     };
     *SESION.lock().unwrap() = Some(sesion);
 
-    escuchar_eventos(eventos, on_event.clone());
+    escuchar_eventos(eventos, on_event.clone(), Arc::downgrade(&room));
     medir_latencia(Arc::downgrade(&room), on_event);
     Ok(identidad)
 }
@@ -1373,7 +1440,11 @@ fn hablando_ahora(muestras: &[i16], ultima_voz: std::time::Instant) -> bool {
 
 /// Traduce los eventos de la sala a lo que la pantalla entiende, y reproduce lo
 /// que dicen los demás.
-fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Channel<VoiceEvent>) {
+fn escuchar_eventos(
+    mut eventos: mpsc::UnboundedReceiver<RoomEvent>,
+    canal: Channel<VoiceEvent>,
+    sala: std::sync::Weak<Room>,
+) {
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = eventos.recv().await {
             let enviado = match ev {
@@ -1406,7 +1477,22 @@ fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, canal: Chan
                             }
                         }
                     }
+                    // Y si ya se estaba grabando cuando llegaste.
+                    //
+                    // Por la misma razón que los participantes y sus micros:
+                    // esto es **estado de partida**, y el SDK no manda un
+                    // `RoomMetadataChanged` por algo que ya estaba puesto. Sin
+                    // este trozo, quien entra a una llamada que se está
+                    // grabando no vería el chip hasta que alguien parase y
+                    // volviera a empezar — o sea, nunca.
+                    if let Some(sala) = sala.upgrade() {
+                        r = r.and(canal.send(evento_de_grabacion(&sala.metadata())));
+                    }
                     r
+                }
+                // Alguien empezó o paró de grabar mientras estabas dentro.
+                RoomEvent::RoomMetadataChanged { metadata, .. } => {
+                    canal.send(evento_de_grabacion(&metadata))
                 }
                 RoomEvent::ParticipantConnected(p) => canal.send(VoiceEvent::Joined {
                     identity: p.identity().to_string(),
@@ -3036,5 +3122,81 @@ mod pruebas_remuestreo {
         remuestrear(&[], 0.91875, &mut fase, false, &mut salida);
         assert!(salida.is_empty());
         assert_eq!(fase.pos, 0.0);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_grabacion {
+    use super::{recording_from_metadata, RecordingSignal};
+
+    /// El metadata de una sala lo escribe **otro proceso**, y llega de todas
+    /// las formas: vacío cuando la sala es nueva, `{}` cuando se acaba de
+    /// parar, roto si alguien lo tocó a mano. Ninguna de las tres es un error
+    /// que deba encender un chip, y ninguna puede reventar el motor de voz.
+    #[test]
+    fn sin_grabacion_no_hay_señal() {
+        for crudo in ["", "{}", "no soy json", "null", "[]", r#"{"otra":"cosa"}"#] {
+            assert_eq!(recording_from_metadata(crudo), None, "con {crudo:?}");
+        }
+    }
+
+    /// El caso que más se da: se acaba de parar. El backend deja la clave a
+    /// `null` en vez de borrarla, y eso significa «ya no».
+    #[test]
+    fn una_grabacion_nula_es_no_grabar() {
+        assert_eq!(recording_from_metadata(r#"{"recording":null}"#), None);
+    }
+
+    /// Un objeto a medias **tampoco** enciende el chip.
+    ///
+    /// Es la decisión deliberada: preferimos no avisar a avisar de una
+    /// grabación sin dueño. Un punto rojo que no sabe decir quién está grabando
+    /// es peor que ninguno.
+    #[test]
+    fn a_medias_no_cuenta() {
+        for crudo in [
+            r#"{"recording":{}}"#,
+            r#"{"recording":{"id":"rec-1"}}"#,
+            r#"{"recording":{"by":"u-ana"}}"#,
+            r#"{"recording":{"id":"","by":"u-ana"}}"#,
+            r#"{"recording":{"id":"rec-1","by":""}}"#,
+            r#"{"recording":{"id":1,"by":"u-ana"}}"#,
+        ] {
+            assert_eq!(recording_from_metadata(crudo), None, "con {crudo}");
+        }
+    }
+
+    #[test]
+    fn con_id_y_dueño_sí() {
+        let r = recording_from_metadata(
+            r#"{"recording":{"id":"rec-1","by":"u-ana","since":"2026-09-18T00:00:00Z"}}"#,
+        );
+        assert_eq!(
+            r,
+            Some(RecordingSignal {
+                id: "rec-1".into(),
+                by: "u-ana".into(),
+                since: "2026-09-18T00:00:00Z".into(),
+            })
+        );
+    }
+
+    /// `since` es para enseñar «lleva 3 min»; sin ella el chip sigue
+    /// valiendo. Que falte no puede apagar el aviso.
+    #[test]
+    fn sin_since_el_chip_sigue_encendido() {
+        let r = recording_from_metadata(r#"{"recording":{"id":"rec-1","by":"u-ana"}}"#).unwrap();
+        assert_eq!(r.since, "");
+        assert_eq!(r.id, "rec-1");
+    }
+
+    /// Y el metadata puede traer más cosas: el backend es el único que escribe
+    /// hoy, pero una versión futura podría añadir otra clave al lado.
+    #[test]
+    fn convive_con_otras_claves() {
+        let r = recording_from_metadata(
+            r#"{"algo":"otro","recording":{"id":"rec-1","by":"u-ana"},"mas":1}"#,
+        );
+        assert!(r.is_some());
     }
 }

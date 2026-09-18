@@ -6,6 +6,7 @@ import enChat from "@/locales/en/chat.json";
 import enCommon from "@/locales/en/common.json";
 import enOrg from "@/locales/en/org.json";
 import enErrors from "@/locales/en/errors.json";
+import enRecordings from "@/locales/en/recordings.json";
 import enNav from "@/locales/en/nav.json";
 import enNotifications from "@/locales/en/notifications.json";
 import enWork from "@/locales/en/work.json";
@@ -14,6 +15,7 @@ import esChat from "@/locales/es/chat.json";
 import esCommon from "@/locales/es/common.json";
 import esOrg from "@/locales/es/org.json";
 import esErrors from "@/locales/es/errors.json";
+import esRecordings from "@/locales/es/recordings.json";
 import esNav from "@/locales/es/nav.json";
 import esNotifications from "@/locales/es/notifications.json";
 import esWork from "@/locales/es/work.json";
@@ -40,7 +42,7 @@ import type { Locale } from "@/store/locale.store";
  * lista repetida, añadir un espacio y olvidarse de uno de los tres deja las
  * claves de ese espacio sin tipar — es decir, sin la red.
  */
-export const NAMESPACES = ["common", "nav", "notifications", "work", "channel", "chat", "org", "errors"] as const;
+export const NAMESPACES = ["common", "nav", "notifications", "work", "channel", "chat", "org", "errors", "recordings"] as const;
 
 /**
  * Una clave que existe, dicho por el compilador.
@@ -55,8 +57,8 @@ export type MessageKey = ParseKeys<typeof NAMESPACES>;
 
 /** El inglés manda: si una clave no está aquí, no está en ninguna parte. */
 const recursos = {
-  en: { common: enCommon, nav: enNav, notifications: enNotifications, work: enWork, channel: enChannel, chat: enChat, org: enOrg, errors: enErrors },
-  es: { common: esCommon, nav: esNav, notifications: esNotifications, work: esWork, channel: esChannel, chat: esChat, org: esOrg, errors: esErrors },
+  en: { common: enCommon, nav: enNav, notifications: enNotifications, work: enWork, channel: enChannel, chat: enChat, org: enOrg, errors: enErrors, recordings: enRecordings },
+  es: { common: esCommon, nav: esNav, notifications: esNotifications, work: esWork, channel: esChannel, chat: esChat, org: esOrg, errors: esErrors, recordings: esRecordings },
 } as const;
 
 /**
