@@ -168,9 +168,21 @@ hablar con el DNS, con el 8081 y con S3.
 Y el montador tiene **su propio usuario de IAM**, sin `DeleteObject`: ante un
 fallo no puede llevarse por delante las pistas originales.
 
-**Falta encenderlo**: `terraform apply` para crear ese usuario, tres secretos de
-GitHub (`RECORDINGS_MUX_KEY` y el par de AWS) y `RECORDINGS_ENABLED=true`. Hasta
-entonces el puerto interno no se abre y el montador no se despliega.
+**Encendido en producción el 20-sep-2026.** Usuario de IAM creado, los tres
+secretos puestos, `RECORDINGS_ENABLED=true` desplegado y el montador arriba
+—«mux up, polling …:8081 every 15s», sin un solo aviso, que es como se ve que la
+llave casa en los dos lados—.
+
+Y la frontera del puerto interno, comprobada desde fuera: `/internal/…` contesta
+el `404 page not found` del enrutador **público**, igual que cualquier ruta
+inventada. La única `HTTPRoute` que llega a `cac-service` nombra el puerto 80
+explícitamente. El Gateway **sí sabe llevar TCP crudo** —ya lo hace con Postgres
+en el 5432—, así que lo que protege el 8081 no es que no pueda, es que **hoy no
+hay ninguna ruta que lo nombre**; detrás están la llave y la política de salida
+del montador.
+
+Falta **mirarlo en la app con una llamada de verdad**. Todo tiene prueba, pero
+«el botón está donde se espera y se entiende» no lo dice ninguna.
 
 ### Un guardián que llevaba meses ciego (18-sep-2026)
 
