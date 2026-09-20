@@ -414,6 +414,19 @@ Backend endpoint exists (above). Now consume it from `app/src/pages/ServerManage
 
 ## 💭 Future / nice-to-have
 
+- **Quitar las llaves estáticas de AWS del clúster (IRSA).** Los tres usuarios
+  de IAM —image-service, Egress y el montador— usan pares de llaves de larga
+  duración metidos en Secrets de Kubernetes: sin caducidad, sin rotación
+  automática, y rotarlas a mano obliga a reiniciar el pod que las use. Las de
+  `recordings` se rotaron una sola vez, y fue por una filtración.
+  Lo que lo arregla es que cada ServiceAccount asuma un rol por OIDC. **No sale
+  gratis aquí**: el clúster es autogestionado (Contabo, no EKS), así que hay que
+  publicar el documento de descubrimiento OIDC del clúster en un endpoint
+  público y registrarlo como proveedor OIDC en IAM. Es un trabajo propio con su
+  propio riesgo; separar usuarios por workload —que es lo que se ha hecho— no lo
+  arregla, sólo evita empeorarlo y deja el rastro de CloudTrail utilizable.
+
+
 - **File upstream bug at `tauri-apps/tauri-action`.** The inconsistent sanitization in `upload-version-json.ts` (uses `[ ()[\]{}]` → `.`) vs. `ghAssetName` (uses `[^a-zA-Z0-9_-]` → `.`) means any `productName` with chars like `&`, `+`, `@`, etc. breaks `latest.json` upload silently. Worth a PR to align the sanitizers.
 - **Existing C&C installs won't auto-migrate** to the new `CAC` install path. On a new release tag, users will end up with two installs side by side (old `C&C` and new `CAC`). Document the manual cleanup step when we cut the release.
 - **Scrub rotated DB password from git history** (`git filter-repo` + force push). Credentials in `78d0129` and `769e592` are already rotated and inert; only do this for hygiene if it matters. Destructive — rewrites public SHAs.
