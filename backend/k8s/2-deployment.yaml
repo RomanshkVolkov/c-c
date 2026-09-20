@@ -53,11 +53,12 @@ spec:
           # credenciales: son una decisión, y encenderla tiene que pasar por una
           # revisión de código y no por un panel.
           env:
-            # Apagado hasta que la app sepa enseñarlo (fase 3). Con esto en
-            # `false` el backend ni siquiera arranca el reloj: las rutas
-            # contestan 503 y la app esconde el botón.
+            # Encendido el 20-sep-2026, con las fases 1 a 3 hechas y el
+            # montador desplegado. Con esto en `false` el backend ni siquiera
+            # arranca el reloj: las rutas contestan 503 y la app esconde el
+            # botón — que sigue siendo el estado seguro si hay que apagarlo.
             - name: RECORDINGS_ENABLED
-              value: "false"
+              value: "true"
             # El rincón del bucket donde escribe Egress. **Cambiarlo aquí sin
             # cambiar la política de IAM deja la grabación sin sitio donde
             # caer**: la credencial de Egress sólo puede escribir bajo este
