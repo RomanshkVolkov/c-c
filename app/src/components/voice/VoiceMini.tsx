@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Mic, MicOff, PhoneOff } from "lucide-react";
 import { useTasksStore } from "@/store/tasks.store";
 import RecChip from "@/components/voice/RecChip";
+import { useAvisoDeGrabacion } from "@/components/voice/useAvisoDeGrabacion";
 import { useVoice } from "@/store/voice.store";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,10 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
   // sin nombre en vez de reventar la barra entera.
   const gente = useVoice((s) => s.gente);
   const nombreDeQuienGraba = (gente ?? []).find((p) => p.identity === grabacion?.by)?.name;
+  // El aviso para quien tiene la llamada minimizada. En el escenario ya hay una
+  // franja que lo dice —`RecordingBanner`—, y este hook se calla cuando está
+  // abierto: el mismo hecho anunciado dos veces se lee como dos grabaciones.
+  useAvisoDeGrabacion(nombreDeQuienGraba);
   const abrirEscenario = useVoice((s) => s.abrirEscenario);
   const alternarMic = useVoice((s) => s.alternarMic);
   const salir = useVoice((s) => s.salir);

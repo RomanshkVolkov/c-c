@@ -55,7 +55,7 @@ para montar caras que nadie va a mirar.
 | 0 | Grabar por pistas y montar **a mano**, antes de escribir backend | **pasada** — ver abajo |
 | 1 | Backend: dominio `Recording`, cliente Twirp, reloj, rutas | **hecha y probada contra el SFU** |
 | 2 | Mux (`recordings-mux`) + proxy con `Range` | **escrita y probada de punta a punta** |
-| 3 | App: consentimiento, chip REC, panel de grabaciones | **piezas hechas**, falta montar el panel en el canal |
+| 3 | App: consentimiento, chip REC, panel de grabaciones | **hecha**, sin verificar a mano en la app |
 | 4 | Endurecer, y el puente a la transcripción | no empezada |
 
 Lo que ya está desplegado y no se toca: SFU y Egress con la versión pineada por
@@ -229,7 +229,31 @@ lista** — tres mutantes muertos.
 mi `gente.find` reventaba la barra entera. Arreglado con `?? []`, que además
 cubre el caso real: quien graba puede haberse ido de la llamada.
 
-Falta: montar el panel en `ChannelView`, el aviso al recién llegado y el toast.
+Montado lo que faltaba:
+
+**El panel va dentro del canal, no en otro carril.** `ChannelView` ya *es* el
+carril derecho —lo dice la cabecera del fichero—, y abrir otro al lado pedía un
+rail de dos columnas, que es un cambio de maqueta mayor que la función. Así que
+alternan: o se lee la conversación, o se ven las grabaciones. El botón sólo se
+pinta si el servidor graba.
+
+**El aviso al que entra tarde** (`RecordingBanner`) es una franja, no un modal:
+el acuerdo es «aviso + quedarse», no «acepta para poder hablar», y un modal en
+mitad de una reunión interrumpe a la persona equivocada. Ofrece irse, y colgar
+de verdad. Se enseña **una vez por grabación, por id**: parar y volver a empezar
+es otra y vuelve a avisar — con un booleano, la segunda pasaría en silencio.
+
+**El toast es para quien minimizó la llamada**, que es el único que no ve ni la
+franja ni el chip. Se calla con el escenario abierto: el mismo hecho anunciado
+dos veces se lee como dos grabaciones.
+
+Un mutante se quedó vivo y tenía razón: la prueba del toast comprobaba que
+avisara, no **qué decía** sin nombre — e interpolar un hueco vacío deja una
+frase que empieza en blanco. Hay una frase distinta para ese caso y ahora se
+comprueba.
+
+**Lo que no se ha hecho: mirarlo en la app.** Todo lo de arriba tiene prueba,
+pero «el botón está donde se espera y se entiende» no se prueba con vitest.
 
 ## 📮 Reports — cac as the single home for bug reports
 

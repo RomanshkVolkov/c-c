@@ -7,6 +7,7 @@ import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
 import RecChip from "@/components/voice/RecChip";
+import RecordingBanner from "@/components/voice/RecordingBanner";
 import RecordingConsentDialog from "@/components/voice/RecordingConsentDialog";
 import VoiceControls from "@/components/voice/VoiceControls";
 import VideoLienzo from "@/components/voice/VideoLienzo";
@@ -287,6 +288,10 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
           </button>
         </p>
       )}
+
+      {/* Debajo de la cabecera y encima de todo lo demás: quien entra a una
+          llamada que ya se graba tiene que leerlo antes de hablar. */}
+      <RecordingBanner />
 
       <RingRow />
 

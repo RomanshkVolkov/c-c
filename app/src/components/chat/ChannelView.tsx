@@ -5,7 +5,7 @@ import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Bell, BellOff, ChevronDown, Loader2, Pencil, Plus, Send, Trash2, Volume2 } from "lucide-react";
+import { Bell, BellOff, ChevronDown, Film, Loader2, Pencil, Plus, Send, Trash2, Volume2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +33,8 @@ import { useTasksStore } from "@/store/tasks.store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { isDocOwnerKind } from "@/types/task";
+import RecordingsPanel from "@/components/recordings/RecordingsPanel";
+import { useRecordings } from "@/store/recordings.store";
 import type { ItemVisibility } from "@/types/task";
 
 /**
@@ -69,6 +71,14 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [verGrabaciones, setVerGrabaciones] = useState(false);
+  // De esto depende que el botón exista: sin grabación montada en el servidor,
+  // no se pinta nada.
+  const politica = useRecordings((s) => s.policy[spaceId]);
+  const cargarPolitica = useRecordings((s) => s.cargarPolitica);
+  useEffect(() => {
+    void cargarPolitica(spaceId);
+  }, [spaceId, cargarPolitica]);
   // Reads the store at call time — see the `cards` prop on MarkdownEditor.
   const citableCards = useCallback(
     () =>
@@ -146,6 +156,29 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
         <QuienAnda />
         <VoiceBar spaceId={spaceId} />
+        {/* Las grabaciones, **dentro del propio canal** y no en otro carril.
+            Este panel ya es el carril derecho —ver la cabecera del fichero— y
+            abrir otro al lado obligaría a un rail de dos columnas, que es un
+            cambio de maqueta mayor que la función. Así que alternan: o se lee
+            la conversación, o se ven las grabaciones.
+
+            Sólo se pinta si el servidor graba: sin política, no hay botón. */}
+        {politica?.enabled && (
+          <button
+            onClick={() => setVerGrabaciones((v) => !v)}
+            aria-pressed={verGrabaciones}
+            title={t("recordings:panelTitle")}
+            className={cn(
+              "flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
+              verGrabaciones
+                ? "border-primary/40 text-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Film className="size-3" />
+            {t("recordings:panelTitle")}
+          </button>
+        )}
         {/* Salirse de un canal es pedir que lo corriente deje de avisar; las
             menciones llegan igual. Vive aquí y no en preferencias porque es una
             decisión por canal: los que te importan los sabes estando dentro. */}
@@ -168,6 +201,12 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
         </button>
       </header>
 
+      {verGrabaciones ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <RecordingsPanel spaceId={spaceId} />
+        </div>
+      ) : (
+      <>
       <div className="relative flex min-h-0 flex-1 flex-col">
       <div ref={caja} onScroll={enScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
         {loadingOlder && (
@@ -249,6 +288,8 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           </Button>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
