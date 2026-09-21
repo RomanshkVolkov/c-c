@@ -19,9 +19,54 @@ export interface ChatMessage {
   spaceId: string;
   authorUserId: string;
   authorName: string;
+  /**
+   * Quién habla: una persona, o cac.
+   *
+   * `authorUserId` sigue trayendo a alguien en las dos —en una línea del
+   * sistema, quien la provocó— así que **esto es lo único que las distingue**.
+   * Tratarlas por el autor es lo que pondría Editar y Retirar sobre un aviso
+   * automático, firmado además con el nombre de quien lo causó.
+   *
+   * Opcional porque un backend anterior a la columna no la manda, y entonces
+   * todo es de una persona — que es exactamente como era.
+   */
+  kind?: "user" | "system";
   body: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Un fichero que se enseñó en el canal. Sale de los cuerpos, no de una tabla. */
+export interface ChatMediaItem {
+  id: string;
+  url: string;
+  fileName: string;
+  contentType?: string;
+  bytes?: number;
+  messageId: string;
+  postedAt: string;
+  authorName?: string;
+}
+
+/** Un enlace que se pegó en el canal, con las palabras que le pusieron. */
+export interface ChatLinkItem {
+  url: string;
+  label?: string;
+  messageId: string;
+  postedAt: string;
+  authorName?: string;
+}
+
+/**
+ * Una página de una pestaña, y por dónde seguir.
+ *
+ * `before` viene aparte y no se deduce del último elemento: una página aquí es
+ * una ventana **de canal**, no de resultados, así que puede volver corta sin
+ * que se haya acabado el historial. Ver `domain.ChatMediaPage` en el servidor.
+ */
+export interface ChatTabPage<T> {
+  items: T[];
+  before?: string;
 }
 
 interface ChatState {

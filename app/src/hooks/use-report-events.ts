@@ -417,12 +417,23 @@ export function useReportEvents() {
             spaceName?: string;
             authorName?: string;
             preview?: string;
+            kind?: "user" | "system";
           };
           if (!p.spaceId) break;
           // Your own line, echoed back by the stream every console hears. The
           // panel already shows it — the post refetched — so there is nothing
           // to do at all here, not even a refresh.
-          if (mine(p)) break;
+          //
+          // **Salvo que la haya puesto cac.** `actorId` de una línea del
+          // sistema es quien la provocó —quien grabó—, y esa persona no ha
+          // refrescado nada: tomarla por un eco suyo la dejaría sin ver que su
+          // grabación ya está, que es justo a quien más le importa.
+          //
+          // Lo que sí se le ahorra es el anuncio, más abajo: el servidor
+          // tampoco le anota el aviso en la bandeja. Refrescar es enseñarle lo
+          // que acaba de pasar; anunciarlo es interrumpirle con algo que pidió.
+          const own = mine(p);
+          if (own && p.kind !== "system") break;
           void useChatStore.getState().onIncoming(p.spaceId);
           // Only announce what you aren't already looking at. onIncoming has the
           // same condition; it is repeated rather than returned because the two
@@ -436,6 +447,9 @@ export function useReportEvents() {
           const nombre = p.spaceName || space?.name;
           const where = nombre ? `#${nombre}` : "a channel";
           // «Quién: qué», que es como se lee un chat.
+          // El servidor ya manda `authorName` vacío en una línea del sistema
+          // —ahí no hay nadie firmando—, así que esto queda en el adelanto solo
+          // sin necesitar una rama propia.
           const linea =
             p.authorName && p.preview
               ? `${p.authorName}: ${p.preview}`
@@ -452,7 +466,7 @@ export function useReportEvents() {
           }
 
           const chat = useChatStore.getState();
-          if (chat.panelOpen && chat.spaceId === p.spaceId) break;
+          if (own || (chat.panelOpen && chat.spaceId === p.spaceId)) break;
           toast.message(i18next.t("common:last.newMessageIn", { where }));
           notify("chat:message", where, linea);
           break;

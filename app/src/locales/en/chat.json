@@ -21,5 +21,17 @@
   "message": "Message",
   "newMessages": "New messages",
   "loading": "Loading…",
-  "emptyChannel": "Nothing in #{{name}} yet."
+  "emptyChannel": "Nothing in #{{name}} yet.",
+  "tabConversation": "Conversation",
+  "tabMedia": "Media",
+  "tabLinks": "Links",
+  "systemAuthor": "cac",
+  "systemTitle": "cac wrote this line, not a person — it can't be edited or withdrawn",
+  "mediaEmpty": "Nothing has been sent in this channel yet. An image pasted from another site isn't a file here — look in Links.",
+  "linksEmpty": "No links in this channel yet.",
+  "loadMore": "Load older",
+  "errTab": "Couldn't read the channel",
+  "searchHere": "Search in #{{name}}",
+  "noHits": "Nothing in this channel matches.",
+  "clearSearch": "Clear the search"
 }

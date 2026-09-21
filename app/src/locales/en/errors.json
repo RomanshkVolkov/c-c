@@ -54,6 +54,7 @@
   "not-colleagues": "You two aren't in the same organization.",
   "not-found": "That doesn't exist, or isn't yours to see.",
   "not-in-cluster": "That machine isn't in this cluster.",
+  "not-a-user-message": "cac wrote this line, not a person — it can't be changed.",
   "not-the-author": "You can only change what you wrote.",
   "not-the-recorder": "Only whoever started this recording, or an admin, can delete it.",
   "pat-unsupported": "A personal token can't do that.",

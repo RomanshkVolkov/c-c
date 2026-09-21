@@ -54,6 +54,7 @@
   "not-colleagues": "No estáis en la misma organización.",
   "not-found": "Eso no existe, o no es tuyo para verlo.",
   "not-in-cluster": "Esa máquina no está en este clúster.",
+  "not-a-user-message": "Esta línea la escribió cac, no una persona — no se puede cambiar.",
   "not-the-author": "Sólo puedes cambiar lo que escribiste tú.",
   "not-the-recorder": "Sólo quien empezó esta grabación, o un administrador, puede borrarla.",
   "pat-unsupported": "Un token personal no puede hacer eso.",

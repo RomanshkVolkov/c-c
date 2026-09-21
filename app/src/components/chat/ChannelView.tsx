@@ -5,7 +5,7 @@ import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Bell, BellOff, ChevronDown, Film, Loader2, Pencil, Plus, Send, Trash2, Volume2 } from "lucide-react";
+import { Bell, BellOff, ChevronDown, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, Volume2, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import MessageToDoc from "@/components/chat/MessageToDoc";
 import Markdown from "@/components/markdown/Markdown";
-import { docRefFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
+import { docRefFromHref, recordingIdFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useChatStore } from "@/store/chat.store";
 import { usePeopleStore } from "@/store/people.store";
@@ -34,8 +34,25 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { isDocOwnerKind } from "@/types/task";
 import RecordingsPanel from "@/components/recordings/RecordingsPanel";
+import MediaTab from "@/components/chat/MediaTab";
+import LinksTab from "@/components/chat/LinksTab";
+import ThreadSearch from "@/components/chat/ThreadSearch";
 import { useRecordings } from "@/store/recordings.store";
 import type { ItemVisibility } from "@/types/task";
+
+/**
+ * Las pestañas de un canal.
+ *
+ * Sustituyen a la alternancia con las grabaciones que había aquí, que era un
+ * apaño y lo decía en su propio comentario: este panel ya es el carril derecho,
+ * así que el botón de Grabaciones tapaba el hilo entero para enseñar una lista.
+ * Con pestañas, tapar el hilo es lo que se ha pedido.
+ *
+ * Buscar dentro de cada una está fuera de esta tanda a propósito: hacerlo sobre
+ * lo que la pestaña tenga cargado encontraría sólo lo de la última ventana, que
+ * es exactamente el fallo que estas listas existen para no tener.
+ */
+type Tab = "thread" | "media" | "recordings" | "links";
 
 /**
  * The space's channel, beside the board rather than on top of it.
@@ -71,7 +88,24 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [verGrabaciones, setVerGrabaciones] = useState(false);
+  const [tab, setTab] = useState<Tab>("thread");
+  /**
+   * Lo que se busca, **por pestaña activa y sólo en este canal**.
+   *
+   * Una caja y no cuatro: lo que cambia es dónde mira, no qué se escribe. Se
+   * vacía al cambiar de pestaña porque «factura» quiere decir otra cosa en
+   * Multimedia que en la conversación, y arrastrarla daría cero aciertos sin
+   * explicar por qué.
+   *
+   * La búsqueda global de la paleta sigue siendo la otra pregunta —«¿dónde está
+   * esto, en toda la organización?»—; ésta contesta «¿dónde lo dijimos, aquí?».
+   */
+  const [query, setQuery] = useState("");
+  const searching = query.trim() !== "";
+  const switchTab = (t: Tab) => {
+    setTab(t);
+    setQuery("");
+  };
   // De esto depende que el botón exista: sin grabación montada en el servidor,
   // no se pinta nada.
   const politica = useRecordings((s) => s.policy[spaceId]);
@@ -156,29 +190,6 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
         <QuienAnda />
         <VoiceBar spaceId={spaceId} />
-        {/* Las grabaciones, **dentro del propio canal** y no en otro carril.
-            Este panel ya es el carril derecho —ver la cabecera del fichero— y
-            abrir otro al lado obligaría a un rail de dos columnas, que es un
-            cambio de maqueta mayor que la función. Así que alternan: o se lee
-            la conversación, o se ven las grabaciones.
-
-            Sólo se pinta si el servidor graba: sin política, no hay botón. */}
-        {politica?.enabled && (
-          <button
-            onClick={() => setVerGrabaciones((v) => !v)}
-            aria-pressed={verGrabaciones}
-            title={t("recordings:panelTitle")}
-            className={cn(
-              "flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
-              verGrabaciones
-                ? "border-primary/40 text-primary"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Film className="size-3" />
-            {t("recordings:panelTitle")}
-          </button>
-        )}
         {/* Salirse de un canal es pedir que lo corriente deje de avisar; las
             menciones llegan igual. Vive aquí y no en preferencias porque es una
             decisión por canal: los que te importan los sabes estando dentro. */}
@@ -201,9 +212,64 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
         </button>
       </header>
 
-      {verGrabaciones ? (
+      {/* Las pestañas en su propia fila y no dentro de la cabecera: ésa mide
+          48px y ya lleva el nombre del canal, quién anda, la voz y el botón de
+          seguir. Una fila más de 28px es más barata que perder el nombre del
+          canal, que es lo que la gente viene a leer. */}
+      <nav role="tablist" className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
+        <TabButton current={tab} value="thread" onPick={switchTab} icon={MessageSquare}>
+          {t("chat:tabConversation")}
+        </TabButton>
+        <TabButton current={tab} value="media" onPick={switchTab} icon={Image}>
+          {t("chat:tabMedia")}
+        </TabButton>
+        {/* Sólo si el servidor graba. Sin política no hay pestaña, igual que
+            antes no había botón: una instalación sin grabación montada no debe
+            enseñar una lista que siempre va a estar vacía. */}
+        {politica?.enabled && (
+          <TabButton current={tab} value="recordings" onPick={switchTab} icon={Film}>
+            {t("recordings:panelTitle")}
+          </TabButton>
+        )}
+        <TabButton current={tab} value="links" onPick={switchTab} icon={Link2}>
+          {t("chat:tabLinks")}
+        </TabButton>
+        {/* La caja a la derecha de las pestañas, en la misma fila: es un
+            modificador de la pestaña activa, no una pantalla aparte. Las
+            grabaciones no se buscan —son cuatro filas con fecha y quién
+            grabó— así que ahí no se ofrece. */}
+        {tab !== "recordings" && (
+          <div className="ml-auto flex min-w-0 flex-1 items-center gap-1 pl-2">
+            <Search className="size-3 shrink-0 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("chat:searchHere", { name: spaceName })}
+              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            />
+            {searching && (
+              <button
+                onClick={() => setQuery("")}
+                aria-label={t("chat:clearSearch")}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+        )}
+      </nav>
+
+      {tab !== "thread" || searching ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <RecordingsPanel spaceId={spaceId} />
+          {/* Buscando, el hilo se sustituye por sus aciertos en vez de
+              filtrarse en el sitio: el hilo tiene anclaje de deslizamiento y se
+              refresca solo al llegar un mensaje, y filtrarlo ahí movería lo que
+              estás leyendo cada vez que alguien escribe. Ver `ThreadSearch`. */}
+          {tab === "thread" && <ThreadSearch spaceId={spaceId} query={query} />}
+          {tab === "recordings" && <RecordingsPanel spaceId={spaceId} />}
+          {tab === "media" && <MediaTab spaceId={spaceId} query={query} />}
+          {tab === "links" && <LinksTab spaceId={spaceId} query={query} />}
         </div>
       ) : (
       <>
@@ -233,6 +299,10 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
                 onUpload={upload}
                 cards={citableCards}
                 people={people}
+                // Una línea del sistema cita la grabación con `cac:recording/…`,
+                // y pulsarla salta a su pestaña en vez de sacar a nadie al
+                // navegador con una URL que sólo significa algo aquí dentro.
+                onOpenRecordings={() => switchTab("recordings")}
                 // Consecutive lines from one person read as one turn of speech.
                 grouped={i > 0 && messages[i - 1].authorUserId === m.authorUserId}
               />
@@ -302,6 +372,7 @@ function Message({
   onUpload,
   cards,
   people,
+  onOpenRecordings,
 }: {
   m: ChatMessage;
   spaceId: string;
@@ -312,6 +383,7 @@ function Message({
   onUpload: (file: File) => Promise<{ url: string; fileName: string } | null>;
   cards: () => { id: string; seq: number; title: string }[];
   people: () => { id: string; username: string }[];
+  onOpenRecordings: () => void;
 }) {
   const { t } = useT();
   const session = useAuthStore((s) => s.session);
@@ -343,6 +415,13 @@ function Message({
       openDoc(ref.kind, ref.id, "").catch((e) => toast.error(String(e)));
       return true;
     }
+    // Una grabación se abre en su pestaña, que es donde está el reproductor.
+    // Sin esto el enlace caería a la rama del navegador e intentaría abrir
+    // «cac:recording/…» como si fuera un fichero.
+    if (recordingIdFromHref(href)) {
+      onOpenRecordings();
+      return true;
+    }
     // A mention names a person rather than pointing somewhere. Claimed anyway,
     // so the click doesn't fall through to the attachment and browser paths and
     // try to open "cac:user/…" as a file.
@@ -353,10 +432,25 @@ function Message({
   const [draft, setDraft] = useState(m.body);
   const [saving, setSaving] = useState(false);
 
+  /**
+   * Una línea que puso cac, no una persona.
+   *
+   * **Esto va antes que `mine`, y por eso existe.** La fila lleva de autor a
+   * quien provocó la línea —quien grabó—, así que sin esta rama esa persona
+   * vería su propio aviso automático a la derecha, firmado con su nombre y con
+   * Editar y Retirar encima. Un mensaje que parece infalsificable y cuyo texto
+   * se puede cambiar es peor que no tenerlo; el servidor lo rechaza de todas
+   * formas (`not-a-user-message`), y aquí lo que se evita es ofrecerlo.
+   *
+   * Un backend anterior a la columna no manda `kind` y entonces esto es
+   * `false`: todo vuelve a ser de una persona, que es como era.
+   */
+  const fromSystem = m.kind === "system";
+
   // Only the author edits or withdraws. A superadmin may too, but the button is
   // not offered — the server allows it for cleanup, the UI doesn't invite it.
-  const mine = session?.id === m.authorUserId;
-  const edited = m.updatedAt && m.updatedAt !== m.createdAt;
+  const mine = !fromSystem && session?.id === m.authorUserId;
+  const edited = !fromSystem && m.updatedAt && m.updatedAt !== m.createdAt;
 
   const save = async () => {
     const body = draft.trim();
@@ -389,9 +483,21 @@ function Message({
             mine && "flex-row-reverse",
           )}
         >
-          <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
-            {mine ? "You" : m.authorName || "unknown"}
-          </span>
+          {fromSystem ? (
+            // Un chip en vez de un nombre. No es «de nadie»: es de cac, y
+            // decirlo con la misma tipografía que una persona lo haría pasar
+            // por una.
+            <span
+              title={t("chat:systemTitle")}
+              className="rounded border border-muted-foreground/30 px-1 font-medium uppercase tracking-wide"
+            >
+              {t("chat:systemAuthor")}
+            </span>
+          ) : (
+            <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
+              {mine ? "You" : m.authorName || "unknown"}
+            </span>
+          )}
           <span>
             {horaCorta(m.createdAt)}
           </span>
@@ -441,6 +547,11 @@ function Message({
                 tres iconos de 12px sobre el texto: había que acertarle a uno
                 de tres blancos diminutos que además tapaban lo escrito. Una
                 sola diana abre una lista con los nombres de las cosas. */}
+            {/* Y sin desplegable ninguno en una línea del sistema: volverla
+                tarea o documento copiaría un aviso automático, y Editar y
+                Retirar no son suyos. Gobernado por `kind` y **no** por `mine`,
+                que en esta fila dice que sí. */}
+            {!fromSystem && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t("chat:messageActions")}
@@ -487,10 +598,47 @@ function Message({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Una pestaña. Un `<button role="tab">` y no un enlace: esto no cambia de
+ * pantalla ni de URL, sólo de lo que ocupa el carril.
+ */
+function TabButton({
+  current,
+  value,
+  onPick,
+  icon: Icon,
+  children,
+}: {
+  current: Tab;
+  value: Tab;
+  onPick: (t: Tab) => void;
+  icon: typeof Film;
+  children: React.ReactNode;
+}) {
+  const active = current === value;
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={() => onPick(value)}
+      className={cn(
+        "flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs",
+        active
+          ? "bg-primary/10 font-medium text-primary"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icon className="size-3" />
+      {children}
+    </button>
   );
 }
 

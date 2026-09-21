@@ -21,5 +21,17 @@
   "message": "Mensaje",
   "newMessages": "Mensajes nuevos",
   "loading": "Cargando…",
-  "emptyChannel": "Todavía no hay nada en #{{name}}."
+  "emptyChannel": "Todavía no hay nada en #{{name}}.",
+  "tabConversation": "Conversación",
+  "tabMedia": "Multimedia",
+  "tabLinks": "Enlaces",
+  "systemAuthor": "cac",
+  "systemTitle": "Esta línea la escribió cac, no una persona — no se puede editar ni retirar",
+  "mediaEmpty": "Todavía no se ha enviado nada en este canal. Una imagen pegada de otra web no es un fichero de aquí — está en Enlaces.",
+  "linksEmpty": "Todavía no hay enlaces en este canal.",
+  "loadMore": "Cargar lo anterior",
+  "errTab": "No se pudo leer el canal",
+  "searchHere": "Buscar en #{{name}}",
+  "noHits": "Nada en este canal casa con eso.",
+  "clearSearch": "Limpiar la búsqueda"
 }
