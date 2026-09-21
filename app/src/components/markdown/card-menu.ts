@@ -76,6 +76,25 @@ export function docRefFromHref(href: string): { kind: string; id: string; tab?: 
   return { kind, id, tab: q.get("tab") ?? undefined };
 }
 
+/**
+ * Una grabación, citada desde dentro de un cuerpo.
+ *
+ * Con el esquema `cac:` de las menciones y no con una ruta, por lo mismo que
+ * está escrito en `domain/mention.go`: una ruta chocaría con la que alguien
+ * añada mañana y la seguiría cualquier cosa que trate el markdown como texto
+ * corriente. Lo escribe el servidor (`domain.RecordingRef`) y lo lee esto: las
+ * dos formas tienen que coincidir o el enlace no abre nada.
+ *
+ * El id va fijado a un uuid, como el de una mención: un cuerpo es texto libre y
+ * «lo que venga detrás de la barra» no es una regla que merezca adivinarse.
+ */
+export function recordingIdFromHref(href: string): string | null {
+  const prefix = "cac:recording/";
+  if (!href.startsWith(prefix)) return null;
+  const id = href.slice(prefix.length);
+  return /^[0-9a-fA-F-]{36}$/.test(id) ? id : null;
+}
+
 function matching(cards: CardRef[], query: string): CardRef[] {
   const q = query.toLowerCase().trim();
   const hits = q

@@ -126,3 +126,48 @@ describe("la medida de lectura de un documento", () => {
     expect(regla).toMatch(/overflow-wrap:\s*normal/);
   });
 });
+
+/**
+ * Un enlace de los nuestros llega entero a quien lo tiene que leer.
+ *
+ * react-markdown vacía el `href` de cualquier protocolo que no reconoce, y
+ * `cac:` es el que este repo usa para apuntar a algo de dentro desde dentro de
+ * un cuerpo — menciones (`cac:user/…`) y grabaciones (`cac:recording/…`).
+ * Vaciado, `onInternalLink` no recibe nada que reclamar y el clic se cae a la
+ * rama de los adjuntos: exactamente lo que le llevaba pasando a las menciones
+ * desde que se escribieron, calladamente, porque un chip con el nombre bien
+ * puesto no delata que no abre nada.
+ *
+ * El mutante que mata: quitar el `urlTransform` de `Markdown.tsx`. Nada se
+ * rompe a la vista — el texto del enlace sigue ahí, con su estilo — y las
+ * grabaciones dejan de abrirse.
+ */
+describe("un enlace al esquema de dentro", () => {
+  const ID = "0f3c1a2b-4d5e-6f70-8192-a3b4c5d6e7f8";
+
+  // Dentro de su propio contenedor: este fichero no limpia entre pruebas, así
+  // que `screen` ve también los enlaces de las de arriba.
+  it("conserva el href, para que se pueda reclamar el clic", () => {
+    const visto: string[] = [];
+    const { container } = render(
+      <Markdown onInternalLink={(href) => (visto.push(href), true)}>
+        {`[la grabación](cac:recording/${ID}) y [@ana](cac:user/${ID})`}
+      </Markdown>,
+    );
+    const enlaces = [...container.querySelectorAll("a")];
+    expect(enlaces.map((a) => a.getAttribute("href"))).toEqual([
+      `cac:recording/${ID}`,
+      `cac:user/${ID}`,
+    ]);
+
+    act(() => {
+      enlaces[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(visto).toEqual([`cac:recording/${ID}`]);
+  });
+
+  it("y no por eso pasa cualquier protocolo", () => {
+    const { container } = render(<Markdown>{"[ojo](javascript:alert(1))"}</Markdown>);
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("");
+  });
+});

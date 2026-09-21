@@ -1,7 +1,7 @@
 import { slugify } from "@/lib/headings";
 import { useT } from "@/lib/i18n";
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -35,6 +35,23 @@ const noteSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames ?? []), "details", "summary"],
 };
+/**
+ * Deja pasar el esquema `cac:`, y nada más que eso.
+ *
+ * react-markdown vacía por defecto el `href` de cualquier protocolo que no
+ * reconoce, y `cac:` es uno de los nuestros: es como este repo apunta a algo de
+ * dentro desde dentro de un cuerpo (`domain/mention.go`, `domain/refs.go`). Sin
+ * esta excepción el enlace llega con `href=""`, así que `onInternalLink` no ve
+ * nada que reclamar y el clic se cae a la rama de los adjuntos — que es donde
+ * estaban cayendo ya las menciones, calladamente, desde que se escribieron.
+ *
+ * El resto sigue pasando por el transformador de siempre: esto **añade** un
+ * esquema inerte, no abre la puerta a `javascript:`.
+ */
+function urlTransform(url: string): string {
+  return url.startsWith("cac:") ? url : defaultUrlTransform(url);
+}
+
 export default function Markdown({
   children,
   className,
@@ -63,6 +80,7 @@ export default function Markdown({
       {zoomed && <Lightbox {...zoomed} onClose={() => setZoomed(null)} />}
       {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
       <ReactMarkdown
+        urlTransform={urlTransform}
         remarkPlugins={[remarkGfm]}
         // Order matters: raw HTML is parsed first, then stripped down to the
         // allowlist. Skipping the sanitizer would hand every pasted <script> a

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cardHref, docHref, docRefFromHref, taskIdFromHref } from "./card-menu";
+import {
+  cardHref,
+  docHref,
+  docRefFromHref,
+  recordingIdFromHref,
+  taskIdFromHref,
+} from "./card-menu";
 
 // Citing a card is the reason this chat exists instead of a Slack channel, and
 // the whole mechanism is one link: written by the picker, read back by the
@@ -98,5 +104,36 @@ describe("el enlace a un documento", () => {
     expect(docRefFromHref("/tasks?doc=list")).toBeNull();
     expect(docRefFromHref("/tasks?doc=:l1")).toBeNull();
     expect(docRefFromHref("/tasks?doc=")).toBeNull();
+  });
+});
+
+/**
+ * Una grabación citada desde un mensaje.
+ *
+ * La escribe el servidor (`domain.RecordingRef`) y la lee esto, así que las dos
+ * formas tienen que coincidir o el enlace no abre nada — y no lo diría: el
+ * texto del enlace seguiría ahí, bien puesto.
+ *
+ * El id va fijado a un uuid como el de una mención, y por lo mismo: un cuerpo
+ * es texto libre. Con el patrón abierto, `cac:recording/../algo` entraría como
+ * si fuera un identificador.
+ */
+describe("una grabación citada", () => {
+  const ID = "0f3c1a2b-4d5e-6f70-8192-a3b4c5d6e7f8";
+
+  it("se reconoce por su esquema y su forma", () => {
+    expect(recordingIdFromHref(`cac:recording/${ID}`)).toBe(ID);
+  });
+
+  it("y nada que se le parezca", () => {
+    for (const href of [
+      `https://ejemplo.com/cac:recording/${ID}`, // dentro de una URL de fuera
+      "cac:recording/todas", // no es un uuid
+      "cac:recording/",
+      `cac:user/${ID}`, // una mención no es una grabación
+      `/tasks?task=${ID}`,
+    ]) {
+      expect(recordingIdFromHref(href)).toBeNull();
+    }
   });
 });
