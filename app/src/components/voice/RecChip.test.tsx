@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import RecChip from "@/components/voice/RecChip";
+import VoiceControls from "@/components/voice/VoiceControls";
 import RecordingConsentDialog from "@/components/voice/RecordingConsentDialog";
 
 // Sin esto, el segundo `render` convive con el primero y `getByRole` encuentra
@@ -84,5 +85,66 @@ describe("el diálogo de consentimiento", () => {
     for (const b of screen.getAllByRole("button")) {
       if (b.textContent?.includes("Start recording")) expect(b).toHaveProperty("disabled", true);
     }
+  });
+});
+
+describe("el botón de grabar", () => {
+  /**
+   * **Relleno, no de trazo.**
+   *
+   * El símbolo de grabar es un punto sólido y el de parar un cuadrado sólido.
+   * En trazo, el aro vacío de lucide se lee como «apagado» justo cuando
+   * significa lo contrario — y eso fue lo primero que chirrió al verlo.
+   */
+  it("el icono de grabar va relleno", () => {
+    render(
+      <VoiceControls
+        mic
+        deafened={false}
+        cam={false}
+        sharing={false}
+        onMic={() => {}}
+        onDeafen={() => {}}
+        onLeave={() => {}}
+        onGrabar={() => {}}
+      />,
+    );
+    const boton = screen.getByRole("button", { name: "Record" });
+    expect(boton.querySelector("svg")?.getAttribute("class")).toContain("fill-current");
+  });
+
+  it("y el de parar también", () => {
+    render(
+      <VoiceControls
+        mic
+        deafened={false}
+        cam={false}
+        sharing={false}
+        onMic={() => {}}
+        onDeafen={() => {}}
+        onLeave={() => {}}
+        onGrabar={() => {}}
+        grabando
+      />,
+    );
+    const boton = screen.getByRole("button", { name: "Stop recording" });
+    expect(boton.querySelector("svg")?.getAttribute("class")).toContain("fill-current");
+  });
+
+  /** Y los demás mandos siguen en trazo: rellenarlos todos sería otra cosa. */
+  it("los demás no se rellenan", () => {
+    render(
+      <VoiceControls
+        mic
+        deafened={false}
+        cam={false}
+        sharing={false}
+        onMic={() => {}}
+        onDeafen={() => {}}
+        onLeave={() => {}}
+      />,
+    );
+    const mute = screen.getByRole("button", { name: /Mute|Unmute/ });
+    expect(mute.querySelector("svg")?.getAttribute("class")).not.toContain("fill-current");
   });
 });

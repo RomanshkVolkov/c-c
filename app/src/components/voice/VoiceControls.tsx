@@ -39,9 +39,12 @@ function Round({
   onClick,
   disabled,
   spinning,
+  iconClassName,
 }: {
   icon: LucideIcon;
   label: string;
+  /** Para rellenar un icono de trazo. Ver el botón de grabar. */
+  iconClassName?: string;
   active?: boolean;
   /** Gira el icono. Un `Loader2` quieto parece un botón roto, no uno ocupado. */
   spinning?: boolean;
@@ -69,7 +72,7 @@ function Round({
           : "border-border bg-card text-foreground hover:bg-accent",
       )}
     >
-      <Icon className={cn("size-5", spinning && "animate-spin")} />
+      <Icon className={cn("size-5", iconClassName, spinning && "animate-spin")} />
     </button>
   );
 }
@@ -157,6 +160,11 @@ export default function VoiceControls({
       {onGrabar && (
         <Round
           icon={grabando ? Square : Circle}
+          // **Rellenos, no de trazo.** El símbolo de grabar es un punto sólido
+          // y el de parar un cuadrado sólido; en trazo, el aro vacío se lee
+          // como «apagado» justo cuando significa lo contrario. Los iconos de
+          // lucide vienen en trazo, así que se rellenan aquí.
+          iconClassName={grabando ? "fill-current" : "fill-current size-4"}
           label={grabando ? t("recordings:stop") : t("recordings:record")}
           active={grabando}
           spinning={grabandoEnVuelo}
