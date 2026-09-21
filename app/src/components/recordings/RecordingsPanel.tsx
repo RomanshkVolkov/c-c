@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
-  urlDelMedia,
+  mediaUrl,
   useRecordings,
   type Recording,
   type RecordingStatus,
@@ -26,14 +26,14 @@ import {
  *     una reunión entera.
  */
 
-type ClaveDeEstado =
+type StatusKey =
   | "statusRecording"
   | "statusFinalizing"
   | "statusReady"
   | "statusPartial"
   | "statusFailed";
 
-const ETIQUETA: Record<RecordingStatus, ClaveDeEstado> = {
+const STATUS_KEY: Record<RecordingStatus, StatusKey> = {
   recording: "statusRecording",
   finalizing: "statusFinalizing",
   ready: "statusReady",
@@ -41,21 +41,21 @@ const ETIQUETA: Record<RecordingStatus, ClaveDeEstado> = {
   failed: "statusFailed",
 };
 
-function duracion(ms?: number): string {
+function duration(ms?: number): string {
   if (!ms) return "";
   const total = Math.round(ms / 1000);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
+function Row({ rec, spaceId }: { rec: Recording; spaceId: string }) {
   const { t } = useT();
-  const borrar = useRecordings((s) => s.borrar);
-  const confirmar = useConfirm();
-  const [borrando, setBorrando] = useState(false);
+  const remove = useRecordings((s) => s.remove);
+  const confirm = useConfirm();
+  const [removing, setBorrando] = useState(false);
   // Sólo se puede ver lo que ya está montado. `partial` también: hay vídeo, y
   // esconderlo por haber perdido una pista sería tirar lo que sí se salvó.
-  const verse = rec.status === "ready" || rec.status === "partial";
-  const esAudio = (rec.finalContentType ?? "").startsWith("audio/");
+  const playable = rec.status === "ready" || rec.status === "partial";
+  const isAudio = (rec.finalContentType ?? "").startsWith("audio/");
 
   return (
     <li className="space-y-2 rounded-lg border p-3">
@@ -66,10 +66,10 @@ function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
             rec.status === "failed" ? "text-destructive" : "text-muted-foreground",
           )}
         >
-          {t(`recordings:${ETIQUETA[rec.status]}`)}
+          {t(`recordings:${STATUS_KEY[rec.status]}`)}
         </span>
         {rec.durationMs ? (
-          <span className="text-xs text-muted-foreground">· {duracion(rec.durationMs)}</span>
+          <span className="text-xs text-muted-foreground">· {duration(rec.durationMs)}</span>
         ) : null}
         {rec.startedByName && (
           <span className="truncate text-xs text-muted-foreground">
@@ -81,9 +81,9 @@ function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
           variant="ghost"
           size="sm"
           aria-label={t("recordings:delete")}
-          disabled={borrando}
+          disabled={removing}
           onClick={() => {
-            // Se pregunta: borrar se lleva el vídeo **y todas las pistas**, y
+            // Se pregunta: remove se lleva el vídeo **y todas las pistas**, y
             // de eso no se vuelve.
             //
             // Con `useConfirm` y no con `window.confirm`: el diálogo del
@@ -92,18 +92,18 @@ function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
             // borrado se habría quedado sin preguntar o sin ejecutarse, según
             // la plataforma.
             void (async () => {
-              const ok = await confirmar({
+              const ok = await confirm({
                 title: t("recordings:deleteConfirm"),
                 confirmText: t("recordings:delete"),
                 destructive: true,
               });
               if (!ok) return;
               setBorrando(true);
-              void borrar(rec.id, spaceId).finally(() => setBorrando(false));
+              void remove(rec.id, spaceId).finally(() => setBorrando(false));
             })();
           }}
         >
-          {borrando ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+          {removing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
         </Button>
       </div>
 
@@ -114,11 +114,11 @@ function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
         <p className="text-xs text-muted-foreground">{t("recordings:statusPartialWhy")}</p>
       )}
 
-      {verse &&
-        (esAudio ? (
-          <audio controls preload="metadata" className="w-full" src={urlDelMedia(rec.id)} />
+      {playable &&
+        (isAudio ? (
+          <audio controls preload="metadata" className="w-full" src={mediaUrl(rec.id)} />
         ) : (
-          <video controls preload="metadata" className="w-full rounded" src={urlDelMedia(rec.id)} />
+          <video controls preload="metadata" className="w-full rounded" src={mediaUrl(rec.id)} />
         ))}
     </li>
   );
@@ -126,22 +126,22 @@ function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
 
 export default function RecordingsPanel({ spaceId }: { spaceId: string }) {
   const { t } = useT();
-  const lista = useRecordings((s) => s.lista[spaceId]);
-  const cargando = useRecordings((s) => s.cargando[spaceId]);
-  const cargar = useRecordings((s) => s.cargar);
+  const bySpace = useRecordings((s) => s.bySpace[spaceId]);
+  const loading = useRecordings((s) => s.loading[spaceId]);
+  const load = useRecordings((s) => s.load);
 
   useEffect(() => {
-    void cargar(spaceId);
-  }, [spaceId, cargar]);
+    void load(spaceId);
+  }, [spaceId, load]);
 
-  if (cargando && !lista) {
+  if (loading && !bySpace) {
     return (
       <div className="flex justify-center p-6">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
-  if (!lista?.length) {
+  if (!bySpace?.length) {
     return (
       <p className="p-6 text-center text-sm text-muted-foreground">{t("recordings:panelEmpty")}</p>
     );
@@ -149,8 +149,8 @@ export default function RecordingsPanel({ spaceId }: { spaceId: string }) {
 
   return (
     <ul className="space-y-2 p-3">
-      {lista.map((rec) => (
-        <Fila key={rec.id} rec={rec} spaceId={spaceId} />
+      {bySpace.map((rec) => (
+        <Row key={rec.id} rec={rec} spaceId={spaceId} />
       ))}
     </ul>
   );

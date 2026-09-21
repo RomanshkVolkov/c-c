@@ -31,7 +31,7 @@ import (
 //
 // Sin grabaciones vivas el tick es un `SELECT` sobre un índice que no devuelve
 // nada. Vale la pena.
-const latidoDeGrabaciones = 10 * time.Second
+const recordingTick = 10 * time.Second
 
 // InitRecordingRoutes monta las rutas de grabación y arranca su reloj.
 func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
@@ -91,8 +91,8 @@ func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// adjuntos. Ver `handler.Media`.
 	r.Get("/api/v1/recordings/{id}/media", h.Media)
 
-	arrancarRelojDeGrabaciones(svc)
-	guardarRouterInterno(svc)
+	startRecordingClock(svc)
+	buildInternalRouter(svc)
 }
 
 // El listener interno, para el mux. `nil` si no hay llave.
@@ -101,9 +101,9 @@ func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 // puede compartir el del API público**: ése está detrás del Gateway, y una ruta
 // más en él sería una ruta alcanzable desde internet con sólo una cabecera.
 // Un puerto aparte es una frontera que no depende de acertar con el enrutado.
-var routerInterno http.Handler
+var internalRouter http.Handler
 
-func guardarRouterInterno(svc *service.RecordingService) {
+func buildInternalRouter(svc *service.RecordingService) {
 	llave := repository.GetEnv("RECORDINGS_MUX_KEY", "")
 	if llave == "" || !svc.Enabled() {
 		// Sin llave, el listener **no se enciende**. Es lo contrario de lo que
@@ -120,19 +120,19 @@ func guardarRouterInterno(svc *service.RecordingService) {
 		r.Post("/{id}/ready", h.Ready)
 		r.Post("/{id}/failed", h.Failed)
 	})
-	routerInterno = r
+	internalRouter = r
 }
 
 // InternalRouter es lo que `main.go` sirve en el puerto interno, o `nil` si
 // esta instalación no tiene mux.
-func InternalRouter() http.Handler { return routerInterno }
+func InternalRouter() http.Handler { return internalRouter }
 
-// arrancarRelojDeGrabaciones: lo mismo que el de reuniones, y por lo mismo.
+// startRecordingClock: lo mismo que el de reuniones, y por lo mismo.
 //
 // Se apaga con el servidor —timbrar o arrancar egress mientras el pod se cierra
 // no es inocuo— y corre en las dos réplicas a la vez: quién se queda cada
 // grabación lo decide la base con `ClaimTick`, no este bucle.
-func arrancarRelojDeGrabaciones(svc *service.RecordingService) {
+func startRecordingClock(svc *service.RecordingService) {
 	if !svc.Enabled() {
 		// Sin grabación configurada no hay nada que reconciliar, y una
 		// goroutine que despierta cada diez segundos para no hacer nada es una
@@ -142,7 +142,7 @@ func arrancarRelojDeGrabaciones(svc *service.RecordingService) {
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		defer parar()
-		ticker := time.NewTicker(latidoDeGrabaciones)
+		ticker := time.NewTicker(recordingTick)
 		defer ticker.Stop()
 		for {
 			select {

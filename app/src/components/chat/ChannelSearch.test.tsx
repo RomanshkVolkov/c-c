@@ -56,10 +56,10 @@ vi.mock("@/store/people.store", () => ({
 vi.mock("@/store/recordings.store", () => ({
   useRecordings: Object.assign(
     (sel: (s: Record<string, unknown>) => unknown) =>
-      sel({ policy: {}, cargarPolitica: vi.fn().mockResolvedValue(undefined), lista: {}, cargando: {}, cargar: vi.fn() }),
+      sel({ policy: {}, loadPolicy: vi.fn().mockResolvedValue(undefined), bySpace: {}, loading: {}, load: vi.fn() }),
     { getState: () => ({}) },
   ),
-  urlDelMedia: (id: string) => `http://localhost/media/${id}`,
+  mediaUrl: (id: string) => `http://localhost/media/${id}`,
 }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("@/components/markdown/MarkdownEditor", () => ({ default: () => <div /> }));

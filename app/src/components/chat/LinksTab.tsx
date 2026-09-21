@@ -12,8 +12,8 @@ import type { ChatLinkItem } from "@/store/chat.store";
  * Lo define la expresión regular del servidor y no el `LIKE '%http%'` de la
  * consulta, que sólo descarta barato: ese `LIKE` casa `![img](https://…)` y el
  * `http` de dentro de una palabra. El rótulo de `[texto](url)` es la otra mitad
- * de por qué esto no se hace en el cliente — una lista de cuarenta URLs peladas
- * es una lista que nadie lee.
+ * de por qué esto no se hace en el cliente — una bySpace de cuarenta URLs peladas
+ * es una bySpace que nadie lee.
  *
  * Aquí es también donde acaban las imágenes de fuera: ésas no están en
  * `chat_attachments`, así que si no cayeran en Enlaces no estarían en ninguna

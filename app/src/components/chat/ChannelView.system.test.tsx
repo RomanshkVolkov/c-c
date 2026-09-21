@@ -68,12 +68,12 @@ vi.mock("@/store/recordings.store", () => ({
     (sel: (s: Record<string, unknown>) => unknown) =>
       sel({
         policy: { "sp-1": { enabled: true, active: null } },
-        cargarPolitica: vi.fn().mockResolvedValue(undefined),
-        lista: {}, cargando: {}, cargar: vi.fn().mockResolvedValue(undefined),
+        loadPolicy: vi.fn().mockResolvedValue(undefined),
+        bySpace: {}, loading: {}, load: vi.fn().mockResolvedValue(undefined),
       }),
     { getState: () => ({}) },
   ),
-  urlDelMedia: (id: string) => `http://localhost/media/${id}`,
+  mediaUrl: (id: string) => `http://localhost/media/${id}`,
 }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("@/components/markdown/MarkdownEditor", () => ({ default: () => <div /> }));

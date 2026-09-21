@@ -18,21 +18,21 @@ import { useVoice } from "@/store/voice.store";
  * Una vez por grabación, por id: parar y volver a empezar es otra, y ésa sí se
  * anuncia. Con un booleano, la segunda pasaría en silencio.
  */
-export function useAvisoDeGrabacion(nombre?: string) {
+export function useRecordingNotice(nombre?: string) {
   // `useT` y no `i18next.t` suelto: es lo que suscribe al cambio de idioma sin
   // esperar a que algo más provoque un repintado. La razón está escrita en
   // `lib/i18n.ts`.
   const { t } = useT();
-  const grabacion = useVoice((s) => s.grabacion);
+  const recording = useVoice((s) => s.recording);
   const escenario = useVoice((s) => s.escenario);
-  const avisada = useRef<string | null>(null);
+  const announced = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!grabacion) return;
-    if (avisada.current === grabacion.id) return;
-    avisada.current = grabacion.id;
+    if (!recording) return;
+    if (announced.current === recording.id) return;
+    announced.current = recording.id;
     // Con el escenario abierto, la franja ya lo ha dicho. Se apunta como
-    // avisada igual: si luego minimiza, no tiene sentido soltarle el toast de
+    // announced igual: si luego minimiza, no tiene sentido soltarle el toast de
     // algo que ya leyó.
     if (escenario) return;
     toast.info(
@@ -41,5 +41,5 @@ export function useAvisoDeGrabacion(nombre?: string) {
         : t("recordings:joinedBannerTitle"),
       { description: t("recordings:joinedBannerBody") },
     );
-  }, [grabacion, escenario, nombre, t]);
+  }, [recording, escenario, nombre, t]);
 }

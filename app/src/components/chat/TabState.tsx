@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 /**
- * Lo que una pestaña enseña cuando no tiene filas: cargando, roto, o vacío.
+ * Lo que una pestaña enseña cuando no tiene filas: loading, roto, o vacío.
  *
  * Los tres en un sitio porque el orden entre ellos es la regla, y repetirlo en
  * cada pestaña es cómo se acaban discrepando: **primero el fallo**. Una pestaña

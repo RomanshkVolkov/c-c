@@ -93,7 +93,7 @@ describe("de qué lado cae cada mensaje", () => {
  * Las acciones de un mensaje, tras una flecha.
  *
  * Antes eran tres iconos de 12px flotando sobre el texto: tres blancos
- * diminutos que además tapaban lo escrito. Una sola diana que abre una lista
+ * diminutos que además tapaban lo escrito. Una sola diana que abre una bySpace
  * con los nombres de las cosas se acierta a la primera y se lee sin adivinar.
  */
 describe("las acciones de un mensaje", () => {

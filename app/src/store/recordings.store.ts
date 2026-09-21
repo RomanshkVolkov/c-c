@@ -9,12 +9,12 @@ import type { APIResponse } from "@/types/auth";
  *
  * Lo que hay que entender de este modelo: **el botón no enciende el chip REC**.
  * Lo enciende el motor de voz cuando el SFU dice que el metadata de la sala
- * cambió (`voice.store`, `kind: "recording"`). Por eso `empezar` y `parar` no
+ * cambió (`voice.store`, `kind: "recording"`). Por eso `start` y `stop` no
  * son optimistas: el botón gira hasta que la señal da la vuelta entera.
  *
  * La alternativa —pintar el chip al pulsar— parece más ágil y miente: si el
  * servidor rechaza, o si otro empezó primero, la pantalla de quien pulsó diría
- * que se está grabando y las demás dirían que no. Un aviso de grabación en el
+ * que se está recording y las demás dirían que no. Un aviso de grabación en el
  * que no se puede confiar es peor que ninguno.
  */
 
@@ -66,30 +66,30 @@ interface RecordingsState {
   /** Por espacio: la política, para saber si el botón existe. */
   policy: Record<string, RecordingPolicy>;
   /** Por espacio: lo ya grabado. */
-  lista: Record<string, Recording[]>;
+  bySpace: Record<string, Recording[]>;
   /** El espacio cuya petición está en vuelo, para que el botón gire. */
-  enVuelo: string | null;
-  cargando: Record<string, boolean>;
+  inFlight: string | null;
+  loading: Record<string, boolean>;
   error: string | null;
 
-  cargarPolitica: (spaceId: string) => Promise<void>;
-  empezar: (spaceId: string) => Promise<boolean>;
-  parar: (recordingId: string) => Promise<void>;
-  cargar: (spaceId: string) => Promise<void>;
-  borrar: (recordingId: string, spaceId: string) => Promise<boolean>;
-  /** Un `call:status` del SSE: refresca sin volver a pedir la lista entera. */
-  alCambiarEstado: (spaceId: string, recording: Recording | null) => void;
-  limpiarError: () => void;
+  loadPolicy: (spaceId: string) => Promise<void>;
+  start: (spaceId: string) => Promise<boolean>;
+  stop: (recordingId: string) => Promise<void>;
+  load: (spaceId: string) => Promise<void>;
+  remove: (recordingId: string, spaceId: string) => Promise<boolean>;
+  /** Un `call:status` del SSE: refresca sin volver a pedir la bySpace entera. */
+  onStatus: (spaceId: string, recording: Recording | null) => void;
+  clearError: () => void;
 }
 
 export const useRecordings = create<RecordingsState>((set, get) => ({
   policy: {},
-  lista: {},
-  enVuelo: null,
-  cargando: {},
+  bySpace: {},
+  inFlight: null,
+  loading: {},
   error: null,
 
-  cargarPolitica: async (spaceId) => {
+  loadPolicy: async (spaceId) => {
     try {
       const r = await api.get<APIResponse<RecordingPolicy>>(
         `/api/v1/task-spaces/${spaceId}/recordings/policy`,
@@ -105,8 +105,8 @@ export const useRecordings = create<RecordingsState>((set, get) => ({
     }
   },
 
-  empezar: async (spaceId) => {
-    set({ enVuelo: spaceId, error: null });
+  start: async (spaceId) => {
+    set({ inFlight: spaceId, error: null });
     try {
       await api.post<APIResponse<Recording>>(
         `/api/v1/task-spaces/${spaceId}/recordings`,
@@ -116,87 +116,87 @@ export const useRecordings = create<RecordingsState>((set, get) => ({
       // **No se pinta nada aquí.** El chip lo enciende el motor cuando llega
       // el metadata de la sala; lo que sí se refresca es la política, que es
       // de donde sale «ya hay una activa» para quien no está en la llamada.
-      await get().cargarPolitica(spaceId);
+      await get().loadPolicy(spaceId);
       return true;
     } catch (e) {
       set({ error: codigoDe(e) });
-      // «Ya se está grabando» no es un fallo que merezca una pantalla roja:
+      // «Ya se está recording» no es un fallo que merezca una pantalla roja:
       // alguien pulsó primero. Se relee la política y el chip aparece solo.
-      if (codigoDe(e) === "already-recording") await get().cargarPolitica(spaceId);
+      if (codigoDe(e) === "already-recording") await get().loadPolicy(spaceId);
       return false;
     } finally {
-      set({ enVuelo: null });
+      set({ inFlight: null });
     }
   },
 
-  parar: async (recordingId) => {
-    set({ enVuelo: recordingId, error: null });
+  stop: async (recordingId) => {
+    set({ inFlight: recordingId, error: null });
     try {
       await api.post<APIResponse<Recording>>(`/api/v1/recordings/${recordingId}/stop`, {}, true);
     } catch (e) {
       set({ error: codigoDe(e) });
     } finally {
-      set({ enVuelo: null });
+      set({ inFlight: null });
     }
   },
 
-  cargar: async (spaceId) => {
-    set((s) => ({ cargando: { ...s.cargando, [spaceId]: true } }));
+  load: async (spaceId) => {
+    set((s) => ({ loading: { ...s.loading, [spaceId]: true } }));
     try {
       const r = await api.get<APIResponse<Recording[]>>(
         `/api/v1/task-spaces/${spaceId}/recordings`,
         true,
       );
-      set((s) => ({ lista: { ...s.lista, [spaceId]: r.data ?? [] } }));
+      set((s) => ({ bySpace: { ...s.bySpace, [spaceId]: r.data ?? [] } }));
     } catch (e) {
       set({ error: codigoDe(e) });
     } finally {
-      set((s) => ({ cargando: { ...s.cargando, [spaceId]: false } }));
+      set((s) => ({ loading: { ...s.loading, [spaceId]: false } }));
     }
   },
 
-  borrar: async (recordingId, spaceId) => {
+  remove: async (recordingId, spaceId) => {
     try {
       await api.delete<APIResponse<null>>(`/api/v1/recordings/${recordingId}`);
       set((s) => ({
-        lista: {
-          ...s.lista,
-          [spaceId]: (s.lista[spaceId] ?? []).filter((r) => r.id !== recordingId),
+        bySpace: {
+          ...s.bySpace,
+          [spaceId]: (s.bySpace[spaceId] ?? []).filter((r) => r.id !== recordingId),
         },
       }));
       return true;
     } catch (e) {
       // La fila **no se quita** si el borrado falló: el servidor no borra la
-      // grabación cuando no consigue borrar sus ficheros, así que quitarla de
+      // grabación cuando no consigue remove sus ficheros, así que quitarla de
       // la pantalla diría que ya no está cuando sigue ahí.
       set({ error: codigoDe(e) });
       return false;
     }
   },
 
-  alCambiarEstado: (spaceId, recording) => {
+  onStatus: (spaceId, recording) => {
     set((s) => {
       const politica = s.policy[spaceId];
-      const lista = s.lista[spaceId];
+      const bySpace = s.bySpace[spaceId];
       return {
         // La política, para el botón.
         policy: politica ? { ...s.policy, [spaceId]: { ...politica, active: recording } } : s.policy,
-        // Y la fila de la lista, si esa pantalla ya la tenía cargada: es lo que
+        // Y la fila de la bySpace, si esa pantalla ya la tenía cargada: es lo que
         // hace que «procesando…» pase a verse solo, sin que nadie recargue.
-        lista:
-          lista && recording
+        bySpace:
+          bySpace && recording
             ? {
-                ...s.lista,
-                [spaceId]: lista.some((r) => r.id === recording.id)
-                  ? lista.map((r) => (r.id === recording.id ? { ...r, ...recording } : r))
-                  : [recording, ...lista],
+                ...s.bySpace,
+                [spaceId]: bySpace.some((r) => r.id === recording.id)
+                  ? bySpace.map((r) => (r.id === recording.id ? { ...r, ...recording } : r))
+                  : [recording, ...bySpace],
               }
-            : s.lista,
+            : s.bySpace,
       };
     });
   },
 
-  limpiarError: () => set({ error: null }),
+  clearError: () => set({ error: null }),
 }));
 
 /**
@@ -209,7 +209,7 @@ export const useRecordings = create<RecordingsState>((set, get) => ({
  * El token va en la consulta porque un `<video src>` de un webview **no puede
  * mandar cabeceras** — es el mismo camino que los adjuntos del chat.
  */
-export function urlDelMedia(recordingId: string): string {
+export function mediaUrl(recordingId: string): string {
   const token = useAuthStore.getState().accessToken ?? "";
   return apiUrl(`/api/v1/recordings/${recordingId}/media?token=${encodeURIComponent(token)}`);
 }

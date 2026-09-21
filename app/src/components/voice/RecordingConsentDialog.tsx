@@ -28,12 +28,12 @@ export default function RecordingConsentDialog({
   open,
   onOpenChange,
   onConfirm,
-  enVuelo,
+  inFlight,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onConfirm: () => void;
-  enVuelo?: boolean;
+  inFlight?: boolean;
 }) {
   const { t } = useT();
 
@@ -54,11 +54,11 @@ export default function RecordingConsentDialog({
         </ul>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={enVuelo}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={inFlight}>
             {t("recordings:cancel")}
           </Button>
-          <Button onClick={onConfirm} disabled={enVuelo}>
-            {enVuelo && <Loader2 className="mr-2 size-4 animate-spin" />}
+          <Button onClick={onConfirm} disabled={inFlight}>
+            {inFlight && <Loader2 className="mr-2 size-4 animate-spin" />}
             {t("recordings:consentConfirm")}
           </Button>
         </div>

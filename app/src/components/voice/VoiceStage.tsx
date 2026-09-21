@@ -63,43 +63,43 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   // Quién graba lo dice **el motor**, no el botón: llega por el metadata de la
   // sala, así que enciende el chip en todas las pantallas a la vez —incluida la
   // de quien entró después.
-  const grabacion = useVoice((s) => s.grabacion);
+  const recording = useVoice((s) => s.recording);
   const politica = useRecordings((s) => (spaceId ? s.policy[spaceId] : undefined));
-  const empezarGrabacion = useRecordings((s) => s.empezar);
-  const pararGrabacion = useRecordings((s) => s.parar);
-  const grabacionEnVuelo = useRecordings((s) => s.enVuelo);
-  const cargarPolitica = useRecordings((s) => s.cargarPolitica);
-  const [consintiendo, setConsintiendo] = useState(false);
-  const confirmar = useConfirm();
+  const startRecording = useRecordings((s) => s.start);
+  const stopRecording = useRecordings((s) => s.stop);
+  const grabacionEnVuelo = useRecordings((s) => s.inFlight);
+  const loadPolicy = useRecordings((s) => s.loadPolicy);
+  const [consenting, setConsenting] = useState(false);
+  const confirm = useConfirm();
   // Se lee del estado en el momento, no por suscripción: sólo hace falta
   // justo después de que la petición conteste.
-  const errorDeGrabacion = () => useRecordings.getState().error;
+  const recordingError = () => useRecordings.getState().error;
 
-  // Quién la empezó, por su nombre. Hace falta para el aviso de parar: no es lo
+  // Quién la empezó, por su nombre. Hace falta para el aviso de stop: no es lo
   // mismo cortar la tuya que la de otro, y quien pulsa tiene que saber cuál es
   // antes de decidir.
-  const nombreDeQuienGraba = (gente ?? []).find((p) => p.identity === grabacion?.by)?.name;
+  const recorderName = (gente ?? []).find((p) => p.identity === recording?.by)?.name;
 
-  const confirmarYParar = async () => {
-    if (!grabacion) return;
-    const mia = grabacion.by === yo;
-    const ok = await confirmar({
+  const confirmAndStop = async () => {
+    if (!recording) return;
+    const mia = recording.by === yo;
+    const ok = await confirm({
       title: t("recordings:stopConfirmTitle"),
       description: mia
         ? t("recordings:stopConfirmMine")
         : t("recordings:stopConfirmTheirs", {
-            name: nombreDeQuienGraba ?? t("recordings:chipUnknown"),
+            name: recorderName ?? t("recordings:chipUnknown"),
           }),
       confirmText: t("recordings:stopConfirmAction"),
       destructive: true,
     });
-    if (ok) await pararGrabacion(grabacion.id);
+    if (ok) await stopRecording(recording.id);
   };
 
   // Se pregunta al entrar: de eso depende que el botón exista.
   useEffect(() => {
-    if (spaceId) void cargarPolitica(spaceId);
-  }, [spaceId, cargarPolitica]);
+    if (spaceId) void loadPolicy(spaceId);
+  }, [spaceId, loadPolicy]);
 
   // Con alguien compartiendo, las caras se van **encima** de la imagen en vez
   // de ocupar una columna de 200 px al lado. El ancho es lo que se ha venido a
@@ -140,10 +140,10 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
               en el momento en que todavía no lo es. */}
           {latencia !== null && ` · ${latencia} ms`}
         </span>
-        {/* En la cabecera y no entre los mandos: lo que se está grabando es la
+        {/* En la cabecera y no entre los mandos: lo que se está recording es la
             llamada entera, no un botón. Quien mire la pantalla un segundo tiene
             que verlo sin buscarlo. */}
-        {grabacion && <RecChip by={nombreDeQuienGraba} />}
+        {recording && <RecChip by={recorderName} />}
         <div className="flex-1" />
         {/* Llamar a alguien vive aquí y no en la barra de mandos: los mandos
             son sobre ti —tu micro, tu cámara— y esto es sobre la sala. */}
@@ -332,40 +332,40 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         onShare={() => void alternarCompartir()}
         onSettings={() => setAjustes((v) => !v)}
         onLeave={() => void salir()}
-        grabando={Boolean(grabacion)}
-        grabandoEnVuelo={Boolean(grabacionEnVuelo)}
+        recording={Boolean(recording)}
+        recordingInFlight={Boolean(grabacionEnVuelo)}
         // Sin política, o con la grabación apagada en el servidor, **no hay
         // botón**: pasar `undefined` es lo que hace que no se pinte.
-        onGrabar={
+        onRecord={
           politica?.enabled && spaceId
             ? () => {
                 // **Parar también pregunta**, y no por simetría: el botón vive
                 // entre el de silenciarse y el de compartir pantalla, que se
                 // pulsan con prisa. Cortar por error la grabación de una
-                // reunión no se deshace — volver a empezar hace **otra**, y lo
+                // reunión no se deshace — volver a start hace **otra**, y lo
                 // de en medio no existe.
-                if (grabacion) void confirmarYParar();
-                // Y empezar **siempre pregunta**, aunque sea la segunda vez en
+                if (recording) void confirmAndStop();
+                // Y start **siempre pregunta**, aunque sea la segunda vez en
                 // la misma llamada. Ver `RecordingConsentDialog`.
-                else setConsintiendo(true);
+                else setConsenting(true);
               }
             : undefined
         }
       />
       <RecordingConsentDialog
-        open={consintiendo}
-        onOpenChange={setConsintiendo}
-        enVuelo={Boolean(grabacionEnVuelo)}
+        open={consenting}
+        onOpenChange={setConsenting}
+        inFlight={Boolean(grabacionEnVuelo)}
         onConfirm={() => {
           if (!spaceId) return;
           void (async () => {
-            const empezo = await empezarGrabacion(spaceId);
-            setConsintiendo(false);
+            const empezo = await startRecording(spaceId);
+            setConsenting(false);
             // Si dos pulsan a la vez, **gana uno** —lo decide el índice único
             // de la base, no una comprobación previa— y al otro le llega un
             // 409. Hasta ahora su pulsación se veía como si no hubiera hecho
             // nada: aparecía el chip y no se sabía por qué. Ahora se le dice.
-            if (!empezo && errorDeGrabacion() === "already-recording") {
+            if (!empezo && recordingError() === "already-recording") {
               const quien = useRecordings.getState().policy[spaceId]?.active?.startedBy;
               const nombre = (gente ?? []).find((p) => p.identity === quien)?.name;
               toast.info(

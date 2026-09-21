@@ -570,7 +570,7 @@ export function useReportEvents() {
             recording?: Recording | null;
           } | null;
           if (!c?.spaceId) break;
-          useRecordings.getState().alCambiarEstado(c.spaceId, c.recording ?? null);
+          useRecordings.getState().onStatus(c.spaceId, c.recording ?? null);
           break;
         }
         case "voice.ring.cancel": {

@@ -22,13 +22,13 @@ export type VoiceEvent =
   | { kind: "latency"; ms: number }
   | { kind: "video"; identity: string; source: "camera" | "screen"; enabled: boolean }
   | { kind: "selfSpeaking"; speaking: boolean }
-  // Se está grabando, o se ha dejado de grabar. Sale del metadata de la sala,
+  // Se está recording, o se ha dejado de grabar. Sale del metadata de la sala,
   // así que llega también a quien entra tarde — ver `voice.rs`.
   | { kind: "recording"; active: boolean; id: string; by: string; since: string }
   | { kind: "disconnected"; reason: string };
 
-/** Quién está grabando esta llamada, para el chip REC. */
-export interface Grabacion {
+/** Quién está recording esta llamada, para el chip REC. */
+export interface Recording {
   id: string;
   by: string;
   since: string;
@@ -139,14 +139,14 @@ interface VoiceState {
   /** Tu cámara. */
   cam: boolean;
   /**
-   * Quién está grabando esta llamada, o `null`.
+   * Quién está recording esta llamada, o `null`.
    *
    * No lo pone el botón: lo pone **el motor**, cuando el SFU dice que el
    * metadata de la sala cambió. Por eso enciende el chip en todas las pantallas
    * a la vez —incluida la de quien entra después— y por eso pulsar «grabar» no
    * lo enciende hasta que el servidor lo confirma.
    */
-  grabacion: Grabacion | null;
+  recording: Recording | null;
   error: string | null;
   /**
    * De qué canal es el error, para no pintarlos todos de rojo.
@@ -218,7 +218,7 @@ const VACIO = {
   // Salir de la sala apaga el chip. Está en `VACIO` a propósito: si se quedara
   // fuera, el punto rojo de la última llamada seguiría encendido en la
   // siguiente, que es la clase de mentira que nadie se para a comprobar.
-  grabacion: null,
+  recording: null,
   error: null,
   errorSpaceId: null,
 };
@@ -551,7 +551,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
         break;
       case "recording":
         set({
-          grabacion: ev.active ? { id: ev.id, by: ev.by, since: ev.since } : null,
+          recording: ev.active ? { id: ev.id, by: ev.by, since: ev.since } : null,
         });
         break;
       case "latency":

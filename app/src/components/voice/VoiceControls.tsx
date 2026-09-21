@@ -88,19 +88,19 @@ export default function VoiceControls({
   onShare,
   onSettings,
   onLeave,
-  grabando,
-  onGrabar,
-  grabandoEnVuelo,
+  recording,
+  onRecord,
+  recordingInFlight,
 }: {
   mic: boolean;
   deafened: boolean;
   cam: boolean;
   sharing: boolean;
-  /** Si ya se está grabando. Lo dice el motor, no este botón. */
-  grabando?: boolean;
+  /** Si ya se está recording. Lo dice el motor, no este botón. */
+  recording?: boolean;
   /** Ausente = esta instalación no graba, y entonces el botón no se pinta. */
-  onGrabar?: () => void;
-  grabandoEnVuelo?: boolean;
+  onRecord?: () => void;
+  recordingInFlight?: boolean;
   onMic: () => void;
   onDeafen: () => void;
   onCam?: () => void;
@@ -157,19 +157,19 @@ export default function VoiceControls({
 
           Y cambia de icono —círculo a cuadrado— y no sólo de color, como todos
           los de esta barra. */}
-      {onGrabar && (
+      {onRecord && (
         <Round
-          icon={grabando ? Square : Circle}
+          icon={recording ? Square : Circle}
           // **Rellenos, no de trazo.** El símbolo de grabar es un punto sólido
           // y el de parar un cuadrado sólido; en trazo, el aro vacío se lee
           // como «apagado» justo cuando significa lo contrario. Los iconos de
           // lucide vienen en trazo, así que se rellenan aquí.
-          iconClassName={grabando ? "fill-current" : "fill-current size-4"}
-          label={grabando ? t("recordings:stop") : t("recordings:record")}
-          active={grabando}
-          spinning={grabandoEnVuelo}
-          onClick={onGrabar}
-          disabled={grabandoEnVuelo}
+          iconClassName={recording ? "fill-current" : "fill-current size-4"}
+          label={recording ? t("recordings:stop") : t("recordings:record")}
+          active={recording}
+          spinning={recordingInFlight}
+          onClick={onRecord}
+          disabled={recordingInFlight}
         />
       )}
       {/* El botón de reportar va **entre los controles y el de colgar**, no

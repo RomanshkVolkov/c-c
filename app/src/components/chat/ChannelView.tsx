@@ -45,7 +45,7 @@ import type { ItemVisibility } from "@/types/task";
  *
  * Sustituyen a la alternancia con las grabaciones que había aquí, que era un
  * apaño y lo decía en su propio comentario: este panel ya es el carril derecho,
- * así que el botón de Grabaciones tapaba el hilo entero para enseñar una lista.
+ * así que el botón de Grabaciones tapaba el hilo entero para enseñar una bySpace.
  * Con pestañas, tapar el hilo es lo que se ha pedido.
  *
  * Buscar dentro de cada una está fuera de esta tanda a propósito: hacerlo sobre
@@ -109,10 +109,10 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
   // De esto depende que el botón exista: sin grabación montada en el servidor,
   // no se pinta nada.
   const politica = useRecordings((s) => s.policy[spaceId]);
-  const cargarPolitica = useRecordings((s) => s.cargarPolitica);
+  const loadPolicy = useRecordings((s) => s.loadPolicy);
   useEffect(() => {
-    void cargarPolitica(spaceId);
-  }, [spaceId, cargarPolitica]);
+    void loadPolicy(spaceId);
+  }, [spaceId, loadPolicy]);
   // Reads the store at call time — see the `cards` prop on MarkdownEditor.
   const citableCards = useCallback(
     () =>
@@ -225,7 +225,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
         </TabButton>
         {/* Sólo si el servidor graba. Sin política no hay pestaña, igual que
             antes no había botón: una instalación sin grabación montada no debe
-            enseñar una lista que siempre va a estar vacía. */}
+            enseñar una bySpace que siempre va a estar vacía. */}
         {politica?.enabled && (
           <TabButton current={tab} value="recordings" onPick={switchTab} icon={Film}>
             {t("recordings:panelTitle")}
@@ -314,7 +314,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
           
           Es la mitad que hace usable leer historia: sin ella, o te arranca de
           donde estás en cada mensaje, o se acumulan sin que lo sepas. Flota
-          sobre la lista para no empujar el contenido y mover lo que estás
+          sobre la bySpace para no empujar el contenido y mover lo que estás
           leyendo, que sería el mismo fallo por otro camino. */}
       {hayNuevos && (
         <button
@@ -546,7 +546,7 @@ function Message({
             {/* Una flecha, y las opciones dentro. La barra flotante ponía
                 tres iconos de 12px sobre el texto: había que acertarle a uno
                 de tres blancos diminutos que además tapaban lo escrito. Una
-                sola diana abre una lista con los nombres de las cosas. */}
+                sola diana abre una bySpace con los nombres de las cosas. */}
             {/* Y sin desplegable ninguno en una línea del sistema: volverla
                 tarea o documento copiaría un aviso automático, y Editar y
                 Retirar no son suyos. Gobernado por `kind` y **no** por `mine`,
@@ -738,7 +738,7 @@ function firstLine(body: string): string {
  *
  * En la cabecera y no junto a cada mensaje: un punto por línea es ruido, y la
  * pregunta que un canal contesta es «¿hay alguien ahora mismo?». Se lee de la
- * misma lista de colegas que ya alimenta el selector de `@`, así que no cuesta
+ * misma bySpace de colegas que ya alimenta el selector de `@`, así que no cuesta
  * ninguna petición nueva.
  *
  * Sale con cuentagotas —tres caras y un contador— porque la cabecera mide 48px

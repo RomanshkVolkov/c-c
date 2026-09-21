@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Mic, MicOff, PhoneOff } from "lucide-react";
 import { useTasksStore } from "@/store/tasks.store";
 import RecChip from "@/components/voice/RecChip";
-import { useAvisoDeGrabacion } from "@/components/voice/useAvisoDeGrabacion";
+import { useRecordingNotice } from "@/components/voice/useRecordingNotice";
 import { useVoice } from "@/store/voice.store";
 import { cn } from "@/lib/utils";
 
@@ -24,16 +24,16 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
   const spaceId = useVoice((s) => s.spaceId);
   const estado = useVoice((s) => s.estado);
   const mic = useVoice((s) => s.mic);
-  const grabacion = useVoice((s) => s.grabacion);
+  const recording = useVoice((s) => s.recording);
   // `?? []` y no `gente.find` a secas: quien graba puede no estar en la lista
   // —se fue de la llamada y la grabación sigue— y el chip tiene que aguantarlo
   // sin nombre en vez de reventar la barra entera.
   const gente = useVoice((s) => s.gente);
-  const nombreDeQuienGraba = (gente ?? []).find((p) => p.identity === grabacion?.by)?.name;
+  const recorderName = (gente ?? []).find((p) => p.identity === recording?.by)?.name;
   // El aviso para quien tiene la llamada minimizada. En el escenario ya hay una
   // franja que lo dice —`RecordingBanner`—, y este hook se calla cuando está
   // abierto: el mismo hecho anunciado dos veces se lee como dos grabaciones.
-  useAvisoDeGrabacion(nombreDeQuienGraba);
+  useRecordingNotice(recorderName);
   const abrirEscenario = useVoice((s) => s.abrirEscenario);
   const alternarMic = useVoice((s) => s.alternarMic);
   const salir = useVoice((s) => s.salir);
@@ -79,7 +79,7 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
           </span>
           {/* Aquí también, y no sólo en el escenario: quien minimiza la llamada
               y sigue hablando tiene que seguir viendo que se le graba. */}
-          {grabacion && <RecChip className="mt-1" by={nombreDeQuienGraba} />}
+          {recording && <RecChip className="mt-1" by={recorderName} />}
         </span>
       </button>
       <div className="flex gap-1.5">

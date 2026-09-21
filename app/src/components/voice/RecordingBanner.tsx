@@ -5,7 +5,7 @@ import { useT } from "@/lib/i18n";
 import { useVoice } from "@/store/voice.store";
 
 /**
- * «Esta llamada se está grabando», para quien acaba de entrar.
+ * «Esta llamada se está recording», para quien acaba de entrar.
  *
  * Existe porque el consentimiento de quien graba no es el consentimiento de los
  * demás. Quien pulsa el botón lee un diálogo; quien entra diez minutos después
@@ -23,21 +23,21 @@ import { useVoice } from "@/store/voice.store";
  */
 export default function RecordingBanner() {
   const { t } = useT();
-  const grabacion = useVoice((s) => s.grabacion);
+  const recording = useVoice((s) => s.recording);
   const salir = useVoice((s) => s.salir);
-  const [oculto, setOculto] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   // Cuál se ha dado ya por leída. Un id y no un booleano: parar y volver a
   // empezar es otra grabación, y esa sí se avisa.
-  const vista = useRef<string | null>(null);
+  const seen = useRef<string | null>(null);
 
   useEffect(() => {
-    if (grabacion && vista.current !== grabacion.id) {
-      vista.current = grabacion.id;
-      setOculto(false);
+    if (recording && seen.current !== recording.id) {
+      seen.current = recording.id;
+      setDismissed(false);
     }
-  }, [grabacion]);
+  }, [recording]);
 
-  if (!grabacion || oculto) return null;
+  if (!recording || dismissed) return null;
 
   return (
     <div
@@ -53,7 +53,7 @@ export default function RecordingBanner() {
       <Button variant="ghost" size="sm" onClick={() => void salir()}>
         {t("recordings:joinedBannerLeave")}
       </Button>
-      <Button size="sm" onClick={() => setOculto(true)}>
+      <Button size="sm" onClick={() => setDismissed(true)}>
         {t("recordings:joinedBannerOk")}
       </Button>
     </div>

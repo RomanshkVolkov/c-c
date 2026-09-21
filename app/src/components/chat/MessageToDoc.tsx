@@ -51,7 +51,7 @@ export default function MessageToDoc({
   const addDecisionTo = useTasksStore((s) => s.addDecisionTo);
   const [decidiendo, setDecidiendo] = useState(false);
 
-  // La misma regla que al hacer una tarjeta desde un mensaje: la lista tiene que
+  // La misma regla que al hacer una tarjeta desde un mensaje: la bySpace tiene que
   // ser de este espacio. Documentación de un cliente escrita desde el canal de
   // otro es un error con radio de explosión, así que se impide en vez de avisar.
   const space = tree.find((s) => s.id === spaceId);

@@ -34,7 +34,7 @@ describe("el chip de grabación", () => {
    * Un lector de pantalla tiene que anunciarlo **al aparecer**.
    *
    * Sin `role="status"`, quien no ve la pantalla se entera de que se le está
-   * grabando sólo si se le ocurre ir a buscarlo con el tabulador.
+   * recording sólo si se le ocurre ir a buscarlo con el tabulador.
    */
   it("se anuncia solo", () => {
     render(<RecChip by="Ana" />);
@@ -81,7 +81,7 @@ describe("el diálogo de consentimiento", () => {
   });
 
   it("mientras está en vuelo no se puede pulsar dos veces", () => {
-    render(<RecordingConsentDialog open enVuelo onOpenChange={() => {}} onConfirm={() => {}} />);
+    render(<RecordingConsentDialog open inFlight onOpenChange={() => {}} onConfirm={() => {}} />);
     for (const b of screen.getAllByRole("button")) {
       if (b.textContent?.includes("Start recording")) expect(b).toHaveProperty("disabled", true);
     }
@@ -106,7 +106,7 @@ describe("el botón de grabar", () => {
         onMic={() => {}}
         onDeafen={() => {}}
         onLeave={() => {}}
-        onGrabar={() => {}}
+        onRecord={() => {}}
       />,
     );
     const boton = screen.getByRole("button", { name: "Record" });
@@ -123,8 +123,8 @@ describe("el botón de grabar", () => {
         onMic={() => {}}
         onDeafen={() => {}}
         onLeave={() => {}}
-        onGrabar={() => {}}
-        grabando
+        onRecord={() => {}}
+        recording
       />,
     );
     const boton = screen.getByRole("button", { name: "Stop recording" });

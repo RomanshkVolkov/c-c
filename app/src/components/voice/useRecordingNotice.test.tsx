@@ -4,24 +4,24 @@ import { act, cleanup, render } from "@testing-library/react";
 const { info } = vi.hoisted(() => ({ info: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { info } }));
 
-import { useAvisoDeGrabacion } from "@/components/voice/useAvisoDeGrabacion";
+import { useRecordingNotice } from "@/components/voice/useRecordingNotice";
 import { useVoice } from "@/store/voice.store";
 
 afterEach(cleanup);
 
-function Sonda({ nombre }: { nombre?: string }) {
-  useAvisoDeGrabacion(nombre);
+function Probe({ nombre }: { nombre?: string }) {
+  useRecordingNotice(nombre);
   return null;
 }
 
 beforeEach(() => {
   info.mockClear();
-  useVoice.setState({ grabacion: null, escenario: false });
+  useVoice.setState({ recording: null, escenario: false });
 });
 
-function grabando(id = "rec-1") {
+function recording(id = "rec-1") {
   act(() => {
-    useVoice.setState({ grabacion: { id, by: "u-ana", since: "" } });
+    useVoice.setState({ recording: { id, by: "u-ana", since: "" } });
   });
 }
 
@@ -31,8 +31,8 @@ describe("el aviso de que alguien empezó a grabar", () => {
    * el chip de la cabecera — y sigue hablando sin saberlo.
    */
   it("avisa con el nombre de quien graba", () => {
-    render(<Sonda nombre="Ana" />);
-    grabando();
+    render(<Probe nombre="Ana" />);
+    recording();
     expect(info).toHaveBeenCalledOnce();
     expect(String(info.mock.calls[0][0])).toContain("Ana");
   });
@@ -45,8 +45,8 @@ describe("el aviso de que alguien empezó a grabar", () => {
    */
   it("no dice nada si el escenario está abierto", () => {
     useVoice.setState({ escenario: true });
-    render(<Sonda nombre="Ana" />);
-    grabando();
+    render(<Probe nombre="Ana" />);
+    recording();
     expect(info).not.toHaveBeenCalled();
   });
 
@@ -56,8 +56,8 @@ describe("el aviso de que alguien empezó a grabar", () => {
    */
   it("si ya se vio en el escenario, minimizar no lo repite", () => {
     useVoice.setState({ escenario: true });
-    render(<Sonda nombre="Ana" />);
-    grabando();
+    render(<Probe nombre="Ana" />);
+    recording();
     act(() => {
       useVoice.setState({ escenario: false });
     });
@@ -66,19 +66,19 @@ describe("el aviso de que alguien empezó a grabar", () => {
 
   /** Una vez por grabación: el reloj toca muchas veces y el aviso es uno. */
   it("no se repite con la misma grabación", () => {
-    render(<Sonda nombre="Ana" />);
-    grabando("rec-1");
+    render(<Probe nombre="Ana" />);
+    recording("rec-1");
     act(() => {
-      useVoice.setState({ grabacion: { id: "rec-1", by: "u-ana", since: "x" } });
+      useVoice.setState({ recording: { id: "rec-1", by: "u-ana", since: "x" } });
     });
     expect(info).toHaveBeenCalledOnce();
   });
 
   /** Pero parar y volver a empezar sí es otra, y se anuncia. */
   it("una grabación nueva se anuncia otra vez", () => {
-    render(<Sonda nombre="Ana" />);
-    grabando("rec-1");
-    grabando("rec-2");
+    render(<Probe nombre="Ana" />);
+    recording("rec-1");
+    recording("rec-2");
     expect(info).toHaveBeenCalledTimes(2);
   });
 
@@ -91,8 +91,8 @@ describe("el aviso de que alguien empezó a grabar", () => {
    * hay una frase distinta para ese caso.
    */
   it("sin saber quién, avisa con una frase que se sostiene sola", () => {
-    render(<Sonda />);
-    grabando();
+    render(<Probe />);
+    recording();
     expect(info).toHaveBeenCalledOnce();
     const dicho = String(info.mock.calls[0][0]);
     expect(dicho).toBe("This call is being recorded");

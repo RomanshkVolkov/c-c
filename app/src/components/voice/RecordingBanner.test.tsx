@@ -10,12 +10,12 @@ const salir = vi.fn();
 
 beforeEach(() => {
   salir.mockClear();
-  useVoice.setState({ grabacion: null, salir });
+  useVoice.setState({ recording: null, salir });
 });
 
-function grabando(id = "rec-1") {
+function recording(id = "rec-1") {
   act(() => {
-    useVoice.setState({ grabacion: { id, by: "u-ana", since: "" } });
+    useVoice.setState({ recording: { id, by: "u-ana", since: "" } });
   });
 }
 
@@ -29,7 +29,7 @@ describe("el aviso al que entra tarde", () => {
   it("aparece cuando hay grabación", () => {
     render(<RecordingBanner />);
     expect(screen.queryByRole("status")).toBeNull();
-    grabando();
+    recording();
     expect(screen.getByRole("status").textContent).toContain("being recorded");
   });
 
@@ -41,14 +41,14 @@ describe("el aviso al que entra tarde", () => {
    */
   it("ofrece irse, y colgar de verdad", () => {
     render(<RecordingBanner />);
-    grabando();
+    recording();
     act(() => screen.getByText("Leave the call").click());
     expect(salir).toHaveBeenCalled();
   });
 
   it("y se puede dar por leído", () => {
     render(<RecordingBanner />);
-    grabando();
+    recording();
     act(() => screen.getByText("Got it").click());
     expect(screen.queryByRole("status")).toBeNull();
   });
@@ -62,27 +62,27 @@ describe("el aviso al que entra tarde", () => {
    */
   it("parar y volver a empezar es otra grabación, y se avisa otra vez", () => {
     render(<RecordingBanner />);
-    grabando("rec-1");
+    recording("rec-1");
     act(() => screen.getByText("Got it").click());
     expect(screen.queryByRole("status")).toBeNull();
 
     // La misma no vuelve a molestar.
     act(() => {
-      useVoice.setState({ grabacion: { id: "rec-1", by: "u-ana", since: "" } });
+      useVoice.setState({ recording: { id: "rec-1", by: "u-ana", since: "" } });
     });
     expect(screen.queryByRole("status")).toBeNull();
 
     // Otra, sí.
-    grabando("rec-2");
+    recording("rec-2");
     expect(screen.getByRole("status")).toBeTruthy();
   });
 
   /** Y al parar desaparece solo. */
   it("sin grabación no hay aviso", () => {
     render(<RecordingBanner />);
-    grabando();
+    recording();
     act(() => {
-      useVoice.setState({ grabacion: null });
+      useVoice.setState({ recording: null });
     });
     expect(screen.queryByRole("status")).toBeNull();
   });

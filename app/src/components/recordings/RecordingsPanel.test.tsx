@@ -11,7 +11,7 @@ vi.mock("@/store/auth.store", () => ({
 }));
 // `useConfirm` **lanza** fuera de su proveedor, a propósito: es una guarda para
 // que nadie lo use donde no hay diálogo que enseñar. Aquí se dobla porque lo
-// que se prueba es qué se pinta, no el camino de borrar.
+// que se prueba es qué se pinta, no el camino de remove.
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => async () => true }));
 
 import RecordingsPanel from "@/components/recordings/RecordingsPanel";
@@ -35,13 +35,13 @@ function rec(over: Partial<Recording> = {}): Recording {
   };
 }
 
-function pintar(lista: Recording[]) {
-  useRecordings.setState({ lista: { "esp-1": lista }, cargando: {} });
+function renderPanel(bySpace: Recording[]) {
+  useRecordings.setState({ bySpace: { "esp-1": bySpace }, loading: {} });
   return render(<RecordingsPanel spaceId="esp-1" />);
 }
 
 beforeEach(() => {
-  useRecordings.setState({ lista: {}, cargando: {} });
+  useRecordings.setState({ bySpace: {}, loading: {} });
 });
 
 describe("el panel de grabaciones", () => {
@@ -49,17 +49,17 @@ describe("el panel de grabaciones", () => {
    * Una llamada sin pantalla es **audio**, no un vídeo negro.
    *
    * Un `<video>` con una pista de sólo sonido pinta un rectángulo negro con
-   * controles, que se lee como un vídeo roto. El mutante que mata: pintar
+   * controles, que se lee como un vídeo roto. El mutante que mata: renderPanel
    * siempre `<video>`.
    */
   it("sólo voz se pinta como audio", () => {
-    const { container } = pintar([rec({ finalContentType: "audio/mp4", hasScreen: false })]);
+    const { container } = renderPanel([rec({ finalContentType: "audio/mp4", hasScreen: false })]);
     expect(container.querySelector("audio")).toBeTruthy();
     expect(container.querySelector("video")).toBeNull();
   });
 
   it("y con pantalla, como vídeo", () => {
-    const { container } = pintar([rec()]);
+    const { container } = renderPanel([rec()]);
     expect(container.querySelector("video")).toBeTruthy();
     expect(container.querySelector("audio")).toBeNull();
   });
@@ -71,7 +71,7 @@ describe("el panel de grabaciones", () => {
    * atributo que el navegador va a pedir.
    */
   it("el src va al proxy de cac, con token y sin amazonaws", () => {
-    const { container } = pintar([rec()]);
+    const { container } = renderPanel([rec()]);
     const src = container.querySelector("video")?.getAttribute("src") ?? "";
     expect(src).toContain("/api/v1/recordings/rec-1/media");
     expect(src).toContain("token=");
@@ -80,7 +80,7 @@ describe("el panel de grabaciones", () => {
 
   /** Lo que todavía se monta no se puede reproducir: no hay fichero. */
   it("una que se está montando no trae reproductor", () => {
-    const { container } = pintar([rec({ status: "finalizing", finalContentType: undefined })]);
+    const { container } = renderPanel([rec({ status: "finalizing", finalContentType: undefined })]);
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("audio")).toBeNull();
     expect(document.body.textContent).toContain("Processing");
@@ -94,7 +94,7 @@ describe("el panel de grabaciones", () => {
    * quien la lee sin saber si puede fiarse de lo que oye.
    */
   it("una parcial se ve y se explica", () => {
-    const { container } = pintar([rec({ status: "partial" })]);
+    const { container } = renderPanel([rec({ status: "partial" })]);
     expect(container.querySelector("video")).toBeTruthy();
     expect(document.body.textContent).toContain("missing track");
     expect(document.body.textContent?.toLowerCase()).toContain("lost");
@@ -102,18 +102,18 @@ describe("el panel de grabaciones", () => {
 
   /** Una que falló no ofrece un reproductor que no va a poder abrir nada. */
   it("una fallida no trae reproductor", () => {
-    const { container } = pintar([rec({ status: "failed", finalContentType: undefined })]);
+    const { container } = renderPanel([rec({ status: "failed", finalContentType: undefined })]);
     expect(container.querySelector("video")).toBeNull();
     expect(document.body.textContent).toContain("Failed");
   });
 
   it("sin nada grabado, lo dice", () => {
-    pintar([]);
+    renderPanel([]);
     expect(screen.getByText(/Nothing recorded/i)).toBeTruthy();
   });
 
   it("la duración se lee en minutos y segundos", () => {
-    pintar([rec({ durationMs: 185_000 })]);
+    renderPanel([rec({ durationMs: 185_000 })]);
     expect(document.body.textContent).toContain("3:05");
   });
 });

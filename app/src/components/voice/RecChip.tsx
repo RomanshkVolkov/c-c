@@ -2,7 +2,7 @@ import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
- * El punto rojo de «se está grabando».
+ * El punto rojo de «se está recording».
  *
  * Tres decisiones, y las tres tienen prueba:
  *

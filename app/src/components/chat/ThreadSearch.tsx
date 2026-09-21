@@ -13,7 +13,7 @@ const PAGE = 30;
 /**
  * Lo que se dijo en este canal y contiene lo que buscas.
  *
- * **Una lista aparte, no el hilo filtrado.** El hilo tiene anclaje de
+ * **Una bySpace aparte, no el hilo filtrado.** El hilo tiene anclaje de
  * deslizamiento, refresco al llegar un mensaje y fusión de páginas; meterle un
  * filtro encima obligaría a que todo eso supiera de la búsqueda, y un mensaje
  * que llega mientras buscas reordenaría lo que estás leyendo. Aquí no hace
@@ -40,7 +40,7 @@ export default function ThreadSearch({ spaceId, query }: { spaceId: string; quer
           `/api/v1/task-spaces/${spaceId}/chat?${params.toString()}`,
         );
         // El servidor devuelve la página en el orden del hilo —lo más viejo
-        // primero, que es como se pinta—; en una lista de aciertos manda lo más
+        // primero, que es como se pinta—; en una bySpace de aciertos manda lo más
         // reciente, así que se le da la vuelta.
         const page = [...(r.data ?? [])].reverse();
         setItems((prev) => (before ? [...prev, ...page] : page));
@@ -76,7 +76,7 @@ export default function ThreadSearch({ spaceId, query }: { spaceId: string; quer
               {fecha(m.createdAt)} · {horaCorta(m.createdAt)}
             </span>
           </div>
-          {/* Sin `onInternalLink`: esto es una lista de aciertos, y saltar a una
+          {/* Sin `onInternalLink`: esto es una bySpace de aciertos, y saltar a una
               tarjeta desde aquí dejaría la búsqueda a medias sin manera de
               volver a ella. */}
           <Markdown>{m.body}</Markdown>

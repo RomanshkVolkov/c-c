@@ -168,7 +168,7 @@ pub fn recording_from_metadata(raw: &str) -> Option<RecordingSignal> {
 }
 
 /// El evento que corresponde a un metadata, encendido o apagado.
-fn evento_de_grabacion(raw: &str) -> VoiceEvent {
+fn recording_event(raw: &str) -> VoiceEvent {
     match recording_from_metadata(raw) {
         Some(r) => VoiceEvent::Recording {
             active: true,
@@ -1486,13 +1486,13 @@ fn escuchar_eventos(
                     // grabando no vería el chip hasta que alguien parase y
                     // volviera a empezar — o sea, nunca.
                     if let Some(sala) = sala.upgrade() {
-                        r = r.and(canal.send(evento_de_grabacion(&sala.metadata())));
+                        r = r.and(canal.send(recording_event(&sala.metadata())));
                     }
                     r
                 }
                 // Alguien empezó o paró de grabar mientras estabas dentro.
                 RoomEvent::RoomMetadataChanged { metadata, .. } => {
-                    canal.send(evento_de_grabacion(&metadata))
+                    canal.send(recording_event(&metadata))
                 }
                 RoomEvent::ParticipantConnected(p) => canal.send(VoiceEvent::Joined {
                     identity: p.identity().to_string(),
@@ -3126,7 +3126,7 @@ mod pruebas_remuestreo {
 }
 
 #[cfg(test)]
-mod pruebas_grabacion {
+mod recording_tests {
     use super::{recording_from_metadata, RecordingSignal};
 
     /// El metadata de una sala lo escribe **otro proceso**, y llega de todas
