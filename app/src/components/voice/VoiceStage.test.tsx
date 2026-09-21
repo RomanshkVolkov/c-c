@@ -12,6 +12,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 const { estado } = vi.hoisted(() => ({ estado: { current: {} as Record<string, unknown> } }));
 
+// `useConfirm` lanza fuera de su proveedor —es una guarda deliberada, para que
+// nadie lo use donde no hay diálogo que enseñar—. `VoiceStage` lo usa desde que
+// parar una grabación pregunta antes; aquí se dobla porque no es lo que estas
+// pruebas miran.
+vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => async () => true }));
 vi.mock("@/store/voice.store", () => ({
   useVoice: Object.assign(
     (sel?: (s: Record<string, unknown>) => unknown) =>

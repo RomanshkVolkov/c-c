@@ -9,6 +9,10 @@ vi.mock("@/lib/api", () => ({
 vi.mock("@/store/auth.store", () => ({
   useAuthStore: { getState: () => ({ accessToken: "el-token" }) },
 }));
+// `useConfirm` **lanza** fuera de su proveedor, a propósito: es una guarda para
+// que nadie lo use donde no hay diálogo que enseñar. Aquí se dobla porque lo
+// que se prueba es qué se pinta, no el camino de borrar.
+vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => async () => true }));
 
 import RecordingsPanel from "@/components/recordings/RecordingsPanel";
 import { useRecordings, type Recording } from "@/store/recordings.store";

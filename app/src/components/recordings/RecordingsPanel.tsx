@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 
+import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,7 @@ function duracion(ms?: number): string {
 function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
   const { t } = useT();
   const borrar = useRecordings((s) => s.borrar);
+  const confirmar = useConfirm();
   const [borrando, setBorrando] = useState(false);
   // Sólo se puede ver lo que ya está montado. `partial` también: hay vídeo, y
   // esconderlo por haber perdido una pista sería tirar lo que sí se salvó.
@@ -83,9 +85,22 @@ function Fila({ rec, spaceId }: { rec: Recording; spaceId: string }) {
           onClick={() => {
             // Se pregunta: borrar se lleva el vídeo **y todas las pistas**, y
             // de eso no se vuelve.
-            if (!window.confirm(t("recordings:deleteConfirm"))) return;
-            setBorrando(true);
-            void borrar(rec.id, spaceId).finally(() => setBorrando(false));
+            //
+            // Con `useConfirm` y no con `window.confirm`: el diálogo del
+            // navegador **no es fiable en el webview de Tauri** —está escrito
+            // en `ConfirmDialog.tsx`, y yo lo había usado igual—. Ahí el
+            // borrado se habría quedado sin preguntar o sin ejecutarse, según
+            // la plataforma.
+            void (async () => {
+              const ok = await confirmar({
+                title: t("recordings:deleteConfirm"),
+                confirmText: t("recordings:delete"),
+                destructive: true,
+              });
+              if (!ok) return;
+              setBorrando(true);
+              void borrar(rec.id, spaceId).finally(() => setBorrando(false));
+            })();
           }}
         >
           {borrando ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}

@@ -6,6 +6,9 @@ import VoiceChat from "@/components/voice/VoiceChat";
 import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
+import { toast } from "sonner";
+
+import { useConfirm } from "@/components/ConfirmDialog";
 import RecChip from "@/components/voice/RecChip";
 import RecordingBanner from "@/components/voice/RecordingBanner";
 import RecordingConsentDialog from "@/components/voice/RecordingConsentDialog";
@@ -67,6 +70,31 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const grabacionEnVuelo = useRecordings((s) => s.enVuelo);
   const cargarPolitica = useRecordings((s) => s.cargarPolitica);
   const [consintiendo, setConsintiendo] = useState(false);
+  const confirmar = useConfirm();
+  // Se lee del estado en el momento, no por suscripción: sólo hace falta
+  // justo después de que la petición conteste.
+  const errorDeGrabacion = () => useRecordings.getState().error;
+
+  // Quién la empezó, por su nombre. Hace falta para el aviso de parar: no es lo
+  // mismo cortar la tuya que la de otro, y quien pulsa tiene que saber cuál es
+  // antes de decidir.
+  const nombreDeQuienGraba = (gente ?? []).find((p) => p.identity === grabacion?.by)?.name;
+
+  const confirmarYParar = async () => {
+    if (!grabacion) return;
+    const mia = grabacion.by === yo;
+    const ok = await confirmar({
+      title: t("recordings:stopConfirmTitle"),
+      description: mia
+        ? t("recordings:stopConfirmMine")
+        : t("recordings:stopConfirmTheirs", {
+            name: nombreDeQuienGraba ?? t("recordings:chipUnknown"),
+          }),
+      confirmText: t("recordings:stopConfirmAction"),
+      destructive: true,
+    });
+    if (ok) await pararGrabacion(grabacion.id);
+  };
 
   // Se pregunta al entrar: de eso depende que el botón exista.
   useEffect(() => {
@@ -115,9 +143,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         {/* En la cabecera y no entre los mandos: lo que se está grabando es la
             llamada entera, no un botón. Quien mire la pantalla un segundo tiene
             que verlo sin buscarlo. */}
-        {grabacion && (
-          <RecChip by={(gente ?? []).find((p) => p.identity === grabacion.by)?.name} />
-        )}
+        {grabacion && <RecChip by={nombreDeQuienGraba} />}
         <div className="flex-1" />
         {/* Llamar a alguien vive aquí y no en la barra de mandos: los mandos
             son sobre ti —tu micro, tu cámara— y esto es sobre la sala. */}
@@ -313,9 +339,14 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         onGrabar={
           politica?.enabled && spaceId
             ? () => {
-                if (grabacion) void pararGrabacion(grabacion.id);
-                // **Siempre pregunta** antes de empezar, aunque sea la segunda
-                // vez en la misma llamada. Ver `RecordingConsentDialog`.
+                // **Parar también pregunta**, y no por simetría: el botón vive
+                // entre el de silenciarse y el de compartir pantalla, que se
+                // pulsan con prisa. Cortar por error la grabación de una
+                // reunión no se deshace — volver a empezar hace **otra**, y lo
+                // de en medio no existe.
+                if (grabacion) void confirmarYParar();
+                // Y empezar **siempre pregunta**, aunque sea la segunda vez en
+                // la misma llamada. Ver `RecordingConsentDialog`.
                 else setConsintiendo(true);
               }
             : undefined
@@ -327,7 +358,23 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         enVuelo={Boolean(grabacionEnVuelo)}
         onConfirm={() => {
           if (!spaceId) return;
-          void empezarGrabacion(spaceId).then(() => setConsintiendo(false));
+          void (async () => {
+            const empezo = await empezarGrabacion(spaceId);
+            setConsintiendo(false);
+            // Si dos pulsan a la vez, **gana uno** —lo decide el índice único
+            // de la base, no una comprobación previa— y al otro le llega un
+            // 409. Hasta ahora su pulsación se veía como si no hubiera hecho
+            // nada: aparecía el chip y no se sabía por qué. Ahora se le dice.
+            if (!empezo && errorDeGrabacion() === "already-recording") {
+              const quien = useRecordings.getState().policy[spaceId]?.active?.startedBy;
+              const nombre = (gente ?? []).find((p) => p.identity === quien)?.name;
+              toast.info(
+                nombre
+                  ? t("recordings:alreadyStarted", { name: nombre })
+                  : t("recordings:alreadyStartedUnknown"),
+              );
+            }
+          })();
         }}
       />
     </div>
