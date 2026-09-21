@@ -199,51 +199,51 @@ func TestLiveSFUSurvivesAnEgressRestart(t *testing.T) {
 	}
 	t.Log("parada pedida; a partir de aquí el reloj puede preguntar")
 
-	arranque := time.Now()
-	var cerrado time.Time
+	startedAt := time.Now()
+	var closedAt time.Time
 	for i := 0; i < 25; i++ {
 		time.Sleep(6 * time.Second)
 		svc.Tick(ctx, time.Now().UTC())
-		vivas, err := repo.LiveTracks(rec.ID)
+		live, err := repo.LiveTracks(rec.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		todas, _ := repo.Tracks(rec.ID)
-		estados := ""
+		statuses := ""
 		for _, tr := range todas {
-			estados += " " + tr.Source + "=" + tr.Status
+			statuses += " " + tr.Source + "=" + tr.Status
 		}
 		// Y lo que el SFU dice en ese mismo instante, que es lo que decide el
 		// reloj: quién sigue en la sala y en qué estado está cada egress. Sin
-		// esto, un fallo aquí sólo dice «siguieron vivas» y hay que adivinar
+		// esto, un fallo aquí sólo dice «siguieron live» y hay que adivinar
 		// por qué.
-		enSala := ""
+		inRoom := ""
 		if gente, e := lk.Participants(ctx, room); e == nil {
 			for _, p := range gente {
 				if p.Kind == lksdk.ParticipantInfo_EGRESS {
-					enSala += " " + p.Identity
+					inRoom += " " + p.Identity
 				}
 			}
 		} else {
-			enSala = " (no contesta: " + e.Error() + ")"
+			inRoom = " (no contesta: " + e.Error() + ")"
 		}
-		egr := ""
+		egressLine := ""
 		if items, e := lk.ListEgress(ctx, room); e == nil {
 			for _, it := range items {
-				egr += " " + it.EgressId + "=" + it.Status.String()
+				egressLine += " " + it.EgressId + "=" + it.Status.String()
 			}
 		} else {
-			egr = " (no contesta: " + e.Error() + ")"
+			egressLine = " (no contesta: " + e.Error() + ")"
 		}
 		t.Logf("  t+%3.0fs %s | en sala:%s | egress:%s",
-			time.Since(arranque).Seconds(), estados, enSala, egr)
-		if len(vivas) == 0 {
-			cerrado = time.Now()
+			time.Since(startedAt).Seconds(), statuses, inRoom, egressLine)
+		if len(live) == 0 {
+			closedAt = time.Now()
 			break
 		}
 	}
-	if cerrado.IsZero() {
-		t.Fatal("las pistas siguieron vivas: una grabación así se queda colgada para siempre")
+	if closedAt.IsZero() {
+		t.Fatal("las pistas siguieron live: una grabación así se queda colgada para siempre")
 	}
 
 	todas, err := repo.Tracks(rec.ID)
@@ -261,5 +261,5 @@ func TestLiveSFUSurvivesAnEgressRestart(t *testing.T) {
 		t.Fatal("la grabación se quedó en finalizing sin cerrar: el mux no la verá nunca")
 	}
 	t.Logf("cerró en %.0f s desde la parada, en estado %q",
-		cerrado.Sub(arranque).Seconds(), final.Status)
+		closedAt.Sub(startedAt).Seconds(), final.Status)
 }

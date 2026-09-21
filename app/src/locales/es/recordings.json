@@ -12,7 +12,7 @@
   "consentTitle": "¿Grabar esta llamada?",
   "consentWhere": "El fichero se queda en el servidor de cac, y lo puede ver quien esté en este canal.",
   "delete": "Borrar",
-  "deleteConfirm": "¿Borrar esta grabación? Se va con ella el vídeo y todas las pistas.",
+  "deleteConfirm": "¿Borrar esta grabación? Se van con ella el vídeo, todas las pistas y el aviso del canal.",
   "joinedBannerBody": "Las voces y la pantalla que se comparta. Las cámaras no se graban.",
   "joinedBannerLeave": "Salir de la llamada",
   "joinedBannerOk": "Entendido",

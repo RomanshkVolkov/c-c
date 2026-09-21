@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -341,6 +343,26 @@ func (s *ChatService) Edit(messageID, userID string, superadmin bool, body strin
 		orgID: m.OrgID, spaceID: m.SpaceID, messageID: m.ID, actorID: userID,
 		kind: m.Kind, body: body, mentions: s.mentioned(m.OrgID, body),
 	})
+	return nil
+}
+
+// RetractSystem retira el aviso del sistema que apuntaba a algo que ya no está.
+//
+// **Sin la guarda de `Withdraw`**, y a propósito: aquella existe para que una
+// *persona* no reescriba ni borre un mensaje del sistema. Ésta la llama el
+// servicio que acaba de borrar aquello de lo que el aviso hablaba, así que el
+// mensaje ya no describe nada.
+//
+// No lleva autor ni permisos porque no los necesita: quien puede borrar una
+// grabación ya pasó por su propia comprobación.
+func (s *ChatService) RetractSystem(spaceID, ref string) error {
+	n, err := s.repo.WithdrawSystemRef(spaceID, ref)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		lg.Info("chat: retracted " + strconv.FormatInt(n, 10) + " system notice(s) for " + ref)
+	}
 	return nil
 }
 

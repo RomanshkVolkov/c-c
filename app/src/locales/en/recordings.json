@@ -12,7 +12,7 @@
   "consentTitle": "Record this call?",
   "consentWhere": "The file stays on cac's server, and everyone in this channel can watch it.",
   "delete": "Delete",
-  "deleteConfirm": "Delete this recording? The video and every track go with it.",
+  "deleteConfirm": "Delete this recording? The video, every track and the notice in the channel go with it.",
   "joinedBannerBody": "Voices and any shared screen. Cameras are not recorded.",
   "joinedBannerLeave": "Leave the call",
   "joinedBannerOk": "Got it",

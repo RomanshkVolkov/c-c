@@ -77,6 +77,7 @@ type RecordingService struct {
 // se anuncia — que es la propiedad que importa aquí.
 type Announcer interface {
 	PostSystem(spaceID, orgID, actorID, body, notice string) (*domain.ChatMessage, error)
+	RetractSystem(spaceID, ref string) error
 }
 
 // MediaStore es lo que el servicio necesita del bucket, y nada más.
@@ -910,5 +911,23 @@ func (s *RecordingService) Delete(ctx context.Context, rec *domain.Recording) er
 			return err
 		}
 	}
-	return s.repo.DeleteWithTracks(rec.ID)
+	if err := s.repo.DeleteWithTracks(rec.ID); err != nil {
+		return err
+	}
+	// Y el aviso del canal se va con ella.
+	//
+	// Quien borra una grabación lo hace porque no debería existir. Dejar en el
+	// hilo «la grabación de esta llamada está lista», con el nombre de quien la
+	// hizo y un enlace a un fichero que ya no está, deshace medio borrado y deja
+	// algo sobre lo que nadie puede actuar.
+	//
+	// **Después de borrar, y sin tumbar el borrado si falla**: el material ya no
+	// existe, así que negarse aquí dejaría la grabación medio borrada por un
+	// mensaje de chat. Queda en el log.
+	if s.announcer != nil {
+		if err := s.announcer.RetractSystem(rec.SpaceID, domain.RecordingRef(rec.ID)); err != nil {
+			lg.Error("recording: retracting the notice for " + rec.ID + ": " + err.Error())
+		}
+	}
+	return nil
 }

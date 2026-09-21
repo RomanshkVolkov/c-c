@@ -711,8 +711,8 @@ func TestAStaleListingDoesNotKillAFinishedTrack(t *testing.T) {
 
 // ─── El reparto del mux ──────────────────────────────────────────────────────
 
-// dejarParaMontar deja una grabación cerrada y lista para el montador.
-func dejarParaMontar(t *testing.T, svc *RecordingService, repo *repository.RecordingRepository,
+// leaveReadyToMux deja una grabación cerrada y lista para el montador.
+func leaveReadyToMux(t *testing.T, svc *RecordingService, repo *repository.RecordingRepository,
 	sfu *fakeSFU) *domain.Recording {
 	t.Helper()
 	rec, err := svc.Start(context.Background(), "org-1", "esp-1", "u-1")
@@ -735,7 +735,7 @@ func dejarParaMontar(t *testing.T, svc *RecordingService, repo *repository.Recor
 	return after
 }
 
-func servicioConUnaPista(t *testing.T) (*RecordingService, *repository.RecordingRepository, *fakeSFU) {
+func serviceWithOneTrack(t *testing.T) (*RecordingService, *repository.RecordingRepository, *fakeSFU) {
 	t.Helper()
 	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
 		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
@@ -750,8 +750,8 @@ func servicioConUnaPista(t *testing.T) (*RecordingService, *repository.Recording
 // `UPDATE` condicional. Sin él, dos pasadas simultáneas subirían dos veces el
 // mismo fichero y la segunda pisaría a la primera a mitad de subida.
 func TestOnlyOneMuxClaimsARecording(t *testing.T) {
-	svc, repo, sfu := servicioConUnaPista(t)
-	rec := dejarParaMontar(t, svc, repo, sfu)
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
 	ahora := time.Now().UTC()
 
 	primero, err := svc.ClaimMux(rec.ID, ahora)
@@ -773,8 +773,8 @@ func TestOnlyOneMuxClaimsARecording(t *testing.T) {
 // pod que la tenía reservada se cayó. El mutante que mata: reservarla sin
 // plazo, o no mirar si el anterior venció.
 func TestAnExpiredMuxLeaseIsTakenAgain(t *testing.T) {
-	svc, repo, sfu := servicioConUnaPista(t)
-	rec := dejarParaMontar(t, svc, repo, sfu)
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
 	ahora := time.Now().UTC()
 
 	if ok, err := svc.ClaimMux(rec.ID, ahora); err != nil || !ok {
@@ -840,8 +840,8 @@ func TestTheMuxOnlySeesTracksWithAFile(t *testing.T) {
 
 // Sin pistas perdidas, `ready` a secas.
 func TestAWholeRecordingBecomesReady(t *testing.T) {
-	svc, repo, sfu := servicioConUnaPista(t)
-	rec := dejarParaMontar(t, svc, repo, sfu)
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
 	if err := svc.MuxReady(rec.ID, "recordings/o/s/r/final.m4a", "audio/mp4", 100, 1000, false); err != nil {
 		t.Fatal(err)
 	}
@@ -866,8 +866,8 @@ func TestAWholeRecordingBecomesReady(t *testing.T) {
 //
 // El mutante que mata: quitar el filtro del plazo de la consulta.
 func TestPendingMuxHidesWhatIsAlreadyClaimed(t *testing.T) {
-	svc, repo, sfu := servicioConUnaPista(t)
-	rec := dejarParaMontar(t, svc, repo, sfu)
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
 	ahora := time.Now().UTC()
 
 	if jobs, err := svc.PendingMux(ahora, 10); err != nil || len(jobs) != 1 {
@@ -895,8 +895,8 @@ func TestPendingMuxHidesWhatIsAlreadyClaimed(t *testing.T) {
 //
 // El mutante que mata: quitar el `WHERE mux_lease_until = ?` de `LeaseMux`.
 func TestTwoReplicasThatReadTheSameLeaseOnlyOneWrites(t *testing.T) {
-	svc, repo, sfu := servicioConUnaPista(t)
-	rec := dejarParaMontar(t, svc, repo, sfu)
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
 	ahora := time.Now().UTC()
 
 	// Las dos leen «sin reservar» a la vez.
@@ -921,6 +921,9 @@ type spyAnnouncer struct {
 	bodies  []string
 	notices []string
 	fails   error
+	// Las referencias que se pidió retirar, y de qué canal.
+	retracted []string
+	retractIn []string
 }
 
 func (a *spyAnnouncer) PostSystem(spaceID, orgID, actorID, body, notice string) (*domain.ChatMessage, error) {
@@ -930,6 +933,15 @@ func (a *spyAnnouncer) PostSystem(spaceID, orgID, actorID, body, notice string) 
 	a.bodies = append(a.bodies, body)
 	a.notices = append(a.notices, notice)
 	return &domain.ChatMessage{}, nil
+}
+
+func (a *spyAnnouncer) RetractSystem(spaceID, ref string) error {
+	if a.fails != nil {
+		return a.fails
+	}
+	a.retractIn = append(a.retractIn, spaceID)
+	a.retracted = append(a.retracted, ref)
+	return nil
 }
 
 // Se anuncia exactamente una vez.
@@ -944,10 +956,10 @@ func (a *spyAnnouncer) PostSystem(spaceID, orgID, actorID, body, notice string) 
 // Los dos dejan la grabación exactamente igual de bien montada y el canal con
 // una línea por intento.
 func TestItIsAnnouncedExactlyOnce(t *testing.T) {
-	svc, repo, sfu := servicioConUnaPista(t)
+	svc, repo, sfu := serviceWithOneTrack(t)
 	spy := &spyAnnouncer{}
 	svc.WithAnnouncer(spy)
-	rec := dejarParaMontar(t, svc, repo, sfu)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
 
 	for i := 0; i < 3; i++ {
 		if err := svc.MuxReady(rec.ID, "recordings/o/s/r/final.m4a", "audio/mp4", 100, 754_000, false); err != nil {
@@ -974,9 +986,9 @@ func TestItIsAnnouncedExactlyOnce(t *testing.T) {
 // El anuncio es lo último y su fallo no se propaga: devolvérselo al mux le haría
 // volver a montar un fichero ya montado para arreglar un mensaje de chat.
 func TestAFailedAnnouncementDoesNotSinkTheRecording(t *testing.T) {
-	svc, repo, sfu := servicioConUnaPista(t)
+	svc, repo, sfu := serviceWithOneTrack(t)
 	svc.WithAnnouncer(&spyAnnouncer{fails: errors.New("el canal no está")})
-	rec := dejarParaMontar(t, svc, repo, sfu)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
 
 	if err := svc.MuxReady(rec.ID, "recordings/o/s/r/final.m4a", "audio/mp4", 100, 1000, false); err != nil {
 		t.Fatalf("el montaje es lo que importa, y salió bien: %v", err)
@@ -987,5 +999,100 @@ func TestAFailedAnnouncementDoesNotSinkTheRecording(t *testing.T) {
 	}
 	if after.Status != domain.RecordingReady {
 		t.Errorf("la grabación queda lista aunque nadie se entere: %q", after.Status)
+	}
+}
+
+// ─── Borrar se lleva el aviso ────────────────────────────────────────────────
+
+// countingStore apunta qué claves se borraron.
+//
+// El `mediastore.Fake()` del resto de las pruebas revienta ante cualquier uso
+// real —a propósito, para que nadie lo use sin querer—, y borrar sí toca el
+// bucket de verdad.
+type countingStore struct{ deleted []string }
+
+func (s *countingStore) Enabled() bool { return true }
+
+func (s *countingStore) GetRange(context.Context, string, string) (*mediastore.Object, error) {
+	return nil, mediastore.ErrDisabled
+}
+
+func (s *countingStore) Delete(_ context.Context, keys ...string) error {
+	s.deleted = append(s.deleted, keys...)
+	return nil
+}
+
+// serviceThatCanDelete: como `serviceWithOneTrack`, con un bucket que borra.
+func serviceThatCanDelete(t *testing.T) (*RecordingService, *repository.RecordingRepository, *fakeSFU, *countingStore) {
+	t.Helper()
+	sfu := &fakeSFU{people: []*lksdk.ParticipantInfo{
+		person("u-1", track("TR_mic", lksdk.TrackSource_MICROPHONE, false)),
+	}}
+	repo := repository.NewRecordingRepository(recordingDB(t))
+	store := &countingStore{}
+	return NewRecordingService(repo, sfu, nil, store, "recordings", true, 240), repo, sfu, store
+}
+
+// Borrar una grabación retira su aviso del canal.
+//
+// Quien borra lo hace porque no debería existir. Dejar en el hilo «la grabación
+// de esta llamada está lista», con el nombre de quien la hizo y un enlace a un
+// fichero que ya no está, deshace medio borrado y deja algo sobre lo que nadie
+// puede actuar.
+//
+// El mutante que mata: no llamar a `RetractSystem`. Nada falla — simplemente el
+// mensaje se queda ahí para siempre, que es justo lo que se reportó.
+func TestDeletingARecordingRetractsItsNotice(t *testing.T) {
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
+	spy := &spyAnnouncer{}
+	svc.WithAnnouncer(spy)
+
+	if err := svc.Delete(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(spy.retracted) != 1 {
+		t.Fatalf("se pidió retirar %d avisos", len(spy.retracted))
+	}
+	// Por la referencia, que es lo que identifica al aviso dentro del cuerpo.
+	if spy.retracted[0] != domain.RecordingRef(rec.ID) {
+		t.Fatalf("se retiró %q", spy.retracted[0])
+	}
+	// Y en el canal de esa grabación, no en otro.
+	if spy.retractIn[0] != rec.SpaceID {
+		t.Fatalf("se retiró en %q", spy.retractIn[0])
+	}
+}
+
+// Y si retirar el aviso falla, **la grabación sigue borrada**.
+//
+// El material ya no existe cuando llega este paso: negarse aquí dejaría una
+// grabación a medio borrar —fila en la base, ficheros fuera— por un mensaje de
+// chat. El error va al log y ya.
+//
+// El mutante que mata: devolver el error de `RetractSystem`.
+func TestAFailedRetractionDoesNotUndoTheDeletion(t *testing.T) {
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
+	svc.WithAnnouncer(&spyAnnouncer{fails: errors.New("el chat dijo que no")})
+
+	if err := svc.Delete(context.Background(), rec); err != nil {
+		t.Fatalf("borrar no puede fallar por el aviso: %v", err)
+	}
+	if _, err := repo.FindByID(rec.ID); err == nil {
+		t.Fatal("la grabación tenía que estar borrada")
+	}
+}
+
+// Sin anunciador configurado, borrar sigue funcionando.
+func TestDeletingWorksWithoutAnAnnouncer(t *testing.T) {
+	svc, repo, sfu, _ := serviceThatCanDelete(t)
+	rec := leaveReadyToMux(t, svc, repo, sfu)
+	if err := svc.Delete(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.FindByID(rec.ID); err == nil {
+		t.Fatal("la grabación tenía que estar borrada")
 	}
 }

@@ -99,6 +99,29 @@ func (r *ChatRepository) Withdraw(id string) error {
 	return r.db.Delete(&domain.ChatMessage{}, "id = ?", id).Error
 }
 
+// WithdrawSystemRef retira los avisos del sistema que apuntan a algo concreto.
+//
+// Borrado lógico, como el de una persona: el mensaje deja el canal y no deja el
+// registro. Es lo que hace que borrar una grabación no deje en el hilo un aviso
+// con el nombre de quien la hizo, apuntando a un fichero que ya no existe.
+//
+// Tres condiciones, y ninguna sobra:
+//
+//   - `kind = 'system'` — el aviso automático se retira; **un mensaje de una
+//     persona que pegó el mismo enlace, no**. Sus palabras no son nuestras.
+//   - `space_id = ?` — una referencia podría aparecer en otro canal.
+//   - `LIKE` sobre el cuerpo: la referencia es un `cac:recording/<uuid>`, así
+//     que el patrón es una constante nuestra y no un término que teclee nadie.
+//
+// Devuelve cuántos retiró: cero es normal —una grabación que nunca llegó a
+// anunciarse— y no es un error.
+func (r *ChatRepository) WithdrawSystemRef(spaceID, ref string) (int64, error) {
+	res := r.db.Where("space_id = ? AND kind = ? AND body LIKE ?",
+		spaceID, domain.ChatKindSystem, "%"+ref+"%").
+		Delete(&domain.ChatMessage{})
+	return res.RowsAffected, res.Error
+}
+
 // MarkRead moves someone's watermark in a channel to now.
 func (r *ChatRepository) MarkRead(spaceID, userID string) error {
 	return r.db.Exec(`

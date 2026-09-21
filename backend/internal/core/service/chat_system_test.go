@@ -283,3 +283,125 @@ func chatSystemDB(t *testing.T) (*gorm.DB, func()) {
 		adminSQL.Close()
 	}
 }
+
+// ─── Retirar el aviso de algo que ya no está ─────────────────────────────────
+
+// Retirar el aviso del sistema **no toca lo que escribió una persona**.
+//
+// Es la condición que de verdad importa de `WithdrawSystemRef`: el aviso
+// automático apunta a una grabación con `cac:recording/<id>`, pero alguien pudo
+// pegar ese mismo enlace en un mensaje suyo —«mira esto en el minuto 12»—. Sus
+// palabras no son nuestras y no se borran porque nosotros borremos un fichero.
+//
+// El mutante que mata: quitar `kind = 'system'` de la consulta.
+func TestRetractingANoticeLeavesPeoplesWordsAlone(t *testing.T) {
+	db, cleanup := chatDB(t)
+	defer cleanup()
+	repo := repository.NewChatRepository(db)
+	svc := NewChatService(repo, nil)
+
+	ref := domain.RecordingRef("rec-1")
+
+	sistema, err := svc.PostSystem("esp-1", "org-1", "u-ana",
+		"The recording of this call is ready — [watch it]("+ref+").", "ready")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Y una persona citando la misma grabación.
+	humano, err := svc.Post("esp-1", "org-1", "u-bea", "mira el minuto 12: "+ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.RetractSystem("esp-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	quedan, err := repo.List("esp-1", "", time.Now().Add(time.Hour), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, len(quedan))
+	for _, m := range quedan {
+		ids = append(ids, m.ID)
+	}
+	if len(ids) != 1 || ids[0] != humano.ID {
+		t.Fatalf("tenía que quedar sólo el de la persona, y quedaron %v", ids)
+	}
+	_ = sistema
+}
+
+// Y no se lleva el aviso de **otra** grabación.
+//
+// El mutante que mata: buscar por algo más ancho que la referencia —el id de la
+// sala, o un `LIKE '%cac:recording%'`—, que retiraría todos los avisos del canal
+// al borrar uno.
+func TestRetractingOneNoticeLeavesTheOthers(t *testing.T) {
+	db, cleanup := chatDB(t)
+	defer cleanup()
+	repo := repository.NewChatRepository(db)
+	svc := NewChatService(repo, nil)
+
+	for _, id := range []string{"rec-1", "rec-2"} {
+		if _, err := svc.PostSystem("esp-1", "org-1", "u-ana",
+			"ready — [watch it]("+domain.RecordingRef(id)+").", "ready"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := svc.RetractSystem("esp-1", domain.RecordingRef("rec-1")); err != nil {
+		t.Fatal(err)
+	}
+
+	quedan, err := repo.List("esp-1", "", time.Now().Add(time.Hour), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quedan) != 1 {
+		t.Fatalf("quedaron %d avisos", len(quedan))
+	}
+	if !strings.Contains(quedan[0].Body, domain.RecordingRef("rec-2")) {
+		t.Fatalf("se retiró el que no era: %s", quedan[0].Body)
+	}
+}
+
+// Ni el de otro canal.
+func TestRetractingANoticeDoesNotCrossChannels(t *testing.T) {
+	db, cleanup := chatDB(t)
+	defer cleanup()
+	repo := repository.NewChatRepository(db)
+	svc := NewChatService(repo, nil)
+
+	ref := domain.RecordingRef("rec-1")
+	for _, esp := range []string{"esp-1", "esp-2"} {
+		if _, err := svc.PostSystem(esp, "org-1", "u-ana",
+			"ready — [watch it]("+ref+").", "ready"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := svc.RetractSystem("esp-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	otros, err := repo.List("esp-2", "", time.Now().Add(time.Hour), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(otros) != 1 {
+		t.Fatalf("el aviso del otro canal se fue: quedan %d", len(otros))
+	}
+}
+
+// Retirar algo que no se anunció nunca no es un error.
+//
+// Pasa de verdad: una grabación que falló al montarse no llegó a anunciarse, y
+// borrarla tiene que poder terminar bien.
+func TestRetractingSomethingNeverAnnouncedIsFine(t *testing.T) {
+	db, cleanup := chatDB(t)
+	defer cleanup()
+	svc := NewChatService(repository.NewChatRepository(db), nil)
+	if err := svc.RetractSystem("esp-1", domain.RecordingRef("nunca-existio")); err != nil {
+		t.Fatalf("%v", err)
+	}
+}
