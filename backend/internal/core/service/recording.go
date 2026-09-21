@@ -63,6 +63,20 @@ type RecordingService struct {
 	// hay que poder probar sin S3 es que un `Range` sale como 206 con su
 	// `Content-Range`, y que la clave del objeto no se filtra por ningún lado.
 	store MediaStore
+	// announcer cuenta en el canal que hay grabación. Opcional: sin él la
+	// grabación funciona igual y nadie se entera, que es exactamente como
+	// estaba antes.
+	announcer Announcer
+}
+
+// Announcer es lo único que grabar necesita del chat: poner una línea que no
+// ha escrito nadie.
+//
+// Una interfaz y no `*ChatService` para que la grabación no dependa del módulo
+// de chat entero, y sobre todo para poder contar en una prueba **cuántas veces**
+// se anuncia — que es la propiedad que importa aquí.
+type Announcer interface {
+	PostSystem(spaceID, orgID, actorID, body, notice string) (*domain.ChatMessage, error)
 }
 
 // MediaStore es lo que el servicio necesita del bucket, y nada más.
@@ -86,6 +100,14 @@ func NewRecordingService(
 		repo: repo, lk: lk, hub: hub, store: store, prefix: prefix,
 		enabled: enabled, maxMinutes: maxMinutes,
 	}
+}
+
+// WithAnnouncer engancha el canal, igual que `WithNotifier` engancha la bandeja
+// en el chat. Fuera del constructor porque el chat se construye en otro sitio
+// —`InitTaskRoutes`— y no todas las instalaciones montan los dos.
+func (s *RecordingService) WithAnnouncer(a Announcer) *RecordingService {
+	s.announcer = a
+	return s
 }
 
 // Enabled: las tres condiciones. Si falta una, la app esconde el botón en vez
@@ -799,7 +821,38 @@ func (s *RecordingService) MuxReady(id, key, contentType string, bytes, duration
 	}
 	rec.Status = estado
 	s.publish(rec)
+	s.announce(rec)
 	return nil
+}
+
+// announce cuenta en el canal que la grabación ya se puede ver.
+//
+// Es lo que hace que una grabación exista para alguien que no fue a buscarla: el
+// panel no avisa a nadie, así que hasta ahora una llamada grabada era una
+// llamada grabada para quien se acordara de mirar.
+//
+// **Después de `Transition`, y sólo si dijo que sí.** Ese UPDATE condicional ya
+// es exactamente-una-vez —dos mux montando lo mismo, o el mismo reintentando,
+// sólo dejan pasar a uno— así que el anuncio hereda esa propiedad sin necesitar
+// marca propia. Anunciar antes, o ignorar el `ok`, pone una línea por intento.
+//
+// Si esto falla el anuncio se pierde y **no se reintenta**: queda en el log. La
+// alternativa sería devolverle el error al mux, que volvería a montar un fichero
+// ya montado para arreglar un mensaje de chat.
+func (s *RecordingService) announce(rec *domain.Recording) {
+	if s.announcer == nil {
+		return
+	}
+	body, notice := domain.RecordingAnnouncement(rec.ID, rec.Status, rec.DurationMs)
+	if body == "" {
+		return
+	}
+	// El actor es quien grabó: es lo que hace legal la fila contra el `not
+	// null`, es con quien firma la línea una app que no conoce `kind` todavía,
+	// y es a quien **no** se avisa — ya estaba, es suya.
+	if _, err := s.announcer.PostSystem(rec.SpaceID, rec.OrgID, rec.StartedBy, body, notice); err != nil {
+		lg.Error("recording: announcing " + rec.ID + " in the channel: " + err.Error())
+	}
 }
 
 // MuxFailed: el montaje no salió. **Las pistas se conservan**: son el material

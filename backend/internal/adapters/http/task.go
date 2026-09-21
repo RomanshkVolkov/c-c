@@ -97,6 +97,11 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/chat/follow", h.FollowChannel)
 		r.Delete("/{id}/chat/follow", h.UnfollowChannel)
 		r.Post("/{id}/chat/attachments", h.UploadChatAttachment)
+		// Las pestañas del canal: lo que se enseñó y lo que se enlazó. Se sacan
+		// de los propios mensajes al leer, sin tabla que las guarde — ver
+		// `repository/chat.go`.
+		r.Get("/{id}/chat/media", h.ChatMedia)
+		r.Get("/{id}/chat/links", h.ChatLinks)
 		// La entrada a la sala de voz de este espacio. Mismo guard que el chat.
 		r.Post("/{id}/voice/token", h.VoiceToken)
 		r.Post("/{id}/voice/ring", h.VoiceRing)

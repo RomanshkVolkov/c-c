@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -32,18 +33,35 @@ func NewChatRepository(db *gorm.DB) *ChatRepository { return &ChatRepository{db:
 // out of that scope silently. That exact omission shipped this week on the item
 // threads: withdrawing a comment appeared to fail, the line stayed on screen,
 // and trying again answered "not found" about something plainly visible.
-func (r *ChatRepository) List(spaceID string, before time.Time, limit int) ([]domain.ChatMessageResponse, error) {
+//
+// **The Select is a literal, so a new column does not appear on its own.** It
+// is the standing trap of this style: the row the service just wrote comes back
+// right because the service built it, and the same row reloaded comes back with
+// the column at its zero value. A `kind` missing here means every system line
+// re-reads as an ordinary message from the person who happened to be its actor.
+// Guardian: TestTheHistoryCarriesTheKind.
+//
+// `query` narrows the channel to the lines that contain it — the same read,
+// looked at through a slit. **Scoped to this space and resolved here**, not in
+// the app: the thread is paged, so a client-side filter would only ever find
+// what the last page happened to hold, which for a search is the same as
+// lying. `LIKE` and not full text, per the decision already written down in
+// `domain/note.go` — nothing here revisits it.
+func (r *ChatRepository) List(spaceID, query string, before time.Time, limit int) ([]domain.ChatMessageResponse, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	q := r.db.Table("chat_messages m").
 		Select(`m.id, m.space_id, m.author_user_id,
 			COALESCE(u.username,'') AS author_name,
-			m.body, m.created_at, m.updated_at`).
+			m.kind, m.body, m.created_at, m.updated_at`).
 		Joins("LEFT JOIN users u ON u.id = m.author_user_id").
 		Where("m.space_id = ? AND m.deleted_at IS NULL", spaceID)
 	if !before.IsZero() {
 		q = q.Where("m.created_at < ?", before)
+	}
+	if strings.TrimSpace(query) != "" {
+		q = q.Where("LOWER(m.body) LIKE ?", like(query))
 	}
 
 	out := []domain.ChatMessageResponse{}
@@ -242,4 +260,169 @@ func (r *ChatRepository) FindAttachment(id string) (*domain.ChatAttachment, erro
 		return nil, err
 	}
 	return &a, nil
+}
+
+// ─── What the channel cites ───────────────────────────────────────────────────
+//
+// Media and links are read back out of the message bodies, and that is the
+// design rather than a shortcut around a missing table. A `message_id` column on
+// chat_attachments would need the composer to tell us which attachments it kept
+// — it cannot, because the upload happens while the message is still being
+// typed — and would leave abandoned drafts listed forever. Reading the bodies
+// gives two things for free: a file that was uploaded but never sent is
+// invisible by construction, and withdrawing a message takes its images with it,
+// because the scan below already refuses to look at withdrawn lines.
+//
+// Both walk **messages**, not items, with the same `created_at <` cursor as
+// List, and the SQL `LIKE` is only a cheap prefilter — what a link or an
+// attachment actually is, is decided by domain/refs.go, on this side of the
+// wire. Doing that extraction in the app instead would break paging (you would
+// only ever see what the loaded page happened to contain), break deduplication
+// across pages, lose the `[label](url)` wording, and send every body over the
+// network to find a handful of URLs.
+
+// citation es una línea viva que cita algo, con lo justo para atribuirla.
+type citation struct {
+	ID         string
+	Body       string
+	CreatedAt  time.Time
+	AuthorName string
+}
+
+// citing reads a page of live messages of this channel whose body contains
+// `needle`, newest first.
+//
+// `needle` is the prefilter and nothing more: `%http%` matches `![img](https://…)`
+// and the `http` inside a word, and `%/chat/attachments/%` matches a URL somebody
+// typed by hand. Both get handed to the extractor, which decides.
+func (r *ChatRepository) citing(spaceID, needle, query string, before time.Time, limit int) ([]citation, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q := r.db.Table("chat_messages m").
+		Select(`m.id, m.body, m.created_at, COALESCE(u.username,'') AS author_name`).
+		Joins("LEFT JOIN users u ON u.id = m.author_user_id").
+		// deleted_at written out for the same reason as in List: Table() names
+		// the table as a string and opts out of the soft-delete scope silently.
+		// Without it, withdrawing a message would leave its images in the tab.
+		Where("m.space_id = ? AND m.deleted_at IS NULL", spaceID).
+		Where("m.body LIKE ?", "%"+needle+"%")
+	if !before.IsZero() {
+		q = q.Where("m.created_at < ?", before)
+	}
+	// Con búsqueda, la ventana se estrecha a las líneas que la contienen. Para
+	// los enlaces eso es **exacto y no pierde nada**: tanto la URL como su
+	// rótulo son trozos del propio cuerpo, así que un enlace que casa vive en
+	// un cuerpo que casa. Para multimedia no vale —el nombre del fichero está
+	// en la tabla, no en el texto— y por eso ahí se filtra en la otra consulta.
+	if strings.TrimSpace(query) != "" {
+		q = q.Where("LOWER(m.body) LIKE ?", like(query))
+	}
+	out := []citation{}
+	return out, q.Order("m.created_at DESC").Limit(limit).Scan(&out).Error
+}
+
+// MediaOf lists the files the live messages of this channel show, newest first.
+func (r *ChatRepository) MediaOf(spaceID, query string, before time.Time, limit int) (*domain.ChatMediaPage, error) {
+	// Sin estrechar la ventana por el cuerpo: lo que se busca es el nombre del
+	// fichero, y ése no tiene por qué aparecer en el texto — el editor lo pone
+	// de texto alternativo, pero eso se edita. Filtrar por cuerpo perdería
+	// aciertos en silencio, que es el peor fallo que puede tener una búsqueda.
+	rows, err := r.citing(spaceID, "/chat/attachments/", "", before, limit)
+	if err != nil {
+		return nil, err
+	}
+	page := &domain.ChatMediaPage{Items: []domain.ChatMediaItem{}}
+	if len(rows) == 0 {
+		return page, nil
+	}
+	// Where the next page starts: the oldest line this one looked at, whether or
+	// not it contributed anything.
+	page.Before = &rows[len(rows)-1].CreatedAt
+
+	// Which message first showed each file. A file shown twice is one file, and
+	// it belongs to the line that introduced it.
+	firstShown := map[string]citation{}
+	ids := []string{}
+	for _, m := range rows {
+		for _, id := range domain.ExtractAttachmentIDs(m.Body) {
+			if _, already := firstShown[id]; already {
+				continue
+			}
+			firstShown[id] = m
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return page, nil
+	}
+
+	var files []domain.ChatAttachment
+	// `space_id` is not decorative: the ids come out of text somebody typed, so
+	// a body can name an attachment of another organization's channel. Without
+	// this clause, pasting a URL would be a way to read it.
+	fq := r.db.Where("id IN ? AND space_id = ?", ids, spaceID)
+	if strings.TrimSpace(query) != "" {
+		fq = fq.Where("LOWER(file_name) LIKE ?", like(query))
+	}
+	if err := fq.Find(&files).Error; err != nil {
+		return nil, err
+	}
+	byID := make(map[string]domain.ChatAttachment, len(files))
+	for _, f := range files {
+		byID[f.ID] = f
+	}
+	// Walked over `ids` rather than over `files`, so the order stays the one the
+	// channel had — IN gives no order at all.
+	for _, id := range ids {
+		f, ok := byID[id]
+		if !ok {
+			continue
+		}
+		m := firstShown[id]
+		page.Items = append(page.Items, domain.ChatMediaItem{
+			ID: f.ID, URL: f.URL, FileName: f.FileName,
+			ContentType: f.ContentType, Bytes: f.Bytes,
+			MessageID: m.ID, PostedAt: m.CreatedAt, AuthorName: m.AuthorName,
+		})
+	}
+	return page, nil
+}
+
+// LinksOf lists the URLs the live messages of this channel point at, newest
+// first and each one once.
+func (r *ChatRepository) LinksOf(spaceID, query string, before time.Time, limit int) (*domain.ChatLinkPage, error) {
+	rows, err := r.citing(spaceID, "http", query, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	page := &domain.ChatLinkPage{Items: []domain.ChatLinkItem{}}
+	if len(rows) == 0 {
+		return page, nil
+	}
+	page.Before = &rows[len(rows)-1].CreatedAt
+
+	// La consulta del cuerpo era el descarte barato; el acierto lo decide esto,
+	// sobre la URL y su rótulo. Un mensaje que dice «mira el runbook» y enlaza
+	// otra cosa casa en SQL y no es un enlace que buscaras.
+	needle := strings.ToLower(strings.TrimSpace(query))
+	matches := func(l domain.Link) bool {
+		return needle == "" ||
+			strings.Contains(strings.ToLower(l.URL), needle) ||
+			strings.Contains(strings.ToLower(l.Label), needle)
+	}
+	seen := map[string]bool{}
+	for _, m := range rows {
+		for _, l := range domain.ExtractLinks(m.Body) {
+			if seen[l.URL] || !matches(l) {
+				continue
+			}
+			seen[l.URL] = true
+			page.Items = append(page.Items, domain.ChatLinkItem{
+				URL: l.URL, Label: l.Label,
+				MessageID: m.ID, PostedAt: m.CreatedAt, AuthorName: m.AuthorName,
+			})
+		}
+	}
+	return page, nil
 }

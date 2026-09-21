@@ -54,6 +54,8 @@ type TaskHandler interface {
 	EditChat(w http.ResponseWriter, r *http.Request)
 	PostChat(w http.ResponseWriter, r *http.Request)
 	ListChat(w http.ResponseWriter, r *http.Request)
+	ChatMedia(w http.ResponseWriter, r *http.Request)
+	ChatLinks(w http.ResponseWriter, r *http.Request)
 	RotateListChannelKey(w http.ResponseWriter, r *http.Request)
 	UpdateListChannel(w http.ResponseWriter, r *http.Request)
 	GetListChannel(w http.ResponseWriter, r *http.Request)

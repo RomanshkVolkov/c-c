@@ -29,18 +29,17 @@ import (
 // deliberately, with its own scope.
 
 // ListChat answers a page of the channel, newest last.
+//
+// `?q=` narrows it to the lines that contain the text, in this channel only.
+// Same guard, same cursor: a search is the channel read through a slit, not a
+// different thing with different rules.
 func (h *taskHandler) ListChat(w http.ResponseWriter, r *http.Request) {
 	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
 	if !ok {
 		return
 	}
-	var before time.Time
-	if raw := r.URL.Query().Get("before"); raw != "" {
-		if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
-			before = t
-		}
-	}
-	msgs, err := h.chat.List(sp.ID, before, atoiDefault(r.URL.Query().Get("limit"), 50))
+	msgs, err := h.chat.List(sp.ID, r.URL.Query().Get("q"), chatBefore(r),
+		atoiDefault(r.URL.Query().Get("limit"), 50))
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to read the channel", err.Error())
 		return
@@ -180,6 +179,55 @@ func (h *taskHandler) ChatUnread(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.ChatUnread]{Success: true, Data: out})
 }
 
+// ChatMedia y ChatLinks: las pestañas del canal.
+//
+// El mismo guard que el hilo —`resolveSpace`, 404 a quien no pertenece— porque
+// es el mismo contenido mirado por otra rendija: lo que se lista aquí ya estaba
+// en los mensajes que ese mismo guard deja leer.
+//
+// El cursor es el mismo `before` del historial, y la respuesta trae el suyo
+// dentro: una página aquí es una ventana de canal, no de resultados, así que
+// puede volver corta sin que se haya acabado. Ver `domain.ChatMediaPage`.
+func (h *taskHandler) ChatMedia(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	page, err := h.chat.Media(sp.ID, r.URL.Query().Get("q"), chatBefore(r),
+		atoiDefault(r.URL.Query().Get("limit"), 50))
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to read the channel", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ChatMediaPage]{Success: true, Data: page})
+}
+
+func (h *taskHandler) ChatLinks(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	page, err := h.chat.Links(sp.ID, r.URL.Query().Get("q"), chatBefore(r),
+		atoiDefault(r.URL.Query().Get("limit"), 50))
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to read the channel", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ChatLinkPage]{Success: true, Data: page})
+}
+
+// chatBefore lee el cursor de la consulta. Lo que no se entienda es «desde el
+// final», que es la primera página — no un error que dejaría la pestaña en
+// blanco por una marca mal escrita.
+func chatBefore(r *http.Request) time.Time {
+	if raw := r.URL.Query().Get("before"); raw != "" {
+		if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
 // ─── Attachments ──────────────────────────────────────────────────────────────
 
 // UploadChatAttachment proxies an image through image-service, exactly like a
@@ -305,6 +353,12 @@ func mapChatError(w http.ResponseWriter, err error) bool {
 	switch {
 	case err == nil:
 		return false
+	case errors.Is(err, service.ErrNotAUserMessage):
+		// Su propio código, distinto de `not-the-author`: la app esconde el
+		// menú entero en una línea del sistema, en vez de ofrecer uno que
+		// siempre falla. Un 403 genérico no le permitiría distinguirlo.
+		SendErrorResponse(w, http.StatusForbidden,
+			"This line was written by cac, not by a person.", "not-a-user-message")
 	case errors.Is(err, service.ErrNotTheAuthor):
 		SendErrorResponse(w, http.StatusForbidden,
 			"Only the person who wrote this can change it.", "not-the-author")

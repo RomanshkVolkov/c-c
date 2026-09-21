@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -374,4 +376,57 @@ type MuxTrack struct {
 	StartedAtNs int64  `json:"startedAtNs"`
 	EndedAtNs   int64  `json:"endedAtNs"`
 	Bytes       int64  `json:"bytes"`
+}
+
+// ─── Lo que se dice en el canal ──────────────────────────────────────────────
+
+// RecordingAnnouncement es la línea que se pone en el canal cuando una
+// grabación queda lista: el markdown del canal y la frase plana de la bandeja.
+//
+// Dos cosas que decidir aquí, y las dos tienen respuesta:
+//
+//   - **En inglés.** Un mensaje de chat es una fila que leen varias personas a
+//     la vez, así que no hay «el idioma de quien lo lee» que elegir como sí lo
+//     hay en la bandeja (ver `core/i18n`): se escribe una vez, en el idioma
+//     base del producto, como el mensaje de una persona.
+//   - **Sin nombrar a nadie, y sin primera persona.** La fila lleva de autor a
+//     quien grabó, así que una app que no conoce `kind` la pinta firmada por
+//     esa persona — y la frase tiene que leerse bien de las dos maneras:
+//     firmada («Jose: The recording…») y sin firma. Un «I stopped the
+//     recording» sería mentira en la app nueva, y un «Jose's recording is
+//     ready» diría el nombre dos veces en la vieja.
+//
+// El enlace va con el esquema `cac:` que este repo ya decidió para apuntar a
+// algo de dentro desde dentro de un cuerpo (ver `domain/refs.go`): lo encuentra
+// el buscador, lo pinta el `onInternalLink` que el canal ya tiene para tarjetas
+// y documentos, y no colisiona con ninguna ruta.
+//
+// Devuelve dos cadenas vacías para un estado del que no hay nada que contar —
+// una grabación fallida no es una novedad que merezca interrumpir a nadie, y ya
+// tiene su sitio en el panel.
+func RecordingAnnouncement(id string, status RecordingStatus, durationMs int64) (body, notice string) {
+	var what string
+	switch status {
+	case RecordingReady:
+		what = "The recording of this call is ready"
+	case RecordingPartial:
+		// Se dice aquí y no sólo en el panel: quien abra el enlace tiene
+		// derecho a saber que falta alguien antes de fiarse de lo que oye.
+		what = "The recording of this call is ready, with a missing track"
+	default:
+		return "", ""
+	}
+	if d := RecordingLength(durationMs); d != "" {
+		what += " · " + d
+	}
+	return what + " — [watch it](" + RecordingRef(id) + ").", what + "."
+}
+
+// RecordingLength: `12:34`, o vacío si todavía no se sabe cuánto duró.
+func RecordingLength(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	total := ms / 1000
+	return strconv.FormatInt(total/60, 10) + ":" + fmt.Sprintf("%02d", total%60)
 }

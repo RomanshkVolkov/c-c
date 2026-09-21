@@ -58,6 +58,17 @@ func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		repository.GetEnv("RECORDINGS_PREFIX", domain.RecordingPrefixDefault),
 		repository.GetEnv("RECORDINGS_ENABLED", "false") == "true",
 		atoiOr(repository.GetEnv("RECORDINGS_MAX_MINUTES", "240"), 240),
+	).WithAnnouncer(
+		// El canal del espacio, para contar ahí que la grabación quedó lista.
+		// Se construye uno propio en vez de compartir el de `InitTaskRoutes`
+		// —igual que `InitMeetingRoutes` se construye su buzón— porque el
+		// servicio no tiene estado: es un repositorio y dos colaboradores.
+		//
+		// **Con el buzón puesto**, que es la mitad de lo que esto viene a
+		// arreglar: sin él la línea aparecería en el canal y no avisaría a
+		// nadie, que es exactamente el problema de partida.
+		service.NewChatService(repository.NewChatRepository(db), hub).
+			WithNotifier(service.NewNotificationService(repository.NewNotificationRepository(db))),
 	)
 	h := handler.NewRecordingHandler(svc, repository.NewTaskRepository(db))
 

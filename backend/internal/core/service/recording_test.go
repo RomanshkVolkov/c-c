@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -910,5 +911,81 @@ func TestTwoReplicasThatReadTheSameLeaseOnlyOneWrites(t *testing.T) {
 	}
 	if segunda {
 		t.Fatal("la segunda escribió sobre la reserva de la primera")
+	}
+}
+
+// ─── Contarlo en el canal ────────────────────────────────────────────────────
+
+// spyAnnouncer cuenta cuántas líneas se pusieron, y con qué.
+type spyAnnouncer struct {
+	bodies  []string
+	notices []string
+	fails   error
+}
+
+func (a *spyAnnouncer) PostSystem(spaceID, orgID, actorID, body, notice string) (*domain.ChatMessage, error) {
+	if a.fails != nil {
+		return nil, a.fails
+	}
+	a.bodies = append(a.bodies, body)
+	a.notices = append(a.notices, notice)
+	return &domain.ChatMessage{}, nil
+}
+
+// Se anuncia exactamente una vez.
+//
+// Una grabación lista se cuenta en el canal, y **sólo se cuenta una vez**: dos
+// mux montando la misma, o el mismo reintentando tras un tiempo de espera, son
+// dos llamadas a `MuxReady` para un mismo hecho. Quien lo garantiza no es este
+// código sino el `UPDATE` condicional de `Transition`, que ya es
+// exactamente-una-vez; el anuncio lo hereda **por estar detrás de él**.
+//
+// Los mutantes que matan: anunciar antes de `Transition`, o ignorar su `ok`.
+// Los dos dejan la grabación exactamente igual de bien montada y el canal con
+// una línea por intento.
+func TestItIsAnnouncedExactlyOnce(t *testing.T) {
+	svc, repo, sfu := servicioConUnaPista(t)
+	spy := &spyAnnouncer{}
+	svc.WithAnnouncer(spy)
+	rec := dejarParaMontar(t, svc, repo, sfu)
+
+	for i := 0; i < 3; i++ {
+		if err := svc.MuxReady(rec.ID, "recordings/o/s/r/final.m4a", "audio/mp4", 100, 754_000, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(spy.bodies) != 1 {
+		t.Fatalf("tres montajes del mismo hecho, una sola línea en el canal; hubo %d: %+v",
+			len(spy.bodies), spy.bodies)
+	}
+	// Y apunta a la grabación con el esquema de dentro, que es lo que hace que
+	// el enlace abra la pestaña en vez de sacar a nadie al navegador.
+	if !strings.Contains(spy.bodies[0], domain.RecordingRef(rec.ID)) {
+		t.Errorf("la línea apunta a la grabación: %q", spy.bodies[0])
+	}
+	// El aviso de la bandeja va aparte y sin markdown: ahí nadie lo pinta.
+	if strings.Contains(spy.notices[0], "](") {
+		t.Errorf("el aviso es una frase plana: %q", spy.notices[0])
+	}
+}
+
+// Y si el canal falla, la grabación sigue montada.
+//
+// El anuncio es lo último y su fallo no se propaga: devolvérselo al mux le haría
+// volver a montar un fichero ya montado para arreglar un mensaje de chat.
+func TestAFailedAnnouncementDoesNotSinkTheRecording(t *testing.T) {
+	svc, repo, sfu := servicioConUnaPista(t)
+	svc.WithAnnouncer(&spyAnnouncer{fails: errors.New("el canal no está")})
+	rec := dejarParaMontar(t, svc, repo, sfu)
+
+	if err := svc.MuxReady(rec.ID, "recordings/o/s/r/final.m4a", "audio/mp4", 100, 1000, false); err != nil {
+		t.Fatalf("el montaje es lo que importa, y salió bien: %v", err)
+	}
+	after, err := repo.FindByID(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Status != domain.RecordingReady {
+		t.Errorf("la grabación queda lista aunque nadie se entere: %q", after.Status)
 	}
 }

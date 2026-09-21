@@ -89,7 +89,7 @@ func TestAWithdrawnMessageLeavesTheChannelButNotTheRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs, err := repo.List("space-1", time.Time{}, 50)
+	msgs, err := repo.List("space-1", "", time.Time{}, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestTheChannelReadsFromTheBottom(t *testing.T) {
 		time.Sleep(2 * time.Millisecond) // distinct timestamps
 	}
 
-	last2, err := repo.List("space-1", time.Time{}, 2)
+	last2, err := repo.List("space-1", "", time.Time{}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestTheChannelReadsFromTheBottom(t *testing.T) {
 	}
 
 	// Scrolling up asks for what came before the oldest one on screen.
-	older, err := repo.List("space-1", last2[0].CreatedAt, 10)
+	older, err := repo.List("space-1", "", last2[0].CreatedAt, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

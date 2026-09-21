@@ -53,6 +53,21 @@ type ChatMessage struct {
 	// borrowing it would suggest an outsider could ever write in this table.
 	AuthorUserID string `gorm:"type:varchar(36);index;not null" json:"authorUserId"`
 	Body         string `gorm:"type:text;not null"             json:"body"`
+	// Kind says whether a person wrote this line or cac put it there.
+	//
+	// It discriminates the **message**, not the author, and that distinction is
+	// the whole reason it is allowed to exist next to the comment above. An
+	// `author_kind: user|reporter|tenant` would suggest an outsider can write
+	// in this table, which is exactly what that comment forbids; this says
+	// nothing about who may write, only about who did. `ItemComment.Kind` is
+	// the same shape for the same reason.
+	//
+	// AuthorUserID stays a real person even here — whoever's action produced
+	// the line. Not because of the `not null`: because an app that predates
+	// this column ignores it and renders the line as an ordinary message
+	// signed by that person, which reads correctly as long as the prose does.
+	// That is what makes this deployable before the app that understands it.
+	Kind ChatKind `gorm:"type:varchar(12);not null;default:'user'" json:"kind"`
 	// Withdrawing hides; it does not destroy. The same choice the item threads
 	// made — and the read below has to filter it explicitly, because a message
 	// that stayed on screen after being deleted is a bug this codebase has
@@ -60,6 +75,18 @@ type ChatMessage struct {
 	DeletedAt gorm.DeletedAt `gorm:"index;index:idx_chat_space_time,priority:3" json:"-"`
 	CreatedAt time.Time      `gorm:"index:idx_chat_space_time,priority:2"      json:"createdAt"`
 }
+
+// ChatKind: who is speaking.
+//
+// Only the service writes `system`, through PostSystem, and no request carries
+// this field. A line that claims to be from cac has to be impossible to forge
+// from outside, or it means nothing.
+type ChatKind string
+
+const (
+	ChatKindUser   ChatKind = "user"
+	ChatKindSystem ChatKind = "system"
+)
 
 // ChatRead is how far someone has read in a channel.
 //
@@ -110,9 +137,60 @@ type ChatMessageResponse struct {
 	SpaceID      string    `json:"spaceId"`
 	AuthorUserID string    `json:"authorUserId"`
 	AuthorName   string    `json:"authorName"`
+	Kind         ChatKind  `json:"kind"`
 	Body         string    `json:"body"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+// ─── What the channel's tabs list ─────────────────────────────────────────────
+//
+// Both of these are **derived from message bodies**, not stored. See
+// domain/refs.go for why there is no join table, and repository/chat.go for how
+// a page of them is read.
+
+// ChatMediaItem is one file a live message in this channel shows.
+type ChatMediaItem struct {
+	ID          string `json:"id"`
+	URL         string `json:"url"`
+	FileName    string `json:"fileName"`
+	ContentType string `json:"contentType,omitempty"`
+	Bytes       int64  `json:"bytes,omitempty"`
+	// MessageID and PostedAt say which line this came off. Without them the tab
+	// is a wall of thumbnails with no way back to what was being said about
+	// them, which is usually the thing somebody is actually looking for.
+	MessageID  string    `json:"messageId"`
+	PostedAt   time.Time `json:"postedAt"`
+	AuthorName string    `json:"authorName,omitempty"`
+}
+
+// ChatLinkItem is one URL a live message in this channel points at.
+type ChatLinkItem struct {
+	URL string `json:"url"`
+	// Label is the words the link was given — `[the runbook](https://…)`. A
+	// list of forty bare URLs is a list nobody reads.
+	Label      string    `json:"label,omitempty"`
+	MessageID  string    `json:"messageId"`
+	PostedAt   time.Time `json:"postedAt"`
+	AuthorName string    `json:"authorName,omitempty"`
+}
+
+// ChatMediaPage / ChatLinkPage: a page, and where to continue from.
+//
+// The cursor is explicit rather than "the last item's timestamp" because a page
+// here is a page **of channel**, not of items: it is a window of messages that
+// happened to cite something, so it can come back short — or, at the very edge,
+// empty — while there is still channel behind it. With only the items to go on,
+// the tab would stop scrolling at the first such window and quietly hide the
+// rest of the history.
+type ChatMediaPage struct {
+	Items  []ChatMediaItem `json:"items"`
+	Before *time.Time      `json:"before,omitempty"`
+}
+
+type ChatLinkPage struct {
+	Items  []ChatLinkItem `json:"items"`
+	Before *time.Time     `json:"before,omitempty"`
 }
 
 // ChatUnread is one space's unread count for the badge in the navigator.
