@@ -57,6 +57,68 @@ para montar caras que nadie va a mirar.
 | 2 | Mux (`recordings-mux`) + proxy con `Range` | **escrita y probada de punta a punta** |
 | 3 | App: consentimiento, chip REC, panel de grabaciones | **hecha**, sin verificar a mano en la app |
 | 4 | Endurecer, y el puente a la transcripción | no empezada |
+| 5 | La grabación en el canal, las pestañas y buscar dentro | **escrita**, sin verificar a mano |
+
+### La grabación en el canal, y las pestañas (21-sep-2026)
+
+Grabar funcionaba de punta a punta y **no avisaba a nadie**: una grabación sólo
+existía si alguien abría el panel a buscarla. Y el panel era una alternancia con
+el hilo, un apaño que lo decía en su propio comentario.
+
+| # | Qué | Dónde |
+|---|---|---|
+| 0 | Pestañas —Conversación / Multimedia / Grabaciones / Enlaces— en vez de la alternancia | `ChannelView.tsx` |
+| 1 | `ChatMessage.Kind` (`user\|system`), `PostSystem`, y las guardas de `Edit`/`Withdraw` | `domain/chat.go`, `service/chat.go` |
+| 2 | `MuxReady` lo cuenta en el canal, **detrás** de `Transition` | `service/recording.go` |
+| 3 | La app ramifica por `kind`: sin firma, sin desplegable | `ChannelView.tsx` |
+| 4-5 | Multimedia y Enlaces, sacados de los cuerpos al leer | `domain/refs.go`, `repository/chat.go` |
+
+Lo que decidió el diseño, y no cabía en un comentario suelto:
+
+- **`kind` del mensaje, no del autor.** El veto de `domain/chat.go` es al autor
+  discriminado (`user|reporter|tenant`), que sugeriría que un cliente puede
+  escribir aquí. `ItemComment.Kind` es el precedente exacto.
+- **`AuthorUserID` sigue siendo quien grabó.** No por el `not null`: porque una
+  app vieja ignora `kind` y pinta la línea firmada por esa persona, y así se lee
+  bien. Eso es lo que la hace desplegable antes que la app.
+- Y de ahí sale la guarda: con ese autor, `mine` es cierto para quien grabó, así
+  que **vería Editar y Retirar sobre el mensaje del sistema**. Se rechaza antes
+  de mirar la autoría, y el superadmin tampoco pasa — esto es un registro.
+- **Multimedia y Enlaces no tienen tabla.** Se leen de los cuerpos: un borrador
+  abandonado es invisible por construcción, y retirar un mensaje retira sus
+  imágenes. El `LIKE` de la consulta sólo descarta barato; lo que define un
+  enlace es la regex, **en el servidor** — extraer en el cliente rompería la
+  paginación, la deduplicación y el rótulo de `[texto](url)`.
+
+**46 mutantes muertos**, por planes de `/mutar`:
+
+| Dónde | Nº | Los que más dicen |
+|---|---|---|
+| `domain` | 9 | el paréntesis del enlace, el uuid abierto a `.+`, la deduplicación, el anuncio en primera persona |
+| `service` + `repository` | 14 | `m.kind` fuera del `Select` literal, las dos guardas **y su orden**, el prefijo de autor, el `deleted_at`, el `space_id`, el cursor |
+| la búsqueda (servidor) | 7 | buscar saliéndose del canal, el acierto del enlace confundido con el del mensaje, multimedia estrechando por el cuerpo |
+| `card-menu` | 3 | el prefijo laxo, el uuid abierto |
+| `ChannelView` | 6 | el desplegable gobernado sólo por `mine` |
+| `Markdown` | 2 | quitar el `urlTransform`, o abrirlo a cualquier protocolo |
+| la búsqueda (app) | 5 | filtrar en el cliente en vez de mandar `q` |
+
+Y de paso, un fallo que llevaba ahí desde las menciones: **react-markdown vaciaba
+el `href` de todo lo que empezara por `cac:`**, así que `onInternalLink` nunca
+veía una mención y el clic se caía a la rama de los adjuntos. Guardián en
+`enlaces.test.tsx`.
+
+**Paso 6, buscar dentro del canal**: hecho, y en el servidor. Una caja en la
+fila de pestañas que modifica la activa, con `?q=` sobre el hilo, multimedia y
+enlaces. `LOWER(…) LIKE`, que es la decisión ya tomada en `note.go:250`; nada
+de esto la revisa. Dos matices que tienen guardián: el acierto de un enlace lo
+decide **el enlace**, no el mensaje que lo contiene (el `LIKE` del cuerpo es
+sólo descarte barato, y casa de más), y multimedia se busca por el **nombre del
+fichero**, que no está en el texto — estrechar ahí la ventana por el cuerpo
+perdería aciertos en silencio. La consulta se vacía al cambiar de pestaña:
+«factura» quiere decir otra cosa en Multimedia que en la conversación.
+
+Buscar **globalmente** sigue fuera: eso es la paleta, es org-wide y sin ancla,
+y contesta otra pregunta.
 
 Lo que ya está desplegado y no se toca: SFU y Egress con la versión pineada por
 digest, bus Valkey propio con su `CiliumNetworkPolicy`, y un usuario IAM que

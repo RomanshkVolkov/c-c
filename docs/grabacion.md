@@ -457,6 +457,49 @@ para reintentarlo y la transcripción de mañana.
 
 Y no tiene ninguna credencial de cac: una llave y un puerto.
 
+## La grabación deja de ser algo que hay que ir a buscar (21-sep-2026)
+
+Con las fases 0–3 desplegadas, grabar funcionaba de punta a punta y **no
+avisaba a nadie**: el resultado vivía en un panel que había que abrir a
+propósito, así que una grabación existía sólo para quien se acordara de mirar.
+Y ese panel era una alternancia con el hilo del canal — un apaño que lo decía
+en su propio comentario, porque el carril derecho ya estaba ocupado.
+
+Al quedar montada, `MuxReady` pone una línea en el canal del espacio. Tres
+decisiones que no se ven en el diff:
+
+- **Es un `kind` del mensaje, no un autor discriminado.** `domain/chat.go` veta
+  desde el primer día un `author_kind: user|reporter|tenant`, porque sugeriría
+  que un cliente puede escribir en esa tabla. Esto no dice quién *puede*
+  escribir, dice quién escribió — la misma forma que `ItemComment.Kind`.
+- **`AuthorUserID` sigue siendo quien grabó**, y no por el `not null`: una app
+  anterior a la columna ignora `kind` y pinta la línea como un mensaje normal
+  firmado por esa persona. La prosa está escrita para leerse bien de las dos
+  maneras, y eso es lo que permite desplegar el backend antes que la app — que
+  es el orden que `/soltar` exige.
+- **Se anuncia detrás de `Transition`, no delante.** Ese `UPDATE` condicional ya
+  era exactamente-una-vez para que dos montadores no cerraran la misma
+  grabación; el anuncio hereda esa propiedad por colgarse de él en vez de
+  llevar marca propia. Si el anuncio falla después, se pierde y se registra: la
+  alternativa sería devolverle el error al mux, que volvería a montar un fichero
+  ya montado para arreglar un mensaje de chat.
+
+Y de ahí salió el agujero que había que tapar: con ese autor, la app da por
+**tuyo** el aviso de tu propia grabación, así que quien grabó vería Editar y
+Retirar encima. `Edit`/`Withdraw` rechazan `Kind != user` **antes** de mirar la
+autoría —el superadmin tampoco pasa, esto es un registro— y la app esconde el
+desplegable entero.
+
+El panel pasó a ser una pestaña, junto a Conversación, Multimedia y Enlaces,
+todas con búsqueda dentro del canal. Multimedia y Enlaces **no tienen tabla**:
+se leen de los propios cuerpos al listar, lo que da gratis que un adjunto subido
+y nunca enviado sea invisible, y que retirar un mensaje se lleve sus imágenes.
+
+De paso apareció un fallo viejo: react-markdown vaciaba el `href` de todo lo que
+empezara por `cac:`, así que el `onInternalLink` del canal nunca llegó a ver una
+mención y esos clics caían a la rama de los adjuntos. Sin ese arreglo, el enlace
+`cac:recording/<uuid>` de la línea nueva tampoco habría abierto nada.
+
 ## Lo que falta medir — lo que queda de la puerta
 
 Lo de la alineación ya está cerrado arriba. Queda lo que sólo se puede medir con
