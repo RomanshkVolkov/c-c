@@ -12,11 +12,12 @@ import { GripVertical } from "lucide-react";
 
 import { fecha, mesYAno } from "@/lib/fechas";
 import {
-  claveDeDia as dayKey,
-  comoISO,
-  inicialesDeLaSemana,
-  rejillaDeMes,
-} from "@/lib/mes";
+  dayKey,
+  toISODate,
+  fromISODate,
+  weekdayInitials,
+  monthGrid,
+} from "@/lib/month";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -31,20 +32,37 @@ import { Button } from "@/components/ui/button";
  * The caller says what colour each dot is, so the board can colour by column
  * without this file knowing what a column is.
  */
-export interface CalendarItem {
+export interface CalendarEntry {
   id: string;
   title: string;
-  /**
-   * The day this sits on. Named for what it is and not for `createdAt`, which
-   * is what it used to be: one caller places work by when it was raised and
-   * another by when it is due, and a field that says the wrong one of those is
-   * a small lie that costs somebody an hour later.
-   */
-  at: string;
   /** Tailwind class for the dot; the caller owns what the colours mean. */
   dotClass: string;
   /** A short prefix — a folio, a number — shown before the title. */
   label?: string;
+}
+
+/**
+ * An entry placed on a day, saying **which kind** of date it carries.
+ *
+ * Una sola `at` para todo es lo que torció el calendario de «Mi trabajo»: un
+ * vencimiento es una **fecha** (el día a medianoche UTC) y una reunión es un
+ * **instante**, y leídos igual uno de los dos sale mal. Con captadores locales,
+ * el vencimiento del 30 se pinta el 29 al oeste de Greenwich; con captadores
+ * UTC, la reunión de las 20:00 del 29 en Querétaro se pinta el 30. Las dos
+ * lecturas son correctas para datos distintos, y este componente no puede
+ * adivinar cuál le dan — así que el tipo obliga al llamante a decirlo.
+ *
+ * - `day`: `YYYY-MM-DD`, un día sin hora ni zona. Nunca pasa por `new Date()`.
+ * - `at`: RFC3339, un momento concreto; cae en el día **local** de quien mira.
+ */
+export type CalendarItem = CalendarEntry &
+  ({ day: string; at?: never } | { at: string; day?: never });
+
+/** El día local en que se pinta, según qué clase de fecha lleve. */
+function localDayOf(item: CalendarItem): Date | null {
+  if (item.day !== undefined) return fromISODate(item.day);
+  const d = new Date(item.at);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /**
@@ -53,11 +71,11 @@ export interface CalendarItem {
  * Tres es lo que entra sin que la fila crezca de más. El resto no desaparece:
  * sale un «+N more» que abre el día entero debajo.
  */
-const MAX_POR_DIA = 3;
+const MAX_PER_DAY = 3;
 
 export default function ItemCalendar({
   items,
-  sinFecha = [],
+  undated = [],
   onSchedule,
   onOpen,
   countKey = "common:count.items",
@@ -71,7 +89,7 @@ export default function ItemCalendar({
    * cabecera seguía diciendo sesenta y cinco. Un calendario que esconde el 98%
    * de lo que hay no está filtrando, está mintiendo.
    */
-  sinFecha?: CalendarItem[];
+  undated?: CalendarEntry[];
   /**
    * Poner fecha arrastrando una tarjeta de la tira a un día.
    *
@@ -101,12 +119,12 @@ export default function ItemCalendar({
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
   const [selected, setSelected] = useState<string | null>(null);
-  const [arrastrando, setArrastrando] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
   // Los mismos sensores que el tablero: puntero **y teclado**. El arrastre HTML5
   // nativo no tiene lo segundo, y esta es la única forma de poner una fecha sin
   // abrir la tarjeta — dejarla fuera del teclado la haría inalcanzable para
   // quien no usa ratón.
-  const sensores = useSensors(
+  const sensors = useSensors(
     // Ocho píxeles antes de considerarlo arrastre: sin el umbral, un clic con la
     // mano poco firme mueve la tarjeta en vez de abrirla.
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -116,15 +134,17 @@ export default function ItemCalendar({
   const byDay = useMemo(() => {
     const m = new Map<string, CalendarItem[]>();
     for (const r of items) {
-      const k = dayKey(new Date(r.at));
+      const d = localDayOf(r);
+      if (!d) continue;
+      const k = dayKey(d);
       (m.get(k) ?? m.set(k, []).get(k)!).push(r);
     }
     return m;
   }, [items]);
 
-  // La rejilla vive en `lib/mes`: la usan este calendario y el selector de
+  // La rejilla vive en `lib/month`: la usan este calendario y el selector de
   // fecha, y es aritmética llena de bordes que se prueba mejor sola.
-  const cells = useMemo(() => rejillaDeMes(cursor), [cursor]);
+  const cells = useMemo(() => monthGrid(cursor), [cursor]);
 
   const monthLabel = mesYAno(cursor);
   const today = dayKey(new Date());
@@ -148,35 +168,35 @@ export default function ItemCalendar({
       </div>
 
       <DndContext
-        sensors={sensores}
+        sensors={sensors}
         collisionDetection={pointerWithin}
-        onDragStart={(e) => setArrastrando(String(e.active.id))}
+        onDragStart={(e) => setDragging(String(e.active.id))}
         onDragEnd={(e) => {
-          setArrastrando(null);
+          setDragging(null);
           // `over` es el día sobre el que se soltó; su id **es** la fecha.
           if (onSchedule && e.over) onSchedule(String(e.active.id), String(e.over.id));
         }}
-        onDragCancel={() => setArrastrando(null)}
+        onDragCancel={() => setDragging(null)}
       >
       <div className="grid grid-cols-7 gap-px rounded-lg overflow-hidden border bg-border">
-        {inicialesDeLaSemana().map((w) => (
+        {weekdayInitials().map((w) => (
           <div key={w} className="bg-muted px-2 py-1 text-center text-xs font-medium text-muted-foreground">
             {w}
           </div>
         ))}
         {cells.map((d, i) => {
           const k = dayKey(d);
-          const delDia = byDay.get(k) ?? [];
+          const dayItems = byDay.get(k) ?? [];
           const inMonth = d.getMonth() === cursor.getMonth();
-          const visibles = delDia.slice(0, MAX_POR_DIA);
-          const ocultos = delDia.length - visibles.length;
+          const shown = dayItems.slice(0, MAX_PER_DAY);
+          const hidden = dayItems.length - shown.length;
           return (
             // Una celda y no un botón: dentro va uno por elemento, y anidar
             // botones no es HTML válido — el de fuera se comería sus clics.
-            <Dia
+            <DayCell
               key={i}
-              iso={comoISO(d)}
-              aceptaSoltar={!!onSchedule && arrastrando !== null}
+              iso={toISODate(d)}
+              acceptsDrop={!!onSchedule && dragging !== null}
               className={`flex min-h-[104px] flex-col gap-0.5 bg-background p-1.5 align-top ${
                 inMonth ? "" : "opacity-40"
               } ${k === selected ? "ring-1 ring-inset ring-primary/60" : ""}`}
@@ -196,7 +216,7 @@ export default function ItemCalendar({
                   esquina, y para saber **qué** había que hacer clic en el día. Un
                   calendario que no dice qué tienes ese día obliga a abrir los
                   treinta y uno para enterarse. */}
-              {visibles.map((r) => (
+              {shown.map((r) => (
                 <button
                   key={r.id}
                   onClick={() => onOpen(r.id)}
@@ -213,33 +233,33 @@ export default function ItemCalendar({
 
               {/* Lo que no cabe se dice, no se esconde: sin esto, un día con seis
                   cosas se lee como un día con tres. */}
-              {ocultos > 0 && (
+              {hidden > 0 && (
                 <button
                   onClick={() => setSelected(k === selected ? null : k)}
                   className="rounded px-1 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
-                  +{ocultos} more
+                  +{hidden} more
                 </button>
               )}
-            </Dia>
+            </DayCell>
           );
         })}
       </div>
 
-      {/* Lo que no tiene fecha, debajo y a mano. Ver el comentario de `sinFecha`. */}
-      {sinFecha.length > 0 && (
+      {/* Lo que no tiene fecha, debajo y a mano. Ver el comentario de `undated`. */}
+      {undated.length > 0 && (
         <div className="rounded-lg border p-3">
           <p className="mb-2 text-xs text-muted-foreground">
             {onSchedule
-              ? t("common:calendar.undatedDrag", { count: sinFecha.length })
-              : t("common:calendar.undated", { count: sinFecha.length })}
+              ? t("common:calendar.undatedDrag", { count: undated.length })
+              : t("common:calendar.undated", { count: undated.length })}
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {sinFecha.map((r) => (
-              <SinFecha
+            {undated.map((r) => (
+              <UndatedChip
                 key={r.id}
                 item={r}
-                arrastrable={!!onSchedule}
+                draggable={!!onSchedule}
                 onOpen={() => onOpen(r.id)}
               />
             ))}
@@ -251,7 +271,7 @@ export default function ItemCalendar({
       {selected && selectedItems.length > 0 && (
         <div className="rounded-lg border p-3 space-y-2">
           <p className="text-sm font-medium">
-            {fecha(selectedItems[0].at)} ·{" "}
+            {fecha(localDayOf(selectedItems[0]))} ·{" "}
             {t(countKey, { count: selectedItems.length })}
           </p>
           {selectedItems.map((r) => (
@@ -272,18 +292,18 @@ export default function ItemCalendar({
 }
 
 /** Un día del mes, que además puede recibir una tarjeta soltada encima. */
-function Dia({
+function DayCell({
   iso,
-  aceptaSoltar,
+  acceptsDrop,
   className,
   children,
 }: {
   iso: string;
-  aceptaSoltar: boolean;
+  acceptsDrop: boolean;
   className: string;
   children: React.ReactNode;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: iso, disabled: !aceptaSoltar });
+  const { setNodeRef, isOver } = useDroppable({ id: iso, disabled: !acceptsDrop });
   return (
     <div
       ref={setNodeRef}
@@ -301,18 +321,18 @@ function Dia({
  * bloque arrastrable, abrir una tarjeta se convierte en una apuesta sobre si la
  * mano se movió tres píxeles.
  */
-function SinFecha({
+function UndatedChip({
   item,
-  arrastrable,
+  draggable,
   onOpen,
 }: {
-  item: CalendarItem;
-  arrastrable: boolean;
+  item: CalendarEntry;
+  draggable: boolean;
   onOpen: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id,
-    disabled: !arrastrable,
+    disabled: !draggable,
   });
   return (
     <span
@@ -322,7 +342,7 @@ function SinFecha({
         isDragging ? "z-50 opacity-80 shadow-lg" : ""
       }`}
     >
-      {arrastrable && (
+      {draggable && (
         <button
           {...listeners}
           {...attributes}

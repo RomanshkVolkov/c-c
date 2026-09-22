@@ -53,7 +53,7 @@ python3 .claude/skills/mutar/mutar.py /tmp/plan.json
   la frase que se lee en la tabla, no un identificador.
 
 Para el lado TypeScript, lo mismo con `"cwd": "app"` y
-`"test": "npx vitest run src/lib/mes.test.ts"`. Apunta el test **al fichero que
+`"test": "npx vitest run src/lib/month.test.ts"`. Apunta el test **al fichero que
 importa**: correr la suite entera por cada mutante multiplica la espera sin
 añadir información.
 

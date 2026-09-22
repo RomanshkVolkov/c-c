@@ -46,7 +46,7 @@ import { commentByline } from "@/lib/byline";
 import DecisionForm, { type DecisionDraft } from "@/components/docs/DecisionForm";
 import { describeAgent } from "@/lib/user-agent";
 import DatePicker from "@/components/DatePicker";
-import { comoISO, diaDeVencimiento } from "@/lib/mes";
+import { toISODate, dueDay } from "@/lib/month";
 import { useTasksStore } from "@/store/tasks.store";
 import { usePeopleStore } from "@/store/people.store";
 import { mentionsAllowed } from "@/components/markdown/mention-scope";
@@ -1057,11 +1057,11 @@ function Content() {
           </span>
           <div>
             {/* `slice(0,10)` sobre el instante guardado daba el día anterior en
-                cualquier zona al oeste de Greenwich. Ver `diaDeVencimiento`. */}
+                cualquier zona al oeste de Greenwich. Ver `dueDay`. */}
             <DatePicker
               value={(() => {
-                const d = diaDeVencimiento(task.dueAt);
-                return d ? comoISO(d) : "";
+                const d = dueDay(task.dueAt);
+                return d ? toISODate(d) : "";
               })()}
               onChange={(v) =>
                 updateTask(task.id, {

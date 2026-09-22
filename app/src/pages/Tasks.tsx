@@ -1,5 +1,5 @@
 import { fecha } from "@/lib/fechas";
-import { diaDeVencimiento } from "@/lib/mes";
+import { dueDay } from "@/lib/month";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -445,7 +445,7 @@ function ListView({
                     )}
                     {t.dueAt && (
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {fecha(diaDeVencimiento(t.dueAt))}
+                        {fecha(dueDay(t.dueAt))}
                       </span>
                     )}
                     <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">

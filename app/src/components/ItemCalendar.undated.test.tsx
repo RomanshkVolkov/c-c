@@ -24,13 +24,13 @@ vi.mock("@dnd-kit/core", async () => {
 
 const ItemCalendar = (await import("@/components/ItemCalendar")).default;
 
-const conFecha = {
-  id: "a", title: "tiene fecha", at: "2026-09-07T00:00:00.000Z",
+const dated = {
+  id: "a", title: "tiene fecha", day: "2026-09-07",
   dotClass: "bg-primary", label: "#7",
 };
-const sin = (n: number) =>
+const undated = (n: number) =>
   Array.from({ length: n }, (_, i) => ({
-    id: `s${i}`, title: `sin fecha ${i}`, at: "", dotClass: "bg-muted", label: `#${100 + i}`,
+    id: `s${i}`, title: `sin fecha ${i}`, dotClass: "bg-muted", label: `#${100 + i}`,
   }));
 
 afterEach(cleanup);
@@ -38,7 +38,7 @@ afterEach(cleanup);
 describe("el calendario", () => {
   it("lista debajo lo que no tiene fecha, en vez de tragárselo", () => {
     render(
-      <ItemCalendar items={[conFecha]} sinFecha={sin(3)} onOpen={() => {}} onSchedule={() => {}} />,
+      <ItemCalendar items={[dated]} undated={undated(3)} onOpen={() => {}} onSchedule={() => {}} />,
     );
     expect(screen.getByText("sin fecha 0")).toBeTruthy();
     expect(screen.getByText("sin fecha 2")).toBeTruthy();
@@ -46,7 +46,7 @@ describe("el calendario", () => {
 
   it("y dice cuántas son", () => {
     render(
-      <ItemCalendar items={[conFecha]} sinFecha={sin(64)} onOpen={() => {}} onSchedule={() => {}} />,
+      <ItemCalendar items={[dated]} undated={undated(64)} onOpen={() => {}} onSchedule={() => {}} />,
     );
     expect(screen.getByText(/64/)).toBeTruthy();
   });
@@ -54,18 +54,18 @@ describe("el calendario", () => {
   // El calendario del tablero coloca por fecha de creación, y ésa no se cambia
   // arrastrando: sin `onSchedule` no debe insinuar que se pueda.
   it("sin poder programar, no invita a arrastrar", () => {
-    render(<ItemCalendar items={[conFecha]} sinFecha={sin(2)} onOpen={() => {}} />);
+    render(<ItemCalendar items={[dated]} undated={undated(2)} onOpen={() => {}} />);
     // Por la frase concreta y no por la palabra «drag»: dnd-kit pinta un texto
     // oculto de accesibilidad que también la lleva, y buscarla ahí daba un falso
     // positivo que no tenía nada que ver con lo que se está comprobando.
     expect(screen.queryByText(/onto a day|a un día/i)).toBeNull();
-    expect(screen.getByText(/^2 (with no date|sin fecha)$/i)).toBeTruthy();
+    expect(screen.getByText(/^2 (with no date|undated fecha)$/i)).toBeTruthy();
   });
 
   // Sin nada suelto no aparece la tira: una caja vacía que dice «0 sin fecha»
   // es ruido en la pantalla de quien lo tiene todo puesto.
   it("sin nada suelto no hay tira", () => {
-    render(<ItemCalendar items={[conFecha]} onOpen={() => {}} onSchedule={() => {}} />);
-    expect(screen.queryByText(/^\d+ (with no date|sin fecha)/i)).toBeNull();
+    render(<ItemCalendar items={[dated]} onOpen={() => {}} onSchedule={() => {}} />);
+    expect(screen.queryByText(/^\d+ (with no date|undated fecha)/i)).toBeNull();
   });
 });

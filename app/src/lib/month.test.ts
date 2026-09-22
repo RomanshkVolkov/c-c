@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { claveDeDia, comoISO, desdeISO, diaDeVencimiento, rejillaDeMes } from "@/lib/mes";
+import { dayKey, toISODate, fromISODate, dueDay, monthGrid } from "@/lib/month";
 
 /**
  * La aritmética de un mes.
@@ -13,7 +13,7 @@ import { claveDeDia, comoISO, desdeISO, diaDeVencimiento, rejillaDeMes } from "@
 describe("la rejilla de un mes", () => {
   it("son siempre 42 días, empiece el mes donde empiece", () => {
     for (const m of [0, 1, 5, 8, 11]) {
-      expect(rejillaDeMes(new Date(2026, m, 1))).toHaveLength(42);
+      expect(monthGrid(new Date(2026, m, 1))).toHaveLength(42);
     }
   });
 
@@ -25,23 +25,23 @@ describe("la rejilla de un mes", () => {
    */
   it("empieza en lunes", () => {
     for (const m of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
-      const primera = rejillaDeMes(new Date(2026, m, 1))[0];
-      expect(primera.getDay()).toBe(1);
+      const first = monthGrid(new Date(2026, m, 1))[0];
+      expect(first.getDay()).toBe(1);
     }
   });
 
   // Febrero de 2026 empieza en domingo: sin el desplazamiento de lunes, la
   // rejilla saldría corrida una semana entera.
   it("un mes que empieza en domingo no se corre", () => {
-    const feb = rejillaDeMes(new Date(2026, 1, 1));
+    const feb = monthGrid(new Date(2026, 1, 1));
     expect(feb[0].getDate()).toBe(26); // lunes 26 de enero
-    expect(feb.some((d) => claveDeDia(d) === claveDeDia(new Date(2026, 1, 1)))).toBe(true);
+    expect(feb.some((d) => dayKey(d) === dayKey(new Date(2026, 1, 1)))).toBe(true);
   });
 
   it("contiene el mes entero", () => {
-    const dias = rejillaDeMes(new Date(2026, 1, 1)).map(claveDeDia);
+    const days = monthGrid(new Date(2026, 1, 1)).map(dayKey);
     for (let d = 1; d <= 28; d++) {
-      expect(dias).toContain(claveDeDia(new Date(2026, 1, d)));
+      expect(days).toContain(dayKey(new Date(2026, 1, d)));
     }
   });
 });
@@ -49,7 +49,7 @@ describe("la rejilla de un mes", () => {
 describe("la ida y vuelta de una fecha", () => {
   it("va y vuelve al mismo día", () => {
     const d = new Date(2026, 8, 7);
-    expect(claveDeDia(desdeISO(comoISO(d))!)).toBe(claveDeDia(d));
+    expect(dayKey(fromISODate(toISODate(d))!)).toBe(dayKey(d));
   });
 
   /**
@@ -60,19 +60,19 @@ describe("la ida y vuelta de una fecha", () => {
    * Greenwich cae en el día anterior. Por eso se parsea a mano.
    */
   it("un día suelto no se convierte en el anterior", () => {
-    const d = desdeISO("2026-09-07")!;
+    const d = fromISODate("2026-09-07")!;
     expect(d.getFullYear()).toBe(2026);
     expect(d.getMonth()).toBe(8);
     expect(d.getDate()).toBe(7);
   });
 
   it("y se escribe con ceros a la izquierda", () => {
-    expect(comoISO(new Date(2026, 0, 5))).toBe("2026-01-05");
+    expect(toISODate(new Date(2026, 0, 5))).toBe("2026-01-05");
   });
 
   it("lo que no es una fecha no se inventa", () => {
-    expect(desdeISO("")).toBeNull();
-    expect(desdeISO("7/9/2026")).toBeNull();
+    expect(fromISODate("")).toBeNull();
+    expect(fromISODate("7/9/2026")).toBeNull();
   });
 });
 
@@ -89,18 +89,36 @@ describe("la ida y vuelta de una fecha", () => {
  */
 describe("el día de vencimiento", () => {
   it("es el que se eligió, en cualquier zona", () => {
-    const d = diaDeVencimiento("2026-09-07T00:00:00.000Z")!;
+    const d = dueDay("2026-09-07T00:00:00.000Z")!;
     expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 8, 7]);
   });
 
   it("y a medianoche local, para que restar días sea exacto", () => {
-    const d = diaDeVencimiento("2026-09-07T00:00:00.000Z")!;
+    const d = dueDay("2026-09-07T00:00:00.000Z")!;
     expect([d.getHours(), d.getMinutes()]).toEqual([0, 0]);
   });
 
   it("sin fecha no inventa ninguna", () => {
-    expect(diaDeVencimiento(null)).toBeNull();
-    expect(diaDeVencimiento("")).toBeNull();
-    expect(diaDeVencimiento("no soy una fecha")).toBeNull();
+    expect(dueDay(null)).toBeNull();
+    expect(dueDay("")).toBeNull();
+    expect(dueDay("no soy una fecha")).toBeNull();
+  });
+});
+
+/**
+ * `dayKey` lleva la zona dentro, aunque su comentario decía que no.
+ *
+ * Lee captadores locales: sobre un vencimiento crudo (medianoche UTC) da el día
+ * anterior al oeste de Greenwich. Eso fue lo que pintó en el 29 una tarea
+ * soltada en el 30. Se deja por escrito para que nadie la vuelva a usar sobre un
+ * instante creyendo que es neutral.
+ */
+describe("la clave de un día", () => {
+  it("sobre un instante UTC no es el día elegido al oeste de Greenwich", () => {
+    const raw = new Date("2026-09-30T00:00:00.000Z");
+    const westOfGreenwich = raw.getTimezoneOffset() > 0;
+    expect(dayKey(raw) === "2026-8-30").toBe(!westOfGreenwich);
+    // Resuelto antes con `dueDay`, sí, en cualquier zona.
+    expect(dayKey(dueDay(raw.toISOString())!)).toBe("2026-8-30");
   });
 });

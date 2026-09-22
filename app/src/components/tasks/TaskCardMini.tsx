@@ -1,5 +1,5 @@
 import { diaYMes } from "@/lib/fechas";
-import { diaDeVencimiento } from "@/lib/mes";
+import { dueDay } from "@/lib/month";
 import type { OpenTask } from "@/types/task";
 import { priorityMeta } from "@/types/task";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 /** Today, yesterday, or a short date. Overdue is the caller's to colour. */
 export function cuando(iso?: string | null): { texto: string; vencida: boolean } {
-  const d = diaDeVencimiento(iso);
+  const d = dueDay(iso);
   if (!d) return { texto: "", vencida: false };
   const hoy = new Date();
   const dia = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();

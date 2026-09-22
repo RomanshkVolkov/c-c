@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "eslint 'src/**/*.{ts,tsx}' && vitest run",
+    "test": "eslint 'src/**/*.{ts,tsx}' && TZ=America/Mexico_City vitest run",
+    "test:timezones": "s=0; for z in UTC America/Mexico_City Pacific/Auckland; do echo \"== TZ=$z\"; TZ=$z vitest run || s=1; done; exit $s",
     "test:watch": "vitest",
     "lint": "eslint 'src/**/*.{ts,tsx}'"
   },

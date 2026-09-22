@@ -10,13 +10,13 @@ import { Button } from "@/components/ui/button";
 import { fecha } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import {
-  claveDeDia,
-  comoISO,
-  desdeISO,
-  inicialesDeLaSemana,
-  mismoDia,
-  rejillaDeMes,
-} from "@/lib/mes";
+  dayKey,
+  toISODate,
+  fromISODate,
+  weekdayInitials,
+  isSameDay,
+  monthGrid,
+} from "@/lib/month";
 import { cn } from "@/lib/utils";
 
 /**
@@ -45,14 +45,14 @@ export default function DatePicker({
   placeholder?: string;
 }) {
   const { t } = useT();
-  const elegido = value ? desdeISO(value) : null;
+  const elegido = value ? fromISODate(value) : null;
   const [abierto, setAbierto] = useState(false);
   const [cursor, setCursor] = useState(() => {
     const base = elegido ?? new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
 
-  const dias = rejillaDeMes(cursor);
+  const dias = monthGrid(cursor);
   const hoy = new Date();
 
   return (
@@ -95,7 +95,7 @@ export default function DatePicker({
         </div>
 
         <div className="grid grid-cols-7 gap-0.5 text-center text-[11px] text-muted-foreground">
-          {inicialesDeLaSemana().map((d) => (
+          {weekdayInitials().map((d) => (
             <span key={d} className="py-1">
               {d}
             </span>
@@ -107,18 +107,18 @@ export default function DatePicker({
             // Los días de relleno se pintan apagados en vez de dejarse en blanco:
             // un hueco rompe la cuadrícula y cuesta seguir la fila con la vista.
             const deOtroMes = d.getMonth() !== cursor.getMonth();
-            const esElegido = !!elegido && mismoDia(d, elegido);
+            const esElegido = !!elegido && isSameDay(d, elegido);
             return (
               <button
-                key={claveDeDia(d)}
+                key={dayKey(d)}
                 onClick={() => {
-                  onChange(comoISO(d));
+                  onChange(toISODate(d));
                   setAbierto(false);
                 }}
                 className={cn(
                   "rounded py-1 text-xs tabular-nums hover:bg-accent",
                   deOtroMes && "text-muted-foreground/40",
-                  mismoDia(d, hoy) && "font-semibold text-primary",
+                  isSameDay(d, hoy) && "font-semibold text-primary",
                   esElegido && "bg-primary text-primary-foreground hover:bg-primary",
                 )}
               >

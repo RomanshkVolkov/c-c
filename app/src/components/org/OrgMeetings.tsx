@@ -14,7 +14,7 @@ import { useMeetingsStore, type Meeting, type MeetingDraft } from "@/store/meeti
 import ItemCalendar, { type CalendarItem } from "@/components/ItemCalendar";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
-import { horaDual, reglaLegible } from "@/lib/horas";
+import { dualTime, readableRule } from "@/lib/meeting-time";
 import { cn } from "@/lib/utils";
 import type { OrgMember } from "@/types/organization";
 
@@ -362,7 +362,7 @@ function Ficha({
   const setExcluded = useMeetingsStore((s) => s.setExcluded);
   const [abriendoGente, setAbriendoGente] = useState(false);
 
-  const { alla, aqui, mismaZona } = horaDual(m.nextFireAt, m.timezone);
+  const { there, here, sameZone } = dualTime(m.nextFireAt, m.timezone);
   const convocados = miembros.filter((x) => !m.excludedUserIds.includes(x.userId)).length;
 
   const alternarPersona = async (userId: string) => {
@@ -396,7 +396,7 @@ function Ficha({
           {m.title}
         </span>
         <Badge variant="secondary" className="text-[10px]">
-          {reglaLegible(m, t, lng)}
+          {readableRule(m, t, lng)}
         </Badge>
         {m.paused && (
           <Badge variant="outline" className="text-[10px]">
@@ -416,9 +416,9 @@ function Ficha({
           {/* Las dos horas: la suya y la tuya. Enseñar sólo una obliga a
               convertir de cabeza, que es donde la gente se equivoca al quedar. */}
           <dd className="mt-0.5">
-            <span className="font-medium">{alla}</span>
-            {!mismaZona && (
-              <span className="text-muted-foreground"> · {aqui} your time</span>
+            <span className="font-medium">{there}</span>
+            {!sameZone && (
+              <span className="text-muted-foreground"> · {here} your time</span>
             )}
           </dd>
         </div>

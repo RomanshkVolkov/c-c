@@ -23,6 +23,7 @@ import { priorityMeta } from "@/types/task";
 import type { OpenTask } from "@/types/task";
 import { normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { cn } from "@/lib/utils";
+import { dueCalendarItems } from "@/components/tasks/due-calendar";
 
 /**
  * Everything open, across every space, one question at a time.
@@ -53,7 +54,7 @@ const LENSES: { key: WorkLens; labelKey: MessageKey }[] = [
  * means the same thing in every list; grouping by column would invent as many
  * boards as there are lists.
  */
-const VISTAS = [
+const VIEWS = [
   { key: "list", labelKey: "work:myWork.view.list", icon: List },
   { key: "board", labelKey: "work:myWork.view.board", icon: KanbanSquare },
   { key: "calendar", labelKey: "work:myWork.view.calendar", icon: CalendarDays },
@@ -71,15 +72,15 @@ const VISTAS = [
  * hecha: un reporte se puede cerrar sin arreglarlo, y por la integración
  * server-to-server llegan así de verdad.
  */
-const ESTADOS: { status: ReportStatus; punto: string }[] = [
-  { status: "open", punto: "bg-muted-foreground" },
-  { status: "in_progress", punto: "bg-primary" },
-  { status: "done", punto: "bg-success" },
-  { status: "closed", punto: "bg-muted-foreground/60" },
+const STATUS_COLUMNS: { status: ReportStatus; dot: string }[] = [
+  { status: "open", dot: "bg-muted-foreground" },
+  { status: "in_progress", dot: "bg-primary" },
+  { status: "done", dot: "bg-success" },
+  { status: "closed", dot: "bg-muted-foreground/60" },
 ];
 
 /** Terminadas y cerradas sólo se piden cuando pides «todos los estados». */
-const CERRADOS: ReportStatus[] = ["done", "closed"];
+const FINISHED: ReportStatus[] = ["done", "closed"];
 
 /**
  * Mientras llega la lista, su forma.
@@ -89,7 +90,7 @@ const CERRADOS: ReportStatus[] = ["done", "closed"];
  * filas aparecen. Dos grupos porque esta pantalla agrupa por espacio, que es lo
  * primero que se reconoce al mirarla.
  */
-function CargandoTrabajo() {
+function WorkSkeleton() {
   return (
     <div aria-hidden className="space-y-5">
       {[0, 1].map((g) => (
@@ -113,16 +114,16 @@ export default function MyWork() {
   // Del store, no de la pantalla: es una preferencia de quien mira y tiene que
   // sobrevivir al arranque. Quien prefiere el kanban lo prefiere siempre, y
   // volver a la lista cada vez es pedirle el mismo clic todos los días.
-  const vista = useMyWorkStore((s) => s.vista);
-  const setVista = useMyWorkStore((s) => s.setVista);
-  const [creando, setCreando] = useState(false);
+  const view = useMyWorkStore((s) => s.vista);
+  const setView = useMyWorkStore((s) => s.setVista);
+  const [creating, setCreating] = useState(false);
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     if (params.get("new") !== "1") return;
-    setCreando(true);
-    const resto = new URLSearchParams(params);
-    resto.delete("new");
-    setParams(resto, { replace: true });
+    setCreating(true);
+    const rest = new URLSearchParams(params);
+    rest.delete("new");
+    setParams(rest, { replace: true });
   }, [params, setParams]);
   const { lens, includeClosed, tasks, loading, error, scope } = useMyWorkStore();
   const setScope = useMyWorkStore((s) => s.setScope);
@@ -133,7 +134,7 @@ export default function MyWork() {
   const openTask = useTasksStore((s) => s.openTask);
   // El documento se pinta en `/tasks`, así que hay que ir allí además de
   // abrirlo. Abrirlo sin navegar deja el estado puesto y la pantalla igual.
-  const openDocEnTareas = useTasksStore((s) => s.openDoc);
+  const openDocInTasks = useTasksStore((s) => s.openDoc);
   const navigate = useNavigate();
   const statusesOf = useTasksStore((s) => s.statusesOf);
   const moveTask = useTasksStore((s) => s.moveTask);
@@ -154,18 +155,18 @@ export default function MyWork() {
    * regla suya, y copiarla al cliente es cómo se acaba con dos versiones de la
    * misma verdad — hoy mismo costó dos fallos con la API del SFU.
    */
-  const mover = async (taskId: string, columna: string) => {
-    const t = visibles.find((x) => x.id === taskId);
-    if (!t || normalizeStatus(t.status) === columna) return;
+  const moveToColumn = async (taskId: string, column: string) => {
+    const t = visible.find((x) => x.id === taskId);
+    if (!t || normalizeStatus(t.status) === column) return;
     try {
-      const columnas = await statusesOf(t.listId);
-      const destino = columnas.find((c) => normalizeStatus(c.status) === columna);
-      if (!destino) {
-        throw new Error(i18next.t("common:crash.columnMissing", { column: columna, list: t.listName }));
+      const columns = await statusesOf(t.listId);
+      const target = columns.find((c) => normalizeStatus(c.status) === column);
+      if (!target) {
+        throw new Error(i18next.t("common:crash.columnMissing", { column: column, list: t.listName }));
       }
       // Sin vecinos: se añade al final. Es el sitio menos sorprendente cuando
       // la columna de la que vienes ni siquiera es del mismo tablero.
-      await moveTask(t.id, destino.id, "", "");
+      await moveTask(t.id, target.id, "", "");
       await load(orgId);
     } catch (e) {
       toast.error(String(e));
@@ -177,12 +178,12 @@ export default function MyWork() {
   // `fetchTransitions` no vuelve a pedirla si ya la tiene, así que llamarla en
   // cada montaje no cuesta nada. Estaba escrita desde hace tiempo y no la
   // llamaba nadie.
-  const transiciones = useReportsStore((s) => s.transitions);
-  const transicionesInternas = useReportsStore((s) => s.internalTransitions);
+  const transitions = useReportsStore((s) => s.transitions);
+  const internalTransitions = useReportsStore((s) => s.internalTransitions);
   // Ante la duda, la estricta: proteger de más no rompe nada de nadie, y es lo
   // que contesta un servidor anterior a que existieran las dos.
-  const mapaDe = (flow?: string) =>
-    flow === "internal" && transicionesInternas ? transicionesInternas : transiciones;
+  const transitionsFor = (flow?: string) =>
+    flow === "internal" && internalTransitions ? internalTransitions : transitions;
   const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
   useEffect(() => {
     fetchTransitions().catch(() => {});
@@ -195,7 +196,7 @@ export default function MyWork() {
   // Narrowed in the client rather than re-asked: every row already says which
   // space and list it is in, so pointing the same answer at a smaller part of
   // it costs nothing and keeps the tree instant.
-  const visibles = useMemo(() => {
+  const visible = useMemo(() => {
     if (!scope) return tasks;
     return tasks.filter((t) =>
       scope.kind === "list" ? t.listId === scope.id : t.spaceId === scope.id,
@@ -209,18 +210,18 @@ export default function MyWork() {
   // does: zustand compares with Object.is, sees a new array every render, and
   // renders again — which is the infinite loop, not a slow one.
   const tree = useTasksStore((s) => s.tree);
-  const orden = useMemo(() => tree.map((t) => t.id), [tree]);
-  const grupos = useMemo(() => {
+  const spaceOrder = useMemo(() => tree.map((t) => t.id), [tree]);
+  const groups = useMemo(() => {
     const by = new Map<string, { name: string; items: OpenTask[] }>();
-    for (const t of visibles) {
+    for (const t of visible) {
       const g = by.get(t.spaceId) ?? { name: t.spaceName, items: [] };
       g.items.push(t);
       by.set(t.spaceId, g);
     }
     return [...by.entries()].sort(
-      (a, b) => (orden.indexOf(a[0]) + 1 || 99) - (orden.indexOf(b[0]) + 1 || 99),
+      (a, b) => (spaceOrder.indexOf(a[0]) + 1 || 99) - (spaceOrder.indexOf(b[0]) + 1 || 99),
     );
-  }, [visibles, orden]);
+  }, [visible, spaceOrder]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -228,10 +229,10 @@ export default function MyWork() {
         <div className="flex items-baseline gap-2">
           <h1 className="text-lg font-semibold">{t("work:myWork.title")}</h1>
           <span className="text-xs text-muted-foreground">
-            {loading ? "…" : t("work:myWork.visible", { count: visibles.length })}
+            {loading ? "…" : t("work:myWork.visible", { count: visible.length })}
           </span>
           <button
-            onClick={() => setCreando(true)}
+            onClick={() => setCreating(true)}
             className="ml-auto rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
           >
             New task
@@ -280,15 +281,15 @@ export default function MyWork() {
             </button>
           ))}
           <span className="ml-auto flex items-center gap-0.5 pb-1.5">
-            {VISTAS.map((v) => (
+            {VIEWS.map((v) => (
               <button
                 key={v.key}
-                onClick={() => setVista(v.key)}
+                onClick={() => setView(v.key)}
                 title={t(v.labelKey)}
-                aria-pressed={v.key === vista}
+                aria-pressed={v.key === view}
                 className={cn(
                   "rounded px-1.5 py-1",
-                  v.key === vista
+                  v.key === view
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                 )}
@@ -308,7 +309,7 @@ export default function MyWork() {
                 <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
                 <button
                   onClick={() => {
-                    void openDocEnTareas("list", scope.id, scope.name).catch(() => {});
+                    void openDocInTasks("list", scope.id, scope.name).catch(() => {});
                     navigate("/tasks");
                   }}
                   title={t("work:board.view.docs")}
@@ -326,7 +327,7 @@ export default function MyWork() {
       {scope?.kind === "list" && <PinnedLine listId={scope.id} />}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {creando && (
+        {creating && (
           <NewTaskRow
             // Tras cada Enter, no sólo al cerrar. La fila se queda abierta a
             // propósito —se escriben cuatro seguidas—, así que preguntar sólo al
@@ -334,7 +335,7 @@ export default function MyWork() {
             // parte hasta cambiar de pestaña y volver.
             onCreated={() => load(orgId).catch(() => {})}
             onClose={() => {
-              setCreando(false);
+              setCreating(false);
               // Re-ask: what you just raised may or may not belong in the lens
               // you are looking at, and guessing which would be a list that
               // disagrees with the server.
@@ -347,40 +348,31 @@ export default function MyWork() {
             <AlertCircle className="size-3" /> {error}
           </p>
         )}
-        {loading && visibles.length === 0 ? (
-          <CargandoTrabajo />
-        ) : visibles.length === 0 ? (
+        {loading && visible.length === 0 ? (
+          <WorkSkeleton />
+        ) : visible.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {lens === "watching"
               ? t("work:myWork.nothingFollowed")
               : t("work:myWork.nothingHere")}
           </p>
         ) : (
-          vista === "calendar" ? (
+          view === "calendar" ? (
             <ItemCalendar
               // Placed by when it is due, not by when it was raised: this
               // screen answers "what is coming", and a month view of creation
               // dates answers nothing anybody asked.
-              items={visibles
-                .filter((t) => t.dueAt)
-                .map((t) => ({
-                  id: t.id,
-                  title: t.title,
-                  at: t.dueAt as string,
-                  dotClass: priorityMeta(t.priority).className,
-                  label: `#${t.seq}`,
-                }))}
+              items={dueCalendarItems(visible)}
               // Lo que no tiene fecha, debajo en vez de descartado.
               //
               // Casi nadie pone vencimientos, así que esta vista enseñaba **una**
               // de sesenta y cinco tareas mientras la cabecera decía sesenta y
               // cinco. No estaba filtrando: estaba escondiendo.
-              sinFecha={visibles
+              undated={visible
                 .filter((t) => !t.dueAt)
                 .map((t) => ({
                   id: t.id,
                   title: t.title,
-                  at: "",
                   dotClass: priorityMeta(t.priority).className,
                   label: `#${t.seq}`,
                 }))}
@@ -395,24 +387,24 @@ export default function MyWork() {
               onOpen={(id) => openTask(id).catch(() => {})}
               countKey="common:count.tasks"
             />
-          ) : vista === "board" ? (
+          ) : view === "board" ? (
             <KanbanBoard
-              columns={ESTADOS.map((col) => {
+              columns={STATUS_COLUMNS.map((col) => {
                 // Con «sólo abiertas» lo terminado ni se pide al servidor, así
                 // que esa columna no está vacía: está fuera de la pregunta.
                 // Decir «0» era afirmar que no hay ninguna.
-                const fuera = !includeClosed && CERRADOS.includes(col.status);
+                const notAsked = !includeClosed && FINISHED.includes(col.status);
                 return {
                   id: col.status,
                   title: t(STATUS_LABEL_KEYS[col.status]),
                   // El guion en vez del cero, y el porqué escrito abajo: «0»
                   // afirmaría que no hay ninguna, y lo que pasa es que no se
                   // preguntó.
-                  accessory: fuera ? <span className="text-muted-foreground">—</span> : undefined,
-                  emptyHint: fuera ? t("work:myWork.notAsked") : undefined,
+                  accessory: notAsked ? <span className="text-muted-foreground">—</span> : undefined,
+                  emptyHint: notAsked ? t("work:myWork.notAsked") : undefined,
                 };
               })}
-              items={visibles.map((t) => ({
+              items={visible.map((t) => ({
                 ...t,
                 // La columna es el estado **normalizado**: las tarjetas vienen
                 // de listas distintas y cada una trae el suyo en crudo.
@@ -421,22 +413,22 @@ export default function MyWork() {
               renderItem={(t) => (
                 <TaskCardMini task={t} onOpen={() => openTask(t.id).catch(() => {})} />
               )}
-              onMove={(m) => void mover(m.itemId, m.toColumnId)}
+              onMove={(m) => void moveToColumn(m.itemId, m.toColumnId)}
               // Las columnas de aquí ya son el estado plegado, así que la
               // comparación es directa: el mapa que trae `fetchTransitions`
               // viene plegado en las dos direcciones por el mismo motivo.
-              puedeSoltar={(t, columna) =>
+              puedeSoltar={(t, column) =>
                 // La máquina de **esa** fila. Aquí se cruzan listas, así que se
                 // mezclan trabajo interno y tickets de cliente más todavía que
                 // en un tablero: con una sola máquina para todas había que
                 // elegir a quién mentirle.
-                puedeIr(mapaDe(t.flow), normalizeStatus(t.status), columna as ReportStatus)
+                puedeIr(transitionsFor(t.flow), normalizeStatus(t.status), column as ReportStatus)
               }
               emptyColumnHint={t("work:myWork.nothing")}
             />
           ) : (
           <div className="space-y-5">
-            {grupos.map(([spaceId, g]) => (
+            {groups.map(([spaceId, g]) => (
               <section key={spaceId}>
                 <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {g.name} · {g.items.length}

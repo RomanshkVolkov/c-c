@@ -134,7 +134,7 @@ lo que ya está hecho, que es distinto y es lo que se rompe solo.
 | `lib/i18n.test.ts` · vacías | Una traducción en blanco, que pasa el control de claves y deja un hueco |
 | `lib/i18n.test.ts` · un solo idioma | Castellano dentro de la app en inglés, escaneando el fuente |
 | `lib/plurales.test.ts` | Un `? "" : "s"` o un `noun(s)` que vuelva |
-| `lib/horas.test.ts` | Que la regla de una reunión no vuelva a concatenarse |
+| `lib/meeting-time.test.ts` | Que la regla de una reunión no vuelva a concatenarse |
 | `lib/locale-sync.test.ts` | Que elegir idioma se cuente al servidor y que entrar lo adopte |
 | `core/i18n/leaks_test.go` | Castellano en un literal de Go fuera del catálogo |
 | `core/i18n/i18n_test.go` | Que la `q` de `Accept-Language` mande sobre el orden del texto |
@@ -179,7 +179,7 @@ Fuera de un componente hay dos salidas legítimas y una trampa:
   función), o un callback fuera del árbol. Se pierde el repintado al cambiar de
   idioma; en una pantalla de la que se sale recargando, da igual.
 - **`t` por parámetro** cuando una función de `lib/` arma una frase
-  (`reglaLegible`). Así sigue siendo pura y se puede probar sin montar media
+  (`readableRule`). Así sigue siendo pura y se puede probar sin montar media
   aplicación, y la suscripción es la de la pantalla que la llama.
 - La trampa: llamar a `i18next.t` desde dentro de una función de `lib/` que usa
   una pantalla. Compila, funciona, y no cambia de idioma hasta que algo más

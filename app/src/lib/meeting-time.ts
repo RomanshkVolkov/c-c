@@ -15,12 +15,12 @@ import type { Translate } from "@/lib/i18n";
  */
 
 /** Formatea un instante en una zona concreta, o en la de quien mira. */
-function enZona(instante: Date, timeZone?: string): string {
+function formatInZone(instant: Date, timeZone?: string): string {
   return new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",
     timeZone,
-  }).format(instante);
+  }).format(instant);
 }
 
 /**
@@ -28,55 +28,55 @@ function enZona(instante: Date, timeZone?: string): string {
  *
  * Sin él las dos horas se parecen demasiado y no se sabe cuál es cuál.
  */
-function nombreDeZona(instante: Date, timeZone?: string): string {
-  const partes = new Intl.DateTimeFormat("en", {
+function zoneAbbreviation(instant: Date, timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat("en", {
     timeZone,
     timeZoneName: "short",
-  }).formatToParts(instante);
-  return partes.find((p) => p.type === "timeZoneName")?.value ?? "";
+  }).formatToParts(instant);
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
 }
 
-export interface HoraDual {
+export interface DualTime {
   /** La hora en la zona de la reunión, con el nombre de esa zona. */
-  alla: string;
+  there: string;
   /** La misma hora donde está quien mira. */
-  aqui: string;
+  here: string;
   /** Si las dos coinciden, no hace falta enseñar las dos. */
-  mismaZona: boolean;
+  sameZone: boolean;
 }
 
 /**
- * `horaDual("2026-08-25T15:00:00Z", "America/Mexico_City")` para alguien en
- * Madrid da `{ alla: "09:00 CST", aqui: "17:00 CEST", mismaZona: false }`.
+ * `dualTime("2026-08-25T15:00:00Z", "America/Mexico_City")` para alguien en
+ * Madrid da `{ there: "09:00 CST", here: "17:00 CEST", sameZone: false }`.
  *
- * `mismaZona` compara **el texto formateado**, no las cadenas de zona: quien
+ * `sameZone` compara **el texto formateado**, no las cadenas de zona: quien
  * mira desde Cancún y una reunión de Bogotá ven la misma hora aunque las zonas
  * se llamen distinto, y repetirla dos veces sólo sería ruido.
  */
-export function horaDual(instante: string | Date, timeZone: string): HoraDual {
-  const cuando = typeof instante === "string" ? new Date(instante) : instante;
-  if (Number.isNaN(cuando.getTime())) {
-    return { alla: "", aqui: "", mismaZona: true };
+export function dualTime(instant: string | Date, timeZone: string): DualTime {
+  const when = typeof instant === "string" ? new Date(instant) : instant;
+  if (Number.isNaN(when.getTime())) {
+    return { there: "", here: "", sameZone: true };
   }
 
-  let alla: string;
+  let there: string;
   try {
-    alla = `${enZona(cuando, timeZone)} ${nombreDeZona(cuando, timeZone)}`.trim();
+    there = `${formatInZone(when, timeZone)} ${zoneAbbreviation(when, timeZone)}`.trim();
   } catch {
     // Una zona que esta plataforma no conoce: mejor enseñar sólo la hora local
     // que romper la pantalla entera por un nombre mal escrito.
-    return { alla: "", aqui: enZona(cuando), mismaZona: true };
+    return { there: "", here: formatInZone(when), sameZone: true };
   }
-  const aqui = `${enZona(cuando)} ${nombreDeZona(cuando)}`.trim();
+  const here = `${formatInZone(when)} ${zoneAbbreviation(when)}`.trim();
 
-  return { alla, aqui, mismaZona: alla === aqui };
+  return { there, here, sameZone: there === here };
 }
 
 /** «9:00 CST · 17:00 CEST», o sólo la hora cuando las dos coinciden. */
-export function horaLegible(instante: string | Date, timeZone: string): string {
-  const { alla, aqui, mismaZona } = horaDual(instante, timeZone);
-  if (!alla) return aqui;
-  return mismaZona ? alla : `${alla} · ${aqui}`;
+export function readableTime(instant: string | Date, timeZone: string): string {
+  const { there, here, sameZone } = dualTime(instant, timeZone);
+  if (!there) return here;
+  return sameZone ? there : `${there} · ${here}`;
 }
 
 /**
@@ -87,17 +87,17 @@ export function horaLegible(instante: string | Date, timeZone: string): string {
  * Se formatea una semana de referencia —el 7 de enero de 2024 fue domingo— en
  * UTC, para que el desfase de quien mira no corra los días uno.
  */
-const nombresDeDia = new Map<string, string[]>();
+const weekdayNameCache = new Map<string, string[]>();
 
-function diasDe(lng: string): string[] {
-  const guardado = nombresDeDia.get(lng);
-  if (guardado) return guardado;
+function weekdayNames(lng: string): string[] {
+  const cached = weekdayNameCache.get(lng);
+  if (cached) return cached;
   const fmt = new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" });
-  const nombres = Array.from({ length: 7 }, (_, d) =>
+  const names = Array.from({ length: 7 }, (_, d) =>
     fmt.format(new Date(Date.UTC(2024, 0, 7 + d))),
   );
-  nombresDeDia.set(lng, nombres);
-  return nombres;
+  weekdayNameCache.set(lng, names);
+  return names;
 }
 
 /**
@@ -108,8 +108,8 @@ function diasDe(lng: string): string[] {
  * «lun, mié», pero en un idioma que separe distinto lo hará distinto, y pegar
  * comas a mano no.
  */
-export function diasLegibles(weekdays: string | undefined, lng = "en"): string {
-  const dias = (weekdays ?? "")
+export function readableWeekdays(weekdays: string | undefined, lng = "en"): string {
+  const days = (weekdays ?? "")
     .split(",")
     .map((d) => d.trim())
     // Descartar el vacío **antes** de convertir: `Number("")` es 0, no `NaN`,
@@ -117,13 +117,13 @@ export function diasLegibles(weekdays: string | undefined, lng = "en"): string {
     .filter((d) => d !== "")
     .map(Number)
     .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-  if (dias.length === 0) return "";
+  if (days.length === 0) return "";
   // Ordenados de lunes a domingo, que es como se lee una semana de trabajo —
   // el domingo es el 0 pero nadie empieza la semana nombrándolo.
-  dias.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
-  const nombres = diasDe(lng);
+  days.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+  const names = weekdayNames(lng);
   return new Intl.ListFormat(lng, { style: "short", type: "unit" }).format(
-    dias.map((d) => nombres[d]),
+    days.map((d) => names[d]),
   );
 }
 
@@ -138,26 +138,26 @@ export function diasLegibles(weekdays: string | undefined, lng = "en"): string {
  * `t` entra por parámetro para que esto siga siendo una función pura sobre la
  * que se pueda escribir una prueba sin montar media aplicación.
  */
-export function reglaLegible(
+export function readableRule(
   m: { freq: string; interval?: number; weekdays?: string; monthDay?: number },
   t: Translate,
   lng = "en",
 ): string {
-  const cada = m.interval ?? 1;
-  const partes: string[] = [];
+  const every = m.interval ?? 1;
+  const parts: string[] = [];
   switch (m.freq) {
     case "daily":
-      partes.push(cada > 1 ? t("common:recurrence.everyDays", { count: cada }) : t("common:recurrence.daily"));
+      parts.push(every > 1 ? t("common:recurrence.everyDays", { count: every }) : t("common:recurrence.daily"));
       break;
     case "weekly": {
-      partes.push(cada > 1 ? t("common:recurrence.everyWeeks", { count: cada }) : t("common:recurrence.weekly"));
-      const dias = diasLegibles(m.weekdays, lng);
-      if (dias) partes.push(dias);
+      parts.push(every > 1 ? t("common:recurrence.everyWeeks", { count: every }) : t("common:recurrence.weekly"));
+      const days = readableWeekdays(m.weekdays, lng);
+      if (days) parts.push(days);
       break;
     }
     case "monthly": {
-      partes.push(cada > 1 ? t("common:recurrence.everyMonths", { count: cada }) : t("common:recurrence.monthly"));
-      if (m.monthDay) partes.push(t("common:recurrence.onDay", { day: m.monthDay }));
+      parts.push(every > 1 ? t("common:recurrence.everyMonths", { count: every }) : t("common:recurrence.monthly"));
+      if (m.monthDay) parts.push(t("common:recurrence.onDay", { day: m.monthDay }));
       break;
     }
     default:
@@ -165,5 +165,5 @@ export function reglaLegible(
       // feo, pero es información; una cadena vacía sería una regla invisible.
       return m.freq;
   }
-  return partes.join(" · ");
+  return parts.join(" · ");
 }

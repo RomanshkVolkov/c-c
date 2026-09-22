@@ -9,8 +9,16 @@ import { paraFormatear } from "@/lib/fechas";
  * eso se comprueba mejor con una tabla de casos que arrastrando el ratón.
  */
 
-/** Identifica un día sin arrastrar la hora ni la zona. */
-export const claveDeDia = (d: Date) =>
+/**
+ * Identifica el día **local** de una `Date`, sin la hora.
+ *
+ * Sin la hora, pero **con** la zona: lee captadores locales, así que sólo es
+ * segura sobre una fecha que ya es local. Sobre un vencimiento crudo
+ * (medianoche UTC) devuelve el día anterior al oeste de Greenwich — que es como
+ * el calendario de «Mi trabajo» pintó en el 29 lo que se soltó en el 30. Para
+ * un vencimiento, pasa antes por `dueDay`.
+ */
+export const dayKey = (d: Date) =>
   `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 /**
@@ -20,16 +28,16 @@ export const claveDeDia = (d: Date) =>
  * cambia de alto al pasar de mes y el botón que ibas a pulsar se mueve debajo
  * del cursor. Un mes cabe en cinco o en seis según en qué día caiga el 1.
  */
-export function rejillaDeMes(cursor: Date): Date[] {
-  const primero = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+export function monthGrid(cursor: Date): Date[] {
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
   // Lunes = 0. `getDay()` cuenta desde domingo, y aquí la semana empieza en
   // lunes: sin el desplazamiento, cada mes que cae en domingo sale corrido.
-  const offset = (primero.getDay() + 6) % 7;
-  const inicio = new Date(primero);
-  inicio.setDate(primero.getDate() - offset);
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(first);
+  start.setDate(first.getDate() - offset);
   return Array.from({ length: 42 }, (_, i) => {
-    const d = new Date(inicio);
-    d.setDate(inicio.getDate() + i);
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
     return d;
   });
 }
@@ -40,17 +48,17 @@ export function rejillaDeMes(cursor: Date): Date[] {
  * Del sistema y no de una lista escrita a mano: estaban en inglés fijo dentro
  * del calendario, así que la app entera hablaba castellano menos esa fila.
  */
-export function inicialesDeLaSemana(): string[] {
+export function weekdayInitials(): string[] {
   const fmt = new Intl.DateTimeFormat(paraFormatear(), { weekday: "short" });
   // 2024-01-01 fue lunes, que es donde empieza la rejilla.
   return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(2024, 0, 1 + i)));
 }
 
 /** El mismo día, comparando sin hora. */
-export const mismoDia = (a: Date, b: Date) => claveDeDia(a) === claveDeDia(b);
+export const isSameDay = (a: Date, b: Date) => dayKey(a) === dayKey(b);
 
 /** `YYYY-MM-DD` en hora local, que es lo que espera un `<input type="date">`. */
-export function comoISO(d: Date): string {
+export function toISODate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${mm}-${dd}`;
@@ -63,7 +71,7 @@ export function comoISO(d: Date): string {
  * sale el día anterior. Es el fallo clásico de los selectores de fecha: eliges
  * un día y se guarda el de antes.
  */
-export function desdeISO(s: string): Date | null {
+export function fromISODate(s: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (!m) return null;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
@@ -84,7 +92,7 @@ export function desdeISO(s: string): Date | null {
  * Devuelve una fecha **local** con ese día a medianoche, que es lo que esperan
  * `Intl` y cualquier resta de días.
  */
-export function diaDeVencimiento(iso?: string | null): Date | null {
+export function dueDay(iso?: string | null): Date | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;

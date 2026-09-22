@@ -19,6 +19,14 @@ desplegado con los rangos numéricos.
 del canal, el anclaje del hilo al volver de otra pestaña, y el filtro del árbol a
 la primera. La puerta de verificación pasa; se paró `/soltar` a medias.
 
+**Sin commitear: #80, el vencimiento un día antes en el calendario.** jose
+(UTC−6) soltó una tarea en el 30-sep y se pintó en el 29. Lo guardado estaba
+bien; `ItemCalendar` lo leía con captadores locales. Ahora `CalendarItem`
+distingue `day` de `at` por tipo, «Mi trabajo» pasa el vencimiento como día, la
+suite corre en `America/Mexico_City` y hay `bun run test:timezones` (UTC, −6, +13).
+El barrido encontró y arregló otro fallo de zona en `meeting-time.test.ts`. Falta la
+comprobación a mano: arrastrar al 30, recargar, y que siga en el 30.
+
 Anotado al pasar por ahí: `bun run test` **sale con código 1 en `main` limpio**.
 Las 952 pruebas pasan; lo que lo tumba es un error sin capturar de
 tiptap/ProseMirror en jsdom (`target.getClientRects is not a function`) que

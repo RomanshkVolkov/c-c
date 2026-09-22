@@ -4,7 +4,7 @@ import { CalendarClock, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { tonoEntrante } from "@/components/voice/ringtone";
-import { horaDual } from "@/lib/horas";
+import { dualTime } from "@/lib/meeting-time";
 import { useMeetingsStore } from "@/store/meetings.store";
 import { useVoice } from "@/store/voice.store";
 
@@ -41,7 +41,7 @@ export default function MeetingCall() {
 
   if (!entrante) return null;
 
-  const { alla, aqui, mismaZona } = horaDual(entrante.firesAt, entrante.timezone);
+  const { there, here, sameZone } = dualTime(entrante.firesAt, entrante.timezone);
 
   const entrar = async () => {
     const sala = entrante.spaceId;
@@ -73,8 +73,8 @@ export default function MeetingCall() {
         {/* La hora en las dos zonas. Quien la creó dijo «las nueve» pensando en
             su reloj; quien la lee está mirando el suyo. */}
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Starting now · {alla || aqui}
-          {!mismaZona && alla && <span> · {aqui} your time</span>}
+          Starting now · {there || here}
+          {!sameZone && there && <span> · {here} your time</span>}
         </p>
 
         {entrante.spaceName && (

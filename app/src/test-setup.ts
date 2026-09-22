@@ -60,7 +60,7 @@ if (!Element.prototype.scrollIntoView) {
  *
  * También fija el locale de `Intl`: las fechas y las horas se formatean con el
  * del sistema, así que una aserción sobre «9:00» o «05:00 PM» tiene el mismo
- * problema. Ver `lib/horas.test.ts`, que ya lo sortea leyendo la hora como
+ * problema. Ver `lib/meeting-time.test.ts`, que ya lo sortea leyendo la hora como
  * número en vez de como texto.
  */
 Object.defineProperty(navigator, "languages", {

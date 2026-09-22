@@ -39,10 +39,22 @@ depende que el check de «hecho» funcione: salta de Open a Done, que sólo es l
 en el flujo interno.
 → Guardián: `domain.TestUnaSubtareaEsInterna` y `service/subtarea_interna_test.go`.
 
-**`dueAt` es una fecha guardada como instante.** Léela con `diaDeVencimiento`
-(`app/src/lib/mes.ts`). Con los captadores locales (`getDate()`, etc.) el día se
-corre un día al oeste de Greenwich.
-→ Guardián: `app/src/lib/mes.test.ts`.
+**`dueAt` es una fecha guardada como instante.** Léela con `dueDay`
+(`app/src/lib/month.ts`). Con los captadores locales (`getDate()`, etc.) el día se
+corre un día al oeste de Greenwich. `dayKey` **también** es local: no la
+uses sobre un instante crudo. Así pintó el calendario de «Mi trabajo» en el 29
+lo que se soltó en el 30. Por eso `CalendarItem` obliga a elegir entre `day`
+(una fecha) y `at` (un instante): un vencimiento va como `day`; pasarlo como
+`at` compila y vuelve a fallar.
+→ Guardianes: `app/src/lib/month.test.ts` y `ItemCalendar.test.tsx` («en qué
+día cae»).
+
+**Las pruebas de la app corren en `America/Mexico_City`**, fijado en el script
+`test` (no en `vitest.config.ts`: Node lee la zona al arrancar y `test.env`
+llega tarde). Sin eso corrían en la zona de la máquina, y en UTC un fallo de
+zona es invisible. Si tocas fechas, pasa `bun run test:timezones`: la suite bajo
+UTC, UTC−6 y UTC+13. Con una sola zona, un fallo simétrico al revés sigue
+escondido — el primer barrido encontró uno en `meeting-time.test.ts`.
 
 **Un nombre para enseñar sale de `nombreVisible`**
 (`backend/internal/core/repository/nombres.go`), nunca de `username` a mano: un
@@ -125,7 +137,7 @@ nunca se re-corta una publicada.
 - **El código se escribe en inglés y se comenta en castellano.** Ficheros,
   funciones, tipos, variables y campos: inglés. Comentarios y prosa: castellano.
 - **No imitar los nombres en castellano que ya existen.** Hay muchos
-  —`nombreVisible`, `diaDeVencimiento`, `subtarea_interna_test.go`,
+  —`nombreVisible`, `bandeja.ts`, `subtarea_interna_test.go`,
   `TestElTimbreSuenaEnUnSoloEscritorio`— y son deriva, no la convención. Copiar
   lo de alrededor es exactamente cómo se sigue mezclando. En código nuevo,
   inglés sin excepciones; y lo que ya está se renombra **al pasar por el
