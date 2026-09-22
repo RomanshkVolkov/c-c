@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { api } from "@/lib/api";
+import { useOrgsStore } from "@/store/orgs.store";
 import type { APIResponse } from "@/types/auth";
 import type { OpenTask, TaskView } from "@/types/task";
 
@@ -30,6 +31,19 @@ export interface WorkScope {
   kind: "space" | "list";
   id: string;
   name: string;
+  /**
+   * De qué organización es esta lista o espacio.
+   *
+   * Viaja con el filtro, y no aparte, porque la pregunta que hay que contestar
+   * al cargar es «¿lo que hay puesto es de aquí?». Antes se contestaba
+   * comparando con la organización de la carga anterior, que es otra pregunta:
+   * la primera carga de la sesión no tenía anterior y **tiraba el filtro que
+   * acababa de poner un clic** — de ahí que hiciesen falta dos.
+   *
+   * Obligatorio a propósito. Opcional querría decir que un ámbito sin sellar no
+   * se tira nunca, que es el fallo de `64cd050` por la puerta de atrás.
+   */
+  orgId: string | null;
 }
 
 /**
@@ -55,19 +69,27 @@ interface MyWorkState {
   lens: WorkLens;
   scope: WorkScope | null;
   /**
-   * La organización de la que son las tareas que hay cargadas.
+   * De qué organización son las tareas que hay cargadas.
    *
-   * Sólo para saber **cuándo cambia**. No se persiste: al arrancar no hay nada
-   * cargado, así que la primera carga siempre es un cambio.
+   * Para que un evento pueda pedir la misma lista otra vez sin que nadie se la
+   * tenga que recordar. No decide nada sobre el filtro: eso lo contesta el
+   * `orgId` del propio ámbito.
    */
-  loadedOrgId: string | null;
+  orgId: string | null;
   includeClosed: boolean;
   tasks: OpenTask[];
   loading: boolean;
   error: string | null;
 
   setLens: (lens: WorkLens) => void;
-  setScope: (scope: WorkScope | null) => void;
+  /**
+   * Acota a una lista o a un espacio. La organización la pone el store.
+   *
+   * No la pide al llamante a propósito: un sello que hay que acordarse de poner
+   * es un sello que alguien se olvida, y el ámbito sin sellar es justo el que no
+   * se tira nunca al cambiar de organización.
+   */
+  setScope: (scope: Omit<WorkScope, "orgId"> | null) => void;
   setIncludeClosed: (on: boolean) => void;
   /**
    * Cómo prefiere mirar esta persona: lista, tablero o calendario.
@@ -127,20 +149,23 @@ export const useMyWorkStore = create<MyWorkState>()(
       // abajo. Quien prefiera otra cosa la elige una vez y se le respeta.
       vista: "list",
       scope: null,
-      loadedOrgId: null,
+      orgId: null,
       includeClosed: false,
       tasks: [],
       loading: false,
       error: null,
 
       setLens: (lens) => set({ lens }),
-      setScope: (scope) => set({ scope }),
+      setScope: (scope) =>
+        set({
+          scope: scope && { ...scope, orgId: useOrgsStore.getState().currentOrgId },
+        }),
       setIncludeClosed: (includeClosed) => set({ includeClosed }),
 
       setVista: (v) => set({ vista: v }),
 
   load: async (orgId) => {
-        // Cambiar de organización tira el filtro de lista o espacio.
+        // Un filtro de otra organización se tira.
         //
         // Una lista es de una organización concreta, así que al cambiar se
         // quedaba filtrando por algo que ahí no existe: la pantalla salía vacía
@@ -148,13 +173,15 @@ export const useMyWorkStore = create<MyWorkState>()(
         // rótulo del filtro decía el nombre de una lista de la organización
         // anterior, que es peor todavía.
         //
-        // Sólo cuando **cambia**, y no en cada carga: `load` corre también al
-        // cambiar de lente o al pedir los estados cerrados, y ahí tirar el
-        // filtro sería quitarle a alguien algo que acaba de poner.
-        if (orgId !== get().loadedOrgId) {
-          set({ scope: null, loadedOrgId: orgId });
-        }
-        set({ loading: true, error: null });
+        // Se le pregunta **al ámbito** de dónde es, no a la carga anterior de
+        // dónde era. Son preguntas distintas y la segunda mentía: la primera
+        // carga de la sesión no tiene anterior, así que tiraba el filtro que
+        // acababa de poner un clic en el árbol — hacían falta dos clics para
+        // filtrar. Y de paso vale para las cuatro formas que hay de cambiar de
+        // organización, sin tener que acordarse de ninguna.
+        const { scope } = get();
+        if (scope && scope.orgId !== orgId) set({ scope: null });
+        set({ orgId, loading: true, error: null });
         try {
           const partes = [
             orgId ? `orgId=${orgId}` : "",
@@ -188,7 +215,7 @@ export const useMyWorkStore = create<MyWorkState>()(
         if (temporizador) clearTimeout(temporizador);
         temporizador = setTimeout(() => {
           temporizador = null;
-          void get().load(get().loadedOrgId);
+          void get().load(get().orgId);
         }, COALESCE_MS);
       },
 

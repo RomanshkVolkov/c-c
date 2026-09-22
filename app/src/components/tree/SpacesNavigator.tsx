@@ -805,6 +805,9 @@ function ListNode({
 }) {
   const { t } = useT();
   const activeListId = useTasksStore((s) => s.activeListId);
+  const focusList = useTasksStore((s) => s.focusList);
+  // El del menú de la fila, que sí va al tablero: si `Tasks` ya está montado,
+  // su efecto de montaje no vuelve a correr y nadie más lo pediría.
   const selectList = useTasksStore((s) => s.selectList);
   const setScope = useMyWorkStore((s) => s.setScope);
   const navigate = useNavigate();
@@ -851,7 +854,11 @@ function ListNode({
         // you were asking — what is mine, what am I following — survives, and
         // the tree points it somewhere smaller. Opening the board is still
         // there, in the row's own menu, because it is a different question.
-        selectList(list.id);
+        //
+        // Y por eso `focusList` y no `selectList`: el tablero que pediría no lo
+        // va a ver nadie. Cuando sí se va a él, lo carga el efecto de montaje de
+        // `Tasks`.
+        focusList(list.id);
         setScope({ kind: "list", id: list.id, name: list.name });
         navigate("/my-work");
       }}

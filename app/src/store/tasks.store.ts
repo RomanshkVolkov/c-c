@@ -77,6 +77,14 @@ interface TasksState {
    */
   marcarArbolViejo: () => void;
   fetchTags: () => Promise<void>;
+  /**
+   * Ésta es la lista en la que estamos, sin pedir su tablero.
+   *
+   * Para quien sólo necesita que el árbol la resalte: pulsar una lista lleva a
+   * «mi trabajo», no al tablero, así que pedirlo ahí es una petición que no se
+   * llega a enseñar. Quien sí va al tablero pasa por `selectList`.
+   */
+  focusList: (listId: string) => void;
   selectList: (listId: string) => Promise<void>;
   refreshBoard: () => Promise<void>;
 
@@ -390,9 +398,12 @@ export const useTasksStore = create<TasksState>()(
         }
       },
 
+      // Picking a list means "show me the board" — leave any open document.
+      focusList: (listId) =>
+        set({ activeListId: listId, board: null, activeDoc: null, doc: null }),
+
       selectList: async (listId) => {
-        // Picking a list means "show me the board" — leave any open document.
-        set({ activeListId: listId, board: null, activeDoc: null, doc: null });
+        get().focusList(listId);
         await get().refreshBoard();
       },
 

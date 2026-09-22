@@ -4,7 +4,8 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { STATUS_LABEL_KEYS } from "@/types/report";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertCircle, CalendarDays, Eye, EyeOff, FileText, KanbanSquare, List, Loader2, X } from "lucide-react";
+import { AlertCircle, CalendarDays, Eye, EyeOff, FileText, KanbanSquare, List, X } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import CopyId from "@/components/CopyId";
 import { useReportsStore } from "@/store/reports.store";
@@ -79,6 +80,33 @@ const ESTADOS: { status: ReportStatus; punto: string }[] = [
 
 /** Terminadas y cerradas sólo se piden cuando pides «todos los estados». */
 const CERRADOS: ReportStatus[] = ["done", "closed"];
+
+/**
+ * Mientras llega la lista, su forma.
+ *
+ * Un aspa girando de cuatro píxeles no dice nada de lo que viene; el hueco con
+ * la forma que va a tener sí, y de paso la pantalla no da un salto cuando las
+ * filas aparecen. Dos grupos porque esta pantalla agrupa por espacio, que es lo
+ * primero que se reconoce al mirarla.
+ */
+function CargandoTrabajo() {
+  return (
+    <div aria-hidden className="space-y-5">
+      {[0, 1].map((g) => (
+        <div key={g} className="space-y-2">
+          <Skeleton className="h-3 w-28" />
+          {[0, 1, 2].map((f) => (
+            <div key={f} className="flex items-center gap-2 rounded border p-2">
+              <Skeleton className="size-4 rounded-full" />
+              <Skeleton className="h-3 flex-1" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function MyWork() {
   const { t } = useT();
@@ -320,7 +348,7 @@ export default function MyWork() {
           </p>
         )}
         {loading && visibles.length === 0 ? (
-          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+          <CargandoTrabajo />
         ) : visibles.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {lens === "watching"

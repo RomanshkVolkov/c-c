@@ -51,6 +51,7 @@ import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useMyWorkStore } from "@/store/mywork.store";
 import VoiceMini from "@/components/voice/VoiceMini";
 import { cn } from "@/lib/utils";
 
@@ -190,6 +191,7 @@ export default function AppSidebar() {
     if (authed) loadInbox(currentOrgId).catch(() => {});
   }, [authed, currentOrgId, loadInbox]);
   const collapsed = useSidebar().state === "collapsed";
+  const setScope = useMyWorkStore((s) => s.setScope);
   const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
     (i) => !i.superadmin || superadmin,
   );
@@ -246,7 +248,15 @@ export default function AppSidebar() {
                         <SidebarMenuButton
                           isActive={pathname.startsWith(item.path)}
                           tooltip={badge ? `${t(item.labelKey)} (${badge})` : t(item.labelKey)}
-                          onClick={() => navigate(item.path)}
+                          onClick={() => {
+                            // Entrar por aquí es pedir «mi trabajo», todo él.
+                            // El filtro lo pone pulsar una lista en el árbol, y
+                            // hasta ahora la única forma de quitárselo era la
+                            // píldora: venir por esta fila y seguir viendo una
+                            // lista se lee como que no tienes nada más.
+                            if (item.path === "/my-work") setScope(null);
+                            navigate(item.path);
+                          }}
                         >
                           <item.icon className="size-4" />
                           <span>{t(item.labelKey)}</span>

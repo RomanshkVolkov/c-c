@@ -26,7 +26,7 @@ describe("el refresco de My work", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.mocked(api.get).mockClear();
-    useMyWorkStore.setState({ tasks: [tarea("t-1")], loadedOrgId: "org-a", scope: null });
+    useMyWorkStore.setState({ tasks: [tarea("t-1")], orgId: "org-a", scope: null });
   });
 
   it("una tarea que tenemos provoca recarga", () => {

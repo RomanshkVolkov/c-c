@@ -80,7 +80,7 @@ describe("el alcance que pone el árbol", () => {
     const guardado = JSON.parse(
       localStorage.getItem("cac-mywork") ?? '{"state":{}}',
     ).state as Record<string, unknown>;
-    useMyWorkStore.setState({ scope: { kind: "list", id: "li-1", name: "Una" } });
+    useMyWorkStore.setState({ scope: { kind: "list", id: "li-1", name: "Una", orgId: "org-1" } });
     const despues = JSON.parse(
       localStorage.getItem("cac-mywork") ?? '{"state":{}}',
     ).state as Record<string, unknown>;
@@ -90,7 +90,7 @@ describe("el alcance que pone el árbol", () => {
 
   it("no cambia la pregunta que se le hace al servidor", async () => {
     get.mockResolvedValue({ success: true, data: [] });
-    useMyWorkStore.setState({ lens: "assigned", scope: { kind: "list", id: "li-1", name: "Una" } });
+    useMyWorkStore.setState({ lens: "assigned", scope: { kind: "list", id: "li-1", name: "Una", orgId: "org-1" } });
     await useMyWorkStore.getState().load("org-1");
     // El alcance acota en el cliente: la lente sigue siendo la pregunta, y
     // mandarlo al servidor sería una segunda forma de decir lo mismo.

@@ -25,6 +25,7 @@ const { MemoryRouter } = await import("react-router-dom");
 const { default: MyWork } = await import("@/pages/MyWork");
 const { useTasksStore } = await import("@/store/tasks.store");
 const { useMyWorkStore } = await import("@/store/mywork.store");
+const { useOrgsStore } = await import("@/store/orgs.store");
 
 const arbol = [
   { id: "sp-1", orgId: "o", name: "Uno", color: "#888", folders: [], lists: [] },
@@ -33,6 +34,7 @@ const arbol = [
 
 beforeEach(() => {
   useTasksStore.setState({ tree: arbol } as never);
+  useOrgsStore.setState({ currentOrgId: "org-1" } as never);
   useMyWorkStore.setState({ tasks: [], scope: null, loading: false, error: null });
 });
 afterEach(cleanup);
@@ -58,9 +60,19 @@ describe("«mi trabajo» al montarse", () => {
    * sesión con el agente.
    */
   it("enseña el id de la lista cuando estás dentro de una", async () => {
+    // Con su organización, y sin `as never`: un ámbito sin sellar lo tira la
+    // carga del montaje —es de otra organización, por lo que a ella respecta— y
+    // el rótulo no llegaría a pintarse. Que el tipo lo exija aquí es la
+    // diferencia entre enterarse al compilar y enterarse con un elemento que
+    // no aparece.
     useMyWorkStore.setState({
-      scope: { kind: "list", id: "ca0bfd49-0909-43eb-8135-bc8ecd0f282c", name: "tasks" },
-    } as never);
+      scope: {
+        kind: "list",
+        id: "ca0bfd49-0909-43eb-8135-bc8ecd0f282c",
+        name: "tasks",
+        orgId: "org-1",
+      },
+    });
     render(
       <MemoryRouter>
         <MyWork />
