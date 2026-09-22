@@ -12,10 +12,19 @@ Tracking doc — open items, in-progress work, and decisions from rolling conver
 
 ## 🟢 Al día
 
-Nada sin empujar. La app va por la **v1.6.69** («que los avisos avisen») y el
-backend está desplegado con los rangos numéricos. Lo que hay en `main` desde esa
-release no toca la app: el spike de transcripción, la puerta de pruebas del CI y
-el cambio de `rank`.
+La app va por la **v1.6.69** («que los avisos avisen») y el backend está
+desplegado con los rangos numéricos.
+
+**Sin cortar: la v1.6.70.** Lleva la grabación de reuniones entera, las pestañas
+del canal, el anclaje del hilo al volver de otra pestaña, y el filtro del árbol a
+la primera. La puerta de verificación pasa; se paró `/soltar` a medias.
+
+Anotado al pasar por ahí: `bun run test` **sale con código 1 en `main` limpio**.
+Las 952 pruebas pasan; lo que lo tumba es un error sin capturar de
+tiptap/ProseMirror en jsdom (`target.getClientRects is not a function`) que
+vitest cuenta como error del proceso. Se reproduce sin ningún cambio encima, así
+que no bloquea nada, pero deja la puerta en rojo y a alguien le va a costar un
+rato averiguar que no es suyo.
 
 ## 📄 Documentación por proyecto
 
