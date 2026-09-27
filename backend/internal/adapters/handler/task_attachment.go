@@ -103,9 +103,14 @@ func (h *taskHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.TaskAttachment]{Success: true, Data: att})
 }
 
-// DeleteAttachment removes the record. The blob itself is left to image-service's
-// own lifecycle — deleting it here would break any markdown still referencing it
-// from an edit history.
+// DeleteAttachment removes the record. The blob stays in the bucket, **for
+// good**: deleting it here would break any markdown still referencing it from
+// an edit history (DocVersion, NoteRevision).
+//
+// Antes decía que el fichero quedaba «al ciclo de vida de image-service». Ese
+// ciclo no existe: image-service no borra nada, y la única regla del bucket
+// (`infra/terraform/reports-media/s3.tf`) limpia subidas multiparte a medias.
+// Lo que se deja aquí se queda para siempre. Ver la tarjeta #4.
 func (h *taskHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
 	t, ok := h.resolveTask(w, r, chi.URLParam(r, "id"), true)
 	if !ok {

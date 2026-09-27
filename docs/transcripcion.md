@@ -101,11 +101,35 @@ El objetivo es **≥ 3× tiempo real** con `large-v3-turbo` int8. Por debajo, se
 baja a `medium`: media hora de llamada tardando más de diez minutos convierte
 «el resumen llega al rato» en «el resumen llega cuando ya no importa».
 
+**Medido el 13-sep-2026 en el nodo, y no llega.** Esta tabla se quedó en
+blanco hasta el 26-sep aunque la medida ya estaba hecha: vivía en la
+conversación en la que se tomó y en una línea de `STATUS.md`, y en ningún sitio
+más.
+
 | Medida | Resultado |
 |---|---|
-| Audio de la prueba | *sin medir* |
-| `large-v3-turbo` int8, 6 hilos | *sin medir* |
-| `medium` int8, 6 hilos (si hace falta) | *sin medir* |
+| Audio de la prueba | 21,2 min, pistas por separado |
+| `large-v3-turbo` int8, 6 hilos | **peor que 0,45×** — 47 min de reloj y sin terminar; se paró ahí |
+| `medium` int8, 6 hilos | **no creíble**: 0,02× en el primer segmento |
+
+Falla por un factor de **siete como mínimo** contra el 3× que se pedía. Y la
+medida es limpia: cero estrangulamiento y el nodo con un 29 % ocioso, así que no
+hubo contención a la que echarle la culpa.
+
+**Lo que no cuadra, y nadie ha investigado:** consumió 4.528 s de CPU en 47 min
+de reloj, o sea **~1,6 núcleos de los 6 que se le dieron**. No usa la máquina
+que tiene. Apunta a cómo paraleliza CTranslate2 una sola pista —o a una
+compilación que no aprovecha el AVX2 que el host sí tiene—, no a que el hardware
+sea flojo. El 0,02× de `medium` huele a lo mismo, o a hilos peleándose. Si la
+transcripción se retoma, **esto es lo primero que hay que mirar**: con los seis
+núcleos trabajando, el número cambia de orden.
+
+Con esto el rumbo cambió el 16-sep a **grabar sin transcribir**, que está hecho y
+en producción (`docs/grabacion.md`). Y de paso cambió qué significa este número:
+las pistas por persona que guarda la grabación son la entrada que este banco
+espera, así que transcribir puede ser un trabajo por lotes cuando el host esté
+libre. Ahí 0,45× deja de ser un veto, porque ya no compite con la llamada: una
+hora de reunión serían más de dos horas de cómputo, de madrugada.
 
 ## 2 · Lo que el spike **no** contesta
 

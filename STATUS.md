@@ -2,37 +2,35 @@
 
 Tracking doc — open items, in-progress work, and decisions from rolling conversations. Update this file when you start/finish work or change direction.
 
-## 🚨 User action required
+## ⚠️ Los pendientes viven en cac
 
-| Item | Context | Owner |
-|---|---|---|
-| Verificar la v1.6.68 instalada | Lleva el medidor de micrófono, el selector de fecha propio, el check de subtareas, los avisos de membresía y el adjunto citado. Nada de eso está comprobado a mano. | jose |
-| Merge `a1-step3-rename` | La rama sigue viva. Renombra lo *almacenado* a `open`/`done`; una app vieja mostraría un tablero vacío. | jose confirma |
-| Rodar la imagen nueva de `swarm-manage` | El endpoint de stats por tarea ya está; hace falta el botón «Update Agent» por servidor para que la app pueda consumirlo. | jose |
+El 26-sep-2026 se auditó esta sección y **sus tres filas eran falsas**: pedía
+verificar una versión que ya no era la última, hacer *merge* de un PR que nunca
+existió (aquí se commitea directo a `main`), y un botón «Update Agent» que llevaba
+en la app desde el 9-jun. Un pendiente tiene estado, dueño y fecha, y eso es un
+tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
+`91abe433-4d90-4519-93ff-616109ce40c9`, en «Command and control».
 
 ## 🟢 Al día
 
-La app va por la **v1.6.69** («que los avisos avisen») y el backend está
-desplegado con los rangos numéricos.
+La app va por la **v1.6.70** (grabación de reuniones, pestañas del canal, el
+hilo que te deja donde estabas, y el filtro del árbol a la primera).
 
-**Sin cortar: la v1.6.70.** Lleva la grabación de reuniones entera, las pestañas
-del canal, el anclaje del hilo al volver de otra pestaña, y el filtro del árbol a
-la primera. La puerta de verificación pasa; se paró `/soltar` a medias.
+**Para la v1.6.71, commiteado y sin cortar:**
 
-**Sin commitear: #80, el vencimiento un día antes en el calendario.** jose
-(UTC−6) soltó una tarea en el 30-sep y se pintó en el 29. Lo guardado estaba
-bien; `ItemCalendar` lo leía con captadores locales. Ahora `CalendarItem`
-distingue `day` de `at` por tipo, «Mi trabajo» pasa el vencimiento como día, la
-suite corre en `America/Mexico_City` y hay `bun run test:timezones` (UTC, −6, +13).
-El barrido encontró y arregló otro fallo de zona en `meeting-time.test.ts`. Falta la
-comprobación a mano: arrastrar al 30, recargar, y que siga en el 30.
-
-Anotado al pasar por ahí: `bun run test` **sale con código 1 en `main` limpio**.
-Las 952 pruebas pasan; lo que lo tumba es un error sin capturar de
-tiptap/ProseMirror en jsdom (`target.getClientRects is not a function`) que
-vitest cuenta como error del proceso. Se reproduce sin ningún cambio encima, así
-que no bloquea nada, pero deja la puerta en rojo y a alguien le va a costar un
-rato averiguar que no es suyo.
+- **#80 — un vencimiento cae en el día elegido en cualquier zona.** jose (UTC−6)
+  soltó una tarea en el 30 y se pintó en el 29: lo guardado estaba bien y
+  `ItemCalendar` lo leía con captadores locales. `CalendarItem` distingue ahora
+  `day` de `at` por tipo. Verificado a mano el 26-sep con la build local.
+- **#69 — el CI corre las pruebas de la app**, bajo las tres zonas, y frena la
+  release si fallan. Para poder encenderlo hubo que tapar el error huérfano de
+  tiptap que hacía salir la suite con código 1 con todo en verde.
+- **#70 — cambiar la bandeja desde Integraciones** (backend). Decía «esa lista es
+  de otra organización» con cualquier lista: la guarda preguntaba por
+  `task_lists.deleted_at`, que no existe, e ignoraba el error. Y detrás,
+  `Update` no guardaba `list_id`. Pruebas contra Postgres.
+- **#81 — el detalle de una tarea por debajo de 1024 px** aplastaba la
+  descripción a una letra de ancho.
 
 ## 📄 Documentación por proyecto
 
