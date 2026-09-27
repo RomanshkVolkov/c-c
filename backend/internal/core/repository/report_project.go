@@ -92,30 +92,43 @@ func (r *ReportProjectRepository) CountSinceByProject(desde time.Time) (map[stri
 	return out, nil
 }
 
-// Update persists the editable fields (name, origins, rate limit, active flag).
-// OrgDeLista dice de qué organización es una lista, y devuelve "" si no
-// existe.
+// ListOrgID dice de qué organización es una lista, y devuelve "" si no existe.
 //
 // Hace falta para no dejar que un proyecto entregue sus reportes en el tablero
 // de otra organización: sería filtrar el trabajo de un cliente a gente que no
 // tiene nada que ver con él, y por una sola línea mal puesta en un formulario.
-func (r *ReportProjectRepository) OrgDeLista(listID string) string {
+//
+// Antes pedía también `l.deleted_at IS NULL`, y `task_lists` **no tiene esa
+// columna** (`TaskList` no borra en blando). La consulta reventaba siempre, el
+// error no se miraba, y la organización salía vacía: cambiar la bandeja desde
+// Integraciones contestaba «esa lista es de otra organización» con cualquier
+// lista, de cualquier organización (tarjeta #70). Por eso ahora el error vuelve
+// al llamante: una consulta rota no puede hacerse pasar por una respuesta.
+// → Guardián: `TestTheInboxGuardAsksTheListsOwnSpace`.
+func (r *ReportProjectRepository) ListOrgID(listID string) (string, error) {
 	var orgID string
-	r.db.Raw(`
+	err := r.db.Raw(`
 		SELECT COALESCE(s.org_id, '')
 		FROM task_lists l
 		JOIN task_spaces s ON s.id = l.space_id
-		WHERE l.id = ? AND l.deleted_at IS NULL
-	`, listID).Scan(&orgID)
-	return orgID
+		WHERE l.id = ?
+	`, listID).Scan(&orgID).Error
+	return orgID, err
 }
 
+// Update persists the editable fields.
 func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 	return r.db.Model(&domain.ReportProject{}).
 		Where("id = ?", p.ID).
 		// An explicit column list, so a new field on the struct is NOT persisted
 		// until it's named here. Easy to forget — the service and the response
 		// both look right while the row never changes.
+		//
+		// Y pasó justo eso con `list_id`: el servicio movía la bandeja, la
+		// respuesta —hecha con el objeto en memoria— enseñaba la lista nueva, y
+		// la fila no cambiaba. Los reportes seguían cayendo en la vieja sin que
+		// nada lo dijera (#70).
+		// → Guardián: `TestChangingTheInboxIsSaved`.
 		Updates(map[string]any{
 			"name":                             p.Name,
 			"rate_limit_per_hour":              p.RateLimitPerHour,
@@ -124,6 +137,7 @@ func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 			"default_assignee_user_id":         p.DefaultAssigneeUserID,
 			"webhook_url":                      p.WebhookURL,
 			"webhook_secret":                   p.WebhookSecret,
+			"list_id":                          p.ListID,
 		}).Error
 }
 

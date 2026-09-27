@@ -143,11 +143,15 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 		// Y no a la de otra organización: sería enseñar el trabajo de un
 		// cliente a gente que no tiene nada que ver con él, por una línea mal
 		// puesta en un formulario.
-		if org := s.repo.OrgDeLista(*req.ListID); org != p.OrgID {
+		org, err := s.repo.ListOrgID(*req.ListID)
+		if err != nil {
+			return nil, err
+		}
+		if org != p.OrgID {
 			return nil, ErrInboxOtherOrg
 		}
 	}
-	if err := s.aplicarCambios(p, req); err != nil {
+	if err := s.applyChanges(p, req); err != nil {
 		return nil, err
 	}
 	if err := s.repo.Update(p); err != nil {
@@ -156,7 +160,7 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 	return toReportProjectResponse(p), nil
 }
 
-// aplicarCambios copia sobre el proyecto **sólo los campos que llegaron**.
+// applyChanges copia sobre el proyecto **sólo los campos que llegaron**.
 //
 // Aparte de `Update` para poder probarse sin base de datos: la regla que
 // implementa —omitir no borra— es aritmética sobre dos structs, y montar
@@ -166,7 +170,7 @@ func (s *ReportProjectService) Update(id string, req domain.UpdateReportProjectR
 //
 // Lo que necesita el repositorio se queda fuera: validar el responsable y
 // comprobar la organización de la bandeja.
-func aplicarCambios(p *domain.ReportProject, req domain.UpdateReportProjectRequest) {
+func applyChanges(p *domain.ReportProject, req domain.UpdateReportProjectRequest) {
 	if req.DefaultAssigneeUserID != nil {
 		if *req.DefaultAssigneeUserID == "" {
 			p.DefaultAssigneeUserID = nil
@@ -205,14 +209,14 @@ func aplicarCambios(p *domain.ReportProject, req domain.UpdateReportProjectReque
 	}
 }
 
-// aplicarCambios con lo que hace falta el repositorio: validar el responsable.
-func (s *ReportProjectService) aplicarCambios(p *domain.ReportProject, req domain.UpdateReportProjectRequest) error {
+// applyChanges con lo que hace falta el repositorio: validar el responsable.
+func (s *ReportProjectService) applyChanges(p *domain.ReportProject, req domain.UpdateReportProjectRequest) error {
 	if req.DefaultAssigneeUserID != nil {
 		if err := s.validateDefaultAssignee(p.OrgID, *req.DefaultAssigneeUserID); err != nil {
 			return err
 		}
 	}
-	aplicarCambios(p, req)
+	applyChanges(p, req)
 	return nil
 }
 

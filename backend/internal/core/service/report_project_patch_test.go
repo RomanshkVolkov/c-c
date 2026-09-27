@@ -17,8 +17,8 @@ import (
 // CI no corre las pruebas del backend — una que necesitara Postgres no
 // vigilaría nada.
 
-/** Un proyecto configurado a conciencia, para ver qué sobrevive. */
-func configurado() *domain.ReportProject {
+/** Un proyecto configuredProject a conciencia, para ver qué sobrevive. */
+func configuredProject() *domain.ReportProject {
 	lista := "lista-vieja"
 	responsable := "u-ana"
 	return &domain.ReportProject{
@@ -40,9 +40,9 @@ func configurado() *domain.ReportProject {
 func txt(s string) *string { return &s }
 
 // El caso que motivó el cambio: mover la bandeja y nada más.
-func TestMoverLaBandejaNoTocaElResto(t *testing.T) {
-	p := configurado()
-	aplicarCambios(p, domain.UpdateReportProjectRequest{ListID: txt("lista-nueva")})
+func TestMovingTheInboxLeavesTheRestAlone(t *testing.T) {
+	p := configuredProject()
+	applyChanges(p, domain.UpdateReportProjectRequest{ListID: txt("lista-nueva")})
 
 	if p.ListID == nil || *p.ListID != "lista-nueva" {
 		t.Errorf("la bandeja no se movió: %v", p.ListID)
@@ -70,10 +70,10 @@ func TestMoverLaBandejaNoTocaElResto(t *testing.T) {
 }
 
 // Un PATCH vacío es una operación válida y no hace nada.
-func TestUnPatchVacioNoCambiaNada(t *testing.T) {
-	p := configurado()
+func TestAnEmptyPatchChangesNothing(t *testing.T) {
+	p := configuredProject()
 	antes := *p
-	aplicarCambios(p, domain.UpdateReportProjectRequest{})
+	applyChanges(p, domain.UpdateReportProjectRequest{})
 	if p.WebhookURL != antes.WebhookURL || p.Name != antes.Name ||
 		p.RateLimitPerHour != antes.RateLimitPerHour || p.WebhookSecret != antes.WebhookSecret {
 		t.Error("un PATCH sin campos tiene que dejar el proyecto igual")
@@ -81,9 +81,9 @@ func TestUnPatchVacioNoCambiaNada(t *testing.T) {
 }
 
 // Borrar sigue siendo posible: pidiéndolo.
-func TestElVacioExplicitoSiBorra(t *testing.T) {
-	p := configurado()
-	aplicarCambios(p, domain.UpdateReportProjectRequest{WebhookURL: txt("")})
+func TestAnExplicitEmptyDoesClear(t *testing.T) {
+	p := configuredProject()
+	applyChanges(p, domain.UpdateReportProjectRequest{WebhookURL: txt("")})
 	if p.WebhookURL != "" {
 		t.Errorf("mandar \"\" tiene que borrar el destino, quedó %q", p.WebhookURL)
 	}
@@ -96,9 +96,9 @@ func TestElVacioExplicitoSiBorra(t *testing.T) {
 
 // El secreto sólo se reemplaza cuando llega uno nuevo. Mandarlo vacío junto a
 // otros cambios no puede dejar de firmar en silencio.
-func TestElSecretoNoSePisaConUnVacio(t *testing.T) {
-	p := configurado()
-	aplicarCambios(p, domain.UpdateReportProjectRequest{
+func TestAnEmptySecretDoesNotOverwrite(t *testing.T) {
+	p := configuredProject()
+	applyChanges(p, domain.UpdateReportProjectRequest{
 		Name:          txt("boaty v2"),
 		WebhookSecret: txt(""),
 	})
@@ -111,24 +111,24 @@ func TestElSecretoNoSePisaConUnVacio(t *testing.T) {
 }
 
 // Y el responsable, que usa la otra convención: "" lo quita.
-func TestElResponsableSeQuitaConElVacio(t *testing.T) {
-	p := configurado()
-	aplicarCambios(p, domain.UpdateReportProjectRequest{DefaultAssigneeUserID: txt("")})
+func TestAnEmptyAssigneeClearsIt(t *testing.T) {
+	p := configuredProject()
+	applyChanges(p, domain.UpdateReportProjectRequest{DefaultAssigneeUserID: txt("")})
 	if p.DefaultAssigneeUserID != nil {
 		t.Errorf("tenía que quedarse sin responsable: %v", p.DefaultAssigneeUserID)
 	}
 }
 
 // Desactivar un canal es un cambio como otro, y omitirlo no lo desactiva.
-func TestDesactivarEsExplicito(t *testing.T) {
-	p := configurado()
-	aplicarCambios(p, domain.UpdateReportProjectRequest{Name: txt("otro")})
+func TestDeactivatingIsExplicit(t *testing.T) {
+	p := configuredProject()
+	applyChanges(p, domain.UpdateReportProjectRequest{Name: txt("otro")})
 	if !p.IsActive {
 		t.Error("no se pidió desactivarlo")
 	}
 
 	no := false
-	aplicarCambios(p, domain.UpdateReportProjectRequest{IsActive: &no})
+	applyChanges(p, domain.UpdateReportProjectRequest{IsActive: &no})
 	if p.IsActive {
 		t.Error("sí se pidió desactivarlo")
 	}
