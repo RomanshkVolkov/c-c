@@ -64,6 +64,7 @@
   "recording-not-ready": "Esta grabación todavía se está montando.",
   "recordings-disabled": "La grabación no está montada en este servidor.",
   "reviewed-needs-superadmin": "Sólo un superadministrador puede marcar esto como revisado.",
+  "reviewed-needs-a-person": "Una revisión la firma una persona, desde la app. Un token no puede firmarla.",
   "ring-outsider": "Sólo puedes llamar a gente de esta organización.",
   "room-empty": "Todavía no hay nadie en esta llamada.",
   "same-password": "La contraseña nueva tiene que ser distinta de la actual.",

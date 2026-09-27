@@ -71,6 +71,17 @@ type ClaimsJWT struct {
 	// ProjectSlug identifies the tenant in emitted events. Stored rather than
 	// derived from Username, which only happens to be formatted that way.
 	ProjectSlug string `json:"-"`
+	// ViaToken dice que quien llama entró con un token personal y no con su
+	// sesión: detrás puede haber un agente con el token de su dueño.
+	//
+	// Igual que ProjectID, nunca viene en un token firmado —`json:"-"`, así que
+	// ni un JWT fabricado puede traerlo puesto— y sólo lo pone el middleware,
+	// que es el único sitio que sabe cómo llegó la petición. `Scopes` no vale
+	// como marca: un token de sólo lectura no tiene ninguno.
+	//
+	// Existe para lo que una persona tiene que hacer en persona. Hoy, firmar la
+	// revisión de un documento (ver DocReviewSigner).
+	ViaToken bool `json:"-"`
 	jwt.RegisteredClaims
 }
 

@@ -56,6 +56,16 @@ zona es invisible. Si tocas fechas, pasa `bun run test:timezones`: la suite bajo
 UTC, UTC−6 y UTC+13. Con una sola zona, un fallo simétrico al revés sigue
 escondido — el primer barrido encontró uno en `meeting-time.test.ts`.
 
+**Un token personal es la persona para los scopes, pero no para firmar.** Sus
+claims copian `Superadmin` del usuario, así que «¿es superadmin?» no distingue
+a la persona de un agente con su token. Lo que tiene que hacer una persona en
+persona —hoy, firmar la revisión de un doc— se decide con `ViaToken`, que sólo
+pone la rama PAT de `AuthMiddleware` y nunca viaja en JSON. Hasta el 27-sep-2026
+un comentario aseguraba que ningún token podía firmar, y el de un superadmin
+firmaba (#84).
+→ Guardianes: `domain.TestDocReviewSigner`, `TestViaTokenNeverTravelsInJSON` y
+`middleware.TestAPersonalTokenIsMarkedAsOne`.
+
 **Un nombre para enseñar sale de `nombreVisible`**
 (`backend/internal/core/repository/nombres.go`), nunca de `username` a mano: un
 identificador de acceso no es cómo se llama a una persona. Buscar, mencionar e

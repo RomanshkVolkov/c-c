@@ -64,6 +64,7 @@
   "recording-not-ready": "This recording is still being put together.",
   "recordings-disabled": "Recording isn't set up on this server.",
   "reviewed-needs-superadmin": "Only a superadmin can mark this as reviewed.",
+  "reviewed-needs-a-person": "A review is signed by a person, in the app. A token can't sign one.",
   "ring-outsider": "You can only call people in this organization.",
   "room-empty": "There's nobody in this call yet.",
   "same-password": "The new password has to differ from the current one.",

@@ -308,10 +308,19 @@ func (h *docHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	//
 	// Superadmin mientras no haya rol de admin de organización, que es el dueño
 	// natural de esta firma. Los demás campos del PATCH no cambian.
-	if domain.DocPatchSignsAReview(req) && !user.Superadmin {
-		SendErrorResponse(w, http.StatusForbidden,
-			"Only a superadmin can mark a document reviewed", "reviewed-needs-superadmin")
-		return
+	//
+	// Y una persona **en su sesión**, no un token: ver DocReviewSigner.
+	if domain.DocPatchSignsAReview(req) {
+		switch err := domain.DocReviewSigner(user); {
+		case errors.Is(err, domain.ErrReviewNeedsAPerson):
+			SendErrorResponse(w, http.StatusForbidden,
+				"A review is signed by a person in the app, not by a token", "reviewed-needs-a-person")
+			return
+		case err != nil:
+			SendErrorResponse(w, http.StatusForbidden,
+				"Only a superadmin can mark a document reviewed", "reviewed-needs-superadmin")
+			return
+		}
 	}
 	d, err := h.svc.Patch(orgID, kind, id, user.UserID, req)
 	var noEsta *service.ErrNoSuchColleague

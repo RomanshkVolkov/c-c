@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -566,6 +567,38 @@ type DecisionRequest struct {
 // abierta.
 func DocPatchSignsAReview(r PatchDocRequest) bool {
 	return r.Reviewed != nil
+}
+
+var (
+	// ErrReviewNeedsAPerson: la firma vino con un token personal.
+	ErrReviewNeedsAPerson = errors.New("a review is signed by a person, not by a token")
+	// ErrReviewNeedsSuperadmin: la firma vino de alguien que no es superadmin.
+	ErrReviewNeedsSuperadmin = errors.New("only a superadmin can mark a document reviewed")
+)
+
+// DocReviewSigner dice si quien llama puede firmar la revisión de un documento.
+//
+// Dos condiciones, y la primera es la que faltaba (#84). La firma vale porque
+// hay **una persona** detrás diciendo «lo he mirado y sigue siendo verdad». Un
+// token personal puede ser un agente con el token de su dueño, y entonces la
+// firma diría «alguien tocó esto», que ya lo dice la fecha de modificación.
+//
+// Antes sólo se miraba `Superadmin`, y los claims de un token lo copian del
+// usuario: el token de un superadmin con `docs:manage` firmaba por la API,
+// aunque el comentario del middleware aseguraba que ningún token podía. Lo único
+// que lo frenaba era que el MCP no lo exponía, y eso no protege a nadie que
+// tenga el token y `curl`.
+//
+// Un agente sí puede **pedir** una revisión; firmarla es de una persona, en la
+// app.
+func DocReviewSigner(c *ClaimsJWT) error {
+	if c == nil || c.ViaToken {
+		return ErrReviewNeedsAPerson
+	}
+	if !c.Superadmin {
+		return ErrReviewNeedsSuperadmin
+	}
+	return nil
 }
 
 // DecisionIsAddressed comprueba que el origen trae con qué volver.

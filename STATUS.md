@@ -16,7 +16,7 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 La app va por la **v1.6.70** (grabación de reuniones, pestañas del canal, el
 hilo que te deja donde estabas, y el filtro del árbol a la primera).
 
-**Para la v1.6.71, commiteado y sin cortar:**
+**La v1.6.71 (27-sep) lleva:**
 
 - **#80 — un vencimiento cae en el día elegido en cualquier zona.** jose (UTC−6)
   soltó una tarea en el 30 y se pintó en el 29: lo guardado estaba bien y

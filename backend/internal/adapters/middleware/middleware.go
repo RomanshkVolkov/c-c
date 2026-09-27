@@ -144,6 +144,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-token")
 				return
 			}
+			// Aquí y no en quien arma los claims: esta rama es el único sitio que
+			// sabe con certeza que la petición llegó con un token. Lo que se decide
+			// con esto —firmar una revisión— no puede depender de que otra capa se
+			// acuerde de ponerlo.
+			claims.ViaToken = true
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				needed, ok := patScopeFor(r)
 				if !ok {
@@ -303,10 +308,15 @@ var patWritable = []struct {
 	// Va con detección de conflicto: sin el hash de lo que se leyó, el servidor
 	// lo rechaza en vez de borrar lo que otro escribió mientras tanto.
 	//
-	// El `PATCH` alcanza dueño y línea fijada, **no** «revisado»: el handler lo
-	// exige de un superadmin, así que un token nunca puede firmar una revisión
-	// aunque llegue por aquí. La restricción vive ahí y no en esta tabla porque
-	// depende de un campo del cuerpo, y esta tabla sólo ve método y ruta.
+	// El `PATCH` alcanza dueño y línea fijada, **no** «revisado»: el handler
+	// niega la firma a cualquier petición que llegue con un token
+	// (`domain.DocReviewSigner`, con `ViaToken`, que pone la rama PAT de
+	// AuthMiddleware). La restricción vive ahí y no en esta tabla porque depende
+	// de un campo del cuerpo, y esta tabla sólo ve método y ruta.
+	//
+	// Hasta el 27-sep-2026 este comentario ya decía que ningún token podía
+	// firmar, y no era verdad: el handler sólo pedía superadmin, y el token de un
+	// superadmin lo es (#84).
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/tabs/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+$`), domain.ScopeReportsManage},
