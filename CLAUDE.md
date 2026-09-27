@@ -98,16 +98,27 @@ base `C` seguiría saliendo bien.
 revienta la inserción porque la columna tiene `default:0.5`; los caminos que
 saben dónde va la tarjeta le ponen el suyo.
 
-## El CI corre las pruebas del backend, y sólo ésas
+## El CI corre las pruebas de backend, app y transcriptor
 
-`backend.yml` tiene por delante un trabajo `test` con Postgres de verdad, y el
-despliegue depende de él: rojo no sale a producción. Es lo que pedía la tarjeta
-#38, y al encenderlo salió una prueba que llevaba meses roja sin que nadie
-pudiera verlo.
+Las tres suites corren **por delante** de lo que publican, así que rojo no sale:
 
-**El resto no tiene red.** `swarm-manage.yml` construye, `app-release.yml`
-empaqueta, y ni `app/` ni `transcriber/` corren sus suites en ninguna parte.
-Para esos dos, verificar en local sigue siendo lo único que hay.
+| Workflow | Qué corre | Qué frena |
+|---|---|---|
+| `backend.yml` | `go test` con Postgres de verdad | el despliegue a producción (#38) |
+| `app.yml` | tipos, eslint, y la suite **bajo las tres zonas** | la release: `app-release.yml` lo llama antes de compilar (#69) |
+| `transcriber.yml` | `pytest` | la imagen del worker |
+
+Al encender cada una salió algo que llevaba tiempo escondido: una prueba del
+backend roja desde hacía meses, y en la app un error huérfano de tiptap que hacía
+salir la suite con código 1 con todo en verde (tapado en `test-setup.ts`).
+
+**Sin red siguen** `swarm-manage/`, que sólo se construye, y el lado Rust de la
+app, que no tiene pruebas propias en el CI: lo único que lo comprueba es que la
+release compile en las tres plataformas.
+
+Una release con `app.yml` en rojo **se queda publicada sin instaladores**. El
+actualizador no se entera, así que nadie se la come, pero esa versión ya está
+gastada: se arregla y sale la siguiente.
 
 Y ojo con el verde de `go test` **en local**: las pruebas que necesitan Postgres
 se **saltan** sin base (`t.Skip("no database configured")` cuando no hay

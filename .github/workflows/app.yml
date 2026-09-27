@@ -1,0 +1,58 @@
+name: app
+
+# Las pruebas de la app, que hasta ahora no corría nadie (tarjeta #69).
+#
+# Corre en cada push que toque `app/`, y además **`app-release.yml` la llama por
+# delante de compilar**: igual que el backend, rojo no sale. Una release con las
+# pruebas rotas se queda publicada pero sin instaladores, y el actualizador no
+# se entera — nadie se la come. Sale otra versión, la siguiente, como siempre.
+#
+# No se pudo encender antes porque la suite salía con código 1 en `main` limpio
+# aunque las 952 pruebas pasaran: un error huérfano de tiptap en jsdom que vitest
+# cuenta como fallo del proceso. Encenderla así habría sido un rojo permanente
+# desde el primer día, que es la forma más rápida de que se aprenda a ignorarlo.
+# Está tapado en `src/test-setup.ts` y tiene su guardián.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/app.yml"
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node para vitest y Bun para las dependencias, los dos a la versión con
+      # la que se corre en local: una suite que pasa en una y no en otra es
+      # justo el tipo de verde que no dice nada.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Types
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint 'src/**/*.{ts,tsx}'
+
+      # Las tres zonas y no una. En UTC un fallo de fecha es invisible —el
+      # runner está en UTC—, y con una sola zona al oeste un fallo simétrico al
+      # revés sigue escondido. Así se vio el 30 que se pintaba en el 29.
+      - name: Test (UTC, UTC−6, UTC+13)
+        run: bun run test:timezones

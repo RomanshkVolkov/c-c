@@ -8,7 +8,13 @@ permissions:
   contents: write
 
 jobs:
+  # Las pruebas de la app, por delante de compilar nada. Es el mismo trabajo que
+  # corre en cada push (`app.yml`): aquí es la puerta, y allí el aviso temprano.
+  test:
+    uses: ./.github/workflows/app.yml
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       # One platform at a time, and this is not about resources.

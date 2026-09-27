@@ -46,6 +46,30 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 /**
+ * Ni la geometría de un `Range`.
+ *
+ * ProseMirror mide dónde está el cursor con `Range.getClientRects`, y tiptap lo
+ * pide al enfocar el editor **dentro de un `requestAnimationFrame`**. Sin esto
+ * el `TypeError` salta fuera de cualquier prueba, vitest se lo apunta al fichero
+ * que estuviera corriendo —que pasa solo— y la suite sale con código 1 con todo
+ * en verde. Así estuvo días, y parecía un fallo de otro.
+ *
+ * Una lista vacía y un rectángulo a cero bastan: ProseMirror cae del primero al
+ * segundo por su cuenta, y ninguna prueba mide píxeles.
+ * → Guardián: `test-setup.test.ts`.
+ */
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = function () {
+    return [] as unknown as DOMRectList;
+  };
+}
+if (!Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = function () {
+    return new DOMRect(0, 0, 0, 0);
+  };
+}
+
+/**
  * Las pruebas se leen en inglés, pase lo que pase.
  *
  * Cientos de aserciones buscan texto literal —`getByText("Save")`— y el idioma
