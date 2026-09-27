@@ -479,7 +479,12 @@ function Content() {
         </Button>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      {/* En columna por debajo de `lg` y en fila por encima. Sin el `flex-col`
+          el panel de propiedades —`w-full shrink-0` en estrecho— se quedaba con
+          todo el ancho **al lado** de la descripción, y ésta se leía en vertical,
+          letra a letra (#81). Sólo se veía por debajo de 1024 px: a partir de ahí
+          el panel mide 72 y todo cabe. */}
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-auto p-4 lg:px-8">
         <Input
           value={title}
