@@ -98,3 +98,15 @@ export function dueDay(iso?: string | null): Date | null {
   if (Number.isNaN(d.getTime())) return null;
   return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
+
+/**
+ * Qué mandar al elegir —o vaciar— un vencimiento en el selector.
+ *
+ * Vaciar no es mandar `dueAt: null`: el servidor lee un `null` como «no tocar»,
+ * así que la fecha se quedaba y volvía a salir al recargar, sin error (#95).
+ * Quitarla es `clearDueAt`. Aparte, y no en línea en el detalle, para poder
+ * probarla: es la mitad del arreglo que vive en la app.
+ */
+export function dueDatePatch(value: string): { dueAt: string } | { clearDueAt: true } {
+  return value ? { dueAt: new Date(value).toISOString() } : { clearDueAt: true };
+}

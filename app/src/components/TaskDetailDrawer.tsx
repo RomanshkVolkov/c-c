@@ -46,7 +46,7 @@ import { commentByline } from "@/lib/byline";
 import DecisionForm, { type DecisionDraft } from "@/components/docs/DecisionForm";
 import { describeAgent } from "@/lib/user-agent";
 import DatePicker from "@/components/DatePicker";
-import { toISODate, dueDay } from "@/lib/month";
+import { toISODate, dueDay, dueDatePatch } from "@/lib/month";
 import { useTasksStore } from "@/store/tasks.store";
 import { usePeopleStore } from "@/store/people.store";
 import { mentionsAllowed } from "@/components/markdown/mention-scope";
@@ -1069,9 +1069,7 @@ function Content() {
                 return d ? toISODate(d) : "";
               })()}
               onChange={(v) =>
-                updateTask(task.id, {
-                  dueAt: v ? new Date(v).toISOString() : null,
-                }).catch((err) => toast.error(String(err)))
+                updateTask(task.id, dueDatePatch(v)).catch((err) => toast.error(String(err)))
               }
               className="text-xs"
             />

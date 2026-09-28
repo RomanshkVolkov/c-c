@@ -537,7 +537,9 @@ func (s *TaskService) UpdateTask(ctx context.Context, id, actorID string, req do
 	if req.StartAt != nil {
 		fields["start_at"] = req.StartAt
 	}
-	if req.DueAt != nil {
+	if req.ClearDueAt {
+		fields["due_at"] = nil
+	} else if req.DueAt != nil {
 		fields["due_at"] = req.DueAt
 	}
 	if req.Archived != nil {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dayKey, toISODate, fromISODate, dueDay, monthGrid } from "@/lib/month";
+import { dayKey, toISODate, fromISODate, dueDay, monthGrid, dueDatePatch } from "@/lib/month";
 
 /**
  * La aritmética de un mes.
@@ -120,5 +120,17 @@ describe("la clave de un día", () => {
     expect(dayKey(raw) === "2026-8-30").toBe(!westOfGreenwich);
     // Resuelto antes con `dueDay`, sí, en cualquier zona.
     expect(dayKey(dueDay(raw.toISOString())!)).toBe("2026-8-30");
+  });
+});
+
+// Vaciar el selector quita el vencimiento (#95). El mutante que mata: volver a
+// mandar `dueAt: null`, que el servidor lee como «no tocar».
+describe("lo que se manda al cambiar un vencimiento", () => {
+  it("vaciarlo pide quitarlo, no manda un null", () => {
+    expect(dueDatePatch("")).toEqual({ clearDueAt: true });
+  });
+
+  it("elegir un día manda ese día a medianoche UTC", () => {
+    expect(dueDatePatch("2026-09-30")).toEqual({ dueAt: "2026-09-30T00:00:00.000Z" });
   });
 });

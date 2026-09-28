@@ -304,6 +304,11 @@ export interface UpdateTaskPayload {
   priority?: TaskPriority;
   startAt?: string | null;
   dueAt?: string | null;
+  /**
+   * Quita el vencimiento (#95). `dueAt: null` no lo hacía: el servidor lo lee
+   * como «no tocar». Ver `dueDatePatch` en `lib/month.ts`.
+   */
+  clearDueAt?: boolean;
   tagIds?: string[];
   assigneeIds?: string[];
   archived?: boolean;

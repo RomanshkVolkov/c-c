@@ -786,6 +786,14 @@ type UpdateTaskRequest struct {
 	Priority    *TaskPriority `json:"priority"    validate:"omitempty,oneof=none low normal high urgent"`
 	StartAt     *time.Time    `json:"startAt"`
 	DueAt       *time.Time    `json:"dueAt"`
+	// ClearDueAt quita el vencimiento (#95).
+	//
+	// Hace falta aparte porque `DueAt` es un puntero y `"dueAt": null` llega
+	// como `nil`, que aquí significa «no tocar». Así que vaciar la fecha en el
+	// detalle no la quitaba: se quedaba la que había, sin error, y al recargar
+	// volvía a salir. Un campo explícito se lee mejor que distinguir en el JSON
+	// «ausente» de «null», que `*time.Time` no sabe hacer.
+	ClearDueAt bool `json:"clearDueAt"`
 	// Nil leaves membership alone; an empty slice clears it.
 	TagIDs      *[]string `json:"tagIds"`
 	AssigneeIDs *[]string `json:"assigneeIds"`
