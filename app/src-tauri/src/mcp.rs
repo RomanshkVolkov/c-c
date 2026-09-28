@@ -497,6 +497,220 @@ fn qs(parts: Vec<String>) -> String {
     }
 }
 
+/// Una lista de nombres, venga como array o como una sola cadena.
+fn arg_names(args: &Value, key: &str) -> Option<Vec<String>> {
+    match args.get(key)? {
+        Value::Array(a) => Some(
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+        ),
+        Value::String(s) if !s.trim().is_empty() => Some(vec![s.trim().to_string()]),
+        _ => None,
+    }
+}
+
+/// Un vencimiento, de `YYYY-MM-DD` al instante que guarda el servidor.
+///
+/// `dueAt` es **una fecha, no un instante**, y se guarda como el día a
+/// medianoche UTC —igual que lo manda la app—. Por eso aquí se pide la fecha y
+/// no un RFC3339: un agente al oeste de Greenwich que mandara «el 30 a
+/// medianoche» en su hora guardaría el 30 a las 06:00 UTC, que al leerlo es el
+/// 30, sí, pero uno a las 23:00 del 29 en su hora guardaría el 29. Pedir la
+/// fecha quita la zona de en medio. Ver `CLAUDE.md` («dueAt es una fecha
+/// guardada como instante»).
+fn due_date_to_instant(s: &str) -> Result<String, String> {
+    let bad = || format!("dueAt must be a date, YYYY-MM-DD; got \"{s}\"");
+    let p: Vec<&str> = s.trim().split('-').collect();
+    if p.len() != 3 || p[0].len() != 4 || p[1].len() != 2 || p[2].len() != 2 {
+        return Err(bad());
+    }
+    let y: u32 = p[0].parse().map_err(|_| bad())?;
+    let m: u32 = p[1].parse().map_err(|_| bad())?;
+    let d: u32 = p[2].parse().map_err(|_| bad())?;
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let max = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return Err(bad()),
+    };
+    if d == 0 || d > max {
+        return Err(bad());
+    }
+    Ok(format!("{y:04}-{m:02}-{d:02}T00:00:00Z"))
+}
+
+/// Nombres a ids, contra lo que de verdad existe. Sin coincidencias parciales.
+///
+/// Un nombre que no está es un error **que dice cuáles sí**: dejarlo caer en
+/// silencio es la cicatriz de este fichero —un argumento aceptado y perdido por
+/// el camino—, y adivinar el más parecido pondría la etiqueta o la persona
+/// equivocada sin que nadie lo notara. Sin distinguir mayúsculas, que es como
+/// las escribe cualquiera.
+fn resolve_names(
+    wanted: &[String],
+    available: &[(String, String)],
+    what: &str,
+) -> Result<Vec<String>, String> {
+    let mut ids = Vec::with_capacity(wanted.len());
+    let mut missing = vec![];
+    for w in wanted {
+        match available.iter().find(|(name, _)| name.eq_ignore_ascii_case(w)) {
+            Some((_, id)) => {
+                if !ids.contains(id) {
+                    ids.push(id.clone());
+                }
+            }
+            None => missing.push(w.clone()),
+        }
+    }
+    if !missing.is_empty() {
+        let mut names: Vec<&str> = available.iter().map(|(n, _)| n.as_str()).collect();
+        names.sort_unstable();
+        return Err(format!(
+            "No such {what}: \"{}\". Available: {}",
+            missing.join("\", \""),
+            if names.is_empty() { "none".into() } else { names.join(", ") }
+        ));
+    }
+    Ok(ids)
+}
+
+/// De qué organización es una lista, buscándola en el árbol de espacios.
+///
+/// Hace falta **antes** de crear una tarea con etiquetas o responsables: se
+/// resuelven contra la organización, y un nombre que no existe tiene que fallar
+/// antes de crear nada, no dejar una tarea a medias.
+fn org_of_list(spaces: &Value, list_id: &str) -> Option<String> {
+    fn has(lists: Option<&Value>, id: &str) -> bool {
+        lists
+            .and_then(|l| l.as_array())
+            .map(|a| a.iter().any(|l| l.get("id").and_then(|v| v.as_str()) == Some(id)))
+            .unwrap_or(false)
+    }
+    fn in_folders(folders: Option<&Value>, id: &str) -> bool {
+        folders.and_then(|f| f.as_array()).map_or(false, |a| {
+            a.iter()
+                .any(|f| has(f.get("lists"), id) || in_folders(f.get("folders"), id))
+        })
+    }
+    spaces.as_array()?.iter().find_map(|sp| {
+        if has(sp.get("lists"), list_id) || in_folders(sp.get("folders"), list_id) {
+            sp.get("orgId").and_then(|v| v.as_str()).map(String::from)
+        } else {
+            None
+        }
+    })
+}
+
+/// La consulta de `search`, validada.
+///
+/// El servidor calla en dos casos que un agente leería mal: con menos de dos
+/// caracteres devuelve vacío sin error —que se lee como «no hay nada»—, y un
+/// límite por encima de 20 no se recorta a 20, vuelve a 8. Aquí los dos se
+/// dicen o se corrigen.
+fn search_query(args: &Value) -> Result<String, String> {
+    let q = arg_str(args, "query").ok_or("query is required")?;
+    if q.trim().chars().count() < 2 {
+        return Err("query needs at least 2 characters".into());
+    }
+    let mut parts = vec![format!("q={}", urlencode(q.trim()))];
+    push_q(&mut parts, "orgId", arg_str(args, "orgId"));
+    if let Some(l) = arg_i64(args, "limit") {
+        parts.push(format!("limit={}", l.clamp(1, 20)));
+    }
+    Ok(qs(parts))
+}
+
+/// Lo que `search` devuelve: tareas, notas y docs, y nada del chat.
+///
+/// El servidor también busca mensajes de canal, directos y personas, pero el
+/// MCP no tiene ninguna herramienta de chat. Sacarlos por aquí le abriría a un
+/// agente —con quién hablaste de qué— algo que nadie ha decidido darle.
+fn search_results(data: &Value) -> Value {
+    json!({
+        "tasks": data.get("tasks"),
+        "notes": data.get("notes"),
+        "docs": data.get("docs"),
+    })
+}
+
+/// El cuerpo de `record_decision`.
+///
+/// Por defecto la decisión viene «del documento». Con `originTaskId`, viene de
+/// esa tarea y lleva el enlace de vuelta. Hasta el 28-sep-2026 esta herramienta
+/// fijaba siempre «doc», y a propósito: el backend sólo comprobaba que el id no
+/// viniera vacío, así que una decisión podía decir que venía de una tarea que
+/// no existía, en un registro del que no se borra nada. Ahora el backend exige
+/// que la tarea exista y sea de la misma organización (#91), y el enlace ya no
+/// puede mentir.
+fn decision_body(title: &str, args: &Value) -> Value {
+    let mut body = json!({ "title": title, "origin": "doc" });
+    for key in ["body", "tag", "decidedBy"] {
+        if let Some(x) = arg_str(args, key) {
+            body[key] = json!(x);
+        }
+    }
+    if let Some(task) = arg_str(args, "originTaskId") {
+        body["origin"] = json!("task");
+        body["originTaskId"] = json!(task);
+    }
+    body
+}
+
+/// `(nombre, id)` de las etiquetas de una organización.
+fn tag_pairs(data: &Value) -> Vec<(String, String)> {
+    data.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|t| {
+                    Some((t.get("name")?.as_str()?.to_string(), t.get("id")?.as_str()?.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `(username, userId)` de los miembros de una organización.
+fn member_pairs(data: &Value) -> Vec<(String, String)> {
+    data.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| {
+                    Some((
+                        m.get("username")?.as_str()?.to_string(),
+                        m.get("userId")?.as_str()?.to_string(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Etiquetas, responsables y fechas de una tarea, ya resueltos a lo que espera
+/// el backend. Lo usan crear y editar, para que las dos digan lo mismo.
+fn resolve_task_extras(cfg: &Cfg, org_id: &str, args: &Value, body: &mut Value) -> Result<(), String> {
+    if let Some(names) = arg_names(args, "tags") {
+        let tags = api_get(cfg, &format!("/api/v1/task-tags/{}", qs(vec![format!("orgId={}", urlencode(org_id))])))?;
+        body["tagIds"] = json!(resolve_names(&names, &tag_pairs(&tags), "tag")?);
+    }
+    if let Some(names) = arg_names(args, "assignees") {
+        let members = api_get(cfg, &format!("/api/v1/organizations/{}/members", urlencode(org_id)))?;
+        body["assigneeIds"] = json!(resolve_names(&names, &member_pairs(&members), "member")?);
+    }
+    // Sólo el vencimiento. `startAt` también existe en el backend, pero nada
+    // dice que sea una fecha y no un instante, y convertirlo a medianoche UTC
+    // a ciegas sería repetir con él el fallo que se arregló con `dueAt`.
+    if let Some(d) = arg_str(args, "dueAt") {
+        body["dueAt"] = json!(due_date_to_instant(&d)?);
+    }
+    Ok(())
+}
+
 // ─── Tools ───────────────────────────────────────────────────────────────────
 
 fn tool_defs() -> Value {
@@ -624,8 +838,21 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "search",
+            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link) — NOT the matching text, on purpose: a hit says that something matched, not what it said. Open a hit with get_task, get_note or get_doc.\n\nWhat each kind matches on today: tasks by TITLE only (not description or comments), notes by title and body, docs by the text of their sections. Channel messages and direct messages are not searchable from here.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "At least 2 characters." },
+                    "orgId": { "type": "string", "description": "Optional. Limits the search to one organization you belong to." },
+                    "limit": { "type": "integer", "description": "Hits per kind, 1–20. Default 8." }
+                },
+                "required": ["query"]
+            }
+        },
+        {
             "name": "get_task",
-            "description": "Full detail of one task: its markdown description, status, priority, tags, assignees, attachments and the comment thread.",
+            "description": "Full detail of one task: its markdown description, status, priority, tags, assignees, attachments, the comment thread, and its subtasks — which are its checklist. get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -634,7 +861,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "create_task",
-            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.\n\nIf the list belongs to a client's channel (list_task_spaces shows a projectId on it), anything created there is VISIBLE TO THAT CLIENT by default: it lands on their board, takes a number from their folio sequence — permanently, even if withdrawn later — and fires their webhook. Pass visibility:\"internal\" to keep it to the team.",
+            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.\n\nIf the list belongs to a client's channel (list_task_spaces shows a projectId on it), anything created there is VISIBLE TO THAT CLIENT by default: it lands on their board, takes a number from their folio sequence — permanently, even if withdrawn later — and fires their webhook. Pass visibility:\"internal\" to keep it to the team.\n\nA checklist inside a task is its SUBTASKS: create each line with parentId, and tick it off with update_task + statusId. Don't keep pending items as text in comments — nobody can tell which ones are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -649,6 +876,18 @@ fn tool_defs() -> Value {
                         "type": "string",
                         "enum": ["none", "low", "normal", "high", "urgent"],
                         "description": "Optional; defaults to none."
+                    },
+                    "tags": {
+                        "type": "array", "items": { "type": "string" },
+                        "description": "Tag NAMES, not ids, from this organization. Replaces the whole set — read the task first to add one. An unknown name fails and lists the ones that exist; tokens cannot create new tags."
+                    },
+                    "assignees": {
+                        "type": "array", "items": { "type": "string" },
+                        "description": "Usernames of members of the task's organization. Replaces the whole set. An unknown one fails and lists who exists."
+                    },
+                    "dueAt": {
+                        "type": "string",
+                        "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. Clearing a due date is not possible through the API."
                     },
                     "idempotencyKey": {
                         "type": "string",
@@ -669,7 +908,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "update_task",
-            "description": "Change an existing task: title, markdown description, priority, or which column it sits in (statusId, from get_board). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
+            "description": "Change an existing task: title, markdown description, priority, tags, assignees, due date, or which column it sits in (statusId, from get_board). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -677,7 +916,19 @@ fn tool_defs() -> Value {
                     "title": { "type": "string" },
                     "description": { "type": "string", "description": "Markdown. Replaces the current body — read it with get_task first if you mean to add to it." },
                     "priority": { "type": "string", "enum": ["none", "low", "normal", "high", "urgent"] },
-                    "statusId": { "type": "string", "description": "Move the task to this column. get_board returns a statusId per column." },
+                    "tags": {
+                        "type": "array", "items": { "type": "string" },
+                        "description": "Tag NAMES, not ids, from this organization. Replaces the whole set — read the task first to add one. An unknown name fails and lists the ones that exist; tokens cannot create new tags."
+                    },
+                    "assignees": {
+                        "type": "array", "items": { "type": "string" },
+                        "description": "Usernames of members of the task's organization. Replaces the whole set. An unknown one fails and lists who exists."
+                    },
+                    "dueAt": {
+                        "type": "string",
+                        "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. Clearing a due date is not possible through the API."
+                    },
+                    "statusId": { "type": "string", "description": "Move the task to this column. get_board returns a statusId per column. This is also how a subtask is ticked off: move it to a done column of its parent's list." },
                     "visibility": {
                         "type": "string",
                         "enum": ["public", "internal"],
@@ -918,7 +1169,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "record_decision",
-            "description": "Add an entry to a project's decision log: what was decided, why, and who decided it. For decisions taken outside cac — a client's email, a call — where there is no task or message to link back to. The log is append-only: entries cannot be edited or deleted afterwards, so write it as it should read in a year. Needs a token with the `docs:write` scope.",
+            "description": "Add an entry to a project's decision log: what was decided, why, and who decided it. Taken outside cac — a client's email, a call — it comes from the document. Taken while working a task, pass originTaskId and the entry links back to that task. The log is append-only: entries cannot be edited or deleted afterwards, so write it as it should read in a year. Needs a token with the `docs:write` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -928,6 +1179,7 @@ fn tool_defs() -> Value {
                     "body": { "type": "string", "description": "Why. The reasoning is what makes the entry worth keeping." },
                     "tag": { "type": "string", "description": "Optional: architecture, vendor, scope…" },
                     "decidedBy": { "type": "string", "description": "The name or username of the person in this organization who made the call, when it wasn't you. Signing it with the token's owner would say they decided it, which is what whoever reads it will believe." },
+                    "originTaskId": { "type": "string", "description": "Optional. The task this decision came out of; the entry links back to it. It must be a real task in the same organization, or the entry is refused — the log can't be edited, so a link to nothing would stay forever. One task per decision." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "title"]
@@ -1204,6 +1456,12 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))
         }
 
+        "search" => {
+            let q = search_query(args)?;
+            let data = api_get(cfg, &format!("/api/v1/search/{q}"))?;
+            Ok(search_results(&data))
+        }
+
         "create_task" => {
             let list_id = arg_str(args, "listId").ok_or("listId is required")?;
             let title = arg_str(args, "title").ok_or("title is required")?;
@@ -1239,7 +1497,27 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             if let Some(v) = arg_str(args, "visibility") {
                 body["visibility"] = json!(v);
             }
+            // Etiquetas, responsables y vencimiento se resuelven **antes** de
+            // crear: un nombre que no existe tiene que fallar sin dejar detrás
+            // una tarea a medias.
+            let wants_names = arg_names(args, "tags").is_some() || arg_names(args, "assignees").is_some();
+            if wants_names || arg_str(args, "dueAt").is_some() {
+                let org_id = if wants_names {
+                    let spaces = api_get(cfg, "/api/v1/task-spaces/")?;
+                    org_of_list(&spaces, &list_id)
+                        .ok_or_else(|| format!("List {list_id} is not in any space you can see"))?
+                } else {
+                    String::new()
+                };
+                resolve_task_extras(cfg, &org_id, args, &mut body)?;
+            }
+            // Crear no admite etiquetas: van en un PATCH justo después, con los
+            // ids ya resueltos arriba.
+            let tag_ids = body.as_object_mut().and_then(|o| o.remove("tagIds"));
             let data = api_post(cfg, &format!("/api/v1/task-lists/{list_id}/tasks"), body)?;
+            if let (Some(ids), Some(id)) = (tag_ids, data.get("id").and_then(|v| v.as_str())) {
+                api_patch(cfg, &format!("/api/v1/tasks/{}", urlencode(id)), json!({ "tagIds": ids }))?;
+            }
             // Echo back what was created, including the sequence number, so the
             // caller can refer to the task without another round trip.
             Ok(json!({
@@ -1270,12 +1548,26 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     body[key] = json!(v);
                 }
             }
+            // Etiquetas y responsables se resuelven contra la organización de la
+            // tarea, que sólo se sabe preguntando por ella.
+            if arg_names(args, "tags").is_some() || arg_names(args, "assignees").is_some() {
+                let current = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))?;
+                let org_id = current
+                    .get("task")
+                    .and_then(|t| t.get("orgId"))
+                    .and_then(|v| v.as_str())
+                    .ok_or("Could not tell which organization this task belongs to")?
+                    .to_string();
+                resolve_task_extras(cfg, &org_id, args, &mut body)?;
+            } else {
+                resolve_task_extras(cfg, "", args, &mut body)?;
+            }
             // Moving a card is its own endpoint: the server derives the ordering
             // rank from the neighbours, so a status change can't be a field patch.
             let status_id = arg_str(args, "statusId");
             if body.as_object().map(|o| o.is_empty()).unwrap_or(true) && status_id.is_none() {
                 return Err(
-                    "Nothing to change: send at least one of title, description, priority, visibility or statusId"
+                    "Nothing to change: send at least one of title, description, priority, visibility, tags, assignees, dueAt or statusId"
                         .into(),
                 );
             }
@@ -1592,15 +1884,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
                 );
             }
-            // El origen lo pone esta herramienta y no quien la llama: una decisión
-            // que dijera venir de una tarea sería un enlace de vuelta que miente,
-            // en un registro del que no se puede borrar nada.
-            let mut body = json!({ "title": title, "origin": "doc" });
-            for (k, v) in [("body", "body"), ("tag", "tag"), ("decidedBy", "decidedBy")] {
-                if let Some(x) = arg_str(args, k) {
-                    body[v] = json!(x);
-                }
-            }
+            let body = decision_body(&title, args);
             api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/decisions"), body)
         }
 
@@ -1722,6 +2006,11 @@ fn summarize_board(data: &Value, limit: usize) -> Value {
                         }),
                         "comments": t.get("commentCount"),
                         "hasDescription": t.get("hasDescription"),
+                        // El checklist de la tarea. El tablero no lista las
+                        // subtareas, así que sin esto no había ninguna pista de
+                        // que una tarjeta tuviera uno — y un agente acababa
+                        // apuntando pendientes en comentarios (#90).
+                        "subtasks": subtask_progress(t),
                     })
                 })
                 .collect();
@@ -1748,6 +2037,16 @@ fn summarize_board(data: &Value, limit: usize) -> Value {
         "columns": columns,
         "note": "Call get_task with a task id for its markdown description and comments."
     })
+}
+
+/// `"2/5"` si la tarjeta tiene subtareas, y nada si no: un `"0/0"` en cada
+/// tarjeta sería ruido en la mayoría, que no tienen checklist.
+fn subtask_progress(card: &Value) -> Value {
+    let n = |k: &str| card.get(k).and_then(|v| v.as_i64()).unwrap_or(0);
+    match n("subtaskCount") {
+        0 => Value::Null,
+        total => json!(format!("{}/{}", n("subtaskDone"), total)),
+    }
 }
 
 /// Compact a raw timeline so it fits a model's context: errors verbatim (that's
@@ -1993,5 +2292,182 @@ pub fn serve() {
                 break;
             }
         }
+    }
+}
+
+// ─── Pruebas ─────────────────────────────────────────────────────────────────
+//
+// Las primeras de este fichero. Van sobre lo que decide qué se le manda al
+// backend, que es donde vive la cicatriz que cuentan sus comentarios: un
+// argumento que la herramienta acepta y luego se pierde por el camino.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Vencimientos ────────────────────────────────────────────────────────
+
+    /// El día elegido a medianoche UTC, como lo guarda la app. El mutante que
+    /// mata: mandar la fecha sin la hora, o con otra zona.
+    #[test]
+    fn a_due_date_is_that_day_at_utc_midnight() {
+        assert_eq!(due_date_to_instant("2026-09-30").unwrap(), "2026-09-30T00:00:00Z");
+    }
+
+    /// Un día que no existe se rechaza, no se desborda al mes siguiente.
+    #[test]
+    fn an_impossible_date_is_refused() {
+        for bad in ["2026-09-31", "2026-02-29", "2026-13-01", "2026-00-10", "2026-09-00"] {
+            assert!(due_date_to_instant(bad).is_err(), "{bad} debería rechazarse");
+        }
+        assert!(due_date_to_instant("2028-02-29").is_ok(), "2028 es bisiesto");
+        assert!(due_date_to_instant("2000-02-29").is_ok(), "2000 es bisiesto");
+        assert!(due_date_to_instant("2100-02-29").is_err(), "2100 no lo es");
+    }
+
+    /// Y lo que no es una fecha —una hora local, otro formato— también: es
+    /// justo lo que dejaría pasar la zona que esto existe para quitar.
+    #[test]
+    fn only_a_plain_date_is_accepted() {
+        for bad in ["2026-09-30T23:00:00-06:00", "30/09/2026", "2026-9-30", "mañana", ""] {
+            assert!(due_date_to_instant(bad).is_err(), "«{bad}» debería rechazarse");
+        }
+    }
+
+    // ── Nombres a ids ───────────────────────────────────────────────────────
+
+    fn tags() -> Vec<(String, String)> {
+        vec![("bug".into(), "t-1".into()), ("UX".into(), "t-2".into())]
+    }
+
+    #[test]
+    fn names_resolve_without_caring_about_case() {
+        let ids = resolve_names(&["BUG".into(), "ux".into()], &tags(), "tag").unwrap();
+        assert_eq!(ids, vec!["t-1", "t-2"]);
+    }
+
+    /// El que importa: un nombre que no existe falla, y dice cuáles sí. El
+    /// mutante que mata: saltarse los que no casan, que es la cicatriz.
+    #[test]
+    fn an_unknown_name_fails_and_says_what_exists() {
+        let e = resolve_names(&["bug".into(), "urgente".into()], &tags(), "tag").unwrap_err();
+        assert!(e.contains("urgente"), "tiene que nombrar el que falta: {e}");
+        assert!(e.contains("UX") && e.contains("bug"), "y ofrecer los que hay: {e}");
+    }
+
+    #[test]
+    fn the_same_name_twice_is_one_id() {
+        let ids = resolve_names(&["bug".into(), "Bug".into()], &tags(), "tag").unwrap();
+        assert_eq!(ids, vec!["t-1"]);
+    }
+
+    // ── De qué organización es una lista ────────────────────────────────────
+
+    #[test]
+    fn a_list_is_found_wherever_it_hangs() {
+        let tree = json!([
+            { "orgId": "org-a", "lists": [{ "id": "suelta" }], "folders": [
+                { "lists": [{ "id": "en-carpeta" }], "folders": [
+                    { "lists": [{ "id": "anidada" }] }
+                ]}
+            ]},
+            { "orgId": "org-b", "lists": [{ "id": "de-otra" }] }
+        ]);
+        assert_eq!(org_of_list(&tree, "suelta").as_deref(), Some("org-a"));
+        assert_eq!(org_of_list(&tree, "en-carpeta").as_deref(), Some("org-a"));
+        assert_eq!(org_of_list(&tree, "anidada").as_deref(), Some("org-a"));
+        assert_eq!(org_of_list(&tree, "de-otra").as_deref(), Some("org-b"));
+        assert_eq!(org_of_list(&tree, "no-existe"), None);
+    }
+
+    // ── El checklist ────────────────────────────────────────────────────────
+
+    /// Una tarjeta con subtareas dice cuántas lleva; una sin ellas, nada.
+    #[test]
+    fn a_card_says_how_far_its_checklist_is() {
+        assert_eq!(subtask_progress(&json!({ "subtaskCount": 5, "subtaskDone": 2 })), json!("2/5"));
+        assert_eq!(subtask_progress(&json!({ "subtaskCount": 0, "subtaskDone": 0 })), Value::Null);
+        assert_eq!(subtask_progress(&json!({})), Value::Null);
+    }
+
+    /// Y el tablero lo lleva. El mutante que mata: quitar el campo del resumen.
+    #[test]
+    fn the_board_summary_carries_the_checklist() {
+        let board = json!({
+            "list": { "name": "L" },
+            "statuses": [{ "id": "s", "name": "Open", "kind": "open" }],
+            "tasks": [{ "id": "t", "statusId": "s", "subtaskCount": 3, "subtaskDone": 1 }]
+        });
+        let out = summarize_board(&board, 10);
+        assert_eq!(out["columns"][0]["tasks"][0]["subtasks"], json!("1/3"));
+    }
+
+    // ── Búsqueda ────────────────────────────────────────────────────────────
+
+    /// Menos de dos caracteres es un error, no un «no hay nada».
+    #[test]
+    fn a_search_too_short_is_an_error_not_an_empty_answer() {
+        assert!(search_query(&json!({ "query": "a" })).is_err());
+        assert!(search_query(&json!({})).is_err());
+    }
+
+    /// Un límite de más se recorta a 20: el servidor lo devolvería a 8.
+    #[test]
+    fn a_search_limit_is_clamped_not_reset() {
+        let q = search_query(&json!({ "query": "koa", "limit": 50, "orgId": "o 1" })).unwrap();
+        assert!(q.contains("q=koa"), "{q}");
+        assert!(q.contains("limit=20"), "{q}");
+        assert!(q.contains("orgId=o%201"), "{q}");
+    }
+
+    /// Del chat no sale nada por aquí. El mutante que mata: devolver la
+    /// respuesta del servidor entera.
+    #[test]
+    fn search_never_hands_out_chat() {
+        let out = search_results(&json!({
+            "tasks": [1], "notes": [2], "docs": [3],
+            "messages": ["x"], "dms": ["y"], "people": ["z"]
+        }));
+        assert_eq!(out, json!({ "tasks": [1], "notes": [2], "docs": [3] }));
+    }
+
+    // ── Decisiones ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn a_decision_comes_from_the_doc_unless_it_names_a_task() {
+        let doc = decision_body("t", &json!({ "body": "porque sí" }));
+        assert_eq!(doc["origin"], "doc");
+        assert!(doc.get("originTaskId").is_none());
+
+        let task = decision_body("t", &json!({ "originTaskId": "task-9" }));
+        assert_eq!(task["origin"], "task");
+        assert_eq!(task["originTaskId"], "task-9");
+    }
+
+    // ── El catálogo ─────────────────────────────────────────────────────────
+
+    fn tool<'a>(defs: &'a Value, name: &str) -> &'a Value {
+        defs.as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("no hay herramienta {name}"))
+    }
+
+    /// Lo que se anuncia es lo que se puede mandar. Si la herramienta no lo
+    /// anuncia, un agente nunca lo manda; si lo anuncia y no lo reenvía, es la
+    /// cicatriz. Esto cubre la primera mitad.
+    #[test]
+    fn creating_and_editing_offer_tags_assignees_and_due_date() {
+        let defs = tool_defs();
+        for name in ["create_task", "update_task"] {
+            let props = &tool(&defs, name)["inputSchema"]["properties"];
+            for key in ["tags", "assignees", "dueAt"] {
+                assert!(props.get(key).is_some(), "{name} no anuncia {key}");
+            }
+        }
+        assert!(tool(&defs, "record_decision")["inputSchema"]["properties"]
+            .get("originTaskId")
+            .is_some());
+        assert!(tool(&defs, "search")["inputSchema"]["properties"].get("query").is_some());
     }
 }
