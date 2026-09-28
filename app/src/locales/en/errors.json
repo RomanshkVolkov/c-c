@@ -17,6 +17,7 @@
   "columns-are-fixed": "The columns of this board can't be changed.",
   "cycle": "That move would put something inside itself.",
   "decision-no-origin": "A decision needs something to link back to.",
+  "decision-origin-not-here": "That task doesn't exist in this organization, so the decision can't point back to it.",
   "device-required": "A device has to be named for this.",
   "empty": "There is nothing to send.",
   "endpoint-not-key-reachable": "That endpoint can't be reached with a key.",

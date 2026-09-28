@@ -154,6 +154,10 @@ func (s *DocService) Restore(
 // ErrDecisionUnaddressed: el origen no trae con qué volver.
 var ErrDecisionUnaddressed = errors.New("a decision needs somewhere to come back to")
 
+// ErrDecisionOriginNotHere: la tarea de la que dice venir no existe, o es de
+// otra organización.
+var ErrDecisionOriginNotHere = errors.New("that task is not in this organization")
+
 // Decisions: el registro de un documento.
 func (s *DocService) Decisions(docID string) ([]domain.Decision, error) {
 	return s.repo.Decisions(docID)
@@ -169,6 +173,22 @@ func (s *DocService) AddDecision(
 ) (*domain.Decision, error) {
 	if !domain.DecisionIsAddressed(req) {
 		return nil, ErrDecisionUnaddressed
+	}
+	// Y si dice venir de una tarea, que la tarea exista y sea de aquí.
+	//
+	// El registro no se puede borrar, así que un enlace de vuelta a una tarea
+	// que no existe —o a la de otro cliente— se quedaría ahí para siempre. Antes
+	// sólo se comprobaba que el id no viniera vacío, y por eso el MCP fijaba el
+	// origen en «doc» y no dejaba nombrar la tarea (#91). Con esto el enlace ya
+	// no puede mentir, y el MCP puede pasarlo.
+	if domain.DecisionOrigin(req.Origin) == domain.DecisionFromTask {
+		org, err := s.repo.TaskOrgID(req.OriginTaskID)
+		if err != nil {
+			return nil, err
+		}
+		if org == "" || org != orgID {
+			return nil, ErrDecisionOriginNotHere
+		}
 	}
 	// Quién la tomó, si no es quien la escribe. Ver `DecisionRequest.DecidedBy`.
 	autor := userID

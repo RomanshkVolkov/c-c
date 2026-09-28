@@ -17,6 +17,7 @@
   "columns-are-fixed": "Las columnas de este tablero no se cambian.",
   "cycle": "Ese movimiento metería algo dentro de sí mismo.",
   "decision-no-origin": "Una decisión necesita algo a lo que volver.",
+  "decision-origin-not-here": "Esa tarea no existe en esta organización, así que la decisión no puede apuntar a ella.",
   "device-required": "Hay que nombrar un dispositivo para esto.",
   "empty": "No hay nada que enviar.",
   "endpoint-not-key-reachable": "A ese punto de entrada no se llega con una llave.",

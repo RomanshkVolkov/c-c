@@ -490,6 +490,21 @@ func (r *DocRepository) OrgMemberNames(orgID string) []string {
 	return out
 }
 
+// TaskOrgID dice de qué organización es una tarea viva, y "" si no hay ninguna
+// con ese id —o si está borrada—.
+//
+// Lo usa la decisión que dice venir de una tarea: el registro no se puede
+// borrar, así que ese enlace tiene que apuntar a algo que exista y sea de la
+// misma organización (#91). El error se devuelve, no se traga: una consulta
+// rota que contestara «ninguna» rechazaría decisiones buenas sin decir por qué,
+// que es exactamente como falló la guarda de la bandeja (#70).
+func (r *DocRepository) TaskOrgID(taskID string) (string, error) {
+	var org string
+	err := r.db.Raw(`SELECT COALESCE(org_id, '') FROM items WHERE id = ? AND deleted_at IS NULL`, taskID).
+		Scan(&org).Error
+	return org, err
+}
+
 // IsMember dice si alguien pertenece a una organización.
 //
 // Aquí y no llamando al repositorio de organizaciones para no atar los dos: lo

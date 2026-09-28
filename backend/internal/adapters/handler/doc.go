@@ -222,6 +222,11 @@ func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
 			SendErrorResponse(w, http.StatusBadRequest, "A decision needs somewhere to come back to", "decision-no-origin")
 			return
 		}
+		if errors.Is(err, service.ErrDecisionOriginNotHere) {
+			SendErrorResponse(w, http.StatusBadRequest,
+				"That task does not exist in this organization", "decision-origin-not-here")
+			return
+		}
 		var noEsta *service.ErrNoSuchColleague
 		if errors.As(err, &noEsta) {
 			// El mensaje trae la lista de a quién sí se puede nombrar: sin ella,
