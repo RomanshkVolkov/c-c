@@ -639,6 +639,313 @@ fn search_results(data: &Value) -> Value {
     })
 }
 
+// ─── Documentos por sección (#85, #86) ───────────────────────────────────────
+//
+// Un doc entero son decenas de miles de caracteres —el runbook de un proyecto
+// pasó de 57 000— y cada herramienta devolvía el documento completo, así que
+// cada llamada rebasaba lo que un agente puede leer de una vez. Y para corregir
+// un párrafo sólo había dos opciones: reescribir la pestaña entera o añadir al
+// final, que es por lo que una sección vieja quedaba al lado de la nueva en vez
+// de corregirse.
+//
+// Todo esto vive aquí y no en el backend a propósito: la pantalla del doc usa
+// esas mismas rutas y necesita el documento entero. El recorte es de quien lo
+// lee a través del MCP.
+
+fn sha256_hex(s: &str) -> String {
+    use sha2::Digest;
+    let mut h = sha2::Sha256::new();
+    h.update(s.as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Una sección de un markdown: de su título hasta el siguiente título del mismo
+/// nivel o superior. Offsets en bytes sobre el cuerpo.
+#[derive(Debug, Clone, PartialEq)]
+struct Section {
+    heading: String,
+    level: usize,
+    start: usize,
+    /// Donde empieza lo que va debajo del título.
+    content_start: usize,
+    end: usize,
+}
+
+/// Las secciones de un markdown, sin contar los `#` de dentro de un bloque de
+/// código: un `# comentario` en un bloque de bash no es un título, y tomarlo
+/// por uno partiría el runbook por la mitad de un comando.
+fn sections(body: &str) -> Vec<Section> {
+    let mut heads: Vec<(usize, usize, usize, String)> = vec![]; // start, content_start, level, text
+    let mut fence: Option<&str> = None;
+    let mut pos = 0;
+    for line in body.split_inclusive('\n') {
+        let t = line.trim_start();
+        let marker = if t.starts_with("```") { Some("```") } else if t.starts_with("~~~") { Some("~~~") } else { None };
+        match (fence, marker) {
+            (None, Some(m)) => fence = Some(m),
+            (Some(open), Some(m)) if open == m => fence = None,
+            _ => {}
+        }
+        if fence.is_none() && marker.is_none() {
+            let hashes = line.bytes().take_while(|b| *b == b'#').count();
+            if (1..=6).contains(&hashes) && line[hashes..].starts_with(' ') {
+                let text = line[hashes..].trim().trim_end_matches('#').trim().to_string();
+                heads.push((pos, pos + line.len(), hashes, text));
+            }
+        }
+        pos += line.len();
+    }
+    heads
+        .iter()
+        .enumerate()
+        .map(|(i, (start, content_start, level, text))| {
+            let end = heads[i + 1..]
+                .iter()
+                .find(|(_, _, l, _)| l <= level)
+                .map(|(s, _, _, _)| *s)
+                .unwrap_or(body.len());
+            Section { heading: text.clone(), level: *level, start: *start, content_start: *content_start, end }
+        })
+        .collect()
+}
+
+/// La sección que se pide, por su título. Con o sin los `#`, sin distinguir
+/// mayúsculas. Un título que no está, o que está dos veces, es un error que dice
+/// cuáles hay: adivinar cuál de dos «## Correo» se quería reescribir borraría la
+/// equivocada.
+fn find_section(body: &str, wanted: &str) -> Result<Section, String> {
+    let w = wanted.trim().trim_start_matches('#').trim();
+    let all = sections(body);
+    let hits: Vec<&Section> = all.iter().filter(|s| s.heading.eq_ignore_ascii_case(w)).collect();
+    match hits.len() {
+        1 => Ok(hits[0].clone()),
+        0 => Err(format!(
+            "No section titled \"{w}\". Sections here: {}",
+            if all.is_empty() {
+                "none — this tab has no headings".to_string()
+            } else {
+                all.iter().map(|s| format!("{} {}", "#".repeat(s.level), s.heading)).collect::<Vec<_>>().join(" | ")
+            }
+        )),
+        n => Err(format!(
+            "\"{w}\" is the title of {n} sections, so it doesn't say which one. Rename one of them first."
+        )),
+    }
+}
+
+/// El hash de una sección: de su título al final, tal cual está.
+fn section_hash(body: &str, s: &Section) -> String {
+    sha256_hex(&body[s.start..s.end])
+}
+
+/// El índice de una pestaña: sus títulos, con el hash que pide
+/// `write_doc_section` para reescribir cada uno.
+fn tab_outline(body: &str) -> Value {
+    json!(sections(body)
+        .iter()
+        .map(|s| json!({ "heading": s.heading, "level": s.level, "sectionHash": section_hash(body, s) }))
+        .collect::<Vec<_>>())
+}
+
+/// Reemplaza lo que hay debajo del título de una sección. El título se queda.
+///
+/// Con una línea en blanco debajo del título, como se escriben aquí, y otra
+/// antes de lo que sigue, para que el título siguiente no quede pegado al
+/// último párrafo y deje de leerse como título.
+fn splice_section(body: &str, s: &Section, content: &str) -> String {
+    let mut middle = format!("\n{}\n", content.trim_matches('\n'));
+    if s.end < body.len() {
+        middle.push('\n');
+    }
+    format!("{}{}{}", &body[..s.content_start], middle, &body[s.end..])
+}
+
+fn doc_tab_of<'a>(doc: &'a Value, key: &str) -> Option<&'a Value> {
+    doc.get("tabs")?.as_array()?.iter().find(|t| t.get("key").and_then(|k| k.as_str()) == Some(key))
+}
+
+fn tab_body(tab: &Value) -> &str {
+    tab.get("body").and_then(|b| b.as_str()).unwrap_or("")
+}
+
+/// Lo que devuelve una escritura: con qué seguir, y no el documento entero.
+///
+/// Antes era `completa(doc)`: las cuatro pestañas con sus cuerpos y el registro
+/// entero de decisiones, decenas de miles de caracteres para contestar «hecho».
+fn short_tab_write(doc: &Value, key: &str) -> Value {
+    match doc_tab_of(doc, key) {
+        Some(t) => json!({
+            "tab": key,
+            "bodyHash": t.get("bodyHash"),
+            "updatedAt": t.get("updatedAt"),
+            "chars": tab_body(t).chars().count(),
+        }),
+        None => json!({ "tab": key }),
+    }
+}
+
+/// Un conflicto de escritura, con sólo la pestaña en conflicto: es lo único que
+/// hace falta para fusionar y volver a mandar.
+fn short_conflict(result: &Value, key: &str) -> Option<Value> {
+    if result.get("conflict").and_then(|c| c.as_bool()) != Some(true) {
+        return None;
+    }
+    let doc = result.get("doc").cloned().unwrap_or(Value::Null);
+    let tab = doc_tab_of(&doc, key);
+    Some(json!({
+        "conflict": true,
+        "reason": result.get("reason"),
+        "tab": key,
+        "bodyHash": tab.and_then(|t| t.get("bodyHash")),
+        "body": tab.map(tab_body),
+    }))
+}
+
+/// `get_doc` sin pestaña: el índice del documento.
+///
+/// Qué hay y dónde, sin los cuerpos. `doc.body` fuera siempre: es el markdown de
+/// antes de las pestañas, y en los docs migrados repetía el overview entero.
+/// Del registro de decisiones, los títulos, que es con lo que se decide cuál
+/// abrir.
+fn doc_outline(doc: &Value) -> Value {
+    let mut meta = doc.get("doc").cloned().unwrap_or(Value::Null);
+    if let Some(o) = meta.as_object_mut() {
+        o.remove("body");
+    }
+    let tabs: Vec<Value> = doc
+        .get("tabs")
+        .and_then(|t| t.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|t| {
+                    let body = tab_body(t);
+                    json!({
+                        "key": t.get("key"),
+                        "bodyHash": t.get("bodyHash"),
+                        "chars": body.chars().count(),
+                        "sections": tab_outline(body),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let decisions: Vec<Value> = doc
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|d| json!({ "id": d.get("id"), "title": d.get("title"), "tag": d.get("tag"), "decidedAt": d.get("decidedAt") }))
+                .collect()
+        })
+        .unwrap_or_default();
+    json!({
+        "doc": meta,
+        "tabs": tabs,
+        "decisions": decisions,
+        "attachments": doc.get("attachments").and_then(|a| a.as_array()).map(|a| a.len()).unwrap_or(0),
+        "note": "Read one section with get_doc + tab (and section, for one heading). Rewrite one heading with write_doc_section and its sectionHash.",
+    })
+}
+
+/// La decisión que se acaba de apuntar, y no el documento entero.
+///
+/// El backend contesta con el documento completo; la entrada nueva es la de
+/// `createdAt` más reciente —no la primera de la lista, que va por `decidedAt` y
+/// una decisión de la semana pasada apuntada hoy quedaría abajo—.
+fn recorded_decision(doc: &Value) -> Value {
+    let newest = doc
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .and_then(|a| a.iter().max_by_key(|d| d.get("createdAt").and_then(|c| c.as_str()).unwrap_or("").to_string()));
+    match newest {
+        Some(d) => json!({
+            "recorded": true,
+            "id": d.get("id"),
+            "title": d.get("title"),
+            "origin": d.get("origin"),
+            "originTaskId": d.get("originTaskId"),
+            "decidedAt": d.get("decidedAt"),
+        }),
+        None => json!({ "recorded": true }),
+    }
+}
+
+/// Qué hacer con una escritura de sección, sin red de por medio: o el cuerpo
+/// nuevo de la pestaña, o el conflicto que hay que devolver.
+///
+/// Aparte de `write_section` para poder probarse: es la mitad que decide si se
+/// pisa o no lo que escribió otro, y eso no puede depender de montar un
+/// servidor para comprobarlo.
+fn plan_section_write(
+    body: &str,
+    tab: &str,
+    wanted: &str,
+    expected: &str,
+    content: &str,
+) -> Result<Result<(Section, String), Value>, String> {
+    let sec = find_section(body, wanted)?;
+    let current = section_hash(body, &sec);
+    if current != expected {
+        return Ok(Err(json!({
+            "conflict": true,
+            "reason": "This section changed since you read it. Merge your text into `text` below and send the new sectionHash — writing over it would delete what someone else wrote.",
+            "tab": tab,
+            "section": sec.heading,
+            "sectionHash": current,
+            "text": &body[sec.start..sec.end],
+        })));
+    }
+    let new_body = splice_section(body, &sec, content);
+    Ok(Ok((sec, new_body)))
+}
+
+/// Reescribe lo que hay debajo de un título, con el hash propio de esa sección.
+///
+/// Dos hashes y no uno. El de la **sección** dice que lo que el agente leyó
+/// sigue igual; el de la **pestaña** —el que ya existía— dice que nadie guardó
+/// entre esta lectura y esta escritura. Si choca sólo el de la pestaña, alguien
+/// tocó otra parte del runbook: la sección pedida sigue intacta, así que se
+/// vuelve a leer y se reintenta una vez sobre lo nuevo. Si lo que cambió es la
+/// sección, eso sí es un conflicto, y vuelve con su texto actual para fusionar.
+fn write_section(
+    cfg: &Cfg,
+    kind: &str,
+    id: &str,
+    tab: &str,
+    wanted: &str,
+    expected: &str,
+    content: &str,
+) -> Result<Value, String> {
+    let path = format!("/api/v1/docs/{kind}/{id}");
+    for _ in 0..2 {
+        let doc = api_get(cfg, &path)?;
+        let t = doc_tab_of(&doc, tab).ok_or_else(|| format!("No tab \"{tab}\""))?;
+        let body = tab_body(t).to_string();
+        let (sec, new_body) = match plan_section_write(&body, tab, wanted, expected, content)? {
+            Ok(plan) => plan,
+            Err(conflict) => return Ok(conflict),
+        };
+        let mut req = json!({ "body": new_body });
+        if let Some(h) = t.get("bodyHash").and_then(|v| v.as_str()).filter(|h| !h.is_empty()) {
+            req["baseHash"] = json!(h);
+        }
+        let out = api_put(cfg, &format!("{path}/tabs/{tab}"), req)?;
+        if short_conflict(&out, tab).is_some() {
+            continue;
+        }
+        let after = doc_tab_of(&out, tab);
+        let nb = after.map(tab_body).unwrap_or("");
+        return Ok(json!({
+            "tab": tab,
+            "section": sec.heading,
+            "sectionHash": find_section(nb, wanted).ok().map(|s| section_hash(nb, &s)),
+            "bodyHash": after.and_then(|t| t.get("bodyHash")),
+            "updatedAt": after.and_then(|t| t.get("updatedAt")),
+        }));
+    }
+    Err("The tab kept changing while writing this section. Read it again with get_doc and retry.".into())
+}
+
 /// El cuerpo de `record_decision`.
 ///
 /// Por defecto la decisión viene «del documento». Con `originTaskId`, viene de
@@ -1142,19 +1449,22 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_doc",
-            "description": "One node's documentation: its four fixed sections (overview, runbook, decisions, links), who maintains it, when it was last reviewed, and its decision log. Each section carries a `bodyHash` — pass it back to write_doc_tab so a save that arrives late is refused instead of deleting someone's work.",
+            "description": "One node's documentation, a piece at a time — a whole doc runs to tens of thousands of characters.\n\nWithout `tab`: the OUTLINE — who maintains it, when it was reviewed, and for each of its four tabs (overview, runbook, decisions, links; the name is in `key`) its size, `bodyHash`, and its headings, each with a `sectionHash`. Plus the decision log's titles. No bodies.\nWith `tab`: that tab's full markdown.\nWith `tab` + `section`: just that heading and what's under it, down to the next heading of the same or a higher level.\n\nRewrite one heading with write_doc_section and its sectionHash; replace a whole tab with write_doc_tab and its bodyHash.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"] },
-                    "ownerId": { "type": "string", "description": "The id of the space, folder or list. Use list_task_spaces to find it." }
+                    "ownerId": { "type": "string", "description": "The id of the space, folder or list. Use list_task_spaces to find it." },
+                    "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"], "description": "Optional. Read only this tab." },
+                    "section": { "type": "string", "description": "Optional, with tab. A heading's text, with or without the #s, e.g. \"Correo\" or \"## Correo\"." },
+                    "full": { "type": "boolean", "description": "Optional. The whole document at once, as it used to come. Large; prefer the outline." }
                 },
                 "required": ["kind", "ownerId"]
             }
         },
         {
             "name": "append_doc_tab",
-            "description": "Add text to the end of a section without touching what is already there. Prefer this over write_doc_tab: it cannot delete anything, so it is safe while somebody has the document open. Needs a token with the `docs:write` scope.",
+            "description": "Add text to the end of a tab without touching what is already there. It cannot delete anything, so it is safe while somebody has the document open — but it only adds: to correct something that's already written, use write_doc_section, or the old version stays next to the new one. Answers with the tab's new bodyHash, not the document. Needs a token with the `docs:write` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1187,7 +1497,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "write_doc_tab",
-            "description": "Replace a section's markdown outright. Read it with get_doc first and pass that section's `bodyHash` — without a matching hash the save is refused, because somebody may have written into it since. On a refusal the result carries `conflict: true` and the current document, so merge and send again. Prefer append_doc_tab when you only mean to add. Needs a token with the `docs:manage` scope.",
+            "description": "Replace a whole tab's markdown. To change one heading, use write_doc_section instead — rewriting 50 000 characters to fix a paragraph is how work gets lost. Pass the tab's `bodyHash` from get_doc; without a matching hash the save is refused, because somebody may have written into it since. On a refusal the result carries `conflict: true` and that tab's current text, so merge and send again. Answers with the new bodyHash, not the document. Needs a token with the `docs:manage` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1199,6 +1509,23 @@ fn tool_defs() -> Value {
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "tab", "body"]
+            }
+        },
+        {
+            "name": "write_doc_section",
+            "description": "Rewrite what's under one heading of a tab, and nothing else. The heading line stays; `body` replaces everything below it down to the next heading of the same or a higher level. Read it first with get_doc (tab + section, or the outline) and pass its `sectionHash`: if the section changed since, nothing is written and you get its current text to merge. If only some OTHER part of the tab changed meanwhile, the write goes through anyway. A heading that appears twice is refused, since it doesn't say which one. Needs a token with the `docs:manage` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"] },
+                    "section": { "type": "string", "description": "The heading's text, with or without the #s." },
+                    "sectionHash": { "type": "string", "description": "From get_doc. Says the section is still what you read." },
+                    "body": { "type": "string", "description": "Markdown for under the heading. Don't repeat the heading itself." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "tab", "section", "sectionHash", "body"]
             }
         },
         {
@@ -1856,7 +2183,36 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         "get_doc" => {
             let (kind, id) = doc_target(args)?;
             let data = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}"))?;
-            Ok(data)
+            // `full` es la salida de emergencia: el documento tal cual, como
+            // antes. Por defecto, el índice; con `tab`, esa pestaña; y con
+            // `section`, sólo ese título.
+            if arg_bool(args, "full") {
+                return Ok(data);
+            }
+            let Some(tab) = arg_str(args, "tab") else {
+                return Ok(doc_outline(&data));
+            };
+            let t = doc_tab_of(&data, &tab).ok_or_else(|| format!("No tab \"{tab}\": use overview, runbook, decisions or links"))?;
+            let body = tab_body(t);
+            match arg_str(args, "section") {
+                None => Ok(json!({
+                    "tab": tab,
+                    "bodyHash": t.get("bodyHash"),
+                    "updatedAt": t.get("updatedAt"),
+                    "body": body,
+                    "sections": tab_outline(body),
+                })),
+                Some(wanted) => {
+                    let sec = find_section(body, &wanted)?;
+                    Ok(json!({
+                        "tab": tab,
+                        "tabBodyHash": t.get("bodyHash"),
+                        "section": sec.heading,
+                        "sectionHash": section_hash(body, &sec),
+                        "text": &body[sec.start..sec.end],
+                    }))
+                }
+            }
         }
 
         "append_doc_tab" => {
@@ -1871,7 +2227,8 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
                 );
             }
-            api_post(cfg, &path, json!({ "body": text }))
+            let out = api_post(cfg, &path, json!({ "body": text }))?;
+            Ok(short_tab_write(&out, &tab))
         }
 
         "record_decision" => {
@@ -1885,7 +2242,8 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 );
             }
             let body = decision_body(&title, args);
-            api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/decisions"), body)
+            let out = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/decisions"), body)?;
+            Ok(recorded_decision(&out))
         }
 
         "write_doc_tab" => {
@@ -1903,7 +2261,20 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             if let Some(h) = arg_str(args, "baseHash") {
                 body["baseHash"] = json!(h);
             }
-            api_put(cfg, &format!("/api/v1/docs/{kind}/{id}/tabs/{tab}"), body)
+            let out = api_put(cfg, &format!("/api/v1/docs/{kind}/{id}/tabs/{tab}"), body)?;
+            Ok(short_conflict(&out, &tab).unwrap_or_else(|| short_tab_write(&out, &tab)))
+        }
+
+        "write_doc_section" => {
+            let (kind, id) = doc_target(args)?;
+            let tab = doc_tab(args)?;
+            let wanted = arg_str(args, "section").ok_or("section is required: the heading to rewrite")?;
+            let expected = arg_str(args, "sectionHash").ok_or("sectionHash is required: read it with get_doc first")?;
+            let content = args.get("body").and_then(|v| v.as_str()).ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
+            }
+            write_section(cfg, &kind, &id, &tab, &wanted, &expected, content)
         }
 
         "update_doc" => {
@@ -2443,6 +2814,166 @@ mod tests {
         assert_eq!(task["originTaskId"], "task-9");
     }
 
+    // ── Documentos por sección ──────────────────────────────────────────────
+
+    const RUNBOOK: &str = "# Runbook\n\nIntro.\n\n## Correo\n\nSMTP por Brevo.\n\n```bash\n# esto es un comentario, no un titulo\necho hola\n```\n\n### Puertos\n\n587.\n\n## Despliegue\n\nCon Actions.\n";
+
+    #[test]
+    fn sections_follow_heading_levels() {
+        let s = sections(RUNBOOK);
+        let names: Vec<&str> = s.iter().map(|x| x.heading.as_str()).collect();
+        assert_eq!(names, vec!["Runbook", "Correo", "Puertos", "Despliegue"]);
+        let correo = &s[1];
+        let text = &RUNBOOK[correo.start..correo.end];
+        // «Correo» incluye su subsección «Puertos» y acaba donde empieza «Despliegue».
+        assert!(text.contains("### Puertos") && text.contains("587."), "{text}");
+        assert!(!text.contains("Despliegue"), "{text}");
+    }
+
+    /// El que más daño haría: un `#` de un comentario de bash tomado por título
+    /// partiría el runbook a mitad de un comando. El mutante que mata: dejar de
+    /// seguir los bloques de código.
+    #[test]
+    fn a_hash_inside_a_code_block_is_not_a_heading() {
+        assert!(sections(RUNBOOK).iter().all(|x| !x.heading.contains("comentario")));
+    }
+
+    #[test]
+    fn a_hashtag_is_not_a_heading() {
+        assert!(sections("#etiqueta suelta\n\ntexto\n").is_empty());
+    }
+
+    #[test]
+    fn a_section_is_found_with_or_without_its_hashes() {
+        for w in ["Correo", "correo", "## Correo", "  ##  Correo "] {
+            assert_eq!(find_section(RUNBOOK, w).unwrap().heading, "Correo", "{w}");
+        }
+    }
+
+    #[test]
+    fn a_missing_section_says_which_ones_exist() {
+        let e = find_section(RUNBOOK, "Backups").unwrap_err();
+        assert!(e.contains("Backups") && e.contains("## Correo") && e.contains("## Despliegue"), "{e}");
+    }
+
+    /// Dos «## Correo» no dicen cuál se quiere reescribir: adivinarlo borraría
+    /// el equivocado. El mutante que mata: quedarse con el primero.
+    #[test]
+    fn a_heading_that_appears_twice_is_refused() {
+        let doble = "## Correo\n\nuno\n\n## Correo\n\ndos\n";
+        assert!(find_section(doble, "Correo").unwrap_err().contains("2 sections"));
+    }
+
+    /// Reescribir una sección deja su título, lo que va antes y lo que va
+    /// después tal cual.
+    #[test]
+    fn splicing_a_section_keeps_everything_else() {
+        let sec = find_section(RUNBOOK, "Despliegue").unwrap();
+        let out = splice_section(RUNBOOK, &sec, "Con Actions y un paso de prueba.");
+        assert!(out.ends_with("## Despliegue\n\nCon Actions y un paso de prueba.\n"), "{out}");
+        assert!(out.starts_with(&RUNBOOK[..sec.start]));
+    }
+
+    /// Y lo que sigue no se queda pegado: sin la línea en blanco, el título
+    /// siguiente dejaría de leerse como título.
+    #[test]
+    fn splicing_leaves_the_next_heading_standing() {
+        let sec = find_section(RUNBOOK, "Correo").unwrap();
+        let out = splice_section(RUNBOOK, &sec, "Ahora por SES.");
+        assert!(out.contains("## Correo\n\nAhora por SES.\n\n## Despliegue"), "{out}");
+        assert!(!out.contains("587."), "la subsección era parte de «Correo» y se reemplaza con ella");
+    }
+
+    /// La razón de que haya un hash por sección: editar otra parte de la
+    /// pestaña no invalida el tuyo. El mutante que mata: calcularlo sobre la
+    /// pestaña entera.
+    #[test]
+    fn a_section_hash_ignores_the_rest_of_the_tab() {
+        let correo = |b: &str| section_hash(b, &find_section(b, "Correo").unwrap());
+        let otra = RUNBOOK.replace("Con Actions.", "Con Actions y más.");
+        assert_eq!(correo(RUNBOOK), correo(&otra));
+        let esta = RUNBOOK.replace("SMTP por Brevo.", "SMTP por SES.");
+        assert_ne!(correo(RUNBOOK), correo(&esta));
+    }
+
+    fn doc() -> Value {
+        json!({
+            "doc": { "id": "d", "body": "EL OVERVIEW OTRA VEZ", "maintainerName": "ana" },
+            "tabs": [
+                { "key": "overview", "body": "# Hola\n\nx\n", "bodyHash": "h-o", "updatedAt": "t1" },
+                { "key": "runbook", "body": RUNBOOK, "bodyHash": "h-r", "updatedAt": "t2" }
+            ],
+            "decisions": [
+                { "id": "vieja", "title": "A", "body": "PORQUE LARGO", "decidedAt": "2026-09-01", "createdAt": "2026-09-27T10:00:00Z" },
+                { "id": "nueva", "title": "B", "body": "PORQUE", "decidedAt": "2026-08-01", "createdAt": "2026-09-28T10:00:00Z" }
+            ],
+            "attachments": [{}, {}]
+        })
+    }
+
+    /// El índice no lleva cuerpos: ni de las pestañas, ni de las decisiones, ni
+    /// el `doc.body` de antes de las pestañas que repetía el overview.
+    #[test]
+    fn the_outline_carries_no_bodies() {
+        let out = doc_outline(&doc());
+        let texto = out.to_string();
+        for grande in ["EL OVERVIEW OTRA VEZ", "PORQUE LARGO", "SMTP por Brevo"] {
+            assert!(!texto.contains(grande), "el índice lleva «{grande}»");
+        }
+        assert_eq!(out["tabs"][1]["key"], "runbook", "cada pestaña dice su nombre");
+        assert_eq!(out["tabs"][1]["sections"][1]["heading"], "Correo");
+        assert!(out["tabs"][1]["sections"][1]["sectionHash"].is_string());
+        assert_eq!(out["attachments"], 2);
+    }
+
+    /// Una escritura contesta con lo necesario para seguir, no con el doc.
+    #[test]
+    fn a_write_answers_short() {
+        let out = short_tab_write(&doc(), "runbook");
+        assert_eq!(out["bodyHash"], "h-r");
+        assert!(!out.to_string().contains("SMTP"), "{out}");
+    }
+
+    /// Un conflicto trae la pestaña en conflicto, y sólo ésa.
+    #[test]
+    fn a_conflict_carries_only_its_own_tab() {
+        let res = json!({ "conflict": true, "reason": "r", "doc": doc() });
+        let out = short_conflict(&res, "overview").unwrap();
+        assert_eq!(out["bodyHash"], "h-o");
+        assert!(out["body"].as_str().unwrap().contains("Hola"));
+        assert!(!out.to_string().contains("SMTP"), "trajo otra pestaña: {out}");
+        assert!(short_conflict(&json!({ "tab": "x" }), "overview").is_none());
+    }
+
+    /// El corazón de write_doc_section: con el hash que se leyó, escribe; si la
+    /// sección cambió desde entonces, no escribe y devuelve su texto actual. El
+    /// mutante que mata: escribir sin comparar.
+    #[test]
+    fn a_section_that_changed_is_not_overwritten() {
+        let leido = section_hash(RUNBOOK, &find_section(RUNBOOK, "Correo").unwrap());
+
+        let (_, nuevo) = plan_section_write(RUNBOOK, "runbook", "Correo", &leido, "Por SES.").unwrap().unwrap();
+        assert!(nuevo.contains("Por SES.") && !nuevo.contains("Brevo"));
+
+        // Alguien cambió la sección entre la lectura y la escritura.
+        let ahora = RUNBOOK.replace("SMTP por Brevo.", "SMTP por Postmark.");
+        let conflicto = plan_section_write(&ahora, "runbook", "Correo", &leido, "Por SES.").unwrap().unwrap_err();
+        assert_eq!(conflicto["conflict"], true);
+        assert!(conflicto["text"].as_str().unwrap().contains("Postmark"), "tiene que traer lo que hay ahora");
+
+        // Y si lo que cambió es OTRA sección, la suya sigue valiendo.
+        let otra = RUNBOOK.replace("Con Actions.", "Con Actions y más.");
+        assert!(plan_section_write(&otra, "runbook", "Correo", &leido, "Por SES.").unwrap().is_ok());
+    }
+
+    /// La decisión apuntada es la de `createdAt` más reciente, no la primera de
+    /// la lista: ésa va por `decidedAt`, y una decisión antigua apuntada hoy
+    /// quedaría abajo.
+    #[test]
+    fn the_recorded_decision_is_the_newest_written() {
+        assert_eq!(recorded_decision(&doc())["id"], "nueva");
+    }
+
     // ── El catálogo ─────────────────────────────────────────────────────────
 
     fn tool<'a>(defs: &'a Value, name: &str) -> &'a Value {
@@ -2469,5 +3000,9 @@ mod tests {
             .get("originTaskId")
             .is_some());
         assert!(tool(&defs, "search")["inputSchema"]["properties"].get("query").is_some());
+        let get_doc = &tool(&defs, "get_doc")["inputSchema"]["properties"];
+        assert!(get_doc.get("tab").is_some() && get_doc.get("section").is_some());
+        let required = tool(&defs, "write_doc_section")["inputSchema"]["required"].to_string();
+        assert!(required.contains("sectionHash"), "reescribir una sección sin su hash pisaría lo que no se leyó");
     }
 }
