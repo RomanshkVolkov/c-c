@@ -66,6 +66,17 @@ firmaba (#84).
 → Guardianes: `domain.TestDocReviewSigner`, `TestViaTokenNeverTravelsInJSON` y
 `middleware.TestAPersonalTokenIsMarkedAsOne`.
 
+**La prioridad media se guarda `medium` y se contesta `normal`.** `normal` es
+sólo como la pide y la devuelve la API de tareas (`TaskWire`); en la base es
+`medium`. Una consulta que ordene o filtre por prioridad pregunta por el nombre
+**guardado**. El orden de «mi trabajo» preguntaba por `normal` y ponía casi todas
+las tareas por debajo de las de prioridad baja; y editar guardaba la entrada
+cruda, así que convivían los dos nombres (#83). Todo lo que escribe prioridad
+pasa por `Canonical()`.
+→ Guardianes: `service.TestMyWorkPutsMediumBetweenHighAndLow`,
+`TestEditingAPriorityStoresWhatCreatingStores` y
+`repository.TestNormalPrioritiesBecomeMediumAndNothingElseMoves`.
+
 **Un nombre para enseñar sale de `nombreVisible`**
 (`backend/internal/core/repository/nombres.go`), nunca de `username` a mano: un
 identificador de acceso no es cómo se llama a una persona. Buscar, mencionar e

@@ -693,9 +693,15 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 	// Postgres already does for ASC, but the intent is worth writing down: a
 	// task with no due date belongs after the dated ones, because no date is
 	// not the same as due right now.
+	//
+	// Con el nombre **guardado**, `medium`. Pedía `normal`, que es sólo como lo
+	// contesta la API: desde la migración a items casi todas las tareas guardan
+	// `medium`, caían en el `ELSE` y salían por debajo de las de prioridad baja.
+	// Sólo se ordenaban bien las que alguien había editado, porque editar
+	// guardaba `normal` crudo (#83).
 	out := []domain.OpenTask{}
 	err := q.Order(`CASE t.priority
-			WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
+			WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2
 			WHEN 'low' THEN 3 ELSE 4 END`).
 		Order("t.due_at ASC NULLS LAST").
 		Order("t.updated_at DESC").

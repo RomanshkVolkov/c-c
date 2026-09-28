@@ -944,6 +944,10 @@ func (h *taskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to create task", err.Error())
 		return
 	}
+	// Como contestan todas las lecturas. Sin esto crear con `normal` devolvía
+	// `medium` —el nombre guardado— y el tablero decía luego `normal`: la misma
+	// tarea con dos prioridades según dónde se mirara (#83).
+	t.Priority = t.Priority.TaskWire()
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.Task]{Success: true, Data: t})
 }
 

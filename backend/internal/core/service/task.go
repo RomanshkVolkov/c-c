@@ -527,7 +527,12 @@ func (s *TaskService) UpdateTask(ctx context.Context, id, actorID string, req do
 		fields["description"] = *req.Description
 	}
 	if req.Priority != nil {
-		fields["priority"] = *req.Priority
+		// Por Canonical, como al crear: lo que se guarda es `medium`, y
+		// `normal` sólo es como se pide y como se contesta (ver ItemPriority).
+		// Guardar la entrada cruda dejaba en la base dos nombres para lo mismo
+		// según la tarea se hubiera creado o editado, y el orden de «mi trabajo»
+		// sólo reconocía uno de los dos (#83).
+		fields["priority"] = domain.ItemPriority(*req.Priority).Canonical()
 	}
 	if req.StartAt != nil {
 		fields["start_at"] = req.StartAt

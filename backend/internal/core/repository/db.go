@@ -189,6 +189,7 @@ func DBConnection() {
 	backfillAttachmentRefs(db)
 	backfillIngestedItems(db)
 	migrateItems(db)
+	canonicalizeItemPriorities(db)
 	backfillDocTabs(db)
 }
 
