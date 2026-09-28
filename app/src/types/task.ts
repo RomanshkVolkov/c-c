@@ -360,6 +360,14 @@ export interface Doc {
   reviewedAt?: string;
   reviewedBy?: string;
   reviewedByName?: string;
+  /**
+   * Una revisión pedida y todavía sin firmar (#92). Pedirla no es firmarla: lo
+   * puede hacer un agente. Desaparece cuando alguien firma.
+   */
+  reviewRequestedAt?: string;
+  reviewRequestedBy?: string;
+  reviewRequestedByName?: string;
+  reviewRequestNote?: string;
   /** Una línea sobre el tablero. Corta a la fuerza, o se deja de leer. */
   pinnedLine?: string;
   /** Lo calcula el servidor: la regla de los 90 días vive en un solo sitio. */

@@ -25,6 +25,7 @@ type DocHandler interface {
 	Patch(w http.ResponseWriter, r *http.Request)
 	Versions(w http.ResponseWriter, r *http.Request)
 	AddDecision(w http.ResponseWriter, r *http.Request)
+	RequestReview(w http.ResponseWriter, r *http.Request)
 	AppendTab(w http.ResponseWriter, r *http.Request)
 	Restore(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
@@ -201,6 +202,27 @@ func (h *docHandler) AppendTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: h.completa(doc)})
+}
+
+// RequestReview deja pedida la revisión de un documento y avisa a quien puede
+// firmarla (#92). Pedir no es firmar: esto lo puede hacer un token.
+func (h *docHandler) RequestReview(w http.ResponseWriter, r *http.Request) {
+	kind, id, orgID, ok := h.resolveOwner(w, r)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.ReviewRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	d, err := h.svc.RequestReview(orgID, kind, id, user.UserID, domain.ViaFrom(r.Context()), req)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to request a review", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.Doc]{Success: true, Data: d})
 }
 
 // AddDecision apunta una decisión en el registro de un documento.

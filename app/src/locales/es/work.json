@@ -270,6 +270,8 @@
     "markReviewed": "Marcar revisado",
     "reviewedOn": "Revisado el {{date}}",
     "neverReviewed": "Sin revisar nunca",
+    "reviewRequested": "Revisión pedida por {{who}} · {{date}}",
+    "someone": "alguien",
     "staleSinceReview": "Nadie lo ha confirmado en {{days}} días. Quien lo lea no tiene forma de saber si sigue funcionando.",
     "staleNeverReviewed": "Escrito hace {{days}} días y nunca confirmado. Quien lo lea no tiene forma de saber si sigue funcionando.",
     "pinnedAboveBoard": "Fijado sobre el tablero",

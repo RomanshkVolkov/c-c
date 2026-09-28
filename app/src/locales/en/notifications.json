@@ -25,6 +25,7 @@
     "assigned": "assigned",
     "status": "status",
     "report": "report",
+    "review": "review",
     "meeting": "meeting"
   },
   "prefs": {

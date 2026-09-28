@@ -24,7 +24,17 @@ const (
 	groupDM      = "dm"
 	groupItem    = "item"
 	groupMeeting = "meeting"
+	groupDoc     = "doc"
 )
+
+// DocGroup: un documento. Las peticiones de revisión del mismo doc van juntas:
+// tres cambios seguidos de un agente son una fila, no tres.
+func DocGroup(kind, ownerID string) string {
+	if ownerID == "" {
+		return ""
+	}
+	return prefijo(groupDoc, kind+":"+ownerID)
+}
 
 // ChannelGroup: todo lo que pasa en un canal —mensajes y menciones— es del
 // mismo sitio.

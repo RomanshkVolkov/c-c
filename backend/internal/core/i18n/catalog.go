@@ -22,6 +22,11 @@ var catalogo = map[string]map[Locale]string{
 		ES: "Mensaje directo nuevo",
 	},
 
+	// Un agente —o alguien— cambió un documento y pide que se lea.
+	"notify.doc.review": {
+		EN: "Review requested · {{doc}}",
+		ES: "Revisión pedida · {{doc}}",
+	},
 	"notify.report.new": {
 		EN: "New report · {{folio}}",
 		ES: "Reporte nuevo · {{folio}}",

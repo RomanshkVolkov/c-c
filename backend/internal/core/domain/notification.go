@@ -128,6 +128,10 @@ func (p NotificationPrefs) Allows(kind string) bool {
 		return !p.WorkQuiet
 	case "meeting:reminder":
 		return !p.MeetingsQuiet
+	// Una revisión pedida es trabajo que te llega, como una asignación: se
+	// calla con lo mismo.
+	case "doc:review":
+		return !p.WorkQuiet
 	}
 	return true
 }

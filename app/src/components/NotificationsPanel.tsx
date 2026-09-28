@@ -1,7 +1,7 @@
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AtSign, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
+import { AtSign, BellRing, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
 import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
@@ -49,6 +49,9 @@ const KINDS: Record<string, { group: Tab; tagKey?: MessageKey; icon: typeof AtSi
   "task:assigned": { group: "tasks", tagKey: "notifications:kind.assigned", icon: UserPlus, color: "text-primary" },
   "task:status": { group: "tasks", tagKey: "notifications:kind.status", icon: CheckSquare, color: "text-muted-foreground" },
   "report:new": { group: "system", tagKey: "notifications:kind.report", icon: Zap, color: "text-warning" },
+  // Alguien —muchas veces un agente— cambió un doc y pide que se lea (#92). Con
+  // las tareas: es trabajo que te llega, como una asignación.
+  "doc:review": { group: "tasks", tagKey: "notifications:kind.review", icon: BellRing, color: "text-primary" },
   // Sin esta entrada caería en UNKNOWN_KIND: funcionaría, pero sin etiqueta y en
   // «System», que es donde se guarda lo que no se supo clasificar.
   "meeting:reminder": {

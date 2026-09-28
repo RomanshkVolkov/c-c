@@ -1529,8 +1529,22 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "request_doc_review",
+            "description": "Ask a person to review a doc after you changed it — you can't sign a review yourself, and that's on purpose: a signed review says a PERSON checked it's still true. The doc's maintainer and the superadmins get a notification, and the doc shows \"review requested\" next to its freshness until someone signs. Asking again replaces the pending request instead of piling up. Needs a token with the `docs:write` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "note": { "type": "string", "description": "What changed and what to look at, in one line (max 280). It's what lets them start in the right place instead of rereading everything." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId"]
+            }
+        },
+        {
             "name": "update_doc",
-            "description": "Set who is responsible for a document, or the one line pinned above that list's board. Cannot mark a document reviewed — that says a person confirmed it still works, and only a superadmin signs it from the app. Needs a token with the `docs:manage` scope.",
+            "description": "Set who is responsible for a document, or the one line pinned above that list's board. Cannot mark a document reviewed — that says a person confirmed it still works, and only a superadmin signs it from the app; use request_doc_review to ask for one. Needs a token with the `docs:manage` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2277,6 +2291,24 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             write_section(cfg, &kind, &id, &tab, &wanted, &expected, content)
         }
 
+        "request_doc_review" => {
+            let (kind, id) = doc_target(args)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
+            }
+            let mut body = json!({});
+            if let Some(n) = arg_str(args, "note") {
+                body["note"] = json!(n);
+            }
+            let d = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/review-request"), body)?;
+            Ok(json!({
+                "requested": true,
+                "reviewRequestedAt": d.get("reviewRequestedAt"),
+                "note": d.get("reviewRequestNote"),
+                "maintainer": d.get("maintainerName"),
+            }))
+        }
+
         "update_doc" => {
             let (kind, id) = doc_target(args)?;
             if arg_bool(args, "dryRun") {
@@ -3002,6 +3034,7 @@ mod tests {
         assert!(tool(&defs, "search")["inputSchema"]["properties"].get("query").is_some());
         let get_doc = &tool(&defs, "get_doc")["inputSchema"]["properties"];
         assert!(get_doc.get("tab").is_some() && get_doc.get("section").is_some());
+        assert!(tool(&defs, "request_doc_review")["inputSchema"]["properties"].get("note").is_some());
         let required = tool(&defs, "write_doc_section")["inputSchema"]["required"].to_string();
         assert!(required.contains("sectionHash"), "reescribir una sección sin su hash pisaría lo que no se leyó");
     }

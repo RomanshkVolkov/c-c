@@ -270,6 +270,8 @@
     "markReviewed": "Mark reviewed",
     "reviewedOn": "Reviewed {{date}}",
     "neverReviewed": "Never reviewed",
+    "reviewRequested": "Review requested by {{who}} · {{date}}",
+    "someone": "someone",
     "staleSinceReview": "Nobody has confirmed this in {{days}} days. Whoever reads it next has no way to know whether it still works.",
     "staleNeverReviewed": "Written {{days}} days ago and never confirmed since. Whoever reads it next has no way to know whether it still works.",
     "pinnedAboveBoard": "Pinned above the board",

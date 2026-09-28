@@ -64,7 +64,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	)
 	// Un solo servicio de documentación para las dos rutas: el de abajo sirve el
 	// documento, y las tarjetas lo necesitan para `/decision`.
-	docSvc := service.NewDocService(repository.NewDocRepository(db))
+	docSvc := service.NewDocService(repository.NewDocRepository(db)).WithNotifier(inbox)
 	h := handler.NewTaskHandler(svc, channels, chat, dms, taskRepo, images, store, voice, docSvc)
 
 	// The navigator: spaces → folders → lists.
@@ -204,6 +204,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{kind}/{ownerId}/tabs/{tab}/append", docH.AppendTab)
 		r.Patch("/{kind}/{ownerId}", docH.Patch)
 		r.Post("/{kind}/{ownerId}/decisions", docH.AddDecision)
+		// Pedir que alguien lo revise, sin firmarlo (#92).
+		r.Post("/{kind}/{ownerId}/review-request", docH.RequestReview)
 		r.Get("/{kind}/{ownerId}/versions", docH.Versions)
 		r.Post("/{kind}/{ownerId}/versions/{versionId}/restore", docH.Restore)
 		r.Post("/{id}/attachments", docH.UploadAttachment)

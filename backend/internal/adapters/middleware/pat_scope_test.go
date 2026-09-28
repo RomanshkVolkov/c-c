@@ -55,6 +55,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		// quien esté escribiendo, y el registro es append-only por diseño.
 		{http.MethodPost, "/api/v1/docs/list/abc/tabs/runbook/append", domain.ScopeDocsWrite},
 		{http.MethodPost, "/api/v1/docs/space/abc/decisions", domain.ScopeDocsWrite},
+		// Pedir una revisión sólo añade (#92): con `docs:write`, no `docs:manage`.
+		{http.MethodPost, "/api/v1/docs/list/abc/review-request", domain.ScopeDocsWrite},
 		// Reemplazar una sección entera, y poner dueño o línea fijada.
 		{http.MethodPut, "/api/v1/docs/list/abc/tabs/overview", domain.ScopeDocsManage},
 		{http.MethodPatch, "/api/v1/docs/folder/abc", domain.ScopeDocsManage},

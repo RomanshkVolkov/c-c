@@ -268,10 +268,29 @@ type Doc struct {
 	// banner que se lee se convierte en un banner que se ignora.
 	PinnedLine string `gorm:"type:varchar(280)" json:"pinnedLine,omitempty"`
 
+	// Una revisión **pedida** y todavía sin firmar (#92).
+	//
+	// Pedirla y firmarla son dos cosas a propósito. Un agente puede decir «he
+	// cambiado el runbook, que alguien lo lea»; firmar «lo he mirado y sigue
+	// siendo verdad» es de una persona en su sesión (ver DocReviewSigner). La
+	// petición se queda a la vista junto a la frescura hasta que alguien firma,
+	// para que no dependa de que se mire la campana.
+	ReviewRequestedAt     *time.Time `json:"reviewRequestedAt,omitempty"`
+	ReviewRequestedBy     string     `gorm:"type:varchar(36)"  json:"reviewRequestedBy,omitempty"`
+	ReviewRequestedByName string     `gorm:"-"                 json:"reviewRequestedByName,omitempty"`
+	ReviewRequestNote     string     `gorm:"type:varchar(280)" json:"reviewRequestNote,omitempty"`
+
 	// Calculado, no guardado: depende de qué día es hoy. Guardarlo obligaría a
 	// una tarea que recorriera la tabla cada noche para poner al día algo que se
 	// deduce de una resta.
 	Stale bool `gorm:"-" json:"stale"`
+}
+
+// ReviewRequest es lo que manda quien pide que se revise un documento.
+type ReviewRequest struct {
+	// Qué ha cambiado y qué mirar. Opcional, pero es lo que hace que quien lo
+	// reciba sepa por dónde empezar en vez de releerlo entero.
+	Note string `json:"note" validate:"max=280"`
 }
 
 // DocMark es lo que el navegador necesita saber de un documento sin cargarlo.

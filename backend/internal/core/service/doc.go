@@ -19,10 +19,20 @@ var (
 
 type DocService struct {
 	repo *repository.DocRepository
+	// inbox avisa de las revisiones pedidas. Opcional: sin él, pedir una
+	// revisión la deja apuntada en el doc igual, sólo que sin aviso.
+	inbox Notifier
 }
 
 func NewDocService(repo *repository.DocRepository) *DocService {
 	return &DocService{repo: repo}
+}
+
+// WithNotifier le da al servicio por dónde avisar. Aparte del constructor para
+// no obligar a cada prueba a montar la campana.
+func (s *DocService) WithNotifier(n Notifier) *DocService {
+	s.inbox = n
+	return s
 }
 
 func (s *DocService) OwnerOrg(kind domain.DocOwnerKind, id string) (string, error) {
@@ -323,6 +333,9 @@ func (s *DocService) stampAuthor(d *domain.Doc) {
 	if d.ReviewedBy != "" {
 		d.ReviewedByName = s.repo.AuthorName(d.ReviewedBy)
 	}
+	if d.ReviewRequestedBy != "" {
+		d.ReviewRequestedByName = s.repo.AuthorName(d.ReviewRequestedBy)
+	}
 	d.Stale = domain.DocIsStale(d.ReviewedAt, d.UpdatedAt, time.Now())
 }
 
@@ -370,6 +383,11 @@ func (s *DocService) Patch(
 			// Quién lo confirmó, y no quién lo pidió: la firma es la mitad del
 			// dato. «Revisado» sin nombre no se le puede preguntar a nadie.
 			fields["reviewed_by"] = userID
+			// Y firmar contesta la petición que hubiera: dejarla a la vista
+			// después diría que falta algo que ya se hizo (#92).
+			fields["review_requested_at"] = nil
+			fields["review_requested_by"] = ""
+			fields["review_request_note"] = ""
 		} else {
 			fields["reviewed_at"] = nil
 			fields["reviewed_by"] = ""
@@ -381,4 +399,68 @@ func (s *DocService) Patch(
 	}
 	s.stampAuthor(d)
 	return d, nil
+}
+
+// RequestReview deja pedida la revisión de un documento y avisa a quien puede
+// hacerla (#92).
+//
+// Pedir no es firmar. Lo puede hacer cualquiera con permiso de escribir en el
+// doc —un agente incluido—, porque no afirma nada sobre el contenido: sólo dice
+// «esto cambió, que alguien lo lea». La firma sigue siendo de una persona en su
+// sesión.
+//
+// Pedirla otra vez sobre una pendiente la renueva —fecha, quién y nota— en vez
+// de apilar peticiones: lo que importa es que hay algo que mirar, no cuántas
+// veces se dijo.
+func (s *DocService) RequestReview(
+	orgID string, kind domain.DocOwnerKind, ownerID, userID, via string, req domain.ReviewRequest,
+) (*domain.Doc, error) {
+	d, err := s.repo.Patch(orgID, kind, ownerID, map[string]any{
+		"review_requested_at": time.Now(),
+		"review_requested_by": userID,
+		"review_request_note": strings.TrimSpace(req.Note),
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.stampAuthor(d)
+	if s.inbox != nil {
+		admins, _ := s.repo.SuperadminIDs()
+		nombre := s.repo.OwnerName(kind, ownerID)
+		for _, uid := range reviewRecipients(d.MaintainerID, userID, admins) {
+			s.inbox.Notify(domain.Aviso{
+				UserID:    uid,
+				OrgID:     orgID,
+				Kind:      "doc:review",
+				// Sólo la clave: la frase la escribe la campana en el idioma de
+				// quien la lee (ver TestNadieEscribeLaFraseQueOtroVaALeer).
+				TitleKey:  "notify.doc.review",
+				TitleArgs: map[string]string{"doc": nombre},
+				Body:      strings.TrimSpace(req.Note),
+				Link:      "/tasks?doc=" + string(kind) + ":" + ownerID,
+				Via:       via,
+				Group:     domain.DocGroup(string(kind), ownerID),
+			})
+		}
+	}
+	return d, nil
+}
+
+// reviewRecipients: el responsable del doc y quienes pueden firmar, sin repetir
+// y sin quien la pidió.
+//
+// El responsable porque es quien sabe si el contenido sigue siendo verdad; los
+// superadmins porque hoy son los únicos que pueden firmar, y avisar sólo al
+// responsable sería pedirle algo que quizá no puede cumplir. Quien la pide no:
+// que te avise de lo que acabas de hacer es el fallo que ya se quitó del chat.
+func reviewRecipients(maintainerID, requesterID string, superadmins []string) []string {
+	var out []string
+	seen := map[string]bool{requesterID: true, "": true}
+	for _, id := range append([]string{maintainerID}, superadmins...) {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
 }

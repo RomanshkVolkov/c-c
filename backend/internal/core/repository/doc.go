@@ -490,6 +490,33 @@ func (r *DocRepository) OrgMemberNames(orgID string) []string {
 	return out
 }
 
+// SuperadminIDs son quienes hoy pueden firmar una revisión.
+//
+// Hace falta para pedir una (#92): avisar sólo al responsable del doc sería
+// pedirle algo que, si no es superadmin, no puede cumplir.
+func (r *DocRepository) SuperadminIDs() ([]string, error) {
+	var ids []string
+	err := r.db.Model(&domain.User{}).Where("is_superadmin = ?", true).Pluck("id", &ids).Error
+	return ids, err
+}
+
+// OwnerName es cómo se llama aquello de lo que es el documento: el espacio, la
+// carpeta o la lista. Es lo que dice un aviso para que se sepa de qué doc habla
+// sin abrirlo.
+func (r *DocRepository) OwnerName(kind domain.DocOwnerKind, id string) string {
+	table := map[domain.DocOwnerKind]string{
+		domain.DocOwnerSpace:  "task_spaces",
+		domain.DocOwnerFolder: "task_folders",
+		domain.DocOwnerList:   "task_lists",
+	}[kind]
+	if table == "" || id == "" {
+		return ""
+	}
+	var name string
+	r.db.Table(table).Select("name").Where("id = ?", id).Scan(&name)
+	return name
+}
+
 // TaskOrgID dice de qué organización es una tarea viva, y "" si no hay ninguna
 // con ese id —o si está borrada—.
 //

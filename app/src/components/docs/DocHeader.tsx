@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, Pin, UserRound } from "lucide-react";
+import { BellRing, CheckCircle2, Clock, Pin, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -159,6 +159,24 @@ export default function DocHeader({ doc }: { doc: Doc }) {
             ? t("work:docs.reviewedOn", { date: fecha(doc.reviewedAt) })
             : t("work:docs.neverReviewed")}
         </span>
+
+        {/* Una revisión pedida, al lado de la frescura, hasta que alguien firme
+            (#92). Aquí y no sólo en la campana: si el aviso se pierde, la
+            petición no puede perderse con él. La nota —qué cambió, qué mirar—
+            va en el título, que es donde cabe sin ocupar la fila. */}
+        {doc.reviewRequestedAt && (
+          <span
+            data-testid="review-requested"
+            title={doc.reviewRequestNote || undefined}
+            className="flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-primary"
+          >
+            <BellRing className="size-3" />
+            {t("work:docs.reviewRequested", {
+              who: doc.reviewRequestedByName || t("work:docs.someone"),
+              date: fecha(doc.reviewRequestedAt),
+            })}
+          </span>
+        )}
 
         {/* La línea fijada se edita desde aquí y se ve sobre el tablero: es lo
             que hay que saber **antes** de coger una tarjeta, así que vive donde

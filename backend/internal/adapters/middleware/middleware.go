@@ -280,6 +280,10 @@ var patWritable = []struct {
 	// registro de decisiones es append-only por diseño.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/tabs/[^/]+/append/?$`), domain.ScopeDocsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/decisions/?$`), domain.ScopeDocsWrite},
+	// Pedir una revisión, con el permiso de añadir y no con el de pisar: no toca
+	// el contenido ni afirma nada sobre él, sólo avisa de que hay algo que mirar.
+	// Firmarla sigue fuera del alcance de cualquier token (#84, #92).
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/review-request/?$`), domain.ScopeDocsWrite},
 	// Creating a collection, so an agent that just described an API can leave it
 	// ready to run. Sharing one is not here on purpose: that reaches other
 	// people, and it should take a person to decide.
