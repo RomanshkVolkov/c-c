@@ -141,9 +141,14 @@ func searchDB(t *testing.T) (*gorm.DB, func()) {
 	// It didn't, twice: docs and folders were missing since the day documents
 	// landed, and the test failed on every run — except that it never ran. It
 	// skips without a database, and CI has never had one (card #38).
+	//
+	// Y una tercera, el 28-sep-2026: buscar tareas empezó a mirar sus
+	// comentarios (#89) y faltaba `item_comments`. Esta vez lo cazó la suite en
+	// local, antes de empujar.
 	if err := db.AutoMigrate(
 		&domain.Organization{}, &domain.User{}, &domain.OrgMembership{},
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.Item{},
+		&domain.ItemComment{},
 		&domain.Note{}, &domain.ChatMessage{},
 		&domain.DMConversation{}, &domain.DMMessage{},
 		&domain.Doc{}, &domain.DocTab{},

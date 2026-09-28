@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 )
@@ -31,12 +32,34 @@ func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.Searc
 		Seq                 int
 	}
 	var rows []row
+	q := like(query)
+	// El título, la descripción y los comentarios (#89).
+	//
+	// Sólo el título se quedaba corto justo para lo que más se busca: el nombre
+	// de un comando, un error, un host — cosas que viven en la descripción o en
+	// el hilo, no en el título. Los comentarios borrados no cuentan: un texto
+	// retirado no puede seguir haciendo aparecer su tarea. Los internos sí, que
+	// esto lo usa el equipo.
+	//
+	// Primero lo que casa en el título: es lo que casi siempre se quería, y un
+	// acierto en un comentario de hace un año no debería taparlo.
 	err := r.db.Table("items t").
 		Select("t.id, t.title, t.seq, l.name AS list_name").
 		Joins("JOIN task_lists l ON l.id = t.list_id").
 		Where("t.org_id = ? AND t.deleted_at IS NULL AND t.archived_at IS NULL", orgID).
-		Where("LOWER(t.title) LIKE ?", like(query)).
-		Order("t.updated_at DESC").Limit(limit).Scan(&rows).Error
+		Where(`(LOWER(t.title) LIKE ? OR LOWER(t.description) LIKE ? OR EXISTS (
+			SELECT 1 FROM item_comments c
+			WHERE c.item_id = t.id AND c.deleted_at IS NULL AND LOWER(c.body) LIKE ?))`, q, q, q).
+		// Un solo `ORDER BY`, a propósito. Con dos llamadas a `Order` —la
+		// expresión y luego `t.updated_at DESC`— GORM **tira la primera sin
+		// decir nada**: el SQL salía sólo con la fecha, y el título nunca iba
+		// primero. Se vio sacando el SQL, no leyendo el código.
+		Order(clause.OrderBy{Expression: clause.Expr{
+			SQL:                "CASE WHEN LOWER(t.title) LIKE ? THEN 0 ELSE 1 END, t.updated_at DESC",
+			Vars:               []any{q},
+			WithoutParentheses: true,
+		}}).
+		Limit(limit).Scan(&rows).Error
 	for _, x := range rows {
 		out = append(out, domain.SearchHit{
 			Kind: domain.SearchTask, ID: x.ID, Title: x.Title,

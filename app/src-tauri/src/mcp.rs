@@ -1015,6 +1015,11 @@ fn resolve_task_extras(cfg: &Cfg, org_id: &str, args: &Value, body: &mut Value) 
     if let Some(d) = arg_str(args, "dueAt") {
         body["dueAt"] = json!(due_date_to_instant(&d)?);
     }
+    // Quitarla es un campo aparte: un `dueAt` vacío o nulo el servidor lo lee
+    // como «no tocar» (#95).
+    if arg_bool(args, "clearDueAt") {
+        body["clearDueAt"] = json!(true);
+    }
     Ok(())
 }
 
@@ -1146,7 +1151,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "search",
-            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link) — NOT the matching text, on purpose: a hit says that something matched, not what it said. Open a hit with get_task, get_note or get_doc.\n\nWhat each kind matches on today: tasks by TITLE only (not description or comments), notes by title and body, docs by the text of their sections. Channel messages and direct messages are not searchable from here.",
+            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link) — NOT the matching text, on purpose: a hit says that something matched, not what it said. Open a hit with get_task, get_note or get_doc.\n\nWhat each kind matches on: tasks by title, description and comments (title matches first), notes by title and body, docs by the text of their sections. Channel messages and direct messages are not searchable from here.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1194,7 +1199,7 @@ fn tool_defs() -> Value {
                     },
                     "dueAt": {
                         "type": "string",
-                        "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. Clearing a due date is not possible through the API."
+                        "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. To remove a due date, send clearDueAt: true instead."
                     },
                     "idempotencyKey": {
                         "type": "string",
@@ -1233,8 +1238,9 @@ fn tool_defs() -> Value {
                     },
                     "dueAt": {
                         "type": "string",
-                        "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. Clearing a due date is not possible through the API."
+                        "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. To remove a due date, send clearDueAt: true instead."
                     },
+                    "clearDueAt": { "type": "boolean", "description": "Remove the task's due date." },
                     "statusId": { "type": "string", "description": "Move the task to this column. get_board returns a statusId per column. This is also how a subtask is ticked off: move it to a done column of its parent's list." },
                     "visibility": {
                         "type": "string",
@@ -3035,6 +3041,8 @@ mod tests {
         let get_doc = &tool(&defs, "get_doc")["inputSchema"]["properties"];
         assert!(get_doc.get("tab").is_some() && get_doc.get("section").is_some());
         assert!(tool(&defs, "request_doc_review")["inputSchema"]["properties"].get("note").is_some());
+        assert!(tool(&defs, "update_task")["inputSchema"]["properties"].get("clearDueAt").is_some(),
+            "sin esto un agente no tiene forma de quitar un vencimiento");
         let required = tool(&defs, "write_doc_section")["inputSchema"]["required"].to_string();
         assert!(required.contains("sectionHash"), "reescribir una sección sin su hash pisaría lo que no se leyó");
     }
