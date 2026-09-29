@@ -202,11 +202,18 @@ type AuthRefreshResponse struct {
 
 // ─── User management (superadmin) ─────────────────────────────────────────────
 
+// CreateUserRequest da de alta a alguien. Correo y nombre son obligatorios
+// **al crear** (decisión del 28-sep-2026): una cuenta nueva sin nombre se pinta
+// como su usuario en todas partes, y sin correo no hay a quién escribirle.
+// Editar no lo exige —vaciar el correo sigue siendo «bórralo», ver
+// `UpdateUserRequest`—, así que las cuentas viejas sin correo siguen editándose.
+// El nombre lleva `notblank` en vez de `required`: un nombre de espacios pasa
+// `required`, y `notblank` rechaza también el vacío.
 type CreateUserRequest struct {
 	Username     string `json:"username"     validate:"required,min=3,max=100"`
 	Password     string `json:"password"     validate:"required,min=8"`
-	Email        string `json:"email"        validate:"omitempty,email,max=255"`
-	Name         string `json:"name"         validate:"omitempty,max=120"`
+	Email        string `json:"email"        validate:"required,email,max=255"`
+	Name         string `json:"name"         validate:"notblank,max=120"`
 	IsSuperadmin bool   `json:"isSuperadmin"`
 }
 

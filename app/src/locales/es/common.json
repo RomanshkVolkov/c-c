@@ -391,7 +391,18 @@
     "unread": "Sin leer",
     "nothingWaiting": "No hay nada esperándote.",
     "infrastructure": "Infraestructura",
-    "noServersRegistered": "No hay servidores registrados."
+    "noServersRegistered": "No hay servidores registrados.",
+    "createUserLead": "Da de alta a alguien en la plataforma. Pásale sus credenciales; después se le puede invitar a organizaciones. Cambiará la contraseña al entrar.",
+    "superadminAll": "Superadmin (ve y gestiona todas las organizaciones)",
+    "usernameShort": "El usuario lleva al menos 3 caracteres",
+    "passwordShort": "La contraseña lleva al menos 8 caracteres (van {{count}})",
+    "nameRequired": "Falta el nombre",
+    "emailRequired": "Falta el correo",
+    "emailInvalid": "Eso no parece un correo",
+    "editUser": "Editar a @{{username}}",
+    "newPasswordOptional": "Contraseña nueva (opcional)",
+    "cantChangeOwnRole": "(el tuyo no lo puedes cambiar)",
+    "deleteUserTitle": "¿Borrar a @{{username}}?"
   },
   "misc": {
     "usernameRequired": "El usuario es obligatorio",
@@ -466,7 +477,9 @@
     "agentDecideHelp": "Lo normal. Falla en servidores que cortan tras unos cuantos intentos de llave.",
     "noSpacesYet": "Todavía no hay espacios. Crea uno para empezar a organizar el trabajo.",
     "everyoneHere": "Ya está todo el mundo aquí.",
-    "pickSomebody": "Elige a quién escribirle."
+    "pickSomebody": "Elige a quién escribirle.",
+    "showPassword": "Mostrar la contraseña",
+    "hidePassword": "Ocultar la contraseña"
   },
   "scopes": {
     "tasksWrite": "Crear tareas y comentarios",

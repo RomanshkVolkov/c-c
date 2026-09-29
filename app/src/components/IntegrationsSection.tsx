@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -345,8 +346,7 @@ function IntegrationDialog({
           </label>
           <div className="space-y-1.5">
             <Label>Credentials (optional)</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               placeholder={editing?.hasSecret ? "•••• (unchanged)" : "user/pass or token"}

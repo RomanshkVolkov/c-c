@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Inbox, KeyRound, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -354,12 +355,12 @@ function FichaIntegracion({
             </label>
             <label className="min-w-48 flex-1 text-xs text-muted-foreground">
               {p.webhookConfigured ? t("org:replaceSecret") : t("org:signingSecret")}
-              <Input
-                type="password"
+              <PasswordInput
                 value={borrador.webhookSecret}
                 onChange={(e) => setBorrador({ ...borrador, webhookSecret: e.target.value })}
                 placeholder={p.webhookConfigured ? "leave blank to keep it" : "optional"}
-                className="mt-1 h-8 text-xs"
+                containerClassName="mt-1"
+                className="h-8 text-xs"
               />
             </label>
             <label className="min-w-56 flex-1 text-xs text-muted-foreground">

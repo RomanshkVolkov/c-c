@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -527,12 +528,12 @@ export default function StackSecrets() {
             <div className="space-y-2">
               <Label className="text-xs">{t("common:servers.orPasteManually")}</Label>
               <div className="flex gap-2">
-                <Input
-                  type="password"
+                <PasswordInput
                   placeholder="ghp_..."
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value)}
-                  className="flex-1 font-mono text-sm"
+                  containerClassName="flex-1"
+                  className="font-mono text-sm"
                   onKeyDown={(e) => e.key === "Enter" && handleSetToken()}
                 />
                 <Button
@@ -854,8 +855,7 @@ export default function StackSecrets() {
             )}
             <div className="space-y-1">
               <Label>{t("common:servers.thValue")}</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 placeholder={t("common:servers.secretValue")}
                 value={secretDialog.value}
                 onChange={(e) =>

@@ -391,7 +391,18 @@
     "unread": "Unread",
     "nothingWaiting": "Nothing waiting for you.",
     "infrastructure": "Infrastructure",
-    "noServersRegistered": "No servers registered."
+    "noServersRegistered": "No servers registered.",
+    "createUserLead": "Creates a platform user. Share the credentials with them; they can be invited to organizations afterward. They will change the password on first sign-in.",
+    "superadminAll": "Superadmin (sees and manages all organizations)",
+    "usernameShort": "Username needs at least 3 characters",
+    "passwordShort": "Password needs at least 8 characters ({{count}} so far)",
+    "nameRequired": "Name is required",
+    "emailRequired": "Email is required",
+    "emailInvalid": "That doesn't look like an email",
+    "editUser": "Edit @{{username}}",
+    "newPasswordOptional": "New password (optional)",
+    "cantChangeOwnRole": "(you can't change your own)",
+    "deleteUserTitle": "Delete user @{{username}}?"
   },
   "misc": {
     "usernameRequired": "Username is required",
@@ -466,7 +477,9 @@
     "agentDecideHelp": "Default. Fails on servers that cut off after a few key attempts.",
     "noSpacesYet": "No spaces yet. Create one to start organizing work.",
     "everyoneHere": "Everyone is already here.",
-    "pickSomebody": "Pick somebody to write to."
+    "pickSomebody": "Pick somebody to write to.",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "scopes": {
     "tasksWrite": "Create tasks and comments",

@@ -13,6 +13,12 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**En curso (28-sep, #96, sin commitear):** crear un usuario pide nombre y
+correo (backend `CreateUserRequest` y el diálogo), el diálogo dice qué falta en
+vez de apagar «Crear» en silencio, y toda contraseña de la app lleva ojo
+(`PasswordInput`, con guardián contra un `type="password"` a pelo). Toca
+backend y app: backend primero, luego la siguiente versión.
+
 La app va por la **v1.6.70** (grabación de reuniones, pestañas del canal, el
 hilo que te deja donde estabas, y el filtro del árbol a la primera).
 

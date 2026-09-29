@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -31,6 +32,13 @@ func nuevoValidador() *validator.Validate {
 	}); err != nil {
 		// Sólo puede fallar con un nombre de etiqueta vacío, que es cosa nuestra
 		// y no de una petición: mejor no arrancar que validar de mentira.
+		panic(err)
+	}
+	// Que no sea sólo espacios. `required` mira que la cadena no esté vacía, y
+	// «   » no lo está.
+	if err := v.RegisterValidation("notblank", func(fl validator.FieldLevel) bool {
+		return strings.TrimSpace(fl.Field().String()) != ""
+	}); err != nil {
 		panic(err)
 	}
 	return v

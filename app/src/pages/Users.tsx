@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -46,7 +47,7 @@ export default function Users() {
 
   const handleDelete = async (u: AdminUser) => {
     const ok = await confirm({
-      title: `Delete user @${u.username}?`,
+      title: t("common:admin.deleteUserTitle", { username: u.username }),
       description: t("common:admin.deleteUserBody"),
       confirmText: t("common:admin.delete"),
       destructive: true,
@@ -71,7 +72,7 @@ export default function Users() {
             <h1 className="text-xl font-semibold">{t("common:admin.users")}</h1>
           </div>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4 mr-1" /> New user
+            <Plus className="size-4 mr-1" /> {t("common:admin.newUser")}
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -95,7 +96,7 @@ export default function Users() {
               {loading && users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
-                    <Loader2 className="inline size-4 animate-spin" /> Loading…
+                    <Loader2 className="inline size-4 animate-spin" /> {t("common:admin.loading")}
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
@@ -148,6 +149,27 @@ export default function Users() {
   );
 }
 
+// Lo que falta para poder crear, campo a campo.
+//
+// El botón se apagaba con usuario < 3 o contraseña < 8 y no lo decía en ningún
+// sitio: el «mínimo 8 caracteres» era un placeholder, que desaparece en cuanto
+// se escribe. Aquí sale de una sola lista lo que apaga el botón y lo que se le
+// enseña a la persona, para que no puedan volver a decir cosas distintas.
+// Las reglas son las de `CreateUserRequest` en el backend.
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type CreateField = "username" | "password" | "name" | "email";
+
+function createUserProblems(v: Record<CreateField, string>, t: ReturnType<typeof useT>["t"]) {
+  const problems: Partial<Record<CreateField, string>> = {};
+  if (v.username.trim().length < 3) problems.username = t("common:admin.usernameShort");
+  if (v.password.length < 8) problems.password = t("common:admin.passwordShort", { count: v.password.length });
+  if (!v.name.trim()) problems.name = t("common:admin.nameRequired");
+  if (!v.email.trim()) problems.email = t("common:admin.emailRequired");
+  else if (!EMAIL_SHAPE.test(v.email.trim())) problems.email = t("common:admin.emailInvalid");
+  return problems;
+}
+
 function CreateUserDialog({
   open,
   onOpenChange,
@@ -163,6 +185,15 @@ function CreateUserDialog({
   const [email, setEmail] = useState("");
   const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Un campo se queja cuando ya tiene algo o ya se pasó por él: abrir el
+  // diálogo y verlo todo en rojo no ayuda.
+  const [touched, setTouched] = useState<Partial<Record<CreateField, boolean>>>({});
+
+  const values = { username, password, name, email };
+  const problems = createUserProblems(values, t);
+  const canSubmit = Object.keys(problems).length === 0;
+  const shown = (f: CreateField) => (touched[f] || values[f] !== "" ? problems[f] : undefined);
+  const touch = (f: CreateField) => () => setTouched((s) => ({ ...s, [f]: true }));
 
   const reset = () => {
     setUsername("");
@@ -170,17 +201,18 @@ function CreateUserDialog({
     setName("");
     setEmail("");
     setIsSuperadmin(false);
+    setTouched({});
   };
 
   const submit = async () => {
-    if (username.trim().length < 3 || password.length < 8) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     try {
       await createUser({
         username: username.trim(),
         password,
-        name: name.trim() || undefined,
-        email: email.trim() || undefined,
+        name: name.trim(),
+        email: email.trim(),
         isSuperadmin,
       });
       toast.success(t("common:last.userCreated", { name: username.trim() }));
@@ -195,49 +227,76 @@ function CreateUserDialog({
     }
   };
 
+  const hint = (f: CreateField) => {
+    const p = shown(f);
+    return p ? <p className="text-xs text-destructive">{p}</p> : null;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("common:admin.newUser")}</DialogTitle>
-          <DialogDescription>
-            Creates a platform user. Share the credentials with them; they can be
-            invited to organizations afterward.
-          </DialogDescription>
+          <DialogDescription>{t("common:admin.createUserLead")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label>{t("common:admin.username")}</Label>
+            <Label htmlFor="new-user-username">{t("common:admin.username")}</Label>
             <Input
+              id="new-user-username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              onBlur={touch("username")}
+              aria-invalid={!!shown("username")}
               placeholder="jdoe"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               autoFocus
             />
+            {hint("username")}
           </div>
           <div className="space-y-1.5">
-            <Label>{t("common:admin.password")}</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("common:admin.min8")} />
+            <Label htmlFor="new-user-password">{t("common:admin.password")}</Label>
+            <PasswordInput
+              id="new-user-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onBlur={touch("password")}
+              aria-invalid={!!shown("password")}
+              autoComplete="new-password"
+              placeholder={t("common:admin.min8")}
+            />
+            {hint("password")}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Name (optional)</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" />
+              <Label htmlFor="new-user-name">{t("common:admin.thName")}</Label>
+              <Input
+                id="new-user-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={touch("name")}
+                aria-invalid={!!shown("name")}
+                placeholder="Jane Doe"
+              />
+              {hint("name")}
             </div>
             <div className="space-y-1.5">
-              <Label>Email (optional)</Label>
+              <Label htmlFor="new-user-email">{t("common:admin.thEmail")}</Label>
               <Input
+                id="new-user-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={touch("email")}
+                aria-invalid={!!shown("email")}
                 placeholder="jane@x.com"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
               />
+              {hint("email")}
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
@@ -247,14 +306,17 @@ function CreateUserDialog({
               onChange={(e) => setIsSuperadmin(e.target.checked)}
               className="size-4"
             />
-            Superadmin (sees & manages all organizations)
+            {t("common:admin.superadminAll")}
           </label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common:admin.cancel")}</Button>
           <Button
             onClick={submit}
-            disabled={submitting || username.trim().length < 3 || password.length < 8}
+            disabled={submitting || !canSubmit}
+            // Apagado nunca en silencio: el título dice todo lo que falta,
+            // incluido lo de campos por los que aún no se ha pasado.
+            title={canSubmit ? undefined : Object.values(problems).join(" · ")}
           >
             {submitting ? t("common:admin.creating") : t("common:admin.create")}
           </Button>
@@ -308,7 +370,7 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
     <Dialog open={!!user} onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit @{user?.username}</DialogTitle>
+          <DialogTitle>{t("common:admin.editUser", { username: user?.username ?? "" })}</DialogTitle>
           <DialogDescription>{t("common:admin.blankKeeps")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
@@ -330,8 +392,8 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>New password (optional)</Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("common:admin.unchanged")} />
+            <Label>{t("common:admin.newPasswordOptional")}</Label>
+            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("common:admin.unchanged")} />
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -343,7 +405,7 @@ function EditUserDialog({ user, onClose }: { user: AdminUser | null; onClose: ()
             />
             {t("common:admin.superadmin")}
             {user?.id === meId && (
-              <span className="text-xs text-muted-foreground">(can't change your own)</span>
+              <span className="text-xs text-muted-foreground">{t("common:admin.cantChangeOwnRole")}</span>
             )}
           </label>
         </div>

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -113,8 +114,7 @@ function JwtSection() {
       <div className="flex gap-2 items-end">
         <div className="flex-1 space-y-2">
           <Label className="text-xs">Secret (optional, for signature verification)</Label>
-          <Input
-            type="password"
+          <PasswordInput
             placeholder="your-secret-key"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
@@ -298,8 +298,7 @@ function HashSection() {
         {isHmac && (
           <div className="flex-1 space-y-2">
             <Label className="text-xs">Secret Key</Label>
-            <Input
-              type="password"
+            <PasswordInput
               placeholder="HMAC key"
               value={hmacKey}
               onChange={(e) => setHmacKey(e.target.value)}

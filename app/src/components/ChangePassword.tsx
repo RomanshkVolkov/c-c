@@ -3,7 +3,7 @@ import { useState } from "react";
 import { KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -64,8 +64,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
     <div className="space-y-3">
       <div className="space-y-1.5">
         <Label>{t("common:admin.currentPassword")}</Label>
-        <Input
-          type="password"
+        <PasswordInput
           value={current}
           autoComplete="current-password"
           onChange={(e) => setCurrent(e.target.value)}
@@ -73,8 +72,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
       </div>
       <div className="space-y-1.5">
         <Label>{t("common:admin.newPassword")}</Label>
-        <Input
-          type="password"
+        <PasswordInput
           value={next}
           autoComplete="new-password"
           placeholder={t("common:admin.min8chars")}
@@ -83,8 +81,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
       </div>
       <div className="space-y-1.5">
         <Label>{t("common:admin.confirmNewPassword")}</Label>
-        <Input
-          type="password"
+        <PasswordInput
           value={confirmPw}
           autoComplete="new-password"
           onChange={(e) => setConfirmPw(e.target.value)}

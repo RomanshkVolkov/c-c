@@ -10,8 +10,9 @@ export interface AdminUser {
 export interface CreateUserPayload {
   username: string;
   password: string;
-  email?: string;
-  name?: string;
+  // Obligatorios al crear, igual que en `CreateUserRequest` del backend.
+  email: string;
+  name: string;
   isSuperadmin?: boolean;
 }
 

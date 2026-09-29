@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"github.com/guz-studio/cac/backend/internal/core/i18n"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -152,8 +153,8 @@ func (s *AuthService) CreateUser(req domain.CreateUserRequest) (*domain.UserResp
 	u := domain.User{
 		Username:     req.Username,
 		Password:     hashed,
-		Email:        req.Email,
-		Name:         req.Name,
+		Email:        strings.TrimSpace(req.Email),
+		Name:         strings.TrimSpace(req.Name),
 		IsSuperadmin: req.IsSuperadmin,
 		// Admin-provisioned password → user must set their own on first login.
 		MustChangePassword: true,

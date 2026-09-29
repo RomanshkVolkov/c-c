@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ClipboardCopy, Loader2, Mic, MonitorUp, PhoneOff, RefreshCw, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import type { Room } from "livekit-client";
 
 /**
@@ -263,7 +264,7 @@ export default function VoiceLab() {
           <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="ws://localhost:7880" aria-label="LiveKit URL" />
           <Input value={roomName} onChange={(e) => setRoomName(e.target.value)} placeholder="room" aria-label="Room" />
           <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="api key" aria-label="API key" />
-          <Input value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="secret" type="password" aria-label="API secret" />
+          <PasswordInput value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="secret" aria-label="API secret" />
           <Input value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="identity" aria-label="Identity" />
           {!connected ? (
             <Button size="sm" onClick={() => void connect()} disabled={busy}>
