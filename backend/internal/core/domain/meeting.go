@@ -150,10 +150,13 @@ type MeetingOccurrence struct {
 // pinte sin ir a buscar nada, y `FiresAt` como instante para que cada quien lo
 // formatee en su zona y al lado en la del organizador.
 type MeetingRing struct {
-	MeetingID string    `json:"meetingId"`
-	Title     string    `json:"title"`
-	SpaceID   string    `json:"spaceId,omitempty"`
-	SpaceName string    `json:"spaceName,omitempty"`
+	MeetingID string `json:"meetingId"`
+	Title     string `json:"title"`
+	SpaceID   string `json:"spaceId,omitempty"`
+	SpaceName string `json:"spaceName,omitempty"`
+	// La org de la reunión: puede sonar estando en otra, y entrar tiene que
+	// llevarte a la suya.
+	OrgID     string    `json:"orgId"`
 	WallTime  string    `json:"wallTime"`
 	Timezone  string    `json:"timezone"`
 	FiresAt   time.Time `json:"firesAt"`

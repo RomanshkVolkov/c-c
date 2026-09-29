@@ -288,7 +288,8 @@
     "files": "Ficheros",
     "logsOf": "Logs — {{name}}",
     "clearLogs": "Limpiar",
-    "logsCleared": "Vista de logs limpiada"
+    "logsCleared": "Vista de logs limpiada",
+    "inOrg": "en {{org}}"
   },
   "admin": {
     "users": "Usuarios",
@@ -479,7 +480,8 @@
     "everyoneHere": "Ya está todo el mundo aquí.",
     "pickSomebody": "Elige a quién escribirle.",
     "showPassword": "Mostrar la contraseña",
-    "hidePassword": "Ocultar la contraseña"
+    "hidePassword": "Ocultar la contraseña",
+    "notYourOrg": "Eso es de una organización de la que ya no formas parte."
   },
   "scopes": {
     "tasksWrite": "Crear tareas y comentarios",

@@ -40,14 +40,28 @@ interface DMState {
   /** The open thread, oldest-first — the order it renders in. */
   messages: DMMessage[];
   conversationId: string | null;
+  /**
+   * De qué organización es la conversación abierta.
+   *
+   * Un directo es de dos personas **en una org**, y la pantalla sólo lo pinta
+   * si es la que está en pantalla. Antes el único que lo cerraba al cambiar de
+   * org era `DMSwitcher`, que sólo existe en `/dm`: cambiar desde otra pantalla
+   * y volver enseñaba el hilo de la org de antes. Ver `store/org-switch.ts`.
+   */
+  conversationOrgId: string | null;
+  /** Cerrar la conversación abierta. */
+  close: () => void;
   loading: boolean;
   hasMore: boolean;
   loadingOlder: boolean;
 
   fetchConversations: () => Promise<void>;
   openWith: (orgId: string, userId: string) => Promise<string>;
-  /** Abrir una conversación: vacía lo que hubiera y trae la primera página. */
-  open: (conversationId: string) => Promise<void>;
+  /**
+   * Abrir una conversación: vacía lo que hubiera y trae la primera página.
+   * `orgId` si se sabe; si no, se busca en `conversations`.
+   */
+  open: (conversationId: string, orgId?: string) => Promise<void>;
   /**
    * Volver a pedir la conversación abierta, **sin vaciarla**.
    *
@@ -72,6 +86,7 @@ export const useDMStore = create<DMState>((set, get) => ({
   conversations: [],
   messages: [],
   conversationId: null,
+  conversationOrgId: null,
   loading: false,
   hasMore: true,
   loadingOlder: false,
@@ -89,15 +104,19 @@ export const useDMStore = create<DMState>((set, get) => ({
     );
     const id = res.data?.id;
     if (!id) throw new Error("the conversation could not be opened");
-    await get().open(id);
+    await get().open(id, orgId);
     await get().fetchConversations();
     return id;
   },
 
-  open: async (conversationId) => {
+  close: () => set({ conversationId: null, conversationOrgId: null, messages: [] }),
+
+  open: async (conversationId, orgId) => {
+    const conversationOrgId =
+      orgId ?? get().conversations.find((c) => c.conversationId === conversationId)?.orgId ?? null;
     // Clear first: a slow load must not leave the previous thread on screen
     // under this one's name.
-    set({ loading: true, conversationId, messages: [], hasMore: true });
+    set({ loading: true, conversationId, conversationOrgId, messages: [], hasMore: true });
     try {
       const res = await api.get<APIResponse<DMMessage[]>>(
         `/api/v1/dm/${conversationId}/messages?limit=${PAGE}`,
@@ -196,6 +215,6 @@ export const useDMStore = create<DMState>((set, get) => ({
 // Somebody else's private conversation must not survive a logout.
 useAuthStore.subscribe((state, prev) => {
   if (prev.accessToken && !state.accessToken) {
-    useDMStore.setState({ conversations: [], messages: [], conversationId: null });
+    useDMStore.setState({ conversations: [], messages: [], conversationId: null, conversationOrgId: null });
   }
 });

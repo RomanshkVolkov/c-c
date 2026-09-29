@@ -24,6 +24,9 @@ vi.mock("@/components/markdown/MarkdownEditor", () => ({ default: () => null }))
 vi.mock("@/components/markdown/Markdown", () => ({ default: () => null }));
 
 const { default: TaskDetailDrawer } = await import("@/components/TaskDetailDrawer");
+const { useOrgsStore } = await import("@/store/orgs.store");
+// La tarea es de esta org: el cajón no pinta una tarea de otra.
+beforeEach(() => useOrgsStore.setState({ currentOrgId: "org-1" }));
 const { useTasksStore } = await import("@/store/tasks.store");
 const { PromptProvider } = await import("@/components/PromptDialog");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");

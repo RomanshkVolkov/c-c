@@ -480,6 +480,8 @@ export interface Decision {
 export interface DocResponse {
   /** null until the node's document is written for the first time. */
   doc: Doc | null;
+  /** La organización del nodo, aunque todavía no tenga documento. */
+  orgId?: string;
   /** Siempre las cuatro, también las vacías. Vacío sólo si `doc` es null. */
   tabs: DocTab[];
   /** El registro. Va con el documento: es una de las cuatro pestañas. */

@@ -2,6 +2,8 @@ import { useT } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { Mic, MicOff, PhoneOff } from "lucide-react";
 import { useTasksStore } from "@/store/tasks.store";
+import { useOrgsStore } from "@/store/orgs.store";
+import { goInOrg } from "@/lib/ir-en-org";
 import RecChip from "@/components/voice/RecChip";
 import { useRecordingNotice } from "@/components/voice/useRecordingNotice";
 import { useVoice } from "@/store/voice.store";
@@ -37,13 +39,28 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
   const abrirEscenario = useVoice((s) => s.abrirEscenario);
   const alternarMic = useVoice((s) => s.alternarMic);
   const salir = useVoice((s) => s.salir);
-  const nombre = useTasksStore((s) => s.tree.find((e) => e.id === spaceId)?.name);
+  // El nombre del canal lo trae la llamada, no el árbol: la llamada sigue al
+  // cambiar de org, y entonces el árbol es el de otra y no sabe cómo se llama.
+  // El árbol queda de respaldo para una llamada que no lo trajo.
+  const nombreDeLaLlamada = useVoice((s) => s.spaceName);
+  const nombreEnElArbol = useTasksStore((s) => s.tree.find((e) => e.id === spaceId)?.name);
+  const nombre = nombreDeLaLlamada ?? nombreEnElArbol;
+  // Y de qué org es, cuando no es la de la pantalla: «general» a secas no dice
+  // a cuál de tus dos clientes estás hablando.
+  const orgDeLaLlamada = useVoice((s) => s.orgId);
+  const otraOrg = useOrgsStore((s) =>
+    orgDeLaLlamada && orgDeLaLlamada !== s.currentOrgId
+      ? (s.orgs.find((o) => o.id === orgDeLaLlamada)?.name ?? null)
+      : null,
+  );
 
   if (!spaceId || estado === "fuera") return null;
 
+  // Volver es volver **a su org**, no al canal del mismo id en la que tengas
+  // delante — que no existe, y caía en su general.
   const volver = () => {
     abrirEscenario();
-    navigate(`/chat?space=${spaceId}`);
+    goInOrg(navigate, `/chat?space=${spaceId}`, orgDeLaLlamada);
   };
 
   // Con el sidebar plegado no cabe la caja, pero desaparecer no es una opción:
@@ -53,7 +70,7 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
     return (
       <button
         onClick={volver}
-        title={`Voice connected · ${nombre ?? "back to the call"}`}
+        title={`Voice connected · ${nombre ?? "back to the call"}${otraOrg ? ` · ${otraOrg}` : ""}`}
         aria-label={t("common:servers.backToCall")}
         className="mx-auto my-1 grid size-8 place-items-center rounded-lg border border-success/35 bg-success/[.07]"
       >
@@ -74,6 +91,11 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
           <span className="block truncate text-[13px] font-semibold text-success">
             {nombre ?? t("common:servers.voice")}
           </span>
+          {otraOrg && (
+            <span className="block truncate text-xs text-foreground/80">
+              {t("common:servers.inOrg", { org: otraOrg })}
+            </span>
+          )}
           <span className="block text-xs text-muted-foreground">
             {estado === "entrando" ? t("common:servers.connecting") : t("common:servers.voiceConnected")}
           </span>

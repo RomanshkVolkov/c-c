@@ -2,6 +2,8 @@ import { phraseFor } from "@/lib/server-errors";
 import { create } from "zustand";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { api } from "@/lib/api";
+import { useOrgsStore } from "@/store/orgs.store";
+import { useTasksStore } from "@/store/tasks.store";
 import type { APIResponse } from "@/types/auth";
 
 /**
@@ -43,6 +45,8 @@ export interface VoicePeer {
 export interface TimbreEntrante {
   ringId: string;
   spaceId: string;
+  /** La org del canal: te puede llamar alguien de otra. */
+  orgId?: string;
   spaceName: string;
   from: { id: string; name: string };
   /** ISO. Pasada esa hora la tarjeta se va sola, llame quien llame. */
@@ -70,9 +74,39 @@ export interface TimbreSaliente {
  */
 export const TIMBRE_MS = 20_000;
 
+/**
+ * De qué es la llamada. Se le da al motor al entrar y el motor la devuelve al
+ * engancharse tras una recarga: la página nueva no tiene otra forma de saber
+ * dónde estabas —el SFU sabe la sala, no el canal ni la organización—.
+ */
+export interface VoiceMeta {
+  spaceId: string;
+  orgId: string | null;
+  spaceName: string | null;
+}
+
+/** Lo que contesta `voice_attach` cuando hay llamada. */
+interface Reenganche {
+  meta: Partial<VoiceMeta> | null;
+  yo: string;
+  silenciado: boolean;
+  sordo: boolean;
+  camara: boolean;
+  compartiendo: boolean;
+}
+
 interface VoiceState {
   /** El espacio cuya sala está abierta, o null. Una a la vez. */
   spaceId: string | null;
+  /**
+   * La organización y el nombre del canal de la llamada.
+   *
+   * Aparte del árbol a propósito: la llamada sigue al cambiar de
+   * organización, y entonces el árbol es el de otra org y ya no sabe ni cómo
+   * se llama el canal.
+   */
+  orgId: string | null;
+  spaceName: string | null;
   /** "entrando" mientras se pide el token y se conecta. */
   estado: "fuera" | "entrando" | "dentro";
   /**
@@ -171,7 +205,20 @@ interface VoiceState {
    */
   ocupacion: Record<string, VoicePeer[]>;
 
-  entrar: (spaceId: string) => Promise<void>;
+  /**
+   * Entrar a la sala de un canal. `donde` hace falta cuando el canal no es de
+   * la org que está en pantalla —aceptar un timbre de otra—; sin él, se toman
+   * la org actual y el nombre del árbol.
+   */
+  entrar: (spaceId: string, donde?: { orgId?: string | null; spaceName?: string | null }) => Promise<void>;
+  /**
+   * Engancharse a la llamada que ya estaba en curso, tras recargar la página.
+   *
+   * La sala vive en el proceso de Rust y no se enteró de la recarga: el
+   * micrófono seguía abierto y nada en pantalla lo decía. Se llama una vez al
+   * arrancar.
+   */
+  reanudar: () => Promise<void>;
   salir: () => Promise<void>;
   /** Volver a la llamada sin reconectar: sólo abre la pantalla. */
   abrirEscenario: () => void;
@@ -200,6 +247,8 @@ interface VoiceState {
 
 const VACIO = {
   spaceId: null,
+  orgId: null,
+  spaceName: null,
   estado: "fuera" as const,
   escenario: false,
   gente: [],
@@ -264,7 +313,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
   // Fuera de `VACIO` a propósito: salir de una sala no vacía los demás canales.
   ocupacion: {},
 
-  entrar: async (spaceId) => {
+  entrar: async (spaceId, donde) => {
     // Ya dentro de ésta: no se reconecta. Volver a entrar cortaría la
     // conversación en curso para dejarla exactamente igual.
     if (get().spaceId === spaceId && get().estado !== "fuera") return;
@@ -274,7 +323,12 @@ export const useVoice = create<VoiceState>((set, get) => ({
 
     // El escenario se abre ya, mientras conecta: entrar a una llamada lleva un
     // segundo largo y sin nada que mirar parece que el botón no hizo nada.
-    set({ ...VACIO, spaceId, estado: "entrando", escenario: true });
+    const meta: VoiceMeta = {
+      spaceId,
+      orgId: donde?.orgId ?? useOrgsStore.getState().currentOrgId,
+      spaceName: donde?.spaceName ?? useTasksStore.getState().tree.find((e) => e.id === spaceId)?.name ?? null,
+    };
+    set({ ...VACIO, ...meta, estado: "entrando", escenario: true });
     try {
       const res = await api.post<APIResponse<{ url: string; token: string; room: string }>>(
         `/api/v1/task-spaces/${spaceId}/voice/token`,
@@ -289,6 +343,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
         url: res.data.url,
         token: res.data.token,
         onEvent: canal,
+        meta,
       });
       // Puede haberse pulsado «salir» mientras conectaba; entonces esto ya no
       // es la sala actual y dejarlo entrar dejaría un micrófono abierto.
@@ -300,6 +355,50 @@ export const useVoice = create<VoiceState>((set, get) => ({
     } catch (e) {
       set({ ...VACIO, error: deRust(e), errorSpaceId: spaceId });
     }
+  },
+
+  reanudar: async () => {
+    if (get().estado !== "fuera") return;
+    // Los eventos de la instantánea llegan **mientras** `voice_attach` no ha
+    // contestado todavía, y el `set` de abajo arranca de `VACIO`: aplicados
+    // antes, se los comería. Se guardan y se aplican después.
+    const pendientes: VoiceEvent[] = [];
+    let listo = false;
+    const canal = new Channel<VoiceEvent>();
+    canal.onmessage = (ev) => (listo ? get().alRecibir(ev) : pendientes.push(ev));
+
+    let r: Reenganche | null;
+    try {
+      r = await invoke<Reenganche | null>("voice_attach", { onEvent: canal });
+    } catch {
+      return; // un motor viejo sin `voice_attach`: no hay a qué engancharse
+    }
+    if (!r) return;
+
+    const spaceId = r.meta?.spaceId;
+    if (!spaceId) {
+      // Una sala viva de la que no se sabe el canal no se puede enseñar, y una
+      // que no se enseña es un micrófono abierto a escondidas. Se cuelga.
+      await invoke("voice_leave").catch(() => {});
+      return;
+    }
+    set({
+      ...VACIO,
+      spaceId,
+      orgId: r.meta?.orgId ?? null,
+      spaceName: r.meta?.spaceName ?? null,
+      estado: "dentro",
+      // Minimizada: recargar no es pedir la sala a pantalla completa, y la
+      // barra lateral ya dice que sigues dentro.
+      escenario: false,
+      yo: r.yo,
+      mic: !r.silenciado,
+      sordo: r.sordo,
+      cam: r.camara,
+      compartiendo: r.compartiendo,
+    });
+    listo = true;
+    for (const ev of pendientes) get().alRecibir(ev);
   },
 
   salir: async () => {
@@ -452,7 +551,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
     if (!t) return;
     pararReloj("entrante");
     set({ entrante: null });
-    await get().entrar(t.spaceId);
+    await get().entrar(t.spaceId, { orgId: t.orgId, spaceName: t.spaceName });
   },
 
   rechazarEntrante: async () => {

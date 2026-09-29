@@ -1,4 +1,5 @@
 import { fechaLarga } from "@/lib/fechas";
+import { goInOrg } from "@/lib/ir-en-org";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -86,8 +87,11 @@ export default function Overview() {
   // Canales y directos en una sola lista: al mirar «sin leer» no importa por
   // qué puerta entró, sino quién está esperando respuesta.
   const sinLeer = useMemo(() => {
+    // Sólo lo de esta org: los canales del árbol y los directos de aquí. Los
+    // dos contadores llegan con todas tus orgs juntas — ver `lib/unread.ts`.
+    const espacios = new Set(tree.map((s) => s.id));
     const canales = Object.entries(unreadBySpace)
-      .filter(([, n]) => n > 0)
+      .filter(([spaceId, n]) => n > 0 && espacios.has(spaceId))
       .map(([spaceId, n]) => ({
         key: `c-${spaceId}`,
         donde: `#${nombreDeEspacio(spaceId)}`,
@@ -97,17 +101,17 @@ export default function Overview() {
         abrir: () => navigate(`/chat?space=${spaceId}`),
       }));
     const directos = conversations
-      .filter((c) => c.unread > 0)
+      .filter((c) => c.unread > 0 && c.orgId === orgId)
       .map((c) => ({
         key: `d-${c.conversationId}`,
         donde: `@${c.username}`,
         quien: c.username,
         cuando: desde(c.lastMessageAt),
         n: c.unread,
-        abrir: () => navigate(`/dm?c=${c.conversationId}`),
+        abrir: () => goInOrg(navigate, `/dm?c=${c.conversationId}`, c.orgId),
       }));
     return [...directos, ...canales];
-  }, [unreadBySpace, conversations, nombreDeEspacio, navigate]);
+  }, [unreadBySpace, conversations, nombreDeEspacio, navigate, tree, orgId]);
 
   const enLinea = servers.filter((s) => s.status === "online").length;
 

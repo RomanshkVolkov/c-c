@@ -329,13 +329,20 @@ func (s *MeetingService) FireDue(now time.Time) {
 	}
 }
 
-// anunciar reparte el aviso: la tarjeta que suena y la fila en la campana.
-func (s *MeetingService) anunciar(m domain.MeetingReminder, now time.Time) {
-	aviso := domain.MeetingRing{
-		MeetingID: m.ID, Title: m.Title,
+// avisoDe es la tarjeta que suena, sin el nombre del canal —que hay que ir a
+// buscar—. Aparte de `anunciar` para poder probar lo que lleva sin montar el
+// reparto entero.
+func avisoDe(m domain.MeetingReminder, now time.Time) domain.MeetingRing {
+	return domain.MeetingRing{
+		MeetingID: m.ID, Title: m.Title, OrgID: m.OrgID,
 		WallTime: m.WallTime, Timezone: m.Timezone,
 		FiresAt: now, ExpiresAt: now.Add(meetingRingTTL),
 	}
+}
+
+// anunciar reparte el aviso: la tarjeta que suena y la fila en la campana.
+func (s *MeetingService) anunciar(m domain.MeetingReminder, now time.Time) {
+	aviso := avisoDe(m, now)
 	enlace := "/"
 	if m.SpaceID != nil {
 		aviso.SpaceID = *m.SpaceID

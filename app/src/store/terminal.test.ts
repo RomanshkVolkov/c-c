@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
-import { useTerminals, claveDe } from "./terminal.store";
+import { useTerminals, claveDe, closeOrphanTerminals } from "./terminal.store";
 
 const SERVIDOR = {
   id: "s1",
@@ -117,5 +117,22 @@ describe("pestañas del terminal", () => {
   it("el alto no baja de lo que cabe una línea", () => {
     useTerminals.getState().setAlto(10);
     expect(useTerminals.getState().alto).toBeGreaterThan(100);
+  });
+});
+
+// Recargar la página dejaba los `ssh` vivos en Rust, sin pestaña desde la que
+// alcanzarlos: la página nueva ya no conoce sus ids. Al arrancar se cierran.
+describe("al arrancar", () => {
+  it("se cierran las sesiones que dejó la página anterior", async () => {
+    invoke.mockClear();
+    await closeOrphanTerminals();
+    expect(invoke).toHaveBeenCalledWith("pty_close_all");
+  });
+
+  it("y se hace desde main.tsx, antes de montar nada", async () => {
+    const { readFileSync } = await import("node:fs");
+    const main = readFileSync(`${process.cwd()}/src/main.tsx`, "utf8");
+    expect(main.indexOf("closeOrphanTerminals()")).toBeGreaterThan(-1);
+    expect(main.indexOf("closeOrphanTerminals()")).toBeLessThan(main.indexOf("createRoot("));
   });
 });

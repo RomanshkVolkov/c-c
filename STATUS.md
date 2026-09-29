@@ -19,6 +19,20 @@ vez de apagar «Crear» en silencio, y toda contraseña de la app lleva ojo
 (`PasswordInput`, con guardián contra un `type="password"` a pelo). Toca
 backend y app: backend primero, luego la siguiente versión.
 
+**En curso (29-sep, #97 con S1–S7 en #99–#105, sin commitear): auditoría de
+estados.** Recargar no colgaba la llamada —vive en Rust— y la página nueva no
+lo sabía: micro abierto sin nada en pantalla. Ahora se reengancha
+(`voice_attach`). Cambiar de org dejaba abierto el directo, la tarea o el doc
+de la otra: hay un único sitio que reacciona (`store/org-switch.ts`) y cada
+cosa abierta lleva el sello de su org, que se comprueba al pintar. Los enlaces a
+algo de otra org cambian de org (`lib/ir-en-org.ts`). La barra de la llamada
+dice de qué org es, los contadores cuentan sólo la org actual, cada org recuerda
+dónde estabas (`store/places*.ts`) y los ssh huérfanos se cierran al arrancar.
+Backend: `orgId` en búsqueda, doc, timbre, reunión y token de voz, y la
+búsqueda de directos filtrada por org. Backend primero. Aparte, para después:
+**#98**, en Mac la pantalla compartida sale inclinada (probable stride de la
+captura).
+
 La app va por la **v1.6.70** (grabación de reuniones, pestañas del canal, el
 hilo que te deja donde estabas, y el filtro del árbol a la primera).
 

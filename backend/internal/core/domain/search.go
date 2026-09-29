@@ -15,6 +15,11 @@ type SearchHit struct {
 	Where string `json:"where,omitempty"`
 	// Link is the in-app route this jumps to.
 	Link string `json:"link"`
+	// OrgID es la organización de lo encontrado; vacío en lo que no es de
+	// ninguna (una nota). La app la necesita para abrirlo **en su org**: un
+	// enlace a algo de otra org cambia de org antes de abrirlo, y sin esto no
+	// sabría a cuál.
+	OrgID string `json:"orgId,omitempty"`
 }
 
 type SearchKind string

@@ -12,6 +12,7 @@ import { useChatStore } from "@/store/chat.store";
 import { useVoice } from "@/store/voice.store";
 import { useEncogerEnLlamada } from "@/components/voice/useEncogerEnLlamada";
 import { useOrgsStore } from "@/store/orgs.store";
+import { usePlacesStore } from "@/store/places.store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -75,7 +76,11 @@ export default function Channels() {
    */
   const general = tree.find((s) => s.kind === "general");
   const canales = tree.filter((s) => s.kind !== "general");
-  const espacio = tree.find((s) => s.id === abierto) ?? general ?? tree[0];
+  // El pedido, si no el último en el que estuviste en esta org, y si no la
+  // general. Ver `store/places.store.ts`.
+  const recordado = usePlacesStore((s) => (orgId ? s.byOrg[orgId]?.spaceId : undefined));
+  const espacio =
+    tree.find((s) => s.id === abierto) ?? tree.find((s) => s.id === recordado) ?? general ?? tree[0];
 
   // Con la sala en pantalla esta columna sobra, y el rail también.
   const encogido = useEncogerEnLlamada(espacio?.id ?? null);
@@ -86,6 +91,8 @@ export default function Channels() {
   // meaning a notification for every message in the channel you are reading.
   useEffect(() => {
     useChatStore.setState({ panelOpen: !!espacio, spaceId: espacio?.id ?? null });
+    // Bajo la org del canal, que es la del árbol.
+    if (espacio) usePlacesStore.getState().remember(espacio.orgId, { spaceId: espacio.id });
     return () => useChatStore.setState({ panelOpen: false, spaceId: null });
   }, [espacio]);
 

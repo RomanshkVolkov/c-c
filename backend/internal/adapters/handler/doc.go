@@ -91,6 +91,11 @@ func (h *docHandler) resolveDoc(w http.ResponseWriter, r *http.Request) (*domain
 
 type docResponse struct {
 	Doc *domain.Doc `json:"doc"`
+	// La organización del nodo, **aunque todavía no tenga documento** —y
+	// entonces `Doc` es nil y no hay otro sitio de donde sacarla—. La app la
+	// necesita para no pintar el documento de una org dentro de otra, y para
+	// cambiar a la suya cuando se llega por un enlace.
+	OrgID string `json:"orgId,omitempty"`
 	// Siempre las cuatro, también las vacías: la pantalla las pinta todas y una
 	// que faltara la obligaría a inventarla.
 	Tabs []domain.DocTab `json:"tabs"`
@@ -128,7 +133,7 @@ func (h *docHandler) completa(doc *domain.Doc) docResponse {
 }
 
 func (h *docHandler) Get(w http.ResponseWriter, r *http.Request) {
-	kind, id, _, ok := h.resolveOwner(w, r)
+	kind, id, orgID, ok := h.resolveOwner(w, r)
 	if !ok {
 		return
 	}
@@ -140,6 +145,7 @@ func (h *docHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// A node without a document is normal: answer with an empty one so the client
 	// renders the same editor instead of special-casing "not created yet".
 	out := h.completa(d)
+	out.OrgID = orgID
 	SendResult(w, http.StatusOK, domain.APIResponse[docResponse]{Success: true, Data: out})
 }
 

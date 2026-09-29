@@ -52,7 +52,7 @@ const { useTasksStore } = await import("@/store/tasks.store");
 
 const conDocumento = () =>
   useTasksStore.setState({
-    activeDoc: { kind: "list", id: "l1", name: "Portento" },
+    activeDoc: { kind: "list", id: "l1", name: "Portento", orgId: "o1" },
     doc: {
       doc: {
         id: "d1",

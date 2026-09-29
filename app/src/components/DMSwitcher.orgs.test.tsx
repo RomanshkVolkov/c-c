@@ -114,15 +114,10 @@ describe("los directos son de una organización", () => {
     expect(container.textContent).not.toContain("ana");
   });
 
-  it("cambiar de organización cierra el hilo abierto", async () => {
-    const { rerender } = render(<DMSwitcher onPicked={() => {}} />);
-    await waitFor(() => expect(get).toHaveBeenCalled());
-    useDMStore.setState({ conversationId: "c-1" });
-
-    orgActual = "org-2";
-    rerender(<DMSwitcher onPicked={() => {}} />);
-    await waitFor(() => expect(useDMStore.getState().conversationId).toBeNull());
-  });
+  // «Cambiar de organización cierra el hilo abierto» ya no es cosa de esta
+  // pantalla. Lo hacía con un `useRef`, y sólo veía los cambios hechos con ella
+  // montada: cambiar desde Tareas y volver dejaba abierto el directo de la otra
+  // org. Ahora lo cierra `store/org-switch.ts` y lo prueba `org-switch.test.ts`.
 
   it("volver a montar sin cambiar de organización no cierra nada", async () => {
     const { unmount } = render(<DMSwitcher onPicked={() => {}} />);

@@ -35,6 +35,10 @@ vi.mock("@/store/inbox.store", () => ({
 vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
 
 const { default: NotificationsPanel } = await import("@/components/NotificationsPanel");
+const { useOrgsStore } = await import("@/store/orgs.store");
+// Las filas son de la org "o", que es la de la pantalla: la campana trae las
+// de la org en la que estás.
+useOrgsStore.setState({ orgs: [{ id: "o", name: "O" }], currentOrgId: "o" } as never);
 
 afterEach(() => {
   cleanup();

@@ -119,7 +119,8 @@ describe("entrar a la sala", () => {
     estado.reunion.current = reunion();
     render(<MeetingCall />);
     fireEvent.click(screen.getByText("Join #General"));
-    await vi.waitFor(() => expect(entrar).toHaveBeenCalledWith("esp-g"));
+    // Con la pista de la org y el canal: la reunión puede ser de otra org.
+    await vi.waitFor(() => expect(entrar).toHaveBeenCalledWith("esp-g", expect.anything()));
     expect(navigate).toHaveBeenCalledWith("/chat?space=esp-g");
   });
 

@@ -59,11 +59,13 @@ vi.mock("react-router-dom", () => ({
 }));
 
 const { default: Channels } = await import("@/pages/Channels");
+const { usePlacesStore } = await import("@/store/places.store");
 
 const espacio = (id: string, name: string, kind?: string) =>
   ({ id, orgId: "org-1", name, color: "", kind, folders: [], lists: [], people: [] }) as unknown as SpaceTree;
 
 beforeEach(() => {
+  usePlacesStore.setState({ byOrg: {} });
   abrirSalaGeneral.mockResolvedValue(undefined);
   params.current = new URLSearchParams();
   orgActual.current = { id: "org-1", name: "Guz", role: "member" };
@@ -95,6 +97,22 @@ describe("la sala general en la lista", () => {
     tree.current = [espacio("esp-1", "Boaty"), espacio("esp-g", "General", "general")];
     render(<Channels />);
     expect(document.querySelector("nav button.bg-accent")?.textContent).toContain("Boaty");
+  });
+
+  // Cada org recuerda dónde estabas: volver a Canales sin pedir ninguno te
+  // deja en el último de esta org, no en la general.
+  it("sin elegir, el último en el que estuviste en esta org antes que la general", () => {
+    usePlacesStore.getState().remember("org-1", { spaceId: "esp-1" });
+    tree.current = [espacio("esp-1", "Boaty"), espacio("esp-g", "General", "general")];
+    render(<Channels />);
+    expect(document.querySelector("nav button.bg-accent")?.textContent).toContain("Boaty");
+  });
+
+  it("y el canal que abres queda apuntado bajo su org", () => {
+    params.current = new URLSearchParams({ space: "esp-1" });
+    tree.current = [espacio("esp-1", "Boaty"), espacio("esp-g", "General", "general")];
+    render(<Channels />);
+    expect(usePlacesStore.getState().byOrg["org-1"]?.spaceId).toBe("esp-1");
   });
 });
 

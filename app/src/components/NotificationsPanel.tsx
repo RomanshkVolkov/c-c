@@ -1,4 +1,5 @@
 import { useT, type MessageKey } from "@/lib/i18n";
+import { goInOrg } from "@/lib/ir-en-org";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AtSign, BellRing, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
@@ -119,7 +120,7 @@ export default function NotificationsPanel({
     void markRead([n.id]);
     if (n.link) {
       onOpenChange(false);
-      navigate(n.link);
+      goInOrg(navigate, n.link, n.orgId);
     }
   };
 
@@ -135,7 +136,8 @@ export default function NotificationsPanel({
     void markReadGroup(g.key);
     if (link) {
       onOpenChange(false);
-      navigate(link);
+      // Las filas de un grupo son del mismo sitio, y por tanto de la misma org.
+      goInOrg(navigate, link, g.items[0]?.orgId);
     }
   };
 

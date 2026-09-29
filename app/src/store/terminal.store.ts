@@ -14,6 +14,17 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type TermTarget = { kind: "host" } | { kind: "service"; name: string };
 
+/**
+ * Cierra las sesiones de ssh que dejó la página anterior.
+ *
+ * Viven en Rust y sobreviven a una recarga, pero esta página empieza sin
+ * pestañas y no conoce sus ids: son huérfanas. Se llama una vez al arrancar,
+ * desde `main.tsx`, antes de que se pueda abrir ninguna nueva.
+ */
+export function closeOrphanTerminals() {
+  return invoke("pty_close_all").catch(() => {});
+}
+
 /** "abriendo" → "viva" → "terminada"; "rota" si ni siquiera llegó a abrir. */
 export type TermEstado = "abriendo" | "viva" | "terminada" | "rota";
 

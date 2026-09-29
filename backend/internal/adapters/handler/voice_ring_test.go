@@ -138,6 +138,11 @@ func TestElTimbreSuenaEnUnSoloEscritorio(t *testing.T) {
 	if timbre.From.ID != "u-ana" || timbre.SpaceID != "esp-1" {
 		t.Errorf("el timbre tiene que decir quién llama y a qué sala: %+v", timbre)
 	}
+	// Y de qué org: el stream trae los timbres de todas tus orgs, y aceptar
+	// uno de otra tiene que llevarte a ella.
+	if timbre.OrgID != "org-1" {
+		t.Errorf("el timbre tiene que decir de qué org es la sala, dijo %q", timbre.OrgID)
+	}
 	// Sin tope, un timbre que nadie recoge suena hasta que se cierra la app.
 	if falta := time.Until(timbre.ExpiresAt); falta <= 0 || falta > service.TimbreTTL {
 		t.Errorf("el timbre caduca en %s, y debe caducar dentro de %s", falta, service.TimbreTTL)

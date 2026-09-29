@@ -235,6 +235,11 @@ type VoiceTokenResponse struct {
 	// Room viaja informativa, para que un log del cliente diga en qué sala
 	// estaba. No se acepta de vuelta: la sala la decide el servidor.
 	Room string `json:"room"`
+	// De qué org y qué canal es la sala. La llamada sigue al cambiar de org, y
+	// la app tiene que poder decir «en #diseño de Portento» y volver a ella
+	// cuando en pantalla hay otra org, cuyo árbol ya no sabe cómo se llama.
+	OrgID     string `json:"orgId"`
+	SpaceName string `json:"spaceName"`
 }
 
 // ─── El timbre de la voz ──────────────────────────────────────────────────────
@@ -257,8 +262,11 @@ type VoiceCaller struct {
 // cuenta: quien llama deja de esperar, y a quien llaman se le apaga la tarjeta.
 // Así, si la app de quien llama se cierra de golpe, el timbre se calla igual.
 type VoiceRing struct {
-	RingID    string      `json:"ringId"`
-	SpaceID   string      `json:"spaceId"`
+	RingID  string `json:"ringId"`
+	SpaceID string `json:"spaceId"`
+	// La org del canal. El stream de eventos trae los de todas tus orgs, así
+	// que te puede llamar alguien de otra: aceptar tiene que llevarte a ella.
+	OrgID     string      `json:"orgId"`
 	SpaceName string      `json:"spaceName"`
 	From      VoiceCaller `json:"from"`
 	ExpiresAt time.Time   `json:"expiresAt"`

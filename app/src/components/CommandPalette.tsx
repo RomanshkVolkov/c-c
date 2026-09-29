@@ -1,4 +1,5 @@
 import { useT, type MessageKey } from "@/lib/i18n";
+import { goInOrg } from "@/lib/ir-en-org";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -31,6 +32,8 @@ interface Hit {
   title: string;
   where?: string;
   link: string;
+  /** La org de lo encontrado; vacío en una nota, que no es de ninguna. */
+  orgId?: string;
 }
 
 interface Results {
@@ -136,9 +139,10 @@ export default function CommandPalette({
 
   const total = GRUPOS.reduce((n, g) => n + res[g.key].length, 0);
 
-  const ir = (link: string) => {
+  // En la org de lo encontrado: un directo de otra org se abre en la suya.
+  const ir = (link: string, org?: string) => {
     onOpenChange(false);
-    navigate(link);
+    goInOrg(navigate, link, org);
   };
 
   return (
@@ -190,7 +194,7 @@ export default function CommandPalette({
                   {res[g.key].map((h) => (
                     <button
                       key={`${g.key}-${h.id}`}
-                      onClick={() => ir(h.link)}
+                      onClick={() => ir(h.link, h.orgId)}
                       className={cn(
                         "flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm",
                         "hover:bg-accent",

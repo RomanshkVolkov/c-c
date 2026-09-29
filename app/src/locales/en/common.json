@@ -288,7 +288,8 @@
     "files": "Files",
     "logsOf": "Logs — {{name}}",
     "clearLogs": "Clear",
-    "logsCleared": "Log view cleared"
+    "logsCleared": "Log view cleared",
+    "inOrg": "in {{org}}"
   },
   "admin": {
     "users": "Users",
@@ -479,7 +480,8 @@
     "everyoneHere": "Everyone is already here.",
     "pickSomebody": "Pick somebody to write to.",
     "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "hidePassword": "Hide password",
+    "notYourOrg": "That belongs to an organization you're no longer part of."
   },
   "scopes": {
     "tasksWrite": "Create tasks and comments",

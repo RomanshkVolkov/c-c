@@ -184,23 +184,31 @@ func (r *SearchRepository) Messages(query, orgID string, limit int) ([]domain.Se
 // people's conversations — and those tables were deliberately built with no
 // visibility column precisely so that no filter has to be remembered. Starting
 // from participation means the query cannot express somebody else's mail.
-func (r *SearchRepository) DMs(query, userID string, limit int) ([]domain.SearchHit, error) {
+//
+// Y con una org, sólo los de esa org. Un directo es de dos personas **en una
+// org**, y sin este filtro la paleta de la org B enseñaba mensajes de la A
+// —tuyos, pero de otro cliente— con un enlace que los abría dentro de B. Sin
+// org, los de todas: siguen siendo sólo los tuyos, y cada uno dice la suya.
+func (r *SearchRepository) DMs(query, orgID, userID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}
 	type row struct {
-		ID, Body, ConversationID, Other string
+		ID, Body, ConversationID, Other, OrgID string
 	}
 	var rows []row
-	err := r.db.Table("dm_conversations c").
-		Select(`m.id, m.body, c.id AS conversation_id,
+	q := r.db.Table("dm_conversations c").
+		Select(`m.id, m.body, c.id AS conversation_id, c.org_id AS org_id,
 			CASE WHEN c.user_lo_id = ? THEN c.user_hi_id ELSE c.user_lo_id END AS other`, userID).
 		Joins("JOIN dm_messages m ON m.conversation_id = c.id AND m.deleted_at IS NULL").
 		Where("c.user_lo_id = ? OR c.user_hi_id = ?", userID, userID).
-		Where("LOWER(m.body) LIKE ?", like(query)).
-		Order("m.created_at DESC").Limit(limit).Scan(&rows).Error
+		Where("LOWER(m.body) LIKE ?", like(query))
+	if orgID != "" {
+		q = q.Where("c.org_id = ?", orgID)
+	}
+	err := q.Order("m.created_at DESC").Limit(limit).Scan(&rows).Error
 	for _, x := range rows {
 		out = append(out, domain.SearchHit{
 			Kind: domain.SearchDM, ID: x.ID, Title: snippet(x.Body),
-			Link: "/dm?c=" + x.ConversationID,
+			Link: "/dm?c=" + x.ConversationID, OrgID: x.OrgID,
 		})
 	}
 	return out, err

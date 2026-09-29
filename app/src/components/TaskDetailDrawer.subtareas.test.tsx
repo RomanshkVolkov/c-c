@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 /**
@@ -64,6 +64,9 @@ vi.mock("@/store/tasks.store", () => ({
 }));
 
 const { default: Drawer } = await import("@/components/TaskDetailDrawer");
+const { useOrgsStore } = await import("@/store/orgs.store");
+// La tarea es de esta org: el cajón no pinta una tarea de otra.
+beforeEach(() => useOrgsStore.setState({ currentOrgId: "o1" }));
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
 const { PromptProvider } = await import("@/components/PromptDialog");
 

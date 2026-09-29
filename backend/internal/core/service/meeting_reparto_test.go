@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 )
@@ -91,5 +92,19 @@ func TestSilenciarLasReunionesNoTocaLoDemas(t *testing.T) {
 		if !p.Allows(clase) {
 			t.Errorf("%s no tiene nada que ver con las reuniones", clase)
 		}
+	}
+}
+
+// El aviso de una reunión dice de qué org es: puede sonar estando en otra, y
+// entrar tiene que llevarte a la suya.
+func TestTheMeetingNoticeSaysItsOrganization(t *testing.T) {
+	m := domain.MeetingReminder{OrgID: "org-7", Title: "Diaria", WallTime: "09:00", Timezone: "America/Mexico_City"}
+	m.ID = "m-1"
+	aviso := avisoDe(m, time.Now())
+	if aviso.OrgID != "org-7" {
+		t.Errorf("el aviso tiene que decir su org, dijo %q", aviso.OrgID)
+	}
+	if aviso.MeetingID != "m-1" || aviso.Title != "Diaria" {
+		t.Errorf("el aviso perdió la reunión: %+v", aviso)
 	}
 }

@@ -55,6 +55,7 @@ import { PRIORITIES, priorityMeta } from "@/types/task";
 import type { TaskStatus } from "@/types/task";
 import type { TaskComment } from "@/types/task";
 import { cn } from "@/lib/utils";
+import { useOrgsStore } from "@/store/orgs.store";
 
 /**
  * Task detail: title, status, priority, tags, assignees, dates, a markdown
@@ -70,6 +71,7 @@ export default function TaskDetailDrawer() {
   const detailError = useTasksStore((s) => s.detailError);
   const loading = useTasksStore((s) => s.loadingDetail);
   const closeTask = useTasksStore((s) => s.closeTask);
+  const orgId = useOrgsStore((s) => s.currentOrgId);
 
   // Escape closes it. It used to be the click-away layer that did that job
   // implicitly; full screen leaves nothing beside it to click, so the keyboard
@@ -90,6 +92,10 @@ export default function TaskDetailDrawer() {
   }, [openTaskId, closeTask]);
 
   if (!openTaskId) return null;
+  // Una tarea de otra org no se pinta en ésta. El cajón está montado en toda
+  // la app y sobrevivía a cambiar de org; lo cierra `store/org-switch.ts`, y
+  // esto es lo que garantiza que, aunque algo lo deje abierto, no se vea.
+  if (detail && detail.task.orgId !== orgId) return null;
 
   return (
     <>

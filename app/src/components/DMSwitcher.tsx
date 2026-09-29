@@ -1,6 +1,6 @@
 import { nombreDe } from "@/lib/nombres";
 import { useT } from "@/lib/i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
 import { useDMStore } from "@/store/dm.store";
@@ -41,19 +41,15 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
   // nunca cambian de identidad: al cambiar de organización no se volvía a pedir
   // nada, y la única forma de ver a los colegas de la nueva era recargar la app
   // a mano. Ese era el «click derecho y reload» del reporte.
-  const previa = useRef<string | null>(null);
+  //
+  // El hilo abierto **no** se cierra aquí. Se cerraba, comparando con la org
+  // anterior en un `useRef`, y eso sólo veía los cambios hechos con esta
+  // pantalla montada: cambiar desde Tareas y volver a `/dm` dejaba abierto el
+  // directo de la otra org. Lo cierra `store/org-switch.ts`, que ve todos.
   useEffect(() => {
     if (!orgId) return;
     fetchConversations().catch(() => {});
     fetchPeople(orgId).catch(() => {});
-    // Y el hilo abierto se cierra, porque pertenece a la organización que
-    // acabas de dejar. Sólo cuando de verdad cambió: volver a esta pantalla
-    // desde otra remonta el componente, y cerrar el hilo ahí sería perder de
-    // vista una conversación que nadie pidió cerrar.
-    if (previa.current && previa.current !== orgId) {
-      useDMStore.setState({ conversationId: null, messages: [] });
-    }
-    previa.current = orgId;
   }, [orgId, fetchConversations, fetchPeople]);
 
   const term = q.trim().toLowerCase();
@@ -117,7 +113,7 @@ export default function DMSwitcher({ onPicked }: { onPicked: () => void }) {
               <button
                 className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-accent"
                 onClick={() => {
-                  openConversation(c.conversationId)
+                  openConversation(c.conversationId, c.orgId)
                     .then(onPicked)
                     .catch((e) => toast.error(String(e)));
                 }}

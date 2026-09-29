@@ -35,11 +35,19 @@ vi.mock("react-router-dom", async () => ({
 }));
 
 const { default: Mini } = await import("./VoiceMini");
+const { useOrgsStore } = await import("@/store/orgs.store");
 
 const pintar = () => render(<MemoryRouter><Mini /></MemoryRouter>);
 
 beforeEach(() => {
   navegado.a = null;
+  useOrgsStore.setState({
+    orgs: [
+      { id: "org-a", name: "Portento" },
+      { id: "org-b", name: "Guz" },
+    ],
+    currentOrgId: "org-b",
+  } as never);
   estado.current = {
     spaceId: "esp-1",
     estado: "dentro",
@@ -85,5 +93,32 @@ describe("la barra de «sigues en la llamada»", () => {
     pintar();
     fireEvent.click(screen.getByText("Mute"));
     expect(estado.current.alternarMic).toHaveBeenCalled();
+  });
+
+  it("el nombre lo trae la llamada, aunque el árbol no lo tenga", () => {
+    // Una llamada de otra org: el árbol en pantalla es el de ésta.
+    estado.current = { ...estado.current, spaceId: "esp-9", spaceName: "diseño", orgId: "org-a" };
+    pintar();
+    expect(screen.getByText("diseño")).toBeTruthy();
+  });
+
+  it("dice de qué org es la llamada cuando no es la de la pantalla", () => {
+    estado.current = { ...estado.current, spaceId: "esp-9", spaceName: "diseño", orgId: "org-a" };
+    pintar();
+    expect(screen.getByText(/(en|in) Portento/)).toBeTruthy();
+  });
+
+  it("y no lo dice cuando es la misma", () => {
+    estado.current = { ...estado.current, spaceName: "general", orgId: "org-b" };
+    const { container } = pintar();
+    expect(container.textContent).not.toMatch(/(en|in) (Guz|Portento)/);
+  });
+
+  it("volver a una llamada de otra org te lleva a esa org", () => {
+    estado.current = { ...estado.current, spaceId: "esp-9", spaceName: "diseño", orgId: "org-a" };
+    pintar();
+    fireEvent.click(screen.getByTitle("Back to the call"));
+    expect(useOrgsStore.getState().currentOrgId).toBe("org-a");
+    expect(navegado.a).toBe("/chat?space=esp-9");
   });
 });

@@ -1,4 +1,5 @@
 import { fecha } from "@/lib/fechas";
+import { enterOrg } from "@/lib/ir-en-org";
 import { dueDay } from "@/lib/month";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
@@ -61,7 +62,11 @@ export default function Tasks() {
     if (!id) return;
     // Consumed once, or closing the drawer here would reopen it immediately.
     setParams({}, { replace: true });
-    openTask(id).catch(() => {});
+    // Y en su org: el enlace puede venir de otra (un aviso, un canal). La org
+    // se sabe al cargar la tarea; hasta entonces el cajón no la pinta.
+    openTask(id)
+      .then(() => enterOrg(useTasksStore.getState().detail?.task.orgId))
+      .catch(() => {});
   }, [params, setParams, openTask]);
 
   // ?doc=<kind>:<id> — el enlace que se pega en un canal al compartir.
@@ -78,13 +83,17 @@ export default function Tasks() {
     if (!id || !isDocOwnerKind(kind)) return;
     // El nombre lo pone el documento al cargar; aquí todavía no se sabe, y
     // poner el identificador en el título sería peor que dejarlo vacío.
-    openDoc(kind, id, "").catch(() => {});
+    openDoc(kind, id, "")
+      .then(() => enterOrg(useTasksStore.getState().activeDoc?.orgId))
+      .catch(() => {});
   }, [params, setParams, openDoc]);
 
   // A document takes over the right pane: it belongs to a space or folder, which
   // have no board of their own, and for a list it's an alternative view of the
   // same node rather than something to show beside it.
-  const activeDoc = useTasksStore((s) => s.activeDoc);
+  // Sólo si es de la org en pantalla: está persistido y sobrevivía a cambiar
+  // de org. Ver `store/org-switch.ts`.
+  const activeDoc = useTasksStore((s) => (s.activeDoc?.orgId === currentOrgId ? s.activeDoc : null));
 
   // La vista vive en el store y no aquí por dos razones que se juntan.
   //

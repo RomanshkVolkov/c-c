@@ -20,6 +20,9 @@ vi.mock("@/components/markdown/MarkdownEditor", () => ({ default: () => null }))
 vi.mock("@/components/markdown/Markdown", () => ({ default: () => null }));
 
 const { default: TaskDetailDrawer } = await import("@/components/TaskDetailDrawer");
+const { useOrgsStore } = await import("@/store/orgs.store");
+// La tarea es de esta org: el cajón no pinta una tarea de otra.
+beforeEach(() => useOrgsStore.setState({ currentOrgId: "org-1" }));
 const { useTasksStore } = await import("@/store/tasks.store");
 const { PromptProvider } = await import("@/components/PromptDialog");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
@@ -69,7 +72,11 @@ describe("las columnas del detalle", () => {
     );
     await waitFor(() => expect(get).toHaveBeenCalled());
     // La lista de la tarea, no la que estuviera activa.
-    expect(String(get.mock.calls[0][0])).toContain("/task-lists/li-otra/statuses");
+    // Se busca entre todas las peticiones y no en la primera: con una org en
+    // pantalla también se pide la gente para el selector de responsables.
+    const pedidas = get.mock.calls.map((c) => String(c[0]));
+    expect(pedidas.some((u) => u.includes("/task-lists/li-otra/statuses"))).toBe(true);
+    expect(pedidas.some((u) => u.includes("/task-lists/li-abierta/statuses"))).toBe(false);
     // El título vive en un input, no como texto: la pantalla se montó.
     await waitFor(() =>
       expect(

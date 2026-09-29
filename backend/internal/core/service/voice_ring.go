@@ -48,6 +48,7 @@ func (s *TaskService) Timbrar(sp *domain.TaskSpace, de domain.VoiceCaller, aUser
 	timbre := &domain.VoiceRing{
 		RingID:    uuid.NewString(),
 		SpaceID:   sp.ID,
+		OrgID:     sp.OrgID,
 		SpaceName: sp.Name,
 		From:      de,
 		ExpiresAt: time.Now().UTC().Add(TimbreTTL),

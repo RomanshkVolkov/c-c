@@ -72,6 +72,9 @@ vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => async () => tru
 vi.mock("@/components/PromptDialog", () => ({ usePrompt: () => async () => "" }));
 
 const { default: TaskDetailDrawer } = await import("@/components/TaskDetailDrawer");
+const { useOrgsStore } = await import("@/store/orgs.store");
+// La tarea es de esta org: el cajón no pinta una tarea de otra.
+beforeEach(() => useOrgsStore.setState({ currentOrgId: "o-1" }));
 
 beforeEach(() => {
   estado.current = {

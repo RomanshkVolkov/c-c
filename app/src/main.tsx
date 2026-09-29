@@ -5,6 +5,9 @@ import "./index.css";
 import { useThemeStore, watchSystemTheme } from "./store/theme.store";
 import { useLocaleStore } from "./store/locale.store";
 import { initI18n } from "./lib/i18n";
+import { installOrgSwitch } from "./store/org-switch";
+import { installPlaces } from "./store/places";
+import { closeOrphanTerminals } from "./store/terminal.store";
 
 // Apply the theme before the first paint — doing it inside a component would
 // flash the light palette for a frame on every launch.
@@ -17,6 +20,12 @@ watchSystemTheme();
 // si el arranque fue antes de que el almacenamiento contestara.
 initI18n(useLocaleStore.getState().resolved);
 useLocaleStore.getState().apply();
+
+// Antes de montar nada: el primer cambio de org puede ser el de `fetchOrgs`
+// al arrancar, si la org guardada ya no es tuya.
+installOrgSwitch();
+installPlaces();
+void closeOrphanTerminals();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

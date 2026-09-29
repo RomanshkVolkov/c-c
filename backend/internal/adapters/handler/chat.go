@@ -410,6 +410,7 @@ func (h *taskHandler) VoiceToken(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Data: &domain.VoiceTokenResponse{
 			URL: h.voice.URL(), Token: token, Room: service.RoomFor(sp.ID),
+			OrgID: sp.OrgID, SpaceName: sp.Name,
 		},
 	})
 }

@@ -334,6 +334,18 @@ pub fn pty_close(id: String) {
     }
 }
 
+/// Una página nueva cierra lo que dejó abierto la anterior.
+///
+/// Las sesiones viven en este proceso y sobreviven a recargar el webview, pero
+/// la página nueva arranca sin pestañas: ya no conoce ningún id, así que no hay
+/// forma de volver a hablar con ellas. Quedaban `ssh` vivos, con su clave
+/// efímera, sin nadie que los mirase ni los cerrara. Reengancharse no merece la
+/// pena —no hay scrollback que recuperar—, así que se cierran.
+#[tauri::command]
+pub fn pty_close_all() {
+    close_all();
+}
+
 /// Al cerrar la ventana. En Unix el `ssh` moriría igual al cerrarse el maestro,
 /// pero apoyarse en eso es apostar a cómo se destruyen los descriptores durante
 /// una salida.

@@ -237,8 +237,15 @@ interface TasksState {
    */
   boardView: TaskView;
   setBoardView: (v: TaskView) => void;
-  /** The node whose overview is on screen; null when a board is. */
-  activeDoc: { kind: DocOwnerKind; id: string; name: string } | null;
+  /**
+   * The node whose overview is on screen; null when a board is.
+   *
+   * Lleva la organización del documento, y la pantalla sólo lo pinta si es la
+   * que está en pantalla. Está persistido, así que antes sobrevivía a cambiar
+   * de org —y a cerrar la app— y se veía el documento de otra dentro de ésta.
+   * Ver `store/org-switch.ts`.
+   */
+  activeDoc: { kind: DocOwnerKind; id: string; name: string; orgId: string } | null;
   doc: DocResponse | null;
   loadingDoc: boolean;
   fetchDocIndex: () => Promise<void>;
@@ -375,9 +382,11 @@ export const useTasksStore = create<TasksState>()(
           const current = get().activeListId;
           if (current && !ids.has(current)) {
             // The persisted selection belongs to another org (or was deleted):
-            // drop the board *and* the open drawer, which would otherwise keep
-            // showing a task the current org can't see.
-            set({ activeListId: null, board: null, openTaskId: null, detail: null });
+            // drop the board. El cajón de tarea ya no se cierra aquí: lo hacía
+            // de rebote y sólo si la lista estaba abierta, y cerraba también el
+            // de una tarea de la org a la que se acaba de ir por un enlace. Lo
+            // decide su sello, en `store/org-switch.ts`.
+            set({ activeListId: null, board: null });
           }
         } catch (e) {
           set({ error: msg(e) });
@@ -795,11 +804,19 @@ export const useTasksStore = create<TasksState>()(
 
       openDoc: async (kind, id, name) => {
         // Showing a document replaces the board, so the open task drawer goes too.
-        set({ activeDoc: { kind, id, name }, doc: null, loadingDoc: true, openTaskId: null, detail: null });
+        // La org de quien lo abre, de entrada: se abre desde el árbol, que es el
+        // de la org en pantalla. Si el servidor dice otra —un enlace a un doc
+        // de otra org—, manda la suya.
+        const orgId = useOrgsStore.getState().currentOrgId ?? "";
+        set({ activeDoc: { kind, id, name, orgId }, doc: null, loadingDoc: true, openTaskId: null, detail: null });
         try {
           const res = await api.get<APIResponse<DocResponse>>(`/api/v1/docs/${kind}/${id}`);
           if (get().activeDoc?.id !== id) return; // switched away mid-flight
-          set({ doc: res.success && res.data ? res.data : null });
+          const data = res.success && res.data ? res.data : null;
+          set({
+            doc: data,
+            ...(data?.orgId ? { activeDoc: { kind, id, name, orgId: data.orgId } } : {}),
+          });
         } catch (e) {
           set({ error: msg(e) });
         } finally {
@@ -1043,6 +1060,12 @@ export const useTasksStore = create<TasksState>()(
         activeDoc: s.activeDoc,
         boardView: s.boardView,
       }),
+      // Un documento guardado antes de que llevara su org no se sabe de quién
+      // es, y no se pinta lo que no se sabe de quién es: se descarta.
+      merge: (guardado, actual) => {
+        const g = (guardado ?? {}) as Partial<TasksState>;
+        return { ...actual, ...g, activeDoc: g.activeDoc?.orgId ? g.activeDoc : null };
+      },
     },
   ),
 );

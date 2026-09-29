@@ -220,7 +220,18 @@ pub async fn voice_join(
     url: String,
     token: String,
     on_event: Channel<VoiceEvent>,
+    meta: Option<serde_json::Value>,
 ) -> Result<String, String> {
+    // Se baja al salir por cualquier camino, `?` incluido.
+    struct Entrando;
+    impl Drop for Entrando {
+        fn drop(&mut self) {
+            ENTRANDO.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    ENTRANDO.store(true, std::sync::atomic::Ordering::Relaxed);
+    let _entrando = Entrando;
+
     voice_leave().await;
 
     let (room, eventos) = Room::connect(&url, &token, RoomOptions::default())
@@ -268,8 +279,9 @@ pub async fn voice_join(
 
         *CANAL.lock().unwrap() = Some(on_event.clone());
         *YO.lock().unwrap() = Some(identidad.clone());
+        *META.lock().unwrap() = meta.clone();
         nota(format!("sala: dentro como {identidad}"));
-        let captura = arrancar_captura(fuente.clone(), on_event.clone())?;
+        let captura = arrancar_captura(fuente.clone())?;
 
         on_event
             .send(VoiceEvent::Connected {
@@ -293,13 +305,14 @@ pub async fn voice_join(
             let _ = room.close().await;
             *CANAL.lock().unwrap() = None;
             *YO.lock().unwrap() = None;
+            *META.lock().unwrap() = None;
             return Err(e);
         }
     };
     *SESION.lock().unwrap() = Some(sesion);
 
-    escuchar_eventos(eventos, on_event.clone(), Arc::downgrade(&room));
-    medir_latencia(Arc::downgrade(&room), on_event);
+    escuchar_eventos(eventos, Arc::downgrade(&room));
+    medir_latencia(Arc::downgrade(&room));
     Ok(identidad)
 }
 
@@ -323,6 +336,7 @@ pub async fn voice_leave() {
     // Las caras de la sala anterior no se heredan.
     crate::video_frames::olvidar_todo();
     *YO.lock().unwrap() = None;
+    *META.lock().unwrap() = None;
     // La sordera no se hereda: entrar a otra sala sin oír a nadie, y sin que la
     // pantalla lo diga porque el store ya se vació, es un fallo mudo.
     SORDO.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -540,8 +554,7 @@ pub async fn voice_set_device(kind: String, device_id: String) -> Result<(), Str
             // Fuera de una llamada sólo se apunta la preferencia, que es lo que
             // hará falta en la siguiente.
             let Some(fuente) = fuente else { return Ok(()) };
-            let canal = CANAL.lock().unwrap().clone();
-            let nueva = arrancar_captura(fuente, canal.ok_or("no hay canal de eventos")?)?;
+            let nueva = arrancar_captura(fuente)?;
             // Se sustituye **después** de que la nueva arranque: si se soltara
             // antes y la nueva fallara, la llamada se quedaría muda sin que
             // nadie hubiera pedido eso.
@@ -1056,6 +1069,128 @@ pub async fn voice_report() -> serde_json::Value {
     })
 }
 
+/// Alguien de la sala, reducido a lo que una pantalla recién llegada necesita.
+pub struct Remoto {
+    pub identity: String,
+    pub name: String,
+    pub hablando: bool,
+    /// `None` si todavía no ha publicado micrófono: no se sabe si está abierto,
+    /// y la pantalla no debe afirmar ni una cosa ni la otra.
+    pub mudo: Option<bool>,
+    /// Los vídeos suyos **a los que estamos suscritos**. Sólo esos: de uno sin
+    /// suscribir no llega ninguna trama, y anunciarlo pondría un lienzo negro
+    /// donde tendría que estar su cara.
+    pub videos: Vec<crate::video_frames::Fuente>,
+}
+
+/// Todo lo que una pantalla nueva tiene que oír para pintar la sala tal como
+/// está, en el orden en que lo oiría si hubiera estado desde el principio.
+///
+/// Es el mismo estado de partida que manda `RoomEvent::Connected` al entrar,
+/// más lo que ha ido cambiando desde entonces: quién habla y si se graba. Pura
+/// y aparte de la sala para poder probarla.
+pub fn instantanea(yo: &str, remotos: &[Remoto], metadata: &str) -> Vec<VoiceEvent> {
+    let mut evs = vec![VoiceEvent::Connected {
+        identity: yo.to_string(),
+    }];
+    for r in remotos {
+        evs.push(VoiceEvent::Joined {
+            identity: r.identity.clone(),
+            name: r.name.clone(),
+        });
+        if let Some(muted) = r.mudo {
+            evs.push(VoiceEvent::Muted {
+                identity: r.identity.clone(),
+                muted,
+            });
+        }
+        for f in &r.videos {
+            evs.push(VoiceEvent::Video {
+                identity: r.identity.clone(),
+                source: f.como_texto().into(),
+                enabled: true,
+            });
+        }
+    }
+    evs.push(VoiceEvent::Speaking {
+        identities: remotos
+            .iter()
+            .filter(|r| r.hablando)
+            .map(|r| r.identity.clone())
+            .collect(),
+    });
+    evs.push(recording_event(metadata));
+    evs
+}
+
+/// Engancharse a la llamada que ya está en curso.
+///
+/// Es lo que hace una página recién recargada. La sala no se enteró de la
+/// recarga —vive en este proceso—, así que no hay nada que reconectar: sólo
+/// hace falta que los eventos vayan a la página nueva y que ésta sepa cómo está
+/// la sala ahora mismo. Devuelve `None` si no hay llamada; si la hay, de qué es
+/// (`meta`) y cómo están tus botones, que la sala no cuenta.
+///
+/// La instantánea se lee y se manda **con `CANAL` tomado**: un evento que se
+/// produzca mientras tanto espera en `emitir` y sale después, por el canal
+/// nuevo. Así no puede colarse un «se fue» entre el «está» de la instantánea y
+/// dejar a alguien pintado para siempre.
+#[tauri::command]
+pub async fn voice_attach(
+    on_event: Channel<VoiceEvent>,
+) -> Result<Option<serde_json::Value>, String> {
+    // Una recarga en mitad de `voice_join`: se espera a que acabe, con tope.
+    let limite = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    while ENTRANDO.load(std::sync::atomic::Ordering::Relaxed) && std::time::Instant::now() < limite {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    let Some(room) = SESION.lock().unwrap().as_ref().map(|s| s.room.clone()) else {
+        return Ok(None);
+    };
+    let yo = YO.lock().unwrap().clone().unwrap_or_default();
+
+    {
+        let mut canal = CANAL.lock().unwrap();
+        let remotos: Vec<Remoto> = room
+            .remote_participants()
+            .values()
+            .map(|p| {
+                let pubs = p.track_publications();
+                Remoto {
+                    identity: p.identity().to_string(),
+                    name: p.name(),
+                    hablando: p.is_speaking(),
+                    mudo: pubs
+                        .values()
+                        .find(|x| x.kind() == TrackKind::Audio)
+                        .map(|x| x.is_muted()),
+                    videos: pubs
+                        .values()
+                        .filter(|x| x.kind() == TrackKind::Video && x.is_subscribed())
+                        .map(|x| fuente_de(x.source()))
+                        .collect(),
+                }
+            })
+            .collect();
+        for ev in instantanea(&yo, &remotos, &room.metadata()) {
+            let _ = on_event.send(ev);
+        }
+        *canal = Some(on_event);
+    }
+    nota(format!("sala: una pantalla nueva se enganchó como {yo}"));
+
+    use std::sync::atomic::Ordering::Relaxed;
+    Ok(Some(serde_json::json!({
+        "meta": META.lock().unwrap().clone(),
+        "yo": yo,
+        "silenciado": SILENCIADO.load(Relaxed),
+        "sordo": SORDO.load(Relaxed),
+        "camara": CAMARA.load(Relaxed),
+        "compartiendo": COMPARTIENDO.load(Relaxed),
+    })))
+}
+
 #[tauri::command]
 pub async fn voice_diagnostics() -> Vec<String> {
     DIARIO.lock().unwrap().iter().cloned().collect()
@@ -1074,7 +1209,41 @@ static YO: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 /// El canal de eventos de la sesión en curso, para poder rearrancar la captura
 /// sin que el llamante tenga que pasarlo.
+///
+/// **Es el único canal.** Ningún bucle guarda el suyo: todos mandan por
+/// `emitir`, que lee éste cada vez. La razón es la recarga del webview: la
+/// sala sobrevive —vive en este proceso, no en la página— y la página nueva
+/// se engancha con `voice_attach`, que cambia lo que hay aquí. Un bucle con su
+/// propia copia seguiría hablándole a una página que ya no existe, y el de la
+/// captura, además, se rendía al primer envío fallido y **dejaba de mandar tu
+/// voz**. Lo fija `ningun_bucle_guarda_su_propio_canal`.
 static CANAL: LazyLock<Mutex<Option<Channel<VoiceEvent>>>> = LazyLock::new(|| Mutex::new(None));
+
+/// De qué es la llamada, tal como lo dijo la pantalla al entrar
+/// (`{spaceId, orgId, spaceName}`).
+///
+/// Rust no lo lee: lo guarda y lo devuelve. Es lo que una página recién
+/// recargada no tiene forma de saber por su cuenta —el SFU sabe la sala, no el
+/// canal ni la organización—, y sin ello no podría ni decir dónde estás.
+static META: LazyLock<Mutex<Option<serde_json::Value>>> = LazyLock::new(|| Mutex::new(None));
+
+/// Hay un `voice_join` a medias. Una recarga justo mientras conecta tiene que
+/// esperar a que termine antes de preguntar si hay sesión: si no, contestaría
+/// «no hay» y la conexión acabaría un segundo después, sin nadie que la pinte.
+static ENTRANDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Manda un evento a la pantalla que esté mirando ahora.
+///
+/// El error se ignora a propósito. Si la página se recargó, el envío falla (o
+/// cae en un callback que ya no existe) hasta que la nueva se enganche, y eso
+/// no es motivo para que nadie deje de hacer su trabajo: los bucles acaban
+/// cuando acaba lo que escuchan, no cuando la pantalla se va.
+fn emitir(ev: VoiceEvent) {
+    let canal = CANAL.lock().unwrap().clone();
+    if let Some(canal) = canal {
+        let _ = canal.send(ev);
+    }
+}
 
 /// Sordera: lo que llega se descarta al pintarlo en el altavoz.
 ///
@@ -1104,6 +1273,7 @@ pub fn close_all() {
     use std::sync::atomic::Ordering::Relaxed;
     CAMARA.store(false, Relaxed);
     PANTALLA.store(false, Relaxed);
+    *META.lock().unwrap() = None;
     let sesion = SESION.lock().unwrap().take();
     if let Some(s) = sesion {
         tauri::async_runtime::spawn(async move {
@@ -1117,10 +1287,7 @@ pub fn close_all() {
 /// cpal entrega tramas del tamaño que le da la gana; libwebrtc las quiere de
 /// 10 ms exactos. El acumulador de aquí en medio es lo que traduce entre las dos
 /// cosas, y sin él la voz sale troceada.
-fn arrancar_captura(
-    fuente: NativeAudioSource,
-    canal: Channel<VoiceEvent>,
-) -> Result<StreamGuard, String> {
+fn arrancar_captura(fuente: NativeAudioSource) -> Result<StreamGuard, String> {
     let (fin_tx, fin_rx) = std::sync::mpsc::channel::<()>();
     let (listo_tx, listo_rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
@@ -1285,12 +1452,10 @@ fn arrancar_captura(
                 let ahora = hablando_ahora(&datos, ultima_voz);
                 if ahora != hablando {
                     hablando = ahora;
-                    if canal
-                        .send(VoiceEvent::SelfSpeaking { speaking: ahora })
-                        .is_err()
-                    {
-                        break; // la pantalla se fue
-                    }
+                    // Sin `break` si no hay quien escuche: esto es el bucle
+                    // que publica tu voz, y una página recargada no es motivo
+                    // para dejar de mandarla. Ver `CANAL`.
+                    emitir(VoiceEvent::SelfSpeaking { speaking: ahora });
                 }
 
                 let trama = AudioFrame {
@@ -1440,14 +1605,10 @@ fn hablando_ahora(muestras: &[i16], ultima_voz: std::time::Instant) -> bool {
 
 /// Traduce los eventos de la sala a lo que la pantalla entiende, y reproduce lo
 /// que dicen los demás.
-fn escuchar_eventos(
-    mut eventos: mpsc::UnboundedReceiver<RoomEvent>,
-    canal: Channel<VoiceEvent>,
-    sala: std::sync::Weak<Room>,
-) {
+fn escuchar_eventos(mut eventos: mpsc::UnboundedReceiver<RoomEvent>, sala: std::sync::Weak<Room>) {
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = eventos.recv().await {
-            let enviado = match ev {
+            match ev {
                 // Los que ya estaban cuando llegaste.
                 //
                 // El SDK **no** manda `ParticipantConnected` por ellos: vienen
@@ -1458,22 +1619,21 @@ fn escuchar_eventos(
                 RoomEvent::Connected {
                     participants_with_tracks,
                 } => {
-                    let mut r = Ok(());
                     for (p, pistas) in participants_with_tracks {
                         let identity = p.identity().to_string();
-                        r = r.and(canal.send(VoiceEvent::Joined {
+                        emitir(VoiceEvent::Joined {
                             identity: identity.clone(),
                             name: p.name().to_string(),
-                        }));
+                        });
                         // Y su micrófono, que también es estado de partida: si
                         // sólo se reportara al cambiar, quien entró mudo se
                         // vería abierto hasta que se le ocurriera hablar.
                         for pista in pistas {
                             if pista.kind() == TrackKind::Audio {
-                                r = r.and(canal.send(VoiceEvent::Muted {
+                                emitir(VoiceEvent::Muted {
                                     identity: identity.clone(),
                                     muted: pista.is_muted(),
-                                }));
+                                });
                             }
                         }
                     }
@@ -1486,15 +1646,14 @@ fn escuchar_eventos(
                     // grabando no vería el chip hasta que alguien parase y
                     // volviera a empezar — o sea, nunca.
                     if let Some(sala) = sala.upgrade() {
-                        r = r.and(canal.send(recording_event(&sala.metadata())));
+                        emitir(recording_event(&sala.metadata()));
                     }
-                    r
                 }
                 // Alguien empezó o paró de grabar mientras estabas dentro.
                 RoomEvent::RoomMetadataChanged { metadata, .. } => {
-                    canal.send(recording_event(&metadata))
+                    emitir(recording_event(&metadata))
                 }
-                RoomEvent::ParticipantConnected(p) => canal.send(VoiceEvent::Joined {
+                RoomEvent::ParticipantConnected(p) => emitir(VoiceEvent::Joined {
                     identity: p.identity().to_string(),
                     name: p.name().to_string(),
                 }),
@@ -1503,11 +1662,11 @@ fn escuchar_eventos(
                     // siguiente que reutilice ese hueco enseñaría a quien ya
                     // se fue.
                     crate::video_frames::olvidar_persona(&p.identity().to_string());
-                    canal.send(VoiceEvent::Left {
+                    emitir(VoiceEvent::Left {
                         identity: p.identity().to_string(),
                     })
                 }
-                RoomEvent::ActiveSpeakersChanged { speakers } => canal.send(VoiceEvent::Speaking {
+                RoomEvent::ActiveSpeakersChanged { speakers } => emitir(VoiceEvent::Speaking {
                     identities: speakers.iter().map(|s| s.identity().to_string()).collect(),
                 }),
                 RoomEvent::TrackMuted {
@@ -1522,12 +1681,10 @@ fn escuchar_eventos(
                     // pantalla ya lo pintó de forma optimista al pulsar, y esto
                     // es la confirmación de que el servidor se enteró.
                     if publication.kind() == TrackKind::Audio {
-                        canal.send(VoiceEvent::Muted {
+                        emitir(VoiceEvent::Muted {
                             identity: participant.identity().to_string(),
                             muted: publication.is_muted(),
                         })
-                    } else {
-                        Ok(())
                     }
                 }
                 // Alguien publica un micrófono estando ya dentro —se reconectó,
@@ -1537,12 +1694,10 @@ fn escuchar_eventos(
                     participant,
                 } => {
                     if publication.kind() == TrackKind::Audio {
-                        canal.send(VoiceEvent::Muted {
+                        emitir(VoiceEvent::Muted {
                             identity: participant.identity().to_string(),
                             muted: publication.is_muted(),
                         })
-                    } else {
-                        Ok(())
                     }
                 }
                 RoomEvent::TrackSubscribed {
@@ -1554,13 +1709,12 @@ fn escuchar_eventos(
                     match track {
                         RemoteTrack::Audio(audio) => {
                             reproducir(audio.rtc_track());
-                            Ok(())
                         }
                         RemoteTrack::Video(video) => {
                             let fuente = fuente_de(publication.source());
                             nota(format!("llega {} de {identidad}", fuente.como_texto()));
                             recibir_video(identidad.clone(), fuente, video.rtc_track());
-                            canal.send(VoiceEvent::Video {
+                            emitir(VoiceEvent::Video {
                                 identity: identidad,
                                 source: fuente.como_texto().into(),
                                 enabled: true,
@@ -1578,22 +1732,17 @@ fn escuchar_eventos(
                         let fuente = fuente_de(publication.source());
                         nota(format!("se va {} de {identidad}", fuente.como_texto()));
                         crate::video_frames::olvidar(&identidad, fuente);
-                        canal.send(VoiceEvent::Video {
+                        emitir(VoiceEvent::Video {
                             identity: identidad,
                             source: fuente.como_texto().into(),
                             enabled: false,
                         })
-                    } else {
-                        Ok(())
                     }
                 }
-                RoomEvent::Disconnected { reason } => canal.send(VoiceEvent::Disconnected {
+                RoomEvent::Disconnected { reason } => emitir(VoiceEvent::Disconnected {
                     reason: format!("{reason:?}"),
                 }),
-                _ => Ok(()),
-            };
-            if enviado.is_err() {
-                break; // la pantalla se fue; no hay a quién contarle nada
+                _ => {}
             }
         }
     });
@@ -1629,7 +1778,7 @@ fn rtt_nominado(stats: &[livekit::webrtc::stats::RtcStats]) -> Option<f64> {
 /// La referencia a la sala es **débil** a propósito: cuando `voice_leave` suelta
 /// la sesión, este bucle se entera y se muere. Con un `Arc` fuerte seguiría
 /// despierto preguntando por una sala que ya nadie tiene.
-fn medir_latencia(sala: std::sync::Weak<Room>, canal: Channel<VoiceEvent>) {
+fn medir_latencia(sala: std::sync::Weak<Room>) {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(CADA_LATENCIA).await;
@@ -1649,14 +1798,9 @@ fn medir_latencia(sala: std::sync::Weak<Room>, canal: Channel<VoiceEvent>) {
             else {
                 continue;
             };
-            if canal
-                .send(VoiceEvent::Latency {
-                    ms: (rtt * 1000.0).round() as u32,
-                })
-                .is_err()
-            {
-                break;
-            }
+            emitir(VoiceEvent::Latency {
+                ms: (rtt * 1000.0).round() as u32,
+            });
         }
     });
 }
@@ -2636,9 +2780,8 @@ fn arrancar_camara() -> Result<(NativeVideoSource, u32, u32), String> {
             ultimo_fallo
         };
         nota(format!("cámara: se apaga a media llamada — {porque}"));
-        if let (Some(canal), Some(yo)) = (CANAL.lock().unwrap().clone(), YO.lock().unwrap().clone())
-        {
-            let _ = canal.send(VoiceEvent::Video {
+        if let Some(yo) = YO.lock().unwrap().clone() {
+            emitir(VoiceEvent::Video {
                 identity: yo,
                 source: crate::video_frames::Fuente::Camara.como_texto().into(),
                 enabled: false,
@@ -3198,5 +3341,138 @@ mod recording_tests {
             r#"{"algo":"otro","recording":{"id":"rec-1","by":"u-ana"},"mas":1}"#,
         );
         assert!(r.is_some());
+    }
+}
+
+/// Engancharse a una llamada en curso después de recargar la página.
+#[cfg(test)]
+mod attach_tests {
+    use super::{instantanea, Remoto};
+    use crate::video_frames::Fuente;
+
+    fn json(evs: Vec<super::VoiceEvent>) -> Vec<serde_json::Value> {
+        evs.into_iter().map(|e| serde_json::to_value(e).unwrap()).collect()
+    }
+
+    fn remoto(id: &str, mudo: Option<bool>, videos: Vec<Fuente>, hablando: bool) -> Remoto {
+        Remoto {
+            identity: id.into(),
+            name: format!("nombre de {id}"),
+            hablando,
+            mudo,
+            videos,
+        }
+    }
+
+    /// La pantalla nueva tiene que ver a todos, con su micro como está.
+    /// Quien no ha publicado micro no dice nada sobre él: la pantalla no debe
+    /// afirmar que está abierto ni cerrado.
+    #[test]
+    fn la_instantanea_trae_a_todos_y_sus_micros() {
+        let evs = json(instantanea(
+            "yo",
+            &[
+                remoto("ana", Some(true), vec![], false),
+                remoto("beto", None, vec![], false),
+            ],
+            "",
+        ));
+        assert_eq!(evs[0], serde_json::json!({"kind":"connected","identity":"yo"}));
+        assert!(evs.contains(&serde_json::json!({"kind":"joined","identity":"ana","name":"nombre de ana"})));
+        assert!(evs.contains(&serde_json::json!({"kind":"joined","identity":"beto","name":"nombre de beto"})));
+        assert!(evs.contains(&serde_json::json!({"kind":"muted","identity":"ana","muted":true})));
+        assert!(
+            !evs.iter().any(|e| e["kind"] == "muted" && e["identity"] == "beto"),
+            "de beto no se sabe nada del micro y se dijo algo: {evs:?}"
+        );
+        // Y el «está» de cada uno va antes que su micro, como al entrar.
+        let pos = |k: &str, id: &str| evs.iter().position(|e| e["kind"] == k && e["identity"] == id);
+        assert!(pos("joined", "ana") < pos("muted", "ana"));
+    }
+
+    /// Sólo el vídeo al que estamos suscritos: de otro no llega trama, y
+    /// anunciarlo pinta un lienzo negro. `Remoto.videos` ya viene filtrado —lo
+    /// filtra `voice_attach`—, así que aquí se fija que se anuncia cada uno con
+    /// su fuente y ninguno más.
+    #[test]
+    fn solo_se_anuncia_el_video_que_llega() {
+        let evs = json(instantanea(
+            "yo",
+            &[
+                remoto("ana", Some(false), vec![Fuente::Pantalla], false),
+                remoto("beto", Some(false), vec![], false),
+            ],
+            "",
+        ));
+        let videos: Vec<_> = evs.iter().filter(|e| e["kind"] == "video").collect();
+        assert_eq!(
+            videos,
+            vec![&serde_json::json!({"kind":"video","identity":"ana","source":"screen","enabled":true})]
+        );
+    }
+
+    /// Quién habla es la lista entera, como la del servidor.
+    #[test]
+    fn la_instantanea_dice_quien_habla() {
+        let evs = json(instantanea(
+            "yo",
+            &[remoto("ana", None, vec![], true), remoto("beto", None, vec![], false)],
+            "",
+        ));
+        assert!(evs.contains(&serde_json::json!({"kind":"speaking","identities":["ana"]})));
+    }
+
+    /// Y si se está grabando. Es lo que menos puede perderse al recargar: el
+    /// chip REC es la única forma de saberlo.
+    #[test]
+    fn la_instantanea_dice_si_se_graba() {
+        let evs = json(instantanea("yo", &[], r#"{"recording":{"id":"rec-1","by":"u-ana"}}"#));
+        let rec = evs.iter().find(|e| e["kind"] == "recording").expect("sin evento de grabación");
+        assert_eq!(rec["active"], true);
+        assert_eq!(rec["id"], "rec-1");
+
+        let evs = json(instantanea("yo", &[], ""));
+        let rec = evs.iter().find(|e| e["kind"] == "recording").unwrap();
+        assert_eq!(rec["active"], false, "sin grabación, el chip se apaga");
+    }
+
+    /// Ningún bucle guarda su propio canal de eventos.
+    ///
+    /// Esto lee su propio fichero, como `los_comandos_que_tocan_el_sdk_son_async`.
+    /// Un bucle con su copia del `Channel` le sigue hablando a la página de
+    /// antes de recargar, y la nueva se queda sorda. Peor: el de la captura se
+    /// rendía al primer envío fallido y **dejaba de publicar tu voz**. Todo
+    /// envío va por `emitir`, que lee `CANAL` cada vez. Los únicos que tocan un
+    /// canal a mano son quienes lo reciben de la pantalla.
+    #[test]
+    fn ningun_bucle_guarda_su_propio_canal() {
+        const TOCAN_EL_CANAL: &[&str] = &["emitir", "voice_join", "voice_attach"];
+
+        let fuente = include_str!("voice.rs");
+        let fin = fuente.find("#[cfg(test)]").unwrap_or(fuente.len());
+        let mut funcion = String::new();
+        let mut malos = Vec::new();
+        for linea in fuente[..fin].lines() {
+            let l = linea.trim_start();
+            // Sólo las de primer nivel: un `fn drop` anidado no es otra función.
+            for pre in ["pub async fn ", "async fn ", "pub fn ", "fn "] {
+                if let Some(resto) = linea.strip_prefix(pre) {
+                    funcion = resto.split(['(', '<']).next().unwrap_or("").to_string();
+                    break;
+                }
+            }
+            if l.starts_with("//") {
+                continue;
+            }
+            let toca = l.contains("Channel<VoiceEvent>") || l.contains(".send(VoiceEvent") || l.contains("canal.send(") || l.contains("on_event.send(");
+            // `static CANAL` es la declaración del único canal.
+            if toca && !l.starts_with("static CANAL") && !TOCAN_EL_CANAL.contains(&funcion.as_str()) {
+                malos.push(format!("{funcion}: {}", l.trim()));
+            }
+        }
+        assert!(
+            malos.is_empty(),
+            "estas funciones mandan por un canal propio en vez de por `emitir`: {malos:#?}"
+        );
     }
 }

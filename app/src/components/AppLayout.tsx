@@ -16,6 +16,7 @@ import IncomingCall from "@/components/voice/IncomingCall";
 import MeetingCall from "@/components/meetings/MeetingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useVoice } from "@/store/voice.store";
 import { useReportEvents } from "@/hooks/use-report-events";
 import { ensureOrgClaim, refreshSession } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
@@ -44,6 +45,14 @@ export default function AppLayout() {
       fetchInvitations();
     }
   }, [authed, fetchOrgs, fetchInvitations]);
+
+  // Una recarga no cuelga la llamada —vive en Rust—, así que la página nueva
+  // tiene que engancharse a ella. Sin esto, el micrófono seguía abierto y nada
+  // en pantalla lo decía. Ver `useVoice.reanudar`.
+  const reanudarLlamada = useVoice((s) => s.reanudar);
+  useEffect(() => {
+    if (authed) void reanudarLlamada();
+  }, [authed, reanudarLlamada]);
 
   // Live report notifications (SSE) for the whole authenticated shell.
   useReportEvents();

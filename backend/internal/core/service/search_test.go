@@ -36,10 +36,34 @@ func TestSearchNeverReturnsSomebodyElsesDirectMessages(t *testing.T) {
 		t.Fatalf("Ana must not see a conversation she is not in: %+v", res.DMs)
 	}
 
-	// Bea is, and finds her own.
+	// Bea is, and finds her own — the one of this org only. She also says
+	// «secreto» to Carla in org-2, and that one belongs to the palette of org-2.
 	suyo, _ := svc.Search("secreto", "org-1", "u-bea", 0)
-	if len(suyo.DMs) != 1 {
-		t.Errorf("Bea should find her own message, got %+v", suyo.DMs)
+	if len(suyo.DMs) != 1 || suyo.DMs[0].ID != "dm-1" {
+		t.Errorf("Bea should find her own message of org-1 only, got %+v", suyo.DMs)
+	}
+}
+
+// Cada resultado dice de qué org es, para que la app lo abra en la suya.
+func TestEverySearchHitSaysItsOrganization(t *testing.T) {
+	db, cleanup := searchDB(t)
+	defer cleanup()
+	svc := NewSearchService(repository.NewSearchRepository(db))
+
+	res, err := svc.Search("secreto", "org-2", "u-bea", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.DMs) != 1 || res.DMs[0].OrgID != "org-2" {
+		t.Errorf("the org-2 DM should come back saying org-2, got %+v", res.DMs)
+	}
+	tareas, _ := svc.Search("tarea", "org-1", "u-ana", 0)
+	if len(tareas.Tasks) == 0 || tareas.Tasks[0].OrgID != "org-1" {
+		t.Errorf("a task hit should say its org, got %+v", tareas.Tasks)
+	}
+	notas, _ := svc.Search("apunte", "org-1", "u-ana", 0)
+	if len(notas.Notes) != 1 || notas.Notes[0].OrgID != "" {
+		t.Errorf("a note belongs to no org and must not claim one, got %+v", notas.Notes)
 	}
 }
 
@@ -172,7 +196,15 @@ func searchDB(t *testing.T) (*gorm.DB, func()) {
 	conv.ID = "conv-1"
 	dm := &domain.DMMessage{ConversationID: "conv-1", OrgID: "org-1", AuthorUserID: "u-bea", Body: "esto es secreto"}
 	dm.ID = "dm-1"
-	for _, m := range []any{org, sp, li, it, nota, msg, conv, dm} {
+	// Las mismas dos personas en otra org: otra conversación, y la búsqueda de
+	// una org no puede enseñar la de la otra.
+	org2 := &domain.Organization{Name: "Dos", Slug: "dos"}
+	org2.ID = "org-2"
+	conv2 := &domain.DMConversation{OrgID: "org-2", UserLoID: "u-bea", UserHiID: "u-carla"}
+	conv2.ID = "conv-2"
+	dm2 := &domain.DMMessage{ConversationID: "conv-2", OrgID: "org-2", AuthorUserID: "u-bea", Body: "otro secreto"}
+	dm2.ID = "dm-2"
+	for _, m := range []any{org, org2, sp, li, it, nota, msg, conv, dm, conv2, dm2} {
 		if err := db.Create(m).Error; err != nil {
 			t.Fatal(err)
 		}

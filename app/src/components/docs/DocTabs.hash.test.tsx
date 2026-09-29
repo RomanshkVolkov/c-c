@@ -39,7 +39,7 @@ vi.mock("@/components/CopyId", () => ({ default: () => null }));
 vi.mock("@/components/tasks/ViewSwitch", () => ({ default: () => null }));
 
 const estado = {
-  activeDoc: { kind: "list", id: "l1", name: "Portento" },
+  activeDoc: { kind: "list", id: "l1", name: "Portento", orgId: "o1" },
   doc: {
     doc: { id: "d1", orgId: "o1", stale: false },
     tabs: [{ id: "t1", docId: "d1", key: "overview", body: "lo que había", bodyHash: "hash-0" }],

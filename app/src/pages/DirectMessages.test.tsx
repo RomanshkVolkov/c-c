@@ -15,20 +15,35 @@ import { MemoryRouter } from "react-router-dom";
  * quiere, `?u=` sabe con quién y deja que la pantalla lo encuentre o lo cree.
  */
 
-const { open, openWith } = vi.hoisted(() => ({ open: vi.fn(), openWith: vi.fn() }));
+const { open, openWith, setCurrentOrg } = vi.hoisted(() => ({
+  open: vi.fn(), openWith: vi.fn(), setCurrentOrg: vi.fn(),
+}));
 
-vi.mock("@/store/dm.store", () => ({
-  useDMStore: Object.assign(
-    (sel?: (s: Record<string, unknown>) => unknown) => {
-      const s = { conversationId: null, open, openWith };
-      return sel ? sel(s) : s;
-    },
-    { setState: vi.fn() },
-  ),
-}));
-vi.mock("@/store/orgs.store", () => ({
-  useOrgsStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ currentOrgId: "org-1" }),
-}));
+vi.mock("@/store/dm.store", () => {
+  // `?c=` mira de qué org es la conversación antes de abrirla.
+  const conversaciones = {
+    conversations: [
+      { conversationId: "conv-7", orgId: "org-1" },
+      { conversationId: "conv-8", orgId: "org-2" },
+    ],
+    fetchConversations: async () => {},
+  };
+  return {
+    useDMStore: Object.assign(
+      (sel?: (s: Record<string, unknown>) => unknown) => {
+        const s = { conversationId: null, open, openWith };
+        return sel ? sel(s) : s;
+      },
+      { setState: vi.fn(), getState: () => conversaciones },
+    ),
+  };
+});
+vi.mock("@/store/orgs.store", () => {
+  const s = { currentOrgId: "org-1", orgs: [{ id: "org-1" }, { id: "org-2" }], setCurrentOrg };
+  return {
+    useOrgsStore: Object.assign((sel: (x: Record<string, unknown>) => unknown) => sel(s), { getState: () => s }),
+  };
+});
 vi.mock("@/components/DMSwitcher", () => ({ default: () => null }));
 vi.mock("@/components/DMThread", () => ({ default: () => null }));
 
@@ -57,8 +72,17 @@ afterEach(cleanup);
 describe("llegar a un directo por su dirección", () => {
   it("`?c=` abre esa conversación", async () => {
     en("/dm?c=conv-7");
-    await waitFor(() => expect(open).toHaveBeenCalledWith("conv-7"));
+    // Con su org, que es la de la lista de conversaciones.
+    await waitFor(() => expect(open).toHaveBeenCalledWith("conv-7", "org-1"));
     expect(openWith).not.toHaveBeenCalled();
+  });
+
+  it("`?c=` de otra org se abre en la suya", async () => {
+    en("/dm?c=conv-8");
+    await waitFor(() => expect(open).toHaveBeenCalledWith("conv-8", "org-2"));
+    // Y antes de abrirla, uno se pone en su org.
+    expect(setCurrentOrg).toHaveBeenCalledWith("org-2");
+    expect(setCurrentOrg.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0]);
   });
 
   it("`?u=` abre la conversación con esa persona, exista o no", async () => {

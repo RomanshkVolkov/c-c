@@ -100,6 +100,11 @@ func TestUnMiembroRecibeSuTokenParaLaSalaDeSuEspacio(t *testing.T) {
 	if res.Data.Token == "" || res.Data.URL == "" {
 		t.Error("sin token o sin url no hay a dónde ir")
 	}
+	// La llamada sigue al cambiar de org: la app tiene que saber de cuál es y
+	// cómo se llama el canal sin preguntarle al árbol, que será el de otra.
+	if res.Data.OrgID != "org-1" || res.Data.SpaceName != "Nuestro" {
+		t.Errorf("el token tiene que decir la org y el canal, dijo %q / %q", res.Data.OrgID, res.Data.SpaceName)
+	}
 }
 
 // Sin SFU configurado se dice, no se finge. Un token que ningún servidor va a

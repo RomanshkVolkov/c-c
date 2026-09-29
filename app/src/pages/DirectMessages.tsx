@@ -1,4 +1,5 @@
 import { useT } from "@/lib/i18n";
+import { enterOrg } from "@/lib/ir-en-org";
 import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -6,6 +7,7 @@ import DMSwitcher from "@/components/DMSwitcher";
 import DMThread from "@/components/DMThread";
 import { useDMStore } from "@/store/dm.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { usePlacesStore } from "@/store/places.store";
 
 /**
  * Private conversations, at the same level as the channels.
@@ -30,10 +32,15 @@ import { useOrgsStore } from "@/store/orgs.store";
  */
 export default function DirectMessages() {
   const { t } = useT();
-  const abierta = useDMStore((s) => s.conversationId);
+  const conversationId = useDMStore((s) => s.conversationId);
+  const conversationOrgId = useDMStore((s) => s.conversationOrgId);
   const open = useDMStore((s) => s.open);
   const openWith = useDMStore((s) => s.openWith);
+  const close = useDMStore((s) => s.close);
   const orgId = useOrgsStore((s) => s.currentOrgId);
+  // Sólo si es de la org en pantalla. Es la comprobación que hace imposible
+  // pintar aquí el directo de otra org, venga de donde venga el cambio.
+  const abierta = conversationId !== null && conversationOrgId === orgId;
   const [params, setParams] = useSearchParams();
   const c = params.get("c");
   const u = params.get("u");
@@ -47,7 +54,17 @@ export default function DirectMessages() {
     if (!pedido || hecho.current === pedido) return;
     hecho.current = pedido;
 
-    const abrir = c ? open(c) : openWith(orgId ?? "", u as string);
+    // `?c=` puede ser de otra org (el buscador, un aviso): se busca de cuál es
+    // y se pone uno en ella antes de abrirla. Sin eso se abría aquí y, con el
+    // sello, no se pintaba — o antes del sello, se pintaba en la org que no era.
+    const abrirConversacion = async (id: string) => {
+      const dm = useDMStore.getState();
+      if (!dm.conversations.some((x) => x.conversationId === id)) await dm.fetchConversations();
+      const suya = useDMStore.getState().conversations.find((x) => x.conversationId === id)?.orgId;
+      if (!enterOrg(suya)) return;
+      await open(id, suya);
+    };
+    const abrir = c ? abrirConversacion(c) : openWith(orgId ?? "", u as string);
     void Promise.resolve(abrir)
       .then(() => {
         // La dirección se limpia en cuanto cumplió. Se queda el hilo abierto,
@@ -57,6 +74,15 @@ export default function DirectMessages() {
       })
       .catch((e) => toast.error(String(e)));
   }, [c, u, orgId, open, openWith, setParams]);
+
+  // Sin nada pedido ni abierto, el último directo en el que estuviste en esta
+  // org. Si ya no se puede abrir, se cierra, y cerrarlo lo olvida: un enlace
+  // muerto no se reintenta en cada visita. Ver `store/places.store.ts`.
+  const recordado = usePlacesStore((s) => (orgId ? s.byOrg[orgId]?.dm : undefined));
+  useEffect(() => {
+    if (c || u || abierta || !recordado || !orgId) return;
+    void open(recordado, orgId).catch(() => useDMStore.getState().close());
+  }, [c, u, abierta, recordado, orgId, open]);
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -70,7 +96,7 @@ export default function DirectMessages() {
       </aside>
       {abierta ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <DMThread onBack={() => useDMStore.setState({ conversationId: null, messages: [] })} />
+          <DMThread onBack={close} />
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

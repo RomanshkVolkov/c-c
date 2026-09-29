@@ -65,6 +65,8 @@ export interface ReunionEntrante {
   title: string;
   spaceId?: string;
   spaceName?: string;
+  /** La org de la reunión: puede sonar estando en otra. */
+  orgId?: string;
   wallTime: string;
   timezone: string;
   firesAt: string;

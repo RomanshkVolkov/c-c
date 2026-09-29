@@ -1,5 +1,5 @@
 import { useT, type MessageKey } from "@/lib/i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Wrench,
@@ -52,6 +52,8 @@ import { useDMStore } from "@/store/dm.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useMyWorkStore } from "@/store/mywork.store";
+import { useTasksStore } from "@/store/tasks.store";
+import { channelUnreadIn, dmUnreadIn } from "@/lib/unread";
 import VoiceMini from "@/components/voice/VoiceMini";
 import { cn } from "@/lib/utils";
 
@@ -169,12 +171,12 @@ export default function AppSidebar() {
   // in amber: it is a "look at this when you can", not an outage — an outage
   // announces itself elsewhere.
   const servidoresEnAtencion = useServers().servers.filter((sv) => sv.status !== "online").length;
-  const sinLeerCanales = useChatStore((s) =>
-    Object.values(s.unreadBySpace).reduce((a, b) => a + b, 0),
-  );
-  const sinLeerDirectos = useDMStore((s) =>
-    s.conversations.reduce((a, c) => a + c.unread, 0),
-  );
+  // Sólo lo de la org en pantalla. Ver `lib/unread.ts`.
+  const currentOrgId = useOrgsStore((s) => s.currentOrgId);
+  const tree = useTasksStore((s) => s.tree);
+  const espacios = useMemo(() => new Set(tree.map((sp) => sp.id)), [tree]);
+  const sinLeerCanales = useChatStore((s) => channelUnreadIn(s.unreadBySpace, espacios));
+  const sinLeerDirectos = useDMStore((s) => dmUnreadIn(s.conversations, currentOrgId));
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   // Dos cosas distintas tras dos entradas: la campana —que ahora vive en la
@@ -185,7 +187,6 @@ export default function AppSidebar() {
   // From the server, not from what this session happened to witness. That is
   // the whole point: the badge now means "since you last read it" rather than
   // "since you last launched me".
-  const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   const loadInbox = useInboxStore((s) => s.load);
   useEffect(() => {
     if (authed) loadInbox(currentOrgId).catch(() => {});

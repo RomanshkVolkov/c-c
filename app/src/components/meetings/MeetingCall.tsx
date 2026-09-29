@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { goInOrg } from "@/lib/ir-en-org";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, Volume2 } from "lucide-react";
 
@@ -47,9 +48,10 @@ export default function MeetingCall() {
     const sala = entrante.spaceId;
     descartar();
     if (!sala) return;
-    navigate(`/chat?space=${sala}`);
+    // La reunión puede ser de otra org: se entra en la suya.
+    goInOrg(navigate, `/chat?space=${sala}`, entrante.orgId);
     try {
-      await entrarEnSala(sala);
+      await entrarEnSala(sala, { orgId: entrante.orgId, spaceName: entrante.spaceName });
     } catch {
       // El canal queda abierto igual: llegar a la sala y entrar a la llamada
       // son dos cosas, y fallar la segunda no puede dejarte en ninguna parte.
