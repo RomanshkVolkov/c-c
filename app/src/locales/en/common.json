@@ -626,6 +626,32 @@
       "succeeded": "Deployed",
       "failed": "Failed",
       "rolled_back": "Rolled back"
+    },
+    "ci": {
+      "title": "CI notice",
+      "lead": "The CI tells cac when it publishes a commit's image. On «Record», the CI keeps deploying as it does today and cac just keeps the list of versions.",
+      "mode": "When the CI notifies",
+      "modes": {
+        "record": "Record",
+        "deploy": "Deploy"
+      },
+      "toDeployTitle": "Have cac deploy every CI notice?",
+      "toDeployBody": "From now on, every commit the CI notifies about will be deployed on {{server}}. Remove the workflow steps that deploy over ssh, or it will deploy twice.",
+      "toDeployConfirm": "Deploy every notice",
+      "noKey": "No key: the CI doesn't notify yet.",
+      "keyPreview": "Key {{preview}}",
+      "mint": "Mint key",
+      "remint": "Mint another",
+      "remintTitle": "Mint another key?",
+      "remintBody": "The current one ({{preview}}) stops working right away: a CI using it will fail until you give it the new one.",
+      "keyOnce": "Save it now as the repo's CAC_DEPLOY_KEY secret: it won't be shown again.",
+      "copyKey": "Copy the key",
+      "stepLead": "Then add this step to the workflow, after the image is published. The sha has to be the one the image is tagged with.",
+      "copyStep": "Copy the step",
+      "builds": "Published versions",
+      "noBuilds": "The CI hasn't notified about any yet.",
+      "openRun": "Open the CI run",
+      "deployThis": "Deploy {{sha}}"
     }
   }
 }

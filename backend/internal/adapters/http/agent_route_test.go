@@ -208,7 +208,7 @@ func agentDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Organization{}, &domain.Server{}, &domain.Deployable{}, &domain.Deployment{}); err != nil {
+	if err := db.AutoMigrate(&domain.Organization{}, &domain.Server{}, &domain.Deployable{}, &domain.Deployment{}, &domain.ImageBuild{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.EnsureDeployIndexes(db); err != nil {

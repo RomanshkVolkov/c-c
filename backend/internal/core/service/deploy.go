@@ -154,6 +154,75 @@ func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbac
 	return dep, true, nil
 }
 
+// ─── El CI ────────────────────────────────────────────────────────────────────
+
+// MintCIKey acuña la llave con la que el CI de este servicio avisa. La
+// anterior deja de valer.
+func (s *DeployService) MintCIKey(d *domain.Deployable) (*domain.CIKeyResponse, error) {
+	plain, hash, err := repository.GenerateDeployKey()
+	if err != nil {
+		return nil, err
+	}
+	preview := plain[:len(repository.DeployKeyPrefix)+6] + "…"
+	if err := s.repo.SetCIKey(d.ID, hash, preview); err != nil {
+		return nil, err
+	}
+	return &domain.CIKeyResponse{Key: plain, Preview: preview}, nil
+}
+
+// DeployableByCIKey: el deployable de una llave del CI, o error.
+func (s *DeployService) DeployableByCIKey(plain string) (*domain.Deployable, error) {
+	return s.repo.FindDeployableByCIKey(repository.HashDeployKey(plain))
+}
+
+// Notice es el aviso del CI de que publicó la imagen de un commit.
+//
+// Siempre deja el build apuntado —es la lista de versiones que se pueden
+// desplegar—, y en modo `deploy` además lo encola. Si no se puede encolar
+// ahora (otro deploy en curso, un agente viejo), el aviso **no falla**: el
+// build queda y la respuesta dice por qué no se desplegó. Un CI que falla
+// porque dos commits llegaron seguidos enseña rojo por algo que no está roto.
+func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, source string) (*domain.DeployNoticeResponse, error) {
+	if !domain.ValidSha(n.Sha) {
+		return nil, ErrBadSha
+	}
+	b := &domain.ImageBuild{
+		OrgID: d.OrgID, DeployableID: d.ID, Sha: n.Sha, Image: d.ImageRepo + ":" + n.Sha,
+		Ref: n.Ref, Actor: n.Actor, RunURL: n.RunURL, Source: source,
+	}
+	b.ID = uuid.NewString()
+	build, err := s.repo.RecordBuild(b)
+	if err != nil {
+		return nil, err
+	}
+	out := &domain.DeployNoticeResponse{Build: build, Deploy: "recorded"}
+	if d.OnCINotify != "deploy" {
+		return out, nil
+	}
+	by := domain.DeployByCI
+	if source == "github" {
+		by = domain.DeployByGitHub
+	}
+	dep, created, err := s.RequestDeploy(d, by, "", n.Sha, "ci:"+n.Sha)
+	switch {
+	case errors.Is(err, repository.ErrDeployInFlight):
+		out.Deploy, out.Reason = "skipped", "deploy-in-flight"
+	case errors.Is(err, ErrAgentTooOld):
+		out.Deploy, out.Reason = "skipped", "agent-too-old"
+	case err != nil:
+		return nil, err
+	case created:
+		out.Deploy, out.Deployment = "queued", dep
+	default:
+		out.Deploy, out.Deployment = "exists", dep
+	}
+	return out, nil
+}
+
+func (s *DeployService) ListBuilds(deployableID string) ([]domain.ImageBuild, error) {
+	return s.repo.ListBuilds(deployableID, 30)
+}
+
 func (s *DeployService) ListDeployments(deployableID string) ([]domain.DeploymentSummary, error) {
 	return s.repo.ListDeployments(deployableID, 50)
 }

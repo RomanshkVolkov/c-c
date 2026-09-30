@@ -10,10 +10,15 @@ export interface Deployable {
   imageRepo: string;
   environment: string;
   repoFullName: string;
-  onCINotify: "record" | "deploy";
+  /** Qué hace cac cuando el CI avisa: apuntarlo, o además desplegarlo. */
+  onCINotify: CINotifyMode;
+  /** El principio de la llave del CI, para reconocerla; vacío si no tiene. */
+  ciKeyPreview: string;
   currentImage: string;
   previousImage: string;
 }
+
+export type CINotifyMode = "record" | "deploy";
 
 export type DeployStatus = "queued" | "running" | "succeeded" | "failed" | "rolled_back";
 
@@ -43,4 +48,23 @@ export interface CreateDeployablePayload {
   serviceName: string;
   imageRepo: string;
   environment: string;
+}
+
+/** Una imagen que el CI dijo haber publicado. Ver `domain.ImageBuild`. */
+export interface ImageBuild {
+  id: string;
+  createdAt: string;
+  deployableId: string;
+  sha: string;
+  image: string;
+  ref: string;
+  actor: string;
+  runUrl: string;
+  source: "ci" | "github";
+}
+
+/** La llave del CI recién acuñada: la única vez que se ve entera. */
+export interface CIKey {
+  key: string;
+  preview: string;
 }

@@ -35,3 +35,23 @@ export function shortRef(image: string): string {
 export function isSha(s: string): boolean {
   return /^[0-9a-f]{7,40}$/.test(s);
 }
+
+/**
+ * El paso que un repo añade a su workflow para avisar a cac, tras publicar la
+ * imagen. Es lo único que cambia en su CI, y un repo sin él sigue igual.
+ *
+ * El sha tiene que ser el mismo con el que se etiqueta la imagen: cac
+ * despliega `imageRepo:sha` y no otra cosa. `-f` pone el paso en rojo con una
+ * llave que no vale; un aviso que llega con otro deploy en curso contesta 200
+ * y no lo pone.
+ */
+export function ciNoticeStep(url: string): string {
+  return [
+    "      - name: Notify cac",
+    "        run: |",
+    `          curl -fsS -X POST ${url} \\`,
+    "            -H \"X-Deploy-Key: ${{ secrets.CAC_DEPLOY_KEY }}\" \\",
+    "            -H \"Content-Type: application/json\" \\",
+    "            -d \"{\\\"sha\\\":\\\"$GITHUB_SHA\\\",\\\"ref\\\":\\\"$GITHUB_REF\\\",\\\"actor\\\":\\\"$GITHUB_ACTOR\\\",\\\"runUrl\\\":\\\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\\\"}\"",
+  ].join("\n");
+}

@@ -69,6 +69,29 @@ func AgentSessionKey(serverID, salt string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+// ─── La llave del CI de un deployable ─────────────────────────────────────────
+
+// DeployKeyPrefix distingue una llave de CI de las demás.
+const DeployKeyPrefix = "dk_"
+
+// HashDeployKey es lo único que se guarda de una llave de CI. Con su propio
+// dominio: el mismo texto no da el mismo hash como token de agente o PAT.
+func HashDeployKey(plain string) []byte {
+	mac := hmac.New(sha256.New, agentSecret())
+	mac.Write([]byte("deploy:" + plain))
+	return mac.Sum(nil)
+}
+
+// GenerateDeployKey acuña (llave, hash).
+func GenerateDeployKey() (string, []byte, error) {
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return "", nil, fmt.Errorf("failed to generate deploy key: %w", err)
+	}
+	plain := DeployKeyPrefix + base64.RawURLEncoding.EncodeToString(raw)
+	return plain, HashDeployKey(plain), nil
+}
+
 // SignAgentSession firma un pase `<b64 usuario>.<exp>.<hmac hex>` para un
 // servidor. El usuario va dentro para que el agente pueda registrar quién
 // pidió qué; lo cubre la firma, así que no se puede cambiar.

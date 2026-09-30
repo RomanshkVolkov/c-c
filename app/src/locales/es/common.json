@@ -626,6 +626,32 @@
       "succeeded": "Desplegado",
       "failed": "Falló",
       "rolled_back": "Se volvió atrás"
+    },
+    "ci": {
+      "title": "Aviso del CI",
+      "lead": "El CI avisa a cac cuando publica la imagen de un commit. En «Apuntar», el CI sigue desplegando como hoy y cac sólo lleva la lista de versiones.",
+      "mode": "Cuando el CI avisa",
+      "modes": {
+        "record": "Apuntar",
+        "deploy": "Desplegar"
+      },
+      "toDeployTitle": "¿Que cac despliegue cada aviso del CI?",
+      "toDeployBody": "Desde ahora, cada commit del que avise el CI se desplegará en {{server}}. Quita del workflow los pasos que despliegan por ssh, o se desplegará dos veces.",
+      "toDeployConfirm": "Desplegar cada aviso",
+      "noKey": "Sin llave: el CI todavía no avisa.",
+      "keyPreview": "Llave {{preview}}",
+      "mint": "Acuñar llave",
+      "remint": "Acuñar otra",
+      "remintTitle": "¿Acuñar otra llave?",
+      "remintBody": "La de ahora ({{preview}}) deja de valer en el momento: el CI que la use fallará hasta que le pongas la nueva.",
+      "keyOnce": "Guárdala ya como el secret CAC_DEPLOY_KEY del repo: no se vuelve a enseñar.",
+      "copyKey": "Copiar la llave",
+      "stepLead": "Y añade este paso al workflow, después de publicar la imagen. El sha tiene que ser el mismo con el que se etiqueta la imagen.",
+      "copyStep": "Copiar el paso",
+      "builds": "Versiones publicadas",
+      "noBuilds": "El CI todavía no ha avisado de ninguna.",
+      "openRun": "Abrir la ejecución del CI",
+      "deployThis": "Desplegar {{sha}}"
     }
   }
 }

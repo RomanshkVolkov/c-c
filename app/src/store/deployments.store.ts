@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
-import type { CreateDeployablePayload, Deployable, Deployment } from "@/types/deploy";
+import type { CIKey, CINotifyMode, CreateDeployablePayload, Deployable, Deployment, ImageBuild } from "@/types/deploy";
 
 /**
  * Los despliegues desde cac: qué servicios de cada servidor se despliegan desde
@@ -23,6 +23,7 @@ interface DeploymentsState {
   deployables: Record<string, Deployable[]>;
   history: Record<string, Deployment[]>;
   logs: Record<string, string>;
+  builds: Record<string, ImageBuild[]>;
 
   loadDeployables: (serverId: string) => Promise<void>;
   createDeployable: (serverId: string, p: CreateDeployablePayload) => Promise<Deployable>;
@@ -30,6 +31,10 @@ interface DeploymentsState {
   rollback: (serverId: string, deployableId: string, deploymentId: string) => Promise<Deployment>;
   loadHistory: (serverId: string, deployableId: string) => Promise<void>;
   loadLog: (serverId: string, deployableId: string, deploymentId: string) => Promise<void>;
+  loadBuilds: (serverId: string, deployableId: string) => Promise<void>;
+  /** Acuña la llave del CI; la anterior deja de valer. */
+  mintCIKey: (serverId: string, deployableId: string) => Promise<CIKey>;
+  setCINotify: (serverId: string, d: Deployable, mode: CINotifyMode) => Promise<void>;
 
   /** Lo que llega por el stream. Públicos para probarlos sin él. */
   onStatus: (d: Deployment) => void;
@@ -43,10 +48,25 @@ function must<T>(res: APIResponse<T>): T {
   return res.data;
 }
 
+function replace(
+  set: (fn: (s: DeploymentsState) => Partial<DeploymentsState>) => void,
+  serverId: string,
+  deployableId: string,
+  patch: Partial<Deployable>,
+) {
+  set((s) => ({
+    deployables: {
+      ...s.deployables,
+      [serverId]: (s.deployables[serverId] ?? []).map((x) => (x.id === deployableId ? { ...x, ...patch } : x)),
+    },
+  }));
+}
+
 export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
   deployables: {},
   history: {},
   logs: {},
+  builds: {},
 
   loadDeployables: async (serverId) => {
     const data = must(await api.get<APIResponse<Deployable[]>>(`${base(serverId)}`, true));
@@ -87,6 +107,29 @@ export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
       await api.get<APIResponse<Deployment>>(`${base(serverId)}/${deployableId}/deployments/${deploymentId}`, true),
     );
     set((s) => ({ logs: { ...s.logs, [deploymentId]: d.log ?? "" } }));
+  },
+
+  loadBuilds: async (serverId, deployableId) => {
+    const data = must(await api.get<APIResponse<ImageBuild[]>>(`${base(serverId)}/${deployableId}/builds`, true));
+    set((s) => ({ builds: { ...s.builds, [deployableId]: data } }));
+  },
+
+  mintCIKey: async (serverId, deployableId) => {
+    const k = must(await api.post<APIResponse<CIKey>>(`${base(serverId)}/${deployableId}/ci-key`, {}, true));
+    replace(set, serverId, deployableId, { ciKeyPreview: k.preview });
+    return k;
+  },
+
+  setCINotify: async (serverId, d, mode) => {
+    // El PATCH pide la fila entera: lo demás va como está.
+    const next = must(
+      await api.patch<APIResponse<Deployable>>(
+        `${base(serverId)}/${d.id}`,
+        { name: d.name, environment: d.environment, repoFullName: d.repoFullName, onCINotify: mode },
+        true,
+      ),
+    );
+    replace(set, serverId, d.id, next);
   },
 
   onStatus: (d) =>

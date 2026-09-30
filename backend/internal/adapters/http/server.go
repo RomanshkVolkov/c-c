@@ -64,7 +64,13 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux, bus *events.Hub) {
 		r.Get("/{id}/deployables/{did}/deployments", deployH.Deployments)
 		r.Get("/{id}/deployables/{did}/deployments/{depId}", deployH.Deployment)
 		r.Post("/{id}/deployables/{did}/deployments/{depId}/rollback", deployH.Rollback)
+		r.Post("/{id}/deployables/{did}/ci-key", deployH.CIKey)
+		r.Get("/{id}/deployables/{did}/builds", deployH.Builds)
 	})
+
+	// El aviso del CI de un servicio: su propia llave, fuera del JWT. Ver
+	// DeployHandler.DeployIngest y docs/integrations/deploys.md.
+	r.Post("/ingest/v1/deploys", deployH.DeployIngest)
 
 	// El agente de cada servidor, con su propio token y no con el JWT de una
 	// persona: el agente no es nadie. Todo lo que pida se contesta sobre su

@@ -41,6 +41,55 @@ type Deployable struct {
 	// es a donde vuelve un rollback.
 	CurrentImage  string `gorm:"type:varchar(400)" json:"currentImage"`
 	PreviousImage string `gorm:"type:varchar(400)" json:"previousImage"`
+	// La llave con la que el CI de este servicio avisa de una imagen nueva.
+	// Sólo el HMAC, como un PAT; se enseña una vez al acuñarla. Es **de este
+	// deployable**: una llave no puede avisar de otro servicio porque no hay
+	// forma de nombrarlo con ella.
+	CIKeyHash    []byte `gorm:"type:bytea;index" json:"-"`
+	CIKeyPreview string `gorm:"type:varchar(40)" json:"ciKeyPreview"`
+}
+
+// ImageBuild es una imagen que el CI dijo que construyó para un deployable.
+// Es la lista de «versiones disponibles»: lo que se puede desplegar sin
+// escribir un sha a mano.
+type ImageBuild struct {
+	BaseModel
+	OrgID        string `gorm:"type:varchar(36);index;not null" json:"orgId"`
+	DeployableID string `gorm:"type:varchar(36);index;not null" json:"deployableId"`
+	Sha          string `gorm:"type:varchar(40);not null" json:"sha"`
+	Image        string `gorm:"type:varchar(400);not null" json:"image"`
+	Ref          string `gorm:"type:varchar(200)" json:"ref"`
+	Actor        string `gorm:"type:varchar(120)" json:"actor"`
+	RunURL       string `gorm:"type:varchar(400)" json:"runUrl"`
+	// ci | github
+	Source string `gorm:"type:varchar(20);not null" json:"source"`
+}
+
+// CIKeyResponse: la llave, **una vez**.
+type CIKeyResponse struct {
+	Key     string `json:"key"`
+	Preview string `json:"preview"`
+}
+
+// DeployNotice es lo que manda el CI tras publicar una imagen.
+type DeployNotice struct {
+	Sha    string `json:"sha"    validate:"required"`
+	Ref    string `json:"ref"    validate:"max=200"`
+	Actor  string `json:"actor"  validate:"max=120"`
+	RunURL string `json:"runUrl" validate:"max=400"`
+}
+
+// DeployNoticeResponse cuenta qué pasó con el aviso. `Deploy` es:
+//   - `recorded`: el servicio está en modo `record`, sólo se apuntó.
+//   - `queued`: se encoló un deploy.
+//   - `exists`: el mismo aviso ya había encolado uno.
+//   - `skipped`: no se encoló, por `Reason` (un deploy en curso, un agente
+//     viejo); el build queda apuntado y se puede desplegar a mano.
+type DeployNoticeResponse struct {
+	Build      *ImageBuild `json:"build"`
+	Deploy     string      `json:"deploy"`
+	Reason     string      `json:"reason,omitempty"`
+	Deployment *Deployment `json:"deployment,omitempty"`
 }
 
 // Deployment es una vez que cac desplegó (o intentó desplegar) un deployable.

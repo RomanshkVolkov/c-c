@@ -39,6 +39,7 @@
   "invalid-agent-token": "El agente se presentó con un token que no vale; hay que reinstalarlo.",
   "invalid-body": "El cuerpo de la petición no es el que este endpoint espera.",
   "invalid-category": "Esa categoría no existe.",
+  "invalid-deploy-key": "Esa llave de deploy no vale; acuña otra desde el servicio en cac.",
   "invalid-ingest-key": "Esa llave de ingesta no vale.",
   "invalid-key": "Esa llave no vale.",
   "invalid-limit": "El límite tiene que ser un número dentro de rango.",

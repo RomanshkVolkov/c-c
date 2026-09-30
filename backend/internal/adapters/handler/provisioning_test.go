@@ -215,7 +215,7 @@ func provisioningDB(t *testing.T) (*gorm.DB, func()) {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.Server{}, &domain.ProvisioningRun{},
-		&domain.Deployable{}, &domain.Deployment{}); err != nil {
+		&domain.Deployable{}, &domain.Deployment{}, &domain.ImageBuild{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.EnsureDeployIndexes(db); err != nil {

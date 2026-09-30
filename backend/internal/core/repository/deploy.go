@@ -31,8 +31,13 @@ func EnsureDeployIndexes(db *gorm.DB) error {
 		return err
 	}
 	// El mismo aviso del CI dos veces es un solo deployment.
-	return db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_deployments_idempotency
-		ON deployments (deployable_id, idempotency_key) WHERE idempotency_key <> ''`).Error
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_deployments_idempotency
+		ON deployments (deployable_id, idempotency_key) WHERE idempotency_key <> ''`).Error; err != nil {
+		return err
+	}
+	// Y un solo build por commit: el CI que reintenta no duplica versiones.
+	return db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_image_builds_sha
+		ON image_builds (deployable_id, sha)`).Error
 }
 
 type DeployRepository struct{ db *gorm.DB }
@@ -75,8 +80,50 @@ func (r *DeployRepository) DeleteDeployable(serverID, id string) error {
 		if err := tx.Where("deployable_id = ?", id).Delete(&domain.Deployment{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("deployable_id = ?", id).Delete(&domain.ImageBuild{}).Error; err != nil {
+			return err
+		}
 		return tx.Where("id = ? AND server_id = ?", id, serverID).Delete(&domain.Deployable{}).Error
 	})
+}
+
+// SetCIKey guarda la llave nueva del CI; la anterior deja de valer.
+func (r *DeployRepository) SetCIKey(id string, hash []byte, preview string) error {
+	return r.db.Model(&domain.Deployable{}).Where("id = ?", id).Updates(map[string]any{
+		"ci_key_hash": hash, "ci_key_preview": preview,
+	}).Error
+}
+
+// FindDeployableByCIKey: el deployable de una llave del CI. Los que no tienen
+// llave la tienen en NULL, que no casa con ningún hash.
+func (r *DeployRepository) FindDeployableByCIKey(hash []byte) (*domain.Deployable, error) {
+	var d domain.Deployable
+	if err := r.db.First(&d, "ci_key_hash = ?", hash).Error; err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+// ─── Builds ───────────────────────────────────────────────────────────────────
+
+// RecordBuild apunta un build, o devuelve el que ya había para ese commit.
+func (r *DeployRepository) RecordBuild(b *domain.ImageBuild) (*domain.ImageBuild, error) {
+	res := r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(b)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 1 {
+		return b, nil
+	}
+	var existing domain.ImageBuild
+	err := r.db.First(&existing, "deployable_id = ? AND sha = ?", b.DeployableID, b.Sha).Error
+	return &existing, err
+}
+
+func (r *DeployRepository) ListBuilds(deployableID string, limit int) ([]domain.ImageBuild, error) {
+	out := []domain.ImageBuild{}
+	err := r.db.Where("deployable_id = ?", deployableID).Order("created_at DESC").Limit(limit).Find(&out).Error
+	return out, err
 }
 
 // ─── Deployments ──────────────────────────────────────────────────────────────

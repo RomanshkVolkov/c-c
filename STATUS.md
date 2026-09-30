@@ -15,36 +15,21 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 **En curso (30-sep, #106 con R0–R8 en #107–#115): módulo de servidores** —
 deploys desde cac, GitHub App, Ansible desde la app y secrets por referencia a
-1Password, con adopción gradual por proyecto. **R0 y R1 publicadas**
-(v1.6.76, agente `:v2`). **R2 hecha, sin commitear:** desplegar un commit y
-volver atrás desde cac, con historial y log en vivo; el agente `:v3` hace el
-deploy con `service update` (pull antes, digest clavado, convergencia
-comprobada), y un agente viejo se rechaza al pedir el deploy. Registrar un
-servicio no toca el servidor. Publicar: backend → agente `:v3` → app; luego
-«Update agent» en cada servidor.
+1Password, con adopción gradual por proyecto. **R0–R2 publicadas** (v1.6.76 y
+v1.6.77, agente `:v3`): desplegar un commit y volver atrás desde cac, con
+historial y log en vivo, por `service update`. **R3 hecha, sin commitear:** el
+CI avisa con una llave por servicio (`POST /ingest/v1/deploys`,
+`X-Deploy-Key: dk_…`); en modo «Apuntar» cac sólo lista las versiones y el CI
+sigue desplegando, en «Desplegar» cac encola el deploy. El contrato y el paso
+del workflow, en `docs/integrations/deploys.md`. Backend primero.
 
-**En curso (28-sep, #96, sin commitear):** crear un usuario pide nombre y
-correo (backend `CreateUserRequest` y el diálogo), el diálogo dice qué falta en
-vez de apagar «Crear» en silencio, y toda contraseña de la app lleva ojo
-(`PasswordInput`, con guardián contra un `type="password"` a pelo). Toca
-backend y app: backend primero, luego la siguiente versión.
+**Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
+contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para
+después: **#98**, en Mac la pantalla compartida sale inclinada (probable
+stride de la captura).
 
-**En curso (29-sep, #97 con S1–S7 en #99–#105, sin commitear): auditoría de
-estados.** Recargar no colgaba la llamada —vive en Rust— y la página nueva no
-lo sabía: micro abierto sin nada en pantalla. Ahora se reengancha
-(`voice_attach`). Cambiar de org dejaba abierto el directo, la tarea o el doc
-de la otra: hay un único sitio que reacciona (`store/org-switch.ts`) y cada
-cosa abierta lleva el sello de su org, que se comprueba al pintar. Los enlaces a
-algo de otra org cambian de org (`lib/ir-en-org.ts`). La barra de la llamada
-dice de qué org es, los contadores cuentan sólo la org actual, cada org recuerda
-dónde estabas (`store/places*.ts`) y los ssh huérfanos se cierran al arrancar.
-Backend: `orgId` en búsqueda, doc, timbre, reunión y token de voz, y la
-búsqueda de directos filtrada por org. Backend primero. Aparte, para después:
-**#98**, en Mac la pantalla compartida sale inclinada (probable stride de la
-captura).
-
-La app va por la **v1.6.70** (grabación de reuniones, pestañas del canal, el
-hilo que te deja donde estabas, y el filtro del árbol a la primera).
+La app va por la **v1.6.77** (30-sep; los instaladores compilándose al
+escribir esto).
 
 **La v1.6.71 (27-sep) lleva:**
 

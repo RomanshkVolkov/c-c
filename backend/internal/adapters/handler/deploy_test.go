@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -300,5 +302,56 @@ func TestAnAgentThatCannotDeployIsRefusedUpFront(t *testing.T) {
 	db.Model(&domain.Deployment{}).Count(&n)
 	if n != 0 {
 		t.Errorf("se encolaron %d deploys para un agente que no sabe hacerlos", n)
+	}
+}
+
+// La llave del CI despliega sin persona delante: la acuña un admin, se enseña
+// una sola vez y lo que se guarda es su hash, que nunca sale en JSON. Los
+// builds que avisa los ve cualquiera de la org.
+func TestOnlyAnAdminMintsACIKey(t *testing.T) {
+	db, _, d, cleanup := deploySetup(t)
+	defer cleanup()
+	servers := service.NewServerService(repository.NewServerRepository(db))
+	h := NewDeployHandler(servers, service.NewDeployService(repository.NewDeployRepository(db), repository.NewServerRepository(db), nil))
+
+	call := func(fn http.HandlerFunc, method string, c *domain.ClaimsJWT) *httptest.ResponseRecorder {
+		r := serverReq(method, "srv-1", "", `{}`, c)
+		chiContext(r).URLParams.Add("did", d.ID)
+		rec := httptest.NewRecorder()
+		fn(rec, r)
+		return rec
+	}
+	if rec := call(h.CIKey, http.MethodPost, claims("u-ana", "org-1", domain.OrgRoleMember)); rec.Code != http.StatusForbidden {
+		t.Errorf("un miembro acuñando la llave → %d, se esperaba 403", rec.Code)
+	}
+	rec := call(h.CIKey, http.MethodPost, claims("u-ana", "org-1", domain.OrgRoleAdmin))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("un admin acuñando la llave → %d: %s", rec.Code, rec.Body.String())
+	}
+	var res struct {
+		Data domain.CIKeyResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || !strings.HasPrefix(res.Data.Key, repository.DeployKeyPrefix) {
+		t.Fatalf("la llave no llegó: %s", rec.Body.String())
+	}
+
+	var stored domain.Deployable
+	db.First(&stored, "id = ?", d.ID)
+	if !bytes.Equal(stored.CIKeyHash, repository.HashDeployKey(res.Data.Key)) {
+		t.Error("lo guardado no es el hash de la llave")
+	}
+	if strings.Contains(string(stored.CIKeyHash), res.Data.Key) {
+		t.Error("la llave se guardó en claro")
+	}
+	out, _ := json.Marshal(stored)
+	if strings.Contains(string(out), "ciKeyHash") || strings.Contains(string(out), "ci_key_hash") {
+		t.Errorf("el hash de la llave viaja en JSON: %s", out)
+	}
+	if head := strings.TrimSuffix(stored.CIKeyPreview, "…"); head == stored.CIKeyPreview || !strings.HasPrefix(res.Data.Key, head) || len(head) >= len(res.Data.Key)/2 {
+		t.Errorf("la vista previa %q no sirve para reconocer la llave", stored.CIKeyPreview)
+	}
+
+	if rec := call(h.Builds, http.MethodGet, claims("u-vera", "org-1", domain.OrgRoleViewer)); rec.Code != http.StatusOK {
+		t.Errorf("un viewer viendo los builds → %d, se esperaba 200", rec.Code)
 	}
 }

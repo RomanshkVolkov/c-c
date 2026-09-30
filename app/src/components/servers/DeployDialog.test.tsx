@@ -12,10 +12,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  * 3. Con un deploy en cola o en curso, no se puede pedir otro.
  * 4. Sin el agente con identidad no se despliega, y se dice por qué.
  * 5. Volver atrás sólo se ofrece en un deploy que salió bien y tenía algo antes.
+ * 6. El aviso del CI: la llave se enseña una vez y no se queda en el store,
+ *    acuñar otra (que tumba la de ahora) se confirma, y pasar a que cac
+ *    despliegue cada aviso también, porque es lo que cambia quién despliega.
  */
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
-vi.mock("@/lib/api", () => ({ api: { get, post } }));
+const { get, post, patch } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
+vi.mock("@/lib/api", () => ({ api: { get, post, patch }, apiUrl: (p: string) => `https://cac.test${p}` }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 const { confirmar } = vi.hoisted(() => ({ confirmar: vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
@@ -39,8 +43,13 @@ const service: SwarmService = {
 const deployable = {
   id: "dp-1", orgId: "org-1", serverId: "srv-1", name: "app", stack: "beta-api-prod",
   serviceName: "beta-api-prod_app", imageRepo: "ghcr.io/dwit-mexico/api", environment: "prod",
-  repoFullName: "", onCINotify: "record", currentImage: "", previousImage: "",
+  repoFullName: "", onCINotify: "record", ciKeyPreview: "", currentImage: "", previousImage: "",
 };
+
+const build = (sha: string) => ({
+  id: `b-${sha}`, createdAt: "2026-09-30T10:00:00Z", deployableId: "dp-1", sha, image: `ghcr.io/dwit-mexico/api:${sha}`,
+  ref: "refs/heads/main", actor: "ana", runUrl: "", source: "ci",
+});
 
 const fila = (over: Record<string, unknown> = {}) => ({
   id: "d-1", createdAt: "2026-09-30T10:00:00Z", deployableId: "dp-1", serverId: "srv-1",
@@ -49,9 +58,10 @@ const fila = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function respuestas(deployables: unknown[], history: unknown[]) {
+function respuestas(deployables: unknown[], history: unknown[], builds: unknown[] = []) {
   get.mockImplementation(async (url: string) => {
     if (url.endsWith("/deployables")) return { success: true, data: deployables };
+    if (url.endsWith("/builds")) return { success: true, data: builds };
     if (url.endsWith("/deployments")) return { success: true, data: history };
     return { success: true, data: { log: "" } };
   });
@@ -63,9 +73,10 @@ const pintar = (s: Server = server()) =>
 const botonDesplegar = () => screen.getByRole("button", { name: /^(desplegar|deploy|desplegando…|deploying…)$/i }) as HTMLButtonElement;
 
 beforeEach(() => {
-  useDeploymentsStore.setState({ deployables: {}, history: {}, logs: {} });
+  useDeploymentsStore.setState({ deployables: {}, history: {}, logs: {}, builds: {} });
   get.mockReset();
   post.mockReset();
+  patch.mockReset();
   confirmar.mockReset();
 });
 afterEach(cleanup);
@@ -152,6 +163,80 @@ describe("desplegar un servicio", () => {
     fireEvent.click(screen.getByRole("button", { name: /(volver a lo de antes|go back to the previous)/i }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deployments/d-2/rollback", {}, true),
+    );
+  });
+});
+
+describe("el aviso del CI", () => {
+  const KEY = "dk_0123456789abcdef0123456789abcdef";
+
+  it("la llave se enseña una vez, con el paso para el workflow, y no se queda en el store", async () => {
+    respuestas([deployable], []);
+    post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
+    pintar();
+    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    await waitFor(() => expect(screen.getByTestId("ci-key").textContent).toBe(KEY));
+    // La primera no tumba nada: no se pregunta.
+    expect(confirmar).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/ci-key", {}, true);
+
+    const paso = screen.getByText(/X-Deploy-Key/).textContent ?? "";
+    expect(paso).toContain("https://cac.test/ingest/v1/deploys");
+    expect(paso).toContain("secrets.CAC_DEPLOY_KEY");
+    expect(paso).not.toContain(KEY);
+
+    expect(JSON.stringify(useDeploymentsStore.getState())).not.toContain(KEY);
+    expect(screen.getByText(/dk_012345…/)).toBeTruthy();
+  });
+
+  it("acuñar otra tumba la de ahora: se pregunta, y si no, no se toca", async () => {
+    respuestas([{ ...deployable, ciKeyPreview: "dk_viejaa…" }], []);
+    confirmar.mockResolvedValue(false);
+    pintar();
+    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar otra|mint another)$/i }));
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(confirmar.mock.calls[0][0].description).toContain("dk_viejaa…");
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("que cac despliegue cada aviso se confirma; volver a apuntar, no", async () => {
+    respuestas([deployable], []);
+    confirmar.mockResolvedValue(true);
+    patch.mockResolvedValue({ success: true, data: { ...deployable, onCINotify: "deploy" } });
+    pintar();
+    fireEvent.click(await screen.findByRole("radio", { name: /^(desplegar|deploy)$/i }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(confirmar).toHaveBeenCalledTimes(1);
+    expect(patch).toHaveBeenCalledWith(
+      "/api/v1/servers/srv-1/deployables/dp-1",
+      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy" },
+      true,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: /^(desplegar|deploy)$/i }).getAttribute("aria-checked")).toBe("true"),
+    );
+
+    patch.mockResolvedValue({ success: true, data: { ...deployable, onCINotify: "record" } });
+    fireEvent.click(screen.getByRole("radio", { name: /^(apuntar|record)$/i }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
+    expect(confirmar).toHaveBeenCalledTimes(1);
+  });
+
+  it("una versión publicada se despliega desde su fila, salvo con otro en curso", async () => {
+    respuestas([deployable], [], [
+      { ...build("def5678aa"), runUrl: "javascript:alert(1)" },
+      { ...build("abc1234bb"), runUrl: "https://github.com/a/b/actions/runs/9" },
+    ]);
+    post.mockResolvedValue({ success: true, data: fila({ status: "queued" }) });
+    pintar();
+    // El enlace a la ejecución sólo si es una página web: lo escribe el CI.
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /(abrir la ejecución|open the ci run)/i })).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: /(desplegar|deploy) abc1234/i }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "abc1234bb" }, true),
+    );
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: /(desplegar|deploy) def5678/i }) as HTMLButtonElement).disabled).toBe(true),
     );
   });
 });

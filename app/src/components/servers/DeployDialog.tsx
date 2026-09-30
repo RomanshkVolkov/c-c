@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import CINoticeSection from "./CINoticeSection";
 import type { Server } from "@/types/server";
 import type { SwarmService } from "@/types/swarm";
 import type { Deployment, DeployStatus } from "@/types/deploy";
@@ -110,9 +111,9 @@ export default function DeployDialog({
       }),
     );
 
-  const desplegar = () =>
+  const desplegar = (commit: string) =>
     conError(async () => {
-      const d = await deploy(server.id, deployable!.id, sha.trim());
+      const d = await deploy(server.id, deployable!.id, commit);
       setSha("");
       setViendo(d.id);
       toast.info(t("common:deploy.queued"));
@@ -136,7 +137,7 @@ export default function DeployDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("common:deploy.title", { name: service.name })}</DialogTitle>
           {deployable && (
@@ -194,11 +195,18 @@ export default function DeployDialog({
                   spellCheck={false}
                 />
               </div>
-              <Button onClick={() => void desplegar()} disabled={busy || vivo || sinAgente || !isSha(sha)}>
+              <Button onClick={() => void desplegar(sha.trim())} disabled={busy || vivo || sinAgente || !isSha(sha)}>
                 {vivo ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Rocket className="mr-1 size-4" />}
                 {vivo ? t("common:deploy.deploying") : t("common:deploy.deploy")}
               </Button>
             </div>
+
+            <CINoticeSection
+              server={server}
+              deployable={deployable}
+              canDeploy={!vivo && !sinAgente}
+              onDeploy={(commit) => void desplegar(commit)}
+            />
 
             <div className="space-y-1">
               <p className="text-sm font-medium">{t("common:deploy.history")}</p>

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -16,10 +17,11 @@ import (
 type DeployHandler struct {
 	servers *service.ServerService
 	svc     *service.DeployService
+	limiter *ingestLimiter
 }
 
 func NewDeployHandler(servers *service.ServerService, svc *service.DeployService) *DeployHandler {
-	return &DeployHandler{servers: servers, svc: svc}
+	return &DeployHandler{servers: servers, svc: svc, limiter: newIngestLimiter()}
 }
 
 // deployable carga el deployable de la URL, sólo si es de ese servidor.
@@ -160,6 +162,70 @@ func (h *DeployHandler) Rollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusAccepted, domain.APIResponse[*domain.Deployment]{Success: true, Data: dep})
+}
+
+// CIKey acuña la llave del CI de este servicio. Admin: con ella, alguien de
+// fuera puede encolar deploys (en modo `deploy`).
+func (h *DeployHandler) CIKey(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleAdmin)
+	if !ok {
+		return
+	}
+	res, err := h.svc.MintCIKey(d)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.CIKeyResponse]{Success: true, Data: res})
+}
+
+func (h *DeployHandler) Builds(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	out, err := h.svc.ListBuilds(d.ID)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.ImageBuild]{Success: true, Data: out})
+}
+
+// DeployIngest es la entrada del CI: `POST /ingest/v1/deploys` con
+// `X-Deploy-Key`. Fuera del JWT, como la de reportes: quien llama es un
+// workflow, no una persona. Una llave que no casa es un 401 sin más detalle.
+func (h *DeployHandler) DeployIngest(w http.ResponseWriter, r *http.Request) {
+	key := r.Header.Get("X-Deploy-Key")
+	if !strings.HasPrefix(key, repository.DeployKeyPrefix) {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-deploy-key")
+		return
+	}
+	d, err := h.svc.DeployableByCIKey(key)
+	if err != nil {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-deploy-key")
+		return
+	}
+	// Por deployable: un CI que se vuelve loco no puede llenar la tabla.
+	if !h.limiter.allow(d.ID, 60) {
+		SendErrorResponse(w, http.StatusTooManyRequests, "Too many notices", "rate-limited")
+		return
+	}
+	req, err := ValidateRequest[domain.DeployNotice](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	res, err := h.svc.Notice(d, req, "ci")
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	code := http.StatusOK
+	if res.Deploy == "queued" {
+		code = http.StatusAccepted
+	}
+	SendResult(w, code, domain.APIResponse[*domain.DeployNoticeResponse]{Success: true, Data: res})
 }
 
 func deployError(w http.ResponseWriter, err error) {

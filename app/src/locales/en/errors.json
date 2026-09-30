@@ -39,6 +39,7 @@
   "invalid-agent-token": "The agent presented a token that isn't valid; it needs reinstalling.",
   "invalid-body": "The request body isn't what this endpoint expects.",
   "invalid-category": "That category doesn't exist.",
+  "invalid-deploy-key": "That deploy key isn't valid; mint a new one from the service in cac.",
   "invalid-ingest-key": "That ingest key isn't valid.",
   "invalid-key": "That key isn't valid.",
   "invalid-limit": "The limit has to be a number in range.",

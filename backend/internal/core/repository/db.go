@@ -87,6 +87,7 @@ func DBConnection() {
 		&domain.ProvisioningRun{},
 		&domain.Deployable{},
 		&domain.Deployment{},
+		&domain.ImageBuild{},
 		&domain.PersonalAccessToken{},
 		&domain.TaskSpace{},
 		&domain.TaskFolder{},
