@@ -844,7 +844,11 @@ pub(crate) fn ssh_run_input(
         cmd.env("SSH_AUTH_SOCK", sock);
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    cmd.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() });
+    cmd.stdin(if input.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    });
     let mut child = cmd.spawn().map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => "`ssh` binary not found on PATH.".to_string(),
         _ => format!("Failed to execute ssh: {e}"),

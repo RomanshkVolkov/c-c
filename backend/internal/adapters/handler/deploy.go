@@ -1,0 +1,188 @@
+package handler
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
+	"github.com/guz-studio/cac/backend/internal/core/service"
+	"gorm.io/gorm"
+)
+
+// DeployHandler: los servicios que cac sabe desplegar en un servidor, y sus
+// despliegues. Ver `domain.Deployable`.
+type DeployHandler struct {
+	servers *service.ServerService
+	svc     *service.DeployService
+}
+
+func NewDeployHandler(servers *service.ServerService, svc *service.DeployService) *DeployHandler {
+	return &DeployHandler{servers: servers, svc: svc}
+}
+
+// deployable carga el deployable de la URL, sólo si es de ese servidor.
+func (h *DeployHandler) deployable(w http.ResponseWriter, r *http.Request, min domain.OrgRole) (*domain.Deployable, bool) {
+	server, ok := scopeServer(w, r, h.servers, min)
+	if !ok {
+		return nil, false
+	}
+	d, err := h.svc.FindDeployable(server.ID, chi.URLParam(r, "did"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Deployable not found", "not-found")
+		return nil, false
+	}
+	return d, true
+}
+
+func (h *DeployHandler) List(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	out, err := h.svc.ListDeployables(server.ID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.Deployable]{Success: true, Data: out})
+}
+
+// Create registra un servicio como desplegable. Member: no toca el servidor,
+// sólo le enseña a cac qué hay ahí.
+func (h *DeployHandler) Create(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.CreateDeployableRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	d, err := h.svc.CreateDeployable(server, req)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.Deployable]{Success: true, Data: d})
+}
+
+func (h *DeployHandler) Update(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.UpdateDeployableRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.svc.UpdateDeployable(d, req)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.Deployable]{Success: true, Data: out})
+}
+
+// Delete: admin, porque se lleva el historial.
+func (h *DeployHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleAdmin)
+	if !ok {
+		return
+	}
+	if err := h.svc.DeleteDeployable(d.ServerID, d.ID); err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Deleted"})
+}
+
+// Deploy encola el despliegue de un commit. 202: lo hace el agente, en su
+// siguiente pregunta; lo que se ve después llega por el stream de eventos.
+func (h *DeployHandler) Deploy(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.DeployRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	dep, _, err := h.svc.RequestDeploy(d, domain.DeployByUser, user.UserID, req.Sha, "")
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusAccepted, domain.APIResponse[*domain.Deployment]{Success: true, Data: dep})
+}
+
+func (h *DeployHandler) Deployments(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	out, err := h.svc.ListDeployments(d.ID)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.DeploymentSummary]{Success: true, Data: out})
+}
+
+// Deployment: uno, con su log.
+func (h *DeployHandler) Deployment(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	dep, err := h.svc.FindDeployment(d.ID, chi.URLParam(r, "depId"))
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.Deployment]{Success: true, Data: dep})
+}
+
+func (h *DeployHandler) Rollback(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	dep, err := h.svc.Rollback(d, chi.URLParam(r, "depId"), user.UserID)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusAccepted, domain.APIResponse[*domain.Deployment]{Success: true, Data: dep})
+}
+
+func deployError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, repository.ErrDeployInFlight):
+		SendErrorResponse(w, http.StatusConflict, "A deploy is already queued or running for this service", "deploy-in-flight")
+	case errors.Is(err, service.ErrAgentTooOld):
+		SendErrorResponse(w, http.StatusConflict, "This server's agent is too old to deploy; reinstall it", "agent-too-old")
+	case errors.Is(err, service.ErrNothingToRollBackTo):
+		SendErrorResponse(w, http.StatusConflict, "There is nothing before this deploy to go back to", "nothing-to-roll-back-to")
+	case errors.Is(err, service.ErrRollbackOutsideRepo):
+		SendErrorResponse(w, http.StatusBadRequest, "The previous image is not from this service's repository", "rollback-outside-repo")
+	case errors.Is(err, service.ErrBadSha):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a commit sha", "bad-sha")
+	case errors.Is(err, service.ErrBadImageRepo):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not an image repository", "bad-image-repo")
+	case errors.Is(err, service.ErrBadServiceName):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a stack or service name", "bad-service-name")
+	case errors.Is(err, service.ErrDeployNotSwarm):
+		SendErrorResponse(w, http.StatusBadRequest, "Only swarm servers deploy from cac", "deploy-needs-swarm")
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+	default:
+		SendErrorResponse(w, http.StatusInternalServerError, "Deploy failed", err.Error())
+	}
+}

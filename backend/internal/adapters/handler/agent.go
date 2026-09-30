@@ -3,6 +3,8 @@ package handler
 import (
 	"errors"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 	"strconv"
 	"time"
 
@@ -15,15 +17,19 @@ import (
 // identidad con la que se presenta.
 type AgentHandler struct {
 	servers *service.ServerService
+	deploys *service.DeployService
 	// El reloj, inyectable para las pruebas del latido.
 	now func() time.Time
 	// maxWait: cuánto se sostiene una pregunta sin trabajo. 25 s, la misma
 	// cadencia que el ping del SSE: por debajo de lo que cortan los proxies.
 	maxWait time.Duration
+	// Cada cuánto se mira la cola mientras se sostiene la pregunta. Un segundo:
+	// lo que tarda un deploy en empezar desde que se pulsa, y nada que se note.
+	tick time.Duration
 }
 
-func NewAgentHandler(servers *service.ServerService) *AgentHandler {
-	return &AgentHandler{servers: servers, now: time.Now, maxWait: 25 * time.Second}
+func NewAgentHandler(servers *service.ServerService, deploys *service.DeployService) *AgentHandler {
+	return &AgentHandler{servers: servers, deploys: deploys, now: time.Now, maxWait: 25 * time.Second, tick: time.Second}
 }
 
 // AgentServer: el servidor autenticado por `AgentTokenMiddleware`.
@@ -42,7 +48,7 @@ func (h *AgentHandler) MintToken(w http.ResponseWriter, r *http.Request) {
 	if server.Type != domain.ServerTypeDockerSwarm {
 		// El agente es el de swarm. Un servidor kubernetes se lee desde el
 		// clúster del backend y no instala nada.
-		SendErrorResponse(w, http.StatusBadRequest, "Only swarm servers run an agent", "wrong-type")
+		SendErrorResponse(w, http.StatusBadRequest, "Only swarm servers run an agent", "agent-needs-swarm")
 		return
 	}
 	res, err := h.servers.MintAgentToken(server.ID)
@@ -79,14 +85,17 @@ func (h *AgentHandler) Session(w http.ResponseWriter, r *http.Request) {
 // trabajo, se sostiene la conexión hasta `wait` segundos (tope `maxWait`) y
 // se contesta 204; el agente vuelve a preguntar. Es un long-poll y no un
 // websocket porque no hace falta más: los trabajos llegan de uno en uno y un
-// segundo de retraso no se nota. En esta rebanada todavía no hay trabajos.
+// segundo de retraso no se nota. Mientras se sostiene se mira la cola cada
+// `tick`; en cuanto hay un deploy para esta máquina, se contesta con él.
 func (h *AgentHandler) Jobs(w http.ResponseWriter, r *http.Request) {
 	server, ok := AgentServer(r)
 	if !ok {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-agent")
 		return
 	}
-	if err := h.servers.Heartbeat(server.ID, h.now()); err != nil {
+	// La versión que dice el agente; uno de antes de decirla cuenta como 0.
+	version, _ := strconv.Atoi(r.Header.Get("X-Agent-Version"))
+	if err := h.servers.Heartbeat(server.ID, version, h.now()); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to record heartbeat", err.Error())
 		return
 	}
@@ -106,13 +115,77 @@ func (h *AgentHandler) Jobs(w http.ResponseWriter, r *http.Request) {
 			SendErrorResponse(w, http.StatusInternalServerError, "Cannot hold the poll", err.Error())
 			return
 		}
-		t := time.NewTimer(wait)
-		defer t.Stop()
+	}
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	tick := time.NewTicker(h.tick)
+	defer tick.Stop()
+	for {
+		if h.deploys != nil {
+			job, err := h.deploys.Claim(server.ID)
+			if err != nil {
+				SendErrorResponse(w, http.StatusInternalServerError, "Failed to claim a job", err.Error())
+				return
+			}
+			if job != nil {
+				SendResult(w, http.StatusOK, job)
+				return
+			}
+		}
 		select {
-		case <-t.C:
+		case <-deadline.C:
+			w.WriteHeader(http.StatusNoContent)
+			return
 		case <-r.Context().Done():
 			return
+		case <-tick.C:
 		}
 	}
+}
+
+// JobLog: el agente cuenta por dónde va. Sólo de un deploy en curso **de su
+// máquina**: con el id de otro servidor, 409, como si no existiera.
+func (h *AgentHandler) JobLog(w http.ResponseWriter, r *http.Request) {
+	server, ok := AgentServer(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-agent")
+		return
+	}
+	req, err := ValidateRequest[domain.AgentLogRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	if err := h.deploys.AppendLog(server.ID, chi.URLParam(r, "jid"), req.Lines); err != nil {
+		agentJobError(w, err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// JobFinish: el agente dice cómo acabó.
+func (h *AgentHandler) JobFinish(w http.ResponseWriter, r *http.Request) {
+	server, ok := AgentServer(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-agent")
+		return
+	}
+	req, err := ValidateRequest[domain.AgentFinishRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	if err := h.deploys.Finish(server.ID, chi.URLParam(r, "jid"), req); err != nil {
+		agentJobError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func agentJobError(w http.ResponseWriter, err error) {
+	if errors.Is(err, repository.ErrDeployNotRunning) {
+		SendErrorResponse(w, http.StatusConflict, "That job is not running here", "deploy-not-running")
+		return
+	}
+	SendErrorResponse(w, http.StatusInternalServerError, "Failed to record", err.Error())
 }

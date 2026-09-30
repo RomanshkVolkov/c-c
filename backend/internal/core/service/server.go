@@ -120,8 +120,8 @@ func (s *ServerService) AgentByToken(plain string) (*domain.Server, error) {
 }
 
 // Heartbeat: el agente preguntó, luego está.
-func (s *ServerService) Heartbeat(id string, now time.Time) error {
-	return s.repo.TouchAgent(id, now)
+func (s *ServerService) Heartbeat(id string, version int, now time.Time) error {
+	return s.repo.TouchAgent(id, version, now)
 }
 
 func (s *ServerService) Find(id string) (*domain.ServerResponse, error) {
@@ -188,5 +188,6 @@ func toResponseAt(s *domain.Server, now time.Time) *domain.ServerResponse {
 		HasAgentToken:     len(s.AgentTokenHash) > 0,
 		AgentTokenPreview: s.AgentTokenPreview,
 		AgentSeenAt:       s.AgentSeenAt,
+		AgentVersion:      s.AgentVersion,
 	}
 }

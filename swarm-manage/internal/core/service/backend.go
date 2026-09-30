@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -20,6 +21,11 @@ import (
 //
 // En esta rebanada no hay trabajos todavía: lo que llegue se registra y se
 // ignora. Los de despliegue llegan en la siguiente.
+// Version es la versión de este agente, la de `swarm-manage/VERSION`. Va en
+// cada pregunta (`X-Agent-Version`): el backend no le encola un deploy a un
+// agente que no sabe hacerlo. Lo ata al fichero `TestTheVersionIsTheFile`.
+const Version = 3
+
 type Poller struct {
 	BaseURL string
 	Token   string
@@ -93,6 +99,7 @@ func (p *Poller) poll(ctx context.Context) (*Job, error) {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+p.Token)
+	req.Header.Set("X-Agent-Version", strconv.Itoa(Version))
 	res, err := p.Client.Do(req)
 	if err != nil {
 		return nil, err

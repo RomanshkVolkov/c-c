@@ -17,6 +17,8 @@ export interface Server {
   hasAgentToken?: boolean;
   agentTokenPreview?: string;
   agentSeenAt?: string;
+  /** La versión que dijo el agente en su última pregunta; 0 si no la dice. */
+  agentVersion?: number;
 }
 
 export interface CreateServerPayload {

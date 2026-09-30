@@ -214,7 +214,11 @@ func provisioningDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.Server{}, &domain.ProvisioningRun{}); err != nil {
+	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.Server{}, &domain.ProvisioningRun{},
+		&domain.Deployable{}, &domain.Deployment{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.EnsureDeployIndexes(db); err != nil {
 		t.Fatal(err)
 	}
 	ahora := time.Now()
@@ -241,4 +245,10 @@ func provisioningDB(t *testing.T) (*gorm.DB, func()) {
 		admin.Exec("DROP DATABASE IF EXISTS " + name)
 		adminSQL.Close()
 	}
+}
+
+// chiContext: el contexto de rutas de chi de una petición, para añadirle
+// parámetros después de montarla.
+func chiContext(r *http.Request) *chi.Context {
+	return r.Context().Value(chi.RouteCtxKey).(*chi.Context)
 }

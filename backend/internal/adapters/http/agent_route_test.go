@@ -1,9 +1,11 @@
 package http
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 )
@@ -32,7 +35,7 @@ func TestPollMarksOnlineAndSilenceMarksOffline(t *testing.T) {
 	db, cleanup := agentDB(t)
 	defer cleanup()
 	r := chi.NewRouter()
-	InitServerRoutes(db, r)
+	InitServerRoutes(db, r, events.NewHub())
 	svc := service.NewServerService(repository.NewServerRepository(db))
 
 	tok, err := svc.MintAgentToken("srv-1")
@@ -53,12 +56,17 @@ func TestPollMarksOnlineAndSilenceMarksOffline(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/agent/v1/jobs?wait=0", nil)
 	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	req.Header.Set("X-Agent-Version", "5")
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("la pregunta sin trabajo → %d, se esperaba 204: %s", rec.Code, rec.Body.String())
 	}
 	if got := estado(); got != "online" {
 		t.Errorf("después de preguntar: %s, se esperaba online", got)
+	}
+	// Y la versión que dijo, la que quede apuntada.
+	if s, _ := svc.Find("srv-1"); s.AgentVersion != 5 {
+		t.Errorf("el agente dijo la versión 5 y quedó %d", s.AgentVersion)
 	}
 
 	// Dos minutos de silencio.
@@ -76,7 +84,7 @@ func TestTheAgentDoorWantsAnAgentToken(t *testing.T) {
 	db, cleanup := agentDB(t)
 	defer cleanup()
 	r := chi.NewRouter()
-	InitServerRoutes(db, r)
+	InitServerRoutes(db, r, events.NewHub())
 	svc := service.NewServerService(repository.NewServerRepository(db))
 	if _, err := svc.MintAgentToken("srv-1"); err != nil {
 		t.Fatal(err)
@@ -95,6 +103,82 @@ func TestTheAgentDoorWantsAnAgentToken(t *testing.T) {
 	}
 	if got, _ := svc.Find("srv-1"); got.Status != "pending" {
 		t.Errorf("un intento fallido cambió el estado a %s", got.Status)
+	}
+}
+
+// El recorrido entero de un deploy por las rutas de verdad: se encola, el
+// agente lo recoge en su pregunta, cuenta por dónde va y dice cómo acabó.
+func TestTheAgentPollHandsOverAQueuedDeploy(t *testing.T) {
+	db, cleanup := agentDB(t)
+	defer cleanup()
+	r := chi.NewRouter()
+	InitServerRoutes(db, r, events.NewHub())
+	servers := service.NewServerService(repository.NewServerRepository(db))
+	deploys := service.NewDeployService(repository.NewDeployRepository(db), repository.NewServerRepository(db), nil)
+
+	tok, err := servers.MintAgentToken("srv-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// El agente dice su versión en cada pregunta: ésa es la que cuenta.
+	if err := servers.Heartbeat("srv-1", domain.AgentVersionDeploys, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := servers.Find("srv-1")
+	d, err := deploys.CreateDeployable(srv, domain.CreateDeployableRequest{
+		Name: "api", Stack: "api", ServiceName: "api_app", ImageRepo: "ghcr.io/a/api",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, _, err := deploys.RequestDeploy(d, domain.DeployByUser, "u-ana", "abc1234", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok.Token)
+		req.Header.Set("X-Agent-Version", "3")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := do(http.MethodGet, "/agent/v1/jobs?wait=0", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("con un deploy en cola, la pregunta → %d: %s", rec.Code, rec.Body.String())
+	}
+	var job domain.AgentJob
+	if err := json.Unmarshal(rec.Body.Bytes(), &job); err != nil {
+		t.Fatal(err)
+	}
+	if job.ID != dep.ID || job.Kind != "deploy" || job.Data.Image != "ghcr.io/a/api:abc1234" || job.Data.ServiceName != "api_app" {
+		t.Fatalf("el trabajo no es el deploy encolado: %+v", job)
+	}
+
+	if rec := do(http.MethodPost, "/agent/v1/jobs/"+job.ID+"/log", `{"lines":["bajando la imagen"]}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("el log → %d: %s", rec.Code, rec.Body.String())
+	}
+	fin := `{"status":"succeeded","previousImage":"ghcr.io/a/api:viejo","finalImage":"ghcr.io/a/api:abc1234"}`
+	if rec := do(http.MethodPost, "/agent/v1/jobs/"+job.ID+"/finish", fin); rec.Code != http.StatusNoContent {
+		t.Fatalf("el cierre → %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got, err := deploys.FindDeployment(d.ID, dep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != domain.DeploySucceeded || !strings.Contains(got.Log, "bajando la imagen") {
+		t.Errorf("quedó %s con log %q", got.Status, got.Log)
+	}
+	// Y ya no hay nada más que recoger.
+	if rec := do(http.MethodGet, "/agent/v1/jobs?wait=0", ""); rec.Code != http.StatusNoContent {
+		t.Errorf("sin nada en cola, la pregunta → %d", rec.Code)
+	}
+	// La versión que dijo en la cabecera quedó guardada.
+	if s, _ := servers.Find("srv-1"); s.AgentVersion != 3 {
+		t.Errorf("la versión del agente quedó en %d, dijo 3", s.AgentVersion)
 	}
 }
 
@@ -124,7 +208,10 @@ func agentDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Organization{}, &domain.Server{}); err != nil {
+	if err := db.AutoMigrate(&domain.Organization{}, &domain.Server{}, &domain.Deployable{}, &domain.Deployment{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.EnsureDeployIndexes(db); err != nil {
 		t.Fatal(err)
 	}
 	ahora := time.Now()

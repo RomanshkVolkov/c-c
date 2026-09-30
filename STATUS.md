@@ -15,12 +15,13 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 **En curso (30-sep, #106 con R0–R8 en #107–#115): módulo de servidores** —
 deploys desde cac, GitHub App, Ansible desde la app y secrets por referencia a
-1Password, con adopción gradual por proyecto. **R0 y R1 hechas, sin
-commitear:** `GET /servers/{id}`, registro de provisioning, y la identidad del
-agente (token por servidor, pases de sesión, long-poll saliente como latido,
-imagen versionada `:v2`). Publicar en orden: backend → imagen del agente (se
-construye sola al empujar `swarm-manage/`) → app. Los agentes v1 siguen
-funcionando sin identidad hasta que se reinstalen.
+1Password, con adopción gradual por proyecto. **R0 y R1 publicadas**
+(v1.6.76, agente `:v2`). **R2 hecha, sin commitear:** desplegar un commit y
+volver atrás desde cac, con historial y log en vivo; el agente `:v3` hace el
+deploy con `service update` (pull antes, digest clavado, convergencia
+comprobada), y un agente viejo se rechaza al pedir el deploy. Registrar un
+servicio no toca el servidor. Publicar: backend → agente `:v3` → app; luego
+«Update agent» en cada servidor.
 
 **En curso (28-sep, #96, sin commitear):** crear un usuario pide nombre y
 correo (backend `CreateUserRequest` y el diálogo), el diálogo dice qué falta en

@@ -21,7 +21,6 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	r.Use(middleware.Recovery)
 
 	InitAuthRoutes(db, r)
-	InitServerRoutes(db, r)
 	InitCollectionRoutes(db, r)
 	// One hub for the whole process: reports and tasks both broadcast on it, and
 	// a single SSE connection per client carries everything.
@@ -38,6 +37,8 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	// Después del hub, y no antes: añadir a alguien a una organización tiene que
 	// poder avisarle **a él**, y para eso el servicio necesita voz.
 	InitOrganizationRoutes(db, r, hub)
+	// Los servidores también: un deploy cuenta por el hub por dónde va.
+	InitServerRoutes(db, r, hub)
 	InitReportRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub)
 	InitNotificationRoutes(db, r)

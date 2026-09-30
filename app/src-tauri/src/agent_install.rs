@@ -22,7 +22,7 @@ use crate::{ssh_run_input, stage_public_key, SshOutput};
 /// La versión del agente que esta app sabe hablar. La publica
 /// `.github/workflows/swarm-manage.yml` desde `swarm-manage/VERSION`; que las
 /// dos digan lo mismo lo fija `la_imagen_es_la_version_del_agente`.
-pub(crate) const AGENT_IMAGE: &str = "ghcr.io/romanshkvolkov/c-c/swarm-manage:v2";
+pub(crate) const AGENT_IMAGE: &str = "ghcr.io/romanshkvolkov/c-c/swarm-manage:v3";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,7 +61,9 @@ fn sh_quote(s: &str) -> String {
 fn validate(i: &AgentInstall) -> Result<(), String> {
     let id_ok = !i.server_id.is_empty()
         && i.server_id.len() <= 64
-        && i.server_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        && i.server_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-');
     if !id_ok {
         return Err("id de servidor inválido".into());
     }
@@ -74,7 +76,9 @@ fn validate(i: &AgentInstall) -> Result<(), String> {
         return Err("URL del backend inválida".into());
     }
     if !i.agent_token.starts_with("cac_agent_")
-        || !i.agent_token[10..].chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || !i.agent_token[10..]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err("token de agente inválido".into());
     }
@@ -82,7 +86,11 @@ fn validate(i: &AgentInstall) -> Result<(), String> {
         return Err("llave de sesión inválida".into());
     }
     if let Some(stack) = &i.stack {
-        if stack.is_empty() || !stack.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        if stack.is_empty()
+            || !stack
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
             return Err("nombre de stack inválido".into());
         }
     }
@@ -91,7 +99,22 @@ fn validate(i: &AgentInstall) -> Result<(), String> {
 
 /// El compose del agente. Sin valores secretos: sólo los nombres de los
 /// secrets, que no revelan nada (llevan un hash del valor, no el valor).
-fn compose(i: &AgentInstall, token_secret: &str, key_secret: &str) -> String {
+fn compose(
+    i: &AgentInstall,
+    token_secret: &str,
+    key_secret: &str,
+    registry_secret: Option<&str>,
+) -> String {
+    // Las credenciales del registro son opcionales: sin ellas el agente sólo
+    // puede bajar imágenes públicas, y un deploy de una privada lo dice al
+    // fallar.
+    let (reg_mount, reg_decl) = match registry_secret {
+        Some(r) => (
+            format!("\n      - source: {r}\n        target: cac_registry_auth"),
+            format!("  {r}:\n    external: true\n"),
+        ),
+        None => (String::new(), String::new()),
+    };
     format!(
         "version: '3.8'
 services:
@@ -106,7 +129,7 @@ services:
       - source: {token_secret}
         target: cac_agent_token
       - source: {key_secret}
-        target: cac_agent_session_key
+        target: cac_agent_session_key{reg_mount}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
@@ -119,7 +142,7 @@ secrets:
     external: true
   {key_secret}:
     external: true
-",
+{reg_decl}",
         port = i.agent_port,
         url = i.backend_url,
         id = i.server_id,
@@ -133,28 +156,40 @@ secrets:
 /// `docker secret create`. Al final se podan las versiones viejas de los
 /// secrets del agente; las que sigue usando alguna tarea se niegan a borrarse
 /// y se quedan para la próxima vez.
-pub(crate) fn install_script(i: &AgentInstall) -> Result<String, String> {
+pub(crate) fn install_script(
+    i: &AgentInstall,
+    registry_auth: Option<&str>,
+) -> Result<String, String> {
     validate(i)?;
     let stack = i.stack.clone().unwrap_or_else(|| "cac".to_string());
     let token_secret = secret_name("cac_agent_token", &i.agent_token);
     let key_secret = secret_name("cac_agent_session_key", &i.session_key);
-    let compose = compose(i, &token_secret, &key_secret);
+    let registry_secret = registry_auth.map(|r| secret_name("cac_registry_auth", r));
+    let compose = compose(i, &token_secret, &key_secret, registry_secret.as_deref());
+    let (reg_var, reg_create, reg_keep) = match (&registry_secret, registry_auth) {
+        (Some(name), Some(value)) => (
+            format!("REG={}\n", sh_quote(value)),
+            format!("docker secret inspect {name} >/dev/null 2>&1 || printf '%s' \"$REG\" | docker secret create {name} - >/dev/null\n"),
+            format!("|{name}"),
+        ),
+        _ => (String::new(), String::new(), String::new()),
+    };
     Ok(format!(
         "set -eu
 umask 077
 TOKEN={token}
 SKEY={skey}
-docker secret inspect {token_secret} >/dev/null 2>&1 || printf '%s' \"$TOKEN\" | docker secret create {token_secret} - >/dev/null
+{reg_var}docker secret inspect {token_secret} >/dev/null 2>&1 || printf '%s' \"$TOKEN\" | docker secret create {token_secret} - >/dev/null
 docker secret inspect {key_secret} >/dev/null 2>&1 || printf '%s' \"$SKEY\" | docker secret create {key_secret} - >/dev/null
-unset TOKEN SKEY
+{reg_create}unset TOKEN SKEY REG
 F=$(mktemp)
 cat > \"$F\" <<'CAC_COMPOSE'
 {compose}CAC_COMPOSE
 docker stack deploy -c \"$F\" {stack}
 rm -f \"$F\"
-for s in $(docker secret ls --filter name=cac_agent_ --format '{{{{.Name}}}}'); do
+for s in $(docker secret ls --filter name=cac_agent_ --filter name=cac_registry_auth --format '{{{{.Name}}}}'); do
   case \"$s\" in
-    {token_secret}|{key_secret}) ;;
+    {token_secret}|{key_secret}{reg_keep}) ;;
     *) docker secret rm \"$s\" >/dev/null 2>&1 || true ;;
   esac
 done
@@ -165,16 +200,34 @@ echo \"agente {AGENT_IMAGE} instalado en el stack {stack}\"
     ))
 }
 
+/// Las credenciales del registro como las lee el agente
+/// (`config.RegistryAuth`). ghcr acepta cualquier usuario con un token.
+fn registry_auth_json(token: &str) -> String {
+    serde_json::json!({ "username": "x-access-token", "password": token }).to_string()
+}
+
 /// Instala o reinstala el agente. La identidad la acuña el backend justo
 /// antes; aquí sólo se lleva.
 #[tauri::command]
 pub fn install_swarm_manage_agent(install: AgentInstall) -> Result<SshOutput, String> {
-    let script = install_script(&install)?;
-    let staged = match install.identity_key.as_deref().filter(|k| !k.trim().is_empty()) {
+    // El token de GitHub de este servidor, si se guardó (la pantalla de
+    // secretos del stack lo usa ya): con él el agente puede bajar las imágenes
+    // privadas de ghcr. Sin él, sólo públicas.
+    let registry = crate::keychain_get(&install.server_id)
+        .ok()
+        .map(|token| registry_auth_json(&token));
+    let script = install_script(&install, registry.as_deref())?;
+    let staged = match install
+        .identity_key
+        .as_deref()
+        .filter(|k| !k.trim().is_empty())
+    {
         Some(k) => Some(stage_public_key(k)?),
         None => None,
     };
-    let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+    let identity = staged
+        .as_ref()
+        .map(|s| s.path.to_string_lossy().into_owned());
     ssh_run_input(
         &install.host,
         install.ssh_port,
@@ -212,8 +265,14 @@ mod tests {
         let i = install();
         let args = ssh_base_args(&i.host, i.ssh_port, &i.ssh_user, "sh -s", None);
         let todo = args.join(" ");
-        assert!(!todo.contains(&i.agent_token), "el token está en el argv de ssh: {todo}");
-        assert!(!todo.contains(&i.session_key), "la llave está en el argv de ssh: {todo}");
+        assert!(
+            !todo.contains(&i.agent_token),
+            "el token está en el argv de ssh: {todo}"
+        );
+        assert!(
+            !todo.contains(&i.session_key),
+            "la llave está en el argv de ssh: {todo}"
+        );
         assert_eq!(args.last().map(String::as_str), Some("sh -s"));
     }
 
@@ -222,7 +281,7 @@ mod tests {
     #[test]
     fn el_compose_nombra_los_secretos_sin_llevarlos() {
         let i = install();
-        let script = install_script(&i).unwrap();
+        let script = install_script(&i, None).unwrap();
         let inicio = script.find("<<'CAC_COMPOSE'").unwrap();
         let compose = &script[inicio..];
         assert!(!compose.contains(&i.agent_token));
@@ -236,8 +295,40 @@ mod tests {
         // Cada valor sale **una vez** en todo el guion: en su asignación a la
         // variable. Cualquier otra aparición es el valor usado a pelo, como
         // argumento de algo, y eso lo ve `ps` en el servidor.
-        assert_eq!(script.matches(&i.agent_token).count(), 1, "el token aparece fuera de su asignación");
-        assert_eq!(script.matches(&i.session_key).count(), 1, "la llave aparece fuera de su asignación");
+        assert_eq!(
+            script.matches(&i.agent_token).count(),
+            1,
+            "el token aparece fuera de su asignación"
+        );
+        assert_eq!(
+            script.matches(&i.session_key).count(),
+            1,
+            "la llave aparece fuera de su asignación"
+        );
+    }
+
+    /// Con token de GitHub, el agente recibe credenciales del registro: como
+    /// secret, montadas donde las lee, y el valor una sola vez en el guion.
+    /// Sin token, ni rastro.
+    #[test]
+    fn las_credenciales_del_registro_van_como_secreto() {
+        let i = install();
+        let reg = registry_auth_json("ghp_SECRETO123");
+        let script = install_script(&i, Some(&reg)).unwrap();
+        assert!(script.contains("target: cac_registry_auth"));
+        assert_eq!(
+            script.matches("ghp_SECRETO123").count(),
+            1,
+            "el token aparece fuera de su asignación"
+        );
+        assert!(script.contains("printf '%s' \"$REG\" | docker secret create cac_registry_auth_"));
+
+        let sin = install_script(&i, None).unwrap();
+        assert!(
+            !sin.contains("cac_registry_auth_"),
+            "sin token no debe haber secret del registro"
+        );
+        assert!(!sin.contains("REG="));
     }
 
     /// El mismo valor da el mismo nombre (reinstalar no crea nada), y uno
@@ -259,25 +350,25 @@ mod tests {
     fn se_rechaza_lo_que_romperia_el_compose() {
         let mut i = install();
         i.server_id = "abc\n  privileged: true".into();
-        assert!(install_script(&i).is_err());
+        assert!(install_script(&i, None).is_err());
 
         let mut i = install();
         i.backend_url = "https://cac.guz-studio.dev\"\n  x: y".into();
-        assert!(install_script(&i).is_err());
+        assert!(install_script(&i, None).is_err());
 
         let mut i = install();
         i.agent_token = "cac_agent_abc'; rm -rf /".into();
-        assert!(install_script(&i).is_err());
+        assert!(install_script(&i, None).is_err());
 
         let mut i = install();
         i.session_key = "zz".repeat(32);
-        assert!(install_script(&i).is_err());
+        assert!(install_script(&i, None).is_err());
 
         let mut i = install();
         i.stack = Some("cac; reboot".into());
-        assert!(install_script(&i).is_err());
+        assert!(install_script(&i, None).is_err());
 
-        assert!(install_script(&install()).is_ok());
+        assert!(install_script(&install(), None).is_ok());
     }
 
     /// El guion es sh válido. Se corre en el servidor por stdin, así que un
@@ -289,16 +380,26 @@ mod tests {
         use std::process::{Command, Stdio};
         let mut i = install();
         i.agent_token = "cac_agent_con-guion_y_barra".into();
-        let script = install_script(&i).unwrap();
-        let mut sh = Command::new("sh")
-            .arg("-n")
-            .stdin(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("sh");
-        sh.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
-        let out = sh.wait_with_output().unwrap();
-        assert!(out.status.success(), "sh -n: {}", String::from_utf8_lossy(&out.stderr));
+        for reg in [None, Some(registry_auth_json("ghp_con'comilla"))] {
+            let script = install_script(&i, reg.as_deref()).unwrap();
+            let mut sh = Command::new("sh")
+                .arg("-n")
+                .stdin(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("sh");
+            sh.stdin
+                .take()
+                .unwrap()
+                .write_all(script.as_bytes())
+                .unwrap();
+            let out = sh.wait_with_output().unwrap();
+            assert!(
+                out.status.success(),
+                "sh -n: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
     }
 
     /// La imagen que instala la app es la versión que publica el workflow.

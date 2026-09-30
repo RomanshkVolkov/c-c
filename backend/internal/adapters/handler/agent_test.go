@@ -58,7 +58,7 @@ func TestRemintingRevokesThePreviousToken(t *testing.T) {
 func TestOnlyAdminsMintAgentTokens(t *testing.T) {
 	db, cleanup := provisioningDB(t)
 	defer cleanup()
-	h := NewAgentHandler(service.NewServerService(repository.NewServerRepository(db)))
+	h := NewAgentHandler(service.NewServerService(repository.NewServerRepository(db)), nil)
 
 	rec := httptest.NewRecorder()
 	h.MintToken(rec, serverReq(http.MethodPost, "srv-1", "", "", claims("u-ana", "org-1", domain.OrgRoleMember)))
@@ -136,7 +136,7 @@ func TestTheAppNoLongerDecidesAnAgentWithIdentity(t *testing.T) {
 	if _, err := svc.MintAgentToken("srv-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Heartbeat("srv-1", time.Now()); err != nil {
+	if err := svc.Heartbeat("srv-1", 3, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.ReportAgentStatus("srv-1", "offline"); err != nil {
@@ -179,7 +179,7 @@ func TestTheAgentPollOutlivesTheServerWriteTimeout(t *testing.T) {
 	db, cleanup := provisioningDB(t)
 	defer cleanup()
 	svc := service.NewServerService(repository.NewServerRepository(db))
-	h := NewAgentHandler(svc)
+	h := NewAgentHandler(svc, nil)
 	srv := &domain.Server{BaseModel: domain.BaseModel{ID: "srv-1"}}
 
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

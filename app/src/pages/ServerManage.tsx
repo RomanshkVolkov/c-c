@@ -1,19 +1,10 @@
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
+import DeployDialog from "@/components/servers/DeployDialog";
 import { useState, useEffect, useRef, useMemo } from "react";
 import AnsiToHtml from "ansi-to-html";
 import { useNavigate, useLocation } from "react-router-dom";
-import {
-  Activity,
-  ArrowLeft,
-  RefreshCw,
-  Search,
-  Terminal,
-  X,
-  RotateCcw,
-  KeyRound,
-  SquareTerminal,
-} from "lucide-react";
+import { Activity, ArrowLeft, RefreshCw, Search, Terminal, X, RotateCcw, KeyRound, SquareTerminal, Rocket } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Tooltip,
@@ -212,6 +203,7 @@ function ServicesTab({
   onLogsClick,
   onSecretsClick,
   onShellClick,
+  onDeployClick,
 }: {
   services: SwarmService[];
   host: string;
@@ -221,6 +213,7 @@ function ServicesTab({
   onLogsClick: (svc: SwarmService) => void;
   onSecretsClick: (svc: SwarmService) => void;
   onShellClick: (svc: SwarmService) => void;
+  onDeployClick: (svc: SwarmService) => void;
 }) {
   const { t } = useT();
   const needle = filter.trim().toLowerCase();
@@ -269,6 +262,7 @@ function ServicesTab({
           onLogsClick={onLogsClick}
           onSecretsClick={onSecretsClick}
           onShellClick={onShellClick}
+          onDeployClick={onDeployClick}
         />
       )}
 
@@ -288,6 +282,7 @@ function ServicesTable({
   onLogsClick,
   onSecretsClick,
   onShellClick,
+  onDeployClick,
 }: {
   services: SwarmService[];
   host: string;
@@ -295,6 +290,7 @@ function ServicesTable({
   onLogsClick: (svc: SwarmService) => void;
   onSecretsClick: (svc: SwarmService) => void;
   onShellClick: (svc: SwarmService) => void;
+  onDeployClick: (svc: SwarmService) => void;
 }) {
   const { t } = useT();
   return (
@@ -396,6 +392,10 @@ function ServicesTable({
               >
                 <RotateCcw className="h-3 w-3 mr-1" />
                 {t("common:servers.restart")}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onDeployClick(svc)}>
+                <Rocket className="h-3 w-3 mr-1" />
+                {t("common:deploy.deploy")}
               </Button>
               <Button
                 variant="ghost"
@@ -535,6 +535,7 @@ function SwarmManage({ server }: { server: Server }) {
     null,
   );
   const [servicesFilter, setServicesFilter] = useState("");
+  const [deployFor, setDeployFor] = useState<SwarmService | null>(null);
 
   const { services, nodes, loading, error, refresh } = useSwarm(
     server.host,
@@ -655,12 +656,22 @@ function SwarmManage({ server }: { server: Server }) {
                 onShellClick={(svc) =>
                   abrirTerminal(server, { kind: "service", name: svc.name })
                 }
+                onDeployClick={setDeployFor}
               />
             ) : (
               <NodesTab nodes={nodes} />
             )}
           </CardContent>
         </Card>
+
+        {deployFor && (
+          <DeployDialog
+            server={server}
+            service={deployFor}
+            open
+            onOpenChange={(v) => !v && setDeployFor(null)}
+          />
+        )}
 
         {selectedService && (
           <LogsPanel

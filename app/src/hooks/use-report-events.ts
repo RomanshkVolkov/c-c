@@ -11,6 +11,8 @@ import i18next from "i18next";
 
 import { STATUS_LABEL_KEYS, normalizeStatus } from "@/types/report";
 import { useAuthStore } from "@/store/auth.store";
+import { useDeploymentsStore, type DeployLogEvent } from "@/store/deployments.store";
+import type { Deployment } from "@/types/deploy";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
@@ -305,6 +307,14 @@ export function useReportEvents() {
       // sin actualizar.
       if (tocaLaCampana(event)) releerBandeja();
       switch (event) {
+        // Un deploy avanza: lo cuenta el agente del servidor, y aquí se funde
+        // con el historial y el log que haya en pantalla.
+        case "deploy:status":
+          useDeploymentsStore.getState().onStatus(parse(data) as unknown as Deployment);
+          break;
+        case "deploy:log":
+          useDeploymentsStore.getState().onLog(parse(data) as unknown as DeployLogEvent);
+          break;
         case "report:new": {
           const p = parse(data);
           if (mine(p)) {

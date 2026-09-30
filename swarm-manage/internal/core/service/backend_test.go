@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"os"
+	"strconv"
+	"strings"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -14,6 +17,9 @@ import (
 func TestThePollerAsksWithItsTokenAndKeepsAsking(t *testing.T) {
 	var preguntas atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Agent-Version") != strconv.Itoa(Version) {
+			t.Errorf("preguntó sin decir su versión: %q", r.Header.Get("X-Agent-Version"))
+		}
 		if r.Header.Get("Authorization") != "Bearer cac_agent_x" {
 			t.Errorf("preguntó sin su token: %q", r.Header.Get("Authorization"))
 		}
@@ -79,5 +85,16 @@ func TestThePollerBacksOffAfterAFailure(t *testing.T) {
 	// cientos.
 	if n := preguntas.Load(); n > 5 {
 		t.Errorf("preguntó %d veces en 350 ms: no espera tras un fallo", n)
+	}
+}
+
+// La versión que dice el agente es la del fichero que publica el workflow.
+func TestTheVersionIsTheFile(t *testing.T) {
+	raw, err := os.ReadFile("../../../VERSION")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(raw)) != strconv.Itoa(Version) {
+		t.Errorf("VERSION dice %q y el agente dice %d", strings.TrimSpace(string(raw)), Version)
 	}
 }

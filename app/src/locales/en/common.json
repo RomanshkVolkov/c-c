@@ -595,5 +595,37 @@
     "undated_other": "{{count}} with no date",
     "undatedDrag_one": "{{count}} with no date — drag it onto a day to schedule it",
     "undatedDrag_other": "{{count}} with no date — drag one onto a day to schedule it"
+  },
+  "deploy": {
+    "title": "Deploy {{name}}",
+    "notYet": "This service isn't deployed from cac yet.",
+    "notYetLead": "Registering it changes nothing on the server: its CI keeps deploying as it does today. What you get is deploying a commit and rolling back from here, with history.",
+    "name": "Name",
+    "environment": "Environment",
+    "imageRepo": "Image repository",
+    "imageRepoHint": "no tag, e.g. ghcr.io/org/repo",
+    "register": "Register",
+    "sha": "Commit",
+    "shaHint": "the commit sha, short or full",
+    "deploy": "Deploy",
+    "deploying": "Deploying…",
+    "now": "Now: {{image}}",
+    "history": "History",
+    "empty": "Nothing has been deployed from cac yet.",
+    "rollback": "Go back to the previous one",
+    "rollbackTitle": "Go back to what was there before this deploy?",
+    "rollbackBody": "This deploys {{image}}, which is what the service had right before.",
+    "viewLog": "Log",
+    "byCI": "CI",
+    "byGitHub": "GitHub",
+    "queued": "Queued: the agent will pick it up in a few seconds.",
+    "noAgent": "This server's agent has no identity: press «Update agent» before deploying.",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Deployed",
+      "failed": "Failed",
+      "rolled_back": "Rolled back"
+    }
   }
 }

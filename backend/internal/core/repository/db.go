@@ -85,6 +85,8 @@ func DBConnection() {
 		&domain.TelemetryEvent{},
 		&domain.ServerIntegration{},
 		&domain.ProvisioningRun{},
+		&domain.Deployable{},
+		&domain.Deployment{},
 		&domain.PersonalAccessToken{},
 		&domain.TaskSpace{},
 		&domain.TaskFolder{},
@@ -140,6 +142,12 @@ func DBConnection() {
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency
 		ON tasks (list_id, idempotency_key) WHERE idempotency_key <> ''`).Error; err != nil {
 		lg.Error("idempotency index: " + err.Error())
+	}
+
+	// Un solo deploy vivo por servicio, y un aviso del CI una sola vez. Ver
+	// deploy.go: están ahí para que las pruebas monten los mismos.
+	if err := EnsureDeployIndexes(db); err != nil {
+		lg.Error("deploy indexes: " + err.Error())
 	}
 
 	// Una decisión escrita desde un comentario se escribe una sola vez.

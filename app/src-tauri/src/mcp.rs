@@ -37,8 +37,9 @@ fn cfg() -> Result<Cfg, String> {
         .unwrap_or_else(|_| "https://cac.guz-studio.dev".to_string())
         .trim_end_matches('/')
         .to_string();
-    let token = std::env::var("CAC_TOKEN")
-        .map_err(|_| "CAC_TOKEN is not set (create one in cac → Connect Claude Code)".to_string())?;
+    let token = std::env::var("CAC_TOKEN").map_err(|_| {
+        "CAC_TOKEN is not set (create one in cac → Connect Claude Code)".to_string()
+    })?;
     Ok(Cfg { base, token })
 }
 
@@ -95,7 +96,12 @@ fn api_put(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
 /// Multipart write, for the endpoints that accept files. Comments take
 /// multipart even when they carry only text — one format for the whole family,
 /// rather than JSON here and multipart there depending on attachments.
-fn api_form(cfg: &Cfg, method: &str, path: &str, fields: Vec<(&str, String)>) -> Result<Value, String> {
+fn api_form(
+    cfg: &Cfg,
+    method: &str,
+    path: &str,
+    fields: Vec<(&str, String)>,
+) -> Result<Value, String> {
     let url = format!("{}{}", cfg.base, path);
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -559,7 +565,10 @@ fn resolve_names(
     let mut ids = Vec::with_capacity(wanted.len());
     let mut missing = vec![];
     for w in wanted {
-        match available.iter().find(|(name, _)| name.eq_ignore_ascii_case(w)) {
+        match available
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(w))
+        {
             Some((_, id)) => {
                 if !ids.contains(id) {
                     ids.push(id.clone());
@@ -574,7 +583,11 @@ fn resolve_names(
         return Err(format!(
             "No such {what}: \"{}\". Available: {}",
             missing.join("\", \""),
-            if names.is_empty() { "none".into() } else { names.join(", ") }
+            if names.is_empty() {
+                "none".into()
+            } else {
+                names.join(", ")
+            }
         ));
     }
     Ok(ids)
@@ -589,7 +602,10 @@ fn org_of_list(spaces: &Value, list_id: &str) -> Option<String> {
     fn has(lists: Option<&Value>, id: &str) -> bool {
         lists
             .and_then(|l| l.as_array())
-            .map(|a| a.iter().any(|l| l.get("id").and_then(|v| v.as_str()) == Some(id)))
+            .map(|a| {
+                a.iter()
+                    .any(|l| l.get("id").and_then(|v| v.as_str()) == Some(id))
+            })
             .unwrap_or(false)
     }
     fn in_folders(folders: Option<&Value>, id: &str) -> bool {
@@ -680,7 +696,13 @@ fn sections(body: &str) -> Vec<Section> {
     let mut pos = 0;
     for line in body.split_inclusive('\n') {
         let t = line.trim_start();
-        let marker = if t.starts_with("```") { Some("```") } else if t.starts_with("~~~") { Some("~~~") } else { None };
+        let marker = if t.starts_with("```") {
+            Some("```")
+        } else if t.starts_with("~~~") {
+            Some("~~~")
+        } else {
+            None
+        };
         match (fence, marker) {
             (None, Some(m)) => fence = Some(m),
             (Some(open), Some(m)) if open == m => fence = None,
@@ -689,7 +711,11 @@ fn sections(body: &str) -> Vec<Section> {
         if fence.is_none() && marker.is_none() {
             let hashes = line.bytes().take_while(|b| *b == b'#').count();
             if (1..=6).contains(&hashes) && line[hashes..].starts_with(' ') {
-                let text = line[hashes..].trim().trim_end_matches('#').trim().to_string();
+                let text = line[hashes..]
+                    .trim()
+                    .trim_end_matches('#')
+                    .trim()
+                    .to_string();
                 heads.push((pos, pos + line.len(), hashes, text));
             }
         }
@@ -704,7 +730,13 @@ fn sections(body: &str) -> Vec<Section> {
                 .find(|(_, _, l, _)| l <= level)
                 .map(|(s, _, _, _)| *s)
                 .unwrap_or(body.len());
-            Section { heading: text.clone(), level: *level, start: *start, content_start: *content_start, end }
+            Section {
+                heading: text.clone(),
+                level: *level,
+                start: *start,
+                content_start: *content_start,
+                end,
+            }
         })
         .collect()
 }
@@ -716,7 +748,10 @@ fn sections(body: &str) -> Vec<Section> {
 fn find_section(body: &str, wanted: &str) -> Result<Section, String> {
     let w = wanted.trim().trim_start_matches('#').trim();
     let all = sections(body);
-    let hits: Vec<&Section> = all.iter().filter(|s| s.heading.eq_ignore_ascii_case(w)).collect();
+    let hits: Vec<&Section> = all
+        .iter()
+        .filter(|s| s.heading.eq_ignore_ascii_case(w))
+        .collect();
     match hits.len() {
         1 => Ok(hits[0].clone()),
         0 => Err(format!(
@@ -761,7 +796,10 @@ fn splice_section(body: &str, s: &Section, content: &str) -> String {
 }
 
 fn doc_tab_of<'a>(doc: &'a Value, key: &str) -> Option<&'a Value> {
-    doc.get("tabs")?.as_array()?.iter().find(|t| t.get("key").and_then(|k| k.as_str()) == Some(key))
+    doc.get("tabs")?
+        .as_array()?
+        .iter()
+        .find(|t| t.get("key").and_then(|k| k.as_str()) == Some(key))
 }
 
 fn tab_body(tab: &Value) -> &str {
@@ -856,7 +894,14 @@ fn recorded_decision(doc: &Value) -> Value {
     let newest = doc
         .get("decisions")
         .and_then(|d| d.as_array())
-        .and_then(|a| a.iter().max_by_key(|d| d.get("createdAt").and_then(|c| c.as_str()).unwrap_or("").to_string()));
+        .and_then(|a| {
+            a.iter().max_by_key(|d| {
+                d.get("createdAt")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            })
+        });
     match newest {
         Some(d) => json!({
             "recorded": true,
@@ -926,7 +971,11 @@ fn write_section(
             Err(conflict) => return Ok(conflict),
         };
         let mut req = json!({ "body": new_body });
-        if let Some(h) = t.get("bodyHash").and_then(|v| v.as_str()).filter(|h| !h.is_empty()) {
+        if let Some(h) = t
+            .get("bodyHash")
+            .and_then(|v| v.as_str())
+            .filter(|h| !h.is_empty())
+        {
             req["baseHash"] = json!(h);
         }
         let out = api_put(cfg, &format!("{path}/tabs/{tab}"), req)?;
@@ -943,7 +992,10 @@ fn write_section(
             "updatedAt": after.and_then(|t| t.get("updatedAt")),
         }));
     }
-    Err("The tab kept changing while writing this section. Read it again with get_doc and retry.".into())
+    Err(
+        "The tab kept changing while writing this section. Read it again with get_doc and retry."
+            .into(),
+    )
 }
 
 /// El cuerpo de `record_decision`.
@@ -975,7 +1027,10 @@ fn tag_pairs(data: &Value) -> Vec<(String, String)> {
         .map(|a| {
             a.iter()
                 .filter_map(|t| {
-                    Some((t.get("name")?.as_str()?.to_string(), t.get("id")?.as_str()?.to_string()))
+                    Some((
+                        t.get("name")?.as_str()?.to_string(),
+                        t.get("id")?.as_str()?.to_string(),
+                    ))
                 })
                 .collect()
         })
@@ -1000,13 +1055,27 @@ fn member_pairs(data: &Value) -> Vec<(String, String)> {
 
 /// Etiquetas, responsables y fechas de una tarea, ya resueltos a lo que espera
 /// el backend. Lo usan crear y editar, para que las dos digan lo mismo.
-fn resolve_task_extras(cfg: &Cfg, org_id: &str, args: &Value, body: &mut Value) -> Result<(), String> {
+fn resolve_task_extras(
+    cfg: &Cfg,
+    org_id: &str,
+    args: &Value,
+    body: &mut Value,
+) -> Result<(), String> {
     if let Some(names) = arg_names(args, "tags") {
-        let tags = api_get(cfg, &format!("/api/v1/task-tags/{}", qs(vec![format!("orgId={}", urlencode(org_id))])))?;
+        let tags = api_get(
+            cfg,
+            &format!(
+                "/api/v1/task-tags/{}",
+                qs(vec![format!("orgId={}", urlencode(org_id))])
+            ),
+        )?;
         body["tagIds"] = json!(resolve_names(&names, &tag_pairs(&tags), "tag")?);
     }
     if let Some(names) = arg_names(args, "assignees") {
-        let members = api_get(cfg, &format!("/api/v1/organizations/{}/members", urlencode(org_id)))?;
+        let members = api_get(
+            cfg,
+            &format!("/api/v1/organizations/{}/members", urlencode(org_id)),
+        )?;
         body["assigneeIds"] = json!(resolve_names(&names, &member_pairs(&members), "member")?);
     }
     // Sólo el vencimiento. `startAt` también existe en el backend, pero nada
@@ -1725,7 +1794,10 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 patch.insert("assigneeUserId".to_string(), json!(v));
             }
             if patch.is_empty() {
-                return Err("nothing to change: pass status, priority, category, area or assigneeUserId".into());
+                return Err(
+                    "nothing to change: pass status, priority, category, area or assigneeUserId"
+                        .into(),
+                );
             }
             let detail = api_patch(
                 cfg,
@@ -1847,7 +1919,8 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             // Etiquetas, responsables y vencimiento se resuelven **antes** de
             // crear: un nombre que no existe tiene que fallar sin dejar detrás
             // una tarea a medias.
-            let wants_names = arg_names(args, "tags").is_some() || arg_names(args, "assignees").is_some();
+            let wants_names =
+                arg_names(args, "tags").is_some() || arg_names(args, "assignees").is_some();
             if wants_names || arg_str(args, "dueAt").is_some() {
                 let org_id = if wants_names {
                     let spaces = api_get(cfg, "/api/v1/task-spaces/")?;
@@ -1863,7 +1936,11 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             let tag_ids = body.as_object_mut().and_then(|o| o.remove("tagIds"));
             let data = api_post(cfg, &format!("/api/v1/task-lists/{list_id}/tasks"), body)?;
             if let (Some(ids), Some(id)) = (tag_ids, data.get("id").and_then(|v| v.as_str())) {
-                api_patch(cfg, &format!("/api/v1/tasks/{}", urlencode(id)), json!({ "tagIds": ids }))?;
+                api_patch(
+                    cfg,
+                    &format!("/api/v1/tasks/{}", urlencode(id)),
+                    json!({ "tagIds": ids }),
+                )?;
             }
             // Echo back what was created, including the sequence number, so the
             // caller can refer to the task without another round trip.
@@ -1921,7 +1998,11 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
 
             let mut changed: Vec<&str> = vec![];
             if !body.as_object().map(|o| o.is_empty()).unwrap_or(true) {
-                api_patch(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)), body.clone())?;
+                api_patch(
+                    cfg,
+                    &format!("/api/v1/tasks/{}", urlencode(&id)),
+                    body.clone(),
+                )?;
                 changed.extend(body.as_object().unwrap().keys().map(|k| k.as_str()));
             }
             if let Some(status) = status_id {
@@ -1978,7 +2059,9 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 &format!("/api/v1/task-spaces/{}/folders", urlencode(&space_id)),
                 json!({ "name": name }),
             )?;
-            Ok(json!({ "folderId": folder.get("id"), "name": folder.get("name"), "spaceId": space_id }))
+            Ok(
+                json!({ "folderId": folder.get("id"), "name": folder.get("name"), "spaceId": space_id }),
+            )
         }
 
         "create_task_list" => {
@@ -2212,7 +2295,9 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             let Some(tab) = arg_str(args, "tab") else {
                 return Ok(doc_outline(&data));
             };
-            let t = doc_tab_of(&data, &tab).ok_or_else(|| format!("No tab \"{tab}\": use overview, runbook, decisions or links"))?;
+            let t = doc_tab_of(&data, &tab).ok_or_else(|| {
+                format!("No tab \"{tab}\": use overview, runbook, decisions or links")
+            })?;
             let body = tab_body(t);
             match arg_str(args, "section") {
                 None => Ok(json!({
@@ -2288,11 +2373,20 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         "write_doc_section" => {
             let (kind, id) = doc_target(args)?;
             let tab = doc_tab(args)?;
-            let wanted = arg_str(args, "section").ok_or("section is required: the heading to rewrite")?;
-            let expected = arg_str(args, "sectionHash").ok_or("sectionHash is required: read it with get_doc first")?;
-            let content = args.get("body").and_then(|v| v.as_str()).ok_or("body is required")?;
+            let wanted =
+                arg_str(args, "section").ok_or("section is required: the heading to rewrite")?;
+            let expected = arg_str(args, "sectionHash")
+                .ok_or("sectionHash is required: read it with get_doc first")?;
+            let content = args
+                .get("body")
+                .and_then(|v| v.as_str())
+                .ok_or("body is required")?;
             if arg_bool(args, "dryRun") {
-                return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
+                return dry_run(
+                    cfg,
+                    "docs:manage",
+                    api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
+                );
             }
             write_section(cfg, &kind, &id, &tab, &wanted, &expected, content)
         }
@@ -2300,13 +2394,21 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         "request_doc_review" => {
             let (kind, id) = doc_target(args)?;
             if arg_bool(args, "dryRun") {
-                return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
+                return dry_run(
+                    cfg,
+                    "docs:write",
+                    api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
+                );
             }
             let mut body = json!({});
             if let Some(n) = arg_str(args, "note") {
                 body["note"] = json!(n);
             }
-            let d = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/review-request"), body)?;
+            let d = api_post(
+                cfg,
+                &format!("/api/v1/docs/{kind}/{id}/review-request"),
+                body,
+            )?;
             Ok(json!({
                 "requested": true,
                 "reviewRequestedAt": d.get("reviewRequestedAt"),
@@ -2382,7 +2484,10 @@ fn summarize_board(data: &Value, limit: usize) -> Value {
         .get("statuses")
         .and_then(|v| v.as_array())
         .unwrap_or(&empty);
-    let tasks = data.get("tasks").and_then(|v| v.as_array()).unwrap_or(&empty);
+    let tasks = data
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
 
     let columns: Vec<Value> = statuses
         .iter()
@@ -2435,7 +2540,9 @@ fn summarize_board(data: &Value, limit: usize) -> Value {
             });
             if shown < total {
                 // Say what was dropped: a silent truncation reads as a full board.
-                col["truncated"] = json!(format!("showing {shown} of {total}; raise limit to see more"));
+                col["truncated"] = json!(format!(
+                    "showing {shown} of {total}; raise limit to see more"
+                ));
             }
             col
         })
@@ -2627,16 +2734,20 @@ fn call_local_tool(name: &str, args: &Value) -> Result<Value, String> {
         "compress_image" => {
             let path = arg_str(args, "path").ok_or("path is required")?;
             let format = arg_str(args, "format").unwrap_or_else(|| "webp".into());
-            let fmt: crate::image::OutputFormat =
-                serde_json::from_value(json!(format)).map_err(|e| format!("Invalid format: {e}"))?;
+            let fmt: crate::image::OutputFormat = serde_json::from_value(json!(format))
+                .map_err(|e| format!("Invalid format: {e}"))?;
 
             let out_path = arg_str(args, "outPath").unwrap_or_else(|| {
                 let p = std::path::Path::new(&path);
-                p.with_extension(fmt.extension()).to_string_lossy().into_owned()
+                p.with_extension(fmt.extension())
+                    .to_string_lossy()
+                    .into_owned()
             });
 
             let quality = arg_i64(args, "quality").map(|q| q.clamp(1, 100) as u8);
-            let max_width = arg_i64(args, "maxWidth").filter(|w| *w > 0).map(|w| w as u32);
+            let max_width = arg_i64(args, "maxWidth")
+                .filter(|w| *w > 0)
+                .map(|w| w as u32);
 
             if arg_bool(args, "dryRun") {
                 let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
@@ -2650,12 +2761,18 @@ fn call_local_tool(name: &str, args: &Value) -> Result<Value, String> {
             }
 
             let raw = std::fs::read(&path).map_err(|e| format!("Could not read {path}: {e}"))?;
-            let opts = crate::image::CompressOptions { quality, max_width, format: fmt };
+            let opts = crate::image::CompressOptions {
+                quality,
+                max_width,
+                format: fmt,
+            };
             let result = crate::image::compress(&raw, &opts)?;
             std::fs::write(&out_path, &result.data)
                 .map_err(|e| format!("Could not write {out_path}: {e}"))?;
 
-            let saved = result.original_bytes.saturating_sub(result.compressed_bytes);
+            let saved = result
+                .original_bytes
+                .saturating_sub(result.compressed_bytes);
             Ok(json!({
                 "path": out_path,
                 "format": result.format,
@@ -2719,17 +2836,35 @@ mod tests {
     /// mata: mandar la fecha sin la hora, o con otra zona.
     #[test]
     fn a_due_date_is_that_day_at_utc_midnight() {
-        assert_eq!(due_date_to_instant("2026-09-30").unwrap(), "2026-09-30T00:00:00Z");
+        assert_eq!(
+            due_date_to_instant("2026-09-30").unwrap(),
+            "2026-09-30T00:00:00Z"
+        );
     }
 
     /// Un día que no existe se rechaza, no se desborda al mes siguiente.
     #[test]
     fn an_impossible_date_is_refused() {
-        for bad in ["2026-09-31", "2026-02-29", "2026-13-01", "2026-00-10", "2026-09-00"] {
-            assert!(due_date_to_instant(bad).is_err(), "{bad} debería rechazarse");
+        for bad in [
+            "2026-09-31",
+            "2026-02-29",
+            "2026-13-01",
+            "2026-00-10",
+            "2026-09-00",
+        ] {
+            assert!(
+                due_date_to_instant(bad).is_err(),
+                "{bad} debería rechazarse"
+            );
         }
-        assert!(due_date_to_instant("2028-02-29").is_ok(), "2028 es bisiesto");
-        assert!(due_date_to_instant("2000-02-29").is_ok(), "2000 es bisiesto");
+        assert!(
+            due_date_to_instant("2028-02-29").is_ok(),
+            "2028 es bisiesto"
+        );
+        assert!(
+            due_date_to_instant("2000-02-29").is_ok(),
+            "2000 es bisiesto"
+        );
         assert!(due_date_to_instant("2100-02-29").is_err(), "2100 no lo es");
     }
 
@@ -2737,8 +2872,17 @@ mod tests {
     /// justo lo que dejaría pasar la zona que esto existe para quitar.
     #[test]
     fn only_a_plain_date_is_accepted() {
-        for bad in ["2026-09-30T23:00:00-06:00", "30/09/2026", "2026-9-30", "mañana", ""] {
-            assert!(due_date_to_instant(bad).is_err(), "«{bad}» debería rechazarse");
+        for bad in [
+            "2026-09-30T23:00:00-06:00",
+            "30/09/2026",
+            "2026-9-30",
+            "mañana",
+            "",
+        ] {
+            assert!(
+                due_date_to_instant(bad).is_err(),
+                "«{bad}» debería rechazarse"
+            );
         }
     }
 
@@ -2760,7 +2904,10 @@ mod tests {
     fn an_unknown_name_fails_and_says_what_exists() {
         let e = resolve_names(&["bug".into(), "urgente".into()], &tags(), "tag").unwrap_err();
         assert!(e.contains("urgente"), "tiene que nombrar el que falta: {e}");
-        assert!(e.contains("UX") && e.contains("bug"), "y ofrecer los que hay: {e}");
+        assert!(
+            e.contains("UX") && e.contains("bug"),
+            "y ofrecer los que hay: {e}"
+        );
     }
 
     #[test]
@@ -2793,8 +2940,14 @@ mod tests {
     /// Una tarjeta con subtareas dice cuántas lleva; una sin ellas, nada.
     #[test]
     fn a_card_says_how_far_its_checklist_is() {
-        assert_eq!(subtask_progress(&json!({ "subtaskCount": 5, "subtaskDone": 2 })), json!("2/5"));
-        assert_eq!(subtask_progress(&json!({ "subtaskCount": 0, "subtaskDone": 0 })), Value::Null);
+        assert_eq!(
+            subtask_progress(&json!({ "subtaskCount": 5, "subtaskDone": 2 })),
+            json!("2/5")
+        );
+        assert_eq!(
+            subtask_progress(&json!({ "subtaskCount": 0, "subtaskDone": 0 })),
+            Value::Null
+        );
         assert_eq!(subtask_progress(&json!({})), Value::Null);
     }
 
@@ -2864,7 +3017,10 @@ mod tests {
         let correo = &s[1];
         let text = &RUNBOOK[correo.start..correo.end];
         // «Correo» incluye su subsección «Puertos» y acaba donde empieza «Despliegue».
-        assert!(text.contains("### Puertos") && text.contains("587."), "{text}");
+        assert!(
+            text.contains("### Puertos") && text.contains("587."),
+            "{text}"
+        );
         assert!(!text.contains("Despliegue"), "{text}");
     }
 
@@ -2873,7 +3029,9 @@ mod tests {
     /// seguir los bloques de código.
     #[test]
     fn a_hash_inside_a_code_block_is_not_a_heading() {
-        assert!(sections(RUNBOOK).iter().all(|x| !x.heading.contains("comentario")));
+        assert!(sections(RUNBOOK)
+            .iter()
+            .all(|x| !x.heading.contains("comentario")));
     }
 
     #[test]
@@ -2891,7 +3049,10 @@ mod tests {
     #[test]
     fn a_missing_section_says_which_ones_exist() {
         let e = find_section(RUNBOOK, "Backups").unwrap_err();
-        assert!(e.contains("Backups") && e.contains("## Correo") && e.contains("## Despliegue"), "{e}");
+        assert!(
+            e.contains("Backups") && e.contains("## Correo") && e.contains("## Despliegue"),
+            "{e}"
+        );
     }
 
     /// Dos «## Correo» no dicen cuál se quiere reescribir: adivinarlo borraría
@@ -2899,7 +3060,9 @@ mod tests {
     #[test]
     fn a_heading_that_appears_twice_is_refused() {
         let doble = "## Correo\n\nuno\n\n## Correo\n\ndos\n";
-        assert!(find_section(doble, "Correo").unwrap_err().contains("2 sections"));
+        assert!(find_section(doble, "Correo")
+            .unwrap_err()
+            .contains("2 sections"));
     }
 
     /// Reescribir una sección deja su título, lo que va antes y lo que va
@@ -2908,7 +3071,10 @@ mod tests {
     fn splicing_a_section_keeps_everything_else() {
         let sec = find_section(RUNBOOK, "Despliegue").unwrap();
         let out = splice_section(RUNBOOK, &sec, "Con Actions y un paso de prueba.");
-        assert!(out.ends_with("## Despliegue\n\nCon Actions y un paso de prueba.\n"), "{out}");
+        assert!(
+            out.ends_with("## Despliegue\n\nCon Actions y un paso de prueba.\n"),
+            "{out}"
+        );
         assert!(out.starts_with(&RUNBOOK[..sec.start]));
     }
 
@@ -2918,8 +3084,14 @@ mod tests {
     fn splicing_leaves_the_next_heading_standing() {
         let sec = find_section(RUNBOOK, "Correo").unwrap();
         let out = splice_section(RUNBOOK, &sec, "Ahora por SES.");
-        assert!(out.contains("## Correo\n\nAhora por SES.\n\n## Despliegue"), "{out}");
-        assert!(!out.contains("587."), "la subsección era parte de «Correo» y se reemplaza con ella");
+        assert!(
+            out.contains("## Correo\n\nAhora por SES.\n\n## Despliegue"),
+            "{out}"
+        );
+        assert!(
+            !out.contains("587."),
+            "la subsección era parte de «Correo» y se reemplaza con ella"
+        );
     }
 
     /// La razón de que haya un hash por sección: editar otra parte de la
@@ -2958,7 +3130,10 @@ mod tests {
         for grande in ["EL OVERVIEW OTRA VEZ", "PORQUE LARGO", "SMTP por Brevo"] {
             assert!(!texto.contains(grande), "el índice lleva «{grande}»");
         }
-        assert_eq!(out["tabs"][1]["key"], "runbook", "cada pestaña dice su nombre");
+        assert_eq!(
+            out["tabs"][1]["key"], "runbook",
+            "cada pestaña dice su nombre"
+        );
         assert_eq!(out["tabs"][1]["sections"][1]["heading"], "Correo");
         assert!(out["tabs"][1]["sections"][1]["sectionHash"].is_string());
         assert_eq!(out["attachments"], 2);
@@ -2979,7 +3154,10 @@ mod tests {
         let out = short_conflict(&res, "overview").unwrap();
         assert_eq!(out["bodyHash"], "h-o");
         assert!(out["body"].as_str().unwrap().contains("Hola"));
-        assert!(!out.to_string().contains("SMTP"), "trajo otra pestaña: {out}");
+        assert!(
+            !out.to_string().contains("SMTP"),
+            "trajo otra pestaña: {out}"
+        );
         assert!(short_conflict(&json!({ "tab": "x" }), "overview").is_none());
     }
 
@@ -2990,18 +3168,29 @@ mod tests {
     fn a_section_that_changed_is_not_overwritten() {
         let leido = section_hash(RUNBOOK, &find_section(RUNBOOK, "Correo").unwrap());
 
-        let (_, nuevo) = plan_section_write(RUNBOOK, "runbook", "Correo", &leido, "Por SES.").unwrap().unwrap();
+        let (_, nuevo) = plan_section_write(RUNBOOK, "runbook", "Correo", &leido, "Por SES.")
+            .unwrap()
+            .unwrap();
         assert!(nuevo.contains("Por SES.") && !nuevo.contains("Brevo"));
 
         // Alguien cambió la sección entre la lectura y la escritura.
         let ahora = RUNBOOK.replace("SMTP por Brevo.", "SMTP por Postmark.");
-        let conflicto = plan_section_write(&ahora, "runbook", "Correo", &leido, "Por SES.").unwrap().unwrap_err();
+        let conflicto = plan_section_write(&ahora, "runbook", "Correo", &leido, "Por SES.")
+            .unwrap()
+            .unwrap_err();
         assert_eq!(conflicto["conflict"], true);
-        assert!(conflicto["text"].as_str().unwrap().contains("Postmark"), "tiene que traer lo que hay ahora");
+        assert!(
+            conflicto["text"].as_str().unwrap().contains("Postmark"),
+            "tiene que traer lo que hay ahora"
+        );
 
         // Y si lo que cambió es OTRA sección, la suya sigue valiendo.
         let otra = RUNBOOK.replace("Con Actions.", "Con Actions y más.");
-        assert!(plan_section_write(&otra, "runbook", "Correo", &leido, "Por SES.").unwrap().is_ok());
+        assert!(
+            plan_section_write(&otra, "runbook", "Correo", &leido, "Por SES.")
+                .unwrap()
+                .is_ok()
+        );
     }
 
     /// La decisión apuntada es la de `createdAt` más reciente, no la primera de
@@ -3037,13 +3226,26 @@ mod tests {
         assert!(tool(&defs, "record_decision")["inputSchema"]["properties"]
             .get("originTaskId")
             .is_some());
-        assert!(tool(&defs, "search")["inputSchema"]["properties"].get("query").is_some());
+        assert!(tool(&defs, "search")["inputSchema"]["properties"]
+            .get("query")
+            .is_some());
         let get_doc = &tool(&defs, "get_doc")["inputSchema"]["properties"];
         assert!(get_doc.get("tab").is_some() && get_doc.get("section").is_some());
-        assert!(tool(&defs, "request_doc_review")["inputSchema"]["properties"].get("note").is_some());
-        assert!(tool(&defs, "update_task")["inputSchema"]["properties"].get("clearDueAt").is_some(),
-            "sin esto un agente no tiene forma de quitar un vencimiento");
+        assert!(
+            tool(&defs, "request_doc_review")["inputSchema"]["properties"]
+                .get("note")
+                .is_some()
+        );
+        assert!(
+            tool(&defs, "update_task")["inputSchema"]["properties"]
+                .get("clearDueAt")
+                .is_some(),
+            "sin esto un agente no tiene forma de quitar un vencimiento"
+        );
         let required = tool(&defs, "write_doc_section")["inputSchema"]["required"].to_string();
-        assert!(required.contains("sectionHash"), "reescribir una sección sin su hash pisaría lo que no se leyó");
+        assert!(
+            required.contains("sectionHash"),
+            "reescribir una sección sin su hash pisaría lo que no se leyó"
+        );
     }
 }

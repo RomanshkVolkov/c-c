@@ -7,6 +7,8 @@
 package config
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strings"
 )
@@ -59,4 +61,32 @@ func secret(pathEnv, fallback string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(b))
+}
+
+// RegistryAuth construye la cabecera `X-Registry-Auth` de Docker desde el
+// secret `cac_registry_auth` (`{"username":…,"password":…}`), para el
+// registro de la imagen. Sin el secret, "" y se baja sin credenciales, que
+// basta para imágenes públicas.
+func RegistryAuth(path string) func(image string) string {
+	return func(image string) string {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return ""
+		}
+		var cred struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if json.Unmarshal(raw, &cred) != nil || cred.Password == "" {
+			return ""
+		}
+		host := image
+		if i := strings.Index(host, "/"); i >= 0 {
+			host = host[:i]
+		}
+		out, _ := json.Marshal(map[string]string{
+			"username": cred.Username, "password": cred.Password, "serveraddress": host,
+		})
+		return base64.URLEncoding.EncodeToString(out)
+	}
 }

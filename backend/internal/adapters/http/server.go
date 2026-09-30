@@ -5,12 +5,13 @@ import (
 	"github.com/guz-studio/cac/backend/internal/adapters/handler"
 	"github.com/guz-studio/cac/backend/internal/adapters/k8s"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 	"gorm.io/gorm"
 )
 
-func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
+func InitServerRoutes(db *gorm.DB, r *chi.Mux, bus *events.Hub) {
 	repo := repository.NewServerRepository(db)
 	svc := service.NewServerService(repo)
 	h := handler.NewServerHandler(svc)
@@ -21,7 +22,9 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 	intgSvc := service.NewIntegrationService(repository.NewIntegrationRepository(db))
 	intgH := handler.NewIntegrationHandler(svc, intgSvc)
 
-	agentH := handler.NewAgentHandler(svc)
+	deploySvc := service.NewDeployService(repository.NewDeployRepository(db), repository.NewServerRepository(db), bus)
+	deployH := handler.NewDeployHandler(svc, deploySvc)
+	agentH := handler.NewAgentHandler(svc, deploySvc)
 
 	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)))
 
@@ -51,6 +54,16 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Get("/{id}/provisioning-runs", provH.List)
 		r.Post("/{id}/provisioning-runs", provH.Start)
 		r.Patch("/{id}/provisioning-runs/{rid}", provH.Finish)
+		// Los servicios que cac sabe desplegar, y sus despliegues. Ver
+		// domain.Deployable.
+		r.Get("/{id}/deployables", deployH.List)
+		r.Post("/{id}/deployables", deployH.Create)
+		r.Patch("/{id}/deployables/{did}", deployH.Update)
+		r.Delete("/{id}/deployables/{did}", deployH.Delete)
+		r.Post("/{id}/deployables/{did}/deploy", deployH.Deploy)
+		r.Get("/{id}/deployables/{did}/deployments", deployH.Deployments)
+		r.Get("/{id}/deployables/{did}/deployments/{depId}", deployH.Deployment)
+		r.Post("/{id}/deployables/{did}/deployments/{depId}/rollback", deployH.Rollback)
 	})
 
 	// El agente de cada servidor, con su propio token y no con el JWT de una
@@ -59,6 +72,8 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 	r.Route("/agent/v1", func(r chi.Router) {
 		r.Use(middleware.AgentTokenMiddleware(svc.AgentByToken))
 		r.Get("/jobs", agentH.Jobs)
+		r.Post("/jobs/{jid}/log", agentH.JobLog)
+		r.Post("/jobs/{jid}/finish", agentH.JobFinish)
 	})
 
 	// Integration proxy — authenticated by the launch token / its session cookie,

@@ -89,9 +89,10 @@ func (r *ServerRepository) FindByAgentTokenHash(hash []byte) (*domain.Server, er
 }
 
 // TouchAgent anota el latido.
-func (r *ServerRepository) TouchAgent(id string, at time.Time) error {
+func (r *ServerRepository) TouchAgent(id string, version int, at time.Time) error {
 	return r.db.Model(&domain.Server{}).Where("id = ?", id).Updates(map[string]any{
 		"agent_seen_at": at,
+		"agent_version": version,
 		"status":        "online",
 	}).Error
 }

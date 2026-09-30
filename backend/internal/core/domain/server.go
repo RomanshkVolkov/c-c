@@ -38,7 +38,15 @@ type Server struct {
 	AgentTokenSalt    string     `gorm:"type:varchar(64)" json:"-"`
 	AgentTokenPreview string     `gorm:"type:varchar(40)" json:"-"`
 	AgentSeenAt       *time.Time `json:"-"`
+	// La versión del agente, tal como la dice en cada pregunta
+	// (`X-Agent-Version`). 0 = uno de antes de decirla (v2 o anterior).
+	AgentVersion int `gorm:"default:0" json:"-"`
 }
+
+// AgentVersionDeploys: la primera versión del agente que sabe desplegar. Un
+// deploy para un agente más viejo se rechaza al pedirlo, en vez de quedarse
+// «en curso» hasta caducar porque el agente no sabe qué hacer con él.
+const AgentVersionDeploys = 3
 
 // AgentSilence: cuánto se tolera sin latido antes de dar el agente por caído.
 // El agente pregunta cada 25 s como mucho; tres preguntas perdidas son un
@@ -84,6 +92,7 @@ type ServerResponse struct {
 	HasAgentToken     bool       `json:"hasAgentToken"`
 	AgentTokenPreview string     `json:"agentTokenPreview,omitempty"`
 	AgentSeenAt       *time.Time `json:"agentSeenAt,omitempty"`
+	AgentVersion      int        `json:"agentVersion"`
 }
 
 // AgentTokenResponse se enseña **una vez**, al acuñar. Las dos piezas van al

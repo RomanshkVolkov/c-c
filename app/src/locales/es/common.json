@@ -595,5 +595,37 @@
     "undated_other": "{{count}} sin fecha",
     "undatedDrag_one": "{{count}} sin fecha — arrástrala a un día para ponérsela",
     "undatedDrag_other": "{{count}} sin fecha — arrastra una a un día para ponérsela"
+  },
+  "deploy": {
+    "title": "Desplegar {{name}}",
+    "notYet": "Este servicio todavía no se despliega desde cac.",
+    "notYetLead": "Registrarlo no cambia nada en el servidor: su CI sigue desplegando como hoy. Lo que ganas es poder desplegar un commit y volver atrás desde aquí, con historial.",
+    "name": "Nombre",
+    "environment": "Entorno",
+    "imageRepo": "Repositorio de imágenes",
+    "imageRepoHint": "sin tag, por ejemplo ghcr.io/org/repo",
+    "register": "Registrar",
+    "sha": "Commit",
+    "shaHint": "el sha del commit, corto o entero",
+    "deploy": "Desplegar",
+    "deploying": "Desplegando…",
+    "now": "Ahora: {{image}}",
+    "history": "Historial",
+    "empty": "Todavía no se ha desplegado nada desde cac.",
+    "rollback": "Volver a lo de antes",
+    "rollbackTitle": "¿Volver a lo que había antes de este deploy?",
+    "rollbackBody": "Se desplegará {{image}}, que es lo que había en el servicio justo antes.",
+    "viewLog": "Log",
+    "byCI": "el CI",
+    "byGitHub": "GitHub",
+    "queued": "En cola: lo recogerá el agente en unos segundos.",
+    "noAgent": "Este servidor no tiene el agente con identidad: dale a «Update agent» antes de desplegar.",
+    "status": {
+      "queued": "En cola",
+      "running": "En curso",
+      "succeeded": "Desplegado",
+      "failed": "Falló",
+      "rolled_back": "Se volvió atrás"
+    }
   }
 }
