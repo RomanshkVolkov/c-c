@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Activity, KeyRound, Network, Pencil, RefreshCw, Rocket, Server, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { api, apiUrl } from "@/lib/api";
+import type { APIResponse } from "@/types/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -77,22 +79,33 @@ export default function Dashboard() {
     setBusy({ id: server.id, kind });
     setAgentError(null);
     try {
-      const cmd =
-        kind === "deploy"
-          ? "deploy_swarm_manage_agent"
-          : "update_swarm_manage_agent";
-      const args: Record<string, unknown> = {
-        host: server.host,
-        sshPort: server.sshPort,
-        sshUser: server.sshUser,
-        // Pin ssh to the server's 1Password key when one is linked; otherwise
-        // the agent offers every key it holds and the server may cut us off.
-        identityKey: await invoke<string | null>("get_server_ssh_key", {
+      // Instalar y actualizar son lo mismo desde la versión 2 del agente: se
+      // acuña una identidad nueva —lo que tumba la anterior— y se instala con
+      // ella. Un agente actualizado sin identidad no abriría su API, así que
+      // «sólo cambiar la imagen» ya no existe.
+      const minted = await api.post<APIResponse<{ token: string; sessionKey: string }>>(
+        `/api/v1/servers/${server.id}/agent-token`,
+        {},
+        true,
+      );
+      if (!minted.success || !minted.data) throw new Error(minted.error ?? "agent-token");
+      await invoke<AgentResult>("install_swarm_manage_agent", {
+        install: {
+          host: server.host,
+          sshPort: server.sshPort,
+          sshUser: server.sshUser,
+          agentPort: server.agentPort,
+          // Pin ssh to the server's 1Password key when one is linked; otherwise
+          // the agent offers every key it holds and the server may cut us off.
+          identityKey: await invoke<string | null>("get_server_ssh_key", {
+            serverId: server.id,
+          }).catch(() => null),
           serverId: server.id,
-        }).catch(() => null),
-      };
-      if (kind === "deploy") args.agentPort = server.agentPort;
-      await invoke<AgentResult>(cmd, args);
+          backendUrl: apiUrl(""),
+          agentToken: minted.data.token,
+          sessionKey: minted.data.sessionKey,
+        },
+      });
       await refresh();
     } catch (e) {
       setAgentError(e instanceof Error ? e.message : String(e));

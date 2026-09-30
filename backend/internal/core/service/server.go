@@ -1,6 +1,9 @@
 package service
 
 import (
+	"errors"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
@@ -60,8 +63,65 @@ func (s *ServerService) List(orgIDs []string, superadmin bool) ([]domain.ServerR
 // está en otro sitio y no tiene por qué llegar—. La consecuencia hay que
 // asumirla y decirla: esto es «lo que la última consola que miró pudo
 // alcanzar», no una verdad absoluta sobre la máquina.
+//
+// Con un agente con identidad, esto **no manda**: su estado sale de su propio
+// latido y se calcula al leer (`toResponseAt`), que ignora lo guardado. Así que
+// no hace falta filtrar aquí; la garantía está en la lectura, y la fija
+// `TestTheAppNoLongerDecidesAnAgentWithIdentity`.
 func (s *ServerService) ReportAgentStatus(id, status string) error {
 	return s.repo.UpdateStatus(id, status)
+}
+
+// ErrNoAgentToken: pedir un pase para un agente que todavía no tiene identidad.
+var ErrNoAgentToken = errors.New("agent-has-no-token")
+
+// agentSessionTTL: lo que dura un pase de la app al agente. Corto porque no
+// se revoca —el agente lo verifica sin preguntar—; la app pide otro solo.
+const agentSessionTTL = 10 * time.Minute
+
+// MintAgentToken acuña la identidad del agente. Revoca la anterior: el token
+// viejo deja de casar y los pases firmados con la sal vieja dejan de valer.
+func (s *ServerService) MintAgentToken(id string) (*domain.AgentTokenResponse, error) {
+	plain, hash, salt, err := repository.GenerateAgentToken()
+	if err != nil {
+		return nil, err
+	}
+	preview := plain[:len(repository.AgentTokenPrefix)+6] + "…"
+	if err := s.repo.SetAgentToken(id, hash, salt, preview); err != nil {
+		return nil, err
+	}
+	return &domain.AgentTokenResponse{
+		Token:      plain,
+		SessionKey: repository.AgentSessionKey(id, salt),
+		Preview:    preview,
+	}, nil
+}
+
+// AgentSession firma un pase corto para que `userID` le hable al agente.
+func (s *ServerService) AgentSession(id, userID string, now time.Time) (*domain.AgentSessionResponse, error) {
+	srv, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if len(srv.AgentTokenHash) == 0 {
+		return nil, ErrNoAgentToken
+	}
+	exp := now.Add(agentSessionTTL)
+	key := repository.AgentSessionKey(srv.ID, srv.AgentTokenSalt)
+	return &domain.AgentSessionResponse{
+		Token:     repository.SignAgentSession(key, srv.ID, userID, exp.Unix()),
+		ExpiresAt: exp,
+	}, nil
+}
+
+// AgentByToken: el servidor que presenta ese token, o error.
+func (s *ServerService) AgentByToken(plain string) (*domain.Server, error) {
+	return s.repo.FindByAgentTokenHash(repository.HashAgentToken(plain))
+}
+
+// Heartbeat: el agente preguntó, luego está.
+func (s *ServerService) Heartbeat(id string, now time.Time) error {
+	return s.repo.TouchAgent(id, now)
 }
 
 func (s *ServerService) Find(id string) (*domain.ServerResponse, error) {
@@ -94,6 +154,26 @@ func (s *ServerService) Delete(id string) error {
 }
 
 func toResponse(s *domain.Server) *domain.ServerResponse {
+	return toResponseAt(s, time.Now())
+}
+
+// toResponseAt calcula el estado de un agente con identidad a partir de su
+// latido: sin latido todavía, `pending`; con uno más viejo que
+// `domain.AgentSilence`, `offline`. Se decide al leer y no con un proceso que
+// barra la tabla: un agente que se calla no avisa, y leerlo es el único
+// momento en que alguien necesita saberlo.
+func toResponseAt(s *domain.Server, now time.Time) *domain.ServerResponse {
+	status := s.Status
+	if len(s.AgentTokenHash) > 0 {
+		switch {
+		case s.AgentSeenAt == nil:
+			status = "pending"
+		case now.Sub(*s.AgentSeenAt) > domain.AgentSilence:
+			status = "offline"
+		default:
+			status = "online"
+		}
+	}
 	return &domain.ServerResponse{
 		ID:        s.ID,
 		OrgID:     s.OrgID,
@@ -103,6 +183,10 @@ func toResponse(s *domain.Server) *domain.ServerResponse {
 		SSHUser:   s.SSHUser,
 		Type:      s.Type,
 		AgentPort: s.AgentPort,
-		Status:    s.Status,
+		Status:    status,
+
+		HasAgentToken:     len(s.AgentTokenHash) > 0,
+		AgentTokenPreview: s.AgentTokenPreview,
+		AgentSeenAt:       s.AgentSeenAt,
 	}
 }

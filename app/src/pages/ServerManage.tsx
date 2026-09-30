@@ -36,7 +36,7 @@ import type { Server } from "@/types/server";
 import type { SwarmService, SwarmNode } from "@/types/swarm";
 import K8sHub from "@/pages/K8sHub";
 import { useSwarm } from "@/hooks/use-swarm";
-import { agentBase, agentFetch } from "@/lib/agent";
+import { agentBase, agentFetch, agentStreamUrl, registerAgent } from "@/lib/agent";
 import TerminalPanel from "@/components/terminal/TerminalPanel";
 import { useTerminals } from "@/store/terminal.store";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -98,34 +98,44 @@ function LogsPanel({
   useEffect(() => {
     setLogs([]);
     setStatus("connecting");
-    const url = `http://${host}:${agentPort}/api/v1/services/${service.id}/logs`;
-    const es = new EventSource(url);
+    // Con el pase en la URL: `EventSource` no manda cabeceras. Ver agentStreamUrl.
+    let es: EventSource | null = null;
+    let cerrado = false;
     let errorCount = 0;
 
-    es.onopen = () => {
-      setStatus("connected");
-      errorCount = 0;
-    };
+    void agentStreamUrl(`${agentBase(host, agentPort)}/api/v1/services/${service.id}/logs`).then((url) => {
+      if (cerrado) return;
+      const fuente = new EventSource(url);
+      es = fuente;
 
-    es.onmessage = (e) => {
-      errorCount = 0;
-      setLogs((prev) => {
-        const next = [...prev, e.data];
-        return next.length > 500 ? next.slice(next.length - 500) : next;
-      });
-    };
+      fuente.onopen = () => {
+        setStatus("connected");
+        errorCount = 0;
+      };
 
-    es.onerror = () => {
-      errorCount++;
-      if (errorCount >= 3) {
-        setStatus("error");
-        es.close();
-      } else {
-        setStatus("reconnecting");
-      }
-    };
+      fuente.onmessage = (e) => {
+        errorCount = 0;
+        setLogs((prev) => {
+          const next = [...prev, e.data];
+          return next.length > 500 ? next.slice(next.length - 500) : next;
+        });
+      };
 
-    return () => es.close();
+      fuente.onerror = () => {
+        errorCount++;
+        if (errorCount >= 3) {
+          setStatus("error");
+          fuente.close();
+        } else {
+          setStatus("reconnecting");
+        }
+      };
+    });
+
+    return () => {
+      cerrado = true;
+      es?.close();
+    };
   }, [service.id, host, agentPort]);
 
   useEffect(() => {
@@ -475,6 +485,9 @@ export default function ServerManage() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const server = state as Server | null;
+  // Por si se llegó sin pasar por el panel: el agente pide pase y hay que
+  // saber de qué servidor es. (Con R4 el servidor se pedirá por la URL.)
+  if (server) registerAgent(server);
 
   useEffect(() => {
     if (!server) navigate("/dashboard", { replace: true });

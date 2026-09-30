@@ -1,5 +1,6 @@
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
+import { registerAgent } from "@/lib/agent";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
@@ -163,6 +164,8 @@ export default function ServerStats() {
   const locationState = state as LocationState | null;
 
   const server = locationState?.server ?? null;
+  // El agente pide pase; ver registerAgent.
+  if (server) registerAgent(server);
   const nodes = locationState?.nodes ?? [];
 
   const entry = useStatsStore((s) =>

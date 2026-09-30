@@ -11,19 +11,27 @@ import (
 	"time"
 
 	httpRoutes "github.com/guz-studio/cac/swarm-manage/internal/adapters/http"
+	"github.com/guz-studio/cac/swarm-manage/internal/core/config"
+	"github.com/guz-studio/cac/swarm-manage/internal/core/service"
 )
 
-func getEnv(key, fallback string) string {
-	if v, ok := os.LookupEnv(key); ok {
-		return v
-	}
-	return fallback
-}
-
 func main() {
-	port := getEnv("PORT", "9090")
+	cfg := config.Load()
+	port := cfg.Port
 
-	r := httpRoutes.InitRoutes()
+	r := httpRoutes.InitRoutes(cfg)
+
+	// Sin identidad no hay API: se dice al arrancar, que es donde se mira.
+	if !cfg.Configured() {
+		log.Printf("sin identidad (faltan /run/secrets/cac_agent_session_key o CAC_SERVER_ID): /api/v1 contesta 503. Reinstala el agente desde cac.")
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	if cfg.CanPoll() {
+		go service.NewPoller(cfg.BackendURL, cfg.Token).Run(ctx)
+	} else {
+		log.Printf("sin CAC_URL o sin token: no le pregunto al backend, y cac verá este servidor como caído")
+	}
 
 	server := &http.Server{
 		Addr:         ":" + port,
@@ -44,7 +52,8 @@ func main() {
 	}()
 
 	<-sigChan
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	server.Shutdown(ctx)
+	server.Shutdown(shutdownCtx)
 }

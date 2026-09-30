@@ -4,6 +4,7 @@
 // catálogo en trozos sólo movería el mismo JSON a más sitios.
 #![recursion_limit = "256"]
 
+mod agent_install;
 mod api_client;
 mod crypto_tools;
 mod http_client;
@@ -771,20 +772,21 @@ pub struct SshOutput {
     pub stderr: String,
 }
 
-const AGENT_IMAGE: &str = "ghcr.io/romanshkvolkov/c-c/swarm-manage:latest";
-
-// Runs `ssh` against the given target, executing one remote command.
 // Authentication is provided by the OS SSH agent (`SSH_AUTH_SOCK`, e.g. 1Password).
 // StrictHostKeyChecking=accept-new pins unknown hosts on first connect.
-fn ssh_run(
+//
+/// Los argumentos de `ssh`, compartidos por `ssh_run` y su variante con stdin.
+///
+/// El comando remoto es lo último y es **lo único** que viaja como argumento
+/// al otro lado: por eso lo que es secreto no va aquí sino por stdin
+/// (`ssh_run_input`), donde no lo ve `ps` de ninguna de las dos máquinas.
+pub(crate) fn ssh_base_args(
     host: &str,
     port: u16,
     user: &str,
     remote_cmd: &str,
     identity: Option<&str>,
-) -> Result<SshOutput, String> {
-    use std::process::Command;
-
+) -> Vec<String> {
     let target = format!("{user}@{host}");
     let port_str = port.to_string();
 
@@ -813,7 +815,27 @@ fn ssh_run(
 
     args.push(target);
     args.push(remote_cmd.to_string());
+    args
+}
 
+/// `ssh_run` con algo que escribir en el stdin del comando remoto.
+///
+/// Es el canal para los secretos: un argumento sale en `ps` de cualquier
+/// usuario de la máquina remota y queda en el historial; stdin no toca ni el
+/// disco ni la tabla de procesos. El mismo contrato que `rotate-secrets` en los
+/// servidores de RRHH.
+pub(crate) fn ssh_run_input(
+    host: &str,
+    port: u16,
+    user: &str,
+    remote_cmd: &str,
+    identity: Option<&str>,
+    input: Option<&str>,
+) -> Result<SshOutput, String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let args = ssh_base_args(host, port, user, remote_cmd, identity);
     let mut cmd = Command::new("ssh");
     cmd.args(&args);
     // Same reason as ssh-add: without this the desktop-launched app has no agent
@@ -821,10 +843,22 @@ fn ssh_run(
     if let Some(sock) = resolve_agent_socket() {
         cmd.env("SSH_AUTH_SOCK", sock);
     }
-    let output = cmd.output().map_err(|e| match e.kind() {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() });
+    let mut child = cmd.spawn().map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => "`ssh` binary not found on PATH.".to_string(),
         _ => format!("Failed to execute ssh: {e}"),
     })?;
+    if let Some(text) = input {
+        // Se escribe y se cierra: el otro lado lee hasta EOF.
+        let mut stdin = child.stdin.take().ok_or("ssh sin stdin")?;
+        stdin
+            .write_all(text.as_bytes())
+            .map_err(|e| format!("no se pudo escribir en ssh: {e}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to execute ssh: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -848,77 +882,6 @@ fn ssh_run(
     }
 
     Ok(SshOutput { stdout, stderr })
-}
-
-#[tauri::command]
-fn update_swarm_manage_agent(
-    host: String,
-    ssh_port: u16,
-    ssh_user: String,
-    service: Option<String>,
-    // Public key line of the agent key to pin (see list_agent_ssh_keys).
-    identity_key: Option<String>,
-) -> Result<SshOutput, String> {
-    let service_name = service.unwrap_or_else(|| "cac_swarm-manage".to_string());
-    let remote = format!("docker service update --force --image {AGENT_IMAGE} {service_name}");
-    {
-        // Resolve (and stage) the key only for this call; the guard wipes it.
-        let staged = match identity_key.as_deref().filter(|k| !k.trim().is_empty()) {
-            Some(k) => Some(stage_public_key(k)?),
-            None => None,
-        };
-        let identity = staged
-            .as_ref()
-            .map(|s| s.path.to_string_lossy().into_owned());
-        ssh_run(&host, ssh_port, &ssh_user, &remote, identity.as_deref())
-    }
-}
-
-#[tauri::command]
-fn deploy_swarm_manage_agent(
-    host: String,
-    ssh_port: u16,
-    ssh_user: String,
-    agent_port: u16,
-    stack: Option<String>,
-    // Public key line of the agent key to pin (see list_agent_ssh_keys).
-    identity_key: Option<String>,
-) -> Result<SshOutput, String> {
-    let stack_name = stack.unwrap_or_else(|| "cac".to_string());
-    let compose = format!(
-        "version: '3.8'
-services:
-  swarm-manage:
-    image: {AGENT_IMAGE}
-    ports:
-      - \"{agent_port}:9090\"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-"
-    );
-    let remote = format!(
-        "set -e
-cat > /tmp/swarm-manage.yml <<'EOF'
-{compose}EOF
-docker stack deploy -c /tmp/swarm-manage.yml {stack_name}
-rm -f /tmp/swarm-manage.yml"
-    );
-    {
-        // Resolve (and stage) the key only for this call; the guard wipes it.
-        let staged = match identity_key.as_deref().filter(|k| !k.trim().is_empty()) {
-            Some(k) => Some(stage_public_key(k)?),
-            None => None,
-        };
-        let identity = staged
-            .as_ref()
-            .map(|s| s.path.to_string_lossy().into_owned());
-        ssh_run(&host, ssh_port, &ssh_user, &remote, identity.as_deref())
-    }
 }
 
 // ─── Keychain commands ────────────────────────────────────────────────────────
@@ -1642,8 +1605,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            update_swarm_manage_agent,
-            deploy_swarm_manage_agent,
+            agent_install::install_swarm_manage_agent,
             set_github_token,
             delete_github_token,
             github_token_configured,

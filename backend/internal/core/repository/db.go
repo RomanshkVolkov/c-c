@@ -21,6 +21,8 @@ type contextKey string
 const (
 	UserContextKey   contextKey = "user"
 	AccessRefreshKey contextKey = "refresh"
+	// El servidor cuyo agente se autenticó. Ver middleware.AgentTokenMiddleware.
+	AgentServerContextKey contextKey = "agent-server"
 )
 
 func DBConnection() {

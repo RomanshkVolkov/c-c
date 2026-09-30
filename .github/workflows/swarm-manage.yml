@@ -16,6 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Las pruebas antes que la imagen: el agente tiene la puerta de toda la
+      # máquina (el socket de Docker), y una versión que dejara una ruta sin
+      # auth no puede llegar a publicarse. Ver TestNoAgentRouteWithoutAuth.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: swarm-manage/go.mod
+      - name: Test
+        working-directory: swarm-manage
+        run: go test ./...
+
+      # La versión la lleva swarm-manage/VERSION y la app la clava
+      # (AGENT_IMAGE en lib.rs). Con `latest` a secas, una app nueva y un
+      # agente viejo —o al revés— no tenían forma de saber que no se entienden.
+      - name: Version
+        id: version
+        run: echo "tag=v$(tr -d '[:space:]' < swarm-manage/VERSION)" >> "$GITHUB_OUTPUT"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -28,5 +45,7 @@ jobs:
         with:
           context: ./swarm-manage
           push: true
-          tags: ghcr.io/romanshkvolkov/c-c/swarm-manage:latest
+          tags: |
+            ghcr.io/romanshkvolkov/c-c/swarm-manage:${{ steps.version.outputs.tag }}
+            ghcr.io/romanshkvolkov/c-c/swarm-manage:latest
 

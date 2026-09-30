@@ -11,13 +11,13 @@ import type { Server } from "@/types/server";
  * `UpdateStatus` llevaba en el repositorio sin un solo llamante.
  */
 
-const { get, post, responde } = vi.hoisted(() => ({
-  get: vi.fn(), post: vi.fn(), responde: vi.fn(),
+const { get, post, responde, registrar } = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), responde: vi.fn(), registrar: vi.fn(),
 }));
 vi.mock("@/lib/api", () => ({
   api: { get, post, patch: vi.fn(), delete: vi.fn() },
 }));
-vi.mock("@/lib/agent", () => ({ agentResponde: responde }));
+vi.mock("@/lib/agent", () => ({ agentResponde: responde, registerAgent: registrar }));
 vi.mock("@/store/orgs.store", () => ({
   useOrgsStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ currentOrgId: "org-1" }),
 }));
@@ -65,6 +65,22 @@ describe("el estado del agente", () => {
     await waitFor(() => expect(responde).toHaveBeenCalled());
     // Sin esta guarda, cada carga de pantalla escribiría el mismo valor.
     expect(post).not.toHaveBeenCalled();
+  });
+
+  // Un agente con identidad le pregunta él al backend, y su estado es ese
+  // latido. Sondearlo desde aquí volvería a poner «lo que vi yo» encima.
+  it("a un agente con identidad no se le sondea: su estado es su latido", async () => {
+    get.mockResolvedValue({ success: true, data: [server({ hasAgentToken: true, status: "online" })] });
+    responde.mockResolvedValue(false);
+
+    const { result } = renderHook(() => useServers());
+    await waitFor(() => expect(result.current.servers).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(responde).not.toHaveBeenCalled();
+    expect(result.current.servers[0].status).toBe("online");
+    expect(post).not.toHaveBeenCalled();
+    // Y queda registrado para que sus llamadas lleven pase (ver lib/agent.ts).
+    expect(registrar).toHaveBeenCalledWith(expect.objectContaining({ id: "s-1", hasAgentToken: true }), 0, expect.anything());
   });
 
   it("a un kubernetes no se le inventa una avería", async () => {

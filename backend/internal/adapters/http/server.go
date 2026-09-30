@@ -21,6 +21,8 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 	intgSvc := service.NewIntegrationService(repository.NewIntegrationRepository(db))
 	intgH := handler.NewIntegrationHandler(svc, intgSvc)
 
+	agentH := handler.NewAgentHandler(svc)
+
 	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)))
 
 	r.Route("/api/v1/servers", func(r chi.Router) {
@@ -30,6 +32,9 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Post("/", h.CreateServer)
 		r.Patch("/{id}", h.UpdateServer)
 		r.Post("/{id}/agent-status", h.ReportAgentStatus)
+		// La identidad del agente (admin) y los pases cortos de la app.
+		r.Post("/{id}/agent-token", agentH.MintToken)
+		r.Post("/{id}/agent-session", agentH.Session)
 		r.Delete("/{id}", h.DeleteServer)
 		// Platform hub (kubernetes servers): read-only cluster views.
 		r.Get("/{id}/k8s/routes", k8sH.Routes)
@@ -46,6 +51,14 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Get("/{id}/provisioning-runs", provH.List)
 		r.Post("/{id}/provisioning-runs", provH.Start)
 		r.Patch("/{id}/provisioning-runs/{rid}", provH.Finish)
+	})
+
+	// El agente de cada servidor, con su propio token y no con el JWT de una
+	// persona: el agente no es nadie. Todo lo que pida se contesta sobre su
+	// máquina y nada más. Ver middleware.AgentTokenMiddleware.
+	r.Route("/agent/v1", func(r chi.Router) {
+		r.Use(middleware.AgentTokenMiddleware(svc.AgentByToken))
+		r.Get("/jobs", agentH.Jobs)
 	})
 
 	// Integration proxy — authenticated by the launch token / its session cookie,

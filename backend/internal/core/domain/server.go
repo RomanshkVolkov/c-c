@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // ServerType represents the orchestrator type on the server.
 type ServerType string
 
@@ -23,7 +25,25 @@ type Server struct {
 	Type      ServerType `gorm:"type:varchar(50);not null" json:"type"`
 	AgentPort int        `gorm:"default:9090" json:"agentPort"`
 	Status    string     `gorm:"type:varchar(50);default:'pending'" json:"status"`
+
+	// La identidad del agente. Sin token, el servidor es de los de antes: el
+	// agente no tiene auth y su estado lo cuenta la app que lo mira.
+	//
+	// Del token sólo se guarda el HMAC (como un PAT): una fuga de la base no da
+	// una credencial usable. La sal no es secreta: con el secreto del backend
+	// deriva la llave con la que se firman las sesiones de escritorio, así que
+	// el backend puede firmarlas sin guardar nada descifrable. Reacuñar cambia
+	// las dos cosas, y con eso caduca todo lo anterior.
+	AgentTokenHash    []byte     `gorm:"type:bytea;index" json:"-"`
+	AgentTokenSalt    string     `gorm:"type:varchar(64)" json:"-"`
+	AgentTokenPreview string     `gorm:"type:varchar(40)" json:"-"`
+	AgentSeenAt       *time.Time `json:"-"`
 }
+
+// AgentSilence: cuánto se tolera sin latido antes de dar el agente por caído.
+// El agente pregunta cada 25 s como mucho; tres preguntas perdidas son un
+// agente que no está, no una red que parpadea.
+const AgentSilence = 90 * time.Second
 
 // ─── Requests / Responses ─────────────────────────────────────────────────────
 
@@ -59,6 +79,26 @@ type ServerResponse struct {
 	Type      ServerType `json:"type"`
 	AgentPort int        `json:"agentPort"`
 	Status    string     `json:"status"`
+	// Si el agente tiene identidad. Con ella, `status` sale del latido del
+	// propio agente y no de lo que la última app pudo alcanzar.
+	HasAgentToken     bool       `json:"hasAgentToken"`
+	AgentTokenPreview string     `json:"agentTokenPreview,omitempty"`
+	AgentSeenAt       *time.Time `json:"agentSeenAt,omitempty"`
+}
+
+// AgentTokenResponse se enseña **una vez**, al acuñar. Las dos piezas van al
+// host como Docker secrets: el token para que el agente le hable al backend, y
+// la llave de sesión para que verifique a la app sin preguntarle a nadie.
+type AgentTokenResponse struct {
+	Token      string `json:"token"`
+	SessionKey string `json:"sessionKey"`
+	Preview    string `json:"preview"`
+}
+
+// AgentSessionResponse: un pase corto para hablarle al agente desde la app.
+type AgentSessionResponse struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // ReportAgentStatusRequest es lo que la app dice tras probar el agente.

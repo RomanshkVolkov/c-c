@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"gorm.io/gorm"
 )
@@ -61,6 +63,37 @@ func (r *ServerRepository) Update(server *domain.Server) error {
 
 func (r *ServerRepository) UpdateStatus(id, status string) error {
 	return r.db.Model(&domain.Server{}).Where("id = ?", id).Update("status", status).Error
+}
+
+// SetAgentToken guarda la identidad nueva y **olvida el latido**: un agente
+// con el token de antes ya no puede presentarse, así que no está en línea
+// hasta que el nuevo pregunte.
+func (r *ServerRepository) SetAgentToken(id string, hash []byte, salt, preview string) error {
+	return r.db.Model(&domain.Server{}).Where("id = ?", id).Updates(map[string]any{
+		"agent_token_hash":    hash,
+		"agent_token_salt":    salt,
+		"agent_token_preview": preview,
+		"agent_seen_at":       nil,
+		"status":              "pending",
+	}).Error
+}
+
+// FindByAgentTokenHash: el servidor al que pertenece un token de agente. Los
+// servidores sin token tienen la columna en NULL, que no casa con ningún hash.
+func (r *ServerRepository) FindByAgentTokenHash(hash []byte) (*domain.Server, error) {
+	var server domain.Server
+	if err := r.db.First(&server, "agent_token_hash = ?", hash).Error; err != nil {
+		return nil, err
+	}
+	return &server, nil
+}
+
+// TouchAgent anota el latido.
+func (r *ServerRepository) TouchAgent(id string, at time.Time) error {
+	return r.db.Model(&domain.Server{}).Where("id = ?", id).Updates(map[string]any{
+		"agent_seen_at": at,
+		"status":        "online",
+	}).Error
 }
 
 func (r *ServerRepository) Delete(id string) error {

@@ -1,3 +1,7 @@
+import { api } from "@/lib/api";
+import type { APIResponse } from "@/types/auth";
+import type { Server } from "@/types/server";
+
 /**
  * Calls to a server's on-host agent (`http://<host>:<agentPort>`).
  *
@@ -15,11 +19,85 @@ export function agentBase(host: string, agentPort: number): string {
   return `http://${host}:${agentPort}`;
 }
 
+/**
+ * Los agentes con identidad que conoce esta app: origen → id del servidor.
+ *
+ * Desde la versión 2 el agente exige un pase firmado por el backend en todo
+ * `/api/v1`. Quien llama sólo tiene la URL (`agentBase(host, port)`), así que
+ * el pase se busca por el origen: así ninguna llamada existente cambia de
+ * forma. Un agente de los de antes no se registra y se le sigue hablando sin
+ * pase, como siempre.
+ */
+const agentes = new Map<string, string>();
+
+/** El servidor declara su agente. Lo llaman quienes cargan servidores. */
+export function registerAgent(s: Pick<Server, "id" | "host" | "agentPort" | "hasAgentToken">) {
+  const base = agentBase(s.host, s.agentPort);
+  if (s.hasAgentToken) agentes.set(base, s.id);
+  else agentes.delete(base);
+}
+
+/** Los pases, por servidor. Duran minutos; se piden otro al acercarse al final. */
+const pases = new Map<string, { token: string; exp: number }>();
+const MARGEN_MS = 60_000;
+
+async function paseDe(serverId: string): Promise<string | null> {
+  const p = pases.get(serverId);
+  if (p && p.exp - Date.now() > MARGEN_MS) return p.token;
+  const res = await api.post<APIResponse<{ token: string; expiresAt: string }>>(
+    `/api/v1/servers/${serverId}/agent-session`,
+    {},
+    true,
+  );
+  if (!res.success || !res.data) return null;
+  pases.set(serverId, { token: res.data.token, exp: new Date(res.data.expiresAt).getTime() });
+  return res.data.token;
+}
+
+function serverDe(url: string): string | undefined {
+  try {
+    return agentes.get(new URL(url).origin);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * La URL de un stream (`EventSource`) con el pase dentro. `EventSource` no
+ * sabe mandar cabeceras; el agente acepta el pase por la URL **sólo en GET**.
+ */
+export async function agentStreamUrl(url: string): Promise<string> {
+  const id = serverDe(url);
+  if (!id) return url;
+  const pase = await paseDe(id);
+  if (!pase) return url;
+  const u = new URL(url);
+  u.searchParams.set("access_token", pase);
+  return u.toString();
+}
+
 export async function agentFetch(
   url: string,
   init: RequestInit = {},
   timeoutMs = AGENT_TIMEOUT_MS,
 ): Promise<Response> {
+  const id = serverDe(url);
+  if (!id) return fetchConPlazo(url, init, timeoutMs);
+  const conPase = async () => {
+    const pase = await paseDe(id);
+    const headers = new Headers(init.headers);
+    if (pase) headers.set("Authorization", `Bearer ${pase}`);
+    return fetchConPlazo(url, { ...init, headers }, timeoutMs);
+  };
+  const res = await conPase();
+  // Un 401 es un pase que ya no vale —se reacuñó la identidad, o el reloj de
+  // esta máquina va adelantado—: se pide otro y se reintenta una vez.
+  if (res.status !== 401) return res;
+  pases.delete(id);
+  return conPase();
+}
+
+async function fetchConPlazo(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {

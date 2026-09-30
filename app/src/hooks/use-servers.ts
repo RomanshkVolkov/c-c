@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
 import type { Server, CreateServerPayload } from "@/types/server";
 import { useOrgsStore } from "@/store/orgs.store";
-import { agentResponde } from "@/lib/agent";
+import { agentResponde, registerAgent } from "@/lib/agent";
 
 /** Form payload without orgId — the hook injects the active org automatically. */
 export type NewServerInput = Omit<CreateServerPayload, "orgId">;
@@ -17,7 +17,11 @@ export function useServers() {
     setLoading(true);
     try {
       const res = await api.get<APIResponse<Server[]>>("/api/v1/servers/", true);
-      if (res.success && res.data) setAllServers(res.data);
+      if (res.success && res.data) {
+        // Cada agente con identidad, a la lista de los que piden pase.
+        res.data.forEach(registerAgent);
+        setAllServers(res.data);
+      }
     } finally {
       setLoading(false);
     }
@@ -41,8 +45,13 @@ export function useServers() {
    * Sólo los `docker-swarm`: un servidor de kubernetes no lleva este agente y
    * marcarlo «offline» sería inventarse una avería.
    */
+  //
+  // Y sólo los que **no** tienen identidad. Un agente de la versión 2 le
+  // pregunta él al backend cada 25 s, y su estado es ese latido: sondearlo
+  // desde aquí sería volver a poner «lo que vi yo» encima de lo que dice la
+  // máquina (el backend además lo ignora). Ver `toResponseAt` en el backend.
   useEffect(() => {
-    const candidatos = allServers.filter((s) => s.type === "docker-swarm");
+    const candidatos = allServers.filter((s) => s.type === "docker-swarm" && !s.hasAgentToken);
     if (candidatos.length === 0) return;
     let cancelado = false;
 

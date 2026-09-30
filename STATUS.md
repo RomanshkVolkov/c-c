@@ -13,6 +13,15 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**En curso (30-sep, #106 con R0–R8 en #107–#115): módulo de servidores** —
+deploys desde cac, GitHub App, Ansible desde la app y secrets por referencia a
+1Password, con adopción gradual por proyecto. **R0 y R1 hechas, sin
+commitear:** `GET /servers/{id}`, registro de provisioning, y la identidad del
+agente (token por servidor, pases de sesión, long-poll saliente como latido,
+imagen versionada `:v2`). Publicar en orden: backend → imagen del agente (se
+construye sola al empujar `swarm-manage/`) → app. Los agentes v1 siguen
+funcionando sin identidad hasta que se reinstalen.
+
 **En curso (28-sep, #96, sin commitear):** crear un usuario pide nombre y
 correo (backend `CreateUserRequest` y el diálogo), el diálogo dice qué falta en
 vez de apagar «Crear» en silencio, y toda contraseña de la app lleva ojo

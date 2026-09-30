@@ -119,23 +119,23 @@ base `C` seguiría saliendo bien.
 revienta la inserción porque la columna tiene `default:0.5`; los caminos que
 saben dónde va la tarjeta le ponen el suyo.
 
-## El CI corre las pruebas de backend, app y transcriptor
+## El CI corre las pruebas de backend, app, transcriptor y agente
 
-Las tres suites corren **por delante** de lo que publican, así que rojo no sale:
+Las cuatro suites corren **por delante** de lo que publican, así que rojo no sale:
 
 | Workflow | Qué corre | Qué frena |
 |---|---|---|
 | `backend.yml` | `go test` con Postgres de verdad | el despliegue a producción (#38) |
 | `app.yml` | tipos, eslint, y la suite **bajo las tres zonas** | la release: `app-release.yml` lo llama antes de compilar (#69) |
 | `transcriber.yml` | `pytest` | la imagen del worker |
+| `swarm-manage.yml` | `go test` del agente | su imagen (`:vN` desde `swarm-manage/VERSION`) |
 
 Al encender cada una salió algo que llevaba tiempo escondido: una prueba del
 backend roja desde hacía meses, y en la app un error huérfano de tiptap que hacía
 salir la suite con código 1 con todo en verde (tapado en `test-setup.ts`).
 
-**Sin red siguen** `swarm-manage/`, que sólo se construye, y el lado Rust de la
-app, que no tiene pruebas propias en el CI: lo único que lo comprueba es que la
-release compile en las tres plataformas.
+**Sin red sigue** el lado Rust de la app, que no tiene pruebas propias en el CI:
+lo único que lo comprueba es que la release compile en las tres plataformas.
 
 Una release con `app.yml` en rojo **se queda publicada sin instaladores**. El
 actualizador no se entera, así que nadie se la come, pero esa versión ya está
@@ -145,6 +145,24 @@ Y ojo con el verde de `go test` **en local**: las pruebas que necesitan Postgres
 se **saltan** sin base (`t.Skip("no database configured")` cuando no hay
 `DB_HOST`), y son treinta ficheros. Sin `DB_HOST` puesto, un verde no significa
 que se hayan corrido todas — en CI ya no puede pasar, en tu máquina sí.
+
+## El agente de cada servidor tiene identidad (desde su v2)
+
+`swarm-manage` abre el socket de Docker de la máquina: su API es la puerta de
+toda la VPS. Desde la v2 **no abre `/api/v1` sin identidad** —un token por
+servidor que acuña el backend y una llave de sesión derivada, instalados como
+Docker secrets por stdin— y cada petición de la app lleva un pase firmado. No
+hay modo abierto al que caer; sin secrets contesta 503.
+→ Guardianes: `TestNoAgentRouteWithoutAuth` (recorre el router del agente con
+`chi.Walk`), `TestSessionVector` / `TestAgentSessionVector` (el **mismo**
+vector en el agente y en el backend: si cambias uno, cambia el otro) y
+`la_imagen_es_la_version_del_agente` (la app clava la versión que publica el
+workflow).
+
+Y el agente **actualiza servicios con `service update` por la API de Docker,
+nunca con `stack deploy`**: un stack que creó el CI de un proyecto no se recrea
+y conserva labels, redes y secrets. Es lo que permite que cada proyecto se sume
+a los despliegues por cac cuando quiera.
 
 ## La puerta de verificación
 
