@@ -10,6 +10,7 @@ import (
 
 type ServerHandler interface {
 	ListServers(w http.ResponseWriter, r *http.Request)
+	GetServer(w http.ResponseWriter, r *http.Request)
 	CreateServer(w http.ResponseWriter, r *http.Request)
 	UpdateServer(w http.ResponseWriter, r *http.Request)
 	DeleteServer(w http.ResponseWriter, r *http.Request)
@@ -36,6 +37,49 @@ func (h *serverHandler) ListServers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.ServerResponse]{Success: true, Data: servers})
+}
+
+// GetServer: un servidor por su id.
+//
+// Existe porque las páginas de un servidor lo recibían en el `state` del
+// router, y ese estado no sobrevive a recargar: F5 en la página de un servidor
+// te devolvía al panel. Con esto cada página lo pide por la dirección.
+func (h *serverHandler) GetServer(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.svc, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ServerResponse]{Success: true, Data: server})
+}
+
+// scopeServer carga el servidor de la URL y exige un rol mínimo en su org (el
+// superadmin pasa). A quien no es de la org se le contesta **404**, no 403:
+// confirmar que el id existe ya sería contar algo. Vale para cualquier tipo de
+// servidor; el de integraciones (`serverScope`) exige además kubernetes.
+func scopeServer(w http.ResponseWriter, r *http.Request, svc *service.ServerService, min domain.OrgRole) (*domain.ServerResponse, bool) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return nil, false
+	}
+	server, err := svc.Find(chi.URLParam(r, "id"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Server not found", "not-found")
+		return nil, false
+	}
+	role, member := user.RoleInOrg(server.OrgID)
+	if user.Superadmin {
+		role, member = domain.OrgRoleAdmin, true
+	}
+	if !member {
+		SendErrorResponse(w, http.StatusNotFound, "Server not found", "not-found")
+		return nil, false
+	}
+	if !roleMeets(role, min) {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "insufficient-role")
+		return nil, false
+	}
+	return server, true
 }
 
 func (h *serverHandler) CreateServer(w http.ResponseWriter, r *http.Request) {

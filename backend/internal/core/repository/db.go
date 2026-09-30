@@ -82,6 +82,7 @@ func DBConnection() {
 		&domain.ReportImage{},
 		&domain.TelemetryEvent{},
 		&domain.ServerIntegration{},
+		&domain.ProvisioningRun{},
 		&domain.PersonalAccessToken{},
 		&domain.TaskSpace{},
 		&domain.TaskFolder{},

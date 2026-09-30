@@ -21,9 +21,12 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 	intgSvc := service.NewIntegrationService(repository.NewIntegrationRepository(db))
 	intgH := handler.NewIntegrationHandler(svc, intgSvc)
 
+	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)))
+
 	r.Route("/api/v1/servers", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.ListServers)
+		r.Get("/{id}", h.GetServer)
 		r.Post("/", h.CreateServer)
 		r.Patch("/{id}", h.UpdateServer)
 		r.Post("/{id}/agent-status", h.ReportAgentStatus)
@@ -38,6 +41,11 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Delete("/{id}/integrations/{iid}", intgH.Delete)
 		r.Post("/{id}/integrations/{iid}/reveal", intgH.Reveal)
 		r.Post("/{id}/integrations/{iid}/launch", intgH.Launch)
+		// Lo que la app aplicó a la máquina: playbooks y rotaciones. Lo ejecuta
+		// la laptop; aquí sólo queda el registro. Ver domain.ProvisioningRun.
+		r.Get("/{id}/provisioning-runs", provH.List)
+		r.Post("/{id}/provisioning-runs", provH.Start)
+		r.Patch("/{id}/provisioning-runs/{rid}", provH.Finish)
 	})
 
 	// Integration proxy — authenticated by the launch token / its session cookie,
