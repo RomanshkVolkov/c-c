@@ -88,6 +88,8 @@ func DBConnection() {
 		&domain.Deployable{},
 		&domain.Deployment{},
 		&domain.ImageBuild{},
+		&domain.GitHubInstallation{},
+		&domain.GitHubRepo{},
 		&domain.PersonalAccessToken{},
 		&domain.TaskSpace{},
 		&domain.TaskFolder{},
@@ -149,6 +151,11 @@ func DBConnection() {
 	// deploy.go: están ahí para que las pruebas monten los mismos.
 	if err := EnsureDeployIndexes(db); err != nil {
 		lg.Error("deploy indexes: " + err.Error())
+	}
+
+	// Un commit o una PR comenta una tarea una sola vez. Ver github.go.
+	if err := EnsureGitHubIndexes(db); err != nil {
+		lg.Error("github indexes: " + err.Error())
 	}
 
 	// Una decisión escrita desde un comentario se escribe una sola vez.

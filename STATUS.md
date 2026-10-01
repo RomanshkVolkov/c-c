@@ -21,12 +21,13 @@ historial y log en vivo, por `service update`. **R3 publicada** (`4f954cc`,
 backend desplegado; la UI en la v1.6.78): el CI avisa con una llave por
 servicio (`POST /ingest/v1/deploys`); en «Apuntar» cac lista las versiones, en
 «Desplegar» las despliega. Contrato en `docs/integrations/deploys.md`. **R4
-hecha, sin commitear** (sólo app): un servidor se abre por su URL
-(`useServer`) en `pages/servers/ServerLayout.tsx` con pestañas Resumen ·
-Servicios · Nodos · Recursos · Secrets; el terminal vive en el layout; el
-servicio de Secrets va en `?service=`. Ninguna pantalla de servidores usa el
-`state` del router (`no-router-state.test.ts`). Un agente `offline` ya tiene
-botón para reinstalarlo.
+commiteada** (`82c7fb2`, sale en la v1.6.79): cada servidor se abre por su URL
+con pestañas, sin `state` del router. **R5 hecha, sin commitear:** la GitHub
+App. Una org la instala desde Ajustes → GitHub, enlaza cada repo a un espacio,
+y los commits y PRs que nombran una tarea (`cac#12`, el folio, `#12` si se
+enciende) dejan una línea **interna** en ella, una sola vez. Falta registrar la
+App en GitHub y poner `CAC_GITHUB_APP_SLUG` y `CAC_GITHUB_WEBHOOK_SECRET` en el
+repo: ver `docs/integrations/github.md`. Backend primero.
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para

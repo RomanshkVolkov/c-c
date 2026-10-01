@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
+import OrgGitHub from "@/components/org/OrgGitHub";
 import OrgMeetings from "@/components/org/OrgMeetings";
 import OrgSpaces from "@/components/org/OrgSpaces";
 import OrgInvitations from "@/components/org/OrgInvitations";
@@ -45,6 +46,8 @@ const PESTANAS = [
   // They belong to the organization, which is why they are here and not on a
   // server's screen.
   { key: "integrations", labelKey: "org:tab.integrations" },
+  // La GitHub App: qué repos comentan en las tareas de qué espacio.
+  { key: "github", labelKey: "org:tab.github" },
   // Las reuniones periódicas: lo que suena a una hora sin que nadie lo pida.
   { key: "meetings", labelKey: "org:tab.meetings" },
   { key: "general", labelKey: "org:tab.general" },
@@ -409,6 +412,8 @@ export default function OrganizationSettings() {
         {pestana === "general" && <OrgGeneral org={current} canManage={canManage} />}
 
         {pestana === "integrations" && <OrgIntegrations canManage={canManage} />}
+
+        {pestana === "github" && <OrgGitHub canManage={canManage} />}
 
         {pestana === "meetings" && <OrgMeetings canManage={canManage} />}
 

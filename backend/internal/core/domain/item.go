@@ -295,7 +295,12 @@ type ItemComment struct {
 	//
 	// El id y no un booleano por eso mismo: un booleano diría que hubo una
 	// decisión sin decir cuál, que es media respuesta.
-	DecisionID         string  `gorm:"type:varchar(36)"       json:"decisionId,omitempty"`
+	DecisionID string `gorm:"type:varchar(36)"       json:"decisionId,omitempty"`
+	// SourceKey: de dónde vino una línea que escribió algo de fuera
+	// (`gh:push:<sha>`, `gh:pr:<n>:<acción>`). Con el índice único parcial
+	// `(item_id, source_key)` es lo que impide que un commit comente dos veces
+	// la misma tarea. Vacío en todo lo que escribe una persona.
+	SourceKey          string  `gorm:"type:varchar(120)" json:"-"`
 	AuthorUserID       *string `gorm:"type:varchar(36)"       json:"authorUserId,omitempty"`
 	AuthorProjectID    *string `gorm:"type:varchar(36);index" json:"-"`
 	AuthorExternalID   string  `gorm:"type:varchar(255)"      json:"-"`

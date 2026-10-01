@@ -5,7 +5,8 @@
     "spaces": "Espacios",
     "integrations": "Integraciones",
     "meetings": "Reuniones",
-    "general": "General"
+    "general": "General",
+    "github": "GitHub"
   },
   "errLoad": "No se pudo cargar la organización",
   "none": "ninguno",
@@ -124,5 +125,22 @@
     "added": "Te han añadido a {{org}}",
     "removed": "Ya no perteneces a {{org}}"
   },
-  "doneNeedsSubtasks": "Terminar las subtareas antes de dar por hecha una tarea"
+  "doneNeedsSubtasks": "Terminar las subtareas antes de dar por hecha una tarea",
+  "github": {
+    "lead": "Los repos enlazados a un espacio dejan una línea en la tarea que nombre cada commit o PR. Las líneas son internas: el cliente no las ve.",
+    "syntax": "Para nombrar una tarea: cac#12 (el número del espacio) o el folio del cliente, como acme-7.",
+    "notConfigured": "Este servidor de cac no tiene la GitHub App configurada.",
+    "noInstallations": "Ninguna cuenta de GitHub tiene la App instalada para esta organización.",
+    "connect": "Conectar GitHub",
+    "connectAnother": "Conectar otra cuenta",
+    "reload": "Volver a leer",
+    "finishInBrowser": "Termina la instalación en el navegador y vuelve aquí.",
+    "connectFailed": "No se pudo empezar la conexión con GitHub",
+    "loadFailed": "No se pudo leer GitHub",
+    "saveFailed": "No se guardó el cambio",
+    "spaceFor": "Espacio de {{repo}}",
+    "notLinked": "Sin enlazar",
+    "bareRefs": "#12 a secas",
+    "bareRefsHint": "Que #12 sin «cac» también nombre la tarea 12. En GitHub, #12 es el issue 12 del repo."
+  }
 }

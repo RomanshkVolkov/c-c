@@ -134,7 +134,7 @@ func (r *DeployRepository) ExpireStale(deployableID string, now time.Time) error
 	return r.db.Model(&domain.Deployment{}).
 		Where("deployable_id = ? AND status = ? AND started_at < ?", deployableID, domain.DeployRunning, now.Add(-domain.DeployStaleAfter)).
 		Updates(map[string]any{
-			"status":      domain.DeployFailed,
+			"status": domain.DeployFailed,
 			// Un código y no una frase: la app lo dice en el idioma de cada quien.
 			"error":       "agent-stopped-responding",
 			"finished_at": now,

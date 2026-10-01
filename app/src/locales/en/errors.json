@@ -14,6 +14,7 @@
   "bad-range": "That part of the file doesn't exist.",
   "bad-service-name": "That isn't a stack or service name.",
   "bad-sha": "That isn't a commit sha.",
+  "bad-signature": "The GitHub delivery's signature isn't valid.",
   "bad-status": "That status doesn't belong to this list.",
   "bad-timezone": "That time zone doesn't exist.",
   "bad-transition": "That status can't follow this one.",
@@ -33,6 +34,7 @@
   "endpoint-not-key-reachable": "That endpoint can't be reached with a key.",
   "endpoint-not-scoped": "That endpoint isn't for this organization.",
   "general-space-protected": "The general room is the organization's channel, not a place for tasks.",
+  "github-off": "This cac server doesn't have the GitHub App configured.",
   "image-service-not-configured": "Images aren't set up on this server.",
   "inbox-other-org": "That list belongs to another organization.",
   "insufficient-role": "Your role in this organization doesn't reach that.",
@@ -73,6 +75,7 @@
   "not-the-recorder": "Only whoever started this recording, or an admin, can delete it.",
   "nothing-to-roll-back-to": "There's nothing before this deploy to go back to.",
   "pat-unsupported": "A personal token can't do that.",
+  "payload-too-large": "What was sent is too large.",
   "profile-not-saved": "Your profile couldn't be saved.",
   "provisioning-not-running": "That run was already closed.",
   "rate-limited": "Too many requests. Wait a moment and try again.",
@@ -86,6 +89,7 @@
   "room-empty": "There's nobody in this call yet.",
   "same-password": "The new password has to differ from the current one.",
   "self-delete": "You can't delete yourself.",
+  "space-outside-org": "That space isn't in this organization.",
   "store-disabled": "That store is switched off on this server.",
   "subtasks-open": "There are subtasks still open.",
   "superadmin-only": "Only a superadmin can do this.",
@@ -108,5 +112,6 @@
   "voice-share-pending": "Screen sharing is already being asked for — answer the system dialog.",
   "voice-share-unanswered": "Nobody answered the share dialog.",
   "voice-unconfigured": "Voice isn't set up on this server.",
+  "webhook-failed": "The GitHub delivery couldn't be processed; GitHub will retry it.",
   "wrong-type": "That file type isn't accepted."
 }

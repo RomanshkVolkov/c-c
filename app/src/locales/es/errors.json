@@ -14,6 +14,7 @@
   "bad-range": "Ese trozo del fichero no existe.",
   "bad-service-name": "Ese no es un nombre de stack o de servicio.",
   "bad-sha": "Eso no es el sha de un commit.",
+  "bad-signature": "La firma de la entrega de GitHub no es buena.",
   "bad-status": "Ese estado no es de esta lista.",
   "bad-timezone": "Esa zona horaria no existe.",
   "bad-transition": "Ese estado no puede ir detrás de éste.",
@@ -33,6 +34,7 @@
   "endpoint-not-key-reachable": "A ese punto de entrada no se llega con una llave.",
   "endpoint-not-scoped": "Ese punto de entrada no es de esta organización.",
   "general-space-protected": "La sala general es el canal de la organización, no un sitio para tareas.",
+  "github-off": "Este servidor de cac no tiene la GitHub App configurada.",
   "image-service-not-configured": "Las imágenes no están montadas en este servidor.",
   "inbox-other-org": "Esa lista es de otra organización.",
   "insufficient-role": "Tu rol en esta organización no llega a eso.",
@@ -73,6 +75,7 @@
   "not-the-recorder": "Sólo quien empezó esta grabación, o un administrador, puede borrarla.",
   "nothing-to-roll-back-to": "No hay nada anterior a este deploy a lo que volver.",
   "pat-unsupported": "Un token personal no puede hacer eso.",
+  "payload-too-large": "Lo que se mandó es demasiado grande.",
   "profile-not-saved": "No se pudo guardar tu perfil.",
   "provisioning-not-running": "Esa ejecución ya estaba cerrada.",
   "rate-limited": "Demasiadas peticiones. Espera un momento y reinténtalo.",
@@ -86,6 +89,7 @@
   "room-empty": "Todavía no hay nadie en esta llamada.",
   "same-password": "La contraseña nueva tiene que ser distinta de la actual.",
   "self-delete": "No puedes borrarte a ti mismo.",
+  "space-outside-org": "Ese espacio no es de esta organización.",
   "store-disabled": "Ese almacén está apagado en este servidor.",
   "subtasks-open": "Quedan subtareas sin cerrar.",
   "superadmin-only": "Sólo un superadministrador puede hacer esto.",
@@ -108,5 +112,6 @@
   "voice-share-pending": "Ya se está pidiendo la pantalla — contesta al diálogo del sistema.",
   "voice-share-unanswered": "Nadie contestó al diálogo de compartir.",
   "voice-unconfigured": "La voz no está montada en este servidor.",
+  "webhook-failed": "No se pudo procesar la entrega de GitHub; GitHub la reintentará.",
   "wrong-type": "Ese tipo de fichero no se acepta."
 }

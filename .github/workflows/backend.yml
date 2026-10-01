@@ -145,12 +145,17 @@ jobs:
           RECORDINGS_MUX_KEY: ${{ secrets.RECORDINGS_MUX_KEY }}
           RECORDINGS_MUX_ACCESS_KEY_ID: ${{ secrets.RECORDINGS_MUX_ACCESS_KEY_ID }}
           RECORDINGS_MUX_SECRET_ACCESS_KEY: ${{ secrets.RECORDINGS_MUX_SECRET_ACCESS_KEY }}
+          # La GitHub App. El slug no es credencial (sale en la URL pública de
+          # la App); el secreto del webhook sí. Vacíos = todo lo de GitHub
+          # contesta 503 y la app lo dice. Ver docs/integrations/github.md.
+          GITHUB_APP_SLUG: ${{ vars.CAC_GITHUB_APP_SLUG }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.CAC_GITHUB_WEBHOOK_SECRET }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK,REPORT_TOKEN_SECRET,LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET,RECORDINGS_MUX_KEY,RECORDINGS_MUX_ACCESS_KEY_ID,RECORDINGS_MUX_SECRET_ACCESS_KEY
+          envs: DATABASE_URL,JWT_SECRET_ACCESS,JWT_SECRET_REFRESH,IMAGE_SERVICE_URL,IMAGE_SERVICE_CERT_CN,IMAGE_SERVICE_API_KEY,REPORTS_MEDIA_BUCKET,REPORTS_MEDIA_REGION,REPORTS_MEDIA_ACCESS_KEY_ID,REPORTS_MEDIA_SECRET_ACCESS_KEY,INGEST_KEY_SECRET,REPORTS_KEK,REPORT_TOKEN_SECRET,LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET,RECORDINGS_MUX_KEY,RECORDINGS_MUX_ACCESS_KEY_ID,RECORDINGS_MUX_SECRET_ACCESS_KEY,GITHUB_APP_SLUG,GITHUB_WEBHOOK_SECRET
           script: |
             kubectl create secret generic cac-secret \
               --from-literal=DATABASE_URL="$DATABASE_URL" \
@@ -170,6 +175,8 @@ jobs:
               --from-literal=LIVEKIT_API_KEY="$LIVEKIT_API_KEY" \
               --from-literal=LIVEKIT_API_SECRET="$LIVEKIT_API_SECRET" \
               --from-literal=RECORDINGS_MUX_KEY="$RECORDINGS_MUX_KEY" \
+              --from-literal=GITHUB_APP_SLUG="$GITHUB_APP_SLUG" \
+              --from-literal=GITHUB_WEBHOOK_SECRET="$GITHUB_WEBHOOK_SECRET" \
               --dry-run=client -o yaml | kubectl apply -f -
 
             # El secreto que lee el propio LiveKit. Formato "clave: secreto",
