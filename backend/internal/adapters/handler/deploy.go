@@ -244,6 +244,10 @@ func deployError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusBadRequest, "That is not an image repository", "bad-image-repo")
 	case errors.Is(err, service.ErrBadServiceName):
 		SendErrorResponse(w, http.StatusBadRequest, "That is not a stack or service name", "bad-service-name")
+	case errors.Is(err, service.ErrBadRepoName):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not an owner/name repository", "bad-repo-name")
+	case errors.Is(err, service.ErrBadWorkflow):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a workflow file name", "bad-workflow")
 	case errors.Is(err, service.ErrDeployNotSwarm):
 		SendErrorResponse(w, http.StatusBadRequest, "Only swarm servers deploy from cac", "deploy-needs-swarm")
 	case errors.Is(err, gorm.ErrRecordNotFound):

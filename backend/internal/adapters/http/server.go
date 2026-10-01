@@ -12,6 +12,12 @@ import (
 )
 
 func InitServerRoutes(db *gorm.DB, r *chi.Mux, bus *events.Hub) {
+	InitServerRoutesWith(db, r, bus, nil)
+}
+
+// InitServerRoutesWith: con la GitHub App, que sigue cada deploy en GitHub y
+// cuyo `workflow_run` cuenta como el aviso del CI. nil = sin ella.
+func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.GitHubService) {
 	repo := repository.NewServerRepository(db)
 	svc := service.NewServerService(repo)
 	h := handler.NewServerHandler(svc)
@@ -22,7 +28,12 @@ func InitServerRoutes(db *gorm.DB, r *chi.Mux, bus *events.Hub) {
 	intgSvc := service.NewIntegrationService(repository.NewIntegrationRepository(db))
 	intgH := handler.NewIntegrationHandler(svc, intgSvc)
 
-	deploySvc := service.NewDeployService(repository.NewDeployRepository(db), repository.NewServerRepository(db), bus)
+	deployRepo := repository.NewDeployRepository(db)
+	deploySvc := service.NewDeployService(deployRepo, repository.NewServerRepository(db), bus)
+	if gh != nil {
+		deploySvc.WithObserver(gh)
+		gh.WithDeploys(deploySvc, deployRepo)
+	}
 	deployH := handler.NewDeployHandler(svc, deploySvc)
 	agentH := handler.NewAgentHandler(svc, deploySvc)
 

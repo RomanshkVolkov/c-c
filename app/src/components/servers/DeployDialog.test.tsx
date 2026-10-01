@@ -209,7 +209,7 @@ describe("el aviso del CI", () => {
     expect(confirmar).toHaveBeenCalledTimes(1);
     expect(patch).toHaveBeenCalledWith(
       "/api/v1/servers/srv-1/deployables/dp-1",
-      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy" },
+      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy", buildWorkflow: "" },
       true,
     );
     await waitFor(() =>
@@ -220,6 +220,34 @@ describe("el aviso del CI", () => {
     fireEvent.click(screen.getByRole("radio", { name: /^(apuntar|record)$/i }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
     expect(confirmar).toHaveBeenCalledTimes(1);
+  });
+
+  it("el repo y el workflow se guardan sin tocar lo demás de la fila", async () => {
+    respuestas([{ ...deployable, onCINotify: "deploy", buildWorkflow: "viejo.yml" }], []);
+    patch.mockResolvedValue({ success: true, data: { ...deployable, repoFullName: "dwit/api", buildWorkflow: "prod.yml" } });
+    pintar();
+    const guardar = await screen.findByRole("button", { name: /^(guardar|save)$/i });
+    expect((guardar as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/(repo de github|github repo)/i), { target: { value: " dwit/api " } });
+    fireEvent.change(screen.getByLabelText(/(workflow que publica|workflow that publishes)/i), { target: { value: "prod.yml" } });
+    fireEvent.click(guardar);
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith(
+        "/api/v1/servers/srv-1/deployables/dp-1",
+        { name: "app", environment: "prod", repoFullName: "dwit/api", onCINotify: "deploy", buildWorkflow: "prod.yml" },
+        true,
+      ),
+    );
+  });
+
+  it("cambiar de modo no borra el workflow", async () => {
+    respuestas([{ ...deployable, buildWorkflow: "prod.yml" }], []);
+    confirmar.mockResolvedValue(true);
+    patch.mockResolvedValue({ success: true, data: { ...deployable, onCINotify: "deploy", buildWorkflow: "prod.yml" } });
+    pintar();
+    fireEvent.click(await screen.findByRole("radio", { name: /^(desplegar|deploy)$/i }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(patch.mock.calls[0][1].buildWorkflow).toBe("prod.yml");
   });
 
   it("una versión publicada se despliega desde su fila, salvo con otro en curso", async () => {

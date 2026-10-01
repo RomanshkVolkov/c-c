@@ -161,3 +161,13 @@ func (r *GitHubRepository) AddSourcedComment(c *domain.ItemComment) (bool, error
 	}).Create(c)
 	return res.RowsAffected == 1, res.Error
 }
+
+// FindRepoByName: el repo de la org con ese `owner/name`, sin distinguir
+// mayúsculas (GitHub no las distingue).
+func (r *GitHubRepository) FindRepoByName(orgID, fullName string) (*domain.GitHubRepo, error) {
+	var repo domain.GitHubRepo
+	if err := r.db.First(&repo, "org_id = ? AND LOWER(full_name) = LOWER(?)", orgID, fullName).Error; err != nil {
+		return nil, err
+	}
+	return &repo, nil
+}

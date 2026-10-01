@@ -10,6 +10,7 @@ import (
 	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
+	"github.com/guz-studio/cac/backend/internal/core/service"
 	"gorm.io/gorm"
 )
 
@@ -38,14 +39,18 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	// poder avisarle **a él**, y para eso el servicio necesita voz.
 	InitOrganizationRoutes(db, r, hub)
 	// Los servidores también: un deploy cuenta por el hub por dónde va.
-	InitServerRoutes(db, r, hub)
+	// La GitHub App la comparten servidores (sigue cada deploy en GitHub) y sus
+	// propias rutas (webhooks y la pestaña de la org).
+	gh := service.NewGitHubService(repository.NewGitHubRepository(db), GitHubConfigFromEnv(), hub).
+		WithApp(GitHubAppKeyFromEnv())
+	InitServerRoutesWith(db, r, hub, gh)
 	InitReportRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub)
 	InitNotificationRoutes(db, r)
 	// Las reuniones periódicas y las grabaciones: los dos relojes de fondo.
 	InitMeetingRoutes(db, r, hub)
 	InitRecordingRoutes(db, r, hub)
-	InitGitHubRoutes(db, r, hub, GitHubConfigFromEnv())
+	InitGitHubRoutesWith(r, gh)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

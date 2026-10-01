@@ -677,7 +677,11 @@
       "builds": "Published versions",
       "noBuilds": "The CI hasn't notified about any yet.",
       "openRun": "Open the CI run",
-      "deployThis": "Deploy {{sha}}"
+      "deployThis": "Deploy {{sha}}",
+      "repo": "GitHub repo",
+      "workflow": "Workflow that publishes the image",
+      "saveGitHub": "Save",
+      "githubLead": "With the GitHub App installed: each deploy shows up in GitHub, and when that workflow finishes well it counts as the CI notice, no curl step needed."
     }
   }
 }

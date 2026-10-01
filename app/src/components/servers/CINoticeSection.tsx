@@ -9,6 +9,8 @@ import { ciNoticeStep } from "@/lib/deploy";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { Server } from "@/types/server";
 import type { CINotifyMode, Deployable } from "@/types/deploy";
 
@@ -37,7 +39,10 @@ export default function CINoticeSection({
   const { t } = useT();
   const confirm = useConfirm();
   const builds = useDeploymentsStore((s) => s.builds[deployable.id] ?? NADA);
-  const { loadBuilds, mintCIKey, setCINotify } = useDeploymentsStore.getState();
+  const { loadBuilds, mintCIKey, setCINotify, setGitHub } = useDeploymentsStore.getState();
+  const [repo, setRepo] = useState(deployable.repoFullName);
+  const [workflow, setWorkflow] = useState(deployable.buildWorkflow ?? "");
+  const ghDirty = repo.trim() !== deployable.repoFullName || workflow.trim() !== (deployable.buildWorkflow ?? "");
   // La llave entera sólo vive aquí, y sólo hasta cerrar el diálogo.
   const [key, setKey] = useState<string | null>(null);
   const [copied, setCopied] = useState<"key" | "step" | null>(null);
@@ -123,6 +128,40 @@ export default function CINoticeSection({
           {deployable.ciKeyPreview ? t("common:deploy.ci.remint") : t("common:deploy.ci.mint")}
         </Button>
       </div>
+
+      {/* Con la GitHub App: el repo hace que cada deploy sea un Deployment en
+          GitHub, y el workflow, que su final cuente como el aviso. */}
+      <div className="flex flex-wrap items-end gap-2 text-sm">
+        <div className="min-w-40 flex-1 space-y-1">
+          <Label htmlFor="ci-repo" className="text-xs">{t("common:deploy.ci.repo")}</Label>
+          <Input
+            id="ci-repo"
+            className="h-8 font-mono text-xs"
+            placeholder="owner/repo"
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+          />
+        </div>
+        <div className="min-w-32 flex-1 space-y-1">
+          <Label htmlFor="ci-workflow" className="text-xs">{t("common:deploy.ci.workflow")}</Label>
+          <Input
+            id="ci-workflow"
+            className="h-8 font-mono text-xs"
+            placeholder="prod.yml"
+            value={workflow}
+            onChange={(e) => setWorkflow(e.target.value)}
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !ghDirty}
+          onClick={() => void guard(() => setGitHub(server.id, deployable, repo.trim(), workflow.trim()))}
+        >
+          {t("common:deploy.ci.saveGitHub")}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("common:deploy.ci.githubLead")}</p>
 
       {key && (
         <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">

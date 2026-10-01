@@ -15,6 +15,8 @@ var (
 	ErrDeployNotSwarm      = errors.New("deploy-not-swarm")
 	ErrBadImageRepo        = errors.New("bad-image-repo")
 	ErrBadServiceName      = errors.New("bad-service-name")
+	ErrBadRepoName         = errors.New("bad-repo-name")
+	ErrBadWorkflow         = errors.New("bad-workflow")
 	ErrBadSha              = errors.New("bad-sha")
 	ErrNothingToRollBackTo = errors.New("nothing-to-roll-back-to")
 	ErrRollbackOutsideRepo = errors.New("rollback-outside-repo")
@@ -25,16 +27,43 @@ var (
 // (`ghcr.io/owner/repo`). El tag lo pone cada deploy.
 var imageRepoPattern = regexp.MustCompile(`^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+$`)
 
+// repoFullName: `owner/name` como los escribe GitHub.
+var repoFullName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$`)
+
+// workflowFile: el nombre de fichero de un workflow, sin ruta.
+var workflowFile = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}\.ya?ml$`)
+
 // dockerName: un nombre de stack o de servicio tal como los acepta Docker.
 var dockerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$`)
 
 // DeployService: desplegar desde cac. Encola aquí; el agente del servidor lo
 // recoge en su siguiente pregunta, despliega, y va contando por dónde va.
 type DeployService struct {
-	repo    *repository.DeployRepository
-	servers *repository.ServerRepository
-	hub     *events.Hub
-	now     func() time.Time
+	repo     *repository.DeployRepository
+	servers  *repository.ServerRepository
+	hub      *events.Hub
+	now      func() time.Time
+	observer DeployObserver
+}
+
+// DeployObserver: quien quiere enterarse de cómo va cada deploy además de la
+// app (hoy, GitHub, para su Deployment). Nunca puede frenar ni hacer fallar un
+// deploy: lo que haga, lo hace por su cuenta.
+type DeployObserver interface {
+	DeploymentChanged(d *domain.Deployable, dep *domain.Deployment)
+}
+
+func (s *DeployService) WithObserver(o DeployObserver) *DeployService {
+	s.observer = o
+	return s
+}
+
+// changed: el evento para la app y el aviso al observador, siempre juntos.
+func (s *DeployService) changed(d *domain.Deployable, dep *domain.Deployment) {
+	s.publish(dep.OrgID, "deploy:status", dep)
+	if s.observer != nil && d != nil {
+		s.observer.DeploymentChanged(d, dep)
+	}
 }
 
 func NewDeployService(repo *repository.DeployRepository, servers *repository.ServerRepository, hub *events.Hub) *DeployService {
@@ -79,7 +108,16 @@ func (s *DeployService) FindDeployable(serverID, id string) (*domain.Deployable,
 }
 
 func (s *DeployService) UpdateDeployable(d *domain.Deployable, req domain.UpdateDeployableRequest) (*domain.Deployable, error) {
+	if req.RepoFullName != "" && !repoFullName.MatchString(req.RepoFullName) {
+		return nil, ErrBadRepoName
+	}
+	if req.BuildWorkflow != nil && *req.BuildWorkflow != "" && !workflowFile.MatchString(*req.BuildWorkflow) {
+		return nil, ErrBadWorkflow
+	}
 	d.Name, d.Environment, d.RepoFullName, d.OnCINotify = req.Name, req.Environment, req.RepoFullName, req.OnCINotify
+	if req.BuildWorkflow != nil {
+		d.BuildWorkflow = *req.BuildWorkflow
+	}
 	if err := s.repo.UpdateDeployable(d); err != nil {
 		return nil, err
 	}
@@ -138,8 +176,14 @@ func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbac
 		return nil, false, ErrAgentTooOld
 	}
 	now := s.now()
-	if err := s.repo.ExpireStale(d.ID, now); err != nil {
+	expired, err := s.repo.ExpireStale(d.ID, now)
+	if err != nil {
 		return nil, false, err
+	}
+	// Los que caducan también se cuentan: en GitHub se quedarían «en curso»
+	// para siempre.
+	for i := range expired {
+		s.changed(d, &expired[i])
 	}
 	dep := &domain.Deployment{
 		OrgID: d.OrgID, DeployableID: d.ID, ServerID: d.ServerID,
@@ -150,7 +194,7 @@ func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbac
 	if err := s.repo.CreateDeployment(dep); err != nil {
 		return nil, false, err
 	}
-	s.publish(d.OrgID, "deploy:status", dep)
+	s.changed(d, dep)
 	return dep, true, nil
 }
 
@@ -243,7 +287,7 @@ func (s *DeployService) Claim(serverID string) (*domain.AgentJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.publish(dep.OrgID, "deploy:status", dep)
+	s.changed(d, dep)
 	return &domain.AgentJob{
 		ID:   dep.ID,
 		Kind: "deploy",
@@ -270,6 +314,9 @@ func (s *DeployService) Finish(serverID, id string, req domain.AgentFinishReques
 	if err != nil {
 		return err
 	}
-	s.publish(dep.OrgID, "deploy:status", dep)
+	// Ya acabado: si el servicio se borró entretanto, la app se entera igual
+	// y a GitHub no hay a quién contárselo.
+	d, _ := s.repo.FindDeployable(serverID, dep.DeployableID)
+	s.changed(d, dep)
 	return nil
 }

@@ -10,6 +10,11 @@ export interface Deployable {
   imageRepo: string;
   environment: string;
   repoFullName: string;
+  /**
+   * El fichero del workflow que publica la imagen (`prod.yml`). Con la GitHub
+   * App, que termine bien cuenta como el aviso del CI. Vacío = no avisa.
+   */
+  buildWorkflow?: string;
   /** Qué hace cac cuando el CI avisa: apuntarlo, o además desplegarlo. */
   onCINotify: CINotifyMode;
   /** El principio de la llave del CI, para reconocerla; vacío si no tiene. */

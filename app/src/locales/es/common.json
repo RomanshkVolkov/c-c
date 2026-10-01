@@ -677,7 +677,11 @@
       "builds": "Versiones publicadas",
       "noBuilds": "El CI todavía no ha avisado de ninguna.",
       "openRun": "Abrir la ejecución del CI",
-      "deployThis": "Desplegar {{sha}}"
+      "deployThis": "Desplegar {{sha}}",
+      "repo": "Repo de GitHub",
+      "workflow": "Workflow que publica la imagen",
+      "saveGitHub": "Guardar",
+      "githubLead": "Con la GitHub App instalada: cada deploy aparece en GitHub, y cuando ese workflow termina bien cuenta como el aviso del CI, sin el paso del curl."
     }
   }
 }

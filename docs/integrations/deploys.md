@@ -97,8 +97,9 @@ workflow no despliegan dos veces.
 
 - No sabe de ramas: despliega lo que el workflow avise. Si el paso sólo corre en
   `main`, sólo se despliega `main`.
-- No escribe de vuelta en GitHub. Eso llega con la GitHub App (el Deployment y
-  su estado en el commit), que además hará opcional este paso.
+- Con la [GitHub App](github.md) instalada y el workflow que publica la imagen
+  puesto en el servicio, este paso **sobra**: el final de ese workflow cuenta
+  como el aviso. Y cada deploy aparece en GitHub como un Deployment.
 - Los secrets del servicio siguen siendo los que ya tenga el servicio. Los
   secrets gestionados por cac piden el modo Desplegar, porque un `stack deploy`
   del CI los tiraría.

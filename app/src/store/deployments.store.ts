@@ -35,6 +35,8 @@ interface DeploymentsState {
   /** Acuña la llave del CI; la anterior deja de valer. */
   mintCIKey: (serverId: string, deployableId: string) => Promise<CIKey>;
   setCINotify: (serverId: string, d: Deployable, mode: CINotifyMode) => Promise<void>;
+  /** El repo de GitHub y el workflow que publica la imagen. */
+  setGitHub: (serverId: string, d: Deployable, repoFullName: string, buildWorkflow: string) => Promise<void>;
 
   /** Lo que llega por el stream. Públicos para probarlos sin él. */
   onStatus: (d: Deployment) => void;
@@ -46,6 +48,25 @@ const base = (serverId: string) => `/api/v1/servers/${serverId}/deployables`;
 function must<T>(res: APIResponse<T>): T {
   if (!res.success || res.data === undefined) throw new Error(res.error ?? "deploy");
   return res.data;
+}
+
+// El PATCH pide la fila entera: lo demás va como está.
+async function patchDeployable(
+  set: (fn: (s: DeploymentsState) => Partial<DeploymentsState>) => void,
+  serverId: string,
+  d: Deployable,
+  patch: Partial<Pick<Deployable, "onCINotify" | "repoFullName" | "buildWorkflow">>,
+) {
+  const body = {
+    name: d.name,
+    environment: d.environment,
+    repoFullName: d.repoFullName,
+    onCINotify: d.onCINotify,
+    buildWorkflow: d.buildWorkflow ?? "",
+    ...patch,
+  };
+  const next = must(await api.patch<APIResponse<Deployable>>(`${base(serverId)}/${d.id}`, body, true));
+  replace(set, serverId, d.id, next);
 }
 
 function replace(
@@ -120,17 +141,10 @@ export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
     return k;
   },
 
-  setCINotify: async (serverId, d, mode) => {
-    // El PATCH pide la fila entera: lo demás va como está.
-    const next = must(
-      await api.patch<APIResponse<Deployable>>(
-        `${base(serverId)}/${d.id}`,
-        { name: d.name, environment: d.environment, repoFullName: d.repoFullName, onCINotify: mode },
-        true,
-      ),
-    );
-    replace(set, serverId, d.id, next);
-  },
+  setCINotify: (serverId, d, mode) => patchDeployable(set, serverId, d, { onCINotify: mode }),
+
+  setGitHub: (serverId, d, repoFullName, buildWorkflow) =>
+    patchDeployable(set, serverId, d, { repoFullName, buildWorkflow }),
 
   onStatus: (d) =>
     set((s) => {

@@ -21,8 +21,8 @@ En GitHub → Settings → Developer settings → GitHub Apps → New GitHub App
 | Redirect on update | ✔ (para que reinstalar también vuelva a cac) |
 | Webhook URL | `https://cac.guz-studio.dev/webhooks/github` |
 | Webhook secret | uno largo y aleatorio (va abajo, como `CAC_GITHUB_WEBHOOK_SECRET`) |
-| Permisos de repositorio | Metadata: read · Contents: read · Pull requests: read |
-| Eventos | Push · Pull request (los de instalación llegan siempre) |
+| Permisos de repositorio | Metadata: read · Contents: read · Pull requests: read · Actions: read · Deployments: read and write |
+| Eventos | Push · Pull request · Workflow run (los de instalación llegan siempre) |
 | Dónde se puede instalar | Any account |
 
 Y en el repo de cac (Settings → Secrets and variables → Actions):
@@ -34,9 +34,18 @@ Y en el repo de cac (Settings → Secrets and variables → Actions):
 `backend.yml` los mete en `cac-secret` en el siguiente despliegue. Sin los dos,
 todo lo de GitHub contesta `503 github-off` y la app lo dice en la pestaña.
 
-La llave privada de la App **todavía no hace falta**: instalar, recibir los
-webhooks y comentar sólo piden el slug y el secreto. Hará falta para escribir de
-vuelta en GitHub (los Deployments), que es la R6.
+Para que la App **escriba** en GitHub (sección 5), dos más:
+
+- variable `CAC_GITHUB_APP_ID`: el App ID, en la página de la App;
+- secret `CAC_GITHUB_APP_PRIVATE_KEY`: una llave privada generada ahí mismo
+  (Private keys → Generate), **en una sola línea** con los saltos escritos
+  como `\n`:
+
+  ```sh
+  awk 'NF {sub(/\r/, ""); printf "%s\\n", $0}' cac.private-key.pem
+  ```
+
+Sin ellas, la App comenta en las tareas y no escribe en GitHub.
 
 ## 2. Conectar una org
 
@@ -75,3 +84,25 @@ texto y veinte commits por push.
   Etiquetas, revisiones y ediciones no se cuentan.
 
 Una reentrega de GitHub no duplica nada.
+
+## 5. Lo que la App escribe en GitHub
+
+Por servicio, en su diálogo de deploy → «Aviso del CI»: el **repo de GitHub**
+(`owner/repo`) y, si se quiere, el **workflow que publica la imagen**
+(`prod.yml`). El repo tiene que ser uno de los que ve la instalación de la org.
+
+- **Cada deploy es un Deployment de GitHub** del commit desplegado, en el
+  entorno del servicio, y sigue su estado: `in_progress` cuando el agente lo
+  recoge, `success` o `failure` al acabar. Uno que caduca porque el agente dejó
+  de contestar acaba en `failure`, no se queda «en curso» para siempre. Se ve
+  en la pestaña Environments del repo.
+- **Un deploy que sale bien avisa a las tareas que trae**: las que nombran los
+  commits de entre lo que había y lo nuevo (como mucho 50) reciben
+  `` deploy `abc1234` → prod · api ``. Interna y una vez por deploy.
+- **El workflow que publica la imagen, cuando acaba bien, cuenta como el aviso
+  del CI** (el del `curl` de [deploys.md](deploys.md)): apunta el build y, en
+  modo Desplegar, lo despliega. Otro workflow del repo, o ése fallado, no
+  cuenta. Con esto el paso del `curl` sobra.
+
+Nada de esto frena un deploy: lo que se cuenta a GitHub va aparte, y si GitHub
+no contesta, el deploy sigue igual.

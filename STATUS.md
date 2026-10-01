@@ -22,12 +22,14 @@ backend desplegado; la UI en la v1.6.78): el CI avisa con una llave por
 servicio (`POST /ingest/v1/deploys`); en «Apuntar» cac lista las versiones, en
 «Desplegar» las despliega. Contrato en `docs/integrations/deploys.md`. **R4
 commiteada** (`82c7fb2`, sale en la v1.6.79): cada servidor se abre por su URL
-con pestañas, sin `state` del router. **R5 hecha, sin commitear:** la GitHub
-App. Una org la instala desde Ajustes → GitHub, enlaza cada repo a un espacio,
-y los commits y PRs que nombran una tarea (`cac#12`, el folio, `#12` si se
-enciende) dejan una línea **interna** en ella, una sola vez. Falta registrar la
-App en GitHub y poner `CAC_GITHUB_APP_SLUG` y `CAC_GITHUB_WEBHOOK_SECRET` en el
-repo: ver `docs/integrations/github.md`. Backend primero.
+con pestañas, sin `state` del router. **R5 publicada en backend** (`7dc58d3`):
+la GitHub App; los commits y PRs que nombran una tarea dejan una línea
+interna. **R6 hecha, sin commitear:** la App escribe en GitHub —cada deploy es
+un Deployment que sigue su estado, y uno que sale bien avisa a las tareas que
+trae— y el workflow que publica la imagen cuenta como el aviso del CI. La UI de
+R4–R6 sale en la v1.6.79. **Falta de jose:** registrar la App y poner
+`CAC_GITHUB_APP_SLUG`, `CAC_GITHUB_WEBHOOK_SECRET`, `CAC_GITHUB_APP_ID` y
+`CAC_GITHUB_APP_PRIVATE_KEY` (ver `docs/integrations/github.md`).
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para

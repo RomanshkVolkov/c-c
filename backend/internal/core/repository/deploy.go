@@ -72,6 +72,7 @@ func (r *DeployRepository) UpdateDeployable(d *domain.Deployable) error {
 		"environment":    d.Environment,
 		"repo_full_name": d.RepoFullName,
 		"on_ci_notify":   d.OnCINotify,
+		"build_workflow": d.BuildWorkflow,
 	}).Error
 }
 
@@ -130,8 +131,9 @@ func (r *DeployRepository) ListBuilds(deployableID string, limit int) ([]domain.
 
 // ExpireStale da por fallidos los deployments que llevan demasiado «en curso»:
 // un agente que murió a medias no puede bloquear el servicio para siempre.
-func (r *DeployRepository) ExpireStale(deployableID string, now time.Time) error {
-	return r.db.Model(&domain.Deployment{}).
+func (r *DeployRepository) ExpireStale(deployableID string, now time.Time) ([]domain.Deployment, error) {
+	var expired []domain.Deployment
+	err := r.db.Model(&expired).Clauses(clause.Returning{}).
 		Where("deployable_id = ? AND status = ? AND started_at < ?", deployableID, domain.DeployRunning, now.Add(-domain.DeployStaleAfter)).
 		Updates(map[string]any{
 			"status": domain.DeployFailed,
@@ -139,6 +141,7 @@ func (r *DeployRepository) ExpireStale(deployableID string, now time.Time) error
 			"error":       "agent-stopped-responding",
 			"finished_at": now,
 		}).Error
+	return expired, err
 }
 
 // CreateDeployment encola. Con un deploy vivo para el mismo servicio, choca
@@ -270,5 +273,28 @@ func (r *DeployRepository) ListDeployments(deployableID string, limit int) ([]do
 		Order("d.created_at DESC").
 		Limit(limit).
 		Scan(&out).Error
+	return out, err
+}
+
+// ─── GitHub ───────────────────────────────────────────────────────────────────
+
+func (r *DeployRepository) FindDeploymentByID(id string) (*domain.Deployment, error) {
+	var d domain.Deployment
+	if err := r.db.First(&d, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+func (r *DeployRepository) SetGitHubDeploymentID(id string, ghID int64) error {
+	return r.db.Model(&domain.Deployment{}).Where("id = ?", id).Update("github_deployment_id", ghID).Error
+}
+
+// DeployablesBuiltBy: los servicios de una org cuyo repo es éste y que dicen
+// qué workflow publica su imagen.
+func (r *DeployRepository) DeployablesBuiltBy(orgID, repoFullName string) ([]domain.Deployable, error) {
+	var out []domain.Deployable
+	err := r.db.Where("org_id = ? AND LOWER(repo_full_name) = LOWER(?) AND build_workflow <> ''", orgID, repoFullName).
+		Find(&out).Error
 	return out, err
 }

@@ -34,6 +34,11 @@ type Deployable struct {
 	// El repo de código (`owner/name`), opcional. Lo usan la GitHub App y las
 	// tareas; para desplegar no hace falta.
 	RepoFullName string `gorm:"type:varchar(200)" json:"repoFullName"`
+	// BuildWorkflow: el fichero del workflow que publica la imagen
+	// (`prod.yml`). Con él y la GitHub App, que ese workflow termine bien
+	// cuenta como el aviso del CI, y el paso del `curl` sobra. Vacío = la App
+	// no avisa de nada para este servicio.
+	BuildWorkflow string `gorm:"type:varchar(200)" json:"buildWorkflow"`
 	// Qué hacer cuando el CI avise de una imagen nueva (R3): `record` la apunta
 	// y nada más —el CI sigue desplegando él—; `deploy` la despliega.
 	OnCINotify string `gorm:"type:varchar(20);not null;default:'record'" json:"onCINotify"`
@@ -116,6 +121,9 @@ type Deployment struct {
 	RollbackOfID      string     `gorm:"type:varchar(36)" json:"rollbackOfId"`
 	// Para que el mismo aviso del CI dos veces sea un solo deployment (R3).
 	IdempotencyKey string `gorm:"type:varchar(120)" json:"-"`
+	// El Deployment que este deploy tiene en GitHub, si su servicio tiene repo
+	// enlazado y la App puede escribir. 0 = ninguno.
+	GitHubDeploymentID int64 `gorm:"column:github_deployment_id;not null;default:0" json:"-"`
 }
 
 const (
@@ -178,6 +186,9 @@ type UpdateDeployableRequest struct {
 	Environment  string `json:"environment"  validate:"max=40"`
 	RepoFullName string `json:"repoFullName" validate:"max=200"`
 	OnCINotify   string `json:"onCINotify"   validate:"required,oneof=record deploy"`
+	// Puntero: ausente = no se toca. Una app anterior a la R6 no lo manda, y
+	// como el PATCH pide la fila entera, si no lo borraría al cambiar de modo.
+	BuildWorkflow *string `json:"buildWorkflow,omitempty" validate:"omitempty,max=200"`
 }
 
 type DeployRequest struct {

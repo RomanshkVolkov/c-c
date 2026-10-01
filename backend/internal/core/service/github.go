@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -52,15 +54,34 @@ type GitHubService struct {
 	cfg  GitHubConfig
 	hub  *events.Hub
 	now  func() time.Time
+
+	// Para escribir en GitHub (R6). Ver github_app.go.
+	app        GitHubAppKey
+	deploys    *DeployService
+	deployRepo *repository.DeployRepository
+	http       *http.Client
+	async      bool
+	mu         sync.Mutex
+	tokens     map[int64]installationToken
+	locks      map[string]*sync.Mutex
 }
 
 func NewGitHubService(repo *repository.GitHubRepository, cfg GitHubConfig, hub *events.Hub) *GitHubService {
-	return &GitHubService{repo: repo, cfg: cfg, hub: hub, now: time.Now}
+	return NewGitHubServiceAt(repo, cfg, time.Now).withHub(hub)
 }
 
 // NewGitHubServiceAt: con otro reloj, para probar que un state caduca.
 func NewGitHubServiceAt(repo *repository.GitHubRepository, cfg GitHubConfig, now func() time.Time) *GitHubService {
-	return &GitHubService{repo: repo, cfg: cfg, now: now}
+	return &GitHubService{
+		repo: repo, cfg: cfg, now: now,
+		http: &http.Client{Timeout: 10 * time.Second}, async: true,
+		tokens: map[int64]installationToken{}, locks: map[string]*sync.Mutex{},
+	}
+}
+
+func (s *GitHubService) withHub(hub *events.Hub) *GitHubService {
+	s.hub = hub
+	return s
 }
 
 func (s *GitHubService) Configured() bool { return s.cfg.Configured() }
@@ -193,6 +214,16 @@ type ghPayload struct {
 			Username string `json:"username"`
 		} `json:"author"`
 	} `json:"commits"`
+	WorkflowRun struct {
+		Conclusion string `json:"conclusion"`
+		Path       string `json:"path"`
+		HeadSha    string `json:"head_sha"`
+		HeadBranch string `json:"head_branch"`
+		HTMLURL    string `json:"html_url"`
+		Actor      struct {
+			Login string `json:"login"`
+		} `json:"actor"`
+	} `json:"workflow_run"`
 	Number      int `json:"number"`
 	PullRequest struct {
 		Title   string `json:"title"`
@@ -248,6 +279,8 @@ func (s *GitHubService) handle(event string, body []byte) error {
 		return s.onPush(&p)
 	case "pull_request":
 		return s.onPullRequest(&p)
+	case "workflow_run":
+		return s.onWorkflowRun(&p)
 	}
 	return nil
 }
