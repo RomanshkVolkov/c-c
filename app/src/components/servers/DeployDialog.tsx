@@ -4,7 +4,7 @@ import { Loader2, RotateCcw, Rocket } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { desde } from "@/lib/desde";
-import { guessEnvironment, isSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
+import { AGENT_VERSION_DEPLOYS, guessEnvironment, isSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +28,6 @@ const VARIANTE: Record<DeployStatus, "default" | "secondary" | "destructive" | "
 // Referencias estables para los selectores: `?? []` dentro de uno crea un
 // array nuevo en cada lectura y zustand repinta sin parar.
 const NADA: never[] = [];
-
-/** La primera versión del agente que despliega (`domain.AgentVersionDeploys`). */
-const AGENT_VERSION_DEPLOYS = 3;
 
 /**
  * Desplegar un servicio desde cac, y ver lo que se desplegó.

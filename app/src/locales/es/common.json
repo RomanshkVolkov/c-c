@@ -289,7 +289,33 @@
     "logsOf": "Logs — {{name}}",
     "clearLogs": "Limpiar",
     "logsCleared": "Vista de logs limpiada",
-    "inOrg": "en {{org}}"
+    "inOrg": "en {{org}}",
+    "tabs": {
+      "overview": "Resumen",
+      "services": "Servicios",
+      "nodes": "Nodos",
+      "stats": "Recursos",
+      "secrets": "Secrets"
+    },
+    "tabsLabel": "Secciones del servidor",
+    "back": "Volver a servidores",
+    "secretsService": "Servicio",
+    "secretsPickService": "Elige un servicio…",
+    "overview": {
+      "agent": "Agente",
+      "agentVersion": "versión {{version}}",
+      "agentSeen": "latió {{when}}",
+      "agentNoIdentity": "Este agente no tiene identidad: reinstálalo para que su estado sea su latido y para desplegar desde cac.",
+      "agentOld": "El agente es de la versión {{version}}, que no sabe desplegar: actualízalo.",
+      "connection": "Conexión",
+      "agentPort": "agente en el puerto {{port}}",
+      "deploys": "Despliegues",
+      "deploysEmpty": "Ningún servicio se despliega todavía desde cac. Regístralo desde su fila en Servicios: no cambia nada en el servidor y su CI sigue desplegando como hoy.",
+      "deploysStart": "Ir a Servicios",
+      "notDeployedYet": "sin desplegar desde cac",
+      "provisioning": "Provisioning",
+      "provisioningEmpty": "Todavía no se ha aplicado ningún playbook a este servidor desde cac."
+    }
   },
   "admin": {
     "users": "Usuarios",

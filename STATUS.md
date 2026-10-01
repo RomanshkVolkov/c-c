@@ -17,18 +17,23 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 deploys desde cac, GitHub App, Ansible desde la app y secrets por referencia a
 1Password, con adopción gradual por proyecto. **R0–R2 publicadas** (v1.6.76 y
 v1.6.77, agente `:v3`): desplegar un commit y volver atrás desde cac, con
-historial y log en vivo, por `service update`. **R3 hecha, sin commitear:** el
-CI avisa con una llave por servicio (`POST /ingest/v1/deploys`,
-`X-Deploy-Key: dk_…`); en modo «Apuntar» cac sólo lista las versiones y el CI
-sigue desplegando, en «Desplegar» cac encola el deploy. El contrato y el paso
-del workflow, en `docs/integrations/deploys.md`. Backend primero.
+historial y log en vivo, por `service update`. **R3 publicada** (`4f954cc`,
+backend desplegado; la UI en la v1.6.78): el CI avisa con una llave por
+servicio (`POST /ingest/v1/deploys`); en «Apuntar» cac lista las versiones, en
+«Desplegar» las despliega. Contrato en `docs/integrations/deploys.md`. **R4
+hecha, sin commitear** (sólo app): un servidor se abre por su URL
+(`useServer`) en `pages/servers/ServerLayout.tsx` con pestañas Resumen ·
+Servicios · Nodos · Recursos · Secrets; el terminal vive en el layout; el
+servicio de Secrets va en `?service=`. Ninguna pantalla de servidores usa el
+`state` del router (`no-router-state.test.ts`). Un agente `offline` ya tiene
+botón para reinstalarlo.
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para
 después: **#98**, en Mac la pantalla compartida sale inclinada (probable
 stride de la captura).
 
-La app va por la **v1.6.77** (30-sep; los instaladores compilándose al
+La app va por la **v1.6.78** (30-sep; los instaladores compilándose al
 escribir esto).
 
 **La v1.6.71 (27-sep) lleva:**

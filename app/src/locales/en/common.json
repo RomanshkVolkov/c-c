@@ -289,7 +289,33 @@
     "logsOf": "Logs — {{name}}",
     "clearLogs": "Clear",
     "logsCleared": "Log view cleared",
-    "inOrg": "in {{org}}"
+    "inOrg": "in {{org}}",
+    "tabs": {
+      "overview": "Overview",
+      "services": "Services",
+      "nodes": "Nodes",
+      "stats": "Resources",
+      "secrets": "Secrets"
+    },
+    "tabsLabel": "Server sections",
+    "back": "Back to servers",
+    "secretsService": "Service",
+    "secretsPickService": "Pick a service…",
+    "overview": {
+      "agent": "Agent",
+      "agentVersion": "version {{version}}",
+      "agentSeen": "checked in {{when}}",
+      "agentNoIdentity": "This agent has no identity: reinstall it so its status is its heartbeat and to deploy from cac.",
+      "agentOld": "The agent is version {{version}}, which can't deploy: update it.",
+      "connection": "Connection",
+      "agentPort": "agent on port {{port}}",
+      "deploys": "Deploys",
+      "deploysEmpty": "No service deploys from cac yet. Register one from its row in Services: it changes nothing on the server and its CI keeps deploying as it does today.",
+      "deploysStart": "Go to Services",
+      "notDeployedYet": "not deployed from cac",
+      "provisioning": "Provisioning",
+      "provisioningEmpty": "No playbook has been applied to this server from cac yet."
+    }
   },
   "admin": {
     "users": "Users",

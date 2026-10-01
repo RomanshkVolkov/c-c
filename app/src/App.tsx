@@ -4,7 +4,10 @@ import ReportsRedirect from "@/components/ReportsRedirect";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Dashboard from "@/pages/Dashboard";
 import Overview from "@/pages/Overview";
-import ServerManage from "@/pages/ServerManage";
+import ServerLayout from "@/pages/servers/ServerLayout";
+import ServerOverview from "@/pages/servers/ServerOverview";
+import ServerServices from "@/pages/servers/ServerServices";
+import ServerNodes from "@/pages/servers/ServerNodes";
 import ServerStats from "@/pages/ServerStats";
 import StackSecrets from "@/pages/StackSecrets";
 import ImageTool from "@/pages/ImageTool";
@@ -74,9 +77,13 @@ export default function App() {
           <Route path="/dm" element={<DirectMessages />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/notes/:id" element={<Notes />} />
-          <Route path="/servers/:id" element={<ServerManage />} />
-          <Route path="/servers/:id/stats" element={<ServerStats />} />
-          <Route path="/servers/:id/secrets" element={<StackSecrets />} />
+          <Route path="/servers/:id" element={<ServerLayout />}>
+            <Route index element={<ServerOverview />} />
+            <Route path="services" element={<ServerServices />} />
+            <Route path="nodes" element={<ServerNodes />} />
+            <Route path="stats" element={<ServerStats />} />
+            <Route path="secrets" element={<StackSecrets />} />
+          </Route>
           <Route path="/organization" element={<OrganizationSettings />} />
           <Route path="/invitations" element={<Invitations />} />
           <Route path="/diagnostics" element={<Diagnostics />} />

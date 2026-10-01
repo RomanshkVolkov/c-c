@@ -1,9 +1,9 @@
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { useServerContext } from "@/pages/servers/ServerLayout";
 import {
-  ArrowLeft,
   KeyRound,
   Plus,
   RefreshCw,
@@ -32,8 +32,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { invoke } from "@tauri-apps/api/core";
-import type { Server } from "@/types/server";
-import type { SwarmService } from "@/types/swarm";
 
 interface GitHubSecret {
   name: string;
@@ -46,12 +44,6 @@ interface GitHubVariable {
   value: string;
   created_at: string;
   updated_at: string;
-}
-
-interface LocationState {
-  server: Server;
-  service: SwarmService;
-  services: SwarmService[];
 }
 
 function inferOwnerRepo(image: string): { owner: string; repo: string } | null {
@@ -75,13 +67,14 @@ function inferOwnerRepo(image: string): { owner: string; repo: string } | null {
 
 export default function StackSecrets() {
   const { t } = useT();
-  const navigate = useNavigate();
-  const { state } = useLocation();
-  const locationState = state as LocationState | null;
+  // El servidor, del layout; el servicio, de `?service=`. Antes los dos
+  // llegaban por el `state` del router y una recarga devolvía al panel.
+  const { server, swarm } = useServerContext();
+  const [params, setParams] = useSearchParams();
+  const services = swarm.services;
   const PERSONAL_ACCESS_TOKEN_KEY = "PATK_global_usage"; // state.serverId;
 
-  const server = locationState?.server ?? null;
-  const service = locationState?.service ?? null;
+  const service = services.find((s) => s.name === params.get("service")) ?? null;
 
   // Infer owner/repo from the clicked service image, fallback to first inferrable image in stack
   const inferredRepo = (() => {
@@ -89,12 +82,10 @@ export default function StackSecrets() {
       const inferred = inferOwnerRepo(service.image);
       if (inferred) return inferred;
     }
-    if (locationState?.services) {
-      for (const svc of locationState.services) {
-        if (svc.stack === service?.stack) {
-          const inferred = inferOwnerRepo(svc.image);
-          if (inferred) return inferred;
-        }
+    for (const svc of services) {
+      if (svc.stack === service?.stack) {
+        const inferred = inferOwnerRepo(svc.image);
+        if (inferred) return inferred;
       }
     }
     return null;
@@ -116,6 +107,16 @@ export default function StackSecrets() {
   // Repo fields
   const [owner, setOwner] = useState(inferredRepo?.owner ?? "");
   const [repo, setRepo] = useState(inferredRepo?.repo ?? "");
+  // Los servicios llegan después de pintar (y el de `?service=` puede
+  // cambiar): lo deducido se vuelve a poner cuando cambia, no sólo al montar.
+  // Si no, tras recargar owner y repo se quedaban en blanco.
+  const inferredKey = inferredRepo ? `${inferredRepo.owner}/${inferredRepo.repo}` : "";
+  useEffect(() => {
+    if (!inferredKey) return;
+    const [o, r] = inferredKey.split("/");
+    setOwner(o);
+    setRepo(r);
+  }, [inferredKey]);
 
   // Secrets state
   const [secrets, setSecrets] = useState<GitHubSecret[]>([]);
@@ -177,10 +178,6 @@ export default function StackSecrets() {
     deleting: false,
     error: null,
   });
-
-  useEffect(() => {
-    if (!server) navigate("/dashboard", { replace: true });
-  }, [server, navigate]);
 
   const fetchTokenStatus = useCallback(async () => {
     if (!server) return;
@@ -446,24 +443,30 @@ export default function StackSecrets() {
        es lo que hacía antes toda la aplicación. Desde que el armazón tiene techo
        —ver `AppLayout`— crecer ya no es una opción: lo que sobra se recorta. El
        contenido va en su propia caja con scroll, como el resto de pantallas. */
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <header className="shrink-0 border-b px-6 py-3 flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate(`/servers/${server.id}`, { state: server })}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 items-center gap-3 pb-3 max-w-4xl mx-auto w-full">
         <div className="flex items-center gap-3 flex-1">
           <Shield className="h-5 w-5 text-muted-foreground" />
           <span className="font-semibold text-lg">{t("common:servers.githubSecrets")}</span>
-          <Badge variant="secondary">{stackName}</Badge>
-          <span className="text-sm text-muted-foreground">{server.name}</span>
+          {service && <Badge variant="secondary">{stackName}</Badge>}
         </div>
+        {/* De qué servicio: se elige aquí o se llega desde su fila. */}
+        <select
+          aria-label={t("common:servers.secretsService")}
+          className="h-8 rounded-md border bg-background px-2 text-sm"
+          value={service?.name ?? ""}
+          onChange={(e) => setParams(e.target.value ? { service: e.target.value } : {}, { replace: true })}
+        >
+          <option value="">{t("common:servers.secretsPickService")}</option>
+          {services.map((svc) => (
+            <option key={svc.id} value={svc.name}>
+              {svc.name}
+            </option>
+          ))}
+        </select>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-auto p-6 space-y-4 max-w-4xl mx-auto w-full">
+      <div className="min-h-0 flex-1 space-y-4 max-w-4xl mx-auto w-full">
         {/* Token Configuration */}
         <Card>
           <CardHeader>
@@ -818,7 +821,7 @@ export default function StackSecrets() {
             </CardContent>
           </Card>
         )}
-      </main>
+      </div>
 
       {/* Secret Dialog */}
       <Dialog

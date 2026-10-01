@@ -1,45 +1,21 @@
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
-import DeployDialog from "@/components/servers/DeployDialog";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AnsiToHtml from "ansi-to-html";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Activity, ArrowLeft, RefreshCw, Search, Terminal, X, RotateCcw, KeyRound, SquareTerminal, Rocket } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { KeyRound, RotateCcw, Rocket, Search, SquareTerminal, Terminal, X } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import type { Server } from "@/types/server";
-import type { SwarmService, SwarmNode } from "@/types/swarm";
-import K8sHub from "@/pages/K8sHub";
-import { useSwarm } from "@/hooks/use-swarm";
-import { agentBase, agentFetch, agentStreamUrl, registerAgent } from "@/lib/agent";
-import TerminalPanel from "@/components/terminal/TerminalPanel";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DeployDialog from "@/components/servers/DeployDialog";
+import { agentBase, agentFetch, agentStreamUrl } from "@/lib/agent";
 import { useTerminals } from "@/store/terminal.store";
-import { useConfirm } from "@/components/ConfirmDialog";
-import { toast } from "sonner";
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> =
-  {
-    online: "default",
-    offline: "destructive",
-    pending: "secondary",
-    error: "destructive",
-  };
+import type { SwarmService } from "@/types/swarm";
+import { useServerContext } from "./ServerLayout";
 
 function ReplicasBadge({ replicas }: { replicas: SwarmService["replicas"] }) {
   const { running, desired } = replicas;
@@ -422,268 +398,52 @@ function ServicesTable({
   );
 }
 
-function NodesTab({ nodes }: { nodes: SwarmNode[] }) {
-  const { t } = useT();
-  if (nodes.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-8 text-center">
-        {t("common:servers.noNodes")}
-      </p>
-    );
-  }
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t("common:servers.thHostname")}</TableHead>
-          <TableHead>{t("common:servers.thRole")}</TableHead>
-          <TableHead>{t("common:servers.thStatus")}</TableHead>
-          <TableHead>{t("common:servers.thAvailability")}</TableHead>
-          <TableHead>{t("common:servers.thEngine")}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {nodes.map((node) => (
-          <TableRow key={node.id}>
-            <TableCell className="font-medium">{node.hostname}</TableCell>
-            <TableCell>
-              <Badge
-                variant={node.role === "manager" ? "default" : "secondary"}
-              >
-                {node.role}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <Badge
-                variant={node.status === "ready" ? "default" : "destructive"}
-              >
-                {node.status}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <Badge
-                variant={
-                  node.availability === "active" ? "default" : "secondary"
-                }
-              >
-                {node.availability}
-              </Badge>
-            </TableCell>
-            <TableCell className="font-mono text-xs text-muted-foreground">
-              {node.engineVersion}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-// ServerManage routes to the right console based on the server's orchestrator:
-// docker-swarm → the swarm manager below; kubernetes → the platform hub.
-export default function ServerManage() {
+/** La pestaña de servicios de un swarm: cada uno con sus logs, reinicio, deploy, shell y secrets. */
+export default function ServerServices() {
+  const { server, swarm } = useServerContext();
   const navigate = useNavigate();
-  const { state } = useLocation();
-  const server = state as Server | null;
-  // Por si se llegó sin pasar por el panel: el agente pide pase y hay que
-  // saber de qué servidor es. (Con R4 el servidor se pedirá por la URL.)
-  if (server) registerAgent(server);
-
-  useEffect(() => {
-    if (!server) navigate("/dashboard", { replace: true });
-  }, [server, navigate]);
-
-  if (!server) return null;
-  if (server.type === "kubernetes") return <K8sHub server={server} />;
-  return <SwarmManage server={server} />;
-}
-
-function SwarmManage({ server }: { server: Server }) {
-  const { t } = useT();
-  const navigate = useNavigate();
-  const confirm = useConfirm();
-
   const abrirTerminal = useTerminals((s) => s.abrir);
-  const cerrarTerminales = useTerminals((s) => s.cerrarTodas);
-  const maximizado = useTerminals((s) => s.maximizado);
-  const sesiones = useTerminals((s) => s.sesiones);
-
-  // Los terminales viven en esta pantalla, así que salir de ella los cierra.
-  // Sin esto quedaría un `ssh` por sesión sin nada que lo represente en la UI:
-  // vivo, invisible e imposible de cerrar salvo reiniciando la app.
-  useEffect(() => cerrarTerminales, [cerrarTerminales]);
-
-  const volver = async () => {
-    const vivas = useTerminals.getState().sesiones.filter((s) => s.estado === "viva");
-    if (vivas.length > 0) {
-      const ok = await confirm({
-        title:
-          vivas.length === 1
-            ? t("common:servers.closeOneTerminal")
-            : t("common:servers.closeManyTerminals", { count: vivas.length }),
-        description: t("common:servers.closeTerminalsBody"),
-        confirmText: t("common:servers.leave"),
-        destructive: true,
-      });
-      if (!ok) return;
-    }
-    navigate("/dashboard");
-  };
-
-  const [tab, setTab] = useState<"services" | "nodes">("services");
-  const [selectedService, setSelectedService] = useState<SwarmService | null>(
-    null,
-  );
-  const [servicesFilter, setServicesFilter] = useState("");
+  const [selectedService, setSelectedService] = useState<SwarmService | null>(null);
+  const [filter, setFilter] = useState("");
   const [deployFor, setDeployFor] = useState<SwarmService | null>(null);
+  const { t } = useT();
 
-  const { services, nodes, loading, error, refresh } = useSwarm(
-    server.host,
-    server.agentPort,
-  );
-
-  const tabClass = (t: typeof tab) =>
-    `px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
-      tab === t
-        ? "border-b-2 border-primary text-foreground"
-        : "text-muted-foreground hover:text-foreground"
-    }`;
+  if (swarm.loading && swarm.services.length === 0) {
+    return <p className="py-8 text-center text-sm text-muted-foreground">{t("common:servers.loading")}</p>;
+  }
 
   return (
-    <div className="h-full bg-background flex flex-col overflow-hidden">
-      <header className="shrink-0 border-b px-6 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={volver}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex items-center gap-3 flex-1">
-          <span className="font-semibold text-lg">{server.name}</span>
-          <span className="font-mono text-sm text-muted-foreground">
-            {server.host}:{server.agentPort}
-          </span>
-          <Badge variant={STATUS_VARIANT[server.status] ?? "secondary"}>
-            {server.status}
-          </Badge>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          title={t("common:servers.terminalTitle")}
-          onClick={() => abrirTerminal(server, { kind: "host" })}
-        >
-          <SquareTerminal className="h-4 w-4 mr-1" />
-          {t("common:servers.terminal")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            navigate(`/servers/${server.id}/stats`, {
-              state: { server, nodes },
-            })
-          }
-        >
-          <Activity className="h-4 w-4 mr-1" />
-          {t("common:servers.stats")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refresh}
-          disabled={loading}
-        >
-          <RefreshCw
-            className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`}
-          />
-          {t("common:servers.refresh")}
-        </Button>
-      </header>
-
-      <main
-        className={`flex-1 flex-col min-h-0 p-6 gap-4 overflow-hidden ${
-          maximizado && sesiones.length > 0 ? "hidden" : "flex"
-        }`}
-      >
-        {error && (
-          <div className="shrink-0 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        {/* `min-h-0 flex-1`: la tarjeta cede sitio cuando se abre el panel de
-            logs, en vez de empujarlo fuera. `main` es `overflow-hidden`, así que
-            lo que no cabe **se recorta** — y lo que se recortaba era la cabecera
-            del panel de abajo, con su botón de cerrar dentro. De ahí que no se
-            pudiera cerrar. */}
-        <Card className="flex min-h-0 flex-1 flex-col">
-          <CardHeader className="shrink-0 pb-0">
-            <div className="flex border-b -mx-6 px-6">
-              <button
-                className={tabClass("services")}
-                onClick={() => setTab("services")}
-              >
-                Services {!loading && `(${services.length})`}
-              </button>
-              <button
-                className={tabClass("nodes")}
-                onClick={() => setTab("nodes")}
-              >
-                Nodes {!loading && `(${nodes.length})`}
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="min-h-0 flex-1 overflow-auto pt-4">
-            {loading ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                {t("common:servers.loading")}
-              </p>
-            ) : tab === "services" ? (
-              <ServicesTab
-                services={services}
-                host={server.host}
-                agentPort={server.agentPort}
-                filter={servicesFilter}
-                onFilterChange={setServicesFilter}
-                onLogsClick={(svc) =>
-                  setSelectedService((prev) =>
-                    prev?.id === svc.id ? null : svc,
-                  )
-                }
-                onSecretsClick={(svc) =>
-                  navigate(`/servers/${server.id}/secrets`, {
-                    state: { server, service: svc, services },
-                  })
-                }
-                onShellClick={(svc) =>
-                  abrirTerminal(server, { kind: "service", name: svc.name })
-                }
-                onDeployClick={setDeployFor}
-              />
-            ) : (
-              <NodesTab nodes={nodes} />
-            )}
-          </CardContent>
-        </Card>
-
-        {deployFor && (
-          <DeployDialog
-            server={server}
-            service={deployFor}
-            open
-            onOpenChange={(v) => !v && setDeployFor(null)}
-          />
-        )}
-
-        {selectedService && (
-          <LogsPanel
-            service={selectedService}
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <Card className="flex min-h-0 flex-1 flex-col">
+        <CardContent className="min-h-0 flex-1 overflow-auto pt-4">
+          <ServicesTab
+            services={swarm.services}
             host={server.host}
             agentPort={server.agentPort}
-            onClose={() => setSelectedService(null)}
+            filter={filter}
+            onFilterChange={setFilter}
+            onLogsClick={(svc) => setSelectedService((prev) => (prev?.id === svc.id ? null : svc))}
+            // El servicio va en la URL, no en el `state` del router: así la
+            // pantalla de secrets aguanta una recarga.
+            onSecretsClick={(svc) => navigate(`/servers/${server.id}/secrets?service=${encodeURIComponent(svc.name)}`)}
+            onShellClick={(svc) => abrirTerminal(server, { kind: "service", name: svc.name })}
+            onDeployClick={setDeployFor}
           />
-        )}
-      </main>
+        </CardContent>
+      </Card>
 
-      <TerminalPanel />
+      {deployFor && (
+        <DeployDialog server={server} service={deployFor} open onOpenChange={(v) => !v && setDeployFor(null)} />
+      )}
+
+      {selectedService && (
+        <LogsPanel
+          service={selectedService}
+          host={server.host}
+          agentPort={server.agentPort}
+          onClose={() => setSelectedService(null)}
+        />
+      )}
     </div>
   );
 }

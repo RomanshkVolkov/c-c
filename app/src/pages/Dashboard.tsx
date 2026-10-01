@@ -2,9 +2,6 @@ import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { Activity, KeyRound, Network, Pencil, RefreshCw, Rocket, Server, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
-import { api, apiUrl } from "@/lib/api";
-import type { APIResponse } from "@/types/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useServers } from "@/hooks/use-servers";
+import { useAgentLifecycle } from "@/hooks/use-agent-lifecycle";
 import AddServerDialog from "@/components/AddServerDialog";
 import SshKeyDialog from "@/components/SshKeyDialog";
 import EditServerDialog from "@/components/EditServerDialog";
@@ -29,20 +27,12 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = 
   error: "destructive",
 };
 
-type AgentBusy = { id: string; kind: "deploy" | "update" } | null;
-
-interface AgentResult {
-  stdout: string;
-  stderr: string;
-}
-
 export default function Dashboard() {
   const { t } = useT();
   const navigate = useNavigate();
   const { servers, loading, createServer, updateServer, deleteServer, refresh } = useServers();
   const confirm = useConfirm();
-  const [busy, setBusy] = useState<AgentBusy>(null);
-  const [agentError, setAgentError] = useState<string | null>(null);
+  const { busyId, error: agentError, install } = useAgentLifecycle(refresh);
 
   // `status` only tracks the swarm-manage agent, so the count is out of swarm
   // servers — a kubernetes row has no agent and would drag the total down.
@@ -69,48 +59,6 @@ export default function Dashboard() {
       toast.error(t("common:admin.errDelete"), {
         description: e instanceof Error ? e.message : String(e),
       });
-    }
-  };
-
-  const runAgentCommand = async (
-    server: ServerType,
-    kind: "deploy" | "update",
-  ) => {
-    setBusy({ id: server.id, kind });
-    setAgentError(null);
-    try {
-      // Instalar y actualizar son lo mismo desde la versión 2 del agente: se
-      // acuña una identidad nueva —lo que tumba la anterior— y se instala con
-      // ella. Un agente actualizado sin identidad no abriría su API, así que
-      // «sólo cambiar la imagen» ya no existe.
-      const minted = await api.post<APIResponse<{ token: string; sessionKey: string }>>(
-        `/api/v1/servers/${server.id}/agent-token`,
-        {},
-        true,
-      );
-      if (!minted.success || !minted.data) throw new Error(minted.error ?? "agent-token");
-      await invoke<AgentResult>("install_swarm_manage_agent", {
-        install: {
-          host: server.host,
-          sshPort: server.sshPort,
-          sshUser: server.sshUser,
-          agentPort: server.agentPort,
-          // Pin ssh to the server's 1Password key when one is linked; otherwise
-          // the agent offers every key it holds and the server may cut us off.
-          identityKey: await invoke<string | null>("get_server_ssh_key", {
-            serverId: server.id,
-          }).catch(() => null),
-          serverId: server.id,
-          backendUrl: apiUrl(""),
-          agentToken: minted.data.token,
-          sessionKey: minted.data.sessionKey,
-        },
-      });
-      await refresh();
-    } catch (e) {
-      setAgentError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
     }
   };
 
@@ -224,7 +172,7 @@ export default function Dashboard() {
                 </TableHeader>
                 <TableBody>
                   {servers.map((server) => {
-                    const isBusy = busy?.id === server.id;
+                    const isBusy = busyId === server.id;
                     // Agent lifecycle (deploy/update/stats) is swarm-only: a
                     // kubernetes server is driven by the platform hub, and the
                     // swarm-manage agent has nothing to do there.
@@ -274,14 +222,17 @@ export default function Dashboard() {
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
-                          {isSwarm && (server.status === "pending" || server.status === "error") && (
+                          {/* Cualquier estado que no sea «online» ofrece instalar: un
+                              agente que dejó de latir (offline) no tenía botón, y
+                              reinstalarlo es justo lo que lo arregla. */}
+                          {isSwarm && server.status !== "online" && (
                             <Button
                               variant="outline"
                               size="sm"
                               disabled={isBusy}
-                              onClick={() => runAgentCommand(server, "deploy")}
+                              onClick={() => void install(server)}
                             >
-                              {isBusy && busy?.kind === "deploy" ? (
+                              {isBusy ? (
                                 <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
                               ) : (
                                 <Rocket className="h-3 w-3 mr-1" />
@@ -294,25 +245,17 @@ export default function Dashboard() {
                               variant="ghost"
                               size="sm"
                               disabled={isBusy}
-                              onClick={() => runAgentCommand(server, "update")}
+                              onClick={() => void install(server)}
                             >
-                              <RefreshCw
-                                className={`h-3 w-3 mr-1 ${
-                                  isBusy && busy?.kind === "update" ? "animate-spin" : ""
-                                }`}
-                              />
-                              {isBusy && busy?.kind === "update" ? t("common:admin.updating") : t("common:admin.updateAgent")}
+                              <RefreshCw className={`h-3 w-3 mr-1 ${isBusy ? "animate-spin" : ""}`} />
+                              {isBusy ? t("common:admin.updating") : t("common:admin.updateAgent")}
                             </Button>
                           )}
                           {isSwarm && server.status === "online" && (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
-                                navigate(`/servers/${server.id}/stats`, {
-                                  state: { server },
-                                })
-                              }
+                              onClick={() => navigate(`/servers/${server.id}/stats`)}
                             >
                               <Activity className="h-3 w-3 mr-1" />
                               {t("common:admin.stats")}
@@ -321,7 +264,7 @@ export default function Dashboard() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => navigate(`/servers/${server.id}`, { state: server })}
+                            onClick={() => navigate(`/servers/${server.id}`)}
                           >
                             {t("common:admin.manage")}
                           </Button>

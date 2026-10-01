@@ -1,9 +1,7 @@
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
-import { registerAgent } from "@/lib/agent";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useServerContext } from "@/pages/servers/ServerLayout";
 import {
-  ArrowLeft,
   Activity,
   AlertCircle,
   ArrowUp,
@@ -35,15 +33,8 @@ import {
 } from "@/components/ui/tooltip";
 import { formatBytes } from "@/lib/utils";
 import { useStatsStore } from "@/store/stats.store";
-import type { Server } from "@/types/server";
-import type { SwarmNode } from "@/types/swarm";
 
 const POLL_INTERVAL_MS = 5000;
-
-interface LocationState {
-  server: Server;
-  nodes: SwarmNode[];
-}
 
 type SortKey =
   | "container"
@@ -159,14 +150,9 @@ function timeSince(ts: number | null): string {
 
 export default function ServerStats() {
   const { t } = useT();
-  const navigate = useNavigate();
-  const { state } = useLocation();
-  const locationState = state as LocationState | null;
-
-  const server = locationState?.server ?? null;
-  // El agente pide pase; ver registerAgent.
-  if (server) registerAgent(server);
-  const nodes = locationState?.nodes ?? [];
+  // Del layout: el servidor sale de la URL, y los nodos son los que ya leyó.
+  const { server, swarm } = useServerContext();
+  const nodes = swarm.nodes;
 
   const entry = useStatsStore((s) =>
     server ? s.entries[server.id] : undefined,
@@ -194,10 +180,6 @@ export default function ServerStats() {
     for (const n of nodes) m.set(n.id, n.hostname);
     return m;
   }, [nodes]);
-
-  useEffect(() => {
-    if (!server) navigate("/dashboard", { replace: true });
-  }, [server, navigate]);
 
   useEffect(() => {
     if (server) ensureEntry(server.id);
@@ -267,18 +249,11 @@ export default function ServerStats() {
   });
 
   return (
-    <div className="h-full bg-background flex flex-col overflow-hidden">
-      <header className="shrink-0 border-b px-6 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 items-center gap-3 pb-3">
         <div className="flex items-center gap-3 flex-1">
           <Activity className="h-5 w-5 text-muted-foreground" />
           <span className="font-semibold text-lg">{t("common:servers.resourceMonitor")}</span>
-          <span className="text-sm text-muted-foreground">{server.name}</span>
-          <span className="font-mono text-xs text-muted-foreground">
-            {server.host}:{server.agentPort}
-          </span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -316,7 +291,7 @@ export default function ServerStats() {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 p-6 overflow-auto space-y-4">
+      <div className="min-h-0 flex-1 space-y-4">
         {error && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error}
@@ -484,7 +459,7 @@ export default function ServerStats() {
             )}
           </CardContent>
         </Card>
-      </main>
+      </div>
     </div>
   );
 }
