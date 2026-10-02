@@ -12,6 +12,7 @@ import { useNotifUI } from "@/store/notifui.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { Bell } from "lucide-react";
 import UpdateChecker from "@/components/UpdateChecker";
+import StaleBinaryNotice from "@/components/StaleBinaryNotice";
 import IncomingCall from "@/components/voice/IncomingCall";
 import MeetingCall from "@/components/meetings/MeetingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
@@ -164,6 +165,7 @@ export default function AppLayout() {
       <IncomingCall />
       <MeetingCall />
       <UpdateChecker />
+      <StaleBinaryNotice />
       <Toaster richColors closeButton position="bottom-right" theme={theme} />
     </SidebarProvider>
   );

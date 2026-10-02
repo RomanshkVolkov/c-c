@@ -15,6 +15,8 @@ export interface Deployable {
    * App, que termine bien cuenta como el aviso del CI. Vacío = no avisa.
    */
   buildWorkflow?: string;
+  /** Si el CI etiqueta la imagen con el sha corto; cac recorta el sha. */
+  shortTags?: boolean;
   /** Qué hace cac cuando el CI avisa: apuntarlo, o además desplegarlo. */
   onCINotify: CINotifyMode;
   /** El principio de la llave del CI, para reconocerla; vacío si no tiene. */
@@ -53,6 +55,7 @@ export interface CreateDeployablePayload {
   serviceName: string;
   imageRepo: string;
   environment: string;
+  shortTags: boolean;
 }
 
 /** Una imagen que el CI dijo haber publicado. Ver `domain.ImageBuild`. */

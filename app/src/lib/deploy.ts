@@ -48,13 +48,26 @@ export function isSha(s: string): boolean {
  * llave que no vale; un aviso que llega con otro deploy en curso contesta 200
  * y no lo pone.
  */
-export function ciNoticeStep(url: string): string {
+export function ciNoticeStep(url: string, shortSha = false): string {
+  // Con tags cortos se manda el corto: `$GITHUB_SHA` es siempre el entero, y
+  // cac desplegaría un tag que no existe.
+  const sha = shortSha ? "$SHORT_SHA" : "$GITHUB_SHA";
   return [
     "      - name: Notify cac",
     "        run: |",
+    ...(shortSha ? ["          SHORT_SHA=$(git rev-parse --short=7 HEAD)"] : []),
     `          curl -fsS -X POST ${url} \\`,
     "            -H \"X-Deploy-Key: ${{ secrets.CAC_DEPLOY_KEY }}\" \\",
     "            -H \"Content-Type: application/json\" \\",
-    "            -d \"{\\\"sha\\\":\\\"$GITHUB_SHA\\\",\\\"ref\\\":\\\"$GITHUB_REF\\\",\\\"actor\\\":\\\"$GITHUB_ACTOR\\\",\\\"runUrl\\\":\\\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\\\"}\"",
+    `            -d "{\\"sha\\":\\"${sha}\\",\\"ref\\":\\"$GITHUB_REF\\",\\"actor\\":\\"$GITHUB_ACTOR\\",\\"runUrl\\":\\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\\"}"`,
   ].join("\n");
+}
+
+/**
+ * Si el servicio se etiqueta con el sha corto: lo dice la imagen que corre
+ * (`…:abc1234`). Siete u ocho caracteres hex de tag = corto.
+ */
+export function usesShortSha(image: string): boolean {
+  const tag = image.split("@")[0].split("/").pop()?.split(":")[1] ?? "";
+  return /^[0-9a-f]{7,8}$/.test(tag);
 }

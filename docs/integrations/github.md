@@ -104,5 +104,11 @@ Por servicio, en su diálogo de deploy → «Aviso del CI»: el **repo de GitHub
   modo Desplegar, lo despliega. Otro workflow del repo, o ése fallado, no
   cuenta. Con esto el paso del `curl` sobra.
 
+**Tags cortos.** GitHub avisa siempre con el sha entero. Si el CI etiqueta la
+imagen con el corto (`git rev-parse --short=7`, como RRHH), el servicio lo
+lleva marcado (`shortTags`; la app lo deduce de la imagen que corre al
+registrarlo o al guardar su repo) y cac apunta y despliega el tag corto. En
+GitHub el Deployment va con el sha entero, que cac resuelve.
+
 Nada de esto frena un deploy: lo que se cuenta a GitHub va aparte, y si GitHub
 no contesta, el deploy sigue igual.

@@ -4,7 +4,7 @@ import { Loader2, RotateCcw, Rocket } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { desde } from "@/lib/desde";
-import { AGENT_VERSION_DEPLOYS, guessEnvironment, isSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
+import { AGENT_VERSION_DEPLOYS, guessEnvironment, isSha, usesShortSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import CINoticeSection from "./CINoticeSection";
+import CommitPicker from "./CommitPicker";
 import type { Server } from "@/types/server";
 import type { SwarmService } from "@/types/swarm";
 import type { Deployment, DeployStatus } from "@/types/deploy";
@@ -105,6 +106,8 @@ export default function DeployDialog({
         serviceName: service.name,
         imageRepo: form.imageRepo.trim(),
         environment: form.environment.trim(),
+        // GitHub avisa con el sha entero; si el CI etiqueta corto, cac recorta.
+        shortTags: usesShortSha(service.image),
       }),
     );
 
@@ -178,6 +181,7 @@ export default function DeployDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            <CommitPicker deployable={deployable} selected={sha} onSelect={setSha} />
             <div className="flex items-end gap-2">
               <div className="flex-1 space-y-1.5">
                 <Label htmlFor="dep-sha">{t("common:deploy.sha")}</Label>
@@ -201,6 +205,7 @@ export default function DeployDialog({
             <CINoticeSection
               server={server}
               deployable={deployable}
+              currentImage={service.image}
               canDeploy={!vivo && !sinAgente}
               onDeploy={(commit) => void desplegar(commit)}
             />

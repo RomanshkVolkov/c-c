@@ -681,7 +681,16 @@
       "repo": "Repo de GitHub",
       "workflow": "Workflow que publica la imagen",
       "saveGitHub": "Guardar",
-      "githubLead": "Con la GitHub App instalada: cada deploy aparece en GitHub, y cuando ese workflow termina bien cuenta como el aviso del CI, sin el paso del curl."
-    }
+      "githubLead": "Con la GitHub App instalada: cada deploy aparece en GitHub, y cuando ese workflow termina bien cuenta como el aviso del CI, sin el paso del curl.",
+      "keySaved": "Guardada como el secret {{secret}} de {{repo}}: no hace falta copiarla.",
+      "pushFailed": "No se pudo guardar la llave en {{repo}}; cópiala a mano"
+    },
+    "commits": "Últimos commits de {{repo}}",
+    "commitsLabel": "Commits para desplegar",
+    "imagePublished": "imagen publicada"
+  },
+  "stale": {
+    "body": "cac se actualizó mientras esta ventana estaba abierta. Reiníciala: hasta entonces, 1Password no le contesta.",
+    "restart": "Reiniciar"
   }
 }

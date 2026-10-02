@@ -3,6 +3,7 @@ import { useT } from "@/lib/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useServerContext } from "@/pages/servers/ServerLayout";
+import { GITHUB_PAT_KEY, inferOwnerRepo } from "@/lib/github-repo";
 import {
   KeyRound,
   Plus,
@@ -46,25 +47,6 @@ interface GitHubVariable {
   updated_at: string;
 }
 
-function inferOwnerRepo(image: string): { owner: string; repo: string } | null {
-  // ghcr.io/owner/repo:tag
-  const ghcr = image.match(/^ghcr\.io\/([^/]+)\/([^/:]+)/);
-  if (ghcr) return { owner: ghcr[1], repo: ghcr[2] };
-
-  // registry.example.com/owner/repo:tag  (3+ path segments, skip registry)
-  const parts = image.split("/");
-  if (parts.length >= 3 && parts[0].includes(".")) {
-    return { owner: parts[1], repo: parts[2].split(":")[0] };
-  }
-
-  // owner/repo:tag
-  if (parts.length === 2) {
-    return { owner: parts[0], repo: parts[1].split(":")[0] };
-  }
-
-  return null;
-}
-
 export default function StackSecrets() {
   const { t } = useT();
   // El servidor, del layout; el servicio, de `?service=`. Antes los dos
@@ -72,7 +54,7 @@ export default function StackSecrets() {
   const { server, swarm } = useServerContext();
   const [params, setParams] = useSearchParams();
   const services = swarm.services;
-  const PERSONAL_ACCESS_TOKEN_KEY = "PATK_global_usage"; // state.serverId;
+  const PERSONAL_ACCESS_TOKEN_KEY = GITHUB_PAT_KEY;
 
   const service = services.find((s) => s.name === params.get("service")) ?? null;
 

@@ -12,6 +12,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  * 3. Con un deploy en cola o en curso, no se puede pedir otro.
  * 4. Sin el agente con identidad no se despliega, y se dice por qué.
  * 5. Volver atrás sólo se ofrece en un deploy que salió bien y tenía algo antes.
+ * 7. Con el PAT de la app, la llave del CI va sola a los secrets del repo, y
+ *    lo que se despliega se elige de los últimos commits del repo.
  * 6. El aviso del CI: la llave se enseña una vez y no se queda en el store,
  *    acuñar otra (que tumba la de ahora) se confirma, y pasar a que cac
  *    despliegue cada aviso también, porque es lo que cambia quién despliega.
@@ -20,6 +22,21 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 const { get, post, patch } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
 vi.mock("@/lib/api", () => ({ api: { get, post, patch }, apiUrl: (p: string) => `https://cac.test${p}` }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+
+// El Rust de GitHub de la app, simulado: sin PAT por defecto.
+function tauri({ pat = false, commits = [] as unknown[], pushFails = false } = {}) {
+  invoke.mockImplementation(async (cmd: string) => {
+    if (cmd === "github_token_configured") return pat;
+    if (cmd === "list_github_commits") return commits;
+    if (cmd === "set_github_secret") {
+      if (pushFails) throw new Error("GitHub API 403");
+      return null;
+    }
+    throw new Error(`comando inesperado ${cmd}`);
+  });
+}
 const { confirmar } = vi.hoisted(() => ({ confirmar: vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
@@ -78,6 +95,8 @@ beforeEach(() => {
   post.mockReset();
   patch.mockReset();
   confirmar.mockReset();
+  invoke.mockReset();
+  tauri();
 });
 afterEach(cleanup);
 
@@ -93,7 +112,7 @@ describe("desplegar un servicio", () => {
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(post.mock.calls[0][1]).toEqual({
       name: "app", stack: "beta-api-prod", serviceName: "beta-api-prod_app",
-      imageRepo: "ghcr.io/dwit-mexico/api", environment: "prod",
+      imageRepo: "ghcr.io/dwit-mexico/api", environment: "prod", shortTags: false,
     });
   });
 
@@ -209,7 +228,7 @@ describe("el aviso del CI", () => {
     expect(confirmar).toHaveBeenCalledTimes(1);
     expect(patch).toHaveBeenCalledWith(
       "/api/v1/servers/srv-1/deployables/dp-1",
-      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy", buildWorkflow: "" },
+      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy", buildWorkflow: "", shortTags: false },
       true,
     );
     await waitFor(() =>
@@ -234,7 +253,7 @@ describe("el aviso del CI", () => {
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith(
         "/api/v1/servers/srv-1/deployables/dp-1",
-        { name: "app", environment: "prod", repoFullName: "dwit/api", onCINotify: "deploy", buildWorkflow: "prod.yml" },
+        { name: "app", environment: "prod", repoFullName: "dwit/api", onCINotify: "deploy", buildWorkflow: "prod.yml", shortTags: false },
         true,
       ),
     );
@@ -266,5 +285,100 @@ describe("el aviso del CI", () => {
     await waitFor(() =>
       expect((screen.getByRole("button", { name: /(desplegar|deploy) def5678/i }) as HTMLButtonElement).disabled).toBe(true),
     );
+  });
+});
+
+describe("sin ir a GitHub", () => {
+  const KEY = "dk_0123456789abcdef0123456789abcdef";
+
+  it("con el PAT, la llave se guarda sola en el repo deducido de la imagen y no se enseña", async () => {
+    tauri({ pat: true });
+    respuestas([deployable], []);
+    post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
+    patch.mockResolvedValue({ success: true, data: { ...deployable, repoFullName: "dwit-mexico/api" } });
+    pintar();
+    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_github_secret", {
+        serverId: "PATK_global_usage", owner: "dwit-mexico", repo: "api", name: "CAC_DEPLOY_KEY", value: KEY,
+      }),
+    );
+    await waitFor(() => expect(screen.getByText(/(guardada como el secret|saved as)/i)).toBeTruthy());
+    expect(screen.queryByTestId("ci-key")).toBeNull();
+    expect(document.body.textContent).not.toContain(KEY);
+    // El repo deducido se queda puesto en el servicio.
+    await waitFor(() => expect(patch.mock.calls[patch.mock.calls.length - 1]?.[1].repoFullName).toBe("dwit-mexico/api"));
+  });
+
+  it("si GitHub no la acepta, se enseña para copiarla a mano", async () => {
+    tauri({ pat: true, pushFails: true });
+    respuestas([deployable], []);
+    post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
+    pintar();
+    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    await waitFor(() => expect(screen.getByTestId("ci-key").textContent).toBe(KEY));
+  });
+
+  it("lo que se despliega se elige de los commits; uno con imagen se despliega con el tag publicado", async () => {
+    tauri({
+      pat: true,
+      commits: [
+        { sha: "def5678def5678def5678def5678def5678def56", message: "sin imagen", author: "ana", date: "2026-10-01T10:00:00Z" },
+        { sha: "abc1234abc1234abc1234abc1234abc1234abc12", message: "fix: login", author: "ana", date: "2026-10-01T09:00:00Z" },
+      ],
+    });
+    respuestas([deployable], [], [build("abc1234")]);
+    post.mockResolvedValue({ success: true, data: fila({ status: "queued" }) });
+    pintar();
+    const opciones = await screen.findAllByRole("option");
+    expect(invoke).toHaveBeenCalledWith("list_github_commits", { serverId: "PATK_global_usage", owner: "dwit-mexico", repo: "api" });
+    expect(opciones[1].textContent).toMatch(/(imagen publicada|image published)/i);
+    expect(opciones[0].textContent).not.toMatch(/(imagen publicada|image published)/i);
+
+    fireEvent.click(opciones[1]);
+    fireEvent.click(botonDesplegar());
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "abc1234" }, true),
+    );
+
+    fireEvent.click(opciones[0]);
+    expect((screen.getByLabelText(/^(commit)$/i) as HTMLInputElement).value).toBe("def5678def5678def5678def5678def5678def56");
+  });
+
+  it("si el servicio corre con un tag corto, el paso del workflow manda el sha corto", async () => {
+    respuestas([deployable], []);
+    post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
+    render(<DeployDialog server={server()} service={{ ...service, image: "ghcr.io/dwit-mexico/api:9c55939" }} open onOpenChange={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    const paso = (await screen.findByText(/X-Deploy-Key/)).textContent ?? "";
+    expect(paso).toContain("git rev-parse --short=7 HEAD");
+    expect(paso).not.toContain("$GITHUB_SHA");
+  });
+
+  it("un servicio que corre con tag corto se registra y se guarda diciéndolo", async () => {
+    const corto = { ...service, image: "ghcr.io/dwit-mexico/api:9c55939" };
+    respuestas([], []);
+    post.mockResolvedValue({ success: true, data: deployable });
+    render(<DeployDialog server={server()} service={corto} open onOpenChange={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(registrar|register)$/i }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post.mock.calls[0][1].shortTags).toBe(true);
+    cleanup();
+
+    respuestas([deployable], []);
+    patch.mockResolvedValue({ success: true, data: { ...deployable, repoFullName: "dwit/api", shortTags: true } });
+    render(<DeployDialog server={server()} service={corto} open onOpenChange={() => {}} />);
+    fireEvent.change(await screen.findByLabelText(/(repo de github|github repo)/i), { target: { value: "dwit/api" } });
+    fireEvent.click(screen.getByRole("button", { name: /^(guardar|save)$/i }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(patch.mock.calls[0][1].shortTags).toBe(true);
+  });
+
+  it("sin PAT no hay lista, y queda el campo", async () => {
+    respuestas([deployable], []);
+    pintar();
+    await waitFor(() => expect(botonDesplegar()).toBeTruthy());
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    expect(invoke).not.toHaveBeenCalledWith("list_github_commits", expect.anything());
   });
 });

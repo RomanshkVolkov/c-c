@@ -193,6 +193,12 @@ func (s *GitHubService) syncDeployment(d *domain.Deployable, dep *domain.Deploym
 	if !domain.ValidSha(sha) {
 		return
 	}
+	// Un tag corto se resuelve al commit entero: es lo que GitHub guarda en el
+	// Deployment y lo que se compara después.
+	sha, err = s.fullSha(repo, sha)
+	if err != nil {
+		return
+	}
 	l := s.lockFor(dep.ID)
 	l.Lock()
 	defer l.Unlock()
@@ -245,6 +251,11 @@ func (s *GitHubService) commentDeploy(repo *domain.GitHubRepo, d *domain.Deploya
 	}
 	var messages []string
 	base := shaOfImage(dep.PreviousImage)
+	if domain.ValidSha(base) {
+		if full, err := s.fullSha(repo, base); err == nil {
+			base = full
+		}
+	}
 	if domain.ValidSha(base) && base != sha {
 		var cmp struct {
 			Commits []struct {
@@ -281,6 +292,25 @@ func (s *GitHubService) commentDeploy(repo *domain.GitHubRepo, d *domain.Deploya
 	}
 	line := fmt.Sprintf("deploy `%s` → %s · %s", sha[:7], env, d.Name)
 	_ = s.comment(repo, strings.Join(messages, "\n"), "deploy:"+dep.ID, line)
+}
+
+// fullSha: el sha entero de un commit nombrado por uno corto. Uno entero se
+// devuelve tal cual, sin preguntar.
+func (s *GitHubService) fullSha(repo *domain.GitHubRepo, sha string) (string, error) {
+	if len(sha) == 40 {
+		return sha, nil
+	}
+	var out struct {
+		SHA string `json:"sha"`
+	}
+	if err := s.asInstallation(repo.InstallationID, http.MethodGet,
+		fmt.Sprintf("/repos/%s/commits/%s", repo.FullName, sha), nil, &out); err != nil {
+		return "", err
+	}
+	if !domain.ValidSha(out.SHA) || !strings.HasPrefix(out.SHA, sha) {
+		return "", fmt.Errorf("github resolved %s to %q", sha, out.SHA)
+	}
+	return out.SHA, nil
 }
 
 // shaOfImage: el tag de una imagen (`repo:sha@sha256:…` → `sha`).

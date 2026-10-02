@@ -90,7 +90,7 @@ func (s *DeployService) CreateDeployable(server *domain.ServerResponse, req doma
 		OrgID: server.OrgID, ServerID: server.ID, Name: req.Name,
 		Stack: req.Stack, ServiceName: req.ServiceName, ImageRepo: req.ImageRepo,
 		Environment: req.Environment, RepoFullName: req.RepoFullName,
-		OnCINotify: "record",
+		OnCINotify: "record", ShortTags: req.ShortTags,
 	}
 	d.ID = uuid.NewString()
 	if err := s.repo.CreateDeployable(d); err != nil {
@@ -118,6 +118,9 @@ func (s *DeployService) UpdateDeployable(d *domain.Deployable, req domain.Update
 	if req.BuildWorkflow != nil {
 		d.BuildWorkflow = *req.BuildWorkflow
 	}
+	if req.ShortTags != nil {
+		d.ShortTags = *req.ShortTags
+	}
 	if err := s.repo.UpdateDeployable(d); err != nil {
 		return nil, err
 	}
@@ -138,7 +141,7 @@ func (s *DeployService) RequestDeploy(d *domain.Deployable, by, userID, sha, ide
 	if !domain.ValidSha(sha) {
 		return nil, false, ErrBadSha
 	}
-	return s.enqueue(d, by, userID, d.ImageRepo+":"+sha, "", idemKey)
+	return s.enqueue(d, by, userID, d.ImageRepo+":"+d.Tag(sha), "", idemKey)
 }
 
 // Rollback vuelve a lo que había antes de un deployment. Lo de antes lo leyó
@@ -230,6 +233,9 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 	if !domain.ValidSha(n.Sha) {
 		return nil, ErrBadSha
 	}
+	// El build es del tag que existe: con tags cortos, el sha corto. Así el
+	// mismo commit avisado entero (GitHub) o corto (el curl) es un solo build.
+	n.Sha = d.Tag(n.Sha)
 	b := &domain.ImageBuild{
 		OrgID: d.OrgID, DeployableID: d.ID, Sha: n.Sha, Image: d.ImageRepo + ":" + n.Sha,
 		Ref: n.Ref, Actor: n.Actor, RunURL: n.RunURL, Source: source,

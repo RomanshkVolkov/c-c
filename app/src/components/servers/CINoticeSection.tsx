@@ -5,7 +5,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useT } from "@/lib/i18n";
 import { apiUrl } from "@/lib/api";
 import { desde } from "@/lib/desde";
-import { ciNoticeStep } from "@/lib/deploy";
+import { ciNoticeStep, usesShortSha } from "@/lib/deploy";
+import { GITHUB_PAT_KEY, repoOfDeployable } from "@/lib/github-repo";
+import { invoke } from "@tauri-apps/api/core";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,9 @@ import type { Server } from "@/types/server";
 import type { CINotifyMode, Deployable } from "@/types/deploy";
 
 const NADA: never[] = [];
+
+/** El nombre del secret que lee el paso del workflow. */
+const CI_KEY_SECRET = "CAC_DEPLOY_KEY";
 
 /**
  * El aviso del CI de un servicio: su llave, qué hace cac al recibirlo, y las
@@ -27,11 +32,14 @@ const NADA: never[] = [];
 export default function CINoticeSection({
   server,
   deployable,
+  currentImage,
   canDeploy,
   onDeploy,
 }: {
   server: Server;
   deployable: Deployable;
+  /** La imagen que corre el servicio ahora, aunque no la desplegara cac. */
+  currentImage: string;
   /** Si ahora mismo se puede pedir un deploy (agente listo, nada en curso). */
   canDeploy: boolean;
   onDeploy: (sha: string) => void;
@@ -43,8 +51,11 @@ export default function CINoticeSection({
   const [repo, setRepo] = useState(deployable.repoFullName);
   const [workflow, setWorkflow] = useState(deployable.buildWorkflow ?? "");
   const ghDirty = repo.trim() !== deployable.repoFullName || workflow.trim() !== (deployable.buildWorkflow ?? "");
-  // La llave entera sólo vive aquí, y sólo hasta cerrar el diálogo.
+  // La llave entera sólo vive aquí, y sólo hasta cerrar el diálogo. Y sólo
+  // se enseña si no se pudo guardar sola en el repo.
   const [key, setKey] = useState<string | null>(null);
+  // El repo donde quedó guardada como secret, si se pudo.
+  const [savedIn, setSavedIn] = useState<string | null>(null);
   const [copied, setCopied] = useState<"key" | "step" | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -52,7 +63,9 @@ export default function CINoticeSection({
     void loadBuilds(server.id, deployable.id).catch(() => {});
   }, [server.id, deployable.id, loadBuilds]);
 
-  const step = ciNoticeStep(apiUrl("/ingest/v1/deploys"));
+  // El tag que lleva lo que corre ahora dice si el CI etiqueta corto o entero.
+  const shortTags = usesShortSha(currentImage) || (deployable.shortTags ?? false);
+  const step = ciNoticeStep(apiUrl("/ingest/v1/deploys"), shortTags);
 
   const guard = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -74,7 +87,43 @@ export default function CINoticeSection({
       });
       if (!ok) return;
     }
-    await guard(async () => setKey((await mintCIKey(server.id, deployable.id)).key));
+    await guard(async () => {
+      const k = await mintCIKey(server.id, deployable.id);
+      setKey(null);
+      setSavedIn(null);
+      // Con el PAT de la app, la llave va sola a los secrets del repo: nadie
+      // tiene que ir a GitHub a pegarla. Sin PAT o sin repo, se enseña.
+      const target = repoOfDeployable({ repoFullName: repo.trim(), imageRepo: deployable.imageRepo });
+      const [owner, name] = target.split("/");
+      const canPush =
+        !!owner && !!name && (await invoke<boolean>("github_token_configured", { serverId: GITHUB_PAT_KEY }).catch(() => false));
+      if (!canPush) {
+        setKey(k.key);
+        return;
+      }
+      try {
+        await invoke("set_github_secret", {
+          serverId: GITHUB_PAT_KEY,
+          owner,
+          repo: name,
+          name: CI_KEY_SECRET,
+          value: k.key,
+        });
+      } catch (e) {
+        setKey(k.key);
+        toast.error(t("common:deploy.ci.pushFailed", { repo: target }), {
+          description: e instanceof Error ? e.message : String(e),
+        });
+        return;
+      }
+      setSavedIn(target);
+      // El repo deducido de la imagen se queda puesto: es el mismo que verá
+      // GitHub, y sin él no hay Deployments.
+      if (!deployable.repoFullName) {
+        setRepo(target);
+        await setGitHub(server.id, deployable, target, workflow.trim(), shortTags);
+      }
+    });
   };
 
   const setMode = async (mode: CINotifyMode) => {
@@ -156,12 +205,31 @@ export default function CINoticeSection({
           variant="outline"
           size="sm"
           disabled={busy || !ghDirty}
-          onClick={() => void guard(() => setGitHub(server.id, deployable, repo.trim(), workflow.trim()))}
+          onClick={() => void guard(() => setGitHub(server.id, deployable, repo.trim(), workflow.trim(), shortTags))}
         >
           {t("common:deploy.ci.saveGitHub")}
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">{t("common:deploy.ci.githubLead")}</p>
+
+      {savedIn && (
+        <div className="space-y-2 rounded-md border border-success/40 bg-success/10 p-2 text-xs">
+          <p>{t("common:deploy.ci.keySaved", { repo: savedIn, secret: CI_KEY_SECRET })}</p>
+          <p>{t("common:deploy.ci.stepLead")}</p>
+          <div className="relative">
+            <pre className="overflow-x-auto rounded bg-muted p-2 font-mono text-[11px]">{step}</pre>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute top-1 right-1"
+              onClick={() => copy("step", step)}
+              aria-label={t("common:deploy.ci.copyStep")}
+            >
+              {copied === "step" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {key && (
         <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">

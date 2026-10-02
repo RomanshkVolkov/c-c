@@ -116,6 +116,24 @@ fn keychain_delete_ref(server_id: &str) -> Result<(), String> {
 }
 
 // Runs `op read <reference>` and returns the value, with friendly error mapping.
+/// Si el ejecutable de esta app ya no está en disco (el actualizador lo
+/// cambió con la app abierta). En Linux se ve en `/proc/self/exe`.
+fn running_binary_replaced() -> bool {
+    exe_link_says_deleted(std::fs::read_link("/proc/self/exe").ok().as_deref())
+}
+
+/// Para la app: si esta copia quedó vieja tras una actualización. Una
+/// instancia así funciona para casi todo, pero 1Password ya no le habla
+/// (`InvalidClientInfo`): lo que use `op` falla hasta reabrirla.
+#[tauri::command]
+fn binary_replaced() -> bool {
+    running_binary_replaced()
+}
+
+fn exe_link_says_deleted(link: Option<&std::path::Path>) -> bool {
+    link.map(|p| p.to_string_lossy().ends_with(" (deleted)")).unwrap_or(false)
+}
+
 fn op_read(reference: &str) -> Result<String, String> {
     use std::process::Command;
 
@@ -133,6 +151,14 @@ fn op_read(reference: &str) -> Result<String, String> {
             || stderr.contains("session expired")
         {
             "1Password session expired. Run `op signin` (or open the 1Password desktop app) and try again.".to_string()
+        } else if stderr.contains("connecting to desktop app") && running_binary_replaced() {
+            // 1Password comprueba qué app le llama leyendo su ejecutable, y el de
+            // esta ya no existe: el actualizador lo cambió con la app abierta.
+            // Lo rechaza al instante (`InvalidClientInfo` en su log), y ni
+            // `op signin` ni desbloquear lo arreglan; reabrir la app, sí.
+            "cac was updated while it was open, and 1Password won't talk to the old copy. Quit cac completely, open it again, and retry.".to_string()
+        } else if stderr.contains("connecting to desktop app") {
+            "1Password refused the connection. Unlock the 1Password app and approve the request from cac (on a tiling window manager it waits in the tray icon), then try again.".to_string()
         } else if stderr.is_empty() {
             format!("op read exited with status {}", output.status)
         } else {
@@ -1108,6 +1134,72 @@ async fn list_github_secrets(
     Ok(page.secrets)
 }
 
+/// Un commit tal como lo pinta el selector de deploy: sha entero, la primera
+/// línea del mensaje, quién y cuándo.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct CommitSummary {
+    pub sha: String,
+    pub message: String,
+    pub author: String,
+    pub date: String,
+}
+
+#[derive(Deserialize)]
+struct RawCommit {
+    sha: String,
+    commit: RawCommitInner,
+    author: Option<RawLogin>,
+}
+#[derive(Deserialize)]
+struct RawCommitInner {
+    message: String,
+    author: Option<RawCommitAuthor>,
+}
+#[derive(Deserialize)]
+struct RawCommitAuthor {
+    name: Option<String>,
+    date: Option<String>,
+}
+#[derive(Deserialize)]
+struct RawLogin {
+    login: String,
+}
+
+/// Lo que se enseña de cada commit. El autor, por su usuario de GitHub si lo
+/// tiene (es como se le conoce en el equipo); si no, por el nombre del commit.
+fn summarize_commits(raw: Vec<RawCommit>) -> Vec<CommitSummary> {
+    raw.into_iter()
+        .map(|c| {
+            let author = c
+                .author
+                .map(|a| a.login)
+                .or_else(|| c.commit.author.as_ref().and_then(|a| a.name.clone()))
+                .unwrap_or_default();
+            let date = c.commit.author.and_then(|a| a.date).unwrap_or_default();
+            let message = c.commit.message.lines().next().unwrap_or("").trim().to_string();
+            CommitSummary { sha: c.sha, message, author, date }
+        })
+        .collect()
+}
+
+/// Los últimos commits de la rama por defecto de un repo, para elegir qué
+/// desplegar sin ir a la web a copiar un sha.
+#[tauri::command]
+async fn list_github_commits(
+    server_id: String,
+    owner: String,
+    repo: String,
+    cache: tauri::State<'_, TokenCache>,
+) -> Result<Vec<CommitSummary>, String> {
+    let client = gh_client(&get_token(&server_id, &cache)?)?;
+    let raw: Vec<RawCommit> = gh_get(
+        &client,
+        &format!("{GITHUB_API}/repos/{owner}/{repo}/commits?per_page=20"),
+    )
+    .await?;
+    Ok(summarize_commits(raw))
+}
+
 #[tauri::command]
 async fn list_github_variables(
     server_id: String,
@@ -1618,6 +1710,8 @@ pub fn run() {
             get_op_reference,
             clear_op_reference,
             list_github_secrets,
+            list_github_commits,
+            binary_replaced,
             list_github_variables,
             set_github_secret,
             set_github_variable,
@@ -1712,5 +1806,53 @@ Host *
             parse_identity_agent("IdentityFile ~/.ssh/id_ed25519\n"),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod commit_tests {
+    use super::{summarize_commits, RawCommit};
+
+    fn raw(json: &str) -> Vec<RawCommit> {
+        serde_json::from_str(json).unwrap()
+    }
+
+    // Lo que el selector de deploy enseña de cada commit: la primera línea, y
+    // el usuario de GitHub antes que el nombre que dice el commit.
+    #[test]
+    fn a_commit_is_its_first_line_and_its_github_user() {
+        let got = summarize_commits(raw(
+            r#"[{"sha":"abc","commit":{"message":"fix: login\n\ncuerpo","author":{"name":"Ana G","date":"2026-10-01T10:00:00Z"}},"author":{"login":"ana"}}]"#,
+        ));
+        assert_eq!(got[0].sha, "abc");
+        assert_eq!(got[0].message, "fix: login");
+        assert_eq!(got[0].author, "ana");
+        assert_eq!(got[0].date, "2026-10-01T10:00:00Z");
+    }
+
+    // Un commit cuyo correo no es de ninguna cuenta de GitHub viene sin
+    // `author`: entonces vale el nombre del commit, y no se cae.
+    #[test]
+    fn without_a_github_user_the_commit_name_is_used() {
+        let got = summarize_commits(raw(
+            r#"[{"sha":"abc","commit":{"message":"x","author":{"name":"Bot","date":"d"}},"author":null}]"#,
+        ));
+        assert_eq!(got[0].author, "Bot");
+    }
+}
+
+#[cfg(test)]
+mod replaced_binary_tests {
+    use super::exe_link_says_deleted;
+    use std::path::Path;
+
+    // Lo que deja el actualizador: el ejecutable de la app abierta ya no está.
+    #[test]
+    fn a_replaced_appimage_is_noticed() {
+        assert!(exe_link_says_deleted(Some(Path::new(
+            "/home/rv/.cache/tauri_current_app8SWmRl/current_app.AppImage (deleted)"
+        ))));
+        assert!(!exe_link_says_deleted(Some(Path::new("/home/rv/cac.AppImage"))));
+        assert!(!exe_link_says_deleted(None));
     }
 }

@@ -24,12 +24,21 @@ servicio (`POST /ingest/v1/deploys`); en «Apuntar» cac lista las versiones, en
 commiteada** (`82c7fb2`, sale en la v1.6.79): cada servidor se abre por su URL
 con pestañas, sin `state` del router. **R5 publicada en backend** (`7dc58d3`):
 la GitHub App; los commits y PRs que nombran una tarea dejan una línea
-interna. **R6 hecha, sin commitear:** la App escribe en GitHub —cada deploy es
+interna. **R6 publicada en backend** (`b9781f5`): la App escribe en GitHub —cada deploy es
 un Deployment que sigue su estado, y uno que sale bien avisa a las tareas que
-trae— y el workflow que publica la imagen cuenta como el aviso del CI. La UI de
-R4–R6 sale en la v1.6.79. **Falta de jose:** registrar la App y poner
-`CAC_GITHUB_APP_SLUG`, `CAC_GITHUB_WEBHOOK_SECRET`, `CAC_GITHUB_APP_ID` y
-`CAC_GITHUB_APP_PRIVATE_KEY` (ver `docs/integrations/github.md`).
+trae— y el workflow que publica la imagen cuenta como el aviso del CI. R4–R6
+publicadas en la v1.6.79. La App está registrada (`command-and-control-rv`, App ID
+5155881) y sus cuatro variables y secrets están en el repo.
+**Hecho, sin commitear (1-oct), lo que pidió jose tras la v1.6.79:**
+acuñar la llave del CI la guarda sola como `CAC_DEPLOY_KEY` en el repo (con el
+PAT de la app; el repo, del servicio o deducido de la imagen), y el deploy se
+elige de los últimos commits del repo, marcando los que tienen imagen. Y el
+error de `op read` cuando 1Password no contesta ahora dice qué hacer. Y una
+ventana de una copia de cac que el actualizador ya borró lo avisa con un botón
+de reiniciar (`StaleBinaryNotice`): 1Password le corta con `InvalidClientInfo`.
+Y los servicios con tags cortos (RRHH etiqueta con `--short=7`): el aviso de
+la App llega con el sha entero, y cac recorta al tag que existe
+(`Deployable.ShortTags`). **Esto toca backend: backend primero.**
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para

@@ -39,6 +39,11 @@ type Deployable struct {
 	// cuenta como el aviso del CI, y el paso del `curl` sobra. Vacío = la App
 	// no avisa de nada para este servicio.
 	BuildWorkflow string `gorm:"type:varchar(200)" json:"buildWorkflow"`
+	// ShortTags: si el CI etiqueta la imagen con el sha corto (siete
+	// caracteres, `git rev-parse --short=7`) en vez del entero. GitHub siempre
+	// avisa con el entero, y desplegar `repo:<entero>` pediría un tag que no
+	// existe. La app lo deduce de la imagen que corre el servicio.
+	ShortTags bool `gorm:"not null;default:false" json:"shortTags"`
 	// Qué hacer cuando el CI avise de una imagen nueva (R3): `record` la apunta
 	// y nada más —el CI sigue desplegando él—; `deploy` la despliega.
 	OnCINotify string `gorm:"type:varchar(20);not null;default:'record'" json:"onCINotify"`
@@ -179,6 +184,7 @@ type CreateDeployableRequest struct {
 	ImageRepo    string `json:"imageRepo"    validate:"required,max=255"`
 	Environment  string `json:"environment"  validate:"max=40"`
 	RepoFullName string `json:"repoFullName" validate:"max=200"`
+	ShortTags    bool   `json:"shortTags"`
 }
 
 type UpdateDeployableRequest struct {
@@ -189,6 +195,8 @@ type UpdateDeployableRequest struct {
 	// Puntero: ausente = no se toca. Una app anterior a la R6 no lo manda, y
 	// como el PATCH pide la fila entera, si no lo borraría al cambiar de modo.
 	BuildWorkflow *string `json:"buildWorkflow,omitempty" validate:"omitempty,max=200"`
+	// Puntero por lo mismo: una app anterior no lo manda.
+	ShortTags *bool `json:"shortTags,omitempty"`
 }
 
 type DeployRequest struct {
@@ -226,4 +234,16 @@ type AgentFinishRequest struct {
 	Error         string `json:"error"`
 	PreviousImage string `json:"previousImage"`
 	FinalImage    string `json:"finalImage"`
+}
+
+// ShortSha: cuánto mide un sha corto, el de `git rev-parse --short=7`.
+const ShortSha = 7
+
+// Tag: el tag de imagen de un commit para este servicio. Con tags cortos, los
+// siete primeros caracteres; si no, el sha tal cual.
+func (d *Deployable) Tag(sha string) string {
+	if d.ShortTags && len(sha) > ShortSha {
+		return sha[:ShortSha]
+	}
+	return sha
 }

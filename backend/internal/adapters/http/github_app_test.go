@@ -91,7 +91,19 @@ func (g *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/repos/dwit/api/compare/"):
 		io.WriteString(w, `{"commits":[{"commit":{"message":"fix: el login cac#12"}},{"commit":{"message":"chore"}}]}`)
 	case strings.HasPrefix(r.URL.Path, "/repos/dwit/api/commits/"):
-		io.WriteString(w, `{"commit":{"message":"primero cac#12"}}`)
+		// Como GitHub: un sha corto se resuelve al entero que empieza así.
+		asked := strings.TrimPrefix(r.URL.Path, "/repos/dwit/api/commits/")
+		full := ""
+		for _, sha := range []string{shaNew, shaOld} {
+			if strings.HasPrefix(sha, asked) {
+				full = sha
+			}
+		}
+		if full == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		fmt.Fprintf(w, `{"sha":%q,"commit":{"message":"primero cac#12"}}`, full)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
@@ -363,5 +375,65 @@ func TestTheAppKeyIsReadAsTheDocsSayToStoreIt(t *testing.T) {
 	t.Setenv("GITHUB_APP_PRIVATE_KEY", "no es una llave")
 	if got := GitHubAppKeyFromEnv(); got.Key != nil || got.AppID != 0 {
 		t.Errorf("una llave rota dejó la App con %+v", got)
+	}
+}
+
+
+// Un servicio que su CI etiqueta con el sha corto (RRHH): GitHub avisa con el
+// entero, y lo que se apunta y se despliega es el tag que existe, el corto. El
+// mismo commit avisado por el curl con el corto es el mismo build. Y en GitHub
+// el Deployment lleva el sha entero, que es lo que GitHub entiende.
+func TestAShortTaggedServiceDeploysTheTagThatExists(t *testing.T) {
+	f, cleanup := appSetup(t, "deploy")
+	defer cleanup()
+	short := true
+	wf := "prod.yml"
+	var err error
+	if f.d, err = f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", Environment: "prod", RepoFullName: "dwit/api", OnCINotify: "deploy", BuildWorkflow: &wf, ShortTags: &short,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.hook(t, "workflow_run", "d-1", workflowRun(".github/workflows/prod.yml", "success"))
+	if _, err := f.deploys.Notice(f.d, domain.DeployNotice{Sha: shaNew[:7]}, "ci"); err != nil {
+		t.Fatal(err)
+	}
+	var builds []domain.ImageBuild
+	f.db.Find(&builds)
+	if len(builds) != 1 || builds[0].Sha != shaNew[:7] || builds[0].Image != "ghcr.io/dwit/api:"+shaNew[:7] {
+		t.Fatalf("builds: %+v; se esperaba uno, con el tag corto", builds)
+	}
+	var dep domain.Deployment
+	f.db.First(&dep, "requested_by = ?", domain.DeployByGitHub)
+	if dep.Image != "ghcr.io/dwit/api:"+shaNew[:7] {
+		t.Errorf("se encoló %q, se esperaba el tag corto", dep.Image)
+	}
+
+	// El agente lo despliega: en GitHub, el Deployment es del sha entero.
+	f.deploys.Claim("srv-1")
+	if len(f.gh.deployments) != 1 || f.gh.deployments[0]["ref"] != shaNew {
+		t.Errorf("el Deployment de GitHub no lleva el sha entero: %v", f.gh.deployments)
+	}
+}
+
+// A mano, elegir un commit de la lista (entero) despliega su tag corto.
+func TestAManualDeployOfAShortTaggedServiceUsesTheShortTag(t *testing.T) {
+	f, cleanup := appSetup(t, "record")
+	defer cleanup()
+	short := true
+	f.d, _ = f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", RepoFullName: "dwit/api", OnCINotify: "record", ShortTags: &short})
+	dep, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dep.Image != "ghcr.io/dwit/api:"+shaNew[:7] {
+		t.Errorf("se encoló %q, se esperaba el tag corto", dep.Image)
+	}
+	// Y una app anterior, que no manda shortTags, no lo apaga.
+	f.d, _ = f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", RepoFullName: "dwit/api", OnCINotify: "deploy"})
+	var stored domain.Deployable
+	f.db.First(&stored, "id = ?", f.d.ID)
+	if !stored.ShortTags {
+		t.Error("un PATCH sin shortTags lo apagó")
 	}
 }

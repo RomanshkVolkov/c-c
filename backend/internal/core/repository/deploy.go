@@ -73,6 +73,7 @@ func (r *DeployRepository) UpdateDeployable(d *domain.Deployable) error {
 		"repo_full_name": d.RepoFullName,
 		"on_ci_notify":   d.OnCINotify,
 		"build_workflow": d.BuildWorkflow,
+		"short_tags":     d.ShortTags,
 	}).Error
 }
 

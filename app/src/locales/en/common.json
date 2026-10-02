@@ -681,7 +681,16 @@
       "repo": "GitHub repo",
       "workflow": "Workflow that publishes the image",
       "saveGitHub": "Save",
-      "githubLead": "With the GitHub App installed: each deploy shows up in GitHub, and when that workflow finishes well it counts as the CI notice, no curl step needed."
-    }
+      "githubLead": "With the GitHub App installed: each deploy shows up in GitHub, and when that workflow finishes well it counts as the CI notice, no curl step needed.",
+      "keySaved": "Saved as {{repo}}'s {{secret}} secret: no need to copy it.",
+      "pushFailed": "Couldn't save the key in {{repo}}; copy it by hand"
+    },
+    "commits": "Latest commits in {{repo}}",
+    "commitsLabel": "Commits to deploy",
+    "imagePublished": "image published"
+  },
+  "stale": {
+    "body": "cac was updated while this window was open. Restart it: until then, 1Password won't answer it.",
+    "restart": "Restart"
   }
 }
