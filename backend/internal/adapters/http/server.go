@@ -34,7 +34,8 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		deploySvc.WithObserver(gh)
 		gh.WithDeploys(deploySvc, deployRepo)
 	}
-	deployH := handler.NewDeployHandler(svc, deploySvc)
+	deployH := handler.NewDeployHandler(svc, deploySvc).
+		WithSecrets(service.NewSecretRefService(repository.NewSecretRefRepository(db)))
 	agentH := handler.NewAgentHandler(svc, deploySvc)
 
 	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)))
@@ -77,6 +78,10 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Post("/{id}/deployables/{did}/deployments/{depId}/rollback", deployH.Rollback)
 		r.Post("/{id}/deployables/{did}/ci-key", deployH.CIKey)
 		r.Get("/{id}/deployables/{did}/builds", deployH.Builds)
+		r.Get("/{id}/deployables/{did}/secret-refs", deployH.SecretRefs)
+		r.Put("/{id}/deployables/{did}/secret-refs", deployH.PutSecretRefs)
+		r.Get("/{id}/deployables/{did}/secret-rotations", deployH.SecretRotations)
+		r.Post("/{id}/deployables/{did}/secret-rotations", deployH.RecordRotation)
 	})
 
 	// El aviso del CI de un servicio: su propia llave, fuera del JWT. Ver

@@ -40,7 +40,7 @@ Y los servicios con tags cortos (RRHH etiqueta con `--short=7`): el aviso de
 la App llega con el sha entero, y cac recorta al tag que existe
 (`Deployable.ShortTags`). Publicado en la v1.6.80.
 
-**R7 hecha, sin commitear (2-oct, sólo app):** Ansible desde la app. Pestaña
+**R7 publicada en la v1.6.81:** Ansible desde la app. Pestaña
 «Provisioning» del servidor: se elige la carpeta del repo de Ansible, el
 playbook (de su `cac.playbooks.yml` o de sus carpetas), contra qué host o grupo
 y sus variables. Corre aquí (`src-tauri/src/ansible.rs`): lo de 1Password se lee
@@ -49,6 +49,16 @@ fichero `0600` (`-e @fichero`), nunca en la línea de comandos. A cac sólo lleg
 nombres, el PLAY RECAP y la cola. Manifests escritos (sin commitear, en sus
 repos): `ansible/contabo/cac.playbooks.yml` y
 `valkey/infra-valkey-swarm/cac.playbooks.yml`.
+
+**R8a hecha, sin commitear (backend + app): secrets por referencia a
+1Password.** En la pestaña Secrets, por servicio: `NOMBRE` ← `op://…` (se
+importan de un ítem), «Probar» y «Rotar en el servidor». Rotar lee en Rust y
+manda un guion por `bash -s` (stdin): secrets de Docker versionados por HMAC
+(clave en `~/.cac/` del servidor), `service update --secret-rm/--secret-add`,
+conserva la versión anterior y sólo imprime nombres. Sólo en servicios que
+despliega cac. A cac llegan nombres (`DeployableSecretRef`, `SecretRotation`;
+una petición con un valor se rechaza). **Falta la R8b:** migraciones antes del
+deploy (agente v4). Backend primero.
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para

@@ -6,6 +6,7 @@
 
 mod agent_install;
 mod ansible;
+mod secrets;
 mod api_client;
 mod crypto_tools;
 mod http_client;
@@ -1758,6 +1759,9 @@ pub fn run() {
             export_notes,
             op_item_create,
             op_list_vaults,
+            secrets::rotate_service_secrets,
+            secrets::check_op_refs,
+            secrets::op_item_fields,
             ansible::ansible_tools,
             ansible::ansible_manifest,
             ansible::ansible_inventory,

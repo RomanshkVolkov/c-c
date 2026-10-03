@@ -18,10 +18,86 @@ type DeployHandler struct {
 	servers *service.ServerService
 	svc     *service.DeployService
 	limiter *ingestLimiter
+	secrets *service.SecretRefService
 }
 
 func NewDeployHandler(servers *service.ServerService, svc *service.DeployService) *DeployHandler {
 	return &DeployHandler{servers: servers, svc: svc, limiter: newIngestLimiter()}
+}
+
+// WithSecrets: las referencias a 1Password de cada servicio (R8).
+func (h *DeployHandler) WithSecrets(s *service.SecretRefService) *DeployHandler {
+	h.secrets = s
+	return h
+}
+
+// SecretRefs: las referencias del servicio. Las ve cualquiera de la org: son
+// sólo nombres y dónde vive cada valor.
+func (h *DeployHandler) SecretRefs(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	out, err := h.secrets.List(d)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.DeployableSecretRef]{Success: true, Data: out})
+}
+
+// PutSecretRefs reemplaza la lista. Admin: decide de dónde salen las
+// credenciales de producción.
+func (h *DeployHandler) PutSecretRefs(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleAdmin)
+	if !ok {
+		return
+	}
+	req, err := ValidateStrictRequest[domain.PutSecretRefsRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", "invalid-body")
+		return
+	}
+	out, err := h.secrets.Replace(d, req)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.DeployableSecretRef]{Success: true, Data: out})
+}
+
+func (h *DeployHandler) SecretRotations(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	out, err := h.secrets.ListRotations(d)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.SecretRotationResponse]{Success: true, Data: out})
+}
+
+// RecordRotation apunta una rotación ya hecha desde la app. Member, como
+// desplegar: rotar es llevar al servidor lo que dicen las referencias.
+func (h *DeployHandler) RecordRotation(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	req, err := ValidateStrictRequest[domain.RecordRotationRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", "invalid-body")
+		return
+	}
+	out, err := h.secrets.RecordRotation(d, user.UserID, req)
+	if err != nil {
+		deployError(w, err)
+		return
+	}
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.SecretRotation]{Success: true, Data: out})
 }
 
 // deployable carga el deployable de la URL, sólo si es de ese servidor.
@@ -244,6 +320,16 @@ func deployError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusBadRequest, "That is not an image repository", "bad-image-repo")
 	case errors.Is(err, service.ErrBadServiceName):
 		SendErrorResponse(w, http.StatusBadRequest, "That is not a stack or service name", "bad-service-name")
+	case errors.Is(err, service.ErrBadSecretName):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a secret name", "bad-secret-name")
+	case errors.Is(err, service.ErrBadOpRef):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a 1Password reference", "bad-op-ref")
+	case errors.Is(err, service.ErrDuplicateName):
+		SendErrorResponse(w, http.StatusBadRequest, "That secret name is repeated", "duplicate-secret-name")
+	case errors.Is(err, service.ErrBadDockerName):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a cac secret name", "bad-docker-secret-name")
+	case errors.Is(err, service.ErrRotationNeedsDeploy):
+		SendErrorResponse(w, http.StatusConflict, "Secrets go through cac only when cac deploys this service", "rotation-needs-deploy")
 	case errors.Is(err, service.ErrBadRepoName):
 		SendErrorResponse(w, http.StatusBadRequest, "That is not an owner/name repository", "bad-repo-name")
 	case errors.Is(err, service.ErrBadWorkflow):

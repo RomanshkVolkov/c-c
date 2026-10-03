@@ -727,5 +727,38 @@
       "cancelled": "Stopped",
       "interrupted": "Interrupted"
     }
+  },
+  "secrets": {
+    "title": "Secrets on the server (1Password)",
+    "lead": "Where each of the service's secrets comes from. Rotating reads them on this machine and takes them to the server as Docker secrets: the container sees them at /run/secrets/NAME. Only the names reach cac.",
+    "notRegistered": "This service isn't deployed from cac yet: register it in Services → Deploy to manage its secrets here.",
+    "empty": "No secrets yet. Add one, or import them from a 1Password item.",
+    "name": "Name",
+    "ref": "1Password reference",
+    "add": "Add",
+    "importItem": "1Password item",
+    "import": "Import fields",
+    "remove": "Remove",
+    "resolves": "Reads fine",
+    "doesNotResolve": "Can't be read",
+    "invalid": "Each name in UPPER_SNAKE_CASE, no repeats, and each reference op://vault/item/field.",
+    "save": "Save",
+    "saveFailed": "The references weren't saved",
+    "check": "Check",
+    "rotate": "Rotate on the server",
+    "needsDeploy": "Only a service that cac deploys can be rotated («Deploy» mode in its deploy): a CI's stack deploy would silently drop these secrets.",
+    "saveFirst": "Save the changes before rotating.",
+    "rotateTitle": "Rotate the secrets of {{service}}?",
+    "rotateBody": "They're read from 1Password on this machine ({{names}}) and taken to {{server}}; the service restarts with them. Only the names reach cac.",
+    "rotated": "Secrets rotated; the service restarted with them",
+    "unchanged": "Already up to date: nothing restarted",
+    "rotateFailed": "The secrets couldn't be rotated",
+    "changed": "new",
+    "same": "same",
+    "history": "Rotations",
+    "status": {
+      "succeeded": "OK",
+      "failed": "Failed"
+    }
   }
 }

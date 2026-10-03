@@ -378,7 +378,6 @@ func TestTheAppKeyIsReadAsTheDocsSayToStoreIt(t *testing.T) {
 	}
 }
 
-
 // Un servicio que su CI etiqueta con el sha corto (RRHH): GitHub avisa con el
 // entero, y lo que se apunta y se despliega es el tag que existe, el corto. El
 // mismo commit avisado por el curl con el corto es el mismo build. Y en GitHub

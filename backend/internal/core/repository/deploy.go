@@ -85,6 +85,9 @@ func (r *DeployRepository) DeleteDeployable(serverID, id string) error {
 		if err := tx.Where("deployable_id = ?", id).Delete(&domain.ImageBuild{}).Error; err != nil {
 			return err
 		}
+		if err := (&SecretRefRepository{}).DeleteForDeployable(tx, id); err != nil {
+			return err
+		}
 		return tx.Where("id = ? AND server_id = ?", id, serverID).Delete(&domain.Deployable{}).Error
 	})
 }

@@ -50,7 +50,7 @@ fn secret_name(base: &str, value: &str) -> String {
 
 /// Comillas simples para sh: lo único que no se puede meter entre ellas es
 /// otra comilla simple, que se cierra, se escapa y se vuelve a abrir.
-fn sh_quote(s: &str) -> String {
+pub(crate) fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r#"'\''"#))
 }
 

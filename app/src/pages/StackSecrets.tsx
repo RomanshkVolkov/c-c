@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useServerContext } from "@/pages/servers/ServerLayout";
 import { GITHUB_PAT_KEY, inferOwnerRepo } from "@/lib/github-repo";
+import ServiceSecretRefs from "@/components/servers/ServiceSecretRefs";
 import {
   KeyRound,
   Plus,
@@ -449,6 +450,10 @@ export default function StackSecrets() {
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 max-w-4xl mx-auto w-full">
+        {/* Los de runtime, por referencia a 1Password. Los de abajo (GitHub) son
+            los del CI, para construir. */}
+        {service && <ServiceSecretRefs server={server} service={service} />}
+
         {/* Token Configuration */}
         <Card>
           <CardHeader>

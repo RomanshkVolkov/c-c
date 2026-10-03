@@ -68,3 +68,20 @@ func ValidateRequest[T any](r *http.Request) (T, error) {
 	}
 	return body, nil
 }
+
+// ValidateStrictRequest: como ValidateRequest, pero un campo que el tipo no
+// conoce es un error y no se descarta en silencio. Para las peticiones que
+// nunca pueden traer un valor secreto: una que lo traiga se rechaza, en vez de
+// aceptarse como si nada (y que el cliente crea que se guardó).
+func ValidateStrictRequest[T any](r *http.Request) (T, error) {
+	var body T
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		return body, err
+	}
+	if err := validate.Struct(body); err != nil {
+		return body, err
+	}
+	return body, nil
+}

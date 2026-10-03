@@ -727,5 +727,38 @@
       "cancelled": "Parado",
       "interrupted": "Interrumpido"
     }
+  },
+  "secrets": {
+    "title": "Secrets en el servidor (1Password)",
+    "lead": "De dónde sale cada secret del servicio. Rotar los lee en esta máquina y los lleva al servidor como secrets de Docker: el contenedor los ve en /run/secrets/NOMBRE. A cac sólo llegan los nombres.",
+    "notRegistered": "Este servicio no se despliega desde cac todavía: regístralo en Servicios → Desplegar para gestionar sus secrets desde aquí.",
+    "empty": "Sin secrets todavía. Añade uno, o impórtalos de un ítem de 1Password.",
+    "name": "Nombre",
+    "ref": "Referencia de 1Password",
+    "add": "Añadir",
+    "importItem": "Ítem de 1Password",
+    "import": "Importar campos",
+    "remove": "Quitar",
+    "resolves": "Se lee bien",
+    "doesNotResolve": "No se puede leer",
+    "invalid": "Cada nombre en MAYÚSCULAS_CON_GUIONES, sin repetir, y cada referencia op://bóveda/ítem/campo.",
+    "save": "Guardar",
+    "saveFailed": "No se guardaron las referencias",
+    "check": "Probar",
+    "rotate": "Rotar en el servidor",
+    "needsDeploy": "Sólo se rota en un servicio que despliega cac (modo «Desplegar» en su deploy): el stack deploy de un CI tiraría estos secrets sin avisar.",
+    "saveFirst": "Guarda los cambios antes de rotar.",
+    "rotateTitle": "¿Rotar los secrets de {{service}}?",
+    "rotateBody": "Se leen de 1Password en esta máquina ({{names}}) y se llevan a {{server}}; el servicio se reinicia con ellos. A cac sólo llegan los nombres.",
+    "rotated": "Secrets rotados; el servicio se reinició con ellos",
+    "unchanged": "Ya estaban al día: no se reinició nada",
+    "rotateFailed": "No se pudieron rotar los secrets",
+    "changed": "nuevo",
+    "same": "igual",
+    "history": "Rotaciones",
+    "status": {
+      "succeeded": "Bien",
+      "failed": "Falló"
+    }
   }
 }
