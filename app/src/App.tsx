@@ -8,6 +8,7 @@ import ServerLayout from "@/pages/servers/ServerLayout";
 import ServerOverview from "@/pages/servers/ServerOverview";
 import ServerServices from "@/pages/servers/ServerServices";
 import ServerNodes from "@/pages/servers/ServerNodes";
+import ServerProvision from "@/pages/servers/ServerProvision";
 import ServerStats from "@/pages/ServerStats";
 import StackSecrets from "@/pages/StackSecrets";
 import ImageTool from "@/pages/ImageTool";
@@ -83,6 +84,7 @@ export default function App() {
             <Route path="nodes" element={<ServerNodes />} />
             <Route path="stats" element={<ServerStats />} />
             <Route path="secrets" element={<StackSecrets />} />
+            <Route path="provision" element={<ServerProvision />} />
           </Route>
           <Route path="/organization" element={<OrganizationSettings />} />
           <Route path="/invitations" element={<Invitations />} />

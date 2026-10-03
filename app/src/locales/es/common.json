@@ -295,7 +295,8 @@
       "services": "Servicios",
       "nodes": "Nodos",
       "stats": "Recursos",
-      "secrets": "Secrets"
+      "secrets": "Secrets",
+      "provision": "Provisioning"
     },
     "tabsLabel": "Secciones del servidor",
     "back": "Volver a servidores",
@@ -314,7 +315,8 @@
       "deploysStart": "Ir a Servicios",
       "notDeployedYet": "sin desplegar desde cac",
       "provisioning": "Provisioning",
-      "provisioningEmpty": "Todavía no se ha aplicado ningún playbook a este servidor desde cac."
+      "provisioningEmpty": "Todavía no se ha aplicado ningún playbook a este servidor desde cac.",
+      "provisioningStart": "Aplicar un playbook"
     }
   },
   "admin": {
@@ -692,5 +694,38 @@
   "stale": {
     "body": "cac se actualizó mientras esta ventana estaba abierta. Reiníciala: hasta entonces, 1Password no le contesta.",
     "restart": "Reiniciar"
+  },
+  "provision": {
+    "project": "Proyecto de Ansible",
+    "pick": "Elegir carpeta",
+    "noAnsible": "No se encuentra ansible-playbook: crea el venv del proyecto (make create-venv).",
+    "noManifest": "Este repo no tiene cac.playbooks.yml: se listan los playbooks de sus carpetas y se pasan variables a mano.",
+    "playbook": "Playbook",
+    "target": "Contra qué",
+    "allHosts": "Lo que diga el playbook",
+    "group": "grupo {{name}}",
+    "fromOp": "1Password: {{ref}}",
+    "becomePassword": "Contraseña de sudo",
+    "becomeFromOp": "La contraseña de sudo se lee de 1Password: {{ref}}",
+    "extraVars": "Variables extra (nombre=valor por línea)",
+    "badVars": "No son nombre=valor: {{lines}}",
+    "run": "Aplicar",
+    "running": "Aplicando…",
+    "cancel": "Parar",
+    "redactionNote": "Se tacha de la salida lo que se lee de 1Password y lo marcado como secreto. Lo que un playbook lea por su cuenta lo protege su no_log.",
+    "confirmTitle": "¿Aplicar «{{playbook}}» a {{server}}?",
+    "confirmBody": "Corre {{file}} contra {{target}}, desde esta máquina. En cac queda quién, cuándo y cómo acabó; de las variables sólo los nombres: {{vars}}.",
+    "done": "Playbook aplicado",
+    "failed": "El playbook falló (código {{code}})",
+    "noOutput": "La salida aparecerá aquí.",
+    "history": "Lo aplicado a este servidor",
+    "noHistory": "Todavía no se ha aplicado ningún playbook desde cac.",
+    "status": {
+      "running": "En curso",
+      "succeeded": "Bien",
+      "failed": "Falló",
+      "cancelled": "Parado",
+      "interrupted": "Interrumpido"
+    }
   }
 }

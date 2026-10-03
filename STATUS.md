@@ -38,7 +38,17 @@ ventana de una copia de cac que el actualizador ya borró lo avisa con un botón
 de reiniciar (`StaleBinaryNotice`): 1Password le corta con `InvalidClientInfo`.
 Y los servicios con tags cortos (RRHH etiqueta con `--short=7`): el aviso de
 la App llega con el sha entero, y cac recorta al tag que existe
-(`Deployable.ShortTags`). **Esto toca backend: backend primero.**
+(`Deployable.ShortTags`). Publicado en la v1.6.80.
+
+**R7 hecha, sin commitear (2-oct, sólo app):** Ansible desde la app. Pestaña
+«Provisioning» del servidor: se elige la carpeta del repo de Ansible, el
+playbook (de su `cac.playbooks.yml` o de sus carpetas), contra qué host o grupo
+y sus variables. Corre aquí (`src-tauri/src/ansible.rs`): lo de 1Password se lee
+en Rust y se tacha de la salida, y variables y contraseña de sudo van en un
+fichero `0600` (`-e @fichero`), nunca en la línea de comandos. A cac sólo llegan
+nombres, el PLAY RECAP y la cola. Manifests escritos (sin commitear, en sus
+repos): `ansible/contabo/cac.playbooks.yml` y
+`valkey/infra-valkey-swarm/cac.playbooks.yml`.
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para

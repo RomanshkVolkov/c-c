@@ -295,7 +295,8 @@
       "services": "Services",
       "nodes": "Nodes",
       "stats": "Resources",
-      "secrets": "Secrets"
+      "secrets": "Secrets",
+      "provision": "Provisioning"
     },
     "tabsLabel": "Server sections",
     "back": "Back to servers",
@@ -314,7 +315,8 @@
       "deploysStart": "Go to Services",
       "notDeployedYet": "not deployed from cac",
       "provisioning": "Provisioning",
-      "provisioningEmpty": "No playbook has been applied to this server from cac yet."
+      "provisioningEmpty": "No playbook has been applied to this server from cac yet.",
+      "provisioningStart": "Apply a playbook"
     }
   },
   "admin": {
@@ -692,5 +694,38 @@
   "stale": {
     "body": "cac was updated while this window was open. Restart it: until then, 1Password won't answer it.",
     "restart": "Restart"
+  },
+  "provision": {
+    "project": "Ansible project",
+    "pick": "Pick folder",
+    "noAnsible": "ansible-playbook not found: create the project's venv (make create-venv).",
+    "noManifest": "This repo has no cac.playbooks.yml: its playbook folders are listed and variables are passed by hand.",
+    "playbook": "Playbook",
+    "target": "Against",
+    "allHosts": "Whatever the playbook says",
+    "group": "group {{name}}",
+    "fromOp": "1Password: {{ref}}",
+    "becomePassword": "Sudo password",
+    "becomeFromOp": "The sudo password is read from 1Password: {{ref}}",
+    "extraVars": "Extra variables (name=value per line)",
+    "badVars": "Not name=value: {{lines}}",
+    "run": "Apply",
+    "running": "Applying…",
+    "cancel": "Stop",
+    "redactionNote": "Whatever is read from 1Password and whatever is marked secret is struck from the output. What a playbook reads on its own is protected by its no_log.",
+    "confirmTitle": "Apply «{{playbook}}» to {{server}}?",
+    "confirmBody": "Runs {{file}} against {{target}}, from this machine. cac keeps who, when and how it ended; of the variables, only the names: {{vars}}.",
+    "done": "Playbook applied",
+    "failed": "The playbook failed (code {{code}})",
+    "noOutput": "The output will show up here.",
+    "history": "Applied to this server",
+    "noHistory": "No playbook has been applied from cac yet.",
+    "status": {
+      "running": "Running",
+      "succeeded": "OK",
+      "failed": "Failed",
+      "cancelled": "Stopped",
+      "interrupted": "Interrupted"
+    }
   }
 }

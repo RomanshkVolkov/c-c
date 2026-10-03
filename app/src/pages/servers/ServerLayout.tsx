@@ -92,6 +92,7 @@ function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer:
     { to: "nodes", label: `${t("common:servers.tabs.nodes")}${swarm.loading ? "" : ` (${swarm.nodes.length})`}` },
     { to: "stats", label: t("common:servers.tabs.stats") },
     { to: "secrets", label: t("common:servers.tabs.secrets") },
+    { to: "provision", label: t("common:servers.tabs.provision") },
   ];
 
   const context: ServerContext = { server, refreshServer, swarm };

@@ -5,6 +5,7 @@
 #![recursion_limit = "256"]
 
 mod agent_install;
+mod ansible;
 mod api_client;
 mod crypto_tools;
 mod http_client;
@@ -131,7 +132,8 @@ fn binary_replaced() -> bool {
 }
 
 fn exe_link_says_deleted(link: Option<&std::path::Path>) -> bool {
-    link.map(|p| p.to_string_lossy().ends_with(" (deleted)")).unwrap_or(false)
+    link.map(|p| p.to_string_lossy().ends_with(" (deleted)"))
+        .unwrap_or(false)
 }
 
 fn op_read(reference: &str) -> Result<String, String> {
@@ -1176,8 +1178,20 @@ fn summarize_commits(raw: Vec<RawCommit>) -> Vec<CommitSummary> {
                 .or_else(|| c.commit.author.as_ref().and_then(|a| a.name.clone()))
                 .unwrap_or_default();
             let date = c.commit.author.and_then(|a| a.date).unwrap_or_default();
-            let message = c.commit.message.lines().next().unwrap_or("").trim().to_string();
-            CommitSummary { sha: c.sha, message, author, date }
+            let message = c
+                .commit
+                .message
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            CommitSummary {
+                sha: c.sha,
+                message,
+                author,
+                date,
+            }
         })
         .collect()
 }
@@ -1606,6 +1620,8 @@ pub fn run() {
         .on_window_event(|_, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 pty::close_all();
+                // Un playbook a medias contra un servidor, sin nadie mirando.
+                ansible::close_all();
                 // Igual que el pty: una sala abierta y un micrófono vivo en un
                 // proceso que ya nadie mira es peor que un recurso filtrado.
                 voice::close_all();
@@ -1742,6 +1758,11 @@ pub fn run() {
             export_notes,
             op_item_create,
             op_list_vaults,
+            ansible::ansible_tools,
+            ansible::ansible_manifest,
+            ansible::ansible_inventory,
+            ansible::ansible_run,
+            ansible::ansible_cancel,
             pty::pty_open,
             pty::pty_write,
             pty::pty_resize,
@@ -1852,7 +1873,9 @@ mod replaced_binary_tests {
         assert!(exe_link_says_deleted(Some(Path::new(
             "/home/rv/.cache/tauri_current_app8SWmRl/current_app.AppImage (deleted)"
         ))));
-        assert!(!exe_link_says_deleted(Some(Path::new("/home/rv/cac.AppImage"))));
+        assert!(!exe_link_says_deleted(Some(Path::new(
+            "/home/rv/cac.AppImage"
+        ))));
         assert!(!exe_link_says_deleted(None));
     }
 }

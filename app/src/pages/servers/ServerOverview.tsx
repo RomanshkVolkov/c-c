@@ -137,7 +137,12 @@ export default function ServerOverview() {
         </CardHeader>
         <CardContent className="text-sm">
           {!last ? (
-            <p className="text-muted-foreground">{t("common:servers.overview.provisioningEmpty")}</p>
+            <div className="space-y-2">
+              <p className="text-muted-foreground">{t("common:servers.overview.provisioningEmpty")}</p>
+              <Link to={`/servers/${server.id}/provision`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                {t("common:servers.overview.provisioningStart")}
+              </Link>
+            </div>
           ) : (
             <div className="space-y-1">
               <div className="flex items-center gap-2">
