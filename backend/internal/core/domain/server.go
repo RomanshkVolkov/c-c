@@ -48,6 +48,12 @@ type Server struct {
 // «en curso» hasta caducar porque el agente no sabe qué hacer con él.
 const AgentVersionDeploys = 3
 
+// AgentVersionMigrates: la primera que corre las migraciones de un deploy
+// (un job de Swarm con la imagen nueva antes del update). Un servicio con
+// comando de migración no se le encola a uno anterior: lo desplegaría sin
+// migrar.
+const AgentVersionMigrates = 4
+
 // AgentSilence: cuánto se tolera sin latido antes de dar el agente por caído.
 // El agente pregunta cada 25 s como mucho; tres preguntas perdidas son un
 // agente que no está, no una red que parpadea.

@@ -44,6 +44,10 @@ type Deployable struct {
 	// avisa con el entero, y desplegar `repo:<entero>` pediría un tag que no
 	// existe. La app lo deduce de la imagen que corre el servicio.
 	ShortTags bool `gorm:"not null;default:false" json:"shortTags"`
+	// MigrateCommand: lo que corre antes de cada deploy, con la imagen nueva y
+	// lo mismo que el servicio (redes, secrets). Si falla, el servicio no se
+	// toca. Vacío = sin migraciones.
+	MigrateCommand string `gorm:"type:varchar(500)" json:"migrateCommand"`
 	// Qué hacer cuando el CI avise de una imagen nueva (R3): `record` la apunta
 	// y nada más —el CI sigue desplegando él—; `deploy` la despliega.
 	OnCINotify string `gorm:"type:varchar(20);not null;default:'record'" json:"onCINotify"`
@@ -196,7 +200,8 @@ type UpdateDeployableRequest struct {
 	// como el PATCH pide la fila entera, si no lo borraría al cambiar de modo.
 	BuildWorkflow *string `json:"buildWorkflow,omitempty" validate:"omitempty,max=200"`
 	// Puntero por lo mismo: una app anterior no lo manda.
-	ShortTags *bool `json:"shortTags,omitempty"`
+	ShortTags      *bool   `json:"shortTags,omitempty"`
+	MigrateCommand *string `json:"migrateCommand,omitempty" validate:"omitempty,max=500"`
 }
 
 type DeployRequest struct {
@@ -216,6 +221,8 @@ type DeployJob struct {
 	ServiceName  string `json:"serviceName"`
 	ImageRepo    string `json:"imageRepo"`
 	Image        string `json:"image"`
+	// Vacío = sin migraciones. Ver Deployable.MigrateCommand.
+	MigrateCommand string `json:"migrateCommand,omitempty"`
 }
 
 // AgentJob es la respuesta a la pregunta del agente cuando hay trabajo.

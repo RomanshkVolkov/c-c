@@ -1,5 +1,6 @@
 {
   "admin-required": "You need to be an admin of this organization.",
+  "agent-cannot-migrate": "This server's agent can't run migrations; update it.",
   "agent-has-no-token": "This server's agent has no identity yet: reinstall it from the servers page.",
   "agent-needs-swarm": "Only Swarm servers run an agent.",
   "agent-stopped-responding": "The agent stopped responding halfway; the deploy was given up.",
@@ -11,6 +12,7 @@
   "bad-freq": "That repeat isn't one this can do.",
   "bad-image-repo": "That isn't an image repository (no tag, like ghcr.io/org/repo).",
   "bad-kind": "That kind of node doesn't exist.",
+  "bad-migrate-command": "The migration command has to be a single line.",
   "bad-op-ref": "That isn't a 1Password reference (op://vault/item/field).",
   "bad-parent": "That parent doesn't accept this.",
   "bad-range": "That part of the file doesn't exist.",

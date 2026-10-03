@@ -228,7 +228,7 @@ describe("el aviso del CI", () => {
     expect(confirmar).toHaveBeenCalledTimes(1);
     expect(patch).toHaveBeenCalledWith(
       "/api/v1/servers/srv-1/deployables/dp-1",
-      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy", buildWorkflow: "", shortTags: false },
+      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy", buildWorkflow: "", shortTags: false, migrateCommand: "" },
       true,
     );
     await waitFor(() =>
@@ -253,7 +253,7 @@ describe("el aviso del CI", () => {
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith(
         "/api/v1/servers/srv-1/deployables/dp-1",
-        { name: "app", environment: "prod", repoFullName: "dwit/api", onCINotify: "deploy", buildWorkflow: "prod.yml", shortTags: false },
+        { name: "app", environment: "prod", repoFullName: "dwit/api", onCINotify: "deploy", buildWorkflow: "prod.yml", shortTags: false, migrateCommand: "" },
         true,
       ),
     );
@@ -372,6 +372,28 @@ describe("sin ir a GitHub", () => {
     fireEvent.click(screen.getByRole("button", { name: /^(guardar|save)$/i }));
     await waitFor(() => expect(patch).toHaveBeenCalled());
     expect(patch.mock.calls[0][1].shortTags).toBe(true);
+  });
+
+  it("el comando de migración se guarda, y avisa si el agente no sabe correrlo", async () => {
+    respuestas([deployable], []);
+    patch.mockResolvedValue({ success: true, data: { ...deployable, migrateCommand: "npx prisma migrate deploy" } });
+    pintar(server({ agentVersion: 3 }));
+    const campo = await screen.findByLabelText(/^(migraciones|migrations)$/i);
+    const guardar = screen.getByRole("button", { name: /(guardar comando|save command)/i }) as HTMLButtonElement;
+    expect(guardar.disabled).toBe(true);
+    fireEvent.change(campo, { target: { value: " npx prisma migrate deploy " } });
+    expect(screen.getByText(/(no sabe correr migraciones|can't run migrations)/i)).toBeTruthy();
+    fireEvent.click(guardar);
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(patch.mock.calls[0][1].migrateCommand).toBe("npx prisma migrate deploy");
+    expect(patch.mock.calls[0][1].onCINotify).toBe("record");
+  });
+
+  it("con un agente v4 no avisa", async () => {
+    respuestas([{ ...deployable, migrateCommand: "migrate" }], []);
+    pintar(server({ agentVersion: 4 }));
+    await screen.findByLabelText(/^(migraciones|migrations)$/i);
+    expect(screen.queryByText(/(no sabe correr migraciones|can't run migrations)/i)).toBeNull();
   });
 
   it("sin PAT no hay lista, y queda el campo", async () => {

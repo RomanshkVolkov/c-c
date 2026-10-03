@@ -330,6 +330,10 @@ func deployError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusBadRequest, "That is not a cac secret name", "bad-docker-secret-name")
 	case errors.Is(err, service.ErrRotationNeedsDeploy):
 		SendErrorResponse(w, http.StatusConflict, "Secrets go through cac only when cac deploys this service", "rotation-needs-deploy")
+	case errors.Is(err, service.ErrBadMigrateCommand):
+		SendErrorResponse(w, http.StatusBadRequest, "The migration command has to be one line", "bad-migrate-command")
+	case errors.Is(err, service.ErrAgentCannotMigrate):
+		SendErrorResponse(w, http.StatusConflict, "This server's agent can't run migrations; reinstall it", "agent-cannot-migrate")
 	case errors.Is(err, service.ErrBadRepoName):
 		SendErrorResponse(w, http.StatusBadRequest, "That is not an owner/name repository", "bad-repo-name")
 	case errors.Is(err, service.ErrBadWorkflow):

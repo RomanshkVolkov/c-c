@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import CINoticeSection from "./CINoticeSection";
 import CommitPicker from "./CommitPicker";
+import MigrateCommandField from "./MigrateCommandField";
 import type { Server } from "@/types/server";
 import type { SwarmService } from "@/types/swarm";
 import type { Deployment, DeployStatus } from "@/types/deploy";
@@ -201,6 +202,8 @@ export default function DeployDialog({
                 {vivo ? t("common:deploy.deploying") : t("common:deploy.deploy")}
               </Button>
             </div>
+
+            <MigrateCommandField key={deployable.id} server={server} deployable={deployable} />
 
             <CINoticeSection
               server={server}

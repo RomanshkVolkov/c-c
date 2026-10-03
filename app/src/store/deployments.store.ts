@@ -36,6 +36,8 @@ interface DeploymentsState {
   mintCIKey: (serverId: string, deployableId: string) => Promise<CIKey>;
   setCINotify: (serverId: string, d: Deployable, mode: CINotifyMode) => Promise<void>;
   /** El repo de GitHub y el workflow que publica la imagen. */
+  /** Lo que corre antes de cada deploy; "" lo quita. */
+  setMigrateCommand: (serverId: string, d: Deployable, command: string) => Promise<void>;
   setGitHub: (
     serverId: string,
     d: Deployable,
@@ -61,7 +63,7 @@ async function patchDeployable(
   set: (fn: (s: DeploymentsState) => Partial<DeploymentsState>) => void,
   serverId: string,
   d: Deployable,
-  patch: Partial<Pick<Deployable, "onCINotify" | "repoFullName" | "buildWorkflow" | "shortTags">>,
+  patch: Partial<Pick<Deployable, "onCINotify" | "repoFullName" | "buildWorkflow" | "shortTags" | "migrateCommand">>,
 ) {
   const body = {
     name: d.name,
@@ -70,6 +72,7 @@ async function patchDeployable(
     onCINotify: d.onCINotify,
     buildWorkflow: d.buildWorkflow ?? "",
     shortTags: d.shortTags ?? false,
+    migrateCommand: d.migrateCommand ?? "",
     ...patch,
   };
   const next = must(await api.patch<APIResponse<Deployable>>(`${base(serverId)}/${d.id}`, body, true));
@@ -149,6 +152,8 @@ export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
   },
 
   setCINotify: (serverId, d, mode) => patchDeployable(set, serverId, d, { onCINotify: mode }),
+
+  setMigrateCommand: (serverId, d, migrateCommand) => patchDeployable(set, serverId, d, { migrateCommand }),
 
   setGitHub: (serverId, d, repoFullName, buildWorkflow, shortTags) =>
     patchDeployable(set, serverId, d, { repoFullName, buildWorkflow, shortTags }),

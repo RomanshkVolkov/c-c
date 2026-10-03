@@ -689,7 +689,11 @@
     },
     "commits": "Latest commits in {{repo}}",
     "commitsLabel": "Commits to deploy",
-    "imagePublished": "image published"
+    "imagePublished": "image published",
+    "migrate": "Migrations",
+    "migrateSave": "Save command",
+    "migrateLead": "Runs before every deploy with the new image and the service's own networks and secrets. If it fails, the service isn't touched.",
+    "migrateAgentOld": "This server's agent can't run migrations: update it, or deploys will be refused."
   },
   "stale": {
     "body": "cac was updated while this window was open. Restart it: until then, 1Password won't answer it.",

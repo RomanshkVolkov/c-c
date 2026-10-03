@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,8 @@ var (
 	ErrBadServiceName      = errors.New("bad-service-name")
 	ErrBadRepoName         = errors.New("bad-repo-name")
 	ErrBadWorkflow         = errors.New("bad-workflow")
+	ErrBadMigrateCommand   = errors.New("bad-migrate-command")
+	ErrAgentCannotMigrate  = errors.New("agent-cannot-migrate")
 	ErrBadSha              = errors.New("bad-sha")
 	ErrNothingToRollBackTo = errors.New("nothing-to-roll-back-to")
 	ErrRollbackOutsideRepo = errors.New("rollback-outside-repo")
@@ -121,6 +124,15 @@ func (s *DeployService) UpdateDeployable(d *domain.Deployable, req domain.Update
 	if req.ShortTags != nil {
 		d.ShortTags = *req.ShortTags
 	}
+	if req.MigrateCommand != nil {
+		cmd := strings.TrimSpace(*req.MigrateCommand)
+		// Una línea: es lo que va detrás de `sh -c`, y un salto de línea ahí
+		// esconde un segundo comando que nadie ve en la pantalla.
+		if strings.ContainsAny(cmd, "\n\r\x00") {
+			return nil, ErrBadMigrateCommand
+		}
+		d.MigrateCommand = cmd
+	}
 	if err := s.repo.UpdateDeployable(d); err != nil {
 		return nil, err
 	}
@@ -177,6 +189,9 @@ func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbac
 	}
 	if srv.AgentVersion < domain.AgentVersionDeploys {
 		return nil, false, ErrAgentTooOld
+	}
+	if d.MigrateCommand != "" && srv.AgentVersion < domain.AgentVersionMigrates {
+		return nil, false, ErrAgentCannotMigrate
 	}
 	now := s.now()
 	expired, err := s.repo.ExpireStale(d.ID, now)
@@ -259,6 +274,8 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 		out.Deploy, out.Reason = "skipped", "deploy-in-flight"
 	case errors.Is(err, ErrAgentTooOld):
 		out.Deploy, out.Reason = "skipped", "agent-too-old"
+	case errors.Is(err, ErrAgentCannotMigrate):
+		out.Deploy, out.Reason = "skipped", "agent-cannot-migrate"
 	case err != nil:
 		return nil, err
 	case created:
@@ -299,7 +316,7 @@ func (s *DeployService) Claim(serverID string) (*domain.AgentJob, error) {
 		Kind: "deploy",
 		Data: domain.DeployJob{
 			DeploymentID: dep.ID, Stack: d.Stack, ServiceName: d.ServiceName,
-			ImageRepo: d.ImageRepo, Image: dep.Image,
+			ImageRepo: d.ImageRepo, Image: dep.Image, MigrateCommand: d.MigrateCommand,
 		},
 	}, nil
 }

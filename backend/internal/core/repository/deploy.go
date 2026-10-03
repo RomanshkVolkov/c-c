@@ -68,12 +68,13 @@ func (r *DeployRepository) FindDeployable(serverID, id string) (*domain.Deployab
 
 func (r *DeployRepository) UpdateDeployable(d *domain.Deployable) error {
 	return r.db.Model(&domain.Deployable{}).Where("id = ?", d.ID).Updates(map[string]any{
-		"name":           d.Name,
-		"environment":    d.Environment,
-		"repo_full_name": d.RepoFullName,
-		"on_ci_notify":   d.OnCINotify,
-		"build_workflow": d.BuildWorkflow,
-		"short_tags":     d.ShortTags,
+		"name":            d.Name,
+		"environment":     d.Environment,
+		"repo_full_name":  d.RepoFullName,
+		"on_ci_notify":    d.OnCINotify,
+		"build_workflow":  d.BuildWorkflow,
+		"short_tags":      d.ShortTags,
+		"migrate_command": d.MigrateCommand,
 	}).Error
 }
 

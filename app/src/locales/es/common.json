@@ -689,7 +689,11 @@
     },
     "commits": "Últimos commits de {{repo}}",
     "commitsLabel": "Commits para desplegar",
-    "imagePublished": "imagen publicada"
+    "imagePublished": "imagen publicada",
+    "migrate": "Migraciones",
+    "migrateSave": "Guardar comando",
+    "migrateLead": "Corre antes de cada deploy con la imagen nueva y las mismas redes y secrets que el servicio. Si falla, el servicio no se toca.",
+    "migrateAgentOld": "El agente de este servidor no sabe correr migraciones: actualízalo, o los deploys se rechazarán."
   },
   "stale": {
     "body": "cac se actualizó mientras esta ventana estaba abierta. Reiníciala: hasta entonces, 1Password no le contesta.",

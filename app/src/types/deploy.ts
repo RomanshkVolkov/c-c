@@ -17,6 +17,8 @@ export interface Deployable {
   buildWorkflow?: string;
   /** Si el CI etiqueta la imagen con el sha corto; cac recorta el sha. */
   shortTags?: boolean;
+  /** Lo que corre antes de cada deploy, con la imagen nueva. Vacío = nada. */
+  migrateCommand?: string;
   /** Qué hace cac cuando el CI avisa: apuntarlo, o además desplegarlo. */
   onCINotify: CINotifyMode;
   /** El principio de la llave del CI, para reconocerla; vacío si no tiene. */

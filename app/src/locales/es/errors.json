@@ -1,5 +1,6 @@
 {
   "admin-required": "Tienes que ser administrador de esta organización.",
+  "agent-cannot-migrate": "El agente de este servidor no sabe correr migraciones; actualízalo.",
   "agent-has-no-token": "El agente de este servidor todavía no tiene identidad: reinstálalo desde el panel de servidores.",
   "agent-needs-swarm": "Sólo los servidores Swarm llevan agente.",
   "agent-stopped-responding": "El agente dejó de contestar a medias; el deploy se dio por perdido.",
@@ -11,6 +12,7 @@
   "bad-freq": "Esa repetición no es de las que se pueden hacer.",
   "bad-image-repo": "Eso no es un repositorio de imágenes (sin tag, como ghcr.io/org/repo).",
   "bad-kind": "Esa clase de nodo no existe.",
+  "bad-migrate-command": "El comando de migración tiene que ser una sola línea.",
   "bad-op-ref": "Eso no es una referencia de 1Password (op://bóveda/ítem/campo).",
   "bad-parent": "Ese padre no admite esto.",
   "bad-range": "Ese trozo del fichero no existe.",

@@ -93,7 +93,24 @@ log en vivo y quién lo pidió («el CI»).
 El mismo sha dos veces es un build y, como mucho, un deploy: los reintentos del
 workflow no despliegan dos veces.
 
-## 5. Lo que no hace (todavía)
+## 5. Migraciones
+
+En el diálogo de deploy del servicio, «Migraciones»: un comando de una línea
+(`npx prisma migrate deploy`, `bun run migrate`…) que corre **antes de cada
+deploy**, con la imagen nueva.
+
+- Corre como un **job de Swarm** de un solo disparo copiado del servicio: las
+  mismas redes, secrets (`/run/secrets/…`), entorno y restricciones, así que
+  llega a la base igual que la app. Sin sus puertos, sus labels (Traefik no lo
+  ve) ni su healthcheck, y sin reintentos.
+- Su salida va al log del deploy. El job se borra al acabar, salga como salga.
+- **Si falla** (código distinto de 0, o Swarm no puede colocarlo), el servicio
+  **no se toca** y el deploy cuenta como fallido. Tiene un tope de 15 minutos.
+- Hace falta el agente v4 («Update agent»). A uno anterior no se le encola un
+  deploy de un servicio con migraciones —lo desplegaría sin migrar—, y un
+  aviso del CI en ese caso queda apuntado con el motivo `agent-cannot-migrate`.
+
+## 6. Lo que no hace (todavía)
 
 - No sabe de ramas: despliega lo que el workflow avise. Si el paso sólo corre en
   `main`, sólo se despliega `main`.

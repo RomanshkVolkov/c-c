@@ -6,6 +6,9 @@
 /** La primera versión del agente que despliega (`domain.AgentVersionDeploys`). */
 export const AGENT_VERSION_DEPLOYS = 3;
 
+/** La primera que corre migraciones antes del deploy (`domain.AgentVersionMigrates`). */
+export const AGENT_VERSION_MIGRATES = 4;
+
 /** El repositorio de una imagen, sin tag ni digest. El `:` de un puerto no es un tag. */
 export function repoFromImage(image: string): string {
   const sinDigest = image.split("@")[0];

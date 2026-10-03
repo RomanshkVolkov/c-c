@@ -24,6 +24,31 @@ type fakeDocker struct {
 	updatedTo string
 	// Lo que dirá Swarm después de actualizar.
 	after func(*repository.ServiceState)
+
+	// El job de migración: con qué se creó, cómo acabará y si se borró.
+	migImage, migCmd string
+	migState         repository.TaskState
+	migLogs          []string
+	migRemoved       bool
+	migCreated       bool
+	// Si ya se había actualizado el servicio cuando se creó el job.
+	updatedBeforeMig bool
+}
+
+func (f *fakeDocker) CreateMigrationJob(_ context.Context, from, name, image, cmd, _ string) (string, error) {
+	f.migCreated, f.migImage, f.migCmd = true, image, cmd
+	f.updatedBeforeMig = f.updatedTo != ""
+	return "job-1", nil
+}
+func (f *fakeDocker) JobTask(context.Context, string) (repository.TaskState, error) {
+	return f.migState, nil
+}
+func (f *fakeDocker) JobLogs(context.Context, string, int) ([]string, error) { return f.migLogs, nil }
+func (f *fakeDocker) RemoveService(_ context.Context, id string) error {
+	if id == "job-1" {
+		f.migRemoved = true
+	}
+	return nil
 }
 
 func (f *fakeDocker) FindService(_ context.Context, name string) (*repository.ServiceState, error) {
@@ -191,5 +216,80 @@ func TestADeployThatNeverConvergesFails(t *testing.T) {
 	deployer(d, r).Run(context.Background(), "d-1", job(repo+":abc1234"))
 	if r.finish.Status != "failed" || !strings.Contains(r.finish.Error, "no terminó") {
 		t.Errorf("un deploy colgado: %+v", r.finish)
+	}
+}
+
+func jobWithMigration(image, cmd string) json.RawMessage {
+	raw, _ := json.Marshal(DeployJob{DeploymentID: "d-1", Stack: "api", ServiceName: "api_app", ImageRepo: repo, Image: image, MigrateCommand: cmd})
+	return raw
+}
+
+// Las migraciones corren antes de tocar el servicio, con la imagen nueva ya
+// clavada; su salida va al log; el job se borra.
+func TestMigrationsRunBeforeTheUpdateWithTheNewImage(t *testing.T) {
+	d := &fakeDocker{svc: servicio(), migState: repository.TaskState{State: "complete"}, migLogs: []string{"applied 3 migrations"}}
+	r := &fakeReport{}
+	deployer(d, r).Run(context.Background(), "d-1", jobWithMigration(repo+":abc1234", "npx prisma migrate deploy"))
+
+	if r.finish == nil || r.finish.Status != "succeeded" {
+		t.Fatalf("no acabó bien: %+v %v", r.finish, r.lines)
+	}
+	if !d.migCreated || d.updatedBeforeMig {
+		t.Errorf("la migración no corrió antes del update (creada %v, después %v)", d.migCreated, d.updatedBeforeMig)
+	}
+	if d.migImage != repo+":abc1234@"+digest || d.migCmd != "npx prisma migrate deploy" {
+		t.Errorf("job con %q / %q", d.migImage, d.migCmd)
+	}
+	if !d.migRemoved {
+		t.Error("el job de migración se quedó en el servidor")
+	}
+	if !strings.Contains(strings.Join(r.lines, "\n"), "applied 3 migrations") {
+		t.Errorf("la salida de la migración no está en el log: %v", r.lines)
+	}
+}
+
+// Una migración que falla deja el servicio como estaba, y el job se borra.
+func TestAFailedMigrationLeavesTheServiceAlone(t *testing.T) {
+	for name, st := range map[string]repository.TaskState{
+		"código 1":  {State: "complete", ExitCode: 1},
+		"falló":     {State: "failed", ExitCode: 2, Err: "task: non-zero exit (2)"},
+		"rechazada": {State: "rejected", Err: "no suitable node"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := &fakeDocker{svc: servicio(), migState: st}
+			r := &fakeReport{}
+			deployer(d, r).Run(context.Background(), "d-1", jobWithMigration(repo+":abc1234", "migrate"))
+			if r.finish == nil || r.finish.Status != "failed" {
+				t.Fatalf("una migración %s acabó %+v", name, r.finish)
+			}
+			if d.updatedTo != "" {
+				t.Errorf("con la migración %s se tocó el servicio: %s", name, d.updatedTo)
+			}
+			if !d.migRemoved {
+				t.Error("el job de migración se quedó en el servidor")
+			}
+		})
+	}
+}
+
+// Una migración que no acaba tiene tope.
+func TestAStuckMigrationTimesOut(t *testing.T) {
+	d := &fakeDocker{svc: servicio(), migState: repository.TaskState{State: "running"}}
+	r := &fakeReport{}
+	dep := deployer(d, r)
+	dep.Migrate = 30 * time.Millisecond
+	dep.Run(context.Background(), "d-1", jobWithMigration(repo+":abc1234", "migrate"))
+	if r.finish == nil || r.finish.Status != "failed" || d.updatedTo != "" || !d.migRemoved {
+		t.Errorf("una migración colgada: %+v, actualizado %q, borrado %v", r.finish, d.updatedTo, d.migRemoved)
+	}
+}
+
+// Sin comando no hay job.
+func TestNoCommandNoMigration(t *testing.T) {
+	d := &fakeDocker{svc: servicio()}
+	r := &fakeReport{}
+	deployer(d, r).Run(context.Background(), "d-1", job(repo+":abc1234"))
+	if d.migCreated {
+		t.Error("se creó un job de migración sin comando")
 	}
 }

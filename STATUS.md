@@ -50,7 +50,7 @@ nombres, el PLAY RECAP y la cola. Manifests escritos (sin commitear, en sus
 repos): `ansible/contabo/cac.playbooks.yml` y
 `valkey/infra-valkey-swarm/cac.playbooks.yml`.
 
-**R8a hecha, sin commitear (backend + app): secrets por referencia a
+**R8a publicada en backend** (`5812751`)**: secrets por referencia a
 1Password.** En la pestaña Secrets, por servicio: `NOMBRE` ← `op://…` (se
 importan de un ítem), «Probar» y «Rotar en el servidor». Rotar lee en Rust y
 manda un guion por `bash -s` (stdin): secrets de Docker versionados por HMAC
@@ -59,6 +59,13 @@ conserva la versión anterior y sólo imprime nombres. Sólo en servicios que
 despliega cac. A cac llegan nombres (`DeployableSecretRef`, `SecretRotation`;
 una petición con un valor se rechaza). **Falta la R8b:** migraciones antes del
 deploy (agente v4). Backend primero.
+
+**R8b hecha, sin commitear (backend + agente v4 + app): migraciones.** Un
+comando por servicio que corre antes de cada deploy como job de Swarm
+(`replicated-job`) copiado del servicio, con la imagen nueva; si falla, el
+servicio no se toca. A un agente < v4 no se le encola. Publicar: backend →
+agente `:v4` (`swarm-manage.yml`) → app v1.6.82 (R8a + R8b), y luego «Update
+agent». Ver `docs/integrations/deploys.md` §5.
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para
