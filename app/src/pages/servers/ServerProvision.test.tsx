@@ -78,7 +78,7 @@ const SUDO = "contraseña-de-sudo";
 
 beforeEach(() => {
   channels.length = 0;
-  live.runId = null;
+  live.backendRunId = null;
   useProvisionStore.setState({ prefs: { "srv-1": { projectDir: "/p", limit: "", playbookId: "" } }, inFlight: null, lines: [], history: {} });
   api.get.mockReset().mockResolvedValue({ success: true, data: [] });
   api.post.mockReset().mockResolvedValue({ success: true, data: { id: "run-cac-1" } });
@@ -133,6 +133,46 @@ describe("aplicar un playbook", () => {
     const toCac = JSON.stringify([...api.post.mock.calls, ...api.patch.mock.calls]);
     expect(toCac).not.toContain(SECRET);
     expect(toCac).not.toContain(SUDO);
+  });
+
+  it("un playbook que falla en el acto no se queda «aplicando», y su salida se ve", async () => {
+    // El aviso de que acabó llega antes de que `ansible_run` conteste.
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "ansible_run") {
+        channels[0].onmessage!({ event: "line", data: { stream: "stderr", text: "fatal: [dwit_1_root]: UNREACHABLE!" } });
+        channels[0].onmessage!({ event: "exit", data: { code: 4, cancelled: false } });
+        return "run-1";
+      }
+      if (cmd === "ansible_manifest") return manifest;
+      if (cmd === "ansible_tools") return { platformSupported: true, reason: "", ansiblePlaybook: "/p/.venv/bin/ansible-playbook", op: "/usr/bin/op" };
+      if (cmd === "ansible_inventory") return [];
+      return null;
+    });
+    await rellenar();
+    fireEvent.click(boton());
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    expect(api.patch.mock.calls[0][1]).toMatchObject({ status: "failed", exitCode: 4 });
+    expect(api.patch.mock.calls[0][1].logTail).toContain("UNREACHABLE");
+    // Ya no «aplicando» (el botón se apaga sólo porque la contraseña de sudo
+    // se borra tras cada ejecución, a propósito).
+    await waitFor(() => expect(screen.getByRole("button", { name: /^(aplicar|apply)$/i })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /^(parar|stop)$/i })).toBeNull();
+    expect(useProvisionStore.getState().inFlight).toBeNull();
+    expect(screen.getByText(/UNREACHABLE/)).toBeTruthy();
+  });
+
+  it("parar lo que Rust ya no tiene lo suelta", async () => {
+    useProvisionStore.setState({ inFlight: { serverId: "srv-1", runId: "run-ido", backendRunId: "cac-ido" } });
+    live.backendRunId = "cac-ido";
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "ansible_cancel") throw new Error("that run is not running");
+      if (cmd === "ansible_manifest") return manifest;
+      if (cmd === "ansible_tools") return { platformSupported: true, reason: "", ansiblePlaybook: "/p/.venv/bin/ansible-playbook", op: "/usr/bin/op" };
+      return [];
+    });
+    render(<ServerProvision />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(parar|stop)$/i }));
+    await waitFor(() => expect(useProvisionStore.getState().inFlight).toBeNull());
   });
 
   it("parar es «parado», no un fallo", async () => {
@@ -195,7 +235,7 @@ describe("aplicar un playbook", () => {
   });
 
   it("una que sigue viva, al volver a la pestaña, no se toca", async () => {
-    live.runId = "run-vivo";
+    live.backendRunId = "cac-vivo";
     useProvisionStore.setState({ inFlight: { serverId: "srv-1", runId: "run-vivo", backendRunId: "cac-vivo" } });
     render(<ServerProvision />);
     await screen.findByLabelText("api_token *");

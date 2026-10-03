@@ -31,6 +31,12 @@ interface ProvisionState {
 
   setPrefs: (serverId: string, p: Partial<ProvisionPrefs>) => void;
   start: (f: InFlight) => void;
+  /**
+   * El id de Rust, cuando llega. Sólo si esa ejecución sigue en marcha: si
+   * acabó antes de que `ansible_run` contestara —un fallo rápido—, no se
+   * resucita.
+   */
+  attach: (backendRunId: string, runId: string) => void;
   push: (lines: string[]) => void;
   clearLines: () => void;
   finished: () => void;
@@ -62,6 +68,9 @@ export const useProvisionStore = create<ProvisionState>()(
 
       start: (f) => set({ inFlight: f, lines: [] }),
 
+      attach: (backendRunId, runId) =>
+        set((s) => (s.inFlight?.backendRunId === backendRunId ? { inFlight: { ...s.inFlight, runId } } : s)),
+
       push: (more) => set((s) => ({ lines: appendBounded(s.lines, more) })),
 
       clearLines: () => set({ lines: [] }),
@@ -77,7 +86,7 @@ export const useProvisionStore = create<ProvisionState>()(
         const f = get().inFlight;
         if (!f) return;
         set({ inFlight: null });
-        await invoke("ansible_cancel", { runId: f.runId }).catch(() => {});
+        if (f.runId) await invoke("ansible_cancel", { runId: f.runId }).catch(() => {});
         await api
           .patch(`/api/v1/servers/${f.serverId}/provisioning-runs/${f.backendRunId}`, { status: "interrupted", summary: "", logTail: "" }, true)
           .catch(() => {});

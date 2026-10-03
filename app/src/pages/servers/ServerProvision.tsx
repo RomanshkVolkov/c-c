@@ -28,7 +28,7 @@ const NADA: never[] = [];
  * cero y haría pasar por huérfana una ejecución viva. Sólo una recarga la
  * pierde, que es justo cuando la ejecución sí se queda sin nadie.
  */
-export const live: { runId: string | null } = { runId: null };
+export const live: { backendRunId: string | null } = { backendRunId: null };
 
 const VARIANTE: Record<ProvisioningRun["status"], "default" | "secondary" | "destructive" | "outline"> = {
   running: "secondary",
@@ -69,7 +69,7 @@ export default function ServerProvision() {
   const inFlight = useProvisionStore((s) => s.inFlight);
   const lines = useProvisionStore((s) => s.lines);
   const history = useProvisionStore((s) => s.history[server.id] ?? NADA);
-  const { setPrefs, start, push, finished, loadHistory, closeOrphan } = useProvisionStore.getState();
+  const { setPrefs, start, attach, push, finished, loadHistory, closeOrphan } = useProvisionStore.getState();
 
   const [tools, setTools] = useState<AnsibleTools | null>(null);
   const [manifest, setManifest] = useState<AnsibleManifest | null>(null);
@@ -85,7 +85,7 @@ export default function ServerProvision() {
   // Algo que quedó a medias de antes (la app se cerró o se recargó).
   useEffect(() => {
     const f = useProvisionStore.getState().inFlight;
-    if (f && f.runId !== live.runId) void closeOrphan().then(() => loadHistory(server.id));
+    if (f && f.backendRunId !== live.backendRunId) void closeOrphan().then(() => loadHistory(server.id));
   }, [server.id, closeOrphan, loadHistory]);
 
   useEffect(() => {
@@ -158,6 +158,12 @@ export default function ServerProvision() {
       );
       if (!res?.success || !res.data) throw new Error(res?.error ?? "provisioning-runs");
       const backendRunId = res.data.id;
+      // «En marcha» se apunta **antes** de lanzar: un playbook que falla en
+      // el acto avisa de que acabó antes de que `ansible_run` conteste, y
+      // apuntarlo después lo dejaba «aplicando» para siempre y borraba la
+      // salida que ya había llegado.
+      live.backendRunId = backendRunId;
+      start({ serverId: server.id, runId: "", backendRunId });
 
       const channel = new Channel<AnsibleEvent>();
       let buffer: string[] = [];
@@ -173,7 +179,7 @@ export default function ServerProvision() {
         }
         clearInterval(timer);
         flush();
-        live.runId = null;
+        live.backendRunId = null;
         const all = useProvisionStore.getState().lines;
         const status = finalStatus(ev.data.code, ev.data.cancelled);
         finished();
@@ -206,14 +212,15 @@ export default function ServerProvision() {
         onEvent: channel,
       }).catch(async (e) => {
         clearInterval(timer);
+        live.backendRunId = null;
+        finished();
         await api
           .patch(`/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`, { status: "failed", summary: String(e), logTail: "" }, true)
           .catch(() => {});
         void loadHistory(server.id);
         throw e;
       });
-      live.runId = runId;
-      start({ serverId: server.id, runId, backendRunId });
+      attach(backendRunId, runId);
       // La contraseña de sudo no se queda en pantalla más de lo necesario.
       setBecomePw("");
     } catch (e) {
@@ -223,8 +230,16 @@ export default function ServerProvision() {
     }
   };
 
+  // Si Rust ya no la tiene (acabó, o nunca llegó a arrancar), no hay nada que
+  // parar: se suelta aquí, que es lo único que quedaba colgado.
   const cancel = () => {
-    if (inFlight) void invoke("ansible_cancel", { runId: inFlight.runId }).catch(() => {});
+    if (!inFlight) return;
+    const release = () => {
+      live.backendRunId = null;
+      finished();
+    };
+    if (!inFlight.runId) return release();
+    void invoke("ansible_cancel", { runId: inFlight.runId }).catch(release);
   };
 
   return (
