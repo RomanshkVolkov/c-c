@@ -321,7 +321,11 @@ pub fn build_env(
             .iter()
             .map(|s| s.to_string()),
     );
-    if let Ok(p) = std::env::var("PATH") {
+    // El PATH de esta app, sin las carpetas de la AppImage (ver
+    // `appimage_cleanup`).
+    let own: Vec<(String, String)> = std::env::vars().collect();
+    let base = appimage_cleanup(&own).1.or_else(|| std::env::var("PATH").ok());
+    if let Some(p) = base.filter(|p| !p.is_empty()) {
         path.push(p);
     }
     let mut env = vec![
@@ -335,6 +339,47 @@ pub fn build_env(
         env.push(("SSH_AUTH_SOCK".into(), s.to_string()));
     }
     env
+}
+
+/// Lo que la AppImage mete en el entorno de la app y no puede llegar a
+/// Ansible: dentro de una AppImage, la app lleva `PYTHONHOME`, `PYTHONPATH`,
+/// `LD_LIBRARY_PATH`, `PERLLIB`… apuntando a la imagen montada (`$APPDIR`). El
+/// Python del venv los hereda, busca su biblioteca estándar dentro de la
+/// imagen y muere antes de empezar («Failed to import encodings module»).
+///
+/// Devuelve qué variables quitar y el PATH limpio de carpetas de la imagen.
+/// Fuera de una AppImage (sin `APPDIR`) no toca nada.
+pub fn appimage_cleanup(env: &[(String, String)]) -> (Vec<String>, Option<String>) {
+    let Some(appdir) = env.iter().find(|(k, _)| k == "APPDIR").map(|(_, v)| v.trim_end_matches('/').to_string()) else {
+        return (vec![], None);
+    };
+    if appdir.is_empty() {
+        return (vec![], None);
+    }
+    let mut remove: Vec<String> = env
+        .iter()
+        .filter(|(k, v)| k != "PATH" && v.contains(&appdir))
+        .map(|(k, _)| k.clone())
+        .collect();
+    for k in ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "PYTHONDONTWRITEBYTECODE"] {
+        if env.iter().any(|(x, _)| x == k) && !remove.iter().any(|r| r == k) {
+            remove.push(k.to_string());
+        }
+    }
+    let path = env.iter().find(|(k, _)| k == "PATH").map(|(_, v)| {
+        v.split(':').filter(|p| !p.is_empty() && !p.starts_with(&appdir)).collect::<Vec<_>>().join(":")
+    });
+    (remove, path)
+}
+
+/// Aplica `appimage_cleanup` al proceso que se va a lanzar, con el entorno de
+/// esta app.
+fn without_appimage(cmd: &mut Command) {
+    let env: Vec<(String, String)> = std::env::vars().collect();
+    let (remove, _) = appimage_cleanup(&env);
+    for k in remove {
+        cmd.env_remove(k);
+    }
 }
 
 /// Las variables, ya resueltas, como las lee `-e @fichero` (JSON vale).
@@ -483,7 +528,9 @@ pub fn ansible_inventory(
     let project = Path::new(&project_dir);
     let dirs = search_path(project, venv.as_deref());
     let bin = find_in(&dirs, "ansible-inventory").ok_or("ansible-inventory not found")?;
-    let out = Command::new(bin)
+    let mut cmd = Command::new(bin);
+    without_appimage(&mut cmd);
+    let out = cmd
         .args(["-i", &inventory, "--list"])
         .current_dir(project)
         .envs(build_env(project, venv.as_deref(), None))
@@ -587,6 +634,7 @@ pub fn ansible_run(spec: RunSpec, on_event: Channel<AnsibleEvent>) -> Result<Str
         .ok_or("ansible-playbook not found (create the project's venv)")?;
 
     let mut cmd = Command::new(bin);
+    without_appimage(&mut cmd);
     cmd.args(build_args(&spec, &vars_file.0))
         .current_dir(&project)
         .envs(build_env(
@@ -852,6 +900,37 @@ playbooks:
             }]
         );
         assert!(!serde_json::to_string(&hosts).unwrap().contains("secreto"));
+    }
+
+    // Dentro de una AppImage, nada que apunte a la imagen llega a Ansible: con
+    // su PYTHONHOME, el Python del venv no arranca.
+    #[test]
+    fn the_appimage_environment_does_not_reach_ansible() {
+        let env: Vec<(String, String)> = [
+            ("APPDIR", "/tmp/.mount_cac.Ab12/"),
+            ("PYTHONHOME", "/tmp/.mount_cac.Ab12/usr/"),
+            ("PYTHONPATH", "/tmp/.mount_cac.Ab12/usr/share/pyshared/"),
+            ("LD_LIBRARY_PATH", "/tmp/.mount_cac.Ab12/usr/lib/:/usr/lib"),
+            ("PERLLIB", "/tmp/.mount_cac.Ab12/usr/share/perl5/"),
+            ("PYTHONDONTWRITEBYTECODE", "1"),
+            ("PATH", "/tmp/.mount_cac.Ab12/usr/bin:/usr/local/bin:/usr/bin"),
+            ("HOME", "/home/rv"),
+            ("SSH_AUTH_SOCK", "/home/rv/.1password/agent.sock"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let (mut remove, path) = appimage_cleanup(&env);
+        remove.sort();
+        assert_eq!(
+            remove,
+            vec!["APPDIR", "LD_LIBRARY_PATH", "PERLLIB", "PYTHONDONTWRITEBYTECODE", "PYTHONHOME", "PYTHONPATH"]
+        );
+        assert_eq!(path.as_deref(), Some("/usr/local/bin:/usr/bin"));
+
+        // Fuera de una AppImage no se toca nada.
+        let plain: Vec<(String, String)> = vec![("PYTHONHOME".into(), "/opt/py".into()), ("PATH".into(), "/usr/bin".into())];
+        assert_eq!(appimage_cleanup(&plain), (vec![], None));
     }
 
     // Correr de verdad: la salida llega por líneas, tachada, y el fichero de
