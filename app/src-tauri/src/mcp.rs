@@ -642,6 +642,41 @@ fn search_query(args: &Value) -> Result<String, String> {
     Ok(qs(parts))
 }
 
+/// Las orgs de los espacios que ve el token, sin repetir y en el orden en que
+/// aparecen.
+fn orgs_of_spaces(spaces: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for sp in spaces.as_array().into_iter().flatten() {
+        if let Some(o) = sp.get("orgId").and_then(|v| v.as_str()) {
+            if !o.is_empty() && !out.iter().any(|x| x == o) {
+                out.push(o.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Junta las búsquedas de varias orgs: sin repetir (las notas son de la
+/// persona, no de una org, y salen en cada una) y sin pasarse del límite por
+/// tipo.
+fn merge_search(results: &[Value], limit: usize) -> Value {
+    let mut out = serde_json::Map::new();
+    for kind in ["tasks", "notes", "docs"] {
+        let mut seen = std::collections::HashSet::new();
+        let mut hits = Vec::new();
+        for r in results {
+            for h in r.get(kind).and_then(|v| v.as_array()).into_iter().flatten() {
+                let id = h.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                if hits.len() < limit && seen.insert(id) {
+                    hits.push(h.clone());
+                }
+            }
+        }
+        out.insert(kind.into(), Value::Array(hits));
+    }
+    Value::Object(out)
+}
+
 /// Lo que `search` devuelve: tareas, notas y docs, y nada del chat.
 ///
 /// El servidor también busca mensajes de canal, directos y personas, pero el
@@ -1225,7 +1260,7 @@ fn tool_defs() -> Value {
                 "type": "object",
                 "properties": {
                     "query": { "type": "string", "description": "At least 2 characters." },
-                    "orgId": { "type": "string", "description": "Optional. Limits the search to one organization you belong to." },
+                    "orgId": { "type": "string", "description": "Optional. Without it, every organization you belong to is searched and the hits are merged; with it, only that one." },
                     "limit": { "type": "integer", "description": "Hits per kind, 1–20. Default 8." }
                 },
                 "required": ["query"]
@@ -1876,9 +1911,25 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "search" => {
+            if arg_str(args, "orgId").is_some() {
+                let q = search_query(args)?;
+                let data = api_get(cfg, &format!("/api/v1/search/{q}"))?;
+                return Ok(search_results(&data));
+            }
+            // Sin org, el servidor contesta vacío a propósito —una org que
+            // falta no ensancha la búsqueda—, y la herramienta decía «opcional»:
+            // quien buscaba sin org leía «no existe» (#119). Se busca en cada
+            // org a la que pertenece el token y se juntan: nada más ancho de lo
+            // que el servidor ya deja ver.
             let q = search_query(args)?;
-            let data = api_get(cfg, &format!("/api/v1/search/{q}"))?;
-            Ok(search_results(&data))
+            let limit = arg_i64(args, "limit").map(|l| l.clamp(1, 20) as usize).unwrap_or(8);
+            let spaces = api_get(cfg, "/api/v1/task-spaces/")?;
+            let mut results = Vec::new();
+            for org in orgs_of_spaces(&spaces) {
+                let data = api_get(cfg, &format!("/api/v1/search/{q}&orgId={}", urlencode(&org)))?;
+                results.push(search_results(&data));
+            }
+            Ok(merge_search(&results, limit))
         }
 
         "create_task" => {
@@ -3247,5 +3298,37 @@ mod tests {
             required.contains("sectionHash"),
             "reescribir una sección sin su hash pisaría lo que no se leyó"
         );
+    }
+}
+
+#[cfg(test)]
+mod search_across_orgs {
+    use super::{merge_search, orgs_of_spaces};
+    use serde_json::json;
+
+    // Sin orgId se busca en cada org de los espacios que ve el token (#119).
+    #[test]
+    fn the_orgs_are_the_ones_of_the_spaces() {
+        let spaces = json!([
+            {"id": "s1", "orgId": "org-a"}, {"id": "s2", "orgId": "org-b"},
+            {"id": "s3", "orgId": "org-a"}, {"id": "s4", "orgId": ""}, {"id": "s5"}
+        ]);
+        assert_eq!(orgs_of_spaces(&spaces), vec!["org-a", "org-b"]);
+        assert!(orgs_of_spaces(&json!(null)).is_empty());
+    }
+
+    // Lo de varias orgs se junta sin repetir —las notas salen en cada una— y
+    // sin pasarse del límite por tipo.
+    #[test]
+    fn the_hits_are_merged_without_repeats_and_capped() {
+        let a = json!({"tasks": [{"id": "t1"}, {"id": "t2"}], "notes": [{"id": "n1"}], "docs": []});
+        let b = json!({"tasks": [{"id": "t3"}], "notes": [{"id": "n1"}], "docs": [{"id": "d1"}]});
+        let m = merge_search(&[a.clone(), b.clone()], 8);
+        let ids = |k: &str| m[k].as_array().unwrap().iter().map(|h| h["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(ids("tasks"), vec!["t1", "t2", "t3"]);
+        assert_eq!(ids("notes"), vec!["n1"]);
+        assert_eq!(ids("docs"), vec!["d1"]);
+        let capped = merge_search(&[a, b], 2);
+        assert_eq!(capped["tasks"].as_array().unwrap().len(), 2);
     }
 }
