@@ -51,7 +51,10 @@
     "reportSend": "Send it",
     "reportCancel": "Cancel",
     "reportPrivacy": "No audio is sent — only device names, counters and the engine log.",
-    "reportNothingWrong": "Nothing looks wrong here. You can send it anyway if something is off."
+    "reportNothingWrong": "Nothing looks wrong here. You can send it anyway if something is off.",
+    "pickScreenTitle": "Which screen do you share?",
+    "pickScreenLead": "You have more than one. Pick the one the others will see.",
+    "screenN": "Screen {{n}}"
   },
   "count": {
     "members_one": "{{count}} member",

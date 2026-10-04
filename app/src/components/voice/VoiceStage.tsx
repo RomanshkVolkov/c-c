@@ -15,6 +15,7 @@ import RecordingConsentDialog from "@/components/voice/RecordingConsentDialog";
 import VoiceControls from "@/components/voice/VoiceControls";
 import VideoLienzo from "@/components/voice/VideoLienzo";
 import VoiceTile from "@/components/voice/VoiceTile";
+import ScreenPicker from "@/components/voice/ScreenPicker";
 import { cn } from "@/lib/utils";
 import { useRecordings } from "@/store/recordings.store";
 import { useVoice } from "@/store/voice.store";
@@ -125,6 +126,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
+      <ScreenPicker />
       <header className="flex h-13 shrink-0 items-center gap-3 border-b px-4">
         <Volume2 className="size-4 shrink-0 text-success" />
         <span className="truncate text-sm font-semibold">#{spaceName}</span>

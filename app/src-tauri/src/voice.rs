@@ -2075,8 +2075,59 @@ static COMPARTIENDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBo
 /// —en una cara prioriza la fluidez, en una pantalla el detalle del texto
 /// aunque baje la tasa— y el otro extremo lo usa para saber que eso va al
 /// escenario y no a un mosaico.
+/// Una pantalla que se puede compartir, para el selector de la app.
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct ScreenSource {
+    /// Como texto: un `u64` no cabe entero en un número de JavaScript.
+    pub id: String,
+    pub title: String,
+}
+
+/// Si en esta sesión elige la pantalla el sistema (el portal de Wayland) y no
+/// la app. Ahí la lista del capturador trae una entrada de relleno, y
+/// preguntar en la app sería preguntar dos veces.
+fn elige_el_sistema(session_type: Option<&str>, wayland_display: Option<&str>) -> bool {
+    session_type == Some("wayland") || wayland_display.is_some_and(|d| !d.is_empty())
+}
+
+/// Las pantallas que hay, para preguntar cuál compartir cuando hay más de una.
+/// Vacía donde elige el sistema (Wayland): ahí pregunta su propio diálogo.
 #[tauri::command]
-pub async fn voice_share_screen() -> Result<VideoState, String> {
+pub async fn voice_screen_sources() -> Vec<ScreenSource> {
+    use livekit::webrtc::desktop_capturer::{DesktopCaptureSourceType, DesktopCapturer, DesktopCapturerOptions};
+    if elige_el_sistema(
+        std::env::var("XDG_SESSION_TYPE").ok().as_deref(),
+        std::env::var("WAYLAND_DISPLAY").ok().as_deref(),
+    ) {
+        return vec![];
+    }
+    // En un hilo de bloqueo del runtime: listar habla con el servidor
+    // gráfico, y no tiene que parar ni el hilo principal ni a los demás.
+    tauri::async_runtime::spawn_blocking(|| {
+        let Some(cap) = DesktopCapturer::new(DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen)) else {
+            return vec![];
+        };
+        cap.get_source_list()
+            .iter()
+            .map(|f| ScreenSource { id: f.id().to_string(), title: f.title() })
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Cuál de las fuentes se comparte: la pedida si está; si no, la primera, que
+/// es lo que se hacía siempre (y lo que sigue haciendo Wayland, donde la
+/// elección de verdad la hace el portal).
+fn indice_de_fuente(ids: &[String], pedida: Option<&str>) -> Option<usize> {
+    if ids.is_empty() {
+        return None;
+    }
+    Some(pedida.and_then(|p| ids.iter().position(|i| i == p)).unwrap_or(0))
+}
+
+#[tauri::command]
+pub async fn voice_share_screen(source_id: Option<String>) -> Result<VideoState, String> {
     let room = {
         let guard = SESION.lock().unwrap();
         match guard.as_ref() {
@@ -2095,7 +2146,7 @@ pub async fn voice_share_screen() -> Result<VideoState, String> {
     // fuente se crea con la de la primera trama. Hasta que llegue no hay nada
     // que publicar — y publicar una pista muerta deja a los demás mirando un
     // rectángulo negro mientras alguien decide en el diálogo del portal.
-    let (fuente, ancho, alto) = arrancar_pantalla()?;
+    let (fuente, ancho, alto) = arrancar_pantalla(source_id)?;
 
     let pista = LocalVideoTrack::create_video_track("pantalla", RtcVideoSource::Native(fuente));
     room.local_participant()
@@ -2269,7 +2320,7 @@ impl ContextoGlib {
 /// espera a esa primera trama a propósito: es lo único que demuestra que el
 /// sistema concedió el permiso, y es lo que permite crear la pista con el
 /// tamaño de verdad en vez de adivinarlo.
-fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
+fn arrancar_pantalla(pedida: Option<String>) -> Result<(NativeVideoSource, u32, u32), String> {
     use livekit::webrtc::desktop_capturer::{
         DesktopCaptureSourceType, DesktopCapturer, DesktopCapturerOptions,
     };
@@ -2307,7 +2358,12 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                 .join(", ")
         ));
         let (envio, recibo) = std::sync::mpsc::channel();
-        cap.start_capture(fuentes.first().cloned(), move |r| {
+        // La que se eligió en la app, si hay varias y se eligió (X11, Windows,
+        // macOS con dos monitores). Antes era siempre la primera, y con un
+        // segundo monitor no había forma de compartir el otro (#117).
+        let ids: Vec<String> = fuentes.iter().map(|f| f.id().to_string()).collect();
+        let elegida = indice_de_fuente(&ids, pedida.as_deref()).and_then(|i| fuentes.get(i).cloned());
+        cap.start_capture(elegida, move |r| {
             // Con su stride: en macOS cada fila de la captura trae relleno
             // (filas alineadas, anchos de Retina), y leerla como si midiera
             // `ancho × 4` justos corre cada fila un poco más que la anterior:
@@ -3548,5 +3604,39 @@ mod pruebas_pantalla {
         let mut b = I420Buffer::new(4, 4);
         assert!(!bgra_a_i420(&trama(64)[..64 * 3 + 15], 4, 4, 64, &mut b));
         assert!(!bgra_a_i420(&trama(16), 4, 4, 8, &mut b));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_fuentes {
+    use super::{elige_el_sistema, indice_de_fuente};
+
+    fn ids() -> Vec<String> {
+        vec!["65".into(), "66".into()]
+    }
+
+    // Con dos monitores se comparte el elegido, no el primero (#117).
+    #[test]
+    fn the_chosen_screen_is_shared() {
+        assert_eq!(indice_de_fuente(&ids(), Some("66")), Some(1));
+        assert_eq!(indice_de_fuente(&ids(), Some("65")), Some(0));
+    }
+
+    // Sin elección, o con una que ya no está (se desenchufó el HDMI), la
+    // primera, como siempre; y sin fuentes, ninguna.
+    #[test]
+    fn without_a_valid_choice_the_first_one() {
+        assert_eq!(indice_de_fuente(&ids(), None), Some(0));
+        assert_eq!(indice_de_fuente(&ids(), Some("99")), Some(0));
+        assert_eq!(indice_de_fuente(&[], Some("65")), None);
+    }
+
+    // En Wayland pregunta el portal; en X11 (bspwm), la app.
+    #[test]
+    fn wayland_chooses_x11_asks() {
+        assert!(elige_el_sistema(Some("wayland"), None));
+        assert!(elige_el_sistema(Some("tty"), Some("wayland-0")));
+        assert!(!elige_el_sistema(Some("x11"), None));
+        assert!(!elige_el_sistema(None, Some("")));
     }
 }

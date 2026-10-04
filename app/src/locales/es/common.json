@@ -51,7 +51,10 @@
     "reportSend": "Mandarlo",
     "reportCancel": "Cancelar",
     "reportPrivacy": "No se manda audio — sólo nombres de dispositivo, contadores y el diario del motor.",
-    "reportNothingWrong": "Aquí no se ve nada raro. Puedes mandarlo igual si algo va mal."
+    "reportNothingWrong": "Aquí no se ve nada raro. Puedes mandarlo igual si algo va mal.",
+    "pickScreenTitle": "¿Qué pantalla compartes?",
+    "pickScreenLead": "Tienes más de una. Elige la que verán los demás.",
+    "screenN": "Pantalla {{n}}"
   },
   "count": {
     "members_one": "{{count}} miembro",

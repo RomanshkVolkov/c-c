@@ -531,6 +531,7 @@ describe("la pantalla compartida", () => {
     // Entre pulsar y que salga imagen hay un diálogo del sistema pidiendo
     // permiso. Pintarlo encendido mientras alguien decide es prometer algo que
     // todavía no ha pasado, y que puede acabar en «no».
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("voice_share_screen", { sourceId: null }));
     expect(useVoice.getState().compartiendo).toBe(false);
     resolver(undefined);
     await enCurso;
@@ -545,6 +546,48 @@ describe("la pantalla compartida", () => {
     // Tu pantalla probablemente se sigue viendo. Decir que no es el peor de
     // los dos errores posibles — el mismo criterio que el micro y la cámara.
     expect(useVoice.getState().compartiendo).toBe(true);
+  });
+});
+
+describe("qué pantalla compartir (#117)", () => {
+  const dos = [
+    { id: "65", title: "eDP-1" },
+    { id: "66", title: "HDMI-1" },
+  ];
+
+  it("con dos pantallas pregunta, y comparte la elegida", async () => {
+    await useVoice.getState().entrar("esp-1");
+    invoke.mockImplementation(async (cmd: string) => (cmd === "voice_screen_sources" ? dos : "u-ana"));
+    await useVoice.getState().alternarCompartir();
+    expect(useVoice.getState().eligiendoPantalla).toEqual(dos);
+    expect(invoke).not.toHaveBeenCalledWith("voice_share_screen", expect.anything());
+
+    await useVoice.getState().compartirPantalla("66");
+    expect(invoke).toHaveBeenCalledWith("voice_share_screen", { sourceId: "66" });
+    expect(useVoice.getState().eligiendoPantalla).toBeNull();
+    expect(useVoice.getState().compartiendo).toBe(true);
+  });
+
+  it("con una sola, o donde pregunta el sistema (lista vacía), comparte sin preguntar", async () => {
+    await useVoice.getState().entrar("esp-1");
+    for (const lista of [[dos[0]], []]) {
+      invoke.mockReset();
+      invoke.mockImplementation(async (cmd: string) => (cmd === "voice_screen_sources" ? lista : "u-ana"));
+      useVoice.setState({ compartiendo: false });
+      await useVoice.getState().alternarCompartir();
+      expect(useVoice.getState().eligiendoPantalla).toBeNull();
+      expect(invoke).toHaveBeenCalledWith("voice_share_screen", { sourceId: null });
+    }
+  });
+
+  it("cancelar la elección no comparte nada", async () => {
+    await useVoice.getState().entrar("esp-1");
+    invoke.mockImplementation(async (cmd: string) => (cmd === "voice_screen_sources" ? dos : "u-ana"));
+    await useVoice.getState().alternarCompartir();
+    useVoice.getState().cancelarEleccionPantalla();
+    expect(useVoice.getState().eligiendoPantalla).toBeNull();
+    expect(useVoice.getState().compartiendo).toBe(false);
+    expect(invoke).not.toHaveBeenCalledWith("voice_share_screen", expect.anything());
   });
 });
 

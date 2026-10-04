@@ -162,6 +162,12 @@ interface VoiceState {
   pantalla: string | null;
   /** Tu propia pantalla compartida. */
   compartiendo: boolean;
+  /**
+   * Las pantallas entre las que elegir, mientras se pregunta cuál compartir.
+   * Sólo con más de una y donde elige la app (X11, Windows, macOS): en
+   * Wayland pregunta el diálogo del sistema.
+   */
+  eligiendoPantalla: { id: string; title: string }[] | null;
   /** A quién estás llamando y todavía no contesta. */
   llamando: TimbreSaliente | null;
   /** Quién te llama a ti. */
@@ -228,6 +234,9 @@ interface VoiceState {
   alternarSordera: () => Promise<void>;
   alternarCam: () => Promise<void>;
   alternarCompartir: () => Promise<void>;
+  /** Compartir la pantalla elegida en el selector. */
+  compartirPantalla: (sourceId: string | null) => Promise<void>;
+  cancelarEleccionPantalla: () => void;
   /** Refresca quién anda por los canales. La pantalla decide cada cuánto. */
   refrescarOcupacion: (orgId?: string | null) => Promise<void>;
   /** Lo que reporta el motor. Público para poder probarlo sin Tauri. */
@@ -259,6 +268,7 @@ const VACIO = {
   video: {},
   pantalla: null,
   compartiendo: false,
+  eligiendoPantalla: null,
   llamando: null,
   yo: null,
   mic: true,
@@ -603,14 +613,36 @@ export const useVoice = create<VoiceState>((set, get) => ({
    * mientras tu pantalla sigue viéndose es el peor error posible de los dos.
    */
   alternarCompartir: async () => {
-    const siguiente = !get().compartiendo;
+    if (get().compartiendo) {
+      try {
+        await invoke("voice_stop_share");
+        set({ compartiendo: false, error: null, errorSpaceId: null });
+      } catch (e) {
+        set({ error: deRust(e), errorSpaceId: get().spaceId });
+      }
+      return;
+    }
+    // Con dos monitores, cuál. Antes se compartía siempre el primero que
+    // listara el sistema, sin preguntar (#117).
+    const fuentes = await invoke<{ id: string; title: string }[]>("voice_screen_sources").catch(() => []);
+    if (Array.isArray(fuentes) && fuentes.length > 1) {
+      set({ eligiendoPantalla: fuentes });
+      return;
+    }
+    await get().compartirPantalla(null);
+  },
+
+  compartirPantalla: async (sourceId) => {
+    set({ eligiendoPantalla: null });
     try {
-      await invoke(siguiente ? "voice_share_screen" : "voice_stop_share");
-      set({ compartiendo: siguiente, error: null, errorSpaceId: null });
+      await invoke("voice_share_screen", { sourceId });
+      set({ compartiendo: true, error: null, errorSpaceId: null });
     } catch (e) {
       set({ error: deRust(e), errorSpaceId: get().spaceId });
     }
   },
+
+  cancelarEleccionPantalla: () => set({ eligiendoPantalla: null }),
 
   alRecibir: (ev) => {
     switch (ev.kind) {

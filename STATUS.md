@@ -71,6 +71,8 @@ agent». Ver `docs/integrations/deploys.md` §5.
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).
 v1.6.84: la pantalla compartida desde Mac ya no sale inclinada (#98: se
 ignoraba el stride de cada fila); falta verlo en un Mac de verdad.
+Y con dos monitores, compartir pregunta cuál (#117); antes era siempre el
+primero que listaba el sistema. En Wayland sigue preguntando el portal.
 
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para
