@@ -22,9 +22,13 @@ Desde la raíz del repo:
 (cd backend       && go build ./... && go vet ./... && go test ./...)
 ```
 
-Los cuatro. **El CI no corre ninguna prueba** (ver `CLAUDE.md`), así que esto es
-la única red que hay. Y ojo: las pruebas del backend que necesitan Postgres se
-*saltan* sin base, así que un verde no quiere decir que se hayan corrido todas.
+Los cuatro. El CI también corre las pruebas por delante de lo que publica
+(`backend.yml` antes de desplegar, `app.yml` antes de compilar la release; ver
+`CLAUDE.md`), pero se pasan aquí primero: un rojo en el CI de la app deja una
+versión publicada sin instaladores y ese número ya está gastado. Y el lado Rust
+no tiene pruebas en el CI: `cargo check` es la única red. Ojo también: en local,
+las pruebas del backend que necesitan Postgres se *saltan* sin `DB_HOST`, así que
+un verde no quiere decir que se hayan corrido todas.
 
 ## 2 · Empujar, y esperar el verde del backend
 
