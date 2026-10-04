@@ -2308,7 +2308,12 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
         ));
         let (envio, recibo) = std::sync::mpsc::channel();
         cap.start_capture(fuentes.first().cloned(), move |r| {
-            let _ = envio.send(r.map(|f| (f.width() as u32, f.height() as u32, f.data().to_vec())));
+            // Con su stride: en macOS cada fila de la captura trae relleno
+            // (filas alineadas, anchos de Retina), y leerla como si midiera
+            // `ancho × 4` justos corre cada fila un poco más que la anterior:
+            // la imagen sale inclinada y rayada, como una tele sin señal
+            // (#98). En Linux coinciden y no se notaba.
+            let _ = envio.send(r.map(|f| (f.width() as u32, f.height() as u32, f.stride() as usize, f.data().to_vec())));
         });
 
         // La bandera se baja pase lo que pase, igual que en la cámara. Estaba
@@ -2378,7 +2383,7 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                 siguiente_parte += std::time::Duration::from_secs(5);
             }
             match ultima {
-                Some(Ok((w, h, bgra))) => {
+                Some(Ok((w, h, stride, bgra))) => {
                     let fte = fuente.get_or_insert_with(|| {
                         let f = NativeVideoSource::new(
                             VideoResolution {
@@ -2394,7 +2399,11 @@ fn arrancar_pantalla() -> Result<(NativeVideoSource, u32, u32), String> {
                         f
                     });
                     let mut buffer = I420Buffer::new(w, h);
-                    bgra_a_i420(&bgra, w, h, &mut buffer);
+                    if !bgra_a_i420(&bgra, w, h, stride, &mut buffer) {
+                        // Una trama que no cabe en lo que dice medir: se salta
+                        // en vez de leer fuera de ella.
+                        continue;
+                    }
                     guardarme(crate::video_frames::Fuente::Pantalla, &buffer, w, h);
                     fte.capture_frame(&VideoFrame {
                         rotation: VideoRotation::VideoRotation0,
@@ -2461,14 +2470,21 @@ fn guardarme(fuente: crate::video_frames::Fuente, buffer: &I420Buffer, ancho: u3
 /// orden de los canales es el de los mapas de bits del sistema, y confundirlo
 /// pinta a todo el mundo de azul. Misma aritmética BT.601 que `rgb_a_i420`,
 /// leyendo los componentes al revés y saltándose el alfa.
-fn bgra_a_i420(bgra: &[u8], ancho: u32, alto: u32, destino: &mut I420Buffer) {
+///
+/// `stride` es lo que mide de verdad cada fila en bytes, relleno incluido; no
+/// siempre `ancho × 4` (ver `arrancar_pantalla`). Devuelve false, sin tocar
+/// nada, si la trama no cabe en lo que dice medir.
+fn bgra_a_i420(bgra: &[u8], ancho: u32, alto: u32, stride: usize, destino: &mut I420Buffer) -> bool {
     let (w, h) = (ancho as usize, alto as usize);
+    if w == 0 || h == 0 || stride < w * 4 || bgra.len() < stride * (h - 1) + w * 4 {
+        return false;
+    }
     let (sy, su, _sv) = destino.strides();
     let (y_plano, u_plano, v_plano) = destino.data_mut();
 
     for fila in 0..h {
         for col in 0..w {
-            let i = (fila * w + col) * 4;
+            let i = fila * stride + col * 4;
             let (b, g, r) = (bgra[i] as f32, bgra[i + 1] as f32, bgra[i + 2] as f32);
             y_plano[fila * sy as usize + col] =
                 (0.257 * r + 0.504 * g + 0.098 * b + 16.0).clamp(0.0, 255.0) as u8;
@@ -2476,7 +2492,7 @@ fn bgra_a_i420(bgra: &[u8], ancho: u32, alto: u32, destino: &mut I420Buffer) {
     }
     for fila in (0..h).step_by(2) {
         for col in (0..w).step_by(2) {
-            let i = (fila * w + col) * 4;
+            let i = fila * stride + col * 4;
             let (b, g, r) = (bgra[i] as f32, bgra[i + 1] as f32, bgra[i + 2] as f32);
             let cf = fila / 2;
             let cc = col / 2;
@@ -2486,6 +2502,7 @@ fn bgra_a_i420(bgra: &[u8], ancho: u32, alto: u32, destino: &mut I420Buffer) {
                 (0.439 * r - 0.368 * g - 0.071 * b + 128.0).clamp(0.0, 255.0) as u8;
         }
     }
+    true
 }
 
 fn estado_video() -> VideoState {
@@ -3474,5 +3491,62 @@ mod attach_tests {
             malos.is_empty(),
             "estas funciones mandan por un canal propio en vez de por `emitir`: {malos:#?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod pruebas_pantalla {
+    use super::bgra_a_i420;
+    use livekit::webrtc::video_frame::I420Buffer;
+
+    /// Una trama BGRA de 4×4 con colores distintos por píxel, y relleno al
+    /// final de cada fila como el de macOS. El relleno es blanco puro: si se
+    /// leyera como imagen, se vería.
+    fn trama(stride: usize) -> Vec<u8> {
+        let (w, h) = (4usize, 4usize);
+        let mut v = vec![0xFFu8; stride * h];
+        for fila in 0..h {
+            for col in 0..w {
+                let i = fila * stride + col * 4;
+                v[i] = (10 + col * 40) as u8; // B
+                v[i + 1] = (20 + fila * 50) as u8; // G
+                v[i + 2] = (30 + col * 20 + fila * 50) as u8; // R
+                v[i + 3] = 0xFF;
+            }
+        }
+        v
+    }
+
+    /// Los tres planos, sin el relleno que puedan llevar ellos mismos.
+    fn planos(buf: &I420Buffer) -> Vec<u8> {
+        let (sy, su, sv) = buf.strides();
+        let (y, u, v) = buf.data();
+        let mut out: Vec<u8> = (0..4).flat_map(|f| (0..4).map(move |c| y[f * sy as usize + c])).collect();
+        for f in 0..2 {
+            for c in 0..2 {
+                out.push(u[f * su as usize + c]);
+                out.push(v[f * sv as usize + c]);
+            }
+        }
+        out
+    }
+
+    /// Con relleno en cada fila sale lo mismo que sin él (#98). Ignorando el
+    /// stride, la segunda fila empezaría en el relleno de la primera.
+    #[test]
+    fn rows_with_padding_read_like_packed_rows() {
+        let mut empaquetada = I420Buffer::new(4, 4);
+        assert!(bgra_a_i420(&trama(16), 4, 4, 16, &mut empaquetada));
+        let mut con_relleno = I420Buffer::new(4, 4);
+        assert!(bgra_a_i420(&trama(64), 4, 4, 64, &mut con_relleno));
+        assert_eq!(planos(&empaquetada), planos(&con_relleno));
+    }
+
+    /// Una trama que no cabe en lo que dice medir no se lee: se salta.
+    #[test]
+    fn a_frame_shorter_than_its_stride_is_skipped() {
+        let mut b = I420Buffer::new(4, 4);
+        assert!(!bgra_a_i420(&trama(64)[..64 * 3 + 15], 4, 4, 64, &mut b));
+        assert!(!bgra_a_i420(&trama(16), 4, 4, 8, &mut b));
     }
 }

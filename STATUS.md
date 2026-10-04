@@ -60,17 +60,21 @@ despliega cac. A cac llegan nombres (`DeployableSecretRef`, `SecretRotation`;
 una petición con un valor se rechaza). **Falta la R8b:** migraciones antes del
 deploy (agente v4). Backend primero.
 
-**R8b hecha, sin commitear (backend + agente v4 + app): migraciones.** Un
+**R8b publicada (v1.6.82, agente `:v4`): migraciones.** Un
 comando por servicio que corre antes de cada deploy como job de Swarm
 (`replicated-job`) copiado del servicio, con la imagen nueva; si falla, el
 servicio no se toca. A un agente < v4 no se le encola. Publicar: backend →
 agente `:v4` (`swarm-manage.yml`) → app v1.6.82 (R8a + R8b), y luego «Update
 agent». Ver `docs/integrations/deploys.md` §5.
 
+**Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
+v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).
+v1.6.84: la pantalla compartida desde Mac ya no sale inclinada (#98: se
+ignoraba el stride de cada fila); falta verlo en un Mac de verdad.
+
 **Publicado (v1.6.75):** #96 (crear usuario pide nombre y correo; ojo en toda
 contraseña) y #97 (auditoría de estados al recargar y al cambiar de org). Para
-después: **#98**, en Mac la pantalla compartida sale inclinada (probable
-stride de la captura).
+después: #98, arreglado en la v1.6.84.
 
 La app va por la **v1.6.78** (30-sep; los instaladores compilándose al
 escribir esto).
