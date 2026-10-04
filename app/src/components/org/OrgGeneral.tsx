@@ -33,18 +33,18 @@ export default function OrgGeneral({
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const navigate = useNavigate();
 
-  const [nombre, setNombre] = useState(org.name);
-  const [borrar, setBorrar] = useState(false);
+  const [name, setName] = useState(org.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const guardar = async (patch: Partial<Organization>) => {
+  const save = async (patch: Partial<Organization>) => {
     try {
-      await updateOrg(org.id, { name: nombre.trim() || org.name, ...patch });
+      await updateOrg(org.id, { name: name.trim() || org.name, ...patch });
     } catch (e) {
       toast.error(t("org:errSave"), { description: String(e) });
     }
   };
 
-  const Interruptor = ({
+  const Toggle = ({
     on,
     onChange,
     label,
@@ -70,7 +70,9 @@ export default function OrgGeneral({
         aria-hidden
         className={cn(
           "flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors",
-          on ? "bg-primary" : "bg-muted",
+          // Apagado con borde: en tema oscuro, `bg-muted` sobre la tarjeta casi
+          // no se veía.
+          on ? "bg-primary" : "border border-muted-foreground/40 bg-muted",
         )}
       >
         <span
@@ -84,32 +86,35 @@ export default function OrgGeneral({
   );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    // Tantas columnas como quepan en el **contenedor**, no según la ventana:
+    // con la barra lateral, una ventana «grande» deja un contenido estrecho, y
+    // tres columnas fijas aplastaban las reglas a una palabra por línea.
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-4">
       <section className="space-y-3 rounded-xl border bg-card p-4">
         <h2 className="text-sm font-medium">{t("org:identity")}</h2>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">{t("org:name")}</label>
           <Input
-            value={nombre}
+            value={name}
             disabled={!canManage}
-            onChange={(e) => setNombre(e.target.value)}
-            onBlur={() => nombre.trim() && nombre !== org.name && guardar({})}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name.trim() && name !== org.name && save({})}
           />
         </div>
         {/* The slug is shown and not editable: URLs and integrations are built
             on it, and changing it would break links that already exist
             somewhere nobody here can see. */}
-        <Campo label={t("org:identifier")} value={org.slug} mono />
+        <Field label={t("org:identifier")} value={org.slug} mono />
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">{t("org:domain")}</label>
           <Input
             defaultValue={org.domain ?? ""}
             disabled={!canManage}
             placeholder="example.com"
-            onBlur={(e) => e.target.value !== (org.domain ?? "") && guardar({ domain: e.target.value })}
+            onBlur={(e) => e.target.value !== (org.domain ?? "") && save({ domain: e.target.value })}
           />
         </div>
-        <Campo
+        <Field
           label={t("org:created")}
           value={fechaConAno(org.createdAt)}
         />
@@ -117,13 +122,14 @@ export default function OrgGeneral({
 
       <section className="space-y-2 rounded-xl border bg-card p-4">
         <h2 className="text-sm font-medium">{t("org:rules")}</h2>
-        <div className="flex items-center gap-2 py-1.5">
-          <span className="flex-1 text-sm">{t("org:defaultRole")}</span>
+        {/* El control baja bajo el texto cuando no cabe al lado. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1.5">
+          <span className="min-w-[10rem] flex-1 text-sm">{t("org:defaultRole")}</span>
           <select
             aria-label={t("org:defaultRoleAria")}
             disabled={!canManage}
             value={org.defaultInviteRole ?? "member"}
-            onChange={(e) => guardar({ defaultInviteRole: e.target.value as OrgRole })}
+            onChange={(e) => save({ defaultInviteRole: e.target.value as OrgRole })}
             className="h-7 rounded border bg-background px-2 text-xs"
           >
             <option value="admin">admin</option>
@@ -133,8 +139,8 @@ export default function OrgGeneral({
         </div>
         {/* La zona del equipo: las reuniones nacen en ella, no en la de quien
             las crea, y cada quien las ve convertidas a su hora. */}
-        <div className="flex items-center gap-2 py-1.5">
-          <span className="flex-1 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1.5">
+          <span className="min-w-[10rem] flex-1 text-sm">
             {t("org:teamZone")}
             <span className="block text-xs text-muted-foreground">{t("org:teamZoneHint")}</span>
           </span>
@@ -144,28 +150,31 @@ export default function OrgGeneral({
             disabled={!canManage}
             value={org.timezone ?? ""}
             teamZone={org.timezone}
-            onChange={(zone) => guardar({ timezone: zone })}
+            onChange={(zone) => save({ timezone: zone })}
+            // Ancho fijo con tope en el de la tarjeta: sin él, el texto de la
+            // opción elegida decidía el ancho y empujaba fuera de la tarjeta.
+            className="h-8 w-56 max-w-full rounded-md border bg-background px-2 text-xs"
           />
         </div>
-        <Interruptor
+        <Toggle
           on={org.clientsSeeOnlyTheirSpace}
-          onChange={() => guardar({ clientsSeeOnlyTheirSpace: !org.clientsSeeOnlyTheirSpace })}
+          onChange={() => save({ clientsSeeOnlyTheirSpace: !org.clientsSeeOnlyTheirSpace })}
           label={t("org:clientsOwnSpace")}
         />
-        <Interruptor
+        <Toggle
           on={org.guestsCanUseDevTools}
-          onChange={() => guardar({ guestsCanUseDevTools: !org.guestsCanUseDevTools })}
+          onChange={() => save({ guestsCanUseDevTools: !org.guestsCanUseDevTools })}
           label={t("org:guestsDevTools")}
         />
-        <Interruptor
+        <Toggle
           on={org.doneNeedsSubtasksDone}
-          onChange={() => guardar({ doneNeedsSubtasksDone: !org.doneNeedsSubtasksDone })}
+          onChange={() => save({ doneNeedsSubtasksDone: !org.doneNeedsSubtasksDone })}
           label={t("org:doneNeedsSubtasks")}
         />
         {/* Shown off and disabled rather than hidden: it is on the roadmap, and
             a control that is missing reads as "not possible" while one that is
             greyed reads as "not yet". */}
-        <Interruptor on={false} onChange={() => {}} disabled label="Require 2FA for admins" />
+        <Toggle on={false} onChange={() => {}} disabled label="Require 2FA for admins" />
       </section>
 
       <section className="space-y-3 rounded-xl border border-destructive/40 bg-card p-4">
@@ -186,7 +195,7 @@ export default function OrgGeneral({
             // else regardless. Disabled rather than hidden so an org admin can
             // see that the door exists and who to ask.
             title={superadmin ? undefined : t("org:onlySuperadminDeletes")}
-            onClick={() => setBorrar(true)}
+            onClick={() => setConfirmDelete(true)}
           >
             {t("org:deleteOrg")}
           </Button>
@@ -194,8 +203,8 @@ export default function OrgGeneral({
       </section>
 
       <DeleteOrgDialog
-        open={borrar}
-        onOpenChange={setBorrar}
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
         orgName={org.name}
         onConfirm={async () => {
           await deleteOrg(org.id);
@@ -207,7 +216,7 @@ export default function OrgGeneral({
   );
 }
 
-function Campo({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="space-y-0.5">
       <p className="text-xs text-muted-foreground">{label}</p>
