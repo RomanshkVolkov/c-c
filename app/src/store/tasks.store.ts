@@ -658,6 +658,13 @@ export const useTasksStore = create<TasksState>()(
           );
         } finally {
           await get().refreshBoard();
+          // El detalle abierto se vuelve a leer aquí y no se espera al evento:
+          // el evento sólo lo refresca si el tablero en pantalla es el de esa
+          // lista, así que desde «Mi trabajo» o desde otra lista el estado se
+          // cambiaba en el servidor y la etiqueta seguía diciendo el de antes.
+          // Cualquier tarea abierta, no sólo la movida: marcar una subtarea
+          // cambia la lista del padre.
+          if (get().openTaskId) await get().refreshOpenTask();
         }
       },
 
