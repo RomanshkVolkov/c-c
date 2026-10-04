@@ -64,3 +64,46 @@ func (s *SearchService) Search(query, orgID, userID string, limit int) (domain.S
 	}
 	return out, nil
 }
+
+// SearchOrgs hace la misma búsqueda en varias organizaciones y junta lo que
+// sale, sin repetir y sin pasar del límite por tipo. Busca **sólo** en las que
+// se le pasan: quién decide cuáles son es quien llama (el handler, con las
+// membresías del token).
+//
+// Las notas son de la persona y no de una org, así que salen en cada una: se
+// quedan una vez.
+func (s *SearchService) SearchOrgs(query string, orgIDs []string, userID string, limit int) (domain.SearchResults, error) {
+	var out domain.SearchResults
+	out.Tasks, out.Notes = []domain.SearchHit{}, []domain.SearchHit{}
+	out.People, out.Messages, out.DMs = []domain.SearchHit{}, []domain.SearchHit{}, []domain.SearchHit{}
+	out.Docs = []domain.SearchHit{}
+	if limit <= 0 || limit > 20 {
+		limit = 8
+	}
+	merge := func(dst *[]domain.SearchHit, seen map[string]bool, src []domain.SearchHit) {
+		for _, h := range src {
+			key := string(h.Kind) + ":" + h.ID
+			if len(*dst) < limit && !seen[key] {
+				seen[key] = true
+				*dst = append(*dst, h)
+			}
+		}
+	}
+	seen := map[string]map[string]bool{}
+	for _, k := range []string{"tasks", "notes", "people", "messages", "dms", "docs"} {
+		seen[k] = map[string]bool{}
+	}
+	for _, org := range orgIDs {
+		r, err := s.Search(query, org, userID, limit)
+		if err != nil {
+			return out, err
+		}
+		merge(&out.Tasks, seen["tasks"], r.Tasks)
+		merge(&out.Notes, seen["notes"], r.Notes)
+		merge(&out.People, seen["people"], r.People)
+		merge(&out.Messages, seen["messages"], r.Messages)
+		merge(&out.DMs, seen["dms"], r.DMs)
+		merge(&out.Docs, seen["docs"], r.Docs)
+	}
+	return out, nil
+}

@@ -131,6 +131,50 @@ func TestSearchFindsTasksAndChannelMessagesOfYourOrganization(t *testing.T) {
 	}
 }
 
+// Sin org se busca en las orgs que se le pasan —las del token— y en ninguna
+// otra; lo de varias se junta sin repetir (las notas salen en cada una).
+func TestSearchingSeveralOrgsOnlyLooksAtThoseOrgs(t *testing.T) {
+	db, cleanup := searchDB(t)
+	defer cleanup()
+	// Una tarea en la org-2, para que haya algo que no se debe ver.
+	sp := &domain.TaskSpace{OrgID: "org-2", Name: "Otro", Rank: "0.5"}
+	sp.ID = "space-2"
+	li := &domain.TaskList{SpaceID: "space-2", Name: "Otra lista", Rank: "0.5"}
+	li.ID = "list-2"
+	it := &domain.Item{OrgID: "org-2", ListID: "list-2", Title: "Una tarea ajena", Status: domain.ReportPending}
+	it.ID = "it-2"
+	for _, m := range []any{sp, li, it} {
+		if err := db.Create(m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := NewSearchService(repository.NewSearchRepository(db))
+
+	solo1, err := svc.SearchOrgs("tarea", []string{"org-1"}, "u-ana", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(solo1.Tasks) != 1 || solo1.Tasks[0].ID != "it-1" {
+		t.Errorf("con la org-1, sólo su tarea: %+v", solo1.Tasks)
+	}
+	ambas, _ := svc.SearchOrgs("tarea", []string{"org-1", "org-2"}, "u-ana", 0)
+	if len(ambas.Tasks) != 2 {
+		t.Errorf("con las dos, las dos tareas: %+v", ambas.Tasks)
+	}
+	ninguna, _ := svc.SearchOrgs("tarea", nil, "u-ana", 0)
+	if len(ninguna.Tasks) != 0 || len(ninguna.Notes) != 0 {
+		t.Errorf("sin orgs, nada: %+v", ninguna)
+	}
+	notas, _ := svc.SearchOrgs("apunte", []string{"org-1", "org-2"}, "u-ana", 0)
+	if len(notas.Notes) != 1 {
+		t.Errorf("la nota salió %d veces, se esperaba una", len(notas.Notes))
+	}
+	tope, _ := svc.SearchOrgs("tarea", []string{"org-1", "org-2"}, "u-ana", 1)
+	if len(tope.Tasks) != 1 {
+		t.Errorf("con límite 1 salieron %d tareas", len(tope.Tasks))
+	}
+}
+
 func searchDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 	if repository.GetEnv("DB_HOST", "") == "" {
