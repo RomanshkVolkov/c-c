@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useAuthStore } from "@/store/auth.store";
 import DeleteOrgDialog from "@/components/org/DeleteOrgDialog";
+import TimezoneSelect from "@/components/TimezoneSelect";
 import type { Organization, OrgRole } from "@/types/organization";
 import { cn } from "@/lib/utils";
 
@@ -129,6 +130,22 @@ export default function OrgGeneral({
             <option value="member">member</option>
             <option value="viewer">viewer</option>
           </select>
+        </div>
+        {/* La zona del equipo: las reuniones nacen en ella, no en la de quien
+            las crea, y cada quien las ve convertidas a su hora. */}
+        <div className="flex items-center gap-2 py-1.5">
+          <span className="flex-1 text-sm">
+            {t("org:teamZone")}
+            <span className="block text-xs text-muted-foreground">{t("org:teamZoneHint")}</span>
+          </span>
+          <TimezoneSelect
+            ariaLabel={t("org:teamZone")}
+            allowEmpty
+            disabled={!canManage}
+            value={org.timezone ?? ""}
+            teamZone={org.timezone}
+            onChange={(zone) => guardar({ timezone: zone })}
+          />
         </div>
         <Interruptor
           on={org.clientsSeeOnlyTheirSpace}

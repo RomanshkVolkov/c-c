@@ -142,5 +142,22 @@
     "notLinked": "Not linked",
     "bareRefs": "bare #12",
     "bareRefsHint": "Let #12 without «cac» name task 12 too. On GitHub, #12 is the repo's issue 12."
-  }
+  },
+  "zoneUnset": "Not set (the creator's)",
+  "zoneSuggested": "Suggested",
+  "zoneAll": "All",
+  "zoneTeam": "team",
+  "zoneYours": "yours",
+  "teamZone": "Team time zone",
+  "teamZoneHint": "Meetings are created in it; everyone sees them in their own time.",
+  "onTheseDays": "On these days",
+  "weekdaysPreset": "Weekdays",
+  "everyDayPreset": "Every day",
+  "ringsThere": "{{time}} in {{city}}",
+  "ringsHere": "{{time}} for you ({{city}})",
+  "yourZone": "your zone",
+  "notTeamZone": "Not in the team time zone ({{city}}): edit it if it should be.",
+  "saveMeeting": "Save",
+  "createMeeting": "Create",
+  "errSaveMeeting": "The meeting wasn't saved"
 }

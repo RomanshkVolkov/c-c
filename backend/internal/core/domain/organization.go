@@ -61,6 +61,12 @@ type Organization struct {
 	// vale más que la excepción — y es una decisión de equipo, no de quien
 	// arrastra la tarjeta, por eso vive aquí.
 	DoneNeedsSubtasksDone bool `json:"doneNeedsSubtasksDone"`
+
+	// Timezone: la zona del equipo (IANA, «America/Cancun»). Las reuniones
+	// periódicas nacen en ella, no en la de quien las crea: el mismo «9:30»
+	// tiene que significar lo mismo para todos, y cada uno lo ve convertido a
+	// su hora. Vacía = sin decidir, y la app usa la zona de quien crea.
+	Timezone string `gorm:"type:varchar(64)" json:"timezone"`
 }
 
 // OrgMembership joins a user to an organization with a role. Composite PK
@@ -121,6 +127,8 @@ type UpdateOrganizationRequest struct {
 	ClientsSeeOnlyTheirSpace *bool    `json:"clientsSeeOnlyTheirSpace"`
 	GuestsCanUseDevTools     *bool    `json:"guestsCanUseDevTools"`
 	DoneNeedsSubtasksDone    *bool    `json:"doneNeedsSubtasksDone"`
+	// "" la quita; cualquier otra cosa tiene que ser una zona IANA que exista.
+	Timezone *string `json:"timezone" validate:"omitempty,max=64"`
 }
 
 type OrganizationResponse struct {
@@ -143,6 +151,7 @@ type OrganizationResponse struct {
 	ClientsSeeOnlyTheirSpace bool    `json:"clientsSeeOnlyTheirSpace"`
 	GuestsCanUseDevTools     bool    `json:"guestsCanUseDevTools"`
 	DoneNeedsSubtasksDone    bool    `json:"doneNeedsSubtasksDone"`
+	Timezone                 string  `json:"timezone"`
 }
 
 type AddMemberRequest struct {

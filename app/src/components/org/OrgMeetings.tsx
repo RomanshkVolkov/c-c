@@ -3,7 +3,7 @@ import { useLocaleStore } from "@/store/locale.store";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CalendarClock, CalendarDays, List, Loader2, Pause, Play, Plus, Trash2, Users } from "lucide-react";
+import { CalendarClock, CalendarDays, List, Loader2, Pause, Pencil, Play, Plus, Trash2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,9 @@ import { useMeetingsStore, type Meeting, type MeetingDraft } from "@/store/meeti
 import ItemCalendar, { type CalendarItem } from "@/components/ItemCalendar";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
-import { dualTime, readableRule } from "@/lib/meeting-time";
+import { readableRule } from "@/lib/meeting-time";
+import { hourIn, isZone, myZone, wallTimeToday, zoneCity } from "@/lib/timezones";
+import TimezoneSelect from "@/components/TimezoneSelect";
 import { cn } from "@/lib/utils";
 import type { OrgMember } from "@/types/organization";
 
@@ -29,6 +31,7 @@ import type { OrgMember } from "@/types/organization";
 export default function OrgMeetings({ canManage }: { canManage: boolean }) {
   const { t } = useT();
   const orgId = useOrgsStore((s) => s.currentOrgId);
+  const teamZone = useOrgsStore((s) => s.orgs.find((o) => o.id === s.currentOrgId)?.timezone) || undefined;
   const listMembers = useOrgsStore((s) => s.listMembers);
   const meetings = useMeetingsStore((s) => s.meetings);
   const loading = useMeetingsStore((s) => s.loading);
@@ -38,36 +41,36 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
   const agenda = useMeetingsStore((s) => s.agenda);
   const fetchAgenda = useMeetingsStore((s) => s.fetchAgenda);
 
-  const [miembros, setMiembros] = useState<OrgMember[]>([]);
-  const [creando, setCreando] = useState(false);
-  const [guardando, setGuardando] = useState(false);
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
   /** Lista o calendario. La lista primero: es donde se edita. */
-  const [vista, setVista] = useState<"lista" | "calendario">("lista");
+  const [view, setView] = useState<"list" | "calendar">("list");
 
   useEffect(() => {
     if (orgId) fetch(orgId).catch(() => {});
   }, [orgId, fetch]);
 
   useEffect(() => {
-    if (orgId) listMembers(orgId).then(setMiembros).catch(() => {});
+    if (orgId) listMembers(orgId).then(setMembers).catch(() => {});
   }, [orgId, listMembers]);
 
   // Sólo al mirar el calendario: expandir dos meses de repeticiones para una
   // pantalla que nadie ha abierto es trabajo tirado.
   useEffect(() => {
-    if (orgId && vista === "calendario") fetchAgenda(orgId).catch(() => {});
-  }, [orgId, vista, fetchAgenda, meetings]);
+    if (orgId && view === "calendar") fetchAgenda(orgId).catch(() => {});
+  }, [orgId, view, fetchAgenda, meetings]);
 
-  const crear = async (draft: MeetingDraft) => {
+  const handleCreate = async (draft: MeetingDraft) => {
     if (!orgId) return;
-    setGuardando(true);
+    setSaving(true);
     try {
       await create(orgId, draft);
-      setCreando(false);
+      setCreating(false);
     } catch (e) {
       toast.error(t("org:errCreateMeeting"), { description: String(e) });
     } finally {
-      setGuardando(false);
+      setSaving(false);
     }
   };
 
@@ -83,35 +86,36 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
         <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
-            variant={vista === "lista" ? "secondary" : "ghost"}
-            onClick={() => setVista("lista")}
+            variant={view === "list" ? "secondary" : "ghost"}
+            onClick={() => setView("list")}
           >
             <List className="mr-1 size-3" /> List
           </Button>
           <Button
             size="sm"
-            variant={vista === "calendario" ? "secondary" : "ghost"}
-            onClick={() => setVista("calendario")}
+            variant={view === "calendar" ? "secondary" : "ghost"}
+            onClick={() => setView("calendar")}
           >
             <CalendarDays className="mr-1 size-3" /> Calendar
           </Button>
         </div>
-        {canManage && !creando && (
-          <Button size="sm" variant="outline" onClick={() => setCreando(true)}>
+        {canManage && !creating && (
+          <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
             <Plus className="mr-1 size-3" /> New
           </Button>
         )}
       </div>
 
-      {creando && (
-        <Formulario
-          guardando={guardando}
-          onCancel={() => setCreando(false)}
-          onSave={crear}
+      {creating && (
+        <MeetingForm
+          saving={saving}
+          teamZone={teamZone}
+          onCancel={() => setCreating(false)}
+          onSave={handleCreate}
         />
       )}
 
-      {vista === "calendario" ? (
+      {view === "calendar" ? (
         <ItemCalendar
           items={agenda.map(
             (o, i): CalendarItem => ({
@@ -126,7 +130,7 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
               label: horaCorta(o.at),
             }),
           )}
-          onOpen={() => setVista("lista")}
+          onOpen={() => setView("list")}
           countKey="common:count.meetings"
         />
       ) : loading && meetings.length === 0 ? (
@@ -140,7 +144,7 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
       ) : (
         <ul className="space-y-3">
           {meetings.map((m) => (
-            <Ficha key={m.id} reunion={m} canManage={canManage} miembros={miembros} />
+            <MeetingCard key={m.id} meeting={m} canManage={canManage} members={members} teamZone={teamZone} />
           ))}
         </ul>
       )}
@@ -148,31 +152,55 @@ export default function OrgMeetings({ canManage }: { canManage: boolean }) {
   );
 }
 
-/** La zona de quien está mirando, que es el valor por defecto razonable. */
-function miZona(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
+const WEEKDAYS = [
+  { n: 1, label: "Mon" },
+  { n: 2, label: "Tue" },
+  { n: 3, label: "Wed" },
+  { n: 4, label: "Thu" },
+  { n: 5, label: "Fri" },
+  { n: 6, label: "Sat" },
+  { n: 0, label: "Sun" },
+];
+const WORKWEEK = [1, 2, 3, 4, 5];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+/**
+ * Lo que dice el formulario de una reunión que ya existe.
+ *
+ * «Diaria» cada 1 día es lo mismo que semanal con los siete días, y así se
+ * enseña: los días se marcan siempre, y quitar el viernes de una «diaria» es
+ * desmarcarlo (#122). Una diaria cada N días (N > 1) no cabe en días de la
+ * semana y se queda como diaria.
+ */
+export function formFromMeeting(m: Meeting | undefined, zonaPorDefecto: string) {
+  if (!m) {
+    return { title: "", time: "09:00", zone: zonaPorDefecto, freq: "weekly" as Meeting["freq"], days: WORKWEEK, monthDay: 1, every: 1, room: "" };
   }
+  const isDaily = m.freq === "daily" && m.interval <= 1;
+  return {
+    title: m.title,
+    time: m.wallTime,
+    zone: m.timezone,
+    freq: isDaily ? ("weekly" as const) : m.freq,
+    days: isDaily ? ALL_DAYS : (m.weekdays ?? "").split(",").filter(Boolean).map(Number),
+    monthDay: m.monthDay ?? 1,
+    every: m.interval || 1,
+    room: m.spaceId ?? "",
+  };
 }
 
-const DIAS = [
-  { n: 1, etiqueta: "Mon" },
-  { n: 2, etiqueta: "Tue" },
-  { n: 3, etiqueta: "Wed" },
-  { n: 4, etiqueta: "Thu" },
-  { n: 5, etiqueta: "Fri" },
-  { n: 6, etiqueta: "Sat" },
-  { n: 0, etiqueta: "Sun" },
-];
-
-function Formulario({
-  guardando,
+function MeetingForm({
+  saving,
+  existing,
+  teamZone,
   onCancel,
   onSave,
 }: {
-  guardando: boolean;
+  saving: boolean;
+  /** La reunión a editar; sin ella, se crea una. */
+  existing?: Meeting;
+  /** La zona del equipo: las reuniones nuevas nacen en ella. */
+  teamZone?: string;
   onCancel: () => void;
   onSave: (d: MeetingDraft) => void;
 }) {
@@ -180,32 +208,40 @@ function Formulario({
   const tree = useTasksStore((s) => s.tree);
   // La sala general primero: es la que va a querer la mayoría de reuniones de
   // toda la organización.
-  const salas = [...tree].sort((a, b) => (a.kind === "general" ? -1 : b.kind === "general" ? 1 : 0));
+  const rooms = [...tree].sort((a, b) => (a.kind === "general" ? -1 : b.kind === "general" ? 1 : 0));
 
-  const [titulo, setTitulo] = useState("");
-  const [hora, setHora] = useState("09:00");
-  const [zona, setZona] = useState(miZona());
-  const [freq, setFreq] = useState<Meeting["freq"]>("weekly");
-  const [dias, setDias] = useState<number[]>([1]);
-  const [diaDelMes, setDiaDelMes] = useState(1);
-  const [intervalo, setIntervalo] = useState(1);
-  const [sala, setSala] = useState("");
+  const defaults = formFromMeeting(existing, teamZone || myZone());
+  const [title, setTitle] = useState(defaults.title);
+  const [time, setTime] = useState(defaults.time);
+  const [zone, setZone] = useState(defaults.zone);
+  const [freq, setFreq] = useState<Meeting["freq"]>(defaults.freq);
+  const [days, setDays] = useState<number[]>(defaults.days);
+  const [monthDay, setMonthDay] = useState(defaults.monthDay);
+  const [every, setEvery] = useState(defaults.every);
+  const [room, setRoom] = useState(defaults.room);
 
-  const guardar = () => {
-    const t = titulo.trim();
+  const sameDays = (a: number[], b: number[]) => a.length === b.length && b.every((x) => a.includes(x));
+
+  // A qué hora suena, en su zona y en la tuya: lo que hay que ver **antes** de
+  // guardar, no después (el «9:30» que era de otra zona).
+  const instant = wallTimeToday(time, zone);
+  const mine = myZone();
+
+  const save = () => {
+    const t = title.trim();
     if (!t) return;
     onSave({
       title: t,
-      wallTime: hora,
-      timezone: zona,
+      wallTime: time,
+      timezone: zone,
       freq,
-      interval: intervalo,
-      weekdays: freq === "weekly" ? dias.join(",") : undefined,
-      monthDay: freq === "monthly" ? diaDelMes : undefined,
+      interval: every,
+      weekdays: freq === "weekly" ? [...days].sort().join(",") : undefined,
+      monthDay: freq === "monthly" ? monthDay : undefined,
       // El ancla del ciclo cuando se repite cada N: sin ella «cada dos semanas»
       // no dice cuál de las dos es. Hoy es una respuesta tan buena como otra.
-      anchor: intervalo > 1 ? new Date().toISOString().slice(0, 10) : undefined,
-      spaceId: sala || undefined,
+      anchor: every > 1 ? (existing?.anchor || new Date().toISOString().slice(0, 10)) : undefined,
+      spaceId: room || (existing ? "" : undefined),
     });
   };
 
@@ -213,8 +249,9 @@ function Formulario({
     <div className="space-y-3 rounded-xl border bg-card p-3">
       <Input
         autoFocus
-        value={titulo}
-        onChange={(e) => setTitulo(e.target.value)}
+        aria-label={t("org:meetingNamePlaceholder")}
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
         placeholder={t("org:meetingNamePlaceholder")}
         className="max-w-sm"
       />
@@ -224,30 +261,33 @@ function Formulario({
           {t("org:time")}
           <Input
             type="time"
-            value={hora}
-            onChange={(e) => setHora(e.target.value)}
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
             className="mt-1 h-8 w-32 text-xs"
           />
         </label>
         <label className="min-w-52 flex-1 text-xs text-muted-foreground">
           {t("org:timeZone")}
-          <Input
-            value={zona}
-            onChange={(e) => setZona(e.target.value)}
-            placeholder={t("org:timeZonePlaceholder")}
-            className="mt-1 h-8 text-xs"
+          <TimezoneSelect
+            ariaLabel={t("org:timeZone")}
+            value={zone}
+            teamZone={teamZone}
+            onChange={setZone}
+            className="mt-1 block h-8 w-full rounded-md border bg-background px-2 text-xs"
           />
         </label>
         <label className="text-xs text-muted-foreground">
           {t("org:repeats")}
           <select
+            aria-label={t("org:repeats")}
             value={freq}
             onChange={(e) => setFreq(e.target.value as Meeting["freq"])}
-            className="mt-1 h-8 w-28 rounded-md border bg-background px-2 text-xs"
+            className="mt-1 h-8 w-36 rounded-md border bg-background px-2 text-xs"
           >
-            <option value="daily">{t("org:daily")}</option>
-            <option value="weekly">{t("org:weekly")}</option>
+            <option value="weekly">{t("org:onTheseDays")}</option>
             <option value="monthly">{t("org:monthly")}</option>
+            {/* Sólo para una que ya era «cada N días»: no cabe en días de la semana. */}
+            {freq === "daily" && <option value="daily">{t("org:daily")}</option>}
           </select>
         </label>
         <label className="text-xs text-muted-foreground">
@@ -256,35 +296,43 @@ function Formulario({
             type="number"
             min={1}
             max={52}
-            value={intervalo}
-            onChange={(e) => setIntervalo(Math.max(1, Number(e.target.value) || 1))}
+            value={every}
+            onChange={(e) => setEvery(Math.max(1, Number(e.target.value) || 1))}
             className="mt-1 h-8 w-20 text-xs"
           />
         </label>
       </div>
 
       {freq === "weekly" && (
-        <div className="flex flex-wrap gap-1">
-          {DIAS.map((d) => (
+        <div className="flex flex-wrap items-center gap-1">
+          {WEEKDAYS.map((d) => (
             <button
               key={d.n}
               type="button"
+              aria-pressed={days.includes(d.n)}
               onClick={() =>
-                setDias((prev) =>
+                setDays((prev) =>
                   prev.includes(d.n) ? prev.filter((x) => x !== d.n) : [...prev, d.n],
                 )
               }
               className={cn(
                 "rounded border px-2 py-1 text-xs",
-                dias.includes(d.n)
+                days.includes(d.n)
                   ? "border-primary bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent",
               )}
             >
-              {d.etiqueta}
+              {d.label}
             </button>
           ))}
-          {dias.length === 0 && (
+          <span className="mx-1 h-4 w-px bg-border" />
+          <Button type="button" size="sm" variant={sameDays(days, WORKWEEK) ? "secondary" : "ghost"} className="h-7 text-xs" onClick={() => setDays(WORKWEEK)}>
+            {t("org:weekdaysPreset")}
+          </Button>
+          <Button type="button" size="sm" variant={sameDays(days, ALL_DAYS) ? "secondary" : "ghost"} className="h-7 text-xs" onClick={() => setDays(ALL_DAYS)}>
+            {t("org:everyDayPreset")}
+          </Button>
+          {days.length === 0 && (
             <span className="self-center text-xs text-destructive">
               {t("org:pickADay")}
             </span>
@@ -299,26 +347,35 @@ function Formulario({
             type="number"
             min={1}
             max={31}
-            value={diaDelMes}
-            onChange={(e) => setDiaDelMes(Math.min(31, Math.max(1, Number(e.target.value) || 1)))}
+            value={monthDay}
+            onChange={(e) => setMonthDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))}
             className="mt-1 h-8 w-20 text-xs"
           />
           {/* Lo que pasa en los meses cortos, dicho antes de que sorprenda. */}
-          {diaDelMes > 28 && (
+          {monthDay > 28 && (
             <span className="ml-2">{t("org:lastDayNote")}</span>
           )}
         </label>
       )}
 
+      {instant && (
+        <p className="text-xs" data-testid="meeting-preview">
+          {t("org:ringsThere", { time: hourIn(instant, zone), city: zoneCity(zone) })}
+          {zone !== mine && hourIn(instant, zone) !== hourIn(instant) && (
+            <span className="text-muted-foreground"> · {t("org:ringsHere", { time: hourIn(instant), city: zoneCity(mine) })}</span>
+          )}
+        </p>
+      )}
+
       <label className="block max-w-sm text-xs text-muted-foreground">
         {t("org:roomToJoin")}
         <select
-          value={sala}
-          onChange={(e) => setSala(e.target.value)}
+          value={room}
+          onChange={(e) => setRoom(e.target.value)}
           className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
         >
           <option value="">{t("org:noRoom")}</option>
-          {salas.map((s) => (
+          {rooms.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
               {s.kind === "general" ? " (general)" : ""}
@@ -330,10 +387,11 @@ function Formulario({
       <div className="flex gap-2 pt-1">
         <Button
           size="sm"
-          onClick={guardar}
-          disabled={guardando || !titulo.trim() || (freq === "weekly" && dias.length === 0)}
+          onClick={save}
+          disabled={saving || !title.trim() || (freq === "weekly" && days.length === 0)}
         >
-          {guardando && <Loader2 className="mr-1 size-3 animate-spin" />} Create
+          {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
+          {existing ? t("org:saveMeeting") : t("org:createMeeting")}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           {t("org:cancel")}
@@ -344,14 +402,16 @@ function Formulario({
 }
 
 /** Una reunión, con lo que hay que saber sin abrir nada. */
-function Ficha({
-  reunion: m,
+function MeetingCard({
+  meeting: m,
   canManage,
-  miembros,
+  members,
+  teamZone,
 }: {
-  reunion: Meeting;
+  meeting: Meeting;
   canManage: boolean;
-  miembros: OrgMember[];
+  members: OrgMember[];
+  teamZone?: string;
 }) {
   const { t } = useT();
   const { resolved: lng } = useLocaleStore();
@@ -360,24 +420,60 @@ function Ficha({
   const update = useMeetingsStore((s) => s.update);
   const remove = useMeetingsStore((s) => s.remove);
   const setExcluded = useMeetingsStore((s) => s.setExcluded);
-  const [abriendoGente, setAbriendoGente] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const { there, here, sameZone } = dualTime(m.nextFireAt, m.timezone);
-  const convocados = miembros.filter((x) => !m.excludedUserIds.includes(x.userId)).length;
+  // La hora dicha con su ciudad, y la tuya si no coincide: «9:30 en Cancun ·
+  // 8:30 para ti (Mexico City)». Antes era «09:30 GMT-6», que no dice dónde.
+  const when = new Date(m.nextFireAt);
+  const valid = !Number.isNaN(when.getTime()) && isZone(m.timezone);
+  const mine = myZone();
+  const thereTime = valid ? hourIn(when, m.timezone) : m.wallTime;
+  const hereTime = valid ? hourIn(when) : "";
+  const showHere = valid && m.timezone !== mine && thereTime !== hereTime;
 
-  const alternarPersona = async (userId: string) => {
+  const saveEdit = async (draft: MeetingDraft) => {
     if (!orgId) return;
-    const fuera = m.excludedUserIds.includes(userId)
+    setSaving(true);
+    try {
+      await update(m.id, orgId, draft);
+      setEditing(false);
+    } catch (e) {
+      toast.error(t("org:errSaveMeeting"), { description: String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <li>
+        <MeetingForm
+          saving={saving}
+          existing={m}
+          teamZone={teamZone}
+          onCancel={() => setEditing(false)}
+          onSave={(d) => void saveEdit(d)}
+        />
+      </li>
+    );
+  }
+  const invitedCount = members.filter((x) => !m.excludedUserIds.includes(x.userId)).length;
+
+  const togglePerson = async (userId: string) => {
+    if (!orgId) return;
+    const excluded = m.excludedUserIds.includes(userId)
       ? m.excludedUserIds.filter((x) => x !== userId)
       : [...m.excludedUserIds, userId];
     try {
-      await setExcluded(m.id, orgId, fuera);
+      await setExcluded(m.id, orgId, excluded);
     } catch (e) {
       toast.error(t("org:errReach"), { description: String(e) });
     }
   };
 
-  const borrar = async () => {
+  const deleteMeeting = async () => {
     if (!orgId) return;
     const ok = await confirm({
       title: `Delete "${m.title}"?`,
@@ -415,10 +511,15 @@ function Ficha({
           <dt className="uppercase tracking-wide text-muted-foreground">{t("org:ringsAt")}</dt>
           {/* Las dos horas: la suya y la tuya. Enseñar sólo una obliga a
               convertir de cabeza, que es donde la gente se equivoca al quedar. */}
-          <dd className="mt-0.5">
-            <span className="font-medium">{there}</span>
-            {!sameZone && (
-              <span className="text-muted-foreground"> · {here} your time</span>
+          <dd className="mt-0.5" data-testid="meeting-when">
+            <span className="font-medium">{t("org:ringsThere", { time: thereTime, city: zoneCity(m.timezone) })}</span>
+            {showHere ? (
+              <span className="text-muted-foreground"> · {t("org:ringsHere", { time: hereTime, city: zoneCity(mine) })}</span>
+            ) : (
+              m.timezone === mine && <span className="text-muted-foreground"> · {t("org:yourZone")}</span>
+            )}
+            {teamZone && m.timezone !== teamZone && (
+              <span className="block text-[11px] text-warning">{t("org:notTeamZone", { city: zoneCity(teamZone) })}</span>
             )}
           </dd>
         </div>
@@ -426,23 +527,23 @@ function Ficha({
           <dt className="uppercase tracking-wide text-muted-foreground">{t("org:reaches")}</dt>
           <dd className="mt-0.5 flex items-center gap-2">
             <span>
-              {convocados} of {miembros.length}
+              {invitedCount} of {members.length}
             </span>
             {canManage && (
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-6 px-1.5"
-                onClick={() => setAbriendoGente((v) => !v)}
+                onClick={() => setPeopleOpen((v) => !v)}
               >
-                <Users className="mr-1 size-3" /> {abriendoGente ? t("org:done") : t("org:change")}
+                <Users className="mr-1 size-3" /> {peopleOpen ? t("org:done") : t("org:change")}
               </Button>
             )}
           </dd>
         </div>
       </dl>
 
-      {abriendoGente && (
+      {peopleOpen && (
         <div className="border-t px-3.5 py-3">
           {/* Marcados por defecto, y quien entre en la organización mañana
               entra marcado: lo que se guarda es quién se quitó. */}
@@ -450,16 +551,16 @@ function Ficha({
             {t("org:everyoneByDefault")}
           </p>
           <ul className="flex flex-wrap gap-2">
-            {miembros.map((x) => {
-              const dentro = !m.excludedUserIds.includes(x.userId);
+            {members.map((x) => {
+              const included = !m.excludedUserIds.includes(x.userId);
               return (
                 <li key={x.userId}>
                   <button
                     type="button"
-                    onClick={() => alternarPersona(x.userId)}
+                    onClick={() => togglePerson(x.userId)}
                     className={cn(
                       "rounded border px-2 py-1 text-xs",
-                      dentro
+                      included
                         ? "border-primary bg-primary/10 text-foreground"
                         : "text-muted-foreground line-through hover:bg-accent",
                     )}
@@ -479,6 +580,9 @@ function Ficha({
             {m.paused ? t("org:notRinging") : t("org:next")}
             {!m.paused && fechaLegible(m.nextFireAt)}
           </span>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+            <Pencil className="mr-1 size-3" /> {t("org:edit")}
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -501,7 +605,7 @@ function Ficha({
             size="sm"
             variant="ghost"
             className="text-destructive hover:text-destructive"
-            onClick={borrar}
+            onClick={deleteMeeting}
           >
             <Trash2 className="mr-1 size-3" /> Delete
           </Button>

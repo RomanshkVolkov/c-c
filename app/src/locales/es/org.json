@@ -142,5 +142,22 @@
     "notLinked": "Sin enlazar",
     "bareRefs": "#12 a secas",
     "bareRefsHint": "Que #12 sin «cac» también nombre la tarea 12. En GitHub, #12 es el issue 12 del repo."
-  }
+  },
+  "zoneUnset": "Sin decidir (la de quien crea)",
+  "zoneSuggested": "Sugeridas",
+  "zoneAll": "Todas",
+  "zoneTeam": "del equipo",
+  "zoneYours": "la tuya",
+  "teamZone": "Zona del equipo",
+  "teamZoneHint": "Las reuniones nacen en ella; cada quien las ve a su hora.",
+  "onTheseDays": "Estos días",
+  "weekdaysPreset": "Entre semana",
+  "everyDayPreset": "Todos",
+  "ringsThere": "{{time}} en {{city}}",
+  "ringsHere": "{{time}} para ti ({{city}})",
+  "yourZone": "tu zona",
+  "notTeamZone": "No está en la zona del equipo ({{city}}): edítala si debía estarlo.",
+  "saveMeeting": "Guardar",
+  "createMeeting": "Crear",
+  "errSaveMeeting": "No se guardó la reunión"
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -139,6 +140,7 @@ func (s *OrganizationService) Create(callerID string, req domain.CreateOrganizat
 		ClientsSeeOnlyTheirSpace: org.ClientsSeeOnlyTheirSpace,
 		GuestsCanUseDevTools:     org.GuestsCanUseDevTools,
 		DoneNeedsSubtasksDone:    org.DoneNeedsSubtasksDone,
+		Timezone:                 org.Timezone,
 	}, nil
 }
 
@@ -177,6 +179,18 @@ func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOr
 	if req.DoneNeedsSubtasksDone != nil {
 		org.DoneNeedsSubtasksDone = *req.DoneNeedsSubtasksDone
 	}
+	if req.Timezone != nil {
+		tz := strings.TrimSpace(*req.Timezone)
+		// Una zona mal escrita no da error al guardarla sino al usarla: cada
+		// reunión nueva nacería rota. Se comprueba aquí, con la base de zonas
+		// que usa el disparador.
+		if tz != "" {
+			if _, err := time.LoadLocation(tz); err != nil || tz == "Local" {
+				return nil, ErrBadTimezone
+			}
+		}
+		org.Timezone = tz
+	}
 	if err := s.repo.Update(org); err != nil {
 		return nil, err
 	}
@@ -187,6 +201,7 @@ func (s *OrganizationService) Update(callerID, orgID string, req domain.UpdateOr
 		ClientsSeeOnlyTheirSpace: org.ClientsSeeOnlyTheirSpace,
 		GuestsCanUseDevTools:     org.GuestsCanUseDevTools,
 		DoneNeedsSubtasksDone:    org.DoneNeedsSubtasksDone,
+		Timezone:                 org.Timezone,
 	}, nil
 }
 

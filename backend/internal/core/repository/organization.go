@@ -91,10 +91,23 @@ func (r *OrganizationRepository) FindByID(id string) (*domain.Organization, erro
 	return &org, nil
 }
 
+// Update guarda lo que se edita de una organización. Con nombre de columna
+// cada uno, y **todos**: hasta el 4-oct-2026 aquí sólo se escribía el nombre,
+// y el dominio, el rol por defecto de las invitaciones y las tres reglas de la
+// pestaña General se perdían —la pantalla recibía la respuesta con el cambio y
+// al recargar volvía lo de antes—. Lo vigila `TestEverythingTheGeneralTabEditsIsSaved`.
 func (r *OrganizationRepository) Update(org *domain.Organization) error {
 	return r.db.Model(&domain.Organization{}).
 		Where("id = ?", org.ID).
-		Update("name", org.Name).Error
+		Updates(map[string]any{
+			"name":                         org.Name,
+			"domain":                       org.Domain,
+			"default_invite_role":          org.DefaultInviteRole,
+			"clients_see_only_their_space": org.ClientsSeeOnlyTheirSpace,
+			"guests_can_use_dev_tools":     org.GuestsCanUseDevTools,
+			"done_needs_subtasks_done":     org.DoneNeedsSubtasksDone,
+			"timezone":                     org.Timezone,
+		}).Error
 }
 
 // Delete removes the organization and its memberships. It refuses to delete an
@@ -143,7 +156,7 @@ func (r *OrganizationRepository) ListForUser(userID string) ([]domain.Organizati
 	err := r.db.Raw(`
 		SELECT o.id, o.name, o.slug, o.created_at, o.domain, o.default_invite_role,
 		       o.clients_see_only_their_space, o.guests_can_use_dev_tools,
-		       o.done_needs_subtasks_done, m.role,
+		       o.done_needs_subtasks_done, o.timezone, m.role,
 		       (SELECT COUNT(*) FROM org_memberships c WHERE c.org_id = o.id) AS member_count
 		FROM organizations o
 		JOIN org_memberships m ON m.org_id = o.id
@@ -160,7 +173,7 @@ func (r *OrganizationRepository) ListAll() ([]domain.OrganizationResponse, error
 	err := r.db.Raw(`
 		SELECT o.id, o.name, o.slug, o.created_at, o.domain, o.default_invite_role,
 		       o.clients_see_only_their_space, o.guests_can_use_dev_tools,
-		       o.done_needs_subtasks_done, 'admin' AS role,
+		       o.done_needs_subtasks_done, o.timezone, 'admin' AS role,
 		       (SELECT COUNT(*) FROM org_memberships c WHERE c.org_id = o.id) AS member_count
 		FROM organizations o
 		ORDER BY o.name ASC

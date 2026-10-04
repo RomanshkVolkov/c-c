@@ -20,6 +20,11 @@ export interface Organization {
    * tarjeta, y por eso vive en la organización.
    */
   doneNeedsSubtasksDone: boolean;
+  /**
+   * La zona del equipo (IANA). Las reuniones nacen en ella y cada quien las ve
+   * convertidas a su hora. Vacía = sin decidir.
+   */
+  timezone?: string;
 }
 
 export interface OrgMember {

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -231,5 +232,82 @@ func orgCountDB(t *testing.T) (*gorm.DB, func()) {
 		}
 		admin.Exec("DROP DATABASE IF EXISTS " + name)
 		adminSQL.Close()
+	}
+}
+
+// La zona del equipo: las reuniones nacen en ella. Se guarda una zona que
+// existe, se quita con "", se rechaza una inventada, y vuelve en el listado
+// —que es de donde la lee la pantalla de reuniones—.
+func TestTheTeamTimezoneIsARealZone(t *testing.T) {
+	db, cleanup := orgCountDB(t)
+	defer cleanup()
+	svc := NewOrganizationService(repository.NewOrganizationRepository(db))
+	tz := func(s string) domain.UpdateOrganizationRequest {
+		return domain.UpdateOrganizationRequest{Name: "Uno", Timezone: &s}
+	}
+
+	if _, err := svc.Update("u-root", "org-1", tz("America/Cancun"), true); err != nil {
+		t.Fatal(err)
+	}
+	orgs, _ := svc.List("u-ana", false)
+	if len(orgs) == 0 || orgs[0].Timezone != "America/Cancun" {
+		t.Fatalf("el listado no trae la zona: %+v", orgs)
+	}
+
+	for _, bad := range []string{"Cancún", "America/Cancunn", "Local", "../etc"} {
+		if _, err := svc.Update("u-root", "org-1", tz(bad), true); !errors.Is(err, ErrBadTimezone) {
+			t.Errorf("%q → %v, se esperaba ErrBadTimezone", bad, err)
+		}
+	}
+	// Guardar el nombre sin mencionar la zona no la borra.
+	if _, err := svc.Update("u-root", "org-1", domain.UpdateOrganizationRequest{Name: "Uno"}, true); err != nil {
+		t.Fatal(err)
+	}
+	orgs, _ = svc.List("u-ana", false)
+	if orgs[0].Timezone != "America/Cancun" {
+		t.Errorf("guardar el nombre borró la zona: %q", orgs[0].Timezone)
+	}
+	if _, err := svc.Update("u-root", "org-1", tz(""), true); err != nil {
+		t.Fatal(err)
+	}
+	orgs, _ = svc.List("u-ana", false)
+	if orgs[0].Timezone != "" {
+		t.Errorf("\"\" no la quitó: %q", orgs[0].Timezone)
+	}
+}
+
+// Todo lo que edita la pestaña General se guarda, no sólo el nombre. Hasta el
+// 4-oct-2026 el repositorio escribía únicamente `name`: la respuesta traía el
+// cambio y al recargar volvía lo de antes.
+func TestEverythingTheGeneralTabEditsIsSaved(t *testing.T) {
+	db, cleanup := orgCountDB(t)
+	defer cleanup()
+	repo := repository.NewOrganizationRepository(db)
+	svc := NewOrganizationService(repo)
+	domainName, role, tz := "dwit.mx", domain.OrgRoleViewer, "America/Cancun"
+	clients, guests, subtasks := true, true, true
+	if _, err := svc.Update("u-root", "org-1", domain.UpdateOrganizationRequest{
+		Name: "Uno nuevo", Domain: &domainName, DefaultInviteRole: &role,
+		ClientsSeeOnlyTheirSpace: &clients, GuestsCanUseDevTools: &guests, DoneNeedsSubtasksDone: &subtasks,
+		Timezone: &tz,
+	}, true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.FindByID("org-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Uno nuevo" || got.Domain != "dwit.mx" || got.DefaultInviteRole != domain.OrgRoleViewer ||
+		!got.ClientsSeeOnlyTheirSpace || !got.GuestsCanUseDevTools || !got.DoneNeedsSubtasksDone || got.Timezone != "America/Cancun" {
+		t.Errorf("no se guardó todo lo de la pestaña General: %+v", got)
+	}
+	// Y apagar una regla la guarda apagada.
+	off := false
+	if _, err := svc.Update("u-root", "org-1", domain.UpdateOrganizationRequest{Name: "Uno nuevo", DoneNeedsSubtasksDone: &off}, true); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = repo.FindByID("org-1")
+	if got.DoneNeedsSubtasksDone || !got.ClientsSeeOnlyTheirSpace {
+		t.Errorf("apagar una regla: %+v", got)
 	}
 }
