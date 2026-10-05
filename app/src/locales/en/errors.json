@@ -112,6 +112,7 @@
   "viewer-read-only": "You can look, but not change anything here.",
   "voice-camera-no-frames": "The camera delivered no image.",
   "voice-camera-thread-died": "The camera failed. Check the voice lab's engine log.",
+  "voice-mic-denied": "cac doesn't have permission to use the microphone. Turn it on in System Settings → Privacy & Security → Microphone, then join again.",
   "voice-mic-thread-died": "The microphone failed to start.",
   "voice-mic-timeout": "The microphone didn't open in fifteen seconds.",
   "voice-no-mic": "No microphone was found.",

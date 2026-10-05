@@ -232,6 +232,14 @@ pub async fn voice_join(
     ENTRANDO.store(true, std::sync::atomic::Ordering::Relaxed);
     let _entrando = Entrando;
 
+    // El permiso del micrófono, **antes** de entrar a la sala: si se pide al
+    // abrir la captura, ya estás publicado en el SFU mientras el aviso de macOS
+    // espera, y los demás te ven dentro de una llamada en la que no se te oye.
+    // En un hilo aparte porque la respuesta tarda lo que tarde la persona.
+    tokio::task::spawn_blocking(permiso_microfono)
+        .await
+        .map_err(|e| e.to_string())??;
+
     voice_leave().await;
 
     let (room, eventos) = Room::connect(&url, &token, RoomOptions::default())
@@ -1280,6 +1288,56 @@ pub fn close_all() {
             let _ = s.room.close().await;
         });
     }
+}
+
+/// Pedir el micrófono **una vez**, y saber la respuesta, antes de abrirlo.
+///
+/// Sin esto, en macOS el aviso lo dispara cpal al abrir el dispositivo, y cada
+/// apertura que llega con el permiso sin decidir vuelve a preguntar: en un Mac
+/// salían seis avisos seguidos al entrar a una llamada. Y un «no» se quedaba
+/// en un micrófono que entrega ceros sin explicar por qué.
+///
+/// Denegado devuelve `voice-mic-denied`, que la app traduce a dónde se
+/// arregla. En Linux y Windows no hay nada que pedir.
+#[cfg(target_os = "macos")]
+fn permiso_microfono() -> Result<(), String> {
+    use block2::RcBlock;
+    use objc2::runtime::Bool;
+    use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let Some(audio) = (unsafe { AVMediaTypeAudio }) else {
+        return Ok(());
+    };
+    let estado = unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio) };
+    if estado == AVAuthorizationStatus::Authorized {
+        return Ok(());
+    }
+    if estado == AVAuthorizationStatus::Denied || estado == AVAuthorizationStatus::Restricted {
+        nota("micro: permiso denegado en el sistema");
+        return Err("voice-mic-denied".into());
+    }
+    nota("micro: pidiendo permiso al sistema");
+    let (tx, rx) = mpsc::channel::<bool>();
+    let respuesta = RcBlock::new(move |concedido: Bool| {
+        let _ = tx.send(concedido.as_bool());
+    });
+    unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(audio, &respuesta) };
+    // Dos minutos: lo que tarda alguien en leer el aviso y decidir. Sin
+    // respuesta, se trata como un no, que es lo que el sistema hará también.
+    match rx.recv_timeout(Duration::from_secs(120)) {
+        Ok(true) => Ok(()),
+        _ => {
+            nota("micro: permiso no concedido");
+            Err("voice-mic-denied".into())
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn permiso_microfono() -> Result<(), String> {
+    Ok(())
 }
 
 /// El micrófono del sistema, en su propio hilo.

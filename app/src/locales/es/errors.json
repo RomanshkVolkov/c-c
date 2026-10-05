@@ -112,6 +112,7 @@
   "viewer-read-only": "Aquí puedes mirar, pero no cambiar nada.",
   "voice-camera-no-frames": "La cámara no entregó ninguna imagen.",
   "voice-camera-thread-died": "Falló la cámara. Mira el diario del motor en el laboratorio de voz.",
+  "voice-mic-denied": "cac no tiene permiso para usar el micrófono. Actívalo en Ajustes del Sistema → Privacidad y seguridad → Micrófono y vuelve a entrar.",
   "voice-mic-thread-died": "El micrófono no arrancó.",
   "voice-mic-timeout": "El micrófono no abrió en quince segundos.",
   "voice-no-mic": "No se encontró ningún micrófono.",

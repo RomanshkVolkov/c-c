@@ -87,3 +87,11 @@ nokhwa = { version = "0.10.11", features = ["input-native"] }
 # vive `set_enable_webrtc`.
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "2.0", features = ["v2_38"] }
+
+# El permiso del micrófono en macOS, pedido antes de abrirlo (ver
+# `permiso_microfono` en voice.rs). Sólo ahí: en Linux y Windows no hay nada
+# que pedir.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVCaptureDevice", "AVMediaFormat", "block2"] }
