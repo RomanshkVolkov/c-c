@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import DeployDialog from "@/components/servers/DeployDialog";
 import { agentBase, agentFetch, agentStreamUrl } from "@/lib/agent";
+import { goInOrg } from "@/lib/ir-en-org";
 import { useTerminals } from "@/store/terminal.store";
 import type { SwarmService } from "@/types/swarm";
 import { useServerContext } from "./ServerLayout";
@@ -433,7 +434,13 @@ export default function ServerServices() {
       </Card>
 
       {deployFor && (
-        <DeployDialog server={server} service={deployFor} open onOpenChange={(v) => !v && setDeployFor(null)} />
+        <DeployDialog
+          server={server}
+          service={deployFor}
+          open
+          onOpenChange={(v) => !v && setDeployFor(null)}
+          onOpenActivity={(deployableId, orgId) => goInOrg(navigate, `/activity?deployable=${deployableId}`, orgId)}
+        />
       )}
 
       {selectedService && (

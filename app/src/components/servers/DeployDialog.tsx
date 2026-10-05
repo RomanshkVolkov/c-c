@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, RotateCcw, Rocket } from "lucide-react";
+import { Loader2, RotateCcw, Rocket, Workflow } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { desde } from "@/lib/desde";
@@ -43,11 +43,17 @@ export default function DeployDialog({
   service,
   open,
   onOpenChange,
+  onOpenActivity,
 }: {
   server: Server;
   service: SwarmService;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /**
+   * Ir a la actividad de CI de este servicio (R9). Lo navega quien monta el
+   * diálogo: el diálogo no sabe de rutas, y así se prueba sin un router.
+   */
+  onOpenActivity?: (deployableId: string, orgId: string) => void;
 }) {
   const { t } = useT();
   const confirm = useConfirm();
@@ -140,7 +146,22 @@ export default function DeployDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("common:deploy.title", { name: service.name })}</DialogTitle>
+          <div className="flex items-start justify-between gap-2 pr-6">
+            <DialogTitle>{t("common:deploy.title", { name: service.name })}</DialogTitle>
+            {deployable && onOpenActivity && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false);
+                  onOpenActivity(deployable.id, deployable.orgId);
+                }}
+              >
+                <Workflow className="mr-1 size-3.5" />
+                {t("common:deploy.activity")}
+              </Button>
+            )}
+          </div>
           {deployable && (
             <DialogDescription className="font-mono text-xs">
               {t("common:deploy.now", { image: deployable.currentImage || service.image })}
@@ -211,6 +232,13 @@ export default function DeployDialog({
               currentImage={service.image}
               canDeploy={!vivo && !sinAgente}
               onDeploy={(commit) => void desplegar(commit)}
+              onOpenActivity={
+                onOpenActivity &&
+                (() => {
+                  onOpenChange(false);
+                  onOpenActivity(deployable.id, deployable.orgId);
+                })
+              }
             />
 
             <div className="space-y-1">

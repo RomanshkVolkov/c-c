@@ -20,6 +20,7 @@ import Users from "@/pages/Users";
 import OrganizationSettings from "@/pages/OrganizationSettings";
 import Invitations from "@/pages/Invitations";
 import Diagnostics from "@/pages/Diagnostics";
+import Activity from "@/pages/Activity";
 import Tasks from "@/pages/Tasks";
 import DocIndexPage from "@/pages/DocIndexPage";
 import Notes from "@/pages/Notes";
@@ -88,6 +89,7 @@ export default function App() {
           </Route>
           <Route path="/organization" element={<OrganizationSettings />} />
           <Route path="/invitations" element={<Invitations />} />
+          <Route path="/activity" element={<Activity />} />
           <Route path="/diagnostics" element={<Diagnostics />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/users" element={<Users />} />

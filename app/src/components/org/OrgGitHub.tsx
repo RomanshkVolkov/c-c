@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Github, Loader2, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ExternalLink, Github, Loader2, RefreshCw, Workflow } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
@@ -115,6 +116,15 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
           {status.repos.map((repo) => (
             <li key={repo.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
               <span className="min-w-0 flex-1 truncate font-mono text-xs">{repo.fullName}</span>
+              {/* La actividad de CI de este repo (R9): misma org, así que un enlace llano. */}
+              <Link
+                to={`/activity?repo=${encodeURIComponent(repo.fullName)}`}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                title={t("org:github.activityOf", { repo: repo.fullName })}
+              >
+                <Workflow className="size-3.5" />
+                {t("common:deploy.activity")}
+              </Link>
               <select
                 aria-label={t("org:github.spaceFor", { repo: repo.fullName })}
                 className="h-8 rounded-md border bg-background px-2 text-sm"

@@ -13,7 +13,9 @@ const fuente = () => readFileSync(join(process.cwd(), "src/hooks/use-report-even
 
 describe("los eventos de un deploy", () => {
   it("el estado va al historial", () => {
-    expect(fuente()).toMatch(/case "deploy:status":\s*useDeploymentsStore\.getState\(\)\.onStatus\(/);
+    // Desde la R9 el mismo evento alimenta también la Actividad, así que se
+    // lee una vez y se reparte.
+    expect(fuente()).toMatch(/case "deploy:status": \{\s*const dep = parse\(data\)[\s\S]*?useDeploymentsStore\.getState\(\)\.onStatus\(dep\)/);
   });
   it("y las líneas, al log", () => {
     expect(fuente()).toMatch(/case "deploy:log":\s*useDeploymentsStore\.getState\(\)\.onLog\(/);

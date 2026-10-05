@@ -12,7 +12,9 @@ import i18next from "i18next";
 import { STATUS_LABEL_KEYS, normalizeStatus } from "@/types/report";
 import { useAuthStore } from "@/store/auth.store";
 import { useDeploymentsStore, type DeployLogEvent } from "@/store/deployments.store";
+import { useActivityStore } from "@/store/activity.store";
 import type { Deployment } from "@/types/deploy";
+import type { WorkflowRun } from "@/types/activity";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { useChatStore } from "@/store/chat.store";
@@ -141,8 +143,26 @@ const DEJAN_FILA = new Set([
   "meeting:reminder",
 ]);
 
-export function tocaLaCampana(evento: string): boolean {
-  return DEJAN_FILA.has(evento);
+/**
+ * Los que dejan fila **según lo que traen** (R9): un run del CI sólo cuando
+ * termina, y un deploy sólo cuando acaba. Mientras corren se ven en vivo en la
+ * Actividad, pero releer la campana en cada paso sería pedir la bandeja tres
+ * veces por run sin que haya nada nuevo en ella.
+ */
+const DEJAN_FILA_SI: Record<string, (p: Record<string, unknown>) => boolean> = {
+  "ci:run": (p) => p.status === "completed",
+  "deploy:status": (p) => p.status === "succeeded" || p.status === "failed",
+};
+
+export function tocaLaCampana(evento: string, data?: string): boolean {
+  if (DEJAN_FILA.has(evento)) return true;
+  const si = DEJAN_FILA_SI[evento];
+  if (!si || data === undefined) return false;
+  try {
+    return si(JSON.parse(data) as Record<string, unknown>);
+  } catch {
+    return false;
+  }
 }
 
 export function vigilanteDeReconexion() {
@@ -305,12 +325,19 @@ export function useReportEvents() {
       // —«ya estás mirando esa conversación», «no hay lista abierta»— y esos
       // cortes son razones para **no interrumpirte**, no para dejar la campana
       // sin actualizar.
-      if (tocaLaCampana(event)) releerBandeja();
+      if (tocaLaCampana(event, data)) releerBandeja();
       switch (event) {
         // Un deploy avanza: lo cuenta el agente del servidor, y aquí se funde
-        // con el historial y el log que haya en pantalla.
-        case "deploy:status":
-          useDeploymentsStore.getState().onStatus(parse(data) as unknown as Deployment);
+        // con el historial y el log que haya en pantalla, y con la Actividad.
+        case "deploy:status": {
+          const dep = parse(data) as unknown as Deployment;
+          useDeploymentsStore.getState().onStatus(dep);
+          useActivityStore.getState().onDeployStatus(dep);
+          break;
+        }
+        // Un run del CI de un repo de la org, en el estado que esté (R9).
+        case "ci:run":
+          useActivityStore.getState().onRun(parse(data) as unknown as WorkflowRun);
           break;
         case "deploy:log":
           useDeploymentsStore.getState().onLog(parse(data) as unknown as DeployLogEvent);
@@ -695,6 +722,15 @@ export function useReportEvents() {
         "task:delete",
         "task:comment",
         "meeting:reminder",
+        // Faltaban (docs/notifications.md §4.2): en el escritorio da igual,
+        // porque Rust reenvía cada trama, pero en un navegador se perdían.
+        "chat:message",
+        "dm:message",
+        "org:membership",
+        "call:status",
+        "deploy:status",
+        "deploy:log",
+        "ci:run",
       ]) {
         es.addEventListener(kind, (e) => {
           seen();

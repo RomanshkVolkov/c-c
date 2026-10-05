@@ -26,7 +26,9 @@
     "status": "status",
     "report": "report",
     "review": "review",
-    "meeting": "meeting"
+    "meeting": "meeting",
+    "ci": "CI",
+    "deploy": "deploy"
   },
   "prefs": {
     "title": "What reaches you",
@@ -42,7 +44,9 @@
     "workHint": "Work assigned to you, and status changes on what you carry — including anything an agent does through the MCP server.",
     "meetings": "Meeting reminders",
     "meetingsHint": "Recurring meetings your organization scheduled. They ring like a call at the time they start.",
-    "mentionsAlways": "Being mentioned always reaches you. It is the one thing worth interrupting somebody for, so it is not a setting."
+    "mentionsAlways": "Being mentioned always reaches you. It is the one thing worth interrupting somebody for, so it is not a setting.",
+    "ci": "CI & deploys",
+    "ciHint": "Every GitHub Actions run of your organization's repositories when it finishes, and every deploy from cac when it ends. One row per repository in the bell."
   },
   "wrote": "{{who}} wrote"
 }

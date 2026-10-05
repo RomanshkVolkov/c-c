@@ -19,6 +19,7 @@ import {
   Activity,
   Users,
   LogIn,
+  Workflow,
 } from "lucide-react";
 import {
   Sidebar,
@@ -86,6 +87,9 @@ const NAV_ITEMS: {
   // The dashboard is the servers screen; named for what it holds rather than
   // for the layout it happens to use.
   { labelKey: "nav:item.servers", path: "/dashboard", icon: Server, guest: false, group: "platform" },
+  // La actividad de CI (R9): qué hizo GitHub Actions con cada repo y qué
+  // desplegó cac. El icono `Activity` ya lo lleva Diagnóstico.
+  { labelKey: "nav:item.activity", path: "/activity", icon: Workflow, guest: false, group: "platform" },
   { labelKey: "nav:item.diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
   { labelKey: "nav:item.users", path: "/users", icon: Users, guest: false, superadmin: true, group: "platform" },
 ];

@@ -35,6 +35,7 @@ export default function CINoticeSection({
   currentImage,
   canDeploy,
   onDeploy,
+  onOpenActivity,
 }: {
   server: Server;
   deployable: Deployable;
@@ -43,6 +44,8 @@ export default function CINoticeSection({
   /** Si ahora mismo se puede pedir un deploy (agente listo, nada en curso). */
   canDeploy: boolean;
   onDeploy: (sha: string) => void;
+  /** Ver todos los runs del CI de este servicio, en la Actividad (R9). */
+  onOpenActivity?: () => void;
 }) {
   const { t } = useT();
   const confirm = useConfirm();
@@ -257,7 +260,14 @@ export default function CINoticeSection({
       )}
 
       <div className="space-y-1">
-        <p className="text-xs font-medium">{t("common:deploy.ci.builds")}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium">{t("common:deploy.ci.builds")}</p>
+          {onOpenActivity && (
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onOpenActivity}>
+              {t("common:deploy.ci.allRuns")}
+            </Button>
+          )}
+        </div>
         {builds.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t("common:deploy.ci.noBuilds")}</p>
         ) : (

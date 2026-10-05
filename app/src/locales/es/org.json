@@ -141,7 +141,8 @@
     "spaceFor": "Espacio de {{repo}}",
     "notLinked": "Sin enlazar",
     "bareRefs": "#12 a secas",
-    "bareRefsHint": "Que #12 sin «cac» también nombre la tarea 12. En GitHub, #12 es el issue 12 del repo."
+    "bareRefsHint": "Que #12 sin «cac» también nombre la tarea 12. En GitHub, #12 es el issue 12 del repo.",
+    "activityOf": "Actividad de CI de {{repo}}"
   },
   "zoneUnset": "Sin decidir (la de quien crea)",
   "zoneSuggested": "Sugeridas",

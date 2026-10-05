@@ -26,7 +26,9 @@
     "status": "estado",
     "report": "reporte",
     "review": "revisión",
-    "meeting": "reunión"
+    "meeting": "reunión",
+    "ci": "CI",
+    "deploy": "deploy"
   },
   "prefs": {
     "title": "Qué te llega",
@@ -42,7 +44,9 @@
     "workHint": "Lo que te asignan y los cambios de estado de lo que llevas — incluido lo que haga un agente por el servidor MCP.",
     "meetings": "Recordatorios de reuniones",
     "meetingsHint": "Las reuniones periódicas de tu organización. Suenan como una llamada a la hora de empezar.",
-    "mentionsAlways": "Que te mencionen te llega siempre. Es lo único que merece interrumpir a alguien, así que no es un ajuste."
+    "mentionsAlways": "Que te mencionen te llega siempre. Es lo único que merece interrumpir a alguien, así que no es un ajuste.",
+    "ci": "CI y deploys",
+    "ciHint": "Cada ejecución de GitHub Actions de los repositorios de tu organización al terminar, y cada deploy desde cac al acabar. Una fila por repositorio en la campana."
   },
   "wrote": "{{who}} escribió"
 }

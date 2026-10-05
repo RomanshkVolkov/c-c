@@ -80,6 +80,12 @@ export interface InboxPrefs {
    * callar acaba con la campana entera silenciada.
    */
   meetingsQuiet?: boolean;
+  /**
+   * Invertido como los dos de arriba: apaga la actividad de CI (R9), cada run
+   * de GitHub Actions al terminar y cada deploy al acabar. Es la clase más
+   * habladora de la campana, y ésta es su válvula.
+   */
+  ciQuiet?: boolean;
 }
 
 interface InboxState {

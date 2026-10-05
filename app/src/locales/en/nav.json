@@ -13,7 +13,8 @@
     "servers": "Servers",
     "diagnostics": "Diagnostics",
     "users": "Users",
-    "docs": "All docs"
+    "docs": "All docs",
+    "activity": "Activity"
   },
   "devTools": {
     "image": "Image",

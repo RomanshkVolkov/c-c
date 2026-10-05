@@ -13,12 +13,16 @@ import type { InboxItem } from "@/store/inbox.store";
  */
 
 /** Las familias que se pliegan. Sale del `kind`, nunca del enlace. */
-type Family = "chat" | "dm" | "item" | "none";
+type Family = "chat" | "dm" | "item" | "ci" | "none";
 
 function familyOf(kind: string): Family {
   if (kind.startsWith("chat:")) return "chat";
   if (kind.startsWith("dm:")) return "dm";
   if (kind.startsWith("task:") || kind.startsWith("report:")) return "item";
+  // La actividad de CI (R9): runs por repo, deploys por servicio. Nacen con
+  // `groupKey` del servidor y **no se deduce nada del enlace**: lleva el
+  // nombre del repo, no el id por el que se agrupan.
+  if (kind.startsWith("ci:") || kind.startsWith("deploy:")) return "ci";
   // Los recordatorios de reunión **no se pliegan**, y es a propósito: su enlace
   // es el de la sala —el mismo formato que un mensaje de canal— y la fila no
   // lleva la identidad de la reunión por ninguna parte. Agruparlos por su sala
@@ -177,8 +181,9 @@ export function summarize(g: NotificationGroup): GroupSummary {
   }
 
   // En tareas y reportes el título de la fila dice qué pasó, y el rótulo del
-  // grupo ya se llevó el nombre de la tarea.
-  if (family === "item") return { ...base, detail: newest.title };
+  // grupo ya se llevó el nombre de la tarea. En la actividad de CI igual: el
+  // rótulo es el repo o el servicio, y el título «Deploy falló en main».
+  if (family === "item" || family === "ci") return { ...base, detail: newest.title };
 
   return { ...base, detail: newest.body };
 }

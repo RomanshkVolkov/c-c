@@ -1,0 +1,45 @@
+{
+  "title": "Activity",
+  "lead": "Every GitHub Actions run of your organization's repositories, and every deploy from cac, newest first.",
+  "empty": "Nothing yet. Runs appear here as soon as GitHub reports them; deploys, as soon as cac queues them.",
+  "emptyFiltered": "Nothing matches this filter.",
+  "loadMore": "Load more",
+  "loading": "Loading…",
+  "filter": {
+    "repo": "Repository: {{repo}}",
+    "deployable": "Service",
+    "clear": "Clear filter"
+  },
+  "openRun": "Open the run on GitHub",
+  "attempt": "attempt {{n}}",
+  "runNumber": "#{{n}}",
+  "by": "@{{actor}}",
+  "triggered": "→ {{service}} · {{env}}",
+  "openService": "Open the service's server",
+  "notInPage": "The entry this link points to is older than what is loaded.",
+  "run": {
+    "status": {
+      "requested": "Requested",
+      "queued": "Queued",
+      "in_progress": "Running",
+      "waiting": "Waiting",
+      "pending": "Pending",
+      "completed": "Finished"
+    },
+    "conclusion": {
+      "success": "Passed",
+      "failure": "Failed",
+      "cancelled": "Cancelled",
+      "skipped": "Skipped",
+      "timed_out": "Timed out",
+      "action_required": "Action required",
+      "neutral": "Neutral",
+      "stale": "Stale",
+      "startup_failure": "Startup failure"
+    }
+  },
+  "deployment": {
+    "by": "by {{who}}",
+    "fromRun": "from run #{{n}}"
+  }
+}

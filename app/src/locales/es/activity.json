@@ -1,0 +1,45 @@
+{
+  "title": "Actividad",
+  "lead": "Cada ejecución de GitHub Actions de los repositorios de tu organización, y cada deploy desde cac, lo más nuevo primero.",
+  "empty": "Nada todavía. Las ejecuciones aparecen en cuanto GitHub las cuenta; los deploys, en cuanto cac los encola.",
+  "emptyFiltered": "Nada coincide con este filtro.",
+  "loadMore": "Cargar más",
+  "loading": "Cargando…",
+  "filter": {
+    "repo": "Repositorio: {{repo}}",
+    "deployable": "Servicio",
+    "clear": "Quitar el filtro"
+  },
+  "openRun": "Abrir la ejecución en GitHub",
+  "attempt": "intento {{n}}",
+  "runNumber": "#{{n}}",
+  "by": "@{{actor}}",
+  "triggered": "→ {{service}} · {{env}}",
+  "openService": "Abrir el servidor del servicio",
+  "notInPage": "La entrada a la que apunta este enlace es más antigua que lo cargado.",
+  "run": {
+    "status": {
+      "requested": "Pedida",
+      "queued": "En cola",
+      "in_progress": "En curso",
+      "waiting": "Esperando",
+      "pending": "Pendiente",
+      "completed": "Terminada"
+    },
+    "conclusion": {
+      "success": "Pasó",
+      "failure": "Falló",
+      "cancelled": "Cancelada",
+      "skipped": "Omitida",
+      "timed_out": "Sin tiempo",
+      "action_required": "Pide acción",
+      "neutral": "Neutra",
+      "stale": "Caducada",
+      "startup_failure": "Falló al arrancar"
+    }
+  },
+  "deployment": {
+    "by": "por {{who}}",
+    "fromRun": "de la ejecución #{{n}}"
+  }
+}

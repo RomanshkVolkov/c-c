@@ -32,6 +32,8 @@ const OPTIONS: { key: keyof InboxPrefs; labelKey: MessageKey; hintKey: MessageKe
   { key: "messages", labelKey: "notifications:prefs.messages", hintKey: "notifications:prefs.messagesHint" },
   { key: "workQuiet", labelKey: "notifications:prefs.work", hintKey: "notifications:prefs.workHint", inverted: true },
   { key: "meetingsQuiet", labelKey: "notifications:prefs.meetings", hintKey: "notifications:prefs.meetingsHint", inverted: true },
+  // La actividad de CI (R9): la clase más habladora, y por eso con su válvula.
+  { key: "ciQuiet", labelKey: "notifications:prefs.ci", hintKey: "notifications:prefs.ciHint", inverted: true },
 ];
 
 /** Si el interruptor se ve encendido. Ver `inverted` arriba. */
@@ -139,7 +141,7 @@ export default function NotificationPrefsDialog({
   // dialog that lies before it is even used.
   const actual: InboxPrefs = prefs ?? {
     mentions: true, dms: true, comments: true, reports: true, messages: true, workQuiet: false,
-    meetingsQuiet: false,
+    meetingsQuiet: false, ciQuiet: false,
   };
 
   const alternar = async (key: keyof InboxPrefs) => {

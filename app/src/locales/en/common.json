@@ -688,7 +688,8 @@
       "saveGitHub": "Save",
       "githubLead": "With the GitHub App installed: each deploy shows up in GitHub, and when that workflow finishes well it counts as the CI notice, no curl step needed.",
       "keySaved": "Saved as {{repo}}'s {{secret}} secret: no need to copy it.",
-      "pushFailed": "Couldn't save the key in {{repo}}; copy it by hand"
+      "pushFailed": "Couldn't save the key in {{repo}}; copy it by hand",
+      "allRuns": "See all runs"
     },
     "commits": "Latest commits in {{repo}}",
     "commitsLabel": "Commits to deploy",
@@ -696,7 +697,8 @@
     "migrate": "Migrations",
     "migrateSave": "Save command",
     "migrateLead": "Runs before every deploy with the new image and the service's own networks and secrets. If it fails, the service isn't touched.",
-    "migrateAgentOld": "This server's agent can't run migrations: update it, or deploys will be refused."
+    "migrateAgentOld": "This server's agent can't run migrations: update it, or deploys will be refused.",
+    "activity": "Activity"
   },
   "stale": {
     "body": "cac was updated while this window was open. Restart it: until then, 1Password won't answer it.",

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// Con router: la fila de cada repo lleva un enlace a su actividad (R9).
+import { MemoryRouter } from "react-router-dom";
 
 /**
  * La pestaña GitHub de la org.
@@ -51,7 +53,7 @@ afterEach(cleanup);
 describe("la pestaña GitHub", () => {
   it("sin la App en el servidor lo dice, y no ofrece conectar", async () => {
     api.get.mockResolvedValue(estado({ configured: false }));
-    render(<OrgGitHub canManage />);
+    render(<MemoryRouter><OrgGitHub canManage /></MemoryRouter>);
     await waitFor(() => expect(screen.getByText(/(no tiene la github app|doesn't have the github app)/i)).toBeTruthy());
     expect(screen.queryByRole("button", { name: /(conectar|connect)/i })).toBeNull();
   });
@@ -59,7 +61,7 @@ describe("la pestaña GitHub", () => {
   it("conectar abre en el navegador la URL del backend", async () => {
     api.get.mockResolvedValue(estado({ installations: [], repos: [] }));
     api.post.mockResolvedValue({ success: true, data: { url: "https://github.com/apps/cac/installations/new?state=s" } });
-    render(<OrgGitHub canManage />);
+    render(<MemoryRouter><OrgGitHub canManage /></MemoryRouter>);
     fireEvent.click(await screen.findByRole("button", { name: /^(conectar github|connect github)$/i }));
     await waitFor(() => expect(openUrl).toHaveBeenCalledWith("https://github.com/apps/cac/installations/new?state=s"));
     expect(api.post).toHaveBeenCalledWith("/api/v1/organizations/org-1/github/link", {}, true);
@@ -68,7 +70,7 @@ describe("la pestaña GitHub", () => {
   it("un repo se enlaza sólo a un espacio de esta org con tareas", async () => {
     api.get.mockResolvedValue(estado());
     api.patch.mockResolvedValue({ success: true, data: repo({ spaceId: "sp-1" }) });
-    render(<OrgGitHub canManage />);
+    render(<MemoryRouter><OrgGitHub canManage /></MemoryRouter>);
     const select = (await screen.findByLabelText(/dwit\/api/)) as HTMLSelectElement;
     const ofrecidos = Array.from(select.options).map((o) => o.value);
     expect(ofrecidos).toEqual(["", "sp-1"]);
@@ -85,7 +87,7 @@ describe("la pestaña GitHub", () => {
 
   it("quien no es admin lo ve pero no lo cambia", async () => {
     api.get.mockResolvedValue(estado({ repos: [repo({ spaceId: "sp-1" })] }));
-    render(<OrgGitHub canManage={false} />);
+    render(<MemoryRouter><OrgGitHub canManage={false} /></MemoryRouter>);
     const select = (await screen.findByLabelText(/dwit\/api/)) as HTMLSelectElement;
     expect(select.disabled).toBe(true);
     expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);

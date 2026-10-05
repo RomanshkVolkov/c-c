@@ -2,7 +2,7 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { goInOrg } from "@/lib/ir-en-org";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AtSign, BellRing, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Settings, UserPlus, Zap } from "lucide-react";
+import { AtSign, BellRing, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Rocket, Settings, UserPlus, Workflow, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
 import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
@@ -58,6 +58,10 @@ const KINDS: Record<string, { group: Tab; tagKey?: MessageKey; icon: typeof AtSi
   "meeting:reminder": {
     group: "talk", tagKey: "notifications:kind.meeting", icon: CalendarClock, color: "text-primary",
   },
+  // La actividad de CI (R9): un run de GitHub Actions que terminó, un deploy
+  // que acabó. Lo que hizo la máquina con el código, no una persona: System.
+  "ci:run": { group: "system", tagKey: "notifications:kind.ci", icon: Workflow, color: "text-muted-foreground" },
+  "deploy:done": { group: "system", tagKey: "notifications:kind.deploy", icon: Rocket, color: "text-primary" },
 };
 
 // Sin etiqueta a propósito: no hay palabra honesta para «no sé qué es esto».
