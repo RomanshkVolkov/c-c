@@ -91,6 +91,11 @@ type DeployNotice struct {
 	Ref    string `json:"ref"    validate:"max=200"`
 	Actor  string `json:"actor"  validate:"max=120"`
 	RunURL string `json:"runUrl" validate:"max=400"`
+	// WorkflowRunID: la fila de `workflow_runs` que dio este aviso, cuando
+	// viene de la GitHub App. **Nunca del `curl`**: `json:"-"` hace que un
+	// cuerpo que lo traiga lo pierda al decodificar, así que una llave del CI
+	// no puede colgar un deploy de un run que no es suyo.
+	WorkflowRunID string `json:"-"`
 }
 
 // DeployNoticeResponse cuenta qué pasó con el aviso. `Deploy` es:
@@ -133,6 +138,10 @@ type Deployment struct {
 	// El Deployment que este deploy tiene en GitHub, si su servicio tiene repo
 	// enlazado y la App puede escribir. 0 = ninguno.
 	GitHubDeploymentID int64 `gorm:"column:github_deployment_id;not null;default:0" json:"-"`
+	// WorkflowRunID: el run de GitHub Actions que disparó este deploy (el aviso
+	// del CI por la App), si lo hubo. Es lo que deja colgar el deploy de su run
+	// en la Actividad. Vacío = a mano, por el `curl`, o un rollback.
+	WorkflowRunID string `gorm:"type:varchar(36);index" json:"workflowRunId,omitempty"`
 }
 
 const (

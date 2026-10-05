@@ -41,8 +41,10 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	// Los servidores también: un deploy cuenta por el hub por dónde va.
 	// La GitHub App la comparten servidores (sigue cada deploy en GitHub) y sus
 	// propias rutas (webhooks y la pestaña de la org).
+	// Y apunta cada run del CI de los repos de la org (R9, la Actividad).
 	gh := service.NewGitHubService(repository.NewGitHubRepository(db), GitHubConfigFromEnv(), hub).
-		WithApp(GitHubAppKeyFromEnv())
+		WithApp(GitHubAppKeyFromEnv()).
+		WithActivity(repository.NewActivityRepository(db))
 	InitServerRoutesWith(db, r, hub, gh)
 	InitReportRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub)
@@ -51,6 +53,7 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitMeetingRoutes(db, r, hub)
 	InitRecordingRoutes(db, r, hub)
 	InitGitHubRoutesWith(r, gh)
+	InitActivityRoutes(db, r)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

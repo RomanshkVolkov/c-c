@@ -2,6 +2,7 @@ package domain
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -20,12 +21,27 @@ import (
 // por eso se pasa por estas constructoras.
 
 const (
-	groupChannel = "space"
-	groupDM      = "dm"
-	groupItem    = "item"
-	groupMeeting = "meeting"
-	groupDoc     = "doc"
+	groupChannel    = "space"
+	groupDM         = "dm"
+	groupItem       = "item"
+	groupMeeting    = "meeting"
+	groupDoc        = "doc"
+	groupRepo       = "repo"
+	groupDeployable = "deployable"
 )
+
+// RepoGroup: un repositorio de GitHub. Diez runs de un push son una fila, no
+// diez. Por el id numérico del repo y no por `owner/repo`: un repo renombrado
+// sigue siendo el mismo sitio.
+func RepoGroup(repoID int64) string {
+	if repoID == 0 {
+		return ""
+	}
+	return prefijo(groupRepo, strconv.FormatInt(repoID, 10))
+}
+
+// DeployableGroup: un servicio que cac despliega. Sus deploys van juntos.
+func DeployableGroup(deployableID string) string { return prefijo(groupDeployable, deployableID) }
 
 // DocGroup: un documento. Las peticiones de revisión del mismo doc van juntas:
 // tres cambios seguidos de un agente son una fila, no tres.
@@ -93,6 +109,12 @@ func DeriveGroup(kind, link string) string {
 			id = paramDe(link, "open")
 		}
 		return ItemGroup(id)
+	case strings.HasPrefix(kind, "ci:"), strings.HasPrefix(kind, "deploy:"):
+		// Nacen con clave (R9) y su enlace lleva `owner/repo`, no el id del
+		// repo por el que se agrupan: no hay nada que deducir del enlace, y
+		// deducirlo del nombre juntaría un repo renombrado con el que ocupe su
+		// nombre después. La clave la escribe siempre quien la causa.
+		return ""
 	default:
 		// Incluye `meeting:*`: una fila antigua lleva el enlace de la sala y
 		// **ninguna identidad de la reunión**, así que no hay nada que deducir.
@@ -183,5 +205,40 @@ func FraseDeEstado(estado string) Frase {
 		return Frase{Clave: "notify.item.moved." + estado}
 	default:
 		return Frase{Clave: "notify.item.moved", Args: map[string]string{"status": estado}}
+	}
+}
+
+// RunPhrase dice cómo acabó un run del CI (R9). Como FraseDeEstado: una clave
+// entera por conclusión en las tres que se leen a diario —pasó, falló, se
+// canceló— y una genérica con el nombre dentro para las raras (`skipped`,
+// `timed_out`, `action_required`…), que son las que cada idioma no tiene por
+// qué saber decir bonito.
+func RunPhrase(conclusion, workflow, branch string) Frase {
+	args := map[string]string{"workflow": workflow, "branch": branch}
+	switch conclusion {
+	case "success", "failure", "cancelled":
+		return Frase{Clave: "notify.ci.run." + conclusion, Args: args}
+	default:
+		args["conclusion"] = conclusion
+		return Frase{Clave: "notify.ci.run", Args: args}
+	}
+}
+
+// DeployExpiredError es lo que `ExpireStale` escribe en un deploy al que se le
+// murió el agente. Un código y no una frase: la app lo dice en cada idioma.
+const DeployExpiredError = "agent-stopped-responding"
+
+// DeployPhrase dice cómo acabó un deploy (R9). Uno que caducó porque el agente
+// dejó de contestar es un fallo, pero no el mismo: quien lo lee tiene que
+// saber que no hay nada roto en la imagen, sino en el servidor.
+func DeployPhrase(dep *Deployment, service, sha string) Frase {
+	args := map[string]string{"service": service, "sha": sha}
+	switch {
+	case dep.Status == DeploySucceeded:
+		return Frase{Clave: "notify.deploy.succeeded", Args: args}
+	case dep.Error == DeployExpiredError:
+		return Frase{Clave: "notify.deploy.expired", Args: args}
+	default:
+		return Frase{Clave: "notify.deploy.failed", Args: args}
 	}
 }

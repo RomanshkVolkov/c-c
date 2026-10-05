@@ -93,6 +93,10 @@ log en vivo y quién lo pidió («el CI»).
 El mismo sha dos veces es un build y, como mucho, un deploy: los reintentos del
 workflow no despliegan dos veces.
 
+El cuerpo **no puede decir de qué run viene**: el enlace entre un deploy y su
+`workflow_run` (`workflowRunId` en el deploy, para la Actividad) lo pone sólo la
+[GitHub App](github.md); un `workflowRunId` en este cuerpo se descarta.
+
 ## 5. Migraciones
 
 En el diálogo de deploy del servicio, «Migraciones»: un comando de una línea

@@ -102,6 +102,15 @@ type NotificationPrefs struct {
 	// llegan de ahí: seguir es lo que los pide, y esto es lo que los calla sin
 	// tener que dejar de seguir el canal.
 	Messages bool `json:"messages"`
+	// CIQuiet apaga la actividad de CI: cada run de GitHub Actions de los repos
+	// de la org al terminar, y cada deploy desde cac al acabar (R9).
+	//
+	// Invertido como WorkQuiet y por lo mismo: la columna nace en el cero de su
+	// tipo para quien ya tenga preferencias guardadas, y ese cero tiene que
+	// significar «sí, avísame». Es la válvula de la clase más habladora de la
+	// campana —un push son tantos avisos como workflows tenga el repo—, así que
+	// no puede caer en el `return true` del final, que nada silencia.
+	CIQuiet bool `json:"ciQuiet"`
 }
 
 // DefaultPrefs is what somebody who has never touched this gets.
@@ -132,6 +141,10 @@ func (p NotificationPrefs) Allows(kind string) bool {
 	// calla con lo mismo.
 	case "doc:review":
 		return !p.WorkQuiet
+	// Un run del CI que terminó y un deploy que acabó son la misma familia:
+	// lo que hizo la máquina con el código. Un solo interruptor para los dos.
+	case "ci:run", "deploy:done":
+		return !p.CIQuiet
 	}
 	return true
 }

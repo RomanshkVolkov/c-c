@@ -255,6 +255,24 @@ func TestTheSameNoticeTwiceIsOneDeployment(t *testing.T) {
 	}
 }
 
+// El cuerpo del `curl` no puede decir de qué run de GitHub viene: ese campo lo
+// pone sólo la App, y una llave del CI filtrada no puede colgar un deploy de un
+// run ajeno. El mutante que mata: ponerle etiqueta JSON a `WorkflowRunID`.
+func TestACurlNoticeCannotNameARun(t *testing.T) {
+	body := `{"sha":"abc1234","workflowRunId":"run-ajeno","WorkflowRunID":"run-ajeno"}`
+	req := httptest.NewRequest(http.MethodPost, "/ingest/v1/deploys", strings.NewReader(body))
+	got, err := ValidateRequest[domain.DeployNotice](req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Sha != "abc1234" {
+		t.Errorf("el sha no llegó: %+v", got)
+	}
+	if got.WorkflowRunID != "" {
+		t.Errorf("el curl pudo nombrar un run: %q", got.WorkflowRunID)
+	}
+}
+
 // Quién puede qué: ver, cualquiera de la org; desplegar, member; un servidor
 // kubernetes no despliega desde cac; un deployable de otro servidor no existe.
 func TestWhoMayDeploy(t *testing.T) {

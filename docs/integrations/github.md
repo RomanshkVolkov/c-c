@@ -112,3 +112,34 @@ GitHub el Deployment va con el sha entero, que cac resuelve.
 
 Nada de esto frena un deploy: lo que se cuenta a GitHub va aparte, y si GitHub
 no contesta, el deploy sigue igual.
+
+## 6. La actividad: todos los runs, no sólo el que publica
+
+Desde la R9 (4-oct-2026), **cada `workflow_run` de un repo de la org** queda
+apuntado en cac, venga del workflow que venga y acabe como acabe: quién lo
+disparó, en qué rama, de qué commit, cómo va y cómo terminó. Un repo que la
+instalación deja ver pero que ninguna org ha atado no apunta nada.
+
+- GitHub manda tres webhooks por intento (`requested`, `in_progress`,
+  `completed`) y los tres actualizan **la misma fila**. Un re-run es otra fila
+  (mismo id de run, otro intento). Si una entrega llega tarde, no deshace una
+  posterior: un `in_progress` rezagado nunca vuelve a poner «en curso» un run
+  que ya terminó.
+- Se ve en **Actividad** (`/activity`), mezclado por tiempo con los deploys de
+  cac. Filtros: `?repo=owner/repo` y `?deployable=<id>` (los runs del repo del
+  servicio que son de su workflow de build, o todos los del repo si no tiene
+  workflow puesto; y sus deploys). Un run enseña los deploys que disparó, y un
+  deploy, de qué run viene.
+- **Suena en la campana al terminar**, a toda la org, plegado por repo
+  («dwit/api (4)»), con el interruptor «CI y deploys». Y cada deploy que acaba
+  —bien, mal o caducado— también, a todos menos a quien lo pidió. Ver
+  [`notifications.md`](../notifications.md).
+- No hay mapa entre el login de GitHub y el usuario de cac: a quien hizo el
+  push le llega el aviso de su propio CI.
+
+La API: `GET /api/v1/organizations/{id}/activity?repo=&deployableId=&limit=&before=&beforeId=`
+(cualquiera de la org). Paginación por cursor: `before` es el `at` de la última
+entrada vista (RFC 3339) y `beforeId` su id; `hasMore` dice si queda más.
+
+Eventos y permisos de la App **no cambian**: `Workflow run` y `Actions: read`
+ya estaban desde la sección 1.

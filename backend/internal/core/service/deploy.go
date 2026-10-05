@@ -47,6 +47,17 @@ type DeployService struct {
 	hub      *events.Hub
 	now      func() time.Time
 	observer DeployObserver
+	// La campana para los deploys que acaban, y la org para saber a quién
+	// (R9). nil = no suena.
+	inbox Notifier
+	orgs  *repository.OrganizationRepository
+}
+
+// WithNotifier: que cada deploy que acaba —bien, mal o caducado— deje fila en
+// la campana de la org.
+func (s *DeployService) WithNotifier(inbox Notifier, orgs *repository.OrganizationRepository) *DeployService {
+	s.inbox, s.orgs = inbox, orgs
+	return s
 }
 
 // DeployObserver: quien quiere enterarse de cómo va cada deploy además de la
@@ -61,11 +72,57 @@ func (s *DeployService) WithObserver(o DeployObserver) *DeployService {
 	return s
 }
 
-// changed: el evento para la app y el aviso al observador, siempre juntos.
+// changed: el evento para la app y el aviso al observador, siempre juntos. Y
+// la campana, sólo cuando el deploy **acabó**: encolarse y arrancar se ven en
+// vivo, pero lo que uno quiere saber después es cómo terminó.
 func (s *DeployService) changed(d *domain.Deployable, dep *domain.Deployment) {
 	s.publish(dep.OrgID, "deploy:status", dep)
 	if s.observer != nil && d != nil {
 		s.observer.DeploymentChanged(d, dep)
+	}
+	if d != nil && (dep.Status == domain.DeploySucceeded || dep.Status == domain.DeployFailed) {
+		s.notifyDone(d, dep)
+	}
+}
+
+// notifyDone deja en la campana de toda la org cómo acabó un deploy (R9),
+// menos a quien lo pidió, que ya lo estaba mirando (y que la app te cuente lo
+// que acabas de hacer es el fallo que este repo ya quitó tres veces). Un deploy
+// del CI no lo pidió nadie de cac, así que llega a todos.
+//
+// Plegado por servicio (DeployableGroup): tres deploys seguidos de la api son
+// una fila. El título va por clave; el cuerpo es el entorno y el tag.
+func (s *DeployService) notifyDone(d *domain.Deployable, dep *domain.Deployment) {
+	if s.inbox == nil || s.orgs == nil {
+		return
+	}
+	members, err := s.orgs.MemberIDs(d.OrgID)
+	if err != nil {
+		return
+	}
+	ref, _ := domain.ImageRef(d.ImageRepo, dep.Image)
+	if ref == "" {
+		ref = dep.Image
+	}
+	phrase := domain.DeployPhrase(dep, d.Name, ref)
+	body := d.Environment
+	if body == "" {
+		body = d.Name
+	}
+	body += " · `" + ref + "`"
+	link := "/activity?deployable=" + d.ID + "&deployment=" + dep.ID
+	seen := make(map[string]bool, len(members))
+	for _, uid := range members {
+		if uid == "" || uid == dep.RequestedByUserID || seen[uid] {
+			continue
+		}
+		seen[uid] = true
+		s.inbox.Notify(domain.Aviso{
+			UserID: uid, OrgID: d.OrgID, Kind: "deploy:done",
+			TitleKey: phrase.Clave, TitleArgs: phrase.Args,
+			Body: body, Link: link, Via: domain.ViaApp,
+			Group: domain.DeployableGroup(d.ID), Label: d.Name,
+		})
 	}
 }
 
@@ -150,10 +207,18 @@ func (s *DeployService) DeleteDeployable(serverID, id string) error {
 // Con `idemKey` (el aviso del CI, R3), pedir dos veces lo mismo devuelve el
 // deployment que ya existía y `created=false`.
 func (s *DeployService) RequestDeploy(d *domain.Deployable, by, userID, sha, idemKey string) (dep *domain.Deployment, created bool, err error) {
+	return s.requestDeployFor(d, by, userID, sha, idemKey, "")
+}
+
+// requestDeployFor: RequestDeploy sabiendo de qué run de GitHub viene. El id
+// del run va **en la fila desde que nace** y no en un UPDATE después: el primer
+// `deploy:status` que ve la app ya lleva el enlace, y nadie puede pillar un
+// deploy sin su run entre las dos escrituras.
+func (s *DeployService) requestDeployFor(d *domain.Deployable, by, userID, sha, idemKey, runID string) (*domain.Deployment, bool, error) {
 	if !domain.ValidSha(sha) {
 		return nil, false, ErrBadSha
 	}
-	return s.enqueue(d, by, userID, d.ImageRepo+":"+d.Tag(sha), "", idemKey)
+	return s.enqueue(d, by, userID, d.ImageRepo+":"+d.Tag(sha), "", idemKey, runID)
 }
 
 // Rollback vuelve a lo que había antes de un deployment. Lo de antes lo leyó
@@ -171,11 +236,11 @@ func (s *DeployService) Rollback(d *domain.Deployable, deploymentID, userID stri
 	if _, ok := domain.ImageRef(d.ImageRepo, prev.PreviousImage); !ok {
 		return nil, ErrRollbackOutsideRepo
 	}
-	dep, _, err := s.enqueue(d, domain.DeployByUser, userID, prev.PreviousImage, prev.ID, "")
+	dep, _, err := s.enqueue(d, domain.DeployByUser, userID, prev.PreviousImage, prev.ID, "", "")
 	return dep, err
 }
 
-func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbackOf, idemKey string) (*domain.Deployment, bool, error) {
+func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbackOf, idemKey, runID string) (*domain.Deployment, bool, error) {
 	if idemKey != "" {
 		if existing, err := s.repo.FindByIdempotency(d.ID, idemKey); err == nil {
 			return existing, false, nil
@@ -207,6 +272,7 @@ func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbac
 		OrgID: d.OrgID, DeployableID: d.ID, ServerID: d.ServerID,
 		Image: image, RequestedBy: by, RequestedByUserID: userID,
 		Status: domain.DeployQueued, RollbackOfID: rollbackOf, IdempotencyKey: idemKey,
+		WorkflowRunID: runID,
 	}
 	dep.ID = uuid.NewString()
 	if err := s.repo.CreateDeployment(dep); err != nil {
@@ -268,7 +334,7 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 	if source == "github" {
 		by = domain.DeployByGitHub
 	}
-	dep, created, err := s.RequestDeploy(d, by, "", n.Sha, "ci:"+n.Sha)
+	dep, created, err := s.requestDeployFor(d, by, "", n.Sha, "ci:"+n.Sha, n.WorkflowRunID)
 	switch {
 	case errors.Is(err, repository.ErrDeployInFlight):
 		out.Deploy, out.Reason = "skipped", "deploy-in-flight"

@@ -30,9 +30,14 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 
 	deployRepo := repository.NewDeployRepository(db)
 	deploySvc := service.NewDeployService(deployRepo, repository.NewServerRepository(db), bus)
+	// La campana (R9): un deploy que acaba y un run del CI que termina dejan
+	// fila a toda la org. Ver docs/notifications.md.
+	inbox := service.NewNotificationService(repository.NewNotificationRepository(db))
+	orgs := repository.NewOrganizationRepository(db)
+	deploySvc.WithNotifier(inbox, orgs)
 	if gh != nil {
 		deploySvc.WithObserver(gh)
-		gh.WithDeploys(deploySvc, deployRepo)
+		gh.WithDeploys(deploySvc, deployRepo).WithNotifier(inbox, orgs)
 	}
 	deployH := handler.NewDeployHandler(svc, deploySvc).
 		WithSecrets(service.NewSecretRefService(repository.NewSecretRefRepository(db)))

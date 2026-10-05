@@ -72,6 +72,36 @@ var catalogo = map[string]map[Locale]string{
 		ES: "Cerrada",
 	},
 
+	// La actividad de CI (R9): un run que terminó, un deploy que acabó.
+	"notify.ci.run.success": {
+		EN: "{{workflow}} passed on {{branch}}",
+		ES: "{{workflow}} pasó en {{branch}}",
+	},
+	"notify.ci.run.failure": {
+		EN: "{{workflow}} failed on {{branch}}",
+		ES: "{{workflow}} falló en {{branch}}",
+	},
+	"notify.ci.run.cancelled": {
+		EN: "{{workflow}} was cancelled on {{branch}}",
+		ES: "{{workflow}} se canceló en {{branch}}",
+	},
+	"notify.ci.run": {
+		EN: "{{workflow}} finished: {{conclusion}} · {{branch}}",
+		ES: "{{workflow}} terminó: {{conclusion}} · {{branch}}",
+	},
+	"notify.deploy.succeeded": {
+		EN: "{{service}} deployed · {{sha}}",
+		ES: "{{service}} desplegado · {{sha}}",
+	},
+	"notify.deploy.failed": {
+		EN: "{{service}} deploy failed · {{sha}}",
+		ES: "Falló el deploy de {{service}} · {{sha}}",
+	},
+	"notify.deploy.expired": {
+		EN: "{{service}} deploy expired: the agent stopped responding · {{sha}}",
+		ES: "Caducó el deploy de {{service}}: el agente dejó de contestar · {{sha}}",
+	},
+
 	// ── Errores de la API ───────────────────────────────────────────────────
 	"unauthorized": {
 		EN: "Unauthorized",

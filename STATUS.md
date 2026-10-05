@@ -67,6 +67,30 @@ servicio no se toca. A un agente < v4 no se le encola. Publicar: backend →
 agente `:v4` (`swarm-manage.yml`) → app v1.6.82 (R8a + R8b), y luego «Update
 agent». Ver `docs/integrations/deploys.md` §5.
 
+**En curso (4-oct, #124 backend / #125 app): R9 — Actividad de CI.** jose
+pidió aviso de **cualquier** GitHub Action de los repos de la org (quién,
+cuándo, qué desplegó) y ver su estado en cac. Decisiones: todos los runs
+completados a la campana, plegados por repo y con interruptor «CI y deploys»;
+página propia `/activity` (runs y deploys por tiempo, filtrable por repo y
+servicio, con acceso directo desde el servicio); aviso a toda la org; sólo
+repos con org. **Backend hecho, sin commitear:** cada `workflow_run` de un repo
+de la org se apunta en `workflow_runs` (una fila por intento, upsert por rango
+de estado: un webhook tardío no deshace un `completed`), el deploy que encola
+la App nace con `WorkflowRunID`, `GET /organizations/{id}/activity` mezcla las
+dos tablas en el servidor con cursor `(at, id)`, y la campana recibe `ci:run`
+(al terminar, a toda la org, plegado por repo) y `deploy:done` (al acabar, a
+todos menos quien lo pidió, plegado por servicio), con `CIQuiet` invertida
+como `WorkQuiet`. Límite conocido: no hay mapa login↔usuario, así que un run
+avisa también a quien hizo el push. Plan en
+`~/.claude/plans/joyful-dazzling-meteor.md`. **App hecha, sin commitear
+(#125):** página `/activity` (entrada «Actividad» en Plataforma; filtros
+`?repo=` y `?deployable=`; `?run=`/`?deployment=` resaltan la fila; en vivo por
+`ci:run` y `deploy:status`), clases `ci:run`/`deploy:done` en la campana
+plegadas por repo y por servicio, interruptor «CI y deploys» (`ciQuiet`,
+invertido), accesos directos desde el diálogo de deploy, la sección del CI y
+la pestaña GitHub de la org, y la lista del `EventSource` del navegador
+completada. Sale **después** de desplegar el backend, en la siguiente versión.
+
 **Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).
 v1.6.84: la pantalla compartida desde Mac ya no sale inclinada (#98: se

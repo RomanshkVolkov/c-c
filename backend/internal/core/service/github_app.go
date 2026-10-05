@@ -8,14 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -54,6 +57,19 @@ func (s *GitHubService) WithApp(k GitHubAppKey) *GitHubService {
 // CI y para seguir cada deploy en GitHub.
 func (s *GitHubService) WithDeploys(svc *DeployService, repo *repository.DeployRepository) *GitHubService {
 	s.deploys, s.deployRepo = svc, repo
+	return s
+}
+
+// WithActivity: dónde apuntar cada `workflow_run` de los repos de la org (R9).
+func (s *GitHubService) WithActivity(runs *repository.ActivityRepository) *GitHubService {
+	s.runs = runs
+	return s
+}
+
+// WithNotifier: la campana para los runs que terminan, y la org para saber a
+// quién. Sin los dos no suena nada.
+func (s *GitHubService) WithNotifier(inbox Notifier, orgs *repository.OrganizationRepository) *GitHubService {
+	s.inbox, s.orgs = inbox, orgs
 	return s
 }
 
@@ -330,15 +346,45 @@ func ghTruncate(s string, n int) string {
 	return s
 }
 
-// ─── workflow_run: el workflow que publica la imagen ──────────────────────────
+// ─── workflow_run: la actividad del CI, y el workflow que publica la imagen ───
 
+// onWorkflowRun hace dos cosas con cada `workflow_run` de un repo de la org,
+// y en este orden:
+//
+//  1. Lo **apunta** (R9), venga en el estado que venga: así la Actividad enseña
+//     el run desde que GitHub lo encola, y la campana suena cuando termina.
+//  2. Si es el workflow que publica la imagen de un servicio y acabó bien,
+//     cuenta como el **aviso del CI** (R6), con el id del run para que el deploy
+//     que encole quede colgado de él.
+//
+// Un run de un repo que ninguna org ha atado se ignora entero: la instalación
+// deja ver el repo, pero lo que pasa en él no es de nadie.
 func (s *GitHubService) onWorkflowRun(p *ghPayload) error {
-	run := p.WorkflowRun
-	if p.Action != "completed" || run.Conclusion != "success" || s.deploys == nil {
+	if p.WorkflowRun.ID == 0 {
 		return nil
 	}
-	repo, err := s.repo.FindRepo(p.Repository.ID)
-	if err != nil || repo.OrgID == "" {
+	repo := s.orgRepo(p.Repository.ID)
+	if repo == nil {
+		return nil
+	}
+	run := runFromPayload(repo, p, s.now)
+	if s.runs != nil {
+		stored, advanced, err := s.runs.UpsertRun(run)
+		if err != nil {
+			return err
+		}
+		run = stored
+		if s.hub != nil {
+			s.hub.Publish(events.Event{Type: "ci:run", OrgID: repo.OrgID, Data: run})
+		}
+		// Sólo cuando **esta** entrega lo terminó: la reentrega de un
+		// `completed` escribe lo mismo y no avanza, y no suena dos veces.
+		if advanced && domain.IsRunTerminal(run.Status) {
+			s.notifyRun(repo, run)
+		}
+	}
+
+	if p.Action != "completed" || run.Conclusion != "success" || s.deploys == nil {
 		return nil
 	}
 	ds, err := s.deployRepo.DeployablesBuiltBy(repo.OrgID, repo.FullName)
@@ -350,7 +396,8 @@ func (s *GitHubService) onWorkflowRun(p *ghPayload) error {
 			continue
 		}
 		_, err := s.deploys.Notice(&ds[i], domain.DeployNotice{
-			Sha: run.HeadSha, Ref: "refs/heads/" + run.HeadBranch, Actor: run.Actor.Login, RunURL: safeURL(run.HTMLURL),
+			Sha: run.HeadSha, Ref: "refs/heads/" + run.HeadBranch, Actor: run.Actor,
+			RunURL: run.HTMLURL, WorkflowRunID: run.ID,
 		}, "github")
 		// Un sha que no vale o un servicio que no se puede desplegar ahora no
 		// es motivo para que GitHub reintente la entrega: no va a cambiar.
@@ -359,4 +406,84 @@ func (s *GitHubService) onWorkflowRun(p *ghPayload) error {
 		}
 	}
 	return nil
+}
+
+// notifyRun deja en la campana de toda la org que un run terminó (R9).
+//
+// A toda la org y **sin saltarse a nadie**: no hay forma de saber qué usuario
+// de cac es el `actor` de GitHub —no existe el mapa login↔usuario—, así que a
+// quien hizo el push le llega su propio CI. Está dicho en docs/notifications.md;
+// el día que haya mapa, aquí es donde se salta.
+//
+// Plegado por repo (RepoGroup): un push son tantos avisos como workflows tenga
+// el repo, y la campana los enseña como «dwit/api (4)», no como cuatro filas.
+// El título va por clave para que cada quien lo lea en su idioma; el cuerpo es
+// el repo, el commit y quién, que no se traducen.
+func (s *GitHubService) notifyRun(repo *domain.GitHubRepo, run *domain.WorkflowRun) {
+	if s.inbox == nil || s.orgs == nil {
+		return
+	}
+	members, err := s.orgs.MemberIDs(repo.OrgID)
+	if err != nil {
+		return
+	}
+	phrase := domain.RunPhrase(run.Conclusion, run.WorkflowName, run.HeadBranch)
+	body := repo.FullName
+	if len(run.HeadSha) >= domain.ShortSha {
+		body += " · `" + run.HeadSha[:domain.ShortSha] + "`"
+	}
+	if run.Actor != "" {
+		body += " · @" + run.Actor
+	}
+	link := "/activity?" + url.Values{"repo": {repo.FullName}, "run": {run.ID}}.Encode()
+	seen := make(map[string]bool, len(members))
+	for _, uid := range members {
+		if uid == "" || seen[uid] {
+			continue
+		}
+		seen[uid] = true
+		s.inbox.Notify(domain.Aviso{
+			UserID: uid, OrgID: repo.OrgID, Kind: "ci:run",
+			TitleKey: phrase.Clave, TitleArgs: phrase.Args,
+			Body: body, Link: link, Via: domain.ViaApp,
+			Group: domain.RepoGroup(repo.RepoID), Label: repo.FullName,
+		})
+	}
+}
+
+// runFromPayload: la fila de un `workflow_run` tal como llega. Pura, para
+// probarla sin base. Lo que GitHub no manda se rellena con lo que sí: sin
+// `triggering_actor` vale el `actor`, sin `run_attempt` es el primero, sin
+// `created_at` el reloj de aquí (y el feed lo ordena por eso, así que es lo
+// único que no puede quedarse en cero).
+func runFromPayload(repo *domain.GitHubRepo, p *ghPayload, now func() time.Time) *domain.WorkflowRun {
+	w := p.WorkflowRun
+	actor := w.TriggeringActor.Login
+	if actor == "" {
+		actor = w.Actor.Login
+	}
+	attempt := w.RunAttempt
+	if attempt < 1 {
+		attempt = 1
+	}
+	occurred := w.CreatedAt
+	if occurred.IsZero() {
+		occurred = now()
+	}
+	run := &domain.WorkflowRun{
+		OrgID: repo.OrgID, RepoID: repo.RepoID, RepoFullName: repo.FullName,
+		RunID: w.ID, RunAttempt: attempt, RunNumber: w.RunNumber,
+		WorkflowName: ghTruncate(w.Name, 200), Path: w.Path, Event: w.Event,
+		Status: w.Status, Conclusion: w.Conclusion,
+		HeadSha: w.HeadSha, HeadBranch: ghTruncate(w.HeadBranch, 200),
+		CommitTitle: ghTruncate(firstLine(w.HeadCommit.Message), 200),
+		Actor:       actor, HTMLURL: safeURL(w.HTMLURL),
+		OccurredAt: occurred, RunStartedAt: w.RunStartedAt,
+	}
+	if !w.UpdatedAt.IsZero() {
+		updated := w.UpdatedAt
+		run.EventUpdatedAt = &updated
+	}
+	run.ID = uuid.NewString()
+	return run
 }

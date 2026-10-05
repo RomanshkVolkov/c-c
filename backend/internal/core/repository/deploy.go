@@ -143,7 +143,7 @@ func (r *DeployRepository) ExpireStale(deployableID string, now time.Time) ([]do
 		Updates(map[string]any{
 			"status": domain.DeployFailed,
 			// Un código y no una frase: la app lo dice en el idioma de cada quien.
-			"error":       "agent-stopped-responding",
+			"error":       domain.DeployExpiredError,
 			"finished_at": now,
 		}).Error
 	return expired, err

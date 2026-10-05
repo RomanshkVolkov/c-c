@@ -59,11 +59,16 @@ type GitHubService struct {
 	app        GitHubAppKey
 	deploys    *DeployService
 	deployRepo *repository.DeployRepository
-	http       *http.Client
-	async      bool
-	mu         sync.Mutex
-	tokens     map[int64]installationToken
-	locks      map[string]*sync.Mutex
+	// Los runs del CI de los repos de la org (R9). nil = no se apuntan.
+	runs *repository.ActivityRepository
+	// La campana y a quién llamar (R9). nil = no suena.
+	inbox  Notifier
+	orgs   *repository.OrganizationRepository
+	http   *http.Client
+	async  bool
+	mu     sync.Mutex
+	tokens map[int64]installationToken
+	locks  map[string]*sync.Mutex
 }
 
 func NewGitHubService(repo *repository.GitHubRepository, cfg GitHubConfig, hub *events.Hub) *GitHubService {
@@ -215,14 +220,31 @@ type ghPayload struct {
 		} `json:"author"`
 	} `json:"commits"`
 	WorkflowRun struct {
-		Conclusion string `json:"conclusion"`
-		Path       string `json:"path"`
-		HeadSha    string `json:"head_sha"`
-		HeadBranch string `json:"head_branch"`
-		HTMLURL    string `json:"html_url"`
-		Actor      struct {
+		ID           int64      `json:"id"`
+		RunNumber    int        `json:"run_number"`
+		RunAttempt   int        `json:"run_attempt"`
+		Name         string     `json:"name"`
+		Status       string     `json:"status"`
+		Conclusion   string     `json:"conclusion"`
+		Event        string     `json:"event"`
+		Path         string     `json:"path"`
+		HeadSha      string     `json:"head_sha"`
+		HeadBranch   string     `json:"head_branch"`
+		HTMLURL      string     `json:"html_url"`
+		CreatedAt    time.Time  `json:"created_at"`
+		UpdatedAt    time.Time  `json:"updated_at"`
+		RunStartedAt *time.Time `json:"run_started_at"`
+		Actor        struct {
 			Login string `json:"login"`
 		} `json:"actor"`
+		// TriggeringActor: en un re-run, quien lo relanzó; `actor` sigue siendo
+		// el del push original.
+		TriggeringActor struct {
+			Login string `json:"login"`
+		} `json:"triggering_actor"`
+		HeadCommit struct {
+			Message string `json:"message"`
+		} `json:"head_commit"`
 	} `json:"workflow_run"`
 	Number      int `json:"number"`
 	PullRequest struct {
@@ -288,6 +310,18 @@ func (s *GitHubService) handle(event string, body []byte) error {
 func (s *GitHubService) linkedRepo(id int64) *domain.GitHubRepo {
 	repo, err := s.repo.FindRepo(id)
 	if err != nil || repo.OrgID == "" || repo.SpaceID == "" {
+		return nil
+	}
+	return repo
+}
+
+// orgRepo: el repo si es de alguna org, enlazado a un espacio o no. Es la
+// puerta de lo que no comenta en tareas (los runs del CI): un repo que la
+// instalación deja ver pero que nadie ha atado no es de nadie, y lo suyo se
+// ignora en silencio.
+func (s *GitHubService) orgRepo(id int64) *domain.GitHubRepo {
+	repo, err := s.repo.FindRepo(id)
+	if err != nil || repo.OrgID == "" {
 		return nil
 	}
 	return repo

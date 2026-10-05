@@ -4,7 +4,7 @@ Este documento es el mapa completo de los eventos de cac y de cuáles dejan algo
 que se pueda leer más tarde. Se escribió después de perder un comentario de un
 cliente: escribió con la app cerrada y no quedó constancia en ninguna parte.
 
-Última revisión: **2026-08-19**.
+Última revisión: **2026-10-04** (R9: la actividad de CI).
 
 ## 1 · Tres cosas distintas que se confunden
 
@@ -46,6 +46,9 @@ Todos los eventos que emite el backend, y qué deja cada uno.
 | `voice.ring` — te llaman a una sala | `voice_ring.go:47` | **No, a propósito** | — | **una sola persona**, vía `Event.UserID` |
 | `voice.ring.cancel` — colgaron, o rechazaste | `voice_ring.go:79` | No | — | la otra persona de esa llamada |
 | `meeting:reminder` — empieza una reunión periódica | `meeting.go` (`anunciar`) | **Sí** | `MeetingsQuiet` | **una sola persona**, vía `Event.UserID`, a cada convocado |
+| `ci:run` — un `workflow_run` de un repo de la org | `github_app.go` (`onWorkflowRun`) | **Sí, sólo al terminar** (`completed`, y sólo si esa entrega lo terminó) | `ci:run` | **toda la org, sin saltarse a nadie**: no hay mapa login de GitHub ↔ usuario, así que a quien hizo el push le llega su propio CI |
+| `deploy:status` — un deploy cambia de estado | `deploy.go` (`changed`) | **Sí, sólo en terminal** (`succeeded`, `failed`, incluido el caducado) | `deploy:done` | toda la org menos `RequestedByUserID`; un deploy del CI no lo pidió nadie de cac y llega a todos |
+| `deploy:log` — líneas del log de un deploy | `deploy.go` (`AppendLog`) | No, a propósito | — | es el log en vivo; lo guardado está en la fila del deploy |
 
 **El timbre no deja fila en la campana**, y eso es una decisión y no un
 descuido. Una llamada caduca en veinte segundos: una entrada en el historial
@@ -99,8 +102,15 @@ dejar el contador puesto obligaría a volver a la campana a limpiarlo a mano.
 ### La clave, y por qué no se escribe a mano
 
 Cada fila lleva `GroupKey` (`space:<id>`, `dm:<id>`, `item:<id>`,
-`meeting:<id>`) y `GroupLabel` (cómo se llama para un humano). Las claves salen
-**siempre** de las constructoras de `domain/notification_group.go`.
+`meeting:<id>`, `repo:<id de GitHub>`, `deployable:<id>`) y `GroupLabel` (cómo
+se llama para un humano). Las claves salen **siempre** de las constructoras de
+`domain/notification_group.go`.
+
+Las de la actividad de CI (R9) van por el **id numérico del repo**, no por
+`owner/repo`: un repo renombrado sigue siendo el mismo sitio. Y `DeriveGroup`
+devuelve `""` para `ci:*` y `deploy:*` a propósito: su enlace lleva el nombre
+del repo, no el id, así que no hay nada que deducir; nacen con clave y la
+escribe siempre quien las causa.
 
 Si un sitio escribiera `"space:"+id` y otro `"space-"+id`, los dos serían
 válidos, ninguno daría error y sus avisos **nunca se agruparían juntos**. Un
@@ -201,8 +211,21 @@ Una clase de notificación necesita cuatro cosas alineadas o queda a medias:
 | `report:new` | `avisos.go` | `reports` | ✅ `report` | System |
 | `task:assigned` | `avisos.go` | `workQuiet` (invertida) | ✅ `assigned` | Tasks |
 | `task:status` | `avisos.go` | `workQuiet` (invertida) | ✅ `status` | Tasks |
+| `ci:run` | `github_app.go:notifyRun` | `ciQuiet` (invertida) | `ci` (desde la app de la R9) | System |
+| `deploy:done` | `deploy.go:notifyDone` | `ciQuiet` (invertida) | `deploy` (desde la app de la R9) | System |
 
-Las siete están completas. **Hasta el 19/08/2026 dos de ellas no lo estaban**:
+Las siete primeras están completas. Las dos de la R9 (4-oct-2026) tienen su
+`case` en `Allows` y quien las escribe; la entrada en `KINDS` y el interruptor
+en el diálogo llegan con la app de la R9. Hasta entonces, una build anterior las
+pinta en «System» sin etiqueta y no las puede apagar desde el diálogo (sí desde
+la API, `PATCH /notifications/preferences` con `ciQuiet`).
+
+**Sobre `CIQuiet`:** es la válvula de la clase más habladora de la campana. Un
+push son tantos avisos como workflows tenga el repo, por persona. Lo que lo hace
+llevadero es el plegado por repo —«dwit/api (4)» y no cuatro filas— y, si no
+basta, el interruptor. Si algún día `skipped` resulta ruido, se excluye de la
+campana (no de la tabla `workflow_runs`), pero hoy se avisa de todo porque así
+se pidió. **Hasta el 19/08/2026 dos de ellas no lo estaban**:
 `task:comment` y `report:new` tenían su `case` en `Allows`, su interruptor en el
 diálogo y su pestaña en el panel, y **ningún servicio escribía una sola fila**.
 Eran controles que no gobernaban nada.
@@ -263,7 +286,8 @@ Justo lo que estás esperando, y sin aviso.
 `chat:message` y `dm:message`**, aunque el `switch` sí los trata. En la app de
 escritorio da igual —el stream lo lleva Rust (`sse.rs`) y reenvía cada trama
 verbatim—, pero la ruta `EventSource`, que existe para correr la interfaz en un
-navegador normal, se los come en silencio.
+navegador normal, se los come en silencio. Con la R9 también faltan `ci:run`,
+`deploy:status` y `deploy:log`: la app de la R9 completa la lista.
 
 ## 5 · Reglas para no volver a romperlo
 
@@ -310,7 +334,8 @@ notificación de `report:new` apuntó a un reporte que no estaba en ninguna part
 | A quién avisar | `backend/internal/core/service/avisos.go` |
 | Escribir la fila y comprobar preferencias | `service/notification.go` |
 | Clases permitidas y valores por defecto | `domain/notification.go` |
-| Enchufar el buzón a un servicio | `WithNotifier` en `task.go`, `report.go`, `chat.go`, `dm.go`; montado en `http/task.go` y `http/report.go` |
+| Enchufar el buzón a un servicio | `WithNotifier` en `task.go`, `report.go`, `chat.go`, `dm.go`, `deploy.go` y `github_app.go`; montado en `http/task.go`, `http/report.go` y `http/server.go` |
+| Quién recibe un run del CI o un deploy acabado | `notifyRun` en `service/github_app.go`, `notifyDone` en `service/deploy.go` |
 | Pintar el panel | `app/src/components/NotificationsPanel.tsx` (`CLASES`) |
 | Los interruptores | `app/src/components/NotificationPrefsDialog.tsx` (`OPCIONES`) |
 | Refrescar la campana en vivo | `releerBandeja()` en `app/src/hooks/use-report-events.ts` |

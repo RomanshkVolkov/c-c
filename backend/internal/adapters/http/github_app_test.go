@@ -115,6 +115,31 @@ type appFixture struct {
 	gh      *fakeGitHub
 	deploys *service.DeployService
 	d       *domain.Deployable
+	// bell: lo que llegó a la campana (R9).
+	bell *inboxSpy
+}
+
+type inboxSpy struct {
+	mu     sync.Mutex
+	avisos []domain.Aviso
+}
+
+func (s *inboxSpy) Notify(a domain.Aviso) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.avisos = append(s.avisos, a)
+}
+
+func (s *inboxSpy) ofKind(kind string) []domain.Aviso {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []domain.Aviso
+	for _, a := range s.avisos {
+		if a.Kind == kind {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 const (
@@ -127,7 +152,8 @@ const (
 func appSetup(t *testing.T, mode string) (*appFixture, func()) {
 	t.Helper()
 	f, cleanup := githubSetup(t)
-	if err := f.db.AutoMigrate(&domain.Organization{}, &domain.Server{}, &domain.Deployable{}, &domain.Deployment{}, &domain.ImageBuild{}); err != nil {
+	if err := f.db.AutoMigrate(&domain.Organization{}, &domain.OrgMembership{}, &domain.Server{}, &domain.Deployable{}, &domain.Deployment{},
+		&domain.ImageBuild{}, &domain.WorkflowRun{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.EnsureDeployIndexes(f.db); err != nil {
@@ -136,6 +162,12 @@ func appSetup(t *testing.T, mode string) (*appFixture, func()) {
 	now := time.Now()
 	f.db.Exec(`INSERT INTO servers (id, org_id, name, host, ssh_port, ssh_user, type, agent_port, status, agent_version, created_at, updated_at)
 		VALUES ('srv-1','org-1','tds','10.0.0.1',22,'root','docker-swarm',9090,'online',3,?,?)`, now, now)
+	// Dos de la org-1 (u-1 pide los deploys a mano) y una de la org-2.
+	for _, m := range [][2]string{{"org-1", "u-1"}, {"org-1", "u-2"}, {"org-2", "u-3"}} {
+		f.db.Exec(`INSERT INTO org_memberships (org_id, user_id, role, created_at) VALUES (?, ?, 'member', ?)`, m[0], m[1], now)
+	}
+	bell := &inboxSpy{}
+	orgs := repository.NewOrganizationRepository(f.db)
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -147,15 +179,19 @@ func appSetup(t *testing.T, mode string) (*appFixture, func()) {
 
 	gh := service.NewGitHubService(repository.NewGitHubRepository(f.db),
 		service.GitHubConfig{AppSlug: "cac-test", WebhookSecret: ghSecret}, events.NewHub()).
-		WithApp(service.GitHubAppKey{AppID: appID, Key: key, APIURL: api.URL}).Sync()
+		WithApp(service.GitHubAppKey{AppID: appID, Key: key, APIURL: api.URL}).Sync().
+		WithActivity(repository.NewActivityRepository(f.db))
 	r := chi.NewRouter()
 	InitServerRoutesWith(f.db, r, events.NewHub(), gh)
 	InitGitHubRoutesWith(r, gh)
 	f.r = r
 
 	deployRepo := repository.NewDeployRepository(f.db)
-	deploys := service.NewDeployService(deployRepo, repository.NewServerRepository(f.db), nil).WithObserver(gh)
-	gh.WithDeploys(deploys, deployRepo)
+	deploys := service.NewDeployService(deployRepo, repository.NewServerRepository(f.db), nil).WithObserver(gh).
+		WithNotifier(bell, orgs)
+	// Después de montar las rutas: `InitServerRoutesWith` le pone a la App la
+	// campana de verdad, y aquí hace falta la espía.
+	gh.WithDeploys(deploys, deployRepo).WithNotifier(bell, orgs)
 	srv, _ := service.NewServerService(repository.NewServerRepository(f.db)).Find("srv-1")
 	d, err := deploys.CreateDeployable(srv, domain.CreateDeployableRequest{
 		Name: "api", Stack: "beta", ServiceName: "beta_app", ImageRepo: "ghcr.io/dwit/api", Environment: "prod",
@@ -169,7 +205,7 @@ func appSetup(t *testing.T, mode string) (*appFixture, func()) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return &appFixture{ghFixture: f, gh: fake, deploys: deploys, d: d}, cleanup
+	return &appFixture{ghFixture: f, gh: fake, deploys: deploys, d: d, bell: bell}, cleanup
 }
 
 // El agente recoge el deploy y lo cierra.
@@ -290,10 +326,175 @@ func TestOnlyAServiceWithItsOrgsRepoWritesToGitHub(t *testing.T) {
 	}
 }
 
+// workflowRun: el `completed` del run 9, como lo manda GitHub.
 func workflowRun(path, conclusion string) string {
-	return fmt.Sprintf(`{"action":"completed","repository":{"id":100,"full_name":"dwit/api"},"workflow_run":{
-		"conclusion":%q,"path":%q,"head_sha":%q,"head_branch":"main","html_url":"https://github.com/dwit/api/actions/runs/9",
-		"actor":{"login":"ana"}}}`, conclusion, path, shaNew)
+	return workflowRunAt(9, "completed", domain.RunStatusCompleted, conclusion, path)
+}
+
+// workflowRunAt: un `workflow_run` del run `id` en el estado que se pida.
+// GitHub manda tres por intento: requested, in_progress y completed.
+func workflowRunAt(id int64, action, status, conclusion, path string) string {
+	return fmt.Sprintf(`{"action":%q,"repository":{"id":100,"full_name":"dwit/api"},"workflow_run":{
+		"id":%d,"run_number":41,"run_attempt":1,"name":"Deploy","status":%q,"conclusion":%q,"event":"push","path":%q,
+		"head_sha":%q,"head_branch":"main","html_url":"https://github.com/dwit/api/actions/runs/%d",
+		"created_at":"2026-10-04T10:00:00Z","updated_at":"2026-10-04T10:05:00Z",
+		"actor":{"login":"ana"},"head_commit":{"message":"feat: algo cac#12"}}}`, action, id, status, conclusion, path, shaNew, id)
+}
+
+// Cada `workflow_run` de un repo de la org queda apuntado, venga en el estado
+// que venga, y los tres webhooks de un intento son **una** fila que avanza. El
+// repo de otra org (o de ninguna) no deja nada. Mutantes: grabar sólo en
+// `completed` (la fila no existiría tras el `requested`), o quitar la puerta
+// de la org (el repo soltado dejaría fila).
+func TestEveryRunOfAnOrgRepoIsRecorded(t *testing.T) {
+	f, cleanup := appSetup(t, "record")
+	defer cleanup()
+	f.hook(t, "workflow_run", "d-1", workflowRunAt(7, "requested", "queued", "", ".github/workflows/tests.yml"))
+	var run domain.WorkflowRun
+	if err := f.db.First(&run, "run_id = 7").Error; err != nil {
+		t.Fatalf("un run recién pedido no se apuntó: %v", err)
+	}
+	if run.Status != "queued" || run.OrgID != "org-1" || run.RepoFullName != "dwit/api" || run.WorkflowName != "Deploy" {
+		t.Errorf("la fila no es la del run: %+v", run)
+	}
+	f.hook(t, "workflow_run", "d-2", workflowRunAt(7, "in_progress", domain.RunStatusInProgress, "", ".github/workflows/tests.yml"))
+	f.hook(t, "workflow_run", "d-3", workflowRunAt(7, "completed", domain.RunStatusCompleted, "failure", ".github/workflows/tests.yml"))
+	var rows []domain.WorkflowRun
+	f.db.Find(&rows)
+	if len(rows) != 1 || rows[0].Status != domain.RunStatusCompleted || rows[0].Conclusion != "failure" {
+		t.Fatalf("tres webhooks de un intento tienen que ser una fila terminada: %+v", rows)
+	}
+	// Un workflow que falló no es el aviso del CI, pero sí se ve.
+	var builds int64
+	f.db.Model(&domain.ImageBuild{}).Count(&builds)
+	if builds != 0 {
+		t.Errorf("un run fallido dejó %d builds", builds)
+	}
+
+	f.db.Model(&domain.GitHubRepo{}).Where("repo_id = 100").Update("org_id", "")
+	f.hook(t, "workflow_run", "d-4", workflowRunAt(8, "completed", domain.RunStatusCompleted, "success", ".github/workflows/tests.yml"))
+	var n int64
+	f.db.Model(&domain.WorkflowRun{}).Where("run_id = 8").Count(&n)
+	if n != 0 {
+		t.Error("un run de un repo que ninguna org ha atado se apuntó")
+	}
+}
+
+// Un run que termina suena en la campana de **toda** la org, una vez por
+// persona y plegado por repo; mientras corre, no; y la reentrega del mismo
+// `completed` no suena otra vez. Nadie se salta: no hay mapa login↔usuario.
+// Mutantes: avisar en cada acción (el `requested` dejaría filas), quitar la
+// guarda de `advanced` (la reentrega doblaría), escribir `"repo:"+id` a mano
+// o avisar sólo al actor.
+func TestACompletedRunRingsEveryMemberOnce(t *testing.T) {
+	f, cleanup := appSetup(t, "record")
+	defer cleanup()
+	f.hook(t, "workflow_run", "d-1", workflowRunAt(7, "requested", "queued", "", ".github/workflows/tests.yml"))
+	f.hook(t, "workflow_run", "d-2", workflowRunAt(7, "in_progress", domain.RunStatusInProgress, "", ".github/workflows/tests.yml"))
+	if n := len(f.bell.ofKind("ci:run")); n != 0 {
+		t.Fatalf("un run en curso dejó %d avisos", n)
+	}
+	f.hook(t, "workflow_run", "d-3", workflowRunAt(7, "completed", domain.RunStatusCompleted, "failure", ".github/workflows/tests.yml"))
+	got := f.bell.ofKind("ci:run")
+	if len(got) != 2 {
+		t.Fatalf("%d avisos para una org de dos; se esperaban 2: %+v", len(got), got)
+	}
+	who := map[string]bool{}
+	var run domain.WorkflowRun
+	f.db.First(&run, "run_id = 7")
+	for _, a := range got {
+		who[a.UserID] = true
+		if a.OrgID != "org-1" || a.TitleKey != "notify.ci.run.failure" || a.TitleArgs["workflow"] != "Deploy" || a.TitleArgs["branch"] != "main" {
+			t.Errorf("el aviso no dice lo que pasó: %+v", a)
+		}
+		if a.Group != domain.RepoGroup(100) || a.Label != "dwit/api" {
+			t.Errorf("no se pliega por repo: %q %q", a.Group, a.Label)
+		}
+		if !strings.Contains(a.Link, "repo=dwit%2Fapi") || !strings.Contains(a.Link, "run="+run.ID) {
+			t.Errorf("el enlace no lleva a la actividad del repo y al run: %q", a.Link)
+		}
+		if !strings.Contains(a.Body, "dwit/api") || !strings.Contains(a.Body, shaNew[:7]) || !strings.Contains(a.Body, "@ana") {
+			t.Errorf("el cuerpo no dice repo, commit y quién: %q", a.Body)
+		}
+	}
+	if !who["u-1"] || !who["u-2"] || who["u-3"] {
+		t.Errorf("le llegó a %v; se esperaba a u-1 y u-2 y a nadie de otra org", who)
+	}
+	f.hook(t, "workflow_run", "d-4", workflowRunAt(7, "completed", domain.RunStatusCompleted, "failure", ".github/workflows/tests.yml"))
+	if n := len(f.bell.ofKind("ci:run")); n != 2 {
+		t.Errorf("la reentrega del mismo completed dejó la campana en %d avisos", n)
+	}
+}
+
+// Un deploy que acaba suena a toda la org menos a quien lo pidió; mientras
+// corre, no; y uno que caduca lo dice como tal. Mutantes: quitar el salto del
+// solicitante, avisar en `running`, o dar el caducado por un fallo corriente.
+func TestAFinishedDeployRingsEveryoneButWhoAsked(t *testing.T) {
+	f, cleanup := appSetup(t, "record")
+	defer cleanup()
+	dep, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.deploys.Claim("srv-1")
+	if n := len(f.bell.ofKind("deploy:done")); n != 0 {
+		t.Fatalf("un deploy en curso dejó %d avisos", n)
+	}
+	if err := f.deploys.Finish("srv-1", dep.ID, domain.AgentFinishRequest{Status: domain.DeploySucceeded, FinalImage: dep.Image}); err != nil {
+		t.Fatal(err)
+	}
+	got := f.bell.ofKind("deploy:done")
+	if len(got) != 1 || got[0].UserID != "u-2" {
+		t.Fatalf("se esperaba un aviso, a u-2 (u-1 lo pidió): %+v", got)
+	}
+	a := got[0]
+	if a.TitleKey != "notify.deploy.succeeded" || a.TitleArgs["service"] != "api" || a.TitleArgs["sha"] != shaNew {
+		t.Errorf("el aviso no dice qué se desplegó: %+v", a)
+	}
+	if a.Group != domain.DeployableGroup(f.d.ID) || a.Label != "api" || a.Link != "/activity?deployable="+f.d.ID+"&deployment="+dep.ID {
+		t.Errorf("no se pliega por servicio ni lleva a su actividad: %q %q %q", a.Group, a.Label, a.Link)
+	}
+
+	// Uno al que se le muere el agente caduca al pedir el siguiente, y se dice.
+	stuck, _, _ := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaOld, "")
+	f.deploys.Claim("srv-1")
+	f.db.Model(&domain.Deployment{}).Where("id = ?", stuck.ID).Update("started_at", time.Now().Add(-time.Hour))
+	f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew, "")
+	got = f.bell.ofKind("deploy:done")
+	if len(got) != 2 || got[1].TitleKey != "notify.deploy.expired" {
+		t.Errorf("el caducado no se dijo como tal: %+v", got)
+	}
+}
+
+// El deploy que encola el aviso de la App nace sabiendo de qué run viene: es
+// lo que lo cuelga de su run en la Actividad. El mutante que mata: no pasar el
+// id del run por `Notice`.
+func TestTheDeploymentRemembersItsRun(t *testing.T) {
+	f, cleanup := appSetup(t, "deploy")
+	defer cleanup()
+	f.hook(t, "workflow_run", "d-1", workflowRun(".github/workflows/prod.yml", "success"))
+	var run domain.WorkflowRun
+	if err := f.db.First(&run, "run_id = 9").Error; err != nil {
+		t.Fatal(err)
+	}
+	var dep domain.Deployment
+	if err := f.db.First(&dep, "requested_by = ?", domain.DeployByGitHub).Error; err != nil {
+		t.Fatal(err)
+	}
+	if dep.WorkflowRunID != run.ID {
+		t.Errorf("el deploy guarda el run %q, se esperaba %q", dep.WorkflowRunID, run.ID)
+	}
+	// Y uno a mano no inventa ninguno (cuando el de GitHub ya acabó: sólo hay
+	// un deploy vivo por servicio).
+	f.deploys.Claim("srv-1")
+	f.deploys.Finish("srv-1", dep.ID, domain.AgentFinishRequest{Status: domain.DeploySucceeded, FinalImage: dep.Image})
+	manual, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaOld, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manual.WorkflowRunID != "" {
+		t.Errorf("un deploy a mano se colgó del run %q", manual.WorkflowRunID)
+	}
 }
 
 // El workflow que publica la imagen, cuando acaba bien, cuenta como el aviso
