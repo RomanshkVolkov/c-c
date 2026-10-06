@@ -413,6 +413,12 @@ func generateToken(claims jwt.Claims, secret []byte) (string, error) {
 }
 
 func GenerateTokens(userID, username string, superadmin bool, orgs []domain.OrgMembershipClaim) (*domain.TokenPair, error) {
+	return GenerateTokensFor(userID, username, superadmin, orgs, false)
+}
+
+// GenerateTokensFor: GenerateTokens diciendo si la sesión es de la versión web
+// (ver domain.ClaimsJWT.Web). Va en los dos tokens.
+func GenerateTokensFor(userID, username string, superadmin bool, orgs []domain.OrgMembershipClaim, web bool) (*domain.TokenPair, error) {
 	tokenID := uuid.NewString()
 
 	accessClaims := &domain.ClaimsJWT{
@@ -420,6 +426,7 @@ func GenerateTokens(userID, username string, superadmin bool, orgs []domain.OrgM
 		Username:   username,
 		Superadmin: superadmin,
 		Orgs:       orgs,
+		Web:        web,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(accessExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -431,6 +438,7 @@ func GenerateTokens(userID, username string, superadmin bool, orgs []domain.OrgM
 	refreshClaims := &domain.ClaimsRefresh{
 		TokenID: tokenID,
 		UserID:  userID,
+		Web:     web,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(refreshExp),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

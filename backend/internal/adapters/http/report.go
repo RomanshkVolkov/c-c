@@ -28,7 +28,7 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		repository.GetEnv("IMAGE_SERVICE_API_KEY", ""),
 	)
 	if imgClient.Enabled() {
-		lg.Info("image uploads enabled → " + repository.GetEnv("IMAGE_SERVICE_URL", ""))
+		lg.Info("image uploads enabled")
 	} else {
 		lg.Warn("IMAGE_SERVICE_API_KEY not set — report screenshots disabled")
 	}
@@ -43,7 +43,7 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	if err != nil {
 		lg.Error("mediastore init failed: " + err.Error())
 	} else if store.Enabled() {
-		lg.Info("report image proxy enabled → s3://" + repository.GetEnv("REPORTS_MEDIA_BUCKET", ""))
+		lg.Info("report image proxy enabled")
 	} else {
 		lg.Warn("REPORTS_MEDIA_BUCKET not set — report image proxy disabled")
 	}

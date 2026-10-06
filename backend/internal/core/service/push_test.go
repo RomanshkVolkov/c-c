@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -111,7 +112,7 @@ func montarPush(t *testing.T) (*NotificationService, *PushService, *transporteFa
 // no pasar la clave de grupo como etiqueta.
 func TestTheBellReachesThePhone(t *testing.T) {
 	svc, p, fake, _, db := montarPush(t)
-	suscribir(t, p, "u-ana", "https://push.example/ana")
+	suscribir(t, p, "u-ana", "https://fcm.googleapis.com/fcm/send/ana")
 	svc.Notify(domain.Aviso{UserID: "u-ana", OrgID: "org-1", Kind: "task:comment",
 		TitleKey: "notify.reply.by", TitleArgs: map[string]string{"who": "Bea"},
 		Body: "Arreglar el login", Link: "/tasks?task=it-1", Group: domain.ItemGroup("it-1"), Label: "Arreglar el login"})
@@ -145,7 +146,7 @@ func TestTheBellReachesThePhone(t *testing.T) {
 // CI por defecto; que `pushQuiet` calle también la campana.
 func TestPhonePreferencesOnlyTakeAway(t *testing.T) {
 	svc, p, fake, _, db := montarPush(t)
-	suscribir(t, p, "u-ana", "https://push.example/ana")
+	suscribir(t, p, "u-ana", "https://fcm.googleapis.com/fcm/send/ana")
 	aviso := func(kind string) {
 		svc.Notify(domain.Aviso{UserID: "u-ana", OrgID: "org-1", Kind: kind, Title: kind, Link: "/x"})
 	}
@@ -184,30 +185,69 @@ func TestPhonePreferencesOnlyTakeAway(t *testing.T) {
 	}
 }
 
-// Nunca al dispositivo de otra persona, y el mismo navegador suscrito por otra
-// persona pasa a ser de ésa. Mutantes: enviar a todas las suscripciones; no
-// actualizar el dueño en el upsert.
+// Nunca al dispositivo de otra persona, y un dispositivo **no cambia de dueño**:
+// quien sólo conoce el endpoint de otro no se lo puede quedar (la web, en un
+// navegador compartido, rehace su suscripción). Mutantes: enviar a todas las
+// suscripciones; reasignar el dueño en el upsert; no comprobar el dueño al dar
+// de baja.
 func TestAPhoneOnlyGetsItsOwnersBell(t *testing.T) {
 	svc, p, fake, repo, _ := montarPush(t)
-	suscribir(t, p, "u-bea", "https://push.example/compartido")
+	suscribir(t, p, "u-bea", "https://fcm.googleapis.com/fcm/send/compartido")
 	svc.Notify(domain.Aviso{UserID: "u-ana", OrgID: "org-1", Kind: "chat:mention", Title: "x", Link: "/x"})
 	if len(fake.envios) != 0 {
 		t.Fatalf("el aviso de Ana llegó al dispositivo de Bea: %+v", fake.envios)
 	}
-	// Ana entra en ese navegador y se suscribe: ahora es suyo.
-	suscribir(t, p, "u-ana", "https://push.example/compartido")
-	svc.Notify(domain.Aviso{UserID: "u-ana", OrgID: "org-1", Kind: "chat:mention", Title: "x", Link: "/x"})
-	if len(fake.envios) != 1 {
-		t.Fatalf("tras suscribirse Ana en el mismo navegador, %d envíos", len(fake.envios))
+	req := domain.PushSubscribeRequest{Endpoint: "https://fcm.googleapis.com/fcm/send/compartido"}
+	req.Keys.P256dh, req.Keys.Auth = "otra", "otra"
+	if err := p.Subscribe("u-ana", "", req); !errors.Is(err, repository.ErrPushNotYours) {
+		t.Fatalf("Ana se quedó el dispositivo de Bea: %v", err)
 	}
-	if subs, _ := repo.ForUser("u-bea"); len(subs) != 0 {
-		t.Errorf("el navegador sigue siendo también de Bea: %+v", subs)
+	if subs, _ := repo.ForUser("u-bea"); len(subs) != 1 {
+		t.Errorf("Bea perdió su dispositivo: %+v", subs)
 	}
-	// Y Bea no puede dar de baja un dispositivo que ya no es suyo.
-	p.Unsubscribe("u-bea", "https://push.example/compartido")
-	if subs, _ := repo.ForUser("u-ana"); len(subs) != 1 {
-		t.Errorf("Bea dio de baja el dispositivo de Ana")
+	p.Unsubscribe("u-ana", "https://fcm.googleapis.com/fcm/send/compartido")
+	if subs, _ := repo.ForUser("u-bea"); len(subs) != 1 {
+		t.Errorf("Ana dio de baja el dispositivo de Bea")
 	}
+}
+
+// Sólo servicios de push de verdad, por HTTPS; y un tope de dispositivos por
+// persona. Mutantes: aceptar cualquier URL; contar mal el tope; que volver a
+// suscribir el mismo dispositivo cuente contra el tope.
+func TestOnlyRealPushServicesAndACap(t *testing.T) {
+	_, p, _, _, _ := montarPush(t)
+	for _, bad := range []string{
+		"http://fcm.googleapis.com/fcm/send/x",
+		"https://evil.example/x",
+		"https://169.254.169.254/latest/meta-data",
+		"https://fcm.googleapis.com.evil.example/x",
+		"https://evilpush.apple.com.example/x",
+		"https://notpush.apple.com/x",
+		"https://user:pw@fcm.googleapis.com/x",
+		"https://fcm.googleapis.com:8443/x",
+	} {
+		req := domain.PushSubscribeRequest{Endpoint: bad}
+		req.Keys.P256dh, req.Keys.Auth = "p", "a"
+		if err := p.Subscribe("u-ana", "", req); !errors.Is(err, ErrBadPushEndpoint) {
+			t.Errorf("%s se aceptó: %v", bad, err)
+		}
+	}
+	for _, ok := range []string{"https://updates.push.services.mozilla.com/wpush/v2/x", "https://web.push.apple.com/x", "https://db5p.notify.windows.com/w/?token=x"} {
+		req := domain.PushSubscribeRequest{Endpoint: ok}
+		req.Keys.P256dh, req.Keys.Auth = "p", "a"
+		if err := p.Subscribe("u-bea", "", req); err != nil {
+			t.Errorf("%s se rechazó: %v", ok, err)
+		}
+	}
+	for i := 0; i < domain.MaxPushDevicesPerUser; i++ {
+		suscribir(t, p, "u-carla", fmt.Sprintf("https://fcm.googleapis.com/fcm/send/c%d", i))
+	}
+	req := domain.PushSubscribeRequest{Endpoint: "https://fcm.googleapis.com/fcm/send/once"}
+	req.Keys.P256dh, req.Keys.Auth = "p", "a"
+	if err := p.Subscribe("u-carla", "", req); !errors.Is(err, ErrTooManyPushDevices) {
+		t.Errorf("el dispositivo número once se aceptó: %v", err)
+	}
+	suscribir(t, p, "u-carla", "https://fcm.googleapis.com/fcm/send/c3") // volver a suscribir uno que ya tiene
 }
 
 // Un dispositivo que el servicio de push da por muerto (410, 404) se olvida; uno
@@ -215,7 +255,7 @@ func TestAPhoneOnlyGetsItsOwnersBell(t *testing.T) {
 // error.
 func TestADeadPhoneIsForgotten(t *testing.T) {
 	svc, p, fake, repo, _ := montarPush(t)
-	suscribir(t, p, "u-ana", "https://push.example/vivo")
+	suscribir(t, p, "u-ana", "https://fcm.googleapis.com/fcm/send/vivo")
 	svc.Notify(domain.Aviso{UserID: "u-ana", OrgID: "org-1", Kind: "chat:mention", Title: "x", Link: "/x"})
 	subs, _ := repo.ForUser("u-ana")
 	if len(subs) != 1 || subs[0].LastOkAt == nil {

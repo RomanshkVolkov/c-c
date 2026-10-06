@@ -234,9 +234,11 @@ func (h *authHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "New password must differ", "same-password")
 		return
 	}
-	if err := h.authService.ChangePassword(claims.UserID, req.CurrentPassword, req.NewPassword); err != nil {
+	// Las demás sesiones quedan cerradas; ésta recibe tokens nuevos.
+	tokens, err := h.authService.ChangePassword(claims.UserID, req.CurrentPassword, req.NewPassword, claims.Web)
+	if err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Could not change password", err.Error())
 		return
 	}
-	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Password changed"})
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.AuthRefreshResponse]{Success: true, Message: "Password changed", Data: tokens})
 }

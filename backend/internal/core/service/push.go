@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -100,7 +101,23 @@ func (s *PushService) PublicKey() string {
 	return s.publicKey
 }
 
+// ErrBadPushEndpoint: no es un servicio de push conocido por HTTPS.
+var ErrBadPushEndpoint = errors.New("bad-push-endpoint")
+
+// ErrTooManyPushDevices: ya hay MaxPushDevicesPerUser.
+var ErrTooManyPushDevices = errors.New("too-many-push-devices")
+
 func (s *PushService) Subscribe(userID, userAgent string, req domain.PushSubscribeRequest) error {
+	if !domain.ValidPushEndpoint(req.Endpoint) {
+		return ErrBadPushEndpoint
+	}
+	if !s.repo.Has(userID, req.Endpoint) {
+		if n, err := s.repo.CountForUser(userID); err != nil {
+			return err
+		} else if n >= domain.MaxPushDevicesPerUser {
+			return ErrTooManyPushDevices
+		}
+	}
 	if len(userAgent) > 300 {
 		userAgent = userAgent[:300]
 	}

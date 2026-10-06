@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"net/url"
 	"strings"
 	"time"
 )
@@ -44,6 +45,37 @@ type PushSubscribeRequest struct {
 		Auth   string `json:"auth"   validate:"required,max=100"`
 	} `json:"keys"`
 }
+
+// pushHosts son los servicios de push de los navegadores. Un endpoint sólo se
+// acepta si es HTTPS a uno de ellos: si no, el backend haría una petición a la
+// URL que le diera cualquiera, en cada aviso (barrido, 6-oct-2026).
+var pushHosts = []string{
+	"fcm.googleapis.com",                // Chrome, Edge, Android
+	"updates.push.services.mozilla.com", // Firefox
+	"push.apple.com",                    // Safari (web.push.apple.com y demás)
+	"notify.windows.com",                // Edge en Windows (WNS)
+}
+
+// ValidPushEndpoint: HTTPS, sin credenciales en la URL, y a un servicio de push
+// conocido (o uno de sus subdominios).
+func ValidPushEndpoint(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	for _, h := range pushHosts {
+		if host == h || strings.HasSuffix(host, "."+h) {
+			return true
+		}
+	}
+	return false
+}
+
+// MaxPushDevicesPerUser: cuántos dispositivos puede tener suscritos una
+// persona. Un teléfono, un par de navegadores… diez es de sobra, y sin tope una
+// cuenta podía llenar la tabla y multiplicar las peticiones de cada aviso.
+const MaxPushDevicesPerUser = 10
 
 // PushKeyResponse: la llave pública VAPID con la que el navegador se suscribe.
 // Vacía = este servidor no tiene push configurado, y la web no ofrece el botón.

@@ -106,6 +106,15 @@ func (r *AuthRepository) RevokeRefreshFamily(tokenID string, now time.Time) erro
 		Update("revoked_at", now).Error
 }
 
+// RevokeAllRefresh cierra todas las sesiones de una persona: cada familia de
+// refresh que tenga. Es lo que hace cambiar la contraseña —si la cambias
+// porque te la robaron, quien la usó no puede seguir dentro con su refresh—.
+func (r *AuthRepository) RevokeAllRefresh(userID string, now time.Time) error {
+	return r.db.Model(&domain.RefreshSession{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).
+		Update("revoked_at", now).Error
+}
+
 // PruneRefresh borra los que ya caducaron hace un día. Una fila caducada no
 // vale para nada —el JWT tampoco— y sin esto la tabla sólo crece.
 func (r *AuthRepository) PruneRefresh(now time.Time) error {

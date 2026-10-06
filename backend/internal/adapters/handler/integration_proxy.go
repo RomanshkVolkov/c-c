@@ -21,6 +21,36 @@ const (
 	proxyQueryParam = "__cac"
 )
 
+// ProxyHost es el dominio **propio** del proxy de integraciones
+// (`INTEGRATIONS_PROXY_HOST`, p. ej. tools.guz-studio.dev).
+//
+// Hasta el 6-oct-2026 el proxy servía las herramientas desde
+// cac.guz-studio.dev, el mismo origen que la versión web (`/app`), que guarda
+// la sesión en `localStorage`. Cualquier página servida por el proxy —una
+// integración maliciosa, o un fallo de la herramienta— podía leer los tokens de
+// quien la abriera. En su propio dominio, el navegador la aísla de cac.
+//
+// Vacío = el proxy está apagado. No hay vuelta atrás al mismo origen.
+func ProxyHost() string { return strings.ToLower(repository.GetEnv("INTEGRATIONS_PROXY_HOST", "")) }
+
+// IsProxyPath: si una ruta es del proxy de integraciones.
+func IsProxyPath(path string) bool {
+	return strings.HasPrefix(path, "/api/v1/servers/") && strings.Contains(path, "/integrations/") &&
+		(strings.HasSuffix(path, "/proxy") || strings.Contains(path, "/proxy/"))
+}
+
+// RequestHostOf: el host de la petición, sin puerto y en minúsculas.
+func RequestHostOf(r *http.Request) string { return requestHost(r) }
+
+// requestHost: el host de la petición, sin puerto y en minúsculas.
+func requestHost(r *http.Request) string {
+	h := r.Host
+	if i := strings.LastIndexByte(h, ':'); i >= 0 && !strings.Contains(h[i:], "]") {
+		h = h[:i]
+	}
+	return strings.ToLower(h)
+}
+
 func proxyCookieName(integrationID string) string {
 	return "cac_proxy_" + strings.ReplaceAll(integrationID, "-", "")
 }
@@ -46,12 +76,21 @@ func (h *integrationHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	}
 	user, _ := currentUser(r)
 
+	host := ProxyHost()
+	if host == "" {
+		SendErrorResponse(w, http.StatusServiceUnavailable, "Integration proxy is off", "proxy-off")
+		return
+	}
 	token := repository.SignProxyToken(it.ID, user.Username, time.Now().Add(launchTTL).Unix())
 	path := proxyBasePath(server.ID, it.ID) + "/?" + proxyQueryParam + "=" + url.QueryEscape(token)
 
+	// `url` es la dirección completa, en el dominio del proxy. `path` se deja
+	// para las apps anteriores, que lo pegaban al dominio de cac: ahí el proxy
+	// ya no contesta, así que en ellas el botón deja de funcionar en vez de
+	// abrir la herramienta en el origen de cac.
 	SendResult(w, http.StatusOK, domain.APIResponse[map[string]string]{
 		Success: true,
-		Data:    map[string]string{"path": path},
+		Data:    map[string]string{"path": path, "url": "https://" + host + path},
 	})
 }
 
@@ -66,6 +105,12 @@ func (h *integrationHandler) Launch(w http.ResponseWriter, r *http.Request) {
 // client-controlled destination), and inbound identity headers are stripped so a
 // caller can't impersonate another user.
 func (h *integrationHandler) Proxy(w http.ResponseWriter, r *http.Request) {
+	// Sólo en su dominio. En cac.guz-studio.dev el proxy no existe: ahí vive la
+	// versión web con la sesión en el navegador (ver ProxyHost).
+	if host := ProxyHost(); host == "" || requestHost(r) != host {
+		http.NotFound(w, r)
+		return
+	}
 	serverID := chi.URLParam(r, "id")
 	iid := chi.URLParam(r, "iid")
 
@@ -141,6 +186,14 @@ func (h *integrationHandler) Proxy(w http.ResponseWriter, r *http.Request) {
 			// Authenticate as the cac user (Grafana auth.proxy).
 			pr.Out.Header.Set("X-WEBAUTH-USER", username)
 			pr.SetXForwarded()
+		},
+		// Lo que la herramienta no puede decidir por cac: registrar un service
+		// worker con alcance más amplio que su ruta, ni que el navegador adivine
+		// el tipo de lo que manda.
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("Service-Worker-Allowed")
+			resp.Header.Set("X-Content-Type-Options", "nosniff")
+			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			lg.Warn("integration proxy upstream error: " + err.Error())

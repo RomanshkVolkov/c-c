@@ -182,10 +182,10 @@ func (h *taskHandler) RawAttachment(w http.ResponseWriter, r *http.Request) {
 	if ct == "" {
 		ct = "application/octet-stream"
 	}
-	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "private, no-store")
 	// inline: images render in place; a browser still offers to save others.
-	w.Header().Set("Content-Disposition", "inline; filename=\""+strings.ReplaceAll(att.FileName, "\"", "")+"\"")
+	// Tipo, disposición y nosniff, en un solo sitio: ver setFileHeaders.
+	setFileHeaders(w, ct, att.FileName)
 	if obj.Size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(obj.Size, 10))
 	}

@@ -29,6 +29,15 @@ import (
 
 func main() {
 	repository.LoadEnv()
+	// En el clúster no se arranca con secretos de ejemplo: con un `change-me-*`
+	// cualquiera que lea el repositorio firmaría sesiones válidas. Mejor un pod
+	// que no arranca que uno que acepta tokens forjados (barrido, 6-oct-2026).
+	// Sólo los nombres, nunca los valores.
+	if repository.InCluster() {
+		if missing := repository.MissingSecrets(); len(missing) > 0 {
+			log.Fatalf("refusing to start: missing secrets %v", missing)
+		}
+	}
 	port := repository.GetEnv("PORT", "8080")
 	env := repository.GetEnv("APP_ENV", "development")
 

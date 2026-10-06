@@ -118,8 +118,11 @@ func (h *reportProjectHandler) requireWriter(w http.ResponseWriter, r *http.Requ
 	return p, true
 }
 
+// Update: **admin**. Aquí va la URL del webhook al que se mandan, firmados, los
+// reportes del cliente: con miembro bastaba para redirigirlos a otra parte
+// conservando la firma (barrido, 6-oct-2026).
 func (h *reportProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.requireWriter(w, r, false)
+	p, ok := h.requireWriter(w, r, true)
 	if !ok {
 		return
 	}

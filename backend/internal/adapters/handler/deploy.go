@@ -127,10 +127,12 @@ func (h *DeployHandler) List(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.Deployable]{Success: true, Data: out})
 }
 
-// Create registra un servicio como desplegable. Member: no toca el servidor,
-// sólo le enseña a cac qué hay ahí.
+// Create registra un servicio como desplegable. **Admin**: registrar es decir
+// qué servicio de la máquina se toca y con imágenes de qué repositorio, y desde
+// ahí cualquier miembro puede desplegar. Con miembro bastaba para apuntar un
+// servicio cualquiera a una imagen cualquiera (barrido, 6-oct-2026).
 func (h *DeployHandler) Create(w http.ResponseWriter, r *http.Request) {
-	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleAdmin)
 	if !ok {
 		return
 	}
@@ -147,8 +149,12 @@ func (h *DeployHandler) Create(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.Deployable]{Success: true, Data: d})
 }
 
+// Update: **admin**. Aquí se cambia el comando de migraciones —un `sh -c` que
+// corre en el servidor con las redes y los secrets del servicio—, el modo del
+// CI y el repo. Desplegar y volver atrás siguen siendo de miembro: la imagen
+// la fija el registro, no quien despliega.
 func (h *DeployHandler) Update(w http.ResponseWriter, r *http.Request) {
-	d, ok := h.deployable(w, r, domain.OrgRoleMember)
+	d, ok := h.deployable(w, r, domain.OrgRoleAdmin)
 	if !ok {
 		return
 	}

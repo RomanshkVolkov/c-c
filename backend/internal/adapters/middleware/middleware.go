@@ -35,7 +35,12 @@ func Logger(next http.Handler) http.Handler {
 // They must never reach the log. Redacting here covers every current caller and
 // every future one — the alternative is remembering, at each new endpoint, that
 // the shared logger will write whatever the URL contains.
-var sensitiveParams = []string{"token", "sig"}
+//
+// La lista se amplió el 6-oct-2026 (barrido de seguridad de la versión web):
+// también viajan en la URL el pase de lanzamiento del proxy de integraciones
+// (`__cac`), el `state` firmado de la instalación de GitHub y los `code`/`key`
+// genéricos. Cualquier otro que se añada tiene que entrar aquí.
+var sensitiveParams = []string{"token", "sig", "__cac", "access_token", "state", "code", "key", "pass"}
 
 // redactQuery replaces the value of any sensitive parameter with "REDACTED",
 // keeping the rest of the URL readable for debugging.
@@ -174,6 +179,13 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		claims, err := repository.ValidateAccessToken(tokenString)
 		if err != nil {
 			handler.SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", err.Error())
+			return
+		}
+
+		// Una sesión de la versión web no toca lo que es sólo del escritorio
+		// (servidores, tokens personales). Ver domain.DesktopOnlyPath.
+		if claims.Web && domain.DesktopOnlyPath(r.URL.Path) {
+			handler.SendErrorResponse(w, http.StatusForbidden, "Desktop only", "desktop-only")
 			return
 		}
 

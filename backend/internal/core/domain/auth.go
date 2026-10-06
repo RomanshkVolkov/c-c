@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -49,6 +50,12 @@ type ClaimsJWT struct {
 	Username   string               `json:"username"`
 	Superadmin bool                 `json:"superadmin"`
 	Orgs       []OrgMembershipClaim `json:"orgs"`
+	// Web: la sesión empezó en la versión web (cac.guz-studio.dev/app). Va
+	// firmado dentro del token y lo arrastra cada refresh, así que no se puede
+	// quitar. Con él, lo que es sólo del escritorio —servidores, tokens
+	// personales— contesta 403: un token robado de un navegador no abre la
+	// infraestructura (barrido de seguridad, 6-oct-2026). Ver DesktopOnlyPath.
+	Web bool `json:"web,omitempty"`
 	// Scopes is set only for personal access tokens; a signed-in user's JWT
 	// carries none and is limited by their org role instead.
 	Scopes []string `json:"scopes,omitempty"`
@@ -133,6 +140,9 @@ func (c *ClaimsJWT) RoleInOrg(orgID string) (OrgRole, bool) {
 type ClaimsRefresh struct {
 	TokenID string `json:"token_id"`
 	UserID  string `json:"user_id"`
+	// Web: ver ClaimsJWT.Web. El refresh lo lleva para que la sesión siga
+	// siendo web al renovarse.
+	Web bool `json:"web,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -184,6 +194,24 @@ const RefreshReuseGrace = time.Minute
 type LoginRequest struct {
 	Username string `json:"username" validate:"required"`
 	Password string `json:"password" validate:"required,min=8"`
+	// Client: `web` desde la versión web. Vacío o `desktop` es la app de
+	// escritorio (y lo que no lo diga, como las apps anteriores).
+	Client string `json:"client" validate:"omitempty,oneof=web desktop"`
+}
+
+// desktopOnlyPrefixes: lo que una sesión web no puede tocar. Los servidores —su
+// agente, sus secrets, sus deploys, sus integraciones— y crear o revocar tokens
+// personales, que darían una credencial nueva sin caducidad.
+var desktopOnlyPrefixes = []string{"/api/v1/servers", "/api/v1/auth/tokens"}
+
+// DesktopOnlyPath: si una ruta es sólo para la app de escritorio.
+func DesktopOnlyPath(path string) bool {
+	for _, p := range desktopOnlyPrefixes {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 type AuthResponse struct {

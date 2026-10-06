@@ -59,10 +59,11 @@ func (h *AgentHandler) MintToken(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.AgentTokenResponse]{Success: true, Data: res})
 }
 
-// Session firma un pase corto para hablarle al agente desde la app. Basta con
-// ser de la org: ver los logs de un servicio es lo que hace un viewer.
+// Session firma un pase corto para hablarle al agente desde la app.
 func (h *AgentHandler) Session(w http.ResponseWriter, r *http.Request) {
-	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleViewer)
+	// Miembro y no viewer: el pase no lleva rol (hasta el agente v5), y con él
+	// el agente acepta todo su /api/v1, incluido reiniciar servicios.
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
 	if !ok {
 		return
 	}

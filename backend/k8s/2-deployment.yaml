@@ -59,6 +59,12 @@ spec:
             # botón — que sigue siendo el estado seguro si hay que apagarlo.
             - name: RECORDINGS_ENABLED
               value: "true"
+            # El dominio propio del proxy de integraciones (barrido de
+            # seguridad, 6-oct-2026): en cac.guz-studio.dev viven la web y su
+            # sesión, y una herramienta servida ahí podía leerla. Vacío apaga el
+            # proxy. El certificado `traefik-cert` ya lo incluye.
+            - name: INTEGRATIONS_PROXY_HOST
+              value: "tools.guz-studio.dev"
             # El rincón del bucket donde escribe Egress. **Cambiarlo aquí sin
             # cambiar la política de IAM deja la grabación sin sitio donde
             # caer**: la credencial de Egress sólo puede escribir bajo este

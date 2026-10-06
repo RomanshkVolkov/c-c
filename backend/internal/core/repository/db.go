@@ -31,7 +31,15 @@ func DBConnection() {
 	// database password — the same leak already fixed in LoadEnv, in a second
 	// place. Which host and database were picked is the part worth logging, and
 	// it is the part that answers "why is this pointing at production?".
-	lg.Info("DB target: " + redactDSN(dsn))
+	// Sin el destino: ni host, ni usuario, ni base. El 6-oct-2026 se decidió
+	// que el arranque no imprima **ningún** valor de configuración, ni tapado:
+	// los logs del clúster los lee más gente que la que debería saber dónde vive
+	// la base y con qué usuario se entra. Sólo de dónde salió.
+	if dsn != "" {
+		lg.Info("DB: connecting with DATABASE_URL")
+	} else {
+		lg.Info("DB: connecting with the DB_* variables")
+	}
 	if dsn == "" {
 		dsn = buildDSN()
 	}

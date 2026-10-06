@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/guz-studio/cac/backend/internal/adapters/handler"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
 	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
@@ -20,6 +21,7 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.CORS)
 	r.Use(middleware.Recovery)
+	r.Use(ProxyHostOnly)
 
 	InitAuthRoutes(db, r)
 	InitCollectionRoutes(db, r)
@@ -76,4 +78,17 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	}
 
 	return r
+}
+
+// ProxyHostOnly: el dominio del proxy de integraciones sólo sirve el proxy. Si
+// sirviera la API, una herramienta podría llamarla desde su propio origen como
+// si fuera cac; y no hay nada más que ofrecer ahí.
+func ProxyHostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if host := handler.ProxyHost(); host != "" && handler.RequestHostOf(req) == host && !handler.IsProxyPath(req.URL.Path) {
+			http.NotFound(w, req)
+			return
+		}
+		next.ServeHTTP(w, req)
+	})
 }

@@ -100,6 +100,15 @@ func (h *serverHandler) CreateServer(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-writer-in-org")
 		return
 	}
+	// Un servidor kubernetes no es «un servidor del cliente»: sus vistas leen
+	// **el clúster de la plataforma** con la cuenta de servicio del backend, y
+	// de él cuelgan las integraciones que el proxy sirve. Cualquiera puede
+	// crearse una org y ser su admin, así que esto no puede depender del rol en
+	// la org: sólo superadmin (barrido de seguridad, 6-oct-2026).
+	if req.Type == domain.ServerTypeKubernetes && !user.Superadmin {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "kubernetes-superadmin-only")
+		return
+	}
 
 	server, err := h.svc.Create(req)
 	if err != nil {
@@ -132,6 +141,20 @@ func (h *serverHandler) UpdateServer(w http.ResponseWriter, r *http.Request) {
 	req, err := ValidateRequest[domain.UpdateServerRequest](r)
 	if err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	// Ni convertirlo en kubernetes (ver CreateServer), ni cambiarle a dónde se
+	// conecta siendo sólo miembro: con el host, el usuario o el puerto del
+	// agente en otra máquina, la app de un admin mandaría ahí su SSH y sus
+	// pases de agente. El nombre sí lo puede cambiar cualquier escritor.
+	if (req.Type == domain.ServerTypeKubernetes || server.Type == domain.ServerTypeKubernetes) && req.Type != server.Type && !user.Superadmin {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "kubernetes-superadmin-only")
+		return
+	}
+	cambiaConexion := req.Host != server.Host || req.SSHUser != server.SSHUser ||
+		req.SSHPort != server.SSHPort || req.AgentPort != server.AgentPort
+	if cambiaConexion && !user.Superadmin && role != domain.OrgRoleAdmin {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "connection-admin-only")
 		return
 	}
 	updated, err := h.svc.Update(id, req)

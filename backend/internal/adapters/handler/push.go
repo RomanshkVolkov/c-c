@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 )
 
@@ -38,7 +40,16 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Subscribe(user.UserID, r.UserAgent(), req); err != nil {
-		SendErrorResponse(w, http.StatusInternalServerError, "Subscribe failed", "push-subscribe-failed")
+		switch {
+		case errors.Is(err, service.ErrBadPushEndpoint):
+			SendErrorResponse(w, http.StatusBadRequest, "Not a push service", "bad-push-endpoint")
+		case errors.Is(err, service.ErrTooManyPushDevices):
+			SendErrorResponse(w, http.StatusConflict, "Too many devices", "too-many-push-devices")
+		case errors.Is(err, repository.ErrPushNotYours):
+			SendErrorResponse(w, http.StatusConflict, "That device belongs to someone else", "push-not-yours")
+		default:
+			SendErrorResponse(w, http.StatusInternalServerError, "Subscribe failed", "push-subscribe-failed")
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

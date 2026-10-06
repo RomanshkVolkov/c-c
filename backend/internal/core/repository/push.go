@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -14,14 +15,41 @@ type PushRepository struct{ db *gorm.DB }
 func NewPushRepository(db *gorm.DB) *PushRepository { return &PushRepository{db: db} }
 
 // Upsert guarda un dispositivo. El mismo `Endpoint` es el mismo navegador: si
-// vuelve a suscribirse se le actualizan las llaves **y el dueño**, porque en un
-// navegador compartido el que se suscribe último es quien recibe. Si no, los
-// avisos de Ana seguirían llegando al portátil que ahora usa Bea.
+// la misma persona vuelve a suscribirse, se le actualizan las llaves.
+//
+// **Nunca cambia de dueño.** Si el endpoint es de otra persona, contesta
+// ErrPushNotYours: si no, cualquiera que supiera el endpoint de otro se lo
+// quedaría y esa persona dejaría de recibir sus avisos. En un navegador
+// compartido, salir da de baja la suscripción (`disablePush`), y si alguien no
+// salió, la web rehace la suscripción —endpoint nuevo— al recibir este error.
 func (r *PushRepository) Upsert(s *domain.PushSubscription) error {
+	var prev domain.PushSubscription
+	err := r.db.Where("endpoint = ?", s.Endpoint).Take(&prev).Error
+	if err == nil && prev.UserID != s.UserID {
+		return ErrPushNotYours
+	}
 	return r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "endpoint"}},
-		DoUpdates: clause.AssignmentColumns([]string{"user_id", "p256dh", "auth", "user_agent", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"p256dh", "auth", "user_agent", "updated_at"}),
 	}).Create(s).Error
+}
+
+// ErrPushNotYours: ese endpoint ya es de otra persona con esas mismas llaves.
+var ErrPushNotYours = errors.New("push-not-yours")
+
+// CountForUser: cuántos dispositivos tiene suscritos una persona.
+func (r *PushRepository) CountForUser(userID string) (int64, error) {
+	var n int64
+	err := r.db.Model(&domain.PushSubscription{}).Where("user_id = ?", userID).Count(&n).Error
+	return n, err
+}
+
+// Has: si ese endpoint ya es de esa persona (volver a suscribirse no cuenta
+// contra el tope).
+func (r *PushRepository) Has(userID, endpoint string) bool {
+	var n int64
+	r.db.Model(&domain.PushSubscription{}).Where("user_id = ? AND endpoint = ?", userID, endpoint).Count(&n)
+	return n > 0
 }
 
 // ForUser: los dispositivos de una persona.

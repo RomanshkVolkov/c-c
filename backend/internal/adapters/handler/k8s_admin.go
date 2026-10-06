@@ -39,8 +39,11 @@ func (h *k8sHandler) authorize(w http.ResponseWriter, r *http.Request) bool {
 		SendErrorResponse(w, http.StatusBadRequest, "Not a kubernetes server", "wrong-type")
 		return false
 	}
-	_, member := user.RoleInOrg(server.OrgID)
-	if !user.Superadmin && !member {
+	// Sólo superadmin. Estas vistas no miran el servidor registrado: leen **el
+	// clúster de la plataforma** con la cuenta de servicio del backend (nodos,
+	// despliegues, rutas, certificados). Ser miembro de la org del registro no
+	// da derecho a eso, y cualquiera puede crearse una org (6-oct-2026).
+	if !user.Superadmin {
 		SendErrorResponse(w, http.StatusNotFound, "Server not found", "not-found") // anti-IDOR
 		return false
 	}

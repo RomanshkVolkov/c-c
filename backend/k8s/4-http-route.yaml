@@ -40,3 +40,29 @@ spec:
       backendRefs:
         - name: cac-service
           port: 80
+---
+# El proxy de integraciones, en su propio dominio (ver INTEGRATIONS_PROXY_HOST
+# en 2-deployment.yaml). Sólo su prefijo: el backend además contesta 404 a
+# cualquier otra ruta en este host.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cac-tools-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: gateway-api
+      namespace: default
+  hostnames:
+    - "tools.guz-studio.dev"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1/servers/
+      timeouts:
+        request: 300s
+      backendRefs:
+        - name: cac-service
+          port: 80
+

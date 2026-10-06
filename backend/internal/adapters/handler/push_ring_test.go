@@ -43,7 +43,7 @@ func conPush(t *testing.T, db *gorm.DB, user string) *pushFalso {
 	p := service.NewPushService(repository.NewPushRepository(db), "", "", "").WithTransport(fake, "BPublica")
 	service.SetPush(p)
 	t.Cleanup(func() { service.SetPush(nil) })
-	req := domain.PushSubscribeRequest{Endpoint: "https://push.example/" + user}
+	req := domain.PushSubscribeRequest{Endpoint: "https://fcm.googleapis.com/fcm/send/" + user}
 	req.Keys.P256dh, req.Keys.Auth = "p", "a"
 	if err := p.Subscribe(user, "", req); err != nil {
 		t.Fatal(err)

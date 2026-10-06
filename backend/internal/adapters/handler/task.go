@@ -1186,6 +1186,26 @@ func (h *taskHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
 // Wherever a channel can be bound it can be configured. A binding you can create
 // and then cannot reach is half a feature, and the half that is missing is the
 // one with the credential in it.
+// channelAdmin: la llave de ingesta y el webhook de un canal de cliente son lo
+// mismo que en la pantalla de proyectos de reporte, y allí piden admin. Por el
+// canal bastaba con poder escribir en la lista, así que un miembro podía rotar
+// la llave —y recibirla en claro— o desviar el webhook (barrido, 6-oct-2026).
+func channelAdmin(w http.ResponseWriter, r *http.Request, orgID string) bool {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return false
+	}
+	if user.Superadmin {
+		return true
+	}
+	if role, member := user.RoleInOrg(orgID); member && role == domain.OrgRoleAdmin {
+		return true
+	}
+	SendErrorResponse(w, http.StatusForbidden, "Forbidden", "insufficient-role")
+	return false
+}
+
 func (h *taskHandler) channelOfList(
 	w http.ResponseWriter, r *http.Request, needWrite bool,
 ) (*domain.TaskList, *domain.ReportProject, bool) {
@@ -1225,6 +1245,9 @@ func (h *taskHandler) UpdateListChannel(w http.ResponseWriter, r *http.Request) 
 		SendErrorResponse(w, http.StatusNotFound, "This list reaches no channel", "no-channel")
 		return
 	}
+	if !channelAdmin(w, r, p.OrgID) {
+		return
+	}
 	req, err := ValidateRequest[domain.UpdateReportProjectRequest](r)
 	if err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
@@ -1245,6 +1268,9 @@ func (h *taskHandler) RotateListChannelKey(w http.ResponseWriter, r *http.Reques
 	}
 	if p == nil {
 		SendErrorResponse(w, http.StatusNotFound, "This list reaches no channel", "no-channel")
+		return
+	}
+	if !channelAdmin(w, r, p.OrgID) {
 		return
 	}
 	key, err := h.channels.RotateKey(p.ID)
@@ -1327,8 +1353,8 @@ func (h *taskHandler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *taskHandler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
-	_, p, ok := h.channelOfSpace(w, r, true)
-	if !ok {
+	sp, p, ok := h.channelOfSpace(w, r, true)
+	if !ok || !channelAdmin(w, r, sp.OrgID) {
 		return
 	}
 	if p == nil {
@@ -1349,8 +1375,8 @@ func (h *taskHandler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *taskHandler) RotateChannelKey(w http.ResponseWriter, r *http.Request) {
-	_, p, ok := h.channelOfSpace(w, r, true)
-	if !ok {
+	sp, p, ok := h.channelOfSpace(w, r, true)
+	if !ok || !channelAdmin(w, r, sp.OrgID) {
 		return
 	}
 	if p == nil {

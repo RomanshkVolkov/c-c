@@ -52,3 +52,26 @@ func GetEnv(key, fallback string) string {
 	}
 	return fallback
 }
+
+// requiredSecrets son los secretos que firman sesiones, llaves y enlaces. Si
+// faltan, el código cae en un `change-me-*` público, y cualquiera que lea este
+// repositorio podría firmar un token válido.
+var requiredSecrets = []string{"JWT_SECRET_ACCESS", "JWT_SECRET_REFRESH", "INGEST_KEY_SECRET"}
+
+// MissingSecrets: los que faltan o siguen con un valor de ejemplo.
+func MissingSecrets() []string {
+	var out []string
+	for _, k := range requiredSecrets {
+		v := os.Getenv(k)
+		if v == "" || strings.HasPrefix(v, "change-me") {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// InCluster: si el proceso corre dentro de Kubernetes, que es producción. En
+// desarrollo y en las pruebas los `change-me-*` siguen sirviendo.
+func InCluster() bool {
+	return os.Getenv("KUBERNETES_SERVICE_HOST") != "" || os.Getenv("APP_ENV") == "production"
+}

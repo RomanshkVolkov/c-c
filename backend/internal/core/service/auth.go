@@ -59,7 +59,7 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 		return nil, err
 	}
 
-	tokens, err := repository.GenerateTokens(user.ID, user.Username, user.IsSuperadmin, orgs)
+	tokens, err := repository.GenerateTokensFor(user.ID, user.Username, user.IsSuperadmin, orgs, req.Client == "web")
 	if err != nil {
 		return nil, err
 	}
@@ -139,23 +139,45 @@ func (s *AuthService) UpdateProfile(userID string, req domain.UpdateProfileReque
 // ChangePassword verifies the caller's current password and sets a new one,
 // clearing the must-change flag. Used both for the forced first-login change
 // and voluntary changes.
-func (s *AuthService) ChangePassword(userID, current, next string) error {
+//
+// Y **cierra todas las sesiones** de la persona (barrido, 6-oct-2026): si la
+// cambias porque alguien la sabía, ese alguien no puede seguir dentro con su
+// refresh. Devuelve una sesión nueva para quien la cambió, que así sigue dentro
+// en este dispositivo sin volver a entrar.
+func (s *AuthService) ChangePassword(userID, current, next string, web bool) (*domain.AuthRefreshResponse, error) {
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	match, err := repository.CompareHash(current, user.Password)
 	if err != nil || !match {
-		return errors.New("current password is incorrect")
+		return nil, errors.New("current password is incorrect")
 	}
 	hashed, err := repository.HashPassword(next)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.repo.UpdateUser(userID, map[string]any{
+	if err := s.repo.UpdateUser(userID, map[string]any{
 		"password":             hashed,
 		"must_change_password": false,
-	})
+	}); err != nil {
+		return nil, err
+	}
+	if err := s.repo.RevokeAllRefresh(userID, s.now()); err != nil {
+		return nil, err
+	}
+	orgs, err := s.repo.OrgClaimsForUser(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	tokens, err := repository.GenerateTokensFor(user.ID, user.Username, user.IsSuperadmin, orgs, web)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.SaveRefresh(user.ID, "", tokens); err != nil {
+		return nil, err
+	}
+	return &domain.AuthRefreshResponse{AccessToken: tokens.AccessToken, RefreshToken: tokens.RefreshToken}, nil
 }
 
 func toUserResponse(u domain.User) domain.UserResponse {
@@ -318,7 +340,8 @@ func (s *AuthService) RefreshToken(refreshToken string) (*domain.AuthRefreshResp
 		return nil, err
 	}
 
-	tokens, err := repository.GenerateTokens(user.ID, user.Username, user.IsSuperadmin, orgs)
+	// Una sesión web sigue siendo web al renovarse: lo dice el refresh firmado.
+	tokens, err := repository.GenerateTokensFor(user.ID, user.Username, user.IsSuperadmin, orgs, claims.Web)
 	if err != nil {
 		return nil, err
 	}
