@@ -100,6 +100,18 @@ func SignAgentSession(sessionKey, serverID, userID string, expUnix int64) string
 	return fmt.Sprintf("%s.%d.%s", u, expUnix, agentSessionMAC(sessionKey, serverID, userID, expUnix))
 }
 
+// AgentSubject es el sujeto que va firmado en el pase: el usuario y su rol,
+// `<usuario>|w` (puede cambiar cosas) o `<usuario>|r` (sólo leer). Dentro del
+// sujeto, y no en un campo nuevo, para que un agente v4 —que no lo lee— siga
+// aceptando el pase. La copia del agente es `middleware.SessionRole`; las dos
+// se atan con `TestAgentSubjectVector` / `TestSessionRoleVector`.
+func AgentSubject(userID string, write bool) string {
+	if write {
+		return userID + "|w"
+	}
+	return userID + "|r"
+}
+
 func agentSessionMAC(sessionKey, serverID, userID string, expUnix int64) string {
 	mac := hmac.New(sha256.New, []byte(sessionKey))
 	fmt.Fprintf(mac, "agent-session:%s:%s:%d", serverID, userID, expUnix)

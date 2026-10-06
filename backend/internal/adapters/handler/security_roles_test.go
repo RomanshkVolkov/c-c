@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/adapters/k8s"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -95,17 +97,41 @@ func TestThePlatformClusterIsSuperadminOnly(t *testing.T) {
 	}
 }
 
-// Un viewer no recibe pase de agente: el pase no lleva rol, y con él el agente
-// acepta reiniciar servicios. Mutante: volver a viewer.
-func TestAViewerGetsNoAgentPass(t *testing.T) {
+// El pase al agente lleva el rol: un viewer lee y no reinicia. Pero a un
+// agente anterior a la v5, que acepta cualquier pase para todo, un viewer no le
+// pide pase. Mutantes: firmar siempre escritura; no mirar la versión del
+// agente; volver a exigir miembro.
+func TestTheAgentPassCarriesTheRole(t *testing.T) {
 	db, cleanup := provisioningDB(t)
 	defer cleanup()
 	servers := service.NewServerService(repository.NewServerRepository(db))
+	tok, err := servers.MintAgentToken("srv-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := NewAgentHandler(servers, nil)
-	rec := httptest.NewRecorder()
-	h.Session(rec, serverReq(http.MethodPost, "srv-1", "", "", claims("u-vera", "org-1", domain.OrgRoleViewer)))
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("un viewer pidiendo pase → %d, se esperaba 403", rec.Code)
+	pedir := func(c *domain.ClaimsJWT) (int, string) {
+		rec := httptest.NewRecorder()
+		h.Session(rec, serverReq(http.MethodPost, "srv-1", "", "", c))
+		var res struct {
+			Data struct{ Token string } `json:"data"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &res)
+		subject, _ := repository.VerifyAgentSession(tok.SessionKey, "srv-1", res.Data.Token, time.Now())
+		return rec.Code, subject
+	}
+	viewer := claims("u-vera", "org-1", domain.OrgRoleViewer)
+	if code, _ := pedir(viewer); code != http.StatusForbidden {
+		t.Errorf("un viewer con un agente v4 → %d, se esperaba 403", code)
+	}
+	if code, subject := pedir(claims("u-ana", "org-1", domain.OrgRoleMember)); code != http.StatusOK || subject != "u-ana|w" {
+		t.Errorf("un miembro → %d %q, se esperaba un pase de escritura", code, subject)
+	}
+	if err := servers.Heartbeat("srv-1", domain.AgentVersionRoles, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if code, subject := pedir(viewer); code != http.StatusOK || subject != "u-vera|r" {
+		t.Errorf("un viewer con un agente v5 → %d %q, se esperaba un pase de lectura", code, subject)
 	}
 }
 

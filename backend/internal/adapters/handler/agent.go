@@ -61,14 +61,21 @@ func (h *AgentHandler) MintToken(w http.ResponseWriter, r *http.Request) {
 
 // Session firma un pase corto para hablarle al agente desde la app.
 func (h *AgentHandler) Session(w http.ResponseWriter, r *http.Request) {
-	// Miembro y no viewer: el pase no lleva rol (hasta el agente v5), y con él
-	// el agente acepta todo su /api/v1, incluido reiniciar servicios.
-	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
+	// El pase lleva el rol: un viewer lee (servicios, nodos, logs) y no
+	// reinicia nada. Pero un agente anterior a la v5 no lo mira y acepta
+	// cualquier pase para todo, así que a ése sólo le piden pase los miembros.
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleViewer)
 	if !ok {
 		return
 	}
 	user, _ := currentUser(r)
-	res, err := h.servers.AgentSession(server.ID, user.UserID, h.now())
+	role, _ := user.RoleInOrg(server.OrgID)
+	write := user.Superadmin || role.CanWrite()
+	if !write && server.AgentVersion < domain.AgentVersionRoles {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "insufficient-role")
+		return
+	}
+	res, err := h.servers.AgentSession(server.ID, user.UserID, write, h.now())
 	switch {
 	case errors.Is(err, service.ErrNoAgentToken):
 		SendErrorResponse(w, http.StatusConflict, "This agent has no identity yet", "agent-has-no-token")

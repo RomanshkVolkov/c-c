@@ -96,15 +96,15 @@ func TestAnAgentSessionVerifiesWithTheCurrentKey(t *testing.T) {
 	defer cleanup()
 	svc := service.NewServerService(repository.NewServerRepository(db))
 
-	if _, err := svc.AgentSession("srv-1", "u-ana", time.Now()); err != service.ErrNoAgentToken {
+	if _, err := svc.AgentSession("srv-1", "u-ana", true, time.Now()); err != service.ErrNoAgentToken {
 		t.Errorf("sin token, pedir un pase → %v, se esperaba ErrNoAgentToken", err)
 	}
 	tok, _ := svc.MintAgentToken("srv-1")
-	pase, err := svc.AgentSession("srv-1", "u-ana", time.Now())
+	pase, err := svc.AgentSession("srv-1", "u-ana", true, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u, ok := repository.VerifyAgentSession(tok.SessionKey, "srv-1", pase.Token, time.Now()); !ok || u != "u-ana" {
+	if u, ok := repository.VerifyAgentSession(tok.SessionKey, "srv-1", pase.Token, time.Now()); !ok || u != "u-ana|w" {
 		t.Errorf("el agente no aceptaría este pase: %q %v", u, ok)
 	}
 	if _, err := svc.MintAgentToken("srv-1"); err != nil {
@@ -113,7 +113,7 @@ func TestAnAgentSessionVerifiesWithTheCurrentKey(t *testing.T) {
 	if _, ok := repository.VerifyAgentSession(tok.SessionKey, "srv-1", pase.Token, time.Now()); !ok {
 		t.Fatal("el control: la llave vieja verifica el pase viejo")
 	}
-	nuevo, _ := svc.AgentSession("srv-1", "u-ana", time.Now())
+	nuevo, _ := svc.AgentSession("srv-1", "u-ana", true, time.Now())
 	if _, ok := repository.VerifyAgentSession(tok.SessionKey, "srv-1", nuevo.Token, time.Now()); ok {
 		t.Error("un pase nuevo verifica con la llave de antes de reacuñar")
 	}

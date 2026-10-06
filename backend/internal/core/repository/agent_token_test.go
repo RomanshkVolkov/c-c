@@ -76,3 +76,14 @@ func TestAnAgentTokenIsNotAPersonalToken(t *testing.T) {
 		t.Error("cada token tiene que traer su propia sal")
 	}
 }
+
+// El mismo vector que `TestSessionRoleVector` del agente: el rol va al final
+// del sujeto firmado. Si cambia uno, cambia el otro.
+func TestAgentSubjectVector(t *testing.T) {
+	if got := AgentSubject("u-ana", true); got != "u-ana|w" {
+		t.Errorf("escritura → %q", got)
+	}
+	if got := AgentSubject("u-ana", false); got != "u-ana|r" {
+		t.Errorf("lectura → %q", got)
+	}
+}

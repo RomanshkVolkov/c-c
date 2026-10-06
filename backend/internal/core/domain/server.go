@@ -54,6 +54,11 @@ const AgentVersionDeploys = 3
 // migrar.
 const AgentVersionMigrates = 4
 
+// AgentVersionRoles: la primera que lee el rol del pase y no deja reiniciar a
+// un pase de lectura. A un agente anterior, que acepta cualquier pase para
+// todo, un viewer no le pide pase.
+const AgentVersionRoles = 5
+
 // AgentSilence: cuánto se tolera sin latido antes de dar el agente por caído.
 // El agente pregunta cada 25 s como mucho; tres preguntas perdidas son un
 // agente que no está, no una red que parpadea.

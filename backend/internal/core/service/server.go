@@ -98,7 +98,7 @@ func (s *ServerService) MintAgentToken(id string) (*domain.AgentTokenResponse, e
 }
 
 // AgentSession firma un pase corto para que `userID` le hable al agente.
-func (s *ServerService) AgentSession(id, userID string, now time.Time) (*domain.AgentSessionResponse, error) {
+func (s *ServerService) AgentSession(id, userID string, write bool, now time.Time) (*domain.AgentSessionResponse, error) {
 	srv, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (s *ServerService) AgentSession(id, userID string, now time.Time) (*domain.
 	exp := now.Add(agentSessionTTL)
 	key := repository.AgentSessionKey(srv.ID, srv.AgentTokenSalt)
 	return &domain.AgentSessionResponse{
-		Token:     repository.SignAgentSession(key, srv.ID, userID, exp.Unix()),
+		Token:     repository.SignAgentSession(key, srv.ID, repository.AgentSubject(userID, write), exp.Unix()),
 		ExpiresAt: exp,
 	}, nil
 }
