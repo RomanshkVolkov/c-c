@@ -1,4 +1,5 @@
-import { isTauri } from "@/lib/platform";
+import { pushActiveHere } from "@/lib/push";
+import { isTauri, isWebBuild } from "@/lib/platform";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import {
@@ -49,6 +50,10 @@ type Payload = {
 };
 
 async function ensureNotifyPermission(): Promise<boolean> {
+  // En el navegador se mira el permiso tal cual, sin pedirlo: pedirlo al
+  // arrancar es un aviso que nadie entiende, y el botón de «avisos en este
+  // dispositivo» ya lo pide cuando toca. El plugin de Tauri, sin Tauri, lanza.
+  if (!isTauri) return typeof Notification !== "undefined" && Notification.permission === "granted";
   try {
     if (await isPermissionGranted()) return true;
     return (await requestPermission()) === "granted";
@@ -241,6 +246,9 @@ export function useReportEvents() {
     const notify = (kind: string, title: string, body: string, reportId?: string) => {
       void (async () => {
         const log = useNotificationsStore.getState().add;
+        // Con la campana empujada a este navegador (W2), el aviso del sistema
+        // lo pone el service worker; ponerlo también aquí lo duplicaría.
+        if (isWebBuild && pushActiveHere()) return;
         if (!canNotify) {
           log({ kind, title, body, reportId, delivery: "failed", error: "permission not granted" });
           return;

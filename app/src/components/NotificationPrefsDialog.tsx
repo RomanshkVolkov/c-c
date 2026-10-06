@@ -1,3 +1,5 @@
+import { isWebBuild } from "@/lib/platform";
+import PushDeviceRow from "@/components/PushDeviceRow";
 import { hora } from "@/lib/fechas";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useState } from "react";
@@ -34,6 +36,10 @@ const OPTIONS: { key: keyof InboxPrefs; labelKey: MessageKey; hintKey: MessageKe
   { key: "meetingsQuiet", labelKey: "notifications:prefs.meetings", hintKey: "notifications:prefs.meetingsHint", inverted: true },
   // La actividad de CI (R9): la clase más habladora, y por eso con su válvula.
   { key: "ciQuiet", labelKey: "notifications:prefs.ci", hintKey: "notifications:prefs.ciHint", inverted: true },
+  // Al teléfono (W2). `pushQuiet` invertido como los demás; `pushCi` al
+  // derecho, porque el CI en el teléfono se pide, no viene puesto.
+  { key: "pushQuiet", labelKey: "notifications:prefs.push", hintKey: "notifications:prefs.pushHint", inverted: true },
+  { key: "pushCi", labelKey: "notifications:prefs.pushCi", hintKey: "notifications:prefs.pushCiHint" },
 ];
 
 /** Si el interruptor se ve encendido. Ver `inverted` arriba. */
@@ -141,7 +147,7 @@ export default function NotificationPrefsDialog({
   // dialog that lies before it is even used.
   const actual: InboxPrefs = prefs ?? {
     mentions: true, dms: true, comments: true, reports: true, messages: true, workQuiet: false,
-    meetingsQuiet: false, ciQuiet: false,
+    meetingsQuiet: false, ciQuiet: false, pushQuiet: false, pushCi: false,
   };
 
   const alternar = async (key: keyof InboxPrefs) => {
@@ -200,6 +206,8 @@ export default function NotificationPrefsDialog({
         <p className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           {t("notifications:prefs.mentionsAlways")}
         </p>
+
+        {isWebBuild && <PushDeviceRow />}
 
         <RegistroDeEntrega />
 

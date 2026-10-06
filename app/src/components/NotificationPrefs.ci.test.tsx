@@ -63,3 +63,24 @@ describe("el interruptor de CI y deploys", () => {
     expect(isOn()).toBe(false);
   });
 });
+
+/**
+ * Los dos del teléfono (W2): `pushQuiet` invertido (sin guardar = el teléfono
+ * avisa) y `pushCi` al derecho (sin guardar = el CI **no** va al teléfono).
+ * Mutantes: darle la vuelta a cualquiera de los dos.
+ */
+describe("los interruptores del teléfono", () => {
+  const sw = (label: string) => screen.getByText(label).closest("button")!.getAttribute("aria-checked");
+
+  it("sin guardar: el teléfono avisa y el CI no va al teléfono", () => {
+    open();
+    expect(sw("On your phone")).toBe("true");
+    expect(sw("CI on the phone too")).toBe("false");
+  });
+
+  it("encender el CI en el teléfono guarda pushCi: true", () => {
+    open();
+    fireEvent.click(screen.getByText("CI on the phone too").closest("button")!);
+    expect(savePrefs).toHaveBeenCalledWith(expect.objectContaining({ pushCi: true }));
+  });
+});

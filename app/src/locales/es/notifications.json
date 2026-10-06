@@ -46,7 +46,22 @@
     "meetingsHint": "Las reuniones periódicas de tu organización. Suenan como una llamada a la hora de empezar.",
     "mentionsAlways": "Que te mencionen te llega siempre. Es lo único que merece interrumpir a alguien, así que no es un ajuste.",
     "ci": "CI y deploys",
-    "ciHint": "Cada ejecución de GitHub Actions de los repositorios de tu organización al terminar, y cada deploy desde cac al acabar. Una fila por repositorio en la campana."
+    "ciHint": "Cada ejecución de GitHub Actions de los repositorios de tu organización al terminar, y cada deploy desde cac al acabar. Una fila por repositorio en la campana.",
+    "push": "En el teléfono",
+    "pushHint": "Todo lo que llega a la campana llega también a los dispositivos donde encendiste los avisos. Apágalo para callar el teléfono sin tocar la campana.",
+    "pushCi": "CI también al teléfono",
+    "pushCiHint": "Las ejecuciones de GitHub Actions y los deploys también llegan al teléfono. Viene apagado: un push pueden ser varias ejecuciones."
   },
-  "wrote": "{{who}} escribió"
+  "wrote": "{{who}} escribió",
+  "push": {
+    "title": "Avisos en este dispositivo",
+    "enable": "Encender",
+    "disable": "Apagar",
+    "onHint": "Este dispositivo recibe la campana aunque cac esté cerrado.",
+    "offHint": "Recibe la campana aquí aunque cac esté cerrado.",
+    "denied": "El navegador tiene bloqueados los avisos de cac. Permítelos en los ajustes del sitio y vuelve.",
+    "unsupported": "Este navegador no puede recibir avisos con cac cerrado. En un iPhone, primero añade cac a la pantalla de inicio.",
+    "offServer": "Este servidor todavía no manda avisos a dispositivos.",
+    "failed": "No se pudieron cambiar los avisos de este dispositivo"
+  }
 }

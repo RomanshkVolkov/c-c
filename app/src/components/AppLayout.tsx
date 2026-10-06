@@ -17,6 +17,7 @@ import IncomingCall from "@/components/voice/IncomingCall";
 import MeetingCall from "@/components/meetings/MeetingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import { isWebBuild } from "@/lib/platform";
+import { useOpenedFromPush } from "@/hooks/use-opened-from-push";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useVoice } from "@/store/voice.store";
 import { useReportEvents } from "@/hooks/use-report-events";
@@ -38,6 +39,9 @@ export default function AppLayout() {
   // upgrade a pre-orgs token (else org-scoped lists come back empty) so the
   // switcher and lists have data without a manual re-login. Also fetch pending
   // invitations for the sidebar badge. Skipped for guests (no token → 401).
+  // Abierta desde un aviso del teléfono: esa fila, leída (W2).
+  useOpenedFromPush();
+
   useEffect(() => {
     if (authed) {
       ensureOrgClaim().then(() => {

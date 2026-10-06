@@ -1,3 +1,5 @@
+import { registerServiceWorker } from "./lib/push";
+import { isWebBuild } from "./lib/platform";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
@@ -26,6 +28,9 @@ useLocaleStore.getState().apply();
 installOrgSwitch();
 installPlaces();
 void closeOrphanTerminals();
+// La versión web registra su service worker: es lo que recibe la campana con
+// la app cerrada (W2). En el escritorio no hay.
+if (isWebBuild) void registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

@@ -46,7 +46,22 @@
     "meetingsHint": "Recurring meetings your organization scheduled. They ring like a call at the time they start.",
     "mentionsAlways": "Being mentioned always reaches you. It is the one thing worth interrupting somebody for, so it is not a setting.",
     "ci": "CI & deploys",
-    "ciHint": "Every GitHub Actions run of your organization's repositories when it finishes, and every deploy from cac when it ends. One row per repository in the bell."
+    "ciHint": "Every GitHub Actions run of your organization's repositories when it finishes, and every deploy from cac when it ends. One row per repository in the bell.",
+    "push": "On your phone",
+    "pushHint": "Everything that reaches the bell also reaches the devices where you turned on notifications. Turn it off to keep the phone quiet without touching the bell.",
+    "pushCi": "CI on the phone too",
+    "pushCiHint": "GitHub Actions runs and deploys also reach the phone. Off by default: one push can be several runs."
   },
-  "wrote": "{{who}} wrote"
+  "wrote": "{{who}} wrote",
+  "push": {
+    "title": "Notifications on this device",
+    "enable": "Turn on",
+    "disable": "Turn off",
+    "onHint": "This device gets the bell even with cac closed.",
+    "offHint": "Get the bell here even with cac closed.",
+    "denied": "The browser has notifications blocked for cac. Allow them in the site settings, then come back.",
+    "unsupported": "This browser can't receive notifications with cac closed. On an iPhone, add cac to the home screen first.",
+    "offServer": "This server doesn't send notifications to devices yet.",
+    "failed": "Couldn't change notifications on this device"
+  }
 }
