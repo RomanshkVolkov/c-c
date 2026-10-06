@@ -1,6 +1,6 @@
 import { isTauri } from "@/lib/platform";
 import { apiUrl } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
+import { currentMediaTicket } from "@/lib/url-ticket";
 
 const inTauri = isTauri;
 
@@ -74,11 +74,13 @@ export function mediaSrc(src: string | undefined): string | undefined {
   // to ride the query string and end up in the server's access log.
   if (inTauri) return convertFileSrc(path, MEDIA_SCHEME);
 
-  // Browser (development): no custom scheme, so fall back to the query string.
-  const token = useAuthStore.getState().accessToken;
-  if (!token) return apiUrl(path);
+  // En el navegador no hay esquema propio: la credencial va en la URL, y por eso
+  // es un pase de adjuntos y no el token de acceso (ver lib/url-ticket.ts). Un
+  // pase que acabe en un log sólo abre adjuntos, y media hora.
+  const ticket = currentMediaTicket();
+  if (!ticket) return apiUrl(path);
   const sep = path.includes("?") ? "&" : "?";
-  return apiUrl(path) + `${sep}token=${encodeURIComponent(token)}`;
+  return apiUrl(path) + `${sep}token=${encodeURIComponent(ticket)}`;
 }
 
 /**

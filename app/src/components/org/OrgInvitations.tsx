@@ -91,6 +91,13 @@ export default function OrgInvitations({
       limpiar();
       onAdded();
     } catch (e) {
+      // Sin aceptar sólo entra quien ya es de tu gente (de otra org que
+      // administras). A los demás se les invita, y eso es lo que se hace.
+      if (e instanceof Error && e.message === "invite-required") {
+        toast.info(t("org:inviteInstead", { who: picked.username }));
+        await invitar();
+        return;
+      }
       toast.error(t("org:errAddUser"), {
         description: e instanceof Error ? e.message : undefined,
       });

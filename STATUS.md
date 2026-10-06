@@ -126,8 +126,14 @@ dentro del sujeto firmado (`usuario|w` / `usuario|r`, el v4 lo sigue
 aceptando); el agente no deja reiniciar a un pase de lectura; un viewer sólo
 recibe pase si el agente del servidor ya es v5; la app esconde reiniciar y
 desplegar al viewer e instala `:v5`. Orden: backend → imagen del agente → app.
-**Pendiente:** token fuera de las URLs, alta en una org sin consentimiento,
-límite de login por IP.
+**Publicado en la v1.6.88.** **Tanda 3 (6-oct), hecha, sin commitear:** por la URL
+sólo viaja un pase corto con alcance (`media`/`events`, 30 min, otra llave), nunca
+el token de acceso; HSTS en backend y web; meter a alguien en una org sin que
+acepte sólo si ya es de tu gente (si no, `invite-required` y la app lo invita);
+fuera de tus orgs sólo encuentras a alguien por su usuario exacto; cambiar la
+contraseña cuelga los streams abiertos (`session:revoked`); el login cuenta
+también por IP (la última de `X-Forwarded-For`) y barre lo viejo. Queda para
+después: tokens en `localStorage` → cookies `httpOnly`.
 
 **Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).

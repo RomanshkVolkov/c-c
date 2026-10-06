@@ -18,6 +18,7 @@ import MeetingCall from "@/components/meetings/MeetingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import { isWebBuild } from "@/lib/platform";
 import { useOpenedFromPush } from "@/hooks/use-opened-from-push";
+import { useMediaTicket } from "@/lib/url-ticket";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useVoice } from "@/store/voice.store";
 import { useReportEvents } from "@/hooks/use-report-events";
@@ -63,6 +64,10 @@ export default function AppLayout() {
   // Live report notifications (SSE) for the whole authenticated shell.
   useReportEvents();
 
+  // El pase de adjuntos de la web (ver lib/url-ticket.ts). En el escritorio no
+  // hace falta: sus adjuntos van con cabecera.
+  const mediaReady = useMediaTicket(isWebBuild && authed);
+
   // ⌘K anywhere, and Escape closes it because the dialog handles that itself.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const panelOpen = useNotifUI((s) => s.panelOpen);
@@ -94,6 +99,10 @@ export default function AppLayout() {
   if (authed && mustChangePassword) {
     return <ForcedChangePassword />;
   }
+
+  // En la web, las imágenes llevan un pase de adjuntos en la URL, y se pide
+  // antes de pintar nada: una imagen pintada sin él no se vuelve a pedir.
+  if (!mediaReady) return null;
 
 
   return (

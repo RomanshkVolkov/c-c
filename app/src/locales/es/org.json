@@ -73,10 +73,10 @@
   "revokeBody": "Ya no podrá aceptarla.",
   "revoke": "Revocar",
   "inviteSomeone": "Invitar a alguien",
-  "searchByUsername": "Busca por @usuario…",
+  "searchByUsername": "Escribe su @usuario exacto…",
   "addDirectly": "Añadir directamente",
   "sendInvitation": "Enviar la invitación",
-  "inviteExplain": "<1>Añadir directamente</1> mete a la persona en el acto. <3>Invitar</3> le manda una petición que acepta desde su propia app — sin correo de por medio.",
+  "inviteExplain": "<1>Añadir directamente</1> sólo vale para quien ya está en otra organización que administras. A los demás, <3>Invitar</3> les manda una petición que aceptan desde su propia app — sin correo de por medio.",
   "noPending": "No hay invitaciones pendientes.",
   "pending": "Pendientes ({{count}})",
   "freshDays": "Darle otros 14 días",
@@ -160,5 +160,6 @@
   "notTeamZone": "No está en la zona del equipo ({{city}}): edítala si debía estarlo.",
   "saveMeeting": "Guardar",
   "createMeeting": "Crear",
-  "errSaveMeeting": "No se guardó la reunión"
+  "errSaveMeeting": "No se guardó la reunión",
+  "inviteInstead": "@{{who}} no está en ninguna organización tuya: le mandamos una invitación."
 }

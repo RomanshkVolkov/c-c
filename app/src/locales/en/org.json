@@ -73,10 +73,10 @@
   "revokeBody": "They will no longer be able to accept it.",
   "revoke": "Revoke",
   "inviteSomeone": "Invite someone",
-  "searchByUsername": "Search by @username…",
+  "searchByUsername": "Type their exact @username…",
   "addDirectly": "Add directly",
   "sendInvitation": "Send invitation",
-  "inviteExplain": "<1>Add directly</1> assigns the person right away. <3>Invite</3> sends them a request they accept from their own app — no email needed.",
+  "inviteExplain": "<1>Add directly</1> only works for people already in another organization you administer. Everyone else gets an <3>Invite</3>: a request they accept from their own app — no email needed.",
   "noPending": "No pending invitations.",
   "pending": "Pending ({{count}})",
   "freshDays": "Give it a fresh 14 days",
@@ -160,5 +160,6 @@
   "notTeamZone": "Not in the team time zone ({{city}}): edit it if it should be.",
   "saveMeeting": "Save",
   "createMeeting": "Create",
-  "errSaveMeeting": "The meeting wasn't saved"
+  "errSaveMeeting": "The meeting wasn't saved",
+  "inviteInstead": "@{{who}} isn't in any of your organizations, so we sent them an invitation."
 }

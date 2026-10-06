@@ -139,5 +139,8 @@
   "bad-push-endpoint": "El servicio de avisos de este navegador no está soportado.",
   "too-many-push-devices": "Ya tienes el máximo de dispositivos recibiendo avisos. Apaga uno antes.",
   "push-not-yours": "Este navegador sigue suscrito para otra persona. Vuelve a intentarlo.",
-  "proxy-off": "Las integraciones no están disponibles ahora en este servidor."
+  "proxy-off": "Las integraciones no están disponibles ahora en este servidor.",
+  "invite-required": "Esa persona no está en ninguna organización tuya: invítala.",
+  "invalid-url-ticket": "El enlace caducó. Recarga la página.",
+  "bad-url-scope": "Petición no válida."
 }

@@ -139,5 +139,8 @@
   "bad-push-endpoint": "This browser's push service isn't supported.",
   "too-many-push-devices": "You already have the maximum number of devices receiving alerts. Turn one off first.",
   "push-not-yours": "This browser is still subscribed for someone else. Try again.",
-  "proxy-off": "Integrations aren't available on this server right now."
+  "proxy-off": "Integrations aren't available on this server right now.",
+  "invite-required": "That person isn't in any of your organizations: invite them.",
+  "invalid-url-ticket": "The link expired. Reload the page.",
+  "bad-url-scope": "Invalid request."
 }

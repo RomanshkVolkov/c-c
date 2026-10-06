@@ -12,6 +12,7 @@ import { adoptarMembresia } from "@/lib/membresia";
 import i18next from "i18next";
 
 import { STATUS_LABEL_KEYS, normalizeStatus } from "@/types/report";
+import { urlTicket } from "@/lib/url-ticket";
 import { useAuthStore } from "@/store/auth.store";
 import { useDeploymentsStore, type DeployLogEvent } from "@/store/deployments.store";
 import { useActivityStore } from "@/store/activity.store";
@@ -701,12 +702,22 @@ export function useReportEvents() {
     let attempts = 0;
     const volvio = vigilanteDeReconexion();
 
-    const connect = () => {
+    const connect = async () => {
       if (stopped) return;
-      const token = useAuthStore.getState().accessToken;
-      if (!token) return;
+      if (!useAuthStore.getState().accessToken) return;
+      // Un pase del stream, nuevo en cada conexión: el token de acceso ya no
+      // viaja en la URL (ver lib/url-ticket.ts). Si no se puede pedir, se
+      // reintenta como cualquier otro corte.
+      let ticket: string;
+      try {
+        ticket = await urlTicket("events");
+      } catch {
+        if (!stopped) scheduleRetry();
+        return;
+      }
+      if (stopped) return;
 
-      es = new EventSource(apiUrl(`/api/v1/events?token=${token}`));
+      es = new EventSource(apiUrl(`/api/v1/events?token=${encodeURIComponent(ticket)}`));
       lastSeenAt = Date.now();
       es.onopen = () => {
         attempts = 0;
@@ -753,11 +764,15 @@ export function useReportEvents() {
         es?.close();
         es = null;
         if (stopped) return;
-        const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempts);
-        attempts += 1;
-        timer = setTimeout(connect, delay);
+        scheduleRetry();
       };
     };
+
+    function scheduleRetry() {
+      const delay = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempts);
+      attempts += 1;
+      timer = setTimeout(() => void connect(), delay);
+    }
 
     const reconnect = () => {
       useConnectionStore.getState().setStream("connecting");
@@ -765,10 +780,10 @@ export function useReportEvents() {
       es = null;
       if (stopped) return;
       attempts = 0;
-      connect();
+      void connect();
     };
 
-    connect();
+    void connect();
 
     watchdog = setInterval(() => {
       if (stopped || !es) return;
