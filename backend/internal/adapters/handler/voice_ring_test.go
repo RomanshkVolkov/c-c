@@ -241,6 +241,7 @@ func ringDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	if err := db.AutoMigrate(
 		&domain.Organization{}, &domain.TaskSpace{}, &domain.OrgMembership{},
+		&domain.PushSubscription{}, &domain.Notification{}, &domain.NotificationPrefs{},
 	); err != nil {
 		t.Fatal(err)
 	}

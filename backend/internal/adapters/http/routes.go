@@ -48,7 +48,13 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitServerRoutesWith(db, r, hub, gh)
 	InitReportRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub)
-	InitNotificationRoutes(db, r)
+	// La campana al teléfono (W2): Web Push con las llaves VAPID del entorno.
+	// Sin ellas el servicio queda apagado y la web no ofrece suscribirse.
+	push := service.NewPushService(repository.NewPushRepository(db),
+		repository.GetEnv("VAPID_PUBLIC_KEY", ""), repository.GetEnv("VAPID_PRIVATE_KEY", ""),
+		repository.GetEnv("VAPID_SUBJECT", ""))
+	service.SetPush(push)
+	InitNotificationRoutes(db, r, push)
 	// Las reuniones periódicas y las grabaciones: los dos relojes de fondo.
 	InitMeetingRoutes(db, r, hub)
 	InitRecordingRoutes(db, r, hub)

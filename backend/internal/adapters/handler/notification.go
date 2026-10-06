@@ -61,7 +61,16 @@ func (h *notificationHandler) SavePrefs(w http.ResponseWriter, r *http.Request) 
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
 		return
 	}
-	var req domain.NotificationPrefs
+	// El cuerpo se aplica **sobre lo guardado**, no sobre un cero: un campo que
+	// el cliente no manda se queda como estaba. Una app anterior a un
+	// interruptor no lo conoce, y sin esto cambiar cualquier otro lo devolvía a
+	// su valor por defecto — con el push (W2), volvía a encender el teléfono de
+	// quien lo había callado desde la web.
+	req, err := h.svc.Prefs(user.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load preferences", err.Error())
+		return
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return

@@ -4,7 +4,7 @@ Este documento es el mapa completo de los eventos de cac y de cuáles dejan algo
 que se pueda leer más tarde. Se escribió después de perder un comentario de un
 cliente: escribió con la app cerrada y no quedó constancia en ninguna parte.
 
-Última revisión: **2026-10-04** (R9: la actividad de CI).
+Última revisión: **2026-10-05** (W2: la campana al teléfono).
 
 ## 1 · Tres cosas distintas que se confunden
 
@@ -270,6 +270,51 @@ Chat y directos pasan `ViaApp` fijo: hoy ninguna herramienta del MCP escribe en
 un canal ni un directo. El día que exista una, esos dos servicios necesitan el
 contexto de la petición — está anotado en el propio código, en `chat.go` y
 `dm.go`, junto a la llamada.
+
+## 3 ter · Al teléfono (Web Push, W2)
+
+Desde el 5-oct-2026 la campana puede llegar a los dispositivos donde cada quien
+la pidió: la versión web (`cac.guz-studio.dev/app`) instalada en un teléfono, o
+un navegador. Es Web Push estándar con llaves VAPID —sin Firebase ni la cuenta
+de Apple—; en iPhone hace falta añadir cac a la pantalla de inicio (iOS ≥ 16.4).
+
+- **Sale del mismo sitio que la fila**: `NotificationService.Notify`, después de
+  escribirla y sólo si se escribió. El teléfono recibe la fila tal cual —el
+  título ya traducido, el cuerpo, el enlace y la clave de grupo como etiqueta—,
+  así que no puede decir algo distinto de la campana. Con la misma etiqueta, el
+  teléfono **reemplaza** el aviso en vez de apilarlo: un canal hablador es una
+  notificación que se actualiza.
+- **Las preferencias sólo quitan.** Lo que la campana calla no va al teléfono.
+  `pushQuiet` (invertido, como `workQuiet`) calla el teléfono sin tocar la
+  campana. La actividad de CI no va al teléfono salvo con `pushCi`, que es al
+  derecho a propósito: ahí el cero que se quiere es «no».
+- **El timbre** no deja fila, pero sí va al teléfono: urgente y con 20 s de vida
+  (`TimbreTTL`), para que un teléfono que se enciende tarde no anuncie una
+  llamada colgada. Colgar manda un aviso con la misma etiqueta y el service
+  worker cierra la notificación.
+- **No duplicar, de momento sólo en el dispositivo:** el service worker no
+  enseña nada si una ventana de cac está delante, y la pestaña abierta no pone
+  su propio aviso si el push está encendido ahí. Lo que **no** hace todavía es
+  callar el teléfono mientras estás en la app de escritorio: la última
+  actividad se apunta cada 5 minutos y una conexión abierta no es estar
+  mirando, así que cualquier regla sería falsa. Para eso está `pushQuiet`.
+- **Pulsar** abre la app en el enlace con `?notif=<id>`, y la app marca esa fila
+  leída (`use-opened-from-push.ts`): el service worker no tiene la sesión.
+- **Dispositivos muertos:** un 404 o 410 del servicio de push borra la
+  suscripción; un envío aceptado apunta `LastOkAt`.
+- **Llaves:** `VAPID_PUBLIC_KEY` (variable) y `VAPID_PRIVATE_KEY` (secret) en el
+  repo; `backend.yml` las mete en `cac-secret`. Copia en 1Password (cuenta
+  familiar, Private, «cac · llaves VAPID»). Cambiarlas invalida todas las
+  suscripciones. Sin ellas, `/notifications/push/key` contesta vacío y la web no
+  ofrece el botón.
+
+| Qué | Dónde |
+|---|---|
+| Reglas del teléfono | `domain/push.go` (`PushAllows`) |
+| Envío y dispositivos muertos | `service/push.go` |
+| Enganche con la campana | `Notify` en `service/notification.go`; el timbre en `service/voice_ring.go` |
+| El service worker | `app/public/sw.js` |
+| Suscribir este dispositivo | `app/src/lib/push.ts`, `components/PushDeviceRow.tsx` |
 
 ## 4 · Lo que sigue capado
 

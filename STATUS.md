@@ -103,6 +103,11 @@ antes se adoptan una vez), sólo un 401 del refresh cierra sesión en la app,
 escritorio en `lazy` y fuera del build web, menú web sin servidores ni
 herramientas, voz desactivada en web hasta W3; `app/web/` (Dockerfile, nginx,
 k8s con HTTPRoute propia en `/app`) y `.github/workflows/web.yml`.
+**W0 y W1 publicados** (`e30709b`, `69494e8`): la web ya vive en `/app`.
+**W2 hecho, sin commitear:** la campana al teléfono por Web Push (VAPID;
+`PushSubscription`, `PushAllows`, envío desde `Notify` y desde el timbre,
+service worker, manifiesto instalable, botón «Avisos en este dispositivo»,
+`pushQuiet`/`pushCi`). Ver `docs/notifications.md` §3 ter.
 
 **Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).

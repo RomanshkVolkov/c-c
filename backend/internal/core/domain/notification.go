@@ -111,6 +111,14 @@ type NotificationPrefs struct {
 	// campana —un push son tantos avisos como workflows tenga el repo—, así que
 	// no puede caer en el `return true` del final, que nada silencia.
 	CIQuiet bool `json:"ciQuiet"`
+	// PushQuiet apaga los avisos al teléfono (W2), sin tocar la campana.
+	// Invertido como los de arriba: cero = el teléfono avisa, que es para lo que
+	// alguien se suscribió.
+	PushQuiet bool `json:"pushQuiet"`
+	// PushCI: la actividad de CI también al teléfono. Al derecho, y es a
+	// propósito: aquí el cero que se quiere es «no», porque la ráfaga de un push
+	// con varios workflows en un teléfono es ruido. Ver PushAllows.
+	PushCI bool `json:"pushCi"`
 }
 
 // DefaultPrefs is what somebody who has never touched this gets.

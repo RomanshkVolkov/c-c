@@ -61,6 +61,13 @@ func (s *TaskService) Timbrar(sp *domain.TaskSpace, de domain.VoiceCaller, aUser
 			Data:   timbre,
 		})
 	}
+	// Al teléfono también (W2): urgente y con la vida del timbre, para que un
+	// teléfono que estaba apagado no anuncie, al encenderse, una llamada que
+	// colgó hace un rato. La etiqueta es la de esa llamada, para poder quitarla.
+	PushToPhone(aUserID, domain.PushMessage{
+		Kind: "voice.ring", Title: de.Name, Body: "#" + sp.Name,
+		Link: "/chat?space=" + sp.ID, Tag: ringTag(sp.ID, de.ID), OrgID: sp.OrgID,
+	}, PushOptions{TTL: TimbreTTL, High: true})
 	return timbre, nil
 }
 
@@ -85,5 +92,14 @@ func (s *TaskService) CancelarTimbre(sp *domain.TaskSpace, deUserID, aUserID str
 			Data:   &domain.VoiceRingCancel{SpaceID: sp.ID, From: deUserID},
 		})
 	}
+	// Y se quita del teléfono: el service worker cierra la notificación de esa
+	// etiqueta en vez de enseñar otra.
+	PushToPhone(aUserID, domain.PushMessage{
+		Kind: "voice.ring.cancel", Tag: ringTag(sp.ID, deUserID), OrgID: sp.OrgID,
+	}, PushOptions{TTL: TimbreTTL, High: true})
 	return nil
 }
+
+// ringTag: la etiqueta de un timbre en el teléfono. Por sala y por quién llama
+// —no por el id del timbre—, porque cancelar sólo sabe esas dos cosas.
+func ringTag(spaceID, fromID string) string { return "ring:" + spaceID + ":" + fromID }

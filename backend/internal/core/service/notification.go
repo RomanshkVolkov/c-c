@@ -41,7 +41,8 @@ func (s *NotificationService) Notify(a domain.Aviso) {
 	// Checked here rather than at every call site: the services that publish
 	// events should not each have to remember what somebody wants, and one of
 	// them forgetting would be a preference that silently does nothing.
-	if prefs, err := s.repo.Prefs(a.UserID); err == nil && !prefs.Allows(a.Kind) {
+	prefs, prefsErr := s.repo.Prefs(a.UserID)
+	if prefsErr == nil && !prefs.Allows(a.Kind) {
 		return
 	}
 	// La red: si quien llama no puso clave, se deduce de la clase y el enlace.
@@ -65,7 +66,19 @@ func (s *NotificationService) Notify(a domain.Aviso) {
 		GroupKey:   group,
 		GroupLabel: a.Label,
 	}
-	_ = s.repo.Add(n)
+	if err := s.repo.Add(n); err != nil {
+		return
+	}
+	// Y al teléfono, si lo pidió (W2). Después de la fila y con lo mismo que la
+	// fila —el título ya en su idioma, el enlace, el grupo como etiqueta—, así
+	// que el teléfono no puede decir algo distinto de la campana. Sin poder leer
+	// las preferencias no se empuja: callar de más es mejor que molestar a quien
+	// pidió silencio.
+	if prefsErr == nil && prefs.PushAllows(a.Kind) {
+		PushToPhone(a.UserID, domain.PushMessage{
+			ID: n.ID, Kind: n.Kind, Title: n.Title, Body: n.Body, Link: n.Link, Tag: n.GroupKey, OrgID: n.OrgID,
+		}, PushOptions{})
+	}
 }
 
 func (s *NotificationService) Feed(userID, orgID string, limit int) (domain.NotificationFeed, error) {

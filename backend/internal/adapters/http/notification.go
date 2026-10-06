@@ -15,7 +15,7 @@ import (
 // No id anywhere in these paths: every one of them answers for whoever is
 // holding the token, because an inbox is not a thing you can ask about on
 // somebody else's behalf.
-func InitNotificationRoutes(db *gorm.DB, r *chi.Mux) {
+func InitNotificationRoutes(db *gorm.DB, r *chi.Mux, push *service.PushService) {
 	h := handler.NewNotificationHandler(
 		service.NewNotificationService(repository.NewNotificationRepository(db)),
 	)
@@ -34,5 +34,10 @@ func InitNotificationRoutes(db *gorm.DB, r *chi.Mux) {
 		r.Post("/read-all", h.MarkAllRead)
 		r.Get("/preferences", h.Prefs)
 		r.Patch("/preferences", h.SavePrefs)
+		// Este dispositivo, a la campana (W2). Ver domain/push.go.
+		ph := handler.NewPushHandler(push)
+		r.Get("/push/key", ph.Key)
+		r.Post("/push/subscriptions", ph.Subscribe)
+		r.Delete("/push/subscriptions", ph.Unsubscribe)
 	})
 }
