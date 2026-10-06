@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 
 export interface ConfirmOptions {
   title: string;
@@ -34,7 +35,16 @@ export function useConfirm(): ConfirmFn {
   return ctx;
 }
 
+/**
+ * Lo mismo, o `null` fuera del proveedor. Para componentes que también viven
+ * sin diálogo (el editor en pruebas o embebido): deciden ellos qué hacer.
+ */
+export function useOptionalConfirm(): ConfirmFn | null {
+  return useContext(ConfirmContext);
+}
+
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [opts, setOpts] = useState<ConfirmOptions>({ title: "" });
   const resolver = useRef<((value: boolean) => void) | null>(null);
@@ -64,14 +74,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => settle(false)}>
-              {opts.cancelText ?? "Cancel"}
+              {opts.cancelText ?? t("common:action.cancel")}
             </Button>
             <Button
               variant={opts.destructive ? "destructive" : "default"}
               onClick={() => settle(true)}
               autoFocus
             >
-              {opts.confirmText ?? "Confirm"}
+              {opts.confirmText ?? t("common:action.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

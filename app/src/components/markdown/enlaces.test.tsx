@@ -19,6 +19,8 @@ import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 vi.mock("@/lib/media", () => ({
+  isPdfAttachment: () => false,
+  linkClickAction: () => "edit",
   attachmentPath: () => null,
   mediaSrc: (s: string) => s,
   openAttachment: vi.fn(),

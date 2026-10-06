@@ -71,9 +71,21 @@ pub fn backend_path(uri: &str) -> Option<String> {
     Some(full)
 }
 
+/// `Access-Control-Allow-Origin`, en toda respuesta, también en las de error.
+///
+/// Para el webview este esquema es **otro origen**: un `<img>` carga igual, pero
+/// un `fetch` sin esta cabecera falla con estado 0 en vez de contestar. Y pdf.js
+/// descarga con `fetch`, así que el visor de PDF no podía abrir ningún adjunto
+/// (lo destapó la prueba de la CSP, 6-oct-2026; `cacvideo` ya la llevaba por lo
+/// mismo). `*` vale porque `cacmedia://` sólo existe dentro del webview de la
+/// app, y la CSP no deja cargar ahí código ajeno. En los errores también, para
+/// que quien pide reciba el 401 y no un fallo de red.
+const CORS: (&str, &str) = ("Access-Control-Allow-Origin", "*");
+
 fn deny(status: u16) -> Response<Vec<u8>> {
     Response::builder()
         .status(status)
+        .header(CORS.0, CORS.1)
         .body(Vec::new())
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }
@@ -116,6 +128,7 @@ pub async fn serve(
 
     Response::builder()
         .status(status)
+        .header(CORS.0, CORS.1)
         .header("Content-Type", content_type)
         // The bytes are private; letting the webview cache them to disk would
         // outlive the session that was allowed to see them.
@@ -157,6 +170,25 @@ mod tests {
     /// The handler end to end against a running backend: upload an attachment,
     /// then ask for it the way the webview would and check the bytes come back.
     /// Opt-in via CAC_E2E=1.
+    /// Un `fetch` (pdf.js) sólo recibe la respuesta si lleva CORS, también la
+    /// de un error: sin ella, el visor de PDF falla con «estado 0».
+    #[tokio::test]
+    async fn every_answer_can_be_read_by_a_fetch() {
+        for (token, uri) in [
+            (None, "cacmedia://localhost/%2Fapi%2Fv1%2Fnotes%2Fn%2Fattachments%2Fa%2Fraw"),
+            (Some("t".to_string()), "cacmedia://localhost/%2Fetc%2Fpasswd"),
+        ] {
+            let req = tauri::http::Request::builder().uri(uri).body(Vec::new()).unwrap();
+            let res = serve(token, Some("http://localhost:1".into()), req).await;
+            assert!(res.status().is_client_error(), "{uri} → {}", res.status());
+            assert_eq!(
+                res.headers().get("Access-Control-Allow-Origin").map(|v| v.to_str().unwrap()),
+                Some("*"),
+                "{uri} sin CORS"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn serves_real_attachment_bytes() {
         if std::env::var("CAC_E2E").is_err() {
@@ -258,6 +290,7 @@ mod tests {
             res.headers().get("Content-Type").unwrap().to_str().unwrap(),
             "image/png"
         );
+        assert_eq!(res.headers().get("Access-Control-Allow-Origin").unwrap(), "*");
 
         // Without a session it must refuse rather than fetch anonymously.
         let req = tauri::http::Request::builder()

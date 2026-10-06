@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mediaSrc, openAttachment } from "@/lib/media";
+import { openAttachment } from "@/lib/media";
+import { openPdf } from "@/lib/pdf";
 
 /**
  * A PDF, rendered inside the app.
@@ -29,6 +30,9 @@ export default function PdfPreview({
   onClose: () => void;
 }) {
   const { t } = useT();
+  // El que hace scroll (y la raíz del contador de páginas), y dentro el que
+  // lleva las páginas.
+  const scroller = useRef<HTMLDivElement>(null);
   const holder = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState(0);
   const [current, setCurrent] = useState(1);
@@ -54,16 +58,12 @@ export default function PdfPreview({
 
     void (async () => {
       try {
-        const pdfjs = await import("pdfjs-dist");
-        // The worker ships as a separate file; Vite hashes it and gives us the
-        // final URL. Without this pdf.js tries to guess a path and fails.
-        const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
-        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-
-        const src = mediaSrc(url);
-        if (!src) throw new Error("no source");
-        const loading = pdfjs.getDocument({ url: src });
+        const loading = await openPdf(url);
         task = loading;
+        if (cancelled) {
+          void loading.destroy();
+          return;
+        }
         const loaded = await loading.promise;
         if (cancelled) return;
         setPages(loaded.numPages);
@@ -110,7 +110,7 @@ export default function PdfPreview({
         const visible = entries.filter((e) => e.isIntersecting).map((e) => Number((e.target as HTMLElement).dataset.page));
         if (visible.length) setCurrent(Math.min(...visible));
       },
-      { root: box, threshold: 0.3 },
+      { root: scroller.current, threshold: 0.3 },
     );
     for (const c of box.querySelectorAll("canvas")) io.observe(c);
     return () => io.disconnect();
@@ -169,7 +169,14 @@ export default function PdfPreview({
         </div>
       </header>
 
-      <div ref={holder} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+        {/* Las páginas, aquí y en ningún otro sitio: este contenedor lo llena
+            el código a mano (canvas a canvas), así que **no puede tener hijos
+            de React**. Los tenía —el «Cargando…»— y al vaciarlo para pintar las
+            páginas se llevaba por delante un <p> que React iba a quitar
+            después: «NotFoundError: The object can not be found here.»
+            (6-oct-2026). Los mensajes van fuera, como hermanos. */}
+        <div ref={holder} />
         {error ? (
           <p className="mt-16 text-center text-sm text-white/80">
             Couldn't display this PDF ({error}). Try opening it with your system.

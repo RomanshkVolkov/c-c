@@ -8,9 +8,10 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { openExternal } from "@/lib/platform";
 import { ImageOff, Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
+import { attachmentPath, isPdfAttachment, mediaSrc, openAttachment } from "@/lib/media";
 import Lightbox from "@/components/Lightbox";
 import PdfPreview from "@/components/PdfPreview";
+import PdfCard from "@/components/PdfCard";
 
 /**
  * Read-only markdown. Used wherever stored markdown is displayed (task
@@ -105,7 +106,12 @@ export default function Markdown({
             // clicked, instead of leaving a PDF looking like a web address.
             const isFile = !!href && !!attachmentPath(href);
             const label = children?.toString() ?? "file";
-            const isPdf = isFile && /\.pdf(\?|$)/i.test(`${label} ${href}`);
+            const isPdf = isPdfAttachment(href, label);
+            // Un PDF adjunto se ve como tarjeta con su primera página, como en
+            // Slack, y no como un enlace con su nombre.
+            if (isPdf && href) {
+              return <PdfCard url={href} fileName={label} onOpen={() => setPdf({ url: href, fileName: label })} />;
+            }
             return (
               <a
                 href={href}

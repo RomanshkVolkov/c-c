@@ -31,6 +31,8 @@ const tarjeta = (extra: Record<string, unknown>) => ({
 });
 
 vi.mock("@/lib/media", () => ({
+  isPdfAttachment: () => false,
+  linkClickAction: () => "edit",
   mediaSrc: (u?: string) => u,
   openAttachment: vi.fn(),
   attachmentPath: (u?: string) => u ?? null,

@@ -4,7 +4,8 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "close": "Close",
-    "edit": "Edit"
+    "edit": "Edit",
+    "confirm": "Confirm"
   },
   "language": {
     "label": "Language",
@@ -619,7 +620,10 @@
     "clearDate": "No date",
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
-    "statusNow": "Now: {{state}}"
+    "statusNow": "Now: {{state}}",
+    "removePdf": "Remove the PDF",
+    "removePdfTitle": "Remove “{{name}}” from here?",
+    "removePdfBody": "The file isn't deleted: it just stops showing here. Ctrl+Z brings it back."
   },
   "calendar": {
     "undated_one": "{{count}} with no date",

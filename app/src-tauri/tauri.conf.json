@@ -24,7 +24,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: cacmedia: http://cacmedia.localhost cacvideo: http://cacvideo.localhost; media-src 'self' blob: https: cacmedia: http://cacmedia.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://cac.guz-studio.dev cacmedia: http://cacmedia.localhost cacvideo: http://cacvideo.localhost http: data: blob:; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: cacmedia: http://cacmedia.localhost cacvideo: http://cacvideo.localhost; media-src 'self' blob: https: cacmedia: http://cacmedia.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://cac.guz-studio.dev cacmedia: http://cacmedia.localhost cacvideo: http://cacvideo.localhost http: data: blob: ws://localhost:1420 http://localhost:8080; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "plugins": {

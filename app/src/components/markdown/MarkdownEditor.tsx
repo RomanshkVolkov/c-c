@@ -28,7 +28,10 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrompt } from "@/components/PromptDialog";
-import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
+import { useOptionalConfirm } from "@/components/ConfirmDialog";
+import { attachmentPath, linkClickAction, mediaSrc, openAttachment } from "@/lib/media";
+import PdfPreview from "@/components/PdfPreview";
+import { PdfCards } from "./pdf-cards";
 import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
 import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
@@ -234,6 +237,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   const sweepLocalImagesRef = useRef<(() => void) | null>(null);
   const onLinkClickRef = useRef(onLinkClick);
   onLinkClickRef.current = onLinkClick;
+  const confirm = useOptionalConfirm();
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
+  // El PDF adjunto que se está viendo, en el visor de la app.
+  const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -246,6 +254,20 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         link: false,
       }),
       Link.configure({ openOnClick: false, autolink: true }),
+      // Un PDF adjunto, con su tarjeta (primera página) debajo del enlace.
+      PdfCards.configure({
+        onOpen: (p) => setPdf(p),
+        // Sin diálogo (pruebas, o el editor fuera de la app), se quita sin más.
+        confirmRemove: (name) =>
+          confirmRef.current
+            ? confirmRef.current({
+                title: i18next.t("common:last.removePdfTitle", { name }),
+                description: i18next.t("common:last.removePdfBody"),
+                confirmText: i18next.t("common:last.removePdf"),
+                destructive: true,
+              })
+            : Promise.resolve(true),
+      }),
       // renderHTML only touches the DOM: `node.attrs.src` keeps the canonical
       // relative path, so serializing back to markdown never leaks a token.
       Image.extend({
@@ -286,23 +308,49 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       },
       handlePaste: (_view, event) => takePasted(event.clipboardData, true),
       handleDrop: (_view, event) => takePasted((event as DragEvent).dataTransfer, false),
+      // El `click` del navegador, aparte: `handleClick` de abajo lo llama
+      // ProseMirror desde el `mouseup`, y cancelar ése no cancela el clic que
+      // viene después. Y los enlaces llevan `target="_blank"`, así que el
+      // webview abría el del adjunto en una ventana nueva —el navegador del
+      // sistema, con la app en el resumen— (jose, 6-oct-2026). Qué hace cada
+      // clic lo decide `handleClick`; aquí sólo se impide que la ventana lo siga.
+      handleDOMEvents: {
+        click: (_view, event) => {
+          if ((event.target as HTMLElement)?.closest?.("a")) event.preventDefault();
+          return false;
+        },
+      },
       // Plain click still just places the cursor — needed constantly while
       // editing a link's text. Only a held modifier "opens" it, mirroring how
       // Notion and Obsidian both do this in an editable page.
+      //
+      // Salvo un **adjunto**, que se abre con un clic: su texto es el nombre
+      // del fichero y casi nunca se edita. Un PDF va al visor de la app, y lo
+      // demás al programa del sistema. Y un enlace nunca navega la ventana: el
+      // de un adjunto es una ruta relativa (`/api/…/raw`), y seguirlo recargaba
+      // la app entera y la dejaba en el resumen (jose, 6-oct-2026).
       handleClick: (_view, _pos, event) => {
-        if (!event.metaKey && !event.ctrlKey) return false;
         const anchor = (event.target as HTMLElement)?.closest("a");
         const href = anchor?.getAttribute("href");
         if (!href) return false;
         event.preventDefault();
+        const label = anchor?.textContent?.trim() || "file";
+        const action = linkClickAction(href, label, event.metaKey || event.ctrlKey);
+        if (action === "preview-pdf") {
+          setPdf({ url: href, fileName: label });
+          return true;
+        }
+        if (action === "open-file") {
+          void openAttachment(href, label).catch(() => {});
+          return true;
+        }
+        if (action === "edit") return false;
         if (onLinkClickRef.current) {
           onLinkClickRef.current(href);
           return true;
         }
-        // No handler: open it anyway. Attaching a PDF puts a link in the body,
-        // and only Notes ever wired one — so in a task description that link
-        // did nothing on any click, which made the file decoration.
-        void openAttachment(href, anchor?.textContent?.trim() || "file").catch(() => {});
+        // No handler: open it anyway (an external link goes to the browser).
+        void openAttachment(href, label).catch(() => {});
         return true;
       },
     },
@@ -581,6 +629,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           </DragHandle>
         )}
         <EditorContent editor={editor} />
+        {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
         {editor.isEmpty && (
           <p className="pointer-events-none -mt-[1.6rem] text-sm text-muted-foreground/60">
             {placeholder ?? t("common:editor.writeInMarkdown")}

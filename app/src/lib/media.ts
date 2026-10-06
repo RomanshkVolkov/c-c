@@ -105,3 +105,34 @@ export async function openAttachment(url: string, fileName: string): Promise<voi
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("open_attachment", { path, fileName });
 }
+
+/**
+ * Si un enlace es un PDF adjunto, que se enseña en el visor de la app y no se
+ * manda fuera. La URL de un adjunto acaba en `/raw` y no dice su tipo, así que
+ * también cuenta el texto del enlace, que es el nombre del fichero.
+ */
+export function isPdfAttachment(href: string | undefined, label: string): boolean {
+  if (!href || !attachmentPath(href)) return false;
+  const pdf = /\.pdf(\?|#|$)/i;
+  return pdf.test(label.trim()) || pdf.test(href);
+}
+
+export type LinkClick = "preview-pdf" | "open-file" | "follow" | "edit";
+
+/**
+ * Qué hace un clic en un enlace dentro del editor.
+ *
+ * - Un **adjunto** se abre con un clic normal (su texto es el nombre del
+ *   fichero y casi nunca se edita): un PDF en el visor de la app, lo demás con
+ *   el programa del sistema.
+ * - Cualquier otro enlace, sólo con Ctrl/⌘: un clic normal pone el cursor, que
+ *   es lo que se hace mil veces al editar el texto de un enlace (como Notion y
+ *   Obsidian).
+ *
+ * Y en ningún caso navega la ventana: eso lo hace quien llama, siempre.
+ */
+export function linkClickAction(href: string, label: string, modifier: boolean): LinkClick {
+  if (attachmentPath(href)) return isPdfAttachment(href, label) ? "preview-pdf" : "open-file";
+  return modifier ? "follow" : "edit";
+}
+

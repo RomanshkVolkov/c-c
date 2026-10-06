@@ -47,6 +47,8 @@ const detalle = {
 };
 
 vi.mock("@/lib/media", () => ({
+  isPdfAttachment: () => false,
+  linkClickAction: () => "edit",
   mediaSrc: (u?: string) => (u ? `cacmedia://${u}` : undefined),
   openAttachment: vi.fn(),
   attachmentPath: (u?: string) => u ?? null,
