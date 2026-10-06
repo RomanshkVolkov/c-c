@@ -427,11 +427,12 @@ func GenerateTokens(userID, username string, superadmin bool, orgs []domain.OrgM
 		},
 	}
 
+	refreshExp := time.Now().Add(refreshExpiry)
 	refreshClaims := &domain.ClaimsRefresh{
 		TokenID: tokenID,
 		UserID:  userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(refreshExpiry)),
+			ExpiresAt: jwt.NewNumericDate(refreshExp),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Subject:   userID,
 		},
@@ -450,7 +451,10 @@ func GenerateTokens(userID, username string, superadmin bool, orgs []domain.OrgM
 		return nil, errors.New("error generating refresh token")
 	}
 
-	return &domain.TokenPair{AccessToken: accessToken, RefreshToken: refreshToken}, nil
+	return &domain.TokenPair{
+		AccessToken: accessToken, RefreshToken: refreshToken,
+		RefreshID: tokenID, RefreshExpiresAt: refreshExp,
+	}, nil
 }
 
 func ValidateAccessToken(encodedToken string) (*domain.ClaimsJWT, error) {

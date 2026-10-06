@@ -91,6 +91,19 @@ invertido), accesos directos desde el diálogo de deploy, la sección del CI y
 la pestaña GitHub de la org, y la lista del `EventSource` del navegador
 completada. Sale **después** de desplegar el backend, en la siguiente versión.
 
+**En curso (5-oct, #127): cac en el navegador.** Plan en
+`~/.claude/plans/joyful-dazzling-meteor.md`: el mismo React de `app/` con un
+segundo build (`bun run build:web`, `base: /app/`) servido por nginx en
+`cac.guz-studio.dev/app`; después push al teléfono (W2), invitados a llamadas
+(W3) y enlaces públicos de lectura (W4). **W0 y W1 hechos, sin commitear:**
+refresh con estado (`RefreshSession`: se canjea una vez, margen de 1 min,
+reúso fuera del margen revoca la sesión, `/auth/logout` la cierra, los de
+antes se adoptan una vez), sólo un 401 del refresh cierra sesión en la app,
+`lib/platform.ts` (`isTauri`, `isWebBuild`, `openExternal`), páginas de
+escritorio en `lazy` y fuera del build web, menú web sin servidores ni
+herramientas, voz desactivada en web hasta W3; `app/web/` (Dockerfile, nginx,
+k8s con HTTPRoute propia en `/app`) y `.github/workflows/web.yml`.
+
 **Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).
 v1.6.84: la pantalla compartida desde Mac ya no sale inclinada (#98: se

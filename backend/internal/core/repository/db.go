@@ -94,6 +94,7 @@ func DBConnection() {
 		&domain.DeployableSecretRef{},
 		&domain.SecretRotation{},
 		&domain.PersonalAccessToken{},
+		&domain.RefreshSession{},
 		&domain.TaskSpace{},
 		&domain.TaskFolder{},
 		&domain.TaskList{},

@@ -18,10 +18,29 @@ var (
 
 type AuthService struct {
 	repo *repository.AuthRepository
+	// now: el reloj, para probar el margen de gracia del refresh sin dormir.
+	now func() time.Time
 }
 
 func NewAuthService(repo *repository.AuthRepository) *AuthService {
-	return &AuthService{repo: repo}
+	return &AuthService{repo: repo, now: time.Now}
+}
+
+// WithClock: otro reloj. Sólo para las pruebas.
+func (s *AuthService) WithClock(now func() time.Time) *AuthService {
+	s.now = now
+	return s
+}
+
+// Logout cierra la sesión del refresh que se presenta: su familia entera queda
+// revocada, así que ni ese refresh ni ninguno que saliera de él vuelven a
+// valer. Uno que ya no valía no es un error: salir dos veces es salir.
+func (s *AuthService) Logout(refreshToken string) error {
+	claims, err := repository.ValidateRefreshToken(refreshToken)
+	if err != nil {
+		return nil
+	}
+	return s.repo.RevokeRefreshFamily(claims.TokenID, s.now())
 }
 
 func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, error) {
@@ -44,6 +63,13 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 	if err != nil {
 		return nil, err
 	}
+	// Un login abre una familia de refresh nueva. Ver domain.RefreshSession.
+	if err := s.repo.SaveRefresh(user.ID, "", tokens); err != nil {
+		return nil, err
+	}
+	// Barrer lo caducado aquí y no en un reloj: entrar es poco frecuente y
+	// basta para que la tabla no crezca sin fin. Un fallo no impide entrar.
+	_ = s.repo.PruneRefresh(s.now())
 
 	return &domain.AuthResponse{
 		AccessToken:  tokens.AccessToken,
@@ -275,6 +301,12 @@ func (s *AuthService) RefreshToken(refreshToken string) (*domain.AuthRefreshResp
 	if err != nil {
 		return nil, err
 	}
+	// Se canjea **antes** de emitir nada: un refresh revocado o reutilizado
+	// no puede conseguir ni un token de acceso más.
+	family, err := s.repo.ClaimRefresh(claims, s.now())
+	if err != nil {
+		return nil, err
+	}
 
 	user, err := s.repo.FindByID(claims.UserID)
 	if err != nil {
@@ -288,6 +320,9 @@ func (s *AuthService) RefreshToken(refreshToken string) (*domain.AuthRefreshResp
 
 	tokens, err := repository.GenerateTokens(user.ID, user.Username, user.IsSuperadmin, orgs)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.SaveRefresh(user.ID, family, tokens); err != nil {
 		return nil, err
 	}
 

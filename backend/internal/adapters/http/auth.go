@@ -26,6 +26,9 @@ func InitAuthRoutes(db *gorm.DB, r *chi.Mux) {
 	r.Route("/api/v1/auth", func(r chi.Router) {
 		r.Post("/login", h.Login)
 		r.With(middleware.RefreshMiddleware).Post("/refresh", h.RefreshToken)
+		// Con el refresh en la cabecera, como /refresh, pero sin exigir que
+		// valga: salir con uno caducado tiene que funcionar igual.
+		r.Post("/logout", h.Logout)
 		r.With(middleware.AuthMiddleware).Get("/me", h.Me)
 		r.With(middleware.AuthMiddleware).Post("/change-password", h.ChangePassword)
 		r.With(middleware.AuthMiddleware).Patch("/locale", h.SetLocale)

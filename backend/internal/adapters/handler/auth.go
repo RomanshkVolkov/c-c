@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 type AuthHandler interface {
 	Login(w http.ResponseWriter, r *http.Request)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
+	Logout(w http.ResponseWriter, r *http.Request)
 	Me(w http.ResponseWriter, r *http.Request)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
 	UpdateMe(w http.ResponseWriter, r *http.Request)
@@ -112,7 +114,14 @@ func (h *authHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	result, err := h.authService.RefreshToken(token)
 	if err != nil {
-		SendErrorResponse(w, http.StatusUnauthorized, "Invalid refresh token", err.Error())
+		// 401 sólo cuando el refresh no vale. La app cierra la sesión ante un
+		// 401, y desde que el refresh pasa por la base un fallo de Postgres no
+		// puede convertirse en echar a todo el mundo: eso es un 500.
+		if isRefreshAuthFailure(err) {
+			SendErrorResponse(w, http.StatusUnauthorized, "Invalid refresh token", err.Error())
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Refresh failed", "refresh-failed")
 		return
 	}
 
@@ -120,6 +129,32 @@ func (h *authHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Data:    result,
 	})
+}
+
+// isRefreshAuthFailure: el refresh no vale (firma, caducidad, revocado o de
+// alguien que ya no existe), a diferencia de que el servidor no pudo mirarlo.
+func isRefreshAuthFailure(err error) bool {
+	if errors.Is(err, repository.ErrRefreshRevoked) {
+		return true
+	}
+	switch err.Error() {
+	case "expired-token", "user not found":
+		return true
+	}
+	return false
+}
+
+// Logout revoca la sesión del refresh que se presenta (su familia entera). Sin
+// refresh, o con uno que ya no vale, contesta igual: salir es idempotente.
+func (h *authHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token != "" {
+		if err := h.authService.Logout(token); err != nil {
+			SendErrorResponse(w, http.StatusInternalServerError, "Logout failed", "logout-failed")
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *authHandler) Me(w http.ResponseWriter, r *http.Request) {

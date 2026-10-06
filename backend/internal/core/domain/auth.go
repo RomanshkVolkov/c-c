@@ -139,7 +139,45 @@ type ClaimsRefresh struct {
 type TokenPair struct {
 	AccessToken  string
 	RefreshToken string
+	// RefreshID y RefreshExpiresAt: lo que hay que apuntar del refresh recién
+	// emitido para poder rotarlo y revocarlo. Ver RefreshSession.
+	RefreshID        string
+	RefreshExpiresAt time.Time
 }
+
+// RefreshSession es un refresh token emitido, **con estado**.
+//
+// Hasta el 5-oct-2026 el refresh era un JWT sin más: valía siete días y no
+// había forma de invalidarlo. Con la app de escritorio guardándolo en su
+// `localStorage` era tolerable; con una versión web en un origen público
+// (cac.guz-studio.dev/app) un refresh robado sería una semana de sesión ajena.
+//
+// Cada refresh se usa **una vez**: al canjearlo se emite otro de la misma
+// familia y éste queda rotado. Si alguien presenta uno ya rotado fuera del
+// margen de gracia, alguien tiene una copia, y se revoca la familia entera
+// —la sesión legítima incluida—: perder la sesión es mejor que compartirla.
+type RefreshSession struct {
+	// ID es el `TokenID` del claim, que ya viajaba en cada refresh y nadie miraba.
+	ID        string    `gorm:"type:varchar(36);primaryKey"`
+	UserID    string    `gorm:"type:varchar(36);index;not null"`
+	FamilyID  string    `gorm:"type:varchar(36);index;not null"`
+	ExpiresAt time.Time `gorm:"not null;index"`
+	// RotatedAt: cuándo se canjeó. Nil = vigente.
+	RotatedAt *time.Time
+	// RevokedAt: cerrada a propósito (logout, o robo detectado).
+	RevokedAt *time.Time
+	CreatedAt time.Time
+}
+
+// RefreshReuseGrace: cuánto tiempo después de rotar un refresh se acepta otra
+// vez sin dar la sesión por robada.
+//
+// Existe porque dos peticiones que caducan a la vez —dos pestañas, o la app y
+// su ventana de llamada— piden refresh casi juntas con el mismo token, y la
+// segunda llega cuando la primera ya lo rotó. Sin margen, eso cerraría la
+// sesión de quien no ha hecho nada mal. Un minuto cubre esa carrera y no da a
+// un ladrón más que un minuto para adelantarse.
+const RefreshReuseGrace = time.Minute
 
 // ─── Requests / Responses ────────────────────────────────────────────────────
 
