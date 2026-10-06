@@ -65,7 +65,7 @@ func servir(key, server string, req *http.Request) int {
 // los logs, y nada que cambie algo puede aceptarlo por ahí, porque la URL
 // acaba en los logs de cualquier proxy del camino.
 func TestTheURLPassIsOnlyForReading(t *testing.T) {
-	tok := sign("k", "srv-1", "u-ana", time.Now().Add(time.Minute).Unix())
+	tok := sign("k", "srv-1", "u-ana|w", time.Now().Add(time.Minute).Unix())
 	get := httptest.NewRequest(http.MethodGet, "/api/v1/services/x/logs?access_token="+tok, nil)
 	if code := servir("k", "srv-1", get); code != http.StatusOK {
 		t.Errorf("GET con el pase en la URL → %d, se esperaba 200", code)
@@ -91,5 +91,45 @@ func TestWithoutAKeyTheAPIStaysShut(t *testing.T) {
 	}
 	if code := servir("k", "", req); code != http.StatusServiceUnavailable {
 		t.Errorf("sin id de servidor → %d, se esperaba 503", code)
+	}
+}
+
+// El mismo vector que `TestAgentSubjectVector` del backend: el rol va al final
+// del sujeto firmado. Si cambia uno, cambia el otro.
+func TestSessionRoleVector(t *testing.T) {
+	cases := map[string]struct {
+		user  string
+		write bool
+	}{
+		"u-ana|w":   {"u-ana", true},
+		"u-ana|r":   {"u-ana", false},
+		"u-ana":     {"u-ana", false},
+		"u|ana|w":   {"u|ana", true},
+		"u-ana|w|r": {"u-ana|w", false},
+	}
+	for subject, want := range cases {
+		if u, w := SessionRole(subject); u != want.user || w != want.write {
+			t.Errorf("%q → %q %v, se esperaba %q %v", subject, u, w, want.user, want.write)
+		}
+	}
+}
+
+// Un pase de lectura lee, pero no reinicia nada; uno sin rol (de un backend
+// de antes de la v5) cuenta como de lectura. Mutantes: no mirar el rol;
+// dar escritura al pase sin rol.
+func TestAReadPassCannotRestartAService(t *testing.T) {
+	exp := time.Now().Add(time.Minute).Unix()
+	for _, subject := range []string{"u-vera|r", "u-vera"} {
+		tok := sign("k", "srv-1", subject, exp)
+		get := httptest.NewRequest(http.MethodGet, "/api/v1/services/x/logs", nil)
+		get.Header.Set("Authorization", "Bearer "+tok)
+		if code := servir("k", "srv-1", get); code != http.StatusOK {
+			t.Errorf("%s leyendo → %d", subject, code)
+		}
+		post := httptest.NewRequest(http.MethodPost, "/api/v1/services/x/force-update", nil)
+		post.Header.Set("Authorization", "Bearer "+tok)
+		if code := servir("k", "srv-1", post); code != http.StatusForbidden {
+			t.Errorf("%s reiniciando → %d, se esperaba 403", subject, code)
+		}
 	}
 }

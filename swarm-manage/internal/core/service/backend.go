@@ -24,7 +24,7 @@ import (
 // Version es la versión de este agente, la de `swarm-manage/VERSION`. Va en
 // cada pregunta (`X-Agent-Version`): el backend no le encola un deploy a un
 // agente que no sabe hacerlo. Lo ata al fichero `TestTheVersionIsTheFile`.
-const Version = 4
+const Version = 5
 
 type Poller struct {
 	BaseURL string

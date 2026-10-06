@@ -37,8 +37,16 @@ func RequireSession(sessionKey, serverID string) func(http.Handler) http.Handler
 			if tok == "" && r.Method == http.MethodGet {
 				tok = r.URL.Query().Get("access_token")
 			}
-			if _, ok := VerifySession(sessionKey, serverID, tok, time.Now()); !ok {
+			subject, ok := VerifySession(sessionKey, serverID, tok, time.Now())
+			if !ok {
 				writeError(w, http.StatusUnauthorized, "invalid-session")
+				return
+			}
+			// Desde la v5 el pase dice si quien lo pidió puede cambiar cosas.
+			// Leer (servicios, nodos, logs) basta con estar en la org; todo lo
+			// que no es GET —hoy, reiniciar un servicio— pide escritura.
+			if _, write := SessionRole(subject); !write && r.Method != http.MethodGet {
+				writeError(w, http.StatusForbidden, "read-only-session")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -69,6 +77,22 @@ func VerifySession(sessionKey, serverID, token string, now time.Time) (userID st
 		return "", false
 	}
 	return string(raw), true
+}
+
+// SessionRole separa el usuario y el rol del sujeto de un pase:
+// `<usuario>|w` puede escribir, `<usuario>|r` sólo leer. El rol va dentro del
+// sujeto, y no en un campo nuevo, para que el pase siga teniendo la misma
+// forma y un agente v4 —que no lo lee— lo siga aceptando mientras se
+// actualiza. Un pase sin rol es de un backend de antes: sólo lectura.
+//
+// La copia del backend es `repository.AgentSubject`; las dos se atan con el
+// vector `TestSessionRoleVector` / `TestAgentSubjectVector`.
+func SessionRole(subject string) (userID string, write bool) {
+	i := strings.LastIndexByte(subject, '|')
+	if i < 0 {
+		return subject, false
+	}
+	return subject[:i], subject[i+1:] == "w"
 }
 
 func writeError(w http.ResponseWriter, code int, msg string) {
