@@ -13,7 +13,10 @@ func Logger(next http.Handler) http.Handler {
 		start := time.Now()
 		ww := &rw{ResponseWriter: w, code: http.StatusOK}
 		next.ServeHTTP(ww, r)
-		log.Printf("[%s] %s %d %v", r.Method, r.RequestURI, ww.code, time.Since(start))
+		// La ruta, nunca la query: el pase del agente puede viajar en ella
+		// (`?access_token=`, para los flujos de logs y terminales que no pueden
+		// poner cabeceras), y esto acababa en los logs del contenedor en claro.
+		log.Printf("[%s] %s %d %v", r.Method, r.URL.Path, ww.code, time.Since(start))
 	})
 }
 

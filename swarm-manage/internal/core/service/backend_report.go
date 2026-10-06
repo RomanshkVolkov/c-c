@@ -24,7 +24,9 @@ func NewBackendReporter(baseURL, token string) *BackendReporter {
 // Log manda una línea. Si no llega, se registra aquí y se sigue: el deploy no
 // se para porque el backend esté lento; lo que cuenta es el Finish.
 func (b *BackendReporter) Log(ctx context.Context, jobID, line string) {
-	log.Printf("deploy %s: %s", jobID, line)
+	// La línea no se repite aquí: va al backend, que la guarda en el deploy, y
+	// en los logs del contenedor quedaba además todo lo que imprimiera una
+	// migración —que puede ser una cadena de conexión—.
 	if err := b.post(ctx, "/agent/v1/jobs/"+jobID+"/log", map[string]any{"lines": []string{line}}); err != nil {
 		log.Printf("deploy %s: no llegó el log: %v", jobID, err)
 	}
