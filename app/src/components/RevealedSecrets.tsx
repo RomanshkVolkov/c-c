@@ -1,3 +1,4 @@
+import { isTauri } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Check, Copy, Lock } from "lucide-react";
@@ -36,7 +37,7 @@ interface OpVault {
 const keyOf = (p: OpVault) => `${p.account}//${p.vault}`;
 const labelOf = (p: OpVault) => `${p.vault} · ${p.email}`;
 
-const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const inTauri = isTauri;
 
 /**
  * Everything created with the project that can't be read back: the ingest key

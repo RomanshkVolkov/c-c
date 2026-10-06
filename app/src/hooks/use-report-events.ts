@@ -1,3 +1,4 @@
+import { isTauri } from "@/lib/platform";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import {
@@ -75,7 +76,7 @@ async function ensureNotifyPermission(): Promise<boolean> {
 export const nombreDeFicha = (p: { folio?: unknown; title?: unknown }): string =>
   [p.folio, p.title].filter((x) => typeof x === "string" && x).join(" · ");
 
-const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const inTauri = isTauri;
 
 /*
  * Aquí vivía una puerta: «si la ventana tiene el foco, no mandes nada al

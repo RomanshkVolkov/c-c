@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { ExternalLink, Github, Loader2, RefreshCw, Workflow } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternal } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { phraseFor } from "@/lib/server-errors";
@@ -55,7 +55,7 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
     try {
       const res = await api.post<APIResponse<{ url: string }>>(`${base}/link`, {}, true);
       if (!res?.success || !res.data) throw new Error(res?.error ?? "github-off");
-      await openUrl(res.data.url);
+      await openExternal(res.data.url);
       toast.info(t("org:github.finishInBrowser"));
     } catch (e) {
       toast.error(phraseFor(e instanceof Error ? e.message : String(e), t("org:github.connectFailed")));

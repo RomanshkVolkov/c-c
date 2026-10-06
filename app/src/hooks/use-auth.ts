@@ -1,5 +1,5 @@
 import { adoptServerLocale } from "@/lib/locale-sync";
-import { api } from "@/lib/api";
+import { api, revokeSession } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useInvitationsStore } from "@/store/invitations.store";
@@ -26,6 +26,9 @@ export function useAuth() {
   };
 
   const logout = () => {
+    // Se avisa al servidor sin esperar: la pantalla sale ya, y el refresh se
+    // revoca por detrás. Se lee antes de `clearAuth`, que lo borra.
+    void revokeSession(useAuthStore.getState().refreshToken);
     clearAuth();
     useOrgsStore.getState().reset();
     useInvitationsStore.getState().reset();

@@ -1,3 +1,4 @@
+import { isTauri } from "@/lib/platform";
 import { phraseFor } from "@/lib/server-errors";
 
 import type { APIResponse, AuthRefreshResponse } from "@/types/auth";
@@ -54,7 +55,7 @@ interface Reply {
  * The `fetch` path below is the fallback for running the UI outside Tauri (a
  * plain browser during development), where `invoke` doesn't exist.
  */
-const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const inTauri = isTauri;
 
 async function send(
   url: string,
@@ -108,8 +109,13 @@ async function tryRefresh(): Promise<string | null> {
         Authorization: `Bearer ${refreshToken}`,
       });
       const json = parse(reply) as APIResponse<AuthRefreshResponse>;
-      // Only a real auth failure (bad/expired refresh token) clears the session.
-      if (reply.status >= 400 || !json.success || !json.data) { clearAuth(); return null; }
+      // Sólo un refresh que no vale cierra la sesión: 401 (caducado, revocado,
+      // o reutilizado y dado por robado). Desde que el refresh pasa por la base
+      // un 500 es el servidor que no pudo mirar, y echar a alguien por eso es
+      // convertir un hipo de Postgres en un logout masivo: se queda la sesión y
+      // la siguiente acción vuelve a intentarlo.
+      if (reply.status === 401) { clearAuth(); return null; }
+      if (reply.status >= 400 || !json.success || !json.data) return null;
 
       setAuth(session!, json.data.accessToken, json.data.refreshToken);
       return json.data.accessToken;
@@ -326,3 +332,23 @@ export const api = {
   delete: <T>(path: string, auth = true) =>
     request<T>(path, { method: "DELETE", auth }),
 };
+
+/**
+ * Cerrar la sesión **también en el servidor**: revoca el refresh y todos los
+ * que salieron de él. Antes salir sólo borraba el `localStorage`, y un refresh
+ * copiado seguía valiendo siete días.
+ *
+ * Mejor esfuerzo: sin red, o con el servidor caído, se sale igual en local.
+ */
+export async function revokeSession(refreshToken: string | null | undefined): Promise<void> {
+  if (!refreshToken) return;
+  try {
+    await send(`${BASE_URL}/api/v1/auth/logout`, "POST", {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${refreshToken}`,
+    });
+  } catch {
+    // Salir no puede fallar por esto.
+  }
+}
+

@@ -62,6 +62,7 @@
   "list-holds-channel-work": "This list is holding work that came in through a channel.",
   "list-in-use-by-channel": "A channel is pointing at this list.",
   "locale-not-saved": "The language couldn't be saved.",
+  "logout-failed": "The server couldn't close the session; you are signed out on this device.",
   "max-5-images": "Five images per report is the limit.",
   "meeting-other-org": "That meeting belongs to another organization.",
   "missing-token": "This call needs a token.",
@@ -92,6 +93,7 @@
   "rate-limited-reporter": "Too many reports in a row. Give it a moment.",
   "recording-not-ready": "This recording is still being put together.",
   "recordings-disabled": "Recording isn't set up on this server.",
+  "refresh-failed": "The server couldn't renew your session. Try again in a moment.",
   "reviewed-needs-a-person": "A review is signed by a person, in the app. A token can't sign one.",
   "reviewed-needs-superadmin": "Only a superadmin can mark this as reviewed.",
   "ring-outsider": "You can only call people in this organization.",
@@ -124,6 +126,7 @@
   "voice-share-pending": "Screen sharing is already being asked for — answer the system dialog.",
   "voice-share-unanswered": "Nobody answered the share dialog.",
   "voice-unconfigured": "Voice isn't set up on this server.",
+  "voice-web-not-yet": "Calls aren't available on the web version yet; join from the desktop app.",
   "webhook-failed": "The GitHub delivery couldn't be processed; GitHub will retry it.",
   "wrong-type": "That file type isn't accepted."
 }

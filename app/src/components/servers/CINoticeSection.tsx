@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Check, Copy, ExternalLink, KeyRound, Rocket } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternal } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
 import { apiUrl } from "@/lib/api";
 import { desde } from "@/lib/desde";
@@ -280,7 +280,7 @@ export default function CINoticeSection({
                 </span>
                 {/* Lo escribe quien tiene la llave: sólo se abre si es una página web. */}
                 {b.runUrl.startsWith("https://") && (
-                  <Button variant="ghost" size="sm" aria-label={t("common:deploy.ci.openRun")} onClick={() => void openUrl(b.runUrl)}>
+                  <Button variant="ghost" size="sm" aria-label={t("common:deploy.ci.openRun")} onClick={() => void openExternal(b.runUrl)}>
                     <ExternalLink className="size-3.5" />
                   </Button>
                 )}

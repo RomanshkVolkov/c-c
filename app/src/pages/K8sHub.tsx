@@ -14,7 +14,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternal } from "@/lib/platform";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -64,7 +64,7 @@ export default function K8sHub({ server }: { server: Server }) {
 
   const open = async (url: string) => {
     try {
-      await openUrl(url);
+      await openExternal(url);
     } catch {
       window.open(url, "_blank");
     }

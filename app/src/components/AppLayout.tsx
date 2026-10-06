@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
@@ -16,6 +16,7 @@ import StaleBinaryNotice from "@/components/StaleBinaryNotice";
 import IncomingCall from "@/components/voice/IncomingCall";
 import MeetingCall from "@/components/meetings/MeetingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
+import { isWebBuild } from "@/lib/platform";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useVoice } from "@/store/voice.store";
 import { useReportEvents } from "@/hooks/use-report-events";
@@ -153,7 +154,10 @@ export default function AppLayout() {
         />
         <NotificationPrefsDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-        <Outlet />
+        {/* Las páginas de escritorio llegan en su propio trozo (ver App). */}
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
         {/* Mounted here and not per screen. Opening a task is global state, so
             drawing it has to be too: it used to live inside the board, which
             meant "my work", the channels and the dashboard could all ask for a
@@ -164,8 +168,10 @@ export default function AppLayout() {
           mientras miras un servidor o una nota, no sólo desde un canal. */}
       <IncomingCall />
       <MeetingCall />
-      <UpdateChecker />
-      <StaleBinaryNotice />
+      {/* El actualizador y el aviso de «binario reemplazado» son de la app de
+          escritorio: en web la versión nueva llega al recargar. */}
+      {!isWebBuild && <UpdateChecker />}
+      {!isWebBuild && <StaleBinaryNotice />}
       <Toaster richColors closeButton position="bottom-right" theme={theme} />
     </SidebarProvider>
   );

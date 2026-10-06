@@ -33,3 +33,4 @@ ds-bundle/
 # a missing type only shows up as a broken build on somebody else's machine.
 # What this is actually for is the design-sync .d.ts bundle at app/types/.
 /types/
+dist-web

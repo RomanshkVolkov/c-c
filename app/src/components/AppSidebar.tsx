@@ -1,3 +1,4 @@
+import { isWebBuild } from "@/lib/platform";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -197,7 +198,8 @@ export default function AppSidebar() {
   }, [authed, currentOrgId, loadInbox]);
   const collapsed = useSidebar().state === "collapsed";
   const setScope = useMyWorkStore((s) => s.setScope);
-  const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter(
+  // En la versión web no hay servidores: se gestionan desde el escritorio.
+  const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter((i) => !(isWebBuild && i.path === "/dashboard")).filter(
     (i) => !i.superadmin || superadmin,
   );
 
@@ -280,7 +282,7 @@ export default function AppSidebar() {
                       </SidebarMenuItem>
                     );
                   })}
-                  {conHerramientas && <DevToolsMenu />}
+                  {conHerramientas && !isWebBuild && <DevToolsMenu />}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -340,7 +342,7 @@ export default function AppSidebar() {
         {authed && !collapsed && (
           <AccountMenu
             onChangePassword={() => setPwOpen(true)}
-            onConnectMcp={() => setMcpOpen(true)}
+            onConnectMcp={isWebBuild ? undefined : () => setMcpOpen(true)}
             onNotificationPrefs={() => setPrefsOpen(true)}
           />
         )}

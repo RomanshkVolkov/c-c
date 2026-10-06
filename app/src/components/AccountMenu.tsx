@@ -60,7 +60,8 @@ export default function AccountMenu({
   onNotificationPrefs,
 }: {
   onChangePassword: () => void;
-  onConnectMcp: () => void;
+  /** Sin él no hay entrada: en la versión web no hay servidor MCP local. */
+  onConnectMcp?: () => void;
   onNotificationPrefs: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -205,9 +206,11 @@ export default function AccountMenu({
           <button className={item} onClick={() => { setOpen(false); onChangePassword(); }}>
             <KeyRound className="size-3.5 shrink-0" /> {t("nav:account.changePassword")}
           </button>
-          <button className={item} onClick={() => { setOpen(false); onConnectMcp(); }}>
-            <Bot className="size-3.5 shrink-0" /> Connect Claude Code
-          </button>
+          {onConnectMcp && (
+            <button className={item} onClick={() => { setOpen(false); onConnectMcp(); }}>
+              <Bot className="size-3.5 shrink-0" /> Connect Claude Code
+            </button>
+          )}
           <button className={item} onClick={() => { setOpen(false); onNotificationPrefs(); }}>
             <Bell className="size-3.5 shrink-0" /> Notifications
           </button>

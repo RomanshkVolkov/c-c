@@ -7,8 +7,12 @@ import react from "@vitejs/plugin-react";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(async ({ mode }) => ({
   plugins: [react(), tailwindcss()],
+
+  // La versión web vive en cac.guz-studio.dev/app (mismo origen que la API).
+  // La de escritorio se sirve desde la raíz del webview, como siempre.
+  base: mode === "web" ? "/app/" : "/",
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

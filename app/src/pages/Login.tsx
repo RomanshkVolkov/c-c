@@ -1,3 +1,4 @@
+import { isWebBuild } from "@/lib/platform";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -111,6 +112,9 @@ export default function Login() {
             </Button>
           </form>
 
+          {/* Entrar como invitado es para las herramientas del propio equipo
+              (imágenes, cripto), que en la versión web no existen. */}
+          {!isWebBuild && (<>
           <div className="mt-4 flex items-center gap-2">
             <div className="h-px flex-1 bg-border" />
             <span className="text-xs text-muted-foreground">or</span>
@@ -127,6 +131,7 @@ export default function Login() {
           <p className="mt-2 text-center text-xs text-muted-foreground">
             Guest access is limited to the on-device tools (Image Tool, Crypto Tools).
           </p>
+          </>)}
         </CardContent>
       </Card>
     </div>

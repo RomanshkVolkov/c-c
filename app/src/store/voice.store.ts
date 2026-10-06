@@ -1,3 +1,4 @@
+import { isWebBuild } from "@/lib/platform";
 import { phraseFor } from "@/lib/server-errors";
 import { create } from "zustand";
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -324,6 +325,13 @@ export const useVoice = create<VoiceState>((set, get) => ({
   ocupacion: {},
 
   entrar: async (spaceId, donde) => {
+    // La voz en la versión web llega con su propio motor (W3, livekit-client).
+    // Hasta entonces se dice, en vez de llamar a un Rust que no existe y
+    // quedarse «entrando» para siempre.
+    if (isWebBuild) {
+      set({ error: phraseFor("voice-web-not-yet", "Calls aren't available on the web yet."), errorSpaceId: spaceId });
+      return;
+    }
     // Ya dentro de ésta: no se reconecta. Volver a entrar cortaría la
     // conversación en curso para dejarla exactamente igual.
     if (get().spaceId === spaceId && get().estado !== "fuera") return;

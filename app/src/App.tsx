@@ -1,20 +1,10 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { isWebBuild } from "@/lib/platform";
 import Login from "@/pages/Login";
 import ReportsRedirect from "@/components/ReportsRedirect";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import Dashboard from "@/pages/Dashboard";
 import Overview from "@/pages/Overview";
-import ServerLayout from "@/pages/servers/ServerLayout";
-import ServerOverview from "@/pages/servers/ServerOverview";
-import ServerServices from "@/pages/servers/ServerServices";
-import ServerNodes from "@/pages/servers/ServerNodes";
-import ServerProvision from "@/pages/servers/ServerProvision";
-import ServerStats from "@/pages/ServerStats";
-import StackSecrets from "@/pages/StackSecrets";
-import ImageTool from "@/pages/ImageTool";
-import RequestClient from "@/pages/RequestClient";
-import CryptoTools from "@/pages/CryptoTools";
-import VoiceLab from "@/pages/VoiceLab";
 import Profile from "@/pages/Profile";
 import Users from "@/pages/Users";
 import OrganizationSettings from "@/pages/OrganizationSettings";
@@ -25,7 +15,6 @@ import Tasks from "@/pages/Tasks";
 import DocIndexPage from "@/pages/DocIndexPage";
 import Notes from "@/pages/Notes";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import DevTools from "@/pages/DevTools";
 import MyWork from "@/pages/MyWork";
 import Channels from "@/pages/Channels";
 import DirectMessages from "@/pages/DirectMessages";
@@ -33,6 +22,25 @@ import AppLayout from "@/components/AppLayout";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PromptProvider } from "@/components/PromptDialog";
 import { useAuthStore } from "@/store/auth.store";
+
+// Lo que sólo tiene sentido en el escritorio —los servidores, sus secrets y
+// provisioning, las herramientas de desarrollo— se carga aparte, y en la
+// versión web (`isWebBuild`) sus rutas ni existen. Así el bundle web no lleva
+// terminales, Ansible ni el cliente HTTP local, y en el escritorio cada una se
+// carga del disco la primera vez que se abre.
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const ServerLayout = lazy(() => import("@/pages/servers/ServerLayout"));
+const ServerOverview = lazy(() => import("@/pages/servers/ServerOverview"));
+const ServerServices = lazy(() => import("@/pages/servers/ServerServices"));
+const ServerNodes = lazy(() => import("@/pages/servers/ServerNodes"));
+const ServerProvision = lazy(() => import("@/pages/servers/ServerProvision"));
+const ServerStats = lazy(() => import("@/pages/ServerStats"));
+const StackSecrets = lazy(() => import("@/pages/StackSecrets"));
+const ImageTool = lazy(() => import("@/pages/ImageTool"));
+const RequestClient = lazy(() => import("@/pages/RequestClient"));
+const CryptoTools = lazy(() => import("@/pages/CryptoTools"));
+const VoiceLab = lazy(() => import("@/pages/VoiceLab"));
+const DevTools = lazy(() => import("@/pages/DevTools"));
 
 // Sends unknown paths to the right landing: the overview for signed-in users,
 // the on-device tools for returning guests, otherwise the login screen.
@@ -43,7 +51,9 @@ import { useAuthStore } from "@/store/auth.store";
 function RootRedirect() {
   const { isAuthenticated, isGuest } = useAuthStore();
   if (isAuthenticated()) return <Navigate to="/overview" replace />;
-  if (isGuest()) return <Navigate to="/image-tool" replace />;
+  // En la versión web no hay herramientas de invitado: ir a ellas daría la
+  // vuelta por aquí para siempre.
+  if (isGuest() && !isWebBuild) return <Navigate to="/image-tool" replace />;
   return <Navigate to="/login" replace />;
 }
 
@@ -55,7 +65,9 @@ export default function App() {
     <ErrorBoundary>
     <ConfirmProvider>
       <PromptProvider>
-      <BrowserRouter>
+      {/* `/app` en la versión web, la raíz en el escritorio (ver vite.config). */}
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <Suspense fallback={null}>
         <Routes>
         <Route path="/login" element={<Login />} />
         <Route
@@ -66,7 +78,7 @@ export default function App() {
           }
         >
           <Route path="/overview" element={<Overview />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          {!isWebBuild && <Route path="/dashboard" element={<Dashboard />} />}
           {/* The reports window is gone — its work lives on the board. The
               route stays as a redirect because notifications already sent are
               stored with /reports links, and a report's id *is* the item's id,
@@ -79,6 +91,7 @@ export default function App() {
           <Route path="/dm" element={<DirectMessages />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/notes/:id" element={<Notes />} />
+          {!isWebBuild && (
           <Route path="/servers/:id" element={<ServerLayout />}>
             <Route index element={<ServerOverview />} />
             <Route path="services" element={<ServerServices />} />
@@ -87,6 +100,7 @@ export default function App() {
             <Route path="secrets" element={<StackSecrets />} />
             <Route path="provision" element={<ServerProvision />} />
           </Route>
+          )}
           <Route path="/organization" element={<OrganizationSettings />} />
           <Route path="/invitations" element={<Invitations />} />
           <Route path="/activity" element={<Activity />} />
@@ -98,6 +112,7 @@ export default function App() {
             Requests is the exception and keeps its own gate inside: it talks to
             whatever host you point it at, but it lives behind the account like
             the rest of the product. */}
+        {!isWebBuild && (
         <Route
           element={
             <ProtectedRoute allowGuest>
@@ -125,8 +140,10 @@ export default function App() {
           <Route path="/crypto" element={<Navigate to="/devtools/tokens" replace />} />
           <Route path="/requests" element={<Navigate to="/devtools/requests" replace />} />
         </Route>
+        )}
         <Route path="*" element={<RootRedirect />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
       </PromptProvider>
     </ConfirmProvider>

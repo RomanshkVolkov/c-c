@@ -1,0 +1,81 @@
+name: web
+
+# La versión web de cac en https://cac.guz-studio.dev/app (W1).
+#
+# El mismo React que la app de escritorio, construido con `--mode web` y
+# servido por nginx. Igual que `backend.yml`: las pruebas van delante y rojo no
+# sale. El lado Rust (`src-tauri`) no forma parte de la web, así que tocarlo no
+# despliega nada aquí.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/src/**"
+      - "app/web/**"
+      - "app/public/**"
+      - "app/index.html"
+      - "app/package.json"
+      - "app/bun.lock"
+      - "app/vite.config.ts"
+      - "app/.env.web"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: ./.github/workflows/app.yml
+
+  build-push:
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          file: ./app/web/Dockerfile
+          push: true
+          tags: ghcr.io/romanshkvolkov/c-c/web:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy the manifest to the server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "app/web/k8s.yaml"
+          target: "/tmp/cac-web"
+          strip_components: 2
+
+      # `latest` siempre: sin el restart, un Deployment que no cambió de
+      # manifiesto no vuelve a bajar la imagen.
+      - name: Apply and roll out
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            kubectl apply -f /tmp/cac-web/k8s.yaml
+            kubectl -n default rollout restart deployment/cac-web
+            kubectl -n default rollout status deployment/cac-web --timeout=180s

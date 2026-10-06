@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ExternalLink, GitBranch, Loader2, Rocket, Server, Workflow, X } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternal } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
 import { desde } from "@/lib/desde";
 import { shortRef } from "@/lib/deploy";
@@ -199,7 +199,7 @@ function RunRow({ run, deployments, highlighted }: { run: WorkflowRun; deploymen
         {run.actor && <span>{t("activity:by", { actor: run.actor })}</span>}
         <span title={run.occurredAt}>{desde(run.occurredAt)}</span>
         {isGitHubUrl(run.htmlUrl) && (
-          <Button variant="ghost" size="sm" aria-label={t("activity:openRun")} title={t("activity:openRun")} onClick={() => void openUrl(run.htmlUrl)}>
+          <Button variant="ghost" size="sm" aria-label={t("activity:openRun")} title={t("activity:openRun")} onClick={() => void openExternal(run.htmlUrl)}>
             <ExternalLink className="size-3.5" />
           </Button>
         )}

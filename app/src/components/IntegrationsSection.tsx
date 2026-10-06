@@ -10,7 +10,7 @@ import {
   Trash2,
   LayoutGrid,
 } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternal } from "@/lib/platform";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -169,7 +169,7 @@ function IntegrationTile({
       }
     }
     try {
-      await openUrl(href);
+      await openExternal(href);
     } catch {
       window.open(href, "_blank");
     }

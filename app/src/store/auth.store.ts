@@ -1,3 +1,4 @@
+import { isTauri } from "@/lib/platform";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Session } from "@/types/auth";
@@ -27,7 +28,7 @@ interface AuthState {
  * sign-in sets it again.
  */
 function mirrorToCore(token: string | null) {
-  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+  if (!isTauri) return;
   void import("@tauri-apps/api/core")
     .then(({ invoke }) =>
       invoke("set_session", {

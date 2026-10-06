@@ -1,7 +1,8 @@
+import { isTauri } from "@/lib/platform";
 import { apiUrl } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 
-const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const inTauri = isTauri;
 
 /** Must match media::SCHEME in the Rust core. */
 const MEDIA_SCHEME = "cacmedia";

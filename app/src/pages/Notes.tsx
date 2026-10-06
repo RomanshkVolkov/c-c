@@ -1,3 +1,4 @@
+import { isTauri } from "@/lib/platform";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -291,7 +292,7 @@ function ExportButton() {
   const [busy, setBusy] = useState(false);
 
   const run = async () => {
-    if (!("__TAURI_INTERNALS__" in window)) {
+    if (!isTauri) {
       toast.error(t("work:notes.exportNeedsDesktop"), {
         description: t("work:notes.exportNeedsDesktopBody"),
       });

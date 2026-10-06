@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const { api } = await import("@/lib/api");
+const { api, revokeSession } = await import("@/lib/api");
 
 describe("el texto que llega a la pantalla", () => {
   it("es la frase, no la etiqueta del código", async () => {
@@ -134,3 +134,44 @@ describe("el token caducado se sigue reconociendo", () => {
     expect(setAuth).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Desde que el refresh tiene estado (W0 de la versión web), pasa por la base.
+ * Un 401 del refresh es «ese refresh ya no vale» y cierra la sesión; un 500 es
+ * el servidor que no pudo mirarlo, y echar a alguien por eso convertiría un
+ * hipo de Postgres en un logout de todo el equipo. Mutante: volver a `>= 400`.
+ */
+describe("renovar la sesión", () => {
+  const caducado = respuesta(401, { success: false, message: "Unauthorized", error: "expired-token" });
+
+  it("un 500 del refresh no cierra la sesión", async () => {
+    fetchMock
+      .mockResolvedValueOnce(caducado)
+      .mockResolvedValueOnce(respuesta(500, { success: false, message: "Refresh failed", error: "refresh-failed" }));
+    await api.get("/api/v1/algo", true).catch(() => {});
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/api/v1/auth/refresh");
+    expect(clearAuth).not.toHaveBeenCalled();
+  });
+
+  it("un 401 del refresh sí", async () => {
+    fetchMock
+      .mockResolvedValueOnce(caducado)
+      .mockResolvedValueOnce(respuesta(401, { success: false, message: "Invalid refresh token", error: "revoked-token" }));
+    await api.get("/api/v1/algo", true).catch(() => {});
+    expect(clearAuth).toHaveBeenCalled();
+  });
+
+  it("salir avisa al servidor con el refresh, y sin red no falla", async () => {
+    fetchMock.mockResolvedValueOnce(respuesta(204, {}));
+    await revokeSession("un-refresh");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/api/v1/auth/logout");
+    expect((init as RequestInit).headers).toMatchObject({ Authorization: "Bearer un-refresh" });
+    fetchMock.mockRejectedValueOnce(new Error("sin red"));
+    await expect(revokeSession("un-refresh")).resolves.toBeUndefined();
+    fetchMock.mockClear();
+    await revokeSession(null);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+

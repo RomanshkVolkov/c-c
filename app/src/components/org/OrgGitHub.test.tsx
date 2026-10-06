@@ -18,7 +18,9 @@ import { MemoryRouter } from "react-router-dom";
 const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
 vi.mock("@/lib/api", () => ({ api }));
 const { openUrl } = vi.hoisted(() => ({ openUrl: vi.fn() }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
+// Abrir fuera pasa por `lib/platform` (escritorio o navegador); aquí se mira
+// que se pida, no cómo se abre.
+vi.mock("@/lib/platform", () => ({ isTauri: false, isWeb: true, openExternal: openUrl }));
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
 
 const { default: OrgGitHub } = await import("./OrgGitHub");

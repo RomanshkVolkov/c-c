@@ -62,6 +62,7 @@
   "list-holds-channel-work": "Esta lista guarda trabajo que entró por un canal.",
   "list-in-use-by-channel": "Hay un canal apuntando a esta lista.",
   "locale-not-saved": "No se pudo guardar el idioma.",
+  "logout-failed": "El servidor no pudo cerrar la sesión; en este dispositivo ya saliste.",
   "max-5-images": "Cinco imágenes por reporte es el límite.",
   "meeting-other-org": "Esa reunión es de otra organización.",
   "missing-token": "Esta llamada necesita un token.",
@@ -92,6 +93,7 @@
   "rate-limited-reporter": "Demasiados reportes seguidos. Dale un momento.",
   "recording-not-ready": "Esta grabación todavía se está montando.",
   "recordings-disabled": "La grabación no está montada en este servidor.",
+  "refresh-failed": "El servidor no pudo renovar tu sesión. Inténtalo en un momento.",
   "reviewed-needs-a-person": "Una revisión la firma una persona, desde la app. Un token no puede firmarla.",
   "reviewed-needs-superadmin": "Sólo un superadministrador puede marcar esto como revisado.",
   "ring-outsider": "Sólo puedes llamar a gente de esta organización.",
@@ -124,6 +126,7 @@
   "voice-share-pending": "Ya se está pidiendo la pantalla — contesta al diálogo del sistema.",
   "voice-share-unanswered": "Nadie contestó al diálogo de compartir.",
   "voice-unconfigured": "La voz no está montada en este servidor.",
+  "voice-web-not-yet": "Las llamadas todavía no están en la versión web; entra desde la app de escritorio.",
   "webhook-failed": "No se pudo procesar la entrega de GitHub; GitHub la reintentará.",
   "wrong-type": "Ese tipo de fichero no se acepta."
 }

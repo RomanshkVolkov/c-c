@@ -5,7 +5,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternal } from "@/lib/platform";
 import { ImageOff, Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { attachmentPath, mediaSrc, openAttachment } from "@/lib/media";
@@ -124,7 +124,7 @@ export default function Markdown({
                   // by the OS; external links go straight to the browser.
                   openAttachment(href, label).catch(() => {
                     const target = mediaSrc(href);
-                    if (target) openUrl(target).catch(() => window.open(target, "_blank"));
+                    if (target) openExternal(target).catch(() => window.open(target, "_blank"));
                   });
                 }}
                 className="text-primary underline decoration-primary/40 hover:decoration-primary"

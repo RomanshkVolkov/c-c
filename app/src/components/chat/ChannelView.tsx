@@ -1,3 +1,4 @@
+import { isWebBuild } from "@/lib/platform";
 import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
@@ -189,7 +190,7 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
         <QuienAnda />
-        <VoiceBar spaceId={spaceId} />
+        {!isWebBuild && <VoiceBar spaceId={spaceId} />}
         {/* Salirse de un canal es pedir que lo corriente deje de avisar; las
             menciones llegan igual. Vive aquí y no en preferencias porque es una
             decisión por canal: los que te importan los sabes estando dentro. */}
@@ -804,12 +805,15 @@ function VozEnCurso({ spaceId }: { spaceId: string }) {
           count: nombres.length,
         })}
       </span>
-      <button
-        onClick={() => void entrar(spaceId)}
-        className="ml-auto shrink-0 font-semibold text-success hover:underline"
-      >
-        {t("common:voice.join")}
-      </button>
+      {/* Quién está, sí; entrar, todavía no desde la web (W3). */}
+      {!isWebBuild && (
+        <button
+          onClick={() => void entrar(spaceId)}
+          className="ml-auto shrink-0 font-semibold text-success hover:underline"
+        >
+          {t("common:voice.join")}
+        </button>
+      )}
     </div>
   );
 }
