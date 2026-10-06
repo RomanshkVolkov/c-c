@@ -120,10 +120,14 @@ dominio (`tools.guz-studio.dev`; en el de cac contesta 404). Adjuntos con
 `nosniff` y HTML/SVG como descarga. Cambiar la contraseña cierra todas las
 sesiones. Push: sólo servicios reales, tope de 10, nunca cambia de dueño. El
 backend no arranca en el clúster sin sus secretos. La web: CSP y cabeceras,
-sin trozos de escritorio, y salir olvida el navegador. **Pendiente:** agente
-v5 (rol en el pase, logs sin ruta entera; lo de `swarm-manage/` sin commitear
-**no** se publica sin subir la versión), token fuera de las URLs, alta en una
-org sin consentimiento, límite de login por IP.
+sin trozos de escritorio, y salir olvida el navegador. **Publicada**
+(`f662bd4`, `10c7456`, `394cfa4`). **Agente v5, hecho:** el pase lleva el rol
+dentro del sujeto firmado (`usuario|w` / `usuario|r`, el v4 lo sigue
+aceptando); el agente no deja reiniciar a un pase de lectura; un viewer sólo
+recibe pase si el agente del servidor ya es v5; la app esconde reiniciar y
+desplegar al viewer e instala `:v5`. Orden: backend → imagen del agente → app.
+**Pendiente:** token fuera de las URLs, alta en una org sin consentimiento,
+límite de login por IP.
 
 **Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).

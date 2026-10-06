@@ -16,6 +16,9 @@ import { agentBase, agentFetch, agentStreamUrl } from "@/lib/agent";
 import { goInOrg } from "@/lib/ir-en-org";
 import { useTerminals } from "@/store/terminal.store";
 import type { SwarmService } from "@/types/swarm";
+import { useAuthStore } from "@/store/auth.store";
+import { useOrgsStore } from "@/store/orgs.store";
+import { roleAtLeast } from "@/types/organization";
 import { useServerContext } from "./ServerLayout";
 
 function ReplicasBadge({ replicas }: { replicas: SwarmService["replicas"] }) {
@@ -181,10 +184,12 @@ function ServicesTab({
   onSecretsClick,
   onShellClick,
   onDeployClick,
+  canWrite,
 }: {
   services: SwarmService[];
   host: string;
   agentPort: number;
+  canWrite: boolean;
   filter: string;
   onFilterChange: (v: string) => void;
   onLogsClick: (svc: SwarmService) => void;
@@ -240,6 +245,7 @@ function ServicesTab({
           onSecretsClick={onSecretsClick}
           onShellClick={onShellClick}
           onDeployClick={onDeployClick}
+          canWrite={canWrite}
         />
       )}
 
@@ -260,10 +266,12 @@ function ServicesTable({
   onSecretsClick,
   onShellClick,
   onDeployClick,
+  canWrite,
 }: {
   services: SwarmService[];
   host: string;
   agentPort: number;
+  canWrite: boolean;
   onLogsClick: (svc: SwarmService) => void;
   onSecretsClick: (svc: SwarmService) => void;
   onShellClick: (svc: SwarmService) => void;
@@ -350,30 +358,34 @@ function ServicesTable({
                 <Terminal className="h-3 w-3 mr-1" />
                 {t("common:servers.logs")}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await agentFetch(
-                      `${agentBase(host, agentPort)}/api/v1/services/${svc.id}/force-update`,
-                      { method: "POST" },
-                    );
-                    toast.success(t("common:last.restarting", { name: svc.name }));
-                  } catch (e) {
-                    toast.error(t("common:servers.restartFailed"), {
-                      description: e instanceof Error ? e.message : String(e),
-                    });
-                  }
-                }}
-              >
-                <RotateCcw className="h-3 w-3 mr-1" />
-                {t("common:servers.restart")}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => onDeployClick(svc)}>
-                <Rocket className="h-3 w-3 mr-1" />
-                {t("common:deploy.deploy")}
-              </Button>
+              {canWrite && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await agentFetch(
+                        `${agentBase(host, agentPort)}/api/v1/services/${svc.id}/force-update`,
+                        { method: "POST" },
+                      );
+                      toast.success(t("common:last.restarting", { name: svc.name }));
+                    } catch (e) {
+                      toast.error(t("common:servers.restartFailed"), {
+                        description: e instanceof Error ? e.message : String(e),
+                      });
+                    }
+                  }}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  {t("common:servers.restart")}
+                </Button>
+              )}
+              {canWrite && (
+                <Button variant="ghost" size="sm" onClick={() => onDeployClick(svc)}>
+                  <Rocket className="h-3 w-3 mr-1" />
+                  {t("common:deploy.deploy")}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -408,6 +420,11 @@ export default function ServerServices() {
   const [filter, setFilter] = useState("");
   const [deployFor, setDeployFor] = useState<SwarmService | null>(null);
   const { t } = useT();
+  // Un viewer lee servicios y logs; reiniciar y desplegar no: su pase al
+  // agente es de lectura (agente v5) y el backend no le encola un deploy.
+  const superadmin = useAuthStore((s) => s.session?.superadmin ?? false);
+  const role = useOrgsStore((s) => s.orgs.find((o) => o.id === server.orgId)?.role);
+  const canWrite = superadmin || (role !== undefined && roleAtLeast(role, "member"));
 
   if (swarm.loading && swarm.services.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">{t("common:servers.loading")}</p>;
@@ -421,6 +438,7 @@ export default function ServerServices() {
             services={swarm.services}
             host={server.host}
             agentPort={server.agentPort}
+            canWrite={canWrite}
             filter={filter}
             onFilterChange={setFilter}
             onLogsClick={(svc) => setSelectedService((prev) => (prev?.id === svc.id ? null : svc))}

@@ -22,7 +22,7 @@ use crate::{ssh_run_input, stage_public_key, SshOutput};
 /// La versión del agente que esta app sabe hablar. La publica
 /// `.github/workflows/swarm-manage.yml` desde `swarm-manage/VERSION`; que las
 /// dos digan lo mismo lo fija `la_imagen_es_la_version_del_agente`.
-pub(crate) const AGENT_IMAGE: &str = "ghcr.io/romanshkvolkov/c-c/swarm-manage:v4";
+pub(crate) const AGENT_IMAGE: &str = "ghcr.io/romanshkvolkov/c-c/swarm-manage:v5";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
