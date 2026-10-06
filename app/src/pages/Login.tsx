@@ -1,6 +1,6 @@
 import { isWebBuild } from "@/lib/platform";
 import { useT, type MessageKey } from "@/lib/i18n";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -33,6 +33,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const continueAsGuest = useAuthStore((s) => s.continueAsGuest);
+  const signedIn = useAuthStore((s) => !!s.accessToken);
   const [error, setError] = useState<string | null>(null);
 
   const enterAsGuest = () => {
@@ -50,11 +51,17 @@ export default function Login() {
     setError(null);
     try {
       await login(data.username, data.password);
-      navigate("/dashboard");
+      // Reemplazando: con el login en el historial, «atrás» volvía a él.
+      navigate("/overview", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common:misc.authFailed"));
     }
   };
+
+  // Con la sesión abierta no hay nada que hacer aquí. Se llegaba con «atrás»
+  // (jose, en la web, 6-oct-2026): el formulario salía como si no hubiera
+  // entrado, y atrás y adelante daban vueltas entre él y la app.
+  if (signedIn) return <Navigate to="/overview" replace />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
