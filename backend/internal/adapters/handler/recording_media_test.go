@@ -194,3 +194,25 @@ func TestMediaSaysItIsStillBeingProcessed(t *testing.T) {
 		t.Fatalf("la app necesita un código que traducir: %s", w.Body.String())
 	}
 }
+
+// Transitorio: la app de escritorio hasta la v1.6.88 pone el token de acceso en
+// la URL de una grabación, y el backend no puede dejarla sin sonido. Sólo un
+// token de escritorio; uno de la web, nunca. Mutantes: no aceptarlo (rompe la
+// app instalada); aceptarlo también de la web.
+func TestAnInstalledDesktopStillPlaysRecordings(t *testing.T) {
+	h, _, rec := mediaSetup(t, claveMontaje)
+	orgs := []domain.OrgMembershipClaim{{OrgID: "org-1", Role: domain.OrgRoleMember}}
+	escritorio, _ := repository.GenerateTokensFor("u-ana", "ana", false, orgs, false)
+	web, _ := repository.GenerateTokensFor("u-ana", "ana", false, orgs, true)
+
+	w := httptest.NewRecorder()
+	h.Media(w, mediaReq(rec.ID, "", escritorio.AccessToken))
+	if w.Code != http.StatusOK {
+		t.Errorf("el escritorio instalado → %d: %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	h.Media(w, mediaReq(rec.ID, "", web.AccessToken))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("un token web en la URL → %d, se esperaba 404", w.Code)
+	}
+}

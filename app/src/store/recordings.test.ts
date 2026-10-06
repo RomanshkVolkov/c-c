@@ -196,14 +196,17 @@ describe("la url del fichero", () => {
    * cada petición y se puede cortar.
    */
   it("va por el proxy de cac y no por amazonaws", () => {
-    const url = mediaUrl("rec-1");
+    const url = mediaUrl("rec-1", "pase-1");
     expect(url).toContain("/api/v1/recordings/rec-1/media");
     expect(url).not.toContain("amazonaws");
     expect(url).not.toContain("s3");
   });
 
-  /** Y con el token en la consulta: un `<video src>` no manda cabeceras. */
-  it("lleva el token, porque un <video> no puede mandar cabeceras", () => {
-    expect(mediaUrl("rec-1")).toContain("token=el-token");
+  /** Y con un pase en la consulta: un `<video src>` no manda cabeceras, y el
+   * token de acceso ya no vale en una URL. */
+  it("lleva el pase de adjuntos, porque un <video> no puede mandar cabeceras", () => {
+    const url = mediaUrl("rec-1", "pase-1");
+    expect(url).toContain("token=pase-1");
+    expect(url).not.toContain("el-token");
   });
 });

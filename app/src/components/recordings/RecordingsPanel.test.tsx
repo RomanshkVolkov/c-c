@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 
+// Lo que contesta el servidor al pedir la lista es lo mismo que se monta: el
+// reproductor espera a su pase, y una lista vacía llegando antes lo borraría.
+const { lista } = vi.hoisted(() => ({ lista: { actual: [] as unknown[] } }));
 vi.mock("@/lib/api", () => ({
-  api: { get: vi.fn(async () => ({ success: true, data: [] })), post: vi.fn(), delete: vi.fn() },
+  api: { get: vi.fn(async () => ({ success: true, data: lista.actual })), post: vi.fn(), delete: vi.fn() },
   apiUrl: (p: string) => `https://cac.example${p}`,
   codigoDe: () => "",
 }));
@@ -12,6 +15,8 @@ vi.mock("@/store/auth.store", () => ({
 // `useConfirm` **lanza** fuera de su proveedor, a propósito: es una guarda para
 // que nadie lo use donde no hay diálogo que enseñar. Aquí se dobla porque lo
 // que se prueba es qué se pinta, no el camino de remove.
+// El reproductor pide un pase de adjuntos antes de poner el src.
+vi.mock("@/lib/url-ticket", () => ({ urlTicket: vi.fn(async () => "pase-media") }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => async () => true }));
 
 import RecordingsPanel from "@/components/recordings/RecordingsPanel";
@@ -36,6 +41,7 @@ function rec(over: Partial<Recording> = {}): Recording {
 }
 
 function renderPanel(bySpace: Recording[]) {
+  lista.actual = bySpace;
   useRecordings.setState({ bySpace: { "esp-1": bySpace }, loading: {} });
   return render(<RecordingsPanel spaceId="esp-1" />);
 }
@@ -52,15 +58,15 @@ describe("el panel de grabaciones", () => {
    * controles, que se lee como un vídeo roto. El mutante que mata: renderPanel
    * siempre `<video>`.
    */
-  it("sólo voz se pinta como audio", () => {
+  it("sólo voz se pinta como audio", async () => {
     const { container } = renderPanel([rec({ finalContentType: "audio/mp4", hasScreen: false })]);
-    expect(container.querySelector("audio")).toBeTruthy();
+    await waitFor(() => expect(container.querySelector("audio")).toBeTruthy());
     expect(container.querySelector("video")).toBeNull();
   });
 
-  it("y con pantalla, como vídeo", () => {
+  it("y con pantalla, como vídeo", async () => {
     const { container } = renderPanel([rec()]);
-    expect(container.querySelector("video")).toBeTruthy();
+    await waitFor(() => expect(container.querySelector("video")).toBeTruthy());
     expect(container.querySelector("audio")).toBeNull();
   });
 
@@ -70,11 +76,12 @@ describe("el panel de grabaciones", () => {
    * Es la misma regla que en la tienda, comprobada donde de verdad acaba: en el
    * atributo que el navegador va a pedir.
    */
-  it("el src va al proxy de cac, con token y sin amazonaws", () => {
+  it("el src va al proxy de cac, con un pase y sin amazonaws", async () => {
     const { container } = renderPanel([rec()]);
+    await waitFor(() => expect(container.querySelector("video")).toBeTruthy());
     const src = container.querySelector("video")?.getAttribute("src") ?? "";
     expect(src).toContain("/api/v1/recordings/rec-1/media");
-    expect(src).toContain("token=");
+    expect(src).toContain("token=pase-media");
     expect(src).not.toContain("amazonaws");
   });
 
@@ -93,9 +100,9 @@ describe("el panel de grabaciones", () => {
    * salvó. Y una etiqueta que diga «parcial» sin explicar qué falta deja a
    * quien la lee sin saber si puede fiarse de lo que oye.
    */
-  it("una parcial se ve y se explica", () => {
+  it("una parcial se ve y se explica", async () => {
     const { container } = renderPanel([rec({ status: "partial" })]);
-    expect(container.querySelector("video")).toBeTruthy();
+    await waitFor(() => expect(container.querySelector("video")).toBeTruthy());
     expect(document.body.textContent).toContain("missing track");
     expect(document.body.textContent?.toLowerCase()).toContain("lost");
   });

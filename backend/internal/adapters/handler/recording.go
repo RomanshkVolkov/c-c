@@ -209,7 +209,7 @@ func (h *recordingHandler) Media(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return
 	}
-	if !attachmentViewer(r, rec.OrgID) {
+	if !attachmentViewer(r, rec.OrgID) && !legacyDesktopRecordingViewer(r, rec.OrgID) {
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return
 	}
@@ -296,4 +296,21 @@ func isRangeError(err error) bool {
 		return re.HTTPStatusCode() == http.StatusRequestedRangeNotSatisfiable
 	}
 	return strings.Contains(err.Error(), "InvalidRange")
+}
+
+// legacyDesktopRecordingViewer: **transitorio**. La app de escritorio hasta la
+// v1.6.88 pone el token de acceso en la URL del `<video>` de una grabación (no
+// sabía de pases de URL), y el backend no puede romper una app ya instalada.
+// Sólo aquí, y sólo con un token de escritorio: uno de la web nunca vale en la
+// URL. Quitar cuando la v1.6.89 lleve un tiempo publicada.
+func legacyDesktopRecordingViewer(r *http.Request, orgID string) bool {
+	claims, err := repository.ValidateAccessToken(r.URL.Query().Get("token"))
+	if err != nil || claims.Web {
+		return false
+	}
+	if claims.Superadmin {
+		return true
+	}
+	_, member := claims.RoleInOrg(orgID)
+	return member
 }

@@ -4,6 +4,7 @@ import { Loader2, Trash2 } from "lucide-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
+import { urlTicket } from "@/lib/url-ticket";
 import { cn } from "@/lib/utils";
 import {
   mediaUrl,
@@ -114,13 +115,32 @@ function Row({ rec, spaceId }: { rec: Recording; spaceId: string }) {
         <p className="text-xs text-muted-foreground">{t("recordings:statusPartialWhy")}</p>
       )}
 
-      {playable &&
-        (isAudio ? (
-          <audio controls preload="metadata" className="w-full" src={mediaUrl(rec.id)} />
-        ) : (
-          <video controls preload="metadata" className="w-full rounded" src={mediaUrl(rec.id)} />
-        ))}
+      {playable && <RecordingPlayer recordingId={rec.id} isAudio={isAudio} />}
     </li>
+  );
+}
+
+/**
+ * El reproductor. Pide un pase de adjuntos antes de poner el `src`: el token de
+ * acceso ya no vale en una URL. Hasta tenerlo no hay `src`, y un `<video>` sin
+ * él no pide nada.
+ */
+export function RecordingPlayer({ recordingId, isAudio }: { recordingId: string; isAudio: boolean }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    urlTicket("media")
+      .then((ticket) => vivo && setSrc(mediaUrl(recordingId, ticket)))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [recordingId]);
+  if (!src) return null;
+  return isAudio ? (
+    <audio controls preload="metadata" className="w-full" src={src} />
+  ) : (
+    <video controls preload="metadata" className="w-full rounded" src={src} />
   );
 }
 

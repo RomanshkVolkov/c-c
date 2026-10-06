@@ -1,7 +1,6 @@
 import { create } from "zustand";
 
 import { api, apiUrl, codigoDe } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
 import type { APIResponse } from "@/types/auth";
 
 /**
@@ -206,10 +205,11 @@ export const useRecordings = create<RecordingsState>((set, get) => ({
  * que se escapa de una pantalla sigue valiendo hasta que caduca, y esto es una
  * reunión entera; el proxy pide credencial en cada petición y se puede cortar.
  *
- * El token va en la consulta porque un `<video src>` de un webview **no puede
- * mandar cabeceras** — es el mismo camino que los adjuntos del chat.
+ * La credencial va en la consulta porque un `<video src>` de un webview **no
+ * puede mandar cabeceras**, y por eso es un pase de adjuntos y no el token de
+ * acceso: una URL acaba en los logs (ver lib/url-ticket.ts). También en el
+ * escritorio: este `<video>` no pasa por el esquema propio de Rust.
  */
-export function mediaUrl(recordingId: string): string {
-  const token = useAuthStore.getState().accessToken ?? "";
-  return apiUrl(`/api/v1/recordings/${recordingId}/media?token=${encodeURIComponent(token)}`);
+export function mediaUrl(recordingId: string, ticket: string): string {
+  return apiUrl(`/api/v1/recordings/${recordingId}/media?token=${encodeURIComponent(ticket)}`);
 }
