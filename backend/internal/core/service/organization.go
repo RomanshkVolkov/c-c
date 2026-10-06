@@ -15,6 +15,8 @@ import (
 var (
 	ErrForbidden = errors.New("forbidden")
 	ErrLastAdmin = errors.New("cannot remove the last admin of an organization")
+	// ErrInviteRequired: esa persona no es de tu gente; hay que invitarla.
+	ErrInviteRequired = errors.New("invite-required")
 )
 
 type OrganizationService struct {
@@ -230,6 +232,21 @@ func (s *OrganizationService) ListMembers(callerID, orgID string, superadmin boo
 func (s *OrganizationService) AddMember(callerID, orgID string, req domain.AddMemberRequest, superadmin bool) error {
 	if _, err := s.requireRole(orgID, callerID, domain.OrgRoleAdmin, superadmin); err != nil {
 		return err
+	}
+	// Meter a alguien sin que acepte sólo si ya es de tu gente: cualquiera puede
+	// crearse una organización, y si bastara con ser su admin, cualquiera podría
+	// meter a cualquiera en la suya —y sus docs y enlaces le saldrían como de
+	// confianza—. A los demás se les invita, y entran si aceptan. Cambiar el rol
+	// de alguien que ya está dentro sigue siendo directo: esta org también es
+	// una que administras.
+	if !superadmin {
+		mine, err := s.repo.AdministersSomeoneIn(callerID, req.UserID)
+		if err != nil {
+			return err
+		}
+		if !mine {
+			return ErrInviteRequired
+		}
 	}
 	if err := s.repo.UpsertMember(orgID, req.UserID, req.Role); err != nil {
 		return err

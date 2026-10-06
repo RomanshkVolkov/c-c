@@ -30,3 +30,15 @@ func TestTheToolsHostServesOnlyTheProxy(t *testing.T) {
 		t.Errorf("la API en el dominio de cac → %d", code)
 	}
 }
+
+// El navegador recuerda que cac es sólo https, en toda respuesta. Mutante:
+// quitar la cabecera.
+func TestEveryAnswerSaysHTTPSOnly(t *testing.T) {
+	rec := httptest.NewRecorder()
+	StrictTransport(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil))
+	if got := rec.Header().Get("Strict-Transport-Security"); got != "max-age=31536000" {
+		t.Errorf("HSTS = %q", got)
+	}
+}

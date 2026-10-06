@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ type AuthHandler interface {
 	ChangePassword(w http.ResponseWriter, r *http.Request)
 	UpdateMe(w http.ResponseWriter, r *http.Request)
 	SetLocale(w http.ResponseWriter, r *http.Request)
+	URLTicket(w http.ResponseWriter, r *http.Request)
 }
 
 // loginLimiter throttles failed logins per username to blunt brute force. A
@@ -35,30 +37,72 @@ type loginLimiter struct {
 const (
 	loginMaxFailures = 8
 	loginWindow      = 15 * time.Minute
+	// Por IP, además de por usuario (barrido, 6-oct-2026): contando sólo por
+	// usuario, probar una contraseña contra muchas cuentas no se frenaba nunca.
+	// Más alto que el de una cuenta porque una oficina sale por una sola IP.
+	loginMaxFailuresPerIP = 30
+	// Pasado este número de claves se barren las que ya no tienen fallos
+	// recientes: cada usuario inventado era una entrada que no se iba nunca.
+	loginSweepAt = 5000
 )
 
 func newLoginLimiter() *loginLimiter {
 	return &loginLimiter{failures: make(map[string][]time.Time)}
 }
 
-func (l *loginLimiter) locked(key string) bool {
+func (l *loginLimiter) locked(key string, max int) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	cutoff := time.Now().Add(-loginWindow)
-	kept := l.failures[key][:0]
-	for _, t := range l.failures[key] {
-		if t.After(cutoff) {
-			kept = append(kept, t)
-		}
+	kept := recent(l.failures[key], time.Now().Add(-loginWindow))
+	if len(kept) == 0 {
+		delete(l.failures, key)
+	} else {
+		l.failures[key] = kept
 	}
-	l.failures[key] = kept
-	return len(kept) >= loginMaxFailures
+	return len(kept) >= max
 }
 
 func (l *loginLimiter) fail(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.failures[key] = append(l.failures[key], time.Now())
+	if len(l.failures) > loginSweepAt {
+		cutoff := time.Now().Add(-loginWindow)
+		for k, ts := range l.failures {
+			if kept := recent(ts, cutoff); len(kept) == 0 {
+				delete(l.failures, k)
+			} else {
+				l.failures[k] = kept
+			}
+		}
+	}
+}
+
+func recent(ts []time.Time, cutoff time.Time) []time.Time {
+	kept := ts[:0]
+	for _, t := range ts {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	return kept
+}
+
+// clientIP: la IP de quien llama. Detrás del Gateway es el **último** valor de
+// X-Forwarded-For: ése lo añade nuestro proxy, y lo que viniera antes lo
+// escribió el cliente y se puede inventar. Sin la cabecera, la del socket.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+			return ip
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func (l *loginLimiter) reset(key string) {
@@ -84,7 +128,8 @@ func (h *authHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := strings.ToLower(strings.TrimSpace(req.Username))
-	if h.limiter.locked(key) {
+	ipKey := "ip:" + clientIP(r)
+	if h.limiter.locked(key, loginMaxFailures) || h.limiter.locked(ipKey, loginMaxFailuresPerIP) {
 		SendErrorResponse(w, http.StatusTooManyRequests, "Too many attempts", "rate-limited")
 		return
 	}
@@ -92,9 +137,12 @@ func (h *authHandler) Login(w http.ResponseWriter, r *http.Request) {
 	result, err := h.authService.Login(req)
 	if err != nil {
 		h.limiter.fail(key)
+		h.limiter.fail(ipKey)
 		SendErrorResponse(w, http.StatusUnauthorized, "Authentication failed", err.Error())
 		return
 	}
+	// Sólo la cuenta: si un login bueno limpiara la IP, quien tenga una
+	// cuenta propia podría reiniciar su cuenta atrás entre intento e intento.
 	h.limiter.reset(key)
 
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.AuthResponse]{

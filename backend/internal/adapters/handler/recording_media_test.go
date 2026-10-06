@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -60,12 +61,14 @@ func mediaReq(id, rng, token string) *http.Request {
 // firma, sino que el proxy **exige** una y mira a qué organización pertenece.
 func tokenPara(t *testing.T, orgID string) string {
 	t.Helper()
-	par, err := repository.GenerateTokens("u-ana", "ana", false,
-		[]domain.OrgMembershipClaim{{OrgID: orgID, Role: domain.OrgRoleMember}})
+	// Un pase de URL de adjuntos: por la URL ya no vale el token de acceso.
+	tok, _, err := repository.SignURLTicket(&domain.ClaimsJWT{UserID: "u-ana", Username: "ana",
+		Orgs: []domain.OrgMembershipClaim{{OrgID: orgID, Role: domain.OrgRoleMember}}},
+		repository.URLScopeMedia, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return par.AccessToken
+	return tok
 }
 
 // mediaSetup deja una grabación lista y devuelve el handler y el bucket falso.

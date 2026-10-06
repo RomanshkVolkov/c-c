@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -448,20 +447,11 @@ func (h *noteHandler) RawAttachment(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, obj.Body)
 }
 
-// noteAttachmentOwner extracts the caller's user id from a token supplied by
-// header or query string. Returns "" (never matches any note) if absent or
-// invalid — the anti-IDOR 404 falls out of NoteService.Get finding nothing.
+// noteAttachmentOwner extracts the caller's user id from the header or a
+// media URL ticket. Returns "" (never matches any note) if absent or invalid —
+// the anti-IDOR 404 falls out of NoteService.Get finding nothing.
 func noteAttachmentOwner(r *http.Request) string {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			token = strings.TrimPrefix(h, "Bearer ")
-		}
-	}
-	if token == "" {
-		return ""
-	}
-	claims, err := repository.ValidateAccessToken(token)
+	claims, err := claimsFromHeaderOrTicket(r, repository.URLScopeMedia)
 	if err != nil {
 		return ""
 	}

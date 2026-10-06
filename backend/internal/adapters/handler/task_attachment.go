@@ -194,18 +194,10 @@ func (h *taskHandler) RawAttachment(w http.ResponseWriter, r *http.Request) {
 }
 
 // attachmentViewer reports whether the request carries a valid access token
-// (header or ?token=) whose bearer belongs to the attachment's org.
+// (header) or media URL ticket (?token=) whose bearer belongs to the
+// attachment's org.
 func attachmentViewer(r *http.Request, orgID string) bool {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			token = strings.TrimPrefix(h, "Bearer ")
-		}
-	}
-	if token == "" {
-		return false
-	}
-	claims, err := repository.ValidateAccessToken(token)
+	claims, err := claimsFromHeaderOrTicket(r, repository.URLScopeMedia)
 	if err != nil {
 		return false
 	}

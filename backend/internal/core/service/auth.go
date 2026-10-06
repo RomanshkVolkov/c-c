@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -20,6 +21,20 @@ type AuthService struct {
 	repo *repository.AuthRepository
 	// now: el reloj, para probar el margen de gracia del refresh sin dormir.
 	now func() time.Time
+	// hub: para avisar a los streams abiertos de alguien de que sus sesiones
+	// se cerraron. Sin él (pruebas, colecciones) no se avisa a nadie.
+	hub *events.Hub
+}
+
+// SessionRevokedEvent: las sesiones de esa persona se cerraron (cambió la
+// contraseña). Cada stream suyo que lo recibe se cierra; el que tenga una
+// sesión buena reconecta, y el de una vieja ya no puede.
+const SessionRevokedEvent = "session:revoked"
+
+// WithHub: el hub por el que se avisa a los streams.
+func (s *AuthService) WithHub(h *events.Hub) *AuthService {
+	s.hub = h
+	return s
 }
 
 func NewAuthService(repo *repository.AuthRepository) *AuthService {
@@ -166,6 +181,11 @@ func (s *AuthService) ChangePassword(userID, current, next string, web bool) (*d
 	if err := s.repo.RevokeAllRefresh(userID, s.now()); err != nil {
 		return nil, err
 	}
+	// Y los streams que estaban abiertos, también: un stream no vuelve a mirar
+	// su credencial, así que sin esto quien tenía la sesión seguiría oyendo.
+	if s.hub != nil {
+		s.hub.Publish(events.Event{Type: SessionRevokedEvent, UserID: userID})
+	}
 	orgs, err := s.repo.OrgClaimsForUser(user.ID)
 	if err != nil {
 		return nil, err
@@ -292,10 +312,29 @@ func (s *AuthService) guardLastSuperadmin(id string) error {
 }
 
 // SearchUsers exposes username autocomplete for share dialogs.
-func (s *AuthService) SearchUsers(query, excludeUserID string, limit int) ([]domain.UserSummary, error) {
-	users, err := s.repo.SearchByUsername(query, excludeUserID, limit)
+//
+// Por toda la plataforma sólo busca un superadmin. Cualquier otro —y cualquiera
+// puede ser admin de una organización propia— encuentra a alguien escribiendo
+// su usuario exacto, como al invitar en GitHub: si no, buscando «a», «e»… se
+// sacaba la lista de todas las cuentas. Y de un desconocido no se dice cuándo
+// estuvo por última vez.
+func (s *AuthService) SearchUsers(query, excludeUserID string, limit int, superadmin bool) ([]domain.UserSummary, error) {
+	var (
+		users []domain.User
+		err   error
+	)
+	if superadmin {
+		users, err = s.repo.SearchByUsername(query, excludeUserID, limit)
+	} else {
+		users, err = s.repo.FindExactUsername(query, excludeUserID)
+	}
 	if err != nil {
 		return nil, err
+	}
+	if !superadmin {
+		for i := range users {
+			users[i].LastSeenAt = nil
+		}
 	}
 	out := make([]domain.UserSummary, len(users))
 	for i, u := range users {

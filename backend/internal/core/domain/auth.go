@@ -261,6 +261,12 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"newPassword"     validate:"required,min=8"`
 }
 
+// URLTicketResponse: un pase de URL (ver repository/url_ticket.go).
+type URLTicketResponse struct {
+	Ticket    string    `json:"ticket"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
 type AuthRefreshResponse struct {
 	AccessToken  string `json:"accessToken"`
 	RefreshToken string `json:"refreshToken"`

@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
+	"github.com/guz-studio/cac/backend/internal/core/service"
 )
 
 type EventsHandler interface {
@@ -46,16 +46,11 @@ func NewEventsHandler(hub *events.Hub, seen func(userID string)) EventsHandler {
 var latido = 25 * time.Second
 
 // Stream is the org-scoped SSE endpoint the Tauri console subscribes to. Auth is
-// by ?token= (EventSource can't set Authorization) or the Authorization header.
-// Events are delivered only for the orgs the caller belongs to.
+// by the Authorization header, or by an events URL ticket in ?token= (an
+// EventSource can't set headers; the access token itself is no longer accepted
+// in a URL). Events are delivered only for the orgs the caller belongs to.
 func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		if a := r.Header.Get("Authorization"); strings.HasPrefix(a, "Bearer ") {
-			token = strings.TrimPrefix(a, "Bearer ")
-		}
-	}
-	claims, err := repository.ValidateAccessToken(token)
+	claims, err := claimsFromHeaderOrTicket(r, repository.URLScopeEvents)
 	if err != nil {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "invalid-token")
 		return
@@ -128,6 +123,14 @@ func (h *eventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 			}
 		case ev, open := <-ch:
 			if !open {
+				return
+			}
+			// Las sesiones de esta persona se cerraron: el stream también. Se
+			// le dice antes de colgar, y quien tenga una sesión buena vuelve. No
+			// hace falta mirar de quién es: el hub sólo entrega un aviso dirigido
+			// a su destinatario, también a quien se suscribe a todo.
+			if ev.Type == service.SessionRevokedEvent {
+				write("event: " + ev.Type + "\ndata: {}\n\n")
 				return
 			}
 			payload, err := json.Marshal(ev.Data)

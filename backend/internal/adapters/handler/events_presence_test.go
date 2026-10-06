@@ -38,14 +38,15 @@ func TestElLatidoDelStreamRegistraPresencia(t *testing.T) {
 		vistos = append(vistos, userID)
 	})
 
-	par, err := repository.GenerateTokens("u-ana", "ana", false,
-		[]domain.OrgMembershipClaim{{OrgID: "org-1", Role: domain.OrgRoleMember}})
+	pase, _, err := repository.SignURLTicket(&domain.ClaimsJWT{UserID: "u-ana", Username: "ana",
+		Orgs: []domain.OrgMembershipClaim{{OrgID: "org-1", Role: domain.OrgRoleMember}}},
+		repository.URLScopeEvents, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/events?token="+par.AccessToken, nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events?token="+pase, nil).WithContext(ctx)
 	rec := httptest.NewRecorder()
 
 	hecho := make(chan struct{})

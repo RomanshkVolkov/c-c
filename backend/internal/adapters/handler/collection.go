@@ -319,7 +319,7 @@ func (h *userHandler) Search(w http.ResponseWriter, r *http.Request) {
 		// refused at the door regardless.
 		results, err = h.authService.SearchUsersInOrg(q, orgID, "", limit)
 	} else {
-		results, err = h.authService.SearchUsers(q, user.UserID, limit)
+		results, err = h.authService.SearchUsers(q, user.UserID, limit, user.Superadmin)
 	}
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "User search failed", err.Error())

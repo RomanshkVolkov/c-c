@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -83,6 +84,18 @@ func TestAvisoDePertenencia(t *testing.T) {
 	if err := db.Create(&domain.OrgMembership{OrgID: "org-1", UserID: "bea", Role: domain.OrgRoleMember}).Error; err != nil {
 		t.Fatal(err)
 	}
+	// Ana ya es de la gente de admin, en otra org suya: sin eso, meterla sin
+	// que acepte pide invitación (ver TestStrangersAreInvitedNotAdded).
+	otra := &domain.Organization{Name: "Taller", Slug: "taller"}
+	otra.ID = "org-2"
+	if err := db.Create(otra).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []domain.OrgMembership{{OrgID: "org-2", UserID: "admin", Role: domain.OrgRoleAdmin}, {OrgID: "org-2", UserID: "ana", Role: domain.OrgRoleMember}} {
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	hub := events.NewHub()
 	svc := NewOrganizationService(repository.NewOrganizationRepository(db)).WithHub(hub)
@@ -142,4 +155,56 @@ func TestAvisoDePertenencia(t *testing.T) {
 			t.Fatalf("se anunció como una entrada: %v", datos)
 		}
 	})
+}
+
+// Meter a alguien sin que acepte, sólo si ya es de tu gente. Cualquiera puede
+// crearse una org: si bastara con ser su admin, cualquiera podría meter a
+// cualquiera en la suya. Mutantes: quitar la guarda; contar como «tu gente» a
+// alguien de una org donde no eres admin; pedir invitación también para
+// cambiar el rol de quien ya está.
+func TestStrangersAreInvitedNotAdded(t *testing.T) {
+	db, cerrar := membresiaDB(t)
+	defer cerrar()
+	ahora := time.Now()
+	for _, id := range []string{"eva", "ana", "bea", "dan"} {
+		if err := db.Exec(`INSERT INTO users (id, username, email, password, created_at, updated_at)
+			VALUES (?, ?, ?, 'x', ?, ?)`, id, id, id+"@x.io", ahora, ahora).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, o := range []string{"propia", "taller", "ajena"} {
+		org := &domain.Organization{Name: o, Slug: o}
+		org.ID = o
+		if err := db.Create(org).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, m := range []domain.OrgMembership{
+		{OrgID: "propia", UserID: "eva", Role: domain.OrgRoleAdmin},
+		{OrgID: "propia", UserID: "bea", Role: domain.OrgRoleViewer},
+		{OrgID: "taller", UserID: "eva", Role: domain.OrgRoleAdmin},
+		{OrgID: "taller", UserID: "ana", Role: domain.OrgRoleMember},
+		{OrgID: "ajena", UserID: "eva", Role: domain.OrgRoleMember},
+		{OrgID: "ajena", UserID: "dan", Role: domain.OrgRoleMember},
+	} {
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := NewOrganizationService(repository.NewOrganizationRepository(db))
+	meter := func(quien string, rol domain.OrgRole) error {
+		return svc.AddMember("eva", "propia", domain.AddMemberRequest{UserID: quien, Role: rol}, false)
+	}
+	if err := meter("dan", domain.OrgRoleMember); !errors.Is(err, ErrInviteRequired) {
+		t.Errorf("alguien de una org donde eva sólo es miembro → %v, se esperaba invitarlo", err)
+	}
+	if err := meter("ana", domain.OrgRoleMember); err != nil {
+		t.Errorf("alguien de otra org que eva administra → %v", err)
+	}
+	if err := meter("bea", domain.OrgRoleMember); err != nil {
+		t.Errorf("cambiar el rol de quien ya está → %v", err)
+	}
+	if err := svc.AddMember("root", "propia", domain.AddMemberRequest{UserID: "dan", Role: domain.OrgRoleMember}, true); err != nil {
+		t.Errorf("un superadmin → %v", err)
+	}
 }

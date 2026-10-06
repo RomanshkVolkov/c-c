@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -133,5 +134,56 @@ func TestChangingThePasswordEndsEveryOtherSession(t *testing.T) {
 	}
 	if _, err := svc.RefreshToken(nueva.RefreshToken); err != nil {
 		t.Errorf("quien la cambió quedó fuera: %v", err)
+	}
+}
+
+// Fuera de tus organizaciones sólo encuentras a quien ya conoces, por su usuario
+// exacto, y sin saber cuándo estuvo; un superadmin busca por trozos. Sin esto,
+// buscar «a», «e»… sacaba todas las cuentas. Mutantes: buscar por trozos para
+// todos; distinguir mayúsculas; dejar la última conexión.
+func TestOnlyASuperadminBrowsesEveryAccount(t *testing.T) {
+	svc := authDB(t)
+	visto := time.Now()
+	if err := svc.repo.UpdateUser("u-ana", map[string]any{"last_seen_at": visto}); err != nil {
+		t.Fatal(err)
+	}
+	hash, _ := repository.HashPassword("x")
+	if err := svc.repo.CreateUser(&domain.User{Username: "anabel", Email: "anabel@x.io", Password: hash}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := svc.SearchUsers("an", "u-otro", 10, false); len(got) != 0 {
+		t.Errorf("un trozo encontró %d cuentas", len(got))
+	}
+	got, _ := svc.SearchUsers("ANA", "u-otro", 10, false)
+	if len(got) != 1 || got[0].Username != "ana" {
+		t.Fatalf("el usuario exacto → %+v", got)
+	}
+	if got[0].LastSeenAt != nil {
+		t.Error("de un desconocido se dice cuándo estuvo")
+	}
+	if got, _ := svc.SearchUsers("an", "u-otro", 10, true); len(got) != 2 {
+		t.Errorf("un superadmin buscando un trozo → %d", len(got))
+	}
+}
+
+// Cambiar la contraseña avisa a los streams de esa persona. Mutante: no
+// publicar el aviso.
+func TestChangingThePasswordTellsTheStreams(t *testing.T) {
+	t.Setenv("JWT_SECRET_ACCESS", "a-test")
+	t.Setenv("JWT_SECRET_REFRESH", "r-test")
+	hub := events.NewHub()
+	svc := authDB(t).WithHub(hub)
+	ch, cerrar := hub.Subscribe("u-ana", nil)
+	defer cerrar()
+	if _, err := svc.ChangePassword("u-ana", "vieja-clave", "nueva-clave-larga", false); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case e := <-ch:
+		if e.Type != SessionRevokedEvent {
+			t.Errorf("llegó %q", e.Type)
+		}
+	case <-time.After(time.Second):
+		t.Error("los streams no se enteraron")
 	}
 }

@@ -274,3 +274,15 @@ func (r *OrganizationRepository) CountAdmins(orgID string) (int64, error) {
 		Count(&n).Error
 	return n, err
 }
+
+// AdministersSomeoneIn: si `targetID` está en alguna organización de la que
+// `adminID` es admin. Es lo que deja a un admin mover a su gente entre sus
+// organizaciones sin invitarla: ya la administra.
+func (r *OrganizationRepository) AdministersSomeoneIn(adminID, targetID string) (bool, error) {
+	var n int64
+	err := r.db.Table("org_memberships AS a").
+		Joins("JOIN org_memberships AS t ON t.org_id = a.org_id").
+		Where("a.user_id = ? AND a.role = ? AND t.user_id = ?", adminID, domain.OrgRoleAdmin, targetID).
+		Count(&n).Error
+	return n > 0, err
+}

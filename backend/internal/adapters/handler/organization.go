@@ -37,6 +37,8 @@ func mapOrgError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", err.Error())
 	case errors.Is(err, service.ErrBadTimezone):
 		SendErrorResponse(w, http.StatusBadRequest, "That is not a time zone", "bad-timezone")
+	case errors.Is(err, service.ErrInviteRequired):
+		SendErrorResponse(w, http.StatusConflict, "Invite them instead", "invite-required")
 	case errors.Is(err, service.ErrLastAdmin):
 		SendErrorResponse(w, http.StatusConflict, "Cannot remove last admin", err.Error())
 	case errors.Is(err, repository.ErrOrgNotFound):

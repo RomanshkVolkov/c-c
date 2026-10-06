@@ -22,9 +22,8 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	r.Use(middleware.CORS)
 	r.Use(middleware.Recovery)
 	r.Use(ProxyHostOnly)
+	r.Use(StrictTransport)
 
-	InitAuthRoutes(db, r)
-	InitCollectionRoutes(db, r)
 	// One hub for the whole process: reports and tasks both broadcast on it, and
 	// a single SSE connection per client carries everything.
 	hub := events.NewHub()
@@ -37,6 +36,9 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 		lg.Warn("events: VALKEY_ADDR not set — live notifications only reach clients " +
 			"connected to this pod, which is wrong with more than one replica")
 	}
+	// Después del hub: cambiar la contraseña cierra los streams abiertos.
+	InitAuthRoutes(db, r, hub)
+	InitCollectionRoutes(db, r)
 	// Después del hub, y no antes: añadir a alguien a una organización tiene que
 	// poder avisarle **a él**, y para eso el servicio necesita voz.
 	InitOrganizationRoutes(db, r, hub)
@@ -89,6 +91,17 @@ func ProxyHostOnly(next http.Handler) http.Handler {
 			http.NotFound(w, req)
 			return
 		}
+		next.ServeHTTP(w, req)
+	})
+}
+
+// StrictTransport: cac sólo se habla por https, y el navegador lo recuerda un
+// año (HSTS). Sin esto, la primera visita a `http://` se puede interceptar
+// antes del salto a https y llevarse la sesión. Sin `includeSubDomains`: sólo
+// estos dominios, no lo que cuelgue de guz-studio.dev.
+func StrictTransport(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		next.ServeHTTP(w, req)
 	})
 }

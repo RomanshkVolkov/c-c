@@ -4,14 +4,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/handler"
 	"github.com/guz-studio/cac/backend/internal/adapters/middleware"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 	"gorm.io/gorm"
 )
 
-func InitAuthRoutes(db *gorm.DB, r *chi.Mux) {
+func InitAuthRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	repo := repository.NewAuthRepository(db)
-	svc := service.NewAuthService(repo)
+	svc := service.NewAuthService(repo).WithHub(hub)
 	h := handler.NewAuthHandler(svc)
 
 	// Personal access tokens (read-only programmatic access, e.g. the MCP server).
@@ -30,6 +31,7 @@ func InitAuthRoutes(db *gorm.DB, r *chi.Mux) {
 		// valga: salir con uno caducado tiene que funcionar igual.
 		r.Post("/logout", h.Logout)
 		r.With(middleware.AuthMiddleware).Get("/me", h.Me)
+		r.With(middleware.AuthMiddleware).Post("/url-ticket", h.URLTicket)
 		r.With(middleware.AuthMiddleware).Post("/change-password", h.ChangePassword)
 		r.With(middleware.AuthMiddleware).Patch("/locale", h.SetLocale)
 		r.With(middleware.AuthMiddleware).Patch("/me", h.UpdateMe)

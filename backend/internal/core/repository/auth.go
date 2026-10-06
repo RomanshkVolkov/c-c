@@ -159,6 +159,19 @@ func (r *AuthRepository) SearchUsersInOrg(query, orgID, excludeID string, limit 
 	return users, nil
 }
 
+// FindExactUsername: la cuenta con ese usuario exacto (sin distinguir
+// mayúsculas), o ninguna. Es lo que puede buscar quien no es superadmin fuera
+// de sus organizaciones: a quien ya conoce, no un directorio.
+func (r *AuthRepository) FindExactUsername(username, excludeID string) ([]domain.User, error) {
+	var users []domain.User
+	q := r.db.Where("LOWER(username) = ?", strings.ToLower(username)).Limit(1)
+	if excludeID != "" {
+		q = q.Where("id <> ?", excludeID)
+	}
+	err := q.Find(&users).Error
+	return users, err
+}
+
 func (r *AuthRepository) SearchByUsername(query, excludeID string, limit int) ([]domain.User, error) {
 	if limit <= 0 {
 		limit = 10
