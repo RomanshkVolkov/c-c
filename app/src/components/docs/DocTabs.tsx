@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { codigoDe } from "@/lib/api";
 import { openAttachment } from "@/lib/media";
+import PdfPreview from "@/components/PdfPreview";
+import { isPdfFile } from "@/components/PdfAttachment";
 import { cn } from "@/lib/utils";
 import CopyId from "@/components/CopyId";
 import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
@@ -58,6 +60,8 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
 
   const [activa, setActiva] = useState<DocTabKey>("overview");
   const [editando, setEditando] = useState(false);
+  // El PDF adjunto que se está viendo, en el visor de la app.
+  const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
   const [borrador, setBorrador] = useState("");
   // Cuando alguien pulsa «empezar en blanco» sobre un nodo sin nada escrito: no
   // hay documento que enseñar y tampoco hay que volver a ofrecer las plantillas.
@@ -330,8 +334,11 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                 <button
                   key={a.id}
                   className="truncate underline hover:text-foreground"
+                  // Un PDF, en el visor de la app; lo demás, a su programa.
                   onClick={() =>
-                    openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))
+                    isPdfFile(a.fileName)
+                      ? setPdf({ url: a.url, fileName: a.fileName })
+                      : openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))
                   }
                 >
                   {a.fileName}
@@ -341,6 +348,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           )}
         </footer>
       )}
+      {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
       <DecisionForm
         open={registrando}
         onOpenChange={setRegistrando}

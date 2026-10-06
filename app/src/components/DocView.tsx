@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import Markdown from "@/components/markdown/Markdown";
 import { openAttachment } from "@/lib/media";
+import PdfAttachment, { isPdfFile } from "@/components/PdfAttachment";
 import CopyId from "@/components/CopyId";
 import { useTasksStore } from "@/store/tasks.store";
 
@@ -165,7 +166,12 @@ export default function DocView() {
                 {t("common:servers.files")}
               </h2>
               <ul className="space-y-1">
-                {doc.attachments.map((a) => (
+                {doc.attachments.map((a) =>
+                  isPdfFile(a.fileName) ? (
+                    <li key={a.id}>
+                      <PdfAttachment url={a.url} fileName={a.fileName} />
+                    </li>
+                  ) : (
                   <li key={a.id} className="flex items-center gap-2 text-xs">
                     <button
                       className="truncate text-left text-primary underline"
@@ -175,7 +181,8 @@ export default function DocView() {
                     </button>
                     <span className="text-muted-foreground">{Math.round(a.bytes / 1024)} KB</span>
                   </li>
-                ))}
+                  ),
+                )}
               </ul>
             </section>
           )}

@@ -83,7 +83,7 @@ beforeEach(() => {
     openTaskId: "t-1", detail: detalle, loadingDetail: false, detailError: null,
     closeTask: () => {}, updateTask: vi.fn(), deleteTask: vi.fn(), addComment: vi.fn(),
     editComment: vi.fn(), deleteComment: vi.fn(), uploadAttachment: vi.fn(),
-    deleteAttachment: vi.fn(), createTag: vi.fn(), tags: [], statusesOf: async () => [],
+    deleteAttachment: vi.fn(async () => {}), createTag: vi.fn(), tags: [], statusesOf: async () => [],
     createSubtask: vi.fn(), openTask: vi.fn(), refreshOpenTask: vi.fn(), tree: [],
   };
 });
@@ -104,6 +104,20 @@ describe("la galería de una tarjeta", () => {
     const vistas = screen.getAllByRole("img").map((i) => i.getAttribute("alt"));
     expect(vistas).not.toContain("contrato.pdf");
     expect(screen.getByText("contrato.pdf")).toBeTruthy();
+  });
+
+  // El PDF, como tarjeta con su primera página (como en Slack) y no como un
+  // enlace en la lista; su × lo quita igual que la papelera. Mutantes: dejarlo
+  // en la lista; la × que no quita.
+  it("el PDF sale como tarjeta, y su × lo quita", async () => {
+    render(<TaskDetailDrawer />);
+    const tarjeta = document.querySelector('[data-pdf-card="contrato.pdf"]');
+    expect(tarjeta).toBeTruthy();
+    const quitar = tarjeta!.querySelector('[role="button"][aria-label]') as HTMLElement;
+    fireEvent.click(quitar);
+    await vi.waitFor(() =>
+      expect((estado.current.deleteAttachment as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith("t-1", "a-pdf"),
+    );
   });
 
   it("al pulsarla se abre entera, que es de lo que iba todo esto", () => {

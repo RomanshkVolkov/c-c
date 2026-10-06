@@ -39,6 +39,7 @@ import { usePrompt } from "@/components/PromptDialog";
 import { mediaSrc, openAttachment } from "@/lib/media";
 import Lightbox from "@/components/Lightbox";
 import PdfPreview from "@/components/PdfPreview";
+import PdfAttachment, { isPdfFile } from "@/components/PdfAttachment";
 import CopyId from "@/components/CopyId";
 import TelemetryTimeline from "@/components/TelemetryTimeline";
 import { commentByline } from "@/lib/byline";
@@ -336,7 +337,9 @@ function Content() {
     (a.contentType ?? "").startsWith("image/") ||
     /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(a.fileName ?? "");
   const imagenes = detail.attachments.filter(esImagen);
-  const otros = detail.attachments.filter((a) => !esImagen(a));
+  // Los PDF, como tarjeta con su primera página; lo demás, en la lista.
+  const pdfs = detail.attachments.filter((a) => !esImagen(a) && isPdfFile(a.fileName));
+  const otros = detail.attachments.filter((a) => !esImagen(a) && !isPdfFile(a.fileName));
 
   /** Quitar un adjunto, desde la miniatura o desde la lista. */
   const quitar = async (a: { id: string; fileName: string }) => {
@@ -619,21 +622,24 @@ function Content() {
                 })}
               </ul>
             )}
+            {pdfs.length > 0 && (
+              <ul className="space-y-2">
+                {pdfs.map((a) => (
+                  <li key={a.id}>
+                    <PdfAttachment url={a.url} fileName={a.fileName} onRemove={() => void quitar(a)} />
+                  </li>
+                ))}
+              </ul>
+            )}
             <ul className="space-y-1">
               {otros.map((a) => (
                 <li key={a.id} className="group flex items-center gap-2 text-xs">
                   <Paperclip className="size-3 shrink-0 text-muted-foreground" />
                   <button
                     className="truncate text-left text-primary underline"
-                    // Same rule as a link in the body: a PDF stays in the app,
-                    // anything else goes to the program that understands it.
-                    onClick={() => {
-                      if (/\.pdf$/i.test(a.fileName)) {
-                        setPdf({ url: a.url, fileName: a.fileName });
-                        return;
-                      }
-                      openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)));
-                    }}
+                    // Los PDF van arriba, como tarjeta; esto es lo demás, que
+                    // abre el programa que lo entiende.
+                    onClick={() => openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))}
                   >
                     {a.fileName}
                   </button>
