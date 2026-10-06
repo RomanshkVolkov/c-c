@@ -150,7 +150,7 @@ export default function NotificationsPanel({
       {/* El fondo se oscurece y cierra al pulsarlo: sin él, un panel flotante
           sobre una pantalla viva no se sabe si está abierto o pegado. */}
       <div className="absolute inset-0 bg-black/35" onClick={() => onOpenChange(false)} />
-      <div className="absolute right-3 top-11 flex max-h-[calc(100%-3.5rem)] w-[392px] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
+      <div className="absolute right-3 top-11 flex max-h-[calc(100%-3.5rem)] w-[min(392px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
         <div className="flex items-center gap-2.5 border-b px-3.5 py-2.5">
           <span className="font-semibold">{t("notifications:title")}</span>
           {unread > 0 && (

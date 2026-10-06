@@ -157,7 +157,8 @@
     "withdrawBody": "Deja de verlo. Su número de ticket se queda gastado —puede que ya lo haya citado— así que su numeración conserva el hueco.",
     "withdraw": "Retirar",
     "updated": "Actualizada el {{when}}",
-    "citedHere": "en el texto"
+    "citedHere": "en el texto",
+    "title": "Título"
   },
   "notes": {
     "title": "Notas",

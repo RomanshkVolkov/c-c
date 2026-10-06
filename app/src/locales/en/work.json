@@ -157,7 +157,8 @@
     "withdrawBody": "They stop seeing it. Its ticket number stays spent — they may already have quoted it — so their numbering keeps a gap.",
     "withdraw": "Withdraw",
     "updated": "Updated {{when}}",
-    "citedHere": "in the text"
+    "citedHere": "in the text",
+    "title": "Title"
   },
   "notes": {
     "title": "Notes",

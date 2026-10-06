@@ -6,7 +6,7 @@ import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Bell, BellOff, ChevronDown, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, Volume2, X } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, ChevronDown, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, Volume2, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,7 +67,16 @@ type Tab = "thread" | "media" | "recordings" | "links";
  * properly means a two-column right rail, which is a layout change larger than
  * the feature.
  */
-export default function ChannelView({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+export default function ChannelView({
+  spaceId,
+  spaceName,
+  onBack,
+}: {
+  spaceId: string;
+  spaceName: string;
+  /** Sólo en el teléfono: volver a la lista de canales. */
+  onBack?: () => void;
+}) {
   const { t } = useT();
   const messages = useChatStore((s) => s.messages);
   const loading = useChatStore((s) => s.loading);
@@ -188,6 +197,15 @@ export default function ChannelView({ spaceId, spaceName }: { spaceId: string; s
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+        {onBack && (
+          <button
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={t("common:misc.backToChannels")}
+            onClick={onBack}
+          >
+            <ArrowLeft className="size-4" />
+          </button>
+        )}
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
         <QuienAnda />
         {!isWebBuild && <VoiceBar spaceId={spaceId} />}

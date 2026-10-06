@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useT } from "@/lib/i18n";
 import { enterOrg } from "@/lib/ir-en-org";
 import { useEffect, useRef } from "react";
@@ -84,9 +86,19 @@ export default function DirectMessages() {
     void open(recordado, orgId).catch(() => useDMStore.getState().close());
   }, [c, u, abierta, recordado, orgId, open]);
 
+  // En el teléfono, la lista o la conversación, no las dos: aplastada al lado
+  // de la lista, la conversación se leía palabra a palabra. La flecha del hilo
+  // (`onBack`) ya vuelve a la lista.
+  const movil = useIsMobile();
+
   return (
     <div className="flex min-h-0 flex-1">
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-muted/10">
+      <aside
+        className={cn(
+          "flex w-60 shrink-0 flex-col border-r bg-muted/10",
+          movil && (abierta ? "hidden" : "w-full border-r-0"),
+        )}
+      >
         <header className="flex h-12 shrink-0 items-center border-b px-3">
           <span className="text-sm font-medium">Direct messages</span>
         </header>
@@ -98,7 +110,7 @@ export default function DirectMessages() {
         <div className="flex min-h-0 flex-1 flex-col">
           <DMThread onBack={close} />
         </div>
-      ) : (
+      ) : movil ? null : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           {t("common:misc.pickSomebody")}
         </div>

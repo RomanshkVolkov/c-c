@@ -1,3 +1,4 @@
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useT } from "@/lib/i18n";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -85,16 +86,26 @@ export default function Channels() {
   // Con la sala en pantalla esta columna sobra, y el rail también.
   const encogido = useEncogerEnLlamada(espacio?.id ?? null);
 
+  // En el teléfono no caben la lista y la conversación a la vez: se ve una u
+  // otra. La conversación sólo cuando se eligió un canal en esta visita
+  // (`?space=`); entrar a Canales enseña la lista, y no el último canal
+  // recordado, que es lo que hace el escritorio. Volver quita el parámetro.
+  const movil = useIsMobile();
+  const conversacionEnMovil = movil && !!abierto && !!espacio;
+  const listaEnMovil = movil && !conversacionEnMovil;
+
   // Says which channel is on screen, so the event handler can keep quiet about
   // messages you are watching arrive. It used to read "is the panel open on
   // this space", and with the panel gone that would have been false forever —
   // meaning a notification for every message in the channel you are reading.
   useEffect(() => {
-    useChatStore.setState({ panelOpen: !!espacio, spaceId: espacio?.id ?? null });
+    // En el teléfono, con sólo la lista en pantalla, no se está mirando ningún
+    // canal: sus mensajes tienen que avisar.
+    useChatStore.setState({ panelOpen: !!espacio && !listaEnMovil, spaceId: espacio?.id ?? null });
     // Bajo la org del canal, que es la del árbol.
     if (espacio) usePlacesStore.getState().remember(espacio.orgId, { spaceId: espacio.id });
     return () => useChatStore.setState({ panelOpen: false, spaceId: null });
-  }, [espacio]);
+  }, [espacio, listaEnMovil]);
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -106,6 +117,8 @@ export default function Channels() {
         className={cn(
           "flex shrink-0 flex-col overflow-hidden bg-muted/10 transition-[width] duration-200",
           encogido ? "w-0 border-r-0" : "w-60 border-r",
+          listaEnMovil && "w-full border-r-0",
+          conversacionEnMovil && "hidden",
         )}
       >
         <header className="flex h-12 shrink-0 items-center border-b px-3">
@@ -202,8 +215,13 @@ export default function Channels() {
         </nav>
       </aside>
 
-      {espacio ? (
-        <ChannelView key={espacio.id} spaceId={espacio.id} spaceName={espacio.name} />
+      {listaEnMovil ? null : espacio ? (
+        <ChannelView
+          key={espacio.id}
+          spaceId={espacio.id}
+          spaceName={espacio.name}
+          onBack={movil ? () => setParams({}) : undefined}
+        />
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           <MessagesSquare className="mr-2 size-4" /> Nothing to read yet.

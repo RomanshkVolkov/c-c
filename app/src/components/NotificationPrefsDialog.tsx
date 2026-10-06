@@ -164,7 +164,10 @@ export default function NotificationPrefsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      {/* Con altura tope y scroll: con los interruptores del teléfono ya no
+          cabe en una pantalla de móvil, y sin esto el «Hecho» y la X quedaban
+          fuera, sin forma de salir. */}
+      <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("common:last.notifications")}</DialogTitle>
         </DialogHeader>

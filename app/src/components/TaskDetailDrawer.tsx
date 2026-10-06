@@ -23,7 +23,6 @@ import { toast } from "sonner";
 import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -490,16 +489,28 @@ function Content() {
           todo el ancho **al lado** de la descripción, y ésta se leía en vertical,
           letra a letra (#81). Sólo se veía por debajo de 1024 px: a partir de ahí
           el panel mide 72 y todo cabe. */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <div className="min-h-0 min-w-0 flex-1 space-y-5 overflow-auto p-4 lg:px-8">
-        <Input
+      {/* Por debajo de `lg`, **un solo scroll** para todo: con dos (la
+          descripción y las propiedades, cada una con el suyo) la descripción se
+          quedaba en media pantalla de teléfono y las propiedades en la otra. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+      <div className="min-w-0 shrink-0 space-y-5 p-4 lg:min-h-0 lg:flex-1 lg:shrink lg:overflow-auto lg:px-8">
+        {/* Un área de texto que crece con el título y no un campo de una línea:
+            en un teléfono el título se cortaba a la mitad y no había forma de
+            leerlo entero. Enter sigue guardando —un título no lleva saltos—, y
+            un salto pegado se convierte en espacio. */}
+        <textarea
+          aria-label={t("work:task.title")}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          rows={1}
+          onChange={(e) => setTitle(e.target.value.replace(/\r?\n/g, " "))}
           onBlur={saveTitle}
           onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).blur();
+            }
           }}
-          className="h-auto border-0 px-0 text-lg font-semibold shadow-none focus-visible:ring-0"
+          className="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-semibold outline-none [field-sizing:content]"
         />
 
         {/* Description */}
@@ -888,7 +899,7 @@ function Content() {
           Below the reading column on a narrow window rather than squeezed
           beside it: at that width neither half gets enough room to be read,
           and the description is the half that suffers. */}
-      <aside className="w-full shrink-0 overflow-auto border-t p-4 lg:w-72 lg:border-l lg:border-t-0">
+      <aside className="w-full shrink-0 border-t p-4 lg:w-72 lg:overflow-auto lg:border-l lg:border-t-0">
         {/* Stacked, not two columns. The grid was written for a 672px drawer;
             in a 288px rail a 7rem label leaves the controls too little and they
             push a horizontal scrollbar into a panel nobody scrolls sideways. */}

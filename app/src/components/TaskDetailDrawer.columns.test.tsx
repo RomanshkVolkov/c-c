@@ -77,10 +77,11 @@ describe("las columnas del detalle", () => {
     const pedidas = get.mock.calls.map((c) => String(c[0]));
     expect(pedidas.some((u) => u.includes("/task-lists/li-otra/statuses"))).toBe(true);
     expect(pedidas.some((u) => u.includes("/task-lists/li-abierta/statuses"))).toBe(false);
-    // El título vive en un input, no como texto: la pantalla se montó.
+    // El título vive en un campo (un área de texto que crece, para que quepa en
+    // un teléfono), no como texto: la pantalla se montó.
     await waitFor(() =>
       expect(
-        Array.from(document.querySelectorAll("input")).some(
+        Array.from(document.querySelectorAll("input, textarea")).some(
           (i) => (i as HTMLInputElement).value === "Una tarea",
         ),
       ).toBe(true),
