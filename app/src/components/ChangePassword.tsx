@@ -13,8 +13,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api, refreshAccessToken, refreshSession } from "@/lib/api";
+import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
-import type { APIResponse } from "@/types/auth";
+import type { APIResponse, AuthRefreshResponse } from "@/types/auth";
 
 /** The shared form. On success it mints a fresh token, refreshes the session
  *  (clearing any must-change flag) and reloads the organizations. */
@@ -34,21 +35,26 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.post<APIResponse<unknown>>(
+      const res = await api.post<APIResponse<AuthRefreshResponse>>(
         "/api/v1/auth/change-password",
         { currentPassword: current, newPassword: next },
         true,
       );
       if (!res.success) throw new Error(res.error ?? t("common:admin.changeFailed"));
 
-      // A forced change is the first thing a new account does, and its token
-      // was minted before an admin added it to any organization — the `orgs`
-      // claim is empty and stays empty, so every org-scoped list comes back
-      // empty until the next sign-in. Refreshing the token re-reads the
-      // memberships; only then is it worth reloading the session and the org
-      // list. Order matters: the refresh reuses the session object it already
-      // has, so asking for /auth/me afterwards is what clears must-change.
-      await refreshAccessToken();
+      // Cambiar la contraseña cierra todas las sesiones, también ésta: el
+      // refresh guardado ya está revocado, y renovar con él sería un 401 que
+      // saca a quien la acaba de cambiar. El servidor devuelve una sesión
+      // nueva, con las membresías leídas ahora (en un cambio forzado, el
+      // token de antes se acuñó sin ninguna org). Sin ella —un servidor de
+      // antes del barrido— se renueva como siempre. /auth/me va después: es lo
+      // que quita el must-change.
+      const { session } = useAuthStore.getState();
+      if (res.data?.accessToken && res.data.refreshToken && session) {
+        useAuthStore.getState().setAuth(session, res.data.accessToken, res.data.refreshToken);
+      } else {
+        await refreshAccessToken();
+      }
       await refreshSession();
       await useOrgsStore.getState().fetchOrgs();
       toast.success(t("common:admin.passwordChanged"));

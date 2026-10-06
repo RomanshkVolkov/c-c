@@ -1,5 +1,7 @@
 import { adoptServerLocale } from "@/lib/locale-sync";
 import { api, revokeSession } from "@/lib/api";
+import { isWebBuild } from "@/lib/platform";
+import { leaveWeb } from "@/lib/leave-web";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useInvitationsStore } from "@/store/invitations.store";
@@ -12,6 +14,9 @@ export function useAuth() {
     const res = await api.post<APIResponse<AuthResponse>>("/api/v1/auth/login", {
       username,
       password,
+      // La sesión web va marcada en el token: el servidor le cierra lo que es
+      // sólo del escritorio (servidores, tokens personales).
+      ...(isWebBuild ? { client: "web" } : {}),
     });
 
     if (!res.success || !res.data) {
@@ -26,6 +31,11 @@ export function useAuth() {
   };
 
   const logout = () => {
+    // En la web, salir es también olvidar este navegador. Ver leaveWeb.
+    if (isWebBuild) {
+      void leaveWeb(useAuthStore.getState().refreshToken);
+      return;
+    }
     // Se avisa al servidor sin esperar: la pantalla sale ya, y el refresh se
     // revoca por detrás. Se lee antes de `clearAuth`, que lo borra.
     void revokeSession(useAuthStore.getState().refreshToken);

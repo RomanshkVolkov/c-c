@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ExternalLink, GitBranch, Loader2, Rocket, Server, Workflow, X } from "lucide-react";
-import { openExternal } from "@/lib/platform";
+import { isWebBuild, openExternal } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
 import { desde } from "@/lib/desde";
 import { shortRef } from "@/lib/deploy";
@@ -207,9 +207,9 @@ function RunRow({ run, deployments, highlighted }: { run: WorkflowRun; deploymen
       {deployments.length > 0 && (
         <div className="flex w-full flex-wrap gap-2 pl-1">
           {deployments.map((d) => (
-            <Link
+            <ToService
               key={d.id}
-              to={`/servers/${d.serverId}/services`}
+              serverId={d.serverId}
               className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs hover:bg-muted"
               title={t("activity:openService")}
             >
@@ -218,11 +218,25 @@ function RunRow({ run, deployments, highlighted }: { run: WorkflowRun; deploymen
               <Badge variant={DEPLOY_VARIANT[d.status] ?? "outline"} className="ml-1">
                 {t(`common:deploy.status.${d.status}`)}
               </Badge>
-            </Link>
+            </ToService>
           ))}
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * El enlace al servicio de un despliegue. En la web no hay pantalla de
+ * servidores (ni el servidor le contesta a una sesión web): el chip se queda,
+ * sin enlace a una ruta que no existe.
+ */
+function ToService({ serverId, className, title, children }: { serverId: string; className: string; title: string; children: ReactNode }) {
+  if (isWebBuild) return <span className={className.replace(" hover:bg-muted", "")}>{children}</span>;
+  return (
+    <Link to={`/servers/${serverId}/services`} className={className} title={title}>
+      {children}
+    </Link>
   );
 }
 
@@ -252,14 +266,16 @@ function DeploymentRow({ dep, highlighted }: { dep: ActivityDeployment; highligh
       <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
         {who && <span>{t("activity:deployment.by", { who })}</span>}
         <span title={dep.createdAt}>{desde(dep.createdAt)}</span>
-        <Link
-          to={`/servers/${dep.serverId}/services`}
-          className="inline-flex items-center"
-          aria-label={t("activity:openService")}
-          title={t("activity:openService")}
-        >
-          <Server className="size-3.5" />
-        </Link>
+        {!isWebBuild && (
+          <Link
+            to={`/servers/${dep.serverId}/services`}
+            className="inline-flex items-center"
+            aria-label={t("activity:openService")}
+            title={t("activity:openService")}
+          >
+            <Server className="size-3.5" />
+          </Link>
+        )}
       </span>
     </li>
   );

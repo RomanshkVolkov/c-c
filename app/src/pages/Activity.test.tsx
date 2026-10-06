@@ -17,7 +17,7 @@ vi.mock("@/lib/api", () => ({ api: { get } }));
 const { openUrl } = vi.hoisted(() => ({ openUrl: vi.fn() }));
 // Abrir fuera pasa por `lib/platform` (escritorio o navegador); aquí se mira
 // que se pida, no cómo se abre.
-vi.mock("@/lib/platform", () => ({ isTauri: false, isWeb: true, openExternal: openUrl }));
+vi.mock("@/lib/platform", () => ({ isTauri: false, isWeb: true, isWebBuild: false, openExternal: openUrl }));
 vi.mock("@/store/orgs.store", () => ({
   useOrgsStore: (sel: (s: unknown) => unknown) => sel({ currentOrgId: "org-1" }),
 }));

@@ -74,6 +74,18 @@ describe("la campana en este dispositivo", () => {
     expect(pushActiveHere()).toBe(false);
   });
 
+  // Mutantes: no reintentar; reintentar sin tirar la vieja (el navegador
+  // devuelve la misma y el servidor la vuelve a rechazar).
+  it("si la suscripción es de otra persona, se tira y se pide otra", async () => {
+    get.mockResolvedValue({ success: true, data: { key: "AQID" } });
+    post.mockResolvedValueOnce({ success: false, error: "push-not-yours" }).mockResolvedValueOnce({ success: true });
+    expect(await enablePush()).toBe("on");
+    expect(sub.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(pushManager.subscribe).toHaveBeenCalledTimes(2);
+    expect(sub.unsubscribe.mock.invocationCallOrder[0]).toBeLessThan(pushManager.subscribe.mock.invocationCallOrder[1]);
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
   it("apagar da de baja en el servidor y en el navegador", async () => {
     localStorage.setItem("cac-push-active", "1");
     expect(await disablePush()).toBe("off");

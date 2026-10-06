@@ -1,3 +1,4 @@
+import { isWebBuild } from "@/lib/platform";
 import { fechaLarga } from "@/lib/fechas";
 import { goInOrg } from "@/lib/ir-en-org";
 import { useT } from "@/lib/i18n";
@@ -198,6 +199,8 @@ export default function Overview() {
           ))}
         </Tarjeta>
 
+        {/* Los servidores son del escritorio: en web ni la tarjeta. */}
+        {!isWebBuild && (
         <Tarjeta
           icono={<ServerIcon className="size-3.5 text-muted-foreground" />}
           titulo={t("common:admin.infrastructure")}
@@ -212,6 +215,7 @@ export default function Overview() {
             <Cifra n={servers.filter((s) => s.type === "kubernetes").length} de="orchestrator" />
           </div>
         </Tarjeta>
+        )}
       </div>
     </div>
   );

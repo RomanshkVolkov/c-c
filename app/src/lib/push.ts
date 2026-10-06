@@ -93,11 +93,20 @@ export async function enablePush(): Promise<PushState> {
   if (!key) return "off-server";
   if ((await Notification.requestPermission()) !== "granted") return "denied";
   const reg = (await registerServiceWorker()) ?? (await navigator.serviceWorker.ready);
-  const sub = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: keyToBytes(key) as BufferSource,
-  });
-  const res = await api.post<APIResponse<unknown>>("/api/v1/notifications/push/subscriptions", sub.toJSON(), true);
+  const subscribe = () =>
+    reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(key) as BufferSource });
+  const send = (s: PushSubscription) =>
+    api.post<APIResponse<unknown>>("/api/v1/notifications/push/subscriptions", s.toJSON(), true);
+  let sub = await subscribe();
+  let res = await send(sub);
+  // La suscripción de este navegador es de otra persona que no salió (el
+  // servidor nunca cambia el dueño). Se tira y se pide otra: endpoint nuevo,
+  // sólo de quien la pide ahora; la vieja muere y el servidor la olvida.
+  if (res && res.success === false && res.error === "push-not-yours") {
+    await sub.unsubscribe();
+    sub = await subscribe();
+    res = await send(sub);
+  }
   if (res && res.success === false) {
     await sub.unsubscribe();
     throw new Error(res.error ?? "push-subscribe-failed");

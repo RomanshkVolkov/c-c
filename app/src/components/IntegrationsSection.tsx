@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { api, apiUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
 import type {
   Integration,
@@ -159,8 +159,10 @@ function IntegrationTile({
     let href = it.url;
     if (it.authMethod === "header") {
       try {
-        const res = await api.post<APIResponse<{ path: string }>>(`${base}/${it.id}/launch`, {}, true);
-        if (res.data?.path) href = apiUrl(res.data.path);
+        // `url` va al dominio propio del proxy (tools.guz-studio.dev): nunca se
+        // abre una herramienta en el origen de cac, donde vive la sesión web.
+        const res = await api.post<APIResponse<{ path: string; url?: string }>>(`${base}/${it.id}/launch`, {}, true);
+        if (res.data?.url) href = res.data.url;
       } catch (e) {
         toast.error(t("common:admin.errOpenThrough"), {
           description: e instanceof Error ? e.message : String(e),

@@ -132,5 +132,12 @@
   "voice-unconfigured": "La voz no está montada en este servidor.",
   "voice-web-not-yet": "Las llamadas todavía no están en la versión web; entra desde la app de escritorio.",
   "webhook-failed": "No se pudo procesar la entrega de GitHub; GitHub la reintentará.",
-  "wrong-type": "Ese tipo de fichero no se acepta."
+  "wrong-type": "Ese tipo de fichero no se acepta.",
+  "kubernetes-superadmin-only": "Sólo un administrador de la plataforma puede registrar o convertir un servidor Kubernetes.",
+  "connection-admin-only": "Sólo un admin de la organización puede cambiar a dónde se conecta un servidor (host, usuario o puertos).",
+  "desktop-only": "Esto sólo está en la app de escritorio de cac.",
+  "bad-push-endpoint": "El servicio de avisos de este navegador no está soportado.",
+  "too-many-push-devices": "Ya tienes el máximo de dispositivos recibiendo avisos. Apaga uno antes.",
+  "push-not-yours": "Este navegador sigue suscrito para otra persona. Vuelve a intentarlo.",
+  "proxy-off": "Las integraciones no están disponibles ahora en este servidor."
 }

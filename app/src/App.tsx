@@ -28,19 +28,26 @@ import { useAuthStore } from "@/store/auth.store";
 // versión web (`isWebBuild`) sus rutas ni existen. Así el bundle web no lleva
 // terminales, Ansible ni el cliente HTTP local, y en el escritorio cada una se
 // carga del disco la primera vez que se abre.
-const Dashboard = lazy(() => import("@/pages/Dashboard"));
-const ServerLayout = lazy(() => import("@/pages/servers/ServerLayout"));
-const ServerOverview = lazy(() => import("@/pages/servers/ServerOverview"));
-const ServerServices = lazy(() => import("@/pages/servers/ServerServices"));
-const ServerNodes = lazy(() => import("@/pages/servers/ServerNodes"));
-const ServerProvision = lazy(() => import("@/pages/servers/ServerProvision"));
-const ServerStats = lazy(() => import("@/pages/ServerStats"));
-const StackSecrets = lazy(() => import("@/pages/StackSecrets"));
-const ImageTool = lazy(() => import("@/pages/ImageTool"));
-const RequestClient = lazy(() => import("@/pages/RequestClient"));
-const CryptoTools = lazy(() => import("@/pages/CryptoTools"));
-const VoiceLab = lazy(() => import("@/pages/VoiceLab"));
-const DevTools = lazy(() => import("@/pages/DevTools"));
+//
+// La pregunta va aquí, con `import.meta.env` en el sitio y no con `isWebBuild`
+// importado: sólo así Rollup la resuelve al compilar y no emite esos trozos.
+// Con el `import()` en el código, aunque la ruta no exista, el trozo se publica
+// igual en /app/assets y cualquiera lo puede descargar.
+const WEB = import.meta.env.VITE_TARGET === "web";
+const NotOnWeb = () => null;
+const Dashboard = WEB ? NotOnWeb : lazy(() => import("@/pages/Dashboard"));
+const ServerLayout = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerLayout"));
+const ServerOverview = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerOverview"));
+const ServerServices = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerServices"));
+const ServerNodes = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerNodes"));
+const ServerProvision = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerProvision"));
+const ServerStats = WEB ? NotOnWeb : lazy(() => import("@/pages/ServerStats"));
+const StackSecrets = WEB ? NotOnWeb : lazy(() => import("@/pages/StackSecrets"));
+const ImageTool = WEB ? NotOnWeb : lazy(() => import("@/pages/ImageTool"));
+const RequestClient = WEB ? NotOnWeb : lazy(() => import("@/pages/RequestClient"));
+const CryptoTools = WEB ? NotOnWeb : lazy(() => import("@/pages/CryptoTools"));
+const VoiceLab = WEB ? NotOnWeb : lazy(() => import("@/pages/VoiceLab"));
+const DevTools = WEB ? NotOnWeb : lazy(() => import("@/pages/DevTools"));
 
 // Sends unknown paths to the right landing: the overview for signed-in users,
 // the on-device tools for returning guests, otherwise the login screen.

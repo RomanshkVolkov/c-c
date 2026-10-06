@@ -1,3 +1,4 @@
+import { isWebBuild } from "@/lib/platform";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
@@ -8,7 +9,7 @@ import { agentResponde, registerAgent } from "@/lib/agent";
 /** Form payload without orgId — the hook injects the active org automatically. */
 export type NewServerInput = Omit<CreateServerPayload, "orgId">;
 
-export function useServers() {
+function useServersDesktop() {
   const [allServers, setAllServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(true);
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
@@ -125,3 +126,32 @@ export function useServers() {
 
   return { servers, loading, createServer, updateServer, deleteServer, refresh: fetch };
 }
+
+const NO_SERVERS: Server[] = [];
+const sinServidores = async () => {
+  throw new Error("servers-desktop-only");
+};
+
+/**
+ * La versión web no tiene servidores: ni los pide ni habla con sus agentes.
+ *
+ * Partido **al compilar** (`isWebBuild` es una constante) y no con un `if`
+ * dentro del hook: así el bundle web ni siquiera lleva el código que llama a
+ * `http://<ip>:<puerto>` de un agente. No basta con que no se ejecute: antes
+ * se ejecutaba —el menú y el Resumen montan este hook— y un teléfono sondeaba
+ * a los agentes por IP en HTTP plano, enseñando la IP en la consola y
+ * escribiendo «offline» al backend porque desde fuera no los alcanzaba.
+ */
+function useServersWeb(): ReturnType<typeof useServersDesktop> {
+  return {
+    servers: NO_SERVERS,
+    loading: false,
+    createServer: sinServidores,
+    updateServer: sinServidores,
+    deleteServer: sinServidores,
+    refresh: async () => {},
+  };
+}
+
+export const useServers = isWebBuild ? useServersWeb : useServersDesktop;
+

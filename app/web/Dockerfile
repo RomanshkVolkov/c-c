@@ -9,6 +9,7 @@ RUN bun run build:web
 
 FROM nginx:1.27-alpine
 COPY web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY web/security-headers.conf /etc/nginx/snippets/security-headers.conf
 # Bajo /app/ porque así llegan las rutas: el Gateway no reescribe el prefijo.
 COPY --from=build /src/dist-web /usr/share/nginx/html/app
 EXPOSE 8080

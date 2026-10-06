@@ -107,7 +107,23 @@ k8s con HTTPRoute propia en `/app`) y `.github/workflows/web.yml`.
 **W2 hecho, sin commitear:** la campana al teléfono por Web Push (VAPID;
 `PushSubscription`, `PushAllows`, envío desde `Notify` y desde el timbre,
 service worker, manifiesto instalable, botón «Avisos en este dispositivo»,
-`pushQuiet`/`pushCi`). Ver `docs/notifications.md` §3 ter.
+`pushQuiet`/`pushCi`). Ver `docs/notifications.md` §3 ter. **W2 publicado**
+(`3c1acc7`, `d9adfe1`).
+**Barrido de seguridad (6-oct), tanda 2 hecha, sin commitear.** Regla: crear
+una org sigue abierto a cualquiera, así que nada peligroso depende sólo de ser
+admin de una org. Servidores kubernetes y vistas del clúster: sólo superadmin;
+cambiar host/usuario/puertos de un servidor y registrar o reconfigurar un
+servicio desplegable: admin; pase al agente: miembro (no viewer); llave y
+webhook de un canal: admin. Sesión web marcada en el token (`client: "web"`):
+no llega a `/servers` ni a `/auth/tokens`. Proxy de integraciones en su propio
+dominio (`tools.guz-studio.dev`; en el de cac contesta 404). Adjuntos con
+`nosniff` y HTML/SVG como descarga. Cambiar la contraseña cierra todas las
+sesiones. Push: sólo servicios reales, tope de 10, nunca cambia de dueño. El
+backend no arranca en el clúster sin sus secretos. La web: CSP y cabeceras,
+sin trozos de escritorio, y salir olvida el navegador. **Pendiente:** agente
+v5 (rol en el pase, logs sin ruta entera; lo de `swarm-manage/` sin commitear
+**no** se publica sin subir la versión), token fuera de las URLs, alta en una
+org sin consentimiento, límite de login por IP.
 
 **Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).

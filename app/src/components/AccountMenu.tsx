@@ -1,3 +1,4 @@
+import { isWebBuild } from "@/lib/platform";
 import { nombreDe, inicialesDe } from "@/lib/nombres";
 import type { ReactNode } from "react";
 import { useT, type MessageKey } from "@/lib/i18n";
@@ -217,6 +218,10 @@ export default function AccountMenu({
 
           <div className="my-1 h-px bg-border" />
 
+          {/* La versión y el actualizador son de la app de escritorio. En la
+              web no hay nada que instalar: la versión nueva llega al recargar,
+              y un «Comprobar» ahí sólo podía fallar. */}
+          {!isWebBuild && (
           <div className={cn(item, "hover:bg-transparent hover:text-muted-foreground")}>
             {available ? (
               <Download className="size-3.5 shrink-0 text-primary" />
@@ -242,6 +247,7 @@ export default function AccountMenu({
               {checking ? <Loader2 className="size-3 animate-spin" /> : available ? t("common:misc.install") : t("common:misc.check")}
             </button>
           </div>
+          )}
 
           <button
             className={cn(item, "text-destructive hover:text-destructive")}
