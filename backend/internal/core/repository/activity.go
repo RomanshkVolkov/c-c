@@ -46,11 +46,12 @@ func (r *ActivityRepository) UpsertRun(run *domain.WorkflowRun) (stored *domain.
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "run_id"}, {Name: "run_attempt"}},
 			// Todo lo que GitHub puede mandar distinto entre una entrega y otra.
-			// `occurred_at` no: es el `created_at` del run y ordena el feed.
+			// También `occurred_at`: es el `run_started_at` del intento, y el
+			// primer aviso («requested») llega sin él.
 			DoUpdates: clause.AssignmentColumns([]string{
 				"status", "conclusion", "status_rank", "actor", "head_sha", "head_branch",
 				"commit_title", "html_url", "workflow_name", "path", "event", "run_number",
-				"run_started_at", "event_updated_at", "updated_at",
+				"run_started_at", "event_updated_at", "updated_at", "occurred_at",
 			}),
 			Where: clause.Where{Exprs: []clause.Expression{
 				clause.Expr{SQL: "EXCLUDED.status_rank >= workflow_runs.status_rank"},
@@ -223,4 +224,13 @@ func (r *ActivityRepository) Feed(orgID string, f domain.ActivityFilter) (domain
 		page.Items = append(page.Items, e)
 	}
 	return page, nil
+}
+
+// FixRunTimes pone a cada intento su propia hora. Hasta el 7-oct-2026 se
+// guardaba el `created_at` de la ejecución, el mismo en todos sus intentos, y
+// el feed los mostraba empatados. Idempotente y barato: corre en cada
+// arranque y sólo toca las filas que aún no la tienen.
+func FixRunTimes(db *gorm.DB) error {
+	return db.Exec(`UPDATE workflow_runs SET occurred_at = run_started_at
+		WHERE run_started_at IS NOT NULL AND occurred_at <> run_started_at`).Error
 }

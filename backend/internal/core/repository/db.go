@@ -224,6 +224,10 @@ func DBConnection() {
 	migrateItems(db)
 	canonicalizeItemPriorities(db)
 	backfillDocTabs(db)
+	// Cada intento de un run, con su hora. Ver FixRunTimes.
+	if err := FixRunTimes(db); err != nil {
+		lg.Warn("activity: could not date run attempts: " + err.Error())
+	}
 }
 
 // backfillAttachmentRefs repoints attachments written before the proxy existed.

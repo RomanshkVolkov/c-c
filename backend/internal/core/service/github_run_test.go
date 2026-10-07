@@ -49,8 +49,12 @@ func TestRunFromPayloadReadsWhatTheFeedShows(t *testing.T) {
 	if run.CommitTitle != "fix: el login" {
 		t.Errorf("el título del commit es la primera línea, no %q", run.CommitTitle)
 	}
-	if !run.OccurredAt.Equal(time.Date(2026, 10, 4, 10, 0, 0, 0, time.UTC)) {
-		t.Errorf("OccurredAt es el created_at del run, no %v", run.OccurredAt)
+	// La hora de **este intento** (run_started_at), no la de la ejecución
+	// (created_at, la misma en todos sus intentos): con ella, los intentos de
+	// un run salían empatados y arriba podía quedar un fallo ya superado
+	// (7-oct-2026). Mutante: volver al created_at.
+	if !run.OccurredAt.Equal(time.Date(2026, 10, 4, 10, 0, 30, 0, time.UTC)) {
+		t.Errorf("OccurredAt es el run_started_at del intento, no %v", run.OccurredAt)
 	}
 	if run.RunStartedAt == nil || run.EventUpdatedAt == nil || !run.EventUpdatedAt.Equal(time.Date(2026, 10, 4, 10, 1, 0, 0, time.UTC)) {
 		t.Errorf("los tiempos del payload no llegaron: %v %v", run.RunStartedAt, run.EventUpdatedAt)
@@ -84,5 +88,18 @@ func TestRunFromPayloadReadsWhatTheFeedShows(t *testing.T) {
 	}
 	if run.EventUpdatedAt != nil || run.RunStartedAt != nil {
 		t.Error("sin tiempos en el payload, no se inventan")
+	}
+
+	// Un aviso «requested» del intento, que aún no empezó: vale el created_at.
+	// Mutante: dejar la hora en cero sin run_started_at.
+	queued := `{"action":"requested","repository":{"id":100},"workflow_run":{
+		"id":11,"run_attempt":2,"status":"queued","created_at":"2026-10-04T09:00:00Z"}}`
+	p = ghPayload{}
+	if err := json.Unmarshal([]byte(queued), &p); err != nil {
+		t.Fatal(err)
+	}
+	run = runFromPayload(repo, &p, now)
+	if !run.OccurredAt.Equal(time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC)) {
+		t.Errorf("sin run_started_at vale el created_at, no %v", run.OccurredAt)
 	}
 }

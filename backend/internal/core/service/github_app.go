@@ -453,9 +453,14 @@ func (s *GitHubService) notifyRun(repo *domain.GitHubRepo, run *domain.WorkflowR
 
 // runFromPayload: la fila de un `workflow_run` tal como llega. Pura, para
 // probarla sin base. Lo que GitHub no manda se rellena con lo que sí: sin
-// `triggering_actor` vale el `actor`, sin `run_attempt` es el primero, sin
-// `created_at` el reloj de aquí (y el feed lo ordena por eso, así que es lo
-// único que no puede quedarse en cero).
+// `triggering_actor` vale el `actor`, sin `run_attempt` es el primero.
+//
+// La hora (`OccurredAt`, la que ordena el feed) es la de **este intento**:
+// `run_started_at`. El `created_at` del aviso es el de la ejecución, el mismo
+// en todos sus intentos, y con él los tres intentos de un run salían empatados
+// en un orden cualquiera: arriba podía quedar el fallo del 2 cuando el 3 había
+// pasado (jose, 7-oct-2026). Sin `run_started_at` (un aviso «requested", que
+// aún no empezó), el `created_at`; sin nada, el reloj de aquí.
 func runFromPayload(repo *domain.GitHubRepo, p *ghPayload, now func() time.Time) *domain.WorkflowRun {
 	w := p.WorkflowRun
 	actor := w.TriggeringActor.Login
@@ -467,6 +472,9 @@ func runFromPayload(repo *domain.GitHubRepo, p *ghPayload, now func() time.Time)
 		attempt = 1
 	}
 	occurred := w.CreatedAt
+	if w.RunStartedAt != nil && !w.RunStartedAt.IsZero() {
+		occurred = *w.RunStartedAt
+	}
 	if occurred.IsZero() {
 		occurred = now()
 	}

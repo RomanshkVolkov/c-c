@@ -358,3 +358,46 @@ func TestARerunIsItsOwnRow(t *testing.T) {
 		t.Fatalf("se esperaban dos intentos, el primero fallado y el segundo bien: %+v", rows)
 	}
 }
+
+// Cada intento de un run lleva su hora. El primer aviso («requested») llega
+// sin run_started_at y se fecha con el created_at de la ejecución; cuando el
+// intento empieza, su hora pasa a ser la suya. Y las filas guardadas antes del
+// 7-oct-2026, con la hora de la ejecución, se corrigen al arrancar. Mutantes:
+// no actualizar occurred_at en el upsert; no corregir las viejas.
+func TestEachAttemptCarriesItsOwnTime(t *testing.T) {
+	db := activityDB(t)
+	repo := NewActivityRepository(db)
+	created := time.Date(2026, 10, 7, 20, 38, 47, 0, time.UTC)
+	started := time.Date(2026, 10, 7, 20, 53, 50, 0, time.UTC)
+
+	queued := aRun(1, 3, "queued", "", created)
+	if _, _, err := repo.UpsertRun(queued); err != nil {
+		t.Fatal(err)
+	}
+	running := aRun(1, 3, "in_progress", "", started)
+	running.RunStartedAt = &started
+	stored, _, err := repo.UpsertRun(running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.OccurredAt.Equal(started) {
+		t.Errorf("al empezar, el intento no tomó su hora: %v", stored.OccurredAt)
+	}
+
+	// Una fila de antes, con la hora de la ejecución.
+	old := aRun(2, 2, "completed", "success", created)
+	old.RunStartedAt = &started
+	if err := db.Create(old).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := FixRunTimes(db); err != nil {
+		t.Fatal(err)
+	}
+	var fixed domain.WorkflowRun
+	if err := db.First(&fixed, "run_id = ? AND run_attempt = ?", 2, 2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !fixed.OccurredAt.Equal(started) {
+		t.Errorf("la fila vieja sigue con la hora de la ejecución: %v", fixed.OccurredAt)
+	}
+}
