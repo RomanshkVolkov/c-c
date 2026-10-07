@@ -100,3 +100,51 @@ describe("aceptar un arrastre", () => {
     expect(dataTransfer.dropEffect).toBe("none");
   });
 });
+
+// Soltar un fichero donde nadie lo recoge abría la imagen en la ventana y
+// había que volver atrás (jose, 7-oct-2026). Mutantes: no cancelar el drop;
+// cancelar también lo que ya recogió una zona; tocar un arrastre de texto.
+describe("un fichero soltado fuera de una zona", () => {
+  const evento = (type: string, types: string[], prevented = false) => {
+    const ev = new Event(type, { cancelable: true, bubbles: true }) as DragEvent;
+    Object.defineProperty(ev, "dataTransfer", { value: { types, dropEffect: "copy" } });
+    if (prevented) ev.preventDefault();
+    return ev;
+  };
+
+  it("no se abre en la ventana, y el cursor dice que ahí no", async () => {
+    const { guardWindowAgainstFileDrops } = await import("./dropped");
+    const quitar = guardWindowAgainstFileDrops(window);
+    const drop = evento("drop", ["Files"]);
+    window.dispatchEvent(drop);
+    expect(drop.defaultPrevented).toBe(true);
+    const over = evento("dragover", ["Files"]);
+    window.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true);
+    expect(over.dataTransfer!.dropEffect).toBe("none");
+    quitar();
+  });
+
+  it("lo que recogió una zona, y un texto, no se tocan", async () => {
+    const { guardWindowAgainstFileDrops } = await import("./dropped");
+    const quitar = guardWindowAgainstFileDrops(window);
+    const recogido = evento("dragover", ["Files"], true);
+    window.dispatchEvent(recogido);
+    expect(recogido.dataTransfer!.dropEffect).toBe("copy");
+    const texto = evento("drop", ["text/plain"]);
+    window.dispatchEvent(texto);
+    expect(texto.defaultPrevented).toBe(false);
+    quitar();
+  });
+});
+
+// Y la app la pone al arrancar: sin esto, la guarda existe y no protege nada.
+describe("la guarda está puesta", () => {
+  it("main.tsx la instala", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const main = readFileSync(join(process.cwd(), "src/main.tsx"), "utf8");
+    expect(main).toMatch(/^guardWindowAgainstFileDrops\(\);$/m);
+  });
+});
+

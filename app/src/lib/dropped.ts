@@ -129,3 +129,32 @@ export function takeTransfer(dt: DataTransfer): { files: File[]; uris: string[] 
   return { files, uris: files.length > 0 || !isTauri ? [] : fileURIs(dt) };
 }
 
+/**
+ * Que un fichero soltado donde nadie lo recoge no se lleve la app. Lo que hace
+ * el navegador por defecto es **abrirlo en la ventana**: soltar sobre la barra
+ * lateral dejaba la imagen a pantalla completa y había que volver atrás (jose,
+ * 7-oct-2026). Fuera de una zona para soltar o de un editor, el arrastre de un
+ * fichero dice «aquí no» y soltarlo no hace nada.
+ *
+ * En la fase de burbuja de la ventana: las zonas y los editores ya cancelaron
+ * el evento antes, y eso (`defaultPrevented`) es lo que dice que alguien lo
+ * recogió. Devuelve la función para quitarlo.
+ */
+export function guardWindowAgainstFileDrops(target: Window = window): () => void {
+  const over = (e: DragEvent) => {
+    if (e.defaultPrevented || !carriesFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+  };
+  const drop = (e: DragEvent) => {
+    if (e.defaultPrevented || !carriesFiles(e.dataTransfer)) return;
+    e.preventDefault();
+  };
+  target.addEventListener("dragover", over);
+  target.addEventListener("drop", drop);
+  return () => {
+    target.removeEventListener("dragover", over);
+    target.removeEventListener("drop", drop);
+  };
+}
+

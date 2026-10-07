@@ -9,6 +9,7 @@ import { useLocaleStore } from "./store/locale.store";
 import { initI18n } from "./lib/i18n";
 import { installOrgSwitch } from "./store/org-switch";
 import { installPlaces } from "./store/places";
+import { guardWindowAgainstFileDrops } from "./lib/dropped";
 import { closeOrphanTerminals } from "./store/terminal.store";
 
 // Apply the theme before the first paint — doing it inside a component would
@@ -27,6 +28,8 @@ useLocaleStore.getState().apply();
 // al arrancar, si la org guardada ya no es tuya.
 installOrgSwitch();
 installPlaces();
+// Un fichero soltado fuera de una zona no abre la ventana en él.
+guardWindowAgainstFileDrops();
 void closeOrphanTerminals();
 // La versión web registra su service worker: es lo que recibe la campana con
 // la app cerrada (W2). En el escritorio no hay.
