@@ -31,7 +31,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import MarkdownEditor from "@/components/markdown/MarkdownEditor";
+import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown/MarkdownEditor";
+import FileDropZone from "@/components/FileDropZone";
 import Markdown from "@/components/markdown/Markdown";
 import UserPicker from "@/components/UserPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -287,6 +288,17 @@ function Content() {
   const { task } = detail;
   const [title, setTitle] = useState(task.title);
   const [editingDesc, setEditingDesc] = useState(false);
+  // Los editores de la descripción y del comentario nuevo, para las zonas para
+  // soltar. Y lo soltado sobre una descripción que no se estaba editando: se
+  // entra en edición y se mete en cuanto su editor existe.
+  const descEditor = useRef<MarkdownEditorHandle>(null);
+  const commentEditor = useRef<MarkdownEditorHandle>(null);
+  const [pendingDesc, setPendingDesc] = useState<File[] | null>(null);
+  useEffect(() => {
+    if (!pendingDesc || !editingDesc || !descEditor.current) return;
+    descEditor.current.insertFiles(pendingDesc);
+    setPendingDesc(null);
+  }, [pendingDesc, editingDesc]);
   // The columns of *this task's* list. Reading `board.statuses` meant reading
   // whichever board happened to be open, so opening a task from "my work" or
   // from a notification showed an empty menu — a control that looked like a
@@ -516,56 +528,69 @@ function Content() {
           className="w-full resize-none overflow-hidden border-0 bg-transparent px-0 text-lg font-semibold outline-none [field-sizing:content]"
         />
 
-        {/* Description */}
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t("work:task.description")}
-            </h3>
-            {!editingDesc && (
-              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditingDesc(true)}>
-                {t("work:task.edit")}
-              </Button>
-            )}
-          </div>
-          {editingDesc ? (
-            <div className="space-y-2">
-              <MarkdownEditor
-                value={draft}
-                onChange={setDraft}
-                onUpload={upload}
-                minHeight="10rem"
-                autoFocus
-              />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    updateTask(task.id, { description: draft })
-                      .then(() => setEditingDesc(false))
-                      .catch((e) => toast.error(String(e)));
-                  }}
-                >
-                  {t("work:task.save")}
+        {/* Description. Zona para soltar: si no se estaba editando, entra en
+            edición y el fichero va ahí. */}
+        <FileDropZone
+          label={t("work:task.dropToDescription")}
+          onFiles={(fs) => {
+            if (editingDesc) descEditor.current?.insertFiles(fs);
+            else {
+              setPendingDesc(fs);
+              setEditingDesc(true);
+            }
+          }}
+        >
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t("work:task.description")}
+              </h3>
+              {!editingDesc && (
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditingDesc(true)}>
+                  {t("work:task.edit")}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setDraft(task.description);
-                    setEditingDesc(false);
-                  }}
-                >
-                  {t("work:task.cancel")}
-                </Button>
-              </div>
+              )}
             </div>
-          ) : task.description ? (
-            <Markdown>{task.description}</Markdown>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("work:task.noDescription")}</p>
-          )}
-        </section>
+            {editingDesc ? (
+              <div className="space-y-2">
+                <MarkdownEditor
+                  ref={descEditor}
+                  value={draft}
+                  onChange={setDraft}
+                  onUpload={upload}
+                  minHeight="10rem"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      updateTask(task.id, { description: draft })
+                        .then(() => setEditingDesc(false))
+                        .catch((e) => toast.error(String(e)));
+                    }}
+                  >
+                    {t("work:task.save")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setDraft(task.description);
+                      setEditingDesc(false);
+                    }}
+                  >
+                    {t("work:task.cancel")}
+                  </Button>
+                </div>
+              </div>
+            ) : task.description ? (
+              <Markdown>{task.description}</Markdown>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("work:task.noDescription")}</p>
+            )}
+          </section>
+        </FileDropZone>
 
         {/* Attachments attached to the task itself */}
         {detail.attachments.length > 0 && (
@@ -821,83 +846,89 @@ function Content() {
           )}
         </section>
 
-        {/* Comments */}
-        <section className="space-y-3">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Activity ({detail.comments.length})
-          </h3>
-          {detail.comments.map((c) => (
-            <CommentItem key={c.id} comment={c} taskId={task.id} onUpload={upload} clientReads={clientReads} />
-          ))}
+        {/* Comments. Zona para soltar: va al comentario nuevo. */}
+        <FileDropZone
+          label={t("work:task.dropToComment")}
+          onFiles={(fs) => commentEditor.current?.insertFiles(fs)}
+        >
+          <section className="space-y-3">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Activity ({detail.comments.length})
+            </h3>
+            {detail.comments.map((c) => (
+              <CommentItem key={c.id} comment={c} taskId={task.id} onUpload={upload} clientReads={clientReads} />
+            ))}
 
-          <div className="space-y-2">
-            {sinDestinatario && (
-              <p className="flex items-start gap-1.5 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-warning-foreground">
-                <Info className="mt-px size-3.5 shrink-0" />
-                <span>{t("common:crash.noReporter")}</span>
-              </p>
-            )}
-            <MarkdownEditor
-              value={comment}
-              onChange={setComment}
-              onUpload={upload}
-              // `@` only where the client cannot read it.
-              //
-              // Naming a colleague in something a client reads puts a teammate's
-              // name in front of somebody it was never meant for, and the person
-              // typing has no reason to notice — the picker looks the same
-              // either way. So on a client-visible thread the extension simply
-              // isn't loaded, and `@` stays an ordinary character.
-              people={mentionsAllowed(clientReads, commentInternal) ? people : undefined}
-              placeholder={
-                mentionsAllowed(clientReads, commentInternal)
-                  ? t("work:task.writeComment")
-                  : t("work:task.writeCommentClient")
-              }
-              minHeight="5rem"
-            />
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => void send()} disabled={sending || !comment.trim()}>
-                {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-                <span className="ml-1">{clientReads && commentInternal ? t("work:task.commentInternally") : t("work:task.comment")}</span>
-              </Button>
-              {/* Publicar y registrar, en un gesto.
-                  El comentario es lo que se lee hoy y la entrada es lo que se
-                  busca dentro de seis meses; pedir las dos cosas por separado
-                  significa que la segunda no se hace nunca. */}
-              <button
-                type="button"
-                disabled={sending || !comment.trim()}
-                onClick={() => setRegistrando(true)}
-                title={t("work:decisions.record")}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-              >
-                <Gavel className="size-3" />
-                {t("work:decisions.record")}
-              </button>
-              {clientReads && (
+            <div className="space-y-2">
+              {sinDestinatario && (
+                <p className="flex items-start gap-1.5 rounded border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-warning-foreground">
+                  <Info className="mt-px size-3.5 shrink-0" />
+                  <span>{t("common:crash.noReporter")}</span>
+                </p>
+              )}
+              <MarkdownEditor
+                ref={commentEditor}
+                value={comment}
+                onChange={setComment}
+                onUpload={upload}
+                // `@` only where the client cannot read it.
+                //
+                // Naming a colleague in something a client reads puts a teammate's
+                // name in front of somebody it was never meant for, and the person
+                // typing has no reason to notice — the picker looks the same
+                // either way. So on a client-visible thread the extension simply
+                // isn't loaded, and `@` stays an ordinary character.
+                people={mentionsAllowed(clientReads, commentInternal) ? people : undefined}
+                placeholder={
+                  mentionsAllowed(clientReads, commentInternal)
+                    ? t("work:task.writeComment")
+                    : t("work:task.writeCommentClient")
+                }
+                minHeight="5rem"
+              />
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => void send()} disabled={sending || !comment.trim()}>
+                  {sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                  <span className="ml-1">{clientReads && commentInternal ? t("work:task.commentInternally") : t("work:task.comment")}</span>
+                </Button>
+                {/* Publicar y registrar, en un gesto.
+                    El comentario es lo que se lee hoy y la entrada es lo que se
+                    busca dentro de seis meses; pedir las dos cosas por separado
+                    significa que la segunda no se hace nunca. */}
                 <button
                   type="button"
-                  className={cn(
-                    "flex items-center gap-1 rounded px-2 py-1 text-xs",
-                    commentInternal
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => setCommentInternal((v) => !v)}
-                  title={
-                    commentInternal
-                      ? t("work:task.onlyTeamWillSee")
-                      : t("work:task.clientReadsSwitch")
-                  }
+                  disabled={sending || !comment.trim()}
+                  onClick={() => setRegistrando(true)}
+                  title={t("work:decisions.record")}
+                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                 >
-                  {commentInternal ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-                  {commentInternal ? t("work:task.internalNote") : t("work:task.theClientReads")}
+                  <Gavel className="size-3" />
+                  {t("work:decisions.record")}
                 </button>
-              )}
+                {clientReads && (
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex items-center gap-1 rounded px-2 py-1 text-xs",
+                      commentInternal
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setCommentInternal((v) => !v)}
+                    title={
+                      commentInternal
+                        ? t("work:task.onlyTeamWillSee")
+                        : t("work:task.clientReadsSwitch")
+                    }
+                  >
+                    {commentInternal ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                    {commentInternal ? t("work:task.internalNote") : t("work:task.theClientReads")}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </FileDropZone>
       </div>
 
       {/* Properties, in a rail of their own.

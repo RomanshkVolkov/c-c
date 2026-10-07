@@ -19,10 +19,13 @@ export default function FileDropZone({
   onFiles,
   children,
   className,
+  label,
 }: {
   onFiles: (files: File[]) => void;
   children: ReactNode;
   className?: string;
+  /** Dónde va a caer, si hay más de una zona en pantalla (la tarea). */
+  label?: string;
 }) {
   const { t } = useT();
   const [over, setOver] = useState(false);
@@ -44,11 +47,13 @@ export default function FileDropZone({
         depth.current += 1;
         setOver(true);
       }}
+      // Con el contador (una ref) y no con `over`: el estado de React puede no
+      // estar al día si dos eventos llegan seguidos.
       onDragOver={(e) => {
-        if (over) acceptFileDrag(e.nativeEvent);
+        if (depth.current > 0) acceptFileDrag(e.nativeEvent);
       }}
       onDragLeave={() => {
-        if (!over) return;
+        if (depth.current <= 0) return;
         depth.current -= 1;
         if (depth.current <= 0) reset();
       }}
@@ -56,7 +61,7 @@ export default function FileDropZone({
       // eventos (pointer-events-none), así que el drop iría al editor de debajo,
       // que lo subiría también. Un fichero, una subida.
       onDropCapture={(e) => {
-        if (!over) return;
+        if (depth.current <= 0) return;
         e.preventDefault();
         e.stopPropagation();
         reset();
@@ -80,7 +85,7 @@ export default function FileDropZone({
           className="pointer-events-none absolute inset-2 z-30 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-background/85 text-sm font-medium text-primary backdrop-blur-sm"
         >
           <Paperclip className="size-6" />
-          {t("common:editor.dropToAttach")}
+          {label ?? t("common:editor.dropToAttach")}
         </div>
       )}
     </div>

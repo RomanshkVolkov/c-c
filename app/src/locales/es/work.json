@@ -158,7 +158,9 @@
     "withdraw": "Retirar",
     "updated": "Actualizada el {{when}}",
     "citedHere": "en el texto",
-    "title": "Título"
+    "title": "Título",
+    "dropToDescription": "Suelta para adjuntar a la descripción",
+    "dropToComment": "Suelta para adjuntar al comentario"
   },
   "notes": {
     "title": "Notas",

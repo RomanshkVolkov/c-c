@@ -158,7 +158,9 @@
     "withdraw": "Withdraw",
     "updated": "Updated {{when}}",
     "citedHere": "in the text",
-    "title": "Title"
+    "title": "Title",
+    "dropToDescription": "Drop to attach to the description",
+    "dropToComment": "Drop to attach to the comment"
   },
   "notes": {
     "title": "Notes",
