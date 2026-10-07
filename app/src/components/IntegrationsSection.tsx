@@ -33,6 +33,7 @@ import type {
   CreateIntegrationPayload,
   UpdateIntegrationPayload,
 } from "@/types/k8s";
+import Picker from "@/components/ui/picker";
 
 // Vault + launcher for a k8s server's tools (Grafana, pgAdmin, generic…).
 export default function IntegrationsSection({
@@ -311,15 +312,13 @@ function IntegrationDialog({
           {!editing && (
             <div className="space-y-1.5">
               <Label>{t("common:admin.kind")}</Label>
-              <select
+              <Picker
+                aria-label={t("common:admin.kind")}
                 value={kind}
-                onChange={(e) => pickKind(e.target.value)}
-                className="h-9 w-full rounded-md border bg-transparent px-2 text-sm"
-              >
-                {KINDS.map((k) => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
-              </select>
+                onChange={pickKind}
+                options={KINDS.map((k) => ({ value: k, label: k }))}
+                className="w-full"
+              />
             </div>
           )}
           <div className="space-y-1.5">

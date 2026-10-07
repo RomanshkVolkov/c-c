@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SpaceTree } from "@/types/task";
+import { pick } from "@/test-pick";
 import type { ReportProject } from "@/types/report";
 
 /**
@@ -128,7 +129,7 @@ describe("dónde caen sus reportes", () => {
     pintar();
     fireEvent.click(screen.getByText("Edit"));
     const select = screen.getByRole("combobox", { name: /Reports arrive in/i });
-    fireEvent.change(select, { target: { value: "li-honda" } });
+    await pick(select, "web · Tasks");
     fireEvent.click(screen.getByText("Save"));
     await vi.waitFor(() => expect(updateProject).toHaveBeenCalled());
     expect(updateProject.mock.calls[0][1]).toEqual({ listId: "li-honda" });
@@ -136,13 +137,14 @@ describe("dónde caen sus reportes", () => {
 
   // Quitarla no «desconfigura» la integración: hace que todo lo que le manden se
   // pierda sin decir nada. El servidor lo rechaza; el desplegable no lo ofrece.
-  it("no ofrece dejarla sin lista cuando ya tiene una", () => {
+  // Agrupadas por espacio: el espacio es la cabecera, la opción dice el resto.
+  it("no ofrece dejarla sin lista cuando ya tiene una", async () => {
     pintar({ listId: "li-honda" });
     fireEvent.click(screen.getByText("Edit"));
-    const select = screen.getByRole("combobox", { name: /Reports arrive in/i });
-    expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
-      "Boaty · web · Tasks",
-    ]);
+    fireEvent.click(screen.getByRole("combobox", { name: /Reports arrive in/i }));
+    const opciones = await screen.findAllByRole("option");
+    expect(opciones.map((o) => o.textContent)).toEqual(["web · Tasks"]);
+    expect(screen.getByText("Boaty")).toBeTruthy();
   });
 });
 
@@ -184,20 +186,20 @@ describe("no se puede elegir la lista de otra organización", () => {
    * otra organización. Que el servidor tenga que defenderse de la pantalla es
    * el fallo; la pantalla no debe ofrecerlo.
    */
-  it("la lista ajena no está entre las opciones", () => {
+  it("la lista ajena no está entre las opciones", async () => {
     pintar({ listId: "li-honda" });
     fireEvent.click(screen.getByText("Edit"));
-    const select = screen.getByRole("combobox", { name: /Reports arrive in/i });
-    const valores = [...select.querySelectorAll("option")].map((o) => o.getAttribute("value"));
-    expect(valores).not.toContain("li-ajena");
-    expect(valores).toEqual(["li-honda"]);
+    fireEvent.click(screen.getByRole("combobox", { name: /Reports arrive in/i }));
+    const opciones = await screen.findAllByRole("option");
+    expect(opciones.map((o) => o.textContent)).toEqual(["web · Tasks"]);
   });
 
-  it("y su nombre tampoco se ofrece", () => {
+  it("y su nombre tampoco se ofrece", async () => {
     pintar();
     fireEvent.click(screen.getByText("Edit"));
-    const select = screen.getByRole("combobox", { name: /Reports arrive in/i });
-    expect(select.textContent).not.toContain("salud en casa");
+    fireEvent.click(screen.getByRole("combobox", { name: /Reports arrive in/i }));
+    await screen.findAllByRole("option");
+    expect(document.body.textContent).not.toContain("salud en casa");
   });
 });
 

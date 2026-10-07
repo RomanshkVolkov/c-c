@@ -105,3 +105,22 @@ describe("las listas del árbol", () => {
     );
   });
 });
+
+// Agrupadas por espacio para el desplegable: la ruta entera en cada opción
+// hacía el menú más ancho que la ventana (7-oct-2026). Mutantes: no agrupar;
+// dejar el espacio repetido en la opción.
+describe("las listas para un desplegable", () => {
+  it("van por espacio, y cada opción dice sólo el resto", async () => {
+    const { groupListsBySpace } = await import("./bandeja");
+    expect(
+      groupListsBySpace([
+        { id: "a", ruta: "Portento · Dashboard · tasks" },
+        { id: "b", ruta: "Portento · general" },
+        { id: "c", ruta: "Boaty · web · Tasks" },
+      ]),
+    ).toEqual([
+      { label: "Portento", options: [{ value: "a", label: "Dashboard · tasks" }, { value: "b", label: "general" }] },
+      { label: "Boaty", options: [{ value: "c", label: "web · Tasks" }] },
+    ]);
+  });
+});

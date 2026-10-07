@@ -111,7 +111,7 @@ describe("un servidor se abre con su URL", () => {
   it("en Secrets, el servicio sale de la URL y de él el repo, aunque llegue tarde", async () => {
     backend(servidor());
     montar("/servers/srv-1/secrets?service=beta_app");
-    await waitFor(() => expect((screen.getByLabelText(/^(servicio|service)$/i) as HTMLSelectElement).value).toBe("beta_app"));
+    await waitFor(() => expect(screen.getByLabelText(/^(servicio|service)$/i).textContent).toContain("beta_app"));
     await waitFor(() => expect(screen.getByDisplayValue("dwit-mexico")).toBeTruthy());
     expect(screen.getByDisplayValue("beta-api")).toBeTruthy();
   });
@@ -120,7 +120,7 @@ describe("un servidor se abre con su URL", () => {
     backend(servidor());
     montar("/servers/srv-1/services");
     fireEvent.click(await screen.findByRole("button", { name: /^secrets$/i }));
-    await waitFor(() => expect((screen.getByLabelText(/^(servicio|service)$/i) as HTMLSelectElement).value).toBe("beta_app"));
+    await waitFor(() => expect(screen.getByLabelText(/^(servicio|service)$/i).textContent).toContain("beta_app"));
   });
 
   it("uno que no es de tu org devuelve al panel", async () => {

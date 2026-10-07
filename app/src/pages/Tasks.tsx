@@ -31,6 +31,7 @@ import { useReportsStore } from "@/store/reports.store";
 import { faltanSubtareas, normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { isDocOwnerKind, priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
+import Picker from "@/components/ui/picker";
 
 export default function Tasks() {
   const fetchTags = useTasksStore((s) => s.fetchTags);
@@ -149,18 +150,14 @@ function TaxonomyPicker({
 }) {
   if (options.length === 0) return null;
   return (
-    <select
-      className="h-7 rounded-md border bg-background px-1.5 text-xs capitalize"
+    <Picker
+      aria-label={label}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option value="">{label}</option>
-      {options.map((o) => (
-        <option key={o} value={o}>
-          {o}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={[{ value: "", label }, ...options.map((o) => ({ value: o, label: o }))]}
+      size="sm"
+      className="text-xs capitalize"
+    />
   );
 }
 

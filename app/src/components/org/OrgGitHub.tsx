@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { APIResponse } from "@/types/auth";
 import type { GitHubRepo, GitHubStatus } from "@/types/github";
+import Picker from "@/components/ui/picker";
 
 /**
  * La GitHub App de esta org: qué cuentas de GitHub la tienen instalada, y a
@@ -125,20 +126,16 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
                 <Workflow className="size-3.5" />
                 {t("common:deploy.activity")}
               </Link>
-              <select
+              <Picker
                 aria-label={t("org:github.spaceFor", { repo: repo.fullName })}
-                className="h-8 rounded-md border bg-background px-2 text-sm"
                 disabled={!canManage}
                 value={repo.spaceId}
-                onChange={(e) => void update(repo, { spaceId: e.target.value })}
-              >
-                <option value="">{t("org:github.notLinked")}</option>
-                {spaces.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => void update(repo, { spaceId: v })}
+                options={[
+                  { value: "", label: t("org:github.notLinked") },
+                  ...spaces.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+              />
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t("org:github.bareRefsHint")}>
                 <input
                   type="checkbox"

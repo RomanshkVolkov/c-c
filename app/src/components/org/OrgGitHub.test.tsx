@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 // Con router: la fila de cada repo lleva un enlace a su actividad (R9).
+import { pick } from "@/test-pick";
 import { MemoryRouter } from "react-router-dom";
 
 /**
@@ -73,14 +74,18 @@ describe("la pestaña GitHub", () => {
     api.get.mockResolvedValue(estado());
     api.patch.mockResolvedValue({ success: true, data: repo({ spaceId: "sp-1" }) });
     render(<MemoryRouter><OrgGitHub canManage /></MemoryRouter>);
-    const select = (await screen.findByLabelText(/dwit\/api/)) as HTMLSelectElement;
-    const ofrecidos = Array.from(select.options).map((o) => o.value);
-    expect(ofrecidos).toEqual(["", "sp-1"]);
+    const select = await screen.findByLabelText(/dwit\/api/);
+    fireEvent.click(select);
+    const ofrecidos = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    // «Sin enlazar» y Producto: ni el general (sin tareas) ni el de otra org.
+    expect(ofrecidos).toHaveLength(2);
+    expect(ofrecidos[1]).toBe("Producto");
+    fireEvent.keyDown(select, { key: "Escape" });
 
     // Sin enlazar, `#12` a secas no se enciende.
     expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
 
-    fireEvent.change(select, { target: { value: "sp-1" } });
+    await pick(select, "Producto");
     await waitFor(() =>
       expect(api.patch).toHaveBeenCalledWith("/api/v1/organizations/org-1/github/repos/r-1", { spaceId: "sp-1", bareRefs: false }, true),
     );
@@ -90,8 +95,8 @@ describe("la pestaña GitHub", () => {
   it("quien no es admin lo ve pero no lo cambia", async () => {
     api.get.mockResolvedValue(estado({ repos: [repo({ spaceId: "sp-1" })] }));
     render(<MemoryRouter><OrgGitHub canManage={false} /></MemoryRouter>);
-    const select = (await screen.findByLabelText(/dwit\/api/)) as HTMLSelectElement;
-    expect(select.disabled).toBe(true);
+    const select = await screen.findByLabelText(/dwit\/api/);
+    expect(select.hasAttribute("disabled") || select.getAttribute("aria-disabled") === "true" || select.hasAttribute("data-disabled")).toBe(true);
     expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByRole("button", { name: /(conectar|connect)/i })).toBeNull();
   });

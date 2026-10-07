@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { invoke } from "@tauri-apps/api/core";
+import Picker from "@/components/ui/picker";
 
 interface GitHubSecret {
   name: string;
@@ -434,19 +435,15 @@ export default function StackSecrets() {
           {service && <Badge variant="secondary">{stackName}</Badge>}
         </div>
         {/* De qué servicio: se elige aquí o se llega desde su fila. */}
-        <select
+        <Picker
           aria-label={t("common:servers.secretsService")}
-          className="h-8 rounded-md border bg-background px-2 text-sm"
           value={service?.name ?? ""}
-          onChange={(e) => setParams(e.target.value ? { service: e.target.value } : {}, { replace: true })}
-        >
-          <option value="">{t("common:servers.secretsPickService")}</option>
-          {services.map((svc) => (
-            <option key={svc.id} value={svc.name}>
-              {svc.name}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setParams(v ? { service: v } : {}, { replace: true })}
+          options={[
+            { value: "", label: t("common:servers.secretsPickService") },
+            ...services.map((svc) => ({ value: svc.name, label: svc.name })),
+          ]}
+        />
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 max-w-4xl mx-auto w-full">

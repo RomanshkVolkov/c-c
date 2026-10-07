@@ -23,7 +23,8 @@ const { default: OrgMeetings, formFromMeeting } = await import("./OrgMeetings");
 const { useMeetingsStore } = await import("@/store/meetings.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
 const { useTasksStore } = await import("@/store/tasks.store");
-const { myZone, zoneCity } = await import("@/lib/timezones");
+const { myZone, zoneCity, zoneLabel } = await import("@/lib/timezones");
+const { pick } = await import("@/test-pick");
 import type { Meeting } from "@/store/meetings.store";
 
 const isDaily: Meeting = {
@@ -67,7 +68,9 @@ describe("reuniones", () => {
       expect(day(d).getAttribute("aria-pressed")).toBe("true");
     }
     for (const d of ["Fri", "Sat", "Sun"]) fireEvent.click(day(d));
-    fireEvent.change(screen.getByLabelText(/^(zone horaria|time zone)$/i), { target: { value: "America/Cancun" } });
+    // En las sugeridas lleva « · del equipo» detrás: se busca por cómo empieza.
+    const cancun = zoneLabel("America/Cancun").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    await pick(screen.getByLabelText(/^(zone horaria|time zone)$/i), new RegExp(`^${cancun}`));
     fireEvent.click(screen.getByRole("button", { name: /^(save|save)$/i }));
 
     await waitFor(() => expect(update).toHaveBeenCalled());
@@ -79,7 +82,7 @@ describe("reuniones", () => {
   it("una nueva nace en la zona del equipo, y dice a qué hora suena allí y para ti", async () => {
     mount([], "America/Cancun");
     fireEvent.click(screen.getByRole("button", { name: /new/i }));
-    expect((screen.getByLabelText(/^(zone horaria|time zone)$/i) as HTMLSelectElement).value).toBe("America/Cancun");
+    expect(screen.getByLabelText(/^(zone horaria|time zone)$/i).textContent).toContain(zoneLabel("America/Cancun"));
     fireEvent.change(screen.getByLabelText(/^(time|time)$/i), { target: { value: "09:30" } });
     const view = screen.getByTestId("meeting-preview").textContent ?? "";
     expect(view).toMatch(/0?9:30(\s?[AaPp]\.?\s?[Mm]\.?)? (en|in) Cancun/);
@@ -97,7 +100,7 @@ describe("reuniones", () => {
   it("sin zona del equipo, la nueva nace en la tuya", () => {
     mount([]);
     fireEvent.click(screen.getByRole("button", { name: /new/i }));
-    expect((screen.getByLabelText(/^(zone horaria|time zone)$/i) as HTMLSelectElement).value).toBe(myZone());
+    expect(screen.getByLabelText(/^(zone horaria|time zone)$/i).textContent).toContain(zoneLabel(myZone()));
   });
 
   it("la ficha dice la hora con su ciudad y avisa si no es la del equipo", () => {

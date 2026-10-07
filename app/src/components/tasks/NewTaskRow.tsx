@@ -8,6 +8,7 @@ import { useTasksStore } from "@/store/tasks.store";
 import { usePeopleStore } from "@/store/people.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { PRIORITIES, priorityMeta, type ItemVisibility, type TaskPriority } from "@/types/task";
+import Picker from "@/components/ui/picker";
 
 /**
  * Raising a task without leaving the screen you are on.
@@ -136,31 +137,23 @@ export default function NewTaskRow({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-        <select
+        <Picker
           aria-label={t("work:board.whereItGoes")}
           value={listId}
-          onChange={(e) => setListId(e.target.value)}
-          className="h-7 max-w-[16rem] rounded border bg-background px-1.5"
-        >
-          {destinos.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.label}
-            </option>
-          ))}
-        </select>
+          onChange={setListId}
+          options={destinos.map((d) => ({ value: d.id, label: d.label }))}
+          size="sm"
+          className="max-w-[16rem] text-xs"
+        />
 
-        <select
+        <Picker
           aria-label={t("work:board.priority")}
           value={priority}
-          onChange={(e) => setPriority(e.target.value as TaskPriority)}
-          className="h-7 rounded border bg-background px-1.5"
-        >
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {priorityMeta(p).label}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setPriority(v as TaskPriority)}
+          options={PRIORITIES.map((p) => ({ value: p, label: priorityMeta(p).label }))}
+          size="sm"
+          className="text-xs"
+        />
 
         <DatePicker
           value={dueAt}
@@ -169,33 +162,33 @@ export default function NewTaskRow({
           className="h-7"
         />
 
-        <select
+        <Picker
           aria-label={t("work:board.assignee")}
           value={assignee}
-          onChange={(e) => setAssignee(e.target.value)}
-          className="h-7 rounded border bg-background px-1.5"
-        >
-          <option value="">{t("work:board.nobodyYet")}</option>
-          {people.map((p) => (
-            <option key={p.id} value={p.id}>
-              {nombreDe(p)}
-            </option>
-          ))}
-        </select>
+          onChange={setAssignee}
+          options={[
+            { value: "", label: t("work:board.nobodyYet") },
+            ...people.map((p) => ({ value: p.id, label: nombreDe(p) })),
+          ]}
+          size="sm"
+          className="text-xs"
+        />
 
         {preguntaVisibilidad && (
-          <select
+          // The empty option is the server's default and says so out loud: in
+          // a list bound to a client, work is theirs to see unless somebody
+          // decides otherwise.
+          <Picker
             aria-label={t("work:board.visibility")}
             value={visibility}
-            onChange={(e) => setVisibility(e.target.value as ItemVisibility | "")}
-            className="h-7 rounded border bg-background px-1.5"
-          >
-            {/* The empty option is the server's default and says so out loud:
-                in a list bound to a client, work is theirs to see unless
-                somebody decides otherwise. */}
-            <option value="">{t("work:board.clientSeesIt")}</option>
-            <option value="internal">{t("work:board.internalOnly")}</option>
-          </select>
+            onChange={(v) => setVisibility(v as ItemVisibility | "")}
+            options={[
+              { value: "", label: t("work:board.clientSeesIt") },
+              { value: "internal", label: t("work:board.internalOnly") },
+            ]}
+            size="sm"
+            className="text-xs"
+          />
         )}
 
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">

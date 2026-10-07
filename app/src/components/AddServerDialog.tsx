@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { NewServerInput } from "@/hooks/use-servers";
+import Picker from "@/components/ui/picker";
 
 const schema = z.object({
   name: z.string().min(1, "common:servers.required"),
@@ -43,6 +44,8 @@ export default function AddServerDialog({ onCreated }: Props) {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -122,13 +125,16 @@ export default function AddServerDialog({ onCreated }: Props) {
 
           <div className="space-y-1">
             <Label>{t("common:servers.type")}</Label>
-            <select
-              {...register("type")}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="docker-swarm">Docker Swarm</option>
-              <option value="kubernetes">Kubernetes</option>
-            </select>
+            <Picker
+              aria-label={t("common:servers.type")}
+              value={watch("type")}
+              onChange={(v) => setValue("type", v as FormData["type"])}
+              options={[
+                { value: "docker-swarm", label: "Docker Swarm" },
+                { value: "kubernetes", label: "Kubernetes" },
+              ]}
+              className="w-full"
+            />
           </div>
 
           {error && (

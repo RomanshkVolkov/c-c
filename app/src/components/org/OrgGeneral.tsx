@@ -11,6 +11,7 @@ import DeleteOrgDialog from "@/components/org/DeleteOrgDialog";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import type { Organization, OrgRole } from "@/types/organization";
 import { cn } from "@/lib/utils";
+import Picker from "@/components/ui/picker";
 
 /**
  * What the organization is, how it behaves, and how it ends.
@@ -125,17 +126,15 @@ export default function OrgGeneral({
         {/* El control baja bajo el texto cuando no cabe al lado. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1.5">
           <span className="min-w-[10rem] flex-1 text-sm">{t("org:defaultRole")}</span>
-          <select
+          <Picker
             aria-label={t("org:defaultRoleAria")}
             disabled={!canManage}
             value={org.defaultInviteRole ?? "member"}
-            onChange={(e) => save({ defaultInviteRole: e.target.value as OrgRole })}
-            className="h-7 rounded border bg-background px-2 text-xs"
-          >
-            <option value="admin">admin</option>
-            <option value="member">member</option>
-            <option value="viewer">viewer</option>
-          </select>
+            onChange={(v) => save({ defaultInviteRole: v as OrgRole })}
+            options={["admin", "member", "viewer"].map((r) => ({ value: r, label: r }))}
+            size="sm"
+            className="text-xs"
+          />
         </div>
         {/* La zona del equipo: las reuniones nacen en ella, no en la de quien
             las crea, y cada quien las ve convertidas a su hora. */}

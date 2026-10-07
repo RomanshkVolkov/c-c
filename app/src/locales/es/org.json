@@ -161,5 +161,10 @@
   "saveMeeting": "Guardar",
   "createMeeting": "Crear",
   "errSaveMeeting": "No se guardó la reunión",
-  "inviteInstead": "@{{who}} no está en ninguna organización tuya: le mandamos una invitación."
+  "inviteInstead": "@{{who}} no está en ninguna organización tuya: le mandamos una invitación.",
+  "pickList": "— elige una lista —",
+  "nobody": "Nadie",
+  "leaveBlankToKeep": "déjalo vacío para conservarlo",
+  "optional": "opcional",
+  "roleAny": "Rol: cualquiera"
 }

@@ -34,6 +34,7 @@ import { desde } from "@/lib/desde";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useAuthStore } from "@/store/auth.store";
 import type { OrgMember, OrgRole, Invitation } from "@/types/organization";
+import Picker from "@/components/ui/picker";
 
 const ROLES: OrgRole[] = ["admin", "member", "viewer"];
 
@@ -267,20 +268,19 @@ export default function OrganizationSettings() {
                   className="h-8 bg-card pl-7 text-xs"
                 />
               </span>
-              <select
+              {/* A bordered chip and not a filled control: it narrows what is
+                  already on screen, and giving it the same weight as the
+                  search box made two things look like one form to fill in. */}
+              <Picker
                 aria-label={t("org:role")}
                 value={filtroRol}
-                onChange={(e) => setFiltroRol(e.target.value)}
-                // A bordered chip and not a filled control: it narrows what is
-                // already on screen, and giving it the same weight as the
-                // search box made two things look like one form to fill in.
-                className="h-8 rounded-lg border bg-transparent px-2 text-xs text-muted-foreground"
-              >
-                <option value="">Role: any</option>
-                <option value="admin">admin</option>
-                <option value="member">member</option>
-                <option value="viewer">viewer</option>
-              </select>
+                onChange={setFiltroRol}
+                options={[
+                  { value: "", label: t("org:roleAny") },
+                  ...["admin", "member", "viewer"].map((r) => ({ value: r, label: r })),
+                ]}
+                className="text-xs text-muted-foreground"
+              />
               {/* What each role actually means, next to the control that sets
                   it. Three words each; without them the dropdown asks a
                   question most people answer by guessing. */}

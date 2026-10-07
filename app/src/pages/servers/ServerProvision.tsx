@@ -19,6 +19,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import type { APIResponse } from "@/types/auth";
 import type { AnsibleEvent, AnsibleManifest, AnsibleTools, InventoryHost, ProvisioningRun } from "@/types/ansible";
 import { useServerContext } from "./ServerLayout";
+import Picker from "@/components/ui/picker";
 
 const NADA: never[] = [];
 
@@ -275,44 +276,32 @@ export default function ServerProvision() {
               <CardTitle className="text-sm font-medium">{t("common:provision.playbook")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <select
+              <Picker
                 aria-label={t("common:provision.playbook")}
-                className="h-9 w-full rounded-md border bg-background px-2"
                 value={playbook.id}
-                onChange={(e) => {
-                  setPrefs(server.id, { playbookId: e.target.value });
+                onChange={(v) => {
+                  setPrefs(server.id, { playbookId: v });
                   setValues({});
                 }}
-              >
-                {manifest.playbooks.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                options={manifest.playbooks.map((p) => ({ value: p.id, label: p.name }))}
+                className="w-full"
+              />
               {playbook.description && <p className="text-xs text-muted-foreground">{playbook.description}</p>}
 
               <div className="space-y-1">
                 <Label htmlFor="prov-limit" className="text-xs">{t("common:provision.target")}</Label>
-                <select
+                <Picker
                   id="prov-limit"
-                  className="h-9 w-full rounded-md border bg-background px-2"
+                  aria-label={t("common:provision.target")}
                   value={prefs.limit}
-                  onChange={(e) => setPrefs(server.id, { limit: e.target.value })}
-                >
-                  <option value="">{t("common:provision.allHosts")}{playbook.hosts ? ` (${playbook.hosts})` : ""}</option>
-                  {groups.map((g) => (
-                    <option key={`g:${g}`} value={g}>
-                      {t("common:provision.group", { name: g })}
-                    </option>
-                  ))}
-                  {hosts.map((h) => (
-                    <option key={`h:${h.name}`} value={h.name}>
-                      {h.name}
-                      {h.ansibleHost ? ` → ${h.ansibleHost}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setPrefs(server.id, { limit: v })}
+                  options={[
+                    { value: "", label: `${t("common:provision.allHosts")}${playbook.hosts ? ` (${playbook.hosts})` : ""}` },
+                    ...groups.map((g) => ({ value: g, label: t("common:provision.group", { name: g }) })),
+                    ...hosts.map((h) => ({ value: h.name, label: `${h.name}${h.ansibleHost ? ` → ${h.ansibleHost}` : ""}` })),
+                  ]}
+                  className="w-full"
+                />
               </div>
 
               {playbook.vars.map((v) => (

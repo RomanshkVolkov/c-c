@@ -12,7 +12,8 @@ import CopyId from "@/components/CopyId";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
-import { listasDelArbol, rutaDeLista, type ListaConRuta } from "@/lib/bandeja";
+import { groupListsBySpace, listasDelArbol, rutaDeLista, type ListaConRuta } from "@/lib/bandeja";
+import Picker from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
 import { desde } from "@/lib/desde";
 import type { ReportProject } from "@/types/report";
@@ -358,45 +359,37 @@ function FichaIntegracion({
               <PasswordInput
                 value={borrador.webhookSecret}
                 onChange={(e) => setBorrador({ ...borrador, webhookSecret: e.target.value })}
-                placeholder={p.webhookConfigured ? "leave blank to keep it" : "optional"}
+                placeholder={p.webhookConfigured ? t("org:leaveBlankToKeep") : t("org:optional")}
                 containerClassName="mt-1"
                 className="h-8 text-xs"
               />
             </label>
             <label className="min-w-56 flex-1 text-xs text-muted-foreground">
               {t("org:reportsArriveIn")}
-              <select
+              {/* Sin opción de «ninguna»: quitarla no desconfigura la
+                  integración, hace que todo lo que le manden se pierda sin
+                  decir nada. Se cambia por otra lista o se queda. */}
+              <Picker
+                aria-label={t("org:reportsArriveIn")}
                 value={borrador.listId}
-                onChange={(e) => setBorrador({ ...borrador, listId: e.target.value })}
-                className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
-              >
-                {/* Sin opción de «ninguna»: quitarla no desconfigura la
-                    integración, hace que todo lo que le manden se pierda sin
-                    decir nada. Se cambia por otra lista o se queda. */}
-                {!p.listId && <option value="">— pick a list —</option>}
-                {listas.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.ruta}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setBorrador({ ...borrador, listId: v })}
+                placeholder={t("org:pickList")}
+                groups={groupListsBySpace(listas)}
+                className="mt-1 w-full text-xs"
+              />
             </label>
             <label className="min-w-48 flex-1 text-xs text-muted-foreground">
               {t("org:defaultAssignee")}
-              <select
+              <Picker
+                aria-label={t("org:defaultAssignee")}
                 value={borrador.defaultAssigneeUserId}
-                onChange={(e) =>
-                  setBorrador({ ...borrador, defaultAssigneeUserId: e.target.value })
-                }
-                className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
-              >
-                <option value="">nobody</option>
-                {miembros.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    @{m.username}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setBorrador({ ...borrador, defaultAssigneeUserId: v })}
+                options={[
+                  { value: "", label: t("org:nobody") },
+                  ...miembros.map((m) => ({ value: m.userId, label: `@${m.username}` })),
+                ]}
+                className="mt-1 w-full text-xs"
+              />
             </label>
           </div>
           <div className="flex gap-2 pt-1">

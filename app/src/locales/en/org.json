@@ -161,5 +161,10 @@
   "saveMeeting": "Save",
   "createMeeting": "Create",
   "errSaveMeeting": "The meeting wasn't saved",
-  "inviteInstead": "@{{who}} isn't in any of your organizations, so we sent them an invitation."
+  "inviteInstead": "@{{who}} isn't in any of your organizations, so we sent them an invitation.",
+  "pickList": "— pick a list —",
+  "nobody": "Nobody",
+  "leaveBlankToKeep": "leave blank to keep it",
+  "optional": "optional",
+  "roleAny": "Role: any"
 }

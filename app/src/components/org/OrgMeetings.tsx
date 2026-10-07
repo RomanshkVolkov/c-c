@@ -19,6 +19,7 @@ import { hourIn, isZone, myZone, wallTimeToday, zoneCity } from "@/lib/timezones
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { cn } from "@/lib/utils";
 import type { OrgMember } from "@/types/organization";
+import Picker from "@/components/ui/picker";
 
 /**
  * Las reuniones periódicas de la organización.
@@ -278,17 +279,18 @@ function MeetingForm({
         </label>
         <label className="text-xs text-muted-foreground">
           {t("org:repeats")}
-          <select
+          <Picker
             aria-label={t("org:repeats")}
             value={freq}
-            onChange={(e) => setFreq(e.target.value as Meeting["freq"])}
-            className="mt-1 h-8 w-36 rounded-md border bg-background px-2 text-xs"
-          >
-            <option value="weekly">{t("org:onTheseDays")}</option>
-            <option value="monthly">{t("org:monthly")}</option>
-            {/* Sólo para una que ya era «cada N días»: no cabe en días de la semana. */}
-            {freq === "daily" && <option value="daily">{t("org:daily")}</option>}
-          </select>
+            onChange={(v) => setFreq(v as Meeting["freq"])}
+            options={[
+              { value: "weekly", label: t("org:onTheseDays") },
+              { value: "monthly", label: t("org:monthly") },
+              // Sólo para una que ya era «cada N días»: no cabe en días de la semana.
+              ...(freq === "daily" ? [{ value: "daily", label: t("org:daily") }] : []),
+            ]}
+            className="mt-1 w-36 text-xs"
+          />
         </label>
         <label className="text-xs text-muted-foreground">
           {t("org:every")}
@@ -369,19 +371,16 @@ function MeetingForm({
 
       <label className="block max-w-sm text-xs text-muted-foreground">
         {t("org:roomToJoin")}
-        <select
+        <Picker
+          aria-label={t("org:roomToJoin")}
           value={room}
-          onChange={(e) => setRoom(e.target.value)}
-          className="mt-1 h-8 w-full rounded-md border bg-background px-2 text-xs"
-        >
-          <option value="">{t("org:noRoom")}</option>
-          {rooms.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-              {s.kind === "general" ? " (general)" : ""}
-            </option>
-          ))}
-        </select>
+          onChange={setRoom}
+          options={[
+            { value: "", label: t("org:noRoom") },
+            ...rooms.map((s) => ({ value: s.id, label: `${s.name}${s.kind === "general" ? " (general)" : ""}` })),
+          ]}
+          className="mt-1 w-full text-xs"
+        />
       </label>
 
       <div className="flex gap-2 pt-1">

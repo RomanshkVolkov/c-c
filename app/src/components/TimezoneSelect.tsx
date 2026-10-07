@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useT } from "@/lib/i18n";
 import { allZones, myZone, zoneLabel } from "@/lib/timezones";
+import Picker from "@/components/ui/picker";
 
 /**
  * Elegir una zona por su ciudad y su desfase de hoy («Cancun (UTC−5)»), no
@@ -38,38 +39,30 @@ export default function TimezoneSelect({
   const extra = value && !zones.includes(value) && !suggested.includes(value) ? [value] : [];
 
   return (
-    <select
+    <Picker
       id={id}
       aria-label={ariaLabel}
       disabled={disabled}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={className ?? "h-8 rounded-md border bg-background px-2 text-xs"}
-    >
-      {allowEmpty && <option value="">{t("org:zoneUnset")}</option>}
-      <optgroup label={t("org:zoneSuggested")}>
-        {suggested.map((z) => (
-          <option key={`s:${z}`} value={z}>
-            {zoneLabel(z)}
-            {z === teamZone ? ` · ${t("org:zoneTeam")}` : ""}
-            {z === mine ? ` · ${t("org:zoneYours")}` : ""}
-          </option>
-        ))}
-        {extra.map((z) => (
-          <option key={`x:${z}`} value={z}>
-            {z}
-          </option>
-        ))}
-      </optgroup>
-      <optgroup label={t("org:zoneAll")}>
-        {zones
-          .filter((z) => !suggested.includes(z))
-          .map((z) => (
-            <option key={z} value={z}>
-              {zoneLabel(z)}
-            </option>
-          ))}
-      </optgroup>
-    </select>
+      onChange={onChange}
+      options={allowEmpty ? [{ value: "", label: t("org:zoneUnset") }] : []}
+      groups={[
+        {
+          label: t("org:zoneSuggested"),
+          options: [
+            ...suggested.map((z) => ({
+              value: z,
+              label: `${zoneLabel(z)}${z === teamZone ? ` · ${t("org:zoneTeam")}` : ""}${z === mine ? ` · ${t("org:zoneYours")}` : ""}`,
+            })),
+            ...extra.map((z) => ({ value: z, label: z })),
+          ],
+        },
+        {
+          label: t("org:zoneAll"),
+          options: zones.filter((z) => !suggested.includes(z)).map((z) => ({ value: z, label: zoneLabel(z) })),
+        },
+      ]}
+      className={className ?? "text-xs"}
+    />
   );
 }

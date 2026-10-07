@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { pick } from "@/test-pick";
 
 /**
  * The composer, and the two decisions worth pinning down.
@@ -54,15 +55,15 @@ describe("el composer", () => {
     expect(screen.queryByLabelText("Visibility")).toBeNull();
   });
 
-  it("la pregunta cuando la lista sí tiene canal", () => {
+  it("la pregunta cuando la lista sí tiene canal", async () => {
     render(<NewTaskRow onClose={() => {}} />);
-    fireEvent.change(screen.getByLabelText("Where it goes"), { target: { value: "li-canal" } });
-    expect(screen.getByLabelText("Visibility")).toBeTruthy();
+    await pick(screen.getByLabelText("Where it goes"), "Cliente / Con canal");
+    expect(await screen.findByLabelText("Visibility")).toBeTruthy();
   });
 
   it("sin tocar visibilidad no manda ninguna, para no contradecir al servidor", async () => {
     render(<NewTaskRow onClose={() => {}} />);
-    fireEvent.change(screen.getByLabelText("Where it goes"), { target: { value: "li-canal" } });
+    await pick(screen.getByLabelText("Where it goes"), "Cliente / Con canal");
     escribirTitulo("Algo");
     enter();
     await waitFor(() => expect(createTaskIn).toHaveBeenCalled());
@@ -80,7 +81,7 @@ describe("el composer", () => {
     await waitFor(() =>
       expect((screen.getByLabelText("Task title") as HTMLInputElement).value).toBe(""),
     );
-    expect((screen.getByLabelText("Where it goes") as HTMLSelectElement).value).toBe("li-libre");
+    expect(screen.getByLabelText("Where it goes").textContent).toContain("Interno / Sin cliente");
     // Y no se cierra: es la decisión que el componente existe para tomar, y sin
     // esto el test la daba por buena sin mirarla.
     expect(onClose).not.toHaveBeenCalled();

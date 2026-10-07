@@ -51,3 +51,21 @@ export function rutaDeLista(tree: SpaceTree[], listId: string | undefined): stri
   if (!listId) return null;
   return listasDelArbol(tree).find((l) => l.id === listId)?.ruta ?? null;
 }
+
+/**
+ * Las listas agrupadas por espacio, para un desplegable: el espacio es la
+ * cabecera y cada opción dice sólo «carpeta · lista». La ruta entera en cada
+ * opción era lo que hacía el menú más ancho que la ventana (7-oct-2026).
+ */
+export function groupListsBySpace(lists: ListaConRuta[]): { label: string; options: { value: string; label: string }[] }[] {
+  const groups = new Map<string, { value: string; label: string }[]>();
+  for (const l of lists) {
+    const cut = l.ruta.indexOf(" · ");
+    const space = cut < 0 ? l.ruta : l.ruta.slice(0, cut);
+    const rest = cut < 0 ? l.ruta : l.ruta.slice(cut + 3);
+    if (!groups.has(space)) groups.set(space, []);
+    groups.get(space)!.push({ value: l.id, label: rest });
+  }
+  return [...groups].map(([label, options]) => ({ label, options }));
+}
+
