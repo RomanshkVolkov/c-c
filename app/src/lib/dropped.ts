@@ -8,13 +8,64 @@ import { isTauri } from "@/lib/platform";
  * hacer con una ruta.
  */
 
-/** Las direcciones `file://` de un `drop` o un pegado. */
+/**
+ * Si un arrastre trae ficheros, o la lista de direcciones de un gestor de
+ * ficheros. Durante el arrastre todavía no se puede leer el contenido, sólo
+ * los tipos.
+ */
+export function carriesFiles(dt: DataTransfer | null | undefined): boolean {
+  const types = Array.from(dt?.types ?? []);
+  return types.includes("Files") || types.includes("text/uri-list");
+}
+
+/**
+ * Acepta el arrastre de un fichero: cancela el `dragover` **y dice «copiar»**.
+ * WebKit no entrega el `drop` a la página si el `dropEffect` no casa con lo que
+ * ofrece el origen; en su lugar hace su propia inserción, y la ruta del
+ * fichero acababa escrita en el mensaje (Thunar en Linux, jose, 6-oct-2026).
+ * ProseMirror ya cancelaba el `dragover`, pero sin `dropEffect` no basta.
+ * Devuelve si lo aceptó.
+ */
+export function acceptFileDrag(event: DragEvent): boolean {
+  if (!carriesFiles(event.dataTransfer)) return false;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  return true;
+}
+
+/**
+ * Las direcciones `file://` de un `drop` o un pegado. Se buscan en este orden:
+ *
+ * 1. `text/uri-list`, la forma estándar.
+ * 2. `text/html`: WebKitGTK anuncia la lista pero **la deja vacía** —no le
+ *    enseña direcciones `file://` a una página— y la ruta sólo viaja dentro
+ *    del HTML del arrastre (Thunar, jose, 6-oct-2026), y además **como texto**
+ *    de un `<a>` sin `href`: `<a style="…">file:///…/logo.png</a>`. Se toman
+ *    los `href` y `src` que son `file://`, y el texto de un elemento cuando
+ *    **entero** es una dirección `file://`.
+ * 3. `text/plain`, sólo si **todo** el texto son direcciones `file://`: un
+ *    mensaje que menciona una no es soltar un fichero.
+ */
 export function fileURIs(dt: DataTransfer): string[] {
-  const list = dt.getData("text/uri-list") || "";
-  return list
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#") && l.startsWith("file://"));
+  const lines = (s: string) =>
+    s
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+  const list = lines(dt.getData("text/uri-list") || "").filter((l) => l.startsWith("file://"));
+  if (list.length > 0) return list;
+  const html = dt.getData("text/html") || "";
+  if (html) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const attrs = Array.from(doc.querySelectorAll("[href], [src]")).map(
+      (el) => el.getAttribute("href") ?? el.getAttribute("src") ?? "",
+    );
+    const texts = Array.from(doc.body.querySelectorAll("*")).map((el) => (el.textContent ?? "").trim());
+    const found = [...attrs, ...texts].filter((u) => /^file:\/\/\S+$/.test(u));
+    if (found.length > 0) return [...new Set(found)];
+  }
+  const plain = lines(dt.getData("text/plain") || "");
+  return plain.length > 0 && plain.every((l) => l.startsWith("file://")) ? plain : [];
 }
 
 const TYPES: Record<string, string> = {

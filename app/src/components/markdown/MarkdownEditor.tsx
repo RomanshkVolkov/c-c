@@ -33,7 +33,7 @@ import { attachmentPath, linkClickAction, mediaSrc, openAttachment } from "@/lib
 import PdfPreview from "@/components/PdfPreview";
 import { PdfCards } from "./pdf-cards";
 import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
-import { fileURIs, readDropped } from "@/lib/dropped";
+import { acceptFileDrag, fileURIs, readDropped } from "@/lib/dropped";
 import { isTauri } from "@/lib/platform";
 import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
@@ -317,6 +317,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       // sistema, con la app en el resumen— (jose, 6-oct-2026). Qué hace cada
       // clic lo decide `handleClick`; aquí sólo se impide que la ventana lo siga.
       handleDOMEvents: {
+        // Ver acceptFileDrag: sin «copiar», WebKit no entrega el `drop`.
+        dragenter: (_view, event) => {
+          acceptFileDrag(event);
+          return false;
+        },
+        dragover: (_view, event) => {
+          acceptFileDrag(event);
+          return false;
+        },
         click: (_view, event) => {
           if ((event.target as HTMLElement)?.closest?.("a")) event.preventDefault();
           return false;
