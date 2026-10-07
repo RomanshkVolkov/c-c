@@ -33,6 +33,8 @@ import { attachmentPath, linkClickAction, mediaSrc, openAttachment } from "@/lib
 import PdfPreview from "@/components/PdfPreview";
 import { PdfCards } from "./pdf-cards";
 import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
+import { fileURIs, readDropped } from "@/lib/dropped";
+import { isTauri } from "@/lib/platform";
 import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
 import TableToolbar from "./TableToolbar";
@@ -535,6 +537,22 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           for (const f of unique) await insertUpload(f);
         })();
       }
+      return true;
+    }
+
+    // Un gestor de ficheros que sólo manda la dirección (`file:///…`: Thunar
+    // en Linux). Los bytes los pide a Rust, y se suben como cualquier otro.
+    const uris = isTauri ? fileURIs(dt) : [];
+    if (uris.length > 0) {
+      void (async () => {
+        const read = await readDropped(uris);
+        if (read.length === 0) {
+          toast.error(i18next.t("common:editor.cannotAttachThat"));
+          return;
+        }
+        if (filesRef.current) filesRef.current(read);
+        else for (const f of read) await insertUpload(f);
+      })();
       return true;
     }
 

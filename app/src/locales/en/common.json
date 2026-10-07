@@ -154,7 +154,8 @@
     "errAttachBody": "Nothing was added. Try again.",
     "errClipboard": "Couldn't read the image from the clipboard",
     "errClipboardBody": "Try the attach button, or save it to a file and drop it in.",
-    "writeInMarkdown": "Write in markdown…"
+    "writeInMarkdown": "Write in markdown…",
+    "cannotAttachThat": "That can't be attached: only images, PDFs, documents, audio, video, zip or csv."
   },
   "palette": {
     "newTask": "New task",

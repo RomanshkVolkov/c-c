@@ -9,6 +9,7 @@ mod ansible;
 mod secrets;
 mod api_client;
 mod crypto_tools;
+mod dropped;
 mod http_client;
 mod image;
 mod mcp;
@@ -1425,6 +1426,14 @@ fn encode_decode(input: String, codec: String, direction: String) -> Result<Stri
 
 /// The app's own backend calls. Routed through Rust so they don't ride the
 /// webview's connection pool — see api_client for why that matters.
+/// Los bytes de un fichero soltado o pegado desde un gestor de ficheros, que
+/// en Linux llega sólo como `file:///…`. Ver `dropped.rs` para lo que sirve y
+/// lo que no.
+#[tauri::command]
+fn read_dropped_file(uri: String) -> Result<tauri::ipc::Response, String> {
+    dropped::read(&uri).map(tauri::ipc::Response::new)
+}
+
 #[tauri::command]
 async fn api_request(req: api_client::ApiRequest) -> Result<api_client::ApiResponse, String> {
     api_client::execute(req).await
@@ -1753,6 +1762,7 @@ pub fn run() {
             api_request,
             set_session,
             open_attachment,
+            read_dropped_file,
             sse_connect,
             sse_disconnect,
             save_file,

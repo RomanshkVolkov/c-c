@@ -154,7 +154,8 @@
     "errAttachBody": "No se añadió nada. Inténtalo otra vez.",
     "errClipboard": "No se pudo leer la imagen del portapapeles",
     "errClipboardBody": "Prueba con el botón de adjuntar, o guárdala en un fichero y suéltalo aquí.",
-    "writeInMarkdown": "Escribe en markdown…"
+    "writeInMarkdown": "Escribe en markdown…",
+    "cannotAttachThat": "Eso no se puede adjuntar: sólo imágenes, PDF, documentos, audio, vídeo, zip o csv."
   },
   "palette": {
     "newTask": "Tarea nueva",

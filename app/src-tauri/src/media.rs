@@ -30,7 +30,7 @@ pub struct Session {
 /// frontend builds the platform-correct URL for it.
 pub const SCHEME: &str = "cacmedia";
 
-fn percent_decode(input: &str) -> String {
+pub(crate) fn percent_decode(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
