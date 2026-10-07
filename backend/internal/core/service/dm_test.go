@@ -234,7 +234,7 @@ func dmDB(t *testing.T) (*gorm.DB, func()) {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&domain.User{}, &domain.OrgMembership{},
-		&domain.DMConversation{}, &domain.DMMessage{}, &domain.DMRead{}); err != nil {
+		&domain.DMConversation{}, &domain.DMMessage{}, &domain.DMRead{}, &domain.DMAttachment{}); err != nil {
 		t.Fatal(err)
 	}
 	// Ana, Bea and Carla work together; the stranger is somewhere else.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
@@ -178,4 +179,64 @@ func mapDMError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed", err.Error())
 	}
 	return true
+}
+
+// UploadDMAttachment sube un fichero a una conversación directa: una captura
+// pegada, un PDF. Antes los directos no tenían adjuntos y una imagen pegada se
+// perdía al enviar (6-oct-2026).
+func (h *taskHandler) UploadDMAttachment(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "unauthorized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	// Antes de leer nada: quien no es de la conversación no sube 30 MB para
+	// enterarse después.
+	if err := h.dms.Member(id, user.UserID); err != nil {
+		if !mapDMError(w, err) {
+			SendErrorResponse(w, http.StatusInternalServerError, "Failed to load conversation", err.Error())
+		}
+		return
+	}
+	data, header, ok := h.readUpload(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.images.UploadFile(r.Context(), header.Filename, header.Header.Get("Content-Type"), data, "dm/"+id)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Upload rejected", err.Error())
+		return
+	}
+	att := &domain.DMAttachment{
+		Path: res.Key, FileName: header.Filename, ContentType: res.ContentType, Bytes: res.Bytes,
+	}
+	att.ID = uuid.NewString()
+	att.URL = domain.DMAttachmentRef(id, att.ID)
+	if err := h.dms.AddAttachment(id, user.UserID, att); err != nil {
+		if mapDMError(w, err) {
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to record attachment", err.Error())
+		return
+	}
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.DMAttachment]{Success: true, Data: att})
+}
+
+// RawDMAttachment manda los bytes. Fuera del grupo con JWT, como los demás
+// adjuntos: un `<img>` no manda cabeceras, así que acepta también el pase de
+// URL (`?token=`). Sólo para las dos personas de la conversación: a cualquier
+// otra, 404, como si no existiera.
+func (h *taskHandler) RawDMAttachment(w http.ResponseWriter, r *http.Request) {
+	claims, err := claimsFromHeaderOrTicket(r, repository.URLScopeMedia)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	att, err := h.dms.Attachment(chi.URLParam(r, "id"), chi.URLParam(r, "attachmentId"), claims.UserID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	h.streamStored(w, r, att.Path, att.ContentType, att.FileName)
 }

@@ -200,3 +200,39 @@ func (s *DMService) MarkRead(conversationID, userID string) error {
 func (s *DMService) Conversations(userID string, orgIDs []string) ([]domain.DMSummary, error) {
 	return s.repo.Conversations(userID, orgIDs)
 }
+
+// Member: nil si esa persona es de la conversación; si no, como si no
+// existiera.
+func (s *DMService) Member(conversationID, userID string) error {
+	_, err := s.mine(conversationID, userID)
+	return err
+}
+
+// AddAttachment guarda un adjunto de una conversación, si quien lo sube es de
+// ella.
+func (s *DMService) AddAttachment(conversationID, userID string, a *domain.DMAttachment) error {
+	if _, err := s.mine(conversationID, userID); err != nil {
+		return err
+	}
+	a.ConversationID = conversationID
+	a.UploadedBy = userID
+	return s.repo.AddAttachment(a)
+}
+
+// Attachment: un adjunto, **sólo** para las dos personas de su conversación.
+// A cualquier otra —también de la misma org, también admin— le contesta lo
+// mismo que si no existiera: un directo es privado, y saber que hay un fichero
+// ahí ya es saber algo de quién habla con quién.
+func (s *DMService) Attachment(conversationID, attachmentID, userID string) (*domain.DMAttachment, error) {
+	if _, err := s.mine(conversationID, userID); err != nil {
+		return nil, err
+	}
+	a, err := s.repo.FindAttachment(attachmentID)
+	if err != nil {
+		return nil, err
+	}
+	if a.ConversationID != conversationID {
+		return nil, repository.ErrDMAttachmentNotFound
+	}
+	return a, nil
+}

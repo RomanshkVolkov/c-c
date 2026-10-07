@@ -138,3 +138,23 @@ type DMSummary struct {
 	// escribir, y saber si está por aquí es la mitad de esa decisión.
 	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
 }
+
+// DMAttachment: un fichero de una conversación directa (una captura pegada,
+// un PDF). Lo ven **sólo las dos personas de la conversación**, no la org
+// entera como un adjunto de canal: un directo es privado.
+type DMAttachment struct {
+	BaseModel
+	ConversationID string `gorm:"type:varchar(36);index;not null" json:"conversationId"`
+	// URL es la de nuestro proxy, relativa, como en canales y tareas.
+	URL         string `gorm:"type:text"         json:"url"`
+	Path        string `gorm:"type:text"         json:"-"`
+	FileName    string `gorm:"type:varchar(255)" json:"fileName"`
+	ContentType string `gorm:"type:varchar(120)" json:"contentType,omitempty"`
+	Bytes       int64  `json:"bytes,omitempty"`
+	UploadedBy  string `gorm:"type:varchar(36)" json:"uploadedBy,omitempty"`
+}
+
+// DMAttachmentRef: relativa a propósito, como ChatAttachmentRef.
+func DMAttachmentRef(conversationID, attachmentID string) string {
+	return "/api/v1/dm/" + conversationID + "/attachments/" + attachmentID + "/raw"
+}

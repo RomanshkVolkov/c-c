@@ -33,6 +33,8 @@ type TaskHandler interface {
 	MoveSpace(w http.ResponseWriter, r *http.Request)
 	RawChatAttachment(w http.ResponseWriter, r *http.Request)
 	UploadChatAttachment(w http.ResponseWriter, r *http.Request)
+	UploadDMAttachment(w http.ResponseWriter, r *http.Request)
+	RawDMAttachment(w http.ResponseWriter, r *http.Request)
 	ChatUnread(w http.ResponseWriter, r *http.Request)
 	OpenDM(w http.ResponseWriter, r *http.Request)
 	ListDMConversations(w http.ResponseWriter, r *http.Request)

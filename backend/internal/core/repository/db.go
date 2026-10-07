@@ -130,6 +130,7 @@ func DBConnection() {
 		// see domain/dm.go.
 		&domain.DMConversation{},
 		&domain.DMMessage{},
+		&domain.DMAttachment{},
 		&domain.DMRead{},
 		&domain.ChatMessage{},
 		&domain.ChatRead{},

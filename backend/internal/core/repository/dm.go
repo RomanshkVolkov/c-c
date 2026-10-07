@@ -182,3 +182,21 @@ func (r *DMRepository) Conversations(userID string, orgIDs []string) ([]domain.D
 	`, userID, userID, userID, userID, userID, userID, orgIDs).Scan(&out).Error
 	return out, err
 }
+
+// ErrDMAttachmentNotFound: no existe ese adjunto.
+var ErrDMAttachmentNotFound = errors.New("dm attachment not found")
+
+func (r *DMRepository) AddAttachment(a *domain.DMAttachment) error {
+	return r.db.Create(a).Error
+}
+
+func (r *DMRepository) FindAttachment(id string) (*domain.DMAttachment, error) {
+	var a domain.DMAttachment
+	if err := r.db.First(&a, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDMAttachmentNotFound
+		}
+		return nil, err
+	}
+	return &a, nil
+}

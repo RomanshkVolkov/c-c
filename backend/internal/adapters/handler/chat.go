@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"time"
@@ -236,34 +237,8 @@ func (h *taskHandler) UploadChatAttachment(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if h.images == nil || !h.images.Enabled() {
-		SendErrorResponse(w, http.StatusServiceUnavailable, "Attachments unavailable", "image-service-not-configured")
-		return
-	}
-	// The server-wide ReadTimeout is tuned for small JSON and would cut a large
-	// body off before it lands.
-	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(attachmentReadWindow)); err != nil {
-		lg.Warn("chat upload: could not extend read deadline: " + err.Error())
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxAttachmentBytes)
-	if err := r.ParseMultipartForm(maxAttachmentBytes); err != nil {
-		SendErrorResponse(w, http.StatusBadRequest, "File too large or invalid", err.Error())
-		return
-	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		SendErrorResponse(w, http.StatusBadRequest, "Missing file", err.Error())
-		return
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(io.LimitReader(file, maxAttachmentBytes+1))
-	if err != nil {
-		SendErrorResponse(w, http.StatusBadRequest, "Could not read file", err.Error())
-		return
-	}
-	if int64(len(data)) > maxAttachmentBytes {
-		SendErrorResponse(w, http.StatusRequestEntityTooLarge, "File exceeds 30 MB", "too-large")
+	data, header, ok := h.readUpload(w, r)
+	if !ok {
 		return
 	}
 
@@ -319,11 +294,53 @@ func (h *taskHandler) RawChatAttachment(w http.ResponseWriter, r *http.Request) 
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return
 	}
+	h.streamStored(w, r, att.Path, att.ContentType, att.FileName)
+}
+
+// readUpload lee el fichero de una subida (`file`, multipart) con el tope de
+// 30 MB. Lo comparten los adjuntos de canal y de directos. Si algo falla ya ha
+// contestado, y devuelve false.
+func (h *taskHandler) readUpload(w http.ResponseWriter, r *http.Request) ([]byte, *multipart.FileHeader, bool) {
+	if h.images == nil || !h.images.Enabled() {
+		SendErrorResponse(w, http.StatusServiceUnavailable, "Attachments unavailable", "image-service-not-configured")
+		return nil, nil, false
+	}
+	// The server-wide ReadTimeout is tuned for small JSON and would cut a large
+	// body off before it lands.
+	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(attachmentReadWindow)); err != nil {
+		lg.Warn("upload: could not extend read deadline: " + err.Error())
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxAttachmentBytes)
+	if err := r.ParseMultipartForm(maxAttachmentBytes); err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "File too large or invalid", err.Error())
+		return nil, nil, false
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Missing file", err.Error())
+		return nil, nil, false
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxAttachmentBytes+1))
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Could not read file", err.Error())
+		return nil, nil, false
+	}
+	if int64(len(data)) > maxAttachmentBytes {
+		SendErrorResponse(w, http.StatusRequestEntityTooLarge, "File exceeds 30 MB", "too-large")
+		return nil, nil, false
+	}
+	return data, header, true
+}
+
+// streamStored manda los bytes de un adjunto guardado. Quien llama ya decidió
+// que puede verlo.
+func (h *taskHandler) streamStored(w http.ResponseWriter, r *http.Request, path, contentType, fileName string) {
 	if h.store == nil || !h.store.Enabled() {
 		SendErrorResponse(w, http.StatusServiceUnavailable, "Attachment storage unavailable", "store-disabled")
 		return
 	}
-	obj, err := h.store.Get(r.Context(), att.Path)
+	obj, err := h.store.Get(r.Context(), path)
 	if err != nil {
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return
@@ -332,7 +349,7 @@ func (h *taskHandler) RawChatAttachment(w http.ResponseWriter, r *http.Request) 
 
 	ct := obj.ContentType
 	if ct == "" {
-		ct = att.ContentType
+		ct = contentType
 	}
 	if ct == "" {
 		ct = "application/octet-stream"
@@ -340,7 +357,7 @@ func (h *taskHandler) RawChatAttachment(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Cache-Control", "private, no-store")
 	// inline: images render in place; a browser still offers to save the rest.
 	// Tipo, disposición y nosniff, en un solo sitio: ver setFileHeaders.
-	setFileHeaders(w, ct, att.FileName)
+	setFileHeaders(w, ct, fileName)
 	if obj.Size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(obj.Size, 10))
 	}

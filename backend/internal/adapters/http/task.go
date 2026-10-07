@@ -158,6 +158,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Patch("/{id}/messages/{messageId}", h.EditDM)
 		r.Delete("/{id}/messages/{messageId}", h.WithdrawDM)
 		r.Post("/{id}/read", h.MarkDMRead)
+		r.Post("/{id}/attachments", h.UploadDMAttachment)
 	})
 
 	r.Route("/api/v1/task-statuses", func(r chi.Router) {
@@ -189,6 +190,9 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	// image proxy.
 	r.Get("/api/v1/tasks/{id}/attachments/{attachmentId}/raw", h.RawAttachment)
 	r.Get("/api/v1/task-spaces/{id}/chat/attachments/{attachmentId}/raw", h.RawChatAttachment)
+	// Los de un directo: sólo las dos personas de la conversación (ver
+	// DMService.Attachment).
+	r.Get("/api/v1/dm/{id}/attachments/{attachmentId}/raw", h.RawDMAttachment)
 
 	// Docs: one markdown overview per space/folder/list, sharing the task
 	// module's image-service client and media store.
