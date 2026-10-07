@@ -150,6 +150,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
           value={draft}
           onChange={setDraft}
           minHeight="3rem"
+          maxHeight="40vh"
           onSubmit={send}
           onUpload={upload}
           placeholder={other ? t("common:misc.messageTo", { name: other.username }) : t("common:misc.message")}

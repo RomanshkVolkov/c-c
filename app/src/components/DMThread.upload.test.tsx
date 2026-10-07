@@ -11,9 +11,9 @@ const { postForm } = vi.hoisted(() => ({
   postForm: vi.fn(async () => ({ data: { url: "/api/v1/dm/c-1/attachments/a-1/raw", fileName: "captura.png" } })),
 }));
 vi.mock("@/lib/api", () => ({ api: { get: vi.fn(), post: vi.fn(), postForm }, apiUrl: (p: string) => p }));
-const editores: { onUpload?: (f: File) => Promise<unknown> }[] = [];
+const editores: { onUpload?: (f: File) => Promise<unknown>; maxHeight?: string }[] = [];
 vi.mock("@/components/markdown/MarkdownEditor", () => ({
-  default: (props: { onUpload?: (f: File) => Promise<unknown> }) => {
+  default: (props: { onUpload?: (f: File) => Promise<unknown>; maxHeight?: string }) => {
     editores.push(props);
     return null;
   },
@@ -35,6 +35,8 @@ describe("pegar una captura en un directo", () => {
     render(<DMThread onBack={() => {}} />);
     const compositor = editores[editores.length - 1];
     expect(compositor.onUpload).toBeTypeOf("function");
+    // Y con tope de alto: una captura pegada no echa fuera la conversación.
+    expect(compositor.maxHeight).toBeTruthy();
     const res = await compositor.onUpload!(new File(["x"], "captura.png", { type: "image/png" }));
     expect(postForm).toHaveBeenCalledWith("/api/v1/dm/c-1/attachments", expect.any(FormData));
     expect(res).toEqual({ url: "/api/v1/dm/c-1/attachments/a-1/raw", fileName: "captura.png" });

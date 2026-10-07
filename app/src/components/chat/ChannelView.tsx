@@ -360,6 +360,7 @@ export default function ChannelView({
           cards={citableCards}
           people={people}
           minHeight="3rem"
+          maxHeight="40vh"
           onSubmit={send}
           // The rule that keeps the four ways of writing in cac apart, said
           // where the decision is actually made rather than in a doc nobody

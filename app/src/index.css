@@ -443,3 +443,14 @@
 :root:not(.dark) * { scrollbar-color: rgba(37, 37, 37, .24) transparent; }
 :root:not(.dark) *::-webkit-scrollbar-thumb { background: rgba(37, 37, 37, .22); border: 3px solid transparent; background-clip: content-box; }
 :root:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(37, 37, 37, .38); border: 3px solid transparent; background-clip: content-box; }
+
+/* En un compositor (editor con `maxHeight`), una imagen pegada se ve en
+   miniatura: sin esto ocupaba la pantalla entera y echaba fuera la
+   conversación (6-oct-2026). Al enviarla, el mensaje la enseña a su tamaño. */
+[data-compact] .ProseMirror img {
+  max-height: 10rem;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+

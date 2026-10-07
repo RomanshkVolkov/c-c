@@ -156,6 +156,14 @@ export interface MarkdownEditorProps {
   className?: string;
   minHeight?: string;
   /**
+   * Tope de alto, para un compositor de mensajes: más allá, el texto hace
+   * scroll dentro, y las imágenes se ven en miniatura. Sin él (notas,
+   * descripciones), el editor crece con lo que lleva. Una captura pegada en un
+   * directo ocupaba la pantalla entera y echaba fuera la conversación (jose,
+   * 6-oct-2026).
+   */
+  maxHeight?: string;
+  /**
    * Qué hace Enter. Con esto puesto, **Enter manda** y Shift+Enter salta de
    * línea; sin ello, Enter hace lo de siempre —un párrafo nuevo—.
    *
@@ -216,6 +224,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     people,
     className,
     minHeight = "8rem",
+    maxHeight,
     autoFocus,
     onLinkClick,
     onSubmit,
@@ -641,7 +650,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           ))}
         </ul>
       )}
-      <div className="px-3 py-2">
+      <div
+        className={cn("px-3 py-2", maxHeight && "overflow-y-auto")}
+        style={maxHeight ? { maxHeight } : undefined}
+        data-compact={maxHeight ? "" : undefined}
+      >
         <TableToolbar editor={editor} />
         {blockTools && (
           <DragHandle editor={editor}>
