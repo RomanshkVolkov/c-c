@@ -231,7 +231,12 @@ async function sendForm<T>(
   if (res.status >= 500) useConnectionStore.getState().markFail(`Server error (${res.status})`);
   else useConnectionStore.getState().markOk();
 
-  const json = await res.json();
+  // Una respuesta que no es JSON —el 404 en texto plano de una ruta que no
+  // existe, la página de error de un proxy— no puede acabar en el «SyntaxError:
+  // The string did not match the expected pattern» de WebKit, que no dice nada
+  // (6-oct-2026). Se dice el código HTTP.
+  const json = await res.json().catch(() => null);
+  if (json === null) throw new Error(`HTTP ${res.status}`);
   if (!res.ok) {
     /**
      * Dos campos con dos oficios, y hay que no confundirlos.
