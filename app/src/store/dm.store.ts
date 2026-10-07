@@ -73,6 +73,11 @@ interface DMState {
   refrescar: () => Promise<void>;
   fetchOlder: () => Promise<void>;
   post: (conversationId: string, body: string) => Promise<void>;
+  /**
+   * Sube un fichero a la conversación (una captura pegada, un PDF) y devuelve
+   * lo que el editor mete en el texto. Sólo lo ven las dos personas.
+   */
+  uploadAttachment: (conversationId: string, file: File) => Promise<{ url: string; fileName: string }>;
   edit: (conversationId: string, messageId: string, body: string) => Promise<void>;
   withdraw: (conversationId: string, messageId: string) => Promise<void>;
   markRead: (conversationId: string) => Promise<void>;
@@ -176,6 +181,16 @@ export const useDMStore = create<DMState>((set, get) => ({
       set({ loadingOlder: false });
       throw e;
     }
+  },
+
+  uploadAttachment: async (conversationId, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await api.postForm<{ data: { url: string; fileName: string } }>(
+      `/api/v1/dm/${conversationId}/attachments`,
+      form,
+    );
+    return { url: res.data.url, fileName: res.data.fileName };
   },
 
   post: async (conversationId, body) => {

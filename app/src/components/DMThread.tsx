@@ -36,6 +36,18 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
   const { t } = useT();
   const messages = useDMStore((s) => s.messages);
   const conversationId = useDMStore((s) => s.conversationId);
+  const uploadAttachment = useDMStore((s) => s.uploadAttachment);
+  // Pegar una captura o soltar un PDF: se sube a la conversación. Antes los
+  // directos no tenían adjuntos y la imagen se perdía al enviar (6-oct-2026).
+  const upload = async (file: File) => {
+    if (!conversationId) return null;
+    try {
+      return await uploadAttachment(conversationId, file);
+    } catch (e) {
+      toast.error(String(e));
+      return null;
+    }
+  };
   const conversations = useDMStore((s) => s.conversations);
   const loading = useDMStore((s) => s.loading);
   const hasMore = useDMStore((s) => s.hasMore);
@@ -139,6 +151,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
           onChange={setDraft}
           minHeight="3rem"
           onSubmit={send}
+          onUpload={upload}
           placeholder={other ? t("common:misc.messageTo", { name: other.username }) : t("common:misc.message")}
         />
         <div className="mt-1 flex justify-end">
