@@ -285,6 +285,12 @@ var patWritable = []struct {
 	// bring images across instead of leaving them served by the tool being
 	// abandoned, which is the whole point of migrating.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notes/[^/]+/attachments/?$`), domain.ScopeNotesWrite},
+	// Lo mismo para una tarea: un agente deja la captura o el log que acaba de
+	// sacar (MCP `add_task_attachment`). Añadir, no pisar: borrar un adjunto
+	// sigue fuera. Un adjunto de tarea no lo ve el cliente (su API enseña las
+	// imágenes del reporte, no éstos), y el handler ya exige poder escribir en
+	// la tarea (7-oct-2026).
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/attachments/?$`), domain.ScopeTasksWrite},
 	// Documentación: añadir al final de una sección y registrar una decisión.
 	//
 	// Las dos sólo añaden. `append` concatena en la base sin leer antes, así que

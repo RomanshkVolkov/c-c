@@ -38,6 +38,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/notes/", domain.ScopeNotesWrite},
 		// Append-only, like creating the page it hangs off.
 		{http.MethodPost, "/api/v1/notes/abc/attachments", domain.ScopeNotesWrite},
+		// Y a una tarea, con el permiso de escribir tareas (MCP add_task_attachment).
+		{http.MethodPost, "/api/v1/tasks/abc/attachments", domain.ScopeTasksWrite},
 		{http.MethodPatch, "/api/v1/notes/abc", domain.ScopeNotesManage},
 		{http.MethodPost, "/api/v1/reports/abc/comments", domain.ScopeReportsWrite},
 		{http.MethodPost, "/api/v1/reports/abc/images", domain.ScopeReportsWrite},
@@ -113,6 +115,8 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodPatch, "/api/v1/auth/tokens/abc"),
 		req(http.MethodDelete, "/api/v1/auth/tokens/abc"),
 		req(http.MethodDelete, "/api/v1/tasks/abc"),
+		// Adjuntar sí; quitar un adjunto, no.
+		req(http.MethodDelete, "/api/v1/tasks/abc/attachments/a1"),
 		req(http.MethodDelete, "/api/v1/task-lists/abc/tasks"),
 		req(http.MethodPost, "/api/v1/task-lists/abc/tasks/extra"),
 		req(http.MethodPost, "/api/v1/task-lists/abc/statuses"),
