@@ -133,7 +133,14 @@ acepte sólo si ya es de tu gente (si no, `invite-required` y la app lo invita);
 fuera de tus orgs sólo encuentras a alguien por su usuario exacto; cambiar la
 contraseña cuelga los streams abiertos (`session:revoked`); el login cuenta
 también por IP (la última de `X-Forwarded-For`) y barre lo viejo. Queda para
-después: tokens en `localStorage` → cookies `httpOnly`.
+después: tokens en `localStorage` → cookies `httpOnly`. **Tanda 3 publicada**
+(`e0590f7`, `1726efe`, `e2e7054`). **v1.6.89 (6-oct):** CSP en el escritorio
+(probada a mano, tarea en App), el visor de PDF por fin abre (CORS en `cacmedia`,
+y no choca con React), los PDF como tarjeta con su primera página en todos los
+sitios, adjuntos en directos (sólo los dos de la conversación). **Pendiente:**
+en canales la guarda de adjuntos sólo mira la org (un canal privado no la
+estrecha); quitar la compatibilidad transitoria de grabaciones
+(`legacyDesktopRecordingViewer`) cuando la v1.6.89 lleve tiempo.
 
 **Módulo de servidores completo (3-oct):** R0–R8 publicadas (#106 en Done).
 v1.6.83: un playbook que falla en el acto ya no se queda «aplicando» (#116).

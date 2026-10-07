@@ -119,6 +119,44 @@ base `C` seguiría saliendo bien.
 revienta la inserción porque la columna tiene `default:0.5`; los caminos que
 saben dónde va la tarjeta le ponen el suyo.
 
+**El webview de Linux es WebKitGTK, y no se porta como Chrome.** Lo que
+funciona en la web (o en WhatsApp Web) puede no funcionar en la app. Soltar un
+fichero desde Thunar escribía su ruta en el mensaje por tres cosas que **no
+están documentadas juntas en ningún sitio**: WebKit no entrega el `drop` si el
+`dragover` no dice `dropEffect = "copy"` (ProseMirror lo cancela, pero no basta);
+deja `text/uri-list` **vacío** (no enseña rutas `file://` a una página); y la
+ruta sólo viaja como **texto** de un `<a>` sin `href` en el `text/html`. Los
+bytes los lee Rust (`read_dropped_file`), sólo de tipos que se adjuntan y
+mirando la ruta real (un enlace simbólico `foto.png` → `~/.ssh/id_rsa` no
+pasa). Ante algo así, **un log temporal primero** de lo que llega de verdad, no
+hipótesis.
+→ Guardianes: `app/src/lib/dropped.test.ts` (lleva el HTML real que entregó
+WebKitGTK) y `dropped::tests` en `app/src-tauri/src/dropped.rs`.
+
+**Un esquema propio es otro origen.** `cacmedia://` y `cacvideo://` los sirve
+Rust, y para el webview son **otro origen**: un `<img>` carga igual, pero un
+`fetch` sin `Access-Control-Allow-Origin` falla con «estado 0». pdf.js descarga
+con `fetch`, así que el visor de PDF del escritorio **no abrió nunca nada** hasta
+el 6-oct-2026. Toda respuesta de un esquema propio lleva la cabecera, también
+las de error.
+→ Guardián: `media::tests::every_answer_can_be_read_by_a_fetch`.
+
+**La CSP del escritorio bloquea en silencio.** Desde la v1.6.89 la app tiene
+CSP (`app/src-tauri/tauri.conf.json`). Algo que no esté permitido no da error:
+simplemente no carga. Cada fuente permitida está atada a lo que la usa; si
+añades un sitio nuevo al que la app hable o del que cargue, añádelo ahí y en la
+prueba, y pruébalo con la app abierta, no sólo con vitest.
+→ Guardián: `app/src/lib/desktop-csp.test.ts`.
+
+**Un contenedor que se llena a mano no puede tener hijos de React.** El visor
+de PDF dibujaba las páginas en el mismo `<div>` donde React ponía «Cargando…»;
+al vaciarlo se llevaba ese `<p>` y React fallaba después con
+`NotFoundError: The object can not be found here.` Lo mismo con montar React
+dentro de una decoración de ProseMirror durante el render de otro árbol: se
+monta en una microtarea, después.
+→ Guardianes: `app/src/components/PdfPreview.test.tsx` y
+`app/src/components/markdown/pdf-cards.mount.test.tsx`.
+
 ## El CI corre las pruebas de backend, app, transcriptor y agente
 
 Las cuatro suites corren **por delante** de lo que publican, así que rojo no sale:
