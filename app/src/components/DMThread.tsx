@@ -2,7 +2,7 @@ import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ArrowLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
 import {
@@ -12,7 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import MarkdownEditor from "@/components/markdown/MarkdownEditor";
+import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown/MarkdownEditor";
+import FileDropZone from "@/components/FileDropZone";
 import Markdown from "@/components/markdown/Markdown";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useDMStore } from "@/store/dm.store";
@@ -37,6 +38,8 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
   const messages = useDMStore((s) => s.messages);
   const conversationId = useDMStore((s) => s.conversationId);
   const uploadAttachment = useDMStore((s) => s.uploadAttachment);
+  // El compositor, para que la zona para soltar le entregue los ficheros.
+  const composer = useRef<MarkdownEditorHandle>(null);
   // Pegar una captura o soltar un PDF: se sube a la conversación. Antes los
   // directos no tenían adjuntos y la imagen se perdía al enviar (6-oct-2026).
   const upload = async (file: File) => {
@@ -86,7 +89,9 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
   if (!conversationId) return null;
 
   return (
-    <>
+    // Toda la conversación es zona para soltar (como WhatsApp): lo soltado
+    // va al compositor.
+    <FileDropZone className="flex min-h-0 flex-1 flex-col" onFiles={(fs) => composer.current?.insertFiles(fs)}>
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <button
           className="text-muted-foreground hover:text-foreground"
@@ -147,6 +152,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
 
       <div className="shrink-0 border-t p-2">
         <MarkdownEditor
+          ref={composer}
           value={draft}
           onChange={setDraft}
           minHeight="3rem"
@@ -166,7 +172,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
           </Button>
         </div>
       </div>
-    </>
+    </FileDropZone>
   );
 }
 

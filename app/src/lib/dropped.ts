@@ -102,3 +102,30 @@ export async function readDropped(uris: string[]): Promise<File[]> {
   }
   return out;
 }
+
+/**
+ * Lo que trae un `drop` o un pegado: los ficheros que el navegador entrega, y
+ * las direcciones `file://` cuando sólo entrega eso. **Síncrono, en el momento
+ * del evento**: después el `DataTransfer` ya no deja leer nada. Las
+ * direcciones se convierten en ficheros con `readDropped`.
+ */
+export function takeTransfer(dt: DataTransfer): { files: File[]; uris: string[] } {
+  // `files` es lo normal, pero WebKit a veces sólo los da en `items`; y un
+  // item y un fichero pueden ser el mismo.
+  const all = [
+    ...Array.from(dt.files ?? []),
+    ...Array.from(dt.items ?? [])
+      .filter((i) => i.kind === "file")
+      .map((i) => i.getAsFile())
+      .filter((f): f is File => !!f),
+  ];
+  const seen = new Set<string>();
+  const files = all.filter((f) => {
+    const key = `${f.name}:${f.size}:${f.type}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { files, uris: files.length > 0 || !isTauri ? [] : fileURIs(dt) };
+}
+

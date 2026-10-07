@@ -33,8 +33,7 @@ import { attachmentPath, linkClickAction, mediaSrc, openAttachment } from "@/lib
 import PdfPreview from "@/components/PdfPreview";
 import { PdfCards } from "./pdf-cards";
 import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
-import { acceptFileDrag, fileURIs, readDropped } from "@/lib/dropped";
-import { isTauri } from "@/lib/platform";
+import { acceptFileDrag, carriesFiles, readDropped, takeTransfer } from "@/lib/dropped";
 import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
 import TableToolbar from "./TableToolbar";
@@ -187,6 +186,12 @@ export interface MarkdownEditorProps {
 export interface MarkdownEditorHandle {
   /** Inserts `[title](href)` as a real link node at the cursor, then a space. */
   insertLink: (title: string, href: string) => void;
+  /**
+   * Sube estos ficheros y los mete en el texto, como si se hubieran pegado. Lo
+   * usa la zona para soltar de un canal o un directo (`FileDropZone`), que
+   * recoge lo que se suelta en cualquier parte de la conversación.
+   */
+  insertFiles: (files: File[]) => void;
 }
 
 /**
@@ -251,6 +256,22 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   const confirm = useOptionalConfirm();
   const confirmRef = useRef(confirm);
   confirmRef.current = confirm;
+  // Si ahora mismo pasa un fichero por encima: el recuadro se resalta, para
+  // que se vea dónde va a caer.
+  const [fileOver, setFileOver] = useState(false);
+  // Se apaga con cualquier soltado o arrastre cancelado de la ventana, en
+  // captura: la zona para soltar de una conversación se lo queda sin dejarlo
+  // llegar aquí, y el resaltado se quedaría encendido.
+  useEffect(() => {
+    if (!fileOver) return;
+    const off = () => setFileOver(false);
+    window.addEventListener("drop", off, true);
+    window.addEventListener("dragend", off, true);
+    return () => {
+      window.removeEventListener("drop", off, true);
+      window.removeEventListener("dragend", off, true);
+    };
+  }, [fileOver]);
   // El PDF adjunto que se está viendo, en el visor de la app.
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
 
@@ -396,6 +417,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           ])
           .run();
       },
+      insertFiles: (files) => {
+        editorRef.current?.commands.focus("end");
+        void (async () => {
+          for (const f of files) await insertUploadRef.current?.(f);
+        })();
+      },
     }),
     [],
   );
@@ -490,6 +517,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   // file took seconds with nothing on screen, so it read as "the button does
   // nothing" and got clicked again. Five copies of the same PDF is what that
   // looks like from the other side.
+  // `insertFiles` (en el handle, más arriba) lo llama a través de esto.
+  const insertUploadRef = useRef<((file: File) => Promise<void>) | null>(null);
   const insertUpload = useCallback(async (file: File) => {
     const upload = uploadRef.current;
     const ed = editorRef.current;
@@ -499,7 +528,13 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       const res = await upload(file);
       if (!res) throw new Error("upload rejected");
       if (file.type.startsWith("image/")) {
-        ed.chain().focus().setImage({ src: res.url, alt: res.fileName }).run();
+        // Con un párrafo detrás, y el cursor en él: la imagen es un bloque, y
+        // el cursor se quedaba sobre ella, así que el siguiente fichero (soltar
+        // o pegar varios) la sustituía (6-oct-2026).
+        ed.chain()
+          .focus()
+          .insertContent([{ type: "image", attrs: { src: res.url, alt: res.fileName } }, { type: "paragraph" }])
+          .run();
       } else {
         ed.chain().focus().insertContent(`[${res.fileName}](${res.url})`).run();
       }
@@ -511,6 +546,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       done();
     }
   }, [startUpload]);
+  insertUploadRef.current = insertUpload;
 
   /** Sends one recovered image down whichever route the caller asked for. */
   const acceptFile = useCallback(async (file: File) => {
@@ -530,22 +566,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     // `files` is the happy path, but pasting a screenshot in a WebKit webview
     // often exposes the bitmap only through `items` — and then the HTML flavour
     // carries an <img src="blob:…">, which is what ProseMirror would have
-    // inserted: a reference that dies with the page.
-    const files = [
-      ...Array.from(dt.files ?? []),
-      ...Array.from(dt.items ?? [])
-        .filter((i) => i.kind === "file")
-        .map((i) => i.getAsFile())
-        .filter((f): f is File => !!f),
-    ];
-    // De-dupe: an item and a file entry can describe the same bitmap.
-    const seen = new Set<string>();
-    const unique = files.filter((f) => {
-      const key = `${f.name}:${f.size}:${f.type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    // inserted: a reference that dies with the page. Ver takeTransfer.
+    const { files: unique, uris } = takeTransfer(dt);
 
     if (unique.length > 0) {
       if (filesRef.current) {
@@ -560,7 +582,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
 
     // Un gestor de ficheros que sólo manda la dirección (`file:///…`: Thunar
     // en Linux). Los bytes los pide a Rust, y se suben como cualquier otro.
-    const uris = isTauri ? fileURIs(dt) : [];
     if (uris.length > 0) {
       void (async () => {
         const read = await readDropped(uris);
@@ -632,8 +653,20 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     );
   }
 
+  const canTakeFiles = !!(onUpload || onFiles);
   return (
-    <div className={cn("rounded-md border bg-background", className)}>
+    <div
+      className={cn("rounded-md border bg-background transition-shadow", fileOver && "ring-2 ring-primary", className)}
+      data-file-over={fileOver ? "" : undefined}
+      onDragEnter={(e) => {
+        if (canTakeFiles && carriesFiles(e.dataTransfer)) setFileOver(true);
+      }}
+      onDragLeave={(e) => {
+        // Sólo al salir del recuadro, no al pasar de un hijo a otro.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFileOver(false);
+      }}
+      onDrop={() => setFileOver(false)}
+    >
       <Toolbar
         editor={editor}
         onPickFile={onUpload ? insertUpload : undefined}

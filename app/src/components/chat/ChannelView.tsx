@@ -4,7 +4,7 @@ import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
 import i18next from "i18next";
 import { useT } from "@/lib/i18n";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Bell, BellOff, ChevronDown, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, Volume2, X } from "lucide-react";
 import {
@@ -14,7 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import MarkdownEditor from "@/components/markdown/MarkdownEditor";
+import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown/MarkdownEditor";
+import FileDropZone from "@/components/FileDropZone";
 import MessageToDoc from "@/components/chat/MessageToDoc";
 import Markdown from "@/components/markdown/Markdown";
 import { docRefFromHref, recordingIdFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
@@ -98,6 +99,8 @@ export default function ChannelView({
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // El compositor, para que la zona para soltar le entregue los ficheros.
+  const composer = useRef<MarkdownEditorHandle>(null);
   const [tab, setTab] = useState<Tab>("thread");
   /**
    * Lo que se busca, **por pestaña activa y sólo en este canal**.
@@ -195,7 +198,9 @@ export default function ChannelView({
   if (enLlamada) return <VoiceStage spaceName={spaceName} />;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    // Toda la conversación es zona para soltar (como WhatsApp): lo soltado
+    // va al compositor.
+    <FileDropZone className="flex min-h-0 flex-1 flex-col bg-background" onFiles={(fs) => composer.current?.insertFiles(fs)}>
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         {onBack && (
           <button
@@ -351,6 +356,7 @@ export default function ChannelView({
 
       <div className="shrink-0 border-t p-2">
         <MarkdownEditor
+          ref={composer}
           value={draft}
           onChange={setDraft}
           onUpload={upload}
@@ -380,7 +386,7 @@ export default function ChannelView({
       </div>
       </>
       )}
-    </div>
+    </FileDropZone>
   );
 }
 
