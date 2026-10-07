@@ -41,5 +41,6 @@
   "deployment": {
     "by": "por {{who}}",
     "fromRun": "de la ejecución #{{n}}"
-  }
+  },
+  "earlierAttempts": "Intentos anteriores:"
 }

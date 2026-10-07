@@ -122,3 +122,23 @@ describe("la actividad", () => {
     expect(String(get.mock.calls[1][0])).toContain("beforeId=d-1");
   });
 });
+
+// Tres intentos del mismo run, una fila: la del último, con los anteriores
+// debajo. Y un enlace al intento 2 resalta esa fila. Mutantes: tres filas;
+// no enseñar los anteriores; no resaltar por un intento antiguo.
+describe("los intentos de un run", () => {
+  it("salen en una fila, con los anteriores debajo", async () => {
+    feed([
+      { kind: "run", at: "2026-10-07T20:53:50Z", run: run({ id: "a3", runId: 77, runAttempt: 3, conclusion: "success" }) },
+      { kind: "run", at: "2026-10-07T20:48:07Z", run: run({ id: "a2", runId: 77, runAttempt: 2, conclusion: "failure" }) },
+      { kind: "run", at: "2026-10-07T20:38:47Z", run: run({ id: "a1", runId: 77, runAttempt: 1, conclusion: "success" }) },
+    ]);
+    const { container } = mount("/activity?run=a2");
+    await screen.findByText(/(intento 3|attempt 3)/i);
+    expect(container.querySelectorAll("ul > li").length).toBe(1);
+    const anteriores = container.querySelector("[data-earlier-attempts]");
+    expect(anteriores?.textContent).toMatch(/(intento 1|attempt 1)/i);
+    expect(anteriores?.textContent).toMatch(/(intento 2|attempt 2)/i);
+    expect(container.querySelector("li.ring-2")).toBeTruthy();
+  });
+});
