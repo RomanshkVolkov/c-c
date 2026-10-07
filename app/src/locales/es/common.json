@@ -519,7 +519,7 @@
   },
   "scopes": {
     "tasksWrite": "Crear tareas y comentarios",
-    "tasksWriteDetail": "Sólo añade: puede agregar, nunca reemplazar lo que escribió alguien. También construye el árbol —espacios, carpetas y listas— para poder montar un proyecto nuevo de una vez.",
+    "tasksWriteDetail": "Sólo añade: puede agregar, nunca reemplazar lo que escribió alguien. También construye el árbol —espacios, carpetas y listas— para poder montar un proyecto nuevo de una vez, y adjunta ficheros a una tarea (una captura, un log, un PDF).",
     "tasksManage": "Cambiar tareas que ya existen",
     "tasksManageDetail": "Moverlas entre columnas, y sobrescribir título, descripción o prioridad. También corrige o retira comentarios que escribiste tú — nunca los de otro. Hace falta para marcar trabajo como hecho.",
     "notesWrite": "Crear páginas en Notas",

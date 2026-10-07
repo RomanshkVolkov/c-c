@@ -519,7 +519,7 @@
   },
   "scopes": {
     "tasksWrite": "Create tasks and comments",
-    "tasksWriteDetail": "Append-only: it can add, never replace what someone wrote. Also builds the tree — spaces, folders and lists — so a new project can be set up in one go.",
+    "tasksWriteDetail": "Append-only: it can add, never replace what someone wrote. Also builds the tree — spaces, folders and lists — so a new project can be set up in one go, and attaches files to a task (a screenshot, a log, a PDF).",
     "tasksManage": "Change existing tasks",
     "tasksManageDetail": "Move them between columns, and overwrite title, description or priority. Also corrects or withdraws comments you wrote — never anyone else's. Needed to mark work as done.",
     "notesWrite": "Create pages in Notes",

@@ -1186,16 +1186,32 @@ fn tool_defs() -> Value {
         },
         {
             "name": "add_note_attachment",
-            "description": "Attach a file to a note by giving its URL: cac downloads it and stores its own copy, then returns the markdown to paste into the body. Use it when migrating content in, so images stop being served by wherever they came from. Needs `notes:write`.",
+            "description": "Attach a file to a note, from a URL (cac downloads it and keeps its own copy) or from a local `path`. Returns the markdown to paste into the body: an image for an image, a link for anything else (a PDF shows as a card in the app). Use it when migrating content in, so images stop being served by wherever they came from. A local path only accepts files that get attached — images, PDF, office documents, audio, video, zip, csv — never keys, .env, .json or text. Needs `notes:write`.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "id": { "type": "string", "description": "Note id, from list_notes." },
-                    "url": { "type": "string", "description": "Where to fetch the file from." },
-                    "fileName": { "type": "string", "description": "Name to store it under. Defaults to the last path segment of the URL." },
-                    "dryRun": { "type": "boolean", "description": "Validate the note and the token's permission without downloading or writing." }
+                    "url": { "type": "string", "description": "Where to fetch the file from. Give this or `path`, not both." },
+                    "path": { "type": "string", "description": "A file on this machine, absolute. Give this or `url`, not both." },
+                    "fileName": { "type": "string", "description": "Name to store it under. Defaults to the file's own name." },
+                    "dryRun": { "type": "boolean", "description": "Validate the note and the token's permission without reading or writing." }
                 },
-                "required": ["id", "url"]
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "add_task_attachment",
+            "description": "Attach a file to a task — a screenshot, a log, a PDF — from a local `path` or a URL. It lands in the task's attachments, and the answer carries the markdown to show it inline: paste it into the description (update_task) or into a comment (add_task_comment). An image comes back as an image, anything else as a link (a PDF shows as a card in the app). Attachments of a task are never shown to a client. A local path only accepts files that get attached — images, PDF, office documents, audio, video, zip, csv — never keys, .env, .json or text. Needs `tasks:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Task id (from get_board, get_task or search)." },
+                    "path": { "type": "string", "description": "A file on this machine, absolute. Give this or `url`, not both." },
+                    "url": { "type": "string", "description": "Where to fetch the file from. Give this or `path`, not both." },
+                    "fileName": { "type": "string", "description": "Name to store it under. Defaults to the file's own name." },
+                    "dryRun": { "type": "boolean", "description": "Validate the task and the token's permission without reading or writing." }
+                },
+                "required": ["id"]
             }
         },
         {
@@ -1635,6 +1651,74 @@ fn tool_defs() -> Value {
     ])
 }
 
+/// De dónde viene un fichero que se adjunta: una URL o una ruta del disco.
+#[derive(Debug, PartialEq)]
+enum AttachmentSource {
+    Url(String),
+    Path(std::path::PathBuf),
+}
+
+/// `url` o `path`, exactamente uno.
+fn attachment_source(args: &Value) -> Result<AttachmentSource, String> {
+    match (arg_str(args, "url"), arg_str(args, "path")) {
+        (Some(_), Some(_)) => Err("give `url` or `path`, not both".into()),
+        (Some(url), None) => Ok(AttachmentSource::Url(url)),
+        (None, Some(path)) => {
+            let p = std::path::PathBuf::from(path);
+            if !p.is_absolute() {
+                return Err("`path` has to be absolute".into());
+            }
+            Ok(AttachmentSource::Path(p))
+        }
+        (None, None) => Err("give `url` or `path`".into()),
+    }
+}
+
+/// Los bytes, el tipo y el nombre por defecto. Una ruta pasa por las mismas
+/// guardas que soltar un fichero en la app (`dropped::read_path`).
+fn load_source(source: &AttachmentSource) -> Result<(Vec<u8>, String, String), String> {
+    match source {
+        AttachmentSource::Url(url) => {
+            let (bytes, ctype) = fetch_bytes(url)?;
+            let name = url
+                .rsplit('/')
+                .next()
+                .map(|s| s.split(['?', '#']).next().unwrap_or(s).to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "attachment".to_string());
+            Ok((bytes, ctype, name))
+        }
+        AttachmentSource::Path(path) => {
+            let bytes = crate::dropped::read_path(path).map_err(|e| match e.as_str() {
+                "type-not-allowed" => format!(
+                    "{} can't be attached: only images, PDF, office documents, audio, video, zip or csv",
+                    path.display()
+                ),
+                "too-large" => format!("{} is bigger than the 30 MB an attachment can be", path.display()),
+                "not-found" => format!("{} doesn't exist", path.display()),
+                other => format!("{}: {other}", path.display()),
+            })?;
+            let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "attachment".to_string());
+            Ok((bytes, crate::dropped::mime_of(&real).to_string(), name))
+        }
+    }
+}
+
+/// El markdown de un adjunto: una imagen se enseña, lo demás se enlaza (un PDF
+/// se ve como tarjeta en la app). Antes las notas devolvían siempre `![…]`,
+/// también para un PDF, que salía como una imagen rota.
+fn attachment_markdown(file_name: &str, content_type: &str, url: &str) -> String {
+    if content_type.to_ascii_lowercase().starts_with("image/") {
+        format!("![{file_name}]({url})")
+    } else {
+        format!("[{file_name}]({url})")
+    }
+}
+
 fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "list_projects" => {
@@ -1815,28 +1899,28 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             }))
         }
 
-        "add_note_attachment" => {
+        "add_note_attachment" | "add_task_attachment" => {
             let id = arg_str(args, "id").ok_or("id is required")?;
-            let url = arg_str(args, "url").ok_or("url is required")?;
+            let (owner, scope) = if name == "add_note_attachment" {
+                ("notes", "notes:write")
+            } else {
+                ("tasks", "tasks:write")
+            };
+            // Antes que el dryRun: «url y path a la vez» es un error del
+            // argumento, y un dryRun que lo dejara pasar mentiría.
+            let source = attachment_source(args)?;
             if arg_bool(args, "dryRun") {
-                let target = api_get(cfg, &format!("/api/v1/notes/{}", urlencode(&id)));
-                return dry_run(cfg, "notes:write", target);
+                let target = api_get(cfg, &format!("/api/v1/{owner}/{}", urlencode(&id)));
+                return dry_run(cfg, scope, target);
             }
-            let name = arg_str(args, "fileName").unwrap_or_else(|| {
-                url.rsplit('/')
-                    .next()
-                    .map(|s| s.split(['?', '#']).next().unwrap_or(s).to_string())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "attachment".to_string())
-            });
-            // Fetched here rather than handed over as base64: a 30 MB image
-            // through the MCP protocol would be encoded, buffered and logged as
-            // one enormous tool argument.
-            let (bytes, ctype) = fetch_bytes(&url)?;
+            // Leído aquí y no entregado como base64: 30 MB por el protocolo
+            // MCP serían un argumento enorme, codificado, en memoria y en logs.
+            let (bytes, ctype, default_name) = load_source(&source)?;
+            let file_name = arg_str(args, "fileName").unwrap_or(default_name);
             let att = api_upload(
                 cfg,
-                &format!("/api/v1/notes/{}/attachments", urlencode(&id)),
-                &name,
+                &format!("/api/v1/{owner}/{}/attachments", urlencode(&id)),
+                &file_name,
                 &ctype,
                 bytes,
             )?;
@@ -1845,9 +1929,9 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "id": att.get("id"),
                 "fileName": att.get("fileName"),
                 "bytes": att.get("bytes"),
-                // Ready to paste: the caller shouldn't have to know how cac
-                // spells an attachment reference.
-                "markdown": format!("![{}]({})", name, rel),
+                // Listo para pegar: quien llama no tiene por qué saber cómo
+                // escribe cac la referencia a un adjunto.
+                "markdown": attachment_markdown(&file_name, &ctype, rel),
             }))
         }
 
@@ -3218,6 +3302,64 @@ mod tests {
     /// Lo que se anuncia es lo que se puede mandar. Si la herramienta no lo
     /// anuncia, un agente nunca lo manda; si lo anuncia y no lo reenvía, es la
     /// cicatriz. Esto cubre la primera mitad.
+    // ── Adjuntar desde el MCP (7-oct-2026) ──────────────────────────────────
+
+    /// `url` o `path`, uno y sólo uno, y la ruta absoluta. Mutantes: aceptar
+    /// los dos; aceptar ninguno; aceptar una ruta relativa.
+    #[test]
+    fn an_attachment_comes_from_a_url_or_a_path() {
+        assert_eq!(
+            attachment_source(&json!({ "url": "https://x/a.png" })),
+            Ok(AttachmentSource::Url("https://x/a.png".into()))
+        );
+        assert_eq!(
+            attachment_source(&json!({ "path": "/tmp/a.png" })),
+            Ok(AttachmentSource::Path("/tmp/a.png".into()))
+        );
+        assert!(attachment_source(&json!({ "url": "https://x/a.png", "path": "/tmp/a.png" })).is_err());
+        assert!(attachment_source(&json!({})).is_err());
+        assert!(attachment_source(&json!({ "path": "capturas/a.png" })).is_err());
+    }
+
+    /// Una imagen se enseña; lo demás se enlaza. Las notas devolvían siempre
+    /// `![…]`, y un PDF salía como imagen rota. Mutante: siempre imagen.
+    #[test]
+    fn an_image_is_shown_and_anything_else_is_linked() {
+        assert_eq!(attachment_markdown("a.png", "image/png", "/r"), "![a.png](/r)");
+        assert_eq!(attachment_markdown("a.png", "IMAGE/PNG", "/r"), "![a.png](/r)");
+        assert_eq!(attachment_markdown("b.pdf", "application/pdf", "/r"), "[b.pdf](/r)");
+    }
+
+    /// Una ruta pasa por las guardas de soltar un fichero: lo que no se
+    /// adjunta (una llave, un .env) se rechaza antes de subir nada, con un
+    /// mensaje que dice por qué; lo que sí, sale con su nombre y su tipo.
+    /// Mutantes: leer la ruta sin las guardas; perder el tipo.
+    #[test]
+    fn a_local_path_only_reads_what_gets_attached() {
+        let dir = std::env::temp_dir().join(format!("cac-mcp-att-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let env = dir.join(".env");
+        std::fs::write(&env, b"SECRET=1").unwrap();
+        let err = load_source(&AttachmentSource::Path(env)).unwrap_err();
+        assert!(err.contains("can't be attached"), "{err}");
+
+        let pdf = dir.join("informe.pdf");
+        std::fs::write(&pdf, b"%PDF-1.7").unwrap();
+        let (bytes, ctype, name) = load_source(&AttachmentSource::Path(pdf)).unwrap();
+        assert_eq!((bytes.as_slice(), ctype.as_str(), name.as_str()), (&b"%PDF-1.7"[..], "application/pdf", "informe.pdf"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// La herramienta existe, y las dos aceptan `path`. Mutante: no anunciarla.
+    #[test]
+    fn tasks_and_notes_take_a_file_from_disk() {
+        let defs = tool_defs();
+        for name in ["add_task_attachment", "add_note_attachment"] {
+            let props = &tool(&defs, name)["inputSchema"]["properties"];
+            assert!(props.get("path").is_some() && props.get("url").is_some(), "{name}");
+        }
+    }
+
     #[test]
     fn creating_and_editing_offer_tags_assignees_and_due_date() {
         let defs = tool_defs();

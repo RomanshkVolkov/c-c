@@ -44,7 +44,15 @@ pub fn allowed(path: &Path) -> bool {
 /// Lee el fichero de una dirección `file://`, si es de lo que se adjunta.
 pub fn read(uri: &str) -> Result<Vec<u8>, String> {
     let path = path_of(uri).ok_or("not-a-file-uri")?;
-    let real = std::fs::canonicalize(&path).map_err(|_| "not-found".to_string())?;
+    read_path(&path)
+}
+
+/// Lee un fichero del disco, si es de lo que se adjunta. La comparten soltar
+/// un fichero en la app y adjuntarlo desde el MCP (`add_task_attachment` con
+/// `path`): un agente tampoco sube `~/.ssh/id_rsa` ni un `.env`, ni por error
+/// ni por una instrucción colada en lo que leyó.
+pub fn read_path(path: &Path) -> Result<Vec<u8>, String> {
+    let real = std::fs::canonicalize(path).map_err(|_| "not-found".to_string())?;
     if !allowed(&real) {
         return Err("type-not-allowed".into());
     }
@@ -56,6 +64,34 @@ pub fn read(uri: &str) -> Result<Vec<u8>, String> {
         return Err("too-large".into());
     }
     std::fs::read(&real).map_err(|e| e.to_string())
+}
+
+/// El tipo de un fichero que se adjunta, por su extensión.
+pub fn mime_of(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("avif") => "image/avif",
+        Some("heic") => "image/heic",
+        Some("pdf") => "application/pdf",
+        Some("csv") => "text/csv",
+        Some("zip") => "application/zip",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("m4a") => "audio/mp4",
+        Some("ogg") => "audio/ogg",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mov") => "video/quicktime",
+        _ => "application/octet-stream",
+    }
 }
 
 #[cfg(test)]

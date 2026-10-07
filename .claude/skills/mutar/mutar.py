@@ -91,6 +91,13 @@ class Backup:
     def restore(self) -> None:
         for original, copy in self.copies.items():
             shutil.copy2(copy, original)
+            # Con la hora de ahora, no la que conserva copy2: Cargo decide si
+            # recompila por la fecha, y la original es anterior al binario que
+            # se compiló con el mutante. Sin esto, la siguiente prueba corría
+            # el mutante ya restaurado y salía roja por un código que no
+            # existía (7-oct-2026). Go y vitest miran el contenido y no lo
+            # notaban.
+            os.utime(original, None)
 
     def discard(self) -> None:
         shutil.rmtree(self.dir, ignore_errors=True)
