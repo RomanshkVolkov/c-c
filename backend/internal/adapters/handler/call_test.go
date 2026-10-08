@@ -88,10 +88,11 @@ func TestAnOutsiderGets404OnAnotherOrgsInvite(t *testing.T) {
 	outsider := member("org-2", domain.OrgRoleAdmin)
 	for name, call := range map[string]func(http.ResponseWriter, *http.Request){
 		"get": h.Get, "token": h.Token, "revoke": h.Revoke, "kick": h.Kick,
+		"waiting": h.Waiting, "admit": h.Admit, "reject": h.Reject, "ring": h.Ring,
 	} {
 		rec := httptest.NewRecorder()
 		call(rec, callReq(http.MethodPost, "/x", nil, outsider,
-			map[string]string{"id": inv.ID, "identity": "guest:x"}))
+			map[string]string{"id": inv.ID, "identity": "guest:x", "guestId": "g"}))
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("%s de una reunión ajena → %d, se esperaba 404", name, rec.Code)
 		}
@@ -129,6 +130,23 @@ func TestAViewerCannotCreateOrKick(t *testing.T) {
 		map[string]string{"id": inv.ID, "identity": "guest:x"}))
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("un lector echa a un invitado → %d", rec.Code)
+	}
+}
+
+// Quien sólo lee no decide quién entra.
+//
+// El mutante que mata: quitar `needWrite` de `Admit`. Un lector de la
+// organización podría abrirle la puerta a cualquiera.
+func TestAViewerCannotLetAnyoneIn(t *testing.T) {
+	h, _ := callTestHandler(t)
+	_, inv := createInvite(t, h, member("org-1", domain.OrgRoleMember), "")
+	for name, call := range map[string]func(http.ResponseWriter, *http.Request){"admit": h.Admit, "reject": h.Reject} {
+		rec := httptest.NewRecorder()
+		call(rec, callReq(http.MethodPost, "/x", nil, member("org-1", domain.OrgRoleViewer),
+			map[string]string{"id": inv.ID, "guestId": "g"}))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("un lector puede %s → %d", name, rec.Code)
+		}
 	}
 }
 

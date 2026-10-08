@@ -55,21 +55,48 @@ func (i CallInvite) Live(now time.Time) bool {
 	return i.RevokedAt == nil && now.Before(i.ExpiresAt)
 }
 
-// CallGuest es una persona de fuera que entró con un enlace.
+// CallGuest es una persona de fuera que pidió entrar con un enlace.
 //
-// Existe para poder echarla **y que no vuelva con el mismo pase**: sacarla de
-// la sala sólo la desconecta, y su página volvería a pedir entrada al momento.
-// La fila es lo que el servidor mira al acuñarle otra entrada.
+// **El enlace no abre la sala: abre la sala de espera.** Quien lo tenga puede
+// pedir entrar, y entra cuando un miembro le deja (`Status`). Es lo que hace
+// que un enlace reenviado no meta a nadie en la reunión sin que los de dentro
+// lo decidan — se pidió así: «no queremos que alguien entre cuando no deba,
+// sólo cuando nosotros queramos».
+//
+// La fila es también lo que permite echar a alguien **y que no vuelva con el
+// mismo pase**: sacarle de la sala sólo le desconecta, y su página volvería a
+// pedir entrada al momento.
 type CallGuest struct {
 	BaseModel
 	InviteID string `gorm:"type:varchar(36);index;not null" json:"inviteId"`
 	// Name es el que escribió al entrar. No es de nadie ni es único: sólo sirve
 	// para pintarlo.
-	Name       string     `gorm:"type:varchar(60);not null" json:"name"`
+	Name string `gorm:"type:varchar(60);not null" json:"name"`
+	// Status: `waiting` hasta que un miembro decide, `admitted` o `rejected`.
+	// Sin `default` en la etiqueta a propósito: GORM se salta el cero al
+	// insertar, y una fila nacida sin estado no puede contar como admitida.
+	Status    GuestStatus `gorm:"type:varchar(12);index;not null" json:"status"`
+	DecidedBy string      `gorm:"type:varchar(36)" json:"decidedBy,omitempty"`
+	DecidedAt *time.Time  `json:"decidedAt,omitempty"`
+
 	KickedAt   *time.Time `json:"kickedAt,omitempty"`
 	KickedBy   string     `gorm:"type:varchar(36)" json:"kickedBy,omitempty"`
 	LastJoinAt time.Time  `json:"lastJoinAt"`
 }
+
+// GuestStatus: dónde está alguien que pidió entrar.
+type GuestStatus string
+
+const (
+	GuestWaiting  GuestStatus = "waiting"
+	GuestAdmitted GuestStatus = "admitted"
+	GuestRejected GuestStatus = "rejected"
+)
+
+// MaxWaitingGuests: cuántos pueden esperar a la vez en una reunión. Sin tope,
+// un enlace filtrado serviría para llenar la lista de los de dentro de gente
+// pidiendo entrar.
+const MaxWaitingGuests = 20
 
 func (CallGuest) TableName() string { return "call_guests" }
 
@@ -171,15 +198,43 @@ type GuestJoinRequest struct {
 	Pass string `json:"pass"`
 }
 
-// GuestJoinResponse: todo lo que la página del invitado necesita para entrar.
+// GuestJoinResponse: lo que la página del invitado necesita, esperando o ya
+// dentro.
+//
+// Mientras `Status` es `waiting` **no lleva token**: lo único que tiene el
+// invitado es su pase, con el que vuelve a preguntar. La entrada a la sala se
+// acuña sólo al estar admitido.
 type GuestJoinResponse struct {
-	URL      string `json:"url"`
-	Token    string `json:"token"`
-	Room     string `json:"room"`
-	Identity string `json:"identity"`
-	Name     string `json:"name"`
-	Pass     string `json:"pass"`
-	Title    string `json:"title"`
+	Status   GuestStatus `json:"status"`
+	URL      string      `json:"url,omitempty"`
+	Token    string      `json:"token,omitempty"`
+	Room     string      `json:"room,omitempty"`
+	Identity string      `json:"identity,omitempty"`
+	Name     string      `json:"name"`
+	Pass     string      `json:"pass"`
+	Title    string      `json:"title"`
+}
+
+// GuestStatusRequest: el invitado que espera vuelve a preguntar con su pase.
+type GuestStatusRequest struct {
+	Token string `json:"token" validate:"required"`
+	Pass  string `json:"pass" validate:"required"`
+}
+
+// WaitingGuest: alguien en la sala de espera, para los de dentro.
+type WaitingGuest struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// CallKnock es el aviso de que alguien espera, o de que ya se decidió.
+type CallKnock struct {
+	InviteID  string       `json:"inviteId"`
+	Title     string       `json:"title"`
+	CreatedBy string       `json:"createdBy"`
+	Guest     WaitingGuest `json:"guest"`
+	Status    GuestStatus  `json:"status"`
 }
 
 // MeetTokenResponse: la entrada de un miembro a una reunión.

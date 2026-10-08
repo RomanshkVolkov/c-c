@@ -63,7 +63,7 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitMeetingRoutes(db, r, hub)
 	recordings := InitRecordingRoutes(db, r, hub)
 	// Llamar con gente de fuera (W3): graba con el mismo servicio.
-	InitCallRoutes(db, r, recordings)
+	InitCallRoutes(db, r, hub, recordings)
 	InitGitHubRoutesWith(r, gh)
 	InitActivityRoutes(db, r)
 

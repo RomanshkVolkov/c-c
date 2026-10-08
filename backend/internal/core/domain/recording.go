@@ -194,8 +194,8 @@ type RecordingTrack struct {
 	// token. Para un miembro sobra —su id ya lo dice—, pero un invitado no está
 	// en ningún directorio: sin esto, su pista sería un `guest:…` para siempre.
 	ParticipantName string `gorm:"type:varchar(80)" json:"participantName,omitempty"`
-	Source              string `gorm:"type:varchar(30);not null"             json:"source"`
-	MimeType            string `gorm:"type:varchar(40)"                      json:"mimeType,omitempty"`
+	Source          string `gorm:"type:varchar(30);not null"             json:"source"`
+	MimeType        string `gorm:"type:varchar(40)"                      json:"mimeType,omitempty"`
 
 	EgressID string `gorm:"type:varchar(64);index" json:"-"`
 	Status   string `gorm:"type:varchar(20);not null" json:"status"`

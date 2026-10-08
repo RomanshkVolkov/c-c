@@ -41,6 +41,29 @@ func newInvite(t *testing.T, svc *CallInviteService, spaceID *string, maxGuests 
 
 func strp(s string) *string { return &s }
 
+// admitted: alguien pide entrar y un miembro le deja. Es el único camino por
+// el que un invitado recibe la entrada a la sala.
+func admitted(t *testing.T, svc *CallInviteService, inv *domain.CallInvite, name string) *domain.GuestJoinResponse {
+	t.Helper()
+	link := repository.SignCallInviteLink(inv.ID)
+	asked, err := svc.JoinAsGuest(link, name, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, ok := repository.VerifyGuestPass(inv.ID, asked.Pass, svc.now())
+	if !ok {
+		t.Fatal("el pase de quien espera no vale")
+	}
+	if err := svc.Admit(inv, id, "u-host"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.GuestStatus(link, asked.Pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
 // ─── El token del invitado ───────────────────────────────────────────────────
 
 // El token de un invitado sólo nombra la sala de su reunión.
@@ -52,10 +75,7 @@ func TestTheGuestTokenNamesOnlyTheMeetRoom(t *testing.T) {
 	svc, _, _ := callsUnderTest(t, &fakeSFU{})
 	inv := newInvite(t, svc, strp("esp-1"), 0)
 
-	res, err := svc.JoinAsGuest(repository.SignCallInviteLink(inv.ID), "Ana", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	res := admitted(t, svc, inv, "Ana")
 	g := verificar(t, res.Token)
 	if g.Video.Room != domain.MeetRoomFor(inv.ID) {
 		t.Fatalf("el invitado entra a %q, no a su reunión", g.Video.Room)
@@ -75,10 +95,7 @@ func TestTheGuestTokenCannotAdministerSendDataOrRenameItself(t *testing.T) {
 	svc, _, _ := callsUnderTest(t, &fakeSFU{})
 	inv := newInvite(t, svc, nil, 0)
 
-	res, err := svc.JoinAsGuest(repository.SignCallInviteLink(inv.ID), "Ana", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	res := admitted(t, svc, inv, "Ana")
 	v := verificar(t, res.Token).Video
 	if v.RoomAdmin || v.RoomCreate || v.RoomList || v.RoomRecord {
 		t.Fatalf("el invitado tiene permisos de administración: %+v", v)
@@ -114,10 +131,7 @@ func TestTheServerMintsTheGuestIdentity(t *testing.T) {
 	inv := newInvite(t, svc, nil, 0)
 
 	member := "6f1c2c1e-0000-4000-8000-000000000001"
-	res, err := svc.JoinAsGuest(repository.SignCallInviteLink(inv.ID), member, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	res := admitted(t, svc, inv, member)
 	g := verificar(t, res.Token)
 	if !domain.IsGuestIdentity(g.Identity) || g.Identity != res.Identity {
 		t.Fatalf("identidad %q: no es la de un invitado acuñada aquí", g.Identity)
@@ -175,10 +189,7 @@ func TestAKickedGuestCannotComeBackWithTheirPass(t *testing.T) {
 	inv := newInvite(t, svc, nil, 0)
 	link := repository.SignCallInviteLink(inv.ID)
 
-	first, err := svc.JoinAsGuest(link, "Ana", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := admitted(t, svc, inv, "Ana")
 	// Con su pase vuelve la misma persona.
 	again, err := svc.JoinAsGuest(link, "", first.Pass)
 	if err != nil || again.Identity != first.Identity || again.Name != "Ana" {
@@ -240,21 +251,173 @@ func TestRevokingRemovesTheGuestsInside(t *testing.T) {
 
 // Un enlace para dos deja entrar a dos.
 //
-// El mutante que mata: no contar. Se cuentan las filas y no a quién está
-// dentro ahora: un enlace para dos reenviado a veinte no deja entrar a veinte
-// por turnos.
+// El cupo se cuenta **al dejar entrar**, sobre los admitidos, y no al pedir:
+// si contara las peticiones, cualquiera con el enlace lo agotaría sin que
+// nadie le dejara pasar. El mutante que mata: no contar (o contar con `>`).
 func TestAFullInviteLetsNoMoreIn(t *testing.T) {
 	svc, _, _ := callsUnderTest(t, &fakeSFU{})
 	inv := newInvite(t, svc, nil, 2)
+	admitted(t, svc, inv, "Ana")
+	admitted(t, svc, inv, "Bea")
+
+	link := repository.SignCallInviteLink(inv.ID)
+	carla, err := svc.JoinAsGuest(link, "Carla", "")
+	if err != nil {
+		t.Fatalf("pedir entrar no gasta cupo: %v", err)
+	}
+	id, _ := repository.VerifyGuestPass(inv.ID, carla.Pass, svc.now())
+	if err := svc.Admit(inv, id, "u-host"); !errors.Is(err, repository.ErrCallInviteFull) {
+		t.Fatalf("entra una tercera persona en un enlace para dos: %v", err)
+	}
+}
+
+// ─── La sala de espera ───────────────────────────────────────────────────────
+
+// Pedir entrar no es entrar: hasta que un miembro decide, no hay token.
+//
+// Es la regla entera de la sala de espera («no queremos que alguien entre
+// cuando no deba, sólo cuando nosotros queramos»). El mutante que mata:
+// acuñar la entrada al pedir, o al preguntar mientras se espera.
+func TestKnockingDoesNotLetYouIn(t *testing.T) {
+	svc, _, _ := callsUnderTest(t, &fakeSFU{})
+	inv := newInvite(t, svc, nil, 0)
 	link := repository.SignCallInviteLink(inv.ID)
 
-	for _, n := range []string{"Ana", "Bea"} {
-		if _, err := svc.JoinAsGuest(link, n, ""); err != nil {
+	asked, err := svc.JoinAsGuest(link, "Ana", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked.Status != domain.GuestWaiting || asked.Token != "" || asked.URL != "" {
+		t.Fatalf("pedir entrar dio entrada: %+v", asked)
+	}
+	again, err := svc.GuestStatus(link, asked.Pass)
+	if err != nil || again.Token != "" || again.Status != domain.GuestWaiting {
+		t.Fatalf("preguntar mientras se espera dio entrada: %+v %v", again, err)
+	}
+	// Y volver con el pase a la puerta tampoco cuela.
+	back, err := svc.JoinAsGuest(link, "Ana", asked.Pass)
+	if err != nil || back.Token != "" {
+		t.Fatalf("volver con el pase dio entrada sin que nadie dejara: %+v %v", back, err)
+	}
+	waiting, _ := svc.Waiting(inv)
+	if len(waiting) != 1 || waiting[0].Name != "Ana" {
+		t.Fatalf("los de dentro no ven a quien espera: %+v", waiting)
+	}
+}
+
+// A quien se rechaza no vuelve a pedir con su pase.
+//
+// El mutante que mata: no mirar `rejected`. Rechazar sería un «todavía no».
+func TestARejectedGuestCannotKnockAgain(t *testing.T) {
+	svc, _, _ := callsUnderTest(t, &fakeSFU{})
+	inv := newInvite(t, svc, nil, 0)
+	link := repository.SignCallInviteLink(inv.ID)
+	asked, _ := svc.JoinAsGuest(link, "Ana", "")
+	id, _ := repository.VerifyGuestPass(inv.ID, asked.Pass, svc.now())
+
+	if err := svc.Reject(inv, id, "u-host"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GuestStatus(link, asked.Pass); !errors.Is(err, ErrGuestRejected) {
+		t.Fatalf("quien fue rechazado sigue esperando: %v", err)
+	}
+	if _, err := svc.JoinAsGuest(link, "Ana", asked.Pass); !errors.Is(err, ErrGuestRejected) {
+		t.Fatalf("quien fue rechazado vuelve a pedir con su pase: %v", err)
+	}
+}
+
+// Dos miembros decidiendo a la vez: gana el primero.
+//
+// El mutante que mata: decidir sin mirar que siga esperando. Entonces un
+// «rechazar» que llega tarde echaría a alguien a quien otro ya dejó pasar.
+func TestTheFirstDecisionWins(t *testing.T) {
+	svc, _, _ := callsUnderTest(t, &fakeSFU{})
+	inv := newInvite(t, svc, nil, 0)
+	asked, _ := svc.JoinAsGuest(repository.SignCallInviteLink(inv.ID), "Ana", "")
+	id, _ := repository.VerifyGuestPass(inv.ID, asked.Pass, svc.now())
+
+	if err := svc.Admit(inv, id, "u-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Reject(inv, id, "u-2"); !errors.Is(err, repository.ErrGuestNotWaiting) {
+		t.Fatalf("un rechazo tardío pisa la admisión: %v", err)
+	}
+	res, err := svc.GuestStatus(repository.SignCallInviteLink(inv.ID), asked.Pass)
+	if err != nil || res.Token == "" {
+		t.Fatalf("la admisión no se mantuvo: %+v %v", res, err)
+	}
+}
+
+// La sala de espera tiene tope.
+//
+// El mutante que mata: no contar. Un enlace filtrado serviría para llenar la
+// pantalla de los de dentro de gente pidiendo entrar.
+func TestTheWaitingRoomHasACap(t *testing.T) {
+	svc, _, _ := callsUnderTest(t, &fakeSFU{})
+	inv := newInvite(t, svc, nil, 0)
+	link := repository.SignCallInviteLink(inv.ID)
+	for i := 0; i < domain.MaxWaitingGuests; i++ {
+		if _, err := svc.JoinAsGuest(link, "Alguien", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := svc.JoinAsGuest(link, "Carla", ""); !errors.Is(err, repository.ErrCallInviteFull) {
-		t.Fatalf("entra una tercera persona en un enlace para dos: %v", err)
+	if _, err := svc.JoinAsGuest(link, "Uno más", ""); !errors.Is(err, repository.ErrCallInviteFull) {
+		t.Fatalf("la sala de espera no tiene tope: %v", err)
+	}
+}
+
+// En una reunión cerrada no se deja entrar a nadie, aunque estuviera esperando.
+func TestNobodyIsAdmittedIntoAClosedCall(t *testing.T) {
+	svc, _, repo := callsUnderTest(t, &fakeSFU{})
+	inv := newInvite(t, svc, nil, 0)
+	asked, _ := svc.JoinAsGuest(repository.SignCallInviteLink(inv.ID), "Ana", "")
+	id, _ := repository.VerifyGuestPass(inv.ID, asked.Pass, svc.now())
+	if err := svc.Revoke(context.Background(), inv); err != nil {
+		t.Fatal(err)
+	}
+	closed, _ := repo.FindByID(inv.ID)
+	if err := svc.Admit(closed, id, "u-host"); !errors.Is(err, ErrInviteRevoked) {
+		t.Fatalf("se deja entrar a una reunión cerrada: %v", err)
+	}
+}
+
+// ─── El timbre, a una reunión ────────────────────────────────────────────────
+
+// Sólo se llama a gente de la organización, y a una reunión viva.
+//
+// El mutante que mata: quitar la guarda de pertenencia. El timbre sería un
+// pulsador para hacer sonar el escritorio de cualquiera cuyo id se conozca.
+func TestRingingIntoAMeetOnlyReachesMembers(t *testing.T) {
+	svc, _, repo := callsUnderTest(t, &fakeSFU{})
+	db := repo.DB()
+	if err := db.AutoMigrate(&domain.OrgMembership{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.OrgMembership{OrgID: "org-1", UserID: "u-bea", Role: domain.OrgRoleMember}).Error; err != nil {
+		t.Fatal(err)
+	}
+	inv := newInvite(t, svc, strp("esp-1"), 0)
+	de := domain.VoiceCaller{ID: "u-host", Name: "Ana"}
+
+	ring, err := svc.Ring(inv, de, "u-bea")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ring.InviteID == nil || *ring.InviteID != inv.ID || ring.Title != inv.Title {
+		t.Fatalf("el timbre no dice a qué reunión: %+v", ring)
+	}
+	if _, err := svc.Ring(inv, de, "u-ajeno"); !errors.Is(err, ErrRingOutsider) {
+		t.Fatalf("se llama a alguien de fuera de la organización: %v", err)
+	}
+	if _, err := svc.Ring(inv, de, "u-host"); !errors.Is(err, ErrRingOutsider) {
+		t.Fatalf("uno se llama a sí mismo: %v", err)
+	}
+	if err := svc.Revoke(context.Background(), inv); err != nil {
+		t.Fatal(err)
+	}
+	closed, _ := repo.FindByID(inv.ID)
+	if _, err := svc.Ring(closed, de, "u-bea"); !errors.Is(err, ErrInviteRevoked) {
+		t.Fatalf("se llama a una reunión cerrada: %v", err)
 	}
 }
 
@@ -285,8 +448,8 @@ func TestCleanGuestName(t *testing.T) {
 	cases := map[string]string{
 		"  Ana  López ":         "Ana López",
 		"Ana\nLópez":            "Ana López",
-		"Ana‮López":        "AnaLópez",
-		"​":                "",
+		"Ana‮López":             "AnaLópez",
+		"​":                     "",
 		strings.Repeat("a", 80): strings.Repeat("a", domain.GuestNameMax),
 	}
 	for in, want := range cases {

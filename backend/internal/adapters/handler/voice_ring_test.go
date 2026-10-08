@@ -54,13 +54,16 @@ func cancelReq(spaceID, userID string, claims *domain.ClaimsJWT) *http.Request {
 }
 
 func ringHandler(db *gorm.DB, hub *events.Hub) *taskHandler {
+	repo := repository.NewTaskRepository(db)
 	svc := service.NewTaskService(
-		repository.NewTaskRepository(db),
+		repo,
 		repository.NewReportRepository(db),
 		repository.NewOrganizationRepository(db),
 		hub,
 	)
-	return &taskHandler{svc: svc}
+	// Con el repositorio, como en producción: el timbre firma con el nombre
+	// visible de quien llama, y lo lee de ahí.
+	return &taskHandler{svc: svc, repo: repo}
 }
 
 // ana y bea son de org-1; carla es de org-2.
@@ -78,6 +81,28 @@ func espera(t *testing.T, ch <-chan events.Event) *events.Event {
 		return &e
 	case <-time.After(time.Second):
 		return nil
+	}
+}
+
+// La tarjeta del timbre dice quién llama por su nombre, no por su usuario.
+//
+// El mutante que mata: volver a `user.Username`. La tarjeta de quien recibe la
+// llamada, y la notificación del teléfono, dirían «ana».
+func TestTheRingSaysWhoCallsByTheirName(t *testing.T) {
+	db, cleanup := ringDB(t)
+	defer cleanup()
+	hub := events.NewHub()
+	h := ringHandler(db, hub)
+	deBea, _ := hub.Subscribe("u-bea", []string{"org-1"})
+
+	rec := httptest.NewRecorder()
+	h.VoiceRing(rec, ringReq("esp-1", `{"userId":"u-bea"}`, ana()))
+	e := espera(t, deBea)
+	if e == nil {
+		t.Fatalf("no sonó: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := e.Data.(*domain.VoiceRing).From.Name; got != "Ana Pérez" {
+		t.Fatalf("el timbre dice que llama %q", got)
 	}
 }
 
@@ -242,6 +267,7 @@ func ringDB(t *testing.T) (*gorm.DB, func()) {
 	if err := db.AutoMigrate(
 		&domain.Organization{}, &domain.TaskSpace{}, &domain.OrgMembership{},
 		&domain.PushSubscription{}, &domain.Notification{}, &domain.NotificationPrefs{},
+		&domain.User{},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +287,8 @@ func ringDB(t *testing.T) (*gorm.DB, func()) {
 		       ('org-1','u-bea','member',?),
 		       ('org-1','u-dani','member',?),
 		       ('org-2','u-carla','member',?)`, ahora, ahora, ahora, ahora))
+	must(db.Exec(`INSERT INTO users (id, username, name, email, password, created_at, updated_at)
+		VALUES ('u-ana','ana','Ana Pérez','ana@example.com','x',?,?)`, ahora, ahora))
 
 	return db, func() {
 		if inner, _ := db.DB(); inner != nil {

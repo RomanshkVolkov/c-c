@@ -70,7 +70,7 @@ func TestARingReachesThePhoneAndHangingUpTakesItBack(t *testing.T) {
 		t.Fatalf("%d envíos al teléfono; se esperaban el timbre y su cancelación", len(fake.envios))
 	}
 	ring, cancel := fake.envios[0], fake.envios[1]
-	if ring.msg.Kind != "voice.ring" || ring.msg.Title != "ana" || !strings.Contains(ring.msg.Link, "esp-1") {
+	if ring.msg.Kind != "voice.ring" || ring.msg.Title != "Ana Pérez" || !strings.Contains(ring.msg.Link, "esp-1") {
 		t.Errorf("el timbre no dice quién llama ni a dónde: %+v", ring.msg)
 	}
 	if !ring.opts.High || ring.opts.TTL != service.TimbreTTL || ring.opts.TTL > time.Minute {

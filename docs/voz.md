@@ -907,6 +907,52 @@ acceso con las etiquetas `call-invite` y `call-guest`
   `TestAnInviteLinkOpensOnlyItsInvite`, `TestAGuestPassIsBoundToInviteGuestAndTime`,
   `TestTheInviteKeyIsNotTheReportKey`, `TestAKickedGuestCannotComeBackWithTheirPass`.
 
+**5. El enlace no abre la sala: abre la sala de espera.** Lo pidió jose así:
+«no queremos que alguien entre cuando no deba, sólo cuando nosotros
+queramos». Y la invitación tiene que seguir funcionando **sin cuenta**, así que
+el control no puede venir de identificar a quien llega, sino de que alguien de
+dentro decida.
+
+- Quien abre el enlace escribe su nombre y queda `waiting`. La respuesta trae
+  su pase y **ningún token**.
+- Los de dentro reciben `call:knock` por el stream. Lo ven quienes están en
+  esa reunión y quien la abrió, no toda la organización. Pulsan «Dejar entrar»
+  o «Rechazar» (`needWrite`, como echar).
+- Quien espera pregunta con su pase cada 3 s (`/public/calls/status`, con un
+  límite de 1.500 por hora **por invitado**, porque el de la IP lo dejaría
+  fuera a los tres minutos). El token sólo sale cuando su fila está `admitted`.
+- Rechazado o echado, ese pase ya no vuelve ni a esperar. Si dos miembros
+  deciden a la vez, gana el primero: sólo se mueve una fila que sigue
+  esperando.
+- **El cupo (`MaxGuests`) se cuenta al admitir**, no al pedir; si no,
+  cualquiera con el enlace lo agotaría. La sala de espera tiene su propio tope
+  (20), para que un enlace filtrado no llene de peticiones la pantalla de los
+  de dentro.
+
+→ `TestKnockingDoesNotLetYouIn`, `TestARejectedGuestCannotKnockAgain`,
+`TestTheFirstDecisionWins`, `TestTheWaitingRoomHasACap`,
+`TestNobodyIsAdmittedIntoAClosedCall`, `TestAFullInviteLetsNoMoreIn`.
+
+**6. Invitar desde la llamada del canal muda la llamada.** Un invitado nunca
+entra a la sala del canal (regla 1), así que «Invitar por enlace» dentro de esa
+llamada:
+
+1. crea la reunión colgada del canal;
+2. copia el enlace;
+3. te pasa a ti a la reunión;
+4. **llama con el timbre** a los que estaban contigo para que te sigan.
+
+Para eso el timbre aprendió a llamar a una reunión (`POST
+/call-invites/{id}/ring`), con las mismas guardas que el del canal (sólo a
+gente de la organización) y una más: la reunión tiene que estar viva. El
+timbre lleva `inviteId` y aceptar lleva a `/call/:id`.
+
+→ `TestRingingIntoAMeetOnlyReachesMembers`.
+
+De paso, la lista de eventos que escucha la web no tenía `voice.ring` ni
+`voice.ring.cancel`. En el escritorio daba igual, porque Rust reenvía cada
+trama; en un navegador, ningún timbre sonaba nunca. → `llamadas-evento.test.ts`.
+
 ### Las rutas
 
 Las de los miembros van detrás del JWT y de `authorizeOrg`, y contestan 404 a
@@ -921,8 +967,9 @@ quien no es de la organización. Cuelgan de `/api/v1/call-invites`:
 Revocar es cosa de quien la abrió o de un admin, y además saca a los invitados
 que estén dentro.
 
-La puerta pública son **dos rutas y nada más**:
-`POST /api/v1/public/calls/{inspect,join}`. El token va en el cuerpo, porque una
+La puerta pública son **tres rutas y nada más**:
+`POST /api/v1/public/calls/{inspect,join,status}`. `join` y `status` sólo dan
+entrada a quien ya está admitido. El token va en el cuerpo, porque una
 URL acaba en los logs del Gateway. El límite es de 60 por hora por IP y 120 por
 invitación, en memoria y por pod, igual que el de ingest. `inspect` no devuelve
 ningún id. → `TestOnlyThePublicCallRoutesSkipAuth` (recorre el enrutado con
@@ -939,9 +986,9 @@ personas de fuera. → `TestTheVoiceNameIsTheVisibleName`.
 
 ### Lo que no cubre
 
-- **Echar no es prohibir.** Quien borra su almacenamiento vuelve con otro nombre
-  mientras el enlace viva. Lo que lo resuelve es «quitar y revocar». Una sala de
-  espera con admisión queda para más adelante.
+- **Echar no es prohibir para siempre.** Quien borra su almacenamiento puede
+  volver a pedir entrar con otro nombre, pero vuelve a la sala de espera y
+  alguien de dentro tiene que dejarle pasar otra vez.
 - **Las redes que sólo dejan salir el 443** pasan por el relé TURN (§6 bis).
   Sin él, un invitado de una red corporativa se quedaba en «conectando».
 

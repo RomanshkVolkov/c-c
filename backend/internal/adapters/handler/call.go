@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -25,14 +27,27 @@ type CallHandler interface {
 	Revoke(http.ResponseWriter, *http.Request)
 	Token(http.ResponseWriter, *http.Request)
 	Kick(http.ResponseWriter, *http.Request)
+	Ring(http.ResponseWriter, *http.Request)
+	RingCancel(http.ResponseWriter, *http.Request)
 	RecordingPolicy(http.ResponseWriter, *http.Request)
 	StartRecording(http.ResponseWriter, *http.Request)
 
+	Waiting(http.ResponseWriter, *http.Request)
+	Admit(http.ResponseWriter, *http.Request)
+	Reject(http.ResponseWriter, *http.Request)
+
 	PublicInspect(http.ResponseWriter, *http.Request)
 	PublicJoin(http.ResponseWriter, *http.Request)
+	PublicStatus(http.ResponseWriter, *http.Request)
+}
+
+// NameFinder: cómo se llama una persona. Lo da el repositorio de tareas.
+type NameFinder interface {
+	DisplayName(userID string) string
 }
 
 type callHandler struct {
+	names   NameFinder
 	svc     *service.CallInviteService
 	rec     *service.RecordingService
 	voice   *service.VoiceService
@@ -41,8 +56,8 @@ type callHandler struct {
 }
 
 func NewCallHandler(svc *service.CallInviteService, rec *service.RecordingService,
-	voice *service.VoiceService, spaces SpaceFinder) CallHandler {
-	return &callHandler{svc: svc, rec: rec, voice: voice, spaces: spaces, limiter: newIngestLimiter()}
+	voice *service.VoiceService, spaces *repository.TaskRepository) CallHandler {
+	return &callHandler{svc: svc, rec: rec, voice: voice, spaces: spaces, names: spaces, limiter: newIngestLimiter()}
 }
 
 // Cuántas veces por hora se puede tocar la puerta pública. Por IP, para quien
@@ -51,6 +66,10 @@ func NewCallHandler(svc *service.CallInviteService, rec *service.RecordingServic
 const (
 	publicCallPerIPPerHour     = 60
 	publicCallPerInvitePerHour = 120
+	// Quien espera pregunta cada pocos segundos: con el límite de la IP se
+	// quedaría fuera a los tres minutos. Va por invitado, y sólo con un pase
+	// válido, que sólo tiene quien ya pidió entrar.
+	publicStatusPerGuestPerHour = 1500
 )
 
 // ─── Miembros ────────────────────────────────────────────────────────────────
@@ -182,6 +201,58 @@ func (h *callHandler) Kick(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
 }
 
+// Ring llama a un compañero a la reunión. Mismo permiso que entrar: quien está
+// en la llamada puede llamar a alguien más de la organización.
+func (h *callHandler) Ring(w http.ResponseWriter, r *http.Request) {
+	inv, user, ok := h.invite(w, r, false)
+	if !ok {
+		return
+	}
+	var req struct {
+		UserID string `json:"userId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid body", "invalid-body")
+		return
+	}
+	timbre, err := h.svc.Ring(inv, domain.VoiceCaller{ID: user.UserID, Name: h.callerName(user)}, req.UserID)
+	if err != nil {
+		if errors.Is(err, service.ErrRingOutsider) {
+			SendErrorResponse(w, http.StatusForbidden,
+				"You can only call people in this organization", "ring-outsider")
+			return
+		}
+		callError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.VoiceRing]{Success: true, Data: timbre})
+}
+
+func (h *callHandler) RingCancel(w http.ResponseWriter, r *http.Request) {
+	inv, user, ok := h.invite(w, r, false)
+	if !ok {
+		return
+	}
+	if err := h.svc.CancelRing(inv, user.UserID, chi.URLParam(r, "userId")); err != nil {
+		if errors.Is(err, service.ErrRingOutsider) {
+			SendErrorResponse(w, http.StatusForbidden,
+				"You can only call people in this organization", "ring-outsider")
+			return
+		}
+		callError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
+}
+
+// callerName: quién llama, por su nombre visible.
+func (h *callHandler) callerName(user *domain.ClaimsJWT) string {
+	if n := h.names.DisplayName(user.UserID); n != "" {
+		return n
+	}
+	return user.Username
+}
+
 // RecordingPolicy: lo mismo que la del canal, para la sala de la reunión.
 func (h *callHandler) RecordingPolicy(w http.ResponseWriter, r *http.Request) {
 	inv, _, ok := h.invite(w, r, false)
@@ -234,6 +305,47 @@ func (h *callHandler) StartRecording(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.Recording]{Success: true, Data: rec})
 }
 
+// Waiting: quién espera para entrar. Cualquier miembro: es lo que ve quien
+// está en la llamada.
+func (h *callHandler) Waiting(w http.ResponseWriter, r *http.Request) {
+	inv, _, ok := h.invite(w, r, false)
+	if !ok {
+		return
+	}
+	out, err := h.svc.Waiting(inv)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to list who is waiting", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.WaitingGuest]{Success: true, Data: out})
+}
+
+// Admit deja entrar a quien espera. Quien escribe en la organización, como
+// echar: es la misma decisión, al revés.
+func (h *callHandler) Admit(w http.ResponseWriter, r *http.Request) {
+	inv, user, ok := h.invite(w, r, true)
+	if !ok {
+		return
+	}
+	if err := h.svc.Admit(inv, chi.URLParam(r, "guestId"), user.UserID); err != nil {
+		callError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
+}
+
+func (h *callHandler) Reject(w http.ResponseWriter, r *http.Request) {
+	inv, user, ok := h.invite(w, r, true)
+	if !ok {
+		return
+	}
+	if err := h.svc.Reject(inv, chi.URLParam(r, "guestId"), user.UserID); err != nil {
+		callError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
+}
+
 // ─── La puerta pública ───────────────────────────────────────────────────────
 
 // El token viaja en el cuerpo de un POST y no en la ruta: una URL acaba en los
@@ -268,6 +380,39 @@ func (h *callHandler) PublicJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.svc.JoinAsGuest(req.Token, req.Name, req.Pass)
+	if err != nil {
+		callError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.GuestJoinResponse]{Success: true, Data: out})
+}
+
+// PublicStatus: quien espera vuelve a preguntar si ya le dejaron entrar.
+func (h *callHandler) PublicStatus(w http.ResponseWriter, r *http.Request) {
+	req, err := ValidateRequest[domain.GuestStatusRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	// El límite va por invitado y sólo con un pase bueno; sin él, por IP como
+	// el resto de la puerta.
+	key := ""
+	if id, ok := repository.VerifyCallInviteLink(req.Token); ok {
+		if g, ok := repository.VerifyGuestPass(id, req.Pass, time.Now()); ok {
+			key = "guest:" + g
+		}
+	}
+	allowed := false
+	if key != "" {
+		allowed = h.limiter.allow(key, publicStatusPerGuestPerHour)
+	} else {
+		allowed = h.limiter.allow("ip:"+clientIP(r), publicCallPerIPPerHour)
+	}
+	if !allowed {
+		SendErrorResponse(w, http.StatusTooManyRequests, "Too many requests", "rate-limited")
+		return
+	}
+	out, err := h.svc.GuestStatus(req.Token, req.Pass)
 	if err != nil {
 		callError(w, err)
 		return
@@ -311,6 +456,10 @@ func callError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusConflict, "This invite is full", "invite-full")
 	case errors.Is(err, service.ErrGuestRemoved):
 		SendErrorResponse(w, http.StatusForbidden, "You were removed from this call", "guest-removed")
+	case errors.Is(err, service.ErrGuestRejected):
+		SendErrorResponse(w, http.StatusForbidden, "You were not let into this call", "guest-rejected")
+	case errors.Is(err, repository.ErrGuestNotWaiting):
+		SendErrorResponse(w, http.StatusConflict, "That person is no longer waiting", "guest-not-waiting")
 	case errors.Is(err, service.ErrGuestName):
 		SendErrorResponse(w, http.StatusBadRequest, "A name is required", "guest-name-required")
 	case errors.Is(err, service.ErrOnlyGuests):

@@ -461,7 +461,13 @@ func (h *taskHandler) VoiceRing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timbre, err := h.svc.Timbrar(sp, domain.VoiceCaller{ID: user.UserID, Name: user.Username}, req.UserID)
+	// Quien llama, por su nombre visible: es lo que sale en la tarjeta del
+	// timbre y en el teléfono.
+	nombre := h.repo.DisplayName(user.UserID)
+	if nombre == "" {
+		nombre = user.Username
+	}
+	timbre, err := h.svc.Timbrar(sp, domain.VoiceCaller{ID: user.UserID, Name: nombre}, req.UserID)
 	if err != nil {
 		if errors.Is(err, service.ErrRingOutsider) {
 			// 403 y no 404: quien llama eligió a esa persona de una lista, y

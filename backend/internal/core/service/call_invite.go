@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"strings"
 	"time"
 	"unicode"
 
 	lkclient "github.com/guz-studio/cac/backend/internal/adapters/livekit"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
@@ -22,6 +24,8 @@ var (
 	ErrInviteRevoked = errors.New("invite-revoked")
 	// ErrGuestRemoved: a esta persona la echaron, y su pase no la deja volver.
 	ErrGuestRemoved = errors.New("guest-removed")
+	// ErrGuestRejected: pidió entrar y le dijeron que no.
+	ErrGuestRejected = errors.New("guest-rejected")
 	// ErrGuestName: hace falta un nombre que se pueda enseñar.
 	ErrGuestName = errors.New("guest-name-required")
 	// ErrOnlyGuests: desde una reunión sólo se puede echar a gente de fuera. A
@@ -44,7 +48,15 @@ type CallInviteService struct {
 	lk lkclient.Client
 	// rec es para decirle al invitado, antes de entrar, si se graba.
 	rec *RecordingService
+	// hub es por donde suena el timbre. Opcional: sin él no se llama a nadie.
+	hub *events.Hub
 	now func() time.Time
+}
+
+// WithHub engancha el stream de eventos, para el timbre.
+func (s *CallInviteService) WithHub(hub *events.Hub) *CallInviteService {
+	s.hub = hub
+	return s
 }
 
 func NewCallInviteService(repo *repository.CallInviteRepository, voice *VoiceService,
@@ -200,6 +212,61 @@ func (s *CallInviteService) Kick(ctx context.Context, inv *domain.CallInvite, ac
 	return s.lk.RemoveParticipant(ctx, inv.Room(), identity)
 }
 
+// Ring llama a un compañero a la reunión.
+//
+// Las mismas dos guardas que el timbre de un canal (`TaskService.Timbrar`):
+// que quien llama sea de la organización —lo hizo el handler— y que a quien
+// llama también. Y una más: la reunión tiene que seguir viva, o el timbre
+// llevaría a una puerta cerrada.
+func (s *CallInviteService) Ring(inv *domain.CallInvite, de domain.VoiceCaller, aUserID string) (*domain.VoiceRing, error) {
+	if err := s.alive(inv); err != nil {
+		return nil, err
+	}
+	if aUserID == "" || aUserID == de.ID || !s.repo.IsMember(inv.OrgID, aUserID) {
+		return nil, ErrRingOutsider
+	}
+	id := inv.ID
+	timbre := &domain.VoiceRing{
+		RingID: uuid.NewString(), OrgID: inv.OrgID, From: de,
+		InviteID: &id, Title: inv.Title,
+		ExpiresAt: s.now().Add(TimbreTTL),
+	}
+	if inv.SpaceID != nil {
+		timbre.SpaceID = *inv.SpaceID
+		if name, err := s.repo.SpaceName(*inv.SpaceID); err == nil {
+			timbre.SpaceName = name
+		}
+	}
+	if s.hub != nil {
+		s.hub.Publish(events.Event{Type: "voice.ring", OrgID: inv.OrgID, UserID: aUserID, Data: timbre})
+	}
+	PushToPhone(aUserID, domain.PushMessage{
+		Kind: "voice.ring", Title: de.Name, Body: inv.Title,
+		Link: "/call/" + inv.ID, Tag: meetRingTag(inv.ID, de.ID), OrgID: inv.OrgID,
+	}, PushOptions{TTL: TimbreTTL, High: true})
+	return timbre, nil
+}
+
+// CancelRing calla el teléfono de quien todavía no contestó.
+func (s *CallInviteService) CancelRing(inv *domain.CallInvite, deUserID, aUserID string) error {
+	if aUserID == "" || aUserID == deUserID || !s.repo.IsMember(inv.OrgID, aUserID) {
+		return ErrRingOutsider
+	}
+	id := inv.ID
+	if s.hub != nil {
+		s.hub.Publish(events.Event{
+			Type: "voice.ring.cancel", OrgID: inv.OrgID, UserID: aUserID,
+			Data: &domain.VoiceRingCancel{From: deUserID, InviteID: &id},
+		})
+	}
+	PushToPhone(aUserID, domain.PushMessage{
+		Kind: "voice.ring.cancel", Tag: meetRingTag(inv.ID, deUserID), OrgID: inv.OrgID,
+	}, PushOptions{TTL: TimbreTTL, High: true})
+	return nil
+}
+
+func meetRingTag(inviteID, fromID string) string { return "ring:meet:" + inviteID + ":" + fromID }
+
 // RecordingTarget: dónde se graba esta reunión. Sin canal no se graba.
 func (s *CallInviteService) RecordingTarget(inv *domain.CallInvite) (RecordingTarget, error) {
 	if inv.SpaceID == nil || *inv.SpaceID == "" {
@@ -242,10 +309,14 @@ func (s *CallInviteService) recordingState(inv *domain.CallInvite) (possible, ac
 	return true, pol.Active != nil
 }
 
-// JoinAsGuest deja entrar a alguien de fuera.
+// JoinAsGuest: alguien de fuera pide entrar.
 //
-// Con pase, vuelve quien ya estaba: misma identidad y mismo nombre, salvo que
-// lo hayan echado. Sin pase, entra alguien nuevo con el nombre que escribió.
+// **Pedir no es entrar.** Sin pase, se le apunta en la sala de espera y se
+// avisa a los de dentro; la respuesta lleva su pase y **ningún token**. Con
+// pase, vuelve quien ya pidió: si le dejaron, recibe la entrada (es la
+// reconexión de alguien admitido); si sigue esperando, sigue esperando; si le
+// rechazaron o le echaron, no.
+//
 // **La identidad la acuña siempre el servidor**: el nombre es sólo para
 // pintarlo, y nunca decide quién es nadie.
 func (s *CallInviteService) JoinAsGuest(token, name, pass string) (*domain.GuestJoinResponse, error) {
@@ -253,46 +324,149 @@ func (s *CallInviteService) JoinAsGuest(token, name, pass string) (*domain.Guest
 	if err != nil {
 		return nil, err
 	}
-	now := s.now()
-
-	var guest *domain.CallGuest
 	if pass != "" {
-		if id, ok := repository.VerifyGuestPass(inv.ID, pass, now); ok {
-			g, err := s.repo.FindGuest(inv.ID, id)
-			if err != nil && !errors.Is(err, repository.ErrCallGuestNotFound) {
-				return nil, err
-			}
-			if g != nil && g.KickedAt != nil {
-				return nil, ErrGuestRemoved
-			}
-			guest = g
-		}
-		// Un pase caducado o ajeno no es un error: se entra como alguien nuevo,
-		// que es lo que haría cualquiera que abre el enlace por primera vez.
-	}
-	if guest == nil {
-		clean, ok := CleanGuestName(name)
-		if !ok {
-			return nil, ErrGuestName
-		}
-		guest = &domain.CallGuest{InviteID: inv.ID, Name: clean, LastJoinAt: now}
-		if err := s.repo.AddGuest(inv, guest); err != nil {
+		g, err := s.guestByPass(inv, pass)
+		if err != nil {
 			return nil, err
 		}
-	} else if err := s.repo.TouchGuest(guest.ID, now); err != nil {
-		lg.Warn("call invites: touching guest " + guest.ID + ": " + err.Error())
+		if g != nil {
+			return s.entry(inv, g)
+		}
+		// Un pase caducado o ajeno no es un error: se pide entrar como alguien
+		// nuevo, que es lo que haría cualquiera que abre el enlace.
 	}
+	clean, ok := CleanGuestName(name)
+	if !ok {
+		return nil, ErrGuestName
+	}
+	g := &domain.CallGuest{InviteID: inv.ID, Name: clean, LastJoinAt: s.now()}
+	if err := s.repo.AddWaiting(inv, g); err != nil {
+		return nil, err
+	}
+	s.knock(inv, g)
+	return s.entry(inv, g)
+}
 
-	identity := domain.GuestIdentity(guest.ID)
-	tok, err := s.voice.TokenFor(inv.Room(), identity, guest.Name, GuestProfile)
+// GuestStatus: quien espera vuelve a preguntar con su pase. Cuando le dejan
+// entrar, la respuesta trae la entrada.
+func (s *CallInviteService) GuestStatus(token, pass string) (*domain.GuestJoinResponse, error) {
+	inv, err := s.open(token)
 	if err != nil {
 		return nil, err
 	}
-	return &domain.GuestJoinResponse{
-		URL: s.voice.URL(), Token: tok, Room: inv.Room(), Identity: identity,
-		Name: guest.Name, Pass: repository.MintGuestPass(inv.ID, guest.ID, inv.ExpiresAt, now),
-		Title: inv.Title,
-	}, nil
+	g, err := s.guestByPass(inv, pass)
+	if err != nil {
+		return nil, err
+	}
+	if g == nil {
+		return nil, ErrInviteInvalid
+	}
+	return s.entry(inv, g)
+}
+
+// guestByPass: la fila del pase, si el pase vale. `nil, nil` si no vale.
+// Echado o rechazado es un error: con ese pase no se vuelve.
+func (s *CallInviteService) guestByPass(inv *domain.CallInvite, pass string) (*domain.CallGuest, error) {
+	id, ok := repository.VerifyGuestPass(inv.ID, pass, s.now())
+	if !ok {
+		return nil, nil
+	}
+	g, err := s.repo.FindGuest(inv.ID, id)
+	if errors.Is(err, repository.ErrCallGuestNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if g.KickedAt != nil {
+		return nil, ErrGuestRemoved
+	}
+	if g.Status == domain.GuestRejected {
+		return nil, ErrGuestRejected
+	}
+	return g, nil
+}
+
+// entry: la respuesta para un invitado. **El token sólo si está admitido.**
+func (s *CallInviteService) entry(inv *domain.CallInvite, g *domain.CallGuest) (*domain.GuestJoinResponse, error) {
+	now := s.now()
+	out := &domain.GuestJoinResponse{
+		Status: g.Status, Name: g.Name, Title: inv.Title,
+		Pass: repository.MintGuestPass(inv.ID, g.ID, inv.ExpiresAt, now),
+	}
+	if g.Status != domain.GuestAdmitted {
+		return out, nil
+	}
+	if err := s.repo.TouchGuest(g.ID, now); err != nil {
+		lg.Warn("call invites: touching guest " + g.ID + ": " + err.Error())
+	}
+	identity := domain.GuestIdentity(g.ID)
+	tok, err := s.voice.TokenFor(inv.Room(), identity, g.Name, GuestProfile)
+	if err != nil {
+		return nil, err
+	}
+	out.URL, out.Token, out.Room, out.Identity = s.voice.URL(), tok, inv.Room(), identity
+	return out, nil
+}
+
+// Waiting: quién espera, para los de dentro.
+func (s *CallInviteService) Waiting(inv *domain.CallInvite) ([]domain.WaitingGuest, error) {
+	rows, err := s.repo.Waiting(inv.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.WaitingGuest, 0, len(rows))
+	for _, g := range rows {
+		out = append(out, domain.WaitingGuest{ID: g.ID, Name: g.Name, CreatedAt: g.CreatedAt})
+	}
+	return out, nil
+}
+
+// Admit deja entrar a quien espera. La reunión tiene que seguir viva: dejar
+// entrar por una puerta que ya se cerró no tendría a dónde llevar.
+func (s *CallInviteService) Admit(inv *domain.CallInvite, guestID, by string) error {
+	if err := s.alive(inv); err != nil {
+		return err
+	}
+	if err := s.repo.Admit(inv, guestID, by, s.now()); err != nil {
+		return err
+	}
+	s.decided(inv, guestID, domain.GuestAdmitted)
+	return nil
+}
+
+// Reject le dice que no a quien espera. Con ese pase ya no vuelve a pedir.
+func (s *CallInviteService) Reject(inv *domain.CallInvite, guestID, by string) error {
+	if err := s.repo.Reject(inv.ID, guestID, by, s.now()); err != nil {
+		return err
+	}
+	s.decided(inv, guestID, domain.GuestRejected)
+	return nil
+}
+
+// knock avisa a la organización de que alguien espera. A la organización y no
+// a una persona: quien decide es cualquiera que esté dentro, y la app sólo lo
+// pinta en la reunión abierta o a quien la creó.
+func (s *CallInviteService) knock(inv *domain.CallInvite, g *domain.CallGuest) {
+	if s.hub == nil {
+		return
+	}
+	s.hub.Publish(events.Event{Type: "call:knock", OrgID: inv.OrgID, Data: domain.CallKnock{
+		InviteID: inv.ID, Title: inv.Title, CreatedBy: inv.CreatedBy, Status: domain.GuestWaiting,
+		Guest: domain.WaitingGuest{ID: g.ID, Name: g.Name, CreatedAt: g.CreatedAt},
+	}})
+}
+
+// decided avisa de que alguien ya no espera, para que la lista de los demás
+// miembros se vacíe sola.
+func (s *CallInviteService) decided(inv *domain.CallInvite, guestID string, st domain.GuestStatus) {
+	if s.hub == nil {
+		return
+	}
+	s.hub.Publish(events.Event{Type: "call:knock", OrgID: inv.OrgID, Data: domain.CallKnock{
+		InviteID: inv.ID, Title: inv.Title, CreatedBy: inv.CreatedBy, Status: st,
+		Guest: domain.WaitingGuest{ID: guestID},
+	}})
 }
 
 // open: la invitación viva que abre un enlace.

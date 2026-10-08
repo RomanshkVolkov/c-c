@@ -21,10 +21,16 @@ func (stubCalls) Get(w http.ResponseWriter, r *http.Request)             { ok(w,
 func (stubCalls) Revoke(w http.ResponseWriter, r *http.Request)          { ok(w, r) }
 func (stubCalls) Token(w http.ResponseWriter, r *http.Request)           { ok(w, r) }
 func (stubCalls) Kick(w http.ResponseWriter, r *http.Request)            { ok(w, r) }
+func (stubCalls) Ring(w http.ResponseWriter, r *http.Request)            { ok(w, r) }
+func (stubCalls) RingCancel(w http.ResponseWriter, r *http.Request)      { ok(w, r) }
 func (stubCalls) RecordingPolicy(w http.ResponseWriter, r *http.Request) { ok(w, r) }
 func (stubCalls) StartRecording(w http.ResponseWriter, r *http.Request)  { ok(w, r) }
 func (stubCalls) PublicInspect(w http.ResponseWriter, r *http.Request)   { ok(w, r) }
 func (stubCalls) PublicJoin(w http.ResponseWriter, r *http.Request)      { ok(w, r) }
+func (stubCalls) PublicStatus(w http.ResponseWriter, r *http.Request)    { ok(w, r) }
+func (stubCalls) Waiting(w http.ResponseWriter, r *http.Request)         { ok(w, r) }
+func (stubCalls) Admit(w http.ResponseWriter, r *http.Request)           { ok(w, r) }
+func (stubCalls) Reject(w http.ResponseWriter, r *http.Request)          { ok(w, r) }
 
 // Sólo las dos rutas públicas entran sin JWT. Todas las demás, 401.
 //
@@ -41,11 +47,12 @@ func TestOnlyThePublicCallRoutesSkipAuth(t *testing.T) {
 	public := map[string]bool{
 		"POST /api/v1/public/calls/inspect": true,
 		"POST /api/v1/public/calls/join":    true,
+		"POST /api/v1/public/calls/status":  true,
 	}
 	seen, open := 0, 0
 	err := chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		seen++
-		path := strings.NewReplacer("{id}", "x", "{identity}", "guest:x").Replace(route)
+		path := strings.NewReplacer("{id}", "x", "{identity}", "guest:x", "{userId}", "u", "{guestId}", "g").Replace(route)
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
 		key := method + " " + strings.TrimSuffix(route, "/")

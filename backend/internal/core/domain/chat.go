@@ -270,6 +270,11 @@ type VoiceRing struct {
 	SpaceName string      `json:"spaceName"`
 	From      VoiceCaller `json:"from"`
 	ExpiresAt time.Time   `json:"expiresAt"`
+	// InviteID y Title: el timbre es a una reunión con invitados (W3), no a la
+	// sala del canal. Aceptar lleva a esa reunión. `SpaceID` va igual si la
+	// reunión cuelga de un canal, pero **no** es a donde se entra.
+	InviteID *string `json:"inviteId,omitempty"`
+	Title    string  `json:"title,omitempty"`
 }
 
 // VoiceRingCancel retira un timbre antes de que expire.
@@ -280,6 +285,7 @@ type VoiceRing struct {
 // llamar a esta persona» es además idempotente y no necesita que quien cuelga
 // se acuerde de nada.
 type VoiceRingCancel struct {
-	SpaceID string `json:"spaceId"`
-	From    string `json:"from"`
+	SpaceID  string  `json:"spaceId"`
+	From     string  `json:"from"`
+	InviteID *string `json:"inviteId,omitempty"`
 }
