@@ -13,6 +13,22 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**Hecho, sin commitear (7-oct): Diagnóstico para ver bien la telemetría de
+cualquier app** (tarea `8709d4d4`, en TDS; análisis de los 9 puntos comentado
+ahí). Genérico: lo propio de cada app lo dice el lote (`device.label`,
+`device.subject`, nunca un correo) o el proyecto (Integraciones › Telemetría:
+retención 1–90 días, reglas de salud, latido con `activeWhen`). Backend:
+`telemetry_devices` (búsqueda, paginación, versión del último lote), gravedad
+única (`domain.CrumbSeverity`), ficha con alertas, timeline con filtros, purga
+por proyecto y el **vigilante** (cada 5 min, compare-and-swap para que dos
+réplicas no avisen dos veces; campana + aviso en vivo, interruptor
+`telemetryQuiet`). App: pantalla nueva (lista, ficha en árbol, tira de
+latidos con huecos, timeline plano por `ts`). MCP: `list_devices` con
+`query`, `get_device_timeline` con `since`/`types`/`minSeverity` y resumen de
+ficha y latidos. Contrato en `docs/integrations/telemetry.md`. **Falta**: el lado de
+GEOCHECK (su API Go: quitar `firebaseEmail`, mandar `label`/`subject`, los
+`warn` de dispositivo como `lifecycle`), commitear y soltar (backend primero).
+
 **En curso (30-sep, #106 con R0–R8 en #107–#115): módulo de servidores** —
 deploys desde cac, GitHub App, Ansible desde la app y secrets por referencia a
 1Password, con adopción gradual por proyecto. **R0–R2 publicadas** (v1.6.76 y

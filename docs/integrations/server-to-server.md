@@ -84,7 +84,7 @@ Base: `https://cac.guz-studio.dev`
 |---|---|---|
 | Crear reporte | `POST /ingest/v1/reports` | Ingest key |
 | Reporte de sistema | ídem con `origin=system` (dedup por título) | Ingest key |
-| Telemetría de app nativa | `POST /ingest/v1/events` | Ingest key |
+| Telemetría de app nativa ([contrato aparte](./telemetry.md)) | `POST /ingest/v1/events` | Ingest key |
 | Listar el tablero | `GET /api/v1/reports` | Ingest key |
 | Reportes de una persona | `GET /api/v1/reports?reporterId=` | Ingest key |
 | Detalle | `GET /api/v1/reports/{id}` | Ingest key |
@@ -553,6 +553,12 @@ Dos cosas que hay que saber:
   avisa con un warning al arrancar y el reporte se crea igual, así que el fallo es
   invisible hasta que alguien abre el detalle esperando el snapshot y no hay nada.
   Verifícalo antes del primer reporte de verdad.
+
+### Telemetría pasiva de una app nativa
+
+`POST /ingest/v1/events`, con la misma ingest key, es otra integración: la
+telemetría de los dispositivos para Diagnóstico y el MCP, no reportes. Su
+contrato está en [telemetry.md](./telemetry.md).
 
 ---
 

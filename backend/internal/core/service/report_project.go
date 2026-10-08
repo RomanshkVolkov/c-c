@@ -207,12 +207,23 @@ func applyChanges(p *domain.ReportProject, req domain.UpdateReportProjectRequest
 	if req.ListID != nil && *req.ListID != "" {
 		p.ListID = req.ListID
 	}
+	// Entera, no por campos: la pantalla manda siempre la configuración
+	// completa, y mezclar reglas viejas con nuevas no tendría arreglo. Llega
+	// ya validada (ver el método de abajo).
+	if req.TelemetryConfig != nil {
+		p.TelemetryConfig = *req.TelemetryConfig
+	}
 }
 
 // applyChanges con lo que hace falta el repositorio: validar el responsable.
 func (s *ReportProjectService) applyChanges(p *domain.ReportProject, req domain.UpdateReportProjectRequest) error {
 	if req.DefaultAssigneeUserID != nil {
 		if err := s.validateDefaultAssignee(p.OrgID, *req.DefaultAssigneeUserID); err != nil {
+			return err
+		}
+	}
+	if req.TelemetryConfig != nil {
+		if err := req.TelemetryConfig.Validate(); err != nil {
 			return err
 		}
 	}
@@ -264,6 +275,7 @@ func toReportProjectResponse(p *domain.ReportProject) *domain.ReportProjectRespo
 		// The secret is never returned — only whether one exists, which is all
 		// the console needs to show "signed" instead of "unsigned".
 		WebhookConfigured: p.WebhookSecret != "",
+		TelemetryConfig:   p.TelemetryConfig,
 		CreatedAt:         p.CreatedAt,
 	}
 }

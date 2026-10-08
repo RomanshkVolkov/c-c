@@ -91,6 +91,7 @@ func DBConnection() {
 		&domain.ReportComment{},
 		&domain.ReportImage{},
 		&domain.TelemetryEvent{},
+		&domain.TelemetryDevice{},
 		&domain.ServerIntegration{},
 		&domain.ProvisioningRun{},
 		&domain.Deployable{},

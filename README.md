@@ -48,6 +48,7 @@ GitHub workflows under `.github/workflows/`:
 - [Adopting cac](./docs/integrations/adopting-cac.md) — how an app connects: the credential and what it reaches, the order to do things in, what to register.
 - [Tenant UI reference](./docs/integrations/tenant-ui-reference.md) — the screens a tenant builds on top of the contract: the two audiences, the board, the image proxy, the webhook receiver. Structure and decisions, taken from portento.
 - [Server-to-server](./docs/integrations/server-to-server.md) — how a tenant app runs its own bug board in cac with its project's ingest key: credential and what it reaches, operations, reporter vs assignee, webhook, rate limits, error codes. The contract, kept next to the code that implements it.
+- [Telemetry](./docs/integrations/telemetry.md) — passive device telemetry for Diagnostics and the MCP, with the same ingest key: the batch, naming a device (`label`/`subject`, never an email), how cac decides severity, heartbeats, per-project retention, health rules and the watcher.
 
 ## Proposals (not implemented)
 

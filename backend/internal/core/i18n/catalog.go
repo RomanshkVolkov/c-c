@@ -101,6 +101,22 @@ var catalogo = map[string]map[Locale]string{
 		EN: "{{service}} deploy expired: the agent stopped responding · {{sha}}",
 		ES: "Caducó el deploy de {{service}}: el agente dejó de contestar · {{sha}}",
 	},
+	"notify.telemetry.silent": {
+		EN: "{{device}} stopped sending",
+		ES: "{{device}} dejó de mandar",
+	},
+	"notify.telemetry.back": {
+		EN: "{{device}} is sending again",
+		ES: "{{device}} volvió a mandar",
+	},
+	"notify.telemetry.unhealthy": {
+		EN: "{{device}} needs attention",
+		ES: "{{device}} necesita atención",
+	},
+	"notify.telemetry.healthy": {
+		EN: "{{device}} is healthy again",
+		ES: "{{device}} volvió a estar bien",
+	},
 
 	// ── Errores de la API ───────────────────────────────────────────────────
 	"unauthorized": {

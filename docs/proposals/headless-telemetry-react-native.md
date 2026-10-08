@@ -104,6 +104,10 @@ bloquea, demora ni muta una petición (no puede tumbar un fichaje).
 
 ## Transporte al ingest de cac — **el backend YA existe**
 
+> El contrato vigente está en
+> [`docs/integrations/telemetry.md`](../integrations/telemetry.md). Lo de abajo es
+> cómo lo usa esta app; si algo no coincide, manda el contrato.
+
 El endpoint de telemetría pasiva **ya está implementado y montado** en cac
 (no es TODO): `POST /ingest/v1/events` (`handler/ingest.go` `CreateEvent`,
 ruta en `http/report.go`). Auth por `X-Ingest-Key` + rate-limit, **sin CORS**
@@ -205,19 +209,31 @@ Objetivo concreto: *por qué se corta el registro de puntos, dónde y en qué de
 
 Todo con `trackingActive` para saber si el seguimiento debía estar activo en cada evento.
 
-### Vista de huecos en cac (backend — pendiente)
-Para pasar de "timeline manual" a diagnóstico de 1 clic:
-1. Por device/sesión, ordenar los breadcrumbs `network`+`heartbeat` por `ts` y detectar
-   **gaps** (> umbral, p. ej. 5 min sin punto ni heartbeat).
-2. Para cada gap, adjuntar el **último `lifecycle`/`error` anterior** como *causa probable*
-   (p. ej. `battery_protection_enabled`, `device_rebooted`, `airplane_mode_enabled`) y la
-   **última ubicación conocida** (dónde).
-3. Exponerlo en la consola: lista de "cortes" por device → `{ desde, hasta, duración,
-   lugar (lat,lon), causa probable, OS/modelo }`.
-4. Opcional: alertar cuando un device activo lleva > N min sin heartbeat (corte en vivo).
+### Vista de huecos en cac — hecho (7-oct-2026), genérico
 
-Con eso, cada corte queda como: *"device X (Android 14, Moto G) — corte 14:05→14:38 cerca de
-(21.23,-86.73), causa probable: batería optimizada"* → solución específica.
+Lo que quedó, sin nada propio de esta app (todo lo dice la app en el lote o el
+proyecto en su configuración; el contrato está en
+[`docs/integrations/telemetry.md`](../integrations/telemetry.md)):
+
+1. **Nombre y persona**: `device.label` y `device.subject` (un id, nunca un
+   correo — se borran en el ingest). Fila por dispositivo en `telemetry_devices`,
+   con búsqueda y paginación.
+2. **Gravedad única** en el backend (`domain.CrumbSeverity`): la app y el MCP la
+   leen del timeline. Un evento de dispositivo que no es un fallo va como
+   `lifecycle` con `level: warn`.
+3. **Ficha** como árbol, con **reglas de salud** por proyecto (`ruta op valor`,
+   aviso o error) evaluadas sobre el último estado.
+4. **Latidos y huecos**: la tira de latidos marca los huecos mayores que el
+   intervalo más el margen del proyecto; el MCP los devuelve en
+   `heartbeats.gaps`.
+5. **El vigilante** (cada 5 min): un dispositivo que debería latir (`activeWhen`
+   sobre su estado) y se calla, o que incumple una regla de error, avisa en la
+   campana una vez al abrirse y otra al cerrarse. Un dispositivo callado más de
+   24 h se da por abandonado y no avisa.
+
+Pendiente de aquí: la **causa probable** de cada hueco (el último
+`lifecycle`/`error` anterior) y el lugar. Se leen hoy en el timeline alrededor
+del hueco, pero no se calculan.
 
 ## Decisiones abiertas
 

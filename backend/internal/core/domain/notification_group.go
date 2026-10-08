@@ -28,7 +28,14 @@ const (
 	groupDoc        = "doc"
 	groupRepo       = "repo"
 	groupDeployable = "deployable"
+	groupTelemetry  = "telemetry"
 )
+
+// TelemetryGroup: los avisos del vigilante de un proyecto. Por proyecto y no
+// por dispositivo: diez teléfonos que se callan a la vez (un corte de la API)
+// son una fila, y la clave cabe en la columna — un id de dispositivo puede
+// medir 255.
+func TelemetryGroup(projectID string) string { return prefijo(groupTelemetry, projectID) }
 
 // RepoGroup: un repositorio de GitHub. Diez runs de un push son una fila, no
 // diez. Por el id numérico del repo y no por `owner/repo`: un repo renombrado

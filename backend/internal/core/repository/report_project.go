@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -118,6 +119,12 @@ func (r *ReportProjectRepository) ListOrgID(listID string) (string, error) {
 
 // Update persists the editable fields.
 func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
+	// A mano: con un mapa, GORM no pasa el valor por el serializer de la
+	// columna, y mandaría el struct tal cual.
+	telemetry, err := json.Marshal(p.TelemetryConfig)
+	if err != nil {
+		return err
+	}
 	return r.db.Model(&domain.ReportProject{}).
 		Where("id = ?", p.ID).
 		// An explicit column list, so a new field on the struct is NOT persisted
@@ -138,6 +145,7 @@ func (r *ReportProjectRepository) Update(p *domain.ReportProject) error {
 			"webhook_url":                      p.WebhookURL,
 			"webhook_secret":                   p.WebhookSecret,
 			"list_id":                          p.ListID,
+			"telemetry_config":                 string(telemetry),
 		}).Error
 }
 

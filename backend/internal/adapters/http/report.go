@@ -55,7 +55,16 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	}
 
 	telemetryRepo := repository.NewTelemetryRepository(db)
-	telemetrySvc := service.NewTelemetryService(telemetryRepo)
+	telemetrySvc := service.NewTelemetryService(telemetryRepo, projectRepo)
+	// Los dispositivos que sólo tienen lotes de antes de telemetry_devices.
+	// Una vez; las siguientes no encuentran ninguno.
+	go func() {
+		if n, err := telemetrySvc.BackfillDevices(); err != nil {
+			lg.Error("telemetry devices backfill failed: " + err.Error())
+		} else if n > 0 {
+			lg.Info("backfilled telemetry devices")
+		}
+	}()
 
 	// Hourly purge of expired telemetry: report-attached blobs (decision 4/7) and
 	// the passive events store (both past their TTL).
@@ -72,6 +81,20 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 				lg.Error("telemetry events purge failed: " + err.Error())
 			} else if n > 0 {
 				lg.Info("purged expired telemetry events")
+			}
+		}
+	}()
+
+	// El vigilante de la telemetría, cada cinco minutos. Avisa una vez al
+	// abrirse un incidente y otra al cerrarse (ver telemetry_watch.go).
+	watcher := service.NewTelemetryWatcher(telemetryRepo, projectRepo, orgRepo,
+		service.NewNotificationService(repository.NewNotificationRepository(db)), hub)
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := watcher.Tick(time.Now()); err != nil {
+				lg.Error("telemetry watcher failed: " + err.Error())
 			}
 		}
 	}()
@@ -131,6 +154,7 @@ func InitReportRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 	r.Route("/api/v1/telemetry", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/devices", telemetryAdmin.ListDevices)
+		r.Get("/devices/{projectId}/{deviceId}", telemetryAdmin.Device)
 		r.Get("/timeline", telemetryAdmin.Timeline)
 	})
 

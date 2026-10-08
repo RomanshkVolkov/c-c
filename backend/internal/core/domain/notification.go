@@ -111,6 +111,10 @@ type NotificationPrefs struct {
 	// campana —un push son tantos avisos como workflows tenga el repo—, así que
 	// no puede caer en el `return true` del final, que nada silencia.
 	CIQuiet bool `json:"ciQuiet"`
+	// TelemetryQuiet apaga los avisos del vigilante de telemetría: un
+	// dispositivo que dejó de latir o cuya ficha incumple una regla de error.
+	// Invertido como los demás y por lo mismo: cero = avísame.
+	TelemetryQuiet bool `json:"telemetryQuiet"`
 	// PushQuiet apaga los avisos al teléfono (W2), sin tocar la campana.
 	// Invertido como los de arriba: cero = el teléfono avisa, que es para lo que
 	// alguien se suscribió.
@@ -153,6 +157,8 @@ func (p NotificationPrefs) Allows(kind string) bool {
 	// lo que hizo la máquina con el código. Un solo interruptor para los dos.
 	case "ci:run", "deploy:done":
 		return !p.CIQuiet
+	case "telemetry:alert":
+		return !p.TelemetryQuiet
 	}
 	return true
 }

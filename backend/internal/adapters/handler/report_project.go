@@ -45,6 +45,8 @@ func mapReportProjectError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, service.ErrInboxOtherOrg):
 		SendErrorResponse(w, http.StatusConflict,
 			"That list belongs to another organization.", "inbox-other-org")
+	case errors.Is(err, domain.ErrInvalidTelemetryConfig):
+		SendErrorResponse(w, http.StatusBadRequest, err.Error(), "invalid-telemetry-config")
 	default:
 		return false
 	}

@@ -302,6 +302,9 @@ type ReportProject struct {
 	// events. The secret signs the body; it is write-only, like the ingest key.
 	WebhookURL    string `gorm:"type:text"          json:"webhookUrl"`
 	WebhookSecret string `gorm:"type:varchar(120)"  json:"-"`
+	// TelemetryConfig: retención, reglas de salud y latido de la telemetría de
+	// este proyecto. Vacía, todo como antes. Ver telemetry_health.go.
+	TelemetryConfig TelemetryConfig `gorm:"type:jsonb;serializer:json" json:"telemetryConfig"`
 }
 
 // Report is a single bug report. seq is a short per-project folio (PROJ-123).
@@ -370,6 +373,9 @@ type UpdateReportProjectRequest struct {
 	// así que una edición corriente no lo pisa.
 	WebhookURL    *string `json:"webhookUrl"    validate:"omitempty,url"`
 	WebhookSecret *string `json:"webhookSecret" validate:"omitempty,min=16,max=120"`
+	// TelemetryConfig reemplaza la configuración entera. Se valida en el
+	// servicio (TelemetryConfig.Validate).
+	TelemetryConfig *TelemetryConfig `json:"telemetryConfig"`
 }
 
 type ReportProjectResponse struct {
@@ -385,8 +391,9 @@ type ReportProjectResponse struct {
 	ListID     *string `json:"listId,omitempty"`
 	WebhookURL string  `json:"webhookUrl"`
 	// Whether a secret is set — never the value.
-	WebhookConfigured bool      `json:"webhookConfigured"`
-	CreatedAt         time.Time `json:"createdAt"`
+	WebhookConfigured bool            `json:"webhookConfigured"`
+	TelemetryConfig   TelemetryConfig `json:"telemetryConfig"`
+	CreatedAt         time.Time       `json:"createdAt"`
 	// ReportsThisMonth es lo único que dice si una integración está viva. Un
 	// canal configurado hace meses y otro que recibe a diario se ven idénticos
 	// sin este número, y la diferencia entre ambos es justo lo que se quiere
