@@ -125,39 +125,26 @@ k8s con HTTPRoute propia en `/app`) y `.github/workflows/web.yml`.
 service worker, manifiesto instalable, botón «Avisos en este dispositivo»,
 `pushQuiet`/`pushCi`). Ver `docs/notifications.md` §3 ter. **W2 publicado**
 (`3c1acc7`, `d9adfe1`).
-**W3 hecho, sin commitear (8-oct, tarea cac #142): invitados a llamadas y
-llamadas desde la web.** Plan en `~/.claude/plans/shimmering-crunching-kitten.md`.
+**W3 publicado (8-oct, tarea cac #142): invitados a llamadas, llamadas desde la
+web y TURN.**
+- **Commits:** `40cfc73` (backend, docs e infra), que ya está desplegado, y
+  `3829183` (app y web), con la web ya desplegada.
+- **Release:** v1.6.93, publicada con los instaladores de las tres plataformas y `latest.json` completo.
+- **Diseño:**
+  - Sala `meet:<id>` por invitación.
+  - Identidad `guest:<id>`.
+  - Puerta pública `/api/v1/public/calls/{inspect,join}`.
+  - Motor `livekit-client` sólo en el build web.
+  - Páginas `/call/:id` y `/join#token`.
+- **TURN aplicado y medido:**
+  - Listener `turn-tls` en el Gateway (443, Terminate) y `TCPRoute` hacia
+    LiveKit:5349 con `external_tls`, más UDP 3478.
+  - Un STUN Binding real contestó por `turns` 443 y por el 3478/udp.
+  - Los demás dominios del 443 están intactos.
+  - Detalle en `docs/voz.md` §6 bis.
+- **Falta:** la prueba de punta a punta con un invitado real, con el relé
+  forzado.
 
-- **Cómo funciona.** Cada invitación es una sala propia, `meet:<id>`, y nunca
-  la de un canal. El invitado es `guest:<id>`, una identidad que acuña el
-  servidor. Puede publicar micrófono, cámara y pantalla, pero no datos, y no
-  puede renombrarse. Hay dos tokens HMAC: el enlace y el pase.
-- **Backend.**
-  - Rutas `/api/v1/call-invites` para los miembros.
-  - Una puerta pública de dos rutas, `/api/v1/public/calls/{inspect,join}`.
-  - Echar a alguien usa `RemoveParticipant`.
-  - El índice de grabación pasó a ser por sala (`EnsureRecordingIndexes`).
-  - Una reunión cuenta sus miembros, no sus personas, para saber si está vacía.
-  - El token de voz se firma con el nombre visible.
-- **App.**
-  - Interfaz `lib/voice-engine` con dos motores: Tauri y `livekit-client`, que
-    sólo se usa en el build web.
-  - La voz ya no está apagada en la web.
-  - Páginas `/call/:id` (miembro) y `/join#token` (invitado, sin sesión, con el
-    aviso de grabación antes de entrar).
-  - Diálogo «Llamar con invitados» en la cabecera del canal.
-  - La CSP web permite `rtc.guz-studio.dev`.
-- **Mutación.** 47 mutantes en el backend y 31 en la app, todos muertos.
-- **Falta.**
-  - Probar de punta a punta con un navegador real (miembro en el escritorio y
-    un invitado en incógnito).
-  - Commit y release: primero el backend, después la web y la app.
-- **TURN (8-oct).** El relé va por el 443 para las redes que sólo dejan salir
-  ese puerto (`docs/voz.md` §6 bis). Está escrito y probado en el repo, pero
-  **no está aplicado**. Falta, en este orden:
-  1. El DNS de `turn.guz-studio.dev` (lo pone jose).
-  2. `infra/k8s/turn-setup.sh` en el VPS.
-  3. Desplegar el backend.
 **Barrido de seguridad (6-oct), tanda 2 hecha, sin commitear.** Regla: crear
 una org sigue abierto a cualquiera, así que nada peligroso depende sólo de ser
 admin de una org. Servidores kubernetes y vistas del clúster: sólo superadmin;
