@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { engine, type MicReading } from "@/lib/voice-engine";
 
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -17,21 +17,7 @@ import { cn } from "@/lib/utils";
  * media investigación del fallo de «no se me oye».
  */
 
-interface Formato {
-  dispositivo: string;
-  ritmo: number;
-  canales: number;
-  formato: string;
-  ritmoDeLaFuente: number;
-  coincide: boolean;
-}
-
-interface Nivel {
-  enLlamada: boolean;
-  picoMilesimas: number;
-  formatoEntrada: Formato | null;
-  error: string | null;
-}
+type Nivel = MicReading;
 
 /** Cada cuánto se pregunta. Es también lo que mantiene viva la prueba. */
 const CADA = 120;
@@ -49,7 +35,7 @@ export default function MicLevel() {
     let vivo = true;
     const tick = async () => {
       try {
-        const n = await invoke<Nivel>("voice_mic_level");
+        const n = await engine.micLevel();
         if (!vivo) return;
         setNivel(n);
         const ahora = n.picoMilesimas / 1000;

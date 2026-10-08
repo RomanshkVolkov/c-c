@@ -59,10 +59,26 @@ export interface Recording {
 export interface RecordingPolicy {
   enabled: boolean;
   active: Recording | null;
+  /** Por qué no se puede aquí: hoy, `recording-needs-space`. */
+  reason?: string;
+}
+
+/**
+ * De qué sala son la política y el botón: el id de un canal, o `meet:<id>` para
+ * una reunión con invitados (W3). Un canal y una reunión que cuelga de él son
+ * dos salas y se graban por separado; con el id del canal solo, la reunión
+ * vería el REC del canal como suyo.
+ */
+export const meetScope = (inviteId: string) => `meet:${inviteId}`;
+
+function recordingsPath(scope: string): string {
+  return scope.startsWith("meet:")
+    ? `/api/v1/call-invites/${scope.slice("meet:".length)}/recordings`
+    : `/api/v1/task-spaces/${scope}/recordings`;
 }
 
 interface RecordingsState {
-  /** Por espacio: la política, para saber si el botón existe. */
+  /** Por sala (ver `meetScope`): la política, para saber si el botón existe. */
   policy: Record<string, RecordingPolicy>;
   /** Por espacio: lo ya grabado. */
   bySpace: Record<string, Recording[]>;
@@ -71,13 +87,16 @@ interface RecordingsState {
   loading: Record<string, boolean>;
   error: string | null;
 
-  loadPolicy: (spaceId: string) => Promise<void>;
-  start: (spaceId: string) => Promise<boolean>;
+  loadPolicy: (scope: string) => Promise<void>;
+  start: (scope: string) => Promise<boolean>;
   stop: (recordingId: string) => Promise<void>;
   load: (spaceId: string) => Promise<void>;
   remove: (recordingId: string, spaceId: string) => Promise<boolean>;
-  /** Un `call:status` del SSE: refresca sin volver a pedir la bySpace entera. */
-  onStatus: (spaceId: string, recording: Recording | null) => void;
+  /**
+   * Un `call:status` del SSE: refresca sin volver a pedir la bySpace entera.
+   * `spaceId` es el canal donde se lista, que en una reunión no es la sala.
+   */
+  onStatus: (scope: string, recording: Recording | null, spaceId?: string) => void;
   clearError: () => void;
 }
 
@@ -88,40 +107,33 @@ export const useRecordings = create<RecordingsState>((set, get) => ({
   loading: {},
   error: null,
 
-  loadPolicy: async (spaceId) => {
+  loadPolicy: async (scope) => {
     try {
-      const r = await api.get<APIResponse<RecordingPolicy>>(
-        `/api/v1/task-spaces/${spaceId}/recordings/policy`,
-        true,
-      );
+      const r = await api.get<APIResponse<RecordingPolicy>>(`${recordingsPath(scope)}/policy`, true);
       if (r.success && r.data) {
-        set((s) => ({ policy: { ...s.policy, [spaceId]: r.data as RecordingPolicy } }));
+        set((s) => ({ policy: { ...s.policy, [scope]: r.data as RecordingPolicy } }));
       }
     } catch {
       // Un fallo aquí esconde el botón, que es lo mismo que hace `enabled:
       // false`. No hay nada que decirle a nadie: no se pidió nada.
-      set((s) => ({ policy: { ...s.policy, [spaceId]: { enabled: false, active: null } } }));
+      set((s) => ({ policy: { ...s.policy, [scope]: { enabled: false, active: null } } }));
     }
   },
 
-  start: async (spaceId) => {
-    set({ inFlight: spaceId, error: null });
+  start: async (scope) => {
+    set({ inFlight: scope, error: null });
     try {
-      await api.post<APIResponse<Recording>>(
-        `/api/v1/task-spaces/${spaceId}/recordings`,
-        {},
-        true,
-      );
+      await api.post<APIResponse<Recording>>(recordingsPath(scope), {}, true);
       // **No se pinta nada aquí.** El chip lo enciende el motor cuando llega
       // el metadata de la sala; lo que sí se refresca es la política, que es
       // de donde sale «ya hay una activa» para quien no está en la llamada.
-      await get().loadPolicy(spaceId);
+      await get().loadPolicy(scope);
       return true;
     } catch (e) {
       set({ error: codigoDe(e) });
       // «Ya se está recording» no es un fallo que merezca una pantalla roja:
       // alguien pulsó primero. Se relee la política y el chip aparece solo.
-      if (codigoDe(e) === "already-recording") await get().loadPolicy(spaceId);
+      if (codigoDe(e) === "already-recording") await get().loadPolicy(scope);
       return false;
     } finally {
       set({ inFlight: null });
@@ -173,13 +185,14 @@ export const useRecordings = create<RecordingsState>((set, get) => ({
     }
   },
 
-  onStatus: (spaceId, recording) => {
+  onStatus: (scope, recording, listSpaceId) => {
+    const spaceId = listSpaceId ?? scope;
     set((s) => {
-      const politica = s.policy[spaceId];
+      const politica = s.policy[scope];
       const bySpace = s.bySpace[spaceId];
       return {
         // La política, para el botón.
-        policy: politica ? { ...s.policy, [spaceId]: { ...politica, active: recording } } : s.policy,
+        policy: politica ? { ...s.policy, [scope]: { ...politica, active: recording } } : s.policy,
         // Y la fila de la bySpace, si esa pantalla ya la tenía cargada: es lo que
         // hace que «procesando…» pase a verse solo, sin que nadie recargue.
         bySpace:

@@ -26,7 +26,7 @@ import { useDMStore } from "@/store/dm.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { useNotificationsStore } from "@/store/notifications.store";
 import { useInboxStore } from "@/store/inbox.store";
-import { useRecordings, type Recording } from "@/store/recordings.store";
+import { meetScope, useRecordings, type Recording } from "@/store/recordings.store";
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
 import { useMeetingsStore, type ReunionEntrante } from "@/store/meetings.store";
 import { useMyWorkStore } from "@/store/mywork.store";
@@ -646,10 +646,14 @@ export function useReportEvents() {
         case "call:status": {
           const c = parse(data) as unknown as {
             spaceId?: string;
+            inviteId?: string | null;
             recording?: Recording | null;
           } | null;
           if (!c?.spaceId) break;
-          useRecordings.getState().onStatus(c.spaceId, c.recording ?? null);
+          // Una reunión con invitados se graba aparte del canal del que
+          // cuelga: su política va por su sala, y la fila se lista en el canal.
+          if (c.inviteId) useRecordings.getState().onStatus(meetScope(c.inviteId), c.recording ?? null, c.spaceId);
+          else useRecordings.getState().onStatus(c.spaceId, c.recording ?? null);
           break;
         }
         case "voice.ring.cancel": {

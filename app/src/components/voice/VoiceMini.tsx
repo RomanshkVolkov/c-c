@@ -44,7 +44,10 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
   // El árbol queda de respaldo para una llamada que no lo trajo.
   const nombreDeLaLlamada = useVoice((s) => s.spaceName);
   const nombreEnElArbol = useTasksStore((s) => s.tree.find((e) => e.id === spaceId)?.name);
-  const nombre = nombreDeLaLlamada ?? nombreEnElArbol;
+  // Una reunión con invitados no es un canal: se llama por su título.
+  const meetId = useVoice((s) => s.meetId);
+  const titulo = useVoice((s) => s.title);
+  const nombre = meetId ? titulo : (nombreDeLaLlamada ?? nombreEnElArbol);
   // Y de qué org es, cuando no es la de la pantalla: «general» a secas no dice
   // a cuál de tus dos clientes estás hablando.
   const orgDeLaLlamada = useVoice((s) => s.orgId);
@@ -54,13 +57,15 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
       : null,
   );
 
-  if (!spaceId || estado === "fuera") return null;
+  if ((!spaceId && !meetId) || estado === "fuera") return null;
 
   // Volver es volver **a su org**, no al canal del mismo id en la que tengas
   // delante — que no existe, y caía en su general.
   const volver = () => {
     abrirEscenario();
-    goInOrg(navigate, `/chat?space=${spaceId}`, orgDeLaLlamada);
+    // La reunión tiene su propia pantalla; el canal, la suya.
+    if (meetId) navigate(`/call/${meetId}`);
+    else goInOrg(navigate, `/chat?space=${spaceId}`, orgDeLaLlamada);
   };
 
   // Con el sidebar plegado no cabe la caja, pero desaparecer no es una opción:

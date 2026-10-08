@@ -1,6 +1,6 @@
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { engine } from "@/lib/voice-engine";
 import { Check, Loader2, Mic, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MicLevel from "@/components/voice/MicLevel";
@@ -35,7 +35,8 @@ export default function DeviceSettings() {
   // mitad de una llamada es justo cuando alguien abre esto, y una lista
   // cacheada al entrar no los tendría.
   const cargar = () => {
-    invoke<{ mics: Dispositivo[]; cams: Dispositivo[] }>("voice_list_devices")
+    engine
+      .listDevices()
       .then((d) => {
         setLista(d);
         setError(null);
@@ -47,7 +48,7 @@ export default function DeviceSettings() {
   const elegir = async (kind: "mic" | "cam", d: Dispositivo) => {
     setCambiando(d.id);
     try {
-      await invoke("voice_set_device", { kind, deviceId: d.id });
+      await engine.setDevice(kind, d.id);
       cargar();
     } catch (e) {
       setError(String(e));

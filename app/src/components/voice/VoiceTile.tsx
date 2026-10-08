@@ -1,5 +1,6 @@
-import { MicOff } from "lucide-react";
-import VideoLienzo from "@/components/voice/VideoLienzo";
+import { MicOff, UserX } from "lucide-react";
+import { useT } from "@/lib/i18n";
+import VideoSurface from "@/components/voice/VideoSurface";
 import { iniciales } from "@/lib/desde";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,8 @@ export default function VoiceTile({
   compacto,
   video,
   espejo,
+  invitado,
+  onRemove,
 }: {
   nombre: string;
   hablando: boolean;
@@ -31,7 +34,16 @@ export default function VoiceTile({
   espejo?: boolean;
   /** En la tira lateral del compartir; en la rejilla, no. */
   compacto?: boolean;
+  /**
+   * Es alguien de fuera. **Lo decide quien llama, por la identidad**
+   * (`guest:…`), nunca por el nombre: el nombre lo escribe el invitado, y uno
+   * que se llame como un compañero tiene que seguir viéndose de fuera.
+   */
+  invitado?: boolean;
+  /** Sacarlo de la llamada. Sólo para invitados, y sólo si quien mira puede. */
+  onRemove?: () => void;
 }) {
+  const { t } = useT();
   return (
     <div
       className={cn(
@@ -49,11 +61,28 @@ export default function VoiceTile({
         {iniciales(nombre)}
       </span>
 
-      {video && <VideoLienzo identity={video} espejo={espejo} />}
+      {video && <VideoSurface identity={video} espejo={espejo} />}
 
-      <span className="absolute bottom-3 left-3 max-w-[calc(100%-4rem)] truncate rounded-full bg-background/70 px-2.5 py-1 text-[13px]">
-        {nombre}
+      <span className="absolute bottom-3 left-3 flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-full bg-background/70 px-2.5 py-1 text-[13px]">
+        <span className="truncate">{nombre}</span>
+        {invitado && (
+          <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold text-primary">
+            {t("calls:guestBadge")}
+          </span>
+        )}
       </span>
+
+      {invitado && onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          title={t("calls:removeGuest", { name: nombre })}
+          aria-label={t("calls:removeGuest", { name: nombre })}
+          className="absolute right-3 top-3 flex rounded-full bg-background/70 p-1.5 text-muted-foreground hover:text-destructive"
+        >
+          <UserX className="size-[15px]" />
+        </button>
+      )}
 
       {/* El icono y no la palabra: en un mosaico de 200 px «Muted» tapa el
           nombre, y el micrófono tachado se entiende en cualquier idioma. */}

@@ -1,4 +1,3 @@
-import { isWebBuild } from "@/lib/platform";
 import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
@@ -6,7 +5,7 @@ import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Bell, BellOff, ChevronDown, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, Volume2, X } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, ChevronDown, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, UserPlus, Volume2, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +27,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { activo } from "@/lib/desde";
 import VoiceBar from "@/components/chat/VoiceBar";
+import GuestInviteDialog from "@/components/voice/GuestInviteDialog";
 import VoiceStage from "@/components/voice/VoiceStage";
 import { joinNames } from "@/lib/people-list";
 import { useVoice } from "@/store/voice.store";
@@ -102,6 +102,8 @@ export default function ChannelView({
   // El compositor, para que la zona para soltar le entregue los ficheros.
   const composer = useRef<MarkdownEditorHandle>(null);
   const [tab, setTab] = useState<Tab>("thread");
+  const [invitados, setInvitados] = useState(false);
+  const orgDelCanal = useOrgsStore((s) => s.currentOrgId);
   /**
    * Lo que se busca, **por pestaña activa y sólo en este canal**.
    *
@@ -213,7 +215,26 @@ export default function ChannelView({
         )}
         <h2 className="truncate text-sm font-medium">#{spaceName}</h2>
         <QuienAnda />
-        {!isWebBuild && <VoiceBar spaceId={spaceId} />}
+        <VoiceBar spaceId={spaceId} />
+        {/* Una reunión aparte para gente de fuera (W3). Al lado de la voz del
+            canal y no dentro de ella: son dos salas distintas. */}
+        {orgDelCanal && (
+          <>
+            <button
+              onClick={() => setInvitados(true)}
+              title={t("calls:dialogTitle")}
+              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <UserPlus className="size-3.5" /> {t("calls:inviteButton")}
+            </button>
+            <GuestInviteDialog
+              open={invitados}
+              onOpenChange={setInvitados}
+              orgId={orgDelCanal}
+              spaceId={spaceId}
+            />
+          </>
+        )}
         {/* Salirse de un canal es pedir que lo corriente deje de avisar; las
             menciones llegan igual. Vive aquí y no en preferencias porque es una
             decisión por canal: los que te importan los sabes estando dentro. */}
@@ -830,15 +851,12 @@ function VozEnCurso({ spaceId }: { spaceId: string }) {
           count: nombres.length,
         })}
       </span>
-      {/* Quién está, sí; entrar, todavía no desde la web (W3). */}
-      {!isWebBuild && (
-        <button
-          onClick={() => void entrar(spaceId)}
-          className="ml-auto shrink-0 font-semibold text-success hover:underline"
-        >
-          {t("common:voice.join")}
-        </button>
-      )}
+      <button
+        onClick={() => void entrar(spaceId)}
+        className="ml-auto shrink-0 font-semibold text-success hover:underline"
+      >
+        {t("common:voice.join")}
+      </button>
     </div>
   );
 }

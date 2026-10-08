@@ -1,8 +1,7 @@
-import { isWebBuild } from "@/lib/platform";
 import { phraseFor } from "@/lib/server-errors";
 import { create } from "zustand";
-import { Channel, invoke } from "@tauri-apps/api/core";
 import { api } from "@/lib/api";
+import { engine, type Reattach, type VoiceEvent, type VoiceMeta } from "@/lib/voice-engine";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import type { APIResponse } from "@/types/auth";
@@ -10,25 +9,15 @@ import type { APIResponse } from "@/types/auth";
 /**
  * La sala de voz en la que estás, y quién está contigo.
  *
- * El motor vive en Rust —el webview de Linux no tiene WebRTC, ver `docs/voz.md`—
- * así que aquí no hay media: sólo el estado que la pantalla pinta y las órdenes
- * que se le mandan. Lo mismo que el terminal, y por el mismo motivo: lo que se
- * puede probar sin un navegador de verdad vive en el store.
+ * Aquí no hay media: sólo el estado que la pantalla pinta y las órdenes que se
+ * le mandan al motor. En el escritorio el motor vive en Rust —el webview de
+ * Linux no tiene WebRTC, ver `docs/voz.md`—; en el build web es
+ * `livekit-client` (W3). El store no sabe cuál tiene debajo: los dos hablan el
+ * mismo idioma de eventos (`lib/voice-engine`). Lo que se puede probar sin un
+ * navegador de verdad vive aquí.
  */
 
-export type VoiceEvent =
-  | { kind: "connected"; identity: string }
-  | { kind: "joined"; identity: string; name: string }
-  | { kind: "left"; identity: string }
-  | { kind: "speaking"; identities: string[] }
-  | { kind: "muted"; identity: string; muted: boolean }
-  | { kind: "latency"; ms: number }
-  | { kind: "video"; identity: string; source: "camera" | "screen"; enabled: boolean }
-  | { kind: "selfSpeaking"; speaking: boolean }
-  // Se está recording, o se ha dejado de grabar. Sale del metadata de la sala,
-  // así que llega también a quien entra tarde — ver `voice.rs`.
-  | { kind: "recording"; active: boolean; id: string; by: string; since: string }
-  | { kind: "disconnected"; reason: string };
+export type { VoiceEvent, VoiceMeta };
 
 /** Quién está recording esta llamada, para el chip REC. */
 export interface Recording {
@@ -75,30 +64,71 @@ export interface TimbreSaliente {
  */
 export const TIMBRE_MS = 20_000;
 
-/**
- * De qué es la llamada. Se le da al motor al entrar y el motor la devuelve al
- * engancharse tras una recarga: la página nueva no tiene otra forma de saber
- * dónde estabas —el SFU sabe la sala, no el canal ni la organización—.
- */
-export interface VoiceMeta {
-  spaceId: string;
-  orgId: string | null;
-  spaceName: string | null;
+/** La entrada a una reunión con invitados, como la da el servidor. */
+export interface MeetToken {
+  url: string;
+  token: string;
+  room: string;
+  orgId: string;
+  spaceId?: string | null;
+  inviteId: string;
+  title: string;
 }
 
-/** Lo que contesta `voice_attach` cuando hay llamada. */
-interface Reenganche {
-  meta: Partial<VoiceMeta> | null;
-  yo: string;
-  silenciado: boolean;
-  sordo: boolean;
-  camara: boolean;
-  compartiendo: boolean;
+/** La entrada de alguien de fuera, como la da la puerta pública. */
+export interface GuestEntry {
+  url: string;
+  token: string;
+  room: string;
+  identity: string;
+  name: string;
+  pass: string;
+  title: string;
+}
+
+/**
+ * Los motivos de desconexión que se le dicen a alguien, con su frase.
+ *
+ * Antes se enseñaba el motivo crudo del motor, y echar a un invitado le habría
+ * dejado leyendo «ParticipantRemoved». Los que no son un fallo —salir tú, o no
+ * saber por qué— no se enseñan.
+ */
+const MOTIVOS: Record<string, string | null> = {
+  Unknown: null,
+  UnknownReason: null,
+  ClientInitiated: null,
+  ParticipantRemoved: "voice-removed",
+  RoomDeleted: "voice-room-closed",
+  DuplicateIdentity: "voice-joined-elsewhere",
+};
+
+function motivoDeSalida(reason: string): string | null {
+  if (!(reason in MOTIVOS)) return reason;
+  const codigo = MOTIVOS[reason];
+  return codigo ? phraseFor(codigo, reason) : null;
 }
 
 interface VoiceState {
-  /** El espacio cuya sala está abierta, o null. Una a la vez. */
+  /**
+   * El canal cuya sala está abierta, o null. Una sala a la vez.
+   *
+   * **En una reunión con invitados es null**, aunque la reunión cuelgue de un
+   * canal: la sala no es la del canal, y todo lo que mira esto —el botón de
+   * entrar de cada canal, el escenario dentro del canal— tiene que ver que no
+   * estás en él. El canal de la reunión va en `meetSpaceId`.
+   */
   spaceId: string | null;
+  /** La reunión con invitados en la que estás (`meet:<id>`), o null. */
+  meetId: string | null;
+  /** El canal del que cuelga la reunión: su chat y sus grabaciones. */
+  meetSpaceId: string | null;
+  /** El título de la reunión, para la cabecera. */
+  title: string | null;
+  /**
+   * Entraste como alguien de fuera, con un enlace. Sin cuenta: nada de lo que
+   * necesita sesión —chat, timbre, grabar, echar— se ofrece.
+   */
+  visitor: boolean;
   /**
    * La organización y el nombre del canal de la llamada.
    *
@@ -218,6 +248,10 @@ interface VoiceState {
    * la org actual y el nombre del árbol.
    */
   entrar: (spaceId: string, donde?: { orgId?: string | null; spaceName?: string | null }) => Promise<void>;
+  /** Entrar a una reunión con invitados, como miembro. */
+  entrarEnReunion: (inviteId: string) => Promise<void>;
+  /** Entrar a una reunión como invitado, con lo que dio la puerta pública. */
+  entrarComoInvitado: (entrada: GuestEntry) => Promise<void>;
   /**
    * Engancharse a la llamada que ya estaba en curso, tras recargar la página.
    *
@@ -257,6 +291,10 @@ interface VoiceState {
 
 const VACIO = {
   spaceId: null,
+  meetId: null,
+  meetSpaceId: null,
+  title: null,
+  visitor: false,
   orgId: null,
   spaceName: null,
   estado: "fuera" as const,
@@ -318,26 +356,50 @@ function deRust(e: unknown): string {
   return phraseFor(crudo, crudo);
 }
 
-export const useVoice = create<VoiceState>((set, get) => ({
+/**
+ * Cada entrada lleva su número. Si mientras conecta se pulsa «salir» —o se
+ * entra a otra—, el número ya no es el último y la conexión que llega tarde se
+ * cuelga en vez de dejar un micrófono abierto donde nadie lo ve.
+ */
+let intento = 0;
+
+export const useVoice = create<VoiceState>((set, get) => {
+  /** Conectar con un token ya pedido. Común a canal, reunión e invitado. */
+  const conectar = async (
+    url: string,
+    token: string,
+    meta: VoiceMeta,
+    mio: number,
+    errorSpaceId: string | null,
+  ) => {
+    try {
+      const yo = await engine.join({ url, token, meta, onEvent: (ev) => get().alRecibir(ev) });
+      if (mio !== intento) {
+        void engine.leave().catch(() => {});
+        return;
+      }
+      set({ estado: "dentro", yo, mic: true });
+    } catch (e) {
+      if (mio !== intento) return;
+      set({ ...VACIO, error: deRust(e), errorSpaceId });
+      void engine.leave().catch(() => {});
+    }
+  };
+
+  return {
   ...VACIO,
   entrante: null,
   // Fuera de `VACIO` a propósito: salir de una sala no vacía los demás canales.
   ocupacion: {},
 
   entrar: async (spaceId, donde) => {
-    // La voz en la versión web llega con su propio motor (W3, livekit-client).
-    // Hasta entonces se dice, en vez de llamar a un Rust que no existe y
-    // quedarse «entrando» para siempre.
-    if (isWebBuild) {
-      set({ error: phraseFor("voice-web-not-yet", "Calls aren't available on the web yet."), errorSpaceId: spaceId });
-      return;
-    }
     // Ya dentro de ésta: no se reconecta. Volver a entrar cortaría la
     // conversación en curso para dejarla exactamente igual.
     if (get().spaceId === spaceId && get().estado !== "fuera") return;
     // En otra: se sale primero. Dos micrófonos abiertos a la vez es un fallo
     // que sólo se nota cuando alguien te oye desde donde no estabas.
-    if (get().spaceId) await get().salir();
+    if (get().estado !== "fuera") await get().salir();
+    const mio = ++intento;
 
     // El escenario se abre ya, mientras conecta: entrar a una llamada lleva un
     // segundo largo y sin nada que mirar parece que el botón no hizo nada.
@@ -346,33 +408,57 @@ export const useVoice = create<VoiceState>((set, get) => ({
       orgId: donde?.orgId ?? useOrgsStore.getState().currentOrgId,
       spaceName: donde?.spaceName ?? useTasksStore.getState().tree.find((e) => e.id === spaceId)?.name ?? null,
     };
-    set({ ...VACIO, ...meta, estado: "entrando", escenario: true });
+    set({ ...VACIO, spaceId, orgId: meta.orgId, spaceName: meta.spaceName, estado: "entrando", escenario: true });
+    let res: APIResponse<{ url: string; token: string; room: string }>;
     try {
-      const res = await api.post<APIResponse<{ url: string; token: string; room: string }>>(
+      res = await api.post<APIResponse<{ url: string; token: string; room: string }>>(
         `/api/v1/task-spaces/${spaceId}/voice/token`,
         {},
         true,
       );
       if (!res.success || !res.data) throw new Error(res.error ?? "no se pudo pedir la entrada");
-
-      const canal = new Channel<VoiceEvent>();
-      canal.onmessage = (ev) => get().alRecibir(ev);
-      const yo = await invoke<string>("voice_join", {
-        url: res.data.url,
-        token: res.data.token,
-        onEvent: canal,
-        meta,
-      });
-      // Puede haberse pulsado «salir» mientras conectaba; entonces esto ya no
-      // es la sala actual y dejarlo entrar dejaría un micrófono abierto.
-      if (get().spaceId !== spaceId) {
-        void invoke("voice_leave").catch(() => {});
-        return;
-      }
-      set({ estado: "dentro", yo, mic: true });
     } catch (e) {
-      set({ ...VACIO, error: deRust(e), errorSpaceId: spaceId });
+      if (mio === intento) set({ ...VACIO, error: deRust(e), errorSpaceId: spaceId });
+      return;
     }
+    // Puede haberse pulsado «salir» mientras se pedía; entonces esto ya no es
+    // la sala actual y entrar dejaría un micrófono abierto.
+    if (mio !== intento) return;
+    await conectar(res.data.url, res.data.token, meta, mio, spaceId);
+  },
+
+  entrarEnReunion: async (inviteId) => {
+    if (get().meetId === inviteId && get().estado !== "fuera") return;
+    if (get().estado !== "fuera") await get().salir();
+    const mio = ++intento;
+    set({ ...VACIO, meetId: inviteId, estado: "entrando", escenario: true });
+    let t: MeetToken;
+    try {
+      const res = await api.post<APIResponse<MeetToken>>(`/api/v1/call-invites/${inviteId}/voice/token`, {}, true);
+      if (!res.success || !res.data) throw new Error(res.error ?? "no se pudo pedir la entrada");
+      t = res.data;
+    } catch (e) {
+      if (mio === intento) set({ ...VACIO, error: deRust(e) });
+      return;
+    }
+    if (mio !== intento) return;
+    const meta: VoiceMeta = {
+      spaceId: null,
+      orgId: t.orgId,
+      spaceName: null,
+      meetId: inviteId,
+      title: t.title,
+    };
+    set({ orgId: t.orgId, title: t.title, meetSpaceId: t.spaceId ?? null });
+    await conectar(t.url, t.token, meta, mio, null);
+  },
+
+  entrarComoInvitado: async (entrada) => {
+    if (get().estado !== "fuera") await get().salir();
+    const mio = ++intento;
+    set({ ...VACIO, visitor: true, title: entrada.title, estado: "entrando", escenario: true });
+    const meta: VoiceMeta = { spaceId: null, orgId: null, spaceName: null, title: entrada.title };
+    await conectar(entrada.url, entrada.token, meta, mio, null);
   },
 
   reanudar: async () => {
@@ -382,27 +468,29 @@ export const useVoice = create<VoiceState>((set, get) => ({
     // antes, se los comería. Se guardan y se aplican después.
     const pendientes: VoiceEvent[] = [];
     let listo = false;
-    const canal = new Channel<VoiceEvent>();
-    canal.onmessage = (ev) => (listo ? get().alRecibir(ev) : pendientes.push(ev));
 
-    let r: Reenganche | null;
+    let r: Reattach | null;
     try {
-      r = await invoke<Reenganche | null>("voice_attach", { onEvent: canal });
+      r = await engine.attach((ev) => (listo ? get().alRecibir(ev) : pendientes.push(ev)));
     } catch {
       return; // un motor viejo sin `voice_attach`: no hay a qué engancharse
     }
     if (!r) return;
 
-    const spaceId = r.meta?.spaceId;
-    if (!spaceId) {
-      // Una sala viva de la que no se sabe el canal no se puede enseñar, y una
-      // que no se enseña es un micrófono abierto a escondidas. Se cuelga.
-      await invoke("voice_leave").catch(() => {});
+    const spaceId = r.meta?.spaceId ?? null;
+    const meetId = r.meta?.meetId ?? null;
+    if (!spaceId && !meetId) {
+      // Una sala viva de la que no se sabe el canal ni la reunión no se puede
+      // enseñar, y una que no se enseña es un micrófono abierto a escondidas.
+      // Se cuelga.
+      await engine.leave().catch(() => {});
       return;
     }
     set({
       ...VACIO,
       spaceId,
+      meetId,
+      title: r.meta?.title ?? null,
       orgId: r.meta?.orgId ?? null,
       spaceName: r.meta?.spaceName ?? null,
       estado: "dentro",
@@ -424,8 +512,9 @@ export const useVoice = create<VoiceState>((set, get) => ({
     // le sigue sonando veinte segundos una invitación a una sala vacía.
     if (get().llamando) await get().cancelarTimbre();
     pararReloj("saliente");
+    intento++;
     set({ ...VACIO });
-    await invoke("voice_leave").catch(() => {});
+    await engine.leave().catch(() => {});
   },
 
   abrirEscenario: () => {
@@ -463,7 +552,8 @@ export const useVoice = create<VoiceState>((set, get) => ({
       mic: siguiente,
       mudos: yo ? { ...s.mudos, [yo]: !siguiente } : s.mudos,
     }));
-    await invoke("voice_set_mic", { enabled: siguiente })
+    await engine
+      .setMic(siguiente)
       .then(() => set({ error: null, errorSpaceId: null }))
       .catch(() => {});
   },
@@ -479,8 +569,8 @@ export const useVoice = create<VoiceState>((set, get) => ({
   alternarSordera: async () => {
     const siguiente = !get().sordo;
     set(siguiente ? { sordo: true, mic: false } : { sordo: false });
-    await invoke("voice_set_deaf", { enabled: siguiente }).catch(() => {});
-    if (siguiente) await invoke("voice_set_mic", { enabled: false }).catch(() => {});
+    await engine.setDeaf(siguiente).catch(() => {});
+    if (siguiente) await engine.setMic(false).catch(() => {});
   },
 
   limpiarError: () => set({ error: null, errorSpaceId: null }),
@@ -602,7 +692,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
   alternarCam: async () => {
     const siguiente = !get().cam;
     try {
-      await invoke("voice_set_camera", { enabled: siguiente });
+      await engine.setCamera(siguiente);
       set({ cam: siguiente, error: null, errorSpaceId: null });
     } catch (e) {
       set({ error: deRust(e), errorSpaceId: get().spaceId });
@@ -623,7 +713,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
   alternarCompartir: async () => {
     if (get().compartiendo) {
       try {
-        await invoke("voice_stop_share");
+        await engine.stopShare();
         set({ compartiendo: false, error: null, errorSpaceId: null });
       } catch (e) {
         set({ error: deRust(e), errorSpaceId: get().spaceId });
@@ -632,7 +722,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
     }
     // Con dos monitores, cuál. Antes se compartía siempre el primero que
     // listara el sistema, sin preguntar (#117).
-    const fuentes = await invoke<{ id: string; title: string }[]>("voice_screen_sources").catch(() => []);
+    const fuentes = await engine.screenSources().catch(() => []);
     if (Array.isArray(fuentes) && fuentes.length > 1) {
       set({ eligiendoPantalla: fuentes });
       return;
@@ -643,7 +733,7 @@ export const useVoice = create<VoiceState>((set, get) => ({
   compartirPantalla: async (sourceId) => {
     set({ eligiendoPantalla: null });
     try {
-      await invoke("voice_share_screen", { sourceId });
+      await engine.shareScreen(sourceId);
       set({ compartiendo: true, error: null, errorSpaceId: null });
     } catch (e) {
       set({ error: deRust(e), errorSpaceId: get().spaceId });
@@ -705,6 +795,10 @@ export const useVoice = create<VoiceState>((set, get) => ({
             // El foco no se lo quita nadie al que ya está: sólo se ocupa si
             // está libre, y sólo se suelta el que lo tenía.
             pantalla: ev.enabled ? (s.pantalla ?? ev.identity) : s.pantalla === ev.identity ? null : s.pantalla,
+            // Tu propia pantalla se deja de compartir también desde fuera de
+            // la app —el botón del navegador, o el sistema que la retira— y
+            // entonces el botón de aquí tiene que apagarse.
+            ...(ev.identity === s.yo && !ev.enabled ? { compartiendo: false } : {}),
           }));
         } else {
           set((s) => ({
@@ -724,13 +818,20 @@ export const useVoice = create<VoiceState>((set, get) => ({
         // es cómo se acaba con un indicador encendido por un evento perdido.
         set({ hablando: ev.identities });
         break;
-      case "disconnected":
+      case "disconnected": {
+        // El invitado se queda con su reunión dicha: la pantalla de después
+        // necesita saber que estaba dentro de una para ofrecer volver.
+        const { spaceId, visitor, title } = get();
+        intento++;
         set({
           ...VACIO,
-          error: ev.reason === "Unknown" ? null : ev.reason,
-          errorSpaceId: get().spaceId,
+          ...(visitor ? { visitor, title } : {}),
+          error: motivoDeSalida(ev.reason),
+          errorSpaceId: spaceId,
         });
         break;
+      }
     }
   },
-}));
+  };
+});

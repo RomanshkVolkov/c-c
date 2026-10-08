@@ -1,6 +1,6 @@
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { AlertCircle, Loader2, MessageSquare, Minimize2, Volume2, X } from "lucide-react";
+import { AlertCircle, Link2, Loader2, MessageSquare, Minimize2, Volume2, X } from "lucide-react";
 import { iniciales } from "@/lib/desde";
 import VoiceChat from "@/components/voice/VoiceChat";
 import DeviceSettings from "@/components/voice/DeviceSettings";
@@ -13,11 +13,16 @@ import RecChip from "@/components/voice/RecChip";
 import RecordingBanner from "@/components/voice/RecordingBanner";
 import RecordingConsentDialog from "@/components/voice/RecordingConsentDialog";
 import VoiceControls from "@/components/voice/VoiceControls";
-import VideoLienzo from "@/components/voice/VideoLienzo";
+import VideoSurface from "@/components/voice/VideoSurface";
 import VoiceTile from "@/components/voice/VoiceTile";
 import ScreenPicker from "@/components/voice/ScreenPicker";
 import { cn } from "@/lib/utils";
-import { useRecordings } from "@/store/recordings.store";
+import { guestLinkFor } from "@/lib/call-link";
+import { isWebBuild } from "@/lib/platform";
+import { phraseFor } from "@/lib/server-errors";
+import { engine } from "@/lib/voice-engine";
+import { isGuestIdentity, useCalls } from "@/store/calls.store";
+import { meetScope, useRecordings } from "@/store/recordings.store";
 import { useVoice } from "@/store/voice.store";
 
 /**
@@ -30,8 +35,14 @@ import { useVoice } from "@/store/voice.store";
  *
  * Lo importante es que **esta pantalla no es la llamada**: minimizarla no
  * cuelga. Por eso el store lleva dos estados y no uno (ver `voice.store.ts`).
+ *
+ * La misma pantalla sirve a las tres salas (W3): la de un canal, una reunión
+ * con invitados vista por un miembro, y esa reunión vista por el invitado. Lo
+ * que cambia es **qué se ofrece**, y sale del store, no de props: a quien entró
+ * con un enlace no se le ofrece nada que necesite sesión —el chat del canal, el
+ * timbre, grabar, sacar a nadie—, porque fallaría al pulsarlo.
  */
-export default function VoiceStage({ spaceName }: { spaceName: string }) {
+export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   const { t } = useT();
   const estado = useVoice((s) => s.estado);
   const gente = useVoice((s) => s.gente);
@@ -61,11 +72,25 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
   const [ajustes, setAjustes] = useState(false);
   const [chat, setChat] = useState(false);
   const spaceId = useVoice((s) => s.spaceId);
+  const meetId = useVoice((s) => s.meetId);
+  const meetSpaceId = useVoice((s) => s.meetSpaceId);
+  const title = useVoice((s) => s.title);
+  const visitor = useVoice((s) => s.visitor);
+  const enReunion = Boolean(meetId) || visitor;
+  const nombreSala = enReunion ? (title ?? t("calls:untitled")) : `#${spaceName}`;
+  // De qué sala son la política y el botón de grabar: la del canal, o la de la
+  // reunión. Nunca la del canal estando en una reunión — ver `meetScope`.
+  const recScope = visitor ? null : (spaceId ?? (meetId ? meetScope(meetId) : null));
+  // El chat de la sala es el hilo del canal; en una reunión, el del canal del
+  // que cuelga. Un invitado no tiene sesión con la que escribirlo.
+  const chatSpaceId = visitor ? null : (spaceId ?? meetSpaceId);
+  const kick = useCalls((s) => s.kick);
+  const getInvite = useCalls((s) => s.get);
   // Quién graba lo dice **el motor**, no el botón: llega por el metadata de la
   // sala, así que enciende el chip en todas las pantallas a la vez —incluida la
   // de quien entró después.
   const recording = useVoice((s) => s.recording);
-  const politica = useRecordings((s) => (spaceId ? s.policy[spaceId] : undefined));
+  const politica = useRecordings((s) => (recScope ? s.policy[recScope] : undefined));
   const startRecording = useRecordings((s) => s.start);
   const stopRecording = useRecordings((s) => s.stop);
   const grabacionEnVuelo = useRecordings((s) => s.inFlight);
@@ -99,8 +124,36 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
 
   // Se pregunta al entrar: de eso depende que el botón exista.
   useEffect(() => {
-    if (spaceId) void loadPolicy(spaceId);
-  }, [spaceId, loadPolicy]);
+    if (recScope) void loadPolicy(recScope);
+  }, [recScope, loadPolicy]);
+
+  const copiarEnlace = async () => {
+    if (!meetId) return;
+    try {
+      const inv = await getInvite(meetId);
+      await navigator.clipboard.writeText(guestLinkFor(inv.link));
+      toast.success(t("calls:linkCopied"));
+    } catch (e) {
+      toast.error(phraseFor(String((e as Error)?.message ?? e), String(e)));
+    }
+  };
+
+  const sacar = async (identity: string, nombre: string) => {
+    if (!meetId) return;
+    const ok = await confirm({
+      title: t("calls:removeGuestTitle", { name: nombre }),
+      description: t("calls:removeGuestBody"),
+      confirmText: t("calls:removeGuestAction"),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await kick(meetId, identity);
+      toast.success(t("calls:removed", { name: nombre }));
+    } catch (e) {
+      toast.error(String((e as Error)?.message ?? e));
+    }
+  };
 
   // Con alguien compartiendo, las caras se van **encima** de la imagen en vez
   // de ocupar una columna de 200 px al lado. El ancho es lo que se ha venido a
@@ -129,7 +182,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
       <ScreenPicker />
       <header className="flex h-13 shrink-0 items-center gap-3 border-b px-4">
         <Volume2 className="size-4 shrink-0 text-success" />
-        <span className="truncate text-sm font-semibold">#{spaceName}</span>
+        <span className="truncate text-sm font-semibold">{nombreSala}</span>
         <span className="shrink-0 text-[13px] text-muted-foreground">
           {estado === "entrando"
             ? "connecting…"
@@ -149,30 +202,49 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         <div className="flex-1" />
         {/* Llamar a alguien vive aquí y no en la barra de mandos: los mandos
             son sobre ti —tu micro, tu cámara— y esto es sobre la sala. */}
-        <InviteButton abierto={invitando} onToggle={() => setInvitando((v) => !v)} />
+        {/* El timbre es del canal: llama a un compañero a **esta** sala, y
+            una reunión con invitados no es la sala de ningún canal. */}
+        {spaceId && !visitor && (
+          <InviteButton abierto={invitando} onToggle={() => setInvitando((v) => !v)} />
+        )}
+        {meetId && !visitor && (
+          <button
+            type="button"
+            onClick={() => void copiarEnlace()}
+            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+          >
+            <Link2 className="size-[15px]" /> {t("calls:copyLink")}
+          </button>
+        )}
         {/* La etiqueta dice lo que va a hacer, no en qué estado está: es el
             patrón del resto de la cabecera y del diseño. */}
-        <button
-          type="button"
-          onClick={() => setChat((v) => !v)}
-          className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
-        >
-          <MessageSquare className="size-[15px]" /> {chat ? t("common:last.hideChat") : t("common:last.chat")}
-        </button>
-        <button
-          type="button"
-          onClick={cerrarEscenario}
-          title={t("common:last.backToChannel")}
-          className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
-        >
-          <Minimize2 className="size-[15px]" /> Minimize
-        </button>
+        {chatSpaceId && (
+          <button
+            type="button"
+            onClick={() => setChat((v) => !v)}
+            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+          >
+            <MessageSquare className="size-[15px]" /> {chat ? t("common:last.hideChat") : t("common:last.chat")}
+          </button>
+        )}
+        {/* Minimizar es volver a cac con la llamada abierta; quien entró con un
+            enlace no tiene ningún cac al que volver. */}
+        {!visitor && (
+          <button
+            type="button"
+            onClick={cerrarEscenario}
+            title={t("common:last.backToChannel")}
+            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+          >
+            <Minimize2 className="size-[15px]" /> Minimize
+          </button>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 p-5">
         {estado === "entrando" ? (
           <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Joining #{spaceName}…
+            <Loader2 className="size-4 animate-spin" /> Joining {nombreSala}…
           </div>
         ) : (
           <div className="flex size-full gap-3.5">
@@ -186,7 +258,7 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                 Sin pantalla, la rejilla de siempre. */}
             {pantalla && (
               <div className="relative min-w-0 flex-1 overflow-hidden rounded-xl border-2 border-primary bg-black">
-                <VideoLienzo identity={pantalla} fuente="screen" />
+                <VideoSurface identity={pantalla} fuente="screen" />
                 <span className="absolute bottom-3 left-3 rounded-full bg-background/70 px-2.5 py-1 text-xs font-semibold text-primary">
                   {pantalla === yo
                     ? t("common:last.youAreSharing")
@@ -275,12 +347,22 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
                         : undefined
                   }
                   espejo={p.identity === yo}
+                  invitado={isGuestIdentity(p.identity)}
+                  // Sacar a alguien es de los miembros, y sólo en una reunión:
+                  // en el canal no hay invitados, y el invitado no saca a nadie.
+                  // **A quién** se puede sacar lo decide el mosaico, por
+                  // `invitado`: una sola puerta, no dos que se puedan desparejar.
+                  onRemove={
+                    meetId && !visitor
+                      ? () => void sacar(p.identity, p.name || p.identity)
+                      : undefined
+                  }
                 />
               ))}
               </div>
             </div>
-            {chat && spaceId && (
-              <VoiceChat spaceId={spaceId} spaceName={spaceName} onClose={() => setChat(false)} />
+            {chat && chatSpaceId && (
+              <VoiceChat spaceId={chatSpaceId} spaceName={spaceName || nombreSala} onClose={() => setChat(false)} />
             )}
           </div>
         )}
@@ -331,15 +413,19 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         onMic={() => void alternarMic()}
         onDeafen={() => void alternarSordera()}
         onCam={() => void alternarCam()}
-        onShare={() => void alternarCompartir()}
+        // Un móvil no comparte pantalla: el botón no se pinta en vez de fallar.
+        onShare={engine.canShareScreen() ? () => void alternarCompartir() : undefined}
         onSettings={() => setAjustes((v) => !v)}
         onLeave={() => void salir()}
+        // El reporte de audio lee el registro del motor de Rust; en la web no
+        // hay nada que leer.
+        canReport={!isWebBuild}
         recording={Boolean(recording)}
         recordingInFlight={Boolean(grabacionEnVuelo)}
         // Sin política, o con la grabación apagada en el servidor, **no hay
         // botón**: pasar `undefined` es lo que hace que no se pinte.
         onRecord={
-          politica?.enabled && spaceId
+          politica?.enabled && recScope
             ? () => {
                 // **Parar también pregunta**, y no por simetría: el botón vive
                 // entre el de silenciarse y el de compartir pantalla, que se
@@ -359,16 +445,16 @@ export default function VoiceStage({ spaceName }: { spaceName: string }) {
         onOpenChange={setConsenting}
         inFlight={Boolean(grabacionEnVuelo)}
         onConfirm={() => {
-          if (!spaceId) return;
+          if (!recScope) return;
           void (async () => {
-            const empezo = await startRecording(spaceId);
+            const empezo = await startRecording(recScope);
             setConsenting(false);
             // Si dos pulsan a la vez, **gana uno** —lo decide el índice único
             // de la base, no una comprobación previa— y al otro le llega un
             // 409. Hasta ahora su pulsación se veía como si no hubiera hecho
             // nada: aparecía el chip y no se sabía por qué. Ahora se le dice.
             if (!empezo && recordingError() === "already-recording") {
-              const quien = useRecordings.getState().policy[spaceId]?.active?.startedBy;
+              const quien = useRecordings.getState().policy[recScope]?.active?.startedBy;
               const nombre = (gente ?? []).find((p) => p.identity === quien)?.name;
               toast.info(
                 nombre

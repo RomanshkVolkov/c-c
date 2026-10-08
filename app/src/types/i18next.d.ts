@@ -8,6 +8,7 @@ import type errors from "@/locales/en/errors.json";
 import type nav from "@/locales/en/nav.json";
 import type notifications from "@/locales/en/notifications.json";
 import type recordings from "@/locales/en/recordings.json";
+import type calls from "@/locales/en/calls.json";
 import type work from "@/locales/en/work.json";
 import type activity from "@/locales/en/activity.json";
 import type diagnostics from "@/locales/en/diagnostics.json";
@@ -42,6 +43,7 @@ declare module "i18next" {
       org: typeof org;
       errors: typeof errors;
       recordings: typeof recordings;
+      calls: typeof calls;
       activity: typeof activity;
       diagnostics: typeof diagnostics;
     };

@@ -91,6 +91,7 @@ export default function VoiceControls({
   recording,
   onRecord,
   recordingInFlight,
+  canReport = true,
 }: {
   mic: boolean;
   deafened: boolean;
@@ -107,6 +108,8 @@ export default function VoiceControls({
   onShare?: () => void;
   onSettings?: () => void;
   onLeave: () => void;
+  /** El botón de reportar el audio. Sólo donde hay un registro que mandar. */
+  canReport?: boolean;
 }) {
   const { t } = useT();
   const [reportando, setReportando] = useState(false);
@@ -174,14 +177,18 @@ export default function VoiceControls({
       )}
       {/* El botón de reportar va **entre los controles y el de colgar**, no
           escondido en un menú: si alguien tiene que buscarlo, no lo pulsa. */}
-      <Round
-        icon={LifeBuoy}
-        label={t("common:voice.reportAudio")}
-        tone="primary"
-        active={reportando}
-        onClick={() => setReportando(true)}
-      />
-      <VoiceReportDialog open={reportando} onOpenChange={setReportando} />
+      {canReport && (
+        <>
+          <Round
+            icon={LifeBuoy}
+            label={t("common:voice.reportAudio")}
+            tone="primary"
+            active={reportando}
+            onClick={() => setReportando(true)}
+          />
+          <VoiceReportDialog open={reportando} onOpenChange={setReportando} />
+        </>
+      )}
 
       <span className="mx-1.5 h-7 w-px bg-border" />
 
