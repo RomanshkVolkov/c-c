@@ -1,3 +1,4 @@
+import type { TelemetryConfig } from "@/types/telemetry";
 import type { MessageKey } from "@/lib/i18n";
 
 export type ReportStatus = "open" | "in_progress" | "done" | "closed";
@@ -93,6 +94,8 @@ export interface ReportProject {
   webhookUrl: string;
   /** Whether a signing secret exists — the value itself is never returned. */
   webhookConfigured: boolean;
+  /** Retención, reglas de salud y latido de su telemetría. */
+  telemetryConfig?: TelemetryConfig;
   createdAt: string;
   /**
    * Cuántos reportes recibió en el mes en curso. Lo único que distingue un

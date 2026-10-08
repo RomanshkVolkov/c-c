@@ -28,7 +28,8 @@
     "review": "revisión",
     "meeting": "reunión",
     "ci": "CI",
-    "deploy": "deploy"
+    "deploy": "deploy",
+    "telemetry": "telemetría"
   },
   "prefs": {
     "title": "Qué te llega",
@@ -50,7 +51,9 @@
     "push": "En el teléfono",
     "pushHint": "Todo lo que llega a la campana llega también a los dispositivos donde encendiste los avisos. Apágalo para callar el teléfono sin tocar la campana.",
     "pushCi": "CI también al teléfono",
-    "pushCiHint": "Las ejecuciones de GitHub Actions y los deploys también llegan al teléfono. Viene apagado: un push pueden ser varias ejecuciones."
+    "pushCiHint": "Las ejecuciones de GitHub Actions y los deploys también llegan al teléfono. Viene apagado: un push pueden ser varias ejecuciones.",
+    "telemetry": "Telemetría de dispositivos",
+    "telemetryHint": "Un dispositivo deja de mandar cuando debería, o su estado incumple una regla de error del proyecto. Una vez al empezar y otra al terminar."
   },
   "wrote": "{{who}} escribió",
   "push": {
@@ -63,5 +66,11 @@
     "unsupported": "Este navegador no puede recibir avisos con cac cerrado. En un iPhone, primero añade cac a la pantalla de inicio.",
     "offServer": "Este servidor todavía no manda avisos a dispositivos.",
     "failed": "No se pudieron cambiar los avisos de este dispositivo"
+  },
+  "telemetry": {
+    "silent": "{{device}} dejó de mandar",
+    "back": "{{device}} volvió a mandar",
+    "unhealthy": "{{device}} necesita atención",
+    "healthy": "{{device}} volvió a estar bien"
   }
 }

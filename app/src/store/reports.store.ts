@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { TelemetryConfig } from "@/types/telemetry";
 import { api } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
 import type {
@@ -64,6 +65,8 @@ interface ReportsState {
       defaultAssigneeUserId?: string;
       /** La lista donde caen los reportes. El servidor no acepta vaciarla. */
       listId?: string;
+      /** Entera: reemplaza la configuración de telemetría que hubiera. */
+      telemetryConfig?: TelemetryConfig;
     }
   ) => Promise<void>;
   setProjectActive: (id: string, isActive: boolean) => Promise<void>;

@@ -8,6 +8,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useConfirm } from "@/components/ConfirmDialog";
+import TelemetrySettings from "@/components/diagnostics/TelemetrySettings";
 import CopyId from "@/components/CopyId";
 import { useReportsStore } from "@/store/reports.store";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -478,6 +479,8 @@ function FichaIntegracion({
           </div>
         </dl>
       )}
+
+      <TelemetrySettings project={p} canManage={canManage} />
 
       <div className="flex flex-wrap items-center gap-2 border-t px-3.5 py-2">
         <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">

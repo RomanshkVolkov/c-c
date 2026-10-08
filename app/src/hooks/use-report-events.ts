@@ -10,6 +10,7 @@ import {
 import { apiUrl, refreshAccessToken } from "@/lib/api";
 import { adoptarMembresia } from "@/lib/membresia";
 import i18next from "i18next";
+import type { MessageKey } from "@/lib/i18n";
 
 import { STATUS_LABEL_KEYS, normalizeStatus } from "@/types/report";
 import { urlTicket } from "@/lib/url-ticket";
@@ -137,6 +138,8 @@ const PING_TIMEOUT_MS = 60_000;
  */
 const DEJAN_FILA = new Set([
   "report:new",
+  // El vigilante de la telemetría: llega ya escrito en la campana.
+  "telemetry:alert",
   "report:comment",
   "task:comment",
   "task:assigned",
@@ -159,6 +162,23 @@ const DEJAN_FILA = new Set([
 const DEJAN_FILA_SI: Record<string, (p: Record<string, unknown>) => boolean> = {
   "ci:run": (p) => p.status === "completed",
   "deploy:status": (p) => p.status === "succeeded" || p.status === "failed",
+};
+
+/** Lo que manda el vigilante de la telemetría por el stream. */
+interface TelemetryAlert {
+  key: string;
+  device: string;
+  project: string;
+  body?: string;
+  link: string;
+}
+
+/** La clave que manda el servidor → su frase. Una desconocida no avisa. */
+const TELEMETRY_TITLE: Record<string, MessageKey> = {
+  "telemetry.silent": "notifications:telemetry.silent",
+  "telemetry.back": "notifications:telemetry.back",
+  "telemetry.unhealthy": "notifications:telemetry.unhealthy",
+  "telemetry.healthy": "notifications:telemetry.healthy",
 };
 
 export function tocaLaCampana(evento: string, data?: string): boolean {
@@ -591,6 +611,18 @@ export function useReportEvents() {
         // La reunión periódica: tarjeta propia con su timbre, como una llamada,
         // y fila en la campana —a diferencia de la llamada— porque el aviso
         // caduca solo y no deja rastro de otra forma.
+        // El vigilante: un dispositivo dejó de latir, volvió, o su estado
+        // incumple (o dejó de incumplir) una regla de error. El backend ya
+        // escribió la fila; esto es el aviso del sistema, con el título en el
+        // idioma de quien lo lee. Respeta el interruptor de la campana: el
+        // servidor no escribe la fila si está apagado, y aquí no se avisa.
+        case "telemetry:alert": {
+          const a = parse(data) as unknown as TelemetryAlert | null;
+          const titulo = a ? TELEMETRY_TITLE[a.key] : undefined;
+          if (!a || !titulo || useInboxStore.getState().prefs?.telemetryQuiet) break;
+          notify("telemetry:alert", i18next.t(titulo, { device: a.device }), [a.project, a.body].filter(Boolean).join(" · "));
+          break;
+        }
         case "meeting:reminder": {
           const t = parse(data) as unknown as ReunionEntrante | null;
           if (!t?.meetingId) break;
@@ -751,6 +783,7 @@ export function useReportEvents() {
         "deploy:status",
         "deploy:log",
         "ci:run",
+        "telemetry:alert",
       ]) {
         es.addEventListener(kind, (e) => {
           seen();

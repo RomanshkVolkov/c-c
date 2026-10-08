@@ -10,6 +10,7 @@ import type notifications from "@/locales/en/notifications.json";
 import type recordings from "@/locales/en/recordings.json";
 import type work from "@/locales/en/work.json";
 import type activity from "@/locales/en/activity.json";
+import type diagnostics from "@/locales/en/diagnostics.json";
 
 /**
  * Las claves del catálogo, con tipos.
@@ -42,6 +43,7 @@ declare module "i18next" {
       errors: typeof errors;
       recordings: typeof recordings;
       activity: typeof activity;
+      diagnostics: typeof diagnostics;
     };
     // Sin `null`: una clave que existe siempre devuelve texto, y quien la use no
     // tiene que defenderse de un valor que no puede llegar.

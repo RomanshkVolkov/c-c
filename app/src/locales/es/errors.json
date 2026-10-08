@@ -142,5 +142,9 @@
   "proxy-off": "Las integraciones no están disponibles ahora en este servidor.",
   "invite-required": "Esa persona no está en ninguna organización tuya: invítala.",
   "invalid-url-ticket": "El enlace caducó. Recarga la página.",
-  "bad-url-scope": "Petición no válida."
+  "bad-url-scope": "Petición no válida.",
+  "bad-cursor": "El enlace a esa página ya no vale; recarga la lista.",
+  "bad-time": "Esa fecha no es válida.",
+  "device-not-found": "Ese dispositivo no tiene telemetría (o ya se purgó).",
+  "invalid-telemetry-config": "Los ajustes de telemetría no son válidos."
 }

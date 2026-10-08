@@ -1468,21 +1468,30 @@ fn tool_defs() -> Value {
         },
         {
             "name": "list_devices",
-            "description": "Devices sending passive telemetry (mobile apps), with request/error counts and last-seen. Use to find a device to investigate.",
+            "description": "Devices sending passive telemetry (mobile apps): each with its name (label), who uses it (subject — an id such as an employee number, never an email), project, app version, last seen, last heartbeat, error/warning counts and the project's health alerts that its latest state breaks. `query` searches name, subject and device id. Use to find a device to investigate.",
             "inputSchema": {
                 "type": "object",
-                "properties": { "projectId": { "type": "string" } }
+                "properties": {
+                    "projectId": { "type": "string" },
+                    "query": { "type": "string", "description": "Search by device name, subject (e.g. employee id) or device id." },
+                    "cursor": { "type": "string", "description": "nextCursor from a previous call, for the next page." }
+                }
             }
         },
         {
             "name": "get_device_timeline",
-            "description": "Diagnostics timeline for a device: errors first, then network activity grouped by endpoint+status, plus device context (OS, app version, network, battery, permissions). Use to root-cause a field incident.",
+            "description": "Diagnostics for one device: its latest state flattened to key=value, the project's health alerts it breaks, its heartbeats with the gaps between them, then the timeline — errors and warnings verbatim (severity decided by the server), successful traffic grouped by endpoint+status, other events with their content. Use to root-cause a field incident. Filter by time (`since`/`until`: ISO date, epoch ms, or relative like 30m, 6h, 2d), crumb `types` and `minSeverity`.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "deviceId": { "type": "string" },
+                    "projectId": { "type": "string", "description": "Needed when the same device sends to more than one project." },
                     "sessionId": { "type": "string" },
-                    "limit": { "type": "integer", "description": "batches to inspect, default 20" }
+                    "since": { "type": "string", "description": "ISO date, epoch ms, or relative: 30m, 6h, 2d." },
+                    "until": { "type": "string", "description": "ISO date, epoch ms, or relative." },
+                    "types": { "type": "array", "items": { "type": "string" }, "description": "Only these crumb types, e.g. [\"error\", \"heartbeat\"]." },
+                    "minSeverity": { "type": "string", "enum": ["info", "warn", "error"] },
+                    "limit": { "type": "integer", "description": "batches to inspect, default 20, max 200" }
                 },
                 "required": ["deviceId"]
             }
@@ -2284,18 +2293,50 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         "list_devices" => {
             let mut q = vec![];
             push_q(&mut q, "projectId", arg_str(args, "projectId"));
+            push_q(&mut q, "q", arg_str(args, "query"));
+            push_q(&mut q, "cursor", arg_str(args, "cursor"));
             let data = api_get(cfg, &format!("/api/v1/telemetry/devices{}", qs(q)))?;
-            Ok(json!({ "devices": data }))
+            Ok(compact_devices(&data))
         }
 
         "get_device_timeline" => {
             let device = arg_str(args, "deviceId").ok_or("deviceId is required")?;
+            let project = match arg_str(args, "projectId") {
+                Some(p) => p,
+                None => resolve_device_project(cfg, &device)?,
+            };
             let limit = arg_i64(args, "limit").unwrap_or(20).clamp(1, 200);
-            let mut q = vec![format!("deviceId={}", urlencode(&device))];
+            let now = now_ms();
+            let mut q = vec![
+                format!("deviceId={}", urlencode(&device)),
+                format!("projectId={}", urlencode(&project)),
+            ];
             push_q(&mut q, "sessionId", arg_str(args, "sessionId"));
+            for key in ["since", "until"] {
+                if let Some(v) = arg_str(args, key) {
+                    let when = parse_when(&v, now).ok_or(format!("{key}: use an ISO date, epoch ms, or 30m / 6h / 2d"))?;
+                    q.push(format!("{key}={}", urlencode(&when)));
+                }
+            }
+            let types: Vec<String> = args
+                .get("types")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|t| t.as_str().map(str::to_string)).collect())
+                .unwrap_or_default();
+            if !types.is_empty() {
+                q.push(format!("types={}", urlencode(&types.join(","))));
+            }
+            push_q(&mut q, "minSeverity", arg_str(args, "minSeverity"));
             q.push(format!("limit={limit}"));
             let data = api_get(cfg, &format!("/api/v1/telemetry/timeline{}", qs(q)))?;
-            Ok(summarize_timeline(&data))
+            // La ficha va aparte: si falla (un dispositivo purgado), el timeline
+            // que haya sigue valiendo.
+            let detail = api_get(
+                cfg,
+                &format!("/api/v1/telemetry/devices/{}/{}", urlencode(&project), urlencode(&device)),
+            )
+            .unwrap_or(Value::Null);
+            Ok(summarize_timeline(&data, &detail))
         }
 
         "list_notes" => {
@@ -2653,59 +2694,203 @@ fn subtask_progress(card: &Value) -> Value {
     }
 }
 
-/// Compact a raw timeline so it fits a model's context: errors verbatim (that's
-/// what you debug with), successful network calls collapsed into per-endpoint
-/// counts, and the newest device context kept once instead of per batch.
-fn summarize_timeline(data: &Value) -> Value {
+/// Milisegundos desde la época, ahora.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Lo que un agente escribe para «desde cuándo»: `30m`, `6h`, `2d` (hacia
+/// atrás desde `now`, en milisegundos), milisegundos tal cual, o una fecha ISO
+/// que pasa sin tocar — la valida el backend, que contesta 400 si no lo es.
+/// Lo que no se parece a ninguna de las tres se rechaza aquí, con un mensaje
+/// que dice qué se acepta.
+fn parse_when(v: &str, now: i64) -> Option<String> {
+    let v = v.trim();
+    if let Ok(ms) = v.parse::<i64>() {
+        return Some(ms.to_string());
+    }
+    let unit = match v.chars().last()? {
+        'm' => 60_000,
+        'h' => 3_600_000,
+        'd' => 86_400_000,
+        _ => 0,
+    };
+    if unit > 0 {
+        if let Ok(n) = v[..v.len() - 1].parse::<i64>() {
+            return Some((now - n * unit).to_string());
+        }
+    }
+    let b = v.as_bytes();
+    let iso = b.len() >= 10 && b[..4].iter().all(u8::is_ascii_digit) && b[4] == b'-';
+    iso.then(|| v.to_string())
+}
+
+/// La lista de dispositivos, con lo que sirve para elegir uno y nada más. El
+/// cursor de la siguiente página, si la hay, va en la última fila: se saca.
+fn compact_devices(data: &Value) -> Value {
+    let empty = vec![];
+    let rows = data.as_array().unwrap_or(&empty);
+    let next = rows.last().and_then(|r| r.get("cursor")).cloned().unwrap_or(Value::Null);
+    let devices: Vec<Value> = rows
+        .iter()
+        .map(|d| {
+            json!({
+                "deviceId": d.get("deviceId"),
+                "projectId": d.get("projectId"),
+                "project": d.get("projectName"),
+                "label": d.get("label"),
+                "subject": d.get("subject"),
+                "platform": d.get("platform"),
+                "appVersion": d.get("appVersion"),
+                "lastSeen": d.get("lastSeen"),
+                "lastHeartbeatAt": d.get("lastHeartbeatAt"),
+                "silentSince": d.get("silentSince"),
+                "errors": d.get("errorCount"),
+                "warnings": d.get("warnCount"),
+                "alerts": d.get("alerts"),
+            })
+        })
+        .collect();
+    json!({ "devices": devices, "nextCursor": next })
+}
+
+/// A qué proyecto manda un dispositivo, cuando no lo dicen. Si manda a más de
+/// uno hay que decirlo: mezclar sus timelines es justo lo que no se quiere.
+fn resolve_device_project(cfg: &Cfg, device: &str) -> Result<String, String> {
+    let data = api_get(cfg, &format!("/api/v1/telemetry/devices?q={}", urlencode(device)))?;
+    pick_project(&data, device)
+}
+
+fn pick_project(data: &Value, device: &str) -> Result<String, String> {
+    let empty = vec![];
+    let hits: Vec<&Value> = data
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .filter(|d| d.get("deviceId").and_then(|v| v.as_str()) == Some(device))
+        .collect();
+    match hits.as_slice() {
+        [] => Err(format!("no telemetry from device {device}")),
+        [one] => one
+            .get("projectId")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| "device without project".to_string()),
+        many => Err(format!(
+            "device {device} sends to {} projects; pass projectId: {}",
+            many.len(),
+            many.iter()
+                .map(|d| format!(
+                    "{} ({})",
+                    d.get("projectId").and_then(|v| v.as_str()).unwrap_or("?"),
+                    d.get("projectName").and_then(|v| v.as_str()).unwrap_or("?")
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+/// Las hojas de un JSON como `ruta → valor`, para leer una ficha de un vistazo
+/// sin el anidamiento. Con tope: una ficha enorme no puede llenar el contexto.
+fn flatten_leaves(v: &Value, prefix: &str, out: &mut serde_json::Map<String, Value>, cap: usize) {
+    if out.len() >= cap {
+        return;
+    }
+    match v {
+        Value::Object(m) => {
+            for (k, child) in m {
+                let path = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                flatten_leaves(child, &path, out, cap);
+            }
+        }
+        _ if !prefix.is_empty() => {
+            out.insert(prefix.to_string(), v.clone());
+        }
+        _ => {}
+    }
+}
+
+const SHEET_CAP: usize = 150;
+
+/// Compact a raw timeline so it fits a model's context: the device sheet once
+/// (flattened, with the project's alerts and the heartbeat gaps), errors and
+/// warnings verbatim — with the severity the **server** decided, the same the
+/// app paints — successful network calls collapsed into per-endpoint counts,
+/// and heartbeats with their content instead of just a count.
+fn summarize_timeline(data: &Value, detail: &Value) -> Value {
     let empty = vec![];
     let batches = data.as_array().unwrap_or(&empty);
 
     let mut errors: Vec<Value> = vec![];
+    let mut warnings: Vec<Value> = vec![];
+    let mut beats: Vec<Value> = vec![];
     let mut net: std::collections::BTreeMap<String, i64> = Default::default();
     let mut other: std::collections::BTreeMap<String, i64> = Default::default();
-    let mut device: Option<Value> = None;
-    let (mut req_total, mut err_total) = (0i64, 0i64);
+    let mut fallback_device: Option<Value> = None;
+    let (mut req_total, mut err_total, mut warn_total) = (0i64, 0i64, 0i64);
     let (mut first_seen, mut last_seen) = (None::<String>, None::<String>);
+    let mut undecryptable = 0;
 
     for b in batches {
-        if device.is_none() {
-            if let Some(d) = b.get("device") {
-                if !d.is_null() {
-                    device = Some(d.clone());
-                }
+        if fallback_device.is_none() {
+            if let Some(d) = b.get("device").filter(|d| !d.is_null()) {
+                fallback_device = Some(d.clone());
             }
+        }
+        if b.get("undecryptable").and_then(|v| v.as_bool()).unwrap_or(false) {
+            undecryptable += 1;
         }
         req_total += b.get("reqCount").and_then(|v| v.as_i64()).unwrap_or(0);
         err_total += b.get("errorCount").and_then(|v| v.as_i64()).unwrap_or(0);
+        warn_total += b.get("warnCount").and_then(|v| v.as_i64()).unwrap_or(0);
         if let Some(ts) = b.get("receivedAt").and_then(|v| v.as_str()) {
             if last_seen.is_none() {
                 last_seen = Some(ts.to_string()); // newest first from the API
             }
             first_seen = Some(ts.to_string());
         }
+        let sevs = b.get("severities").and_then(|v| v.as_array()).unwrap_or(&empty);
 
-        for c in b
+        for (i, c) in b
             .get("breadcrumbs")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty)
+            .iter()
+            .enumerate()
         {
             let ctype = c.get("type").and_then(|v| v.as_str()).unwrap_or("log");
-            let status = c.get("status").and_then(|v| v.as_i64());
-            let is_err = matches!(ctype, "error" | "unhandledrejection" | "exception")
-                || (ctype == "network" && matches!(status, Some(s) if s == 0 || s >= 400));
-
-            if is_err {
-                if errors.len() < 60 {
-                    errors.push(c.clone());
+            let severity = sevs.get(i).and_then(|v| v.as_str()).unwrap_or("info");
+            match severity {
+                "error" => {
+                    if errors.len() < 60 {
+                        errors.push(c.clone());
+                    }
+                    continue;
+                }
+                "warn" => {
+                    if warnings.len() < 60 {
+                        warnings.push(c.clone());
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+            if ctype == "heartbeat" {
+                if beats.len() < 30 {
+                    beats.push(c.clone());
                 }
                 continue;
             }
-            if ctype == "network" {
+            if matches!(ctype, "network" | "request" | "fetch" | "xhr") {
                 let key = format!(
                     "{} {} → {}",
                     c.get("method").and_then(|v| v.as_str()).unwrap_or("?"),
                     c.get("url").and_then(|v| v.as_str()).unwrap_or("?"),
-                    status.unwrap_or(0)
+                    c.get("status").and_then(|v| v.as_i64()).unwrap_or(0)
                 );
                 *net.entry(key).or_insert(0) += 1;
             } else {
@@ -2726,20 +2911,166 @@ fn summarize_timeline(data: &Value) -> Value {
         }
     }
 
+    // La ficha: la del backend (la última guardada), o la del lote más nuevo.
+    let sheet_src = detail
+        .get("device")
+        .filter(|d| !d.is_null())
+        .cloned()
+        .or(fallback_device);
+    let mut sheet = serde_json::Map::new();
+    if let Some(d) = &sheet_src {
+        flatten_leaves(d, "", &mut sheet, SHEET_CAP);
+    }
+    let gaps = detail.get("gaps").cloned().unwrap_or(json!([]));
+    let heartbeat_times = detail.get("heartbeats").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+
     json!({
+        "device": {
+            "deviceId": detail.get("deviceId"),
+            "project": detail.get("projectName"),
+            "label": detail.get("label"),
+            "subject": detail.get("subject"),
+            "platform": detail.get("platform"),
+            "appVersion": detail.get("appVersion"),
+            "lastSeen": detail.get("lastSeen"),
+            "lastHeartbeatAt": detail.get("lastHeartbeatAt"),
+            "silentSince": detail.get("silentSince"),
+            "unhealthySince": detail.get("unhealthySince"),
+            "alerts": detail.get("alerts").cloned().unwrap_or(json!([])),
+            "state": sheet,
+        },
+        "heartbeats": {
+            "expected": detail.get("heartbeat"),
+            "storedCount": heartbeat_times,
+            "gaps": gaps,
+            "recent": beats,
+        },
         "summary": {
             "batches": batches.len(),
             "requests": req_total,
             "errors": err_total,
+            "warnings": warn_total,
+            "undecryptableBatches": undecryptable,
             "from": first_seen,
             "to": last_seen,
         },
-        "device": device,
         "errors": errors,
+        "warnings": warnings,
         "networkByEndpoint": net,
         "events": other,
-        "note": "Errors are verbatim; successful traffic is grouped by endpoint+status. Raise `limit` for more history."
+        "note": "Severity comes from the server (same as the app). Errors and warnings are verbatim; successful traffic is grouped by endpoint+status; device.state is the latest stored state, flattened. Raise `limit` or narrow with since/types/minSeverity."
     })
+}
+
+#[cfg(test)]
+mod telemetry_tests {
+    use super::*;
+
+    fn batch(severities: Value, crumbs: Value) -> Value {
+        json!({ "receivedAt": "2026-10-07T10:00:00Z", "reqCount": 1, "errorCount": 1, "warnCount": 1,
+                "breadcrumbs": crumbs, "severities": severities, "device": { "fallback": true } })
+    }
+
+    #[test]
+    fn the_severity_is_the_servers() {
+        // Un `request` 500 es error y un lifecycle `warn` es aviso, porque lo
+        // dice el servidor; antes el MCP tenía su propia regla y no contaba
+        // `request` como error.
+        let data = json!([batch(
+            json!(["error", "warn", "info", "info"]),
+            json!([
+                { "type": "request", "status": 500, "url": "/a" },
+                { "type": "lifecycle", "name": "DEVICE_NETWORK_CHANGED", "level": "warn" },
+                { "type": "network", "method": "POST", "url": "/b", "status": 200 },
+                { "type": "heartbeat", "counts": { "accepted": 12 }, "trackingActive": true }
+            ])
+        )]);
+        let out = summarize_timeline(&data, &Value::Null);
+        assert_eq!(out["errors"].as_array().unwrap().len(), 1);
+        assert_eq!(out["errors"][0]["url"], "/a");
+        assert_eq!(out["warnings"][0]["name"], "DEVICE_NETWORK_CHANGED");
+        assert_eq!(out["networkByEndpoint"]["POST /b → 200"], 1);
+        // El latido llega con su contenido, no como un contador.
+        assert_eq!(out["heartbeats"]["recent"][0]["counts"]["accepted"], 12);
+        assert!(out["events"].as_object().unwrap().is_empty());
+        assert_eq!(out["summary"]["warnings"], 1);
+    }
+
+    #[test]
+    fn the_sheet_is_the_stored_one_flattened_with_its_alerts() {
+        let detail = json!({
+            "deviceId": "d1", "label": "Moto G", "subject": "E-104", "projectName": "GEOCHECK",
+            "device": { "snapshot": { "battery": { "optimizationEnabled": true }, "tracking": { "lastCallbackAgeSeconds": 905 } } },
+            "alerts": [{ "path": "snapshot.tracking.lastCallbackAgeSeconds", "severity": "error", "message": "Rastreo parado" }],
+            "heartbeats": ["2026-10-07T10:00:00Z"],
+            "gaps": [{ "from": "2026-10-07T10:00:00Z", "to": "2026-10-07T12:00:00Z", "seconds": 7200, "open": true }],
+        });
+        let out = summarize_timeline(&json!([batch(json!([]), json!([]))]), &detail);
+        let state = &out["device"]["state"];
+        assert_eq!(state["snapshot.tracking.lastCallbackAgeSeconds"], 905);
+        assert_eq!(state["snapshot.battery.optimizationEnabled"], true);
+        assert!(state.get("fallback").is_none(), "used the batch's device instead of the stored sheet");
+        assert_eq!(out["device"]["alerts"][0]["message"], "Rastreo parado");
+        assert_eq!(out["device"]["label"], "Moto G");
+        assert_eq!(out["heartbeats"]["gaps"][0]["open"], true);
+        assert_eq!(out["heartbeats"]["storedCount"], 1);
+    }
+
+    #[test]
+    fn without_a_sheet_the_newest_batch_device_is_used() {
+        let out = summarize_timeline(&json!([batch(json!([]), json!([]))]), &Value::Null);
+        assert_eq!(out["device"]["state"]["fallback"], true);
+    }
+
+    #[test]
+    fn a_huge_sheet_is_capped() {
+        let mut big = serde_json::Map::new();
+        for i in 0..500 {
+            big.insert(format!("k{i}"), json!(i));
+        }
+        let mut out = serde_json::Map::new();
+        flatten_leaves(&Value::Object(big), "", &mut out, SHEET_CAP);
+        assert_eq!(out.len(), SHEET_CAP);
+    }
+
+    #[test]
+    fn when_is_relative_epoch_or_iso() {
+        let now = 1_000_000_000_000;
+        let ms = |n: i64| Some(n.to_string());
+        assert_eq!(parse_when("30m", now), ms(now - 30 * 60_000));
+        assert_eq!(parse_when("6h", now), ms(now - 6 * 3_600_000));
+        assert_eq!(parse_when("2d", now), ms(now - 2 * 86_400_000));
+        assert_eq!(parse_when("1696600000000", now), ms(1_696_600_000_000));
+        assert_eq!(parse_when("2026-10-07T12:00:00Z", now).as_deref(), Some("2026-10-07T12:00:00Z"));
+        assert_eq!(parse_when("ayer", now), None);
+        assert_eq!(parse_when("5x", now), None);
+    }
+
+    #[test]
+    fn the_device_list_is_compact_and_brings_out_the_cursor() {
+        let out = compact_devices(&json!([
+            { "deviceId": "a", "projectName": "GEO", "label": "Moto", "subject": "E-1", "errorCount": 2, "warnCount": 1, "snapshot": "no" },
+            { "deviceId": "b", "cursor": "NEXT" }
+        ]));
+        assert_eq!(out["nextCursor"], "NEXT");
+        assert_eq!(out["devices"][0]["project"], "GEO");
+        assert_eq!(out["devices"][0]["warnings"], 1);
+        assert!(out["devices"][0].get("cursor").is_none());
+        assert_eq!(compact_devices(&json!([{ "deviceId": "a" }]))["nextCursor"], Value::Null);
+    }
+
+    #[test]
+    fn a_device_in_two_projects_must_say_which() {
+        let two = json!([
+            { "deviceId": "d", "projectId": "p1", "projectName": "A" },
+            { "deviceId": "d", "projectId": "p2", "projectName": "B" },
+            { "deviceId": "d-other", "projectId": "p3" }
+        ]);
+        let err = pick_project(&two, "d").unwrap_err();
+        assert!(err.contains("p1 (A)") && err.contains("p2 (B)"), "{err}");
+        assert_eq!(pick_project(&json!([{ "deviceId": "d", "projectId": "p1" }, { "deviceId": "dd", "projectId": "p9" }]), "d").unwrap(), "p1");
+        assert!(pick_project(&json!([]), "d").is_err());
+    }
 }
 
 // ─── JSON-RPC plumbing ───────────────────────────────────────────────────────

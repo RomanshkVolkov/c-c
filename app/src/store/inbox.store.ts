@@ -86,6 +86,8 @@ export interface InboxPrefs {
    * habladora de la campana, y ésta es su válvula.
    */
   ciQuiet?: boolean;
+  /** Invertido: apaga los avisos del vigilante de telemetría. */
+  telemetryQuiet?: boolean;
   /** Invertido: apaga los avisos al teléfono sin tocar la campana (W2). */
   pushQuiet?: boolean;
   /** Al derecho: la actividad de CI también al teléfono. Viene apagado. */

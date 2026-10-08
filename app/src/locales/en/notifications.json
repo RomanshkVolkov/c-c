@@ -28,7 +28,8 @@
     "review": "review",
     "meeting": "meeting",
     "ci": "CI",
-    "deploy": "deploy"
+    "deploy": "deploy",
+    "telemetry": "telemetry"
   },
   "prefs": {
     "title": "What reaches you",
@@ -50,7 +51,9 @@
     "push": "On your phone",
     "pushHint": "Everything that reaches the bell also reaches the devices where you turned on notifications. Turn it off to keep the phone quiet without touching the bell.",
     "pushCi": "CI on the phone too",
-    "pushCiHint": "GitHub Actions runs and deploys also reach the phone. Off by default: one push can be several runs."
+    "pushCiHint": "GitHub Actions runs and deploys also reach the phone. Off by default: one push can be several runs.",
+    "telemetry": "Device telemetry",
+    "telemetryHint": "A device stops sending while it should, or its state breaks one of the project's error rules. Once when it starts and once when it ends."
   },
   "wrote": "{{who}} wrote",
   "push": {
@@ -63,5 +66,11 @@
     "unsupported": "This browser can't receive notifications with cac closed. On an iPhone, add cac to the home screen first.",
     "offServer": "This server doesn't send notifications to devices yet.",
     "failed": "Couldn't change notifications on this device"
+  },
+  "telemetry": {
+    "silent": "{{device}} stopped sending",
+    "back": "{{device}} is sending again",
+    "unhealthy": "{{device}} needs attention",
+    "healthy": "{{device}} is healthy again"
   }
 }

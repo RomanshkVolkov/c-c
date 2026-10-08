@@ -84,3 +84,21 @@ describe("los interruptores del teléfono", () => {
     expect(savePrefs).toHaveBeenCalledWith(expect.objectContaining({ pushCi: true }));
   });
 });
+
+/**
+ * El vigilante de la telemetría: invertido como el CI. Sin guardar (una app
+ * anterior) sale encendido; apagarlo manda `telemetryQuiet: true`.
+ */
+describe("el interruptor de la telemetría", () => {
+  const sw = () => screen.getByText("Device telemetry").closest("button")!;
+  it("sin guardar sale encendido, y apagarlo guarda telemetryQuiet: true", () => {
+    open();
+    expect(sw().getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(sw());
+    expect(savePrefs).toHaveBeenCalledWith(expect.objectContaining({ telemetryQuiet: true }));
+    cleanup();
+    prefs.current = { ...SAVED_BY_AN_OLD_APP, telemetryQuiet: true };
+    open();
+    expect(sw().getAttribute("aria-checked")).toBe("false");
+  });
+});

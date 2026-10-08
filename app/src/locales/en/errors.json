@@ -142,5 +142,9 @@
   "proxy-off": "Integrations aren't available on this server right now.",
   "invite-required": "That person isn't in any of your organizations: invite them.",
   "invalid-url-ticket": "The link expired. Reload the page.",
-  "bad-url-scope": "Invalid request."
+  "bad-url-scope": "Invalid request.",
+  "bad-cursor": "That page link is no longer valid; reload the list.",
+  "bad-time": "That date isn't valid.",
+  "device-not-found": "That device has no telemetry (or it was purged).",
+  "invalid-telemetry-config": "The telemetry settings aren't valid."
 }
