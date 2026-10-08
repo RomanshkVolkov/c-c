@@ -43,10 +43,17 @@ export default function ShareDoc({
   doc,
   nombre,
   tab,
+  page,
 }: {
   doc: Doc;
   nombre: string;
   tab: DocTabKey;
+  /**
+   * La página abierta, si se está en una. Entonces lo que se comparte por
+   * defecto es **la página**, con su enlace por id, y no la pestaña de la
+   * portada que quedó seleccionada detrás.
+   */
+  page?: { id: string; title: string };
 }) {
   const { t } = useT();
   const [abierto, setAbierto] = useState(false);
@@ -84,8 +91,14 @@ export default function ShareDoc({
   }, [tree, conversations, filtro]);
 
   // El enlace interno que abre el documento dentro de la app.
-  const enlace = docHref(doc.ownerKind, doc.ownerId, todo ? undefined : tab);
-  const titulo = todo ? nombre : `${nombre} · ${t(ROTULOS[tab])}`;
+  const enlace = todo
+    ? docHref(doc.ownerKind, doc.ownerId)
+    : page
+      ? docHref(doc.ownerKind, doc.ownerId, undefined, page.id)
+      : docHref(doc.ownerKind, doc.ownerId, tab);
+  const titulo = todo
+    ? nombre
+    : `${nombre} · ${page ? page.title || t("work:docs.untitled") : t(ROTULOS[tab])}`;
   const frescura = doc.reviewedAt
     ? t("work:docs.reviewedOn", { date: fecha(doc.reviewedAt) })
     : t("work:docs.neverReviewed");
@@ -129,7 +142,7 @@ export default function ShareDoc({
                 todo === v ? "bg-accent text-foreground" : "text-muted-foreground",
               )}
             >
-              {v ? t("work:docs.wholeDoc") : t("work:docs.thisSection")}
+              {v ? t("work:docs.wholeDoc") : page ? t("work:docs.thisPage") : t("work:docs.thisSection")}
             </button>
           ))}
         </div>

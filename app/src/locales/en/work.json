@@ -333,13 +333,33 @@
     "pageTitle": "Page title",
     "trashPage": "Move to trash",
     "trashPageTitle": "Move «{{title}}» to the trash?",
-    "trashPageWhy": "The pages inside it go with it. Nothing is lost: it can be restored.",
-    "trashed_one": "Moved to the trash",
-    "trashed_other": "Moved to the trash, with the {{count}} pages inside",
+    "trashPageWhy": "Nothing is lost: it can be restored from the trash.",
     "childPages": "Pages inside",
     "emptyPage": "This page is empty.",
     "errPage": "Couldn't open this page",
-    "thisPage": "This page"
+    "thisPage": "This page",
+    "trashed": "Moved to the trash",
+    "trashedWith_one": "Moved to the trash, with the page inside",
+    "trashedWith_other": "Moved to the trash, with the {{count}} pages inside",
+    "trashPageWithSubpages_one": "The page inside it goes with it. Nothing is lost: it can be restored.",
+    "trashPageWithSubpages_other": "The {{count}} pages inside it go with it. Nothing is lost: it can be restored.",
+    "trash": "Trash",
+    "trashEmpty": "The trash is empty.",
+    "restoredPage": "Page restored",
+    "restoredWith_one": "Page restored, with the one inside",
+    "restoredWith_other": "Page restored, with the {{count}} inside",
+    "subpages_one": "{{count}} page inside",
+    "subpages_other": "{{count}} pages inside",
+    "errRestore": "Could not restore it",
+    "errMove": "Could not move the page",
+    "rename": "Rename",
+    "renameTitle": "Rename the page",
+    "pageMenu": "Options for “{{title}}”",
+    "moveTo": "Move to…",
+    "moveToTitle": "Move “{{title}}”",
+    "moveToHint": "Pick the page it will hang from. Everything inside it goes along, and its link doesn't change.",
+    "moveHere": "Move here",
+    "currentParent": "it's here now"
   },
   "docTemplates": {
     "title": "Nothing written here yet",
@@ -398,6 +418,19 @@
     "nothing": "No documents match",
     "undocumented_one": "{{count}} list with no docs",
     "undocumented_other": "{{count}} lists with no docs",
-    "noneYet": "Nothing is documented yet. Pick a list below to write its first page."
+    "noneYet": "Nothing is documented yet. Pick a list below to write its first page.",
+    "pages": "Pages"
+  },
+  "pageTemplates": {
+    "component": {
+      "name": "Component",
+      "hint": "A piece of the system: what it does, what it depends on and how to change it.",
+      "body": "## What it is\n\nOne sentence: what it does and for whom.\n\n## Where it lives\n\n- Repo:\n- Deployment:\n- Owner:\n\n## What it depends on\n\n- \n\n## What depends on it\n\n- \n\n## How to change it\n\nWhat to know before touching it. The traps that have already bitten.\n\n## How to tell it's healthy\n\nWhat to look at, and what is normal.\n"
+    },
+    "procedure": {
+      "name": "Procedure",
+      "hint": "Steps to do one concrete thing, and how to check it worked.",
+      "body": "## When it's done\n\nWhat triggers it, and how often.\n\n## Before you start\n\n- Access to:\n- Have at hand:\n\n## Steps\n\n1. \n2. \n3. \n\n## How to check it worked\n\n## If something fails\n\nWhat to do, and who to tell.\n"
+    }
   }
 }

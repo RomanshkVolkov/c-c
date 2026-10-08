@@ -2,7 +2,8 @@ import { create } from "zustand";
 
 import { api } from "@/lib/api";
 import type { APIResponse } from "@/types/auth";
-import type { DocOwnerKind, DocPage, DocPageTreeItem, DocPageView } from "@/types/task";
+import type { DropWhere } from "@/store/tasks.store";
+import { isDocTabKey, type DocOwnerKind, type DocPage, type DocPageTreeItem, type DocPageVersion, type DocPageView, type DocTabKey } from "@/types/task";
 
 /**
  * Las páginas del documento abierto: el árbol que cuelga de la portada.
@@ -22,6 +23,13 @@ interface Owner {
 }
 
 const base = (o: Owner) => `/api/v1/docs/${o.kind}/${o.id}/pages`;
+
+export interface MoveTo {
+  /** La nueva madre; null = la portada. */
+  parentId: string | null;
+  afterId?: string;
+  beforeId?: string;
+}
 
 interface DocPagesState {
   owner: Owner | null;
@@ -45,9 +53,34 @@ interface DocPagesState {
   createPage: (o: Owner, parentId: string | null, title: string) => Promise<DocPage | null>;
   /** Guarda título y/o cuerpo. Devuelve el hash nuevo; lanza `doc-page-conflict`. */
   savePage: (o: Owner, pageId: string, fields: { title?: string; body?: string }, baseHash?: string) => Promise<string | undefined>;
-  movePage: (o: Owner, pageId: string, to: { parentId: string | null; afterId?: string; beforeId?: string }) => Promise<void>;
+  movePage: (o: Owner, pageId: string, to: MoveTo) => Promise<void>;
+  /**
+   * Soltar una página arrastrada encima, debajo o dentro de otra. Lo que no
+   * puede ser —soltarla en sí misma o en su propio subárbol— no se manda: el
+   * servidor lo rechazaría, pero un rebote es peor manera de enterarse.
+   */
+  dropPage: (o: Owner, draggedId: string, targetId: string, where: DropWhere) => Promise<void>;
   trashPage: (o: Owner, pageId: string) => Promise<number>;
+
+  trash: DocPageTreeItem[];
+  loadingTrash: boolean;
+  fetchTrash: (o: Owner) => Promise<void>;
+  /** Trae de la papelera la página y lo que se fue con ella. */
+  restorePage: (o: Owner, pageId: string) => Promise<void>;
+
+  pageVersions: (o: Owner, pageId: string) => Promise<DocPageVersion[]>;
+  restorePageVersion: (o: Owner, pageId: string, versionId: string) => Promise<void>;
   reset: () => void;
+
+  /**
+   * La pestaña de la portada que pidió un enlace (`&tab=`), hasta que la
+   * portada la recoja. Aquí y no en `DocTabs` porque el enlace se lee antes de
+   * que el documento exista en pantalla. Pedir una pestaña es volver a la
+   * portada, así que cierra la página abierta.
+   */
+  requestedTab: DocTabKey | null;
+  requestTab: (tab: string | undefined) => void;
+  takeRequestedTab: () => DocTabKey | null;
 }
 
 export const useDocPages = create<DocPagesState>((set, get) => ({
@@ -56,6 +89,19 @@ export const useDocPages = create<DocPagesState>((set, get) => ({
   activePageId: null,
   view: null,
   loadingPage: false,
+  trash: [],
+  loadingTrash: false,
+  requestedTab: null,
+
+  requestTab: (tab) => {
+    if (!tab || !isDocTabKey(tab)) return;
+    set({ requestedTab: tab, activePageId: null, view: null });
+  },
+  takeRequestedTab: () => {
+    const tab = get().requestedTab;
+    if (tab) set({ requestedTab: null });
+    return tab;
+  },
 
   fetchTree: async (o) => {
     const res = await api.get<APIResponse<DocPageTreeItem[]>>(base(o));
@@ -115,8 +161,36 @@ export const useDocPages = create<DocPagesState>((set, get) => ({
   },
 
   movePage: async (o, pageId, to) => {
-    const res = await api.post<APIResponse<DocPageTreeItem[]>>(`${base(o)}/${pageId}/move`, to, true);
-    set({ tree: res.data ?? get().tree });
+    // Se mueve ya en pantalla y se corrige con lo que conteste el servidor: un
+    // arrastre que tarda medio segundo en caer parece que no ha funcionado.
+    const antes = get().tree;
+    set({ tree: placeLocally(antes, pageId, to) });
+    try {
+      const res = await api.post<APIResponse<DocPageTreeItem[]>>(`${base(o)}/${pageId}/move`, to, true);
+      set({ tree: Array.isArray(res.data) ? res.data : antes });
+    } catch (e) {
+      set({ tree: antes });
+      throw e;
+    }
+  },
+
+  dropPage: async (o, draggedId, targetId, where) => {
+    const tree = get().tree;
+    const target = tree.find((x) => x.id === targetId);
+    if (!target || descendantsOf(tree, draggedId).includes(targetId)) return;
+    if (where === "inside") {
+      // Dentro, al final: es lo que espera quien suelta sobre una página.
+      const hijas = childrenOf(tree, targetId).filter((x) => x.id !== draggedId);
+      const ultima = hijas[hijas.length - 1];
+      await get().movePage(o, draggedId, { parentId: targetId, ...(ultima ? { afterId: ultima.id } : {}) });
+      return;
+    }
+    const parentId = target.parentId ?? null;
+    await get().movePage(
+      o,
+      draggedId,
+      where === "before" ? { parentId, beforeId: targetId } : { parentId, afterId: targetId },
+    );
   },
 
   trashPage: async (o, pageId) => {
@@ -140,10 +214,75 @@ export const useDocPages = create<DocPagesState>((set, get) => ({
     return res.data?.pages ?? gone.size;
   },
 
-  reset: () => set({ owner: null, tree: [], activePageId: null, view: null, loadingPage: false }),
+  fetchTrash: async (o) => {
+    set({ loadingTrash: true });
+    try {
+      const res = await api.get<APIResponse<DocPageTreeItem[]>>(`${base(o)}?trashed=1`);
+      set({ trash: Array.isArray(res.data) ? res.data : [] });
+    } finally {
+      set({ loadingTrash: false });
+    }
+  },
+
+  restorePage: async (o, pageId) => {
+    await api.post(`${base(o)}/${pageId}/restore`, {}, true);
+    set((s) => ({ trash: s.trash.filter((x) => x.id !== pageId) }));
+    await get().fetchTree(o);
+  },
+
+  pageVersions: async (o, pageId) => {
+    const res = await api.get<APIResponse<DocPageVersion[]>>(`${base(o)}/${pageId}/versions`);
+    return Array.isArray(res.data) ? res.data : [];
+  },
+
+  restorePageVersion: async (o, pageId, versionId) => {
+    const res = await api.post<APIResponse<DocPage>>(`${base(o)}/${pageId}/versions/${versionId}/restore`, {}, true);
+    const page = res.data;
+    if (page && get().activePageId === pageId) {
+      set((s) => (s.view ? { view: { ...s.view, page } } : s));
+    }
+    if (page) {
+      set((s) => ({ tree: s.tree.map((x) => (x.id === pageId ? { ...x, title: page.title } : x)) }));
+    }
+  },
+
+  reset: () =>
+    set({ owner: null, tree: [], activePageId: null, view: null, loadingPage: false, trash: [] }),
 }));
 
 /** Las hijas de una página (o de la portada, con null), en el orden del árbol. */
 export function childrenOf(tree: DocPageTreeItem[], parentId: string | null): DocPageTreeItem[] {
   return tree.filter((x) => (x.parentId ?? null) === parentId);
+}
+
+/** La página y todo lo que cuelga de ella, a cualquier profundidad. */
+export function descendantsOf(tree: DocPageTreeItem[], id: string): string[] {
+  const out = [id];
+  for (let i = 0; i < out.length; i++) {
+    for (const x of tree) if ((x.parentId ?? null) === out[i]) out.push(x.id);
+  }
+  return out;
+}
+
+/**
+ * El árbol con una página ya puesta en su sitio nuevo, para pintarlo antes de
+ * que conteste el servidor. El orden del árbol es el del array (así lo manda
+ * el servidor, por rango), así que basta con sacarla y meterla junto a su
+ * vecina. El rango lo pone el servidor y llega con la respuesta.
+ */
+export function placeLocally(tree: DocPageTreeItem[], id: string, to: MoveTo): DocPageTreeItem[] {
+  const page = tree.find((x) => x.id === id);
+  if (!page) return tree;
+  const moved = { ...page, parentId: to.parentId };
+  const rest = tree.filter((x) => x.id !== id);
+  const vecina = to.beforeId ?? to.afterId;
+  let at = vecina ? rest.findIndex((x) => x.id === vecina) : -1;
+  if (at >= 0 && to.afterId) at += 1;
+  if (at < 0) {
+    // Sin vecina: al final de las hijas de la madre nueva.
+    const hijas = childrenOf(rest, to.parentId);
+    const ultima = hijas[hijas.length - 1];
+    at = ultima ? rest.indexOf(ultima) + 1 : rest.length;
+  }
+  return [...rest.slice(0, at), moved, ...rest.slice(at)];
 }

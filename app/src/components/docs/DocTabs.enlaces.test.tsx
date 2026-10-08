@@ -34,7 +34,10 @@ const estado = {
   activeDoc: { kind: "list", id: "l1", name: "Portento", orgId: "o1" },
   doc: {
     doc: { id: "d1", orgId: "o1", stale: false },
-    tabs: [{ id: "t1", docId: "d1", key: "overview", body: "ver la otra", bodyHash: "h" }],
+    tabs: [
+      { id: "t1", docId: "d1", key: "overview", body: "ver la otra", bodyHash: "h" },
+      { id: "t2", docId: "d1", key: "runbook", body: "el runbook", bodyHash: "h2" },
+    ],
     decisions: [],
     attachments: [],
   },
@@ -60,5 +63,15 @@ describe("un enlace dentro de la portada", () => {
     render(<DocTabs onView={() => {}} />);
     fireEvent.click(screen.getByText("ver la otra"));
     expect(abrirDentro).toHaveBeenCalledWith("/tasks?doc=list:l2&page=p1");
+  });
+});
+
+describe("la pestaña que pide un enlace", () => {
+  it("la portada se abre en ella", async () => {
+    const { useDocPages } = await import("@/store/doc-pages.store");
+    useDocPages.getState().requestTab("runbook");
+    render(<DocTabs onView={() => {}} />);
+    expect(screen.getByText("el runbook")).toBeTruthy();
+    expect(useDocPages.getState().requestedTab).toBeNull();
   });
 });

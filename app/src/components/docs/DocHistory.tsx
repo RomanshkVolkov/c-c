@@ -12,7 +12,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useTasksStore } from "@/store/tasks.store";
-import type { DocTabKey, DocVersion } from "@/types/task";
+import type { DocTabKey } from "@/types/task";
 
 /**
  * De dónde venía esta sección.
@@ -22,11 +22,33 @@ import type { DocTabKey, DocVersion } from "@/types/task";
  * accidental se guarda solo y no hay a dónde volver.
  */
 export default function DocHistory({ tab }: { tab: DocTabKey }) {
-  const { t } = useT();
-  const confirm = useConfirm();
   const docVersions = useTasksStore((s) => s.docVersions);
   const restoreDoc = useTasksStore((s) => s.restoreDoc);
-  const [versiones, setVersiones] = useState<DocVersion[] | null>(null);
+  return <VersionMenu load={() => docVersions(tab)} restore={(id) => restoreDoc(id)} />;
+}
+
+/** Lo que el menú necesita de una versión, sea de una pestaña o de una página. */
+export interface VersionRow {
+  id: string;
+  createdAt: string;
+  authorName?: string;
+}
+
+/**
+ * El menú del historial, sin saber de qué es: lo usan las pestañas de la
+ * portada y las páginas, que guardan sus versiones en sitios distintos pero se
+ * restauran igual (restaurar también es un guardado y queda en el historial).
+ */
+export function VersionMenu({
+  load,
+  restore,
+}: {
+  load: () => Promise<VersionRow[]>;
+  restore: (versionId: string) => Promise<void>;
+}) {
+  const { t } = useT();
+  const confirm = useConfirm();
+  const [versiones, setVersiones] = useState<VersionRow[] | null>(null);
   const [cargando, setCargando] = useState(false);
 
   // Se pide al abrir, no al pintar la pantalla: casi nadie mira el historial, y
@@ -35,7 +57,7 @@ export default function DocHistory({ tab }: { tab: DocTabKey }) {
     if (!open) return;
     setCargando(true);
     try {
-      setVersiones(await docVersions(tab));
+      setVersiones(await load());
     } catch {
       setVersiones([]);
     } finally {
@@ -43,7 +65,7 @@ export default function DocHistory({ tab }: { tab: DocTabKey }) {
     }
   };
 
-  const volver = async (v: DocVersion) => {
+  const volver = async (v: VersionRow) => {
     const ok = await confirm({
       title: t("work:docs.restoreTitle"),
       // Se dice qué pasa con lo de ahora, porque es lo que preocupa: restaurar
@@ -53,7 +75,7 @@ export default function DocHistory({ tab }: { tab: DocTabKey }) {
     });
     if (!ok) return;
     try {
-      await restoreDoc(v.id);
+      await restore(v.id);
       toast.success(t("work:docs.restored"));
     } catch (e) {
       toast.error(t("work:docs.errSave"), { description: String(e) });

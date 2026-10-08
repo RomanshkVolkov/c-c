@@ -333,13 +333,33 @@
     "pageTitle": "Título de la página",
     "trashPage": "Mandar a la papelera",
     "trashPageTitle": "¿Mandar «{{title}}» a la papelera?",
-    "trashPageWhy": "Se van con ella las páginas que tiene dentro. No se pierde nada: se puede restaurar.",
-    "trashed_one": "A la papelera",
-    "trashed_other": "A la papelera, con las {{count}} páginas de dentro",
+    "trashPageWhy": "No se pierde nada: se puede restaurar desde la papelera.",
     "childPages": "Páginas dentro",
     "emptyPage": "Esta página está vacía.",
     "errPage": "No se pudo abrir esta página",
-    "thisPage": "Esta página"
+    "thisPage": "Esta página",
+    "trashed": "A la papelera",
+    "trashedWith_one": "A la papelera, con la página de dentro",
+    "trashedWith_other": "A la papelera, con las {{count}} páginas de dentro",
+    "trashPageWithSubpages_one": "Se va con ella la página que tiene dentro. No se pierde nada: se puede restaurar.",
+    "trashPageWithSubpages_other": "Se van con ella las {{count}} páginas que tiene dentro. No se pierde nada: se puede restaurar.",
+    "trash": "Papelera",
+    "trashEmpty": "No hay nada en la papelera.",
+    "restoredPage": "Página restaurada",
+    "restoredWith_one": "Página restaurada, con la de dentro",
+    "restoredWith_other": "Página restaurada, con las {{count}} de dentro",
+    "subpages_one": "{{count}} página dentro",
+    "subpages_other": "{{count}} páginas dentro",
+    "errRestore": "No se pudo restaurar",
+    "errMove": "No se pudo mover la página",
+    "rename": "Renombrar",
+    "renameTitle": "Renombrar la página",
+    "pageMenu": "Opciones de «{{title}}»",
+    "moveTo": "Mover a…",
+    "moveToTitle": "Mover «{{title}}»",
+    "moveToHint": "Elige de qué página va a colgar. Se lleva con ella todo lo que tiene dentro, y su enlace no cambia.",
+    "moveHere": "Mover aquí",
+    "currentParent": "aquí está ahora"
   },
   "docTemplates": {
     "title": "Aquí no hay nada escrito todavía",
@@ -398,6 +418,19 @@
     "nothing": "Ningún documento coincide",
     "undocumented_one": "{{count}} lista sin documentación",
     "undocumented_other": "{{count}} listas sin documentación",
-    "noneYet": "Todavía no hay nada documentado. Elige una lista de abajo para escribir la primera."
+    "noneYet": "Todavía no hay nada documentado. Elige una lista de abajo para escribir la primera.",
+    "pages": "Páginas"
+  },
+  "pageTemplates": {
+    "component": {
+      "name": "Componente",
+      "hint": "Una pieza del sistema: qué hace, de qué depende y cómo se toca.",
+      "body": "## Qué es\n\nUna frase: qué hace y para quién.\n\n## Dónde vive\n\n- Repo:\n- Despliegue:\n- Quién lo lleva:\n\n## De qué depende\n\n- \n\n## Quién depende de él\n\n- \n\n## Cómo se toca\n\nLo que hay que saber antes de cambiarlo. Las trampas que ya han mordido.\n\n## Cómo se sabe que está bien\n\nQué mirar, y qué es normal.\n"
+    },
+    "procedure": {
+      "name": "Procedimiento",
+      "hint": "Pasos para hacer algo concreto, con cómo comprobar que salió.",
+      "body": "## Cuándo se hace\n\nQué lo dispara, y cada cuánto.\n\n## Antes de empezar\n\n- Acceso a:\n- Tener a mano:\n\n## Pasos\n\n1. \n2. \n3. \n\n## Cómo se comprueba que salió\n\n## Si algo falla\n\nQué hacer, y a quién avisar.\n"
+    }
   }
 }

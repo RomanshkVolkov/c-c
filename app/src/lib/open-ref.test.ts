@@ -17,8 +17,9 @@ vi.mock("@/store/tasks.store", () => ({
 }));
 const openPage = vi.fn(async (o: { id: string }, p: string) => void orden.push(`page:${o.id}:${p}`));
 const closePage = vi.fn(() => void orden.push("portada"));
+const requestTab = vi.fn((tab: string) => void orden.push(`pestaña:${tab}`));
 vi.mock("@/store/doc-pages.store", () => ({
-  useDocPages: { getState: () => ({ openPage, closePage }) },
+  useDocPages: { getState: () => ({ openPage, closePage, requestTab }) },
 }));
 
 const { openInternalRef } = await import("@/lib/open-ref");
@@ -46,6 +47,11 @@ describe("un enlace de dentro", () => {
     activeDoc = { kind: "list", id: "l1" };
     openInternalRef("/tasks?doc=list:l1&page=p2");
     expect(orden).toEqual(["page:l1:p2"]);
+  });
+
+  it("a una pestaña la pide, y abre el documento", () => {
+    expect(openInternalRef("/tasks?doc=list:l1&tab=runbook")).toBe(true);
+    expect(orden).toEqual(["pestaña:runbook", "doc:list:l1"]);
   });
 
   it("una tarjeta abre la tarjeta", () => {

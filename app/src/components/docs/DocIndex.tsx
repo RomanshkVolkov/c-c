@@ -137,6 +137,9 @@ export default function DocIndex() {
               <TableHead>{t("work:docIndex.where")}</TableHead>
               <TableHead>{t("work:docIndex.owner")}</TableHead>
               <TableHead>{t("work:docIndex.lastReviewed")}</TableHead>
+              {/* Cuántas páginas cuelgan de la portada: un documento con veinte
+                  páginas y otro sólo con su resumen no son lo mismo de revisar. */}
+              <TableHead className="text-right">{t("work:docIndex.pages")}</TableHead>
               <TableHead className="text-right">{t("work:docIndex.tasks")}</TableHead>
             </TableRow>
           </TableHeader>
@@ -164,6 +167,9 @@ export default function DocIndex() {
                 </TableCell>
                 <TableCell className={cn("tabular-nums", r.mark?.stale && "text-amber-500")}>
                   {r.mark?.reviewedAt ? fecha(r.mark.reviewedAt) : t("work:docs.neverReviewed")}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {r.mark?.pages || ""}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-muted-foreground">
                   {r.tasks ?? ""}

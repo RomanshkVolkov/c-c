@@ -122,3 +122,28 @@ describe("?doc=…&page=", () => {
     expect(api.get).toHaveBeenCalledWith("/api/v1/docs/space/sp-a/pages/p-7");
   });
 });
+
+/**
+ * `&tab=` lo llevaba el enlace de «compartir esta sección» y nadie lo leía: se
+ * abría siempre Resumen.
+ */
+describe("?doc=…&tab=", () => {
+  it("deja pedida la pestaña para la portada", async () => {
+    const { useDocPages } = await import("@/store/doc-pages.store");
+    useDocPages.getState().reset();
+    // La portada de verdad la recoge en cuanto se pinta; aquí basta con ver
+    // que se pidió.
+    const pedir = vi.spyOn(useDocPages.getState(), "requestTab");
+    render(
+      <ConfirmProvider>
+        <PromptProvider>
+          <MemoryRouter initialEntries={["/tasks?doc=space:sp-a&tab=runbook"]}>
+            <Tasks />
+          </MemoryRouter>
+        </PromptProvider>
+      </ConfirmProvider>,
+    );
+    await waitFor(() => expect(useTasksStore.getState().activeDoc?.id).toBe("sp-a"));
+    expect(pedir).toHaveBeenCalledWith("runbook");
+  });
+});

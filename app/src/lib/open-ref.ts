@@ -32,8 +32,10 @@ export function openInternalRef(href: string, opts: { onOpenRecordings?: () => v
   if (ref && isDocOwnerKind(ref.kind)) {
     const owner = { kind: ref.kind, id: ref.id };
     // La página primero: fija el nodo, y así abrir el documento no la cierra
-    // (ver `useDocPages.enter`). Sin página, se vuelve a la portada.
+    // (ver `useDocPages.enter`). Sin página, se vuelve a la portada, en la
+    // pestaña que diga el enlace si dice alguna.
     if (ref.page) useDocPages.getState().openPage(owner, ref.page).catch((e) => toast.error(String(e)));
+    else if (ref.tab) useDocPages.getState().requestTab(ref.tab);
     else useDocPages.getState().closePage();
     const actual = useTasksStore.getState().activeDoc;
     if (actual?.kind !== ref.kind || actual?.id !== ref.id) {

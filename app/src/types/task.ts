@@ -454,6 +454,20 @@ export interface DocPageTreeItem {
   title: string;
   hasBody: boolean;
   updatedAt: string;
+  /** Sólo en la papelera: cuándo se tiró y cuántas se fueron con ella. */
+  deletedAt?: string;
+  subpages?: number;
+}
+
+/** Una versión anterior de una página, como `DocVersion` lo es de una pestaña. */
+export interface DocPageVersion {
+  id: string;
+  pageId: string;
+  title: string;
+  body: string;
+  authorId: string;
+  authorName?: string;
+  createdAt: string;
 }
 
 export interface DocPage {
@@ -485,6 +499,11 @@ export interface DocPageView {
  */
 export const DOC_TABS = ["overview", "runbook", "decisions", "links"] as const;
 export type DocTabKey = (typeof DOC_TABS)[number];
+
+/** Si un texto —de un enlace, por ejemplo— es el nombre de una pestaña. */
+export function isDocTabKey(v: string): v is DocTabKey {
+  return (DOC_TABS as readonly string[]).includes(v);
+}
 
 export interface DocTab {
   id: string;

@@ -63,6 +63,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const openDoc = useTasksStore((s) => s.openDoc);
 
   const activePageId = useDocPages((s) => s.activePageId);
+  const pageView = useDocPages((s) => s.view);
   const enterPages = useDocPages((s) => s.enter);
 
   const [activa, setActiva] = useState<DocTabKey>("overview");
@@ -152,6 +153,15 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
     adoptar(cuerpo);
   }, [cuerpo, editando, adoptar, activa, hashDeLaSeccion]);
 
+  // La pestaña que pidió un enlace (`&tab=`). Hasta ahora el enlace de
+  // «compartir esta sección» la llevaba y nadie la leía: abría Resumen.
+  const requestedTab = useDocPages((s) => s.requestedTab);
+  useEffect(() => {
+    if (!requestedTab) return;
+    const tab = useDocPages.getState().takeRequestedTab();
+    if (tab) setActiva(tab);
+  }, [requestedTab]);
+
   // El árbol es del nodo: otro nodo, otro árbol. Ver `enter`.
   const nodoKind = target?.kind;
   const nodoId = target?.id;
@@ -189,7 +199,18 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           />
         ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {doc?.doc && <ShareDoc doc={doc.doc} nombre={target.name} tab={activa} />}
+          {doc?.doc && (
+            <ShareDoc
+              doc={doc.doc}
+              nombre={target.name}
+              tab={activa}
+              page={
+                activePageId && pageView?.page
+                  ? { id: pageView.page.id, title: pageView.page.title }
+                  : undefined
+              }
+            />
+          )}
           <Button size="icon-xs" variant="ghost" title={t("work:docs.cancel")} onClick={closeDoc}>
             <X className="size-3.5" />
           </Button>

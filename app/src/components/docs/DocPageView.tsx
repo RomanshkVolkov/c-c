@@ -1,19 +1,30 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, FileText, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, ClipboardList, FileText, Loader2, Pencil, Plus, Puzzle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useConfirm } from "@/components/ConfirmDialog";
+import { VersionMenu } from "@/components/docs/DocHistory";
 import DocToc from "@/components/docs/DocToc";
+import { useTrashPage } from "@/components/docs/use-trash-page";
 import SaveChip from "@/components/docs/SaveChip";
 import Markdown from "@/components/markdown/Markdown";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import { Button } from "@/components/ui/button";
 import { useAutoguardado } from "@/hooks/use-autoguardado";
 import { codigoDe } from "@/lib/api";
-import { useT } from "@/lib/i18n";
+import { useT, type MessageKey } from "@/lib/i18n";
 import { useDocPages } from "@/store/doc-pages.store";
 import { useTasksStore } from "@/store/tasks.store";
 import type { DocOwnerKind } from "@/types/task";
+
+/**
+ * Las plantillas de una página. No son las de la portada (proyecto, servicio,
+ * cliente, integración), que describen un nodo entero: una página es una pieza
+ * —un componente, un procedimiento— y se le pregunta otra cosa.
+ */
+const PLANTILLAS = [
+  { key: "component", icon: Puzzle },
+  { key: "procedure", icon: ClipboardList },
+] as const;
 
 /**
  * Una página de un documento, abierta.
@@ -36,14 +47,15 @@ export default function DocPageView({
   onInternalLink?: (href: string) => boolean;
 }) {
   const { t } = useT();
-  const confirm = useConfirm();
   const view = useDocPages((s) => s.view);
   const loading = useDocPages((s) => s.loadingPage);
   const openPage = useDocPages((s) => s.openPage);
   const closePage = useDocPages((s) => s.closePage);
   const savePage = useDocPages((s) => s.savePage);
   const createPage = useDocPages((s) => s.createPage);
-  const trashPage = useDocPages((s) => s.trashPage);
+  const pageVersions = useDocPages((s) => s.pageVersions);
+  const restorePageVersion = useDocPages((s) => s.restorePageVersion);
+  const tirar = useTrashPage(kind, ownerId);
   const upload = useTasksStore((s) => s.uploadDocAttachment);
   const owner = { kind, id: ownerId };
 
@@ -112,19 +124,16 @@ export default function DocPageView({
     }
   };
 
-  const papelera = async () => {
-    const ok = await confirm({
-      title: t("work:docs.trashPageTitle", { title: page.title || t("work:docs.untitled") }),
-      description: t("work:docs.trashPageWhy"),
-      confirmText: t("work:docs.trashPage"),
-      destructive: true,
-    });
-    if (!ok) return;
+  // Una plantilla se escribe ya y se abre el editor encima: lo que da es la
+  // estructura, y lo siguiente que se hace es rellenarla.
+  const usarPlantilla = async (cuerpo: string) => {
     try {
-      const n = await trashPage(owner, page.id);
-      toast.success(t("work:docs.trashed", { count: Math.max(0, n - 1) }));
+      hashDelBorrador.current = await savePage(owner, page.id, { body: cuerpo }, hashDelBorrador.current);
+      setBorrador(cuerpo);
+      adoptar(cuerpo);
+      setEditando(true);
     } catch (e) {
-      toast.error(String((e as Error)?.message ?? e));
+      toast.error(t("work:docs.errSave"), { description: String(e) });
     }
   };
 
@@ -203,11 +212,33 @@ export default function DocPageView({
                 </Markdown>
               </div>
             ) : (
-              <div className="py-10 text-center">
-                <p className="text-sm text-muted-foreground">{t("work:docs.emptyPage")}</p>
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditando(true)}>
-                  <Pencil className="mr-1 size-3" /> {t("work:docs.writeIt")}
-                </Button>
+              // Vacía: por dónde empezar, como la portada con sus plantillas.
+              // Una página en blanco es la misma pregunta sin enunciado.
+              <div className="py-8">
+                <p className="text-center text-sm text-muted-foreground">{t("work:docs.emptyPage")}</p>
+                <div className="mx-auto mt-4 grid max-w-lg gap-2 sm:grid-cols-2">
+                  {PLANTILLAS.map(({ key, icon: Icon }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => void usarPlantilla(t(`work:pageTemplates.${key}.body` as MessageKey))}
+                      className="rounded-md border p-3 text-left hover:bg-accent"
+                    >
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Icon className="size-4 text-muted-foreground" />
+                        {t(`work:pageTemplates.${key}.name` as MessageKey)}
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {t(`work:pageTemplates.${key}.hint` as MessageKey)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 text-center">
+                  <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
+                    <Pencil className="mr-1 size-3" /> {t("work:docs.writeIt")}
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -248,7 +279,16 @@ export default function DocPageView({
               <Pencil className="mr-1 size-3" /> {t("work:docs.edit")}
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground" onClick={() => void papelera()}>
+          <VersionMenu
+            load={() => pageVersions(owner, page.id)}
+            restore={(v) => restorePageVersion(owner, page.id, v)}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-muted-foreground"
+            onClick={() => void tirar(page.id, page.title)}
+          >
             <Trash2 className="mr-1 size-3" /> {t("work:docs.trashPage")}
           </Button>
         </footer>

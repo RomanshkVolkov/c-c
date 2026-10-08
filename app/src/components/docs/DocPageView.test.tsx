@@ -128,3 +128,20 @@ describe("una página abierta", () => {
     expect(get).toHaveBeenCalledWith("/api/v1/docs/list/l1/pages/p3");
   });
 });
+
+describe("una página vacía", () => {
+  it("ofrece plantillas, y usar una la escribe y abre el editor", async () => {
+    useDocPages.setState({
+      view: { page: pagina("", "hash-0"), breadcrumb: [], children: [], orgId: "o1" },
+    });
+    put.mockImplementation(async (_p: string, b: { body: string }) => ({ data: pagina(b.body, "hash-1") }));
+    montar();
+    await act(async () => {
+      fireEvent.click(screen.getByText("Procedure"));
+    });
+    const enviado = put.mock.calls[0][1] as { body: string; baseHash: string };
+    expect(enviado.body).toContain("## Steps");
+    expect(enviado.baseHash).toBe("hash-0");
+    expect((screen.getByLabelText("editor") as HTMLTextAreaElement).value).toContain("## Steps");
+  });
+});
