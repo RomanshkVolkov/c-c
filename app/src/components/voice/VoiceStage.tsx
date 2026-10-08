@@ -1,6 +1,7 @@
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { AlertCircle, Link2, Loader2, MessageSquare, Minimize2, Volume2, X } from "lucide-react";
+import { AlertCircle, Check, Link2, Loader2, MessageSquare, Minimize2, UserPlus, Volume2, X } from "lucide-react";
+import GuestInviteDialog from "@/components/voice/GuestInviteDialog";
 import { iniciales } from "@/lib/desde";
 import VoiceChat from "@/components/voice/VoiceChat";
 import DeviceSettings from "@/components/voice/DeviceSettings";
@@ -21,7 +22,7 @@ import { guestLinkFor } from "@/lib/call-link";
 import { isWebBuild } from "@/lib/platform";
 import { phraseFor } from "@/lib/server-errors";
 import { engine } from "@/lib/voice-engine";
-import { isGuestIdentity, useCalls } from "@/store/calls.store";
+import { isGuestIdentity, useCalls, type WaitingGuest } from "@/store/calls.store";
 import { meetScope, useRecordings } from "@/store/recordings.store";
 import { useVoice } from "@/store/voice.store";
 
@@ -42,6 +43,12 @@ import { useVoice } from "@/store/voice.store";
  * con un enlace no se le ofrece nada que necesite sesión —el chat del canal, el
  * timbre, grabar, sacar a nadie—, porque fallaría al pulsarlo.
  */
+/**
+ * La lista vacía, siempre la misma. Un `[]` nuevo en el selector de zustand es
+ * un valor distinto en cada lectura, y React vuelve a pintar sin parar.
+ */
+const NADIE: WaitingGuest[] = [];
+
 export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   const { t } = useT();
   const estado = useVoice((s) => s.estado);
@@ -86,6 +93,14 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   const chatSpaceId = visitor ? null : (spaceId ?? meetSpaceId);
   const kick = useCalls((s) => s.kick);
   const getInvite = useCalls((s) => s.get);
+  const orgId = useVoice((s) => s.orgId);
+  // Quién espera para entrar a esta reunión. Sólo lo ve un miembro: es quien
+  // decide.
+  const esperan = useCalls((s) => (meetId && !visitor ? (s.waiting[meetId] ?? NADIE) : NADIE));
+  const loadWaiting = useCalls((s) => s.loadWaiting);
+  const admit = useCalls((s) => s.admit);
+  const rejectGuest = useCalls((s) => s.reject);
+  const [porEnlace, setPorEnlace] = useState(false);
   // Quién graba lo dice **el motor**, no el botón: llega por el metadata de la
   // sala, así que enciende el chip en todas las pantallas a la vez —incluida la
   // de quien entró después.
@@ -126,6 +141,22 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   useEffect(() => {
     if (recScope) void loadPolicy(recScope);
   }, [recScope, loadPolicy]);
+
+  // Al entrar a la reunión se pide la lista; después la mantiene el stream
+  // (`call:knock`).
+  useEffect(() => {
+    if (meetId && !visitor) void loadWaiting(meetId).catch(() => {});
+  }, [meetId, visitor, loadWaiting]);
+
+  const decidir = async (guestId: string, si: boolean) => {
+    if (!meetId) return;
+    try {
+      await (si ? admit(meetId, guestId) : rejectGuest(meetId, guestId));
+    } catch (e) {
+      toast.error(phraseFor(String((e as Error)?.message ?? e), String(e)));
+      void loadWaiting(meetId).catch(() => {});
+    }
+  };
 
   const copiarEnlace = async () => {
     if (!meetId) return;
@@ -204,8 +235,19 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
             son sobre ti —tu micro, tu cámara— y esto es sobre la sala. */}
         {/* El timbre es del canal: llama a un compañero a **esta** sala, y
             una reunión con invitados no es la sala de ningún canal. */}
-        {spaceId && !visitor && (
+        {(spaceId || meetId) && !visitor && (
           <InviteButton abierto={invitando} onToggle={() => setInvitando((v) => !v)} />
+        )}
+        {/* Gente de fuera, desde la llamada del canal. No entra a esta sala:
+            el botón abre una reunión aparte y muda la llamada a ella. */}
+        {spaceId && !visitor && orgId && (
+          <button
+            type="button"
+            onClick={() => setPorEnlace(true)}
+            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+          >
+            <UserPlus className="size-[15px]" /> {t("calls:inviteByLink")}
+          </button>
         )}
         {meetId && !visitor && (
           <button
@@ -369,6 +411,9 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
       </div>
 
       {invitando && <InvitePicker onClose={() => setInvitando(false)} />}
+      {spaceId && orgId && (
+        <GuestInviteDialog open={porEnlace} onOpenChange={setPorEnlace} orgId={orgId} spaceId={spaceId} fromCall />
+      )}
       {ajustes && <DeviceSettings />}
 
       {/* Lo que el motor no pudo hacer, **junto a los mandos** y no en un
@@ -397,6 +442,35 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
             <X className="size-3.5" />
           </button>
         </p>
+      )}
+
+      {/* La sala de espera: quién pide entrar con el enlace. Encima de los
+          mandos, porque alguien está esperando delante de una puerta. */}
+      {esperan.length > 0 && (
+        <div role="region" aria-label={t("calls:waitingRoom", { count: esperan.length })} className="shrink-0 border-t bg-primary/5 px-4 py-2">
+          <p className="mb-1.5 text-xs font-semibold text-primary">{t("calls:waitingRoom", { count: esperan.length })}</p>
+          <ul className="flex flex-col gap-1.5">
+            {esperan.map((g) => (
+              <li key={g.id} className="flex items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                <button
+                  type="button"
+                  onClick={() => void decidir(g.id, false)}
+                  className="flex h-7 items-center gap-1 rounded-md border px-2 text-xs text-muted-foreground hover:text-destructive"
+                >
+                  <X className="size-3.5" /> {t("calls:reject")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void decidir(g.id, true)}
+                  className="flex h-7 items-center gap-1 rounded-md bg-success px-2 text-xs font-semibold text-background"
+                >
+                  <Check className="size-3.5" /> {t("calls:admit")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* Debajo de la cabecera y encima de todo lo demás: quien entra a una

@@ -41,6 +41,12 @@ export interface TimbreEntrante {
   from: { id: string; name: string };
   /** ISO. Pasada esa hora la tarjeta se va sola, llame quien llame. */
   expiresAt: string;
+  /**
+   * Te llaman a una reunión con invitados, no a la sala del canal. Aceptar
+   * lleva a esa reunión; `spaceId` sólo dice de qué canal cuelga.
+   */
+  inviteId?: string;
+  title?: string;
 }
 
 /** Una llamada tuya que todavía no ha contestado nadie. */
@@ -363,6 +369,19 @@ function deRust(e: unknown): string {
  */
 let intento = 0;
 
+/**
+ * A dónde va el timbre de la sala en la que estás: la del canal, o la de la
+ * reunión. Una reunión no es la sala de ningún canal, y llamar a alguien «al
+ * canal» desde ella le llevaría a otra parte.
+ */
+function rutaDelTimbre(s: { spaceId: string | null; meetId: string | null }): string | null {
+  // Un invitado no llega aquí con nada: no conoce ni el canal ni el id de la
+  // reunión (`entrarComoInvitado` no los pone), así que no tiene a dónde llamar.
+  if (s.meetId) return `/api/v1/call-invites/${s.meetId}/ring`;
+  if (s.spaceId) return `/api/v1/task-spaces/${s.spaceId}/voice/ring`;
+  return null;
+}
+
 export const useVoice = create<VoiceState>((set, get) => {
   /** Conectar con un token ya pedido. Común a canal, reunión e invitado. */
   const conectar = async (
@@ -576,16 +595,12 @@ export const useVoice = create<VoiceState>((set, get) => {
   limpiarError: () => set({ error: null, errorSpaceId: null }),
 
   timbrar: async (userId, nombre) => {
-    const spaceId = get().spaceId;
-    if (!spaceId) return;
+    const ruta = rutaDelTimbre(get());
+    if (!ruta) return;
     pararReloj("saliente");
     set({ llamando: { identity: userId, name: nombre, desde: Date.now(), sinRespuesta: false } });
     try {
-      const res = await api.post<APIResponse<{ ringId: string }>>(
-        `/api/v1/task-spaces/${spaceId}/voice/ring`,
-        { userId },
-        true,
-      );
+      const res = await api.post<APIResponse<{ ringId: string }>>(ruta, { userId }, true);
       if (!res.success) throw new Error(res.error ?? "no se pudo llamar");
     } catch (e) {
       // Se cae la fila entera en vez de dejarla sonando: una llamada que el
@@ -606,23 +621,23 @@ export const useVoice = create<VoiceState>((set, get) => {
   },
 
   cancelarTimbre: async () => {
-    const { spaceId, llamando } = get();
+    const { llamando } = get();
+    const ruta = rutaDelTimbre(get());
     // Parar el reloj aquí no cambia nada que se vea: el callback comprueba que
     // siga habiendo llamada, así que uno que llegue tarde no hace nada. Es por
     // no dejar veinte segundos de temporizador colgando, no por corrección — y
     // se dice para que nadie quite el `if` de ahí abajo creyendo que sobra.
     pararReloj("saliente");
     set({ llamando: null });
-    if (!spaceId || !llamando) return;
-    await api
-      .delete(`/api/v1/task-spaces/${spaceId}/voice/ring/${llamando.identity}`, true)
-      .catch(() => {});
+    if (!ruta || !llamando) return;
+    await api.delete(`${ruta}/${llamando.identity}`, true).catch(() => {});
   },
 
   alTimbrar: (t) => {
     // Ya estás dentro de esa sala: la llamada llegó tarde o cruzada, y una
     // tarjeta que te invita a donde ya estás sólo tapa la conversación.
-    if (get().spaceId === t.spaceId && get().estado !== "fuera") return;
+    const ya = t.inviteId ? get().meetId === t.inviteId : !get().meetId && get().spaceId === t.spaceId;
+    if (ya && get().estado !== "fuera") return;
     pararReloj("entrante");
     set({ entrante: t });
     // Se apaga sola a la hora que dijo el servidor. Es lo que hace que un
@@ -659,7 +674,8 @@ export const useVoice = create<VoiceState>((set, get) => {
     if (!t) return;
     pararReloj("entrante");
     set({ entrante: null });
-    await get().entrar(t.spaceId, { orgId: t.orgId, spaceName: t.spaceName });
+    if (t.inviteId) await get().entrarEnReunion(t.inviteId);
+    else await get().entrar(t.spaceId, { orgId: t.orgId, spaceName: t.spaceName });
   },
 
   rechazarEntrante: async () => {
@@ -670,9 +686,10 @@ export const useVoice = create<VoiceState>((set, get) => {
     // Decir que no en vez de dejar que expire: quien llamaba se entera ahora y
     // no dentro de veinte segundos. Va por el mismo endpoint —«deja de sonar
     // entre tú y yo»— y llega como una cancelación con tu id.
-    await api
-      .delete(`/api/v1/task-spaces/${t.spaceId}/voice/ring/${t.from.id}`, true)
-      .catch(() => {});
+    const ruta = t.inviteId
+      ? `/api/v1/call-invites/${t.inviteId}/ring`
+      : `/api/v1/task-spaces/${t.spaceId}/voice/ring`;
+    await api.delete(`${ruta}/${t.from.id}`, true).catch(() => {});
   },
 
   /**

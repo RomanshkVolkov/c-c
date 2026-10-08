@@ -13,7 +13,8 @@ import { codigoDe } from "@/lib/api";
 import { guestLinkFor } from "@/lib/call-link";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
-import { useCalls, type CallInvite } from "@/store/calls.store";
+import { isGuestIdentity, useCalls, type CallInvite } from "@/store/calls.store";
+import { useVoice } from "@/store/voice.store";
 
 /**
  * Llamar con gente de fuera desde un canal (W3).
@@ -32,11 +33,18 @@ export default function GuestInviteDialog({
   onOpenChange,
   orgId,
   spaceId,
+  fromCall,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   orgId: string;
   spaceId: string;
+  /**
+   * Se abre desde dentro de la llamada del canal. Un invitado no puede entrar a
+   * esa sala, así que crear el enlace **muda la llamada**: tú pasas a la
+   * reunión y a quienes estaban contigo se les llama para que te sigan.
+   */
+  fromCall?: boolean;
 }) {
   const { t, i18n } = useT();
   const navigate = useNavigate();
@@ -45,6 +53,8 @@ export default function GuestInviteDialog({
   const load = useCalls((s) => s.load);
   const create = useCalls((s) => s.create);
   const revoke = useCalls((s) => s.revoke);
+  const ring = useCalls((s) => s.ring);
+  const entrarEnReunion = useVoice((s) => s.entrarEnReunion);
   const [titulo, setTitulo] = useState("");
   const [horas, setHoras] = useState("24");
   const [creando, setCreando] = useState(false);
@@ -62,9 +72,22 @@ export default function GuestInviteDialog({
     if (!titulo.trim() || creando) return;
     setCreando(true);
     try {
+      // Quién estaba contigo, **antes** de salir del canal: al entrar a la
+      // reunión la lista de gente pasa a ser la de allí.
+      const { gente, yo } = useVoice.getState();
+      const conmigo = gente.map((p) => p.identity).filter((id) => id !== yo && !isGuestIdentity(id));
       const inv = await create({ orgId, spaceId, title: titulo.trim(), ttlHours: Number(horas) });
       setTitulo("");
       await copiar(inv).catch(() => {});
+      if (fromCall) {
+        onOpenChange(false);
+        await entrarEnReunion(inv.id);
+        navigate(`/call/${inv.id}`);
+        // Mejor esfuerzo: si a alguien no se le pudo llamar, la reunión sigue y
+        // el enlace ya está copiado.
+        await Promise.allSettled(conmigo.map((id) => ring(inv.id, id)));
+        if (conmigo.length > 0) toast.info(t("calls:movedRinging", { count: conmigo.length }));
+      }
     } catch (e) {
       toast.error(phraseFor(codigoDe(e), String((e as Error)?.message ?? e)));
     } finally {
@@ -94,8 +117,8 @@ export default function GuestInviteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("calls:dialogTitle")}</DialogTitle>
-          <DialogDescription>{t("calls:dialogBody")}</DialogDescription>
+          <DialogTitle>{fromCall ? t("calls:fromCallTitle") : t("calls:dialogTitle")}</DialogTitle>
+          <DialogDescription>{fromCall ? t("calls:fromCallBody") : t("calls:dialogBody")}</DialogDescription>
         </DialogHeader>
 
         <form
@@ -131,7 +154,7 @@ export default function GuestInviteDialog({
             </div>
             <Button type="submit" disabled={!titulo.trim() || creando}>
               {creando ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
-              {creando ? t("calls:creating") : t("calls:create")}
+              {creando ? t("calls:creating") : fromCall ? t("calls:createAndMove") : t("calls:create")}
             </Button>
           </div>
         </form>

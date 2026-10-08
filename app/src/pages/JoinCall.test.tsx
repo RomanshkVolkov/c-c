@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 const { post } = vi.hoisted(() => ({ post: vi.fn() }));
 vi.mock("@/lib/api", () => ({
@@ -29,6 +29,65 @@ beforeEach(() => {
   useVoice.setState({ estado: "fuera", error: null, visitor: false });
 });
 afterEach(cleanup);
+
+const espera = { success: true, data: { status: "waiting", name: "Carla", pass: "g1.9.x", title: "Con el cliente" } };
+
+describe("la sala de espera", () => {
+  // **Pedir entrar no es entrar.** Mientras nadie de dentro decide, la página
+  // espera y no toca la sala. El mutante que mata: entrar con la respuesta de
+  // `join` sin mirar el estado.
+  it("pedir entrar deja esperando, sin entrar a la sala", async () => {
+    const entrar = vi.fn(async () => {});
+    useVoice.setState({ entrarComoInvitado: entrar });
+    post.mockImplementation(async (path: string) => (path.endsWith("/inspect") ? info() : espera));
+    render(<JoinCall />);
+    fireEvent.change(await screen.findByLabelText("Your name"), { target: { value: "Carla" } });
+    fireEvent.click(screen.getByRole("button", { name: /Join the call/ }));
+    expect(await screen.findByText("Waiting for someone to let you in")).toBeTruthy();
+    expect(entrar).not.toHaveBeenCalled();
+  });
+
+  // Y entra sola cuando le dejan, con la entrada que da el servidor.
+  it("entra cuando un miembro le deja pasar", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const entrar = vi.fn(async () => {});
+      useVoice.setState({ entrarComoInvitado: entrar });
+      post.mockImplementation(async (path: string) =>
+        path.endsWith("/inspect")
+          ? info()
+          : path.endsWith("/status")
+            ? { success: true, data: { ...espera.data, status: "admitted", url: "wss://rtc", token: "jwt" } }
+            : espera,
+      );
+      render(<JoinCall />);
+      fireEvent.change(await screen.findByLabelText("Your name"), { target: { value: "Carla" } });
+      fireEvent.click(screen.getByRole("button", { name: /Join the call/ }));
+      await screen.findByText("Waiting for someone to let you in");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3500);
+      });
+      expect(entrar).toHaveBeenCalledWith(expect.objectContaining({ token: "jwt", url: "wss://rtc" }));
+      // Preguntó con su pase, sin sesión.
+      expect(post).toHaveBeenCalledWith("/api/v1/public/calls/status", { token: "inv-1.firma", pass: "g1.9.x" }, false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A quien se rechaza no se le ofrece volver a pedir: su pase ya no sirve.
+  it("si le dicen que no, lo dice y no ofrece volver", async () => {
+    post.mockImplementation(async (path: string) => {
+      if (path.endsWith("/inspect")) return info();
+      throw Object.assign(new Error("x"), { code: "guest-rejected" });
+    });
+    render(<JoinCall />);
+    fireEvent.change(await screen.findByLabelText("Your name"), { target: { value: "Carla" } });
+    fireEvent.click(screen.getByRole("button", { name: /Join the call/ }));
+    expect(await screen.findByText("You weren't let in")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Join again/ })).toBeNull();
+  });
+});
 
 describe("la puerta del invitado", () => {
   // El aviso va antes del botón, siempre que se pueda grabar. El mutante que

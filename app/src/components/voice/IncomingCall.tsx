@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useT } from "@/lib/i18n";
 import { PhoneOff, Volume2 } from "lucide-react";
 import { iniciales } from "@/lib/desde";
 import { tonoEntrante } from "@/components/voice/ringtone";
@@ -21,6 +23,8 @@ export default function IncomingCall() {
   const aceptar = useVoice((s) => s.aceptarEntrante);
   const rechazar = useVoice((s) => s.rechazarEntrante);
   const ocupacion = useVoice((s) => s.ocupacion);
+  const navigate = useNavigate();
+  const { t } = useT();
 
   // El tono suena mientras la tarjeta esté, y **respeta la sordera**: alguien
   // que se ha puesto sordo en una llamada ha pedido que el ordenador se calle,
@@ -53,7 +57,11 @@ export default function IncomingCall() {
         <p className="mt-4 text-[17px] font-semibold">{entrante.from.name}</p>
         <p className="mt-1 flex items-center justify-center gap-1.5 text-[13px] text-muted-foreground">
           <Volume2 className="size-3.5 text-success" />
-          Calling you to #{entrante.spaceName}
+          {/* Una reunión con invitados se nombra por su título: no es la sala
+              de ningún canal. */}
+          {entrante.inviteId
+            ? t("calls:callingYouTo", { title: entrante.title ?? "" })
+            : `Calling you to #${entrante.spaceName}`}
           {dentro > 0 && ` · ${dentro} in voice`}
         </p>
 
@@ -65,7 +73,13 @@ export default function IncomingCall() {
             <PhoneOff className="size-4" /> Decline
           </button>
           <button
-            onClick={() => void aceptar()}
+            onClick={() => {
+              // Una reunión tiene su propia pantalla: se entra y se va a ella.
+              const meet = entrante.inviteId;
+              void aceptar().then(() => {
+                if (meet) navigate(`/call/${meet}`);
+              });
+            }}
             className="h-10 flex-1 rounded-lg bg-success text-sm font-bold text-background"
           >
             Join

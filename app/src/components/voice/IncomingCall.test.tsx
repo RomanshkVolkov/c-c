@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as pintar, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
+
+// Aceptar una reunión lleva a su pantalla, así que la tarjeta vive dentro del
+// router, como en la app.
+const render = (el: ReactElement) => pintar(<MemoryRouter>{el}</MemoryRouter>);
 
 /**
  * La tarjeta de llamada entrante.

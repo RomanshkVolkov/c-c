@@ -15,6 +15,7 @@ import type { MessageKey } from "@/lib/i18n";
 import { STATUS_LABEL_KEYS, normalizeStatus } from "@/types/report";
 import { urlTicket } from "@/lib/url-ticket";
 import { useAuthStore } from "@/store/auth.store";
+import { useCalls, type CallKnock } from "@/store/calls.store";
 import { useDeploymentsStore, type DeployLogEvent } from "@/store/deployments.store";
 import { useActivityStore } from "@/store/activity.store";
 import type { Deployment } from "@/types/deploy";
@@ -605,7 +606,7 @@ export function useReportEvents() {
           const t = parse(data) as unknown as TimbreEntrante | null;
           if (!t?.ringId) break;
           useVoice.getState().alTimbrar(t);
-          notify("voice.ring", `${t.from.name} is calling`, `Voice call in #${t.spaceName}`);
+          notify("voice.ring", `${t.from.name} is calling`, t.inviteId ? (t.title ?? "") : `Voice call in #${t.spaceName}`);
           break;
         }
         // La reunión periódica: tarjeta propia con su timbre, como una llamada,
@@ -654,6 +655,21 @@ export function useReportEvents() {
           // cuelga: su política va por su sala, y la fila se lista en el canal.
           if (c.inviteId) useRecordings.getState().onStatus(meetScope(c.inviteId), c.recording ?? null, c.spaceId);
           else useRecordings.getState().onStatus(c.spaceId, c.recording ?? null);
+          break;
+        }
+        // La sala de espera de una reunión: alguien pide entrar, u otro
+        // miembro ya decidió. Se avisa a quien está en esa reunión y a quien
+        // la abrió; al resto de la organización no le concierne.
+        case "call:knock": {
+          const k = parse(data) as unknown as CallKnock | null;
+          if (!k?.inviteId) break;
+          useCalls.getState().onKnock(k);
+          const v = useVoice.getState();
+          const aqui = v.meetId === k.inviteId && v.estado !== "fuera";
+          const mia = k.createdBy === useAuthStore.getState().session?.id;
+          if (k.status === "waiting" && (aqui || mia)) {
+            notify("call:knock", i18next.t("calls:knockTitle", { name: k.guest.name }), k.title);
+          }
           break;
         }
         case "voice.ring.cancel": {
@@ -784,6 +800,11 @@ export function useReportEvents() {
         "dm:message",
         "org:membership",
         "call:status",
+        // Faltaban también: en la web no sonaba ningún timbre. Daba igual
+        // mientras la web no tenía voz (W3).
+        "voice.ring",
+        "voice.ring.cancel",
+        "call:knock",
         "deploy:status",
         "deploy:log",
         "ci:run",

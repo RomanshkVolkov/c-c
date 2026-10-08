@@ -163,5 +163,7 @@
   "guest-name-required": "Escribe tu nombre para que los demás sepan quién eres.",
   "kick-member-not-allowed": "Sólo se puede sacar de una llamada a los invitados.",
   "recording-needs-space": "Esta llamada no cuelga de ningún canal, así que no se puede grabar.",
-  "not-the-host": "Sólo quien abrió esta llamada, o un admin, puede cerrarla."
+  "not-the-host": "Sólo quien abrió esta llamada, o un admin, puede cerrarla.",
+  "guest-rejected": "No te dejaron entrar a esta llamada.",
+  "guest-not-waiting": "Esa persona ya no está esperando."
 }

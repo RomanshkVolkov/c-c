@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-const { confirm, kick } = vi.hoisted(() => ({
+const { confirm, kick, admit } = vi.hoisted(() => ({
   confirm: vi.fn(async (_o: { title: string }) => true),
   kick: vi.fn(async () => {}),
+  admit: vi.fn(async () => {}),
 }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirm }));
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
@@ -37,7 +38,13 @@ const gente = [
 beforeEach(() => {
   confirm.mockClear().mockResolvedValue(true);
   kick.mockClear();
-  useCalls.setState({ kick });
+  admit.mockClear();
+  useCalls.setState({
+    kick,
+    admit,
+    loadWaiting: vi.fn(async () => {}),
+    waiting: { "inv-1": [{ id: "g7", name: "Dora", createdAt: "2026-10-08T00:00:00Z" }] },
+  });
   useRecordings.setState({
     policy: {
       "meet:inv-1": { enabled: true, active: null },
@@ -67,6 +74,9 @@ describe("la pantalla de una reunión, vista por un invitado", () => {
   it("no ofrece nada que necesite sesión", () => {
     comoInvitado();
     render(<VoiceStage />);
+    // Ni decidir quién entra: ni siquiera ve quién espera.
+    expect(screen.queryByText("Dora")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Let in/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Chat$/ })).toBeNull();
     expect(screen.queryByTitle("Call someone into this room")).toBeNull();
     expect(screen.queryByRole("button", { name: /^(Record|Stop recording)$/ })).toBeNull();
@@ -90,8 +100,8 @@ describe("la pantalla de una reunión, vista por un miembro", () => {
     expect(screen.getByRole("button", { name: /Copy guest link/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^(Record|Stop recording)$/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Chat$/ })).toBeTruthy();
-    // El timbre es de un canal: en una reunión no hay a qué sala llamar.
-    expect(screen.queryByTitle("Call someone into this room")).toBeNull();
+    // Y el timbre: desde una reunión se puede llamar a un compañero a ella.
+    expect(screen.getByTitle("Call someone into this room")).toBeTruthy();
   });
 
   // La insignia sale de la identidad (`guest:`), nunca del nombre: el nombre
@@ -125,6 +135,15 @@ describe("la pantalla de una reunión, vista por un miembro", () => {
     await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
     await Promise.resolve();
     expect(kick).not.toHaveBeenCalled();
+  });
+
+  // Quien espera se ve, y dejarle pasar es decisión de quien está dentro.
+  it("ve quién espera y le puede dejar entrar", async () => {
+    comoMiembroEnReunion();
+    render(<VoiceStage />);
+    expect(screen.getByText("Dora")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Let in/ }));
+    await vi.waitFor(() => expect(admit).toHaveBeenCalledWith("inv-1", "g7"));
   });
 
   // La grabación de la reunión va por la sala de la reunión, no la del canal.

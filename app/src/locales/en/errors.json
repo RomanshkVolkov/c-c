@@ -163,5 +163,7 @@
   "guest-name-required": "Write your name so the others know who you are.",
   "kick-member-not-allowed": "Only guests can be removed from a call.",
   "recording-needs-space": "This call isn't attached to a channel, so it can't be recorded.",
-  "not-the-host": "Only whoever opened this call, or an admin, can close it."
+  "not-the-host": "Only whoever opened this call, or an admin, can close it.",
+  "guest-rejected": "You weren't let into this call.",
+  "guest-not-waiting": "That person is no longer waiting."
 }

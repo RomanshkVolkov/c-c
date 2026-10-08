@@ -13,7 +13,7 @@ import { tokenFromHash } from "@/lib/call-link";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { cn } from "@/lib/utils";
-import { publicCalls, type PublicCallInvite } from "@/store/calls.store";
+import { publicCalls, type GuestEntryResponse, type PublicCallInvite } from "@/store/calls.store";
 import { useVoice } from "@/store/voice.store";
 
 /**
@@ -31,6 +31,8 @@ import { useVoice } from "@/store/voice.store";
  */
 
 const NOMBRE = "cac.guestName";
+/** Cada cuánto pregunta quien espera. El servidor le deja 1.500 por hora. */
+const ESPERA_MS = 3000;
 /** El pase va en `sessionStorage`: dura lo que la pestaña, como la reunión. */
 const paseDe = (token: string) => `cac.guestPass.${token.slice(0, 48)}`;
 
@@ -59,6 +61,8 @@ export default function JoinCall() {
   const [conMic, setConMic] = useState(true);
   const [entrando, setEntrando] = useState(false);
   const [entro, setEntro] = useState(false);
+  // En la sala de espera: pidió entrar y nadie de dentro ha decidido todavía.
+  const [esperando, setEsperando] = useState(false);
 
   const estado = useVoice((s) => s.estado);
   const errorDeLlamada = useVoice((s) => s.error);
@@ -75,6 +79,31 @@ export default function JoinCall() {
       .catch((e) => setFallo(codigoDe(e) || "invite-invalid"));
   }, [token]);
 
+  /** Con una respuesta de la puerta: esperar, o entrar si ya le dejaron. */
+  const seguir = async (entrada: GuestEntryResponse) => {
+    guardar(globalThis.sessionStorage, paseDe(token), entrada.pass);
+    if (entrada.status !== "admitted" || !entrada.token || !entrada.url) {
+      setEsperando(true);
+      return;
+    }
+    setEsperando(false);
+    setEntro(true);
+    await entrarComoInvitado({
+      url: entrada.url,
+      token: entrada.token,
+      room: entrada.room ?? "",
+      identity: entrada.identity ?? "",
+      name: entrada.name,
+      pass: entrada.pass,
+      title: entrada.title,
+    });
+    const v = useVoice.getState();
+    if (v.estado === "dentro") {
+      if (!conMic && v.mic) await v.alternarMic();
+      if (conCamara && !v.cam) await v.alternarCam();
+    }
+  };
+
   const entrar = async () => {
     const limpio = nombre.trim();
     if (!limpio || entrando) return;
@@ -84,20 +113,58 @@ export default function JoinCall() {
       const pase = leer(globalThis.sessionStorage, paseDe(token));
       const entrada = await publicCalls.join(token, limpio, pase || null);
       guardar(globalThis.localStorage, NOMBRE, limpio);
-      guardar(globalThis.sessionStorage, paseDe(token), entrada.pass);
-      setEntro(true);
-      await entrarComoInvitado(entrada);
-      const v = useVoice.getState();
-      if (v.estado === "dentro") {
-        if (!conMic && v.mic) await v.alternarMic();
-        if (conCamara && !v.cam) await v.alternarCam();
-      }
+      await seguir(entrada);
     } catch (e) {
+      setEsperando(false);
       setFallo(codigoDe(e) || String((e as Error)?.message ?? e));
+      // Rechazado, echado o cerrado: ya no hay nada que esperar.
+      setEntro(true);
     } finally {
       setEntrando(false);
     }
   };
+
+  // Mientras espera, pregunta cada pocos segundos. **Es el servidor quien da la
+  // entrada**: sin que alguien de dentro le deje, la respuesta no trae token.
+  useEffect(() => {
+    if (!esperando) return;
+    let vivo = true;
+    const id = setInterval(() => {
+      const pase = leer(globalThis.sessionStorage, paseDe(token));
+      if (!pase) return;
+      publicCalls
+        .status(token, pase)
+        .then((r) => {
+          if (vivo && r.status === "admitted") void seguir(r);
+        })
+        .catch((e) => {
+          if (!vivo) return;
+          setEsperando(false);
+          setFallo(codigoDe(e) || "invite-invalid");
+          setEntro(true);
+        });
+    }, ESPERA_MS);
+    return () => {
+      vivo = false;
+      clearInterval(id);
+    };
+    // `seguir` cambia en cada render y no tiene por qué reiniciar la espera.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esperando, token]);
+
+  if (esperando) {
+    return (
+      <Pantalla>
+        <CardHeader>
+          <CardDescription>{info?.title}</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Loader2 className="size-4 animate-spin" /> {t("calls:waitingTitle")}
+          </CardTitle>
+          <CardDescription>{t("calls:waitingBody")}</CardDescription>
+        </CardHeader>
+      </Pantalla>
+    );
+  }
 
   if (estado !== "fuera") {
     return (
@@ -116,7 +183,9 @@ export default function JoinCall() {
       <Pantalla>
         <CardHeader>
           <CardTitle>
-            {removed || fallo === "guest-removed"
+            {fallo === "guest-rejected"
+              ? t("calls:rejectedTitle")
+              : removed || fallo === "guest-removed"
               ? t("calls:removedTitle")
               : closed || cerrada
                 ? t("calls:closedTitle")
@@ -125,7 +194,7 @@ export default function JoinCall() {
           {info && <CardDescription>{info.title}</CardDescription>}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {fallo && !cerrada && fallo !== "guest-removed" && (
+          {fallo && !cerrada && fallo !== "guest-removed" && fallo !== "guest-rejected" && (
             <p role="alert" className="text-sm text-destructive">
               {phraseFor(fallo, fallo)}
             </p>
@@ -137,7 +206,7 @@ export default function JoinCall() {
           )}
           {/* A quien se sacó no se le ofrece volver: su pase ya no sirve, y un
               botón que siempre falla es peor que ninguno. */}
-          {!removed && !closed && !cerrada && fallo !== "guest-removed" && (
+          {!removed && !closed && !cerrada && fallo !== "guest-removed" && fallo !== "guest-rejected" && (
             <Button onClick={() => void entrar()}>
               <PhoneCall className="size-4" /> {t("calls:rejoin")}
             </Button>

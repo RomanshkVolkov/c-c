@@ -131,3 +131,43 @@ it("tu pantalla, retirada desde fuera, apaga el botón", () => {
   useVoice.getState().alRecibir({ kind: "video", identity: "u-ana", source: "screen", enabled: false });
   expect(useVoice.getState().compartiendo).toBe(false);
 });
+
+describe("el timbre en una reunión", () => {
+  // El mutante que mata: llamar por la ruta del canal. El compañero entraría
+  // a la voz del canal, no a la reunión donde le esperan.
+  it("llamar a alguien desde una reunión le llama a la reunión", async () => {
+    await useVoice.getState().entrarEnReunion("inv-1");
+    post.mockClear();
+    post.mockResolvedValue({ success: true, data: { ringId: "r1" } });
+    await useVoice.getState().timbrar("u-bea", "Bea");
+    expect(post).toHaveBeenCalledWith("/api/v1/call-invites/inv-1/ring", { userId: "u-bea" }, true);
+  });
+
+  it("aceptar un timbre de reunión entra a la reunión", async () => {
+    useVoice.getState().alTimbrar({
+      ringId: "r1", spaceId: "esp-1", spaceName: "diseño", from: { id: "u-bea", name: "Bea" },
+      expiresAt: new Date(Date.now() + 20_000).toISOString(), inviteId: "inv-1", title: "Con el cliente",
+    });
+    await useVoice.getState().aceptarEntrante();
+    expect(post).toHaveBeenCalledWith("/api/v1/call-invites/inv-1/voice/token", {}, true);
+    expect(useVoice.getState().meetId).toBe("inv-1");
+  });
+
+  // Ya dentro de esa reunión, una tarjeta que te invita a donde estás sólo tapa.
+  it("un timbre a la reunión en la que ya estás no suena", async () => {
+    await useVoice.getState().entrarEnReunion("inv-1");
+    useVoice.getState().alTimbrar({
+      ringId: "r2", spaceId: "esp-1", spaceName: "diseño", from: { id: "u-bea", name: "Bea" },
+      expiresAt: new Date(Date.now() + 20_000).toISOString(), inviteId: "inv-1", title: "x",
+    });
+    expect(useVoice.getState().entrante).toBeNull();
+  });
+
+  // Un invitado no llama a nadie: no tiene sesión con la que hacerlo.
+  it("un invitado no tiene timbre", async () => {
+    useVoice.setState({ ...inicial, visitor: true, estado: "dentro" });
+    post.mockClear();
+    await useVoice.getState().timbrar("u-bea", "Bea");
+    expect(post).not.toHaveBeenCalled();
+  });
+});
