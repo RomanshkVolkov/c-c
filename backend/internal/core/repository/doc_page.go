@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -131,16 +132,48 @@ func (r *DocRepository) PageTree(docID string, trashed bool) ([]domain.DocPageTr
 			enPapelera[f.ID] = true
 		}
 	}
+	// La cima de cada página en la papelera, para contar lo que se fue con
+	// ella: lo que se tiró a la vez (mismo instante, ver `TrashPage`), que es
+	// justo lo que traerá restaurarla.
+	madre := map[string]fila{}
+	for _, f := range filas {
+		madre[f.ID] = f
+	}
+	cima := func(f fila) string {
+		for f.ParentID != nil {
+			p, ok := madre[*f.ParentID]
+			if !ok || p.DeletedAt == nil || f.DeletedAt == nil || !p.DeletedAt.Equal(*f.DeletedAt) {
+				break
+			}
+			f = p
+		}
+		return f.ID
+	}
+	debajo := map[string]int{}
+	if trashed {
+		for _, f := range filas {
+			if c := cima(f); c != f.ID {
+				debajo[c]++
+			}
+		}
+	}
 	for _, f := range filas {
 		// En la papelera, sólo la cima: borrar una página con diez hijas es una
 		// cosa que hizo alguien, no once.
 		if trashed && f.ParentID != nil && enPapelera[*f.ParentID] {
 			continue
 		}
+		// Una página viva no tiene `DeletedAt` y no se le ha contado nada, así
+		// que los dos campos sólo llegan llenos desde la papelera.
 		out = append(out, domain.DocPageTreeItem{
 			ID: f.ID, ParentID: f.ParentID, Rank: f.Rank, Title: f.Title,
 			HasBody: f.HasBody, UpdatedAt: f.UpdatedAt,
+			DeletedAt: f.DeletedAt, Subpages: debajo[f.ID],
 		})
+	}
+	if trashed {
+		// Lo último que se tiró, arriba: es lo que se viene a buscar.
+		sort.SliceStable(out, func(i, j int) bool { return out[i].DeletedAt.After(*out[j].DeletedAt) })
 	}
 	return out, nil
 }

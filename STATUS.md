@@ -232,34 +232,24 @@ listas vacías sólo para tener más docs, y la portada de «Apps» llegó a 133
 caracteres. Las cuatro pestañas quedan como **portada** de cada nodo y debajo
 cuelga un árbol de páginas.
 
-- **Tanda 1 (backend), hecha sin commitear:**
-  - `DocPage` + `DocPageVersion`, rutas `/docs/{kind}/{id}/pages…`, scopes
-    (crear y añadir con `docs:write`; pisar, mover, papelera y restaurar con
-    `docs:manage`; no hay purga).
-  - Búsqueda tsvector: configuración `cac_simple` (simple + unaccent),
-    columnas generadas con GIN en `EnsureSearchIndexes`, fragmentos con
-    `ts_headline`. **Antes de desplegar: `CREATE EXTENSION unaccent` en prod.**
-  - Tope de 512 000 caracteres por pestaña o página (413).
-  - `TaskGitLink`: ramas, PRs con estado y commits; enlace por nombre de rama
-    (`cac-12-…`, `acme-7-…`); el hilo sólo cuenta «enlazada» y «fusionada»;
-    `GET /tasks/{id}/git`; `TaskCard.git`, `TaskDetail.git`.
-- **Tanda 2 (app), hecha sin commitear:**
-  - MCP: `list_doc_pages`, `get_doc_page`, `create_doc_page`,
-    `append_doc_page`, `write_doc_page`, `write_doc_page_section`,
-    `move_doc_page`, `delete_doc_page`; `get_doc` cuenta las páginas.
-  - Documento en dos columnas: árbol (`DocPageTree`) y página (`DocPageView`:
-    migas, título, autoguardado con `doc-page-conflict`, hijas al pie).
-  - `&page=` en los enlaces; `lib/open-ref.ts` abre dentro los enlaces de un
-    documento (antes se iban al navegador). Paleta con fragmento resaltado.
-  - Panel «Desarrollo» en la tarea, chip de PR en tarjeta y lista, comentarios
-    del webhook firmados «GitHub», evento `task:git`. `DocView.tsx` borrado.
-  - De paso: `IncomingCall.test.tsx` dejaba la suite en exit 1 desde 55e5e0a
-    (**`app.yml` en rojo en main**); arreglado el mock.
-- **Pendiente de la tanda 2:** `&tab=` sigue sin leerse al abrir un enlace
-  (ya pasaba antes; la paleta lo manda). Correr el escenario de Proteus por MCP.
-- **Tanda 3:** arrastrar y «Mover a…», papelera y restaurar, plantillas de
-  página, historial por página, contadores en `DocIndex`, «esta página» al
-  compartir.
+- **Tandas 1 y 2 publicadas sin release** (8-oct): backend `a1d892b` (con
+  `CREATE EXTENSION unaccent` corrido en prod) y app/web `76b53fc`. Probado de
+  punta a punta con `c-c` vinculado a «Command and control»: una rama
+  `cac-143-…` y su PR quedan en el panel «Desarrollo» de la #143 (borrador →
+  abierta → cerrada, rama borrada), y el hilo sólo lleva la línea de
+  «enlazada». La contraseña de `cac_user` se rotó el mismo día (ver memoria).
+- **Tanda 3, hecha sin commitear:**
+  - Árbol: arrastrar con las tres zonas de Notas (encima, dentro, debajo;
+    lo prohibido en rojo), y menú por fila con renombrar, «Mover a…» (diálogo
+    que no ofrece el propio subárbol) y papelera.
+  - Mover es optimista y vuelve atrás si el servidor lo rechaza.
+  - Papelera del documento: cuándo se tiró y cuántas páginas se fueron con
+    ella (backend: `deletedAt` y `subpages` en `?trashed=1`), y restaurar.
+  - Historial por página (`VersionMenu`, el mismo menú que las pestañas).
+  - Plantillas de página: componente y procedimiento.
+  - «Esta página» al compartir; columna «Páginas» en el índice.
+  - `&tab=` por fin abre su pestaña (desde un enlace pegado y desde la paleta).
+- **Pendiente:** el escenario de Proteus por MCP; la v1.6.94.
 
 ## 🎙️ Grabar la reunión (antes: transcribirla)
 

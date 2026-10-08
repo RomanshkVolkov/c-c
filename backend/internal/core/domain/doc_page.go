@@ -75,6 +75,11 @@ type DocPageTreeItem struct {
 	Title     string    `json:"title"`
 	HasBody   bool      `json:"hasBody"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// Sólo en la papelera: cuándo se tiró, y cuántas páginas se fueron con
+	// ella. Restaurarla las trae a todas, así que es lo que hay que saber antes
+	// de pulsar.
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
+	Subpages  int        `json:"subpages,omitempty"`
 }
 
 // DocPageCrumb es un paso de las migas de pan.

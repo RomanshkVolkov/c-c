@@ -152,6 +152,50 @@ func TestTrashingAndRestoringMoveTheSubtreeTogether(t *testing.T) {
 	}
 }
 
+// La papelera dice cuándo se tiró cada cosa y cuántas páginas se fueron con
+// ella, que es lo que traerá restaurarla. Una hija que se tiró antes, por su
+// cuenta, no cuenta: restaurar a la madre no la trae.
+func TestTheTrashSaysWhenAndHowManyWentTogether(t *testing.T) {
+	f := newPagesFixture(t, "o1")
+	// «Entrega» se crea primero y se tira primero: en el orden del árbol va
+	// antes que «Triton», y en la papelera tiene que ir después.
+	otra := f.page(t, "o1", "Entrega", "", nil)
+	a := f.page(t, "o1", "Triton", "", nil)
+	b := f.page(t, "o1", "Roles", "", &a.ID)
+	f.page(t, "o1", "Turnos", "", &b.ID)
+	suelta := f.page(t, "o1", "Viejo", "", &a.ID)
+
+	for _, id := range []string{otra.ID, suelta.ID, a.ID} {
+		if _, err := f.r.TrashPage(a.DocID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := f.r.PageTree(a.DocID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("en la papelera sólo van las cimas: %+v", got)
+	}
+	// Lo último que se tiró, primero.
+	if got[0].ID != a.ID || got[1].ID != otra.ID {
+		t.Fatalf("orden: %q, %q", got[0].Title, got[1].Title)
+	}
+	if got[0].Subpages != 2 || got[1].Subpages != 0 {
+		t.Fatalf("subpáginas: %d y %d", got[0].Subpages, got[1].Subpages)
+	}
+	if got[0].DeletedAt == nil || got[1].DeletedAt == nil {
+		t.Fatal("la papelera no dice cuándo")
+	}
+	// Fuera de la papelera no viaja nada de esto.
+	vivas, _ := f.r.PageTree(a.DocID, false)
+	for _, v := range vivas {
+		if v.DeletedAt != nil || v.Subpages != 0 {
+			t.Fatalf("una página viva lleva datos de la papelera: %+v", v)
+		}
+	}
+}
+
 // La búsqueda: por prefijo, sin acentos, el título pesa más, con fragmento y
 // ruta, y sin páginas de la papelera ni de otra organización.
 func TestDocSearchFindsPagesByPrefixWithSnippetAndPath(t *testing.T) {
