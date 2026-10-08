@@ -17,11 +17,10 @@ import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown
 import FileDropZone from "@/components/FileDropZone";
 import MessageToDoc from "@/components/chat/MessageToDoc";
 import Markdown from "@/components/markdown/Markdown";
-import { docRefFromHref, recordingIdFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
+import { openInternalRef } from "@/lib/open-ref";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useChatStore } from "@/store/chat.store";
 import { usePeopleStore } from "@/store/people.store";
-import { userIdFromHref } from "@/components/markdown/mention-menu";
 import type { ChatMessage } from "@/store/chat.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -34,7 +33,6 @@ import { useVoice } from "@/store/voice.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { isDocOwnerKind } from "@/types/task";
 import RecordingsPanel from "@/components/recordings/RecordingsPanel";
 import MediaTab from "@/components/chat/MediaTab";
 import LinksTab from "@/components/chat/LinksTab";
@@ -436,44 +434,11 @@ function Message({
   const session = useAuthStore((s) => s.session);
   const edit = useChatStore((s) => s.edit);
   const withdraw = useChatStore((s) => s.withdraw);
-  const openTask = useTasksStore((s) => s.openTask);
   const confirm = useConfirm();
 
-  /**
-   * A cited card opens in the drawer instead of navigating.
-   *
-   * Returning true claims the click; anything else falls through to the
-   * attachment and browser paths Markdown already has, so an ordinary link in a
-   * message still behaves like a link.
-   */
-  const openDoc = useTasksStore((s) => s.openDoc);
-
-  const openCited = (href: string) => {
-    const id = taskIdFromHref(href);
-    if (id) {
-      openTask(id).catch((e) => toast.error(String(e)));
-      return true;
-    }
-    // Un documento compartido se abre dentro, igual que una tarjeta. Sin esto
-    // el enlace caería a la rama del navegador y sacaría a la persona de la app
-    // para enseñarle una URL que sólo significa algo aquí dentro.
-    const ref = docRefFromHref(href);
-    if (ref && isDocOwnerKind(ref.kind)) {
-      openDoc(ref.kind, ref.id, "").catch((e) => toast.error(String(e)));
-      return true;
-    }
-    // Una grabación se abre en su pestaña, que es donde está el reproductor.
-    // Sin esto el enlace caería a la rama del navegador e intentaría abrir
-    // «cac:recording/…» como si fuera un fichero.
-    if (recordingIdFromHref(href)) {
-      onOpenRecordings();
-      return true;
-    }
-    // A mention names a person rather than pointing somewhere. Claimed anyway,
-    // so the click doesn't fall through to the attachment and browser paths and
-    // try to open "cac:user/…" as a file.
-    return userIdFromHref(href) !== null;
-  };
+  // Una tarjeta, un documento o una grabación citados se abren dentro. Ver
+  // `openInternalRef`.
+  const openCited = (href: string) => openInternalRef(href, { onOpenRecordings });
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.body);

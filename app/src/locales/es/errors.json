@@ -165,5 +165,8 @@
   "recording-needs-space": "Esta llamada no cuelga de ningún canal, así que no se puede grabar.",
   "not-the-host": "Sólo quien abrió esta llamada, o un admin, puede cerrarla.",
   "guest-rejected": "No te dejaron entrar a esta llamada.",
-  "guest-not-waiting": "Esa persona ya no está esperando."
+  "guest-not-waiting": "Esa persona ya no está esperando.",
+  "body-too-large": "Ese texto es demasiado largo para una página: pártelo en subpáginas.",
+  "bad-parent-page": "Esa página no puede ir ahí: la madre no es de este documento.",
+  "page-cycle": "Una página no puede ir dentro de sí misma ni de una de sus subpáginas."
 }

@@ -160,7 +160,25 @@
     "citedHere": "in the text",
     "title": "Title",
     "dropToDescription": "Drop to attach to the description",
-    "dropToComment": "Drop to attach to the comment"
+    "dropToComment": "Drop to attach to the comment",
+    "git": {
+      "development": "Development",
+      "branches_one": "{{count}} branch",
+      "branches_other": "{{count}} branches",
+      "prs_one": "{{count}} PR",
+      "prs_other": "{{count}} PRs",
+      "commits_one": "{{count}} commit",
+      "commits_other": "{{count}} commits",
+      "state": {
+        "open": "open",
+        "draft": "draft",
+        "merged": "merged",
+        "closed": "closed"
+      },
+      "deleted": "deleted",
+      "viaBranch": "Linked by the branch name",
+      "byGitHub": "GitHub"
+    }
   },
   "notes": {
     "title": "Notes",
@@ -305,7 +323,23 @@
     "errShare": "Couldn't share it",
     "conflict": "Not saved: someone else got there first",
     "conflictWhy": "This section changed while you were writing, so your text was not applied — it would have deleted theirs. Your draft is still here: copy what you need, then reload to see their version.",
-    "discardAndReload": "Discard mine and reload"
+    "discardAndReload": "Discard mine and reload",
+    "pages": "Pages",
+    "home": "Home",
+    "homeHint": "The four tabs",
+    "newPage": "New page",
+    "newSubpage": "New page inside",
+    "untitled": "Untitled",
+    "pageTitle": "Page title",
+    "trashPage": "Move to trash",
+    "trashPageTitle": "Move «{{title}}» to the trash?",
+    "trashPageWhy": "The pages inside it go with it. Nothing is lost: it can be restored.",
+    "trashed_one": "Moved to the trash",
+    "trashed_other": "Moved to the trash, with the {{count}} pages inside",
+    "childPages": "Pages inside",
+    "emptyPage": "This page is empty.",
+    "errPage": "Couldn't open this page",
+    "thisPage": "This page"
   },
   "docTemplates": {
     "title": "Nothing written here yet",

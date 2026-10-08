@@ -127,8 +127,8 @@
   },
   "doneNeedsSubtasks": "Finish subtasks before marking a task done",
   "github": {
-    "lead": "Repos linked to a space leave a line on the task each commit or PR names. The lines are internal: the client doesn't see them.",
-    "syntax": "To name a task: cac#12 (the space's number) or the client's folio, like acme-7.",
+    "lead": "Repos linked to a space link their branches, PRs and commits to the task they name: they show under “Development”, and opening and merging a PR leaves a line in the thread. The lines are internal: the client doesn't see them.",
+    "syntax": "To name a task: cac#12 (the space's number) or the client's folio, like acme-7, in the message, the PR title or the branch name (cac-12-login, feature/acme-7-fix).",
     "notConfigured": "This cac server doesn't have the GitHub App configured.",
     "noInstallations": "No GitHub account has the App installed for this organization.",
     "connect": "Connect GitHub",

@@ -41,7 +41,7 @@ beforeEach(() => {
     entrante: timbre,
     sordo: false,
     ocupacion: {},
-    aceptarEntrante: vi.fn(),
+    aceptarEntrante: vi.fn(async () => {}),
     rechazarEntrante: vi.fn(),
   };
 });

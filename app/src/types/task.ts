@@ -180,6 +180,47 @@ export interface TaskCard {
    * clases: trabajo interno y tickets de un cliente conviven en la misma lista.
    */
   flow?: ItemFlow;
+  /** El resumen de GitHub de la tarjeta, para el chip de PR. */
+  git?: GitSummary;
+}
+
+/** Ramas, PRs y commits de GitHub enlazados a una tarea. */
+export type PRState = "open" | "draft" | "merged" | "closed";
+
+export interface GitSummary {
+  branches: number;
+  prs: number;
+  commits: number;
+  /** El estado que resume las PRs, con la precedencia de Jira. */
+  prBadge?: "open" | "merged" | "closed";
+}
+
+export interface TaskGitLink {
+  itemId: string;
+  repoId: number;
+  repoFullName: string;
+  kind: "branch" | "pr" | "commit";
+  /** El nombre de la rama, el número de la PR o el sha. */
+  key: string;
+  title: string;
+  htmlUrl: string;
+  authorLogin: string;
+  /** PR: open | draft | merged | closed · rama: active | deleted · commit: vacío. */
+  state: string;
+  headBranch?: string;
+  baseBranch?: string;
+  headSha?: string;
+  /** Cómo se enlazó: nombrada en el texto, o por el nombre de la rama. */
+  via: "text" | "branch";
+  mergedAt?: string;
+  occurredAt: string;
+}
+
+export interface TaskGitLinks {
+  summary: GitSummary;
+  branches: TaskGitLink[];
+  prs: TaskGitLink[];
+  commits: TaskGitLink[];
 }
 
 export interface BoardResponse {
@@ -221,6 +262,8 @@ export interface TaskComment {
   visibility?: ItemVisibility;
   /** `system` is a status line cac wrote, not somebody's words. */
   kind?: "user" | "system";
+  /** De qué fuera vino una línea de sistema: GitHub o un deploy. */
+  source?: "gh" | "deploy";
   /**
    * La entrada del registro que salió de este comentario, si salió alguna.
    *
@@ -296,6 +339,8 @@ export interface TaskDetail {
   projectSlug?: string;
   /** Decrypted breadcrumbs, when the report carried them and they aren't purged. */
   telemetry?: ReportTelemetry;
+  /** Lo de GitHub enlazado a la tarea. Ausente si no hay nada. */
+  git?: TaskGitLinks;
 }
 
 export interface UpdateTaskPayload {
@@ -394,6 +439,42 @@ export interface DocMark {
   maintainerId?: string;
   maintainerName?: string;
   reviewedAt?: string;
+  /** Cuántas páginas cuelgan de la portada. */
+  pages?: number;
+}
+
+/**
+ * Una página del árbol de un documento: lo que cuelga de la portada (las cuatro
+ * pestañas). Se dirige por id: moverla o renombrarla no cambia su enlace.
+ */
+export interface DocPageTreeItem {
+  id: string;
+  parentId?: string | null;
+  rank: string;
+  title: string;
+  hasBody: boolean;
+  updatedAt: string;
+}
+
+export interface DocPage {
+  id: string;
+  docId: string;
+  orgId: string;
+  parentId?: string | null;
+  title: string;
+  body: string;
+  bodyHash?: string;
+  updatedBy: string;
+  updatedByName?: string;
+  updatedAt: string;
+}
+
+export interface DocPageView {
+  page: DocPage;
+  /** De la raíz a la madre, sin la propia página. */
+  breadcrumb: { id: string; title: string }[];
+  children: DocPageTreeItem[];
+  orgId: string;
 }
 
 /**

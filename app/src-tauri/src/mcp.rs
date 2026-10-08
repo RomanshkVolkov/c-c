@@ -146,7 +146,10 @@ fn api_form(
             // había pasado nada. Un fallo que se anuncia como éxito es peor que
             // el fallo.
             if status.as_u16() == 409
-                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+                && matches!(
+                    body.get("error").and_then(|v| v.as_str()),
+                    Some("doc-conflict") | Some("doc-page-conflict")
+                )
             {
                 return Ok(json!({
                     "conflict": true,
@@ -240,7 +243,10 @@ fn api_upload(
             // había pasado nada. Un fallo que se anuncia como éxito es peor que
             // el fallo.
             if status.as_u16() == 409
-                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+                && matches!(
+                    body.get("error").and_then(|v| v.as_str()),
+                    Some("doc-conflict") | Some("doc-page-conflict")
+                )
             {
                 return Ok(json!({
                     "conflict": true,
@@ -293,7 +299,10 @@ fn api_delete(cfg: &Cfg, path: &str) -> Result<Value, String> {
             // había pasado nada. Un fallo que se anuncia como éxito es peor que
             // el fallo.
             if status.as_u16() == 409
-                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+                && matches!(
+                    body.get("error").and_then(|v| v.as_str()),
+                    Some("doc-conflict") | Some("doc-page-conflict")
+                )
             {
                 return Ok(json!({
                     "conflict": true,
@@ -355,7 +364,10 @@ fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, 
             // había pasado nada. Un fallo que se anuncia como éxito es peor que
             // el fallo.
             if status.as_u16() == 409
-                && body.get("error").and_then(|v| v.as_str()) == Some("doc-conflict")
+                && matches!(
+                    body.get("error").and_then(|v| v.as_str()),
+                    Some("doc-conflict") | Some("doc-page-conflict")
+                )
             {
                 return Ok(json!({
                     "conflict": true,
@@ -885,6 +897,168 @@ fn doc_outline(doc: &Value) -> Value {
     })
 }
 
+// ─── Páginas de un documento ─────────────────────────────────────────────────
+//
+// Debajo de la portada de cada nodo (las cuatro pestañas) cuelga un árbol de
+// páginas. Existe porque un doc con cuatro pestañas fijas obligaba a meterlo
+// todo en una: en Proteus (dwit) la portada de «Apps» llegó a 133 000
+// caracteres con cinco aplicaciones dentro.
+
+/// Una página, validada antes de meterla en una ruta.
+fn page_target(args: &Value) -> Result<(String, String, String), String> {
+    let (kind, id) = doc_target(args)?;
+    let page = arg_str(args, "pageId").ok_or("pageId is required: use list_doc_pages")?;
+    Ok((kind, id, urlencode(&page)))
+}
+
+/// El enlace de la app a una página: lo que se pega en otra página o en un chat.
+fn page_link(kind: &str, owner: &str, page: &str) -> String {
+    format!("/tasks?doc={kind}:{owner}&page={page}")
+}
+
+/// El árbol plano que devuelve el backend, anidado y con el enlace de cada
+/// página, para que el agente no tenga que reconstruir la jerarquía.
+fn build_page_tree(flat: &Value, kind: &str, owner: &str) -> Value {
+    let empty = vec![];
+    let items = flat.as_array().unwrap_or(&empty);
+    fn node(item: &Value, items: &[Value], kind: &str, owner: &str) -> Value {
+        let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let children: Vec<Value> = items
+            .iter()
+            .filter(|c| c.get("parentId").and_then(|v| v.as_str()) == Some(id))
+            .map(|c| node(c, items, kind, owner))
+            .collect();
+        json!({
+            "id": item.get("id"),
+            "title": item.get("title"),
+            "hasBody": item.get("hasBody"),
+            "link": page_link(kind, owner, id),
+            "children": children,
+        })
+    }
+    let roots: Vec<Value> = items
+        .iter()
+        .filter(|i| i.get("parentId").map(|p| p.is_null()).unwrap_or(true))
+        .map(|i| node(i, items, kind, owner))
+        .collect();
+    json!(roots)
+}
+
+/// Lo que el índice de un doc dice de sus páginas: cuántas y los títulos de las
+/// primeras. Sin esto, un agente que lee la portada no sabe que hay árbol.
+fn pages_summary(flat: &Value) -> Value {
+    let empty = vec![];
+    let items = flat.as_array().unwrap_or(&empty);
+    let titles: Vec<Value> = items
+        .iter()
+        .take(20)
+        .map(|i| i.get("title").cloned().unwrap_or(Value::Null))
+        .collect();
+    json!({
+        "count": items.len(),
+        "titles": titles,
+        "note": "This document has subpages. List them with list_doc_pages.",
+    })
+}
+
+fn page_body(view: &Value) -> &str {
+    view.get("page")
+        .and_then(|p| p.get("body"))
+        .and_then(|b| b.as_str())
+        .unwrap_or("")
+}
+
+/// `get_doc_page` sin sección: el índice de la página, sin el cuerpo.
+fn page_outline(view: &Value, kind: &str, owner: &str) -> Value {
+    let page = view.get("page").cloned().unwrap_or(Value::Null);
+    let body = page_body(view);
+    let id = page.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    json!({
+        "pageId": page.get("id"),
+        "title": page.get("title"),
+        "link": page_link(kind, owner, id),
+        "breadcrumb": view.get("breadcrumb"),
+        "bodyHash": page.get("bodyHash"),
+        "chars": body.chars().count(),
+        "sections": tab_outline(body),
+        "children": view.get("children"),
+        "updatedAt": page.get("updatedAt"),
+        "updatedByName": page.get("updatedByName"),
+        "note": "Read one section with get_doc_page + section, or the whole body with full=true. Rewrite one heading with write_doc_page_section and its sectionHash.",
+    })
+}
+
+/// Lo que devuelve una escritura en una página: con qué seguir.
+fn short_page_write(page: &Value, kind: &str, owner: &str) -> Value {
+    let id = page.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    json!({
+        "pageId": page.get("id"),
+        "title": page.get("title"),
+        "bodyHash": page.get("bodyHash"),
+        "chars": page.get("body").and_then(|b| b.as_str()).map(|b| b.chars().count()),
+        "link": page_link(kind, owner, id),
+    })
+}
+
+/// Un conflicto al guardar una página, con su texto actual para fundir.
+fn short_page_conflict(result: &Value) -> Option<Value> {
+    if result.get("conflict").and_then(|c| c.as_bool()) != Some(true) {
+        return None;
+    }
+    let page = result.get("doc").cloned().unwrap_or(Value::Null);
+    Some(json!({
+        "conflict": true,
+        "reason": result.get("reason"),
+        "pageId": page.get("id"),
+        "bodyHash": page.get("bodyHash"),
+        "body": page.get("body"),
+    }))
+}
+
+/// Reescribe lo que hay debajo de un título de una página. La misma lógica que
+/// `write_section` —el hash de la sección dice que lo leído sigue igual; el de la
+/// página, que nadie guardó en medio—, con las rutas de la página.
+fn write_page_section(
+    cfg: &Cfg,
+    kind: &str,
+    id: &str,
+    page: &str,
+    wanted: &str,
+    expected: &str,
+    content: &str,
+) -> Result<Value, String> {
+    let path = format!("/api/v1/docs/{kind}/{id}/pages/{page}");
+    for _ in 0..2 {
+        let view = api_get(cfg, &path)?;
+        let body = page_body(&view).to_string();
+        let (sec, new_body) = match plan_section_write(&body, "page", wanted, expected, content)? {
+            Ok(plan) => plan,
+            Err(conflict) => return Ok(conflict),
+        };
+        let mut req = json!({ "body": new_body });
+        if let Some(h) = view
+            .get("page")
+            .and_then(|p| p.get("bodyHash"))
+            .and_then(|v| v.as_str())
+            .filter(|h| !h.is_empty())
+        {
+            req["baseHash"] = json!(h);
+        }
+        let out = api_put(cfg, &path, req)?;
+        if short_page_conflict(&out).is_some() {
+            continue;
+        }
+        let nb = out.get("body").and_then(|b| b.as_str()).unwrap_or("");
+        return Ok(json!({
+            "pageId": out.get("id"),
+            "section": sec.heading,
+            "sectionHash": find_section(nb, wanted).ok().map(|s| section_hash(nb, &s)),
+            "bodyHash": out.get("bodyHash"),
+        }));
+    }
+    Err("The page kept changing while writing this section. Read it again with get_doc_page and retry.".into())
+}
+
 /// La decisión que se acaba de apuntar, y no el documento entero.
 ///
 /// El backend contesta con el documento completo; la entrada nueva es la de
@@ -1236,7 +1410,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "search",
-            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link) — NOT the matching text, on purpose: a hit says that something matched, not what it said. Open a hit with get_task, get_note or get_doc.\n\nWhat each kind matches on: tasks by title, description and comments (title matches first), notes by title and body, docs by the text of their sections. Channel messages and direct messages are not searchable from here.",
+            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link). Tasks and notes come WITHOUT the matching text, on purpose: a hit says that something matched, not what it said. Docs are the exception: each doc hit carries a `snippet` (the matching words between **), its `ownerKind`/`ownerId`, and either the `tab` of the node's home or the `pageId` of a subpage, with `where` as the page's path. Open a hit with get_task, get_note, get_doc (tab) or get_doc_page (pageId).\n\nWhat each kind matches on: tasks by title, description and comments (title matches first), notes by title and body, docs by full-text search over the home tabs and every page (page titles rank first; words match by prefix and without accents). Channel messages and direct messages are not searchable from here.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1249,7 +1423,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task: its markdown description, status, priority, tags, assignees, attachments, the comment thread, and its subtasks — which are its checklist. get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task: its markdown description, status, priority, tags, assignees, attachments, the comment thread, its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -1549,7 +1723,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_doc",
-            "description": "One node's documentation, a piece at a time — a whole doc runs to tens of thousands of characters.\n\nWithout `tab`: the OUTLINE — who maintains it, when it was reviewed, and for each of its four tabs (overview, runbook, decisions, links; the name is in `key`) its size, `bodyHash`, and its headings, each with a `sectionHash`. Plus the decision log's titles. No bodies.\nWith `tab`: that tab's full markdown.\nWith `tab` + `section`: just that heading and what's under it, down to the next heading of the same or a higher level.\n\nRewrite one heading with write_doc_section and its sectionHash; replace a whole tab with write_doc_tab and its bodyHash.",
+            "description": "One node's documentation HOME (its four tabs), a piece at a time — a whole doc runs to tens of thousands of characters. Below the home hangs a tree of subpages: if the outline has a `pages` field, list them with list_doc_pages and read one with get_doc_page.\n\nWithout `tab`: the OUTLINE — who maintains it, when it was reviewed, and for each of its four tabs (overview, runbook, decisions, links; the name is in `key`) its size, `bodyHash`, and its headings, each with a `sectionHash`. Plus the decision log's titles. No bodies.\nWith `tab`: that tab's full markdown.\nWith `tab` + `section`: just that heading and what's under it, down to the next heading of the same or a higher level.\n\nRewrite one heading with write_doc_section and its sectionHash; replace a whole tab with write_doc_tab and its bodyHash.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1655,6 +1829,130 @@ fn tool_defs() -> Value {
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId"]
+            }
+        },
+        {
+            "name": "list_doc_pages",
+            "description": "The tree of subpages below a node's documentation home (space, folder or list): each page's id, title, link and children. A doc is a home with four fixed tabs plus as many pages as it needs, nested without limit — create one per topic instead of growing a tab past a few thousand characters.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" }
+                },
+                "required": ["kind", "ownerId"]
+            }
+        },
+        {
+            "name": "get_doc_page",
+            "description": "One subpage. Without `section`: its outline — title, breadcrumb, `bodyHash`, headings each with a `sectionHash`, and its children. With `section`: that heading and what's under it. With `full`: the whole body too.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "pageId": { "type": "string" },
+                    "section": { "type": "string" },
+                    "full": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "pageId"]
+            }
+        },
+        {
+            "name": "create_doc_page",
+            "description": "Create a subpage under a node's documentation home, or under another page with `parentId`. Creates the document if the node had none. Returns its `pageId` and the in-app `link` to paste anywhere. Needs a token with `docs:write` (creating only adds).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "title": { "type": "string" },
+                    "parentId": { "type": "string", "description": "Optional. The page to hang it from; without it, it hangs from the home." },
+                    "afterId": { "type": "string", "description": "Optional. The sibling to place it after; without it, last." },
+                    "body": { "type": "string", "description": "Optional. Markdown." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "title"]
+            }
+        },
+        {
+            "name": "append_doc_page",
+            "description": "Add text to the end of a page without reading it first — safe while someone has it open. Needs `docs:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "pageId": { "type": "string" },
+                    "text": { "type": "string" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "pageId", "text"]
+            }
+        },
+        {
+            "name": "write_doc_page",
+            "description": "Rename a page and/or replace its whole body. Replacing the body needs `baseHash` (the `bodyHash` you read): if someone saved since, you get `conflict` with the current body to merge. Needs `docs:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "pageId": { "type": "string" },
+                    "title": { "type": "string" },
+                    "body": { "type": "string" },
+                    "baseHash": { "type": "string" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "pageId"]
+            }
+        },
+        {
+            "name": "write_doc_page_section",
+            "description": "Rewrite what's under one heading of a page, keeping the heading. Needs the `sectionHash` from get_doc_page. Needs `docs:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "pageId": { "type": "string" },
+                    "section": { "type": "string" },
+                    "sectionHash": { "type": "string" },
+                    "body": { "type": "string" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "pageId", "section", "sectionHash", "body"]
+            }
+        },
+        {
+            "name": "move_doc_page",
+            "description": "Move a page: to another parent (`parentId`, empty for the home) and/or next to a sibling (`afterId` or `beforeId`). A page cannot go under itself or its own subpages. Its link does not change. Needs `docs:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "pageId": { "type": "string" },
+                    "parentId": { "type": "string" },
+                    "afterId": { "type": "string" },
+                    "beforeId": { "type": "string" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "pageId"]
+            }
+        },
+        {
+            "name": "delete_doc_page",
+            "description": "Send a page and its subpages to the trash. Nothing is destroyed: a person restores it from the app. Needs `docs:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"] },
+                    "ownerId": { "type": "string" },
+                    "pageId": { "type": "string" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["kind", "ownerId", "pageId"]
             }
         }
     ])
@@ -2422,7 +2720,15 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 return Ok(data);
             }
             let Some(tab) = arg_str(args, "tab") else {
-                return Ok(doc_outline(&data));
+                let mut out = doc_outline(&data);
+                // Las páginas, si las hay: sin esto el índice de la portada no
+                // dice que hay árbol debajo. Un fallo aquí no tumba el índice.
+                if let Ok(tree) = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages")) {
+                    if tree.as_array().map(|a| !a.is_empty()).unwrap_or(false) {
+                        out["pages"] = pages_summary(&tree);
+                    }
+                }
+                return Ok(out);
             };
             let t = doc_tab_of(&data, &tab).ok_or_else(|| {
                 format!("No tab \"{tab}\": use overview, runbook, decisions or links")
@@ -2543,6 +2849,126 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 "reviewRequestedAt": d.get("reviewRequestedAt"),
                 "note": d.get("reviewRequestNote"),
                 "maintainer": d.get("maintainerName"),
+            }))
+        }
+
+        "list_doc_pages" => {
+            let (kind, id) = doc_target(args)?;
+            let flat = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages"))?;
+            Ok(json!({ "pages": build_page_tree(&flat, &kind, &id) }))
+        }
+
+        "get_doc_page" => {
+            let (kind, id, page) = page_target(args)?;
+            let view = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}"))?;
+            let body = page_body(&view);
+            if let Some(wanted) = arg_str(args, "section") {
+                let sec = find_section(body, &wanted)?;
+                return Ok(json!({
+                    "pageId": view.get("page").and_then(|p| p.get("id")),
+                    "pageBodyHash": view.get("page").and_then(|p| p.get("bodyHash")),
+                    "section": sec.heading,
+                    "sectionHash": section_hash(body, &sec),
+                    "text": &body[sec.start..sec.end],
+                }));
+            }
+            let mut out = page_outline(&view, &kind, &id);
+            if arg_bool(args, "full") {
+                out["body"] = json!(body);
+            }
+            Ok(out)
+        }
+
+        "create_doc_page" => {
+            let (kind, id) = doc_target(args)?;
+            let title = arg_str(args, "title").ok_or("title is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
+            }
+            let mut body = json!({ "title": title });
+            for key in ["parentId", "afterId", "body"] {
+                if let Some(v) = arg_str(args, key) {
+                    body[key] = json!(v);
+                }
+            }
+            let out = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages"), body)?;
+            Ok(short_page_write(&out, &kind, &id))
+        }
+
+        "append_doc_page" => {
+            let (kind, id, page) = page_target(args)?;
+            let text = arg_str(args, "text").ok_or("text is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
+            }
+            let out = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}/append"), json!({ "text": text }))?;
+            Ok(short_page_write(&out, &kind, &id))
+        }
+
+        "write_doc_page" => {
+            let (kind, id, page) = page_target(args)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
+            }
+            let mut body = json!({});
+            if let Some(t) = arg_str(args, "title") {
+                body["title"] = json!(t);
+            }
+            if let Some(b) = args.get("body").and_then(|v| v.as_str()) {
+                body["body"] = json!(b);
+                // El cuerpo sólo se pisa sabiendo qué se leyó: sin el hash, el
+                // servidor lo rechaza si la página ya tiene uno.
+                if let Some(h) = arg_str(args, "baseHash") {
+                    body["baseHash"] = json!(h);
+                }
+            }
+            if body.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                return Err("Nothing to change: send title and/or body".into());
+            }
+            let out = api_put(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}"), body)?;
+            Ok(short_page_conflict(&out).unwrap_or_else(|| short_page_write(&out, &kind, &id)))
+        }
+
+        "write_doc_page_section" => {
+            let (kind, id, page) = page_target(args)?;
+            let wanted = arg_str(args, "section").ok_or("section is required: the heading to rewrite")?;
+            let expected = arg_str(args, "sectionHash").ok_or("sectionHash is required: read it with get_doc_page first")?;
+            let content = args.get("body").and_then(|v| v.as_str()).ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
+            }
+            write_page_section(cfg, &kind, &id, &page, &wanted, &expected, content)
+        }
+
+        "move_doc_page" => {
+            let (kind, id, page) = page_target(args)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
+            }
+            // `parentId` ausente o vacío = colgar de la portada.
+            let mut body = json!({ "parentId": Value::Null });
+            if let Some(p) = arg_str(args, "parentId").filter(|p| !p.is_empty()) {
+                body["parentId"] = json!(p);
+            }
+            for key in ["afterId", "beforeId"] {
+                if let Some(v) = arg_str(args, key) {
+                    body[key] = json!(v);
+                }
+            }
+            let flat = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}/move"), body)?;
+            Ok(json!({ "moved": true, "pages": build_page_tree(&flat, &kind, &id) }))
+        }
+
+        "delete_doc_page" => {
+            let (kind, id, page) = page_target(args)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
+            }
+            let out = api_delete(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}"))?;
+            Ok(json!({
+                "trashed": true,
+                "pages": out.get("pages"),
+                "note": "The page and its subpages went to the trash. A person can restore them from the app.",
             }))
         }
 
@@ -3679,6 +4105,70 @@ mod tests {
         let (bytes, ctype, name) = load_source(&AttachmentSource::Path(pdf)).unwrap();
         assert_eq!((bytes.as_slice(), ctype.as_str(), name.as_str()), (&b"%PDF-1.7"[..], "application/pdf", "informe.pdf"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// El árbol de páginas sale anidado y con el enlace de cada página.
+    /// Mutante: no anidar (todas en la raíz), o perder el enlace.
+    #[test]
+    fn the_page_tree_nests_children_and_carries_links() {
+        let flat = json!([
+            { "id": "a", "title": "Apps", "hasBody": false },
+            { "id": "b", "parentId": "a", "title": "Nereus", "hasBody": true },
+            { "id": "c", "parentId": null, "title": "Flujos", "hasBody": false }
+        ]);
+        let tree = build_page_tree(&flat, "list", "L1");
+        assert_eq!(tree.as_array().unwrap().len(), 2, "dos páginas en la raíz");
+        assert_eq!(tree[0]["children"][0]["title"], "Nereus");
+        assert_eq!(tree[0]["children"][0]["link"], "/tasks?doc=list:L1&page=b");
+    }
+
+    /// El índice de una página no lleva el cuerpo, y sí sus títulos con hash.
+    #[test]
+    fn a_page_outline_carries_headings_not_the_body() {
+        let view = json!({
+            "page": { "id": "p", "title": "Nereus", "bodyHash": "h",
+                      "body": "# Nereus\n\nTEXTO LARGO\n\n## Vistas\n\nmás" },
+            "breadcrumb": [{ "id": "a", "title": "Apps" }],
+            "children": []
+        });
+        let out = page_outline(&view, "list", "L1");
+        assert!(!out.to_string().contains("TEXTO LARGO"), "el índice lleva el cuerpo");
+        assert_eq!(out["sections"][1]["heading"], "Vistas");
+        assert!(out["sections"][1]["sectionHash"].is_string());
+        assert_eq!(out["link"], "/tasks?doc=list:L1&page=p");
+    }
+
+    /// Un conflicto de página devuelve el cuerpo actual para fundir.
+    #[test]
+    fn a_page_conflict_returns_the_current_body() {
+        let out = short_page_conflict(&json!({
+            "conflict": true, "reason": "x",
+            "doc": { "id": "p", "bodyHash": "nuevo", "body": "lo de otro" }
+        }))
+        .expect("un conflicto");
+        assert_eq!(out["bodyHash"], "nuevo");
+        assert_eq!(out["body"], "lo de otro");
+        assert!(short_page_conflict(&json!({ "id": "p" })).is_none());
+    }
+
+    /// Las herramientas de páginas piden lo que necesitan para no pisar nada.
+    #[test]
+    fn the_page_tools_require_what_keeps_them_safe() {
+        let defs = tool_defs();
+        let req = |n: &str| tool(&defs, n)["inputSchema"]["required"].to_string();
+        assert!(req("create_doc_page").contains("title"));
+        assert!(req("write_doc_page_section").contains("sectionHash"));
+        assert!(req("move_doc_page").contains("pageId"));
+        assert!(req("delete_doc_page").contains("pageId"));
+        assert!(tool(&defs, "write_doc_page")["inputSchema"]["properties"].get("baseHash").is_some());
+    }
+
+    /// El índice de un doc avisa de que hay páginas.
+    #[test]
+    fn the_pages_summary_counts_and_names_them() {
+        let s = pages_summary(&json!([{ "title": "Uno" }, { "title": "Dos" }]));
+        assert_eq!(s["count"], 2);
+        assert_eq!(s["titles"][1], "Dos");
     }
 
     /// La herramienta existe, y las dos aceptan `path`. Mutante: no anunciarla.

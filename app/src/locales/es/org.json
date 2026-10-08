@@ -127,8 +127,8 @@
   },
   "doneNeedsSubtasks": "Terminar las subtareas antes de dar por hecha una tarea",
   "github": {
-    "lead": "Los repos enlazados a un espacio dejan una línea en la tarea que nombre cada commit o PR. Las líneas son internas: el cliente no las ve.",
-    "syntax": "Para nombrar una tarea: cac#12 (el número del espacio) o el folio del cliente, como acme-7.",
+    "lead": "Los repos enlazados a un espacio enlazan sus ramas, PRs y commits a la tarea que nombran: aparecen en «Desarrollo», y al abrir y al fusionar una PR queda una línea en el hilo. Las líneas son internas: el cliente no las ve.",
+    "syntax": "Para nombrar una tarea: cac#12 (el número del espacio) o el folio del cliente, como acme-7, en el mensaje, en el título de la PR o en el nombre de la rama (cac-12-login, feature/acme-7-fix).",
     "notConfigured": "Este servidor de cac no tiene la GitHub App configurada.",
     "noInstallations": "Ninguna cuenta de GitHub tiene la App instalada para esta organización.",
     "connect": "Conectar GitHub",

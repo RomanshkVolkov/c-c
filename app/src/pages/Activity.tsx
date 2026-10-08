@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ExternalLink, GitBranch, Loader2, Rocket, Server, Workflow, X } from "lucide-react";
 import { isWebBuild, openExternal } from "@/lib/platform";
+import { isGitHubUrl } from "@/lib/github-url";
 import { useT } from "@/lib/i18n";
 import { desde } from "@/lib/desde";
 import { shortRef } from "@/lib/deploy";
@@ -166,11 +167,6 @@ function runBadge(run: WorkflowRun): { variant: "default" | "secondary" | "destr
     default:
       return { variant: "secondary" };
   }
-}
-
-/** Sólo se abre lo que es de GitHub: el enlace lo escribió GitHub, pero la regla no cuesta nada. */
-export function isGitHubUrl(u: string): boolean {
-  return u.startsWith("https://github.com/");
 }
 
 function RunRow({

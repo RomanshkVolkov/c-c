@@ -445,7 +445,10 @@ export function useReportEvents() {
         case "task:update":
         case "task:move":
         case "task:delete":
-        case "task:comment": {
+        case "task:comment":
+        // Una PR, una rama o un commit de GitHub se enlazó o cambió de estado:
+        // el chip de la tarjeta y el panel «Desarrollo» de la tarea abierta.
+        case "task:git": {
           // Task board changes ride the same org-scoped stream. Refetch only when
           // the event belongs to the list currently on screen — a busy org would
           // otherwise reload the board on every unrelated card someone touches.
@@ -793,6 +796,7 @@ export function useReportEvents() {
         "task:move",
         "task:delete",
         "task:comment",
+        "task:git",
         "meeting:reminder",
         // Faltaban (docs/notifications.md §4.2): en el escritorio da igual,
         // porque Rust reenvía cada trama, pero en un navegador se perdían.

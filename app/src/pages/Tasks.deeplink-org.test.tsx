@@ -98,3 +98,27 @@ describe("?doc= de otra org", () => {
     expect(useTasksStore.getState().activeDoc?.id).toBe("sp-a");
   });
 });
+
+/**
+ * `&page=` va en el mismo enlace que `?doc=`, y el efecto vacía los parámetros
+ * en cuanto lee `doc`. Si la página se leyera después —en otro efecto, o tras
+ * vaciar—, el enlace abriría la portada y nadie sabría por qué.
+ */
+describe("?doc=…&page=", () => {
+  it("abre el documento y, dentro, la página", async () => {
+    const { useDocPages } = await import("@/store/doc-pages.store");
+    useDocPages.getState().reset();
+    render(
+      <ConfirmProvider>
+        <PromptProvider>
+          <MemoryRouter initialEntries={["/tasks?doc=space:sp-a&page=p-7"]}>
+            <Tasks />
+          </MemoryRouter>
+        </PromptProvider>
+      </ConfirmProvider>,
+    );
+    await waitFor(() => expect(useTasksStore.getState().activeDoc?.id).toBe("sp-a"));
+    expect(useDocPages.getState().activePageId).toBe("p-7");
+    expect(api.get).toHaveBeenCalledWith("/api/v1/docs/space/sp-a/pages/p-7");
+  });
+});

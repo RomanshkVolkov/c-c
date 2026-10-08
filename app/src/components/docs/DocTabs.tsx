@@ -11,11 +11,14 @@ import SaveChip from "@/components/docs/SaveChip";
 import TemplatePicker from "@/components/docs/TemplatePicker";
 import { useAutoguardado } from "@/hooks/use-autoguardado";
 import DocToc from "@/components/docs/DocToc";
+import DocPageTree from "@/components/docs/DocPageTree";
+import DocPageView from "@/components/docs/DocPageView";
 import Markdown from "@/components/markdown/Markdown";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import { Button } from "@/components/ui/button";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { codigoDe } from "@/lib/api";
+import { openInternalRef } from "@/lib/open-ref";
 import { openAttachment } from "@/lib/media";
 import PdfPreview from "@/components/PdfPreview";
 import { isPdfFile } from "@/components/PdfAttachment";
@@ -23,12 +26,13 @@ import { cn } from "@/lib/utils";
 import CopyId from "@/components/CopyId";
 import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
 import { useTasksStore } from "@/store/tasks.store";
+import { useDocPages } from "@/store/doc-pages.store";
 import { DOC_TABS, type DocTabKey } from "@/types/task";
 
 /**
  * La documentación de un nodo, en cuatro secciones.
  *
- * Sustituye a `DocView`, que era un markdown único. Lo que había escrito pasa a
+ * Sustituye al viejo `DocView`, que era un markdown único. Lo que había escrito pasa a
  * **Resumen** — nadie escribió un runbook en un campo llamado «body», escribió
  * lo que sabía del proyecto.
  *
@@ -57,6 +61,9 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const closeDoc = useTasksStore((s) => s.closeDoc);
   const addDecision = useTasksStore((s) => s.addDecision);
   const openDoc = useTasksStore((s) => s.openDoc);
+
+  const activePageId = useDocPages((s) => s.activePageId);
+  const enterPages = useDocPages((s) => s.enter);
 
   const [activa, setActiva] = useState<DocTabKey>("overview");
   const [editando, setEditando] = useState(false);
@@ -104,11 +111,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
     borrador,
     async (texto) => {
       try {
-        hashDelBorrador.current = await saveDoc(
-          texto,
-          seccionDelBorrador.current,
-          hashDelBorrador.current,
-        );
+        hashDelBorrador.current = await saveDoc(texto, seccionDelBorrador.current, hashDelBorrador.current);
       } catch (e) {
         // Alguien —o un agente por MCP— guardó esta sección mientras se escribía.
         //
@@ -149,6 +152,14 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
     adoptar(cuerpo);
   }, [cuerpo, editando, adoptar, activa, hashDeLaSeccion]);
 
+  // El árbol es del nodo: otro nodo, otro árbol. Ver `enter`.
+  const nodoKind = target?.kind;
+  const nodoId = target?.id;
+  useEffect(() => {
+    if (!nodoKind || !nodoId) return;
+    enterPages({ kind: nodoKind, id: nodoId }).catch(() => {});
+  }, [nodoKind, nodoId, enterPages]);
+
   if (!target) return null;
 
   return (
@@ -179,175 +190,190 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
         ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {doc?.doc && <ShareDoc doc={doc.doc} nombre={target.name} tab={activa} />}
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            title={t("work:docs.cancel")}
-            onClick={closeDoc}
-          >
+          <Button size="icon-xs" variant="ghost" title={t("work:docs.cancel")} onClick={closeDoc}>
             <X className="size-3.5" />
           </Button>
         </div>
       </header>
 
-      {/* Responsable y frescura, entre el título y las pestañas: pertenecen al
+      {/* Dos columnas, como el árbol de contenido de Confluence: a la izquierda
+          la portada y las páginas que cuelgan de ella; a la derecha lo que se
+          está leyendo. La portada sigue siendo lo de siempre, con sus cuatro
+          pestañas. */}
+      <div className="flex min-h-0 flex-1">
+        <DocPageTree kind={target.kind} ownerId={target.id} />
+        {activePageId ? (
+          <DocPageView
+            kind={target.kind}
+            ownerId={target.id}
+            nodeName={target.name}
+            onInternalLink={(href) => openInternalRef(href)}
+          />
+        ) : (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {/* Responsable y frescura, entre el título y las pestañas: pertenecen al
           documento entero, no a la sección que se esté mirando. Sólo cuando ya
           existe — en un nodo sin nada escrito todavía no hay nada que revisar. */}
-      {doc?.doc && <DocHeader doc={doc.doc} />}
+            {doc?.doc && <DocHeader doc={doc.doc} />}
 
-      {/* Las cuatro, siempre. La vacía en gris — ver el comentario de arriba. */}
-      {/* Se desliza antes que recortarse.
+            {/* Las cuatro, siempre. La vacía en gris — ver el comentario de arriba. */}
+            {/* Se desliza antes que recortarse.
           Cuatro pestañas con su pista al lado no caben en una ventana estrecha, y
           lo que se perdía era la última —«Enlaces»— sin ninguna señal de que
           estuviera ahí. La pista desaparece primero porque es lo prescindible; el
           deslizamiento es la red por si aun así no caben. */}
-      <nav className="flex shrink-0 gap-4 overflow-x-auto border-b px-4 text-sm">
-        {DOC_TABS.map((k) => {
-          // La de decisiones no se mide por su markdown —no tiene—: se mide
-          // por si hay entradas. Sin esto siempre saldría en gris, incluso con
-          // el registro lleno.
-          const vacia =
-            k === "decisions"
-              ? (doc?.decisions?.length ?? 0) === 0
-              : !doc?.tabs?.find((x) => x.key === k)?.body;
-          return (
-            <button
-              key={k}
-              onClick={() => setActiva(k)}
-              className={cn(
-                "flex shrink-0 items-baseline gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-2",
-                k === activa
-                  ? "border-primary font-medium text-foreground"
-                  : "border-transparent hover:text-foreground",
-                vacia && k !== activa ? "text-muted-foreground/60" : "text-muted-foreground",
-              )}
-            >
-              {t(ROTULOS[k].label)}
-              <span className="hidden text-[11px] text-muted-foreground/70 md:inline">
-                {t(ROTULOS[k].hint)}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
+            <nav className="flex shrink-0 gap-4 overflow-x-auto border-b px-4 text-sm">
+              {DOC_TABS.map((k) => {
+                // La de decisiones no se mide por su markdown —no tiene—: se mide
+                // por si hay entradas. Sin esto siempre saldría en gris, incluso con
+                // el registro lleno.
+                const vacia =
+                  k === "decisions"
+                    ? (doc?.decisions?.length ?? 0) === 0
+                    : !doc?.tabs?.find((x) => x.key === k)?.body;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setActiva(k)}
+                    className={cn(
+                      "flex shrink-0 items-baseline gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-2",
+                      k === activa
+                        ? "border-primary font-medium text-foreground"
+                        : "border-transparent hover:text-foreground",
+                      vacia && k !== activa ? "text-muted-foreground/60" : "text-muted-foreground",
+                    )}
+                  >
+                    {t(ROTULOS[k].label)}
+                    <span className="hidden text-[11px] text-muted-foreground/70 md:inline">
+                      {t(ROTULOS[k].hint)}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
 
-      <div className="min-h-0 flex-1 overflow-auto p-6">
-        {loading && !doc ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
-          </p>
-        ) : editando ? (
-          <div className="mx-auto max-w-3xl space-y-2">
-            <MarkdownEditor
-              value={borrador}
-              onChange={setBorrador}
-              onUpload={upload}
-              collapsible
-              blockTools
-              minHeight="24rem"
-              placeholder={t("work:docs.placeholder")}
-              autoFocus
-            />
-            {chocado && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/[.07] px-3 py-2 text-xs">
-                <p className="font-medium text-foreground">{t("work:docs.conflict")}</p>
-                <p className="mt-0.5 text-muted-foreground">{t("work:docs.conflictWhy")}</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 h-6 text-xs"
-                  onClick={() => {
-                    setChocado(false);
-                    setEditando(false);
-                    if (target) void openDoc(target.kind, target.id, target.name).catch(() => {});
-                  }}
-                >
-                  {t("work:docs.discardAndReload")}
-                </Button>
-              </div>
-            )}
-            {/* Ya no hay «Guardar» ni «Cancelar»: se guarda solo, así que
+            <div className="min-h-0 flex-1 overflow-auto p-6">
+              {loading && !doc ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
+                </p>
+              ) : editando ? (
+                <div className="mx-auto max-w-3xl space-y-2">
+                  <MarkdownEditor
+                    value={borrador}
+                    onChange={setBorrador}
+                    onUpload={upload}
+                    collapsible
+                    blockTools
+                    minHeight="24rem"
+                    placeholder={t("work:docs.placeholder")}
+                    autoFocus
+                  />
+                  {chocado && (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/[.07] px-3 py-2 text-xs">
+                      <p className="font-medium text-foreground">{t("work:docs.conflict")}</p>
+                      <p className="mt-0.5 text-muted-foreground">{t("work:docs.conflictWhy")}</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 h-6 text-xs"
+                        onClick={() => {
+                          setChocado(false);
+                          setEditando(false);
+                          if (target) void openDoc(target.kind, target.id, target.name).catch(() => {});
+                        }}
+                      >
+                        {t("work:docs.discardAndReload")}
+                      </Button>
+                    </div>
+                  )}
+                  {/* Ya no hay «Guardar» ni «Cancelar»: se guarda solo, así que
                 cancelar no cancelaría nada. Para deshacer está el historial,
                 que es lo que hace soportable escribir sin botón. */}
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setEditando(false)}>
-                {t("work:docs.done")}
-              </Button>
-              <SaveChip estado={estado} />
-            </div>
-          </div>
-        ) : activa === "decisions" ? (
-          // El registro no es markdown: cada entrada lleva fecha, autor y de
-          // dónde salió, y en un markdown suelto eso se escribe a mano, se
-          // escribe mal y se deja de escribir.
-          <DecisionList decisions={doc?.decisions ?? []} />
-        ) : (
-          <div className="mx-auto flex w-full min-w-0 max-w-4xl gap-8">
-            <div className="min-w-0 flex-1">
-              {cuerpo ? (
-                // Medida de línea corta y texto más grande: es un documento,
-                // no un panel. `prose-doc` lo fija en un solo sitio.
-                <div className="prose-doc">
-                  <Markdown allowHtml>{cuerpo}</Markdown>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setEditando(false)}>
+                      {t("work:docs.done")}
+                    </Button>
+                    <SaveChip estado={estado} />
+                  </div>
                 </div>
-              ) : sinNada && !saltarPlantillas ? (
-                // Las plantillas sólo cuando el documento entero está vacío. En
-                // una pestaña suelta de un documento que ya existe estorban:
-                // ahí lo que falta es un runbook, no un proyecto.
-                <TemplatePicker onWritten={() => setSaltarPlantillas(true)} />
+              ) : activa === "decisions" ? (
+                // El registro no es markdown: cada entrada lleva fecha, autor y de
+                // dónde salió, y en un markdown suelto eso se escribe a mano, se
+                // escribe mal y se deja de escribir.
+                <DecisionList decisions={doc?.decisions ?? []} />
               ) : (
-                <div className="py-12 text-center">
-                  <p className="text-sm text-muted-foreground">{t("work:docs.emptyTab")}</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-3"
-                    onClick={() => setEditando(true)}
-                  >
-                    <Pencil className="mr-1 size-3" /> {t("work:docs.writeIt")}
-                  </Button>
+                <div className="mx-auto flex w-full min-w-0 max-w-4xl gap-8">
+                  <div className="min-w-0 flex-1">
+                    {cuerpo ? (
+                      // Medida de línea corta y texto más grande: es un documento,
+                      // no un panel. `prose-doc` lo fija en un solo sitio.
+                      <div className="prose-doc">
+                        <Markdown allowHtml onInternalLink={(href) => openInternalRef(href)}>
+                          {cuerpo}
+                        </Markdown>
+                      </div>
+                    ) : sinNada && !saltarPlantillas ? (
+                      // Las plantillas sólo cuando el documento entero está vacío. En
+                      // una pestaña suelta de un documento que ya existe estorban:
+                      // ahí lo que falta es un runbook, no un proyecto.
+                      <TemplatePicker onWritten={() => setSaltarPlantillas(true)} />
+                    ) : (
+                      <div className="py-12 text-center">
+                        <p className="text-sm text-muted-foreground">{t("work:docs.emptyTab")}</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-3"
+                          onClick={() => setEditando(true)}
+                        >
+                          <Pencil className="mr-1 size-3" /> {t("work:docs.writeIt")}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  {CON_INDICE.includes(activa) && cuerpo && <DocToc markdown={cuerpo} />}
                 </div>
               )}
             </div>
-            {CON_INDICE.includes(activa) && cuerpo && <DocToc markdown={cuerpo} />}
+
+            {activa === "decisions" && (
+              <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
+                <Button size="sm" variant="ghost" onClick={() => setRegistrando(true)}>
+                  <Gavel className="mr-1 size-3" /> {t("work:decisions.record")}
+                </Button>
+              </footer>
+            )}
+
+            {!editando && cuerpo && activa !== "decisions" && (
+              <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
+                <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
+                  <Pencil className="mr-1 size-3" /> {t("work:docs.edit")}
+                </Button>
+                <DocHistory tab={activa} />
+                {doc?.attachments && doc.attachments.length > 0 && (
+                  <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                    {doc.attachments.map((a) => (
+                      <button
+                        key={a.id}
+                        className="truncate underline hover:text-foreground"
+                        // Un PDF, en el visor de la app; lo demás, a su programa.
+                        onClick={() =>
+                          isPdfFile(a.fileName)
+                            ? setPdf({ url: a.url, fileName: a.fileName })
+                            : openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))
+                        }
+                      >
+                        {a.fileName}
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </footer>
+            )}
           </div>
         )}
       </div>
-
-      {activa === "decisions" && (
-        <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
-          <Button size="sm" variant="ghost" onClick={() => setRegistrando(true)}>
-            <Gavel className="mr-1 size-3" /> {t("work:decisions.record")}
-          </Button>
-        </footer>
-      )}
-
-      {!editando && cuerpo && activa !== "decisions" && (
-        <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
-          <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
-            <Pencil className="mr-1 size-3" /> {t("work:docs.edit")}
-          </Button>
-          <DocHistory tab={activa} />
-          {doc?.attachments && doc.attachments.length > 0 && (
-            <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              {doc.attachments.map((a) => (
-                <button
-                  key={a.id}
-                  className="truncate underline hover:text-foreground"
-                  // Un PDF, en el visor de la app; lo demás, a su programa.
-                  onClick={() =>
-                    isPdfFile(a.fileName)
-                      ? setPdf({ url: a.url, fileName: a.fileName })
-                      : openAttachment(a.url, a.fileName).catch((e) => toast.error(String(e)))
-                  }
-                >
-                  {a.fileName}
-                </button>
-              ))}
-            </span>
-          )}
-        </footer>
-      )}
       {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
       <DecisionForm
         open={registrando}

@@ -26,6 +26,8 @@ import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore } from "@/store/tasks.store";
+import { useDocPages } from "@/store/doc-pages.store";
+import { PrChip } from "@/components/TaskGitPanel";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useReportsStore } from "@/store/reports.store";
 import { faltanSubtareas, normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
@@ -80,8 +82,11 @@ export default function Tasks() {
     const ref = params.get("doc");
     if (!ref) return;
     const [kind, id] = ref.split(":");
+    // Se lee antes de vaciar: después ya no está.
+    const page = params.get("page");
     setParams({}, { replace: true });
     if (!id || !isDocOwnerKind(kind)) return;
+    if (page) useDocPages.getState().openPage({ kind, id }, page).catch(() => {});
     // El nombre lo pone el documento al cargar; aquí todavía no se sabe, y
     // poner el identificador en el título sería peor que dejarlo vacío.
     openDoc(kind, id, "")
@@ -455,6 +460,7 @@ function ListView({
                       </span>
                     )}
                     <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                      <PrChip git={t.git} />
                       {t.commentCount > 0 && (
                         <>
                           <MessageSquare className="size-3" />
@@ -534,6 +540,7 @@ function TaskCardView({
             {card.attachmentCount}
           </span>
         )}
+        <PrChip git={card.git} />
         {card.subtaskCount > 0 && (
           <span
             className={cn(

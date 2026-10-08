@@ -78,6 +78,20 @@ describe("el enlace a un documento", () => {
     });
   });
 
+  // Una página del árbol va por su id, con o sin pestaña al lado. Es la misma
+  // forma que escriben el backend (`search.go`) y el MCP (`page_link`): si el
+  // parámetro cambiara de nombre aquí, sus enlaces abrirían la portada.
+  it("la página viaja con él", () => {
+    expect(docRefFromHref(docHref("list", "l1", undefined, "p9"))).toEqual({
+      kind: "list",
+      id: "l1",
+      tab: undefined,
+      page: "p9",
+    });
+    expect(docRefFromHref("/tasks?doc=space:s1&page=p2")?.page).toBe("p2");
+    expect(docRefFromHref(docHref("list", "l1"))?.page).toBeUndefined();
+  });
+
   /**
    * El fallo que ya se cometió una vez con las tarjetas.
    *

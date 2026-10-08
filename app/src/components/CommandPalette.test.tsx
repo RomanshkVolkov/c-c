@@ -116,6 +116,43 @@ describe("la paleta", () => {
   });
 
   /**
+   * La documentación enseña dónde aparece lo buscado.
+   *
+   * El fragmento llega con `**` y se pinta resaltado; la pestaña llega por su
+   * clave y se enseña por su nombre. Y dos pestañas del mismo documento llevan
+   * el mismo id: con el id de clave, React se queja de la clave repetida y, al
+   * llegar la respuesta siguiente, puede dejar una fila con el contenido de otra.
+   */
+  it("un acierto de documentación lleva su fragmento resaltado", async () => {
+    get.mockResolvedValue({
+      success: true,
+      data: {
+        ...vacio,
+        docs: [
+          { kind: "doc", id: "l1", title: "Apps", where: "overview", tab: "overview", link: "/tasks?doc=list:l1&tab=overview", snippet: "cómo se **despliega**" },
+          { kind: "doc", id: "l1", title: "Apps", where: "runbook", tab: "runbook", link: "/tasks?doc=list:l1&tab=runbook", snippet: "y se **despliega** otra vez" },
+          { kind: "doc", id: "p1", title: "Nereus", where: "Proteus › Apps", link: "/tasks?doc=list:l1&page=p1", snippet: "el **despliegue**" },
+        ],
+      },
+    });
+    const quejas = vi.spyOn(console, "error").mockImplementation(() => {});
+    montar();
+    escribir("desplieg");
+    await screen.findByText("Nereus");
+    const claves = quejas.mock.calls.filter((c) => String(c[0]).includes("same key"));
+    quejas.mockRestore();
+    expect(claves).toEqual([]);
+    expect([...document.querySelectorAll("mark")].map((m) => m.textContent)).toEqual([
+      "despliega",
+      "despliega",
+      "despliegue",
+    ]);
+    expect(screen.getAllByText("Apps")).toHaveLength(2);
+    expect(screen.getByText("Overview")).toBeTruthy();
+    expect(screen.getByText("Proteus › Apps")).toBeTruthy();
+  });
+
+  /**
    * Un servidor que no manda todas las categorías.
    *
    * La app se instala por su cuenta y el backend despliega por la suya, así que

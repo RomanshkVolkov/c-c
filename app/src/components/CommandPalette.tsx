@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { useOrgsStore } from "@/store/orgs.store";
 import type { APIResponse } from "@/types/auth";
 import { cn } from "@/lib/utils";
+import { highlightSnippet } from "@/lib/snippet";
 
 /**
  * ⌘K: one box for everything.
@@ -34,6 +35,10 @@ interface Hit {
   link: string;
   /** La org de lo encontrado; vacío en una nota, que no es de ninguna. */
   orgId?: string;
+  /** Sólo en documentación: dónde aparece lo buscado, con `**` en lo encontrado. */
+  snippet?: string;
+  /** Sólo en un acierto de la portada: en qué pestaña. */
+  tab?: string;
 }
 
 interface Results {
@@ -79,6 +84,14 @@ const GRUPOS: { key: keyof Results; labelKey: MessageKey; icon: typeof Search }[
   { key: "notes", labelKey: "common:palette.notes", icon: NotebookPen },
   { key: "people", labelKey: "common:palette.people", icon: User },
 ];
+
+/** El nombre de cada pestaña de la portada, que el servidor manda por su clave. */
+const PESTANAS: Record<string, MessageKey> = {
+  overview: "work:docs.overview",
+  runbook: "work:docs.runbook",
+  decisions: "work:docs.decisions",
+  links: "work:docs.links",
+};
 
 export default function CommandPalette({
   open,
@@ -193,20 +206,32 @@ export default function CommandPalette({
                   </p>
                   {res[g.key].map((h) => (
                     <button
-                      key={`${g.key}-${h.id}`}
+                      // Por el enlace y no por el id: dos pestañas del mismo
+                      // documento comparten id y son dos aciertos distintos, y
+                      // con la clave repetida React puede cruzar sus filas.
+                      key={`${g.key}-${h.link}`}
                       onClick={() => ir(h.link, h.orgId)}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm",
+                        "flex w-full items-start gap-2 rounded px-3 py-1.5 text-left text-sm",
                         "hover:bg-accent",
                       )}
                     >
-                      <g.icon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{h.title}</span>
-                      {h.where && (
-                        <span className="shrink-0 truncate text-xs text-muted-foreground">
-                          {h.where}
+                      <g.icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate">{h.title}</span>
+                          {h.where && (
+                            <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">
+                              {h.tab && h.tab in PESTANAS ? t(PESTANAS[h.tab]) : h.where}
+                            </span>
+                          )}
                         </span>
-                      )}
+                        {h.snippet && (
+                          <span className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                            {highlightSnippet(h.snippet)}
+                          </span>
+                        )}
+                      </span>
                     </button>
                   ))}
                 </section>

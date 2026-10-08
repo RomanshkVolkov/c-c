@@ -160,7 +160,25 @@
     "citedHere": "en el texto",
     "title": "Título",
     "dropToDescription": "Suelta para adjuntar a la descripción",
-    "dropToComment": "Suelta para adjuntar al comentario"
+    "dropToComment": "Suelta para adjuntar al comentario",
+    "git": {
+      "development": "Desarrollo",
+      "branches_one": "{{count}} rama",
+      "branches_other": "{{count}} ramas",
+      "prs_one": "{{count}} PR",
+      "prs_other": "{{count}} PRs",
+      "commits_one": "{{count}} commit",
+      "commits_other": "{{count}} commits",
+      "state": {
+        "open": "abierta",
+        "draft": "borrador",
+        "merged": "fusionada",
+        "closed": "cerrada"
+      },
+      "deleted": "borrada",
+      "viaBranch": "Enlazada por el nombre de la rama",
+      "byGitHub": "GitHub"
+    }
   },
   "notes": {
     "title": "Notas",
@@ -305,7 +323,23 @@
     "errShare": "No se pudo compartir",
     "conflict": "Sin guardar: alguien llegó antes",
     "conflictWhy": "Esta sección cambió mientras escribías, así que tu texto no se aplicó — habría borrado el suyo. Tu borrador sigue aquí: copia lo que necesites y recarga para ver su versión.",
-    "discardAndReload": "Descartar el mío y recargar"
+    "discardAndReload": "Descartar el mío y recargar",
+    "pages": "Páginas",
+    "home": "Portada",
+    "homeHint": "Las cuatro pestañas",
+    "newPage": "Página nueva",
+    "newSubpage": "Página nueva dentro",
+    "untitled": "Sin título",
+    "pageTitle": "Título de la página",
+    "trashPage": "Mandar a la papelera",
+    "trashPageTitle": "¿Mandar «{{title}}» a la papelera?",
+    "trashPageWhy": "Se van con ella las páginas que tiene dentro. No se pierde nada: se puede restaurar.",
+    "trashed_one": "A la papelera",
+    "trashed_other": "A la papelera, con las {{count}} páginas de dentro",
+    "childPages": "Páginas dentro",
+    "emptyPage": "Esta página está vacía.",
+    "errPage": "No se pudo abrir esta página",
+    "thisPage": "Esta página"
   },
   "docTemplates": {
     "title": "Aquí no hay nada escrito todavía",

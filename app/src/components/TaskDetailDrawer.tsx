@@ -18,6 +18,7 @@ import {
   Pencil,
   Info,
   Gavel,
+  Github,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
@@ -44,6 +45,7 @@ import PdfAttachment, { isPdfFile } from "@/components/PdfAttachment";
 import CopyId from "@/components/CopyId";
 import TelemetryTimeline from "@/components/TelemetryTimeline";
 import { commentByline } from "@/lib/byline";
+import TaskGitPanel from "@/components/TaskGitPanel";
 import DecisionForm, { type DecisionDraft } from "@/components/docs/DecisionForm";
 import { describeAgent } from "@/lib/user-agent";
 import DatePicker from "@/components/DatePicker";
@@ -187,7 +189,17 @@ function CommentItem({
         </span>
       )}
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{commentByline(c.author, c.authorName)}</span>
+        <span className="flex items-center gap-1 font-medium text-foreground">
+          {/* Una línea que puso el webhook de GitHub no tiene persona detrás:
+              sin esto firmaba «unknown». */}
+          {c.source === "gh" ? (
+            <>
+              <Github className="size-3" aria-hidden /> {t("work:task.git.byGitHub")}
+            </>
+          ) : (
+            commentByline(c.author, c.authorName)
+          )}
+        </span>
         <span>{fechaYHora(c.createdAt)}</span>
         {edited && <span className="italic">{t("work:task.edited")}</span>}
         {clientReads && (
@@ -845,6 +857,10 @@ function Content() {
             </div>
           )}
         </section>
+
+        {/* Ramas, PRs y commits de GitHub. Encima de la actividad, como el
+            panel Development de Jira: es el estado del trabajo, no la charla. */}
+        <TaskGitPanel git={detail.git} />
 
         {/* Comments. Zona para soltar: va al comentario nuevo. */}
         <FileDropZone

@@ -165,5 +165,8 @@
   "recording-needs-space": "This call isn't attached to a channel, so it can't be recorded.",
   "not-the-host": "Only whoever opened this call, or an admin, can close it.",
   "guest-rejected": "You weren't let into this call.",
-  "guest-not-waiting": "That person is no longer waiting."
+  "guest-not-waiting": "That person is no longer waiting.",
+  "body-too-large": "That text is too long for one page: split it into subpages.",
+  "bad-parent-page": "That page can't go there: the parent isn't in this document.",
+  "page-cycle": "A page can't go inside itself or one of its subpages."
 }

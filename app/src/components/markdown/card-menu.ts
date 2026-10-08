@@ -61,11 +61,19 @@ export function taskIdFromHref(href: string): string | null {
  * en /tasks». La versión laxa reclamaba `https://ejemplo.com/tasks?doc=1` y un
  * enlace externo perfectamente bueno dejaba de abrir el navegador.
  */
-export function docHref(kind: string, id: string, tab?: string): string {
-  return `/tasks?doc=${kind}:${id}` + (tab ? `&tab=${tab}` : "");
+export function docHref(kind: string, id: string, tab?: string, page?: string): string {
+  return `/tasks?doc=${kind}:${id}` + (tab ? `&tab=${tab}` : "") + (page ? `&page=${page}` : "");
 }
 
-export function docRefFromHref(href: string): { kind: string; id: string; tab?: string } | null {
+/**
+ * `page` es una página del árbol del documento. Va por id y nada más, así que
+ * un enlace pegado sigue abriendo la misma página aunque se mueva o se renombre
+ * (lo mismo que Confluence). Lo escriben también el backend (`search.go`) y el
+ * MCP (`page_link`): las tres formas tienen que coincidir.
+ */
+export function docRefFromHref(
+  href: string,
+): { kind: string; id: string; tab?: string; page?: string } | null {
   const prefix = "/tasks?";
   if (!href.startsWith(prefix)) return null;
   const q = new URLSearchParams(href.slice(prefix.length));
@@ -73,7 +81,7 @@ export function docRefFromHref(href: string): { kind: string; id: string; tab?: 
   if (!ref) return null;
   const [kind, id] = ref.split(":");
   if (!kind || !id) return null;
-  return { kind, id, tab: q.get("tab") ?? undefined };
+  return { kind, id, tab: q.get("tab") ?? undefined, page: q.get("page") ?? undefined };
 }
 
 /**
