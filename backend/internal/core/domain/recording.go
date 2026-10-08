@@ -126,6 +126,10 @@ type Recording struct {
 	// aunque el prefijo cambie.
 	Room      string `gorm:"type:varchar(120);not null" json:"room"`
 	StartedBy string `gorm:"type:varchar(36);not null"  json:"startedBy"`
+	// InviteID: la reunión con invitados que se grabó, si no fue la sala del
+	// canal. El espacio sigue siendo obligatorio —es donde se lista, se anuncia y
+	// se autoriza—, así que sólo se graba una reunión que cuelga de un canal.
+	InviteID *string `gorm:"type:varchar(36);index" json:"inviteId,omitempty"`
 
 	Status RecordingStatus `gorm:"type:varchar(20);index;not null" json:"status"`
 
@@ -186,6 +190,10 @@ type RecordingTrack struct {
 	// que la restricción no quita nada legítimo.
 	TrackSid            string `gorm:"type:varchar(64);uniqueIndex;not null" json:"trackSid"`
 	ParticipantIdentity string `gorm:"type:varchar(64);not null"             json:"participantIdentity"`
+	// ParticipantName es cómo se llamaba quien hablaba, tal como lo firmó el
+	// token. Para un miembro sobra —su id ya lo dice—, pero un invitado no está
+	// en ningún directorio: sin esto, su pista sería un `guest:…` para siempre.
+	ParticipantName string `gorm:"type:varchar(80)" json:"participantName,omitempty"`
 	Source              string `gorm:"type:varchar(30);not null"             json:"source"`
 	MimeType            string `gorm:"type:varchar(40)"                      json:"mimeType,omitempty"`
 
@@ -331,6 +339,10 @@ type RecordingResponse struct {
 type RecordingPolicy struct {
 	Enabled bool               `json:"enabled"`
 	Active  *RecordingResponse `json:"active"`
+	// Reason: por qué no se puede grabar aquí, si `Enabled` es false por algo
+	// que no es la instalación. Hoy sólo `recording-needs-space`: una reunión
+	// con invitados que no cuelga de ningún canal.
+	Reason string `json:"reason,omitempty"`
 }
 
 // RecordingSignal es lo que viaja por SSE y por el metadata de la sala cuando
@@ -345,6 +357,11 @@ type RecordingSignal struct {
 	ByName  string    `json:"byName,omitempty"`
 	Since   time.Time `json:"since"`
 	SpaceID string    `json:"spaceId,omitempty"`
+	// Room e InviteID: de qué sala es el aviso. Un canal y una reunión del
+	// mismo espacio se pueden grabar a la vez, y el espacio solo ya no dice
+	// cuál de las dos lleva el REC.
+	Room     string  `json:"room,omitempty"`
+	InviteID *string `json:"inviteId,omitempty"`
 }
 
 // ─── Lo que ve el mux ────────────────────────────────────────────────────────

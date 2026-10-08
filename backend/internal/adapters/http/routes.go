@@ -61,7 +61,9 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitNotificationRoutes(db, r, push)
 	// Las reuniones periódicas y las grabaciones: los dos relojes de fondo.
 	InitMeetingRoutes(db, r, hub)
-	InitRecordingRoutes(db, r, hub)
+	recordings := InitRecordingRoutes(db, r, hub)
+	// Llamar con gente de fuera (W3): graba con el mismo servicio.
+	InitCallRoutes(db, r, recordings)
 	InitGitHubRoutesWith(r, gh)
 	InitActivityRoutes(db, r)
 

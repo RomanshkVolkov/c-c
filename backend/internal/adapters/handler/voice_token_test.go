@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/livekit/protocol/auth"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -42,13 +43,14 @@ func voiceReq(spaceID string, claims *domain.ClaimsJWT) *http.Request {
 }
 
 func voiceHandler(db *gorm.DB, voz *service.VoiceService) *taskHandler {
+	repo := repository.NewTaskRepository(db)
 	svc := service.NewTaskService(
-		repository.NewTaskRepository(db),
+		repo,
 		repository.NewReportRepository(db),
 		repository.NewOrganizationRepository(db),
 		nil,
 	)
-	return &taskHandler{svc: svc, voice: voz}
+	return &taskHandler{svc: svc, repo: repo, voice: voz}
 }
 
 func TestNoSePuedeEntrarAlaVozDeOtraOrganizacion(t *testing.T) {
@@ -107,6 +109,40 @@ func TestUnMiembroRecibeSuTokenParaLaSalaDeSuEspacio(t *testing.T) {
 	}
 }
 
+// El nombre que ven los demás en la llamada es el visible, no el de acceso.
+//
+// El mutante que mata: volver a firmar con `user.Username`. En una reunión con
+// invitados lo ve gente de fuera, y «ana» no es cómo se llama nadie.
+func TestTheVoiceNameIsTheVisibleName(t *testing.T) {
+	db, cleanup := voiceDB(t)
+	defer cleanup()
+	h := voiceHandler(db, service.NewVoiceService("wss://rtc.example", "APIabc", "un-secreto-largo-de-prueba"))
+
+	suya := &domain.ClaimsJWT{
+		UserID: "u-ana", Username: "ana",
+		Orgs: []domain.OrgMembershipClaim{{OrgID: "org-1", Role: domain.OrgRoleMember}},
+	}
+	rec := httptest.NewRecorder()
+	h.VoiceToken(rec, voiceReq("esp-1", suya))
+	var res struct {
+		Data domain.VoiceTokenResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := auth.ParseAPIToken(res.Data.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, grants, err := tok.Verify("un-secreto-largo-de-prueba")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grants.Name != "Ana Pérez" {
+		t.Fatalf("en la llamada se llama %q", grants.Name)
+	}
+}
+
 // Sin SFU configurado se dice, no se finge. Un token que ningún servidor va a
 // aceptar es peor que un «esto no está montado».
 func TestSinVozConfiguradaSeDiceQueNoLaHay(t *testing.T) {
@@ -161,7 +197,7 @@ func voiceDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Organization{}, &domain.TaskSpace{}); err != nil {
+	if err := db.AutoMigrate(&domain.Organization{}, &domain.TaskSpace{}, &domain.User{}); err != nil {
 		t.Fatal(err)
 	}
 	ahora := time.Now()
@@ -176,6 +212,8 @@ func voiceDB(t *testing.T) (*gorm.DB, func()) {
 	must(db.Exec(`INSERT INTO task_spaces (id, org_id, name, color, rank, created_at, updated_at)
 		VALUES ('esp-1','org-1','Nuestro','#fff','0.5',?,?), ('esp-ajeno','org-2','De otro cliente','#fff','0.5',?,?)`,
 		ahora, ahora, ahora, ahora))
+	must(db.Exec(`INSERT INTO users (id, username, name, email, password, created_at, updated_at)
+		VALUES ('u-ana','ana','Ana Pérez','ana@example.com','x',?,?)`, ahora, ahora))
 
 	return db, func() {
 		if inner, _ := db.DB(); inner != nil {

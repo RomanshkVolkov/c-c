@@ -125,6 +125,39 @@ k8s con HTTPRoute propia en `/app`) y `.github/workflows/web.yml`.
 service worker, manifiesto instalable, botón «Avisos en este dispositivo»,
 `pushQuiet`/`pushCi`). Ver `docs/notifications.md` §3 ter. **W2 publicado**
 (`3c1acc7`, `d9adfe1`).
+**W3 hecho, sin commitear (8-oct, tarea cac #142): invitados a llamadas y
+llamadas desde la web.** Plan en `~/.claude/plans/shimmering-crunching-kitten.md`.
+
+- **Cómo funciona.** Cada invitación es una sala propia, `meet:<id>`, y nunca
+  la de un canal. El invitado es `guest:<id>`, una identidad que acuña el
+  servidor. Puede publicar micrófono, cámara y pantalla, pero no datos, y no
+  puede renombrarse. Hay dos tokens HMAC: el enlace y el pase.
+- **Backend.**
+  - Rutas `/api/v1/call-invites` para los miembros.
+  - Una puerta pública de dos rutas, `/api/v1/public/calls/{inspect,join}`.
+  - Echar a alguien usa `RemoveParticipant`.
+  - El índice de grabación pasó a ser por sala (`EnsureRecordingIndexes`).
+  - Una reunión cuenta sus miembros, no sus personas, para saber si está vacía.
+  - El token de voz se firma con el nombre visible.
+- **App.**
+  - Interfaz `lib/voice-engine` con dos motores: Tauri y `livekit-client`, que
+    sólo se usa en el build web.
+  - La voz ya no está apagada en la web.
+  - Páginas `/call/:id` (miembro) y `/join#token` (invitado, sin sesión, con el
+    aviso de grabación antes de entrar).
+  - Diálogo «Llamar con invitados» en la cabecera del canal.
+  - La CSP web permite `rtc.guz-studio.dev`.
+- **Mutación.** 47 mutantes en el backend y 31 en la app, todos muertos.
+- **Falta.**
+  - Probar de punta a punta con un navegador real (miembro en el escritorio y
+    un invitado en incógnito).
+  - Commit y release: primero el backend, después la web y la app.
+- **TURN (8-oct).** El relé va por el 443 para las redes que sólo dejan salir
+  ese puerto (`docs/voz.md` §6 bis). Está escrito y probado en el repo, pero
+  **no está aplicado**. Falta, en este orden:
+  1. El DNS de `turn.guz-studio.dev` (lo pone jose).
+  2. `infra/k8s/turn-setup.sh` en el VPS.
+  3. Desplegar el backend.
 **Barrido de seguridad (6-oct), tanda 2 hecha, sin commitear.** Regla: crear
 una org sigue abierto a cualquiera, así que nada peligroso depende sólo de ser
 admin de una org. Servidores kubernetes y vistas del clúster: sólo superadmin;

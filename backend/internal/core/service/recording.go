@@ -120,30 +120,48 @@ func (s *RecordingService) Enabled() bool {
 // ─── Empezar y parar ─────────────────────────────────────────────────────────
 
 // Start abre la grabación de la sala de un espacio.
+func (s *RecordingService) Start(ctx context.Context, orgID, spaceID, userID string) (*domain.Recording, error) {
+	return s.StartIn(ctx, RecordingTarget{OrgID: orgID, SpaceID: spaceID, Room: RoomFor(spaceID)}, userID)
+}
+
+// RecordingTarget: qué sala se graba y de quién es lo grabado.
+//
+// La sala y el espacio van por separado porque ya no son lo mismo: una reunión
+// con invitados (`meet:<id>`) cuelga de un canal, y su grabación se lista, se
+// anuncia y se autoriza en ese canal aunque la sala sea otra.
+type RecordingTarget struct {
+	OrgID    string
+	SpaceID  string
+	Room     string
+	InviteID *string
+}
+
+// StartIn abre la grabación de una sala.
 //
 // Comprueba que hay alguien dentro **antes** de insertar: una grabación de una
 // sala vacía dejaría el chip REC encendido para nadie y un fichero de silencio.
 // El choque contra el índice único es la otra guarda, y ésa sí es a prueba de
 // carreras — dos personas pulsando a la vez son dos INSERT en vuelo.
-func (s *RecordingService) Start(ctx context.Context, orgID, spaceID, userID string) (*domain.Recording, error) {
+func (s *RecordingService) StartIn(ctx context.Context, target RecordingTarget, userID string) (*domain.Recording, error) {
 	if !s.Enabled() {
 		return nil, ErrRecordingsDisabled
 	}
-	room := RoomFor(spaceID)
+	room := target.Room
 
 	people, err := s.lk.Participants(ctx, room)
 	if err != nil {
 		return nil, err
 	}
-	if humans(people) == 0 {
+	if present(room, people) == 0 {
 		return nil, ErrRoomEmpty
 	}
 
 	now := time.Now().UTC()
 	rec := &domain.Recording{
 		BaseModel: domain.BaseModel{ID: uuid.NewString()},
-		OrgID:     orgID, SpaceID: spaceID, Room: room, StartedBy: userID,
-		Status: domain.RecordingActive, StartedAt: now, TickedAt: now,
+		OrgID:     target.OrgID, SpaceID: target.SpaceID, Room: room, InviteID: target.InviteID,
+		StartedBy: userID,
+		Status:    domain.RecordingActive, StartedAt: now, TickedAt: now,
 	}
 	if err := s.repo.Create(rec); err != nil {
 		return nil, err
@@ -252,7 +270,7 @@ func (s *RecordingService) tickOne(ctx context.Context, rec *domain.Recording, n
 	// SFU (cinco minutos): eso serían cinco minutos de silencio grabado. Dos
 	// ticks seguidos y no uno, para que una reconexión de diez segundos no
 	// corte la reunión de nadie.
-	if humans(people) == 0 {
+	if present(rec.Room, people) == 0 {
 		rec.EmptyTicks++
 		if err := s.repo.SetEmptyTicks(rec.ID, rec.EmptyTicks); err != nil {
 			lg.Error("recording: counting empty ticks: " + err.Error())
@@ -296,6 +314,7 @@ func (s *RecordingService) discover(ctx context.Context, rec *domain.Recording, 
 				RecordingID:         rec.ID,
 				TrackSid:            t.Sid,
 				ParticipantIdentity: p.Identity,
+				ParticipantName:     truncateName(p.Name),
 				Source:              t.Source.String(),
 				MimeType:            strings.ToLower(t.MimeType),
 				Status:              domain.TrackStarting,
@@ -588,10 +607,16 @@ func (s *RecordingService) setFirstMedia(rec *domain.Recording, all []domain.Rec
 // ─── Consultas ───────────────────────────────────────────────────────────────
 
 func (s *RecordingService) Policy(spaceID string) (*domain.RecordingPolicy, error) {
+	return s.PolicyForRoom(RoomFor(spaceID))
+}
+
+// PolicyForRoom: lo mismo, para cualquier sala. Una reunión con invitados lo
+// pregunta por la suya.
+func (s *RecordingService) PolicyForRoom(room string) (*domain.RecordingPolicy, error) {
 	if !s.Enabled() {
 		return &domain.RecordingPolicy{Enabled: false}, nil
 	}
-	active, err := s.repo.ActiveInSpace(spaceID)
+	active, err := s.repo.ActiveInRoom(room)
 	if err != nil {
 		return nil, err
 	}
@@ -662,9 +687,7 @@ func (s *RecordingService) markRoom(ctx context.Context, rec *domain.Recording) 
 	payload := "{}"
 	if rec.Status == domain.RecordingActive {
 		b, err := json.Marshal(map[string]any{
-			"recording": domain.RecordingSignal{
-				ID: rec.ID, By: rec.StartedBy, Since: rec.StartedAt, SpaceID: rec.SpaceID,
-			},
+			"recording": signalOf(rec),
 		})
 		if err != nil {
 			lg.Error("recording: serialising the REC signal: " + err.Error())
@@ -684,21 +707,60 @@ func (s *RecordingService) publish(rec *domain.Recording) {
 	}
 	var signal *domain.RecordingSignal
 	if rec.Status == domain.RecordingActive {
-		signal = &domain.RecordingSignal{
-			ID: rec.ID, By: rec.StartedBy, Since: rec.StartedAt, SpaceID: rec.SpaceID,
-		}
+		sig := signalOf(rec)
+		signal = &sig
 	}
 	s.hub.Publish(events.Event{
 		Type:  "call:status",
 		OrgID: rec.OrgID,
 		Data: map[string]any{
-			"spaceId": rec.SpaceID, "recordingId": rec.ID,
-			"status": rec.Status, "recording": signal,
+			"spaceId": rec.SpaceID, "room": rec.Room, "inviteId": rec.InviteID,
+			"recordingId": rec.ID, "status": rec.Status, "recording": signal,
 		},
 	})
 }
 
 // ─── Ayudas ──────────────────────────────────────────────────────────────────
+
+func signalOf(rec *domain.Recording) domain.RecordingSignal {
+	return domain.RecordingSignal{
+		ID: rec.ID, By: rec.StartedBy, Since: rec.StartedAt, SpaceID: rec.SpaceID,
+		Room: rec.Room, InviteID: rec.InviteID,
+	}
+}
+
+// present: cuánta gente cuenta para que la grabación siga.
+//
+// En el canal, cualquier persona (`humans`). En una reunión con invitados,
+// **sólo los miembros** (`members`): quien graba es la organización, y un
+// invitado que se queda solo con la pestaña abierta mantendría la grabación
+// encendida hasta el tope de horas, grabando nada para nadie de dentro.
+func present(room string, people []*lksdk.ParticipantInfo) int {
+	if strings.HasPrefix(room, domain.MeetRoomPrefix) {
+		return members(people)
+	}
+	return humans(people)
+}
+
+// members: las personas que no son invitados.
+func members(people []*lksdk.ParticipantInfo) int {
+	n := 0
+	for _, p := range people {
+		if p.Kind == lksdk.ParticipantInfo_STANDARD && !domain.IsGuestIdentity(p.Identity) {
+			n++
+		}
+	}
+	return n
+}
+
+// truncateName recorta el nombre a lo que cabe en la columna, por runas.
+func truncateName(s string) string {
+	r := []rune(s)
+	if len(r) <= 80 {
+		return s
+	}
+	return string(r[:80])
+}
 
 // humans cuenta a la gente de verdad: el grabador de LiveKit entra a la sala
 // como un participante más, y contarlo haría que una sala en la que sólo queda

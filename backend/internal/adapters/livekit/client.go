@@ -40,6 +40,7 @@ type Client interface {
 	StopEgress(ctx context.Context, room, egressID string) (*lksdk.EgressInfo, error)
 	ListEgress(ctx context.Context, room string) ([]*lksdk.EgressInfo, error)
 	SetRoomMetadata(ctx context.Context, room, metadata string) error
+	RemoveParticipant(ctx context.Context, room, identity string) error
 }
 
 type client struct {
@@ -193,6 +194,22 @@ func (c *client) SetRoomMetadata(ctx context.Context, room, metadata string) err
 	}
 	_, err = svc.UpdateRoomMetadata(ctx, &lksdk.UpdateRoomMetadataRequest{
 		Room: room, Metadata: metadata,
+	})
+	return err
+}
+
+// RemoveParticipant saca a alguien de la sala. Es echar a un invitado: su
+// cliente recibe `PARTICIPANT_REMOVED` y no vuelve a conectar solo.
+//
+// Sacar no es prohibir: quien decide si puede volver es el servidor de cac, que
+// no le acuña otra entrada. Ver `CallInviteService.Kick`.
+func (c *client) RemoveParticipant(ctx context.Context, room, identity string) error {
+	svc, err := c.rooms(room)
+	if err != nil {
+		return err
+	}
+	_, err = svc.RemoveParticipant(ctx, &lksdk.RoomParticipantIdentity{
+		Room: room, Identity: identity,
 	})
 	return err
 }

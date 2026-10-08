@@ -33,8 +33,9 @@ import (
 // nada. Vale la pena.
 const recordingTick = 10 * time.Second
 
-// InitRecordingRoutes monta las rutas de grabación y arranca su reloj.
-func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
+// InitRecordingRoutes monta las rutas de grabación y arranca su reloj. Devuelve
+// el servicio para que las reuniones con invitados graben con el mismo.
+func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) *service.RecordingService {
 	// El mismo bucket privado que las capturas y los adjuntos. Aquí sólo se
 	// comprueba que existe: quien escribe las pistas es Egress con su propia
 	// credencial, que **sólo puede escribir bajo `recordings/`**.
@@ -93,6 +94,7 @@ func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 
 	startRecordingClock(svc)
 	buildInternalRouter(svc)
+	return svc
 }
 
 // El listener interno, para el mux. `nil` si no hay llave.

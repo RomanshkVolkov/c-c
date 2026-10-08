@@ -500,6 +500,34 @@ empezara por `cac:`, así que el `onInternalLink` del canal nunca llegó a ver u
 mención y esos clics caían a la rama de los adjuntos. Sin ese arreglo, el enlace
 `cac:recording/<uuid>` de la línea nueva tampoco habría abierto nada.
 
+## Grabar una reunión con invitados (W3, 8-oct-2026)
+
+Una reunión con gente de fuera (`meet:<id>`, ver `docs/voz.md` §9) se graba con
+el mismo reloj, los mismos egress y el mismo mux que un canal. Hay tres
+diferencias.
+
+- **El índice va por sala, no por espacio.** Antes daba igual, porque un
+  espacio tenía una sola sala. Ahora un canal y una reunión que cuelga de él son
+  dos salas del mismo espacio. Con el índice por `space_id`, grabar una impedía
+  grabar la otra, y la política del canal veía la grabación de la reunión como
+  si fuera suya. El índice pasó a `idx_recording_active_per_room` y vive en
+  `EnsureRecordingIndexes`, que llaman `db.go` y las bases de las pruebas: ya
+  no lo copian a mano. → `TestAChannelAndAMeetOfTheSameSpaceRecordAtOnce`.
+- **En una reunión, la sala vacía se cuenta en miembros, no en personas.** Quien
+  graba es la organización. Un invitado que se queda solo con la pestaña
+  abierta mantendría la grabación encendida hasta el tope de cuatro horas,
+  grabando para nadie de dentro. → `TestARecordingWithOnlyGuestsLeftStops`.
+- **La pista guarda el nombre (`ParticipantName`).** A un miembro lo identifica
+  su id. Un invitado no está en ningún directorio: sin el nombre, su voz sería
+  de `guest:…` para siempre. → `TestAGuestTrackKeepsTheGuestsName`.
+
+Una reunión sólo se graba si cuelga de un canal (`recording-needs-space`). El
+canal es donde se lista la grabación, se anuncia, se guarda en S3 y se
+autoriza: sin él quedaría una fila que nadie puede ver ni borrar. El invitado ve
+antes de entrar si la reunión **se puede grabar** y si **se está grabando**, y
+dentro de la sala ve el REC por el metadata, igual que cualquiera que llegue
+tarde.
+
 ## Lo que falta medir — lo que queda de la puerta
 
 Lo de la alineación ya está cerrado arriba. Queda lo que sólo se puede medir con

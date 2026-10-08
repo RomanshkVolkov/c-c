@@ -26,3 +26,24 @@ spec:
       backendRefs:
         - name: livekit
           port: 7880
+---
+# El relé TURN por el 443 (W3). El listener `turn-tls` del Gateway termina el
+# TLS de `turn.guz-studio.dev` y esto pasa el TCP, ya en claro, a LiveKit. Ver
+# el bloque `turn` de `5-livekit.yaml`.
+#
+# `sectionName` y no colgarse del Gateway entero: un TCPRoute sin sección se
+# ataría también al listener de Postgres.
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: livekit-turn-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: gateway-api
+      namespace: default
+      sectionName: turn-tls
+  rules:
+    - backendRefs:
+        - name: livekit
+          port: 5349

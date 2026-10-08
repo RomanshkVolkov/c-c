@@ -417,7 +417,14 @@ func (h *taskHandler) VoiceToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r)
-	token, err := h.voice.Token(sp.ID, user.UserID, user.Username)
+	// El nombre que ven los demás es el visible, no el de acceso: en una
+	// reunión con invitados lo ve gente de fuera, y «rvolkov» no es cómo se
+	// llama nadie. El usuario sólo si no hay nombre.
+	name := h.repo.DisplayName(user.UserID)
+	if name == "" {
+		name = user.Username
+	}
+	token, err := h.voice.Token(sp.ID, user.UserID, name)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to mint a voice token", err.Error())
 		return

@@ -28,8 +28,9 @@ func recordingLiveDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&domain.Recording{}, &domain.RecordingTrack{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recording_active_per_space
-		ON recordings (space_id) WHERE status = 'recording'`).Error; err != nil {
+	// El mismo índice parcial que pone `db.go`, del mismo sitio. Sin él, «ya se
+	// está grabando» dejaría de ser una garantía de la base.
+	if err := repository.EnsureRecordingIndexes(db); err != nil {
 		t.Fatal(err)
 	}
 	return db

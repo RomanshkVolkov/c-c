@@ -1350,3 +1350,11 @@ func (r *TaskRepository) Watchers(itemID string) ([]string, error) {
 		Pluck("user_id", &out).Error
 	return out, err
 }
+
+// DisplayName: cómo se llama una persona, para firmar lo que ven los demás (el
+// nombre de la voz). Por `nombreVisible`; vacío si no existe.
+func (r *TaskRepository) DisplayName(userID string) string {
+	var name string
+	r.db.Table("users").Select(nombreVisible).Where("id = ?", userID).Scan(&name)
+	return name
+}

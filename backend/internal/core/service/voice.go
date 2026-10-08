@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/livekit/protocol/auth"
+	"github.com/livekit/protocol/livekit"
 
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 )
@@ -57,19 +58,56 @@ func RoomFor(spaceID string) string { return "voice:" + spaceID }
 // filtrado sirve de algo.
 const voiceTokenTTL = time.Hour
 
+// TokenProfile: qué puede hacer quien entra con el token.
+type TokenProfile int
+
+const (
+	// MemberProfile: un miembro de la organización. Publica, escucha y manda
+	// datos (el chat de la llamada y los «está hablando» viajan por ahí).
+	MemberProfile TokenProfile = iota
+	// GuestProfile: alguien de fuera que entró con un enlace. Ver `guestGrant`.
+	GuestProfile
+)
+
 // Token acuña la entrada de una persona a la sala de un espacio.
 //
 // `identity` es el id de usuario de cac: es lo que permite que la app sepa quién
 // es cada participante sin un segundo directorio, y lo que hace que echar a
 // alguien sea posible más adelante.
-func (s *VoiceService) Token(spaceID, userID, username string) (string, error) {
+func (s *VoiceService) Token(spaceID, userID, name string) (string, error) {
+	return s.TokenFor(RoomFor(spaceID), userID, name, MemberProfile)
+}
+
+// TokenFor acuña la entrada a una sala concreta con un perfil.
+//
+// La sala la decide siempre quien llama a esto, **en el servidor**: un canal
+// (`RoomFor`) o una invitación (`domain.MeetRoomFor`). Nunca llega del cliente.
+func (s *VoiceService) TokenFor(room, identity, name string, profile TokenProfile) (string, error) {
 	if !s.Configured() {
 		return "", ErrVoiceUnconfigured
 	}
-	sala := RoomFor(spaceID)
-	concesion := &auth.VideoGrant{
+	concesion := memberGrant(room)
+	if profile == GuestProfile {
+		concesion = guestGrant(room)
+	}
+	t := auth.NewAccessToken(s.key, s.secret).
+		SetVideoGrant(concesion).
+		SetIdentity(identity).
+		SetName(name).
+		SetValidFor(voiceTokenTTL)
+	if profile == GuestProfile {
+		// Lo que la app mira para pintar la insignia de invitado **también**
+		// viaja aquí, puesto por el servidor; el invitado no lo puede cambiar
+		// porque no tiene `CanUpdateOwnMetadata`.
+		t.SetMetadata(`{"guest":true}`)
+	}
+	return t.ToJWT()
+}
+
+func memberGrant(room string) *auth.VideoGrant {
+	return &auth.VideoGrant{
 		RoomJoin: true,
-		Room:     sala,
+		Room:     room,
 		// Publicar y suscribirse, sí; administrar la sala, no. Un cliente no
 		// tiene por qué poder echar a nadie ni cambiar metadatos, y concederlo
 		// «por si acaso» es dar permisos que nadie pidió.
@@ -77,12 +115,31 @@ func (s *VoiceService) Token(spaceID, userID, username string) (string, error) {
 		CanSubscribe:   boolPtr(true),
 		CanPublishData: boolPtr(true),
 	}
-	t := auth.NewAccessToken(s.key, s.secret).
-		SetVideoGrant(concesion).
-		SetIdentity(userID).
-		SetName(username).
-		SetValidFor(voiceTokenTTL)
-	return t.ToJWT()
+}
+
+// guestGrant: lo que puede hacer alguien de fuera.
+//
+// Hablar, enseñar su cámara y su pantalla, y ver y oír a los demás — que es lo
+// que se decidió. **Nada de datos**: por ahí viajan cosas que la app de los
+// miembros se cree (el chat de la llamada, los avisos entre clientes), y un
+// invitado no tiene por qué poder escribirlas. **Ni renombrarse**: el nombre que
+// los demás ven es el que el servidor firmó al dejarle entrar.
+func guestGrant(room string) *auth.VideoGrant {
+	g := &auth.VideoGrant{
+		RoomJoin:             true,
+		Room:                 room,
+		CanPublish:           boolPtr(true),
+		CanSubscribe:         boolPtr(true),
+		CanPublishData:       boolPtr(false),
+		CanUpdateOwnMetadata: boolPtr(false),
+	}
+	g.SetCanPublishSources([]livekit.TrackSource{
+		livekit.TrackSource_MICROPHONE,
+		livekit.TrackSource_CAMERA,
+		livekit.TrackSource_SCREEN_SHARE,
+		livekit.TrackSource_SCREEN_SHARE_AUDIO,
+	})
+	return g
 }
 
 // URL del SFU, para que la app sepa a dónde conectarse.
@@ -101,6 +158,8 @@ type Ocupacion map[string][]OcupanteResponse
 type OcupanteResponse struct {
 	// Identity es el id de usuario de cac — el mismo que acuñó el token, así que
 	// la pantalla lo cruza con la gente que ya conoce sin un segundo directorio.
+	// En una reunión puede ser también un invitado, `guest:<id>`
+	// (`domain.IsGuestIdentity`), que no está en ningún directorio.
 	Identity string `json:"identity"`
 	Name     string `json:"name"`
 }
@@ -118,18 +177,34 @@ Cuando el volumen lo pida, la optimización es cachear unos segundos, no llevar
 un registro paralelo.
 */
 func (s *VoiceService) Ocupacion(ctx context.Context, spaceIDs []string) (Ocupacion, error) {
+	nombres := make([]string, len(spaceIDs))
+	for i, id := range spaceIDs {
+		nombres[i] = RoomFor(id)
+	}
+	porSala, err := s.OccupancyOf(ctx, nombres)
+	if err != nil {
+		return nil, err
+	}
 	out := Ocupacion{}
-	if !s.Configured() || len(spaceIDs) == 0 {
+	for sala, gente := range porSala {
+		out[strings.TrimPrefix(sala, salaPrefijo)] = gente
+	}
+	return out, nil
+}
+
+// OccupancyOf: quién está en cada sala, por nombre de sala. Las vacías no salen.
+//
+// Lo comparten los canales (`Ocupacion`) y las invitaciones, que tienen otro
+// prefijo y no se pueden pedir por id de espacio.
+func (s *VoiceService) OccupancyOf(ctx context.Context, nombres []string) (map[string][]OcupanteResponse, error) {
+	out := map[string][]OcupanteResponse{}
+	if !s.Configured() || len(nombres) == 0 {
 		return out, nil
 	}
 
 	// Se piden por nombre y no todas: un superadmin pertenece a muchas
 	// organizaciones, y traerse las salas de todas para descartar la mayoría
 	// sería contar en el servidor lo que ya sabíamos al preguntar.
-	nombres := make([]string, len(spaceIDs))
-	for i, id := range spaceIDs {
-		nombres[i] = RoomFor(id)
-	}
 	var salas struct {
 		Rooms []struct {
 			Name string `json:"name"`
@@ -186,7 +261,7 @@ func (s *VoiceService) Ocupacion(ctx context.Context, spaceIDs []string) (Ocupac
 		if len(gente) == 0 {
 			continue
 		}
-		out[strings.TrimPrefix(sala.Name, salaPrefijo)] = gente
+		out[sala.Name] = gente
 	}
 	return out, nil
 }

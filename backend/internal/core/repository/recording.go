@@ -12,9 +12,9 @@ import (
 
 var (
 	ErrRecordingNotFound = errors.New("recording not found")
-	// ErrAlreadyRecording: ya hay una grabación viva en ese espacio. No es un
+	// ErrAlreadyRecording: ya hay una grabación viva en esa sala. No es un
 	// fallo del servidor, es la respuesta correcta a pulsar dos veces.
-	ErrAlreadyRecording = errors.New("this space is already being recorded")
+	ErrAlreadyRecording = errors.New("this room is already being recorded")
 )
 
 type RecordingRepository struct{ db *gorm.DB }
@@ -47,13 +47,14 @@ func (r *RecordingRepository) FindByID(id string) (*domain.Recording, error) {
 	return &rec, nil
 }
 
-// ActiveInSpace: la grabación viva de un espacio, si la hay.
+// ActiveInRoom: la grabación viva de una sala, si la hay. `nil, nil` si no.
 //
-// Devuelve `nil, nil` cuando no hay ninguna: «no se está grabando» no es un
-// error, es la respuesta que la app espera casi siempre.
-func (r *RecordingRepository) ActiveInSpace(spaceID string) (*domain.Recording, error) {
+// Por sala y no por espacio: un canal y una reunión del mismo espacio son dos
+// salas, y preguntar por el espacio le diría al canal que está grabando cuando
+// quien graba es la reunión.
+func (r *RecordingRepository) ActiveInRoom(room string) (*domain.Recording, error) {
 	var rec domain.Recording
-	err := r.db.Where("space_id = ? AND status = ?", spaceID, domain.RecordingActive).
+	err := r.db.Where("room = ? AND status = ?", room, domain.RecordingActive).
 		First(&rec).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil

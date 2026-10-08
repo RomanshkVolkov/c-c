@@ -47,6 +47,8 @@ type fakeSFU struct {
 	// `ListEgress` todavía lo da por vivo. No es un caso inventado: son dos
 	// llamadas distintas, y la lista puede ir un paso por detrás.
 	stopSaysFinished bool
+	// removed: a quién se sacó de la sala, como `sala/identidad`.
+	removed []string
 }
 
 func (f *fakeSFU) Participants(context.Context, string) ([]*lksdk.ParticipantInfo, error) {
@@ -126,6 +128,20 @@ func (f *fakeSFU) SetRoomMetadata(_ context.Context, _, md string) error {
 	return nil
 }
 
+// RemoveParticipant apunta a quién se saca y lo quita de la sala, como el de
+// verdad.
+func (f *fakeSFU) RemoveParticipant(_ context.Context, room, identity string) error {
+	f.removed = append(f.removed, room+"/"+identity)
+	out := f.people[:0]
+	for _, p := range f.people {
+		if p.Identity != identity {
+			out = append(out, p)
+		}
+	}
+	f.people = out
+	return nil
+}
+
 // finish mueve un egress al estado que se le diga, con su fichero.
 func (f *fakeSFU) finish(sid string, status lksdk.EgressStatus, filename string, startedAt time.Time) {
 	for _, e := range f.egress {
@@ -202,10 +218,9 @@ func recordingDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&domain.Recording{}, &domain.RecordingTrack{}, &domain.User{}); err != nil {
 		t.Fatal(err)
 	}
-	// El mismo índice parcial que pone `db.go`. Sin él, «ya se está grabando»
-	// dejaría de ser una garantía de la base y pasaría a ser una carrera.
-	if err := db.Exec(`CREATE UNIQUE INDEX idx_recording_active_per_space
-		ON recordings (space_id) WHERE status = 'recording'`).Error; err != nil {
+	// El mismo índice parcial que pone `db.go`, del mismo sitio. Sin él, «ya se
+	// está grabando» dejaría de ser una garantía de la base.
+	if err := repository.EnsureRecordingIndexes(db); err != nil {
 		t.Fatal(err)
 	}
 	return db

@@ -66,6 +66,16 @@ compartir pantalla desde macOS.
 | Token | Lo acuña el backend de cac; sala `voice:<spaceId>` derivada en el servidor |
 | Cliente | `livekit` 0.8 (Rust) en el proceso Tauri; la UI manda órdenes y recibe eventos, como el pty del terminal |
 
+**Matiz de W3 (8-oct-2026): ahora sí hay un motor en el navegador, pero sólo en
+el build web.** Una persona de fuera no tiene la app, y el build web
+(`cac.guz-studio.dev/app`) existe para llegar a quien no la tiene. En ese build,
+la llamada va con `livekit-client`. El escritorio sigue con el motor nativo y no
+carga el del navegador: lo elige `VITE_TARGET` al compilar. Lo de las «dos
+superficies de bugs» sigue siendo verdad, y se paga a sabiendas. Lo contienen
+dos cosas: un solo contrato de eventos (`VoiceEvent`) para los dos motores, y
+una sola lectura del metadata de la sala (el port en TS de
+`recording_from_metadata`). Ver §9.
+
 ## 3 · Lo que costó, medido
 
 Spike en `spikes/voice-native/` — crate aparte a propósito: meter `livekit` en
@@ -144,6 +154,54 @@ El HTTPRoute de la señalización lleva `timeouts.request: 0s`. No es opcional: 
 valor por defecto de Envoy son 15 segundos y cortaría cada llamada a los quince
 — la misma lección que costó la ruta de eventos, aprendida una vez y aplicada
 aquí sin repetirla.
+
+### 6 bis · TURN: el relé para las redes que sólo dejan salir el 443 (W3, 8-oct-2026)
+
+Los invitados llegan desde redes que no controlamos. Una red corporativa o de
+hotel suele dejar salir **sólo el 443**. La señalización ya iba por ahí, a
+través del Gateway; el media no, porque usa los puertos 7881 y 7882 directos al
+host. Desde esas redes, la sala se abría y se quedaba en «conectando» para
+siempre. Lo resuelve TURN: un relé al que el navegador habla por TLS en el 443,
+que para el firewall es HTTPS normal.
+
+| Puerto | Protocolo | Para qué |
+|---|---|---|
+| 443 → 5349 | TCP, `turns:` por el Gateway | El relé para redes cerradas. **TLS terminado por Envoy** |
+| 3478 | UDP, directo al host | El relé para redes que sólo cierran el UDP raro |
+| 50000-50199 | UDP, local | Del relé al SFU. No sale de la máquina |
+
+Cuatro decisiones, cada una con su motivo:
+
+- **El TLS lo termina Envoy y no LiveKit** (`external_tls: true`). El
+  certificado es el compartido (`traefik-cert` → `secret-tls`, cert-manager por
+  HTTP01). Envoy lo recarga cuando se renueva; LiveKit lo lee una sola vez al
+  arrancar, así que a los 90 días el relé habría dejado de valer sin que nada
+  fallara. Por eso no se usa el passthrough.
+- **El listener `turn-tls` comparte el 443 con el `https` de todos los
+  dominios.** Envoy Gateway v1.6.2 pone HTTPS y TLS en el mismo «cubo» y sólo
+  marca conflicto si se repite un hostname (`validate.go`). El `https` no lleva
+  hostname y éste lleva `turn.guz-studio.dev`. En modo Terminate sólo admite
+  `TCPRoute` (`listener.go`).
+- **LiveKit anuncia siempre `turns:<domain>:443`**, valga lo que valga
+  `tls_port` (`roommanager.go` de v1.13.5). Por eso el navegador no necesita
+  saber nada del 5349, y la app no se tocó.
+- **El rango del relé va fuera de los NodePorts** (30000-32767). El rango por
+  defecto, 30000-40000, se pisaba con ellos, y el propio Gateway tiene NodePorts
+  ahí.
+
+Comprobado en el VPS: ufw no bloquea nada, y por eso el 5349 queda también
+abierto a internet en TCP plano. No es un agujero, porque TURN exige las
+credenciales que LiveKit da a cada participante.
+
+**El Gateway y el certificado no viven en ningún repo** y los usan otros
+proyectos. Se tocan con `infra/k8s/turn-setup.sh`, que aplica JSON patches que
+sólo añaden y es idempotente. Si algún listener queda en conflicto, retira el
+suyo en el acto. **Nunca** con un `apply` del objeto entero: su `last-applied`
+ya no coincide con lo vivo.
+
+→ Guardianes: `backend/k8s/manifests_test.go` (el puerto casa en LiveKit, el
+Service y la ruta; la ruta lleva sección; el relé queda fuera de los NodePorts;
+el dominio es el del script).
 
 ### Dos trampas que costaron una tarde, y que no se ven venir
 
@@ -808,8 +866,87 @@ callas creyendo que el otro no te oye.
    evento `voice.ring` por el websocket. Sin ese evento el timbre no se puede
    entregar, y no se emula desde el cliente.
 
+## 9 · Gente de fuera: reuniones con invitados (W3, 8-oct-2026)
+
+Una persona sin cuenta entra a una llamada con un enlace. El diseño cabe en
+cuatro reglas, y cada una tiene su prueba con mutación.
+
+**1. Cada invitación tiene su propia sala, `meet:<id>`, y nunca es la de un
+canal.** Un enlace se reenvía, se pega en un correo y acaba donde no debía. Por
+eso no puede abrir la voz permanente de un equipo: abre una reunión que caduca
+(de 1 h a 7 días, 24 h por defecto), que se puede revocar y de la que se puede
+echar a alguien. La sala la deriva el servidor (`domain.MeetRoomFor`), igual que
+la de un canal. → `TestAMeetRoomNeverCollidesWithAChannelRoom`,
+`TestTheGuestTokenNamesOnlyTheMeetRoom`.
+
+**2. La identidad de un invitado es `guest:<id>` y la acuña el servidor.** Todo
+lo que lee una identidad de LiveKit la había leído siempre como un id de
+usuario. El prefijo permite distinguir a un invitado sin preguntar a nadie
+(`domain.IsGuestIdentity`, por prefijo y no por «contiene»). Y como la acuña el
+servidor, nadie se puede presentar como un miembro escribiendo su id en el
+nombre. → `TestTheServerMintsTheGuestIdentity`,
+`TestGuestIdentityIsDecidedByPrefix`.
+
+**3. Lo que puede un invitado.** Puede publicar micrófono, cámara y pantalla, y
+suscribirse a lo de los demás. No puede mandar datos, porque por ahí viaja lo
+que la app de los miembros da por bueno. No puede cambiar su propio metadata,
+así que el nombre que ven los demás es el que firmó el servidor. Y no tiene
+`RoomAdmin`. El metadata `{"guest":true}` lo pone el token. →
+`TestTheGuestTokenCannotAdministerSendDataOrRenameItself`.
+
+**4. Hay dos tokens y cada uno lleva su llave.** Las llaves se derivan de la de
+acceso con las etiquetas `call-invite` y `call-guest`
+(`repository/call_token.go`).
+
+- **El enlace**, `<inviteID>.<hmac>`, no lleva fecha. La caducidad y la
+  revocación viven en la fila, y por eso revocar es una escritura y no una lista
+  negra. Además se puede volver a enseñar sin guardar ningún secreto.
+- **El pase**, `<guestID>.<exp>.<hmac(invite:guest:exp)>`, vale como mucho 12 h
+  y nunca más que la invitación. Sirve para volver con la misma identidad
+  después de recargar, y no sirve si a esa persona la echaron. →
+  `TestAnInviteLinkOpensOnlyItsInvite`, `TestAGuestPassIsBoundToInviteGuestAndTime`,
+  `TestTheInviteKeyIsNotTheReportKey`, `TestAKickedGuestCannotComeBackWithTheirPass`.
+
+### Las rutas
+
+Las de los miembros van detrás del JWT y de `authorizeOrg`, y contestan 404 a
+quien no es de la organización. Cuelgan de `/api/v1/call-invites`:
+
+- crear, listar, ver y revocar;
+- `/{id}/voice/token`, el token de un miembro, firmado con su nombre visible;
+- `/{id}/participants/{identity}/remove`, para echar a alguien (**sólo** a
+  invitados);
+- `/{id}/recordings`.
+
+Revocar es cosa de quien la abrió o de un admin, y además saca a los invitados
+que estén dentro.
+
+La puerta pública son **dos rutas y nada más**:
+`POST /api/v1/public/calls/{inspect,join}`. El token va en el cuerpo, porque una
+URL acaba en los logs del Gateway. El límite es de 60 por hora por IP y 120 por
+invitación, en memoria y por pod, igual que el de ingest. `inspect` no devuelve
+ningún id. → `TestOnlyThePublicCallRoutesSkipAuth` (recorre el enrutado con
+`chi.Walk`), `TestThePublicInspectRevealsNoIDs`, `TestJoinIsRateLimited`.
+
+El enlace que se comparte es `https://cac.guz-studio.dev/app/join#<token>`. Lo
+que va después del `#` no llega a nginx.
+
+### De paso: el nombre en la voz
+
+El token de un canal se firmaba con el `username`. Ahora se firma con el nombre
+visible (`nombreVisible`), como manda CLAUDE.md, porque en una reunión lo ven
+personas de fuera. → `TestTheVoiceNameIsTheVisibleName`.
+
+### Lo que no cubre
+
+- **Echar no es prohibir.** Quien borra su almacenamiento vuelve con otro nombre
+  mientras el enlace viva. Lo que lo resuelve es «quitar y revocar». Una sala de
+  espera con admisión queda para más adelante.
+- **Las redes que sólo dejan salir el 443** pasan por el relé TURN (§6 bis).
+  Sin él, un invitado de una red corporativa se quedaba en «conectando».
+
 ## Fuera de v1
 
-Llamadas 1:1 en directos con timbre, TURN sobre TLS para redes hostiles,
-grabación (LiveKit Egress), y cualquier fallback en navegador — rechazado a
-propósito, ver §2.
+Llamadas 1:1 en directos con timbre. TURN sobre TLS ya no está aquí: entró con
+W3 (§6 bis), porque los invitados vienen de redes que no controlamos. La grabación por Egress ya existe (ver `docs/grabacion.md`), y el
+motor del navegador también, pero sólo en el build web (§2 y §9).

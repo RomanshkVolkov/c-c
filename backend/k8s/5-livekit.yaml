@@ -27,6 +27,37 @@ data:
       # Respaldo para redes que bloquean UDP. Peor latencia, pero conecta.
       tcp_port: 7881
       use_external_ip: true
+    # TURN: el relé para quien no alcanza los 7881/7882 (W3, 8-oct-2026).
+    #
+    # Un invitado llega desde redes que no controlamos, y una red corporativa o
+    # de hotel suele dejar salir **sólo el 443**. La señalización ya va por el
+    # 443 (el Gateway); el media no, y sin relé la llamada se queda en
+    # «conectando». Ver `docs/voz.md` §6 bis.
+    #
+    # `turns:` por el 443, que para un firewall es HTTPS normal. El TLS **lo
+    # termina Envoy** (listener `turn-tls` del Gateway, con el mismo
+    # certificado de cert-manager que los demás dominios) y aquí llega TCP
+    # plano: eso es `external_tls`. Termina Envoy y no LiveKit porque Envoy
+    # recarga el certificado al renovarse y LiveKit lo lee una vez al arrancar
+    # — a los 90 días el relé habría dejado de valer sin que nada fallara.
+    #
+    # LiveKit anuncia **siempre** `turns:<domain>:443`, sea cual sea
+    # `tls_port` (leído en `roommanager.go` de v1.13.5): el navegador va al
+    # Gateway, y el Gateway a este puerto.
+    turn:
+      enabled: true
+      domain: turn.guz-studio.dev
+      tls_port: 5349
+      external_tls: true
+      # Y TURN por UDP en el 3478, directo al host: sirve a las redes que sólo
+      # cierran los puertos raros de UDP, y es el más barato de los dos.
+      udp_port: 3478
+      # El rango de puertos del relé, **fuera del de NodePorts** (30000-32767).
+      # El de por defecto (30000-40000) se pisaría con ellos: el Gateway mismo
+      # tiene NodePorts en 31200 y 32476. Doscientos dan para un equipo que
+      # relaya a la vez de sobra; el tráfico del relé al SFU es local.
+      relay_range_start: 50000
+      relay_range_end: 50199
     # Redis es el bus por el que el SFU y Egress se hablan (psrpc). Sin esto no
     # hay grabación, y con esto LiveKit entra en modo distribuido: si el bus
     # cae, **sigue sirviendo las salas que ya tiene pero no crea nuevas**. Ése
@@ -125,6 +156,11 @@ spec:
             - name: rtc-udp
               containerPort: 7882
               protocol: UDP
+            - name: turn-tls
+              containerPort: 5349
+            - name: turn-udp
+              containerPort: 3478
+              protocol: UDP
           volumeMounts:
             - name: config
               mountPath: /etc/livekit
@@ -157,6 +193,10 @@ spec:
     - name: signal
       port: 7880
       targetPort: 7880
+    # Lo que Envoy reenvía ya descifrado desde `turn.guz-studio.dev:443`.
+    - name: turn-tls
+      port: 5349
+      targetPort: 5349
 ---
 # El bus de Egress. Un Valkey mínimo y sin memoria: lo único que guarda son
 # mensajes en vuelo entre el SFU y el grabador.
