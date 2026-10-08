@@ -80,6 +80,7 @@ type TaskHandler interface {
 	DeleteStatus(w http.ResponseWriter, r *http.Request)
 	CreateTask(w http.ResponseWriter, r *http.Request)
 	GetTask(w http.ResponseWriter, r *http.Request)
+	TaskGit(w http.ResponseWriter, r *http.Request)
 	UpdateTask(w http.ResponseWriter, r *http.Request)
 	MoveTask(w http.ResponseWriter, r *http.Request)
 	DeleteTask(w http.ResponseWriter, r *http.Request)
@@ -1394,4 +1395,24 @@ func (h *taskHandler) RotateChannelKey(w http.ResponseWriter, r *http.Request) {
 		Success: true, Data: map[string]string{"ingestKey": key},
 		Message: "Anything still using the old key stops working now.",
 	})
+}
+
+// TaskGit: las ramas, PRs y commits de GitHub enlazados a una tarea. 404 antes
+// que 403 a quien no es de la organización, como el resto de la tarea.
+func (h *taskHandler) TaskGit(w http.ResponseWriter, r *http.Request) {
+	t, ok := h.resolveTask(w, r, chi.URLParam(r, "id"), false)
+	if !ok {
+		return
+	}
+	links, err := h.repo.GitLinks(t.ID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load the GitHub links", err.Error())
+		return
+	}
+	if links == nil {
+		links = &domain.TaskGitLinks{
+			Branches: []domain.TaskGitLink{}, PRs: []domain.TaskGitLink{}, Commits: []domain.TaskGitLink{},
+		}
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.TaskGitLinks]{Success: true, Data: links})
 }

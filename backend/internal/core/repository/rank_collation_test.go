@@ -62,7 +62,7 @@ func TestEveryRankColumnIsNumeric(t *testing.T) {
 	// El esquema tal como lo declara el dominio, que es lo que se comprueba.
 	if err := db.AutoMigrate(
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{},
-		&domain.TaskStatus{}, &domain.Item{},
+		&domain.TaskStatus{}, &domain.Item{}, &domain.DocPage{},
 	); err != nil {
 		t.Fatal(err)
 	}

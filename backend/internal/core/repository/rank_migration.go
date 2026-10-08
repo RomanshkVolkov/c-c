@@ -46,6 +46,9 @@ var rankTables = []rankTable{
 	// La tabla vieja, de la que `unify-items-v1` sigue copiando mientras exista:
 	// si su rango siguiera siendo texto, la copia a `items` fallaría al insertar.
 	{"tasks", "list_id"},
+	// Las páginas de un documento se ordenan entre las hermanas de la misma
+	// madre (ver domain/doc_page.go).
+	{"doc_pages", "doc_id, parent_id"},
 }
 
 func migrateRanks(db *gorm.DB) {

@@ -376,6 +376,7 @@ func listItemComments(db *gorm.DB, itemID string, includeInternal, includeWithdr
 		       c.author_project_id, p.name AS author_project_name,
 		       c.author_external_id, c.author_external_name,
 		       r.reporter_name, r.reporter_id, c.deleted_at, c.visibility,
+		       split_part(COALESCE(c.source_key, ''), ':', 1) AS source,
 		       c.body, c.created_at, c.updated_at
 		FROM item_comments c
 		JOIN items r ON r.id = c.item_id

@@ -173,6 +173,9 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		// Across every list, unlike the board. The dashboard's pending list.
 		r.Get("/", h.ListOpen)
 		r.Get("/{id}", h.GetTask)
+		// Lo de GitHub enlazado a la tarea, para que el panel se refresque solo
+		// con el evento `task:git` sin volver a pedir el detalle entero.
+		r.Get("/{id}/git", h.TaskGit)
 		r.Patch("/{id}", h.UpdateTask)
 		r.Delete("/{id}", h.DeleteTask)
 		r.Post("/{id}/move", h.MoveTask)
@@ -212,6 +215,17 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{kind}/{ownerId}/review-request", docH.RequestReview)
 		r.Get("/{kind}/{ownerId}/versions", docH.Versions)
 		r.Post("/{kind}/{ownerId}/versions/{versionId}/restore", docH.Restore)
+		// Las páginas que cuelgan de la portada (ver domain/doc_page.go).
+		r.Get("/{kind}/{ownerId}/pages", docH.PageTree) // ?trashed=1, la papelera
+		r.Post("/{kind}/{ownerId}/pages", docH.CreatePage)
+		r.Get("/{kind}/{ownerId}/pages/{pageId}", docH.GetPage)
+		r.Put("/{kind}/{ownerId}/pages/{pageId}", docH.SavePage)
+		r.Delete("/{kind}/{ownerId}/pages/{pageId}", docH.TrashPage)
+		r.Post("/{kind}/{ownerId}/pages/{pageId}/append", docH.AppendPage)
+		r.Post("/{kind}/{ownerId}/pages/{pageId}/move", docH.MovePage)
+		r.Post("/{kind}/{ownerId}/pages/{pageId}/restore", docH.RestorePage)
+		r.Get("/{kind}/{ownerId}/pages/{pageId}/versions", docH.PageVersions)
+		r.Post("/{kind}/{ownerId}/pages/{pageId}/versions/{versionId}/restore", docH.RestorePageVersion)
 		r.Post("/{id}/attachments", docH.UploadAttachment)
 		r.Delete("/{id}/attachments/{attachmentId}", docH.DeleteAttachment)
 	})

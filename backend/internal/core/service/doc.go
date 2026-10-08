@@ -77,6 +77,9 @@ func (s *DocService) SaveTab(
 	orgID string, kind domain.DocOwnerKind, ownerID string,
 	key domain.DocTabKey, body, userID string, baseHash *string,
 ) (*domain.Doc, error) {
+	if domain.DocBodyTooLong(body) {
+		return nil, ErrDocBodyTooLong
+	}
 	antes, hashActual := "", ""
 	if doc, err := s.repo.Find(kind, ownerID); err == nil && doc != nil {
 		if tabs, err := s.repo.Tabs(doc.ID); err == nil {
@@ -103,7 +106,9 @@ func (s *DocService) SaveTab(
 		return nil, err
 	}
 	if antes != body {
-		s.dropRemovedAttachments(doc.ID, antes, s.allTabsText(doc.ID))
+		// Ya guardado: `AttachmentCited` pregunta a la base por todas las
+		// pestañas y páginas, la que se acaba de escribir incluida.
+		s.pruneUncited(doc.ID, antes, body)
 	}
 	s.stampAuthor(doc)
 	return doc, nil
@@ -121,21 +126,6 @@ func (s *DocService) AppendTab(
 	}
 	s.stampAuthor(doc)
 	return doc, nil
-}
-
-// Todo el markdown del documento junto, para decidir si un adjunto sigue citado.
-func (s *DocService) allTabsText(docID string) string {
-	tabs, err := s.repo.Tabs(docID)
-	if err != nil {
-		// Sin poder leerlas, no se borra nada: perder un fichero por un error de
-		// lectura es peor que dejar uno huérfano.
-		return ""
-	}
-	var todo string
-	for _, t := range tabs {
-		todo += t.Body
-	}
-	return todo
 }
 
 // Versions: el historial de una sección.
@@ -429,9 +419,9 @@ func (s *DocService) RequestReview(
 		nombre := s.repo.OwnerName(kind, ownerID)
 		for _, uid := range reviewRecipients(d.MaintainerID, userID, admins) {
 			s.inbox.Notify(domain.Aviso{
-				UserID:    uid,
-				OrgID:     orgID,
-				Kind:      "doc:review",
+				UserID: uid,
+				OrgID:  orgID,
+				Kind:   "doc:review",
 				// Sólo la clave: la frase la escribe la campana en el idioma de
 				// quien la lee (ver TestNadieEscribeLaFraseQueOtroVaALeer).
 				TitleKey:  "notify.doc.review",

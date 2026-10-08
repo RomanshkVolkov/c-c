@@ -621,7 +621,11 @@ type ReportCommentResponse struct {
 	// receive this shape over the wire are the tenant and the reporter, and they
 	// are already sent nothing but public lines — telling them "this one is
 	// public" would be noise at best.
-	Visibility         string `json:"-"`
+	Visibility string `json:"-"`
+	// Source: de qué fuera vino una línea de sistema («gh», «deploy»), el
+	// prefijo de su `source_key`. Scan-only como Visibility: sólo lo lee el
+	// tablero.
+	Source             string `json:"-"`
 	AuthorProjectID    string `json:"-"`
 	AuthorProjectName  string `json:"-"`
 	AuthorExternalID   string `json:"-"`

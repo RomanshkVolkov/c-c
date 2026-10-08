@@ -875,6 +875,8 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 		return m
 	}
 	commentsBy, attachmentsBy := countBy(comments), countBy(attachments)
+	// El chip de PR de cada tarjeta: una consulta agrupada para todo el tablero.
+	gitBy := GitSummaries(r.db, ids)
 
 	cards := make([]domain.TaskCard, len(tasks))
 	for i, t := range tasks {
@@ -895,6 +897,10 @@ func (r *TaskRepository) Board(listID string) ([]domain.TaskCard, error) {
 			// Qué máquina la gobierna, resuelta aquí y no en el cliente. Ver
 			// `TaskCard.Flow`.
 			Flow: t.Flow(),
+		}
+		if g, ok := gitBy[t.ID]; ok {
+			g := g
+			cards[i].Git = &g
 		}
 	}
 	return cards, nil
@@ -1109,6 +1115,7 @@ func (r *TaskRepository) Comments(taskID string) ([]domain.TaskCommentResponse, 
 			AuthorName:   row.AuthorName,
 			Visibility:   domain.ItemVisibility(row.Visibility),
 			Kind:         row.Kind,
+			Source:       row.Source,
 			Body:         row.Body,
 			Attachments:  att,
 			CreatedAt:    row.CreatedAt,
@@ -1357,4 +1364,9 @@ func (r *TaskRepository) DisplayName(userID string) string {
 	var name string
 	r.db.Table("users").Select(nombreVisible).Where("id = ?", userID).Scan(&name)
 	return name
+}
+
+// GitLinks: lo de GitHub enlazado a una tarea. Ver `GitLinksOf`.
+func (r *TaskRepository) GitLinks(itemID string) (*domain.TaskGitLinks, error) {
+	return GitLinksOf(r.db, itemID)
 }

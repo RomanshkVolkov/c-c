@@ -316,6 +316,16 @@ type DocMark struct {
 	MaintainerID   string     `json:"maintainerId,omitempty"`
 	MaintainerName string     `json:"maintainerName,omitempty"`
 	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
+	// Pages: cuántas páginas cuelgan del doc, fuera de la papelera. El índice
+	// las cuenta y el navegador marca el doc como escrito aunque la portada esté
+	// vacía: un doc que sólo tiene páginas es un doc.
+	Pages int `json:"pages,omitempty"`
+}
+
+// DocMarkWritten: si un documento cuenta como escrito. Pura para poder probar
+// la regla sin base: una portada vacía con páginas debajo **está** escrita.
+func DocMarkWritten(tabsWithText bool, legacyBody string, pages int) bool {
+	return tabsWithText || legacyBody != "" || pages > 0
 }
 
 // DocStaleAfter es cuánto aguanta un documento sin que nadie lo confirme.
@@ -957,6 +967,8 @@ type TaskCard struct {
 	// Un tablero mezcla las dos clases —trabajo interno y tickets de un cliente
 	// en la misma lista— así que esto no puede ser del tablero: es de la tarjeta.
 	Flow ItemFlow `json:"flow"`
+	// Git: el resumen de GitHub de la tarjeta, para el chip de PR del tablero.
+	Git *GitSummary `json:"git,omitempty"`
 }
 
 type BoardResponse struct {
@@ -1067,11 +1079,15 @@ type TaskCommentResponse struct {
 	Visibility ItemVisibility `json:"visibility"`
 	// Kind marks the ones the system wrote ("status: x → y") so they can be drawn
 	// as events rather than as somebody's words.
-	Kind        ReportCommentKind `json:"kind"`
-	Body        string            `json:"body"`
-	Attachments []TaskAttachment  `json:"attachments"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	UpdatedAt   time.Time         `json:"updatedAt"`
+	Kind ReportCommentKind `json:"kind"`
+	// Source: de dónde vino una línea de sistema que escribió algo de fuera
+	// («gh», «deploy»). Sin esto la pantalla no distinguía una línea de GitHub
+	// de un cambio de estado, y firmaba las dos como «unknown».
+	Source      string           `json:"source,omitempty"`
+	Body        string           `json:"body"`
+	Attachments []TaskAttachment `json:"attachments"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	UpdatedAt   time.Time        `json:"updatedAt"`
 }
 
 type TaskDetail struct {
@@ -1095,4 +1111,7 @@ type TaskDetail struct {
 	// and it hasn't been purged. The report facade has always returned this; the
 	// board could not show what led up to a bug without it.
 	Telemetry json.RawMessage `json:"telemetry,omitempty"`
+	// Git: las ramas, PRs y commits de GitHub enlazados a la tarea. Va en el
+	// detalle que la app y el MCP (`get_task`) ya piden, sin viaje aparte.
+	Git *TaskGitLinks `json:"git,omitempty"`
 }

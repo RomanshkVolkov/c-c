@@ -334,6 +334,12 @@ verbatim—, pero la ruta `EventSource`, que existe para correr la interfaz en u
 navegador normal, se los come en silencio. Con la R9 también faltan `ci:run`,
 `deploy:status` y `deploy:log`: la app de la R9 completa la lista.
 
+Y otra vez con W3 (8-oct-2026): faltaban `voice.ring` y `voice.ring.cancel`,
+así que **en la web no sonaba ningún timbre** (daba igual mientras la web no
+tenía voz). Entraron con `call:knock` (la sala de espera) y `task:git` (el
+panel de GitHub de una tarea). Lo vigila `hooks/llamadas-evento.test.ts`: cada
+tipo nuevo del servidor tiene que entrar en esa lista o la web no lo oye.
+
 ## 5 · Reglas para no volver a romperlo
 
 **Una clase nueva no es gratis.** La app es un binario de escritorio que se

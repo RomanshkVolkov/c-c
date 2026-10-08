@@ -217,13 +217,49 @@ procedencia, compartir al chat y volver desde él, e índice de la organización
 
 | Abierto | Por qué |
 |---|---|
-| PR 7 — GitHub | **No se empieza** hasta que existan la App de organización y el receptor de webhook. Es infraestructura, no código de app. |
+| PR 7 — GitHub (reflejar un `.md` del repo en una pestaña) | La App y el webhook ya existen; queda sin empezar, aparte del enlace de PRs a tareas. |
 | `DocView.tsx` sigue en el repo | Se borra cuando las pestañas estén verificadas a mano contra el backend desplegado. |
 | `/doc` en el compositor | El menú `/` está escrito contra el DOM, no contra React: meter ahí un selector de documento es un PR propio, no una línea. |
 
 El MCP ya escribe documentación: seis herramientas con dos permisos separados
 (`docs:write` sólo añade, `docs:manage` puede pisar), y guardar a la vez ya no
 borra lo del otro.
+
+**En curso (8-oct-2026): páginas tipo Confluence, búsqueda de texto completo y
+PRs/commits en la tarea.** Plan: `~/.claude-dwit/plans/shimmering-crunching-kitten.md`;
+tarea cac #143 (lista Backend). Por qué: en Proteus (dwit) se crearon cuatro
+listas vacías sólo para tener más docs, y la portada de «Apps» llegó a 133 000
+caracteres. Las cuatro pestañas quedan como **portada** de cada nodo y debajo
+cuelga un árbol de páginas.
+
+- **Tanda 1 (backend), hecha sin commitear:**
+  - `DocPage` + `DocPageVersion`, rutas `/docs/{kind}/{id}/pages…`, scopes
+    (crear y añadir con `docs:write`; pisar, mover, papelera y restaurar con
+    `docs:manage`; no hay purga).
+  - Búsqueda tsvector: configuración `cac_simple` (simple + unaccent),
+    columnas generadas con GIN en `EnsureSearchIndexes`, fragmentos con
+    `ts_headline`. **Antes de desplegar: `CREATE EXTENSION unaccent` en prod.**
+  - Tope de 512 000 caracteres por pestaña o página (413).
+  - `TaskGitLink`: ramas, PRs con estado y commits; enlace por nombre de rama
+    (`cac-12-…`, `acme-7-…`); el hilo sólo cuenta «enlazada» y «fusionada»;
+    `GET /tasks/{id}/git`; `TaskCard.git`, `TaskDetail.git`.
+- **Tanda 2 (app), hecha sin commitear:**
+  - MCP: `list_doc_pages`, `get_doc_page`, `create_doc_page`,
+    `append_doc_page`, `write_doc_page`, `write_doc_page_section`,
+    `move_doc_page`, `delete_doc_page`; `get_doc` cuenta las páginas.
+  - Documento en dos columnas: árbol (`DocPageTree`) y página (`DocPageView`:
+    migas, título, autoguardado con `doc-page-conflict`, hijas al pie).
+  - `&page=` en los enlaces; `lib/open-ref.ts` abre dentro los enlaces de un
+    documento (antes se iban al navegador). Paleta con fragmento resaltado.
+  - Panel «Desarrollo» en la tarea, chip de PR en tarjeta y lista, comentarios
+    del webhook firmados «GitHub», evento `task:git`. `DocView.tsx` borrado.
+  - De paso: `IncomingCall.test.tsx` dejaba la suite en exit 1 desde 55e5e0a
+    (**`app.yml` en rojo en main**); arreglado el mock.
+- **Pendiente de la tanda 2:** `&tab=` sigue sin leerse al abrir un enlace
+  (ya pasaba antes; la paleta lo manda). Correr el escenario de Proteus por MCP.
+- **Tanda 3:** arrastrar y «Mover a…», papelera y restaurar, plantillas de
+  página, historial por página, contadores en `DocIndex`, «esta página» al
+  compartir.
 
 ## 🎙️ Grabar la reunión (antes: transcribirla)
 

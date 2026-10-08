@@ -302,6 +302,12 @@ var patWritable = []struct {
 	// el contenido ni afirma nada sobre él, sólo avisa de que hay algo que mirar.
 	// Firmarla sigue fuera del alcance de cualquier token (#84, #92).
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/review-request/?$`), domain.ScopeDocsWrite},
+	// Crear una página y añadir al final de una: las dos sólo añaden. Es el
+	// mismo argumento que crear una lista con tasks:write — sin poder crear
+	// páginas, un agente no puede partir un documento de 130 000 caracteres en
+	// las páginas que necesita.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/?$`), domain.ScopeDocsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/append/?$`), domain.ScopeDocsWrite},
 	// Creating a collection, so an agent that just described an API can leave it
 	// ready to run. Sharing one is not here on purpose: that reaches other
 	// people, and it should take a person to decide.
@@ -341,6 +347,15 @@ var patWritable = []struct {
 	// superadmin lo es (#84).
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/tabs/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+$`), domain.ScopeDocsManage},
+	// Pisar, mover, mandar a la papelera y restaurar una página: todo cambia lo
+	// que ya hay, así que es Manage. La papelera entra porque se recupera desde
+	// la app y un agente que creó una página equivocada tiene que poder
+	// deshacerla; **no existe purga**, así que ningún token destruye contenido.
+	{http.MethodPut, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+$`), domain.ScopeDocsManage},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/move/?$`), domain.ScopeDocsManage},
+	{http.MethodDelete, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+$`), domain.ScopeDocsManage},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/restore/?$`), domain.ScopeDocsManage},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/versions/[^/]+/restore/?$`), domain.ScopeDocsManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+$`), domain.ScopeReportsManage},
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/[^/]+$`), domain.ScopeReportsManage},
 	// Correcting or withdrawing a comment. Under manage rather than write

@@ -146,6 +146,10 @@ func DBConnection() {
 		&domain.Recording{}, &domain.RecordingTrack{},
 		// Llamar con gente de fuera (W3). Ver domain/call_invite.go.
 		&domain.CallInvite{}, &domain.CallGuest{},
+		// Las páginas de documentación (ver domain/doc_page.go).
+		&domain.DocPage{}, &domain.DocPageVersion{},
+		// Lo que GitHub tiene enlazado a cada tarea (ver domain/github.go).
+		&domain.TaskGitLink{},
 	); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
@@ -168,6 +172,11 @@ func DBConnection() {
 	// deploy.go: están ahí para que las pruebas monten los mismos.
 	if err := EnsureDeployIndexes(db); err != nil {
 		lg.Error("deploy indexes: " + err.Error())
+	}
+
+	// La búsqueda de texto completo de la documentación. Ver search_index.go.
+	if err := EnsureSearchIndexes(db); err != nil {
+		lg.Error("search indexes: " + err.Error())
 	}
 
 	// Un commit o una PR comenta una tarea una sola vez. Ver github.go.

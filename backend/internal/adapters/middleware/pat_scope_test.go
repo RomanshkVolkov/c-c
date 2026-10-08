@@ -59,6 +59,15 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/docs/space/abc/decisions", domain.ScopeDocsWrite},
 		// Pedir una revisión sólo añade (#92): con `docs:write`, no `docs:manage`.
 		{http.MethodPost, "/api/v1/docs/list/abc/review-request", domain.ScopeDocsWrite},
+		// Páginas: crear y añadir sólo añaden; pisar, mover, papelera y
+		// restaurar cambian lo que hay.
+		{http.MethodPost, "/api/v1/docs/list/abc/pages", domain.ScopeDocsWrite},
+		{http.MethodPost, "/api/v1/docs/list/abc/pages/p1/append", domain.ScopeDocsWrite},
+		{http.MethodPut, "/api/v1/docs/list/abc/pages/p1", domain.ScopeDocsManage},
+		{http.MethodPost, "/api/v1/docs/list/abc/pages/p1/move", domain.ScopeDocsManage},
+		{http.MethodDelete, "/api/v1/docs/list/abc/pages/p1", domain.ScopeDocsManage},
+		{http.MethodPost, "/api/v1/docs/list/abc/pages/p1/restore", domain.ScopeDocsManage},
+		{http.MethodPost, "/api/v1/docs/list/abc/pages/p1/versions/v1/restore", domain.ScopeDocsManage},
 		// Reemplazar una sección entera, y poner dueño o línea fijada.
 		{http.MethodPut, "/api/v1/docs/list/abc/tabs/overview", domain.ScopeDocsManage},
 		{http.MethodPatch, "/api/v1/docs/folder/abc", domain.ScopeDocsManage},

@@ -2,6 +2,9 @@ package repository
 
 import (
 	"errors"
+	"time"
+
+	"github.com/google/uuid"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -170,4 +173,145 @@ func (r *GitHubRepository) FindRepoByName(orgID, fullName string) (*domain.GitHu
 		return nil, err
 	}
 	return &repo, nil
+}
+
+// ─── Enlaces de GitHub en una tarea ──────────────────────────────────────────
+
+// UpsertGitLink apunta o actualiza un enlace. Dice si cambió algo, para no
+// avisar a la pantalla de una entrega que no aportó nada.
+//
+// La guarda es `github_updated_at`, como el rango de estado de los runs
+// (`UpsertRun`) pero por tiempo: GitHub no garantiza el orden de entrega, y una
+// `synchronize` vieja que llegara después del merge devolvería la PR a abierta.
+// Por tiempo y no por rango porque `closed → reopened` es legal.
+//
+// `occurred_at` no se pisa: es la primera vez que se vio.
+func (r *GitHubRepository) UpsertGitLink(l *domain.TaskGitLink) (bool, error) {
+	if l.ID == "" {
+		l.ID = uuid.NewString()
+	}
+	res := r.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "item_id"}, {Name: "repo_id"}, {Name: "kind"}, {Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"title", "html_url", "author_login", "state", "head_branch", "base_branch",
+			"head_sha", "merged_at", "github_updated_at", "updated_at",
+		}),
+		Where: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: `EXCLUDED.github_updated_at IS NULL
+			OR task_git_links.github_updated_at IS NULL
+			OR EXCLUDED.github_updated_at >= task_git_links.github_updated_at`}}},
+	}).Create(l)
+	return res.RowsAffected > 0, res.Error
+}
+
+// MarkBranchDeleted marca una rama como borrada en todas las tareas que la
+// tienen, y dice cuáles eran (para avisarlas). Se conserva la fila, como Jira:
+// la rama de una PR fusionada casi siempre se borra, y eso es historia.
+func (r *GitHubRepository) MarkBranchDeleted(repoID int64, branch string) ([]domain.TaskGitLink, error) {
+	var links []domain.TaskGitLink
+	if err := r.db.Where("repo_id = ? AND kind = ? AND key = ? AND state <> ?",
+		repoID, domain.GitLinkBranch, branch, domain.BranchDeleted).Find(&links).Error; err != nil {
+		return nil, err
+	}
+	if len(links) == 0 {
+		return nil, nil
+	}
+	err := r.db.Model(&domain.TaskGitLink{}).
+		Where("repo_id = ? AND kind = ? AND key = ?", repoID, domain.GitLinkBranch, branch).
+		Updates(map[string]any{"state": domain.BranchDeleted, "updated_at": time.Now()}).Error
+	return links, err
+}
+
+// GitLinksOf: lo enlazado a una tarea, agrupado y en orden. Nil si la tabla no
+// existe (una base sin este módulo): el detalle de una tarea no puede caerse
+// por esto.
+func GitLinksOf(db *gorm.DB, itemID string) (*domain.TaskGitLinks, error) {
+	if !db.Migrator().HasTable(&domain.TaskGitLink{}) {
+		return nil, nil
+	}
+	var rows []domain.TaskGitLink
+	if err := db.Where("item_id = ?", itemID).Order("occurred_at DESC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := &domain.TaskGitLinks{
+		Branches: []domain.TaskGitLink{}, PRs: []domain.TaskGitLink{}, Commits: []domain.TaskGitLink{},
+	}
+	open, merged, closed := 0, 0, 0
+	for _, l := range rows {
+		switch l.Kind {
+		case domain.GitLinkBranch:
+			out.Branches = append(out.Branches, l)
+		case domain.GitLinkPR:
+			out.PRs = append(out.PRs, l)
+			switch l.State {
+			case domain.PRStateOpen, domain.PRStateDraft:
+				open++
+			case domain.PRStateMerged:
+				merged++
+			default:
+				closed++
+			}
+		case domain.GitLinkCommit:
+			out.Summary.Commits++
+			if len(out.Commits) < domain.MaxGitCommitsShown {
+				out.Commits = append(out.Commits, l)
+			}
+		}
+	}
+	out.Summary.Branches, out.Summary.PRs = len(out.Branches), len(out.PRs)
+	out.Summary.PRBadge = domain.GitBadge(open, merged, closed)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
+// GitSummaries: el resumen de cada tarjeta de un tablero, en una consulta
+// agrupada. Las tarjetas sin nada no salen.
+func GitSummaries(db *gorm.DB, itemIDs []string) map[string]domain.GitSummary {
+	out := map[string]domain.GitSummary{}
+	if len(itemIDs) == 0 || !db.Migrator().HasTable(&domain.TaskGitLink{}) {
+		return out
+	}
+	type fila struct {
+		ItemID, Kind, State string
+		N                   int
+	}
+	var filas []fila
+	if err := db.Model(&domain.TaskGitLink{}).Select("item_id, kind, state, count(*) AS n").
+		Where("item_id IN ?", itemIDs).Group("item_id, kind, state").Scan(&filas).Error; err != nil {
+		return out
+	}
+	type cuenta struct{ open, merged, closed int }
+	prs := map[string]*cuenta{}
+	for _, f := range filas {
+		s := out[f.ItemID]
+		switch f.Kind {
+		case domain.GitLinkBranch:
+			s.Branches += f.N
+		case domain.GitLinkCommit:
+			s.Commits += f.N
+		case domain.GitLinkPR:
+			s.PRs += f.N
+			c := prs[f.ItemID]
+			if c == nil {
+				c = &cuenta{}
+				prs[f.ItemID] = c
+			}
+			switch f.State {
+			case domain.PRStateOpen, domain.PRStateDraft:
+				c.open += f.N
+			case domain.PRStateMerged:
+				c.merged += f.N
+			default:
+				c.closed += f.N
+			}
+		}
+		out[f.ItemID] = s
+	}
+	for id, c := range prs {
+		s := out[id]
+		s.PRBadge = domain.GitBadge(c.open, c.merged, c.closed)
+		out[id] = s
+	}
+	return out
 }

@@ -82,7 +82,9 @@ func (s *SearchService) SearchOrgs(query string, orgIDs []string, userID string,
 	}
 	merge := func(dst *[]domain.SearchHit, seen map[string]bool, src []domain.SearchHit) {
 		for _, h := range src {
-			key := string(h.Kind) + ":" + h.ID
+			// Con el enlace: dos pestañas, o dos páginas, de un mismo doc
+			// comparten nodo y no son el mismo acierto.
+			key := string(h.Kind) + ":" + h.ID + "|" + h.Link
 			if len(*dst) < limit && !seen[key] {
 				seen[key] = true
 				*dst = append(*dst, h)

@@ -30,6 +30,18 @@ type DocHandler interface {
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
 	RawAttachment(w http.ResponseWriter, r *http.Request)
+
+	// Páginas (ver doc_page.go).
+	PageTree(w http.ResponseWriter, r *http.Request)
+	CreatePage(w http.ResponseWriter, r *http.Request)
+	GetPage(w http.ResponseWriter, r *http.Request)
+	SavePage(w http.ResponseWriter, r *http.Request)
+	AppendPage(w http.ResponseWriter, r *http.Request)
+	MovePage(w http.ResponseWriter, r *http.Request)
+	TrashPage(w http.ResponseWriter, r *http.Request)
+	RestorePage(w http.ResponseWriter, r *http.Request)
+	PageVersions(w http.ResponseWriter, r *http.Request)
+	RestorePageVersion(w http.ResponseWriter, r *http.Request)
 }
 
 type docHandler struct {
@@ -166,6 +178,10 @@ func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
 	}
 	user, _ := currentUser(r)
 	doc, err := h.svc.SaveTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID, req.BaseHash)
+	if errors.Is(err, service.ErrDocBodyTooLong) {
+		SendErrorResponse(w, http.StatusRequestEntityTooLarge, "This text is too long", "body-too-large")
+		return
+	}
 	if errors.Is(err, service.ErrDocConflict) {
 		// 409 con el documento entero dentro: quien llama necesita el cuerpo
 		// actual y su hash para fundir, y hacerle pedirlo aparte es un viaje más

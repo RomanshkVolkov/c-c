@@ -87,20 +87,92 @@ func (r *SearchRepository) Notes(query, ownerID string, limit int) ([]domain.Sea
 	return out, err
 }
 
-// Docs de la organización, buscando en el texto de las secciones.
+// Docs de la organización: las pestañas de cada portada y las páginas, con
+// texto completo (ver search_index.go).
 //
-// Se busca en `doc_tabs` y no en `docs`: desde que el documento se reparte en
-// cuatro pestañas, el cuerpo de la fila padre está vacío en todos los nuevos, y
-// una búsqueda contra él encontraría sólo los de antes.
+// Ordenado por relevancia (`ts_rank_cd`, con el título de una página pesando
+// más que el cuerpo) y con el trozo donde aparece lo buscado (`ts_headline`).
+// El fragmento se calcula **después** de quedarse con los mejores: sobre todos
+// los aciertos costaría lo que cuesta resaltar cientos de páginas enteras para
+// enseñar ocho.
 //
-// El nombre del nodo se resuelve con tres `LEFT JOIN` y no con tres consultas:
-// un documento cuelga de un espacio, una carpeta o una lista, y sin el nombre la
-// fila del resultado sería un identificador que nadie reconoce.
+// Si la búsqueda de texto no está montada —las columnas no existen en una base
+// vieja o de pruebas—, se cae a la de siempre por `LIKE` en vez de fallar.
 func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}
 	if orgID == "" {
 		return out, nil
 	}
+	tsq := domain.SearchTSQuery(query)
+	if tsq == "" {
+		return out, nil
+	}
+	type row struct {
+		Src, OwnerKind, OwnerID, Tab, PageID, PageTitle, Name, Snippet string
+	}
+	var rows []row
+	err := r.db.Raw(`
+		WITH q AS (SELECT to_tsquery('cac_simple', ?) AS q),
+		best AS (
+			SELECT * FROM (
+				SELECT 'tab' AS src, d.owner_kind, d.owner_id, t.key AS tab, '' AS page_id,
+				       '' AS page_title, t.body, ts_rank_cd(t.search, q.q) AS score, t.updated_at
+				FROM doc_tabs t JOIN docs d ON d.id = t.doc_id, q
+				WHERE d.org_id = ? AND t.search @@ q.q
+				UNION ALL
+				SELECT 'page', d.owner_kind, d.owner_id, '', p.id, p.title, p.body,
+				       ts_rank_cd(p.search, q.q), p.updated_at
+				FROM doc_pages p JOIN docs d ON d.id = p.doc_id, q
+				WHERE p.org_id = ? AND p.deleted_at IS NULL AND p.search @@ q.q
+			) x
+			ORDER BY score DESC, updated_at DESC
+			LIMIT ?
+		)
+		SELECT b.src, b.owner_kind, b.owner_id, b.tab, b.page_id, b.page_title,
+		       COALESCE(sp.name, f.name, l.name, '') AS name,
+		       ts_headline('cac_simple', coalesce(b.body, ''), q.q,
+		         'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "') AS snippet
+		FROM best b CROSS JOIN q
+		LEFT JOIN task_spaces sp ON b.owner_kind = 'space' AND sp.id = b.owner_id
+		LEFT JOIN task_folders f ON b.owner_kind = 'folder' AND f.id = b.owner_id
+		LEFT JOIN task_lists l ON b.owner_kind = 'list' AND l.id = b.owner_id
+		ORDER BY b.score DESC, b.updated_at DESC`,
+		tsq, orgID, orgID, limit).Scan(&rows).Error
+	if err != nil {
+		return r.docsLike(query, orgID, limit)
+	}
+	for _, x := range rows {
+		link := "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID
+		hit := domain.SearchHit{
+			Kind: domain.SearchDoc, ID: x.OwnerID, Snippet: x.Snippet,
+			OwnerKind: x.OwnerKind, OwnerID: x.OwnerID,
+		}
+		if x.Src == "page" {
+			hit.ID, hit.PageID, hit.Title = x.PageID, x.PageID, x.PageTitle
+			// La ruta, para saber de qué página hablamos sin abrirla: el nodo y
+			// las madres, como las migas de pan de la propia página.
+			path := []string{x.Name}
+			if crumbs, err := (&DocRepository{db: r.db}).Breadcrumb(x.PageID); err == nil {
+				for _, c := range crumbs {
+					path = append(path, c.Title)
+				}
+			}
+			hit.Where = strings.Join(path, " › ")
+			hit.Link = link + "&page=" + x.PageID
+		} else {
+			hit.Title, hit.Where, hit.Tab = x.Name, x.Tab, x.Tab
+			hit.Link = link + "&tab=" + x.Tab
+		}
+		out = append(out, hit)
+	}
+	return out, nil
+}
+
+// docsLike es la búsqueda de antes, por `LIKE`, para una base sin el índice de
+// texto completo. Sólo pestañas: una base sin el índice tampoco tiene páginas
+// de las que fiarse.
+func (r *SearchRepository) docsLike(query, orgID string, limit int) ([]domain.SearchHit, error) {
+	out := []domain.SearchHit{}
 	type row struct {
 		OwnerKind, OwnerID, Key, Name string
 	}
@@ -118,8 +190,8 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 	for _, x := range rows {
 		out = append(out, domain.SearchHit{
 			Kind: domain.SearchDoc, ID: x.OwnerID, Title: x.Name,
-			Where: x.Key,
-			Link:  "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID + "&tab=" + x.Key,
+			Where: x.Key, OwnerKind: x.OwnerKind, OwnerID: x.OwnerID, Tab: x.Key,
+			Link: "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID + "&tab=" + x.Key,
 		})
 	}
 	return out, err

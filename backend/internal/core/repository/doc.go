@@ -328,11 +328,14 @@ func (r *DocRepository) HasDoc(orgID string) (map[string]domain.DocMark, error) 
 	// resolver el nombre documento a documento era una consulta por fila en un
 	// camino que se recorre constantemente.
 	nombres := r.authorNames(rows)
+	// Y cuántas páginas cuelgan de cada uno: un doc con la portada vacía y
+	// páginas debajo está escrito.
+	paginas := r.PageCounts(orgID)
 
 	ahora := time.Now()
 	out := make(map[string]domain.DocMark, len(rows))
 	for _, d := range rows {
-		tiene := conTexto[d.ID] || d.Body != ""
+		tiene := domain.DocMarkWritten(conTexto[d.ID], d.Body, paginas[d.ID])
 		// Un documento sin una palabra escrita pero con responsable o con línea
 		// fijada sigue siendo un documento: alguien lo reclamó. Esconderlo del
 		// navegador sería esconder justo el estado que hay que arreglar.
@@ -348,6 +351,7 @@ func (r *DocRepository) HasDoc(orgID string) (map[string]domain.DocMark, error) 
 			MaintainerID:   d.MaintainerID,
 			MaintainerName: nombres[d.MaintainerID],
 			ReviewedAt:     d.ReviewedAt,
+			Pages:          paginas[d.ID],
 		}
 	}
 	return out, nil

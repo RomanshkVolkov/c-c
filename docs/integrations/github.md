@@ -71,19 +71,51 @@ En el mensaje de un commit, o en el título o el cuerpo de una PR:
 | `#12` | lo mismo, sólo si el repo tiene «#12 a secas» encendido. En GitHub `#12` es el issue o la PR 12 del propio repo, por eso viene apagado. |
 | `acme-7` | el folio 7 del proyecto `acme`, como lo ve el cliente. |
 
+**O en el nombre de la rama** (8-oct-2026), la convención de Jira con las claves
+de cac. Una rama enlaza a la tarea sus commits y su PR sin escribir nada en el
+mensaje:
+
+| Rama | Nombra |
+|---|---|
+| `cac-12-login`, `feature/CAC-12`, `fix_cac-12` | la tarea 12 del espacio enlazado |
+| `feature/acme-7-fix` | el folio 7 de `acme` |
+| `feature-beta-api-7` | el folio 7 de `feature-beta-api`, `beta-api` o `api`: el primero que exista |
+| `12-login` | la tarea 12, sólo con «#12 a secas» (es lo que genera «Create branch» desde un issue) |
+| `cac12`, `v1.2`, `main` | nada |
+
+Sin distinguir mayúsculas. `cac` como slug está reservado al número del espacio.
+
 Sólo se busca dentro de la org del repo, y el número, sólo en su espacio. Una
 referencia que no resuelve se descarta sin más. Como mucho diez tareas por
 texto y veinte commits por push.
 
 ## 4. Qué se escribe
 
-- **Commit**: `` `abc1234` [primera línea](enlace) · @autor · owner/repo ``.
-  Una vez por commit y tarea: el mismo commit en otro push (un merge, otra rama)
-  no repite.
-- **PR**: `PR #3 opened|merged|closed|reopened: [título](enlace) · @autor · owner/repo`.
-  Etiquetas, revisiones y ediciones no se cuentan.
+**En el panel «Desarrollo» de la tarea** (desde el 8-oct-2026), a la manera del
+de Jira: las ramas, las PRs con su estado (abierta, borrador, fusionada,
+cerrada) y los commits. Se mantiene al día con cada entrega; una entrega vieja
+que llega tarde no deshace un estado más nuevo (la guarda es el `updated_at` de
+la PR). Una rama borrada se queda, marcada como borrada.
+
+**En el hilo**, sólo lo que cuenta que el trabajo empezó y que llegó:
+
+- **Commit nombrado en el mensaje**: `` `abc1234` [primera línea](enlace) · @autor · owner/repo ``.
+  Una vez por commit y tarea. Un commit enlazado **sólo por la rama** no
+  escribe en el hilo: cada push a la rama de una tarea llenaría su hilo de
+  líneas que el panel ya enseña.
+- **PR**: una línea al enlazarse (`PR #3 opened: …`) y otra al fusionarse
+  (`PR #3 merged: …`). Los cambios de estado de en medio sólo se ven en el
+  panel.
 
 Una reentrega de GitHub no duplica nada.
+
+**Eventos de la App.** `push` y `pull_request` bastan. Opcionalmente, `Create` y
+`Delete` cubren una rama creada o borrada desde la web de GitHub sin push. Son
+eventos, no permisos: añadirlos no obliga a nadie a reinstalar.
+
+**API.** `GET /api/v1/tasks/{id}/git` (también va dentro del detalle de la
+tarea, campo `git`, que es lo que lee `get_task` del MCP). Evento `task:git`
+cuando cambia algo.
 
 ## 5. Lo que la App escribe en GitHub
 

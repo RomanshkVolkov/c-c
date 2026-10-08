@@ -778,6 +778,11 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 		Tags:      tags, Assignees: assignees, Comments: comments, Attachments: attachments,
 		Subtasks: subtasks,
 	}
+	// Lo de GitHub, si lo hay. Un fallo aquí no tumba el detalle: el panel se
+	// queda vacío y la tarea se abre igual.
+	if git, err := s.repo.GitLinks(id); err == nil {
+		detail.Git = git
+	}
 	// What this card is when it arrived through a client's channel. Guarded on
 	// ProjectID rather than on the fields being non-empty: an internal task must
 	// never be handed a folio, because a folio names a number in a client's
