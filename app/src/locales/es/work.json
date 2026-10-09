@@ -177,7 +177,13 @@
       },
       "deleted": "borrada",
       "viaBranch": "Enlazada por el nombre de la rama",
-      "byGitHub": "GitHub"
+      "byGitHub": "GitHub",
+      "linkPR": "Enlazar una PR",
+      "link": "Enlazar",
+      "linked": "PR enlazada",
+      "errLink": "No se pudo enlazar la PR",
+      "prUrl": "URL de la PR",
+      "viaManual": "Enlazada a mano"
     }
   },
   "notes": {
@@ -359,7 +365,18 @@
     "moveToTitle": "Mover «{{title}}»",
     "moveToHint": "Elige de qué página va a colgar. Se lleva con ella todo lo que tiene dentro, y su enlace no cambia.",
     "moveHere": "Mover aquí",
-    "currentParent": "aquí está ahora"
+    "currentParent": "aquí está ahora",
+    "referencedFrom": "Referenciado desde",
+    "noPagesMatch": "Ninguna página se llama así",
+    "pagePlaceholder": "Escribe aquí. [[ enlaza otra página, / inserta un bloque.",
+    "seeChanges": "Ver qué cambió",
+    "changesSince": "Qué cambió desde el {{date}}",
+    "noChanges": "Sin cambios: es igual que ahora",
+    "unchangedLines_one": "··· {{count}} línea sin cambios",
+    "unchangedLines_other": "··· {{count}} líneas sin cambios",
+    "restoreThis": "Restaurar esta versión",
+    "diff": "Cambios",
+    "close": "Cerrar"
   },
   "docTemplates": {
     "title": "Aquí no hay nada escrito todavía",

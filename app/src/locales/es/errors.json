@@ -168,5 +168,8 @@
   "guest-not-waiting": "Esa persona ya no está esperando.",
   "body-too-large": "Ese texto es demasiado largo para una página: pártelo en subpáginas.",
   "bad-parent-page": "Esa página no puede ir ahí: la madre no es de este documento.",
-  "page-cycle": "Una página no puede ir dentro de sí misma ni de una de sus subpáginas."
+  "page-cycle": "Una página no puede ir dentro de sí misma ni de una de sus subpáginas.",
+  "not-a-pull-url": "Eso no es la dirección de una PR de GitHub.",
+  "repo-not-in-org": "Ese repositorio no está conectado a esta organización.",
+  "pr-not-found": "GitHub no encuentra esa PR."
 }

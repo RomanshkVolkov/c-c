@@ -145,3 +145,36 @@ describe("una página vacía", () => {
     expect((screen.getByLabelText("editor") as HTMLTextAreaElement).value).toContain("## Steps");
   });
 });
+
+describe("referenciado desde", () => {
+  it("enseña lo que enlaza aquí, y lo abre dentro", () => {
+    const abrir = vi.fn(() => true);
+    useDocPages.setState({
+      view: {
+        page: pagina("algo", "hash-0"),
+        breadcrumb: [],
+        children: [],
+        orgId: "o1",
+        referencedFrom: [
+          { kind: "page", title: "Triton", where: "Apps", link: "/tasks?doc=list:l1&page=p9" },
+          { kind: "tab", title: "Proteus", where: "runbook", link: "/tasks?doc=space:s1&tab=runbook" },
+          { kind: "task", title: "Migrar Nereus", where: "tasks", link: "/tasks?task=t1" },
+        ],
+      },
+    });
+    render(
+      <ConfirmProvider>
+        <DocPageView kind="list" ownerId="l1" nodeName="Proteus" onInternalLink={abrir} />
+      </ConfirmProvider>,
+    );
+    expect(screen.getByText("Referenced from")).toBeTruthy();
+    expect(screen.getByText("Proteus · Runbook")).toBeTruthy();
+    fireEvent.click(screen.getByText("Migrar Nereus"));
+    expect(abrir).toHaveBeenCalledWith("/tasks?task=t1");
+  });
+
+  it("sin nada que enlace aquí, no hay sección", () => {
+    montar();
+    expect(screen.queryByText("Referenced from")).toBeNull();
+  });
+});

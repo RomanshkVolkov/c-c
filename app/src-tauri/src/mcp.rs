@@ -982,6 +982,9 @@ fn page_outline(view: &Value, kind: &str, owner: &str) -> Value {
         "chars": body.chars().count(),
         "sections": tab_outline(body),
         "children": view.get("children"),
+        // Lo que enlaza aquí: antes de mover el contenido de una página, es lo
+        // que dice qué enlaces hay que revisar.
+        "referencedFrom": view.get("referencedFrom"),
         "updatedAt": page.get("updatedAt"),
         "updatedByName": page.get("updatedByName"),
         "note": "Read one section with get_doc_page + section, or the whole body with full=true. Rewrite one heading with write_doc_page_section and its sectionHash.",
@@ -1410,7 +1413,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "search",
-            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link). Tasks and notes come WITHOUT the matching text, on purpose: a hit says that something matched, not what it said. Docs are the exception: each doc hit carries a `snippet` (the matching words between **), its `ownerKind`/`ownerId`, and either the `tab` of the node's home or the `pageId` of a subpage, with `where` as the page's path. Open a hit with get_task, get_note, get_doc (tab) or get_doc_page (pageId).\n\nWhat each kind matches on: tasks by title, description and comments (title matches first), notes by title and body, docs by full-text search over the home tabs and every page (page titles rank first; words match by prefix and without accents). Channel messages and direct messages are not searchable from here.",
+            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link), and a `snippet` with the matching words between ** where it is safe to show: a doc, a task's description (never a comment: it may be internal), a note. Each doc hit also carries its `ownerKind`/`ownerId`, and either the `tab` of the node's home or the `pageId` of a subpage, with `where` as the page's path. Open a hit with get_task, get_note, get_doc (tab) or get_doc_page (pageId).\n\nEverything is full-text: words match by prefix and without accents, and titles rank first. Tasks match by title, description and comments; notes by title and body; docs by the home tabs and every page. Channel messages and direct messages are not searchable from here.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1563,6 +1566,19 @@ fn tool_defs() -> Value {
                     "dryRun": { "type": "boolean", "description": "Validate without writing." }
                 },
                 "required": ["id", "body"]
+            }
+        },
+        {
+            "name": "link_pull_request",
+            "description": "Link a GitHub pull request to a task by its URL, for a PR that doesn't name the task (`cac#12`, a client folio) nor comes from a branch named after it — those link themselves. The repository must be connected to the task's organization through the cac GitHub App. Adds the PR to the task's Development panel (see get_task `git`) and one line to the thread; it changes nothing else (a merged PR does not close the task). Needs `tasks:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "The task." },
+                    "url": { "type": "string", "description": "https://github.com/{owner}/{repo}/pull/{number}" },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "url"]
             }
         },
         {
@@ -2485,6 +2501,27 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             }))
         }
 
+        "link_pull_request" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let url = arg_str(args, "url").ok_or("url is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)));
+                return dry_run(cfg, "tasks:write", target);
+            }
+            let link = api_post(
+                cfg,
+                &format!("/api/v1/tasks/{}/git/prs", urlencode(&id)),
+                json!({ "url": url }),
+            )?;
+            Ok(json!({
+                "taskId": id,
+                "repo": link.get("repoFullName"),
+                "number": link.get("key"),
+                "title": link.get("title"),
+                "state": link.get("state"),
+                "url": link.get("htmlUrl"),
+            }))
+        }
         "add_task_comment" => {
             let id = arg_str(args, "id").ok_or("id is required")?;
             let body_md = arg_str(args, "body").ok_or("body is required")?;
@@ -4129,9 +4166,13 @@ mod tests {
             "page": { "id": "p", "title": "Nereus", "bodyHash": "h",
                       "body": "# Nereus\n\nTEXTO LARGO\n\n## Vistas\n\nmás" },
             "breadcrumb": [{ "id": "a", "title": "Apps" }],
-            "children": []
+            "children": [],
+            "referencedFrom": [{ "kind": "task", "title": "Migrar", "link": "/tasks?task=t" }]
         });
         let out = page_outline(&view, "list", "L1");
+        // Lo que enlaza aquí viaja con el índice: es lo que hay que revisar
+        // antes de mover el contenido a otro sitio.
+        assert_eq!(out["referencedFrom"][0]["link"], "/tasks?task=t");
         assert!(!out.to_string().contains("TEXTO LARGO"), "el índice lleva el cuerpo");
         assert_eq!(out["sections"][1]["heading"], "Vistas");
         assert!(out["sections"][1]["sectionHash"].is_string());

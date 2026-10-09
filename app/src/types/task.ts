@@ -210,8 +210,8 @@ export interface TaskGitLink {
   headBranch?: string;
   baseBranch?: string;
   headSha?: string;
-  /** Cómo se enlazó: nombrada en el texto, o por el nombre de la rama. */
-  via: "text" | "branch";
+  /** Cómo se enlazó: nombrada en el texto, por el nombre de la rama, o a mano. */
+  via: "text" | "branch" | "manual";
   mergedAt?: string;
   occurredAt: string;
 }
@@ -483,7 +483,17 @@ export interface DocPage {
   updatedAt: string;
 }
 
+/** Algo que enlaza a una página: otra página, una pestaña de portada o una tarea. */
+export interface DocBacklink {
+  kind: "page" | "tab" | "task";
+  title: string;
+  where?: string;
+  link: string;
+}
+
 export interface DocPageView {
+  /** Lo que enlaza a esta página. Ausente en un servidor anterior. */
+  referencedFrom?: DocBacklink[];
   page: DocPage;
   /** De la raíz a la madre, sin la propia página. */
   breadcrumb: { id: string; title: string }[];

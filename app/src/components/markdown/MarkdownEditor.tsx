@@ -40,6 +40,7 @@ import TableToolbar from "./TableToolbar";
 import { EnviarConEnter } from "@/components/markdown/send-on-enter";
 import { SlashMenu } from "./slash-menu";
 import { CardMenu, type CardRef } from "./card-menu";
+import { PageMenu, type DocLinkRef } from "@/components/markdown/page-menu";
 import { MentionMenu, type PersonRef } from "./mention-menu";
 
 /**
@@ -152,6 +153,12 @@ export interface MarkdownEditorProps {
    * something the client reads, so the caller simply doesn't pass this.
    */
   people?: () => PersonRef[];
+  /**
+   * Ofrece `[[` para enlazar una página de la documentación (ver
+   * `page-menu.ts`). Puede ser asíncrono: busca también fuera del documento
+   * abierto. Sin él, `[[` es texto corriente.
+   */
+  docLinks?: (query: string) => DocLinkRef[] | Promise<DocLinkRef[]>;
   className?: string;
   minHeight?: string;
   /**
@@ -227,6 +234,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     blockTools = false,
     cards,
     people,
+    docLinks,
     className,
     minHeight = "8rem",
     maxHeight,
@@ -321,6 +329,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       ...(blockTools ? [SlashMenu] : []),
       ...(cards ? [CardMenu.configure({ cards })] : []),
       ...(people ? [MentionMenu.configure({ people })] : []),
+      ...(docLinks ? [PageMenu.configure({ links: docLinks })] : []),
       Markdown.configure({
         html: false, // never smuggle raw HTML into the stored markdown
         transformPastedText: true,

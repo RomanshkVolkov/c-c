@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { GitSummary, TaskGitLink, TaskGitLinks } from "@/types/task";
 
@@ -15,6 +15,9 @@ vi.mock("@/lib/platform", async (orig) => ({
   ...(await orig<typeof import("@/lib/platform")>()),
   openExternal: (u: string) => openExternal(u),
 }));
+
+const post = vi.fn(async (_p: string, _b: unknown) => ({ success: true }));
+vi.mock("@/lib/api", () => ({ api: { post: (p: string, b: unknown) => post(p, b) } }));
 
 const { default: TaskGitPanel, PrChip } = await import("@/components/TaskGitPanel");
 
@@ -139,5 +142,47 @@ describe("el chip de la tarjeta", () => {
     const c = chip({ branches: 0, prs: 2, commits: 0, prBadge: "merged" });
     expect(c.textContent).toBe("2");
     expect(c.querySelector("span")!.getAttribute("title")).toBe("2 PRs · merged");
+  });
+});
+
+describe("enlazar una PR a mano", () => {
+  it("sin nada enlazado, una línea y no el panel", () => {
+    render(<TaskGitPanel git={git({})} taskId="t1" />);
+    expect(screen.queryByRole("region")).toBeNull();
+    expect(screen.getByText("Link a PR")).toBeTruthy();
+  });
+
+  it("sólo manda lo que parece una PR de GitHub, y avisa al terminar", async () => {
+    post.mockClear();
+    const enlazada = vi.fn();
+    render(<TaskGitPanel git={git({})} taskId="t1" onLinked={enlazada} />);
+    fireEvent.click(screen.getByText("Link a PR"));
+    const caja = screen.getByLabelText("PR URL");
+    const boton = screen.getByRole("button", { name: "Link" }) as HTMLButtonElement;
+    fireEvent.change(caja, { target: { value: "https://github.com/acme/web/issues/3" } });
+    expect(boton.disabled).toBe(true);
+    fireEvent.change(caja, { target: { value: "https://github.com/acme/web/pull/3" } });
+    expect(boton.disabled).toBe(false);
+    fireEvent.click(boton);
+    await waitFor(() => expect(enlazada).toHaveBeenCalled());
+    expect(post).toHaveBeenCalledWith("/api/v1/tasks/t1/git/prs", { url: "https://github.com/acme/web/pull/3" });
+  });
+
+  it("con PRs, el botón está en la cabecera del panel", () => {
+    render(
+      <TaskGitPanel
+        taskId="t1"
+        git={git({ summary: { branches: 0, prs: 1, commits: 0 }, prs: [link({ key: "1" })] })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Link a PR" }));
+    expect(screen.getByLabelText("PR URL")).toBeTruthy();
+  });
+
+  it("lo enlazado a mano lo dice al pasar el ratón", () => {
+    render(
+      <TaskGitPanel git={git({ summary: { branches: 0, prs: 1, commits: 0 }, prs: [link({ key: "8", via: "manual" })] })} />,
+    );
+    expect(screen.getByText("#8").closest("button")!.getAttribute("title")).toBe("Linked by hand");
   });
 });

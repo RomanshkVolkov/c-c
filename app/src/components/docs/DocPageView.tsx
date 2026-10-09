@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, ClipboardList, FileText, Loader2, Pencil, Plus, Puzzle, Trash2 } from "lucide-react";
+import { ChevronRight, ClipboardList, FileText, KanbanSquare, Loader2, Pencil, Plus, Puzzle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { VersionMenu } from "@/components/docs/DocHistory";
 import DocToc from "@/components/docs/DocToc";
+import { docLinks } from "@/components/docs/doc-links";
 import { useTrashPage } from "@/components/docs/use-trash-page";
 import SaveChip from "@/components/docs/SaveChip";
 import Markdown from "@/components/markdown/Markdown";
@@ -176,8 +177,9 @@ export default function DocPageView({
                   onUpload={upload}
                   collapsible
                   blockTools
+                  docLinks={docLinks}
                   minHeight="24rem"
-                  placeholder={t("work:docs.placeholder")}
+                  placeholder={t("work:docs.pagePlaceholder")}
                   autoFocus
                 />
                 {chocado && (
@@ -267,6 +269,42 @@ export default function DocPageView({
                 </ul>
               </section>
             )}
+
+            {/* Lo que enlaza aquí, como el «Linked from» de Notion o los
+                enlaces entrantes de Confluence: dice qué se rompe —o qué hay
+                que actualizar— antes de mover o tirar esta página. */}
+            {!editando && (view.referencedFrom?.length ?? 0) > 0 && (
+              <section className="mt-6">
+                <h2 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+                  {t("work:docs.referencedFrom")}
+                </h2>
+                <ul className="space-y-1">
+                  {view.referencedFrom!.map((r) => (
+                    <li key={r.link}>
+                      <button
+                        type="button"
+                        className="flex w-full min-w-0 items-center gap-1.5 text-left text-sm"
+                        onClick={() => onInternalLink?.(r.link)}
+                      >
+                        {r.kind === "task" ? (
+                          <KanbanSquare className="size-3.5 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        <span className="truncate text-primary hover:underline">
+                          {r.kind === "tab"
+                            ? `${r.title} · ${t(`work:docs.${r.where}` as MessageKey)}`
+                            : r.title || t("work:docs.untitled")}
+                        </span>
+                        {r.kind !== "tab" && r.where && (
+                          <span className="shrink-0 truncate text-xs text-muted-foreground">{r.where}</span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
           {!editando && page.body && <DocToc markdown={page.body} />}
         </div>
@@ -280,6 +318,7 @@ export default function DocPageView({
             </Button>
           )}
           <VersionMenu
+            current={page.body}
             load={() => pageVersions(owner, page.id)}
             restore={(v) => restorePageVersion(owner, page.id, v)}
           />

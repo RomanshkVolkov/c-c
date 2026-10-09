@@ -2,6 +2,7 @@ import type { Editor } from "@tiptap/react";
 import { MENTION_MENU_KEY } from "@/components/markdown/mention-menu";
 import { CARD_MENU_KEY } from "@/components/markdown/card-menu";
 import { SLASH_MENU_KEY } from "@/components/markdown/slash-menu";
+import { PAGE_MENU_KEY } from "@/components/markdown/page-menu";
 
 /**
  * ¿Hay un menú de sugerencias abierto ahora mismo?
@@ -19,7 +20,7 @@ import { SLASH_MENU_KEY } from "@/components/markdown/slash-menu";
  * por un cambio de versión no lo detectaría nadie hasta verlo publicado.
  */
 export function haySugerenciaAbierta(editor: Editor): boolean {
-  return [MENTION_MENU_KEY, CARD_MENU_KEY, SLASH_MENU_KEY].some((k) => {
+  return [MENTION_MENU_KEY, CARD_MENU_KEY, SLASH_MENU_KEY, PAGE_MENU_KEY].some((k) => {
     const estado = k.getState(editor.state) as { active?: boolean } | undefined;
     return !!estado?.active;
   });

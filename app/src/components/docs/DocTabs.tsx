@@ -11,6 +11,7 @@ import SaveChip from "@/components/docs/SaveChip";
 import TemplatePicker from "@/components/docs/TemplatePicker";
 import { useAutoguardado } from "@/hooks/use-autoguardado";
 import DocToc from "@/components/docs/DocToc";
+import { docLinks } from "@/components/docs/doc-links";
 import DocPageTree from "@/components/docs/DocPageTree";
 import DocPageView from "@/components/docs/DocPageView";
 import Markdown from "@/components/markdown/Markdown";
@@ -286,6 +287,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                     onUpload={upload}
                     collapsible
                     blockTools
+                  docLinks={docLinks}
                     minHeight="24rem"
                     placeholder={t("work:docs.placeholder")}
                     autoFocus
@@ -371,7 +373,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                 <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
                   <Pencil className="mr-1 size-3" /> {t("work:docs.edit")}
                 </Button>
-                <DocHistory tab={activa} />
+                <DocHistory tab={activa} current={cuerpo} />
                 {doc?.attachments && doc.attachments.length > 0 && (
                   <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                     {doc.attachments.map((a) => (

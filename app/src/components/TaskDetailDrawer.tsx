@@ -278,6 +278,7 @@ function Content() {
   const detail = useTasksStore((s) => s.detail)!;
   const closeTask = useTasksStore((s) => s.closeTask);
   const updateTask = useTasksStore((s) => s.updateTask);
+  const refreshOpenTask = useTasksStore((s) => s.refreshOpenTask);
   const deleteTask = useTasksStore((s) => s.deleteTask);
   const addComment = useTasksStore((s) => s.addComment);
   // Colleagues for `@`. Fetched here rather than per keystroke: a team is small
@@ -860,7 +861,7 @@ function Content() {
 
         {/* Ramas, PRs y commits de GitHub. Encima de la actividad, como el
             panel Development de Jira: es el estado del trabajo, no la charla. */}
-        <TaskGitPanel git={detail.git} />
+        <TaskGitPanel git={detail.git} taskId={task.id} onLinked={() => void refreshOpenTask()} />
 
         {/* Comments. Zona para soltar: va al comentario nuevo. */}
         <FileDropZone

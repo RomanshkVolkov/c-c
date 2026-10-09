@@ -38,6 +38,7 @@ const mount = (props: Record<string, unknown>) =>
 
 const cards = () => [{ id: "t-1", seq: 1, title: "una tarjeta" }];
 const people = () => [{ id: "u-1", username: "ana" }];
+const docLinks = () => [{ href: "/tasks?doc=list:l1&page=p1", title: "una página" }];
 
 describe("an editor can carry more than one suggestion picker", () => {
   it("builds with the card picker and the mention picker together", () => {
@@ -51,9 +52,17 @@ describe("an editor can carry more than one suggestion picker", () => {
     expect(() => mount({ cards, people, blockTools: true })).not.toThrow();
   });
 
+  it("builds with [[ next to the others", () => {
+    // Las páginas de la documentación: `[[` junto a `/`, que es lo que lleva
+    // un documento, y con todos a la vez.
+    expect(() => mount({ docLinks, blockTools: true })).not.toThrow();
+    expect(() => mount({ cards, people, docLinks, blockTools: true })).not.toThrow();
+  });
+
   it("still builds with each one alone", () => {
     expect(() => mount({ cards })).not.toThrow();
     expect(() => mount({ people })).not.toThrow();
     expect(() => mount({ blockTools: true })).not.toThrow();
+    expect(() => mount({ docLinks })).not.toThrow();
   });
 });

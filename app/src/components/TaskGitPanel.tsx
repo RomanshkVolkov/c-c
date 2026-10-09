@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import {
   ChevronDown,
   ChevronRight,
@@ -8,8 +9,12 @@ import {
   GitPullRequest,
   GitPullRequestClosed,
   GitPullRequestDraft,
+  Link2,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { api } from "@/lib/api";
 import { isGitHubUrl } from "@/lib/github-url";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { openExternal } from "@/lib/platform";
@@ -60,17 +65,49 @@ function abrir(url: string) {
   if (isGitHubUrl(url)) void openExternal(url);
 }
 
-export default function TaskGitPanel({ git }: { git?: TaskGitLinks }) {
+export default function TaskGitPanel({
+  git,
+  taskId,
+  onLinked,
+}: {
+  git?: TaskGitLinks;
+  /** Con él se ofrece enlazar una PR pegando su URL. */
+  taskId?: string;
+  onLinked?: () => void;
+}) {
   const { t } = useT();
   const [commitsAbiertos, setCommitsAbiertos] = useState(false);
+  const [pegando, setPegando] = useState(false);
 
-  if (!git) return null;
-  const { prs, branches, commits } = git;
-  if (prs.length + branches.length + commits.length === 0) return null;
+  const prs = git?.prs ?? [];
+  const branches = git?.branches ?? [];
+  const commits = git?.commits ?? [];
+  const vacio = prs.length + branches.length + commits.length === 0;
+  const enlazar = taskId ? (
+    <LinkPRForm taskId={taskId} onDone={() => { setPegando(false); onLinked?.(); }} onCancel={() => setPegando(false)} />
+  ) : null;
+
+  // Sin nada enlazado, una línea discreta y no el panel entero: la mayoría de
+  // las tareas no tienen código, y un panel vacío en cada una es ruido.
+  if (vacio) {
+    if (!taskId) return null;
+    return pegando ? (
+      enlazar
+    ) : (
+      <button
+        type="button"
+        onClick={() => setPegando(true)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <GitPullRequest className="size-3.5" /> {t("work:task.git.linkPR")}
+      </button>
+    );
+  }
 
   // Lo que se enlazó por la rama y no por el texto lo dice al pasar el ratón:
   // si no, una PR que no nombra la tarea parecería enlazada al azar.
-  const porRama = (l: TaskGitLink) => (l.via === "branch" ? t("work:task.git.viaBranch") : undefined);
+  const porRama = (l: TaskGitLink) =>
+    l.via === "branch" ? t("work:task.git.viaBranch") : l.via === "manual" ? t("work:task.git.viaManual") : undefined;
 
   return (
     <section className="space-y-2" aria-label={t("work:task.git.development")}>
@@ -82,12 +119,25 @@ export default function TaskGitPanel({ git }: { git?: TaskGitLinks }) {
           {[
             branches.length > 0 && t("work:task.git.branches", { count: branches.length }),
             prs.length > 0 && t("work:task.git.prs", { count: prs.length }),
-            git.summary.commits > 0 && t("work:task.git.commits", { count: git.summary.commits }),
+            git!.summary.commits > 0 && t("work:task.git.commits", { count: git!.summary.commits }),
           ]
             .filter(Boolean)
             .join(" · ")}
         </span>
+        {taskId && !pegando && (
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            className="ml-auto"
+            title={t("work:task.git.linkPR")}
+            aria-label={t("work:task.git.linkPR")}
+            onClick={() => setPegando(true)}
+          >
+            <Link2 className="size-3.5" />
+          </Button>
+        )}
       </div>
+      {pegando && enlazar}
 
       {prs.length > 0 && (
         <ul className="space-y-1">
@@ -152,7 +202,7 @@ export default function TaskGitPanel({ git }: { git?: TaskGitLinks }) {
             className="flex items-center gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             {commitsAbiertos ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-            {t("work:task.git.commits", { count: git.summary.commits })}
+            {t("work:task.git.commits", { count: git!.summary.commits })}
           </button>
           {commitsAbiertos && (
             <ul className="mt-1 space-y-0.5">
@@ -179,6 +229,55 @@ export default function TaskGitPanel({ git }: { git?: TaskGitLinks }) {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Pegar la URL de una PR para enlazarla a la tarea: para la PR que no nombra
+ * la tarea ni sale de una rama con su número. El servidor comprueba que el
+ * repo sea de la org; aquí sólo se evita mandar lo que a simple vista no es
+ * una PR de GitHub.
+ */
+function LinkPRForm({ taskId, onDone, onCancel }: { taskId: string; onDone: () => void; onCancel: () => void }) {
+  const { t } = useT();
+  const [url, setUrl] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const valida = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url.trim());
+
+  const enviar = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!valida) return;
+    setEnviando(true);
+    try {
+      await api.post(`/api/v1/tasks/${taskId}/git/prs`, { url: url.trim() }, true);
+      toast.success(t("work:task.git.linked"));
+      onDone();
+    } catch (err) {
+      // El error del servidor ya viene en su frase (`phraseFor`).
+      toast.error(t("work:task.git.errLink"), { description: String((err as Error)?.message ?? err) });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <form onSubmit={(e) => void enviar(e)} className="flex items-center gap-1.5">
+      <Input
+        autoFocus
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onCancel()}
+        placeholder="https://github.com/…/pull/123"
+        aria-label={t("work:task.git.prUrl")}
+        className="h-7 text-xs"
+      />
+      <Button type="submit" size="sm" className="h-7" disabled={!valida || enviando}>
+        {t("work:task.git.link")}
+      </Button>
+      <Button type="button" size="sm" variant="ghost" className="h-7" onClick={onCancel}>
+        {t("work:docs.cancel")}
+      </Button>
+    </form>
   );
 }
 

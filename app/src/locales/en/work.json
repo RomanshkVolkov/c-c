@@ -177,7 +177,13 @@
       },
       "deleted": "deleted",
       "viaBranch": "Linked by the branch name",
-      "byGitHub": "GitHub"
+      "byGitHub": "GitHub",
+      "linkPR": "Link a PR",
+      "link": "Link",
+      "linked": "PR linked",
+      "errLink": "Couldn't link the PR",
+      "prUrl": "PR URL",
+      "viaManual": "Linked by hand"
     }
   },
   "notes": {
@@ -359,7 +365,18 @@
     "moveToTitle": "Move “{{title}}”",
     "moveToHint": "Pick the page it will hang from. Everything inside it goes along, and its link doesn't change.",
     "moveHere": "Move here",
-    "currentParent": "it's here now"
+    "currentParent": "it's here now",
+    "referencedFrom": "Referenced from",
+    "noPagesMatch": "No page by that name",
+    "pagePlaceholder": "Write here. [[ links another page, / inserts a block.",
+    "seeChanges": "See what changed",
+    "changesSince": "What changed since {{date}}",
+    "noChanges": "No changes: it's the same as now",
+    "unchangedLines_one": "··· {{count}} unchanged line",
+    "unchangedLines_other": "··· {{count}} unchanged lines",
+    "restoreThis": "Restore this version",
+    "diff": "Changes",
+    "close": "Close"
   },
   "docTemplates": {
     "title": "Nothing written here yet",
