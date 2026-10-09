@@ -274,7 +274,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
               })}
             </nav>
 
-            <div className="min-h-0 flex-1 overflow-auto p-6">
+            <div data-doc-scroll className="min-h-0 flex-1 overflow-auto p-6">
               {loading && !doc ? (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
@@ -326,7 +326,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                 // escribe mal y se deja de escribir.
                 <DecisionList decisions={doc?.decisions ?? []} />
               ) : (
-                <div className="mx-auto flex w-full min-w-0 max-w-4xl gap-8">
+                <div className="mx-auto flex w-full min-w-0 max-w-4xl xl:max-w-5xl xl:gap-8">
                   <div className="min-w-0 flex-1">
                     {cuerpo ? (
                       // Medida de línea corta y texto más grande: es un documento,

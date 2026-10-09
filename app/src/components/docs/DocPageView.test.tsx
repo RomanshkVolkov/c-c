@@ -178,3 +178,15 @@ describe("referenciado desde", () => {
     expect(screen.queryByText("Referenced from")).toBeNull();
   });
 });
+
+// El índice «En esta página» mide el título activo contra el contenedor que
+// hace scroll, y lo encuentra por esta marca (ver `DocToc`). Sin ella vuelve a
+// medir contra la ventana sin que nada falle.
+describe("lo que hace scroll en una página", () => {
+  it("lleva la marca que busca el índice, y es lo que tiene el texto", () => {
+    montar();
+    const scroller = document.querySelector("[data-doc-scroll]");
+    expect(scroller?.classList.contains("overflow-auto")).toBe(true);
+    expect(scroller?.textContent).toContain("lo que había");
+  });
+});

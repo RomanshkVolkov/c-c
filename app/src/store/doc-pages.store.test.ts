@@ -202,3 +202,19 @@ describe("la pestaña que pide un enlace", () => {
     expect(useDocPages.getState().requestedTab).toBeNull();
   });
 });
+
+describe("la preferencia del árbol plegado", () => {
+  it("empieza sin elegir, y sólo ella se guarda entre arranques", () => {
+    const persist = (useDocPages as unknown as { persist: { getOptions: () => { partialize: (s: unknown) => unknown } } })
+      .persist;
+    expect(useDocPages.getState().treeCollapsed === null || typeof useDocPages.getState().treeCollapsed === "boolean").toBe(true);
+    useDocPages.setState({ treeCollapsed: true, owner: { kind: "list", id: "x" }, tree: [], activePageId: "p" } as never);
+    expect(persist.getOptions().partialize(useDocPages.getState())).toEqual({ treeCollapsed: true });
+  });
+
+  it("vaciar el documento no la toca", () => {
+    useDocPages.setState({ treeCollapsed: true });
+    useDocPages.getState().reset();
+    expect(useDocPages.getState().treeCollapsed).toBe(true);
+  });
+});

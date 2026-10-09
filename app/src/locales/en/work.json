@@ -376,7 +376,9 @@
     "unchangedLines_other": "··· {{count}} unchanged lines",
     "restoreThis": "Restore this version",
     "diff": "Changes",
-    "close": "Close"
+    "close": "Close",
+    "collapseTree": "Collapse the page tree",
+    "expandTree": "Expand the page tree"
   },
   "docTemplates": {
     "title": "Nothing written here yet",

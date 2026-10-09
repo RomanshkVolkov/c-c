@@ -75,3 +75,13 @@ describe("la pestaña que pide un enlace", () => {
     expect(useDocPages.getState().requestedTab).toBeNull();
   });
 });
+
+// Lo mismo en la portada: el índice busca esta marca (ver `DocToc`).
+describe("lo que hace scroll en la portada", () => {
+  it("lleva la marca que busca el índice, y es lo que tiene el texto", () => {
+    render(<DocTabs onView={() => {}} />);
+    const scroller = document.querySelector("[data-doc-scroll]");
+    expect(scroller?.classList.contains("overflow-auto")).toBe(true);
+    expect(scroller?.textContent).toContain("ver la otra");
+  });
+});

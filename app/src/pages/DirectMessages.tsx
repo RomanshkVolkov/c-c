@@ -3,6 +3,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useT } from "@/lib/i18n";
 import { enterOrg } from "@/lib/ir-en-org";
 import { useEffect, useRef } from "react";
+import { PanelLeftClose, PanelLeftOpen, UserPlus } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import DMSwitcher from "@/components/DMSwitcher";
@@ -10,6 +11,10 @@ import DMThread from "@/components/DMThread";
 import { useDMStore } from "@/store/dm.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { usePlacesStore } from "@/store/places.store";
+import { Button } from "@/components/ui/button";
+import RailItem from "@/components/RailItem";
+import { nombreDe } from "@/lib/nombres";
+import { useLayoutStore } from "@/store/layout.store";
 
 /**
  * Private conversations, at the same level as the channels.
@@ -91,20 +96,72 @@ export default function DirectMessages() {
   // (`onBack`) ya vuelve a la lista.
   const movil = useIsMobile();
 
+  // Plegada a un riel con las iniciales de cada persona, como la de canales.
+  // Sólo en escritorio, y recordado.
+  const plegada = useLayoutStore((s) => !!s.collapsed.dms) && !movil;
+  const setCollapsed = useLayoutStore((s) => s.setCollapsed);
+  const conversations = useDMStore((s) => s.conversations);
+  const fetchConversations = useDMStore((s) => s.fetchConversations);
+  // Plegada no se monta `DMSwitcher`, que es quien las pide: sin esto el riel
+  // salía vacío al entrar.
+  useEffect(() => {
+    if (plegada) fetchConversations().catch(() => {});
+  }, [plegada, orgId, fetchConversations]);
+  const delOrg = plegada ? conversations.filter((x) => x.orgId === orgId) : [];
+  const etiqueta = t(plegada ? "common:last.expandList" : "common:last.collapseList");
+
   return (
     <div className="flex min-h-0 flex-1">
       <aside
         className={cn(
-          "flex w-60 shrink-0 flex-col border-r bg-muted/10",
+          "flex shrink-0 flex-col border-r bg-muted/10 transition-[width] duration-200",
+          plegada ? "w-14" : "w-60",
           movil && (abierta ? "hidden" : "w-full border-r-0"),
         )}
       >
-        <header className="flex h-12 shrink-0 items-center border-b px-3">
-          <span className="text-sm font-medium">Direct messages</span>
+        <header
+          className={cn("flex h-12 shrink-0 items-center border-b", plegada ? "justify-center" : "gap-1 px-3")}
+        >
+          {!plegada && <span className="flex-1 text-sm font-medium">Direct messages</span>}
+          {!movil && (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              title={etiqueta}
+              aria-label={etiqueta}
+              onClick={() => setCollapsed("dms", !plegada)}
+            >
+              {plegada ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
+            </Button>
+          )}
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <DMSwitcher onPicked={() => {}} />
-        </div>
+        {plegada ? (
+          <nav className="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto py-2">
+            {delOrg.map((x) => (
+              <RailItem
+                key={x.conversationId}
+                name={nombreDe(x)}
+                active={abierta && x.conversationId === conversationId}
+                count={x.unread}
+                onClick={() => void open(x.conversationId, x.orgId).catch((e) => toast.error(String(e)))}
+              />
+            ))}
+            {/* Buscar a alguien nuevo pide la lista entera: la despliega. */}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              title={t("common:last.findSomebody")}
+              aria-label={t("common:last.findSomebody")}
+              onClick={() => setCollapsed("dms", false)}
+            >
+              <UserPlus className="size-4" />
+            </Button>
+          </nav>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DMSwitcher onPicked={() => {}} />
+          </div>
+        )}
       </aside>
       {abierta ? (
         <div className="flex min-h-0 flex-1 flex-col">

@@ -625,7 +625,10 @@
     "statusNow": "Ahora: {{state}}",
     "removePdf": "Quitar el PDF",
     "removePdfTitle": "¿Quitar «{{name}}» de aquí?",
-    "removePdfBody": "El fichero no se borra: sólo deja de aparecer aquí. Se deshace con Ctrl+Z."
+    "removePdfBody": "El fichero no se borra: sólo deja de aparecer aquí. Se deshace con Ctrl+Z.",
+    "collapseList": "Plegar la lista",
+    "expandList": "Desplegar la lista",
+    "findSomebody": "Buscar a alguien"
   },
   "calendar": {
     "undated_one": "{{count}} sin fecha",

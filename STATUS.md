@@ -260,8 +260,14 @@ cuelga un árbol de páginas.
   - Historial con lo que cambió: diff por líneas contra el texto de ahora.
   - GitHub: al vincular un repo se traen sus PRs abiertas; y «Enlazar una
     PR» pegando su URL (`POST /tasks/{id}/git/prs`, MCP `link_pull_request`).
-- **Pendiente:** el escenario de Proteus por MCP (en cuanto el escritorio
-  esté en la v1.6.94).
+- **Proteus:** la migración la hace su gente (guía en Claude Docs); no se
+  tocó su documento.
+- **9-oct, sin commitear (sólo app):** en Documentación, el clic en una lista
+  abre su documento y no saca a «Mi trabajo» (`lib/doc-mode.ts`); el árbol de
+  páginas se pliega a un riel (sale plegado si no hay páginas; la preferencia
+  se recuerda); el índice «En esta página» es fijo, al lado desde xl y un botón
+  por debajo. Y Canales y Mensajes directos se pliegan a un riel con las
+  iniciales de cada canal o persona (`RailItem`, `store/layout.store.ts`).
 
 ## 🎙️ Grabar la reunión (antes: transcribirla)
 

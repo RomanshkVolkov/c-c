@@ -140,8 +140,8 @@ export default function DocPageView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto p-6">
-        <div className="mx-auto flex w-full min-w-0 max-w-4xl gap-8">
+      <div data-doc-scroll className="min-h-0 flex-1 overflow-auto p-6">
+        <div className="mx-auto flex w-full min-w-0 max-w-4xl xl:max-w-5xl xl:gap-8">
           <div className="min-w-0 flex-1">
             {/* Las migas de pan: de dónde cuelga, hasta la portada. */}
             <nav aria-label="breadcrumb" className="mb-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">

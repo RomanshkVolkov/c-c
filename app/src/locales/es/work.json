@@ -376,7 +376,9 @@
     "unchangedLines_other": "··· {{count}} líneas sin cambios",
     "restoreThis": "Restaurar esta versión",
     "diff": "Cambios",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "collapseTree": "Plegar el árbol de páginas",
+    "expandTree": "Desplegar el árbol de páginas"
   },
   "docTemplates": {
     "title": "Aquí no hay nada escrito todavía",

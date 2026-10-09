@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,6 +17,8 @@ import {
   FolderInput,
   Home,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   Trash2,
@@ -63,7 +65,21 @@ export default function DocPageTree({ kind, ownerId }: { kind: DocOwnerKind; own
   const [dragging, setDragging] = useState<string | null>(null);
   const [moviendo, setMoviendo] = useState<DocPageTreeItem | null>(null);
   const [papelera, setPapelera] = useState(false);
+  const treeCollapsed = useDocPages((s) => s.treeCollapsed);
+  const setTreeCollapsed = useDocPages((s) => s.setTreeCollapsed);
+  // Desplegado a mano en un documento sin páginas: vale para esta vez y este
+  // documento, y no se recuerda. Si se recordara, el siguiente documento vacío
+  // volvería a salir abierto y a comerse el ancho por nada.
+  const [abiertoAhora, setAbiertoAhora] = useState(false);
+  useEffect(() => setAbiertoAhora(false), [kind, ownerId]);
   const owner = { kind, id: ownerId };
+
+  // Plegado a un riel delgado: el árbol abierto se come ~220px que en una
+  // tablet son el texto. Sin páginas sale plegado (no hay nada que navegar);
+  // con páginas, como lo dejó quien mira la última vez.
+  const vacio = tree.length === 0;
+  const plegado = vacio ? !abiertoAhora : (treeCollapsed ?? false);
+  const plegar = (v: boolean) => (vacio ? setAbiertoAhora(!v) : setTreeCollapsed(v));
 
   const sensors = useSensors(
     // Como en Notas y en el tablero: por debajo de 4px es un clic que abre la
@@ -79,10 +95,66 @@ export default function DocPageTree({ kind, ownerId }: { kind: DocOwnerKind; own
     createPage(owner, parentId, t("work:docs.untitled")).catch((e) => toast.error(String(e)));
   };
 
+  const dialogos = (
+    <>
+      <MovePageDialog kind={kind} ownerId={ownerId} page={moviendo} onClose={() => setMoviendo(null)} />
+      <DocPageTrash kind={kind} ownerId={ownerId} open={papelera} onOpenChange={setPapelera} />
+    </>
+  );
+
+  if (plegado) {
+    // El riel nunca deja el documento sin puerta a sus páginas: desplegar, la
+    // portada, crear una y la papelera siguen a un clic.
+    const icono = "grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground";
+    return (
+      <aside
+        className="flex w-10 shrink-0 flex-col items-center gap-1 border-r py-2"
+        aria-label={t("work:docs.pages")}
+        data-collapsed="true"
+      >
+        <button
+          type="button"
+          className={icono}
+          title={t("work:docs.expandTree")}
+          aria-label={t("work:docs.expandTree")}
+          onClick={() => plegar(false)}
+        >
+          <PanelLeftOpen className="size-4" />
+        </button>
+        <button
+          type="button"
+          className={cn(icono, activePageId === null && "bg-accent text-foreground")}
+          title={t("work:docs.home")}
+          aria-label={t("work:docs.home")}
+          onClick={closePage}
+        >
+          <Home className="size-4" />
+        </button>
+        <button
+          type="button"
+          className={icono}
+          title={t("work:docs.newPage")}
+          aria-label={t("work:docs.newPage")}
+          onClick={() => nueva(null)}
+        >
+          <Plus className="size-4" />
+        </button>
+        <button
+          type="button"
+          className={cn(icono, "mt-auto")}
+          title={t("work:docs.trash")}
+          aria-label={t("work:docs.trash")}
+          onClick={() => setPapelera(true)}
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+        {dialogos}
+      </aside>
+    );
+  }
+
   return (
     <aside
-      // Siempre a la vista, también en una ventana estrecha: escondido, las
-      // páginas de un documento no tendrían otra puerta que un enlace.
       className="flex w-44 shrink-0 flex-col overflow-y-auto border-r p-2 lg:w-56"
       aria-label={t("work:docs.pages")}
     >
@@ -109,6 +181,15 @@ export default function DocPageTree({ kind, ownerId }: { kind: DocOwnerKind; own
           onClick={() => nueva(null)}
         >
           <Plus className="size-3" />
+        </button>
+        <button
+          type="button"
+          title={t("work:docs.collapseTree")}
+          aria-label={t("work:docs.collapseTree")}
+          className="grid size-5 shrink-0 place-items-center rounded hover:bg-background"
+          onClick={() => plegar(true)}
+        >
+          <PanelLeftClose className="size-3" />
         </button>
       </div>
 
@@ -159,8 +240,7 @@ export default function DocPageTree({ kind, ownerId }: { kind: DocOwnerKind; own
         <Trash2 className="size-3" /> {t("work:docs.trash")}
       </button>
 
-      <MovePageDialog kind={kind} ownerId={ownerId} page={moviendo} onClose={() => setMoviendo(null)} />
-      <DocPageTrash kind={kind} ownerId={ownerId} open={papelera} onOpenChange={setPapelera} />
+      {dialogos}
     </aside>
   );
 }

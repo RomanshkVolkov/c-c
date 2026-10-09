@@ -625,7 +625,10 @@
     "statusNow": "Now: {{state}}",
     "removePdf": "Remove the PDF",
     "removePdfTitle": "Remove “{{name}}” from here?",
-    "removePdfBody": "The file isn't deleted: it just stops showing here. Ctrl+Z brings it back."
+    "removePdfBody": "The file isn't deleted: it just stops showing here. Ctrl+Z brings it back.",
+    "collapseList": "Collapse the list",
+    "expandList": "Expand the list",
+    "findSomebody": "Find somebody"
   },
   "calendar": {
     "undated_one": "{{count}} with no date",

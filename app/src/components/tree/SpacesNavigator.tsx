@@ -61,6 +61,7 @@ import { useTasksStore, type DropWhere, type TreeNodeRef } from "@/store/tasks.s
 import { useMyWorkStore } from "@/store/mywork.store";
 import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { docsRoute } from "@/lib/doc-mode";
 import { docKey, type FolderTree, type SpaceTree } from "@/types/task";
 import DropZone from "@/components/dnd/DropZone";
 import {
@@ -383,6 +384,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const [open, setOpen] = useState(true);
   const openDoc = useTasksStore((s) => s.openDoc);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
   const confirm = useConfirm();
@@ -441,9 +443,10 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           title={t("work:tree.openOverview")}
           onClick={() => {
             void openDoc("space", space.id, space.name).catch(() => {});
-            // Sin esto no pasaba nada salvo que ya estuvieras en `/tasks`, que
-            // es la única pantalla que pinta un documento.
-            navigate("/tasks");
+            // Sin esto no pasaba nada salvo que ya estuvieras en una pantalla
+            // que pinta un documento. En la de Documentación (`/docs`), se
+            // queda en ella.
+            navigate(pathname.startsWith("/docs") ? "/docs" : "/tasks");
           }}
         >
           {space.name}
@@ -628,6 +631,7 @@ function FolderNode({
   const confirm = useConfirm();
   const openDoc = useTasksStore((s) => s.openDoc);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
   const {
@@ -665,7 +669,7 @@ function FolderNode({
           title={t("work:tree.openOverview")}
           onClick={() => {
             void openDoc("folder", folder.id, folder.name).catch(() => {});
-            navigate("/tasks");
+            navigate(pathname.startsWith("/docs") ? "/docs" : "/tasks");
           }}
         >
           {folder.name}
@@ -814,10 +818,18 @@ function ListNode({
   const confirm = useConfirm();
   const docIndex = useTasksStore((s) => s.docIndex);
   const openDocDeLista = useTasksStore((s) => s.openDoc);
+  const activeDoc = useTasksStore((s) => s.activeDoc);
+  const currentOrgId = useOrgsStore((s) => s.currentOrgId);
+  const { pathname } = useLocation();
   const { renameList, deleteList, moveListToSpace } = useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const active = activeListId === list.id;
+  const enDocs = docsRoute(activeDoc, currentOrgId, pathname);
+  // En documentación, la lista marcada es la del documento abierto: el tablero
+  // que recuerda `activeListId` no es lo que se está mirando.
+  const active = enDocs
+    ? activeDoc?.kind === "list" && activeDoc.id === list.id
+    : activeListId === list.id;
   // Its own binding, or the space's. The eye means "a client sees this" either
   // way — where it was configured is a detail for the dialog, not the tree.
   const channel = list.projectId ?? spaceProjectId;
@@ -858,6 +870,13 @@ function ListNode({
         // Y por eso `focusList` y no `selectList`: el tablero que pediría no lo
         // va a ver nadie. Cuando sí se va a él, lo carga el efecto de montaje de
         // `Tasks`.
+        // Salvo que se esté leyendo documentación: entonces se abre la de esta
+        // lista y se queda ahí (ver `docsRoute`).
+        if (enDocs) {
+          void openDocDeLista("list", list.id, list.name).catch(() => {});
+          navigate(enDocs);
+          return;
+        }
         focusList(list.id);
         setScope({ kind: "list", id: list.id, name: list.name });
         navigate("/my-work");

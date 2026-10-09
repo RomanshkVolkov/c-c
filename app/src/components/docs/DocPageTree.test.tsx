@@ -46,6 +46,7 @@ beforeEach(() => {
     owner: { kind: "space", id: "s1" },
     activePageId: null,
     view: null,
+    treeCollapsed: null,
     tree: [fila("p1", "Apps"), fila("p2", "Nereus", "p1"), fila("p3", "Triton", "p1"), fila("p4", "Entrega")],
   });
 });
@@ -149,18 +150,79 @@ describe("el menú de una página", () => {
 
 describe("la papelera", () => {
   it("dice cuándo y cuántas, y restaurar trae la página", async () => {
+    let restaurada = false;
     get.mockImplementation(async (p: string) =>
       p.endsWith("?trashed=1")
-        ? { data: [{ ...fila("t1", "Viejo"), deletedAt: "2026-10-08T12:00:00Z", subpages: 3 }] }
-        : { data: [] },
+        ? { data: restaurada ? [] : [{ ...fila("t1", "Viejo"), deletedAt: "2026-10-08T12:00:00Z", subpages: 3 }] }
+        : // Tras restaurar, el árbol la trae de vuelta.
+          { data: restaurada ? [fila("t1", "Viejo")] : [] },
     );
-    post.mockResolvedValue({ success: true });
+    post.mockImplementation(async () => {
+      restaurada = true;
+      return { success: true };
+    });
     render(<DocPageTree kind="space" ownerId="s1" />);
     fireEvent.click(screen.getByText("Trash"));
     expect(await screen.findByText("Viejo")).toBeTruthy();
     expect(screen.getByText(/3 pages inside/)).toBeTruthy();
     fireEvent.click(screen.getByText("Restore"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/docs/space/s1/pages/t1/restore", {}));
-    await waitFor(() => expect(screen.queryByText("Viejo")).toBeNull());
+    // Fuera de la papelera, y de vuelta en el árbol.
+    await waitFor(() => expect(within(screen.getByRole("dialog")).queryByText("Viejo")).toBeNull());
+    expect(useDocPages.getState().tree.map((x) => x.id)).toEqual(["t1"]);
+  });
+});
+
+/**
+ * Plegado a un riel delgado: el árbol abierto se come ~220px que en una tablet
+ * son el texto. Sin páginas sale plegado; con páginas, como lo dejó quien mira,
+ * y eso se recuerda. Plegado nunca deja el documento sin puerta.
+ */
+describe("el árbol plegado", () => {
+  const plegado = () => document.querySelector('aside[data-collapsed="true"]');
+
+  it("sin páginas sale plegado, con la portada y «página nueva» a mano", () => {
+    useDocPages.setState({ tree: [] });
+    render(<DocPageTree kind="space" ownerId="s1" />);
+    expect(plegado()).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    post.mockResolvedValue({ data: null });
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+    expect(post).toHaveBeenCalledWith("/api/v1/docs/space/s1/pages", { title: "Untitled" });
+  });
+
+  it("desplegarlo sin páginas vale para esta vez y no se recuerda", () => {
+    useDocPages.setState({ tree: [] });
+    render(<DocPageTree kind="space" ownerId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Expand the page tree" }));
+    expect(plegado()).toBeNull();
+    expect(useDocPages.getState().treeCollapsed).toBeNull();
+  });
+
+  it("con páginas sale abierto, y plegarlo se recuerda", () => {
+    render(<DocPageTree kind="space" ownerId="s1" />);
+    expect(plegado()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse the page tree" }));
+    expect(plegado()).not.toBeNull();
+    expect(useDocPages.getState().treeCollapsed).toBe(true);
+    // Plegado no enseña las páginas, pero sí cómo volver a ellas.
+    expect(screen.queryByText("Nereus")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand the page tree" }));
+    expect(screen.getByText("Nereus")).toBeTruthy();
+    expect(useDocPages.getState().treeCollapsed).toBe(false);
+  });
+
+  it("si se dejó plegado, el siguiente documento con páginas sale plegado", () => {
+    useDocPages.setState({ treeCollapsed: true });
+    render(<DocPageTree kind="space" ownerId="s1" />);
+    expect(plegado()).not.toBeNull();
+  });
+
+  it("plegado, la papelera sigue a un clic", async () => {
+    useDocPages.setState({ treeCollapsed: true });
+    get.mockResolvedValue({ data: [] });
+    render(<DocPageTree kind="space" ownerId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Trash" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 });

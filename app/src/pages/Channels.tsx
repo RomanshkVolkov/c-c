@@ -2,7 +2,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useT } from "@/lib/i18n";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Hash, Megaphone, MessagesSquare, Volume2 } from "lucide-react";
+import { Hash, Megaphone, MessagesSquare, PanelLeftClose, PanelLeftOpen, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/store/auth.store";
@@ -15,6 +15,8 @@ import { useEncogerEnLlamada } from "@/components/voice/useEncogerEnLlamada";
 import { useOrgsStore } from "@/store/orgs.store";
 import { usePlacesStore } from "@/store/places.store";
 import { cn } from "@/lib/utils";
+import RailItem from "@/components/RailItem";
+import { useLayoutStore } from "@/store/layout.store";
 
 /**
  * Every space's channel, on a screen of its own.
@@ -94,6 +96,12 @@ export default function Channels() {
   const conversacionEnMovil = movil && !!abierto && !!espacio;
   const listaEnMovil = movil && !conversacionEnMovil;
 
+  // Plegada a un riel con las iniciales de cada canal, a gusto de quien mira y
+  // recordado. Sólo en escritorio: en el teléfono ya se ve una cosa u otra.
+  const plegadaPref = useLayoutStore((s) => !!s.collapsed.channels);
+  const setCollapsed = useLayoutStore((s) => s.setCollapsed);
+  const plegada = plegadaPref && !movil;
+
   // Says which channel is on screen, so the event handler can keep quiet about
   // messages you are watching arrive. It used to read "is the panel open on
   // this space", and with the panel gone that would have been false forever —
@@ -116,14 +124,42 @@ export default function Channels() {
         inert={encogido}
         className={cn(
           "flex shrink-0 flex-col overflow-hidden bg-muted/10 transition-[width] duration-200",
-          encogido ? "w-0 border-r-0" : "w-60 border-r",
+          encogido ? "w-0 border-r-0" : plegada ? "w-14 border-r" : "w-60 border-r",
           listaEnMovil && "w-full border-r-0",
           conversacionEnMovil && "hidden",
         )}
       >
-        <header className="flex h-12 shrink-0 items-center border-b px-3">
-          <span className="text-sm font-medium">{t("common:last.channels")}</span>
+        <header
+          className={cn("flex h-12 shrink-0 items-center border-b", plegada ? "justify-center" : "gap-1 px-3")}
+        >
+          {!plegada && <span className="flex-1 text-sm font-medium">{t("common:last.channels")}</span>}
+          {!movil && (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              title={t(plegada ? "common:last.expandList" : "common:last.collapseList")}
+              aria-label={t(plegada ? "common:last.expandList" : "common:last.collapseList")}
+              onClick={() => setCollapsed("channels", !plegada)}
+            >
+              {plegada ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
+            </Button>
+          )}
         </header>
+        {plegada ? (
+          <nav className="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto py-2">
+            {[...(general ? [general] : []), ...canales].map((s) => (
+              <RailItem
+                key={s.id}
+                name={s.name}
+                active={s.id === espacio?.id}
+                count={unread[s.id] ?? 0}
+                live={(ocupacion[s.id] ?? []).length > 0}
+                icon={s.kind === "general" ? <Megaphone className="size-4" /> : undefined}
+                onClick={() => setParams({ space: s.id })}
+              />
+            ))}
+          </nav>
+        ) : (
         <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1">
           {tree.length === 0 ? (
             <p className="px-2 py-3 text-xs text-muted-foreground">
@@ -213,6 +249,7 @@ export default function Channels() {
             </Button>
           )}
         </nav>
+        )}
       </aside>
 
       {listaEnMovil ? null : espacio ? (
