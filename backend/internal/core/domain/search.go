@@ -12,12 +12,18 @@ import (
 // no message or DM body travels here — a hit says *that* something matched and
 // where, not what it said.
 //
-// La documentación es la excepción, y sólo ella: lleva `Snippet`, el trozo
-// donde aparece lo buscado. Una página de 130 000 caracteres que «contiene»
-// la palabra no dice nada sin ver dónde; y la valla de un doc es la
-// organización, la misma que la de quien busca, así que el fragmento no le
-// enseña nada que no pudiera abrir. Mensajes y DMs siguen sin texto: su valla
-// es el canal o las dos personas, no la organización.
+// Llevan `Snippet` —el trozo donde aparece lo buscado— sólo las fuentes cuya
+// valla es la misma que la de quien busca, así que el fragmento no le enseña
+// nada que no pudiera abrir:
+//   - la documentación (la organización): una página de 130 000 caracteres que
+//     «contiene» la palabra no dice nada sin ver dónde;
+//   - la **descripción** de una tarea (la organización), nunca un comentario:
+//     un comentario puede ser interno, y su trozo fuera del hilo es lo que no
+//     se hace;
+//   - una nota (su dueño, que es quien busca).
+//
+// Mensajes y DMs siguen sin texto: su valla es el canal o las dos personas, no
+// la organización.
 type SearchHit struct {
 	Kind  SearchKind `json:"kind"`
 	ID    string     `json:"id"`
@@ -33,7 +39,7 @@ type SearchHit struct {
 	// sabría a cuál.
 	OrgID string `json:"orgId,omitempty"`
 	// Snippet: el trozo donde aparece lo buscado, con las coincidencias entre
-	// `**`. Sólo en documentación (ver arriba).
+	// `**`. Sólo donde la valla lo permite (ver arriba).
 	Snippet string `json:"snippet,omitempty"`
 	// Dónde está un acierto de documentación, para que un agente no tenga que
 	// desmontar el enlace: el nodo, la pestaña (en la portada) o la página.

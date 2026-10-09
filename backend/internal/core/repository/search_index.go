@@ -7,7 +7,8 @@ import (
 )
 
 /*
-EnsureSearchIndexes monta la búsqueda de texto completo de la documentación.
+EnsureSearchIndexes monta la búsqueda de texto completo: la documentación, las
+tareas (título, descripción y comentarios) y las notas.
 
 **Configuración `cac_simple` = `simple` + `unaccent`.** La documentación mezcla
 castellano e inglés y está llena de identificadores (`pocna-jobs`, `CAC_TOKEN`,
@@ -56,21 +57,61 @@ func EnsureSearchIndexes(db *gorm.DB) error {
 			return err
 		}
 	}
-	stmts := []string{
-		// La pestaña es la portada: peso B, como el cuerpo de una página.
-		`ALTER TABLE doc_tabs ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
-			(setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'B')) STORED`,
-		// En una página, el título pesa más que el cuerpo: buscar «Nereus» tiene
-		// que traer la página que se llama así antes que las que lo nombran.
-		`ALTER TABLE doc_pages ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
-			(setweight(to_tsvector('cac_simple'::regconfig, coalesce(title, '')), 'A') ||
-			 setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'B')) STORED`,
-		`CREATE INDEX IF NOT EXISTS idx_doc_tabs_search ON doc_tabs USING GIN (search)`,
-		`CREATE INDEX IF NOT EXISTS idx_doc_pages_search ON doc_pages USING GIN (search)`,
+	// Por tabla, y sólo las que existen: una base de pruebas monta las tablas
+	// que necesita, no todas, y la columna de una tabla que no está no es un
+	// error de esta base.
+	porTabla := []struct {
+		table string
+		stmts []string
+	}{
+		{"doc_tabs", []string{
+			// La pestaña es la portada: peso B, como el cuerpo de una página.
+			`ALTER TABLE doc_tabs ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
+				(setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'B')) STORED`,
+			`CREATE INDEX IF NOT EXISTS idx_doc_tabs_search ON doc_tabs USING GIN (search)`,
+		}},
+		{"doc_pages", []string{
+			// En una página, el título pesa más que el cuerpo: buscar «Nereus»
+			// tiene que traer la página que se llama así antes que las que lo
+			// nombran.
+			`ALTER TABLE doc_pages ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
+				(setweight(to_tsvector('cac_simple'::regconfig, coalesce(title, '')), 'A') ||
+				 setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'B')) STORED`,
+			`CREATE INDEX IF NOT EXISTS idx_doc_pages_search ON doc_pages USING GIN (search)`,
+		}},
+		{"items", []string{
+			// Una tarea, como una página: el título pesa más que la descripción.
+			`ALTER TABLE items ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
+				(setweight(to_tsvector('cac_simple'::regconfig, coalesce(title, '')), 'A') ||
+				 setweight(to_tsvector('cac_simple'::regconfig, coalesce(description, '')), 'B')) STORED`,
+			`CREATE INDEX IF NOT EXISTS idx_items_search ON items USING GIN (search)`,
+		}},
+		{"item_comments", []string{
+			// Los comentarios, por debajo de los dos: un acierto en el hilo de
+			// hace un año no puede tapar a la tarea que se llama así (#89).
+			`ALTER TABLE item_comments ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
+				(setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'C')) STORED`,
+			`CREATE INDEX IF NOT EXISTS idx_item_comments_search ON item_comments USING GIN (search)`,
+		}},
+		{"notes", []string{
+			`ALTER TABLE notes ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
+				(setweight(to_tsvector('cac_simple'::regconfig, coalesce(title, '')), 'A') ||
+				 setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'B')) STORED`,
+			`CREATE INDEX IF NOT EXISTS idx_notes_search ON notes USING GIN (search)`,
+		}},
 	}
-	for _, s := range stmts {
-		if err := db.Exec(s).Error; err != nil {
+	for _, t := range porTabla {
+		var existe bool
+		if err := db.Raw(`SELECT to_regclass(?) IS NOT NULL`, t.table).Scan(&existe).Error; err != nil {
 			return err
+		}
+		if !existe {
+			continue
+		}
+		for _, s := range t.stmts {
+			if err := db.Exec(s).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil

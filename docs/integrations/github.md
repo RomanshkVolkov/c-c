@@ -61,6 +61,13 @@ la Setup URL y cac ata la instalación a la org.
 Los repos que la instalación deja ver aparecen en la pestaña, **sin enlazar**.
 Un repo sin enlazar no comenta nada; así empieza cada uno.
 
+**Al enlazar un repo a un espacio** (o cambiar «#12 a secas»), cac trae sus PRs
+abiertas —las 100 más recientes— y las pasa por el mismo camino que un evento
+`opened`: las que nombran una tarea, o salen de una rama con su número, quedan
+en su panel con su línea en el hilo. Sin esto, un repo con veinte PRs en marcha
+dejaba los paneles vacíos hasta el siguiente push de cada una. Lee con el token
+de la instalación (`GET /repos/{repo}/pulls`); no pide permisos nuevos.
+
 ## 3. Nombrar una tarea
 
 En el mensaje de un commit, o en el título o el cuerpo de una PR:
@@ -113,9 +120,20 @@ Una reentrega de GitHub no duplica nada.
 `Delete` cubren una rama creada o borrada desde la web de GitHub sin push. Son
 eventos, no permisos: añadirlos no obliga a nadie a reinstalar.
 
-**API.** `GET /api/v1/tasks/{id}/git` (también va dentro del detalle de la
-tarea, campo `git`, que es lo que lee `get_task` del MCP). Evento `task:git`
-cuando cambia algo.
+**A mano.** Una PR que no nombra la tarea ni sale de su rama se enlaza pegando
+su URL en el panel («Enlazar una PR»), o con `link_pull_request` del MCP. El
+repo tiene que ser de la org de la tarea —uno que su App ve—: pegar la URL de
+un repo ajeno no sirve para leerlo con el token de otra. Queda con `via:
+manual` y una línea `PR #9 linked: …` en el hilo.
+
+**API.**
+- `GET /api/v1/tasks/{id}/git` (también va dentro del detalle de la tarea, campo
+  `git`, que es lo que lee `get_task` del MCP).
+- `POST /api/v1/tasks/{id}/git/prs` con `{url}`: miembro de la org de la tarea
+  (un lector no; 404 a quien no es de la org). Con un token, `tasks:write`.
+  Errores: `not-a-pull-url` (400), `repo-not-in-org` (422), `pr-not-found` (502),
+  `github-off` (503).
+- Evento `task:git` cuando cambia algo.
 
 ## 5. Lo que la App escribe en GitHub
 

@@ -20,7 +20,67 @@ func like(q string) string { return "%" + strings.ToLower(strings.TrimSpace(q)) 
 
 // Tasks in one organization the caller belongs to. Client-facing items are
 // included: this is cac's own console, and a report is work like any other.
+// Tasks de la organización, con texto completo: título, descripción y
+// comentarios (ver search_index.go), con lo que casa en el título primero.
+//
+// El fragmento sale **sólo de la descripción**, y sólo si es ahí donde está lo
+// buscado. Un comentario puede ser interno, y el trozo de un hilo enseñado
+// fuera de su hilo es justo lo que el comentario de este fichero dice que no se
+// hace.
 func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.SearchHit, error) {
+	out := []domain.SearchHit{}
+	if orgID == "" {
+		return out, nil
+	}
+	tsq := domain.SearchTSQuery(query)
+	if tsq == "" {
+		return out, nil
+	}
+	type row struct {
+		ID, Title, ListName, Snippet string
+	}
+	var rows []row
+	err := r.db.Raw(`
+		WITH q AS (SELECT to_tsquery('cac_simple', ?) AS q),
+		hits AS (
+			SELECT t.id, ts_rank_cd(t.search, q.q) AS score FROM items t, q
+			WHERE t.org_id = ? AND t.deleted_at IS NULL AND t.archived_at IS NULL AND t.search @@ q.q
+			UNION ALL
+			SELECT t.id, ts_rank_cd(c.search, q.q) FROM item_comments c JOIN items t ON t.id = c.item_id, q
+			WHERE t.org_id = ? AND t.deleted_at IS NULL AND t.archived_at IS NULL
+			  AND c.deleted_at IS NULL AND c.search @@ q.q
+		),
+		best AS (
+			SELECT h.id, max(h.score) AS score,
+			       bool_or(to_tsvector('cac_simple', t.title) @@ q.q) AS in_title, max(t.updated_at) AS updated_at
+			FROM hits h JOIN items t ON t.id = h.id, q
+			GROUP BY h.id
+			ORDER BY in_title DESC, score DESC, updated_at DESC
+			LIMIT ?
+		)
+		SELECT t.id, t.title, l.name AS list_name,
+		       CASE WHEN to_tsvector('cac_simple', coalesce(t.description, '')) @@ q.q
+		            THEN ts_headline('cac_simple', t.description, q.q,
+		              'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
+		            ELSE '' END AS snippet
+		FROM best b JOIN items t ON t.id = b.id JOIN task_lists l ON l.id = t.list_id CROSS JOIN q
+		ORDER BY b.in_title DESC, b.score DESC, b.updated_at DESC`,
+		tsq, orgID, orgID, limit).Scan(&rows).Error
+	if err != nil {
+		return r.tasksLike(query, orgID, limit)
+	}
+	for _, x := range rows {
+		out = append(out, domain.SearchHit{
+			Kind: domain.SearchTask, ID: x.ID, Title: x.Title, Snippet: x.Snippet,
+			Where: x.ListName, Link: "/tasks?task=" + x.ID,
+		})
+	}
+	return out, nil
+}
+
+// tasksLike es la búsqueda de antes, por `LIKE`, para una base sin el índice
+// de texto completo.
+func (r *SearchRepository) tasksLike(query, orgID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}
 	if orgID == "" {
 		// A missing organization must not widen the search to every one of
@@ -69,8 +129,47 @@ func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.Searc
 	return out, err
 }
 
-// Notes are personal: the fence is the owner, not the organization.
+// Notes are personal: the fence is the owner, not the organization. Con texto
+// completo y fragmento: la nota es de quien busca, así que enseñarle el trozo
+// no saca nada de ningún sitio.
 func (r *SearchRepository) Notes(query, ownerID string, limit int) ([]domain.SearchHit, error) {
+	out := []domain.SearchHit{}
+	tsq := domain.SearchTSQuery(query)
+	if tsq == "" {
+		return out, nil
+	}
+	type row struct{ ID, Title, Snippet string }
+	var rows []row
+	err := r.db.Raw(`
+		WITH q AS (SELECT to_tsquery('cac_simple', ?) AS q),
+		best AS (
+			SELECT n.id, n.title, n.body, ts_rank_cd(n.search, q.q) AS score, n.updated_at
+			FROM notes n, q
+			WHERE n.owner_id = ? AND n.deleted_at IS NULL AND n.search @@ q.q
+			ORDER BY score DESC, n.updated_at DESC
+			LIMIT ?
+		)
+		SELECT b.id, b.title,
+		       CASE WHEN to_tsvector('cac_simple', coalesce(b.body, '')) @@ q.q
+		            THEN ts_headline('cac_simple', b.body, q.q,
+		              'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
+		            ELSE '' END AS snippet
+		FROM best b CROSS JOIN q
+		ORDER BY b.score DESC, b.updated_at DESC`,
+		tsq, ownerID, limit).Scan(&rows).Error
+	if err != nil {
+		return r.notesLike(query, ownerID, limit)
+	}
+	for _, x := range rows {
+		out = append(out, domain.SearchHit{
+			Kind: domain.SearchNote, ID: x.ID, Title: x.Title, Snippet: x.Snippet, Link: "/notes/" + x.ID,
+		})
+	}
+	return out, nil
+}
+
+// notesLike: la de antes, para una base sin el índice.
+func (r *SearchRepository) notesLike(query, ownerID string, limit int) ([]domain.SearchHit, error) {
 	out := []domain.SearchHit{}
 	type row struct{ ID, Title string }
 	var rows []row

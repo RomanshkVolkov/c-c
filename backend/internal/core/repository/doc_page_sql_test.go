@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -49,7 +50,7 @@ func pagesSQLDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.User{},
 		&domain.Doc{}, &domain.DocTab{}, &domain.DocVersion{}, &domain.DocAttachment{},
-		&domain.DocPage{}, &domain.DocPageVersion{},
+		&domain.DocPage{}, &domain.DocPageVersion{}, &domain.Item{},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -317,3 +318,59 @@ func TestEnsureSearchIndexesIsIdempotent(t *testing.T) {
 		t.Fatalf("crear una página con la columna generada: %v", err)
 	}
 }
+
+// «Referenciado desde»: lo que enlaza a una página. Otra página, una pestaña de
+// una portada y la descripción de una tarea cuentan; la propia página, lo que
+// está en la papelera, una tarea archivada y otra organización, no.
+func TestAPageKnowsWhatLinksToIt(t *testing.T) {
+	f := newPagesFixture(t, "o1")
+	link := func(id string) string { return "ver [Nereus](/tasks?doc=list:" + f.list.ID + "&page=" + id + ")" }
+	nereus := f.page(t, "o1", "Nereus", "", nil)
+	// Se enlaza a sí misma: no cuenta.
+	if err := f.r.SavePage(nereus, nil, ptr(link(nereus.ID)), "u1"); err != nil {
+		t.Fatal(err)
+	}
+	f.page(t, "o1", "Triton", link(nereus.ID), nil)
+	tirada := f.page(t, "o1", "Vieja", link(nereus.ID), nil)
+	if _, err := f.r.TrashPage(tirada.DocID, tirada.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Create(&domain.DocTab{DocID: nereus.DocID, Key: "runbook", Body: link(nereus.ID)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	tarea := &domain.Item{OrgID: "o1", ListID: f.list.ID, Title: "Migrar Nereus", Description: link(nereus.ID), Status: domain.ReportPending}
+	archivada := &domain.Item{OrgID: "o1", ListID: f.list.ID, Title: "Archivada", Description: link(nereus.ID), Status: domain.ReportPending}
+	ajena := &domain.Item{OrgID: "o2", ListID: f.list.ID, Title: "De otra org", Description: link(nereus.ID), Status: domain.ReportPending}
+	for _, it := range []*domain.Item{tarea, archivada, ajena} {
+		if err := f.db.Create(it).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.db.Model(archivada).Update("archived_at", time.Now()).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	refs, err := f.r.PageBacklinks("o1", nereus.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, r := range refs {
+		got[r.Kind+":"+r.Title] = r.Link
+	}
+	want := map[string]string{
+		"page:Triton":        "&page=",
+		"tab:Apps":           "&tab=runbook",
+		"task:Migrar Nereus": "/tasks?task=" + tarea.ID,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("referencias: %v", got)
+	}
+	for k, frag := range want {
+		if !strings.Contains(got[k], frag) {
+			t.Fatalf("falta %s (con %q en el enlace): %v", k, frag, got)
+		}
+	}
+}
+
+func ptr(s string) *string { return &s }

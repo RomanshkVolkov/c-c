@@ -90,6 +90,53 @@ func (h *GitHubHandler) UpdateRepo(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.GitHubRepo]{Success: true, Data: repo})
 }
 
+// LinkTaskPR: `POST /api/v1/tasks/{id}/git/prs` con `{url}`. Enlaza a mano una
+// PR a la tarea. Un miembro de la org de la tarea (no un lector: añade una
+// línea al hilo); a quien no es de la org, 404, como a una tarea que no existe.
+func (h *GitHubHandler) LinkTaskPR(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	item, err := h.svc.Task(chi.URLParam(r, "id"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Task not found", "not-found")
+		return
+	}
+	role, member := user.RoleInOrg(item.OrgID)
+	if user.Superadmin {
+		role, member = domain.OrgRoleAdmin, true
+	}
+	if !member {
+		SendErrorResponse(w, http.StatusNotFound, "Task not found", "not-found")
+		return
+	}
+	if !role.CanWrite() {
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "insufficient-role")
+		return
+	}
+	req, err := ValidateRequest[domain.LinkPRRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	link, err := h.svc.LinkPRByURL(item, req.URL)
+	switch {
+	case err == nil:
+		SendResult(w, http.StatusOK, domain.APIResponse[*domain.TaskGitLink]{Success: true, Data: link})
+	case errors.Is(err, service.ErrNotAPullURL):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a GitHub pull request URL", "not-a-pull-url")
+	case errors.Is(err, service.ErrRepoNotInOrg):
+		SendErrorResponse(w, http.StatusUnprocessableEntity, "That repository is not connected to this organization", "repo-not-in-org")
+	case errors.Is(err, service.ErrGitHubOff):
+		SendErrorResponse(w, http.StatusServiceUnavailable, "GitHub is not configured", "github-off")
+	default:
+		// GitHub no la encontró, o no contestó: lo mismo para quien pega.
+		SendErrorResponse(w, http.StatusBadGateway, "GitHub could not find that pull request", "pr-not-found")
+	}
+}
+
 // Webhook: `POST /webhooks/github`, fuera del JWT. Quien llama es GitHub, y lo
 // que lo prueba es la firma sobre los bytes crudos.
 func (h *GitHubHandler) Webhook(w http.ResponseWriter, r *http.Request) {

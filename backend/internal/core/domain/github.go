@@ -114,6 +114,10 @@ const (
 
 	GitViaText   = "text"
 	GitViaBranch = "branch"
+	// GitViaManual: alguien pegó la URL de la PR en la tarea. Para la PR que
+	// no nombra la tarea ni sale de una rama con su número (el caso que cubre
+	// Linear con «Link pull request»).
+	GitViaManual = "manual"
 )
 
 // PRStateOf: el estado de una PR tal como lo pinta cac.
@@ -172,3 +176,8 @@ type TaskGitLinks struct {
 // MaxGitCommitsShown: cuántos commits se devuelven por tarea, como Jira (100).
 // El resumen sí los cuenta todos.
 const MaxGitCommitsShown = 100
+
+// LinkPRRequest: la URL de una PR, pegada en una tarea.
+type LinkPRRequest struct {
+	URL string `json:"url" validate:"required,max=500"`
+}

@@ -56,6 +56,9 @@ func InitGitHubRoutesWith(r *chi.Mux, svc *service.GitHubService) {
 	r.Post("/webhooks/github", h.Webhook)
 	r.Get("/webhooks/github/setup", h.Setup)
 
+	// Enlazar a mano una PR a una tarea: bajo la tarea, con el JWT o un token
+	// con `tasks:write` (ver `patWritable`).
+	r.With(middleware.AuthMiddleware).Post("/api/v1/tasks/{id}/git/prs", h.LinkTaskPR)
 	r.Route("/api/v1/organizations/{id}/github", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.Status)

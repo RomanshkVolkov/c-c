@@ -110,6 +110,16 @@ func (r *GitHubRepository) FindRepoInOrg(orgID, id string) (*domain.GitHubRepo, 
 	return &repo, nil
 }
 
+// FindTask: una tarea viva por id, para enlazarle una PR a mano. Quién puede
+// lo decide el handler con la org que trae.
+func (r *GitHubRepository) FindTask(id string) (*domain.Item, error) {
+	var it domain.Item
+	if err := r.db.First(&it, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &it, nil
+}
+
 func (r *GitHubRepository) LinkRepo(id, spaceID string, bare bool) error {
 	return r.db.Model(&domain.GitHubRepo{}).Where("id = ?", id).
 		Updates(map[string]any{"space_id": spaceID, "bare_refs": bare}).Error

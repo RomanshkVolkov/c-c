@@ -95,7 +95,29 @@ type DocPageView struct {
 	Breadcrumb []DocPageCrumb    `json:"breadcrumb"`
 	Children   []DocPageTreeItem `json:"children"`
 	OrgID      string            `json:"orgId"`
+	// ReferencedFrom: lo que enlaza a esta página. Ver `DocBacklink`.
+	ReferencedFrom []DocBacklink `json:"referencedFrom"`
 }
+
+// DocBacklink es algo que enlaza a una página: otra página, una pestaña de una
+// portada o la descripción de una tarea.
+//
+// Se calcula en cada lectura buscando el enlace (`page=<id>`) en los textos, y
+// no se guarda en una tabla de referencias: así un enlace que se borra deja de
+// contar en el acto, y renombrar o mover la página —que no cambia su id— no
+// rompe nada. Es lo mismo que hacen las notas (`NoteRepository.Backlinks`).
+type DocBacklink struct {
+	// Kind: page | tab | task.
+	Kind  string `json:"kind"`
+	Title string `json:"title"`
+	// Where: el nodo de la página o pestaña, o la lista de la tarea.
+	Where string `json:"where,omitempty"`
+	Link  string `json:"link"`
+}
+
+// MaxDocBacklinks: cuántas se enseñan. Una página enlazada desde cien sitios
+// no necesita la lista entera para decir que es importante.
+const MaxDocBacklinks = 50
 
 // MaxDocBodyChars: lo más largo que puede ser una pestaña o una página.
 //

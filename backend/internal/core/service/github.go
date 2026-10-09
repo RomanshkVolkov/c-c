@@ -19,6 +19,7 @@ import (
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -26,6 +27,10 @@ var (
 	ErrGitHubOff       = errors.New("github app not configured")
 	ErrBadLinkState    = errors.New("bad or expired github link state")
 	ErrSpaceOutsideOrg = errors.New("space is not in this org")
+	// ErrNotAPullURL: lo pegado no es la URL de una PR de GitHub.
+	ErrNotAPullURL = errors.New("not a github pull request url")
+	// ErrRepoNotInOrg: la PR es de un repo que la App de esta org no ve.
+	ErrRepoNotInOrg = errors.New("that repository is not connected to this organization")
 )
 
 // GitHubConfig: lo que el servidor sabe de la App. Sin las dos, todo lo de
@@ -174,8 +179,113 @@ func (s *GitHubService) LinkRepo(orgID, id string, req domain.UpdateGitHubRepoRe
 	if err := s.repo.LinkRepo(repo.ID, req.SpaceID, req.BareRefs); err != nil {
 		return nil, err
 	}
+	antes := *repo
 	repo.SpaceID, repo.BareRefs = req.SpaceID, req.BareRefs
+	// Las PRs que ya estaban abiertas, enlazadas como si acabaran de abrirse.
+	// Sin esto, vincular un repo con veinte PRs en marcha dejaba el panel vacío
+	// hasta que cada una recibiera su siguiente push.
+	if repo.SpaceID != "" && (antes.SpaceID != repo.SpaceID || antes.BareRefs != repo.BareRefs) && s.CanRead() {
+		if s.async {
+			go s.logBackfill(repo)
+		} else {
+			s.logBackfill(repo)
+		}
+	}
 	return repo, nil
+}
+
+func (s *GitHubService) logBackfill(repo *domain.GitHubRepo) {
+	if n, err := s.BackfillPRs(repo); err != nil {
+		lg.Warn(fmt.Sprintf("github: backfill of %s stopped after %d PRs: %v", repo.FullName, n, err))
+	}
+}
+
+// BackfillPRs pasa las PRs abiertas de un repo vinculado por el mismo camino
+// que un evento `opened` (`onPullRequest`): mismas reglas para saber a qué
+// tarea van, misma línea en el hilo —una sola, por su clave—. Las 100 más
+// recientes: una PR abierta más vieja que eso no es trabajo en marcha.
+func (s *GitHubService) BackfillPRs(repo *domain.GitHubRepo) (int, error) {
+	var prs []ghPR
+	if err := s.asInstallation(repo.InstallationID, http.MethodGet,
+		"/repos/"+repo.FullName+"/pulls?state=open&per_page=100", nil, &prs); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, pr := range prs {
+		p := &ghPayload{Action: "opened", Number: pr.Number, PullRequest: pr}
+		p.Repository.ID, p.Repository.FullName = repo.RepoID, repo.FullName
+		if err := s.onPullRequest(p); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// pullURL: `https://github.com/{owner}/{repo}/pull/{n}` → repo y número. Lo
+// de detrás del número (`/files`, `#discussion…`) se ignora: es la misma PR.
+func pullURL(raw string) (string, int, bool) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Host, "github.com") {
+		return "", 0, false
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < 4 || parts[2] != "pull" || parts[0] == "" || parts[1] == "" {
+		return "", 0, false
+	}
+	n, err := strconv.Atoi(parts[3])
+	if err != nil || n <= 0 {
+		return "", 0, false
+	}
+	return parts[0] + "/" + parts[1], n, true
+}
+
+// Task: la tarea a la que se quiere enlazar una PR (ver `LinkPRByURL`).
+func (s *GitHubService) Task(id string) (*domain.Item, error) { return s.repo.FindTask(id) }
+
+// LinkPRByURL enlaza a mano una PR a una tarea, pegando su URL. Para la PR que
+// no nombra la tarea en ningún sitio. El repo tiene que ser de la org de la
+// tarea —uno que su App ve—: pegar la URL de un repo ajeno no puede servir
+// para que cac lo lea con el token de otra.
+func (s *GitHubService) LinkPRByURL(item *domain.Item, raw string) (*domain.TaskGitLink, error) {
+	full, number, ok := pullURL(raw)
+	if !ok {
+		return nil, ErrNotAPullURL
+	}
+	if !s.CanRead() {
+		return nil, ErrGitHubOff
+	}
+	repo, err := s.repo.FindRepoByName(item.OrgID, full)
+	if err != nil {
+		return nil, ErrRepoNotInOrg
+	}
+	var pr ghPR
+	if err := s.asInstallation(repo.InstallationID, http.MethodGet,
+		fmt.Sprintf("/repos/%s/pulls/%d", repo.FullName, number), nil, &pr); err != nil {
+		return nil, err
+	}
+	state := domain.PRStateOf(pr.State, pr.Draft, pr.Merged || pr.MergedAt != nil)
+	link := &domain.TaskGitLink{
+		OrgID: item.OrgID, ItemID: item.ID, RepoID: repo.RepoID, RepoFullName: repo.FullName,
+		Kind: domain.GitLinkPR, Key: strconv.Itoa(number), Title: firstLine(pr.Title),
+		HTMLURL: safeURL(pr.HTMLURL), AuthorLogin: pr.User.Login, State: state,
+		HeadBranch: pr.Head.Ref, BaseBranch: pr.Base.Ref, HeadSha: pr.Head.Sha,
+		Via: domain.GitViaManual, MergedAt: pr.MergedAt, GitHubUpdatedAt: pr.UpdatedAt,
+		OccurredAt: pr.CreatedAt,
+	}
+	if link.OccurredAt.IsZero() {
+		link.OccurredAt = s.now().UTC()
+	}
+	if _, err := s.repo.UpsertGitLink(link); err != nil {
+		return nil, err
+	}
+	key := fmt.Sprintf("gh:pr:%d:%d:", repo.RepoID, number)
+	if err := s.addLine(item, key+"opened", fmt.Sprintf("PR #%d linked: [%s](%s) · @%s · %s",
+		number, mdText(pr.Title), safeURL(pr.HTMLURL), pr.User.Login, repo.FullName)); err != nil {
+		return nil, err
+	}
+	s.publishGit(item)
+	return link, nil
 }
 
 // ─── Webhooks ─────────────────────────────────────────────────────────────────
@@ -196,6 +306,33 @@ func (s *GitHubService) VerifySignature(body []byte, header string) bool {
 type ghRepoRef struct {
 	ID       int64  `json:"id"`
 	FullName string `json:"full_name"`
+}
+
+// ghPR es una PR tal como la cuentan el webhook (`pull_request`) y la API de
+// listado (`GET /repos/{repo}/pulls`): la misma forma, así que el relleno al
+// vincular un repo pasa por el mismo camino que un evento (`onPullRequest`).
+type ghPR struct {
+	// Number viene en la API; en el webhook va arriba (`ghPayload.Number`).
+	Number    int        `json:"number"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	HTMLURL   string     `json:"html_url"`
+	State     string     `json:"state"`
+	Draft     bool       `json:"draft"`
+	Merged    bool       `json:"merged"`
+	MergedAt  *time.Time `json:"merged_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
+	User      struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Head struct {
+		Ref string `json:"ref"`
+		Sha string `json:"sha"`
+	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
 }
 
 type ghPayload struct {
@@ -253,28 +390,8 @@ type ghPayload struct {
 			Message string `json:"message"`
 		} `json:"head_commit"`
 	} `json:"workflow_run"`
-	Number      int `json:"number"`
-	PullRequest struct {
-		Title     string     `json:"title"`
-		Body      string     `json:"body"`
-		HTMLURL   string     `json:"html_url"`
-		State     string     `json:"state"`
-		Draft     bool       `json:"draft"`
-		Merged    bool       `json:"merged"`
-		MergedAt  *time.Time `json:"merged_at"`
-		CreatedAt time.Time  `json:"created_at"`
-		UpdatedAt *time.Time `json:"updated_at"`
-		User      struct {
-			Login string `json:"login"`
-		} `json:"user"`
-		Head struct {
-			Ref string `json:"ref"`
-			Sha string `json:"sha"`
-		} `json:"head"`
-		Base struct {
-			Ref string `json:"ref"`
-		} `json:"base"`
-	} `json:"pull_request"`
+	Number      int  `json:"number"`
+	PullRequest ghPR `json:"pull_request"`
 }
 
 // Handle procesa una entrega ya verificada.

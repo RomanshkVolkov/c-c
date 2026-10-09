@@ -40,6 +40,12 @@ type GitHubAppKey struct {
 	APIURL string
 }
 
+// CanRead: la App puede leer de GitHub (listar o ver PRs) con su token de
+// instalación. No pide los deploys, que es lo que añade `CanWrite`.
+func (s *GitHubService) CanRead() bool {
+	return s.Configured() && s.app.AppID > 0 && s.app.Key != nil
+}
+
 func (s *GitHubService) CanWrite() bool {
 	return s.Configured() && s.app.AppID > 0 && s.app.Key != nil && s.deployRepo != nil
 }

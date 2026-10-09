@@ -71,7 +71,14 @@ func (s *DocService) GetPage(kind domain.DocOwnerKind, ownerID, pageID string) (
 	if err != nil {
 		return nil, err
 	}
-	return &domain.DocPageView{Page: p, Breadcrumb: crumbs, Children: kids, OrgID: doc.OrgID}, nil
+	// Las referencias son un extra: si fallan, la página se abre igual.
+	refs, _ := s.repo.PageBacklinks(doc.OrgID, p.ID)
+	if refs == nil {
+		refs = []domain.DocBacklink{}
+	}
+	return &domain.DocPageView{
+		Page: p, Breadcrumb: crumbs, Children: kids, OrgID: doc.OrgID, ReferencedFrom: refs,
+	}, nil
 }
 
 // SavePage guarda título y/o cuerpo, con la misma detección de conflicto que

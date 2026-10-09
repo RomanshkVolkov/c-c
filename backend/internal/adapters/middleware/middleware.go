@@ -291,6 +291,9 @@ var patWritable = []struct {
 	// imágenes del reporte, no éstos), y el handler ya exige poder escribir en
 	// la tarea (7-oct-2026).
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/attachments/?$`), domain.ScopeTasksWrite},
+	// Enlazar a mano una PR a una tarea: añade un enlace y una línea al hilo,
+	// no pisa nada. Lo que se lee de GitHub lo lee la App de la org.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/git/prs/?$`), domain.ScopeTasksWrite},
 	// Documentación: añadir al final de una sección y registrar una decisión.
 	//
 	// Las dos sólo añaden. `append` concatena en la base sin leer antes, así que

@@ -40,6 +40,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/notes/abc/attachments", domain.ScopeNotesWrite},
 		// Y a una tarea, con el permiso de escribir tareas (MCP add_task_attachment).
 		{http.MethodPost, "/api/v1/tasks/abc/attachments", domain.ScopeTasksWrite},
+		// Enlazar a mano una PR a una tarea: añade, no pisa.
+		{http.MethodPost, "/api/v1/tasks/abc/git/prs", domain.ScopeTasksWrite},
 		{http.MethodPatch, "/api/v1/notes/abc", domain.ScopeNotesManage},
 		{http.MethodPost, "/api/v1/reports/abc/comments", domain.ScopeReportsWrite},
 		{http.MethodPost, "/api/v1/reports/abc/images", domain.ScopeReportsWrite},

@@ -249,7 +249,19 @@ cuelga un árbol de páginas.
   - Plantillas de página: componente y procedimiento.
   - «Esta página» al compartir; columna «Páginas» en el índice.
   - `&tab=` por fin abre su pestaña (desde un enlace pegado y desde la paleta).
-- **Pendiente:** el escenario de Proteus por MCP; la v1.6.94.
+- **v1.6.94 cortada** (8-oct) con las tres tandas y la sala de espera de W3.
+- **Lo opcional, hecho sin commitear** (toca backend → backend primero):
+  - `[[` en el editor de documentos enlaza una página (las del documento
+    abierto y, desde dos letras, las de toda la org por la búsqueda).
+  - «Referenciado desde» en cada página: otras páginas, pestañas y
+    descripciones de tareas que la enlazan, calculado en cada lectura.
+  - Búsqueda de texto completo también en tareas (título > descripción >
+    comentarios, con fragmento sólo de la descripción) y en notas.
+  - Historial con lo que cambió: diff por líneas contra el texto de ahora.
+  - GitHub: al vincular un repo se traen sus PRs abiertas; y «Enlazar una
+    PR» pegando su URL (`POST /tasks/{id}/git/prs`, MCP `link_pull_request`).
+- **Pendiente:** el escenario de Proteus por MCP (en cuanto el escritorio
+  esté en la v1.6.94).
 
 ## 🎙️ Grabar la reunión (antes: transcribirla)
 

@@ -502,3 +502,59 @@ func (r *DocRepository) PageCounts(orgID string) map[string]int {
 	}
 	return out
 }
+
+// PageBacklinks: lo que enlaza a una página dentro de su organización. Ver
+// `domain.DocBacklink`. Sin la propia página, sin lo que está en la papelera
+// y sin tareas borradas o archivadas: un enlace que nadie puede ver no es una
+// referencia.
+func (r *DocRepository) PageBacklinks(orgID, pageID string) ([]domain.DocBacklink, error) {
+	out := []domain.DocBacklink{}
+	type fila struct {
+		Kind, ID, Title, OwnerKind, OwnerID, Name string
+	}
+	var filas []fila
+	pat := "%page=" + pageID + "%"
+	err := r.db.Raw(`
+		SELECT kind, id, title, owner_kind, owner_id, name FROM (
+			SELECT 'page' AS kind, p.id, p.title, d.owner_kind, d.owner_id,
+			       COALESCE(sp.name, f.name, l.name, '') AS name, p.updated_at AS at
+			FROM doc_pages p JOIN docs d ON d.id = p.doc_id
+			LEFT JOIN task_spaces sp ON d.owner_kind = 'space' AND sp.id = d.owner_id
+			LEFT JOIN task_folders f ON d.owner_kind = 'folder' AND f.id = d.owner_id
+			LEFT JOIN task_lists l ON d.owner_kind = 'list' AND l.id = d.owner_id
+			WHERE p.org_id = ? AND p.deleted_at IS NULL AND p.id <> ? AND p.body LIKE ?
+			UNION ALL
+			SELECT 'tab', t.key, '', d.owner_kind, d.owner_id,
+			       COALESCE(sp.name, f.name, l.name, ''), t.updated_at
+			FROM doc_tabs t JOIN docs d ON d.id = t.doc_id
+			LEFT JOIN task_spaces sp ON d.owner_kind = 'space' AND sp.id = d.owner_id
+			LEFT JOIN task_folders f ON d.owner_kind = 'folder' AND f.id = d.owner_id
+			LEFT JOIN task_lists l ON d.owner_kind = 'list' AND l.id = d.owner_id
+			WHERE d.org_id = ? AND t.body LIKE ?
+			UNION ALL
+			SELECT 'task', i.id, i.title, '', '', l.name, i.updated_at
+			FROM items i JOIN task_lists l ON l.id = i.list_id
+			WHERE i.org_id = ? AND i.deleted_at IS NULL AND i.archived_at IS NULL AND i.description LIKE ?
+		) x
+		ORDER BY at DESC
+		LIMIT ?`,
+		orgID, pageID, pat, orgID, pat, orgID, pat, domain.MaxDocBacklinks).Scan(&filas).Error
+	if err != nil {
+		return out, err
+	}
+	for _, f := range filas {
+		b := domain.DocBacklink{Kind: f.Kind, Title: f.Title, Where: f.Name}
+		switch f.Kind {
+		case "page":
+			b.Link = "/tasks?doc=" + f.OwnerKind + ":" + f.OwnerID + "&page=" + f.ID
+		case "tab":
+			// La pestaña se nombra en la app por su clave; el título es el nodo.
+			b.Title, b.Where = f.Name, f.ID
+			b.Link = "/tasks?doc=" + f.OwnerKind + ":" + f.OwnerID + "&tab=" + f.ID
+		case "task":
+			b.Link = "/tasks?task=" + f.ID
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
