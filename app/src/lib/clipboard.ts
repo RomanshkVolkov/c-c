@@ -68,3 +68,34 @@ export function looksLikeStrippedImage(dt: DataTransfer): boolean {
   // and intercepting it would replace it with whatever was copied last.
   return tags.every((tag) => !/\ssrc\s*=\s*["']?[^"'\s>]+/i.test(tag));
 }
+
+/**
+ * Copia un texto que **todavía no se tiene**: el enlace de una invitación que
+ * hay que pedir al servidor, por ejemplo.
+ *
+ * El navegador sólo deja escribir en el portapapeles como respuesta directa a
+ * un gesto, y esa ventana se cierra en cuanto hay una espera de por medio.
+ * Chrome perdona unos segundos; WebKit —el webview de Linux, y Safari— no
+ * perdona ninguno: `await pedirEnlace(); writeText(enlace)` acaba en
+ * `NotAllowedError` y el enlace no se copia. Así salió en el «Copiar enlace de
+ * invitado» de la llamada (8-oct-2026).
+ *
+ * Por eso esto se llama **en el clic, sin esperar antes**, con la promesa del
+ * texto:
+ * - en el escritorio, con el portapapeles de Tauri, que no pide gesto;
+ * - en la web, con un `ClipboardItem` que recibe la promesa: el permiso se
+ *   pide en el instante del clic y el texto se entrega cuando llega.
+ */
+export async function copyText(text: string | Promise<string>): Promise<void> {
+  if ("__TAURI_INTERNALS__" in window) {
+    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+    await writeText(await text);
+    return;
+  }
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    const blob = Promise.resolve(text).then((t) => new Blob([t], { type: "text/plain" }));
+    await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+    return;
+  }
+  await navigator.clipboard.writeText(await text);
+}

@@ -77,3 +77,45 @@ describe("invitar por enlace desde la llamada", () => {
     expect(ring).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * El portapapeles se pide **en el clic**, antes de que la invitación exista.
+ *
+ * Pedir primero el enlace al servidor y copiarlo después pierde el gesto, y
+ * WebKit (el webview de Linux, Safari) lo rechaza con `NotAllowedError`: el
+ * enlace no se copiaba (8-oct-2026). Aquí `create` se queda pendiente a
+ * propósito y se comprueba que la escritura ya se pidió.
+ */
+describe("copiar el enlace sin perder el clic", () => {
+  it("pide el portapapeles antes de tener la invitación, y le da el enlace al llegar", async () => {
+    const escritos: Promise<string>[] = [];
+    class FakeItem {
+      constructor(public items: Record<string, Promise<Blob>>) {}
+    }
+    vi.stubGlobal("ClipboardItem", FakeItem);
+    Object.assign(navigator, {
+      clipboard: {
+        write: vi.fn(async (items: FakeItem[]) => {
+          escritos.push(items[0].items["text/plain"].then((b) => b.text()));
+        }),
+      },
+    });
+    let crear!: (v: unknown) => void;
+    useCalls.setState({ create: vi.fn(() => new Promise((r) => (crear = r))) as never });
+    render(
+      <MemoryRouter>
+        <GuestInviteDialog open onOpenChange={() => {}} orgId="org-1" spaceId="esp-1" />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText("What it's about"), { target: { value: "Con el cliente" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Create link$/ }));
+    // La invitación todavía no existe, y la escritura ya está pedida.
+    expect(navigator.clipboard.write).toHaveBeenCalledTimes(1);
+    crear({
+      id: "inv-9", orgId: "org-1", spaceId: "esp-1", title: "Con el cliente", createdBy: "u-ana",
+      expiresAt: "2026-10-09T00:00:00Z", maxGuests: 0, link: "inv-9.firma", occupants: [],
+    });
+    expect(await escritos[0]).toBe("https://cac.example/app/join#inv-9.firma");
+    vi.unstubAllGlobals();
+  });
+});

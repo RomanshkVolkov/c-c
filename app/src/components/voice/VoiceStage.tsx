@@ -8,6 +8,7 @@ import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
 import { toast } from "sonner";
+import { copyText } from "@/lib/clipboard";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import RecChip from "@/components/voice/RecChip";
@@ -161,8 +162,9 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   const copiarEnlace = async () => {
     if (!meetId) return;
     try {
-      const inv = await getInvite(meetId);
-      await navigator.clipboard.writeText(guestLinkFor(inv.link));
+      // En el clic, con la promesa del enlace: pedirlo antes y copiar después
+      // pierde el gesto y WebKit lo rechaza (ver `copyText`).
+      await copyText(getInvite(meetId).then((inv) => guestLinkFor(inv.link)));
       toast.success(t("calls:linkCopied"));
     } catch (e) {
       toast.error(phraseFor(String((e as Error)?.message ?? e), String(e)));

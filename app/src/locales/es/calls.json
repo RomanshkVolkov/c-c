@@ -60,5 +60,6 @@
   "createAndMove": "Crear enlace y pasar",
   "movedRinging_one": "Llamando a {{count}} persona del canal para que te siga.",
   "movedRinging_other": "Llamando a {{count}} personas del canal para que te sigan.",
-  "callingYouTo": "Te llama a {{title}}"
+  "callingYouTo": "Te llama a {{title}}",
+  "copyFailed": "No se pudo copiar el enlace: cópialo de la lista."
 }

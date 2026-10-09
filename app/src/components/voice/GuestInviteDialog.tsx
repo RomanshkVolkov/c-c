@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Link2, Loader2, PhoneCall, X } from "lucide-react";
 import { toast } from "sonner";
+import { copyText } from "@/lib/clipboard";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -63,8 +64,8 @@ export default function GuestInviteDialog({
     if (open) void load(orgId, spaceId).catch(() => {});
   }, [open, orgId, spaceId, load]);
 
-  const copiar = async (inv: CallInvite) => {
-    await navigator.clipboard.writeText(guestLinkFor(inv.link));
+  const copiar = async (inv: CallInvite | Promise<CallInvite>) => {
+    await copyText(Promise.resolve(inv).then((i) => guestLinkFor(i.link)));
     toast.success(t("calls:linkCopied"));
   };
 
@@ -76,9 +77,14 @@ export default function GuestInviteDialog({
       // reunión la lista de gente pasa a ser la de allí.
       const { gente, yo } = useVoice.getState();
       const conmigo = gente.map((p) => p.identity).filter((id) => id !== yo && !isGuestIdentity(id));
-      const inv = await create({ orgId, spaceId, title: titulo.trim(), ttlHours: Number(horas) });
+      // La copia se pide **ya**, en el clic, con la promesa de la invitación:
+      // esperar a crearla y copiar después pierde el gesto (ver `copyText`).
+      const creada = create({ orgId, spaceId, title: titulo.trim(), ttlHours: Number(horas) });
+      const copia = copiar(creada);
+      const inv = await creada;
       setTitulo("");
-      await copiar(inv).catch(() => {});
+      // Si el portapapeles no deja, el enlace sigue a mano en la lista.
+      await copia.catch(() => toast.info(t("calls:copyFailed")));
       if (fromCall) {
         onOpenChange(false);
         await entrarEnReunion(inv.id);
