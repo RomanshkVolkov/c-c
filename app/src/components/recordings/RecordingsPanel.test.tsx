@@ -18,8 +18,15 @@ vi.mock("@/store/auth.store", () => ({
 // El reproductor pide un pase de adjuntos antes de poner el src.
 vi.mock("@/lib/url-ticket", () => ({ urlTicket: vi.fn(async () => "pase-media") }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => async () => true }));
+const { saveAttachment, toastMock } = vi.hoisted(() => ({
+  saveAttachment: vi.fn(),
+  toastMock: { loading: vi.fn(() => "aviso"), success: vi.fn(), error: vi.fn(), dismiss: vi.fn() },
+}));
+vi.mock("@/lib/media", () => ({ saveAttachment }));
+vi.mock("sonner", () => ({ toast: toastMock }));
 
-import RecordingsPanel from "@/components/recordings/RecordingsPanel";
+import { fireEvent } from "@testing-library/react";
+import RecordingsPanel, { recordingFileName } from "@/components/recordings/RecordingsPanel";
 import { useRecordings, type Recording } from "@/store/recordings.store";
 
 afterEach(cleanup);
@@ -122,5 +129,59 @@ describe("el panel de grabaciones", () => {
   it("la duración se lee en minutos y segundos", () => {
     renderPanel([rec({ durationMs: 185_000 })]);
     expect(document.body.textContent).toContain("3:05");
+  });
+});
+
+/**
+ * Descargar una grabación (10-oct-2026): en la AppImage de entonces no se podía
+ * ni escuchar dentro de la app, y para medir el ruido hacía falta el fichero.
+ * Mutantes: no deshabilitar mientras baja (dos descargas con un doble clic);
+ * otra ruta; el botón en una grabación que aún no está montada; no avisar del
+ * fallo; la hora en UTC en el nombre.
+ */
+describe("descargar una grabación", () => {
+  beforeEach(() => {
+    saveAttachment.mockReset();
+    Object.values(toastMock).forEach((f) => f.mockClear());
+  });
+
+  it("un doble clic es una sola descarga, y dice dónde quedó", async () => {
+    let soltar!: (v: string) => void;
+    saveAttachment.mockReturnValue(new Promise<string>((r) => (soltar = r)));
+    renderPanel([rec({ finalContentType: "audio/mp4" })]);
+    const boton = screen.getByRole("button", { name: "Download" });
+    fireEvent.click(boton);
+    fireEvent.click(boton);
+    expect(saveAttachment).toHaveBeenCalledTimes(1);
+    expect(saveAttachment).toHaveBeenCalledWith("/api/v1/recordings/rec-1/media", expect.stringMatching(/\.m4a$/));
+    expect((boton as HTMLButtonElement).disabled).toBe(true);
+    soltar("/home/ana/Descargas/cac-grabacion.m4a");
+    await waitFor(() => expect((boton as HTMLButtonElement).disabled).toBe(false));
+    expect(toastMock.success).toHaveBeenCalledWith(
+      expect.stringContaining("/home/ana/Descargas/cac-grabacion.m4a"),
+      { id: "aviso" },
+    );
+  });
+
+  it("si falla, lo dice", async () => {
+    saveAttachment.mockRejectedValue(new Error("Server returned 502"));
+    renderPanel([rec()]);
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it("lo que aún se está montando no se descarga", () => {
+    renderPanel([rec({ status: "finalizing" })]);
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+
+  it("el nombre lleva la fecha y la hora locales, y la extensión de lo que es", () => {
+    // 04:53 UTC del 11 es el 10 a las 22:53 en Ciudad de México (la zona de
+    // las pruebas).
+    expect(recordingFileName(rec({ startedAt: "2026-10-11T04:53:00Z", finalContentType: "audio/mp4" }))).toBe(
+      "cac-grabacion-2026-10-10-2253.m4a",
+    );
+    expect(recordingFileName(rec({ startedAt: "2026-10-11T04:53:00Z" }))).toMatch(/\.mp4$/);
   });
 });

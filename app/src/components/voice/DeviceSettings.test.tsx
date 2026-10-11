@@ -72,3 +72,21 @@ describe("los ajustes de dispositivos", () => {
     expect(await screen.findByText(/no estás en ninguna sala/)).toBeTruthy();
   });
 });
+
+/**
+ * El interruptor de la supresión de ruido: encendido por defecto, se recuerda,
+ * y apagarlo se manda al motor en caliente.
+ */
+describe("la supresión de ruido", () => {
+  it("encendida por defecto, y apagarla se recuerda y se manda", async () => {
+    const { useAudioPrefs } = await import("@/store/audio-prefs.store");
+    useAudioPrefs.setState({ noiseSuppression: true });
+    render(<Ajustes />);
+    const interruptor = await screen.findByRole("switch", { name: /Noise suppression/ });
+    expect(interruptor.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(interruptor);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("voice_set_noise_suppression", { on: false }));
+    expect(useAudioPrefs.getState().noiseSuppression).toBe(false);
+    expect(interruptor.getAttribute("aria-checked")).toBe("false");
+  });
+});

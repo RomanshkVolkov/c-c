@@ -34,5 +34,9 @@
   "stopConfirmMine": "Se monta y se añade a este canal. No se puede reanudar: volver a empezar hace otra.",
   "stopConfirmTheirs": "Esta grabación la empezó {{name}}. Pararla afecta a todos los de la llamada.",
   "stopConfirmTitle": "¿Parar la grabación?",
-  "stoppedToast": "La grabación ha parado."
+  "stoppedToast": "La grabación ha parado.",
+  "download": "Descargar",
+  "downloaded": "Guardada en {{path}}",
+  "downloadStarted": "Descargando la grabación",
+  "downloadFailed": "No se pudo descargar la grabación"
 }

@@ -34,5 +34,9 @@
   "stopConfirmMine": "It gets processed and added to this channel. You can't resume it — starting again makes a new one.",
   "stopConfirmTheirs": "{{name}} started this recording. Stopping it affects everyone in the call.",
   "stopConfirmTitle": "Stop the recording?",
-  "stoppedToast": "The recording stopped."
+  "stoppedToast": "The recording stopped.",
+  "download": "Download",
+  "downloaded": "Saved to {{path}}",
+  "downloadStarted": "Downloading the recording",
+  "downloadFailed": "Could not download the recording"
 }

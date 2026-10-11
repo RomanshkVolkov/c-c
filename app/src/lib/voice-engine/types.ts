@@ -105,5 +105,11 @@ export interface VoiceEngine {
   canShareScreen(): boolean;
   listDevices(): Promise<DeviceList>;
   setDevice(kind: "mic" | "cam", deviceId: string): Promise<void>;
+  /**
+   * Procesar la voz antes de mandarla: supresión de ruido y control de
+   * ganancia. Encendido por defecto; se apaga para música o un instrumento.
+   * Vale dentro y fuera de una llamada (fuera, para la siguiente).
+   */
+  setNoiseSuppression(on: boolean): Promise<void>;
   micLevel(): Promise<MicReading>;
 }

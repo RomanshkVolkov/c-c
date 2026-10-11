@@ -88,12 +88,13 @@ mide antes de casarse.
 | Compilación en frío (release) | **3m 54s** |
 | Binario del spike (release, sin strip) | **36,4 MB** |
 | Conectar + publicar contra LiveKit real | ✓ verificado **por el servidor** (`ListParticipants` ve la pista) |
-| Cancelación de eco | ✓ **expuesta** — `AudioSourceOptions { echo_cancellation, noise_suppression, auto_gain_control }`, y un `AudioProcessingModule` completo por debajo |
+| Cancelación de eco | ~~✓ expuesta~~ **expuesta, pero no se aplica** con una fuente nativa (ver «El procesado de la voz», 9-oct-2026). El `AudioProcessingModule` sí existe y se usa a mano. |
 
 Los 36 MB son del binario del spike aislado; lo que engorda la app es libwebrtc
 enlazado, y ese coste se paga una vez. La cancelación de eco era el riesgo que
 más pesaba —sin ella, v1 habría tenido que pedir auriculares por escrito— y
-está resuelta.
+**se dio por resuelta sin estarlo**: el spike comprobó que el SDK la exponía,
+no que se aplicara. Ver «El procesado de la voz».
 
 **Veredicto: go.**
 
@@ -344,9 +345,54 @@ Dos detalles del audio que no son adorno:
 - **Acumulador de 10 ms.** cpal entrega tramas del tamaño que le da la gana y
   libwebrtc las quiere de 10 ms exactos. Sin el acumulador de por medio, la voz
   sale troceada.
-- **AEC encendido** (`echo_cancellation`, `noise_suppression`,
-  `auto_gain_control`). Sin él, hablar con altavoces es un bucle de
-  realimentación. Que el SDK lo exponga fue lo primero que comprobó el spike.
+- **El procesado de la voz, a mano.** Ver la sección siguiente.
+
+### El procesado de la voz (9-oct-2026)
+
+**Hasta la v1.6.96 el escritorio mandaba el micro crudo**: ni supresión de
+ruido, ni control de ganancia, ni cancelación de eco. La fuente se creaba con
+`AudioSourceOptions { echo_cancellation, noise_suppression, auto_gain_control }`
+a `true` y se daba por hecho, pero con una fuente nativa —la app entrega ella
+las tramas con `capture_frame`— webrtc-sys las pasa **directas a los
+sumideros** (`webrtc-sys/src/audio_track.cpp`, `InternalSource::capture_frame`):
+las opciones se guardan y nadie las lee. El procesado de WebRTC sólo corre cuando
+el SDK captura el dispositivo él mismo (`create_device_audio_track`), que no es
+nuestro caso. Se vio leyendo el código del SDK, no oyendo una llamada. La web no
+tenía el problema: el navegador aplica el suyo.
+
+**Ahora: `Procesador` en la captura** (`voice.rs`). El `AudioProcessingModule`
+del propio SDK —supresión de ruido, filtro de graves y control de ganancia,
+sin eco— sobre cada trama de 10 ms, en la tarea que publica, antes de
+`capture_frame`. El medidor de pico y el «estás hablando» pasan a medir **la
+trama procesada**: medidos antes, un ventilador encendía el aro de hablar.
+
+Medido con señal sintética (pruebas `pruebas_procesado`): ruido blanco a 0,05 de
+la escala **baja 14,3 dB** al segundo de aprenderlo; ráfagas de 300 Hz encima
+(sílabas de 200 ms) salen con su nivel (+0,5 dB). Falta la medida con una
+llamada de verdad, antes y después (ver abajo).
+
+**Interruptor**: «Supresión de ruido» en los ajustes de la llamada, encendido por
+defecto y recordado. Apagado manda la voz tal cual (música, un instrumento). En
+la web apaga `noiseSuppression` y `autoGainControl` del navegador; el eco se
+queda siempre.
+
+**Sin cancelación de eco todavía (fase 2).** Necesita, como referencia, lo que
+suena por los altavoces, y hoy cada pista remota suena por **su propio** flujo
+de cpal (`reproducir`): no hay una mezcla que dársela. La fase 2 es un mezclador
+único de reproducción que alimente `process_reverse_stream` del mismo módulo.
+Hasta entonces, con altavoces, los demás pueden oírse a sí mismos.
+
+Medida de una llamada real, el fichero final de la grabación (AAC, 48 kHz,
+mono) descargado y medido con `ffmpeg … -af astats` por tramos. Una sola
+persona, mismo micro y mismo ruido en las dos:
+
+| Versión | Callado | Con ruido de fondo | Hablando | Voz sobre ruido |
+|---|---|---|---|---|
+| v1.6.96, sin procesado (10-oct-2026) | −49,5 dB | −42,5 dB | −24,3 dB | 18 dB |
+| con `Procesador` | pendiente | pendiente | pendiente | pendiente |
+
+La puerta: el tramo con ruido baja de forma clara (objetivo ≥ 15 dB) y el de
+hablar no baja (se escucha, además: que la voz no se corte).
 
 ### La pantalla, y por qué lleva dos estados y no uno
 

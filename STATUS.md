@@ -268,6 +268,24 @@ cuelga un árbol de páginas.
   se recuerda); el índice «En esta página» es fijo, al lado desde xl y un botón
   por debajo. Y Canales y Mensajes directos se pliegan a un riel con las
   iniciales de cada canal o persona (`RailItem`, `store/layout.store.ts`).
+- **v1.6.96 publicada.** Después, **sin commitear (sólo app)**: el escritorio
+  mandaba el micro crudo —las opciones de la fuente nativa no se aplican—;
+  ahora `Procesador` (APM del SDK: ruido, graves, ganancia) en cada trama, con
+  interruptor «Supresión de ruido». Eco = fase 2 (mezclador único). Falta la
+  medida antes/después con una llamada real (`docs/voz.md`). Pendientes
+  anotados: #144 (almacenamiento) y #145 (Mermaid en la doc).
+  Mermaid ya hecho (carga perezosa, `securityLevel: "strict"`).
+- **10-oct, sin commitear (va en la v1.6.97):** darle play a un vídeo en la
+  AppImage tumbaba `WebKitWebProcess` (núcleo GStreamer 1.20 de la AppImage +
+  plugins 1.28 del sistema → sin `autoaudiosink` → abort) y dejaba la ventana
+  en negro. Arreglo: `bundleMediaFramework` + plugins en el build de Linux.
+  Y un guardián fuera de la página (`webview_crash.rs`): si su proceso muere,
+  Rust recarga (tope 3/min) y la app lo ficha en cac al volver
+  (`use-webview-crash.ts`, una tarjeta por motivo+ruta sin ids). Falta probar
+  el vídeo en la AppImage nueva.
+  Y botón «Descargar» en cada grabación (Rust la baja a Descargas por trozos,
+  `save_attachment`; el botón gira y no admite un segundo clic). Medida «antes»
+  del ruido apuntada en `docs/voz.md` (ruido −42,5 dB, voz −24,3 dB).
 
 ## 🎙️ Grabar la reunión (antes: transcribirla)
 

@@ -6,7 +6,7 @@ import { render, waitFor } from "@testing-library/react";
  * `src`; el token de acceso ya no vale en una URL. Era el único `src` que se
  * armaba aparte de `mediaSrc`, y con el backend nuevo las grabaciones dejaban
  * de sonar (6-oct-2026). Mutantes: volver al token de acceso; no esperar al
- * pase.
+ * pase; no enseñar el spinner mientras llega.
  */
 vi.mock("@/lib/url-ticket", () => ({ urlTicket: vi.fn(async () => "pase-media") }));
 const { RecordingPlayer } = await import("./RecordingsPanel");
@@ -17,9 +17,12 @@ describe("el reproductor de una grabación", () => {
     useAuthStore.setState({ accessToken: "acceso-secreto" } as never);
     const { container } = render(<RecordingPlayer recordingId="rec-1" isAudio={false} />);
     expect(container.querySelector("video")).toBeNull();
+    // Mientras tanto, se ve que está cargando.
+    expect(container.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
     await waitFor(() => expect(container.querySelector("video")).not.toBeNull());
     const src = container.querySelector("video")!.getAttribute("src")!;
     expect(src).toContain("/api/v1/recordings/rec-1/media?token=pase-media");
     expect(src).not.toContain("acceso-secreto");
+    expect(container.querySelector('[role="status"]')).toBeNull();
   });
 });

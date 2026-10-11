@@ -70,6 +70,13 @@ jobs:
       # llegan al micrófono en Linux. Sin ella `alsa-sys` no compila y el build
       # muere a mitad — y no se ve venir desde una máquina de escritorio, donde
       # ALSA ya está por estar.
+      #
+      # Los plugins de GStreamer los mete la AppImage (`bundleMediaFramework`
+      # en tauri.conf.json), y los copia de aquí. Sin ellos, la AppImage lleva
+      # el núcleo de GStreamer de 22.04 (1.20) y busca plugins en el sistema
+      # de quien la usa, que en una distro al día son de otra versión y no
+      # cargan: sin `autoaudiosink`, WebKit aborta al darle play a un vídeo
+      # y la ventana se queda en blanco (10-oct-2026, dos core dumps).
       - name: Install system deps (Linux)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -79,7 +86,12 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libasound2-dev
+            libasound2-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav \
+            gstreamer1.0-pulseaudio
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

@@ -538,6 +538,7 @@
     "docsManageDetail": "Replaces a whole section and decides who a document belongs to. A save that arrives after somebody else's is refused rather than applied, but this is still the permission that can overwrite work. It cannot mark a document reviewed — that says a person confirmed it, and only a superadmin signs it."
   },
   "last": {
+    "webviewRecovered": "The page closed unexpectedly and was reloaded. It has been reported.",
     "hideChat": "Hide chat",
     "chat": "Chat",
     "backToChannel": "Back to the channel — you stay connected",
@@ -628,7 +629,11 @@
     "removePdfBody": "The file isn't deleted: it just stops showing here. Ctrl+Z brings it back.",
     "collapseList": "Collapse the list",
     "expandList": "Expand the list",
-    "findSomebody": "Find somebody"
+    "findSomebody": "Find somebody",
+    "noiseSuppression": "Noise suppression",
+    "noiseSuppressionHint": "Removes fans and typing. Turn it off for music or an instrument.",
+    "mermaidError": "The diagram has an error:",
+    "mermaidDiagram": "Diagram"
   },
   "calendar": {
     "undated_one": "{{count}} with no date",

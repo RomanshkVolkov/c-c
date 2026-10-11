@@ -63,7 +63,24 @@ describe("la sala de voz", () => {
     await useVoice.getState().entrar("esp-2");
     // Dos micrófonos abiertos a la vez sólo se nota cuando alguien te oye
     // desde donde ya no estabas.
-    expect(invoke.mock.calls.map((c) => c[0])).toEqual(["voice_leave", "voice_join"]);
+    // (La preferencia de ruido viaja antes de entrar, para que la primera
+    // trama ya salga como la quiere quien habla; ver `useAudioPrefs`.)
+    expect(invoke.mock.calls.map((c) => c[0])).toEqual([
+      "voice_leave",
+      "voice_set_noise_suppression",
+      "voice_join",
+    ]);
+  });
+
+  it("manda la preferencia de ruido antes de entrar", async () => {
+    const { useAudioPrefs } = await import("@/store/audio-prefs.store");
+    useAudioPrefs.setState({ noiseSuppression: false });
+    invoke.mockClear();
+    await useVoice.getState().entrar("esp-1");
+    const nombres = invoke.mock.calls.map((c) => c[0]);
+    expect(invoke).toHaveBeenCalledWith("voice_set_noise_suppression", { on: false });
+    expect(nombres.indexOf("voice_set_noise_suppression")).toBeLessThan(nombres.indexOf("voice_join"));
+    useAudioPrefs.setState({ noiseSuppression: true });
   });
 
   it("si el token se niega, no queda a medias", async () => {

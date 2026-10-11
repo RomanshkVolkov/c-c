@@ -107,6 +107,25 @@ export async function openAttachment(url: string, fileName: string): Promise<voi
 }
 
 /**
+ * Guarda un adjunto en el disco. En el escritorio, en Descargas, y devuelve
+ * dónde quedó (lo baja Rust con la cabecera, ver `save_attachment`); en la web
+ * lo baja el navegador y no hay ruta que devolver.
+ */
+export async function saveAttachment(url: string, fileName: string): Promise<string | null> {
+  const path = attachmentPath(url);
+  if (!path) throw new Error("Not an attachment path");
+  if (!inTauri) {
+    const a = document.createElement("a");
+    a.href = mediaSrc(url) ?? url;
+    a.download = fileName;
+    a.click();
+    return null;
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("save_attachment", { path, fileName });
+}
+
+/**
  * Si un enlace es un PDF adjunto, que se enseña en el visor de la app y no se
  * manda fuera. La URL de un adjunto acaba en `/raw` y no dice su tipo, así que
  * también cuenta el texto del enlace, que es el nombre del fichero.

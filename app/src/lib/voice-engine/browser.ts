@@ -49,7 +49,19 @@ export function createBrowserEngine(load: () => Promise<LKModule> = () => import
   // enseñar.
   let saliendo = false;
   let reloj: ReturnType<typeof setInterval> | null = null;
-  const preferido: { mic?: string; cam?: string } = {};
+  const preferido: { mic?: string; cam?: string; ruido?: boolean } = {};
+  /**
+   * Las restricciones del micro. El navegador sí hace la supresión de ruido y
+   * el control de ganancia (el escritorio los hace a mano: ver `Procesador` en
+   * `voice.rs`); el interruptor los apaga los dos, como allí. El eco se queda
+   * siempre: sin él, unos altavoces abiertos son un bucle.
+   */
+  const captura = () => ({
+    ...(preferido.mic ? { deviceId: preferido.mic } : {}),
+    noiseSuppression: preferido.ruido ?? true,
+    autoGainControl: preferido.ruido ?? true,
+    echoCancellation: true,
+  });
   const audios = new Map<string, HTMLMediaElement>();
   const oyentes = new Set<() => void>();
   const avisar = () => oyentes.forEach((cb) => cb());
@@ -189,7 +201,7 @@ export function createBrowserEngine(load: () => Promise<LKModule> = () => import
       const r = new L.Room({
         adaptiveStream: true,
         dynacast: true,
-        audioCaptureDefaults: preferido.mic ? { deviceId: preferido.mic } : undefined,
+        audioCaptureDefaults: captura(),
         videoCaptureDefaults: preferido.cam ? { deviceId: preferido.cam } : undefined,
       });
       room = r;
@@ -287,6 +299,14 @@ export function createBrowserEngine(load: () => Promise<LKModule> = () => import
         }));
       };
       return { mics: de("audioinput"), cams: de("videoinput") };
+    },
+
+    async setNoiseSuppression(on) {
+      preferido.ruido = on;
+      // En caliente: se reinicia la pista del micro con las restricciones
+      // nuevas. Fuera de una llamada basta con recordarlo para la siguiente.
+      const pista = room?.localParticipant.getTrackPublication(lk!.Track.Source.Microphone)?.track;
+      if (pista && "restartTrack" in pista) await (pista as { restartTrack: (o: object) => Promise<void> }).restartTrack(captura());
     },
 
     async setDevice(kind, deviceId) {

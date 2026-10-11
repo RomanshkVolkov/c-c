@@ -1,7 +1,8 @@
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { engine } from "@/lib/voice-engine";
-import { Check, Loader2, Mic, Video } from "lucide-react";
+import { AudioLines, Check, Loader2, Mic, Video } from "lucide-react";
+import { useAudioPrefs } from "@/store/audio-prefs.store";
 import { cn } from "@/lib/utils";
 import MicLevel from "@/components/voice/MicLevel";
 
@@ -90,6 +91,7 @@ export default function DeviceSettings() {
               />
             ))}
           </Grupo>
+          <SupresionRuido onError={setError} />
           <Grupo icono={Video} titulo={t("common:last.camera")} vacio={t("common:last.noCamera")}>
             {lista.cams.map((d) => (
               <Fila
@@ -103,6 +105,49 @@ export default function DeviceSettings() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * El interruptor de la supresión de ruido. Encendido, la voz sale limpia de
+ * ventilador y teclado; apagado sale tal cual, que es lo que se quiere para
+ * música o un instrumento. Se recuerda (`useAudioPrefs`) y se aplica en caliente.
+ */
+function SupresionRuido({ onError }: { onError: (e: string) => void }) {
+  const { t } = useT();
+  const on = useAudioPrefs((s) => s.noiseSuppression);
+  const guardar = useAudioPrefs((s) => s.setNoiseSuppression);
+  const cambiar = async () => {
+    guardar(!on);
+    try {
+      await engine.setNoiseSuppression(!on);
+    } catch (e) {
+      onError(String(e));
+    }
+  };
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => void cambiar()}
+      className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-xs hover:bg-accent"
+    >
+      <AudioLines className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-foreground">{t("common:last.noiseSuppression")}</span>
+        <span className="block text-muted-foreground">{t("common:last.noiseSuppressionHint")}</span>
+      </span>
+      <span
+        aria-hidden
+        className={cn(
+          "mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors",
+          on ? "justify-end bg-primary" : "justify-start bg-muted-foreground/30",
+        )}
+      >
+        <span className="size-3 rounded-full bg-background" />
+      </span>
+    </button>
   );
 }
 

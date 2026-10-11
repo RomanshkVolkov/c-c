@@ -25,6 +25,7 @@ use livekit::track::{
     LocalAudioTrack, LocalTrack, LocalVideoTrack, RemoteTrack, TrackKind, TrackSource,
 };
 use livekit::webrtc::audio_source::native::NativeAudioSource;
+use livekit::webrtc::native::apm::AudioProcessingModule;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::prelude::{
@@ -248,8 +249,13 @@ pub async fn voice_join(
     let room = Arc::new(room);
     let identidad = room.local_participant().identity().to_string();
 
-    // AEC encendido: sin él, hablar con altavoces se convierte en un bucle de
-    // realimentación. El SDK lo expone y comprobarlo fue lo primero del spike.
+    // **Estas tres opciones no hacen nada aquí**, y durante meses se creyó lo
+    // contrario. Con una fuente nativa (`capture_frame`), webrtc-sys pasa cada
+    // trama directa a los sumideros: el procesado de audio de WebRTC sólo corre
+    // cuando el SDK captura el dispositivo él mismo, que no es el caso. El
+    // procesado de verdad lo hace `Procesador` en la captura (ver
+    // `arrancar_captura` y `docs/voz.md`). Se dejan a `true` porque son lo que
+    // se quiere y no cuestan nada, no porque se apliquen.
     let fuente = NativeAudioSource::new(
         AudioSourceOptions {
             echo_cancellation: true,
@@ -411,6 +417,70 @@ pub async fn voice_set_mic(enabled: bool) -> Result<(), String> {
 /// Silenciar de verdad: la captura sigue corriendo y lo que se publica es
 /// silencio. Parar el dispositivo daría un corte audible al volver.
 static SILENCIADO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Si se procesa la voz antes de mandarla: supresión de ruido, filtro de graves
+/// y control de ganancia (ver `Procesador`). Encendido por defecto; se apaga
+/// para música o un instrumento, que el supresor confunde con ruido.
+static SUPRESION_RUIDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Enciende o apaga el procesado de la voz. En caliente: la captura lo lee en
+/// cada trama, sin reiniciarse. Fuera de una llamada también vale, para la
+/// siguiente.
+#[tauri::command]
+pub async fn voice_set_noise_suppression(on: bool) {
+    SUPRESION_RUIDO.store(on, std::sync::atomic::Ordering::Relaxed);
+    nota(if on {
+        "micro: supresión de ruido encendida"
+    } else {
+        "micro: supresión de ruido apagada"
+    });
+}
+
+/// El procesado de la voz que WebRTC no hace por nosotros.
+///
+/// La fuente nativa no aplica sus opciones (ver dónde se crea, en
+/// `voice_join`), así que hasta la v1.6.96 el escritorio mandaba el micro
+/// **crudo**: el ventilador, el teclado y el zumbido llegaban tal cual. Esto es
+/// el módulo de procesado de WebRTC del propio SDK (`AudioProcessingModule`),
+/// sin dependencias nuevas, aplicado a cada trama de 10 ms antes de publicarla.
+///
+/// Sin cancelación de eco: necesita saber qué suena por los altavoces, y hoy
+/// cada pista remota suena por su propio flujo de cpal, sin una mezcla común
+/// que darle como referencia. Es la fase 2 (`docs/voz.md`).
+///
+/// Una instancia por captura: cambiar de micrófono empieza otra, que aprende el
+/// ruido desde cero en unos cientos de milisegundos.
+struct Procesador {
+    apm: Option<AudioProcessingModule>,
+}
+
+impl Procesador {
+    fn new() -> Self {
+        Self { apm: None }
+    }
+
+    /// Procesa una trama en su sitio. `on` apagado la deja tal cual (y suelta
+    /// el módulo: al volver a encender empieza limpio).
+    ///
+    /// `process_stream` **hace panic** si la longitud no es un múltiplo de
+    /// 10 ms; antes de llamarlo se comprueba, y una trama que no cuadra se
+    /// devuelve como error y sin tocar: mejor sin procesar que tirar la
+    /// captura.
+    fn procesar(&mut self, on: bool, trama: &mut [i16]) -> Result<(), String> {
+        if !on {
+            self.apm = None;
+            return Ok(());
+        }
+        if trama.is_empty() || trama.len() % MUESTRAS_POR_TRAMA != 0 {
+            return Err(format!("trama de {} muestras, no múltiplo de 10 ms", trama.len()));
+        }
+        let apm = self
+            .apm
+            .get_or_insert_with(|| AudioProcessingModule::new(false, true, true, true));
+        apm.process_stream(trama, SAMPLE_RATE as i32, CANALES as i32)
+            .map_err(|e| e.to_string())
+    }
+}
 
 // ─── Lo que hace falta para contestar «¿por qué no se me oye?» ────────────────
 //
@@ -1452,18 +1522,8 @@ fn arrancar_captura(fuente: NativeAudioSource) -> Result<StreamGuard, String> {
                 while acumulador.len() >= MUESTRAS_POR_TRAMA {
                     let resto = acumulador.split_off(MUESTRAS_POR_TRAMA);
                     let trama = std::mem::replace(&mut acumulador, resto);
-                    // El pico, sobre las muestras que **de verdad** se envían.
-                    // Medirlo antes del silenciado diría que hay señal mientras
-                    // se publican ceros, que es la mentira más cara aquí.
-                    let pico = trama
-                        .iter()
-                        .map(|m| m.unsigned_abs() as u32)
-                        .max()
-                        .unwrap_or(0);
-                    PICO_MILESIMAS.store(
-                        pico * 1000 / i16::MAX as u32,
-                        std::sync::atomic::Ordering::Relaxed,
-                    );
+                    // El pico se mide en la tarea, después del procesado: ver
+                    // `pico_milesimas`.
                     let _ = tramas_tx.send(trama);
                 }
             },
@@ -1502,7 +1562,21 @@ fn arrancar_captura(fuente: NativeAudioSource) -> Result<StreamGuard, String> {
             let mut ultima_voz = std::time::Instant::now();
             PUBLICANDO.store(true, std::sync::atomic::Ordering::Relaxed);
 
-            while let Some(datos) = tramas_rx.recv().await {
+            let mut procesador = Procesador::new();
+            while let Some(mut datos) = tramas_rx.recv().await {
+                // Primero el procesado, y todo lo demás detrás: el medidor y
+                // el «estás hablando» miran lo que de verdad se manda. Medido
+                // antes, el ventilador encendía el aro de hablar.
+                if let Err(e) = procesador.procesar(
+                    SUPRESION_RUIDO.load(std::sync::atomic::Ordering::Relaxed),
+                    &mut datos,
+                ) {
+                    nota(format!("micro: trama sin procesar: {e}"));
+                }
+                // El pico, sobre las muestras que **de verdad** se envían.
+                // Medirlo antes del silenciado diría que hay señal mientras se
+                // publican ceros, que es la mentira más cara aquí.
+                PICO_MILESIMAS.store(pico_milesimas(&datos), std::sync::atomic::Ordering::Relaxed);
                 if hay_voz(&datos) {
                     ultima_voz = std::time::Instant::now();
                 }
@@ -1639,6 +1713,12 @@ fn remuestrear(cuadros: &[f32], paso: f32, fase: &mut Fase, mudo: bool, salida: 
     // éste. Queda en `[-1, -1 + paso)`, y ese `-1` es lo que apunta a `ultimo`.
     fase.pos = pos - n as f32;
     fase.ultimo = cuadros[n - 1];
+}
+
+/// El pico de una trama, en tanto por mil de la escala completa.
+fn pico_milesimas(muestras: &[i16]) -> u32 {
+    let pico = muestras.iter().map(|m| m.unsigned_abs() as u32).max().unwrap_or(0);
+    pico * 1000 / i16::MAX as u32
 }
 
 fn hay_voz(muestras: &[i16]) -> bool {
@@ -3696,5 +3776,148 @@ mod pruebas_fuentes {
         assert!(elige_el_sistema(Some("tty"), Some("wayland-0")));
         assert!(!elige_el_sistema(Some("x11"), None));
         assert!(!elige_el_sistema(None, Some("")));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_procesado {
+    use super::*;
+
+    /// Ruido blanco reproducible (un LCG): sin dependencias ni azar entre
+    /// corridas.
+    fn ruido(n: usize, amplitud: f32, semilla: &mut u32) -> Vec<f32> {
+        (0..n)
+            .map(|_| {
+                *semilla = semilla.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                ((*semilla >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0) * amplitud
+            })
+            .collect()
+    }
+
+    fn a_i16(x: &[f32]) -> Vec<i16> {
+        x.iter().map(|v| (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16).collect()
+    }
+
+    fn rms(x: &[i16]) -> f32 {
+        let s: f64 = x.iter().map(|&v| (v as f64) * (v as f64)).sum();
+        ((s / x.len().max(1) as f64).sqrt()) as f32
+    }
+
+    fn db(a: f32, b: f32) -> f32 {
+        20.0 * (a.max(1e-6) / b.max(1e-6)).log10()
+    }
+
+    /// Pasa una señal entera por el procesador, trama a trama, como la captura.
+    fn procesar_todo(p: &mut Procesador, on: bool, senal: &[i16]) -> Vec<i16> {
+        let mut out = Vec::with_capacity(senal.len());
+        for t in senal.chunks(MUESTRAS_POR_TRAMA) {
+            let mut t = t.to_vec();
+            p.procesar(on, &mut t).unwrap();
+            out.extend(t);
+        }
+        out
+    }
+
+    /// Ruido sostenido a 0,05 de la escala, el último segundo de tres (el
+    /// supresor tarda unos cientos de milisegundos en aprenderlo). Medido al
+    /// escribirlo: baja 14,3 dB.
+    fn ruido_y_salida() -> (Vec<i16>, Vec<i16>) {
+        let mut sem = 7;
+        let n = SAMPLE_RATE as usize * 3;
+        let entra = a_i16(&ruido(n, 0.05, &mut sem));
+        let sale = procesar_todo(&mut Procesador::new(), true, &entra);
+        (entra, sale)
+    }
+
+    #[test]
+    fn el_ruido_de_fondo_baja() {
+        let (entra, sale) = ruido_y_salida();
+        let ult = entra.len() - SAMPLE_RATE as usize;
+        let baja = db(rms(&sale[ult..]), rms(&entra[ult..]));
+        assert!(baja <= -10.0, "el ruido sólo bajó {baja:.1} dB");
+    }
+
+    /// Y la voz no se va con él: ráfagas de 300 Hz de 200 ms —una sílaba
+    /// cada 400 ms— sobre el mismo ruido salen con su nivel. Medido: +0,5 dB.
+    #[test]
+    fn la_voz_no_se_va_con_el_ruido() {
+        let mut sem = 7;
+        let n = SAMPLE_RATE as usize * 3;
+        let tramo = SAMPLE_RATE as usize / 5;
+        let base = ruido(n, 0.05, &mut sem);
+        let mezcla: Vec<f32> = (0..n)
+            .map(|i| {
+                let on = (i / tramo) % 2 == 0;
+                let voz = if on {
+                    0.3 * (2.0 * std::f32::consts::PI * 300.0 * i as f32 / SAMPLE_RATE as f32).sin()
+                } else {
+                    0.0
+                };
+                base[i] + voz
+            })
+            .collect();
+        let mezcla = a_i16(&mezcla);
+        let sale = procesar_todo(&mut Procesador::new(), true, &mezcla);
+        let ult = n - SAMPLE_RATE as usize;
+        let (mut on_in, mut on_out) = (vec![], vec![]);
+        for k in 0..5 {
+            let ini = ult + k * tramo;
+            if (ini / tramo) % 2 == 0 {
+                on_in.extend_from_slice(&mezcla[ini..ini + tramo]);
+                on_out.extend_from_slice(&sale[ini..ini + tramo]);
+            }
+        }
+        let cambio = db(rms(&on_out), rms(&on_in));
+        assert!(cambio.abs() <= 6.0, "la voz cambió {cambio:.1} dB");
+    }
+
+    /// Por qué el medidor y el «estás hablando» van detrás del procesado: el
+    /// ruido crudo pasa el umbral de voz y el procesado no. Medidos antes, un
+    /// ventilador encendía el aro de hablar.
+    #[test]
+    fn el_ventilador_no_cuenta_como_hablar() {
+        let (entra, sale) = ruido_y_salida();
+        let ult = entra.len() - MUESTRAS_POR_TRAMA;
+        assert!(hay_voz(&entra[ult..]), "el ruido crudo ya no pasa el umbral: la prueba no prueba nada");
+        assert!(!hay_voz(&sale[ult..]), "el ruido procesado cuenta como voz");
+    }
+
+    #[test]
+    fn apagado_la_trama_sale_igual_y_suelta_el_modulo() {
+        let mut sem = 3;
+        let entra = a_i16(&ruido(MUESTRAS_POR_TRAMA * 4, 0.05, &mut sem));
+        let mut p = Procesador::new();
+        procesar_todo(&mut p, true, &entra);
+        assert!(p.apm.is_some());
+        let sale = procesar_todo(&mut p, false, &entra);
+        assert_eq!(sale, entra);
+        assert!(p.apm.is_none(), "al volver a encender tiene que empezar limpio");
+    }
+
+    /// `process_stream` hace panic con una longitud que no es múltiplo de
+    /// 10 ms; aquí tiene que ser un error y la trama, intacta.
+    #[test]
+    fn una_trama_que_no_cuadra_no_tumba_la_captura() {
+        let mut p = Procesador::new();
+        let mut corta = vec![100i16; MUESTRAS_POR_TRAMA - 1];
+        let antes = corta.clone();
+        assert!(p.procesar(true, &mut corta).is_err());
+        assert_eq!(corta, antes);
+        assert!(p.procesar(true, &mut []).is_err());
+    }
+
+    /// El orden en la captura: procesar, y después medir el pico y la voz. Se
+    /// lee el fuente porque ese orden vive dentro de una tarea con un micrófono
+    /// de verdad, que ninguna prueba abre (como `ningun_bucle_guarda_su_propio_canal`).
+    #[test]
+    fn en_la_captura_se_procesa_antes_de_medir() {
+        let fuente = include_str!("voice.rs");
+        let ini = fuente.find("fn arrancar_captura(").unwrap();
+        let cuerpo = &fuente[ini..];
+        let procesa = cuerpo.find("procesador.procesar(").expect("la captura no procesa");
+        let pico = cuerpo.find("pico_milesimas(&datos)").expect("la captura no mide el pico");
+        let voz = cuerpo.find("hay_voz(&datos)").expect("la captura no mira si hablas");
+        let manda = cuerpo.find("fuente.capture_frame(").unwrap();
+        assert!(procesa < pico && procesa < voz && procesa < manda);
     }
 }

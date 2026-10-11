@@ -19,6 +19,7 @@ mod pty;
 mod sse;
 mod video_frames;
 mod voice;
+mod webview_crash;
 
 /// Entry point for `cac --mcp` (stdio MCP server; see `mcp.rs`).
 pub fn serve_mcp() {
@@ -1505,6 +1506,122 @@ async fn open_attachment(
         .map_err(|e| format!("Could not open it: {e}"))
 }
 
+/// Guarda un adjunto (hoy, una grabación) en la carpeta de Descargas y
+/// devuelve dónde quedó.
+///
+/// Existe porque en el escritorio una grabación **no se puede escuchar dentro
+/// de la app** hasta la AppImage con GStreamer propio (10-oct-2026: el
+/// `<audio>` tumbaba la página), y aunque se pudiera, bajarse el fichero es
+/// lo que se pide para pasarlo, medirlo o escucharlo fuera. Por trozos y no
+/// entero en memoria: una reunión son cientos de MB.
+#[tauri::command]
+async fn save_attachment(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, media::Session>,
+    path: String,
+    file_name: String,
+) -> Result<String, String> {
+    use std::io::Write;
+    use tauri::Manager;
+
+    let token = state.token.lock().ok().and_then(|t| t.as_ref().cloned());
+    let base = state.base_url.lock().ok().and_then(|b| b.as_ref().cloned());
+    let (Some(token), Some(base)) = (token, base) else {
+        return Err("Not signed in".into());
+    };
+    let path = media::backend_path(&format!("cacmedia://localhost{path}"))
+        .ok_or_else(|| "Not an attachment path".to_string())?;
+    let dir = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("No downloads folder: {e}"))?;
+    let target = free_name(&dir, &safe_file_name(&file_name));
+
+    let mut res = reqwest::Client::new()
+        .get(format!("{}{}", base.trim_end_matches('/'), path))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| format!("Could not download: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("Server returned {}", res.status().as_u16()));
+    }
+    // Se escribe a un `.part` y se renombra al final: un corte a mitad no deja
+    // en Descargas algo que parece la grabación y no lo es.
+    let parcial = target.with_extension(format!(
+        "{}.part",
+        target.extension().and_then(|e| e.to_str()).unwrap_or("")
+    ));
+    let escribir = async {
+        let mut f = std::fs::File::create(&parcial).map_err(|e| e.to_string())?;
+        while let Some(trozo) = res.chunk().await.map_err(|e| e.to_string())? {
+            f.write_all(&trozo).map_err(|e| e.to_string())?;
+        }
+        f.flush().map_err(|e| e.to_string())?;
+        std::fs::rename(&parcial, &target).map_err(|e| e.to_string())
+    };
+    if let Err(e) = escribir.await {
+        let _ = std::fs::remove_file(&parcial);
+        return Err(format!("Could not save the file: {e}"));
+    }
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// Un nombre que no se sale de la carpeta ni trae caracteres raros.
+fn safe_file_name(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | ' '))
+        .collect();
+    let safe = safe.trim_start_matches('.').trim().to_string();
+    if safe.is_empty() { "file".into() } else { safe }
+}
+
+/// `nombre.ext`, o `nombre (2).ext` si ya existe: bajar dos veces no pisa nada.
+fn free_name(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+        _ => (name.to_string(), String::new()),
+    };
+    (2..)
+        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
+        .find(|p| !p.exists())
+        .expect("siempre hay un número libre")
+}
+
+#[cfg(test)]
+mod save_attachment_tests {
+    use super::*;
+
+    #[test]
+    fn el_nombre_no_se_sale_de_la_carpeta() {
+        assert_eq!(safe_file_name("../../.ssh/id_rsa"), "sshid_rsa");
+        assert!(!safe_file_name("../x").contains('/'));
+        assert!(!safe_file_name("..").starts_with('.'));
+        assert_eq!(safe_file_name("grabacion 2026-10-10.m4a"), "grabacion 2026-10-10.m4a");
+        assert_eq!(safe_file_name("///"), "file");
+    }
+
+    #[test]
+    fn bajar_dos_veces_no_pisa_nada() {
+        let dir = std::env::temp_dir().join(format!("cac-free-name-{}", ephemeral_suffix()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(free_name(&dir, "g.m4a"), dir.join("g.m4a"));
+        std::fs::write(dir.join("g.m4a"), b"1").unwrap();
+        assert_eq!(free_name(&dir, "g.m4a"), dir.join("g (2).m4a"));
+        std::fs::write(dir.join("g (2).m4a"), b"2").unwrap();
+        assert_eq!(free_name(&dir, "g.m4a"), dir.join("g (3).m4a"));
+        assert_eq!(free_name(&dir, "sin-ext"), dir.join("sin-ext"));
+        std::fs::write(dir.join("sin-ext"), b"3").unwrap();
+        assert_eq!(free_name(&dir, "sin-ext"), dir.join("sin-ext (2)"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 /// Opens the live event stream. Idempotent: connecting again replaces the
 /// previous stream, which is what a token refresh needs.
 #[tauri::command]
@@ -1721,6 +1838,19 @@ pub fn run() {
                             }
                             false
                         });
+                        // Si el proceso de la página se muere, la ventana se
+                        // queda en negro y la página no puede ni enterarse:
+                        // se apunta y se recarga desde aquí
+                        // (ver `webview_crash.rs`).
+                        inner.connect_web_process_terminated(|wv, reason| {
+                            let url = wv.uri().map(|u| u.to_string()).unwrap_or_default();
+                            if webview_crash::on_terminated(
+                                webview_crash::reason_name(reason),
+                                &url,
+                            ) {
+                                wv.reload();
+                            }
+                        });
                     });
                 }
             }
@@ -1762,6 +1892,7 @@ pub fn run() {
             api_request,
             set_session,
             open_attachment,
+            save_attachment,
             read_dropped_file,
             sse_connect,
             sse_disconnect,
@@ -1786,6 +1917,8 @@ pub fn run() {
             voice::voice_attach,
             voice::voice_leave,
             voice::voice_set_mic,
+            voice::voice_set_noise_suppression,
+            webview_crash::take_webview_crash,
             voice::voice_set_deaf,
             voice::voice_set_camera,
             voice::voice_share_screen,

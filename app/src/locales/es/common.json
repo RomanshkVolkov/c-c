@@ -538,6 +538,7 @@
     "docsManageDetail": "Reemplaza una sección entera y decide de quién es un documento. Un guardado que llega después del de otra persona se rechaza en vez de aplicarse, pero éste sigue siendo el permiso que puede pisar trabajo. No puede marcar un documento como revisado: eso dice que una persona lo confirmó, y sólo lo firma un superadmin."
   },
   "last": {
+    "webviewRecovered": "La página se cerró inesperadamente y se volvió a cargar. Ya quedó reportado.",
     "hideChat": "Ocultar el chat",
     "chat": "Chat",
     "backToChannel": "Volver al canal — sigues conectado",
@@ -628,7 +629,11 @@
     "removePdfBody": "El fichero no se borra: sólo deja de aparecer aquí. Se deshace con Ctrl+Z.",
     "collapseList": "Plegar la lista",
     "expandList": "Desplegar la lista",
-    "findSomebody": "Buscar a alguien"
+    "findSomebody": "Buscar a alguien",
+    "noiseSuppression": "Supresión de ruido",
+    "noiseSuppressionHint": "Quita el ventilador y el teclado. Apágala para música o un instrumento.",
+    "mermaidError": "El diagrama tiene un error:",
+    "mermaidDiagram": "Diagrama"
   },
   "calendar": {
     "undated_one": "{{count}} sin fecha",

@@ -42,9 +42,11 @@ class FakeRoom {
     setMicrophoneEnabled: vi.fn(async () => {}),
     setCameraEnabled: vi.fn(async () => {}),
     setScreenShareEnabled: vi.fn(async () => {}),
-    getTrackPublication: () => undefined,
+    getTrackPublication: (_s?: unknown): unknown => undefined,
   };
-  constructor() {
+  opts: Record<string, unknown> | undefined;
+  constructor(opts?: Record<string, unknown>) {
+    this.opts = opts;
     FakeRoom.last = this;
   }
   on(ev: string, cb: (...a: unknown[]) => void) {
@@ -159,5 +161,43 @@ describe("el motor del navegador", () => {
       r.remoteParticipants.set("guest:g1", remoto("guest:g1", "Ana López"));
     });
     expect(eventos).toContainEqual({ kind: "joined", identity: "guest:g1", name: "Ana López" });
+  });
+});
+
+/**
+ * La supresión de ruido en la web: el navegador la hace, y el interruptor de
+ * los ajustes la apaga igual que en el escritorio (ruido y ganancia; el eco se
+ * queda siempre). Antes de entrar, en las opciones de la sala; dentro de la
+ * llamada, reiniciando la pista del micro.
+ */
+describe("la supresión de ruido en la web", () => {
+  const capturaDe = (r: FakeRoom) => r.opts?.audioCaptureDefaults as Record<string, unknown>;
+
+  it("por defecto encendida, con el eco siempre puesto", async () => {
+    const { room } = await entrar();
+    expect(capturaDe(room)).toMatchObject({ noiseSuppression: true, autoGainControl: true, echoCancellation: true });
+  });
+
+  it("apagada antes de entrar, la sala nace sin ella (y con el eco)", async () => {
+    const engine = createBrowserEngine(async () => fakeLK as never);
+    await engine.setNoiseSuppression(false);
+    await engine.join({
+      url: "wss://rtc.example",
+      token: "jwt",
+      meta: { spaceId: null, orgId: null, spaceName: null },
+      onEvent: () => {},
+    });
+    expect(capturaDe(FakeRoom.last)).toMatchObject({ noiseSuppression: false, autoGainControl: false, echoCancellation: true });
+  });
+
+  it("dentro de la llamada se aplica en caliente al micro", async () => {
+    const restartTrack = vi.fn(async () => {});
+    const { engine, room } = await entrar((r) => {
+      r.localParticipant.getTrackPublication = (s?: unknown) =>
+        s === Source.Microphone ? { track: { restartTrack } } : undefined;
+    });
+    void room;
+    await engine.setNoiseSuppression(false);
+    expect(restartTrack).toHaveBeenCalledWith(expect.objectContaining({ noiseSuppression: false, echoCancellation: true }));
   });
 });

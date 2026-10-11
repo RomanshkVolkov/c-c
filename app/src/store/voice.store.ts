@@ -2,6 +2,7 @@ import { phraseFor } from "@/lib/server-errors";
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import { engine, type Reattach, type VoiceEvent, type VoiceMeta } from "@/lib/voice-engine";
+import { useAudioPrefs } from "@/store/audio-prefs.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import type { APIResponse } from "@/types/auth";
@@ -392,6 +393,10 @@ export const useVoice = create<VoiceState>((set, get) => {
     errorSpaceId: string | null,
   ) => {
     try {
+      // La preferencia de ruido, antes de abrir el micro: así la primera trama
+      // ya sale como la quiere quien habla. Si el motor no la entiende, la
+      // llamada sigue.
+      await engine.setNoiseSuppression(useAudioPrefs.getState().noiseSuppression).catch(() => {});
       const yo = await engine.join({ url, token, meta, onEvent: (ev) => get().alRecibir(ev) });
       if (mio !== intento) {
         void engine.leave().catch(() => {});

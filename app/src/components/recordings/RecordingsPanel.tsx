@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { Download, Loader2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
+import { saveAttachment } from "@/lib/media";
 import { urlTicket } from "@/lib/url-ticket";
 import { cn } from "@/lib/utils";
 import {
@@ -48,11 +50,24 @@ function duration(ms?: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
+/**
+ * `cac-grabacion-2026-10-10-2253.m4a`: la fecha y la hora locales de cuando
+ * empezó, que es como se busca luego en Descargas.
+ */
+export function recordingFileName(rec: Recording): string {
+  const d = new Date(rec.startedAt);
+  const dd = (n: number) => String(n).padStart(2, "0");
+  const fecha = `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}-${dd(d.getHours())}${dd(d.getMinutes())}`;
+  const ext = (rec.finalContentType ?? "").startsWith("audio/") ? "m4a" : "mp4";
+  return `cac-grabacion-${fecha}.${ext}`;
+}
+
 function Row({ rec, spaceId }: { rec: Recording; spaceId: string }) {
   const { t } = useT();
   const remove = useRecordings((s) => s.remove);
   const confirm = useConfirm();
   const [removing, setBorrando] = useState(false);
+  const [downloading, setDescargando] = useState(false);
   // Sólo se puede ver lo que ya está montado. `partial` también: hay vídeo, y
   // esconderlo por haber perdido una pista sería tirar lo que sí se salvó.
   const playable = rec.status === "ready" || rec.status === "partial";
@@ -78,6 +93,36 @@ function Row({ rec, spaceId }: { rec: Recording; spaceId: string }) {
           </span>
         )}
         <span className="flex-1" />
+        {playable && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t("recordings:download")}
+            title={t("recordings:download")}
+            // Mientras baja, el botón gira y no se puede volver a pulsar: un
+            // segundo clic sería una segunda descarga de cientos de MB.
+            disabled={downloading}
+            onClick={() => {
+              setDescargando(true);
+              const aviso = toast.loading(t("recordings:downloadStarted"));
+              saveAttachment(`/api/v1/recordings/${rec.id}/media`, recordingFileName(rec))
+                .then((ruta) =>
+                  ruta
+                    ? toast.success(t("recordings:downloaded", { path: ruta }), { id: aviso })
+                    : toast.dismiss(aviso),
+                )
+                .catch((e) =>
+                  toast.error(t("recordings:downloadFailed"), {
+                    id: aviso,
+                    description: String((e as Error)?.message ?? e),
+                  }),
+                )
+                .finally(() => setDescargando(false));
+            }}
+          >
+            {downloading ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -136,7 +181,15 @@ export function RecordingPlayer({ recordingId, isAudio }: { recordingId: string;
       vivo = false;
     };
   }, [recordingId]);
-  if (!src) return null;
+  // Mientras llega el pase, un spinner en el sitio del reproductor: sin él la
+  // fila parece no tener nada que ver.
+  if (!src) {
+    return (
+      <div className="flex justify-center py-3" role="status" aria-busy="true">
+        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
   return isAudio ? (
     <audio controls preload="metadata" className="w-full" src={src} />
   ) : (

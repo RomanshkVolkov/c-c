@@ -31,5 +31,6 @@ export const tauriEngine: VoiceEngine = {
   canShareScreen: () => true,
   listDevices: () => invoke<DeviceList>("voice_list_devices"),
   setDevice: (kind, deviceId) => invoke("voice_set_device", { kind, deviceId }),
+  setNoiseSuppression: (on) => invoke("voice_set_noise_suppression", { on }),
   micLevel: () => invoke<MicReading>("voice_mic_level"),
 };

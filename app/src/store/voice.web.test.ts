@@ -13,7 +13,7 @@ vi.mock("@/lib/voice-engine/browser", () => ({
     join, attach: vi.fn(async () => null), leave: vi.fn(async () => {}),
     setMic: vi.fn(), setDeaf: vi.fn(), setCamera: vi.fn(), screenSources: vi.fn(async () => []),
     shareScreen: vi.fn(), stopShare: vi.fn(), canShareScreen: () => true,
-    listDevices: vi.fn(), setDevice: vi.fn(), micLevel: vi.fn(),
+    listDevices: vi.fn(), setDevice: vi.fn(), micLevel: vi.fn(), setNoiseSuppression: vi.fn(async () => {}),
   },
 }));
 

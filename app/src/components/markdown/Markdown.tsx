@@ -2,6 +2,7 @@ import { slugify } from "@/lib/headings";
 import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import MermaidDiagram from "@/components/markdown/MermaidDiagram";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -51,6 +52,21 @@ const noteSchema = {
  */
 function urlTransform(url: string): string {
   return url.startsWith("cac:") ? url : defaultUrlTransform(url);
+}
+
+/**
+ * El texto de un bloque ```mermaid, o null si el `<pre>` es otra cosa. Del
+ * árbol (hast) y no de los hijos ya pintados: ahí la clase del lenguaje está
+ * sin ambigüedad en el `<code>` de dentro.
+ */
+export function mermaidSource(node: unknown): string | null {
+  const pre = node as { children?: { tagName?: string; properties?: { className?: unknown }; children?: { value?: string }[] }[] } | undefined;
+  const code = pre?.children?.find((c) => c.tagName === "code");
+  const clases = code?.properties?.className;
+  const lista = Array.isArray(clases) ? clases.map(String) : typeof clases === "string" ? clases.split(" ") : [];
+  if (!lista.includes("language-mermaid")) return null;
+  const texto = (code?.children ?? []).map((c) => c.value ?? "").join("");
+  return texto.replace(/\n$/, "");
 }
 
 export default function Markdown({
@@ -139,6 +155,13 @@ export default function Markdown({
                 {children}
               </a>
             );
+          },
+          // Un bloque ```mermaid se dibuja (ver `MermaidDiagram`); el resto
+          // de bloques de código siguen como siempre.
+          pre: ({ children, node, ...rest }) => {
+            const codigo = mermaidSource(node);
+            if (codigo !== null) return <MermaidDiagram source={codigo} />;
+            return <pre {...rest}>{children}</pre>;
           },
           // Capped at max-h-80 so a screenshot doesn't push the rest of the
           // comment off the screen; clicking it lifts that cap.

@@ -22,6 +22,7 @@ import { useMediaTicket } from "@/lib/url-ticket";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useVoice } from "@/store/voice.store";
 import { useReportEvents } from "@/hooks/use-report-events";
+import { useWebviewCrash } from "@/hooks/use-webview-crash";
 import { ensureOrgClaim, refreshSession } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
@@ -63,6 +64,9 @@ export default function AppLayout() {
 
   // Live report notifications (SSE) for the whole authenticated shell.
   useReportEvents();
+
+  // Si la página vuelve de que su proceso se muriera, se ficha (ver el hook).
+  useWebviewCrash(authed);
 
   // El pase de adjuntos de la web (ver lib/url-ticket.ts). En el escritorio no
   // hace falta: sus adjuntos van con cabecera.
