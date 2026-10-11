@@ -177,11 +177,21 @@ describe("descargar una grabación", () => {
   });
 
   it("el nombre lleva la fecha y la hora locales, y la extensión de lo que es", () => {
-    // 04:53 UTC del 11 es el 10 a las 22:53 en Ciudad de México (la zona de
-    // las pruebas).
-    expect(recordingFileName(rec({ startedAt: "2026-10-11T04:53:00Z", finalContentType: "audio/mp4" }))).toBe(
-      "cac-grabacion-2026-10-10-2253.m4a",
+    // Lo que se espera se arma con los captadores **locales** del mismo
+    // instante, y no se escribe a mano: la suite corre bajo UTC, UTC−6 y UTC+13
+    // (`test:timezones`), y una hora escrita a mano sólo vale en una. Así se
+    // gastó la v1.6.97: la prueba decía «22:53» y en UTC son las 04:53 del 11.
+    const iso = "2026-10-11T04:53:00Z";
+    const d = new Date(iso);
+    const dd = (n: number) => String(n).padStart(2, "0");
+    const local = `${d.getFullYear()}-${dd(d.getMonth() + 1)}-${dd(d.getDate())}-${dd(d.getHours())}${dd(d.getMinutes())}`;
+    expect(recordingFileName(rec({ startedAt: iso, finalContentType: "audio/mp4" }))).toBe(
+      `cac-grabacion-${local}.m4a`,
     );
-    expect(recordingFileName(rec({ startedAt: "2026-10-11T04:53:00Z" }))).toMatch(/\.mp4$/);
+    expect(recordingFileName(rec({ startedAt: iso }))).toBe(`cac-grabacion-${local}.mp4`);
+    // Y no la hora UTC, allí donde se distinguen (en UTC son la misma).
+    if (d.getTimezoneOffset() !== 0) {
+      expect(recordingFileName(rec({ startedAt: iso }))).not.toContain("-0453.");
+    }
   });
 });
