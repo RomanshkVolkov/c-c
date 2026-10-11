@@ -296,9 +296,15 @@ cuelga un árbol de páginas.
   que comprueban que el mensaje es del canal/conversación autorizados, eventos
   `chat:reaction`/`dm:reaction` sin aviso ni no leídos. App: pastillas, selector
   al pasar el ratón, optimista con vuelta atrás. Sale backend primero.
-- **Siguiente, pedido por jose:** menú inferior en el móvil (web) con tres
-  botones —Mi trabajo, Comunicación (Canales | Directos), Más (hoja desde
-  abajo)—, sin hamburguesa.
+- **Reacciones publicadas en el backend** (`ae8091c`); la app sale en la v1.6.99.
+- **11-oct, sin commitear: menú inferior en el móvil.** Tres botones —Mi
+  trabajo, Comunicación (selector Canales | Directos arriba de cada lista), Más
+  (hoja desde abajo con el resto de pantallas de `lib/nav.ts`, los espacios, la
+  organización y la cuenta)—, sin hamburguesa. Dentro de la columna, se esconde
+  en una conversación y con el teclado, zona segura del iPhone
+  (`viewport-fit=cover`), avisos arriba en el móvil, la llamada encima del
+  menú. De paso: Directos ya no abre solo el último hilo en el teléfono, y
+  `useIsMobile` acierta desde el primer render. Falta verlo en un teléfono.
 
 ## 🎙️ Grabar la reunión (antes: transcribirla)
 

@@ -46,5 +46,15 @@
     "saved": "Perfil guardado",
     "errSave": "No se pudo guardar tu perfil",
     "changePassword": "Cambiar la contraseña"
+  },
+  "mobile": {
+    "label": "Navegación",
+    "myWork": "Mi trabajo",
+    "comms": "Comunicación",
+    "more": "Más",
+    "moreHint": "El resto de la app: pantallas, espacios, organización y cuenta.",
+    "goTo": "Ir a",
+    "channels": "Canales",
+    "directs": "Directos"
   }
 }

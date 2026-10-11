@@ -17,6 +17,7 @@ import { usePlacesStore } from "@/store/places.store";
 import { cn } from "@/lib/utils";
 import RailItem from "@/components/RailItem";
 import { useLayoutStore } from "@/store/layout.store";
+import CommsSwitch from "@/components/mobile/CommsSwitch";
 
 /**
  * Every space's channel, on a screen of its own.
@@ -132,7 +133,13 @@ export default function Channels() {
         <header
           className={cn("flex h-12 shrink-0 items-center border-b", plegada ? "justify-center" : "gap-1 px-3")}
         >
-          {!plegada && <span className="flex-1 text-sm font-medium">{t("common:last.channels")}</span>}
+          {/* En el teléfono, el selector «Canales | Directos» en lugar del
+              título: son las dos mitades de «Comunicación» del menú de abajo. */}
+          {movil ? (
+            <CommsSwitch current="/chat" />
+          ) : (
+            !plegada && <span className="flex-1 text-sm font-medium">{t("common:last.channels")}</span>
+          )}
           {!movil && (
             <Button
               size="icon-xs"

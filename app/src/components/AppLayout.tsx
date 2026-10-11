@@ -4,7 +4,7 @@ import { Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 import { Toaster } from "sonner";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import AppSidebar from "@/components/AppSidebar";
 import NotificationsPanel from "@/components/NotificationsPanel";
 import NotificationPrefsDialog from "@/components/NotificationPrefsDialog";
@@ -16,6 +16,8 @@ import StaleBinaryNotice from "@/components/StaleBinaryNotice";
 import IncomingCall from "@/components/voice/IncomingCall";
 import MeetingCall from "@/components/meetings/MeetingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
+import MobileTabBar from "@/components/mobile/MobileTabBar";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { isWebBuild } from "@/lib/platform";
 import { useOpenedFromPush } from "@/hooks/use-opened-from-push";
 import { useMediaTicket } from "@/lib/url-ticket";
@@ -36,6 +38,7 @@ export default function AppLayout() {
   const mustChangePassword = useAuthStore((s) => !!s.session?.mustChangePassword);
   // sonner renders in its own tree and ignores the .dark class.
   const theme = useThemeStore((s) => s.resolved);
+  const movil = useIsMobile();
 
   // Load the caller's organizations once the authenticated shell mounts. First
   // upgrade a pre-orgs token (else org-scoped lists come back empty) so the
@@ -134,7 +137,9 @@ export default function AppLayout() {
       <SidebarInset className="min-h-0">
         <ConnectionBanner />
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="md:hidden" />
+          {/* Sin hamburguesa en el teléfono: ahí manda el menú de abajo
+              (`MobileTabBar`). La barra lateral sólo existe en pantalla ancha,
+              donde se pliega desde su propio borde. */}
           {/* Centred and always there, because a search you have to remember a
               shortcut for is one most people never find. Clicking it opens the
               same palette ⌘K does. */}
@@ -180,6 +185,7 @@ export default function AppLayout() {
             meant "my work", the channels and the dashboard could all ask for a
             task and nothing would appear. */}
         <TaskDetailDrawer />
+        <MobileTabBar />
       </SidebarInset>
       {/* Encima de todo, y montado una sola vez: una llamada puede entrar
           mientras miras un servidor o una nota, no sólo desde un canal. */}
@@ -189,7 +195,9 @@ export default function AppLayout() {
           escritorio: en web la versión nueva llega al recargar. */}
       {!isWebBuild && <UpdateChecker />}
       {!isWebBuild && <StaleBinaryNotice />}
-      <Toaster richColors closeButton position="bottom-right" theme={theme} />
+      {/* Arriba en el teléfono: abajo está el menú, y un aviso encima de él
+          tapa justo el botón que ibas a pulsar. */}
+      <Toaster richColors closeButton position={movil ? "top-center" : "bottom-right"} theme={theme} />
     </SidebarProvider>
   );
 }

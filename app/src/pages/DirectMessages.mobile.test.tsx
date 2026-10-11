@@ -10,6 +10,9 @@ import { MemoryRouter } from "react-router-dom";
  */
 
 const estado = { conversationId: null as string | null };
+// El selector «Canales | Directos» tiene sus propias pruebas; aquí sólo estorba
+// con los stores que necesita.
+vi.mock("@/components/mobile/CommsSwitch", () => ({ default: () => <div>selector</div> }));
 vi.mock("@/store/dm.store", () => {
   const s = () => ({
     conversationId: estado.conversationId,

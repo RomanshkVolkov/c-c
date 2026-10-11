@@ -11,9 +11,18 @@ import { persist } from "zustand/middleware";
  */
 export type CollapsibleColumn = "channels" | "dms";
 
+/** Las dos mitades de «Comunicación» en el móvil. */
+export type CommsPath = "/chat" | "/dm";
+
 interface LayoutState {
   collapsed: Partial<Record<CollapsibleColumn, boolean>>;
   setCollapsed: (column: CollapsibleColumn, v: boolean) => void;
+  /**
+   * En cuál de las dos estuviste la última vez: el botón «Comunicación» del
+   * menú inferior vuelve ahí, que es lo que se espera de una pestaña.
+   */
+  comms: CommsPath;
+  setComms: (path: CommsPath) => void;
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -21,6 +30,8 @@ export const useLayoutStore = create<LayoutState>()(
     (set) => ({
       collapsed: {},
       setCollapsed: (column, v) => set((s) => ({ collapsed: { ...s.collapsed, [column]: v } })),
+      comms: "/chat",
+      setComms: (comms) => set({ comms }),
     }),
     { name: "cac-layout" },
   ),

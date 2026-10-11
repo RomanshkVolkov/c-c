@@ -46,5 +46,15 @@
     "saved": "Profile saved",
     "errSave": "Could not save your profile",
     "changePassword": "Change password"
+  },
+  "mobile": {
+    "label": "Navigation",
+    "myWork": "My work",
+    "comms": "Messages",
+    "more": "More",
+    "moreHint": "The rest of the app: screens, spaces, organization and account.",
+    "goTo": "Go to",
+    "channels": "Channels",
+    "directs": "Direct"
   }
 }

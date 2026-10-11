@@ -21,6 +21,9 @@ const { tree, abrirSalaGeneral, orgActual, sesion } = vi.hoisted(() => ({
   sesion: { current: { superadmin: false } as Record<string, unknown> },
 }));
 
+// El selector «Canales | Directos» tiene sus propias pruebas; aquí sólo estorba
+// con los stores que necesita.
+vi.mock("@/components/mobile/CommsSwitch", () => ({ default: () => <div>selector</div> }));
 vi.mock("@/store/tasks.store", () => ({
   useTasksStore: Object.assign(
     (sel: (s: Record<string, unknown>) => unknown) =>

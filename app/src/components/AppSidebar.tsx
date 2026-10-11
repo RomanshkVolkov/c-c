@@ -1,26 +1,16 @@
 import { isWebBuild } from "@/lib/platform";
 import { useT, type MessageKey } from "@/lib/i18n";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Wrench,
-  Server,
   Building2,
   Mail,
-  Inbox,
-  Hash,
-  MessagesSquare,
   ChevronRight,
-  LayoutDashboard,
-  FileText,
-  NotebookPen,
   ImageDown,
   Send,
   KeyRound,
-  Activity,
-  Users,
   LogIn,
-  Workflow,
 } from "lucide-react";
 import {
   Sidebar,
@@ -49,58 +39,13 @@ import { useNotifUI } from "@/store/notifui.store";
 import { useAuthStore } from "@/store/auth.store";
 import { useServers } from "@/hooks/use-servers";
 import { useInvitationsStore } from "@/store/invitations.store";
-import { useChatStore } from "@/store/chat.store";
-import { useDMStore } from "@/store/dm.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useMyWorkStore } from "@/store/mywork.store";
-import { useTasksStore } from "@/store/tasks.store";
-import { channelUnreadIn, dmUnreadIn } from "@/lib/unread";
 import VoiceMini from "@/components/voice/VoiceMini";
+import { GROUPS, visibleNavItems } from "@/lib/nav";
+import { useCommsUnread } from "@/hooks/use-comms-unread";
 import { cn } from "@/lib/utils";
-
-// guest: reachable on-device (no backend). superadmin: only for platform admins.
-//
-// `group` splits one flat list of ten into the three things a person is
-// actually doing: their work, the developer tools, and running the platform.
-// Ten equal rows made everything look equally important, which is another way
-// of saying nothing did.
-const NAV_ITEMS: {
-  labelKey: MessageKey;
-  path: string;
-  icon: typeof LayoutDashboard;
-  guest: boolean;
-  superadmin?: boolean;
-  group: string;
-}[] = [
-  { labelKey: "nav:item.overview", path: "/overview", icon: LayoutDashboard, guest: false, group: "work" },
-  { labelKey: "nav:item.myWork", path: "/my-work", icon: Inbox, guest: false, group: "work" },
-  // Sin entrada para tareas: el árbol de espacios de aquí abajo **es** esa
-  // navegación. Una fila «Tareas» que lleva a la última lista abierta compite
-  // con el árbol por el mismo trabajo y deja al usuario sin saber cuál manda.
-  // La documentación sí tiene fila propia, al contrario que las tareas: el
-  // árbol de abajo navega por espacios, y la pregunta que contesta esta pantalla
-  // —«qué está sin revisar»— cruza todos.
-  { labelKey: "nav:item.docs", path: "/docs", icon: FileText, guest: false, group: "work" },
-  { labelKey: "nav:item.notes", path: "/notes", icon: NotebookPen, guest: false, group: "work" },
-  { labelKey: "nav:item.channels", path: "/chat", icon: Hash, guest: false, group: "talk" },
-  { labelKey: "nav:item.directMessages", path: "/dm", icon: MessagesSquare, guest: false, group: "talk" },
-  // The dashboard is the servers screen; named for what it holds rather than
-  // for the layout it happens to use.
-  { labelKey: "nav:item.servers", path: "/dashboard", icon: Server, guest: false, group: "platform" },
-  // La actividad de CI (R9): qué hizo GitHub Actions con cada repo y qué
-  // desplegó cac. El icono `Activity` ya lo lleva Diagnóstico.
-  { labelKey: "nav:item.activity", path: "/activity", icon: Workflow, guest: false, group: "platform" },
-  { labelKey: "nav:item.diagnostics", path: "/diagnostics", icon: Activity, guest: false, group: "platform" },
-  { labelKey: "nav:item.users", path: "/users", icon: Users, guest: false, superadmin: true, group: "platform" },
-];
-
-/** Rendered in this order; a group with nothing in it draws nothing at all. */
-const GROUPS: { key: string; labelKey: MessageKey }[] = [
-  { key: "work", labelKey: "nav:group.work" },
-  { key: "talk", labelKey: "nav:group.talk" },
-  { key: "platform", labelKey: "nav:group.platform" },
-];
 
 /**
  * The on-device tools, as one entry that opens.
@@ -178,10 +123,7 @@ export default function AppSidebar() {
   const servidoresEnAtencion = useServers().servers.filter((sv) => sv.status !== "online").length;
   // Sólo lo de la org en pantalla. Ver `lib/unread.ts`.
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
-  const tree = useTasksStore((s) => s.tree);
-  const espacios = useMemo(() => new Set(tree.map((sp) => sp.id)), [tree]);
-  const sinLeerCanales = useChatStore((s) => channelUnreadIn(s.unreadBySpace, espacios));
-  const sinLeerDirectos = useDMStore((s) => dmUnreadIn(s.conversations, currentOrgId));
+  const { channels: sinLeerCanales, dms: sinLeerDirectos } = useCommsUnread();
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   // Dos cosas distintas tras dos entradas: la campana —que ahora vive en la
@@ -199,9 +141,7 @@ export default function AppSidebar() {
   const collapsed = useSidebar().state === "collapsed";
   const setScope = useMyWorkStore((s) => s.setScope);
   // En la versión web no hay servidores: se gestionan desde el escritorio.
-  const items = (authed ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.guest)).filter((i) => !(isWebBuild && i.path === "/dashboard")).filter(
-    (i) => !i.superadmin || superadmin,
-  );
+  const items = visibleNavItems({ authed, superadmin, web: isWebBuild });
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">

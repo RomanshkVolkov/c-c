@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import RailItem from "@/components/RailItem";
 import { nombreDe } from "@/lib/nombres";
 import { useLayoutStore } from "@/store/layout.store";
+import CommsSwitch from "@/components/mobile/CommsSwitch";
 
 /**
  * Private conversations, at the same level as the channels.
@@ -85,16 +86,20 @@ export default function DirectMessages() {
   // Sin nada pedido ni abierto, el último directo en el que estuviste en esta
   // org. Si ya no se puede abrir, se cierra, y cerrarlo lo olvida: un enlace
   // muerto no se reintenta en cada visita. Ver `store/places.store.ts`.
-  const recordado = usePlacesStore((s) => (orgId ? s.byOrg[orgId]?.dm : undefined));
-  useEffect(() => {
-    if (c || u || abierta || !recordado || !orgId) return;
-    void open(recordado, orgId).catch(() => useDMStore.getState().close());
-  }, [c, u, abierta, recordado, orgId, open]);
-
   // En el teléfono, la lista o la conversación, no las dos: aplastada al lado
   // de la lista, la conversación se leía palabra a palabra. La flecha del hilo
   // (`onBack`) ya vuelve a la lista.
   const movil = useIsMobile();
+
+  // **Sólo en pantalla ancha.** En el teléfono, entrar a Directos enseña la
+  // lista, como Canales: abrir sola la última conversación te dejaba dentro de
+  // un hilo que no pediste, sin el menú de abajo (que se esconde en una
+  // conversación) y con una flecha como única salida.
+  const recordado = usePlacesStore((s) => (orgId ? s.byOrg[orgId]?.dm : undefined));
+  useEffect(() => {
+    if (movil || c || u || abierta || !recordado || !orgId) return;
+    void open(recordado, orgId).catch(() => useDMStore.getState().close());
+  }, [movil, c, u, abierta, recordado, orgId, open]);
 
   // Plegada a un riel con las iniciales de cada persona, como la de canales.
   // Sólo en escritorio, y recordado.
@@ -122,7 +127,11 @@ export default function DirectMessages() {
         <header
           className={cn("flex h-12 shrink-0 items-center border-b", plegada ? "justify-center" : "gap-1 px-3")}
         >
-          {!plegada && <span className="flex-1 text-sm font-medium">Direct messages</span>}
+          {movil ? (
+            <CommsSwitch current="/dm" />
+          ) : (
+            !plegada && <span className="flex-1 text-sm font-medium">Direct messages</span>
+          )}
           {!movil && (
             <Button
               size="icon-xs"
