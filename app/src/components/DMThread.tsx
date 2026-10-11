@@ -17,6 +17,8 @@ import FileDropZone from "@/components/FileDropZone";
 import Markdown from "@/components/markdown/Markdown";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useDMStore } from "@/store/dm.store";
+import type { Reaction } from "@/lib/reactions";
+import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
 import { useAuthStore } from "@/store/auth.store";
 import { cn } from "@/lib/utils";
 
@@ -181,7 +183,15 @@ function DMLine({
   conversationId,
   grouped,
 }: {
-  m: { id: string; authorUserId: string; authorName: string; body: string; createdAt: string; updatedAt: string };
+  m: {
+    id: string;
+    authorUserId: string;
+    authorName: string;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
+    reactions?: Reaction[];
+  };
   conversationId: string;
   grouped: boolean;
 }) {
@@ -189,6 +199,8 @@ function DMLine({
   const session = useAuthStore((s) => s.session);
   const edit = useDMStore((s) => s.edit);
   const withdraw = useDMStore((s) => s.withdraw);
+  const react = useDMStore((s) => s.react);
+  const reaccionar = (emoji: string, on: boolean) => react(conversationId, m.id, emoji, on);
   const confirm = useConfirm();
 
   const [editing, setEditing] = useState(false);
@@ -239,10 +251,11 @@ function DMLine({
       )}
       <div
         className={cn(
-          // `pr-7` es el hueco de la flecha. Sin él el texto pasa por debajo y
-          // la flecha tapa justo las primeras letras de la línea que ibas a
-          // leer; reservarle el sitio es lo que hace que no cubra nada nunca.
-          "relative rounded-md py-1 pl-2 pr-7 hover:bg-muted/40",
+          // El hueco de los iconos (la carita y, en lo mío, la flecha). Sin él
+          // el texto pasa por debajo y los iconos tapan justo las primeras
+          // letras de la línea que ibas a leer.
+          "relative rounded-md py-1 pl-2 hover:bg-muted/40",
+          mine ? "pr-12" : "pr-7",
           grouped && "mt-0.5",
           mine
             ? "max-w-[75%] rounded-tr-sm border border-primary/25 bg-primary/10"
@@ -265,6 +278,15 @@ function DMLine({
         ) : (
           <>
             <Markdown>{m.body}</Markdown>
+            {/* Reaccionar, al pasar por encima; junto a la flecha en lo mío. */}
+            <ReactionPicker
+              reactions={m.reactions}
+              onReact={(e, on) => reaccionar(e, on).catch(() => toast.error(t("chat:reactFailed")))}
+              className={cn(
+                "absolute top-1 rounded p-0.5 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100",
+                mine ? "right-6" : "right-1",
+              )}
+            />
             {/* La misma flecha que en un canal, por lo mismo: tres iconos
                 diminutos encima del texto eran tres blancos que además tapaban
                 lo escrito. */}
@@ -303,6 +325,7 @@ function DMLine({
           </>
         )}
       </div>
+      <Reactions reactions={m.reactions} onReact={reaccionar} align={mine ? "end" : "start"} />
     </div>
   );
 }

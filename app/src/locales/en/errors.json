@@ -171,5 +171,6 @@
   "page-cycle": "A page can't go inside itself or one of its subpages.",
   "not-a-pull-url": "That isn't a GitHub pull request address.",
   "repo-not-in-org": "That repository isn't connected to this organization.",
-  "pr-not-found": "GitHub can't find that pull request."
+  "pr-not-found": "GitHub can't find that pull request.",
+  "bad-reaction": "That reaction is not one of the ones you can use."
 }

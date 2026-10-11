@@ -141,6 +141,9 @@ type ChatMessageResponse struct {
 	Body         string    `json:"body"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
+	// Reactions, contadas para quien pregunta (ver domain/reaction.go). No es
+	// columna: lo rellena el servicio después de leer la página.
+	Reactions []ReactionSummary `json:"reactions" gorm:"-"`
 }
 
 // ─── What the channel's tabs list ─────────────────────────────────────────────

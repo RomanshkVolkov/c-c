@@ -20,6 +20,9 @@ type ChatRepository struct {
 	db *gorm.DB
 }
 
+// Reactions: las reacciones, con la misma conexión. Ver reaction.go.
+func (r *ChatRepository) Reactions() *ReactionRepository { return NewReactionRepository(r.db) }
+
 func NewChatRepository(db *gorm.DB) *ChatRepository { return &ChatRepository{db: db} }
 
 // List returns the newest messages of a channel, oldest-first for rendering.

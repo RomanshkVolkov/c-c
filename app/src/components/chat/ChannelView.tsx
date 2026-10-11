@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown/MarkdownEditor";
 import FileDropZone from "@/components/FileDropZone";
 import MessageToDoc from "@/components/chat/MessageToDoc";
+import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
 import Markdown from "@/components/markdown/Markdown";
 import { openInternalRef } from "@/lib/open-ref";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -434,6 +435,8 @@ function Message({
   const session = useAuthStore((s) => s.session);
   const edit = useChatStore((s) => s.edit);
   const withdraw = useChatStore((s) => s.withdraw);
+  const react = useChatStore((s) => s.react);
+  const reaccionar = (emoji: string, on: boolean) => react(spaceId, m.id, emoji, on);
   const confirm = useConfirm();
 
   // Una tarjeta, un documento o una grabación citados se abren dentro. Ver
@@ -518,10 +521,12 @@ function Message({
       )}
       <div
         className={cn(
-          // `pr-7` es el hueco de la flecha. Sin él el texto pasa por debajo y
-          // la flecha tapa justo las primeras letras de la línea que ibas a
-          // leer; reservarle el sitio es lo que hace que no cubra nada nunca.
-          "relative rounded-md py-1 pl-2 pr-7 hover:bg-muted/40",
+          // El hueco de la flecha y de la carita de reaccionar. Sin él el texto
+          // pasa por debajo y los iconos tapan justo las primeras letras de la
+          // línea que ibas a leer; reservarles el sitio es lo que hace que no
+          // cubran nada nunca. Una línea del sistema sólo lleva la carita.
+          "relative rounded-md py-1 pl-2 hover:bg-muted/40",
+          fromSystem ? "pr-7" : "pr-12",
           grouped && "mt-0.5",
           mine
             ? "max-w-[75%] rounded-tr-sm border border-primary/25 bg-primary/10"
@@ -552,6 +557,18 @@ function Message({
         ) : (
           <>
             <Markdown onInternalLink={openCited}>{m.body}</Markdown>
+            {/* Poner la primera reacción: al pasar por encima, junto a la
+                flecha. También en una línea del sistema —celebrar que la
+                grabación ya está es para lo que sirven—, y entonces ocupa el
+                sitio de la flecha, que ahí no hay. */}
+            <ReactionPicker
+              reactions={m.reactions}
+              onReact={(e, on) => reaccionar(e, on).catch(() => toast.error(t("chat:reactFailed")))}
+              className={cn(
+                "absolute top-1 rounded p-0.5 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100",
+                fromSystem ? "right-1" : "right-6",
+              )}
+            />
             {/* Con aire: iban a `px-1` y `gap-1` sobre iconos de 12px, así que
                 las tres acciones formaban un solo borrón imposible de acertar.
                 Cada botón tiene ahora su propia zona de pulsación. */}
@@ -614,6 +631,7 @@ function Message({
           </>
         )}
       </div>
+      <Reactions reactions={m.reactions} onReact={reaccionar} align={mine ? "end" : "start"} />
     </div>
   );
 }

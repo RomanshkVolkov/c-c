@@ -78,13 +78,15 @@ describe("de qué lado cae cada mensaje", () => {
     expect(ajeno.className).not.toContain("max-w-");
   });
 
-  it("el globo reserva el hueco de la flecha, para que no tape el texto", () => {
+  it("el globo reserva el hueco de la flecha y de la carita, para que no tapen el texto", () => {
     render(<ChannelView spaceId="sp-1" spaceName="uno" />);
     for (const texto of ["lo mio", "lo de ana"]) {
       const globo = screen.getByText(texto).closest("div.relative") as HTMLElement;
-      // Sin este relleno la flecha cae encima de las primeras letras de la
-      // línea, que es justo lo que se venía a leer.
-      expect(globo.className).toContain("pr-7");
+      // Sin este relleno la flecha y la carita de reaccionar caen encima de
+      // las primeras letras de la línea, que es justo lo que se venía a leer.
+      // Son dos iconos desde las reacciones (11-oct-2026): con el hueco de uno
+      // solo, la carita tapaba el texto.
+      expect(globo.className).toContain("pr-12");
     }
   });
 });

@@ -131,6 +131,25 @@ func (h *taskHandler) EditDM(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Message updated"})
 }
 
+// ReactDM pone o quita un emoji en un mensaje de la conversación.
+func (h *taskHandler) ReactDM(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "unauthorized")
+		return
+	}
+	req, err := ValidateRequest[domain.ReactionRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	err = h.dms.React(chi.URLParam(r, "id"), chi.URLParam(r, "messageId"), user.UserID, req.Emoji, req.On)
+	if mapDMError(w, err) {
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
+}
+
 func (h *taskHandler) WithdrawDM(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(r)
 	if !ok {
@@ -169,6 +188,9 @@ func mapDMError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, service.ErrNotTheAuthor):
 		SendErrorResponse(w, http.StatusForbidden,
 			"Only the person who wrote this can change it.", "not-the-author")
+	case errors.Is(err, service.ErrBadReaction):
+		SendErrorResponse(w, http.StatusBadRequest,
+			"That reaction is not one of the accepted emoji.", "bad-reaction")
 	case errors.Is(err, repository.ErrConversationNotFound),
 		errors.Is(err, repository.ErrDMMessageNotFound):
 		// Not-found for a thread that is somebody else's, on purpose: see the

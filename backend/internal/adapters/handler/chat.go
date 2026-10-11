@@ -14,6 +14,7 @@ import (
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 )
 
@@ -40,6 +41,10 @@ func (h *taskHandler) ListChat(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, err := h.chat.List(sp.ID, r.URL.Query().Get("q"), chatBefore(r),
 		atoiDefault(r.URL.Query().Get("limit"), 50))
+	if err == nil {
+		user, _ := currentUser(r)
+		err = h.chat.FillReactions(msgs, user.UserID)
+	}
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to read the channel", err.Error())
 		return
@@ -86,6 +91,26 @@ func (h *taskHandler) EditChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Message updated"})
+}
+
+// ReactChat pone o quita un emoji en un mensaje del canal. Pide lo mismo que
+// escribir en él: reaccionar es contestar sin palabras.
+func (h *taskHandler) ReactChat(w http.ResponseWriter, r *http.Request) {
+	sp, ok := h.resolveSpace(w, r, chi.URLParam(r, "id"), true)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.ReactionRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	err = h.chat.React(sp.ID, chi.URLParam(r, "messageId"), user.UserID, req.Emoji, req.On)
+	if mapChatError(w, err) {
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
 }
 
 func (h *taskHandler) WithdrawChat(w http.ResponseWriter, r *http.Request) {
@@ -378,6 +403,11 @@ func mapChatError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, service.ErrNotTheAuthor):
 		SendErrorResponse(w, http.StatusForbidden,
 			"Only the person who wrote this can change it.", "not-the-author")
+	case errors.Is(err, service.ErrBadReaction):
+		SendErrorResponse(w, http.StatusBadRequest,
+			"That reaction is not one of the accepted emoji.", "bad-reaction")
+	case errors.Is(err, repository.ErrMessageNotFound):
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 	default:
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed", err.Error())
 	}

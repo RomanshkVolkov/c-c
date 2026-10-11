@@ -125,7 +125,63 @@ func (s *DMService) List(conversationID, userID string, before time.Time, limit 
 	if _, err := s.mine(conversationID, userID); err != nil {
 		return nil, err
 	}
-	return s.repo.List(conversationID, before, limit)
+	msgs, err := s.repo.List(conversationID, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	por, err := s.repo.Reactions().Summaries(domain.ReactionDM, ids, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range msgs {
+		msgs[i].Reactions = por[msgs[i].ID]
+		if msgs[i].Reactions == nil {
+			msgs[i].Reactions = []domain.ReactionSummary{}
+		}
+	}
+	return msgs, nil
+}
+
+// React pone o quita un emoji en un mensaje de la conversación. Cualquiera de
+// los dos puede reaccionar a cualquier mensaje de los dos; lo que no puede es
+// reaccionar a uno de **otra** conversación pasando su id por la suya.
+func (s *DMService) React(conversationID, messageID, userID, emoji string, on bool) error {
+	if !domain.ValidReaction(emoji) {
+		return ErrBadReaction
+	}
+	c, err := s.mine(conversationID, userID)
+	if err != nil {
+		return err
+	}
+	m, err := s.repo.Find(messageID)
+	if err != nil {
+		return err
+	}
+	if m.ConversationID != c.ID {
+		return repository.ErrDMMessageNotFound
+	}
+	if err := s.repo.Reactions().Set(domain.ReactionDM, m.ID, userID, emoji, on); err != nil {
+		return err
+	}
+	// A las dos personas y a nadie más, como los mensajes (ver publish). A
+	// quien reaccionó también: sus otras pantallas tienen que enterarse. Sin
+	// aviso en la bandeja: una reacción no es un mensaje.
+	if s.hub != nil {
+		for _, u := range []string{c.UserLoID, c.UserHiID} {
+			s.hub.Publish(events.Event{
+				Type:   "dm:reaction",
+				UserID: u,
+				Data: map[string]string{
+					"conversationId": c.ID, "messageId": m.ID, "actorId": userID,
+				},
+			})
+		}
+	}
+	return nil
 }
 
 func (s *DMService) Post(conversationID, userID, body string) (*domain.DMMessage, error) {

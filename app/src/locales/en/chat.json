@@ -33,5 +33,8 @@
   "errTab": "Couldn't read the channel",
   "searchHere": "Search in #{{name}}",
   "noHits": "Nothing in this channel matches.",
-  "clearSearch": "Clear the search"
+  "clearSearch": "Clear the search",
+  "react": "React",
+  "reactFailed": "Could not save the reaction",
+  "reactionCount": "{{emoji}} {{count}}"
 }

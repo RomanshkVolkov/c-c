@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { applyReaction, type Reaction } from "@/lib/reactions";
+import { nombreDe } from "@/lib/nombres";
 import type { APIResponse } from "@/types/auth";
 
 /**
@@ -21,6 +23,8 @@ export interface DMMessage {
   body: string;
   createdAt: string;
   updatedAt: string;
+  /** Contadas para mí. Un backend anterior a las reacciones no las manda. */
+  reactions?: Reaction[];
 }
 
 export interface DMSummary {
@@ -71,6 +75,10 @@ interface DMState {
    * en blanco mientras volvía la respuesta.
    */
   refrescar: () => Promise<void>;
+  /** Poner o quitar mi emoji; optimista, como en el canal (`chat.store`). */
+  react: (conversationId: string, messageId: string, emoji: string, on: boolean) => Promise<void>;
+  /** Alguien reaccionó en una conversación: si es la abierta, se relee. */
+  onReaction: (conversationId: string) => Promise<void>;
   fetchOlder: () => Promise<void>;
   post: (conversationId: string, body: string) => Promise<void>;
   /**
@@ -206,6 +214,27 @@ export const useDMStore = create<DMState>((set, get) => ({
   withdraw: async (conversationId, messageId) => {
     await api.delete(`/api/v1/dm/${conversationId}/messages/${messageId}`);
     await get().refrescar();
+  },
+
+  react: async (conversationId, messageId, emoji, on) => {
+    const antes = get().messages.find((m) => m.id === messageId)?.reactions;
+    const yo = useAuthStore.getState().session;
+    const me = yo ? nombreDe(yo) : "";
+    const poner = (reactions: Reaction[] | undefined) =>
+      set((s) => ({
+        messages: s.messages.map((m) => (m.id === messageId ? { ...m, reactions } : m)),
+      }));
+    poner(applyReaction(antes, emoji, on, me));
+    try {
+      await api.post(`/api/v1/dm/${conversationId}/messages/${messageId}/reactions`, { emoji, on }, true);
+    } catch (e) {
+      poner(antes);
+      throw e;
+    }
+  },
+
+  onReaction: async (conversationId) => {
+    if (get().conversationId === conversationId) await get().refrescar();
   },
 
   markRead: async (conversationId) => {

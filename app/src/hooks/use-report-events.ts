@@ -481,6 +481,20 @@ export function useReportEvents() {
           if (store.openTaskId) store.refreshOpenTask();
           break;
         }
+        // Una reacción no es un mensaje: no avisa, no suma no leídos ni deja
+        // fila en la campana. Sólo se relee lo que está abierto. Tampoco se
+        // descarta el eco propio: mis otras pantallas también tienen que
+        // verlo, y en esta la cuenta optimista ya coincide con lo que vuelve.
+        case "chat:reaction": {
+          const p = parse(data) as Payload & { spaceId?: string };
+          if (p.spaceId) void useChatStore.getState().onReaction(p.spaceId);
+          break;
+        }
+        case "dm:reaction": {
+          const p = parse(data) as Payload & { conversationId?: string };
+          if (p.conversationId) void useDMStore.getState().onReaction(p.conversationId);
+          break;
+        }
         case "chat:message": {
           const p = parse(data) as Payload & {
             spaceId?: string;
@@ -802,6 +816,8 @@ export function useReportEvents() {
         // porque Rust reenvía cada trama, pero en un navegador se perdían.
         "chat:message",
         "dm:message",
+        "chat:reaction",
+        "dm:reaction",
         "org:membership",
         "call:status",
         // Faltaban también: en la web no sonaba ningún timbre. Daba igual

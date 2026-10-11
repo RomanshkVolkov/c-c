@@ -171,5 +171,6 @@
   "page-cycle": "Una página no puede ir dentro de sí misma ni de una de sus subpáginas.",
   "not-a-pull-url": "Eso no es la dirección de una PR de GitHub.",
   "repo-not-in-org": "Ese repositorio no está conectado a esta organización.",
-  "pr-not-found": "GitHub no encuentra esa PR."
+  "pr-not-found": "GitHub no encuentra esa PR.",
+  "bad-reaction": "Esa reacción no es de las que se pueden poner."
 }

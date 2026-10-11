@@ -22,6 +22,9 @@ type DMRepository struct {
 	db *gorm.DB
 }
 
+// Reactions: las reacciones, con la misma conexión. Ver reaction.go.
+func (r *DMRepository) Reactions() *ReactionRepository { return NewReactionRepository(r.db) }
+
 func NewDMRepository(db *gorm.DB) *DMRepository { return &DMRepository{db: db} }
 
 // OpenWith finds or creates the conversation between two people in one org.

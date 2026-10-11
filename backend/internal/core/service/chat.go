@@ -34,6 +34,9 @@ var ErrNotTheAuthor = errors.New("only the author can change this message")
 // person's words has no meaning applied to it.
 var ErrNotAUserMessage = errors.New("a system message is nobody's to rewrite")
 
+// ErrBadReaction: un emoji fuera del juego que se acepta (domain.ReactionEmojis).
+var ErrBadReaction = errors.New("that reaction is not one of the accepted emoji")
+
 // broadcast is a message about to be announced — to the bus, and to the inbox.
 //
 // A struct rather than eight positional arguments because the last two arrived
@@ -386,6 +389,60 @@ func (s *ChatService) Withdraw(messageID, userID string, superadmin bool) error 
 		orgID: m.OrgID, spaceID: m.SpaceID, messageID: m.ID, actorID: userID,
 		kind: m.Kind,
 	})
+	return nil
+}
+
+// React pone o quita un emoji en un mensaje del canal.
+//
+// **El mensaje tiene que ser de `spaceID`**, que es el canal que el handler
+// autorizó. Sin esa comprobación, quien puede leer un canal reaccionaría a un
+// mensaje de cualquier otro pasando su id en la ruta del suyo. Editar no la
+// necesita porque ahí manda la autoría; aquí no hay autoría que mande.
+//
+// Una línea del sistema sí admite reacciones: celebrar que la grabación ya está
+// es justo para lo que sirven.
+func (s *ChatService) React(spaceID, messageID, userID, emoji string, on bool) error {
+	if !domain.ValidReaction(emoji) {
+		return ErrBadReaction
+	}
+	m, err := s.repo.Find(messageID)
+	if err != nil {
+		return err
+	}
+	if m.SpaceID != spaceID {
+		return repository.ErrMessageNotFound
+	}
+	if err := s.repo.Reactions().Set(domain.ReactionChannel, m.ID, userID, emoji, on); err != nil {
+		return err
+	}
+	// Su propio evento y no `chat:message`: ése cuenta como mensaje nuevo, y
+	// una reacción no debe avisar a nadie ni marcar el canal como no leído.
+	if s.hub != nil {
+		s.hub.Publish(events.Event{
+			Type:  "chat:reaction",
+			OrgID: m.OrgID,
+			Data:  map[string]any{"spaceId": m.SpaceID, "messageId": m.ID, "actorId": userID},
+		})
+	}
+	return nil
+}
+
+// FillReactions cuenta las reacciones de una página ya leída, para quien la pide.
+func (s *ChatService) FillReactions(msgs []domain.ChatMessageResponse, viewerID string) error {
+	ids := make([]string, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	por, err := s.repo.Reactions().Summaries(domain.ReactionChannel, ids, viewerID)
+	if err != nil {
+		return err
+	}
+	for i := range msgs {
+		msgs[i].Reactions = por[msgs[i].ID]
+		if msgs[i].Reactions == nil {
+			msgs[i].Reactions = []domain.ReactionSummary{}
+		}
+	}
 	return nil
 }
 

@@ -286,6 +286,19 @@ cuelga un árbol de páginas.
   Y botón «Descargar» en cada grabación (Rust la baja a Descargas por trozos,
   `save_attachment`; el botón gira y no admite un segundo clic). Medida «antes»
   del ruido apuntada en `docs/voz.md` (ruido −42,5 dB, voz −24,3 dB).
+- **v1.6.97 gastada** (una prueba daba por hecha la hora de México y en UTC
+  fallaba); la misma versión sale como **v1.6.98**.
+- **11-oct, sin commitear: reacciones (tanda 1 de #146)**. Plan del chat de la
+  llamada en `~/.claude/plans/shimmering-crunching-kitten.md`. Tabla
+  `chat_reactions` única para los tres chats (`target`), juego cerrado de 8
+  emojis validado en el servidor (y comparado con la app por una prueba), rutas
+  `POST …/chat/{messageId}/reactions` y `POST /dm/{id}/messages/{mid}/reactions`
+  que comprueban que el mensaje es del canal/conversación autorizados, eventos
+  `chat:reaction`/`dm:reaction` sin aviso ni no leídos. App: pastillas, selector
+  al pasar el ratón, optimista con vuelta atrás. Sale backend primero.
+- **Siguiente, pedido por jose:** menú inferior en el móvil (web) con tres
+  botones —Mi trabajo, Comunicación (Canales | Directos), Más (hoja desde
+  abajo)—, sin hamburguesa.
 
 ## 🎙️ Grabar la reunión (antes: transcribirla)
 

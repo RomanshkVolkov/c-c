@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { applyReaction, type Reaction } from "@/lib/reactions";
+import { nombreDe } from "@/lib/nombres";
 
 /**
  * The space's channel.
@@ -34,6 +36,8 @@ export interface ChatMessage {
   body: string;
   createdAt: string;
   updatedAt: string;
+  /** Contadas para mí. Un backend anterior a las reacciones no las manda. */
+  reactions?: Reaction[];
 }
 
 /** Un fichero que se enseñó en el canal. Sale de los cuerpos, no de una tabla. */
@@ -111,6 +115,13 @@ interface ChatState {
   post: (spaceId: string, body: string) => Promise<void>;
   edit: (spaceId: string, messageId: string, body: string) => Promise<void>;
   withdraw: (spaceId: string, messageId: string) => Promise<void>;
+  /**
+   * Poner o quitar mi emoji. Se pinta en el acto y se deshace si el servidor
+   * dice que no: esperar la vuelta para ver tu propio 👍 se nota.
+   */
+  react: (spaceId: string, messageId: string, emoji: string, on: boolean) => Promise<void>;
+  /** Alguien reaccionó en un canal: si es el abierto, se relee. */
+  onReaction: (spaceId: string) => Promise<void>;
   markRead: (spaceId: string) => Promise<void>;
   fetchUnread: () => Promise<void>;
   fetchFollowing: () => Promise<void>;
@@ -237,6 +248,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
   withdraw: async (spaceId, messageId) => {
     await api.delete(`/api/v1/task-spaces/${spaceId}/chat/${messageId}`);
     await get().refrescar();
+  },
+
+  react: async (spaceId, messageId, emoji, on) => {
+    const antes = get().messages.find((m) => m.id === messageId)?.reactions;
+    const yo = useAuthStore.getState().session;
+    const me = yo ? nombreDe(yo) : "";
+    const poner = (reactions: Reaction[] | undefined) =>
+      set((s) => ({
+        messages: s.messages.map((m) => (m.id === messageId ? { ...m, reactions } : m)),
+      }));
+    poner(applyReaction(antes, emoji, on, me));
+    try {
+      await api.post(`/api/v1/task-spaces/${spaceId}/chat/${messageId}/reactions`, { emoji, on }, true);
+    } catch (e) {
+      poner(antes);
+      throw e;
+    }
+  },
+
+  onReaction: async (spaceId) => {
+    if (get().spaceId === spaceId) await get().refrescar();
   },
 
   markRead: async (spaceId) => {

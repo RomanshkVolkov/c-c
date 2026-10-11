@@ -136,6 +136,8 @@ func DBConnection() {
 		&domain.ChatMessage{},
 		&domain.ChatRead{},
 		&domain.ChatAttachment{},
+		// Las reacciones de los chats, una tabla para todos (domain/reaction.go).
+		&domain.ChatReaction{},
 		// The unified model. See item_migration.go.
 		&domain.Item{},
 		&domain.ItemComment{},
