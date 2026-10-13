@@ -25,10 +25,11 @@ const { ConfirmProvider } = await import("@/components/ConfirmDialog");
 const { SidebarProvider } = await import("@/components/ui/sidebar");
 const { useAuthStore } = await import("@/store/auth.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
+const { useLayoutStore } = await import("@/store/layout.store");
 
-const montar = () =>
+const montar = (en = "/my-work") =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[en]}>
       <ConfirmProvider>
         <PromptProvider>
           <SidebarProvider>
@@ -46,12 +47,15 @@ beforeEach(() => {
     session: { id: "u-1", username: "ana", superadmin: false },
     accessToken: "t",
   } as never);
+  useLayoutStore.setState({ activeModule: "work", lastRoute: {}, panelOpen: true, expanded: {} });
 });
 afterEach(cleanup);
 
 describe("el menú de la versión web", () => {
+  // Mirado con Plataforma al mando, que es donde vivirían.
   it("no ofrece servidores ni herramientas de desarrollo", () => {
-    montar();
+    montar("/activity");
+    expect(screen.getByText("Activity")).toBeTruthy();
     expect(screen.queryByText(/^(servers|servidores)$/i)).toBeNull();
     expect(screen.queryByText(/^(dev ?tools|herramientas)$/i)).toBeNull();
   });
@@ -59,7 +63,8 @@ describe("el menú de la versión web", () => {
   it("y sí el trabajo, los canales y los docs", () => {
     montar();
     expect(screen.getByText("My work")).toBeTruthy();
-    expect(screen.getByText("All docs")).toBeTruthy();
-    expect(screen.getByText("Channels")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Documentation" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Communication" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Platform" })).toBeTruthy();
   });
 });

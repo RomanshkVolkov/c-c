@@ -42,8 +42,6 @@ const montar = () =>
     </MemoryRouter>,
   );
 
-/** El texto de la fila, con su número si lo tiene. */
-const fila = (nombre: string) => screen.getByText(nombre).closest("button")?.textContent ?? "";
 
 beforeEach(() => {
   api.get.mockImplementation(async (url: string) => {
@@ -70,13 +68,16 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("los contadores de la barra lateral", () => {
-  it("cuentan sólo lo de la org en pantalla", async () => {
+describe("el contador del riel", () => {
+  /**
+   * Comunicación suma canales y directos, **de esta org**: 2 + 1. Con las dos
+   * orgs sumadas serían 7 + 5 = 12, que es lo que salía cuando un directo de
+   * otro cliente encendía el número aquí.
+   */
+  it("cuenta sólo lo de la org en pantalla", async () => {
     montar();
-    await waitFor(() => expect(fila("Channels")).toContain("2"));
-    expect(fila("Channels")).not.toContain("7");
-    expect(fila("Direct messages")).toContain("1");
-    expect(fila("Direct messages")).not.toContain("5");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Communication (3)" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Communication \((7|8|12)\)/ })).toBeNull();
   });
 });
 

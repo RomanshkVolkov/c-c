@@ -21,6 +21,34 @@
     "requests": "Peticiones",
     "tokens": "Tokens"
   },
+  "module": {
+    "work": "Trabajo",
+    "docs": "Documentación",
+    "comms": "Comunicación",
+    "platform": "Plataforma"
+  },
+  "rail": {
+    "label": "Módulos",
+    "organization": "Organización",
+    "account": "Cuenta",
+    "collapsePanel": "Plegar el panel (⌘B)",
+    "expandPanel": "Desplegar el panel (⌘B)"
+  },
+  "panel": {
+    "filter": "Buscar por título",
+    "clearFilter": "Quitar el filtro",
+    "noMatches": "Nada coincide",
+    "spaces": "Espacios",
+    "noServers": "Sin servidores todavía",
+    "serverStatus": {
+      "online": "En línea",
+      "offline": "Sin conexión",
+      "pending": "Pendiente",
+      "error": "Con error"
+    },
+    "moving": "moviendo {{count}}",
+    "openOfTotal": "{{open}} abiertas · {{total}} en total"
+  },
   "account": {
     "theme": "Tema",
     "themeAuto": "Auto",
@@ -29,6 +57,8 @@
     "language": "Idioma",
     "languageAuto": "Auto",
     "changePassword": "Cambiar contraseña",
+    "connectMcp": "Conectar Claude Code",
+    "notifications": "Notificaciones",
     "logOut": "Salir"
   },
   "profile": {

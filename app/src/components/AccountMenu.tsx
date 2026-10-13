@@ -29,6 +29,11 @@ import { cn } from "@/lib/utils";
  * thing in the list — logging out — the easiest to hit by accident. Folded into
  * one row that opens, the sidebar ends with who you are and the rest is a
  * decision you have to make on purpose.
+ *
+ * Dos disparadores para el mismo menú: la **fila** (nombre, rol, versión), en
+ * la hoja «Más» del móvil, y el **avatar** solo, al pie del riel del sidebar,
+ * donde no cabe más que un círculo. El menú es el mismo; lo único que cambia
+ * es desde dónde se abre y hacia dónde se despliega.
  */
 
 /**
@@ -56,17 +61,20 @@ const THEMES: { key: ThemePreference; labelKey: MessageKey }[] = [
 ];
 
 export default function AccountMenu({
+  variant = "row",
   onChangePassword,
   onConnectMcp,
   onNotificationPrefs,
 }: {
+  /** `row`: nombre, rol y versión; `avatar`: sólo el círculo, para el riel. */
+  variant?: "row" | "avatar";
   onChangePassword: () => void;
   /** Sin él no hay entrada: en la versión web no hay servidor MCP local. */
   onConnectMcp?: () => void;
   onNotificationPrefs: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const caja = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const session = useAuthStore((s) => s.session);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const org = useOrgsStore((s) => s.currentOrg());
@@ -90,21 +98,21 @@ export default function AccountMenu({
   // row it came from is a menu people leave open.
   useEffect(() => {
     if (!open) return;
-    const fuera = (e: MouseEvent) => {
-      if (caja.current && !caja.current.contains(e.target as Node)) setOpen(false);
+    const outside = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
-    const tecla = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", fuera);
-    window.addEventListener("keydown", tecla);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("keydown", key);
     return () => {
-      document.removeEventListener("mousedown", fuera);
-      window.removeEventListener("keydown", tecla);
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("keydown", key);
     };
   }, [open]);
 
   if (!session) return null;
-  const vivo = stream === "open" || stream === "idle";
-  const rol = superadmin ? "superadmin" : (org?.role ?? "");
+  const live = stream === "open" || stream === "idle";
+  const role = superadmin ? "superadmin" : (org?.role ?? "");
 
   const item =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground";
@@ -123,23 +131,23 @@ export default function AccountMenu({
    * idioma ver «Español» marcado de un vistazo es medio valor de la pantalla.
    * Apilado cabe siempre, no esconde nada, y los botones se reparten el ancho.
    */
-  const filaDeOpciones = (
-    icono: ReactNode,
-    rotulo: string,
-    opciones: { key: string; label: string; activo: boolean; onClick: () => void }[],
+  const optionsRow = (
+    icon: ReactNode,
+    label: string,
+    options: { key: string; label: string; active: boolean; onClick: () => void }[],
   ) => (
     <div className="w-full space-y-1 rounded px-2 py-1.5">
       <span className="flex items-center gap-2 text-xs text-muted-foreground">
-        {icono} {rotulo}
+        {icon} {label}
       </span>
       <span className="flex gap-0.5">
-        {opciones.map((o) => (
+        {options.map((o) => (
           <button
             key={o.key}
             onClick={o.onClick}
             className={cn(
               "flex-1 rounded px-1.5 py-1 text-[11px]",
-              o.activo
+              o.active
                 ? "bg-primary text-primary-foreground"
                 : "hover:bg-accent hover:text-foreground",
             )}
@@ -151,10 +159,23 @@ export default function AccountMenu({
     </div>
   );
 
+  const initials = (
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
+      {inicialesDe(session)}
+    </span>
+  );
+
   return (
-    <div ref={caja} className="relative">
+    <div ref={box} className="relative">
       {open && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 rounded-md border bg-popover p-1 shadow-lg">
+        <div
+          className={cn(
+            "absolute z-50 rounded-md border bg-popover p-1 shadow-lg",
+            // Desde la fila, hacia arriba; desde el avatar del riel, hacia la
+            // derecha, que es donde hay sitio.
+            variant === "avatar" ? "bottom-0 left-full ml-2 w-64" : "bottom-full left-0 right-0 mb-1",
+          )}
+        >
           <div className="flex items-center gap-2 px-2 py-1.5">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
               {inicialesDe(session)}
@@ -171,24 +192,24 @@ export default function AccountMenu({
           {/* Three choices at once rather than a button that cycles: with a
               cycling control you cannot tell "auto, currently dark" from
               "dark", and those are different answers. */}
-          {filaDeOpciones(
+          {optionsRow(
             <Moon className="size-3.5 shrink-0" />,
             t("nav:account.theme"),
             THEMES.map((theme) => ({
               key: theme.key,
               label: t(theme.labelKey),
-              activo: preference === theme.key,
+              active: preference === theme.key,
               onClick: () => setPreference(theme.key),
             })),
           )}
 
-          {filaDeOpciones(
+          {optionsRow(
             <Languages className="size-3.5 shrink-0" />,
             t("nav:account.language"),
             LANGUAGES.map((l) => ({
               key: l.key,
               label: l.label || t("nav:account.languageAuto"),
-              activo: language === l.key,
+              active: language === l.key,
               onClick: () => void chooseLocale(l.key),
             })),
           )}
@@ -209,11 +230,11 @@ export default function AccountMenu({
           </button>
           {onConnectMcp && (
             <button className={item} onClick={() => { setOpen(false); onConnectMcp(); }}>
-              <Bot className="size-3.5 shrink-0" /> Connect Claude Code
+              <Bot className="size-3.5 shrink-0" /> {t("nav:account.connectMcp")}
             </button>
           )}
           <button className={item} onClick={() => { setOpen(false); onNotificationPrefs(); }}>
-            <Bell className="size-3.5 shrink-0" /> Notifications
+            <Bell className="size-3.5 shrink-0" /> {t("nav:account.notifications")}
           </button>
 
           <div className="my-1 h-px bg-border" />
@@ -262,29 +283,48 @@ export default function AccountMenu({
         </div>
       )}
 
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
-      >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
-          {inicialesDe(session)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-semibold">{nombreDe(session)}</span>
-          <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span
-              className={cn("size-1.5 shrink-0 rounded-full", vivo ? "bg-success" : "bg-destructive")}
-              title={vivo ? t("common:misc.receivingLive") : t("common:misc.notReceivingLive")}
-            />
-            <span className="truncate">
-              {rol}
-              {version && ` · v${version}`}
+      {variant === "avatar" ? (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={t("nav:rail.account")}
+          title={`${nombreDe(session)} · ${role}`}
+          className="relative grid size-9 place-items-center rounded-lg hover:bg-sidebar-accent"
+        >
+          {initials}
+          {/* El punto del flujo en vivo, pegado al avatar: con el sidebar
+              plegado es la única señal de que la app sigue recibiendo. */}
+          <span
+            className={cn(
+              "absolute bottom-1 right-1 size-2 rounded-full ring-2 ring-sidebar",
+              live ? "bg-success" : "bg-destructive",
+            )}
+            title={live ? t("common:misc.receivingLive") : t("common:misc.notReceivingLive")}
+          />
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent"
+        >
+          {initials}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-semibold">{nombreDe(session)}</span>
+            <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span
+                className={cn("size-1.5 shrink-0 rounded-full", live ? "bg-success" : "bg-destructive")}
+                title={live ? t("common:misc.receivingLive") : t("common:misc.notReceivingLive")}
+              />
+              <span className="truncate">
+                {role}
+                {version && ` · v${version}`}
+              </span>
             </span>
           </span>
-        </span>
-        <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
-      </button>
+          <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
+        </button>
+      )}
     </div>
   );
 }

@@ -28,10 +28,14 @@ import { useWebviewCrash } from "@/hooks/use-webview-crash";
 import { ensureOrgClaim, refreshSession } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
+import { useLayoutStore } from "@/store/layout.store";
 import { useThemeStore } from "@/store/theme.store";
 import { ForcedChangePassword } from "@/components/ChangePassword";
 
 export default function AppLayout() {
+  // El panel del sidebar, abierto o plegado al riel; recordado entre arranques.
+  const sidebarOpen = useLayoutStore((s) => s.panelOpen);
+  const setSidebarOpen = useLayoutStore((s) => s.setPanelOpen);
   const fetchOrgs = useOrgsStore((s) => s.fetchOrgs);
   const fetchInvitations = useInvitationsStore((s) => s.fetchMine);
   const authed = useAuthStore((s) => !!s.accessToken);
@@ -127,8 +131,19 @@ export default function AppLayout() {
        `onScroll` que carga mensajes antiguos no se disparaba jamás.
        
        Por `className` y no editando `components/ui/sidebar.tsx`: eso es shadcn
-       copiado, y cambiarlo allí se pierde la próxima vez que se regenere. */
-    <SidebarProvider className="h-svh overflow-hidden">
+       copiado, y cambiarlo allí se pierde la próxima vez que se regenere.
+
+       Y por `style`, el ancho: 19rem son el riel (3rem, el ancho del modo
+       icono) y el panel (16rem). shadcn aplica `style` después de sus propias
+       variables, así que esto manda. Controlado desde `layout.store`: la
+       cookie que escribe shadcn no la leía nadie, y el sidebar arrancaba
+       siempre abierto. */
+    <SidebarProvider
+      className="h-svh overflow-hidden"
+      style={{ "--sidebar-width": "19rem" } as React.CSSProperties}
+      open={sidebarOpen}
+      onOpenChange={setSidebarOpen}
+    >
       <AppSidebar />
       {/* `min-h-0` por lo mismo que el `min-w-0` que ya trae: un elemento flex
           se niega a encogerse por debajo de su contenido, así que sin esto el

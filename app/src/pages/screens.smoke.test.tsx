@@ -128,30 +128,25 @@ describe("las pantallas nuevas se montan sin renderizar en bucle", () => {
 });
 
 describe("el sidebar", () => {
-  it("pone la organización en el pie y no en la navegación", async () => {
+  it("la organización va en el riel, y se nombra una sola vez en el panel", async () => {
     const { default: AppSidebar } = await import("@/components/AppSidebar");
     const { container } = montar(
       <SidebarProvider>
         <AppSidebar />
       </SidebarProvider>,
     );
-    await waitFor(() => expect(container.textContent).toContain("Organization"));
-    // El rótulo dice lo que hay dentro, para no tener que abrirlo y averiguar
-    // que «personas» vive ahí.
-    expect(container.textContent).toContain("people · invitations");
-    // Y los servidores son una entrada de plataforma, no un «dashboard».
-    expect(container.textContent).toContain("Servers");
-    expect(container.textContent).not.toContain("Dashboard");
-    // El resumen abre la navegación, y «Tareas» ya no compite con el árbol de
-    // espacios: los espacios *son* esa navegación.
+    // Abajo del riel, con su nombre para quien no ve el icono: es el sitio
+    // donde se encuentran la navegación y los ajustes, y no ninguno de los dos.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Organization" })).toBeTruthy());
+    // El panel de Trabajo abre con el resumen, y «Tareas» no compite con el
+    // árbol de espacios: los espacios *son* esa navegación.
     expect(container.textContent).toContain("Overview");
     expect(container.textContent).not.toContain("Tasks");
-    // La organización se nombra **una** vez. Vivía en dos bloques seguidos —una
-    // cabecera y el selector— que decían lo mismo uno encima del otro.
+    // La organización se nombra **una** vez: el selector de la cabecera del
+    // panel. El botón del riel no lleva texto visible, sólo su nombre.
     expect(container.textContent!.match(/Uno/g)?.length).toBe(1);
-    // Y esa única fila lleva la seña. Sin espacios en la cuenta: el navegador
-    // vuelve a pedir el árbol al montarse y aquí la api contesta vacío, así
-    // que exigir «1 space» sería exigir un dato que en este montaje no existe.
+    // Y esa única fila lleva la seña. Sin espacios en la cuenta: el sidebar
+    // vuelve a pedir el árbol al montarse y aquí la api contesta vacío.
     expect(container.textContent).toContain("admin · 3 members");
   });
 });

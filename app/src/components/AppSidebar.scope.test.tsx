@@ -26,6 +26,7 @@ const { SidebarProvider } = await import("@/components/ui/sidebar");
 const { useAuthStore } = await import("@/store/auth.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
 const { useMyWorkStore } = await import("@/store/mywork.store");
+const { useLayoutStore } = await import("@/store/layout.store");
 
 const ACOTADO = { kind: "list" as const, id: "li-1", name: "Pendientes", orgId: "org-1" };
 
@@ -50,6 +51,7 @@ beforeEach(() => {
     accessToken: "t",
   } as never);
   useMyWorkStore.setState({ scope: ACOTADO });
+  useLayoutStore.setState({ activeModule: "work", lastRoute: {}, panelOpen: true, expanded: {} });
 });
 afterEach(cleanup);
 
@@ -64,13 +66,16 @@ describe("la fila de «My work» del menú", () => {
   /**
    * Y sólo ésa.
    *
-   * El manejador es uno para las nueve filas, así que quitar el filtro sin
-   * mirar cuál se pulsó lo tiraría al ir a Documentos o a Canales — y volver a
-   * «mi trabajo» habría perdido por el camino lo que estabas mirando.
+   * El manejador es uno para las tres filas del panel, así que quitar el
+   * filtro sin mirar cuál se pulsó lo tiraría al ir al resumen — y volver a
+   * «mi trabajo» habría perdido por el camino lo que estabas mirando. Ni
+   * cambiar de módulo desde el riel.
    */
   it("y ninguna otra fila lo toca", () => {
     montar();
-    fireEvent.click(screen.getByText("All docs"));
+    fireEvent.click(screen.getByText("Overview"));
+    expect(useMyWorkStore.getState().scope).toMatchObject(ACOTADO);
+    fireEvent.click(screen.getByRole("button", { name: "Documentation" }));
     expect(useMyWorkStore.getState().scope).toMatchObject(ACOTADO);
   });
 });

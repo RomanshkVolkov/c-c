@@ -454,3 +454,15 @@
   object-fit: contain;
 }
 
+
+/* El sidebar se pliega al riel con una transición de anchura que shadcn pone
+   en dos capas sin `className` propio (`sidebar-gap` y `sidebar-container`).
+   Quien pidió al sistema menos movimiento no tiene que ver deslizarse el
+   panel: se recorta aquí, que es el único sitio al que se llega sin editar
+   `components/ui/sidebar.tsx`. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"] {
+    transition: none;
+  }
+}

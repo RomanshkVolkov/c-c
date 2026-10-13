@@ -7,7 +7,7 @@
  * move, not a decision.
  */
 import { useT } from "@/lib/i18n";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -41,7 +41,6 @@ import {
   ArrowUp,
   ArrowDown,
   AlertCircle,
-  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -59,7 +58,6 @@ import ChannelDialog from "@/components/ChannelDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useTasksStore, type DropWhere, type TreeNodeRef } from "@/store/tasks.store";
 import { useMyWorkStore } from "@/store/mywork.store";
-import { useChatStore } from "@/store/chat.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { docsRoute } from "@/lib/doc-mode";
 import { docKey, type FolderTree, type SpaceTree } from "@/types/task";
@@ -71,6 +69,8 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import InlineName from "@/components/tree/InlineName";
+import { useTreeExpansion } from "@/components/sidebar/useTreeExpansion";
+import { filterTree, pathTo } from "@/lib/tree-path";
 
 /**
  * Whether reordering is unlocked.
@@ -82,8 +82,33 @@ import InlineName from "@/components/tree/InlineName";
  */
 const Ordering = createContext(false);
 
+/**
+ * Las filas que sobreviven al filtro del panel, o `null` sin filtro.
+ *
+ * Por contexto y no por prop: el árbol es recursivo y cada nodo decide solo
+ * si se pinta. Con filtro, una rama con algo dentro se pinta abierta pase lo
+ * que pase con lo plegado a mano: esconder la coincidencia bajo un chevrón
+ * cerrado es no haberla encontrado.
+ */
+const Visible = createContext<Set<string> | null>(null);
+
+/**
+ * Las ramas abiertas por defecto: el camino hasta lo que se está mirando.
+ *
+ * Sólo la rama activa, y no todo el árbol como antes (12-oct-2026): con
+ * veinte espacios desplegados lo que buscabas quedaba tres pantallas más
+ * abajo. Sin nada activo en esta org, `null`, y entonces los espacios van
+ * abiertos y las carpetas cerradas, que enseña qué hay sin enseñarlo todo.
+ */
+const ActivePath = createContext<Set<string> | null>(null);
+
+/** Abierto por defecto, según la regla de arriba. */
+function openByDefault(activePath: Set<string> | null, id: string, kind: "space" | "folder"): boolean {
+  return activePath ? activePath.has(id) : kind === "space";
+}
+
 /** What is in the air, so every row can tell whether it is a legal landing. */
-const Arrastrado = createContext<Situado | null>(null);
+const DraggedNode = createContext<Located | null>(null);
 
 /**
  * Where a node lives, worked out from the tree already on screen.
@@ -93,41 +118,41 @@ const Arrastrado = createContext<Situado | null>(null);
  * accident can change which client sees the work. And how many things travel
  * with it, so the drag can say so instead of quietly taking a whole branch.
  */
-interface Situado extends TreeNodeRef {
+interface Located extends TreeNodeRef {
   spaceId: string;
   /** Folders and lists underneath. Zero for a list. */
-  arrastra: number;
+  carries: number;
 }
 
-function contar(f: FolderTree): number {
+function countDescendants(f: FolderTree): number {
   return (
     f.lists.length +
-    (f.folders ?? []).reduce((n, h) => n + 1 + contar(h), 0)
+    (f.folders ?? []).reduce((n, h) => n + 1 + countDescendants(h), 0)
   );
 }
 
-function localizar(tree: SpaceTree[], id: string): Situado | null {
+function locate(tree: SpaceTree[], id: string): Located | null {
   for (const space of tree) {
-    const enFolders = (folders: FolderTree[], parent: string | null): Situado | null => {
+    const inFolders = (folders: FolderTree[], parent: string | null): Located | null => {
       for (const f of folders) {
         if (f.id === id) {
-          return { id, kind: "folder", parentId: parent, spaceId: space.id, arrastra: contar(f) };
+          return { id, kind: "folder", parentId: parent, spaceId: space.id, carries: countDescendants(f) };
         }
         for (const l of f.lists) {
           if (l.id === id) {
-            return { id, kind: "list", parentId: f.id, spaceId: space.id, arrastra: 0 };
+            return { id, kind: "list", parentId: f.id, spaceId: space.id, carries: 0 };
           }
         }
-        const dentro = enFolders(f.folders ?? [], f.id);
-        if (dentro) return dentro;
+        const nested = inFolders(f.folders ?? [], f.id);
+        if (nested) return nested;
       }
       return null;
     };
-    const enEspacio = enFolders(space.folders, null);
-    if (enEspacio) return enEspacio;
+    const inSpace = inFolders(space.folders, null);
+    if (inSpace) return inSpace;
     for (const l of space.lists) {
       if (l.id === id) {
-        return { id, kind: "list", parentId: null, spaceId: space.id, arrastra: 0 };
+        return { id, kind: "list", parentId: null, spaceId: space.id, carries: 0 };
       }
     }
   }
@@ -144,7 +169,7 @@ function localizar(tree: SpaceTree[], id: string): Situado | null {
  * no listeners. Reordering that is merely disabled still moves under the
  * pointer and still answers to the keyboard; this simply is not there.
  */
-function Reordenable({
+function Reorderable({
   id,
   spaceId,
   canNest,
@@ -156,16 +181,16 @@ function Reordenable({
   canNest: boolean;
   children: React.ReactNode;
 }) {
-  const ordenando = useContext(Ordering);
-  const enElAire = useContext(Arrastrado);
+  const rearranging = useContext(Ordering);
+  const inFlight = useContext(DraggedNode);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
-  if (!ordenando) return <>{children}</>;
+  if (!rearranging) return <>{children}</>;
 
   // Landing in another space is refused: it is what "move to another space" is
   // for, and doing it with a drag can change which client sees the work. Drawn
   // in red rather than made inert, because a target that stops responding
   // reads as a broken drag instead of an answer.
-  const prohibido = !!enElAire && enElAire.spaceId !== spaceId;
+  const forbidden = !!inFlight && inFlight.spaceId !== spaceId;
 
   return (
     <div
@@ -180,11 +205,11 @@ function Reordenable({
         isDragging && "opacity-40",
       )}
     >
-      <DropZone id={`before:${id}`} className="top-0 h-1/4" line="top" blocked={prohibido} />
+      <DropZone id={`before:${id}`} className="top-0 h-1/4" line="top" blocked={forbidden} />
       {canNest && (
-        <DropZone id={`inside:${id}`} className="inset-y-1/4" nest blocked={prohibido} />
+        <DropZone id={`inside:${id}`} className="inset-y-1/4" nest blocked={forbidden} />
       )}
-      <DropZone id={`after:${id}`} className="bottom-0 h-1/4" line="bottom" blocked={prohibido} />
+      <DropZone id={`after:${id}`} className="bottom-0 h-1/4" line="bottom" blocked={forbidden} />
       {children}
     </div>
   );
@@ -206,15 +231,15 @@ function MoveToSpace({ currentSpaceId, onPick }: { currentSpaceId: string; onPic
   const tree = useTasksStore((s) => s.tree);
   // Sin la sala general: no acepta listas ni carpetas, así que ofrecerla como
   // destino sería ofrecer un movimiento que el servidor rechaza.
-  const otros = tree.filter((s) => s.id !== currentSpaceId && s.kind !== "general");
-  if (otros.length === 0) return null;
+  const others = tree.filter((s) => s.id !== currentSpaceId && s.kind !== "general");
+  if (others.length === 0) return null;
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
         <FolderInput className="size-4" /> {t("work:tree.moveToSpace")}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
-        {otros.map((s) => (
+        {others.map((s) => (
           <DropdownMenuItem key={s.id} onClick={() => onPick(s.id)}>
             <span className="truncate">{s.name}</span>
           </DropdownMenuItem>
@@ -225,7 +250,7 @@ function MoveToSpace({ currentSpaceId, onPick }: { currentSpaceId: string; onPic
 }
 
 /** Reports a failed write and keeps the inline row open with what was typed. */
-const avisando = (p: Promise<unknown>) =>
+const reportingFailure = (p: Promise<unknown>) =>
   p.catch((e) => {
     toast.error(String(e));
     throw e;
@@ -233,7 +258,7 @@ const avisando = (p: Promise<unknown>) =>
 
 // ─── Left navigator: spaces → folders → lists ────────────────────────────────
 
-export default function SpacesNavigator() {
+export default function SpacesNavigator({ filter = "" }: { filter?: string } = {}) {
   const { t } = useT();
   const tree = useTasksStore((s) => s.tree);
   /**
@@ -244,13 +269,13 @@ export default function SpacesNavigator() {
    * resolver su nombre y a `Channels` pintarla; recortarla en `fetchTree` la
    * dejaría sin nombre en la barra de la llamada y sin sitio al que volver.
    */
-  const espaciosDeTrabajo = tree.filter((s) => s.kind !== "general");
+  const workSpaces = tree.filter((s) => s.kind !== "general");
   const loading = useTasksStore((s) => s.loadingTree);
   const error = useTasksStore((s) => s.error);
   const createSpace = useTasksStore((s) => s.createSpace);
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   const [addingSpace, setAddingSpace] = useState(false);
-  const [ordenando, setOrdenando] = useState(false);
+  const [rearranging, setRearranging] = useState(false);
   // The palette can ask for a new space without knowing how one is made: it
   // says so in the address and the tree, which does know, opens its own row.
   const [params, setParams] = useSearchParams();
@@ -258,9 +283,9 @@ export default function SpacesNavigator() {
     if (params.get("newSpace") !== "1") return;
     setAddingSpace(true);
     // Consumed once, or coming back to this screen would reopen it.
-    const resto = new URLSearchParams(params);
-    resto.delete("newSpace");
-    setParams(resto, { replace: true });
+    const rest = new URLSearchParams(params);
+    rest.delete("newSpace");
+    setParams(rest, { replace: true });
   }, [params, setParams]);
   const dropNode = useTasksStore((s) => s.dropNode);
   const sensors = useSensors(
@@ -269,21 +294,39 @@ export default function SpacesNavigator() {
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const [arrastrando, setArrastrando] = useState<Situado | null>(null);
+  const [dragging, setDragging] = useState<Located | null>(null);
 
-  // Asked for here rather than by the Tasks screen, which is where it used to
-  // live. Now that the tree is in the global sidebar it is on screen from the
-  // moment you sign in, and a tree that only loads once you visit Tasks would
-  // simply look empty everywhere else. Re-asked when the org changes: spaces
-  // belong to one organization and a stale one is somebody else's work.
-  const fetchTree = useTasksStore((s) => s.fetchTree);
-  const fetchDocIndex = useTasksStore((s) => s.fetchDocIndex);
-  const fetchUnread = useChatStore((s) => s.fetchUnread);
+  // El árbol, el índice de documentos y lo no leído los pide `useNavData`
+  // desde el sidebar, que está siempre montado; aquí sólo se leen. Lo pedía
+  // este componente al montarse, y con un panel por módulo dejó de estar en
+  // pantalla en Documentación y en Comunicación, que también leen el árbol.
+
+  // Lo que se está mirando: el documento si se lee documentación, si no la
+  // lista activa. Su camino es lo que va abierto por defecto, y al cambiar se
+  // olvida lo plegado a mano sobre él (`reveal`): una lista abierta desde la
+  // paleta no puede quedar escondida bajo un espacio que plegaste ayer.
+  const activeListId = useTasksStore((s) => s.activeListId);
+  const activeDoc = useTasksStore((s) => s.activeDoc);
+  const { pathname } = useLocation();
+  const docsScreen = docsRoute(activeDoc, currentOrgId, pathname);
+  const activePath = useMemo(() => {
+    const target = docsScreen && activeDoc
+      ? { kind: activeDoc.kind as "space" | "folder" | "list", id: activeDoc.id }
+      : activeListId
+        ? { kind: "list" as const, id: activeListId }
+        : null;
+    const path = target ? pathTo(tree, target) : [];
+    return path.length > 0 ? new Set(path) : null;
+  }, [tree, activeListId, activeDoc, docsScreen]);
+  const expansion = useTreeExpansion("work");
+  const activeKey = activePath ? [...activePath].join("/") : "";
   useEffect(() => {
-    fetchTree();
-    fetchDocIndex();
-    fetchUnread().catch(() => {});
-  }, [currentOrgId, fetchTree, fetchDocIndex, fetchUnread]);
+    if (activePath) expansion.reveal([...activePath]);
+    // Sólo cuando cambia el camino, no cada vez que se pliega algo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey]);
+  const visible = useMemo(() => filterTree(tree, filter), [tree, filter]);
+  const shownSpaces = visible ? workSpaces.filter((sp) => visible.has(sp.id)) : workSpaces;
 
   const addSpace = () => {
     if (!currentOrgId) {
@@ -296,41 +339,43 @@ export default function SpacesNavigator() {
   return (
     <SidebarGroup>
       <SidebarGroupLabel className="flex items-center">
-        Spaces
+        {t("nav:panel.spaces")}
         <Button
           size="icon-xs"
           variant="ghost"
           className="ml-auto"
-          title={ordenando ? t("work:tree.finishRearranging") : t("work:tree.rearrange")}
-          aria-pressed={ordenando}
-          onClick={() => setOrdenando((v) => !v)}
+          title={rearranging ? t("work:tree.finishRearranging") : t("work:tree.rearrange")}
+          aria-pressed={rearranging}
+          onClick={() => setRearranging((v) => !v)}
         >
-          {ordenando ? <LockOpen className="size-3.5 text-primary" /> : <Lock className="size-3.5" />}
+          {rearranging ? <LockOpen className="size-3.5 text-primary" /> : <Lock className="size-3.5" />}
         </Button>
         <Button size="icon-xs" variant="ghost" title={t("work:tree.newSpace")} onClick={addSpace}>
           <Plus className="size-3.5" />
         </Button>
       </SidebarGroupLabel>
       <SidebarGroupContent>
-      <Ordering.Provider value={ordenando}>
-      <Arrastrado.Provider value={arrastrando}>
+      <Visible.Provider value={visible}>
+      <ActivePath.Provider value={activePath}>
+      <Ordering.Provider value={rearranging}>
+      <DraggedNode.Provider value={dragging}>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
-        onDragStart={(e) => setArrastrando(localizar(tree, String(e.active.id)))}
-        onDragCancel={() => setArrastrando(null)}
+        onDragStart={(e) => setDragging(locate(tree, String(e.active.id)))}
+        onDragCancel={() => setDragging(null)}
         onDragEnd={(e) => {
-          setArrastrando(null);
+          setDragging(null);
           if (!e.over) return;
           const [where, targetId] = String(e.over.id).split(":");
-          const arrastrado = localizar(tree, String(e.active.id));
-          const destino = localizar(tree, targetId);
-          if (!arrastrado || !destino || arrastrado.id === destino.id) return;
+          const dragged = locate(tree, String(e.active.id));
+          const target = locate(tree, targetId);
+          if (!dragged || !target || dragged.id === target.id) return;
           // Silently, as the design says: the red zone already said no while
           // the pointer was over it, and a toast afterwards would be telling
           // somebody off for something they were shown they could not do.
-          if (arrastrado.spaceId !== destino.spaceId) return;
-          dropNode(arrastrado, destino, where as DropWhere).catch((err) =>
+          if (dragged.spaceId !== target.spaceId) return;
+          dropNode(dragged, target, where as DropWhere).catch((err) =>
             toast.error(t("work:tree.couldNotMove"), { description: String(err) }),
           );
         }}
@@ -342,38 +387,42 @@ export default function SpacesNavigator() {
         )}
         {loading && tree.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">{t("work:tree.loading")}</p>
-        ) : espaciosDeTrabajo.length === 0 ? (
+        ) : workSpaces.length === 0 ? (
           <p className="px-3 py-3 text-xs text-muted-foreground">
             {t("common:misc.noSpacesYet")}
           </p>
+        ) : shownSpaces.length === 0 ? (
+          <p className="px-3 py-3 text-xs text-muted-foreground">{t("nav:panel.noMatches")}</p>
         ) : (
-          espaciosDeTrabajo.map((space) => <SpaceNode key={space.id} space={space} />)
+          shownSpaces.map((space) => <SpaceNode key={space.id} space={space} />)
         )}
         {addingSpace && currentOrgId && (
           <InlineName
             mode="create"
             placeholder={t("work:tree.newSpace")}
-            onSubmit={(name) => avisando(createSpace(currentOrgId, name))}
+            onSubmit={(name) => reportingFailure(createSpace(currentOrgId, name))}
             onClose={() => setAddingSpace(false)}
           />
         )}
         <DragOverlay dropAnimation={null}>
-          {arrastrando ? (
+          {dragging ? (
             <div className="rounded bg-background/95 px-2 py-1 text-xs shadow ring-1 ring-border">
-              {arrastrando.kind === "folder" ? t("work:tree.folder") : t("work:tree.list")}
+              {dragging.kind === "folder" ? t("work:tree.folder") : t("work:tree.list")}
               {/* What travels with it. A folder that quietly takes eleven other
                   things is worth saying out loud before it lands. */}
-              {arrastrando.arrastra > 0 && (
+              {dragging.carries > 0 && (
                 <span className="ml-1 text-muted-foreground">
-                  · moving {arrastrando.arrastra + 1}
+                  · {t("nav:panel.moving", { count: dragging.carries + 1 })}
                 </span>
               )}
             </div>
           ) : null}
         </DragOverlay>
       </DndContext>
-      </Arrastrado.Provider>
+      </DraggedNode.Provider>
       </Ordering.Provider>
+      </ActivePath.Provider>
+      </Visible.Provider>
       </SidebarGroupContent>
     </SidebarGroup>
   );
@@ -381,7 +430,14 @@ export default function SpacesNavigator() {
 
 function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>["tree"][number] }) {
   const { t } = useT();
-  const [open, setOpen] = useState(true);
+  const visible = useContext(Visible);
+  const activePath = useContext(ActivePath);
+  const expansion = useTreeExpansion("work");
+  const byDefault = openByDefault(activePath, space.id, "space");
+  // Con filtro, abierto: si se pinta es porque algo de dentro casa.
+  const open = visible ? true : expansion.isOpen(space.id, byDefault);
+  const setOpen = (v: boolean | ((was: boolean) => boolean)) =>
+    expansion.set(space.id, typeof v === "function" ? v(open) : v);
   const openDoc = useTasksStore((s) => s.openDoc);
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -394,9 +450,9 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const [adding, setAdding] = useState<null | "folder" | "list">(null);
   const [renaming, setRenaming] = useState(false);
 
-  const empezarA = (que: "folder" | "list") => {
+  const startAdding = (what: "folder" | "list") => {
     setOpen(true); // or the new row would appear inside a collapsed node
-    setAdding(que);
+    setAdding(what);
   };
 
   return (
@@ -413,7 +469,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           mode="rename"
           defaultValue={space.name}
           placeholder={t("work:tree.spaceName")}
-          onSubmit={(name) => avisando(renameSpace(space.id, name))}
+          onSubmit={(name) => reportingFailure(renameSpace(space.id, name))}
           onClose={() => setRenaming(false)}
         />
       ) : (
@@ -454,7 +510,6 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         {docIndex[docKey("space", space.id)] && (
           <FileText className="size-3 shrink-0 text-muted-foreground" />
         )}
-        <SpaceChatButton spaceId={space.id} spaceName={space.name} />
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -467,14 +522,14 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
             <DropdownMenuGroup>
               <DropdownMenuItem
                 onClick={async () => {
-                  empezarA("folder");
+                  startAdding("folder");
                 }}
               >
                 <FolderPlus className="size-4" /> {t("work:tree.newFolder")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  empezarA("list");
+                  startAdding("list");
                 }}
               >
                 <ListChecks className="size-4" /> {t("work:tree.newList")}
@@ -521,7 +576,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
 
       {open && (
         <div className="ml-4">
-          {space.folders.map((folder) => (
+          {space.folders.filter((f) => !visible || visible.has(f.id)).map((folder) => (
             <FolderNode
               key={folder.id}
               spaceId={space.id}
@@ -530,7 +585,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               spaceProjectId={space.projectId}
             />
           ))}
-          {space.lists.map((list) => (
+          {space.lists.filter((l) => !visible || visible.has(l.id)).map((list) => (
             <ListNode
               key={list.id}
               list={list}
@@ -544,10 +599,10 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               mode="create"
               placeholder={adding === "folder" ? t("work:tree.newFolder") : t("work:tree.newList")}
               canNest={adding === "folder"}
-              onSubmit={(name, dentroDe) =>
-                avisando(
+              onSubmit={(name, nestUnder) =>
+                reportingFailure(
                   adding === "folder"
-                    ? createFolder(space.id, name, dentroDe ?? undefined)
+                    ? createFolder(space.id, name, nestUnder ?? undefined)
                     : createList(space.id, name),
                 )
               }
@@ -560,46 +615,6 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         </div>
       )}
     </div>
-  );
-}
-
-/**
- * The space's channel: one button, no creating and no joining.
- *
- * The badge stays visible when there's something unread — unlike the menu
- * button, which only appears on hover. A count you have to hover to discover is
- * not a notification.
- */
-function SpaceChatButton({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
-  const unread = useChatStore((s) => s.unreadBySpace[spaceId] ?? 0);
-  const navigate = useNavigate();
-  const { pathname, search } = useLocation();
-  const showing = pathname === "/chat" && new URLSearchParams(search).get("space") === spaceId;
-
-  return (
-    <button
-      className={cn(
-        "flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground",
-        showing && "text-primary opacity-100",
-        unread === 0 && !showing && "text-muted-foreground/60 hover:text-foreground",
-      )}
-      aria-label={`Chat in ${spaceName}`}
-      title={`#${spaceName} — team channel`}
-      onClick={(e) => {
-        // The row opens the space's overview; this is a different destination.
-        // It navigates now rather than opening a panel: the channel is a screen
-        // of its own, and putting the space in the address makes it a link.
-        e.stopPropagation();
-        navigate(`/chat?space=${spaceId}`);
-      }}
-    >
-      <MessageSquare className="size-3.5" />
-      {unread > 0 && (
-        <span className="rounded-full bg-primary px-1 text-[10px] font-medium leading-4 text-primary-foreground">
-          {unread > 99 ? "99+" : unread}
-        </span>
-      )}
-    </button>
   );
 }
 
@@ -620,13 +635,19 @@ function FolderNode({
   spaceProjectId?: string;
 }) {
   const { t } = useT();
-  const [open, setOpen] = useState(true);
+  const visible = useContext(Visible);
+  const activePath = useContext(ActivePath);
+  const expansion = useTreeExpansion("work");
+  const byDefault = openByDefault(activePath, folder.id, "folder");
+  const open = visible ? true : expansion.isOpen(folder.id, byDefault);
+  const setOpen = (v: boolean | ((was: boolean) => boolean)) =>
+    expansion.set(folder.id, typeof v === "function" ? v(open) : v);
   const [adding, setAdding] = useState<null | "folder" | "list">(null);
   const [renaming, setRenaming] = useState(false);
 
-  const empezarA = (que: "folder" | "list") => {
+  const startAdding = (what: "folder" | "list") => {
     setOpen(true);
-    setAdding(que);
+    setAdding(what);
   };
   const confirm = useConfirm();
   const openDoc = useTasksStore((s) => s.openDoc);
@@ -646,11 +667,11 @@ function FolderNode({
           mode="rename"
           defaultValue={folder.name}
           placeholder={t("work:tree.folderName")}
-          onSubmit={(name) => avisando(renameFolder(folder.id, name))}
+          onSubmit={(name) => reportingFailure(renameFolder(folder.id, name))}
           onClose={() => setRenaming(false)}
         />
       ) : (
-      <Reordenable id={folder.id} spaceId={spaceId} canNest>
+      <Reorderable id={folder.id} spaceId={spaceId} canNest>
       <div className="group flex items-center gap-1 px-2 py-1 hover:bg-accent/50">
         <button
           onClick={() => setOpen((v) => !v)}
@@ -689,14 +710,14 @@ function FolderNode({
             <DropdownMenuGroup>
               <DropdownMenuItem
                 onClick={() => {
-                  empezarA("folder");
+                  startAdding("folder");
                 }}
               >
                 <FolderPlus className="size-4" /> {t("work:tree.newFolder")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  empezarA("list");
+                  startAdding("list");
                 }}
               >
                 <ListChecks className="size-4" /> {t("work:tree.newList")}
@@ -728,8 +749,8 @@ function FolderNode({
               </DropdownMenuItem>
               <MoveToSpace
                 currentSpaceId={spaceId}
-                onPick={(destino) =>
-                  moveFolderToSpace(folder.id, destino).catch((e) => toast.error(String(e)))
+                onPick={(target) =>
+                  moveFolderToSpace(folder.id, target).catch((e) => toast.error(String(e)))
                 }
               />
               <DropdownMenuItem
@@ -749,11 +770,11 @@ function FolderNode({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      </Reordenable>
+      </Reorderable>
       )}
       {open && (
         <div className="ml-4">
-          {folder.folders?.map((f) => (
+          {folder.folders?.filter((f) => !visible || visible.has(f.id)).map((f) => (
             <FolderNode
               key={f.id}
               spaceId={spaceId}
@@ -763,7 +784,7 @@ function FolderNode({
               depth={(depth ?? 0) + 1}
             />
           ))}
-          {folder.lists.map((l) => (
+          {folder.lists.filter((l) => !visible || visible.has(l.id)).map((l) => (
             <ListNode
               key={l.id}
               list={l}
@@ -777,10 +798,10 @@ function FolderNode({
               mode="create"
               placeholder={adding === "folder" ? t("work:tree.newFolder") : t("work:tree.newList")}
               canNest={adding === "folder"}
-              onSubmit={(name, dentroDe) =>
-                avisando(
+              onSubmit={(name, nestUnder) =>
+                reportingFailure(
                   adding === "folder"
-                    ? createFolder(spaceId, name, dentroDe ?? folder.id)
+                    ? createFolder(spaceId, name, nestUnder ?? folder.id)
                     : createList(spaceId, name, folder.id),
                 )
               }
@@ -817,17 +838,17 @@ function ListNode({
   const navigate = useNavigate();
   const confirm = useConfirm();
   const docIndex = useTasksStore((s) => s.docIndex);
-  const openDocDeLista = useTasksStore((s) => s.openDoc);
+  const openListDoc = useTasksStore((s) => s.openDoc);
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const currentOrgId = useOrgsStore((s) => s.currentOrgId);
   const { pathname } = useLocation();
   const { renameList, deleteList, moveListToSpace } = useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const enDocs = docsRoute(activeDoc, currentOrgId, pathname);
+  const docsScreen = docsRoute(activeDoc, currentOrgId, pathname);
   // En documentación, la lista marcada es la del documento abierto: el tablero
   // que recuerda `activeListId` no es lo que se está mirando.
-  const active = enDocs
+  const active = docsScreen
     ? activeDoc?.kind === "list" && activeDoc.id === list.id
     : activeListId === list.id;
   // Its own binding, or the space's. The eye means "a client sees this" either
@@ -851,11 +872,11 @@ function ListNode({
         mode="rename"
         defaultValue={list.name}
         placeholder={t("work:tree.listName")}
-        onSubmit={(name) => avisando(renameList(list.id, name))}
+        onSubmit={(name) => reportingFailure(renameList(list.id, name))}
         onClose={() => setRenaming(false)}
       />
     ) : (
-    <Reordenable id={list.id} spaceId={spaceId} canNest={false}>
+    <Reorderable id={list.id} spaceId={spaceId} canNest={false}>
     <div
       className={cn(
         "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 hover:bg-accent/50",
@@ -872,9 +893,9 @@ function ListNode({
         // `Tasks`.
         // Salvo que se esté leyendo documentación: entonces se abre la de esta
         // lista y se queda ahí (ver `docsRoute`).
-        if (enDocs) {
-          void openDocDeLista("list", list.id, list.name).catch(() => {});
-          navigate(enDocs);
+        if (docsScreen) {
+          void openListDoc("list", list.id, list.name).catch(() => {});
+          navigate(docsScreen);
           return;
         }
         focusList(list.id);
@@ -904,7 +925,7 @@ function ListNode({
       {list.openCount > 0 && (
         <span
           className="text-xs text-muted-foreground"
-          title={`${list.openCount} open · ${list.taskCount} in total`}
+          title={t("nav:panel.openOfTotal", { open: list.openCount, total: list.taskCount })}
         >
           {list.openCount}
         </span>
@@ -938,7 +959,7 @@ function ListNode({
             <DropdownMenuItem
               onClick={() => {
                 selectList(list.id);
-                void openDocDeLista("list", list.id, list.name).catch(() => {});
+                void openListDoc("list", list.id, list.name).catch(() => {});
                 navigate("/tasks");
               }}
             >
@@ -957,7 +978,7 @@ function ListNode({
             </DropdownMenuItem>
             <MoveToSpace
               currentSpaceId={spaceId}
-              onPick={(destino) => moveListToSpace(list.id, destino).catch((e) => toast.error(String(e)))}
+              onPick={(target) => moveListToSpace(list.id, target).catch((e) => toast.error(String(e)))}
             />
             <DropdownMenuItem
               onClick={async () => {
@@ -983,7 +1004,7 @@ function ListNode({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
-    </Reordenable>
+    </Reorderable>
     )}
     </>
   );

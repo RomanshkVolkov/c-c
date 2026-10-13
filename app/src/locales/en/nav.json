@@ -21,6 +21,34 @@
     "requests": "Requests",
     "tokens": "Tokens"
   },
+  "module": {
+    "work": "Work",
+    "docs": "Documentation",
+    "comms": "Communication",
+    "platform": "Platform"
+  },
+  "rail": {
+    "label": "Modules",
+    "organization": "Organization",
+    "account": "Account",
+    "collapsePanel": "Collapse the panel (⌘B)",
+    "expandPanel": "Expand the panel (⌘B)"
+  },
+  "panel": {
+    "filter": "Filter by title",
+    "clearFilter": "Clear the filter",
+    "noMatches": "Nothing matches",
+    "spaces": "Spaces",
+    "noServers": "No servers yet",
+    "serverStatus": {
+      "online": "Online",
+      "offline": "Offline",
+      "pending": "Pending",
+      "error": "Error"
+    },
+    "moving": "moving {{count}}",
+    "openOfTotal": "{{open}} open · {{total}} in total"
+  },
   "account": {
     "theme": "Theme",
     "themeAuto": "Auto",
@@ -29,6 +57,8 @@
     "language": "Language",
     "languageAuto": "Auto",
     "changePassword": "Change password",
+    "connectMcp": "Connect Claude Code",
+    "notifications": "Notifications",
     "logOut": "Log out"
   },
   "profile": {
