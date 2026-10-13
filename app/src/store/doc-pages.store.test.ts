@@ -26,7 +26,7 @@ const { useDocPages, placeLocally } = await import("@/store/doc-pages.store");
 
 const A = { kind: "list" as const, id: "A" };
 const B = { kind: "list" as const, id: "B" };
-const fila = (id: string, parentId?: string) => ({ id, parentId, rank: "0.5", title: id, hasBody: false, updatedAt: "" });
+const row = (id: string, parentId?: string) => ({ id, parentId, rank: "0.5", title: id, hasBody: false, updatedAt: "" });
 
 beforeEach(() => {
   get.mockReset();
@@ -38,7 +38,7 @@ beforeEach(() => {
 describe("las páginas de un documento", () => {
   it("un enlace a una página sobrevive a que se pinte el documento", async () => {
     get.mockImplementation(async (p: string) =>
-      p.endsWith("/pages") ? { data: [fila("p1")] } : { data: { page: { id: "p1" }, breadcrumb: [], children: [] } },
+      p.endsWith("/pages") ? { data: [row("p1")] } : { data: { page: { id: "p1" }, breadcrumb: [], children: [] } },
     );
     // Lo que hace el enlace: abrir la página primero…
     await useDocPages.getState().openPage(A, "p1");
@@ -58,15 +58,15 @@ describe("las páginas de un documento", () => {
   });
 
   it("el árbol de un nodo que se dejó atrás no se pinta encima", async () => {
-    let soltarA!: (v: unknown) => void;
+    let releaseA!: (v: unknown) => void;
     get.mockImplementation((p: string) =>
       p.includes("/list/A/")
-        ? new Promise((r) => (soltarA = r))
-        : Promise.resolve({ data: [fila("de-B")] }),
+        ? new Promise((r) => (releaseA = r))
+        : Promise.resolve({ data: [row("de-B")] }),
     );
     const a = useDocPages.getState().enter(A);
     await useDocPages.getState().enter(B);
-    soltarA({ data: [fila("de-A")] });
+    releaseA({ data: [row("de-A")] });
     await a;
     expect(useDocPages.getState().owner).toEqual(B);
     expect(useDocPages.getState().tree.map((x) => x.id)).toEqual(["de-B"]);
@@ -79,7 +79,7 @@ describe("las páginas de un documento", () => {
   });
 
   it("a la papelera se va con todo lo que cuelga de ella", async () => {
-    get.mockResolvedValue({ data: [fila("p1"), fila("p2", "p1"), fila("p3", "p2"), fila("otra")] });
+    get.mockResolvedValue({ data: [row("p1"), row("p2", "p1"), row("p3", "p2"), row("otra")] });
     await useDocPages.getState().enter(A);
     del.mockResolvedValue({ data: { pages: 3 } });
     await useDocPages.getState().trashPage(A, "p1");
@@ -89,7 +89,7 @@ describe("las páginas de un documento", () => {
   it("si la abierta cuelga de la que se tira, se vuelve a la portada", async () => {
     get.mockImplementation(async (p: string) =>
       p.endsWith("/pages")
-        ? { data: [fila("p1"), fila("p2", "p1")] }
+        ? { data: [row("p1"), row("p2", "p1")] }
         : { data: { page: { id: "p2" }, breadcrumb: [], children: [] } },
     );
     await useDocPages.getState().enter(A);
@@ -103,48 +103,48 @@ describe("las páginas de un documento", () => {
 const ids = () => useDocPages.getState().tree.map((x) => `${x.id}<${x.parentId ?? "·"}`);
 
 describe("mover una página", () => {
-  const arbol = () => [fila("a"), fila("a1", "a"), fila("a2", "a"), fila("b")];
+  const tree = () => [row("a"), row("a1", "a"), row("a2", "a"), row("b")];
 
   it("se pinta ya en su sitio, antes de que conteste el servidor", () => {
-    expect(placeLocally(arbol(), "b", { parentId: "a", beforeId: "a1" }).map((x) => x.id)).toEqual([
+    expect(placeLocally(tree(), "b", { parentId: "a", beforeId: "a1" }).map((x) => x.id)).toEqual([
       "a", "b", "a1", "a2",
     ]);
-    expect(placeLocally(arbol(), "b", { parentId: "a", afterId: "a1" }).map((x) => x.id)).toEqual([
+    expect(placeLocally(tree(), "b", { parentId: "a", afterId: "a1" }).map((x) => x.id)).toEqual([
       "a", "a1", "b", "a2",
     ]);
     // Sin vecina, al final de las hijas de la madre nueva.
-    expect(placeLocally(arbol(), "b", { parentId: "a" }).map((x) => x.id)).toEqual(["a", "a1", "a2", "b"]);
-    expect(placeLocally(arbol(), "b", { parentId: "a" }).find((x) => x.id === "b")!.parentId).toBe("a");
+    expect(placeLocally(tree(), "b", { parentId: "a" }).map((x) => x.id)).toEqual(["a", "a1", "a2", "b"]);
+    expect(placeLocally(tree(), "b", { parentId: "a" }).find((x) => x.id === "b")!.parentId).toBe("a");
   });
 
   it("si el servidor lo rechaza, vuelve a donde estaba", async () => {
-    useDocPages.setState({ owner: A, tree: arbol() });
-    let rechazar!: (e: unknown) => void;
-    post.mockReturnValue(new Promise((_, r) => (rechazar = r)));
+    useDocPages.setState({ owner: A, tree: tree() });
+    let reject!: (e: unknown) => void;
+    post.mockReturnValue(new Promise((_, r) => (reject = r)));
     const m = useDocPages.getState().movePage(A, "b", { parentId: "a", afterId: "a2" });
     expect(ids()).toEqual(["a<·", "a1<a", "a2<a", "b<a"]);
-    rechazar(new Error("page-cycle"));
+    reject(new Error("page-cycle"));
     await expect(m).rejects.toThrow();
     expect(ids()).toEqual(["a<·", "a1<a", "a2<a", "b<·"]);
   });
 
   it("y si lo acepta, se queda con el árbol que contesta", async () => {
-    useDocPages.setState({ owner: A, tree: arbol() });
-    post.mockResolvedValue({ data: [fila("b"), fila("a")] });
+    useDocPages.setState({ owner: A, tree: tree() });
+    post.mockResolvedValue({ data: [row("b"), row("a")] });
     await useDocPages.getState().movePage(A, "b", { parentId: null, beforeId: "a" });
     expect(ids()).toEqual(["b<·", "a<·"]);
   });
 
   it("soltar dentro la pone al final de las hijas", async () => {
-    useDocPages.setState({ owner: A, tree: arbol() });
-    post.mockResolvedValue({ data: arbol() });
+    useDocPages.setState({ owner: A, tree: tree() });
+    post.mockResolvedValue({ data: tree() });
     await useDocPages.getState().dropPage(A, "b", "a", "inside");
     expect(post).toHaveBeenCalledWith("/api/v1/docs/list/A/pages/b/move", { parentId: "a", afterId: "a2" });
   });
 
   it("soltar encima o debajo la pone junto a la otra, con su misma madre", async () => {
-    useDocPages.setState({ owner: A, tree: arbol() });
-    post.mockResolvedValue({ data: arbol() });
+    useDocPages.setState({ owner: A, tree: tree() });
+    post.mockResolvedValue({ data: tree() });
     await useDocPages.getState().dropPage(A, "b", "a1", "before");
     expect(post).toHaveBeenLastCalledWith("/api/v1/docs/list/A/pages/b/move", { parentId: "a", beforeId: "a1" });
     await useDocPages.getState().dropPage(A, "b", "a1", "after");
@@ -152,7 +152,7 @@ describe("mover una página", () => {
   });
 
   it("dentro de sí misma o de su subárbol no se manda", async () => {
-    useDocPages.setState({ owner: A, tree: arbol() });
+    useDocPages.setState({ owner: A, tree: tree() });
     await useDocPages.getState().dropPage(A, "a", "a1", "inside");
     await useDocPages.getState().dropPage(A, "a", "a", "after");
     expect(post).not.toHaveBeenCalled();
@@ -161,9 +161,9 @@ describe("mover una página", () => {
 
 describe("la papelera y el historial", () => {
   it("restaurar la quita de la papelera y vuelve a pedir el árbol", async () => {
-    useDocPages.setState({ owner: A, trash: [fila("t1"), fila("t2")] });
+    useDocPages.setState({ owner: A, trash: [row("t1"), row("t2")] });
     post.mockResolvedValue({ success: true });
-    get.mockResolvedValue({ data: [fila("t1")] });
+    get.mockResolvedValue({ data: [row("t1")] });
     await useDocPages.getState().restorePage(A, "t1");
     expect(post).toHaveBeenCalledWith("/api/v1/docs/list/A/pages/t1/restore", {});
     expect(useDocPages.getState().trash.map((x) => x.id)).toEqual(["t2"]);
@@ -174,7 +174,7 @@ describe("la papelera y el historial", () => {
     useDocPages.setState({
       owner: A,
       activePageId: "p1",
-      tree: [fila("p1")],
+      tree: [row("p1")],
       view: { page: { id: "p1", title: "x", body: "ahora" } as never, breadcrumb: [], children: [], orgId: "o" },
     });
     post.mockResolvedValue({ data: { id: "p1", title: "Antes", body: "antes", bodyHash: "h2" } });
@@ -203,18 +203,44 @@ describe("la pestaña que pide un enlace", () => {
   });
 });
 
-describe("la preferencia del árbol plegado", () => {
-  it("empieza sin elegir, y sólo ella se guarda entre arranques", () => {
-    const persist = (useDocPages as unknown as { persist: { getOptions: () => { partialize: (s: unknown) => unknown } } })
-      .persist;
-    expect(useDocPages.getState().treeCollapsed === null || typeof useDocPages.getState().treeCollapsed === "boolean").toBe(true);
-    useDocPages.setState({ treeCollapsed: true, owner: { kind: "list", id: "x" }, tree: [], activePageId: "p" } as never);
-    expect(persist.getOptions().partialize(useDocPages.getState())).toEqual({ treeCollapsed: true });
+/**
+ * Las páginas de los documentos que no son el abierto, para pintarlas en el
+ * panel. Se guardan aparte de `tree` porque `tree` es del documento abierto y
+ * todas las mutaciones escriben ahí. Mutantes: guardar el árbol saliente
+ * después de `reset()` (se guardaría vacío); `peekPages` escribiendo `tree`;
+ * abrir una página de otro documento sin vaciar el árbol del anterior.
+ */
+describe("las páginas de otros documentos", () => {
+  it("al entrar en otro documento, el que se deja queda en la caché", async () => {
+    get.mockImplementation(async (p: string) => ({ data: p.includes("/A/") ? [row("a1")] : [row("b1")] }));
+    await useDocPages.getState().enter(A);
+    await useDocPages.getState().enter(B);
+    expect(useDocPages.getState().pagesByOwner["list:A"]?.map((x) => x.id)).toEqual(["a1"]);
+    expect(useDocPages.getState().tree.map((x) => x.id)).toEqual(["b1"]);
   });
 
-  it("vaciar el documento no la toca", () => {
-    useDocPages.setState({ treeCollapsed: true });
-    useDocPages.getState().reset();
-    expect(useDocPages.getState().treeCollapsed).toBe(true);
+  it("asomarse a otro documento no toca el abierto", async () => {
+    get.mockImplementation(async (p: string) => ({ data: p.includes("/A/") ? [row("a1")] : [row("b1"), row("b2")] }));
+    await useDocPages.getState().enter(A);
+    await useDocPages.getState().peekPages(B);
+    expect(useDocPages.getState().tree.map((x) => x.id)).toEqual(["a1"]);
+    expect(useDocPages.getState().owner).toEqual(A);
+    expect(useDocPages.getState().pagesByOwner["list:B"]?.map((x) => x.id)).toEqual(["b1", "b2"]);
+  });
+
+  it("abrir una página de otro documento vacía el árbol del anterior", async () => {
+    get.mockImplementation(async (p: string) => ({ data: p.includes("/pages/") ? null : [row("a1")] }));
+    await useDocPages.getState().enter(A);
+    void useDocPages.getState().openPage(B, "b9");
+    expect(useDocPages.getState().owner).toEqual(B);
+    expect(useDocPages.getState().tree).toEqual([]);
+    expect(useDocPages.getState().pagesByOwner["list:A"]?.map((x) => x.id)).toEqual(["a1"]);
+  });
+
+  it("una página del mismo documento no vacía nada", async () => {
+    get.mockImplementation(async (p: string) => ({ data: p.includes("/pages/") ? null : [row("a1")] }));
+    await useDocPages.getState().enter(A);
+    void useDocPages.getState().openPage(A, "a1");
+    expect(useDocPages.getState().tree.map((x) => x.id)).toEqual(["a1"]);
   });
 });

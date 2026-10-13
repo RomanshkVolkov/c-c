@@ -7,9 +7,12 @@ import AppPanel from "@/components/sidebar/AppPanel";
 import AppRail from "@/components/sidebar/AppRail";
 import { useNavData } from "@/components/sidebar/useNavData";
 import { Sidebar, SidebarRail } from "@/components/ui/sidebar";
+import { docsRoute } from "@/lib/doc-mode";
 import { moduleOf } from "@/lib/nav";
 import { isWebBuild } from "@/lib/platform";
 import { useLayoutStore } from "@/store/layout.store";
+import { useOrgsStore } from "@/store/orgs.store";
+import { useTasksStore } from "@/store/tasks.store";
 import { useNotifUI } from "@/store/notifui.store";
 
 /**
@@ -26,18 +29,28 @@ import { useNotifUI } from "@/store/notifui.store";
  * misma: el icono del riel te devuelve a donde estabas en ese módulo. En las
  * rutas que no son de ninguno (organización, perfil) el panel se queda con el
  * último, para no quedarse nunca en blanco.
+ *
+ * Una excepción: leer un documento en `/tasks` (el conmutador «Docs» de una
+ * lista) es Documentación, aunque la ruta sea de Trabajo. Es el panel de
+ * Documentación el que lleva las páginas de ese documento; con el de Trabajo
+ * no habría forma de llegar a ellas en el escritorio.
  */
 export default function AppSidebar() {
   useNavData();
   const { pathname, search } = useLocation();
   const setActiveModule = useLayoutStore((s) => s.setActiveModule);
   const rememberRoute = useLayoutStore((s) => s.rememberRoute);
+  const activeDoc = useTasksStore((s) => s.activeDoc);
+  const currentOrgId = useOrgsStore((s) => s.currentOrgId);
+  const readingOnTasks = docsRoute(activeDoc, currentOrgId, pathname) === "/tasks";
   useEffect(() => {
-    const m = moduleOf(pathname);
+    const m = readingOnTasks ? "docs" : moduleOf(pathname);
     if (!m) return;
     setActiveModule(m);
-    rememberRoute(m, pathname + search);
-  }, [pathname, search, setActiveModule, rememberRoute]);
+    // `/tasks` no se apunta como el sitio de Documentación: volver a él con el
+    // documento ya cerrado sería volver a un tablero.
+    if (!readingOnTasks) rememberRoute(m, pathname + search);
+  }, [pathname, search, readingOnTasks, setActiveModule, rememberRoute]);
 
   const [pwOpen, setPwOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);

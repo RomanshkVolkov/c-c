@@ -12,7 +12,7 @@ import TemplatePicker from "@/components/docs/TemplatePicker";
 import { useAutoguardado } from "@/hooks/use-autoguardado";
 import DocToc from "@/components/docs/DocToc";
 import { docLinks } from "@/components/docs/doc-links";
-import DocPageTree from "@/components/docs/DocPageTree";
+import DocPagesSheet from "@/components/docs/DocPagesSheet";
 import DocPageView from "@/components/docs/DocPageView";
 import Markdown from "@/components/markdown/Markdown";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
@@ -42,7 +42,7 @@ import { DOC_TABS, type DocTabKey } from "@/types/task";
  * el proyecto, no una pestaña que estorbe.
  */
 
-const ROTULOS: Record<DocTabKey, { label: MessageKey; hint: MessageKey }> = {
+const TAB_LABELS: Record<DocTabKey, { label: MessageKey; hint: MessageKey }> = {
   overview: { label: "work:docs.overview", hint: "work:docs.overviewHint" },
   runbook: { label: "work:docs.runbook", hint: "work:docs.runbookHint" },
   decisions: { label: "work:docs.decisions", hint: "work:docs.decisionsHint" },
@@ -50,7 +50,7 @@ const ROTULOS: Record<DocTabKey, { label: MessageKey; hint: MessageKey }> = {
 };
 
 /** El índice sólo donde aporta. En una lista de entradas repetiría lo que se ve. */
-const CON_INDICE: DocTabKey[] = ["overview", "runbook"];
+const WITH_TOC: DocTabKey[] = ["overview", "runbook"];
 
 export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "docs">) => void }) {
   const { t } = useT();
@@ -67,26 +67,26 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   const pageView = useDocPages((s) => s.view);
   const enterPages = useDocPages((s) => s.enter);
 
-  const [activa, setActiva] = useState<DocTabKey>("overview");
-  const [editando, setEditando] = useState(false);
+  const [activeTab, setActiveTab] = useState<DocTabKey>("overview");
+  const [editing, setEditing] = useState(false);
   // El PDF adjunto que se está viendo, en el visor de la app.
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
-  const [borrador, setBorrador] = useState("");
+  const [draft, setDraft] = useState("");
   // Cuando alguien pulsa «empezar en blanco» sobre un nodo sin nada escrito: no
   // hay documento que enseñar y tampoco hay que volver a ofrecer las plantillas.
-  const [saltarPlantillas, setSaltarPlantillas] = useState(false);
-  const [registrando, setRegistrando] = useState(false);
+  const [skipTemplates, setSkipTemplates] = useState(false);
+  const [addingDecision, setAddingDecision] = useState(false);
 
-  const seccion = doc?.tabs?.find((x) => x.key === activa);
-  const cuerpo = seccion?.body ?? "";
-  const hashDeLaSeccion = seccion?.bodyHash;
-  const sinNada = !doc?.tabs?.some((x) => x.body);
+  const section = doc?.tabs?.find((x) => x.key === activeTab);
+  const body = section?.body ?? "";
+  const sectionHash = section?.bodyHash;
+  const nothingWritten = !doc?.tabs?.some((x) => x.body);
 
   /**
    * A qué sección pertenece el borrador, que **no** siempre es la activa.
    *
    * Al cambiar de pestaña se apaga el editor, y apagarlo fuerza un guardado de
-   * lo que quedaba pendiente. Para entonces `activa` ya es la nueva mientras el
+   * lo que quedaba pendiente. Para entonces `activeTab` ya es la nueva mientras el
    * texto sigue siendo el de la vieja: sin esto, cambiar de Resumen a Runbook
    * escribía el resumen encima del runbook. Se pierde el runbook entero y nadie
    * lo ve hasta que va a leerlo.
@@ -94,7 +94,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
    * Esta referencia sólo avanza cuando el borrador adopta un texto nuevo, que es
    * después de ese guardado — así que el guardado sale con la sección correcta.
    */
-  const seccionDelBorrador = useRef<DocTabKey>(activa);
+  const draftSection = useRef<DocTabKey>(activeTab);
   /**
    * De qué versión salió el borrador.
    *
@@ -103,17 +103,17 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
    * guardado —una petición sin hash es, para él, una copia anterior a la primera
    * versión que se hasheó— y con el de otra sección rechazaría también.
    */
-  const hashDelBorrador = useRef<string | undefined>(undefined);
+  const draftHash = useRef<string | undefined>(undefined);
   // Alguien guardó esta sección mientras se escribía. Ver el `catch` de abajo.
-  const [chocado, setChocado] = useState(false);
+  const [conflicted, setConflicted] = useState(false);
 
   // El guardado va por tiempo, no por botón. Ver `use-autoguardado`: lo delicado
   // no es el temporizador, es no perder lo que se escribe mientras uno viaja.
-  const { estado, adoptar } = useAutoguardado(
-    borrador,
-    async (texto) => {
+  const { estado: saveState, adoptar: adopt } = useAutoguardado(
+    draft,
+    async (text) => {
       try {
-        hashDelBorrador.current = await saveDoc(texto, seccionDelBorrador.current, hashDelBorrador.current);
+        draftHash.current = await saveDoc(text, draftSection.current, draftHash.current);
       } catch (e) {
         // Alguien —o un agente por MCP— guardó esta sección mientras se escribía.
         //
@@ -122,7 +122,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
         // otra, que es cambiar una pérdida por otra. Lo que se para es el
         // autoguardado: seguir intentándolo con cada tecla es fallar en bucle.
         if (codigoDe(e) === "doc-conflict") {
-          setChocado(true);
+          setConflicted(true);
           return;
         }
         throw e;
@@ -131,28 +131,28 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
     // Con un choque encima no se vuelve a intentar: el siguiente guardado
     // fallaría igual, y quien escribe necesita decidir antes qué hacer con su
     // texto.
-    editando && !chocado,
+    editing && !conflicted,
   );
 
   // Cambiar de nodo o de sección no puede arrastrar un borrador a medias.
   useEffect(() => {
-    setEditando(false);
-    setChocado(false);
-  }, [target?.kind, target?.id, activa]);
+    setEditing(false);
+    setConflicted(false);
+  }, [target?.kind, target?.id, activeTab]);
 
   // Adoptar lo guardado, pero **nunca encima de lo que se está escribiendo**.
-  // `cuerpo` tiene que seguir siendo dependencia: esta pantalla se pinta antes
+  // `body` tiene que seguir siendo dependencia: esta pantalla se pinta antes
   // de que llegue el documento, así que el primer valor siempre es "".
   useEffect(() => {
-    if (editando) return;
-    setBorrador(cuerpo);
-    seccionDelBorrador.current = activa;
-    hashDelBorrador.current = hashDeLaSeccion;
+    if (editing) return;
+    setDraft(body);
+    draftSection.current = activeTab;
+    draftHash.current = sectionHash;
     // Restaurar una versión o cambiar de sección trae texto que nadie escribió
     // aquí: sin decírselo al autoguardado, lo tomaría por una edición y lo
     // volvería a mandar, escribiendo una versión idéntica en el historial.
-    adoptar(cuerpo);
-  }, [cuerpo, editando, adoptar, activa, hashDeLaSeccion]);
+    adopt(body);
+  }, [body, editing, adopt, activeTab, sectionHash]);
 
   // La pestaña que pidió un enlace (`&tab=`). Hasta ahora el enlace de
   // «compartir esta sección» la llevaba y nadie la leía: abría Resumen.
@@ -160,16 +160,16 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
   useEffect(() => {
     if (!requestedTab) return;
     const tab = useDocPages.getState().takeRequestedTab();
-    if (tab) setActiva(tab);
+    if (tab) setActiveTab(tab);
   }, [requestedTab]);
 
   // El árbol es del nodo: otro nodo, otro árbol. Ver `enter`.
-  const nodoKind = target?.kind;
-  const nodoId = target?.id;
+  const nodeKind = target?.kind;
+  const nodeId = target?.id;
   useEffect(() => {
-    if (!nodoKind || !nodoId) return;
-    enterPages({ kind: nodoKind, id: nodoId }).catch(() => {});
-  }, [nodoKind, nodoId, enterPages]);
+    if (!nodeKind || !nodeId) return;
+    enterPages({ kind: nodeKind, id: nodeId }).catch(() => {});
+  }, [nodeKind, nodeId, enterPages]);
 
   if (!target) return null;
 
@@ -200,11 +200,12 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           />
         ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          <DocPagesSheet kind={target.kind} ownerId={target.id} />
           {doc?.doc && (
             <ShareDoc
               doc={doc.doc}
               nombre={target.name}
-              tab={activa}
+              tab={activeTab}
               page={
                 activePageId && pageView?.page
                   ? { id: pageView.page.id, title: pageView.page.title }
@@ -218,12 +219,12 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
         </div>
       </header>
 
-      {/* Dos columnas, como el árbol de contenido de Confluence: a la izquierda
-          la portada y las páginas que cuelgan de ella; a la derecha lo que se
-          está leyendo. La portada sigue siendo lo de siempre, con sus cuatro
+      {/* Lo que se lee, a todo el ancho. Las páginas que cuelgan de la portada
+          están en el panel de Documentación del sidebar (12-oct-2026), no en
+          una columna aquí al lado; en el teléfono, tras el botón «Páginas» de
+          la cabecera. La portada sigue siendo lo de siempre, con sus cuatro
           pestañas. */}
       <div className="flex min-h-0 flex-1">
-        <DocPageTree kind={target.kind} ownerId={target.id} />
         {activePageId ? (
           <DocPageView
             kind={target.kind}
@@ -249,25 +250,25 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                 // La de decisiones no se mide por su markdown —no tiene—: se mide
                 // por si hay entradas. Sin esto siempre saldría en gris, incluso con
                 // el registro lleno.
-                const vacia =
+                const empty =
                   k === "decisions"
                     ? (doc?.decisions?.length ?? 0) === 0
                     : !doc?.tabs?.find((x) => x.key === k)?.body;
                 return (
                   <button
                     key={k}
-                    onClick={() => setActiva(k)}
+                    onClick={() => setActiveTab(k)}
                     className={cn(
                       "flex shrink-0 items-baseline gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-2",
-                      k === activa
+                      k === activeTab
                         ? "border-primary font-medium text-foreground"
                         : "border-transparent hover:text-foreground",
-                      vacia && k !== activa ? "text-muted-foreground/60" : "text-muted-foreground",
+                      empty && k !== activeTab ? "text-muted-foreground/60" : "text-muted-foreground",
                     )}
                   >
-                    {t(ROTULOS[k].label)}
+                    {t(TAB_LABELS[k].label)}
                     <span className="hidden text-[11px] text-muted-foreground/70 md:inline">
-                      {t(ROTULOS[k].hint)}
+                      {t(TAB_LABELS[k].hint)}
                     </span>
                   </button>
                 );
@@ -279,11 +280,11 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
                 </p>
-              ) : editando ? (
+              ) : editing ? (
                 <div className="mx-auto max-w-3xl space-y-2">
                   <MarkdownEditor
-                    value={borrador}
-                    onChange={setBorrador}
+                    value={draft}
+                    onChange={setDraft}
                     onUpload={upload}
                     collapsible
                     blockTools
@@ -292,7 +293,7 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                     placeholder={t("work:docs.placeholder")}
                     autoFocus
                   />
-                  {chocado && (
+                  {conflicted && (
                     <div className="rounded-md border border-destructive/40 bg-destructive/[.07] px-3 py-2 text-xs">
                       <p className="font-medium text-foreground">{t("work:docs.conflict")}</p>
                       <p className="mt-0.5 text-muted-foreground">{t("work:docs.conflictWhy")}</p>
@@ -301,8 +302,8 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                         variant="outline"
                         className="mt-2 h-6 text-xs"
                         onClick={() => {
-                          setChocado(false);
-                          setEditando(false);
+                          setConflicted(false);
+                          setEditing(false);
                           if (target) void openDoc(target.kind, target.id, target.name).catch(() => {});
                         }}
                       >
@@ -314,13 +315,13 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                 cancelar no cancelaría nada. Para deshacer está el historial,
                 que es lo que hace soportable escribir sin botón. */}
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setEditando(false)}>
+                    <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
                       {t("work:docs.done")}
                     </Button>
-                    <SaveChip estado={estado} />
+                    <SaveChip estado={saveState} />
                   </div>
                 </div>
-              ) : activa === "decisions" ? (
+              ) : activeTab === "decisions" ? (
                 // El registro no es markdown: cada entrada lleva fecha, autor y de
                 // dónde salió, y en un markdown suelto eso se escribe a mano, se
                 // escribe mal y se deja de escribir.
@@ -328,19 +329,19 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
               ) : (
                 <div className="mx-auto flex w-full min-w-0 max-w-4xl xl:max-w-5xl xl:gap-8">
                   <div className="min-w-0 flex-1">
-                    {cuerpo ? (
+                    {body ? (
                       // Medida de línea corta y texto más grande: es un documento,
                       // no un panel. `prose-doc` lo fija en un solo sitio.
                       <div className="prose-doc">
                         <Markdown allowHtml onInternalLink={(href) => openInternalRef(href)}>
-                          {cuerpo}
+                          {body}
                         </Markdown>
                       </div>
-                    ) : sinNada && !saltarPlantillas ? (
+                    ) : nothingWritten && !skipTemplates ? (
                       // Las plantillas sólo cuando el documento entero está vacío. En
                       // una pestaña suelta de un documento que ya existe estorban:
                       // ahí lo que falta es un runbook, no un proyecto.
-                      <TemplatePicker onWritten={() => setSaltarPlantillas(true)} />
+                      <TemplatePicker onWritten={() => setSkipTemplates(true)} />
                     ) : (
                       <div className="py-12 text-center">
                         <p className="text-sm text-muted-foreground">{t("work:docs.emptyTab")}</p>
@@ -348,32 +349,32 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
                           size="sm"
                           variant="outline"
                           className="mt-3"
-                          onClick={() => setEditando(true)}
+                          onClick={() => setEditing(true)}
                         >
                           <Pencil className="mr-1 size-3" /> {t("work:docs.writeIt")}
                         </Button>
                       </div>
                     )}
                   </div>
-                  {CON_INDICE.includes(activa) && cuerpo && <DocToc markdown={cuerpo} />}
+                  {WITH_TOC.includes(activeTab) && body && <DocToc markdown={body} />}
                 </div>
               )}
             </div>
 
-            {activa === "decisions" && (
+            {activeTab === "decisions" && (
               <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
-                <Button size="sm" variant="ghost" onClick={() => setRegistrando(true)}>
+                <Button size="sm" variant="ghost" onClick={() => setAddingDecision(true)}>
                   <Gavel className="mr-1 size-3" /> {t("work:decisions.record")}
                 </Button>
               </footer>
             )}
 
-            {!editando && cuerpo && activa !== "decisions" && (
+            {!editing && body && activeTab !== "decisions" && (
               <footer className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
-                <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
+                <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
                   <Pencil className="mr-1 size-3" /> {t("work:docs.edit")}
                 </Button>
-                <DocHistory tab={activa} current={cuerpo} />
+                <DocHistory tab={activeTab} current={body} />
                 {doc?.attachments && doc.attachments.length > 0 && (
                   <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                     {doc.attachments.map((a) => (
@@ -399,8 +400,8 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
       </div>
       {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
       <DecisionForm
-        open={registrando}
-        onOpenChange={setRegistrando}
+        open={addingDecision}
+        onOpenChange={setAddingDecision}
         onSubmit={async (d) => {
           await addDecision(d);
           toast.success(t("work:decisions.saved"));

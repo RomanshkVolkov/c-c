@@ -15,7 +15,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  * consulta al cambiar de pestaña, que da cero aciertos sin explicar por qué.
  */
 
-const MIO = "11111111-1111-4111-8111-111111111111";
+const ME = "11111111-1111-4111-8111-111111111111";
 
 const get = vi.fn();
 vi.mock("@/lib/api", () => ({
@@ -24,15 +24,17 @@ vi.mock("@/lib/api", () => ({
 }));
 vi.mock("@/store/auth.store", () => ({
   useAuthStore: Object.assign(
-    (sel: (s: Record<string, unknown>) => unknown) => sel({ session: { id: MIO } }),
-    { getState: () => ({ accessToken: "t" }) },
+    (sel: (s: Record<string, unknown>) => unknown) => sel({ session: { id: ME } }),
+    // `subscribe` porque `doc-pages.store` (que llega por `lib/open-ref`) se
+    // suscribe a la sesión al cargarse, para vaciar su caché al salir.
+    { getState: () => ({ accessToken: "t" }), subscribe: () => () => {} },
   ),
 }));
 vi.mock("@/store/chat.store", () => ({
   useChatStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       messages: [
-        { id: "m1", authorUserId: MIO, authorName: "yo", kind: "user", body: "lo que hay cargado", createdAt: new Date().toISOString(), updatedAt: "" },
+        { id: "m1", authorUserId: ME, authorName: "yo", kind: "user", body: "lo que hay cargado", createdAt: new Date().toISOString(), updatedAt: "" },
       ],
       loading: false, hasMore: false, loadingOlder: false, spaceId: "sp-1",
       following: [], fetch: vi.fn().mockResolvedValue(undefined),
