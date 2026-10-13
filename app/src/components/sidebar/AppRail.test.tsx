@@ -120,6 +120,39 @@ describe("el riel", () => {
   });
 });
 
+/**
+ * ⌘ más el puesto en el riel: ⌘3 es el tercer icono, con la regla del clic.
+ * Mutantes: contar desde 0 (⌘3 iría a Plataforma); no mirar Alt (⌘⌥1 es un
+ * título en el editor y te sacaría del documento).
+ */
+describe("los atajos del riel", () => {
+  it("⌘3 va al tercero, a donde estabas en él", () => {
+    useLayoutStore.setState({ lastRoute: { comms: "/dm" } });
+    mount("/my-work");
+    fireEvent.keyDown(window, { key: "3", metaKey: true });
+    expect(where).toBe("/dm");
+  });
+
+  it("Ctrl vale igual, y ⌘2 sin nada recordado va a la portada", () => {
+    mount("/my-work");
+    fireEvent.keyDown(window, { key: "2", ctrlKey: true });
+    expect(where).toBe("/docs");
+  });
+
+  it("con Alt no es nuestro, y un puesto vacío no hace nada", () => {
+    mount("/my-work");
+    fireEvent.keyDown(window, { key: "2", metaKey: true, altKey: true });
+    fireEvent.keyDown(window, { key: "7", metaKey: true });
+    fireEvent.keyDown(window, { key: "2" });
+    expect(where).toBe("/my-work");
+  });
+
+  it("el botón anuncia su atajo", () => {
+    mount("/my-work");
+    expect(railButton("Platform").getAttribute("aria-keyshortcuts")).toBe("Meta+4 Control+4");
+  });
+});
+
 describe("el riel sin sesión", () => {
   it("sólo Plataforma y entrar", () => {
     useAuthStore.setState({ session: null, accessToken: null } as never);

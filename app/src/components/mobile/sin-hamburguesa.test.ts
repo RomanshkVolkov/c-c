@@ -13,25 +13,25 @@ import { describe, expect, it } from "vitest";
  *   iPhone vale cero.
  * Mutantes: cada una de las cuatro.
  */
-const leer = (f: string) => readFileSync(join(process.cwd(), f), "utf-8");
+const read = (f: string) => readFileSync(join(process.cwd(), f), "utf-8");
 
 describe("el armazón en el teléfono", () => {
   it("no tiene hamburguesa", () => {
-    expect(leer("src/components/AppLayout.tsx")).not.toContain("SidebarTrigger");
+    expect(read("src/components/AppLayout.tsx")).not.toContain("SidebarTrigger");
   });
 
   it("monta el menú de abajo dentro de la columna, tras el contenido", () => {
-    const s = leer("src/components/AppLayout.tsx");
-    const columna = s.slice(s.indexOf("<SidebarInset"), s.indexOf("</SidebarInset>"));
-    expect(columna.indexOf("<Outlet />")).toBeGreaterThan(-1);
-    expect(columna.indexOf("<MobileTabBar />")).toBeGreaterThan(columna.indexOf("<Outlet />"));
+    const s = read("src/components/AppLayout.tsx");
+    const column = s.slice(s.indexOf("<SidebarInset"), s.indexOf("</SidebarInset>"));
+    expect(column.indexOf("<Outlet />")).toBeGreaterThan(-1);
+    expect(column.indexOf("<MobileTabBar />")).toBeGreaterThan(column.indexOf("<Outlet />"));
   });
 
   it("pone los avisos arriba en el teléfono", () => {
-    expect(leer("src/components/AppLayout.tsx")).toContain('position={movil ? "top-center" : "bottom-right"}');
+    expect(read("src/components/AppLayout.tsx")).toContain('position={mobile ? "top-center" : "bottom-right"}');
   });
 
   it("pide la zona segura del iPhone", () => {
-    expect(leer("index.html")).toContain("viewport-fit=cover");
+    expect(read("index.html")).toContain("viewport-fit=cover");
   });
 });

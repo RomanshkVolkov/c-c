@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Building2, LogIn } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -28,6 +28,10 @@ import { useLayoutStore } from "@/store/layout.store";
  * Pulsar un módulo te devuelve a donde estabas en él —la última ruta que se
  * apuntó—, no a su portada; y pulsar el activo con el panel plegado lo abre:
  * un clic para ver el contenido, sin otro para desplegarlo.
+ *
+ * ⌘1–⌘9 (Ctrl en Linux y Windows) pulsan el icono que ocupa ese puesto, con
+ * la misma regla que el clic; el tooltip lo dice. El puesto, no el módulo: sin
+ * sesión sólo está Plataforma, y es ⌘1.
  *
  * Abajo, lo que no es navegación: la llamada en curso (sólo plegado; abierto
  * la lleva el panel), la organización y la cuenta.
@@ -74,18 +78,40 @@ export default function AppRail({
     navigate(lastRoute[m.key] ?? moduleHome(m, isWebBuild));
   };
 
+  // Un solo listener para todos. Con Alt o Mayúsculas no es nuestro: el editor
+  // usa ⌘⌥1 para los títulos.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      const n = Number(e.key);
+      if (!Number.isInteger(n) || n < 1) return;
+      const m = modules[n - 1];
+      if (!m) return;
+      e.preventDefault();
+      go(m);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <nav
       aria-label={t("nav:rail.label")}
       className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-sidebar-border py-2"
     >
       <BrandMark className="mb-2 h-5 w-auto" />
-      {modules.map((m) => {
+      {modules.map((m, i) => {
         const active = onModuleRoute && m.key === activeModule;
         const badge = badgeOf(m);
         const label = badge ? `${t(m.labelKey)} (${badge.count})` : t(m.labelKey);
         return (
-          <RailButton key={m.key} label={label} active={active} onClick={() => go(m)}>
+          <RailButton
+            key={m.key}
+            label={label}
+            shortcut={i < 9 ? `${i + 1}` : undefined}
+            active={active}
+            onClick={() => go(m)}
+          >
             <m.icon className="size-5" />
             {badge && (
               <span
@@ -143,15 +169,19 @@ function isAside(pathname: string): boolean {
 
 function RailButton({
   label,
+  shortcut,
   active,
   onClick,
   children,
 }: {
   label: string;
+  /** La tecla que va con ⌘, si la tiene. */
+  shortcut?: string;
   active: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
+  const { t } = useT();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -160,6 +190,7 @@ function RailButton({
             type="button"
             aria-label={label}
             aria-current={active ? "page" : undefined}
+            aria-keyshortcuts={shortcut ? `Meta+${shortcut} Control+${shortcut}` : undefined}
             onClick={onClick}
             className={cn(
               "relative grid size-9 place-items-center rounded-lg transition-colors",
@@ -172,7 +203,9 @@ function RailButton({
           </button>
         }
       />
-      <TooltipContent side="right">{label}</TooltipContent>
+      <TooltipContent side="right">
+        {shortcut ? t("nav:rail.shortcut", { name: label, keys: `⌘${shortcut}` }) : label}
+      </TooltipContent>
     </Tooltip>
   );
 }

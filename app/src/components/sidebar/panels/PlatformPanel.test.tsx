@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
  * Plataforma: los servidores uno a uno con su punto de estado, y lo demás.
  *
  * Mutantes: pintar todos los puntos en verde; Usuarios sin el filtro de
- * superadmin; la fila de un servidor que no navega a su pantalla.
+ * superadmin; la fila de un servidor que no navega a su pantalla; coger
+ * todas las filas de la navegación y no sólo las de este módulo.
  */
 
 const servers = vi.hoisted(() => ({
@@ -63,6 +64,13 @@ describe("el panel de Plataforma", () => {
     expect(screen.getByText("valkey").closest("button")?.getAttribute("aria-current")).toBe("page");
     fireEvent.click(screen.getByText("contabo"));
     expect(where).toBe("/servers/s-1");
+  });
+
+  it("sólo lo de Plataforma: el trabajo y la conversación tienen su módulo", () => {
+    mount();
+    expect(screen.getByText("Activity")).toBeTruthy();
+    expect(screen.queryByText("My work")).toBeNull();
+    expect(screen.queryByText("Channels")).toBeNull();
   });
 
   it("Usuarios, sólo para superadmin", () => {

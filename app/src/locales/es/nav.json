@@ -1,9 +1,4 @@
 {
-  "group": {
-    "work": "Trabajo",
-    "talk": "Conversación",
-    "platform": "Plataforma"
-  },
   "item": {
     "overview": "Resumen",
     "myWork": "Mi trabajo",
@@ -32,7 +27,7 @@
     "organization": "Organización",
     "account": "Cuenta",
     "collapsePanel": "Plegar el panel (⌘B)",
-    "expandPanel": "Desplegar el panel (⌘B)"
+    "shortcut": "{{name}} ({{keys}})"
   },
   "panel": {
     "filter": "Buscar por título",

@@ -1,9 +1,4 @@
 {
-  "group": {
-    "work": "Work",
-    "talk": "Talk",
-    "platform": "Platform"
-  },
   "item": {
     "overview": "Overview",
     "myWork": "My work",
@@ -32,7 +27,7 @@
     "organization": "Organization",
     "account": "Account",
     "collapsePanel": "Collapse the panel (⌘B)",
-    "expandPanel": "Expand the panel (⌘B)"
+    "shortcut": "{{name}} ({{keys}})"
   },
   "panel": {
     "filter": "Filter by title",

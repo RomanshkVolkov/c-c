@@ -30,9 +30,11 @@ import { useAuthStore } from "@/store/auth.store";
 import { useInvitationsStore } from "@/store/invitations.store";
 import { useLayoutStore } from "@/store/layout.store";
 import { useThemeStore } from "@/store/theme.store";
+import { useT } from "@/lib/i18n";
 import { ForcedChangePassword } from "@/components/ChangePassword";
 
 export default function AppLayout() {
+  const { t } = useT();
   // El panel del sidebar, abierto o plegado al riel; recordado entre arranques.
   const sidebarOpen = useLayoutStore((s) => s.panelOpen);
   const setSidebarOpen = useLayoutStore((s) => s.setPanelOpen);
@@ -42,7 +44,7 @@ export default function AppLayout() {
   const mustChangePassword = useAuthStore((s) => !!s.session?.mustChangePassword);
   // sonner renders in its own tree and ignores the .dark class.
   const theme = useThemeStore((s) => s.resolved);
-  const movil = useIsMobile();
+  const mobile = useIsMobile();
 
   // Load the caller's organizations once the authenticated shell mounts. First
   // upgrade a pre-orgs token (else org-scoped lists come back empty) so the
@@ -64,10 +66,10 @@ export default function AppLayout() {
   // Una recarga no cuelga la llamada —vive en Rust—, así que la página nueva
   // tiene que engancharse a ella. Sin esto, el micrófono seguía abierto y nada
   // en pantalla lo decía. Ver `useVoice.reanudar`.
-  const reanudarLlamada = useVoice((s) => s.reanudar);
+  const resumeCall = useVoice((s) => s.reanudar);
   useEffect(() => {
-    if (authed) void reanudarLlamada();
-  }, [authed, reanudarLlamada]);
+    if (authed) void resumeCall();
+  }, [authed, resumeCall]);
 
   // Live report notifications (SSE) for the whole authenticated shell.
   useReportEvents();
@@ -85,7 +87,7 @@ export default function AppLayout() {
   const setPanelOpen = useNotifUI((s) => s.setPanelOpen);
   const prefsOpen = useNotifUI((s) => s.prefsOpen);
   const setPrefsOpen = useNotifUI((s) => s.setPrefsOpen);
-  const sinLeer = useInboxStore((s) => s.unread);
+  const unread = useInboxStore((s) => s.unread);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -163,7 +165,7 @@ export default function AppLayout() {
             className="mx-auto flex w-full max-w-md items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/60"
           >
             <Search className="size-3.5" />
-            <span>Search tasks, messages, people…</span>
+            <span>{t("common:palette.searchPlaceholder")}</span>
             <kbd className="ml-auto font-mono text-[10px] opacity-70">⌘K</kbd>
           </button>
           {/* La campana, a la derecha del todo. Estaba metida en la cabecera
@@ -172,14 +174,15 @@ export default function AppLayout() {
               la izquierda quedaba lejos de donde uno mira cuando algo suena. */}
           <button
             type="button"
-            title="Notifications"
+            title={t("common:last.notifications")}
+            aria-label={t("common:last.notifications")}
             onClick={() => setPanelOpen(true)}
             className="relative ml-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Bell className="size-4" />
-            {sinLeer > 0 && (
+            {unread > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-                {sinLeer > 9 ? "9+" : sinLeer}
+                {unread > 9 ? "9+" : unread}
               </span>
             )}
           </button>
@@ -212,7 +215,7 @@ export default function AppLayout() {
       {!isWebBuild && <StaleBinaryNotice />}
       {/* Arriba en el teléfono: abajo está el menú, y un aviso encima de él
           tapa justo el botón que ibas a pulsar. */}
-      <Toaster richColors closeButton position={movil ? "top-center" : "bottom-right"} theme={theme} />
+      <Toaster richColors closeButton position={mobile ? "top-center" : "bottom-right"} theme={theme} />
     </SidebarProvider>
   );
 }

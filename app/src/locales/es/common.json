@@ -627,8 +627,6 @@
     "removePdf": "Quitar el PDF",
     "removePdfTitle": "¿Quitar «{{name}}» de aquí?",
     "removePdfBody": "El fichero no se borra: sólo deja de aparecer aquí. Se deshace con Ctrl+Z.",
-    "collapseList": "Plegar la lista",
-    "expandList": "Desplegar la lista",
     "findSomebody": "Buscar a alguien",
     "noiseSuppression": "Supresión de ruido",
     "noiseSuppressionHint": "Quita el ventilador y el teclado. Apágala para música o un instrumento.",

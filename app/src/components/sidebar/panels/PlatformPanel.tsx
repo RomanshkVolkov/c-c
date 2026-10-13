@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import PanelRow from "@/components/sidebar/PanelRow";
 import { useServers } from "@/hooks/use-servers";
 import { useT } from "@/lib/i18n";
-import { DEV_TOOLS, navItem, visibleNavItems } from "@/lib/nav";
+import { DEV_TOOLS, moduleOf, navItem, visibleNavItems } from "@/lib/nav";
 import { isWebBuild } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
@@ -36,7 +36,7 @@ export default function PlatformPanel() {
   const authed = useAuthStore((s) => !!s.accessToken);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
   const { servers } = useServers();
-  const items = visibleNavItems({ authed, superadmin, web: isWebBuild }).filter((i) => i.group === "platform");
+  const items = visibleNavItems({ authed, superadmin, web: isWebBuild }).filter((i) => moduleOf(i.path) === "platform");
   const serversItem = navItem("/dashboard");
   const showServers = authed && !isWebBuild;
   const rest = items.filter((i) => i.path !== "/dashboard");

@@ -13,6 +13,18 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**13-oct, sin soltar (sólo app, #147): toda la navegación en un sidebar.**
+Riel de módulos (Trabajo, Documentación, Comunicación, Plataforma; ⌘1–⌘4) y un
+panel que cambia con el módulo; ⌘B lo pliega al riel. Sólo la rama de lo que
+se tiene abierto va desplegada, y lo que se pliega a mano se recuerda por
+organización. Comunicación lleva Canales y Directos en el panel, y
+Documentación el árbol con las páginas de cada doc; se fueron las columnas
+propias de chat, directos y páginas (el riel de iniciales del 9-oct de abajo
+ya no existe). En el teléfono, nada cambia salvo un botón «Páginas» en el
+documento. Un módulo nuevo es una línea en `MODULES` (`lib/nav.ts`) y otra en
+`PANELS` (`components/sidebar/panels.ts`). Commits S0–S3 en `main`; falta
+verlo en la app con datos reales y soltar (la siguiente a la v1.6.98).
+
 **Hecho, sin commitear (7-oct): Diagnóstico para ver bien la telemetría de
 cualquier app** (tarea `8709d4d4`, en TDS; análisis de los 9 puntos comentado
 ahí). Genérico: lo propio de cada app lo dice el lote (`device.label`,
