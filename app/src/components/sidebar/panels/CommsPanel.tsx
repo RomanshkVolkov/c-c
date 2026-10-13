@@ -1,37 +1,51 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
 
-import PanelRow from "@/components/sidebar/PanelRow";
-import { useCommsUnread } from "@/hooks/use-comms-unread";
+import ChannelsSection from "@/components/comms/ChannelsSection";
+import DirectsSection from "@/components/comms/DirectsSection";
+import PanelFilter from "@/components/sidebar/PanelFilter";
+import { useCommsData } from "@/hooks/use-comms-data";
 import { useT } from "@/lib/i18n";
-import { navItem } from "@/lib/nav";
+import { useDMStore } from "@/store/dm.store";
+import { useOrgsStore } from "@/store/orgs.store";
+import { useTasksStore } from "@/store/tasks.store";
+import { nombreDe } from "@/lib/nombres";
 
 /**
- * Comunicación, de momento: las dos filas de siempre con sus contadores.
+ * Comunicación: los canales y los directos en el mismo panel, como en Slack.
  *
- * Es el relleno de la rebanada S0 del sidebar nuevo. En la S1 este panel
- * pasa a llevar los canales y los directos como dos secciones, y las barras
- * laterales de `/chat` y `/dm` desaparecen.
+ * Sustituye a las dos columnas que abrían `/chat` y `/dm` cada una por su
+ * lado, con su propio plegado. Aquí son dos secciones que se pliegan pulsando
+ * la cabecera y se recuerdan por org, y de un canal a un directo hay un clic,
+ * no un cambio de pantalla para buscar la lista.
+ *
+ * El filtro de arriba casa canales por nombre y personas por nombre y
+ * usuario. No es la búsqueda (⌘K): sólo recorta lo que ya está en pantalla.
  */
-const ROWS = ["/chat", "/dm"].map(navItem);
-
 export default function CommsPanel() {
   const { t } = useT();
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const { channels, dms } = useCommsUnread();
+  const [query, setQuery] = useState("");
+  useCommsData();
+
+  const term = query.trim().toLowerCase();
+  const orgId = useOrgsStore((s) => s.currentOrgId);
+  // Sólo para el «nada coincide»: cada sección filtra lo suyo.
+  const anything = useTasksStore((s) => !term || s.tree.some((sp) => sp.name.toLowerCase().includes(term)));
+  const anyone = useDMStore(
+    (s) =>
+      !term ||
+      s.conversations.some(
+        (c) =>
+          c.orgId === orgId &&
+          (nombreDe(c).toLowerCase().includes(term) || c.username.toLowerCase().includes(term)),
+      ),
+  );
 
   return (
-    <div className="flex flex-col px-1">
-      {ROWS.map((item) => (
-        <PanelRow
-          key={item.path}
-          icon={<item.icon />}
-          label={t(item.labelKey)}
-          badge={item.path === "/chat" ? channels : dms}
-          active={pathname === item.path}
-          onClick={() => navigate(item.path)}
-        />
-      ))}
+    <div className="flex flex-col">
+      <PanelFilter value={query} onChange={setQuery} placeholder={t("nav:comms.filter")} />
+      <ChannelsSection filter={query} />
+      <DirectsSection filter={query} />
+      {!anything && !anyone && <p className="px-3 py-2 text-xs text-muted-foreground">{t("nav:panel.noMatches")}</p>}
     </div>
   );
 }

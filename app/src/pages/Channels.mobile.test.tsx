@@ -10,7 +10,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
  * uno enseña sólo la conversación, con flecha para volver; y con la lista en
  * pantalla no se está «mirando» ningún canal, así que sus mensajes avisan.
  * Mutantes: no esconder la lista; abrir el canal recordado en el teléfono;
- * declarar el canal a la vista estando en la lista.
+ * declarar el canal a la vista estando en la lista; pintar la lista también en
+ * el escritorio, donde vive en el panel del sidebar.
  */
 
 vi.mock("@/lib/api", () => ({
@@ -46,8 +47,8 @@ const montar = (url: string) =>
     </MemoryRouter>,
   );
 
-/** El rótulo de la columna: si se ve, la lista está en pantalla. */
-const listaVisible = () => !screen.getByText(/^(channels|canales)$/i).closest("aside")!.classList.contains("hidden");
+/** El selector «Canales | Directos» va arriba de la lista: si está, la lista está. */
+const listaVisible = () => screen.queryByRole("tablist") !== null;
 
 let ancho = 1280;
 beforeEach(() => {
@@ -75,10 +76,12 @@ describe("canales en un teléfono", () => {
     expect(screen.queryByText(/^viendo/)).toBeNull();
   });
 
-  it("en el escritorio sigue todo junto, y sin flecha de volver", () => {
+  // En el escritorio la lista es el panel de Comunicación del sidebar, no una
+  // columna de esta pantalla.
+  it("en el escritorio sólo la conversación, y sin flecha de volver", () => {
     ancho = 1280;
     montar("/chat");
-    expect(listaVisible()).toBe(true);
+    expect(listaVisible()).toBe(false);
     expect(screen.getByText("viendo Uno")).toBeTruthy();
     expect(screen.queryByText("volver")).toBeNull();
   });

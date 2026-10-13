@@ -47,3 +47,25 @@ describe("la última ruta de cada módulo", () => {
     expect(useLayoutStore.getState().lastRoute).toEqual({ comms: "/chat?space=sp-2", work: "/tasks" });
   });
 });
+
+/**
+ * La v1 guardaba `collapsed`, el plegado de las columnas de canales y
+ * directos que ya no existen. Al leerla se tira eso y se conserva lo demás.
+ * Mutante: un `migrate` que no toca nada.
+ */
+describe("lo guardado por la versión anterior", () => {
+  it("pierde las columnas plegadas y conserva lo demás", async () => {
+    localStorage.setItem(
+      "cac-layout",
+      JSON.stringify({ state: { collapsed: { channels: true }, comms: "/dm" }, version: 1 }),
+    );
+    await useLayoutStore.persist.rehydrate();
+    const s = useLayoutStore.getState() as unknown as Record<string, unknown>;
+    expect(s.collapsed).toBeUndefined();
+    expect(s.comms).toBe("/dm");
+    expect(s.panelOpen).toBe(true);
+    const saved = JSON.parse(localStorage.getItem("cac-layout") ?? "{}");
+    expect(saved.version).toBe(2);
+    expect(saved.state.collapsed).toBeUndefined();
+  });
+});

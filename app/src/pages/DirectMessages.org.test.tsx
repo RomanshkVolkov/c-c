@@ -17,7 +17,7 @@ vi.mock("@/store/dm.store", () => ({
 vi.mock("@/store/orgs.store", () => ({
   useOrgsStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ currentOrgId: "org-b" }),
 }));
-vi.mock("@/components/DMSwitcher", () => ({ default: () => null }));
+vi.mock("@/components/comms/CommsList", () => ({ default: () => null }));
 vi.mock("@/components/DMThread", () => ({ default: () => <p>el hilo</p> }));
 
 const { default: DirectMessages } = await import("./DirectMessages");

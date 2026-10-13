@@ -6,7 +6,8 @@ import { MemoryRouter } from "react-router-dom";
  * Directos en un teléfono: la lista o la conversación, no las dos (captura de
  * jose, 5-oct-2026: el hilo, al lado de la lista, se leía palabra a palabra).
  * El hilo ya trae su flecha de volver (`onBack` → `close`). Mutantes: no
- * esconder la lista con un directo abierto; esconderla también en escritorio.
+ * esconder la lista con un directo abierto; pintarla también en el escritorio,
+ * donde vive en el panel del sidebar.
  */
 
 const estado = { conversationId: null as string | null };
@@ -32,7 +33,7 @@ vi.mock("@/store/orgs.store", () => {
   const s = { currentOrgId: "org-1", orgs: [{ id: "org-1" }], setCurrentOrg: vi.fn() };
   return { useOrgsStore: Object.assign((sel: (x: Record<string, unknown>) => unknown) => sel(s), { getState: () => s }) };
 });
-vi.mock("@/components/DMSwitcher", () => ({ default: () => <div>la lista</div> }));
+vi.mock("@/components/comms/CommsList", () => ({ default: () => <div>la lista</div> }));
 vi.mock("@/components/DMThread", () => ({ default: () => <div>el hilo</div> }));
 
 const { default: DirectMessages } = await import("./DirectMessages");
@@ -43,7 +44,7 @@ const montar = () =>
       <DirectMessages />
     </MemoryRouter>,
   );
-const listaVisible = () => !screen.getByText("la lista").closest("aside")!.classList.contains("hidden");
+const listaVisible = () => screen.queryByText("la lista") !== null;
 
 let ancho = 390;
 beforeEach(() => {
@@ -67,11 +68,19 @@ describe("directos en un teléfono", () => {
     expect(listaVisible()).toBe(false);
   });
 
-  it("en el escritorio, las dos", () => {
+  // En el escritorio la lista es el panel de Comunicación del sidebar.
+  it("en el escritorio, la conversación sin lista propia", () => {
     ancho = 1280;
     estado.conversationId = "conv-1";
     montar();
     expect(screen.getByText("el hilo")).toBeTruthy();
-    expect(listaVisible()).toBe(true);
+    expect(listaVisible()).toBe(false);
+  });
+
+  it("y sin nada abierto, el aviso de elegir a alguien", () => {
+    ancho = 1280;
+    montar();
+    expect(listaVisible()).toBe(false);
+    expect(screen.getByText("Pick somebody to write to.")).toBeTruthy();
   });
 });

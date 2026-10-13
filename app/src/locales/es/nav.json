@@ -49,6 +49,15 @@
     "moving": "moviendo {{count}}",
     "openOfTotal": "{{open}} abiertas · {{total}} en total"
   },
+  "comms": {
+    "filter": "Buscar por nombre",
+    "channels": "Canales",
+    "directs": "Directos",
+    "newConversation": "Nueva conversación",
+    "inVoice": "En la voz: {{names}}",
+    "nothingToRead": "Todavía no hay nada que leer.",
+    "openGeneral": "Abrir una sala general"
+  },
   "account": {
     "theme": "Tema",
     "themeAuto": "Auto",

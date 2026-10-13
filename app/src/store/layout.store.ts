@@ -5,8 +5,7 @@ import type { ModuleKey } from "@/lib/nav";
 
 /**
  * Cómo tiene quien mira la barra lateral: qué módulo manda, si el panel está
- * abierto, qué ramas de cada árbol ha plegado o desplegado, y qué columnas
- * laterales lleva plegadas.
+ * abierto y qué ramas de cada árbol ha plegado o desplegado.
  *
  * Es su preferencia, no un estado de la sesión: se recuerda entre arranques.
  *
@@ -21,8 +20,6 @@ import type { ModuleKey } from "@/lib/nav";
  * plegado al arrancar; un ⌘B lo arregla. Se acepta: la alternativa era un
  * estado «plegado por la llamada» aparte que había que sincronizar.
  */
-export type CollapsibleColumn = "channels" | "dms";
-
 /** Las dos mitades de «Comunicación» en el móvil. */
 export type CommsPath = "/chat" | "/dm";
 
@@ -32,13 +29,6 @@ export function expansionKey(orgId: string | null | undefined, module: ModuleKey
 }
 
 interface LayoutState {
-  /**
-   * La lista de canales y la de directos se comen 240px que en una tablet son
-   * la conversación (9-oct-2026); plegadas quedan en un riel con las iniciales.
-   * Desaparece con la rebanada S1 del sidebar nuevo.
-   */
-  collapsed: Partial<Record<CollapsibleColumn, boolean>>;
-  setCollapsed: (column: CollapsibleColumn, v: boolean) => void;
   /**
    * En cuál de las dos estuviste la última vez: el botón «Comunicación» del
    * menú inferior vuelve ahí, que es lo que se espera de una pestaña.
@@ -75,8 +65,6 @@ interface LayoutState {
 export const useLayoutStore = create<LayoutState>()(
   persist(
     (set) => ({
-      collapsed: {},
-      setCollapsed: (column, v) => set((s) => ({ collapsed: { ...s.collapsed, [column]: v } })),
       comms: "/chat",
       setComms: (comms) => set({ comms }),
 
@@ -102,6 +90,18 @@ export const useLayoutStore = create<LayoutState>()(
           return { expanded: { ...s.expanded, [key]: rest } };
         }),
     }),
-    { name: "cac-layout" },
+    {
+      name: "cac-layout",
+      // v2 (12-oct-2026): fuera `collapsed`, el plegado de las columnas de
+      // canales y directos, que ya no existen —su lista vive en el panel—.
+      // Se tira en vez de traducirlo: plegar una columna de 240px no dice
+      // nada de si quieres el panel entero abierto.
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = { ...(persisted as Record<string, unknown>) };
+        if (version < 2) delete state.collapsed;
+        return state as unknown as LayoutState;
+      },
+    },
   ),
 );

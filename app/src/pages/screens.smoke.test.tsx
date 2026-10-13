@@ -77,14 +77,19 @@ const montar = (el: React.ReactNode) =>
 
 describe("las pantallas nuevas se montan sin renderizar en bucle", () => {
   it("Canales", async () => {
+    // Con el panel de Comunicación al lado, como en la app: la lista de
+    // canales vive ahí desde el 12-oct-2026, y es la que lee los stores.
     const { default: Channels } = await import("@/pages/Channels");
-    montar(<Channels />);
+    const { default: CommsPanel } = await import("@/components/sidebar/panels/CommsPanel");
+    montar(<><CommsPanel /><Channels /></>);
     await waitFor(() => expect(document.body.textContent).toContain("Channels"));
+    expect(document.body.textContent).toContain("Uno");
   });
 
   it("Directos", async () => {
     const { default: DirectMessages } = await import("@/pages/DirectMessages");
-    montar(<DirectMessages />);
+    const { default: CommsPanel } = await import("@/components/sidebar/panels/CommsPanel");
+    montar(<><CommsPanel /><DirectMessages /></>);
     await waitFor(() => expect(document.body.textContent).toContain("Direct messages"));
   });
 

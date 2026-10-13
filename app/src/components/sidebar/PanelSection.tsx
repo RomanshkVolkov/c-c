@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
  * Se pliega pulsando la cabecera, como en Notion; la cuenta de la derecha
  * sigue viéndose plegada, que es lo que hace útil plegar una sección de
  * canales sin perder cuántos tienes sin leer.
+ *
+ * `peek` es lo que se sigue viendo plegada, como en Slack: la fila en la que
+ * estás y las que tienen algo sin leer. Plegar es «no me enseñes lo que no
+ * me importa ahora», no «escóndeme el canal que tengo delante».
  */
 export default function PanelSection({
   label,
@@ -17,6 +21,7 @@ export default function PanelSection({
   onToggle,
   action,
   children,
+  peek,
   className,
 }: {
   label: string;
@@ -27,6 +32,8 @@ export default function PanelSection({
   /** Un botón a la derecha (crear, bloquear…); no se pliega con la sección. */
   action?: ReactNode;
   children: ReactNode;
+  /** Lo que sigue a la vista con la sección plegada. */
+  peek?: ReactNode;
   className?: string;
 }) {
   return (
@@ -48,7 +55,7 @@ export default function PanelSection({
         </button>
         {action}
       </div>
-      {open && <div className="px-1">{children}</div>}
+      {open ? <div className="px-1">{children}</div> : peek && <div className="px-1">{peek}</div>}
     </section>
   );
 }

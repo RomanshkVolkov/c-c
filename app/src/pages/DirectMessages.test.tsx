@@ -44,7 +44,7 @@ vi.mock("@/store/orgs.store", () => {
     useOrgsStore: Object.assign((sel: (x: Record<string, unknown>) => unknown) => sel(s), { getState: () => s }),
   };
 });
-vi.mock("@/components/DMSwitcher", () => ({ default: () => null }));
+vi.mock("@/components/comms/CommsList", () => ({ default: () => null }));
 vi.mock("@/components/DMThread", () => ({ default: () => null }));
 
 const { default: DirectMessages } = await import("./DirectMessages");

@@ -49,6 +49,15 @@
     "moving": "moving {{count}}",
     "openOfTotal": "{{open}} open · {{total}} in total"
   },
+  "comms": {
+    "filter": "Filter by name",
+    "channels": "Channels",
+    "directs": "Direct messages",
+    "newConversation": "New conversation",
+    "inVoice": "In voice: {{names}}",
+    "nothingToRead": "Nothing to read yet.",
+    "openGeneral": "Open a general room"
+  },
   "account": {
     "theme": "Theme",
     "themeAuto": "Auto",

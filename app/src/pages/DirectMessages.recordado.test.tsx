@@ -38,7 +38,7 @@ vi.mock("@/store/places.store", () => {
   const s = { byOrg: { "org-1": { dm: "conv-recordada" } }, remember: vi.fn() };
   return { usePlacesStore: Object.assign((sel: (x: typeof s) => unknown) => sel(s), { getState: () => s }) };
 });
-vi.mock("@/components/DMSwitcher", () => ({ default: () => <div>la lista</div> }));
+vi.mock("@/components/comms/CommsList", () => ({ default: () => <div>la lista</div> }));
 vi.mock("@/components/DMThread", () => ({ default: () => <div>el hilo</div> }));
 
 const { default: DirectMessages } = await import("./DirectMessages");
