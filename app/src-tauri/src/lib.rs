@@ -12,6 +12,7 @@ mod crypto_tools;
 mod dropped;
 mod http_client;
 mod image;
+mod notify;
 mod mcp;
 mod media;
 mod notes_export;
@@ -1668,20 +1669,57 @@ async fn save_file(
 ) -> Result<bool, String> {
     use tauri_plugin_dialog::DialogExt;
 
-    let path = app
+    let mut dialog = app
         .dialog()
         .file()
         .set_file_name(&file_name)
-        .add_filter(&filter_name, &[&filter_ext])
-        .blocking_save_file();
+        .add_filter(&filter_name, &[&filter_ext]);
+    if let Some(dir) = dialog_dir(&app) {
+        dialog = dialog.set_directory(dir);
+    }
+    let path = dialog.blocking_save_file();
 
     let Some(path) = path else {
         return Ok(false);
     };
 
-    std::fs::write(path.as_path().ok_or("Invalid path")?, &data).map_err(|e| e.to_string())?;
+    let path = path.as_path().ok_or("Invalid path")?;
+    std::fs::write(path, &data).map_err(|e| e.to_string())?;
+    remember_dialog_dir(path.parent());
 
     Ok(true)
+}
+
+// ─── Dónde abre un diálogo de ficheros ───────────────────────────────────────
+//
+// Sin carpeta, GTK abre el diálogo en el directorio del proceso, y en la
+// AppImage ése es su montaje: el AppRun de linuxdeploy hace `cd $APPDIR/usr`
+// antes de lanzar la app, así que «guardar» abría en `/tmp/.mount_cac…/usr`
+// (14-oct-2026), una carpeta que desaparece al cerrar la app. Se abre en la
+// última donde se guardó o se eligió algo y, la primera vez, en Descargas.
+
+static LAST_DIALOG_DIR: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+
+fn remember_dialog_dir(dir: Option<&std::path::Path>) {
+    if let (Some(d), Ok(mut last)) = (dir, LAST_DIALOG_DIR.lock()) {
+        *last = Some(d.to_path_buf());
+    }
+}
+
+fn dialog_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    let last = LAST_DIALOG_DIR.lock().ok().and_then(|l| l.clone());
+    pick_dialog_dir(&[last, app.path().download_dir().ok(), app.path().home_dir().ok()])
+}
+
+/// La primera que existe como carpeta y no está dentro del montaje de la
+/// AppImage (ni en ningún `/tmp/.mount_*`).
+fn pick_dialog_dir(candidates: &[Option<std::path::PathBuf>]) -> Option<std::path::PathBuf> {
+    candidates
+        .iter()
+        .flatten()
+        .find(|d| d.is_dir() && !d.to_string_lossy().contains("/.mount_"))
+        .cloned()
 }
 
 // ─── Notes export ────────────────────────────────────────────────────────────
@@ -1706,10 +1744,15 @@ async fn export_notes(
         return Err("Not signed in".into());
     };
 
-    let Some(chosen) = app.dialog().file().blocking_pick_folder() else {
+    let mut picker = app.dialog().file();
+    if let Some(dir) = dialog_dir(&app) {
+        picker = picker.set_directory(dir);
+    }
+    let Some(chosen) = picker.blocking_pick_folder() else {
         return Ok(None);
     };
     let chosen = chosen.into_path().map_err(|e| e.to_string())?;
+    remember_dialog_dir(Some(&chosen));
 
     // Everything lands in one new subfolder rather than loose in whatever the
     // user picked: an export writes a whole tree, and scattering it across an
@@ -1897,6 +1940,7 @@ pub fn run() {
             sse_connect,
             sse_disconnect,
             save_file,
+            notify::desktop_notify,
             export_notes,
             op_item_create,
             op_list_vaults,
@@ -2025,5 +2069,27 @@ mod replaced_binary_tests {
             "/home/rv/cac.AppImage"
         ))));
         assert!(!exe_link_says_deleted(None));
+    }
+}
+
+#[cfg(test)]
+mod dialog_dir_tests {
+    use super::pick_dialog_dir;
+
+    /// Nunca en el montaje de la AppImage, y la primera que exista.
+    /// Mutantes: no saltar `/.mount_`; no mirar que exista.
+    #[test]
+    fn a_dialog_never_opens_inside_the_appimage() {
+        let tmp = std::env::temp_dir();
+        let mount = tmp.join(".mount_cacTEST/usr");
+        std::fs::create_dir_all(&mount).unwrap();
+        let missing = tmp.join("cac-no-existe-nunca");
+        let home = tmp.clone();
+        assert_eq!(
+            pick_dialog_dir(&[Some(mount.clone()), Some(missing), None, Some(home.clone())]),
+            Some(home)
+        );
+        assert_eq!(pick_dialog_dir(&[Some(mount.clone())]), None);
+        let _ = std::fs::remove_dir_all(tmp.join(".mount_cacTEST"));
     }
 }

@@ -20,9 +20,10 @@ export default function NotificationCheck() {
   const sendTest = async () => {
     setTesting(true);
     try {
-      const { isPermissionGranted, requestPermission, sendNotification } = await import(
-        "@tauri-apps/plugin-notification"
-      );
+      const { isPermissionGranted, requestPermission } = await import("@tauri-apps/plugin-notification");
+      // El mismo camino que los avisos de verdad: probar otro diría que van
+      // bien mientras los de verdad salen sin nombre ni logo.
+      const { showDesktopNotification } = await import("@/lib/desktop-notify");
       let granted = await isPermissionGranted();
       if (!granted) granted = (await requestPermission()) === "granted";
       if (!granted) {
@@ -31,7 +32,7 @@ export default function NotificationCheck() {
         });
         return;
       }
-      sendNotification({
+      await showDesktopNotification({
         title: "cac — test",
         body: t("common:last.testBody"),
       });

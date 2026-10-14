@@ -126,6 +126,7 @@ dependencies = [
  "log",
  "md-5",
  "nokhwa",
+ "notify-rust",
  "objc2",
  "objc2-av-foundation",
  "portable-pty",

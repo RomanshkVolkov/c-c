@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AnsiToHtml from "ansi-to-html";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { FolderOpen, Loader2, Play, Square } from "lucide-react";
@@ -132,7 +133,10 @@ export default function ServerProvision() {
     !!playbook && !!tools?.ansiblePlaybook && !busy && missing.length === 0 && extraParsed.bad.length === 0 && (!needsBecomePw || !!becomePw);
 
   const pickFolder = async () => {
-    const dir = await openDialog({ directory: true, multiple: false, defaultPath: prefs.projectDir || undefined }).catch(() => null);
+    // Sin carpeta recordada, la de casa: sin `defaultPath`, GTK abre en el
+    // directorio del proceso, que en la AppImage es su montaje en /tmp.
+    const start = prefs.projectDir || (await homeDir().catch(() => undefined));
+    const dir = await openDialog({ directory: true, multiple: false, defaultPath: start }).catch(() => null);
     if (typeof dir === "string") setPrefs(server.id, { projectDir: dir, playbookId: "" });
   };
 

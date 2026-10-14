@@ -1,3 +1,4 @@
+import { showDesktopNotification } from "@/lib/desktop-notify";
 import { pushActiveHere } from "@/lib/push";
 import { isTauri, isWebBuild } from "@/lib/platform";
 import { useEffect } from "react";
@@ -5,7 +6,6 @@ import { toast } from "sonner";
 import {
   isPermissionGranted,
   requestPermission,
-  sendNotification,
 } from "@tauri-apps/plugin-notification";
 import { apiUrl, refreshAccessToken } from "@/lib/api";
 import { adoptarMembresia } from "@/lib/membresia";
@@ -277,7 +277,7 @@ export function useReportEvents() {
           return;
         }
         try {
-          await Promise.resolve(sendNotification({ title, body }));
+          await showDesktopNotification({ title, body });
           log({ kind, title, body, delivery: "os", reportId });
         } catch (e) {
           log({
