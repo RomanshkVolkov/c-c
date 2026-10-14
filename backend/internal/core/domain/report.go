@@ -653,11 +653,14 @@ type UpdateReportCommentRequest struct {
 }
 
 type ReportImageResponse struct {
-	ID        string    `json:"id"`
-	CommentID *string   `json:"commentId,omitempty"`
-	FileName  string    `json:"fileName"`
-	URL       string    `json:"url"` // short-lived HMAC-signed proxy URL
-	CreatedAt time.Time `json:"createdAt"`
+	ID        string  `json:"id"`
+	CommentID *string `json:"commentId,omitempty"`
+	FileName  string  `json:"fileName"`
+	// Vacío en las imágenes (siempre WebP). Con valor, es un documento (CSV,
+	// Excel, PDF) que se ofrece como descarga, no como <img>.
+	ContentType string    `json:"contentType,omitempty"`
+	URL         string    `json:"url"` // short-lived HMAC-signed proxy URL
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type ReportDetailResponse struct {

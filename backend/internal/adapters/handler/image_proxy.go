@@ -54,11 +54,16 @@ func (h *imageProxyHandler) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 	defer obj.Body.Close()
 
-	ct := obj.ContentType
+	ct := img.ContentType
+	if ct == "" {
+		ct = obj.ContentType
+	}
 	if ct == "" {
 		ct = "image/webp" // image-service transcodes to webp
 	}
-	w.Header().Set("Content-Type", ct)
+	// Un documento (CSV, Excel) se descarga con su nombre; una imagen se ve. El
+	// tipo guardado manda sobre el del bucket, que lo declaró quien lo subió.
+	setFileHeaders(w, ct, img.FileName)
 	w.Header().Set("Cache-Control", "private, no-store")
 	if obj.Size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(obj.Size, 10))

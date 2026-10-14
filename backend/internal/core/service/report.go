@@ -326,7 +326,7 @@ func (s *ReportService) ReporterView(reportID string) (*domain.ReporterReportVie
 	var gallery []domain.ReportImageResponse
 	byComment := make(map[string][]domain.ReportImageResponse)
 	for _, img := range images {
-		res := domain.ReportImageResponse{ID: img.ID, FileName: img.FileName, URL: signedImageURL(reportID, img.ID), CreatedAt: img.CreatedAt}
+		res := domain.ReportImageResponse{ID: img.ID, FileName: img.FileName, ContentType: img.ContentType, URL: signedImageURL(reportID, img.ID), CreatedAt: img.CreatedAt}
 		if img.CommentID == nil {
 			gallery = append(gallery, res)
 		} else {
@@ -460,12 +460,27 @@ func (s *ReportService) uploadImages(ctx context.Context, reportID string, comme
 	var persisted []domain.ReportImage
 	var lastErr error
 	for _, img := range images {
-		res, err := s.images.UploadImage(ctx, img.FileName, img.ContentType, img.Data, folder)
-		if err != nil {
-			lastErr = err
-			continue
+		ri := domain.ReportImage{ItemID: reportID, CommentID: commentID, FileName: img.FileName}
+		if strings.HasPrefix(img.ContentType, "image/") {
+			res, err := s.images.UploadImage(ctx, img.FileName, img.ContentType, img.Data, folder)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			ri.Path = res.Key
+		} else {
+			// Documentos (CSV, Excel, PDF): tal cual, sin pasar a WebP. Se guarda
+			// el tipo para servirlo como descarga y para que el cliente sepa que
+			// no es una imagen.
+			res, err := s.images.UploadFile(ctx, img.FileName, img.ContentType, img.Data, folder)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			ri.Path = res.Key
+			ri.ContentType = img.ContentType
+			ri.Bytes = int64(len(img.Data))
 		}
-		ri := domain.ReportImage{ItemID: reportID, CommentID: commentID, Path: res.Key, FileName: img.FileName}
 		ri.ID = uuid.NewString()
 		persisted = append(persisted, ri)
 	}
@@ -516,11 +531,12 @@ func (s *ReportService) Detail(reportID string, includeWithdrawn bool) (*domain.
 	byComment := make(map[string][]domain.ReportImageResponse)
 	for _, img := range images {
 		res := domain.ReportImageResponse{
-			ID:        img.ID,
-			CommentID: img.CommentID,
-			FileName:  img.FileName,
-			URL:       signedImageURL(reportID, img.ID),
-			CreatedAt: img.CreatedAt,
+			ID:          img.ID,
+			CommentID:   img.CommentID,
+			FileName:    img.FileName,
+			ContentType: img.ContentType,
+			URL:         signedImageURL(reportID, img.ID),
+			CreatedAt:   img.CreatedAt,
 		}
 		if img.CommentID == nil {
 			gallery = append(gallery, res)

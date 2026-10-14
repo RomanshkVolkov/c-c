@@ -143,8 +143,14 @@ proxy de cac.
 
 `title` · `description` · `url` · `userAgent` · `viewport` · `reporterName` ·
 `reporterEmail` · `reporterId` · `origin` · `category` · `priority` · `area` ·
-`telemetry` · `snapshot` · `context` · `images` (hasta 5, 5 MB cada una,
-`png`/`jpeg`/`webp`/`gif`)
+`telemetry` · `snapshot` · `context` · `images` (hasta 5 archivos: imágenes
+`png`/`jpeg`/`webp`/`gif` de hasta 5 MB, y documentos `csv`/`xlsx`/`xls`/`pdf` de
+hasta 10 MB)
+
+Los documentos se reconocen por la extensión y se comprueban contra el contenido
+(un HTML renombrado a `.csv` se rechaza). Se guardan tal cual, sin pasar a WebP, y
+en la respuesta llevan `contentType`; una imagen no lo trae. El enlace firmado de
+un documento lo descarga con su nombre en vez de mostrarlo.
 
 ### El cuerpo de cada llamada
 
