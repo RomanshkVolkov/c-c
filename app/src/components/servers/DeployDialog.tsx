@@ -227,8 +227,6 @@ export default function DeployDialog({
 
             <MigrateCommandField key={deployable.id} server={server} deployable={deployable} />
 
-            <BuildOnHostSection key={`build-${deployable.id}`} server={server} deployable={deployable} />
-
             <CINoticeSection
               server={server}
               deployable={deployable}
@@ -243,6 +241,9 @@ export default function DeployDialog({
                 })
               }
             />
+
+            {/* Después del CI: el build pide el repo, que se pone ahí. */}
+            <BuildOnHostSection key={`build-${deployable.id}`} server={server} deployable={deployable} />
 
             <div className="space-y-1">
               <p className="text-sm font-medium">{t("common:deploy.history")}</p>
