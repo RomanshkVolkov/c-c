@@ -37,6 +37,7 @@ const { default: ServerLayout } = await import("./ServerLayout");
 const { default: ServerOverview } = await import("./ServerOverview");
 const { default: ServerServices } = await import("./ServerServices");
 const { default: StackSecrets } = await import("@/pages/StackSecrets");
+const { default: ServiceDeploy } = await import("@/pages/servers/ServiceDeploy");
 const { useDeploymentsStore } = await import("@/store/deployments.store");
 
 const servidor = (over: Record<string, unknown> = {}) => ({
@@ -80,6 +81,7 @@ const montar = (url: string) =>
             <Route index element={<ServerOverview />} />
             <Route path="services" element={<ServerServices />} />
             <Route path="secrets" element={<StackSecrets />} />
+            <Route path="deploy" element={<ServiceDeploy />} />
           </Route>
         </Routes>
       </ConfirmProvider>
@@ -116,11 +118,34 @@ describe("un servidor se abre con su URL", () => {
     expect(screen.getByDisplayValue("beta-api")).toBeTruthy();
   });
 
-  it("los Secrets de un servicio se abren desde su fila, con el servicio en la URL", async () => {
+  // Los secrets que gestiona cac viven en «Despliegue», con lo demás de
+  // desplegar: el botón de la fila lleva ahí, con el servicio en la URL.
+  // Mutante: seguir llevando a Secrets.
+  it("los secrets de un servicio se abren desde su fila, en su página de despliegue", async () => {
     backend(servidor());
     montar("/servers/srv-1/services");
     fireEvent.click(await screen.findByRole("button", { name: /^secrets$/i }));
-    await waitFor(() => expect(screen.getByLabelText(/^(servicio|service)$/i).textContent).toContain("beta_app"));
+    await waitFor(() => expect(screen.getByLabelText(/^(elige un servicio|pick a service)$/i).textContent).toContain("beta_app"));
+    expect(screen.getByRole("heading", { name: /^(despliegue|deploy)$/i })).toBeTruthy();
+  });
+
+  // La página trae la configuración entera, con los secrets del servicio
+  // dentro. Mutante: montar el panel sin `full`.
+  it("la página de despliegue tiene la configuración y los secrets", async () => {
+    backend(servidor());
+    useDeploymentsStore.setState({ deployables: {} });
+    const backendGet = api.get.getMockImplementation()!;
+    api.get.mockImplementation(async (url: string) => {
+      if (url.endsWith("/deployables")) {
+        return { success: true, data: [{ id: "dp-1", orgId: "org-1", serverId: "srv-1", name: "app", stack: "beta",
+          serviceName: "beta_app", imageRepo: "ghcr.io/dwit-mexico/beta-api", environment: "prod", repoFullName: "",
+          onCINotify: "record", ciKeyPreview: "", currentImage: "", previousImage: "" }] };
+      }
+      return backendGet(url);
+    });
+    montar("/servers/srv-1/deploy?service=beta_app");
+    expect(await screen.findByText(/^(rama y build|branch and build)$/i)).toBeTruthy();
+    expect(screen.getByText(/^(aviso del ci|ci notice)$/i)).toBeTruthy();
   });
 
   it("uno que no es de tu org devuelve al panel", async () => {

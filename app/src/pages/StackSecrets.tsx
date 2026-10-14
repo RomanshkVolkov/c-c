@@ -1,10 +1,9 @@
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useServerContext } from "@/pages/servers/ServerLayout";
 import { GITHUB_PAT_KEY, inferOwnerRepo } from "@/lib/github-repo";
-import ServiceSecretRefs from "@/components/servers/ServiceSecretRefs";
 import {
   KeyRound,
   Plus,
@@ -447,9 +446,17 @@ export default function StackSecrets() {
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 max-w-4xl mx-auto w-full">
-        {/* Los de runtime, por referencia a 1Password. Los de abajo (GitHub) son
-            los del CI, para construir. */}
-        {service && <ServiceSecretRefs server={server} service={service} />}
+        {/* Los que gestiona cac (1Password → servidor) viven ahora en
+            «Despliegue», junto al resto de lo que hace falta para desplegar; aquí
+            se quedan los de GitHub, los del CI. */}
+        {service && (
+          <p className="rounded-md border p-3 text-sm text-muted-foreground">
+            {t("common:servers.secretsMoved")}{" "}
+            <Link className="text-primary underline" to={`/servers/${server.id}/deploy?service=${encodeURIComponent(service.name)}`}>
+              {t("common:deploy.pageTitle")}
+            </Link>
+          </p>
+        )}
 
         {/* Token Configuration */}
         <Card>

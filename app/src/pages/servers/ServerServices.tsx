@@ -444,7 +444,9 @@ export default function ServerServices() {
             onLogsClick={(svc) => setSelectedService((prev) => (prev?.id === svc.id ? null : svc))}
             // El servicio va en la URL, no en el `state` del router: así la
             // pantalla de secrets aguanta una recarga.
-            onSecretsClick={(svc) => navigate(`/servers/${server.id}/secrets?service=${encodeURIComponent(svc.name)}`)}
+            // Los secrets que gestiona cac viven en «Despliegue», con el resto
+            // de lo que hace falta para desplegar el servicio.
+            onSecretsClick={(svc) => navigate(`/servers/${server.id}/deploy?service=${encodeURIComponent(svc.name)}`)}
             onShellClick={(svc) => abrirTerminal(server, { kind: "service", name: svc.name })}
             onDeployClick={setDeployFor}
           />
@@ -458,6 +460,7 @@ export default function ServerServices() {
           open
           onOpenChange={(v) => !v && setDeployFor(null)}
           onOpenActivity={(deployableId, orgId) => goInOrg(navigate, `/activity?deployable=${deployableId}`, orgId)}
+          onConfigure={() => navigate(`/servers/${server.id}/deploy?service=${encodeURIComponent(deployFor.name)}`)}
         />
       )}
 

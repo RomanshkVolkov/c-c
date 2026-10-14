@@ -85,7 +85,7 @@ function respuestas(deployables: unknown[], history: unknown[], builds: unknown[
 }
 
 const pintar = (s: Server = server()) =>
-  render(<DeployDialog server={s} service={service} open onOpenChange={() => {}} />);
+  render(<DeployDialog server={s} service={service} open full onOpenChange={() => {}} />);
 
 const botonDesplegar = () => screen.getByRole("button", { name: /^(desplegar|deploy|desplegando…|deploying…)$/i }) as HTMLButtonElement;
 
@@ -183,6 +183,23 @@ describe("desplegar un servicio", () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deployments/d-2/rollback", {}, true),
     );
+  });
+});
+
+// El modal es para desplegar: la configuración vive en la página
+// «Despliegue», y el modal lleva a ella. Mutantes: el modal con toda la
+// configuración; el enlace sin llevar a ningún sitio.
+describe("el modal rápido", () => {
+  it("despliega y lleva a configurar, sin la configuración dentro", async () => {
+    respuestas([deployable], []);
+    const configurar = vi.fn();
+    render(<DeployDialog server={server()} service={service} open onOpenChange={() => {}} onConfigure={configurar} />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(configurar el despliegue|set up the deploy)$/i }));
+    expect(configurar).toHaveBeenCalled();
+    expect(screen.queryByText(/^(aviso del ci|ci notice)$/i)).toBeNull();
+    expect(screen.queryByText(/^(rama y build|branch and build)$/i)).toBeNull();
+    expect(screen.queryByLabelText(/^(migraciones|migrations)$/i)).toBeNull();
+    expect(screen.getByLabelText(/^(commit|sha)/i)).toBeTruthy();
   });
 });
 
@@ -357,7 +374,7 @@ describe("sin ir a GitHub", () => {
   it("si el servicio corre con un tag corto, el paso del workflow manda el sha corto", async () => {
     respuestas([deployable], []);
     post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
-    render(<DeployDialog server={server()} service={{ ...service, image: "ghcr.io/dwit-mexico/api:9c55939" }} open onOpenChange={() => {}} />);
+    render(<DeployDialog server={server()} service={{ ...service, image: "ghcr.io/dwit-mexico/api:9c55939" }} open full onOpenChange={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /^(generar llave|mint key)$/i }));
     const paso = (await screen.findByText(/X-Deploy-Key/)).textContent ?? "";
     expect(paso).toContain("git rev-parse --short=7 HEAD");
@@ -368,7 +385,7 @@ describe("sin ir a GitHub", () => {
     const corto = { ...service, image: "ghcr.io/dwit-mexico/api:9c55939" };
     respuestas([], []);
     post.mockResolvedValue({ success: true, data: deployable });
-    render(<DeployDialog server={server()} service={corto} open onOpenChange={() => {}} />);
+    render(<DeployDialog server={server()} service={corto} open full onOpenChange={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /^(registrar|register)$/i }));
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(post.mock.calls[0][1].shortTags).toBe(true);
@@ -376,7 +393,7 @@ describe("sin ir a GitHub", () => {
 
     respuestas([deployable], []);
     patch.mockResolvedValue({ success: true, data: { ...deployable, repoFullName: "dwit/api", shortTags: true } });
-    render(<DeployDialog server={server()} service={corto} open onOpenChange={() => {}} />);
+    render(<DeployDialog server={server()} service={corto} open full onOpenChange={() => {}} />);
     fireEvent.change(await screen.findByLabelText(/(repo de github|github repo)/i), { target: { value: "dwit/api" } });
     fireEvent.click(screen.getByRole("button", { name: /^(guardar|save)$/i }));
     await waitFor(() => expect(patch).toHaveBeenCalled());

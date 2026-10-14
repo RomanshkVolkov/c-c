@@ -302,7 +302,8 @@
       "nodes": "Nodos",
       "stats": "Recursos",
       "secrets": "Secrets",
-      "provision": "Provisioning"
+      "provision": "Provisioning",
+      "deploy": "Despliegue"
     },
     "tabsLabel": "Secciones del servidor",
     "back": "Volver a servidores",
@@ -331,7 +332,8 @@
       "silentHint": "Mira los logs del servicio cac_swarm-manage en el servidor: puede que la imagen no bajara o que un secret esté mal.",
       "behind": "Volvió en v{{version}}, pero esta app instala la v{{latest}}: la imagen nueva no se bajó.",
       "waiting": "Esperando al agente…"
-    }
+    },
+    "secretsMoved": "Los secrets que cac lleva al servidor (desde 1Password) están ahora en"
   },
   "admin": {
     "users": "Usuarios",
@@ -736,7 +738,11 @@
       "save": "Guardar rama y build",
       "saved": "Guardado",
       "saveFailed": "No se pudo guardar el build"
-    }
+    },
+    "configure": "Configurar el despliegue",
+    "pageTitle": "Despliegue",
+    "pagePick": "Elige un servicio",
+    "pageLead": "Todo lo de cómo despliega cac un servicio: desplegar un commit y ver lo desplegado, de dónde sale la imagen, la rama y el build en el servidor, sus secrets y sus migraciones."
   },
   "stale": {
     "body": "cac se actualizó mientras esta ventana estaba abierta. Reiníciala: hasta entonces, 1Password no le contesta.",

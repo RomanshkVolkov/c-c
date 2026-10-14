@@ -91,6 +91,7 @@ function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer:
     { to: "services", label: `${t("common:servers.tabs.services")}${swarm.loading ? "" : ` (${swarm.services.length})`}` },
     { to: "nodes", label: `${t("common:servers.tabs.nodes")}${swarm.loading ? "" : ` (${swarm.nodes.length})`}` },
     { to: "stats", label: t("common:servers.tabs.stats") },
+    { to: "deploy", label: t("common:servers.tabs.deploy") },
     { to: "secrets", label: t("common:servers.tabs.secrets") },
     { to: "provision", label: t("common:servers.tabs.provision") },
   ];
