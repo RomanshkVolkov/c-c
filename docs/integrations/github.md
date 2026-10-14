@@ -224,6 +224,13 @@ Son de **sólo lectura**: el repo es la fuente, y se editan allí, con una PR.
   - con el botón «Sincronizar» de la org
     (`POST /api/v1/organizations/{id}/github/repos/{repoId}/docs/sync`), por si
     se perdió un webhook.
+- **Quién lo cambió:** cada fichero guarda el último commit que lo tocó (autor,
+  fecha, mensaje), sacado del propio webhook de push, que trae los ficheros de
+  cada commit. No cuesta ni una petición a GitHub. Por eso la copia inicial no
+  lo sabe: se sabe desde el primer push que toque cada fichero.
+- **En vivo:** cuando un push cambia algún `.md`, el backend publica
+  `repo-docs:changed` a la org, y la app vuelve a pedir sólo lo de ese repo:
+  el panel, el fichero abierto y los includes que lo citan.
 - **Si GitHub corta el árbol** (repos enormes) o hay más de 1000, el repo queda
   `truncated`: se guarda lo que cupo y no se borra nada.
 - **Apagar los docs** del repo (`showDocs: false` en su PATCH) o desatarlo
