@@ -374,3 +374,47 @@ func TestAPageKnowsWhatLinksToIt(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// Los .md de un repo atado salen en la búsqueda de docs (docs as code), sólo
+// los de la org y sólo mientras el repo los enseña.
+// Mutantes: sin el trozo del repo; sin mirar `show_docs`; sin la org.
+func TestDocSearchFindsRepoDocs(t *testing.T) {
+	f := newPagesFixture(t, "o1")
+	if err := f.db.AutoMigrate(&domain.GitHubRepo{}, &domain.RepoDoc{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSearchIndexes(f.db); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(v any) {
+		if err := f.db.Create(v).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(&domain.GitHubRepo{InstallationID: 5, RepoID: 200, FullName: "dwit/web", OrgID: "o1", SpaceID: "sp", ShowDocs: true})
+	mk(&domain.GitHubRepo{InstallationID: 5, RepoID: 300, FullName: "dwit/oculto", OrgID: "o1", SpaceID: "sp"})
+	f.db.Model(&domain.GitHubRepo{}).Where("repo_id = 300").Update("show_docs", false)
+	mk(&domain.GitHubRepo{InstallationID: 6, RepoID: 400, FullName: "otra/x", OrgID: "o2", SpaceID: "sp2", ShowDocs: true})
+	mk(&domain.RepoDoc{OrgID: "o1", RepoID: 200, Path: "docs/deploy.md", Title: "Desplegar Nereus", BlobSha: "a", Body: "kubectl"})
+	mk(&domain.RepoDoc{OrgID: "o1", RepoID: 300, Path: "README.md", Title: "Nereus oculto", BlobSha: "b"})
+	mk(&domain.RepoDoc{OrgID: "o2", RepoID: 400, Path: "README.md", Title: "Nereus ajeno", BlobSha: "c"})
+	f.page(t, "o1", "Nereus", "El back office.", nil)
+
+	hits, err := NewSearchRepository(f.db).Docs("nereus", "o1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var repo []domain.SearchHit
+	for _, h := range hits {
+		if h.Kind == domain.SearchRepoDoc {
+			repo = append(repo, h)
+		}
+	}
+	if len(hits) != 2 || len(repo) != 1 {
+		t.Fatalf("aciertos: %+v", hits)
+	}
+	if repo[0].Title != "Desplegar Nereus" || repo[0].Where != "dwit/web/docs/deploy.md" ||
+		repo[0].Link != "/docs?repoDoc="+repo[0].ID {
+		t.Fatalf("el del repo: %+v", repo[0])
+	}
+}

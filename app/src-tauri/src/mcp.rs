@@ -969,6 +969,41 @@ fn page_body(view: &Value) -> &str {
 }
 
 /// `get_doc_page` sin sección: el índice de la página, sin el cuerpo.
+/// Un .md del repo como lo lee un agente: su índice, una sección o entero,
+/// igual que una página. Sin hashes: es de sólo lectura, no hay nada que
+/// reescribir con ellos.
+fn repo_doc_view(d: &Value, section: Option<&str>, full: bool) -> Result<Value, String> {
+    let body = d.get("body").and_then(|v| v.as_str()).unwrap_or("");
+    let mut out = json!({
+        "id": d.get("id"),
+        "title": d.get("title"),
+        "path": d.get("path"),
+        "repo": d.get("fullName"),
+        "branch": d.get("branch"),
+        "htmlUrl": d.get("htmlUrl"),
+        "syncedAt": d.get("syncedAt"),
+        "readOnly": true,
+    });
+    if d.get("tooLarge").and_then(|v| v.as_bool()).unwrap_or(false) {
+        out["tooLarge"] = json!(true);
+        return Ok(out);
+    }
+    if let Some(wanted) = section {
+        let sec = find_section(body, wanted)?;
+        out["section"] = json!(sec.heading);
+        out["text"] = json!(&body[sec.start..sec.end]);
+        return Ok(out);
+    }
+    out["headings"] = json!(sections(body)
+        .iter()
+        .map(|s| json!({ "heading": s.heading, "level": s.level }))
+        .collect::<Vec<_>>());
+    if full {
+        out["body"] = json!(body);
+    }
+    Ok(out)
+}
+
 fn page_outline(view: &Value, kind: &str, owner: &str) -> Value {
     let page = view.get("page").cloned().unwrap_or(Value::Null);
     let body = page_body(view);
@@ -1872,6 +1907,30 @@ fn tool_defs() -> Value {
                     "full": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "pageId"]
+            }
+        },
+        {
+            "name": "list_repo_docs",
+            "description": "The markdown files of the GitHub repos linked to a space (docs as code): README, docs/… — each with its id, path and title, grouped by repo with its branch and when it last synced. Read-only: they are edited in the repository with a pull request, and cac's copy updates on every push to the default branch. Get the spaceId from list_task_spaces.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spaceId": { "type": "string" }
+                },
+                "required": ["spaceId"]
+            }
+        },
+        {
+            "name": "get_repo_doc",
+            "description": "One markdown file from a linked repo (from list_repo_docs or a search hit of kind `repoDoc`). Without `section`: its outline — title, path, repo, branch, GitHub URL and headings. With `section`: that heading and what's under it. With `full`: the whole body too. Read-only: to change it, edit the file in the repo.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "section": { "type": "string" },
+                    "full": { "type": "boolean" }
+                },
+                "required": ["id"]
             }
         },
         {
@@ -2893,6 +2952,18 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             let (kind, id) = doc_target(args)?;
             let flat = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages"))?;
             Ok(json!({ "pages": build_page_tree(&flat, &kind, &id) }))
+        }
+
+        "list_repo_docs" => {
+            let space = arg_str(args, "spaceId").ok_or("spaceId is required")?;
+            let groups = api_get(cfg, &format!("/api/v1/repo-docs?spaceId={}", urlencode(&space)))?;
+            Ok(json!({ "repos": groups }))
+        }
+
+        "get_repo_doc" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let d = api_get(cfg, &format!("/api/v1/repo-docs/{}", urlencode(&id)))?;
+            Ok(repo_doc_view(&d, arg_str(args, "section").as_deref(), arg_bool(args, "full"))?)
         }
 
         "get_doc_page" => {
@@ -4256,5 +4327,37 @@ mod tests {
             "reescribir una sección sin su hash pisaría lo que no se leyó"
         );
     }
-}
 
+    // ── Los .md del repo (docs as code) ─────────────────────────────────────
+
+    /// Un .md del repo se lee como una página: índice, sección o entero, y
+    /// siempre dice que es de sólo lectura. Uno demasiado grande no trae
+    /// cuerpo. Mutantes: devolver el cuerpo sin pedirlo; sin `readOnly`; la
+    /// sección equivocada.
+    #[test]
+    fn a_repo_doc_reads_like_a_page() {
+        let d = json!({
+            "id": "rd-1", "title": "Desplegar", "path": "docs/deploy.md", "fullName": "dwit/web",
+            "branch": "main", "htmlUrl": "https://github.com/dwit/web/blob/main/docs/deploy.md",
+            "tooLarge": false,
+            "body": "# Desplegar\n\nIntro.\n\n## Pasos\n\nmake deploy\n\n## Volver atrás\n\nmake rollback\n"
+        });
+        let outline = repo_doc_view(&d, None, false).unwrap();
+        assert_eq!(outline["readOnly"], true);
+        assert!(outline.get("body").is_none());
+        let heads: Vec<&str> = outline["headings"].as_array().unwrap().iter()
+            .map(|h| h["heading"].as_str().unwrap()).collect();
+        assert_eq!(heads, ["Desplegar", "Pasos", "Volver atrás"]);
+
+        let sec = repo_doc_view(&d, Some("Pasos"), false).unwrap();
+        let text = sec["text"].as_str().unwrap();
+        assert!(text.contains("make deploy") && !text.contains("rollback"), "{text}");
+
+        assert!(repo_doc_view(&d, None, true).unwrap()["body"].as_str().unwrap().contains("rollback"));
+
+        let big = json!({ "id": "rd-2", "tooLarge": true, "body": "" });
+        let out = repo_doc_view(&big, None, true).unwrap();
+        assert_eq!(out["tooLarge"], true);
+        assert!(out.get("body").is_none());
+    }
+}

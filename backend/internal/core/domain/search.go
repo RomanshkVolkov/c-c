@@ -58,6 +58,9 @@ const (
 	SearchMessage SearchKind = "message"
 	SearchDM      SearchKind = "dm"
 	SearchDoc     SearchKind = "doc"
+	// SearchRepoDoc: un .md de un repo atado a un espacio (docs as code). Va
+	// con los docs: es documentación de la org, con su misma valla.
+	SearchRepoDoc SearchKind = "repoDoc"
 )
 
 // SearchResults keeps the sources apart all the way to the client.

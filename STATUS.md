@@ -229,7 +229,7 @@ procedencia, compartir al chat y volver desde él, e índice de la organización
 
 | Abierto | Por qué |
 |---|---|
-| PR 7 — GitHub (reflejar un `.md` del repo en una pestaña) | Sustituido el 13-oct-2026 por *docs as code*: todos los `.md` del repo, por carpetas y de sólo lectura (#152). D0, el espejo en el backend, hecho; ver `docs/integrations/github.md` §7. |
+| PR 7 — GitHub (reflejar un `.md` del repo en una pestaña) | Sustituido el 13-oct-2026 por *docs as code* (#152), **hecho el 14-oct-2026**: todos los `.md` del repo atado a un espacio, por carpetas y de sólo lectura, en el panel de Documentación; enlaces e imágenes relativas resueltos; la URL de GitHub de un `.md` se abre en cac y, sola en su línea, se incluye con su contenido; salen en la búsqueda y el MCP los lee (`list_repo_docs`, `get_repo_doc`). Ver `docs/integrations/github.md` §7. Falta probarlo con un repo real atado. |
 | `DocView.tsx` sigue en el repo | Se borra cuando las pestañas estén verificadas a mano contra el backend desplegado. |
 | `/doc` en el compositor | El menú `/` está escrito contra el DOM, no contra React: meter ahí un selector de documento es un PR propio, no una línea. |
 

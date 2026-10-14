@@ -209,6 +209,20 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 	type row struct {
 		Src, OwnerKind, OwnerID, Tab, PageID, PageTitle, Name, Snippet string
 	}
+	// Los .md de los repos atados (docs as code), sólo los que el repo sigue
+	// enseñando; el «dónde» va en `tab`: repo/ruta. Sólo si la tabla tiene su
+	// índice: una base de pruebas sin ella caería entera a `docsLike`, sin
+	// páginas, por una tabla que no busca.
+	repoPart, args := "", []any{tsq, orgID, orgID}
+	if r.hasSearchColumn("repo_docs") {
+		repoPart = `UNION ALL
+				SELECT 'repo', '', '', gr.full_name || '/' || rd.path, rd.id, rd.title, rd.body,
+				       ts_rank_cd(rd.search, q.q), rd.updated_at
+				FROM repo_docs rd JOIN git_hub_repos gr ON gr.repo_id = rd.repo_id AND gr.org_id = rd.org_id, q
+				WHERE rd.org_id = ? AND gr.show_docs AND gr.space_id <> '' AND rd.search @@ q.q`
+		args = append(args, orgID)
+	}
+	args = append(args, limit)
 	var rows []row
 	err := r.db.Raw(`
 		WITH q AS (SELECT to_tsquery('cac_simple', ?) AS q),
@@ -223,6 +237,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 				       ts_rank_cd(p.search, q.q), p.updated_at
 				FROM doc_pages p JOIN docs d ON d.id = p.doc_id, q
 				WHERE p.org_id = ? AND p.deleted_at IS NULL AND p.search @@ q.q
+				`+repoPart+`
 			) x
 			ORDER BY score DESC, updated_at DESC
 			LIMIT ?
@@ -236,11 +251,18 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 		LEFT JOIN task_folders f ON b.owner_kind = 'folder' AND f.id = b.owner_id
 		LEFT JOIN task_lists l ON b.owner_kind = 'list' AND l.id = b.owner_id
 		ORDER BY b.score DESC, b.updated_at DESC`,
-		tsq, orgID, orgID, limit).Scan(&rows).Error
+		args...).Scan(&rows).Error
 	if err != nil {
 		return r.docsLike(query, orgID, limit)
 	}
 	for _, x := range rows {
+		if x.Src == "repo" {
+			out = append(out, domain.SearchHit{
+				Kind: domain.SearchRepoDoc, ID: x.PageID, Title: x.PageTitle, Where: x.Tab,
+				Snippet: x.Snippet, Link: "/docs?repoDoc=" + x.PageID,
+			})
+			continue
+		}
 		link := "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID
 		hit := domain.SearchHit{
 			Kind: domain.SearchDoc, ID: x.OwnerID, Snippet: x.Snippet,
@@ -392,4 +414,13 @@ func snippet(body string) string {
 		return body[:90] + "…"
 	}
 	return body
+}
+
+// hasSearchColumn: si la tabla existe y tiene su columna de texto completo
+// (ver EnsureSearchIndexes).
+func (r *SearchRepository) hasSearchColumn(table string) bool {
+	var ok bool
+	r.db.Raw(`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+		WHERE table_name = ? AND column_name = 'search')`, table).Scan(&ok)
+	return ok
 }
