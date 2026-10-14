@@ -176,11 +176,29 @@ func (s *GitHubService) LinkRepo(orgID, id string, req domain.UpdateGitHubRepoRe
 	if req.SpaceID != "" && !s.repo.SpaceInOrg(req.SpaceID, orgID) {
 		return nil, ErrSpaceOutsideOrg
 	}
-	if err := s.repo.LinkRepo(repo.ID, req.SpaceID, req.BareRefs); err != nil {
+	showDocs := repo.ShowDocs
+	if req.ShowDocs != nil {
+		showDocs = *req.ShowDocs
+	}
+	if err := s.repo.LinkRepo(repo.ID, req.SpaceID, req.BareRefs, showDocs); err != nil {
 		return nil, err
 	}
 	antes := *repo
-	repo.SpaceID, repo.BareRefs = req.SpaceID, req.BareRefs
+	repo.SpaceID, repo.BareRefs, repo.ShowDocs = req.SpaceID, req.BareRefs, showDocs
+	// Sus docs: desatado o apagado, la copia se borra; atado y encendido por
+	// primera vez, se baja entera. Cambiar de espacio no la toca: es del repo.
+	if repo.SpaceID == "" || !repo.ShowDocs {
+		if antes.DocsSyncedAt != nil || antes.DocsTreeSha != "" {
+			if err := s.repo.DropRepoDocs(repo.RepoID); err != nil {
+				return nil, err
+			}
+			repo.DocsSyncedAt, repo.DocsState = nil, ""
+		}
+	} else if (antes.SpaceID == "" || !antes.ShowDocs) && s.CanRead() {
+		// Sólo al atarlo o encenderlo. Si esa primera vez GitHub falla, queda
+		// `error` en el repo y lo reintenta el siguiente push o el botón.
+		s.syncRepoDocsLater(repo.RepoID)
+	}
 	// Las PRs que ya estaban abiertas, enlazadas como si acabaran de abrirse.
 	// Sin esto, vincular un repo con veinte PRs en marcha dejaba el panel vacío
 	// hasta que cada una recibiera su siguiente push.
@@ -306,6 +324,8 @@ func (s *GitHubService) VerifySignature(body []byte, header string) bool {
 type ghRepoRef struct {
 	ID       int64  `json:"id"`
 	FullName string `json:"full_name"`
+	// DefaultBranch: sólo en el repo de un push. De donde salen los docs.
+	DefaultBranch string `json:"default_branch"`
 }
 
 // ghPR es una PR tal como la cuentan el webhook (`pull_request`) y la API de
@@ -434,6 +454,7 @@ func (s *GitHubService) handle(event string, body []byte) error {
 			}
 		}
 	case "push":
+		s.docsOnPush(&p)
 		return s.onPush(&p)
 	case "pull_request":
 		return s.onPullRequest(&p)

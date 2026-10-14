@@ -61,6 +61,11 @@ func (r *GitHubRepository) BindInstallation(id int64, orgID string) error {
 
 func (r *GitHubRepository) DeleteInstallation(id int64) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Su copia de docs se va con ellos: sin repo no hay quien la ponga al día.
+		if err := tx.Where("repo_id IN (?)", tx.Model(&domain.GitHubRepo{}).Select("repo_id").
+			Where("installation_id = ?", id)).Delete(&domain.RepoDoc{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("installation_id = ?", id).Delete(&domain.GitHubRepo{}).Error; err != nil {
 			return err
 		}
@@ -91,7 +96,12 @@ func (r *GitHubRepository) UpsertRepo(installationID, repoID int64, fullName str
 }
 
 func (r *GitHubRepository) DeleteRepo(repoID int64) error {
-	return r.db.Where("repo_id = ?", repoID).Delete(&domain.GitHubRepo{}).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("repo_id = ?", repoID).Delete(&domain.RepoDoc{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("repo_id = ?", repoID).Delete(&domain.GitHubRepo{}).Error
+	})
 }
 
 func (r *GitHubRepository) FindRepo(repoID int64) (*domain.GitHubRepo, error) {
@@ -120,9 +130,9 @@ func (r *GitHubRepository) FindTask(id string) (*domain.Item, error) {
 	return &it, nil
 }
 
-func (r *GitHubRepository) LinkRepo(id, spaceID string, bare bool) error {
+func (r *GitHubRepository) LinkRepo(id, spaceID string, bare, showDocs bool) error {
 	return r.db.Model(&domain.GitHubRepo{}).Where("id = ?", id).
-		Updates(map[string]any{"space_id": spaceID, "bare_refs": bare}).Error
+		Updates(map[string]any{"space_id": spaceID, "bare_refs": bare, "show_docs": showDocs}).Error
 }
 
 func (r *GitHubRepository) ListForOrg(orgID string) ([]domain.GitHubInstallation, []domain.GitHubRepo, error) {

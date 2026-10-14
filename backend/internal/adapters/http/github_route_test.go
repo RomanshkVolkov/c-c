@@ -70,7 +70,7 @@ func githubDB(t *testing.T) (*gorm.DB, func()) {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&domain.TaskSpace{}, &domain.Item{}, &domain.ItemComment{}, &domain.ReportProject{},
-		&domain.GitHubInstallation{}, &domain.GitHubRepo{}, &domain.TaskGitLink{}); err != nil {
+		&domain.GitHubInstallation{}, &domain.GitHubRepo{}, &domain.TaskGitLink{}, &domain.RepoDoc{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.EnsureGitHubIndexes(db); err != nil {

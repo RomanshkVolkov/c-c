@@ -99,6 +99,7 @@ func DBConnection() {
 		&domain.ImageBuild{},
 		&domain.GitHubInstallation{},
 		&domain.GitHubRepo{},
+		&domain.RepoDoc{},
 		&domain.WorkflowRun{},
 		&domain.DeployableSecretRef{},
 		&domain.SecretRotation{},

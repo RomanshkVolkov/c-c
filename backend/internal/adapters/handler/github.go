@@ -5,6 +5,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -197,4 +198,102 @@ func githubError(w http.ResponseWriter, err error) {
 	default:
 		SendErrorResponse(w, http.StatusInternalServerError, "GitHub failed", err.Error())
 	}
+}
+
+// ─── Los .md del repo (ver domain/repo_doc.go) ───────────────────────────────
+
+// SyncRepoDocs: `POST …/github/repos/{repoId}/docs/sync`, el botón de la org.
+// Es la red si se perdió un webhook; lo normal es que lo ponga al día un push.
+func (h *GitHubHandler) SyncRepoDocs(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := scopeOrg(w, r, domain.OrgRoleAdmin)
+	if !ok {
+		return
+	}
+	repo, err := h.svc.SyncRepoDocsNow(orgID, chi.URLParam(r, "repoId"))
+	switch {
+	case err == nil:
+		SendResult(w, http.StatusOK, domain.APIResponse[*domain.GitHubRepo]{Success: true, Data: repo})
+	case errors.Is(err, service.ErrRepoDocsOff):
+		SendErrorResponse(w, http.StatusConflict, "This repository does not show its docs", "repo-docs-off")
+	case errors.Is(err, service.ErrGitHubOff), errors.Is(err, gorm.ErrRecordNotFound):
+		githubError(w, err)
+	default:
+		SendErrorResponse(w, http.StatusBadGateway, "GitHub did not answer", "github-unreachable")
+	}
+}
+
+// RepoDocs: `GET /api/v1/repo-docs?spaceId=`, los repos del espacio con sus
+// ficheros, sin cuerpo. Para los miembros de la org del espacio; al resto,
+// 404, como a un espacio que no existe.
+func (h *GitHubHandler) RepoDocs(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	spaceID := r.URL.Query().Get("spaceId")
+	orgID, err := h.svc.SpaceOrg(spaceID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	if _, member := user.RoleInOrg(orgID); !member && !user.Superadmin {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	out, err := h.svc.RepoDocsForSpace(orgID, spaceID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load the repository docs", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.RepoDocsGroup]{Success: true, Data: out})
+}
+
+// RepoDoc: `GET /api/v1/repo-docs/{id}`, un fichero con su cuerpo.
+func (h *GitHubHandler) RepoDoc(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	d, err := h.svc.RepoDoc(chi.URLParam(r, "id"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	if _, member := user.RoleInOrg(d.OrgID); !member && !user.Superadmin {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.RepoDocResponse]{Success: true, Data: d})
+}
+
+// RepoImage: `GET /api/v1/repo-docs/raw/{repoId}?path=`, una imagen de un
+// repo privado para el `<img>` de uno de sus docs. Fuera del JWT, como los
+// adjuntos: un `<img>` no manda la cabecera, y lo pide `cacmedia://` o un
+// ticket. Sólo imágenes (ver domain.RepoImagePath).
+func (h *GitHubHandler) RepoImage(w http.ResponseWriter, r *http.Request) {
+	repoID, _ := strconv.ParseInt(chi.URLParam(r, "repoId"), 10, 64)
+	repo, err := h.svc.RepoForDocs(repoID)
+	if err != nil || !attachmentViewer(r, repo.OrgID) {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	b, ct, err := h.svc.RepoImage(repo, r.URL.Query().Get("path"))
+	switch {
+	case errors.Is(err, service.ErrNotARepoImage):
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-a-repo-image")
+		return
+	case errors.Is(err, service.ErrGitHubOff):
+		githubError(w, err)
+		return
+	case err != nil:
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	setFileHeaders(w, ct, path.Base(r.URL.Query().Get("path")))
+	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
 }

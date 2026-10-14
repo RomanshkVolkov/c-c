@@ -35,6 +35,17 @@ type GitHubRepo struct {
 	// defecto porque en GitHub `#12` es el issue o la PR 12 del repo, y casi
 	// todo commit que lo escribe habla de eso.
 	BareRefs bool `gorm:"not null;default:false" json:"bareRefs"`
+
+	// ShowDocs: si sus .md salen en Documentación, bajo su espacio (ver
+	// repo_doc.go). Encendido por defecto: atar un repo a un espacio ya dice
+	// que su trabajo es de ahí, y su documentación también.
+	ShowDocs bool `gorm:"not null;default:true" json:"showDocs"`
+	// Lo que se sabe de la copia de sus docs: de qué rama, de qué árbol (si
+	// el árbol no cambia, no hay nada que bajar), cuándo y cómo salió.
+	DocsBranch   string     `gorm:"type:varchar(255);not null;default:''" json:"docsBranch"`
+	DocsTreeSha  string     `gorm:"type:varchar(64);not null;default:''"  json:"-"`
+	DocsSyncedAt *time.Time `json:"docsSyncedAt"`
+	DocsState    string     `gorm:"type:varchar(16);not null;default:''"  json:"docsState"`
 }
 
 type GitHubStatusResponse struct {
@@ -52,6 +63,9 @@ type GitHubLinkResponse struct {
 type UpdateGitHubRepoRequest struct {
 	SpaceID  string `json:"spaceId"  validate:"max=36"`
 	BareRefs bool   `json:"bareRefs"`
+	// ShowDocs: un puntero, porque una app de antes no lo manda, y leerlo
+	// como `false` le apagaría los docs a quien sólo cambió el espacio.
+	ShowDocs *bool `json:"showDocs"`
 }
 
 // ─── Lo que GitHub tiene enlazado a una tarea ────────────────────────────────

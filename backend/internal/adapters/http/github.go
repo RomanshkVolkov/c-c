@@ -64,5 +64,17 @@ func InitGitHubRoutesWith(r *chi.Mux, svc *service.GitHubService) {
 		r.Get("/", h.Status)
 		r.Post("/link", h.Link)
 		r.Patch("/repos/{repoId}", h.UpdateRepo)
+		r.Post("/repos/{repoId}/docs/sync", h.SyncRepoDocs)
+	})
+
+	// Los .md del repo atado a un espacio, en Documentación (sólo lectura).
+	r.Route("/api/v1/repo-docs", func(r chi.Router) {
+		// Fuera del JWT: la pide un `<img>`, con `cacmedia://` o un ticket.
+		r.Get("/raw/{repoId}", h.RepoImage)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.AuthMiddleware)
+			r.Get("/", h.RepoDocs)
+			r.Get("/{id}", h.RepoDoc)
+		})
 	})
 }

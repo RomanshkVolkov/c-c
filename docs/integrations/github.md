@@ -193,3 +193,38 @@ entrada vista (RFC 3339) y `beforeId` su id; `hasMore` dice si queda más.
 
 Eventos y permisos de la App **no cambian**: `Workflow run` y `Actions: read`
 ya estaban desde la sección 1.
+
+## 7. Los .md del repo, en Documentación (docs as code)
+
+Un repo atado a un espacio enseña en Documentación **todos sus ficheros
+markdown**, bajo ese espacio y por carpetas, como hace Confluence con un repo.
+Son de **sólo lectura**: el repo es la fuente, y se editan allí, con una PR.
+
+- **Qué entra:** `.md` y `.markdown`, salvo los que estén en una carpeta que
+  empiece por punto (`.github` incluida: sus plantillas son formularios, no
+  documentación) o en `node_modules`, `vendor`, `dist`, `build` o `target`.
+  Como mucho 1000 ficheros por repo.
+- **De qué rama:** la rama por defecto del repo. Un push a otra rama no los
+  toca.
+- **Cuándo se ponen al día:**
+  - al atar el repo a un espacio, o al encender sus docs, se copian enteros;
+  - con cada push a la rama por defecto, cac pide el árbol del repo y baja
+    sólo los ficheros cuyo sha cambió (si el árbol es el mismo, no baja nada);
+  - con el botón «Sincronizar» de la org
+    (`POST /api/v1/organizations/{id}/github/repos/{repoId}/docs/sync`), por si
+    se perdió un webhook.
+- **Si GitHub corta el árbol** (repos enormes) o hay más de 1000, el repo queda
+  `truncated`: se guarda lo que cupo y no se borra nada.
+- **Apagar los docs** del repo (`showDocs: false` en su PATCH) o desatarlo
+  borra la copia.
+
+Las rutas de lectura, para cualquiera de la org del espacio:
+
+| Ruta | Qué da |
+|---|---|
+| `GET /api/v1/repo-docs?spaceId=` | los repos del espacio con sus ficheros (sin cuerpo) |
+| `GET /api/v1/repo-docs/{id}` | un fichero, con su cuerpo y su URL en GitHub |
+| `GET /api/v1/repo-docs/raw/{repoId}?path=` | una imagen del repo, para un repo privado; **sólo imágenes** (png, jpg, gif, webp, svg) y nunca con `..` |
+
+Los permisos de la App **no cambian**: `Contents: read` ya estaba desde la
+sección 1, y el evento `Push` también.
