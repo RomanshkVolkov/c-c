@@ -30,6 +30,9 @@ spec:
         app: cac-service
     spec:
       serviceAccountName: cac-hub
+      # La pausa de arriba (15 s) más el apagado ordenado: con los 30 s de
+      # siempre, un long-poll del agente (25 s) se cortaría a medias.
+      terminationGracePeriodSeconds: 50
       containers:
         - name: cac-service-api
           image: ghcr.io/romanshkvolkov/c-c/backend:latest
@@ -45,11 +48,13 @@ spec:
             failureThreshold: 3
           # Unos segundos antes de apagar, para que el proxy lo saque de la
           # lista antes de que deje de contestar. El apagado ordenado (SIGTERM,
-          # ver cmd/main.go) cierra lo que quede.
+          # ver cmd/main.go) cierra lo que quede. Con 5 s el proxy todavía le
+          # mandó cuatro GET al pod que se iba (14-oct-2026, primer rolling
+          # update): tarda más que eso en enterarse.
           lifecycle:
             preStop:
               sleep:
-                seconds: 5
+                seconds: 15
           ports:
             - containerPort: 8080
             # El puerto interno por el que habla el montador. Se abre sólo si
