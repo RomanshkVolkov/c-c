@@ -709,7 +709,10 @@
       "githubLead": "With the GitHub App installed: each deploy shows up in GitHub, and when that workflow finishes well it counts as the CI notice, no curl step needed.",
       "keySaved": "Saved as {{repo}}'s {{secret}} secret: no need to copy it.",
       "pushFailed": "Couldn't save the key in {{repo}}; copy it by hand",
-      "allRuns": "See all runs"
+      "allRuns": "See all runs",
+      "repoSearch": "Type to find a repository the GitHub App sees",
+      "repoUnknown": "The organization's GitHub App doesn't see this repository: building on the server and following deploys in GitHub won't work with it.",
+      "noWorkflow": "None (no CI notice from GitHub)"
     },
     "commits": "Latest commits in {{repo}}",
     "commitsLabel": "Commits to deploy",

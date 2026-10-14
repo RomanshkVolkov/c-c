@@ -65,6 +65,7 @@ func InitGitHubRoutesWith(r *chi.Mux, svc *service.GitHubService) {
 		r.Post("/link", h.Link)
 		r.Patch("/repos/{repoId}", h.UpdateRepo)
 		r.Post("/repos/{repoId}/docs/sync", h.SyncRepoDocs)
+		r.Get("/workflows", h.RepoWorkflows)
 	})
 
 	// Los .md del repo atado a un espacio, en Documentación (sólo lectura).

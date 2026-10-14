@@ -202,6 +202,26 @@ func githubError(w http.ResponseWriter, err error) {
 
 // ─── Los .md del repo (ver domain/repo_doc.go) ───────────────────────────────
 
+// RepoWorkflows: `GET …/github/workflows?repo=owner/name`, los workflows del
+// repo para elegir el que publica la imagen. Para cualquiera de la org.
+func (h *GitHubHandler) RepoWorkflows(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := scopeOrg(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	list, err := h.svc.RepoWorkflows(orgID, r.URL.Query().Get("repo"))
+	switch {
+	case err == nil:
+		SendResult(w, http.StatusOK, domain.APIResponse[[]service.RepoWorkflow]{Success: true, Data: list})
+	case errors.Is(err, service.ErrRepoNotInOrg):
+		SendErrorResponse(w, http.StatusNotFound, "That repository is not connected to this organization", "repo-not-in-org")
+	case errors.Is(err, service.ErrGitHubOff):
+		githubError(w, err)
+	default:
+		SendErrorResponse(w, http.StatusBadGateway, "GitHub did not answer", "github-unreachable")
+	}
+}
+
 // SyncRepoDocs: `POST …/github/repos/{repoId}/docs/sync`, el botón de la org.
 // Es la red si se perdió un webhook; lo normal es que lo ponga al día un push.
 func (h *GitHubHandler) SyncRepoDocs(w http.ResponseWriter, r *http.Request) {

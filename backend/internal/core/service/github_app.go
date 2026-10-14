@@ -550,3 +550,45 @@ func (s *GitHubService) deploysOnPush(p *ghPayload) {
 		}
 	}
 }
+
+// RepoWorkflow: un workflow del repo, por su fichero (lo que guarda
+// Deployable.BuildWorkflow) y su nombre.
+type RepoWorkflow struct {
+	File string `json:"file"`
+	Name string `json:"name"`
+}
+
+// RepoWorkflows: los workflows activos de un repo de la org, para elegir el
+// que publica la imagen en vez de escribir su nombre. Con el permiso
+// `Actions: read` que la App ya tiene.
+func (s *GitHubService) RepoWorkflows(orgID, repoFullName string) ([]RepoWorkflow, error) {
+	if !s.CanRead() {
+		return nil, ErrGitHubOff
+	}
+	repo, err := s.repo.FindRepoByName(orgID, repoFullName)
+	if err != nil {
+		return nil, ErrRepoNotInOrg
+	}
+	var out struct {
+		Workflows []struct {
+			Name  string `json:"name"`
+			Path  string `json:"path"`
+			State string `json:"state"`
+		} `json:"workflows"`
+	}
+	if err := s.asInstallation(repo.InstallationID, http.MethodGet,
+		"/repos/"+repo.FullName+"/actions/workflows?per_page=100", nil, &out); err != nil {
+		return nil, err
+	}
+	list := []RepoWorkflow{}
+	for _, w := range out.Workflows {
+		file, ok := strings.CutPrefix(w.Path, ".github/workflows/")
+		// Sólo los del repo y en uso: los de GitHub (dynamic/…) no publican
+		// nada, y uno deshabilitado no va a avisar.
+		if !ok || strings.Contains(file, "/") || w.State != "active" {
+			continue
+		}
+		list = append(list, RepoWorkflow{File: file, Name: w.Name})
+	}
+	return list, nil
+}

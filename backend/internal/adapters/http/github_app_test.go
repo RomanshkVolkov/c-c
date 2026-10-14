@@ -89,6 +89,12 @@ func (g *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.statuses = append(g.statuses, fmt.Sprint(m["state"]))
 		w.WriteHeader(http.StatusCreated)
 		io.WriteString(w, `{}`)
+	case r.URL.Path == "/repos/dwit/api/actions/workflows":
+		io.WriteString(w, `{"workflows":[
+			{"name":"Deploy","path":".github/workflows/prod.yml","state":"active"},
+			{"name":"Tests","path":".github/workflows/tests.yml","state":"active"},
+			{"name":"Viejo","path":".github/workflows/old.yml","state":"disabled_manually"},
+			{"name":"pages-build-deployment","path":"dynamic/pages/pages-build-deployment","state":"active"}]}`)
 	case strings.HasPrefix(r.URL.Path, "/repos/dwit/api/compare/"):
 		io.WriteString(w, `{"commits":[{"commit":{"message":"fix: el login cac#12"}},{"commit":{"message":"chore"}}]}`)
 	case strings.HasPrefix(r.URL.Path, "/repos/dwit/api/commits/"):

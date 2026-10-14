@@ -285,3 +285,26 @@ func TestTheBuildSettingsAreCheckedAndKept(t *testing.T) {
 		t.Fatalf("uso desconocido: %v", err)
 	}
 }
+
+// El workflow que publica la imagen se elige de los del repo: sólo los suyos y
+// en uso, y sólo de un repo de la org. Mutantes: incluir los deshabilitados;
+// incluir los de GitHub (`dynamic/…`); no mirar la org.
+func TestTheRepoWorkflowsAreListed(t *testing.T) {
+	f, cleanup := appSetup(t, "deploy")
+	defer cleanup()
+	member := domain.OrgMembershipClaim{OrgID: "org-1", Role: domain.OrgRoleMember}
+	rec := f.as(t, "GET", "/api/v1/organizations/org-1/github/workflows?repo=DWIT/api", "", member)
+	var out domain.APIResponse[[]service.RepoWorkflow]
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	got := []string{}
+	for _, w := range out.Data {
+		got = append(got, w.File)
+	}
+	if rec.Code != 200 || strings.Join(got, ",") != "prod.yml,tests.yml" {
+		t.Fatalf("workflows → %d %s", rec.Code, rec.Body.String())
+	}
+	other := domain.OrgMembershipClaim{OrgID: "org-2", Role: domain.OrgRoleMember}
+	if rec := f.as(t, "GET", "/api/v1/organizations/org-2/github/workflows?repo=dwit/api", "", other); rec.Code != 404 {
+		t.Fatalf("el repo de otra org → %d", rec.Code)
+	}
+}

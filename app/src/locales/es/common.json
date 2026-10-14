@@ -709,7 +709,10 @@
       "githubLead": "Con la GitHub App instalada: cada deploy aparece en GitHub, y cuando ese workflow termina bien cuenta como el aviso del CI, sin el paso del curl.",
       "keySaved": "Guardada como el secret {{secret}} de {{repo}}: no hace falta copiarla.",
       "pushFailed": "No se pudo guardar la llave en {{repo}}; cópiala a mano",
-      "allRuns": "Ver todas las ejecuciones"
+      "allRuns": "Ver todas las ejecuciones",
+      "repoSearch": "Escribe para buscar un repo que vea la GitHub App",
+      "repoUnknown": "La GitHub App de la organización no ve este repo: con él no funcionan ni el build en el servidor ni seguir los deploys en GitHub.",
+      "noWorkflow": "Ninguno (sin aviso del CI por GitHub)"
     },
     "commits": "Últimos commits de {{repo}}",
     "commitsLabel": "Commits para desplegar",

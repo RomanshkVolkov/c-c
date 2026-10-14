@@ -11,8 +11,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import RepoField from "@/components/servers/RepoField";
+import WorkflowField from "@/components/servers/WorkflowField";
 import type { Server } from "@/types/server";
 import type { CINotifyMode, Deployable } from "@/types/deploy";
 
@@ -186,23 +187,11 @@ export default function CINoticeSection({
       <div className="flex flex-wrap items-end gap-2 text-sm">
         <div className="min-w-40 flex-1 space-y-1">
           <Label htmlFor="ci-repo" className="text-xs">{t("common:deploy.ci.repo")}</Label>
-          <Input
-            id="ci-repo"
-            className="h-8 font-mono text-xs"
-            placeholder="owner/repo"
-            value={repo}
-            onChange={(e) => setRepo(e.target.value)}
-          />
+          <RepoField orgId={server.orgId} value={repo} onChange={setRepo} />
         </div>
         <div className="min-w-32 flex-1 space-y-1">
           <Label htmlFor="ci-workflow" className="text-xs">{t("common:deploy.ci.workflow")}</Label>
-          <Input
-            id="ci-workflow"
-            className="h-8 font-mono text-xs"
-            placeholder="prod.yml"
-            value={workflow}
-            onChange={(e) => setWorkflow(e.target.value)}
-          />
+          <WorkflowField orgId={server.orgId} repo={repo} value={workflow} onChange={setWorkflow} />
         </div>
         <Button
           variant="outline"
