@@ -33,6 +33,8 @@ pub fn valid_key(s: &str) -> bool {
 
 /// El guion de la rotación. Cada valor aparece **una vez**, en su asignación
 /// entre comillas simples, y se borra de la shell en cuanto se usa.
+/// Sin secrets sólo del build: lo que prueban las pruebas de siempre.
+#[cfg(test)]
 pub fn rotation_script(service: &str, entries: &[(String, String)]) -> Result<String, String> {
     rotation_script_with(service, entries, &std::collections::HashSet::new())
 }
