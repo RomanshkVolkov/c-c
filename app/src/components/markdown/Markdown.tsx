@@ -195,17 +195,20 @@ export default function Markdown({
           // comment off the screen; clicking it lifts that cap.
           ...(includes
             ? {
-                p: ({ children, node }) => {
+                p: ({ children, node, ...rest }) => {
                   const href = loneLink(node);
                   if (href) return <RepoInclude href={href}>{children}</RepoInclude>;
-                  return <p>{children}</p>;
+                  // Con lo que traiga (un `<p align="center">` de un README).
+                  return <p {...rest}>{children}</p>;
                 },
               }
             : {}),
-          img: ({ src, alt }) => (
+          img: ({ src, alt, width, height }) => (
             <Imagen
               src={mediaSrc(typeof src === "string" ? (imageSrc ? (imageSrc(src) ?? undefined) : src) : undefined)}
               alt={alt ?? ""}
+              width={width}
+              height={height}
               onZoom={setZoomed}
             />
           ),
@@ -238,10 +241,15 @@ export default function Markdown({
 function Imagen({
   src,
   alt,
+  width,
+  height,
   onZoom,
 }: {
   src?: string;
   alt: string;
+  /** Los de un `<img width=…>` de un README: quien lo escribió eligió el tamaño. */
+  width?: number | string;
+  height?: number | string;
   onZoom: (v: { src: string; alt: string }) => void;
 }) {
   const { t } = useT();
@@ -262,10 +270,24 @@ function Imagen({
     <img
       src={src}
       alt={alt}
+      width={width}
+      height={height}
       loading="lazy"
       onError={() => setRoto(true)}
-      onClick={() => onZoom({ src, alt })}
-      className="my-2 max-h-80 cursor-zoom-in rounded-md border object-contain"
+      onClick={(e) => {
+        // Dentro de un enlace (una insignia, un logo que lleva a su web), el
+        // clic es del enlace, no de ampliarla.
+        if ((e.target as HTMLElement).closest("a")) return;
+        onZoom({ src, alt });
+      }}
+      className={cn(
+        "my-2 cursor-zoom-in rounded-md border object-contain",
+        // Con tamaño puesto a mano, ése manda; sin él, el tope de siempre.
+        width || height ? "max-w-full" : "max-h-80",
+        // Una imagen en un enlace va en línea y sin marco: es una insignia o
+        // un logo, y una fila de ellas tiene que quedar en una fila.
+        "[a_&]:my-0 [a_&]:inline [a_&]:cursor-pointer [a_&]:rounded-none [a_&]:border-0 [a_&]:align-middle",
+      )}
     />
   );
 }
