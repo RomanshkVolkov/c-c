@@ -117,6 +117,8 @@ type appFixture struct {
 	d       *domain.Deployable
 	// bell: lo que llegó a la campana (R9).
 	bell *inboxSpy
+	// ghSvc: la App de verdad contra el GitHub falso (el token para clonar).
+	ghSvc *service.GitHubService
 }
 
 type inboxSpy struct {
@@ -205,7 +207,7 @@ func appSetup(t *testing.T, mode string) (*appFixture, func()) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return &appFixture{ghFixture: f, gh: fake, deploys: deploys, d: d, bell: bell}, cleanup
+	return &appFixture{ghFixture: f, gh: fake, deploys: deploys, d: d, bell: bell, ghSvc: gh}, cleanup
 }
 
 // El agente recoge el deploy y lo cierra.

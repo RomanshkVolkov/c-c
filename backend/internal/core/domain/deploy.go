@@ -61,7 +61,24 @@ type Deployable struct {
 	// forma de nombrarlo con ella.
 	CIKeyHash    []byte `gorm:"type:bytea;index" json:"-"`
 	CIKeyPreview string `gorm:"type:varchar(40)" json:"ciKeyPreview"`
+
+	// Branch: la rama que despliega este servicio (`main`, `staging`). Un aviso
+	// o un push de otra rama no lo toca, así que prod y test pueden compartir
+	// repo y workflow. Vacía = cualquiera, como antes.
+	Branch string `gorm:"type:varchar(200);not null;default:''" json:"branch"`
+	// BuildOnHost: el servidor construye la imagen desde el commit en vez de
+	// esperar a que la publique un CI (14-oct-2026: se acabaron los minutos de
+	// Actions de la cuenta dwit-mexico). La dispara el push que llega por la
+	// GitHub App; ver BuildSpec.
+	BuildOnHost bool `gorm:"not null;default:false" json:"buildOnHost"`
+	// Dónde está el Dockerfile y desde qué carpeta se construye, relativos a
+	// la raíz del repo. Vacíos = `Dockerfile` en la raíz.
+	Dockerfile   string `gorm:"type:varchar(300);not null;default:''" json:"dockerfile"`
+	BuildContext string `gorm:"type:varchar(300);not null;default:''" json:"buildContext"`
 }
+
+// BuildsOn: si un push o un aviso de esta rama es para este servicio.
+func (d *Deployable) BuildsOn(branch string) bool { return d.Branch == "" || d.Branch == branch }
 
 // ImageBuild es una imagen que el CI dijo que construyó para un deployable.
 // Es la lista de «versiones disponibles»: lo que se puede desplegar sin
@@ -75,9 +92,12 @@ type ImageBuild struct {
 	Ref          string `gorm:"type:varchar(200)" json:"ref"`
 	Actor        string `gorm:"type:varchar(120)" json:"actor"`
 	RunURL       string `gorm:"type:varchar(400)" json:"runUrl"`
-	// ci | github
+	// ci | github | host (la construyó el servidor tras un push)
 	Source string `gorm:"type:varchar(20);not null" json:"source"`
 }
+
+// BuildSourceHost: la versión la construye el servidor tras un push.
+const BuildSourceHost = "host"
 
 // CIKeyResponse: la llave, **una vez**.
 type CIKeyResponse struct {
@@ -142,6 +162,10 @@ type Deployment struct {
 	// del CI por la App), si lo hubo. Es lo que deja colgar el deploy de su run
 	// en la Actividad. Vacío = a mano, por el `curl`, o un rollback.
 	WorkflowRunID string `gorm:"type:varchar(36);index" json:"workflowRunId,omitempty"`
+	// BuildSha: el commit entero que el agente construye antes de desplegar,
+	// en un servicio con BuildOnHost. Vacío = la imagen ya existe (la publicó
+	// un CI, o es un rollback a lo que había).
+	BuildSha string `gorm:"type:varchar(40);not null;default:''" json:"buildSha,omitempty"`
 }
 
 const (
@@ -164,6 +188,9 @@ const (
 	// agente que murió a medias no puede dejar el servicio bloqueado para
 	// siempre, porque el siguiente deploy chocaría con él.
 	DeployStaleAfter = 15 * time.Minute
+	// Un deploy que construye la imagen tarda lo que el build: el de un Next
+	// con prerender pasa de diez minutos. Ver Deployment.BuildSha.
+	DeployBuildStaleAfter = 45 * time.Minute
 )
 
 // refPattern: lo que puede ir detrás de `repo:` — un tag seguro, con digest
@@ -211,6 +238,11 @@ type UpdateDeployableRequest struct {
 	// Puntero por lo mismo: una app anterior no lo manda.
 	ShortTags      *bool   `json:"shortTags,omitempty"`
 	MigrateCommand *string `json:"migrateCommand,omitempty" validate:"omitempty,max=500"`
+	// El build en el servidor, con punteros por lo mismo.
+	Branch       *string `json:"branch,omitempty"       validate:"omitempty,max=200"`
+	BuildOnHost  *bool   `json:"buildOnHost,omitempty"`
+	Dockerfile   *string `json:"dockerfile,omitempty"   validate:"omitempty,max=300"`
+	BuildContext *string `json:"buildContext,omitempty" validate:"omitempty,max=300"`
 }
 
 type DeployRequest struct {
@@ -232,6 +264,26 @@ type DeployJob struct {
 	Image        string `json:"image"`
 	// Vacío = sin migraciones. Ver Deployable.MigrateCommand.
 	MigrateCommand string `json:"migrateCommand,omitempty"`
+	// Build: construir `Image` en el servidor antes de desplegarla. Sólo se
+	// le manda a un agente v6 o más (AgentVersionBuilds): uno anterior lo
+	// ignoraría y desplegaría una imagen que no existe.
+	Build *BuildSpec `json:"build,omitempty"`
+}
+
+// BuildSpec: lo que necesita el agente para construir la imagen de un commit.
+//
+// **Ningún valor de un build arg**: sólo sus nombres. Los valores son Docker
+// secrets del servicio, puestos desde la app con la rotación (1Password →
+// ssh), y el agente los monta en el job que construye. El token es el de la
+// instalación de la GitHub App: dura una hora, sólo lee el repo, y se pide al
+// reclamar el trabajo, no al encolarlo, para que no caduque en la cola.
+type BuildSpec struct {
+	Repo       string   `json:"repo"`
+	Sha        string   `json:"sha"`
+	Dockerfile string   `json:"dockerfile"`
+	Context    string   `json:"context"`
+	BuildArgs  []string `json:"buildArgs"`
+	CloneToken string   `json:"cloneToken"`
 }
 
 // AgentJob es la respuesta a la pregunta del agente cuando hay trabajo.
@@ -262,4 +314,33 @@ func (d *Deployable) Tag(sha string) string {
 		return sha[:ShortSha]
 	}
 	return sha
+}
+
+// buildPathPattern: una ruta dentro del repo, sin salirse (`..`) ni empezar
+// por `/`. Es lo que va en el contexto remoto del build.
+var buildPathPattern = regexp.MustCompile(`^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,299}$`)
+
+// ValidBuildPath: el Dockerfile o la carpeta del build de un servicio.
+func ValidBuildPath(p string) bool {
+	if p == "" {
+		return true
+	}
+	if !buildPathPattern.MatchString(p) {
+		return false
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+// branchPattern: un nombre de rama de git, sin lo que git no deja ni lo que
+// rompería el contexto remoto (`#`, `:`, espacios).
+var branchPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_./-]{0,199}$`)
+
+// ValidBranch: vacía (cualquiera) o un nombre de rama seguro.
+func ValidBranch(b string) bool {
+	return b == "" || (branchPattern.MatchString(b) && !strings.Contains(b, "..") && !strings.HasSuffix(b, "/"))
 }

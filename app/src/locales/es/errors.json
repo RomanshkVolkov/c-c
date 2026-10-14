@@ -175,5 +175,11 @@
   "bad-reaction": "Esa reacción no es de las que se pueden poner.",
   "repo-docs-off": "Este repo no enseña sus docs. Enciéndelos en la configuración de GitHub de la organización.",
   "github-unreachable": "GitHub no contestó. Prueba otra vez en un momento.",
-  "not-a-repo-image": "Eso no es una imagen de este repo."
+  "not-a-repo-image": "Eso no es una imagen de este repo.",
+  "agent-cannot-build": "El agente de este servidor no sabe construir imágenes. Actualízalo desde la página del servidor.",
+  "build-needs-full-sha": "Construir en el servidor necesita el sha entero del commit.",
+  "build-needs-repo": "Construir en el servidor necesita el repo del servicio (owner/name).",
+  "bad-branch": "Eso no es un nombre de rama.",
+  "bad-build-path": "Eso no es una ruta dentro del repo.",
+  "bad-secret-usage": "Un secret es para el runtime, para el build o para los dos."
 }

@@ -19,6 +19,7 @@ import (
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/events"
+	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -500,4 +501,52 @@ func runFromPayload(repo *domain.GitHubRepo, p *ghPayload, now func() time.Time)
 	}
 	run.ID = uuid.NewString()
 	return run
+}
+
+// ─── Construir en el servidor al recibir un push ──────────────────────────────
+
+// CloneToken: un token de la instalación que ve ese repo de la org, para que
+// el servidor clone el commit que construye. Dura una hora y sólo lee: la App
+// tiene `Contents: read`.
+func (s *GitHubService) CloneToken(orgID, repoFullName string) (string, error) {
+	if !s.CanRead() {
+		return "", ErrGitHubOff
+	}
+	repo, err := s.repo.FindRepoByName(orgID, repoFullName)
+	if err != nil {
+		return "", ErrRepoNotInOrg
+	}
+	return s.installationToken(repo.InstallationID)
+}
+
+// deploysOnPush: un push a la rama de un servicio que construye en el
+// servidor lo construye y lo despliega (o lo apunta, en modo `record`). Basta
+// con que el repo sea de la org, como los runs del CI: un servicio no tiene
+// que estar en ningún espacio para desplegarse.
+//
+// Un fallo aquí no tumba el webhook: lo demás del push (tareas, docs) sigue.
+func (s *GitHubService) deploysOnPush(p *ghPayload) {
+	if s.deploys == nil || s.deployRepo == nil || p.Deleted || !domain.ValidSha(p.After) {
+		return
+	}
+	if branchOfRef(p.Ref) == "" {
+		return
+	}
+	repo := s.orgRepo(p.Repository.ID)
+	if repo == nil {
+		return
+	}
+	targets, err := s.deployRepo.DeployablesBuiltOnHost(repo.OrgID, repo.FullName)
+	if err != nil {
+		lg.Warn(fmt.Sprintf("github: push to %s: deployables: %v", repo.FullName, err))
+		return
+	}
+	// La rama la decide Notice (Deployable.BuildsOn), igual que para el aviso
+	// de un CI: un solo sitio que diga qué rama despliega cada servicio.
+	for i := range targets {
+		d := &targets[i]
+		if _, err := s.deploys.PushBuild(d, p.After, p.Ref, p.Pusher.Name); err != nil {
+			lg.Warn(fmt.Sprintf("github: push to %s: %s: %v", repo.FullName, d.Name, err))
+		}
+	}
 }

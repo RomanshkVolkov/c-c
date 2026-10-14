@@ -24,6 +24,16 @@ var (
 	ErrNothingToRollBackTo = errors.New("nothing-to-roll-back-to")
 	ErrRollbackOutsideRepo = errors.New("rollback-outside-repo")
 	ErrAgentTooOld         = errors.New("agent-too-old")
+	// ErrAgentCannotBuild: el servicio construye en el servidor y su agente es
+	// anterior a la v6 (ver domain.AgentVersionBuilds).
+	ErrAgentCannotBuild = errors.New("agent-cannot-build")
+	// ErrBuildNeedsFullSha: construir es de un commit entero; con uno corto, el
+	// contexto remoto de git no sabe cuál es.
+	ErrBuildNeedsFullSha = errors.New("build-needs-full-sha")
+	// ErrBuildNeedsRepo: un servicio que construye tiene que decir de qué repo.
+	ErrBuildNeedsRepo = errors.New("build-needs-repo")
+	ErrBadBranch      = errors.New("bad-branch")
+	ErrBadBuildPath   = errors.New("bad-build-path")
 )
 
 // imageRepoPattern: un repositorio de imágenes sin tag ni digest
@@ -51,6 +61,8 @@ type DeployService struct {
 	// (R9). nil = no suena.
 	inbox Notifier
 	orgs  *repository.OrganizationRepository
+	// Con qué clonar para construir en el servidor. nil = no se construye.
+	tokens RepoTokens
 }
 
 // WithNotifier: que cada deploy que acaba —bien, mal o caducado— deje fila en
@@ -181,6 +193,31 @@ func (s *DeployService) UpdateDeployable(d *domain.Deployable, req domain.Update
 	if req.ShortTags != nil {
 		d.ShortTags = *req.ShortTags
 	}
+	if req.Branch != nil {
+		if !domain.ValidBranch(*req.Branch) {
+			return nil, ErrBadBranch
+		}
+		d.Branch = *req.Branch
+	}
+	if req.Dockerfile != nil {
+		if !domain.ValidBuildPath(*req.Dockerfile) {
+			return nil, ErrBadBuildPath
+		}
+		d.Dockerfile = *req.Dockerfile
+	}
+	if req.BuildContext != nil {
+		if !domain.ValidBuildPath(*req.BuildContext) {
+			return nil, ErrBadBuildPath
+		}
+		d.BuildContext = *req.BuildContext
+	}
+	if req.BuildOnHost != nil {
+		d.BuildOnHost = *req.BuildOnHost
+	}
+	// Construir pide saber qué repo: sin él no hay de dónde clonar.
+	if d.BuildOnHost && d.RepoFullName == "" {
+		return nil, ErrBuildNeedsRepo
+	}
 	if req.MigrateCommand != nil {
 		cmd := strings.TrimSpace(*req.MigrateCommand)
 		// Una línea: es lo que va detrás de `sh -c`, y un salto de línea ahí
@@ -218,7 +255,19 @@ func (s *DeployService) requestDeployFor(d *domain.Deployable, by, userID, sha, 
 	if !domain.ValidSha(sha) {
 		return nil, false, ErrBadSha
 	}
-	return s.enqueue(d, by, userID, d.ImageRepo+":"+d.Tag(sha), "", idemKey, runID)
+	// Un servicio que construye en el servidor construye cada commit que se
+	// le pide desplegar: no hay CI que haya dejado la imagen.
+	buildSha := ""
+	if d.BuildOnHost {
+		if len(sha) != 40 {
+			return nil, false, ErrBuildNeedsFullSha
+		}
+		if d.RepoFullName == "" {
+			return nil, false, ErrBuildNeedsRepo
+		}
+		buildSha = sha
+	}
+	return s.enqueue(d, by, userID, d.ImageRepo+":"+d.Tag(sha), "", idemKey, runID, buildSha)
 }
 
 // Rollback vuelve a lo que había antes de un deployment. Lo de antes lo leyó
@@ -236,11 +285,12 @@ func (s *DeployService) Rollback(d *domain.Deployable, deploymentID, userID stri
 	if _, ok := domain.ImageRef(d.ImageRepo, prev.PreviousImage); !ok {
 		return nil, ErrRollbackOutsideRepo
 	}
-	dep, _, err := s.enqueue(d, domain.DeployByUser, userID, prev.PreviousImage, prev.ID, "", "")
+	// Sin build: lo de antes ya está en el servidor.
+	dep, _, err := s.enqueue(d, domain.DeployByUser, userID, prev.PreviousImage, prev.ID, "", "", "")
 	return dep, err
 }
 
-func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbackOf, idemKey, runID string) (*domain.Deployment, bool, error) {
+func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbackOf, idemKey, runID, buildSha string) (*domain.Deployment, bool, error) {
 	if idemKey != "" {
 		if existing, err := s.repo.FindByIdempotency(d.ID, idemKey); err == nil {
 			return existing, false, nil
@@ -258,6 +308,9 @@ func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbac
 	if d.MigrateCommand != "" && srv.AgentVersion < domain.AgentVersionMigrates {
 		return nil, false, ErrAgentCannotMigrate
 	}
+	if buildSha != "" && srv.AgentVersion < domain.AgentVersionBuilds {
+		return nil, false, ErrAgentCannotBuild
+	}
 	now := s.now()
 	expired, err := s.repo.ExpireStale(d.ID, now)
 	if err != nil {
@@ -272,7 +325,7 @@ func (s *DeployService) enqueue(d *domain.Deployable, by, userID, image, rollbac
 		OrgID: d.OrgID, DeployableID: d.ID, ServerID: d.ServerID,
 		Image: image, RequestedBy: by, RequestedByUserID: userID,
 		Status: domain.DeployQueued, RollbackOfID: rollbackOf, IdempotencyKey: idemKey,
-		WorkflowRunID: runID,
+		WorkflowRunID: runID, BuildSha: buildSha,
 	}
 	dep.ID = uuid.NewString()
 	if err := s.repo.CreateDeployment(dep); err != nil {
@@ -314,8 +367,15 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 	if !domain.ValidSha(n.Sha) {
 		return nil, ErrBadSha
 	}
+	// De otra rama, no es para este servicio: ni se apunta ni se despliega.
+	// Es lo que deja a prod y a test compartir repo, workflow y aviso.
+	if !d.BuildsOn(branchOfRef(n.Ref)) {
+		return &domain.DeployNoticeResponse{Deploy: "skipped", Reason: "other-branch"}, nil
+	}
 	// El build es del tag que existe: con tags cortos, el sha corto. Así el
 	// mismo commit avisado entero (GitHub) o corto (el curl) es un solo build.
+	// El entero se guarda: construir en el servidor lo necesita.
+	fullSha := n.Sha
 	n.Sha = d.Tag(n.Sha)
 	b := &domain.ImageBuild{
 		OrgID: d.OrgID, DeployableID: d.ID, Sha: n.Sha, Image: d.ImageRepo + ":" + n.Sha,
@@ -331,10 +391,10 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 		return out, nil
 	}
 	by := domain.DeployByCI
-	if source == "github" {
+	if source == "github" || source == domain.BuildSourceHost {
 		by = domain.DeployByGitHub
 	}
-	dep, created, err := s.requestDeployFor(d, by, "", n.Sha, "ci:"+n.Sha, n.WorkflowRunID)
+	dep, created, err := s.requestDeployFor(d, by, "", fullSha, "ci:"+n.Sha, n.WorkflowRunID)
 	switch {
 	case errors.Is(err, repository.ErrDeployInFlight):
 		out.Deploy, out.Reason = "skipped", "deploy-in-flight"
@@ -342,6 +402,10 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 		out.Deploy, out.Reason = "skipped", "agent-too-old"
 	case errors.Is(err, ErrAgentCannotMigrate):
 		out.Deploy, out.Reason = "skipped", "agent-cannot-migrate"
+	case errors.Is(err, ErrAgentCannotBuild):
+		out.Deploy, out.Reason = "skipped", "agent-cannot-build"
+	case errors.Is(err, ErrBuildNeedsFullSha):
+		out.Deploy, out.Reason = "skipped", "build-needs-full-sha"
 	case err != nil:
 		return nil, err
 	case created:
@@ -377,14 +441,73 @@ func (s *DeployService) Claim(serverID string) (*domain.AgentJob, error) {
 		return nil, err
 	}
 	s.changed(d, dep)
-	return &domain.AgentJob{
-		ID:   dep.ID,
-		Kind: "deploy",
-		Data: domain.DeployJob{
-			DeploymentID: dep.ID, Stack: d.Stack, ServiceName: d.ServiceName,
-			ImageRepo: d.ImageRepo, Image: dep.Image, MigrateCommand: d.MigrateCommand,
-		},
+	job := domain.DeployJob{
+		DeploymentID: dep.ID, Stack: d.Stack, ServiceName: d.ServiceName,
+		ImageRepo: d.ImageRepo, Image: dep.Image, MigrateCommand: d.MigrateCommand,
+	}
+	if dep.BuildSha != "" {
+		build, err := s.buildSpec(d, dep)
+		if err != nil {
+			// Sin con qué clonar no hay build: se da por fallido aquí, con el
+			// motivo, en vez de mandarle al agente un trabajo que no puede hacer.
+			done, ferr := s.repo.Finish(serverID, dep.ID, domain.AgentFinishRequest{
+				Status: domain.DeployFailed, Error: err.Error(),
+			}, s.now())
+			if ferr == nil {
+				s.changed(d, done)
+			}
+			return nil, nil
+		}
+		job.Build = build
+	}
+	return &domain.AgentJob{ID: dep.ID, Kind: "deploy", Data: job}, nil
+}
+
+// RepoTokens da con qué clonar un repo de la org: el token de la instalación
+// de la GitHub App. Lo pone GitHubService (ver CloneToken).
+type RepoTokens interface {
+	CloneToken(orgID, repoFullName string) (string, error)
+}
+
+// WithRepoTokens: sin esto, ningún servicio puede construir en el servidor.
+func (s *DeployService) WithRepoTokens(t RepoTokens) *DeployService {
+	s.tokens = t
+	return s
+}
+
+// ErrNoCloneToken: la GitHub App no ve el repo, o no está configurada.
+var ErrNoCloneToken = errors.New("build-no-clone-token")
+
+func (s *DeployService) buildSpec(d *domain.Deployable, dep *domain.Deployment) (*domain.BuildSpec, error) {
+	if s.tokens == nil {
+		return nil, ErrNoCloneToken
+	}
+	tok, err := s.tokens.CloneToken(d.OrgID, d.RepoFullName)
+	if err != nil || tok == "" {
+		return nil, ErrNoCloneToken
+	}
+	args, err := s.repo.BuildArgNames(d.ID)
+	if err != nil {
+		return nil, err
+	}
+	dockerfile := d.Dockerfile
+	if dockerfile == "" {
+		dockerfile = "Dockerfile"
+	}
+	return &domain.BuildSpec{
+		Repo: d.RepoFullName, Sha: dep.BuildSha, Dockerfile: dockerfile, Context: d.BuildContext,
+		BuildArgs: args, CloneToken: tok,
 	}, nil
+}
+
+// PushBuild: un push a la rama de un servicio que construye en el servidor.
+// En modo `deploy` encola construir y desplegar ese commit; en `record`, lo
+// apunta como versión disponible, como el aviso de un CI.
+func (s *DeployService) PushBuild(d *domain.Deployable, sha, ref, actor string) (*domain.DeployNoticeResponse, error) {
+	if !d.BuildOnHost {
+		return &domain.DeployNoticeResponse{Deploy: "skipped", Reason: "no-host-build"}, nil
+	}
+	return s.Notice(d, domain.DeployNotice{Sha: sha, Ref: ref, Actor: actor}, domain.BuildSourceHost)
 }
 
 func (s *DeployService) AppendLog(serverID, id string, lines []string) error {

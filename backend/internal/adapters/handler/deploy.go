@@ -340,6 +340,18 @@ func deployError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusBadRequest, "The migration command has to be one line", "bad-migrate-command")
 	case errors.Is(err, service.ErrAgentCannotMigrate):
 		SendErrorResponse(w, http.StatusConflict, "This server's agent can't run migrations; reinstall it", "agent-cannot-migrate")
+	case errors.Is(err, service.ErrAgentCannotBuild):
+		SendErrorResponse(w, http.StatusConflict, "This server's agent can't build images; update it", "agent-cannot-build")
+	case errors.Is(err, service.ErrBuildNeedsFullSha):
+		SendErrorResponse(w, http.StatusBadRequest, "Building on the server needs the full commit sha", "build-needs-full-sha")
+	case errors.Is(err, service.ErrBuildNeedsRepo):
+		SendErrorResponse(w, http.StatusBadRequest, "Building on the server needs the service's repository", "build-needs-repo")
+	case errors.Is(err, service.ErrBadBranch):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a branch name", "bad-branch")
+	case errors.Is(err, service.ErrBadBuildPath):
+		SendErrorResponse(w, http.StatusBadRequest, "That is not a path inside the repository", "bad-build-path")
+	case errors.Is(err, service.ErrBadSecretUsage):
+		SendErrorResponse(w, http.StatusBadRequest, "A secret is for runtime, build or both", "bad-secret-usage")
 	case errors.Is(err, service.ErrBadRepoName):
 		SendErrorResponse(w, http.StatusBadRequest, "That is not an owner/name repository", "bad-repo-name")
 	case errors.Is(err, service.ErrBadWorkflow):

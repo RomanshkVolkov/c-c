@@ -13,6 +13,7 @@ var (
 	ErrBadSecretName       = errors.New("bad-secret-name")
 	ErrBadOpRef            = errors.New("bad-op-ref")
 	ErrDuplicateName       = errors.New("duplicate-secret-name")
+	ErrBadSecretUsage      = errors.New("bad-secret-usage")
 	ErrBadDockerName       = errors.New("bad-docker-secret-name")
 	ErrRotationNeedsDeploy = errors.New("rotation-needs-deploy")
 )
@@ -38,6 +39,9 @@ func (s *SecretRefService) Replace(d *domain.Deployable, req domain.PutSecretRef
 		}
 		if !domain.OpRefPattern.MatchString(r.OpRef) {
 			return nil, ErrBadOpRef
+		}
+		if !domain.ValidSecretUsage(r.Usage) {
+			return nil, ErrBadSecretUsage
 		}
 		if seen[r.Name] {
 			return nil, ErrDuplicateName

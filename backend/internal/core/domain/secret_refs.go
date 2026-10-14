@@ -20,6 +20,21 @@ type DeployableSecretRef struct {
 	DeployableID string `gorm:"type:varchar(36);not null;uniqueIndex:idx_secret_ref_name" json:"deployableId"`
 	Name         string `gorm:"type:varchar(40);not null;uniqueIndex:idx_secret_ref_name" json:"name"`
 	OpRef        string `gorm:"type:varchar(300);not null" json:"opRef"`
+	// Usage: dónde se usa. `runtime` (por defecto) va al servicio en marcha;
+	// `build`, sólo al build en el servidor, como build arg; `both`, a los dos
+	// —`DATABASE_URL` para el prerender de un Next y para la app—.
+	Usage string `gorm:"type:varchar(10);not null;default:'runtime'" json:"usage"`
+}
+
+const (
+	SecretForRuntime = "runtime"
+	SecretForBuild   = "build"
+	SecretForBoth    = "both"
+)
+
+// ValidSecretUsage: vacío cuenta como runtime, lo de siempre.
+func ValidSecretUsage(u string) bool {
+	return u == "" || u == SecretForRuntime || u == SecretForBuild || u == SecretForBoth
 }
 
 // SecretRotation: una vez que alguien llevó los secrets al servidor. Los
@@ -51,6 +66,8 @@ var DockerSecretPattern = regexp.MustCompile(`^cac_[A-Z_][A-Z0-9_]{0,39}_[0-9a-f
 type SecretRefInput struct {
 	Name  string `json:"name"  validate:"required"`
 	OpRef string `json:"opRef" validate:"required,max=300"`
+	// Vacío = runtime: una app anterior no lo manda.
+	Usage string `json:"usage" validate:"max=10"`
 }
 
 // PutSecretRefsRequest: la lista entera del servicio (lo que no venga se

@@ -369,7 +369,13 @@ type ghPayload struct {
 	Repository          ghRepoRef   `json:"repository"`
 	// Ref: en un push, `refs/heads/<rama>`; en `create`/`delete`, la rama a
 	// secas, con `RefType`.
-	Ref     string `json:"ref"`
+	Ref string `json:"ref"`
+	// After: el commit en el que queda la rama tras un push. Es lo que se
+	// construye en un servicio con build en el servidor.
+	After  string `json:"after"`
+	Pusher struct {
+		Name string `json:"name"`
+	} `json:"pusher"`
 	RefType string `json:"ref_type"`
 	Created bool   `json:"created"`
 	Deleted bool   `json:"deleted"`
@@ -459,6 +465,7 @@ func (s *GitHubService) handle(event string, body []byte) error {
 		}
 	case "push":
 		s.docsOnPush(&p)
+		s.deploysOnPush(&p)
 		return s.onPush(&p)
 	case "pull_request":
 		return s.onPullRequest(&p)

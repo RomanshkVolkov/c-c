@@ -38,6 +38,8 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 	if gh != nil {
 		deploySvc.WithObserver(gh)
 		gh.WithDeploys(deploySvc, deployRepo).WithNotifier(inbox, orgs)
+		// Construir en el servidor clona con el token de la App.
+		deploySvc.WithRepoTokens(gh)
 	}
 	deployH := handler.NewDeployHandler(svc, deploySvc).
 		WithSecrets(service.NewSecretRefService(repository.NewSecretRefRepository(db)))

@@ -75,6 +75,10 @@ func (r *DeployRepository) UpdateDeployable(d *domain.Deployable) error {
 		"build_workflow":  d.BuildWorkflow,
 		"short_tags":      d.ShortTags,
 		"migrate_command": d.MigrateCommand,
+		"branch":          d.Branch,
+		"build_on_host":   d.BuildOnHost,
+		"dockerfile":      d.Dockerfile,
+		"build_context":   d.BuildContext,
 	}).Error
 }
 
@@ -139,7 +143,9 @@ func (r *DeployRepository) ListBuilds(deployableID string, limit int) ([]domain.
 func (r *DeployRepository) ExpireStale(deployableID string, now time.Time) ([]domain.Deployment, error) {
 	var expired []domain.Deployment
 	err := r.db.Model(&expired).Clauses(clause.Returning{}).
-		Where("deployable_id = ? AND status = ? AND started_at < ?", deployableID, domain.DeployRunning, now.Add(-domain.DeployStaleAfter)).
+		// Uno que construye tiene su propio plazo: el build cuenta.
+		Where("deployable_id = ? AND status = ? AND ((build_sha = '' AND started_at < ?) OR (build_sha <> '' AND started_at < ?))",
+			deployableID, domain.DeployRunning, now.Add(-domain.DeployStaleAfter), now.Add(-domain.DeployBuildStaleAfter)).
 		Updates(map[string]any{
 			"status": domain.DeployFailed,
 			// Un código y no una frase: la app lo dice en el idioma de cada quien.
@@ -297,6 +303,27 @@ func (r *DeployRepository) SetGitHubDeploymentID(id string, ghID int64) error {
 
 // DeployablesBuiltBy: los servicios de una org cuyo repo es éste y que dicen
 // qué workflow publica su imagen.
+// DeployablesBuiltOnHost: los servicios de la org que construye el servidor
+// desde ese repo (sin distinguir mayúsculas, como GitHub). La rama la mira
+// quien llama, con Deployable.BuildsOn.
+func (r *DeployRepository) DeployablesBuiltOnHost(orgID, repoFullName string) ([]domain.Deployable, error) {
+	var out []domain.Deployable
+	err := r.db.Where("org_id = ? AND LOWER(repo_full_name) = LOWER(?) AND build_on_host", orgID, repoFullName).
+		Find(&out).Error
+	return out, err
+}
+
+// BuildArgNames: los secrets del servicio que van al build, por nombre.
+// Nombres y nada más: los valores sólo existen como Docker secrets en el
+// servidor.
+func (r *DeployRepository) BuildArgNames(deployableID string) ([]string, error) {
+	out := []string{}
+	err := r.db.Model(&domain.DeployableSecretRef{}).
+		Where("deployable_id = ? AND usage IN ?", deployableID, []string{domain.SecretForBuild, domain.SecretForBoth}).
+		Order("name").Pluck("name", &out).Error
+	return out, err
+}
+
 func (r *DeployRepository) DeployablesBuiltBy(orgID, repoFullName string) ([]domain.Deployable, error) {
 	var out []domain.Deployable
 	err := r.db.Where("org_id = ? AND LOWER(repo_full_name) = LOWER(?) AND build_workflow <> ''", orgID, repoFullName).

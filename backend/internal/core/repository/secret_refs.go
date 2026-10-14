@@ -23,7 +23,11 @@ func (r *SecretRefRepository) Replace(orgID, deployableID string, refs []domain.
 			return err
 		}
 		for _, in := range refs {
-			row := domain.DeployableSecretRef{OrgID: orgID, DeployableID: deployableID, Name: in.Name, OpRef: in.OpRef}
+			usage := in.Usage
+			if usage == "" {
+				usage = domain.SecretForRuntime
+			}
+			row := domain.DeployableSecretRef{OrgID: orgID, DeployableID: deployableID, Name: in.Name, OpRef: in.OpRef, Usage: usage}
 			if err := tx.Create(&row).Error; err != nil {
 				return err
 			}

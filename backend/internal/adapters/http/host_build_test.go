@@ -1,0 +1,278 @@
+package http
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
+	"github.com/guz-studio/cac/backend/internal/core/service"
+)
+
+/*
+Construir en el servidor (14-oct-2026): un push a la rama de un servicio lo
+construye y lo despliega, sin un CI que publique la imagen. Sobre el fixture de
+la App (repo 100 = dwit/api, de la org-1), con el servicio pasado a construir
+en el servidor desde la rama `main`, y un agente v6.
+*/
+
+func hostBuildSetup(t *testing.T, mode string) *appFixture {
+	t.Helper()
+	f, cleanup := appSetup(t, mode)
+	t.Cleanup(cleanup)
+	if err := f.db.AutoMigrate(&domain.DeployableSecretRef{}); err != nil {
+		t.Fatal(err)
+	}
+	f.db.Exec(`UPDATE servers SET agent_version = ? WHERE id = 'srv-1'`, domain.AgentVersionBuilds)
+	f.deploys.WithRepoTokens(f.ghSvc)
+	main, on := "main", true
+	d, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", Environment: "prod", RepoFullName: "dwit/api", OnCINotify: mode,
+		Branch: &main, BuildOnHost: &on,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.d = d
+	return f
+}
+
+func pushTo(ref, after string) string {
+	return fmt.Sprintf(`{"ref":%q,"after":%q,"installation":{"id":5},"pusher":{"name":"ana"},
+		"repository":{"id":100,"full_name":"dwit/api","default_branch":"main"},"commits":[]}`, ref, after)
+}
+
+func (f *appFixture) deploymentsOf(t *testing.T) []domain.Deployment {
+	t.Helper()
+	var out []domain.Deployment
+	f.db.Where("deployable_id = ?", f.d.ID).Order("created_at").Find(&out)
+	return out
+}
+
+// Un push a la rama del servicio lo construye y lo despliega; a otra rama, no.
+// Mutantes: no mirar la rama en `deploysOnPush`; `BuildsOn` siempre true.
+func TestAPushToTheServiceBranchBuildsAndDeploys(t *testing.T) {
+	f := hostBuildSetup(t, "deploy")
+	f.hook(t, "push", "p-1", pushTo("refs/heads/staging", shaOld))
+	if deps := f.deploymentsOf(t); len(deps) != 0 {
+		t.Fatalf("un push a otra rama desplegó: %+v", deps)
+	}
+	f.hook(t, "push", "p-2", pushTo("refs/heads/main", shaNew))
+	deps := f.deploymentsOf(t)
+	if len(deps) != 1 || deps[0].BuildSha != shaNew || deps[0].RequestedBy != domain.DeployByGitHub ||
+		deps[0].Image != "ghcr.io/dwit/api:"+shaNew {
+		t.Fatalf("deploys: %+v", deps)
+	}
+	var b domain.ImageBuild
+	f.db.First(&b, "deployable_id = ?", f.d.ID)
+	if b.Source != domain.BuildSourceHost || b.Ref != "refs/heads/main" || b.Actor != "ana" {
+		t.Fatalf("la versión: %+v", b)
+	}
+	// El mismo push otra vez (GitHub reentrega) no es otro deploy.
+	f.hook(t, "push", "p-3", pushTo("refs/heads/main", shaNew))
+	if deps := f.deploymentsOf(t); len(deps) != 1 {
+		t.Fatalf("una reentrega encoló otro: %d", len(deps))
+	}
+}
+
+// En modo `record`, el push sólo apunta la versión; y (abajo) un repo de otra
+// org con el mismo nombre no dispara nada. Mutantes: encolar en `record`;
+// quitar `orgRepo`.
+func TestAPushOnlyBuildsWhatItShould(t *testing.T) {
+	f := hostBuildSetup(t, "record")
+	f.hook(t, "push", "p-1", pushTo("refs/heads/main", shaNew))
+	var builds int64
+	f.db.Model(&domain.ImageBuild{}).Count(&builds)
+	if builds != 1 || len(f.deploymentsOf(t)) != 0 {
+		t.Fatalf("en record: %d versiones, %d deploys", builds, len(f.deploymentsOf(t)))
+	}
+}
+
+func TestAPushOfAnotherOrgsRepoBuildsNothing(t *testing.T) {
+	g := hostBuildSetup(t, "deploy")
+	g.db.Model(&domain.GitHubRepo{}).Where("repo_id = 100").Update("org_id", "org-2")
+	g.hook(t, "push", "p-1", pushTo("refs/heads/main", shaNew))
+	if deps := g.deploymentsOf(t); len(deps) != 0 {
+		t.Fatalf("un push del repo de otra org desplegó: %+v", deps)
+	}
+}
+
+// Prod y test en el mismo repo: un aviso del CI de otra rama no es para este
+// servicio. Mutante: sin el filtro de rama en `Notice`.
+func TestANoticeOfAnotherBranchIsSkipped(t *testing.T) {
+	f, cleanup := appSetup(t, "deploy")
+	defer cleanup()
+	main := "main"
+	d, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", Environment: "prod", RepoFullName: "dwit/api", OnCINotify: "deploy", Branch: &main,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.deploys.Notice(d, domain.DeployNotice{Sha: shaNew, Ref: "refs/heads/staging"}, "ci")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var builds int64
+	f.db.Model(&domain.ImageBuild{}).Count(&builds)
+	if res.Deploy != "skipped" || res.Reason != "other-branch" || builds != 0 {
+		t.Fatalf("aviso de otra rama: %+v, %d versiones", res, builds)
+	}
+	if res, _ := f.deploys.Notice(d, domain.DeployNotice{Sha: shaNew, Ref: "refs/heads/main"}, "ci"); res.Deploy != "queued" {
+		t.Fatalf("el de su rama: %+v", res)
+	}
+}
+
+// A un agente anterior a la v6 no se le encola un build: lo ignoraría y
+// desplegaría una imagen que no existe. Mutante: sin la compuerta.
+func TestAnOldAgentIsNotGivenABuild(t *testing.T) {
+	f := hostBuildSetup(t, "deploy")
+	f.db.Exec(`UPDATE servers SET agent_version = ? WHERE id = 'srv-1'`, domain.AgentVersionBuilds-1)
+	if _, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew, ""); !errors.Is(err, service.ErrAgentCannotBuild) {
+		t.Fatalf("a un agente v5: %v", err)
+	}
+	res, err := f.deploys.PushBuild(f.d, shaNew, "refs/heads/main", "ana")
+	if err != nil || res.Deploy != "skipped" || res.Reason != "agent-cannot-build" {
+		t.Fatalf("el push con agente v5: %+v %v", res, err)
+	}
+	// Construir es de un commit entero: con uno corto no hay qué clonar.
+	f.db.Exec(`UPDATE servers SET agent_version = ? WHERE id = 'srv-1'`, domain.AgentVersionBuilds)
+	if _, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew[:7], ""); !errors.Is(err, service.ErrBuildNeedsFullSha) {
+		t.Fatalf("con sha corto: %v", err)
+	}
+}
+
+// El trabajo que recibe el agente lleva qué construir, con qué clonar y los
+// **nombres** de los build args —los de build y los de los dos usos, no los de
+// runtime—, y ningún valor ni referencia de 1Password.
+// Mutantes: incluir los de runtime; dejar fuera los de los dos usos; no poner
+// el token.
+func TestTheBuildJobCarriesNamesNotValues(t *testing.T) {
+	f := hostBuildSetup(t, "deploy")
+	ctx := "boat"
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", Environment: "prod", RepoFullName: "dwit/api", OnCINotify: "deploy", BuildContext: &ctx,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	refs := service.NewSecretRefService(repository.NewSecretRefRepository(f.db))
+	if _, err := refs.Replace(f.d, domain.PutSecretRefsRequest{Refs: []domain.SecretRefInput{
+		{Name: "DATABASE_URL", OpRef: "op://dwit/Boaty/DATABASE_URL", Usage: "both"},
+		{Name: "NEXT_PUBLIC_STRIPE_KEY", OpRef: "op://dwit/Boaty/stripe", Usage: "build"},
+		{Name: "MJ_APIKEY_PRIVATE", OpRef: "op://dwit/Boaty/mj"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew, ""); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.deploys.Claim("srv-1")
+	if err != nil || job == nil || job.Data.Build == nil {
+		t.Fatalf("sin build: %+v %v", job, err)
+	}
+	b := job.Data.Build
+	if b.Repo != "dwit/api" || b.Sha != shaNew || b.Dockerfile != "Dockerfile" || b.Context != "boat" ||
+		b.CloneToken != "ghs_prueba" || strings.Join(b.BuildArgs, ",") != "DATABASE_URL,NEXT_PUBLIC_STRIPE_KEY" {
+		t.Fatalf("el build: %+v", b)
+	}
+	raw, _ := json.Marshal(job)
+	if strings.Contains(string(raw), "op://") {
+		t.Fatalf("el trabajo lleva referencias de 1Password: %s", raw)
+	}
+}
+
+// Sin con qué clonar, el deploy falla al reclamarlo y con su motivo, en vez de
+// mandarle al agente un trabajo que no puede hacer. Mutante: mandarlo igual.
+func TestABuildWithoutACloneTokenFailsUpFront(t *testing.T) {
+	f := hostBuildSetup(t, "deploy")
+	if _, _, err := f.deploys.RequestDeploy(f.d, domain.DeployByUser, "u-1", shaNew, ""); err != nil {
+		t.Fatal(err)
+	}
+	// La instalación ya no ve el repo.
+	f.db.Exec(`DELETE FROM git_hub_repos WHERE repo_id = 100`)
+	job, err := f.deploys.Claim("srv-1")
+	if err != nil || job != nil {
+		t.Fatalf("se mandó el trabajo: %+v %v", job, err)
+	}
+	deps := f.deploymentsOf(t)
+	if len(deps) != 1 || deps[0].Status != domain.DeployFailed || deps[0].Error != service.ErrNoCloneToken.Error() {
+		t.Fatalf("el deploy: %+v", deps)
+	}
+}
+
+// Un deploy que construye tiene más plazo antes de darse por perdido: un build
+// de Next pasa de los quince minutos. Mutante: un solo plazo para todos.
+func TestABuildingDeployHasLongerToFinish(t *testing.T) {
+	f := hostBuildSetup(t, "deploy")
+	repo := repository.NewDeployRepository(f.db)
+	// Dos servicios: el índice deja un solo deploy vivo por servicio.
+	other := *f.d
+	other.ID = "dep-other"
+	if err := f.db.Create(&other).Error; err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now().Add(-20 * time.Minute)
+	for _, x := range []struct{ deployable, sha string }{{f.d.ID, ""}, {other.ID, shaNew}} {
+		dep := &domain.Deployment{OrgID: "org-1", DeployableID: x.deployable, ServerID: "srv-1", Image: "ghcr.io/dwit/api:x",
+			RequestedBy: domain.DeployByUser, Status: domain.DeployRunning, BuildSha: x.sha, StartedAt: &started}
+		dep.ID = "run-" + x.deployable[:8]
+		if err := f.db.Create(dep).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	plain, err := repo.ExpireStale(f.d.ID, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	building, err := repo.ExpireStale(other.ID, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain) != 1 || len(building) != 0 {
+		t.Fatalf("a los 20 min caducaron %d sin build y %d con build", len(plain), len(building))
+	}
+}
+
+// Lo nuevo del servicio se valida y sobrevive a una app que no lo manda.
+// Mutantes: aceptar `..` en la ruta; borrar la rama si no viene; construir sin
+// repo.
+func TestTheBuildSettingsAreCheckedAndKept(t *testing.T) {
+	f := hostBuildSetup(t, "deploy")
+	bad, up := "../etc", "main..x"
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", RepoFullName: "dwit/api", OnCINotify: "deploy", Dockerfile: &bad,
+	}); !errors.Is(err, service.ErrBadBuildPath) {
+		t.Fatalf("ruta fuera del repo: %v", err)
+	}
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", RepoFullName: "dwit/api", OnCINotify: "deploy", Branch: &up,
+	}); !errors.Is(err, service.ErrBadBranch) {
+		t.Fatalf("rama mala: %v", err)
+	}
+	// Una app que no sabe del build no lo apaga ni le quita la rama.
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", RepoFullName: "dwit/api", OnCINotify: "deploy",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var stored domain.Deployable
+	f.db.First(&stored, "id = ?", f.d.ID)
+	if !stored.BuildOnHost || stored.Branch != "main" {
+		t.Fatalf("se perdió el build: %+v", stored)
+	}
+	if _, err := f.deploys.UpdateDeployable(&stored, domain.UpdateDeployableRequest{
+		Name: "api", OnCINotify: "deploy",
+	}); !errors.Is(err, service.ErrBuildNeedsRepo) {
+		t.Fatalf("construir sin repo: %v", err)
+	}
+	refs := service.NewSecretRefService(repository.NewSecretRefRepository(f.db))
+	if _, err := refs.Replace(f.d, domain.PutSecretRefsRequest{Refs: []domain.SecretRefInput{
+		{Name: "X", OpRef: "op://a/b/c", Usage: "siempre"},
+	}}); !errors.Is(err, service.ErrBadSecretUsage) {
+		t.Fatalf("uso desconocido: %v", err)
+	}
+}
