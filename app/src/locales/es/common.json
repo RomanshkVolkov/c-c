@@ -712,7 +712,8 @@
       "allRuns": "Ver todas las ejecuciones",
       "repoSearch": "Escribe para buscar un repo que vea la GitHub App",
       "repoUnknown": "La GitHub App de la organización no ve este repo: con él no funcionan ni el build en el servidor ni seguir los deploys en GitHub.",
-      "noWorkflow": "Ninguno (sin aviso del CI por GitHub)"
+      "noWorkflow": "Ninguno (sin aviso del CI por GitHub)",
+      "noKeyNeeded": "Se construye en el servidor: lo despliega el push, sin llave del CI."
     },
     "commits": "Últimos commits de {{repo}}",
     "commitsLabel": "Commits para desplegar",

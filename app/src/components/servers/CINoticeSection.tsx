@@ -173,13 +173,22 @@ export default function CINoticeSection({
           ))}
         </div>
         <span className="flex-1" />
-        <span className="font-mono text-xs text-muted-foreground">
-          {deployable.ciKeyPreview ? t("common:deploy.ci.keyPreview", { preview: deployable.ciKeyPreview }) : t("common:deploy.ci.noKey")}
-        </span>
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => void mint()}>
-          <KeyRound className="mr-1 size-3.5" />
-          {deployable.ciKeyPreview ? t("common:deploy.ci.remint") : t("common:deploy.ci.mint")}
-        </Button>
+        {/* La llave es del paso `curl` de un CI. Un servicio que construye en
+            el servidor lo despliega el push de la GitHub App, sin llave:
+            ofrecerla sólo confunde. */}
+        {deployable.buildOnHost ? (
+          <span className="text-xs text-muted-foreground">{t("common:deploy.ci.noKeyNeeded")}</span>
+        ) : (
+          <>
+            <span className="font-mono text-xs text-muted-foreground">
+              {deployable.ciKeyPreview ? t("common:deploy.ci.keyPreview", { preview: deployable.ciKeyPreview }) : t("common:deploy.ci.noKey")}
+            </span>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void mint()}>
+              <KeyRound className="mr-1 size-3.5" />
+              {deployable.ciKeyPreview ? t("common:deploy.ci.remint") : t("common:deploy.ci.mint")}
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Con la GitHub App: el repo hace que cada deploy sea un Deployment en

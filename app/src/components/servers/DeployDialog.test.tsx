@@ -189,6 +189,15 @@ describe("desplegar un servicio", () => {
 describe("el aviso del CI", () => {
   const KEY = "dk_0123456789abcdef0123456789abcdef";
 
+  // Un servicio que construye en el servidor lo despliega el push: la llave
+  // del `curl` no se ofrece. Mutante: ofrecerla igual.
+  it("a un servicio que construye en el servidor no se le ofrece llave", async () => {
+    respuestas([{ ...deployable, repoFullName: "dwit/api", buildOnHost: true }], []);
+    pintar();
+    await screen.findByText(/(sin llave del CI|no CI key needed)/i);
+    expect(screen.queryByRole("button", { name: /^(acuñar llave|mint key)$/i })).toBeNull();
+  });
+
   it("la llave se enseña una vez, con el paso para el workflow, y no se queda en el store", async () => {
     respuestas([deployable], []);
     post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });

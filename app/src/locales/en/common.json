@@ -712,7 +712,8 @@
       "allRuns": "See all runs",
       "repoSearch": "Type to find a repository the GitHub App sees",
       "repoUnknown": "The organization's GitHub App doesn't see this repository: building on the server and following deploys in GitHub won't work with it.",
-      "noWorkflow": "None (no CI notice from GitHub)"
+      "noWorkflow": "None (no CI notice from GitHub)",
+      "noKeyNeeded": "Built on the server: a push deploys it, no CI key needed."
     },
     "commits": "Latest commits in {{repo}}",
     "commitsLabel": "Commits to deploy",
