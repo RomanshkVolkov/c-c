@@ -11,7 +11,12 @@ import { cleanup, render, screen } from "@testing-library/react";
  */
 
 const navegado: string[] = [];
-vi.mock("react-router-dom", () => ({ useNavigate: () => (r: string) => navegado.push(r) }));
+let query = "";
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => (r: string) => navegado.push(r),
+  useSearchParams: () => [new URLSearchParams(query), () => {}],
+}));
+vi.mock("@/components/docs/RepoDocView", () => ({ default: ({ id }: { id: string }) => <p>repo-doc {id}</p> }));
 
 const estado: Record<string, unknown> = {
   activeDoc: null,
@@ -51,7 +56,10 @@ vi.mock("@/components/markdown/MarkdownEditor", () => ({ default: () => null }))
 
 const DocIndexPage = (await import("@/pages/DocIndexPage")).default;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  query = "";
+});
 
 describe("la pantalla de documentación", () => {
   it("sin nada abierto enseña la tabla", () => {
@@ -65,6 +73,17 @@ describe("la pantalla de documentación", () => {
     render(<DocIndexPage />);
     expect(screen.getByText("Portento")).toBeTruthy();
     expect(screen.queryByText("All docs")).toBeNull();
+  });
+
+  // Un .md del repo va por la URL y gana a lo que hubiera abierto: si no, el
+  // fichero que se pulsó en el panel no llegaría a verse.
+  // Mutante: mirar antes `activeDoc`.
+  it("con ?repoDoc= enseña ese fichero del repo", () => {
+    estado.activeDoc = { kind: "list", id: "l1", name: "Portento" };
+    query = "repoDoc=rd-1";
+    render(<DocIndexPage />);
+    expect(screen.getByText("repo-doc rd-1")).toBeTruthy();
+    expect(screen.queryByText("Portento")).toBeNull();
   });
 });
 

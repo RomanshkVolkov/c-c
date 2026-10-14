@@ -1,7 +1,8 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import DocIndex from "@/components/docs/DocIndex";
 import DocTabs from "@/components/docs/DocTabs";
+import RepoDocView from "@/components/docs/RepoDocView";
 import { useTasksStore } from "@/store/tasks.store";
 
 /**
@@ -22,10 +23,16 @@ export default function DocIndexPage() {
   const selectList = useTasksStore((s) => s.selectList);
   const setBoardView = useTasksStore((s) => s.setBoardView);
   const navigate = useNavigate();
+  // Un .md del repo (docs as code) va por la URL y no por el store: no es el
+  // documento de ningún nodo, y así un enlace a él se puede compartir.
+  const [params] = useSearchParams();
+  const repoDoc = params.get("repoDoc");
 
   return (
     <div className="flex min-h-0 flex-1">
-      {activeDoc ? (
+      {repoDoc ? (
+        <RepoDocView id={repoDoc} />
+      ) : activeDoc ? (
         <DocTabs
           inDocsPanel
           onView={(v) => {

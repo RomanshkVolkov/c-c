@@ -83,13 +83,13 @@ describe("la pestaña GitHub", () => {
     fireEvent.keyDown(select, { key: "Escape" });
 
     // Sin enlazar, `#12` a secas no se enciende.
-    expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: /bare #12/ }) as HTMLInputElement).disabled).toBe(true);
 
     await pick(select, "Producto");
     await waitFor(() =>
       expect(api.patch).toHaveBeenCalledWith("/api/v1/organizations/org-1/github/repos/r-1", { spaceId: "sp-1", bareRefs: false }, true),
     );
-    await waitFor(() => expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole("checkbox", { name: /bare #12/ }) as HTMLInputElement).disabled).toBe(false));
   });
 
   it("quien no es admin lo ve pero no lo cambia", async () => {
@@ -97,7 +97,44 @@ describe("la pestaña GitHub", () => {
     render(<MemoryRouter><OrgGitHub canManage={false} /></MemoryRouter>);
     const select = await screen.findByLabelText(/dwit\/api/);
     expect(select.hasAttribute("disabled") || select.getAttribute("aria-disabled") === "true" || select.hasAttribute("data-disabled")).toBe(true);
-    expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: /bare #12/ }) as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByRole("button", { name: /(conectar|connect)/i })).toBeNull();
+  });
+});
+
+/**
+ * Los .md del repo en Documentación (docs as code): sólo con el repo atado,
+ * se apagan con su casilla y se sincronizan a mano.
+ * Mutantes: la casilla manda siempre `true`; el botón a otra ruta; enseñar
+ * la casilla en un repo sin atar.
+ */
+describe("los docs de un repo", () => {
+  it("sin atar no hay casilla de docs", async () => {
+    api.get.mockResolvedValue(estado());
+    render(<MemoryRouter><OrgGitHub canManage /></MemoryRouter>);
+    await screen.findByLabelText(/dwit\/api/);
+    expect(screen.queryByRole("checkbox", { name: /Documentation/ })).toBeNull();
+  });
+
+  it("apagarlos lo manda, y «Sincronizar» pide la copia", async () => {
+    const atado = repo({ spaceId: "sp-1", showDocs: true, docsSyncedAt: null, docsState: "" });
+    api.get.mockResolvedValue(estado({ repos: [atado] }));
+    api.patch.mockResolvedValue({ success: true, data: { ...atado, showDocs: false } });
+    api.post.mockResolvedValue({ success: true, data: { ...atado, docsState: "ok", docsSyncedAt: "2026-10-13T10:00:00Z" } });
+    render(<MemoryRouter><OrgGitHub canManage /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Sync now/ }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/organizations/org-1/github/repos/r-1/docs/sync", {}, true),
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Documentation/ }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        "/api/v1/organizations/org-1/github/repos/r-1",
+        { spaceId: "sp-1", bareRefs: false, showDocs: false },
+        true,
+      ),
+    );
   });
 });

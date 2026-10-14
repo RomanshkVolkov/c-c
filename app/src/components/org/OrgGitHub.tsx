@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { ExternalLink, Github, Loader2, RefreshCw, Workflow } from "lucide-react";
+import { BookOpen, ExternalLink, Github, Loader2, RefreshCw, Workflow } from "lucide-react";
+import { desde } from "@/lib/desde";
 import { openExternal } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { phraseFor } from "@/lib/server-errors";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useRepoDocs } from "@/store/repo-docs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,8 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
   const fetchTree = useTasksStore((s) => s.fetchTree);
   const [status, setStatus] = useState<GitHubStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const fetchRepoDocs = useRepoDocs((s) => s.fetchSpace);
 
   const base = `/api/v1/organizations/${orgId}/github`;
 
@@ -65,15 +69,34 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
     }
   };
 
-  const update = async (repo: GitHubRepo, patch: Partial<Pick<GitHubRepo, "spaceId" | "bareRefs">>) => {
-    const next = { spaceId: repo.spaceId, bareRefs: repo.bareRefs, ...patch };
+  const update = async (repo: GitHubRepo, patch: Partial<Pick<GitHubRepo, "spaceId" | "bareRefs" | "showDocs">>) => {
+    const next = { spaceId: repo.spaceId, bareRefs: repo.bareRefs, showDocs: repo.showDocs, ...patch };
     try {
       const res = await api.patch<APIResponse<GitHubRepo>>(`${base}/repos/${repo.id}`, next, true);
       if (!res?.success || !res.data) throw new Error(res?.error ?? "github");
       const saved = res.data;
       setStatus((s) => (s ? { ...s, repos: s.repos.map((r) => (r.id === saved.id ? saved : r)) } : s));
+      // El panel de Documentación, al día con lo que se acaba de cambiar.
+      for (const sp of new Set([repo.spaceId, saved.spaceId])) if (sp) void fetchRepoDocs(sp, true).catch(() => {});
     } catch (e) {
       toast.error(phraseFor(e instanceof Error ? e.message : String(e), t("org:github.saveFailed")));
+    }
+  };
+
+  // Los docs del repo, a mano: por si se perdió un push.
+  const syncDocs = async (repo: GitHubRepo) => {
+    setSyncing(repo.id);
+    try {
+      const res = await api.post<APIResponse<GitHubRepo>>(`${base}/repos/${repo.id}/docs/sync`, {}, true);
+      if (!res?.success || !res.data) throw new Error(res?.error ?? "github");
+      const saved = res.data;
+      setStatus((s) => (s ? { ...s, repos: s.repos.map((r) => (r.id === saved.id ? saved : r)) } : s));
+      if (saved.spaceId) void fetchRepoDocs(saved.spaceId, true).catch(() => {});
+      toast.success(t("work:repoDocs.synced_ok"));
+    } catch {
+      toast.error(t("work:repoDocs.syncFailed"));
+    } finally {
+      setSyncing(null);
     }
   };
 
@@ -145,6 +168,46 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
                 />
                 {t("org:github.bareRefs")}
               </label>
+              {/* Sus .md en Documentación (docs as code): sólo con el repo atado. */}
+              {repo.spaceId && (
+                <div className="flex w-full flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={repo.showDocs}
+                      disabled={!canManage}
+                      onChange={(e) => void update(repo, { showDocs: e.target.checked })}
+                    />
+                    <BookOpen className="size-3.5" />
+                    {t("work:repoDocs.showDocs")}
+                  </label>
+                  {repo.showDocs && (
+                    <>
+                      <span>
+                        {repo.docsState === "truncated"
+                          ? t("work:repoDocs.state.truncated")
+                          : repo.docsState === "error"
+                            ? t("work:repoDocs.state.error")
+                            : repo.docsSyncedAt
+                              ? t("work:repoDocs.synced", { when: desde(repo.docsSyncedAt) })
+                              : t("work:repoDocs.never")}
+                      </span>
+                      {canManage && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          disabled={syncing === repo.id}
+                          onClick={() => void syncDocs(repo)}
+                        >
+                          <RefreshCw className={syncing === repo.id ? "size-3 animate-spin" : "size-3"} />
+                          {t("work:repoDocs.sync")}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>

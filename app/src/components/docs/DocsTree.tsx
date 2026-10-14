@@ -4,14 +4,17 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import DocPagesBranch from "@/components/docs/DocPagesBranch";
+import RepoDocsBranch from "@/components/docs/RepoDocsBranch";
 import { DocsTreeView, useBranch } from "@/components/docs/docs-tree-view";
 import PanelRow from "@/components/sidebar/PanelRow";
 import { useTreeExpansion } from "@/components/sidebar/useTreeExpansion";
 import { docsRoute } from "@/lib/doc-mode";
 import { defaultExpanded, docNodes, filterDocsTree, type DocNode } from "@/lib/docs-panel";
 import { useT } from "@/lib/i18n";
+import { repoDocPath } from "@/lib/repo-tree";
 import { useDocPages } from "@/store/doc-pages.store";
 import { useOrgsStore } from "@/store/orgs.store";
+import { useRepoDocs } from "@/store/repo-docs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { docKey, type DocPageTreeItem } from "@/types/task";
 
@@ -36,11 +39,23 @@ export default function DocsTree({ filter = "" }: { filter?: string }) {
   const breadcrumb = useDocPages((s) => s.view?.breadcrumb);
   const pagesByOwner = useDocPages((s) => s.pagesByOwner);
   const expansion = useTreeExpansion("docs");
+  const repoDoc = useRepoDocs((s) => s.open);
+  const repoBySpace = useRepoDocs((s) => s.bySpace);
 
   // Un documento de otra org no cuenta: puede sobrevivir persistido a un cambio.
   const open = activeDoc && activeDoc.orgId === currentOrgId ? activeDoc : null;
-  const defaults = useMemo(() => defaultExpanded(tree, open, breadcrumb ?? []), [tree, open, breadcrumb]);
-  const visible = useMemo(() => filterDocsTree(tree, filter, pagesByOwner), [tree, filter, pagesByOwner]);
+  // Leyendo un fichero del repo, el camino hasta él: su espacio, el repo y
+  // sus carpetas.
+  const readingRepo = repoDoc && repoDoc.orgId === currentOrgId ? repoDoc : null;
+  const defaults = useMemo(() => {
+    const d = defaultExpanded(tree, open, breadcrumb ?? []);
+    if (readingRepo) for (const k of [docKey("space", readingRepo.spaceId), ...repoDocPath(readingRepo)]) d.add(k);
+    return d;
+  }, [tree, open, breadcrumb, readingRepo]);
+  const visible = useMemo(
+    () => filterDocsTree(tree, filter, pagesByOwner, repoBySpace),
+    [tree, filter, pagesByOwner, repoBySpace],
+  );
   const nodes = useMemo(() => docNodes(tree), [tree]);
 
   const revealKey = [...defaults].join("/");
@@ -125,7 +140,9 @@ function DocNodeRow({ node, depth }: { node: DocNode; depth: number }) {
   const onScreen = isActive && docsRoute(activeDoc, currentOrgId, pathname) !== null;
   const hasPages = isActive || indexedPages > 0 || cachedPages > 0;
   const children = node.children.filter((c) => branch.shows(docKey(c.kind, c.id)));
-  const expandable = hasPages || children.length > 0;
+  // Un espacio siempre se despliega: de él pueden colgar los .md de un repo,
+  // y no se sabe hasta pedirlos.
+  const expandable = hasPages || children.length > 0 || node.kind === "space";
 
   const icon =
     node.kind === "space" ? (
@@ -179,6 +196,7 @@ function DocNodeRow({ node, depth }: { node: DocNode; depth: number }) {
               ))}
             </ul>
           )}
+          {node.kind === "space" && <RepoDocsBranch spaceId={node.id} depth={depth + 1} />}
         </>
       )}
     </li>

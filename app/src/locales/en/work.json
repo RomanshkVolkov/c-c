@@ -450,5 +450,23 @@
       "hint": "Steps to do one concrete thing, and how to check it worked.",
       "body": "## When it's done\n\nWhat triggers it, and how often.\n\n## Before you start\n\n- Access to:\n- Have at hand:\n\n## Steps\n\n1. \n2. \n3. \n\n## How to check it worked\n\n## If something fails\n\nWhat to do, and who to tell.\n"
     }
+  },
+  "repoDocs": {
+    "repoHint": "{{repo}}, branch {{branch}}. Read-only: it is edited in the repository.",
+    "synced": "Synced {{when}}",
+    "onGitHub": "View on GitHub",
+    "readOnly": "From the repository. It is edited there, with a pull request; this copy updates on every push.",
+    "tooLarge": "This file is too large to show here. Open it on GitHub.",
+    "empty": "This file is empty.",
+    "gone": "This file is no longer in the repository, or its docs were turned off.",
+    "showDocs": "Show its .md files in Documentation",
+    "sync": "Sync now",
+    "synced_ok": "Docs synced",
+    "syncFailed": "GitHub did not answer. Try again in a moment.",
+    "state": {
+      "truncated": "Too many files: only the first 1000 are shown",
+      "error": "The last sync failed"
+    },
+    "never": "Not synced yet"
   }
 }

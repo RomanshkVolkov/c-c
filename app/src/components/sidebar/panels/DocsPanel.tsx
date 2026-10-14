@@ -22,7 +22,7 @@ const ALL_DOCS = navItem("/docs");
 export default function DocsPanel() {
   const { t } = useT();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const closeDoc = useTasksStore((s) => s.closeDoc);
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const [query, setQuery] = useState("");
@@ -33,7 +33,8 @@ export default function DocsPanel() {
         <PanelRow
           icon={<ALL_DOCS.icon />}
           label={t(ALL_DOCS.labelKey)}
-          active={pathname === "/docs" && !activeDoc}
+          // Leyendo un .md del repo (`?repoDoc=`) tampoco es la tabla.
+          active={pathname === "/docs" && !activeDoc && !new URLSearchParams(search).has("repoDoc")}
           onClick={() => {
             closeDoc();
             navigate("/docs");

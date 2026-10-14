@@ -1,4 +1,6 @@
 import { childrenOf } from "@/store/doc-pages.store";
+import { repoDocPath, repoFileKey } from "@/lib/repo-tree";
+import type { RepoDocsGroup } from "@/types/github";
 import { docKey, type DocOwnerKind, type DocPageTreeItem, type FolderTree, type SpaceTree } from "@/types/task";
 
 /**
@@ -84,6 +86,7 @@ export function filterDocsTree(
   tree: SpaceTree[],
   query: string,
   pagesByOwner: Record<string, DocPageTreeItem[]>,
+  repoBySpace: Record<string, RepoDocsGroup[]> = {},
 ): Set<string> | null {
   const q = query.trim().toLowerCase();
   if (!q) return null;
@@ -111,10 +114,26 @@ export function filterDocsTree(
   // Un nodo se queda si casa él, alguna de sus páginas o algo de debajo. Los
   // antepasados no se apuntan aparte: cada uno se queda por lo mismo, porque
   // lo que casa abajo sube como `true` por la recursión.
+  // Los .md de los repos del espacio ya pedidos: casan por título o por
+  // ruta, y arrastran su repo y sus carpetas.
+  const repoFiles = (spaceId: string): boolean => {
+    let any = false;
+    for (const g of repoBySpace[spaceId] ?? []) {
+      for (const f of g.files) {
+        if (!hit(f.title) && !hit(f.path)) continue;
+        any = true;
+        keep.add(repoFileKey(f.id));
+        for (const k of repoDocPath({ repoId: g.repoId, path: f.path })) keep.add(k);
+      }
+    }
+    return any;
+  };
+
   const visit = (n: DocNode): boolean => {
     const key = docKey(n.kind, n.id);
     let any = hit(n.name);
     if (pages(key)) any = true;
+    if (n.kind === "space" && repoFiles(n.id)) any = true;
     for (const c of n.children) if (visit(c)) any = true;
     if (any) keep.add(key);
     return any;

@@ -15,6 +15,47 @@ export interface GitHubRepo {
   orgId: string;
   spaceId: string;
   bareRefs: boolean;
+  /** Si sus .md salen en Documentación, bajo su espacio. */
+  showDocs: boolean;
+  /** De qué rama salen, cuándo se copiaron y cómo salió («ok», «truncated», «error»; vacío: nunca). */
+  docsBranch: string;
+  docsSyncedAt: string | null;
+  docsState: "" | RepoDocsState;
+}
+
+export type RepoDocsState = "ok" | "truncated" | "error";
+
+/** Un .md del repo en el listado del panel, sin cuerpo. Ver `domain.RepoDocEntry`. */
+export interface RepoDocEntry {
+  id: string;
+  path: string;
+  title: string;
+}
+
+/** Los .md de un repo atado a un espacio. Ver `domain.RepoDocsGroup`. */
+export interface RepoDocsGroup {
+  repoId: number;
+  fullName: string;
+  branch: string;
+  state: "" | RepoDocsState;
+  syncedAt: string | null;
+  files: RepoDocEntry[];
+}
+
+/** Un .md del repo, con su cuerpo. Ver `domain.RepoDocResponse`. */
+export interface RepoDoc {
+  id: string;
+  orgId: string;
+  repoId: number;
+  path: string;
+  title: string;
+  body?: string;
+  tooLarge: boolean;
+  fullName: string;
+  branch: string;
+  spaceId: string;
+  htmlUrl: string;
+  syncedAt: string | null;
 }
 
 export interface GitHubStatus {

@@ -450,5 +450,23 @@
       "hint": "Pasos para hacer algo concreto, con cómo comprobar que salió.",
       "body": "## Cuándo se hace\n\nQué lo dispara, y cada cuánto.\n\n## Antes de empezar\n\n- Acceso a:\n- Tener a mano:\n\n## Pasos\n\n1. \n2. \n3. \n\n## Cómo se comprueba que salió\n\n## Si algo falla\n\nQué hacer, y a quién avisar.\n"
     }
+  },
+  "repoDocs": {
+    "repoHint": "{{repo}}, rama {{branch}}. Sólo lectura: se edita en el repo.",
+    "synced": "Sincronizado {{when}}",
+    "onGitHub": "Ver en GitHub",
+    "readOnly": "Del repo. Se edita allí, con una pull request; esta copia se pone al día con cada push.",
+    "tooLarge": "Este fichero es demasiado grande para verlo aquí. Ábrelo en GitHub.",
+    "empty": "Este fichero está vacío.",
+    "gone": "Este fichero ya no está en el repo, o se apagaron sus docs.",
+    "showDocs": "Enseñar sus .md en Documentación",
+    "sync": "Sincronizar ahora",
+    "synced_ok": "Docs sincronizados",
+    "syncFailed": "GitHub no contestó. Prueba otra vez en un momento.",
+    "state": {
+      "truncated": "Demasiados ficheros: sólo salen los primeros 1000",
+      "error": "La última sincronización falló"
+    },
+    "never": "Sin sincronizar todavía"
   }
 }

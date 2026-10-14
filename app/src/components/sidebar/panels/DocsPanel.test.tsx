@@ -27,6 +27,7 @@ const { useTasksStore } = await import("@/store/tasks.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
 const { useDocPages } = await import("@/store/doc-pages.store");
 const { useLayoutStore } = await import("@/store/layout.store");
+const { useRepoDocs } = await import("@/store/repo-docs.store");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
 const { PromptProvider } = await import("@/components/PromptDialog");
 
@@ -51,12 +52,27 @@ const TREE: SpaceTree[] = [
   { id: "sp-b", orgId: "org-1", name: "Valkey", color: "", people: [], folders: [], lists: [list("li-v", "Operación")] },
 ];
 
+// Un repo atado a Valkey, con sus .md (docs as code).
+const WEB = {
+  repoId: 200,
+  fullName: "dwit/web",
+  branch: "main",
+  state: "ok",
+  syncedAt: null,
+  files: [
+    { id: "rd-readme", path: "README.md", title: "Web" },
+    { id: "rd-k8s", path: "docs/guias/k8s.md", title: "Desplegar en k8s" },
+  ],
+};
+
 const row = (id: string, title: string) => ({ id, title, rank: "0.5", hasBody: false, updatedAt: "" });
 
 let where = "";
+let whereSearch = "";
 function Where() {
   const l = useLocation();
   where = l.pathname;
+  whereSearch = l.search;
   return null;
 }
 
@@ -89,8 +105,15 @@ const shows = (name: string) => screen.queryByRole("button", { name: new RegExp(
 
 beforeEach(() => {
   get.mockImplementation(async (url: string) =>
-    url === "/api/v1/docs/list/li-v/pages" ? { data: [row("pv", "Rotación")] } : { success: true, data: null },
+    url === "/api/v1/docs/list/li-v/pages"
+      ? { data: [row("pv", "Rotación")] }
+      : url === "/api/v1/repo-docs?spaceId=sp-b"
+        ? { success: true, data: [WEB] }
+        : url.startsWith("/api/v1/repo-docs?")
+          ? { success: true, data: [] }
+          : { success: true, data: null },
   );
+  useRepoDocs.setState({ bySpace: {}, open: null });
   useOrgsStore.setState({ currentOrgId: "org-1" } as never);
   useTasksStore.setState({
     tree: TREE,
@@ -227,5 +250,46 @@ describe("al cambiar el documento que lees", () => {
     mount();
     useTasksStore.setState({ activeDoc: { kind: "list", id: "li-v", name: "Operación", orgId: "org-1" } } as never);
     await waitFor(() => expect(shows("Operación")).toBe(true));
+  });
+});
+
+/**
+ * Los .md del repo atado a un espacio, colgando de él.
+ * Mutantes: montar la rama del repo con el espacio plegado (se piden al
+ * abrir el panel); el filtro sin los ficheros del repo; abrir un fichero sin
+ * cerrar el documento (la pantalla seguiría enseñando el de antes).
+ */
+describe("los .md del repo", () => {
+  const repoCalls = (space: string) => get.mock.calls.filter(([u]) => u === `/api/v1/repo-docs?spaceId=${space}`);
+
+  it("se piden al desplegar el espacio, no antes, y van por carpetas", async () => {
+    mount();
+    expect(repoCalls("sp-b")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Expand Valkey" }));
+    await waitFor(() => expect(shows("dwit/web")).toBe(true));
+    expect(repoCalls("sp-b")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Expand dwit/web" }));
+    expect(shows("docs/guias")).toBe(true);
+    expect(shows("Web")).toBe(true);
+    // La carpeta, plegada: lo de dentro no se ve hasta abrirla.
+    expect(shows("Desplegar en k8s")).toBe(false);
+  });
+
+  it("el filtro encuentra un fichero del repo y abre su camino", () => {
+    useRepoDocs.setState({ bySpace: { "sp-b": [WEB] } } as never);
+    mount("/docs", "k8s");
+    expect(shows("Valkey")).toBe(true);
+    expect(shows("dwit/web")).toBe(true);
+    expect(shows("Desplegar en k8s")).toBe(true);
+    expect(shows("Operación")).toBe(false);
+  });
+
+  it("abrir un fichero cierra el documento y lo enseña en /docs", async () => {
+    useRepoDocs.setState({ bySpace: { "sp-b": [WEB] } } as never);
+    mount("/tasks", "Web");
+    fireEvent.click(screen.getByRole("button", { name: /^Web/ }));
+    expect(useTasksStore.getState().activeDoc).toBeNull();
+    expect(where).toBe("/docs");
+    expect(whereSearch).toBe("?repoDoc=rd-readme");
   });
 });
