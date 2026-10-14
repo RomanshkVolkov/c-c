@@ -192,17 +192,86 @@ pub struct SecretRef {
     pub usage: Option<String>,
 }
 
+/// El ítem de una referencia (`op://bóveda/ítem/…` → `op://bóveda/ítem`).
+fn item_of(op_ref: &str) -> Option<String> {
+    let rest = op_ref.strip_prefix("op://")?;
+    let mut parts = rest.splitn(3, '/');
+    let (vault, item) = (parts.next()?, parts.next()?);
+    parts.next()?;
+    Some(format!("op://{vault}/{item}"))
+}
+
+/// Los valores de las referencias que nombran un campo del ítem, por su
+/// referencia exacta (`op item get` la trae en cada campo). Lo que no case se
+/// queda fuera, y se lee luego campo a campo.
+pub fn values_from_item(json: &str, refs: &[&str]) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return out };
+    for f in v.get("fields").and_then(|f| f.as_array()).into_iter().flatten() {
+        let (Some(r), Some(val)) = (f.get("reference").and_then(|x| x.as_str()), f.get("value").and_then(|x| x.as_str())) else {
+            continue;
+        };
+        if refs.contains(&r) {
+            out.insert(r.to_string(), val.to_string());
+        }
+    }
+    out
+}
+
+/// Progreso de una rotación, para la pantalla (`secrets://rotation`).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RotationProgress {
+    /// `read` (1Password) o `upload` (servidor, y reiniciar el servicio).
+    step: &'static str,
+    done: usize,
+    total: usize,
+}
+
 /// Lee cada referencia en 1Password y la lleva al servicio. Devuelve nombres.
+///
+/// **Un `op item get` por ítem**, no un `op read` por campo: casi todos los
+/// secrets de un servicio están en el mismo ítem, y treinta llamadas a `op`
+/// eran la mayor parte de lo que tardaba. Lo que no se resuelva así (otra
+/// forma de escribir la referencia) se lee como antes. Y va contando por dónde
+/// va: sin eso, el botón se quedaba quieto el rato y no se sabía si hacía algo.
 #[tauri::command]
-pub fn rotate_service_secrets(target: SshTarget, service: String, refs: Vec<SecretRef>) -> Result<RotationResult, String> {
-    let mut entries = Vec::with_capacity(refs.len());
+pub fn rotate_service_secrets(app: tauri::AppHandle, target: SshTarget, service: String, refs: Vec<SecretRef>) -> Result<RotationResult, String> {
+    use tauri::Emitter;
+    let total = refs.len();
+    let progress = |step: &'static str, done: usize| {
+        let _ = app.emit("secrets://rotation", RotationProgress { step, done, total });
+    };
     for r in &refs {
         if !r.op_ref.starts_with("op://") {
             return Err(format!("{}: `{}` is not op://", r.name, r.op_ref));
         }
-        let value = crate::op_read(&r.op_ref).map_err(|e| format!("{}: {e}", r.name))?;
-        entries.push((r.name.clone(), value));
     }
+    progress("read", 0);
+    let mut values: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut items: Vec<String> = refs.iter().filter_map(|r| item_of(&r.op_ref)).collect();
+    items.sort();
+    items.dedup();
+    for item in &items {
+        let Some((vault, name)) = item.trim_start_matches("op://").split_once('/') else { continue };
+        let out = std::process::Command::new("op").args(["item", "get", name, "--vault", vault, "--format", "json"]).output();
+        if let Some(o) = out.ok().filter(|o| o.status.success()) {
+            let wanted: Vec<&str> = refs.iter().map(|r| r.op_ref.as_str()).filter(|r| r.starts_with(item.as_str())).collect();
+            values.extend(values_from_item(&String::from_utf8_lossy(&o.stdout), &wanted));
+            progress("read", refs.iter().filter(|r| values.contains_key(&r.op_ref)).count());
+        }
+    }
+    let mut entries = Vec::with_capacity(refs.len());
+    for r in &refs {
+        let value = match values.remove(&r.op_ref) {
+            Some(v) => v,
+            None => crate::op_read(&r.op_ref).map_err(|e| format!("{}: {e}", r.name))?,
+        };
+        entries.push((r.name.clone(), value));
+        progress("read", entries.len());
+    }
+    drop(values);
+    progress("upload", total);
     let build_only: std::collections::HashSet<String> = refs
         .iter()
         .filter(|r| r.usage.as_deref() == Some("build"))
@@ -580,5 +649,23 @@ mod tests {
         assert_eq!(t["fields"][0]["label"], "DATABASE_URL");
         assert_eq!(t["fields"][0]["type"], "CONCEALED");
         assert_eq!(t["fields"][0]["value"], "sqlserver://a=b");
+    }
+
+    // Leer un ítem entero casa cada referencia por la suya exacta; la de otro
+    // ítem o la que no está no se inventa. Mutantes: casar por etiqueta (dos
+    // `password` de secciones distintas se pisarían); aceptar cualquier
+    // referencia.
+    #[test]
+    fn an_item_read_once_resolves_its_exact_references() {
+        let json = r#"{"fields":[
+            {"label":"password","reference":"op://dwit/web/db/password","value":"db-pass"},
+            {"label":"password","reference":"op://dwit/web/mail/password","value":"mail-pass"},
+            {"label":"DATABASE_URL","reference":"op://dwit/web/DATABASE_URL","value":"sqlserver://x"}]}"#;
+        let got = values_from_item(json, &["op://dwit/web/mail/password", "op://dwit/web/DATABASE_URL", "op://dwit/web/NADA"]);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got["op://dwit/web/mail/password"], "mail-pass");
+        assert_eq!(got["op://dwit/web/DATABASE_URL"], "sqlserver://x");
+        assert_eq!(item_of("op://dwit/web staging/sec/F").as_deref(), Some("op://dwit/web staging"));
+        assert_eq!(item_of("op://dwit/web"), None);
     }
 }

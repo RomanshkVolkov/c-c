@@ -830,6 +830,8 @@
     "unnamed": "(no name)",
     "problemName": "{{name}}: the name has to be CAPITALS_WITH_UNDERSCORES, up to 40",
     "problemRepeated": "{{name}} is repeated",
-    "problemRef": "{{name}}: its reference is empty or isn't op://vault/item/field"
+    "problemRef": "{{name}}: its reference is empty or isn't op://vault/item/field",
+    "progressRead": "Reading 1Password ({{done}}/{{total}})…",
+    "progressUpload": "Taking them to the server and restarting {{service}}…"
   }
 }

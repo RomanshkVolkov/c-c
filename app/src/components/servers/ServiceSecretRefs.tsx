@@ -92,6 +92,9 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
   // o la de siempre, y un ítem con el repo y el entorno.
   const [captureVault, setCaptureVault] = useState("");
   const [captureTitle, setCaptureTitle] = useState("");
+  // Por dónde va una rotación: leer 1Password tarda, y luego el servidor
+  // reinicia el servicio. Lo cuenta Rust (`secrets://rotation`).
+  const [progress, setProgress] = useState<{ step: "read" | "upload"; done: number; total: number } | null>(null);
   const [result, setResult] = useState<RotationResult | null>(null);
 
   const base = deployable ? `/api/v1/servers/${server.id}/deployables/${deployable.id}` : "";
@@ -262,7 +265,13 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
     if (!ok) return;
     setBusy("rotate");
     setResult(null);
+    setProgress({ step: "read", done: 0, total: saved.length });
     const namesToRotate = saved.map((r) => r.name);
+    // Fuera del escritorio (y en las pruebas) no hay eventos de Rust: la
+    // rotación va igual, sin el progreso.
+    const unlisten = await import("@tauri-apps/api/event")
+      .then(({ listen }) => listen<{ step: "read" | "upload"; done: number; total: number }>("secrets://rotation", (e) => setProgress(e.payload)))
+      .catch(() => () => {});
     try {
       const out = await invoke<RotationResult>("rotate_service_secrets", {
         target: { serverId: server.id, host: server.host, sshPort: server.sshPort, sshUser: server.sshUser },
@@ -283,6 +292,8 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
       await api.post(`${base}/secret-rotations`, { names: namesToRotate, versions: {}, status: "failed", error: msg }, true).catch(() => {});
       toast.error(t("common:secrets.rotateFailed"), { description: msg });
     } finally {
+      unlisten();
+      setProgress(null);
       setBusy(null);
       void load();
     }
@@ -459,6 +470,13 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
               {busy === "rotate" ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <RotateCw className="mr-1 size-3.5" />}
               {t("common:secrets.rotate")}
             </Button>
+          )}
+          {busy === "rotate" && progress && (
+            <span className="text-xs text-muted-foreground" role="status">
+              {progress.step === "read"
+                ? t("common:secrets.progressRead", { done: progress.done, total: progress.total })
+                : t("common:secrets.progressUpload", { service: service.name })}
+            </span>
           )}
         </div>
         {!deploysFromCac && <p className="text-xs text-muted-foreground">{t("common:secrets.needsDeploy")}</p>}

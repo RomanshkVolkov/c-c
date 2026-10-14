@@ -1,6 +1,6 @@
 import { pick } from "@/test-pick";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * Los secrets de un servicio por referencia a 1Password.
@@ -18,6 +18,14 @@ vi.mock("@/lib/api", () => ({ api }));
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 const { confirmar } = vi.hoisted(() => ({ confirmar: vi.fn() }));
+// Los avisos de progreso de Rust: la prueba los dispara a mano.
+const { progreso } = vi.hoisted(() => ({ progreso: { emit: (_p: unknown) => {} } }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: async (_name: string, cb: (e: { payload: unknown }) => void) => {
+    progreso.emit = (p) => cb({ payload: p });
+    return () => {};
+  },
+}));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
 vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
 
@@ -233,6 +241,26 @@ describe("los secrets de un servicio", () => {
     fireEvent.change(screen.getAllByLabelText(/^(referencia|1password reference|reference)$/i)[1], { target: { value: "" } });
     expect(screen.getByText(/DATABASE_URL: (its reference is empty|su referencia está vacía)/i)).toBeTruthy();
     expect(screen.getAllByLabelText(/^(referencia|1password reference|reference)$/i)[1].getAttribute("aria-invalid")).toBe("true");
+  });
+
+  // Rotar tarda (1Password, el servidor): se dice por dónde va. Mutante: no
+  // escuchar el progreso.
+  it("mientras rota dice por dónde va", async () => {
+    backend("deploy");
+    let terminar: (v: unknown) => void = () => {};
+    invoke.mockImplementation((cmd: string) =>
+      cmd === "rotate_service_secrets" ? new Promise((r) => (terminar = r)) : Promise.resolve([]),
+    );
+    pintar();
+    await waitFor(() => expect(botonRotar().disabled).toBe(false));
+    fireEvent.click(botonRotar());
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("rotate_service_secrets", expect.anything()));
+    act(() => progreso.emit({ step: "read", done: 1, total: 2 }));
+    expect(screen.getByRole("status").textContent).toMatch(/1\/2/);
+    act(() => progreso.emit({ step: "upload", done: 2, total: 2 }));
+    expect(screen.getByRole("status").textContent).toMatch(/(restarting|reiniciando) web-rrhh-prod_app/i);
+    await act(async () => terminar({ items: [], updated: false }));
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("un nombre que no vale no se guarda", async () => {
