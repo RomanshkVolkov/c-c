@@ -146,3 +146,36 @@ func TestTheTurnDomainIsTheOneTheGatewayServes(t *testing.T) {
 		t.Fatalf("el dominio de TURN (%q) no es el que configura turn-setup.sh", domain)
 	}
 }
+
+// Un deploy del backend no deja a nadie sin cac. Con Recreate se caían los dos
+// pods a la vez y el proxy contestaba 503 un minuto entero en cada push al
+// backend (14-oct-2026: seis deploys, seis ráfagas de 503 en el agente de un
+// servidor). Mutantes: volver a Recreate; permitir bajar réplicas; quitar la
+// sonda de listo (el proxy mandaría tráfico a un pod que arranca).
+func TestABackendDeployKeepsServing(t *testing.T) {
+	var dep doc
+	for _, d := range docs(t, "2-deployment.yaml") {
+		if d["kind"] == "Deployment" {
+			dep = d
+		}
+	}
+	if dep == nil {
+		t.Fatal("no hay Deployment en 2-deployment.yaml")
+	}
+	spec := dep["spec"].(doc)
+	strategy, _ := spec["strategy"].(doc)
+	if strategy["type"] != "RollingUpdate" {
+		t.Fatalf("estrategia %v: cada deploy tiraría todos los pods", strategy["type"])
+	}
+	ru, _ := strategy["rollingUpdate"].(doc)
+	if ru["maxUnavailable"] != 0 {
+		t.Fatalf("maxUnavailable = %v: un deploy bajaría réplicas", ru["maxUnavailable"])
+	}
+	containers := spec["template"].(doc)["spec"].(doc)["containers"].([]any)
+	api := containers[0].(doc)
+	probe, _ := api["readinessProbe"].(doc)
+	get, _ := probe["httpGet"].(doc)
+	if get["path"] != "/health" {
+		t.Fatalf("sin sonda de listo en /health: %v", probe)
+	}
+}

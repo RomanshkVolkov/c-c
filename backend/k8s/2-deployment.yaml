@@ -7,19 +7,20 @@ spec:
   # 1-secrets.yaml), or SSE notifications only reach whichever pod the client
   # happens to be connected to. See the comment on the events package.
   replicas: 2
-  # Recreate, not the default rolling update, for as long as work is moving
-  # between the old tables and the unified ones.
+  # Rolling update, sin bajar nunca de las réplicas que hay: el pod nuevo
+  # entra, pasa la sonda de listo, y sólo entonces sale uno viejo.
   #
-  # A rolling update runs both versions at once, and during that overlap the old
-  # pod keeps writing to the tables the new one has stopped reading. The boot
-  # backfill reabsorbs most of that on the next start, but not a delete, and not
-  # an edit that crossed in the other direction. With a few dozen items a day,
-  # half a minute of downtime is the cheaper mistake.
-  #
-  # Worth taking back out once nothing writes the old tables — it costs
-  # availability the rest of the time.
+  # Hasta el 14-oct-2026 era Recreate, puesto el 12-ago mientras el trabajo
+  # pasaba de las tablas viejas a las unificadas (dos versiones a la vez
+  # escribían en tablas distintas). Eso terminó: `Task` y `Report` son alias de
+  # `Item`. Y Recreate costaba un minuto de 503 para todos en **cada** deploy:
+  # lo destapó el agente de un servidor, que contaba ráfagas de 503 cada
+  # 10–20 minutos durante diez días, una por push al backend.
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: cac-service
@@ -33,6 +34,22 @@ spec:
         - name: cac-service-api
           image: ghcr.io/romanshkvolkov/c-c/backend:latest
           imagePullPolicy: Always
+          # Listo cuando contesta: `/health` no toca la base, y el servidor
+          # sólo escucha después de migrar. Sin esto, el proxy mandaba tráfico
+          # a un pod que todavía estaba arrancando.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 3
+          # Unos segundos antes de apagar, para que el proxy lo saque de la
+          # lista antes de que deje de contestar. El apagado ordenado (SIGTERM,
+          # ver cmd/main.go) cierra lo que quede.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           ports:
             - containerPort: 8080
             # El puerto interno por el que habla el montador. Se abre sólo si
