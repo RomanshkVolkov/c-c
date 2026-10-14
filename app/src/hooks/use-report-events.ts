@@ -31,6 +31,7 @@ import { meetScope, useRecordings, type Recording } from "@/store/recordings.sto
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
 import { useMeetingsStore, type ReunionEntrante } from "@/store/meetings.store";
 import { useMyWorkStore } from "@/store/mywork.store";
+import { useRepoDocs } from "@/store/repo-docs.store";
 
 type Payload = {
   reportId?: string;
@@ -441,6 +442,13 @@ export function useReportEvents() {
         case "report:attachment":
           refresh();
           break;
+        // Un push cambió los .md de un repo atado a un espacio (docs as code):
+        // el panel, el fichero abierto y los includes de ese repo, al día.
+        case "repo-docs:changed": {
+          const p = parse(data) as { spaceId?: string; repoId?: string };
+          if (p.spaceId && p.repoId) useRepoDocs.getState().refreshRepo(p.spaceId, Number(p.repoId));
+          break;
+        }
         case "task:new":
         case "task:update":
         case "task:move":
@@ -811,6 +819,7 @@ export function useReportEvents() {
         "task:delete",
         "task:comment",
         "task:git",
+        "repo-docs:changed",
         "meeting:reminder",
         // Faltaban (docs/notifications.md §4.2): en el escritorio da igual,
         // porque Rust reenvía cada trama, pero en un navegador se perdían.

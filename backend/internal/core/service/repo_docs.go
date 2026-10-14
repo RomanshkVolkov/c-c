@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
@@ -74,28 +76,44 @@ func (s *GitHubService) SyncRepoDocs(repoID int64) error {
 	if repo.OrgID == "" || repo.SpaceID == "" || !repo.ShowDocs {
 		return ErrRepoDocsOff
 	}
-	err = s.syncRepoDocs(repo)
+	changed, err := s.syncRepoDocs(repo)
 	if err != nil {
 		_ = s.repo.MarkRepoDocs(repoID, domain.RepoDocsError)
+		return err
 	}
-	return err
+	if changed {
+		s.publishRepoDocs(repo)
+	}
+	return nil
 }
 
-func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) error {
+// publishRepoDocs avisa a las pantallas de la org de que cambiaron los docs
+// de un repo: el panel vuelve a pedir los de ese espacio, y el fichero abierto
+// se recarga. Sin esto, un push se veía al cambiar de espacio o recargar.
+func (s *GitHubService) publishRepoDocs(repo *domain.GitHubRepo) {
+	if s.hub == nil {
+		return
+	}
+	s.hub.Publish(events.Event{Type: "repo-docs:changed", OrgID: repo.OrgID,
+		Data: map[string]string{"spaceId": repo.SpaceID, "repoId": strconv.FormatInt(repo.RepoID, 10)}})
+}
+
+// syncRepoDocs dice si cambió algo de lo que se ve.
+func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) (bool, error) {
 	branch := repo.DocsBranch
 	if branch == "" {
 		var info struct {
 			DefaultBranch string `json:"default_branch"`
 		}
 		if err := s.asInstallation(repo.InstallationID, http.MethodGet, "/repos/"+repo.FullName, nil, &info); err != nil {
-			return err
+			return false, err
 		}
 		if info.DefaultBranch == "" {
-			return fmt.Errorf("github: %s has no default branch", repo.FullName)
+			return false, fmt.Errorf("github: %s has no default branch", repo.FullName)
 		}
 		branch = info.DefaultBranch
 		if err := s.repo.SetDocsBranch(repo.RepoID, branch); err != nil {
-			return err
+			return false, err
 		}
 		repo.DocsTreeSha = ""
 	}
@@ -103,10 +121,10 @@ func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) error {
 	var tree ghTree
 	if err := s.asInstallation(repo.InstallationID, http.MethodGet,
 		"/repos/"+repo.FullName+"/git/trees/"+url.PathEscape(branch)+"?recursive=1", nil, &tree); err != nil {
-		return err
+		return false, err
 	}
 	if tree.Sha != "" && tree.Sha == repo.DocsTreeSha && repo.DocsState != domain.RepoDocsError {
-		return nil
+		return false, nil
 	}
 
 	type blob struct {
@@ -121,7 +139,7 @@ func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) error {
 		if e.Type == "blob" && e.Path == domain.RepoIgnoreFile {
 			text, err := s.repoBlob(repo, e.Sha)
 			if err != nil {
-				return err
+				return false, err
 			}
 			ignore = domain.ParseRepoIgnore(text)
 			break
@@ -144,7 +162,7 @@ func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) error {
 
 	have, err := s.repo.RepoDocShas(repo.RepoID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	out := struct {
 		upserts []domain.RepoDoc
@@ -162,7 +180,7 @@ func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) error {
 		} else {
 			body, err := s.repoBlob(repo, f.sha)
 			if err != nil {
-				return err
+				return false, err
 			}
 			if !utf8.ValidString(body) || utf8.RuneCountInString(body) > domain.MaxDocBodyChars {
 				doc.TooLarge = true
@@ -181,9 +199,14 @@ func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) error {
 			}
 		}
 	}
-	return s.repo.ApplyRepoDocs(repo.RepoID, repository.RepoDocsSync{
+	if err := s.repo.ApplyRepoDocs(repo.RepoID, repository.RepoDocsSync{
 		Upserts: out.upserts, Deletes: out.deletes, Branch: branch, TreeSha: tree.Sha, State: state, At: s.now().UTC(),
-	})
+	}); err != nil {
+		return false, err
+	}
+	// Un árbol nuevo sin un .md distinto (un push que sólo tocó código) no
+	// cambia nada que se vea; el estado, sí.
+	return len(out.upserts) > 0 || len(out.deletes) > 0 || state != repo.DocsState, nil
 }
 
 // repoBlob: el contenido de un blob, que GitHub da en base64 con saltos de
@@ -240,7 +263,52 @@ func (s *GitHubService) docsOnPush(p *ghPayload) {
 	if branch == "" || branch != repo.DocsBranch {
 		return
 	}
-	s.syncRepoDocsLater(repo.RepoID)
+	stamps := pushStamps(p)
+	run := func() {
+		if err := s.SyncRepoDocs(repo.RepoID); err != nil && !errors.Is(err, ErrRepoDocsOff) {
+			lg.Warn(fmt.Sprintf("github: docs of repo %d did not sync: %v", repo.RepoID, err))
+			return
+		}
+		// Después de copiar: un .md nuevo tiene que existir para apuntarle
+		// quién lo escribió.
+		if len(stamps) > 0 {
+			if err := s.repo.StampRepoDocCommits(repo.RepoID, stamps); err != nil {
+				lg.Warn(fmt.Sprintf("github: docs of repo %d: commit stamps: %v", repo.RepoID, err))
+				return
+			}
+			s.publishRepoDocs(repo)
+		}
+	}
+	if s.async {
+		go run()
+		return
+	}
+	run()
+}
+
+// pushStamps: el último commit del push que tocó cada .md, en el orden en
+// que llegan (del más viejo al más nuevo, así que el último gana).
+func pushStamps(p *ghPayload) map[string]domain.RepoDocCommit {
+	out := map[string]domain.RepoDocCommit{}
+	for _, c := range p.Commits {
+		if !domain.ValidSha(c.ID) {
+			continue
+		}
+		who := c.Author.Username
+		if who == "" {
+			who = c.Author.Name
+		}
+		stamp := domain.RepoDocCommit{Sha: c.ID, At: c.Timestamp.UTC(), Author: firstLine(who), Message: firstLine(c.Message)}
+		if len([]rune(stamp.Message)) > 300 {
+			stamp.Message = string([]rune(stamp.Message)[:300])
+		}
+		for _, f := range append(append([]string{}, c.Added...), c.Modified...) {
+			if domain.IsRepoDocPath(f) {
+				out[f] = stamp
+			}
+		}
+	}
+	return out
 }
 
 // SyncRepoDocsNow: el botón «Sincronizar» de la org. En el mismo hilo, para
@@ -275,6 +343,7 @@ func (s *GitHubService) RepoDoc(id string) (*domain.RepoDocResponse, error) {
 	return &domain.RepoDocResponse{
 		RepoDoc: *d, FullName: repo.FullName, Branch: repo.DocsBranch, SpaceID: repo.SpaceID,
 		HTMLURL: domain.RepoBlobURL(repo.FullName, repo.DocsBranch, d.Path), SyncedAt: repo.DocsSyncedAt,
+		CommitURL: commitURL(repo.FullName, d.LastCommitSha),
 	}, nil
 }
 
@@ -347,4 +416,11 @@ func (s *GitHubService) RepoImage(repo *domain.GitHubRepo, raw string) ([]byte, 
 		return nil, "", ErrNotARepoImage
 	}
 	return b, ct, nil
+}
+
+func commitURL(fullName, sha string) string {
+	if sha == "" {
+		return ""
+	}
+	return domain.RepoCommitURL(fullName, sha)
 }

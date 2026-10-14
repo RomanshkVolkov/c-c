@@ -61,8 +61,20 @@ export default function RepoDocView({ id }: { id: string }) {
           {doc.branch}
         </Badge>
         <div className="ml-auto flex shrink-0 items-center gap-3">
-          {doc.syncedAt && (
-            <span className="text-xs text-muted-foreground">{t("work:repoDocs.synced", { when: desde(doc.syncedAt) })}</span>
+          {/* Quién lo cambió, si un push lo contó; si no, cuándo se copió. */}
+          {doc.lastAuthor && doc.lastCommitAt ? (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+              title={doc.lastMessage}
+              onClick={() => doc.commitUrl && openExternal(doc.commitUrl).catch(() => window.open(doc.commitUrl, "_blank"))}
+            >
+              {t("work:repoDocs.changedBy", { who: doc.lastAuthor, when: desde(doc.lastCommitAt) })}
+            </button>
+          ) : (
+            doc.syncedAt && (
+              <span className="text-xs text-muted-foreground">{t("work:repoDocs.synced", { when: desde(doc.syncedAt) })}</span>
+            )
           )}
           <Button size="sm" variant="outline" onClick={onGitHub}>
             <ExternalLink className="size-3.5" />

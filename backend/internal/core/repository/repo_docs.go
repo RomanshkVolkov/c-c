@@ -137,3 +137,22 @@ func (r *GitHubRepository) FindRepoDocByPath(repoID int64, path string) (*domain
 	}
 	return &d, nil
 }
+
+// StampRepoDocCommits apunta en cada fichero el último commit que lo tocó.
+// Sólo si es más nuevo que el que tenía: los webhooks pueden llegar
+// desordenados, y uno viejo no puede deshacer lo que contó uno nuevo.
+func (r *GitHubRepository) StampRepoDocCommits(repoID int64, byPath map[string]domain.RepoDocCommit) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for p, c := range byPath {
+			if err := tx.Model(&domain.RepoDoc{}).
+				Where("repo_id = ? AND path = ? AND (last_commit_at IS NULL OR last_commit_at <= ?)", repoID, p, c.At).
+				Updates(map[string]any{
+					"last_commit_sha": c.Sha, "last_commit_at": c.At,
+					"last_author": c.Author, "last_message": c.Message,
+				}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

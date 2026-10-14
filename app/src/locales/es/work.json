@@ -467,6 +467,7 @@
       "truncated": "Demasiados ficheros: sólo salen los primeros 1000",
       "error": "La última sincronización falló"
     },
-    "never": "Sin sincronizar todavía"
+    "never": "Sin sincronizar todavía",
+    "changedBy": "Cambiado por {{who}} {{when}}"
   }
 }

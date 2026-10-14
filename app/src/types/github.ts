@@ -56,6 +56,12 @@ export interface RepoDoc {
   spaceId: string;
   htmlUrl: string;
   syncedAt: string | null;
+  /** El último commit que lo tocó, si un push lo contó (vacío en la copia inicial). */
+  lastCommitSha?: string;
+  lastCommitAt?: string;
+  lastAuthor?: string;
+  lastMessage?: string;
+  commitUrl?: string;
 }
 
 export interface GitHubStatus {

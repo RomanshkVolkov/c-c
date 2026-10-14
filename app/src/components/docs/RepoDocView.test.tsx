@@ -103,3 +103,21 @@ describe("los enlaces y las imágenes de un .md del repo", () => {
     expect(img.getAttribute("src")).toContain("/api/v1/repo-docs/raw/200?path=docs%2Fimg%2Farq.png");
   });
 });
+
+describe("quién lo cambió", () => {
+  // Si un push lo contó, se dice quién y se va al commit; si no, cuándo se
+  // copió. Mutante: enseñar siempre «sincronizado».
+  it("lo dice, y lleva a su commit", async () => {
+    get.mockResolvedValue({
+      success: true,
+      data: { ...DOC, lastAuthor: "ana", lastCommitAt: "2026-10-14T10:00:00Z", lastMessage: "arreglar pasos",
+        commitUrl: "https://github.com/dwit/web/commit/abc" },
+    });
+    render(<RepoDocView id="rd-1" />);
+    const who = await screen.findByRole("button", { name: /Changed by ana/ });
+    expect(who.getAttribute("title")).toBe("arreglar pasos");
+    fireEvent.click(who);
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/dwit/web/commit/abc");
+    expect(screen.queryByText(/^Synced/)).toBeNull();
+  });
+});

@@ -382,6 +382,10 @@ type ghPayload struct {
 			Name     string `json:"name"`
 			Username string `json:"username"`
 		} `json:"author"`
+		// Los ficheros que tocó: de aquí sale quién cambió cada .md del
+		// repo y cuándo, sin preguntárselo a GitHub (ver docsOnPush).
+		Added    []string `json:"added"`
+		Modified []string `json:"modified"`
 	} `json:"commits"`
 	WorkflowRun struct {
 		ID           int64      `json:"id"`

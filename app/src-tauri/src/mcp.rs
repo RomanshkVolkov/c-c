@@ -984,6 +984,15 @@ fn repo_doc_view(d: &Value, section: Option<&str>, full: bool) -> Result<Value, 
         "syncedAt": d.get("syncedAt"),
         "readOnly": true,
     });
+    // Quién lo cambió por última vez, si un push lo contó.
+    if d.get("lastCommitSha").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty()) {
+        out["lastCommit"] = json!({
+            "author": d.get("lastAuthor"),
+            "at": d.get("lastCommitAt"),
+            "message": d.get("lastMessage"),
+            "url": d.get("commitUrl"),
+        });
+    }
     if d.get("tooLarge").and_then(|v| v.as_bool()).unwrap_or(false) {
         out["tooLarge"] = json!(true);
         return Ok(out);
@@ -4344,6 +4353,11 @@ mod tests {
         });
         let outline = repo_doc_view(&d, None, false).unwrap();
         assert_eq!(outline["readOnly"], true);
+        assert!(outline.get("lastCommit").is_none(), "sin commit contado no se inventa");
+        let mut stamped = d.clone();
+        stamped["lastCommitSha"] = json!("abc");
+        stamped["lastAuthor"] = json!("ana");
+        assert_eq!(repo_doc_view(&stamped, None, false).unwrap()["lastCommit"]["author"], "ana");
         assert!(outline.get("body").is_none());
         let heads: Vec<&str> = outline["headings"].as_array().unwrap().iter()
             .map(|h| h["heading"].as_str().unwrap()).collect();

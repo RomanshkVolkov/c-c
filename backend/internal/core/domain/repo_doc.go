@@ -33,6 +33,24 @@ type RepoDoc struct {
 	// TooLarge: pasó de MaxDocBodyChars. Sin cuerpo; la pantalla enlaza a
 	// GitHub en vez de pintar media página.
 	TooLarge bool `gorm:"not null;default:false" json:"tooLarge"`
+
+	// El último commit que lo tocó, como lo cuenta el push que lo trajo: quién,
+	// cuándo y qué dijo. Sale del webhook, que ya trae cada commit con sus
+	// ficheros, así que no cuesta ni una petición a GitHub. Vacío hasta el
+	// primer push que lo toque: la copia inicial no lo sabe, y preguntarlo
+	// fichero a fichero sería una llamada por cada uno.
+	LastCommitSha string     `gorm:"type:varchar(40);not null;default:''" json:"lastCommitSha,omitempty"`
+	LastCommitAt  *time.Time `json:"lastCommitAt,omitempty"`
+	LastAuthor    string     `gorm:"type:varchar(120);not null;default:''" json:"lastAuthor,omitempty"`
+	LastMessage   string     `gorm:"type:varchar(300);not null;default:''" json:"lastMessage,omitempty"`
+}
+
+// RepoDocCommit: lo que se apunta de un commit en los ficheros que tocó.
+type RepoDocCommit struct {
+	Sha     string
+	At      time.Time
+	Author  string
+	Message string
 }
 
 func (RepoDoc) TableName() string { return "repo_docs" }
@@ -139,6 +157,11 @@ func clipRunes(s string, n int) string {
 	return string(r[:n])
 }
 
+// RepoCommitURL: dónde se ve un commit en GitHub.
+func RepoCommitURL(fullName, sha string) string {
+	return "https://github.com/" + fullName + "/commit/" + sha
+}
+
 // RepoBlobURL: dónde se ve el fichero en GitHub.
 func RepoBlobURL(fullName, branch, p string) string {
 	return "https://github.com/" + fullName + "/blob/" + branch + "/" + p
@@ -168,6 +191,8 @@ type RepoDocResponse struct {
 	SpaceID  string     `json:"spaceId"`
 	HTMLURL  string     `json:"htmlUrl"`
 	SyncedAt *time.Time `json:"syncedAt"`
+	// CommitURL: el del último commit que lo tocó, si se sabe.
+	CommitURL string `json:"commitUrl,omitempty"`
 }
 
 // ─── .cacignore ──────────────────────────────────────────────────────────────

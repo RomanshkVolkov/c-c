@@ -467,6 +467,7 @@
       "truncated": "Too many files: only the first 1000 are shown",
       "error": "The last sync failed"
     },
-    "never": "Not synced yet"
+    "never": "Not synced yet",
+    "changedBy": "Changed by {{who}} {{when}}"
   }
 }

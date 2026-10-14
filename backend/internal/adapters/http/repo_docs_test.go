@@ -114,8 +114,9 @@ func docsSetup(t *testing.T) (*ghFixture, *docsGitHub, string) {
 	}, "tree-1")
 	api := httptest.NewServer(fake)
 	t.Cleanup(api.Close)
+	f.hub = events.NewHub()
 	gh := service.NewGitHubService(repository.NewGitHubRepository(f.db),
-		service.GitHubConfig{AppSlug: "cac-test", WebhookSecret: ghSecret}, events.NewHub()).
+		service.GitHubConfig{AppSlug: "cac-test", WebhookSecret: ghSecret}, f.hub).
 		WithApp(service.GitHubAppKey{AppID: appID, Key: key, APIURL: api.URL}).Sync()
 	r := chi.NewRouter()
 	InitGitHubRoutesWith(r, gh)
@@ -349,5 +350,102 @@ func TestCacIgnoreHidesWhatItNames(t *testing.T) {
 	f.pushWeb(t, "refs/heads/main")
 	if _, ok := f.docs(t)["docs/deploy.md"]; !ok {
 		t.Fatal("sin .cacignore, lo tapado no volvió")
+	}
+}
+
+// Quién cambió cada .md y cuándo sale del propio push, sin preguntar a
+// GitHub; y un push viejo que llega tarde no pisa lo que contó uno nuevo.
+// Mutantes: apuntar el primer commit y no el último; sin la guarda de fecha;
+// el nombre en vez del usuario. (Apuntar también lo que no es un .md es
+// equivalente: el UPDATE no encuentra fila. El filtro sólo ahorra consultas.)
+func TestAPushStampsWhoChangedEachDoc(t *testing.T) {
+	f, fake, repoID := docsSetup(t)
+	f.linkWeb(t, repoID, `{"spaceId":"sp-1"}`)
+	fake.set(map[string]string{
+		"README.md":      "# Web 2",
+		"docs/deploy.md": "```sh\n# no es el título\n```\n# Desplegar\n",
+		"docs/new.md":    "# Nuevo",
+	}, "tree-s1")
+	a, b := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	push := func(delivery, commits string) {
+		f.hook(t, "push", delivery, `{"ref":"refs/heads/main","installation":{"id":5},
+			"repository":{"id":200,"full_name":"dwit/web","default_branch":"main"},"commits":[`+commits+`]}`)
+	}
+	callsBefore := len(fake.calls)
+	push("d-s1", `{"id":"`+a+`","message":"primero\n\ncuerpo","timestamp":"2026-10-14T10:00:00Z",
+			"author":{"name":"Ana","username":"ana"},"added":["docs/new.md"],"modified":["README.md","main.go"]},
+		{"id":"`+b+`","message":"segundo","timestamp":"2026-10-14T11:00:00Z",
+			"author":{"name":"Beto","username":""},"modified":["README.md"]}`)
+
+	docs := f.docs(t)
+	if d := docs["README.md"]; d.LastCommitSha != b || d.LastAuthor != "Beto" || d.LastMessage != "segundo" {
+		t.Fatalf("README: %+v", d)
+	}
+	if d := docs["docs/new.md"]; d.LastCommitSha != a || d.LastAuthor != "ana" || d.LastMessage != "primero" {
+		t.Fatalf("new.md: %+v", d)
+	}
+	if d := docs["docs/deploy.md"]; d.LastCommitSha != "" {
+		t.Fatalf("deploy.md no lo tocó nadie: %+v", d)
+	}
+	for _, c := range fake.calls[callsBefore:] {
+		if strings.Contains(c, "/commits") {
+			t.Fatalf("preguntó a GitHub por los commits: %s", c)
+		}
+	}
+
+	// Llega tarde un push más viejo que también tocó el README.
+	push("d-s0", `{"id":"`+strings.Repeat("c", 40)+`","message":"viejo","timestamp":"2026-10-13T09:00:00Z",
+		"author":{"username":"viejo"},"modified":["README.md"]}`)
+	if d := f.docs(t)["README.md"]; d.LastCommitSha != b {
+		t.Fatalf("un push viejo pisó al nuevo: %+v", d)
+	}
+
+	rec := f.as(t, http.MethodGet, "/api/v1/repo-docs/"+docs["README.md"].ID, "", member1)
+	if !strings.Contains(rec.Body.String(), `"commitUrl":"https://github.com/dwit/web/commit/`+b+`"`) {
+		t.Fatalf("sin enlace al commit: %s", rec.Body.String())
+	}
+}
+
+// Un cambio en los .md se avisa a las pantallas de la org, con su espacio; un
+// push que sólo tocó código, no. Mutantes: no publicar; publicar siempre.
+func TestAChangedDocIsAnnounced(t *testing.T) {
+	f, fake, repoID := docsSetup(t)
+	ch, stop := f.hub.Subscribe("u-1", []string{"org-1"})
+	defer stop()
+	got := func() []events.Event {
+		var out []events.Event
+		for {
+			select {
+			case e := <-ch:
+				if e.Type == "repo-docs:changed" {
+					out = append(out, e)
+				}
+			default:
+				return out
+			}
+		}
+	}
+
+	f.linkWeb(t, repoID, `{"spaceId":"sp-1"}`)
+	if ev := got(); len(ev) != 1 || ev[0].Data.(map[string]string)["spaceId"] != "sp-1" {
+		t.Fatalf("al copiar: %+v", ev)
+	}
+
+	// Sólo código: el árbol cambia, los .md no.
+	files := map[string]string{
+		"README.md": "# Web\n\nLa portada.", "docs/deploy.md": "```sh\n# no es el título\n```\n# Desplegar\n",
+		"main.go": "package main // v2",
+	}
+	fake.set(files, "tree-c1")
+	f.pushWeb(t, "refs/heads/main")
+	if ev := got(); len(ev) != 0 {
+		t.Fatalf("un push de código avisó: %+v", ev)
+	}
+
+	files["README.md"] = "# Web 3"
+	fake.set(files, "tree-c2")
+	f.pushWeb(t, "refs/heads/main")
+	if ev := got(); len(ev) != 1 {
+		t.Fatalf("un .md cambiado no se avisó: %+v", ev)
 	}
 }

@@ -42,6 +42,7 @@ type ghFixture struct {
 	db  *gorm.DB
 	r   *chi.Mux
 	svc *service.GitHubService
+	hub *events.Hub
 }
 
 func githubDB(t *testing.T) (*gorm.DB, func()) {

@@ -33,7 +33,8 @@ interface RepoDocsState {
    * diez includes no hace diez peticiones cada vez que se pinta.
    */
   byUrl: Record<string, RepoDoc | null>;
-  lookup: (url: string) => Promise<RepoDoc | null>;
+  /** `force`: otra vez aunque esté en la caché (tras un push). */
+  lookup: (url: string, force?: boolean) => Promise<RepoDoc | null>;
   /**
    * Abrir un .md del repo desde donde no hay router (`openInternalRef`, el
    * chat, un include): se apunta aquí la ruta y `RepoDocNavigator`, dentro
@@ -44,6 +45,12 @@ interface RepoDocsState {
   takeRoute: () => string | null;
   /** Una URL de GitHub de un .md: en cac si está copiado; si no, en GitHub. */
   openByUrl: (url: string) => void;
+  /**
+   * Cambiaron los .md de un repo (evento `repo-docs:changed`): se vuelve a
+   * pedir lo de ese espacio, el fichero abierto si es de ese repo y los
+   * includes que lo citan. Sólo eso: un push no recarga el resto de la org.
+   */
+  refreshRepo: (spaceId: string, repoId: number) => void;
 }
 
 const inFlight = new Map<string, Promise<void>>();
@@ -77,8 +84,8 @@ export const useRepoDocs = create<RepoDocsState>()((set, get) => ({
   closeDoc: () => set({ open: null }),
 
   byUrl: {},
-  lookup: async (url) => {
-    if (url in get().byUrl) return get().byUrl[url];
+  lookup: async (url, force = false) => {
+    if (!force && url in get().byUrl) return get().byUrl[url];
     const m = matchRepoBlobUrl(url);
     const orgId = useOrgsStore.getState().currentOrgId;
     if (!m || !orgId) return null;
@@ -98,6 +105,26 @@ export const useRepoDocs = create<RepoDocsState>()((set, get) => ({
     if (r) set({ pendingRoute: null });
     return r;
   },
+  refreshRepo: (spaceId, repoId) => {
+    if (get().bySpace[spaceId]) void get().fetchSpace(spaceId, true).catch(() => {});
+    const open = get().open;
+    if (open?.repoId === repoId) {
+      void api
+        .get<APIResponse<RepoDoc>>(`/api/v1/repo-docs/${encodeURIComponent(open.id)}`)
+        .then((res) => {
+          if (res.data && get().open?.id === open.id) set({ open: res.data });
+        })
+        // Si ya no está, se deja lo que se leía: cambiarlo bajo los ojos de
+        // quien lee por un aviso de que se fue es peor que verlo al volver.
+        .catch(() => {});
+    }
+    // Mientras llega, el include sigue con lo de antes: no parpadea a enlace.
+    // Si el fichero se fue del repo, vuelve a ser el enlace que era.
+    for (const [url, doc] of Object.entries(get().byUrl)) {
+      if (doc?.repoId === repoId) void get().lookup(url, true);
+    }
+  },
+
   openByUrl: (url) => {
     void get()
       .lookup(url)
