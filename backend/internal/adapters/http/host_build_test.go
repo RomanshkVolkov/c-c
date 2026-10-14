@@ -269,6 +269,15 @@ func TestTheBuildSettingsAreCheckedAndKept(t *testing.T) {
 	}); !errors.Is(err, service.ErrBuildNeedsRepo) {
 		t.Fatalf("construir sin repo: %v", err)
 	}
+	// `.` es la raíz, como en `docker build .`: cuenta como vacía.
+	// Mutante: guardarla tal cual (el contexto remoto acabaría en `#sha:.`).
+	dot := "./"
+	d, err := f.deploys.UpdateDeployable(&stored, domain.UpdateDeployableRequest{
+		Name: "api", RepoFullName: "dwit/api", OnCINotify: "deploy", BuildContext: &dot,
+	})
+	if err != nil || d.BuildContext != "" {
+		t.Fatalf("la carpeta «./»: %q %v", d.BuildContext, err)
+	}
 	refs := service.NewSecretRefService(repository.NewSecretRefRepository(f.db))
 	if _, err := refs.Replace(f.d, domain.PutSecretRefsRequest{Refs: []domain.SecretRefInput{
 		{Name: "X", OpRef: "op://a/b/c", Usage: "siempre"},

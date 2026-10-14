@@ -206,10 +206,15 @@ func (s *DeployService) UpdateDeployable(d *domain.Deployable, req domain.Update
 		d.Dockerfile = *req.Dockerfile
 	}
 	if req.BuildContext != nil {
-		if !domain.ValidBuildPath(*req.BuildContext) {
+		// `.` o `./` es la raíz, como en `docker build .`: se guarda vacía.
+		ctx := strings.Trim(strings.TrimSpace(*req.BuildContext), "/")
+		if ctx == "." {
+			ctx = ""
+		}
+		if !domain.ValidBuildPath(ctx) {
 			return nil, ErrBadBuildPath
 		}
-		d.BuildContext = *req.BuildContext
+		d.BuildContext = ctx
 	}
 	if req.BuildOnHost != nil {
 		d.BuildOnHost = *req.BuildOnHost
