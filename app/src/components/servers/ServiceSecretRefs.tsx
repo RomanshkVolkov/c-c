@@ -135,8 +135,22 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
 
   const dirty = JSON.stringify(rows) !== JSON.stringify(saved);
   const names = rows.map((r) => r.name.trim());
-  const invalid = rows.some((r) => !NAME.test(r.name.trim()) || !OP_REF.test(r.opRef.trim()));
+  // Qué le pasa a cada fila, para marcarla y decirlo: un aviso general sin
+  // decir cuál obligaba a revisar treinta filas a ojo.
+  const badName = (r: SecretRef) => !NAME.test(r.name.trim());
+  const badRef = (r: SecretRef) => !OP_REF.test(r.opRef.trim());
+  const repeatedName = (r: SecretRef) => names.filter((n) => n === r.name.trim()).length > 1;
+  const invalid = rows.some((r) => badName(r) || badRef(r));
   const repeated = new Set(names).size !== names.length;
+  const problems = rows
+    .map((r) => {
+      const label = r.name.trim() || t("common:secrets.unnamed");
+      if (badName(r)) return t("common:secrets.problemName", { name: label });
+      if (repeatedName(r)) return t("common:secrets.problemRepeated", { name: label });
+      if (badRef(r)) return t("common:secrets.problemRef", { name: label });
+      return null;
+    })
+    .filter((p, i, all): p is string => !!p && all.indexOf(p) === i);
   const deploysFromCac = deployable.onCINotify === "deploy";
 
   const save = async () => {
@@ -312,7 +326,8 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
             <div key={i} className="flex items-center gap-2">
               <Input
                 aria-label={t("common:secrets.name")}
-                className="w-48 font-mono text-xs"
+                aria-invalid={badName(r) || repeatedName(r) || undefined}
+                className={`w-48 font-mono text-xs ${badName(r) || repeatedName(r) ? "border-destructive" : ""}`}
                 placeholder="DATABASE_URL"
                 value={r.name}
                 disabled={!canEdit}
@@ -320,7 +335,8 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
               />
               <Input
                 aria-label={t("common:secrets.ref")}
-                className="flex-1 font-mono text-xs"
+                aria-invalid={badRef(r) || undefined}
+                className={`flex-1 font-mono text-xs ${badRef(r) ? "border-destructive" : ""}`}
                 placeholder="op://vault/item/field"
                 value={r.opRef}
                 disabled={!canEdit}
@@ -411,7 +427,16 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
           </details>
         )}
 
-        {(invalid || repeated) && rows.length > 0 && <p className="text-xs text-destructive">{t("common:secrets.invalid")}</p>}
+        {(invalid || repeated) && rows.length > 0 && (
+          <div className="text-xs text-destructive">
+            <p>{t("common:secrets.invalid")}</p>
+            <ul className="mt-1 list-disc pl-4">
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           {canEdit && (

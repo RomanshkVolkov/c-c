@@ -224,6 +224,17 @@ describe("los secrets de un servicio", () => {
     expect(invoke).not.toHaveBeenCalledWith("capture_service_env", expect.anything());
   });
 
+  // El aviso dice qué fila y qué le pasa, y la marca. Mutante: el aviso de
+  // siempre, sin decir cuál.
+  it("dice qué fila está mal y por qué", async () => {
+    backend("deploy");
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    fireEvent.change(screen.getAllByLabelText(/^(referencia|1password reference|reference)$/i)[1], { target: { value: "" } });
+    expect(screen.getByText(/DATABASE_URL: (its reference is empty|su referencia está vacía)/i)).toBeTruthy();
+    expect(screen.getAllByLabelText(/^(referencia|1password reference|reference)$/i)[1].getAttribute("aria-invalid")).toBe("true");
+  });
+
   it("un nombre que no vale no se guarda", async () => {
     backend("deploy");
     pintar();

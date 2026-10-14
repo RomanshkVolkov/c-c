@@ -826,6 +826,10 @@
     "captureTitle": "¿Guardar en 1Password las variables de {{service}}?",
     "captureBody": "Lee por ssh el entorno de {{service}} en {{server}} y crea {{item}} con cada variable como campo oculto. En el servidor no cambia nada.",
     "captured": "{{count}} variables guardadas en {{item}}. Revisa cuáles usa el build y guarda.",
-    "captureFailed": "No se pudieron guardar las variables en 1Password"
+    "captureFailed": "No se pudieron guardar las variables en 1Password",
+    "unnamed": "(sin nombre)",
+    "problemName": "{{name}}: el nombre tiene que ir en MAYÚSCULAS_CON_GUIONES, hasta 40",
+    "problemRepeated": "{{name}} está repetido",
+    "problemRef": "{{name}}: su referencia está vacía o no es op://bóveda/ítem/campo"
   }
 }
