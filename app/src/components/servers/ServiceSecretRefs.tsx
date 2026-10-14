@@ -87,7 +87,11 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
   const [rotations, setRotations] = useState<Rotation[]>([]);
   const [checks, setChecks] = useState<Record<string, string | true>>({});
   const [item, setItem] = useState("");
-  const [busy, setBusy] = useState<"save" | "check" | "import" | "rotate" | "args" | null>(null);
+  const [busy, setBusy] = useState<"save" | "check" | "import" | "rotate" | "args" | "capture" | null>(null);
+  // Dónde guardar lo que ya corre (la primera vez): la bóveda de lo que ya hay
+  // o la de siempre, y un ítem con el repo y el entorno.
+  const [captureVault, setCaptureVault] = useState("");
+  const [captureTitle, setCaptureTitle] = useState("");
   const [result, setResult] = useState<RotationResult | null>(null);
 
   const base = deployable ? `/api/v1/servers/${server.id}/deployables/${deployable.id}` : "";
@@ -177,6 +181,42 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
       toast.success(t("common:secrets.argsMerged", { count: args.length, added, promoted }));
     } catch (e) {
       toast.error(phraseFor(e instanceof Error ? e.message : String(e), t("common:secrets.argsFailed")));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // La primera vez: lo que el CI dejó como variables de entorno del servicio,
+  // a un ítem nuevo de 1Password con un campo por variable. Rust lo lee por
+  // ssh y se lo da a `op`; aquí sólo vuelven los nombres.
+  const vaultGuess = captureVault || rows.find((r) => r.opRef.startsWith("op://"))?.opRef.split("/")[2] || "";
+  const titleGuess =
+    captureTitle || [deployable?.repoFullName.split("/")[1] || service.name, deployable?.environment].filter(Boolean).join(" ");
+  const capture = async () => {
+    const vault = vaultGuess.trim();
+    const title = titleGuess.trim();
+    const ok = await confirm({
+      title: t("common:secrets.captureTitle", { service: service.name }),
+      description: t("common:secrets.captureBody", { service: service.name, server: server.name, item: `op://${vault}/${title}` }),
+      confirmText: t("common:secrets.capture"),
+    });
+    if (!ok) return;
+    setBusy("capture");
+    try {
+      const out = await invoke<{ item: string; names: string[] }>("capture_service_env", {
+        target: { serverId: server.id, host: server.host, sshPort: server.sshPort, sshUser: server.sshUser },
+        service: service.name,
+        vault,
+        title,
+      });
+      const have = new Set(rows.map((r) => r.name.trim()));
+      const more = out.names
+        .filter((n) => !have.has(n))
+        .map((n) => ({ name: n, opRef: `${out.item}/${n}`, usage: "runtime" as const }));
+      setRows([...rows, ...more]);
+      toast.success(t("common:secrets.captured", { count: out.names.length, item: out.item }));
+    } catch (e) {
+      toast.error(t("common:secrets.captureFailed"), { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusy(null);
     }
@@ -337,6 +377,38 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
               </Button>
             )}
           </div>
+        )}
+
+        {canEdit && (
+          <details className="rounded-md border p-2 text-xs">
+            <summary className="cursor-pointer font-medium">{t("common:secrets.captureSummary")}</summary>
+            <p className="mt-1 text-muted-foreground">{t("common:secrets.captureLead")}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Input
+                aria-label={t("common:secrets.captureVault")}
+                className="h-8 w-40 font-mono text-xs"
+                placeholder={t("common:secrets.captureVault")}
+                value={vaultGuess}
+                onChange={(e) => setCaptureVault(e.target.value)}
+              />
+              <Input
+                aria-label={t("common:secrets.captureItem")}
+                className="h-8 min-w-48 flex-1 font-mono text-xs"
+                placeholder={t("common:secrets.captureItem")}
+                value={titleGuess}
+                onChange={(e) => setCaptureTitle(e.target.value)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy !== null || !vaultGuess.trim() || !titleGuess.trim()}
+                onClick={() => void capture()}
+              >
+                {busy === "capture" ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Download className="mr-1 size-3.5" />}
+                {t("common:secrets.capture")}
+              </Button>
+            </div>
+          </details>
         )}
 
         {(invalid || repeated) && rows.length > 0 && <p className="text-xs text-destructive">{t("common:secrets.invalid")}</p>}

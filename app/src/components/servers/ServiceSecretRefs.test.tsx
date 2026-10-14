@@ -192,6 +192,38 @@ describe("los secrets de un servicio", () => {
     expect(screen.queryByRole("button", { name: /(leer los build args|read build args)/i })).toBeNull();
   });
 
+  // La primera vez, lo que el servicio ya corre va a un ítem nuevo de
+  // 1Password, tras confirmar y diciendo cuál; la lista gana una referencia
+  // por variable y no se pisa la que ya había. Mutantes: sin confirmar; pisar
+  // la referencia que ya estaba; otro ítem en las referencias.
+  it("guarda en 1Password lo que corre el servicio y deja sus referencias", async () => {
+    backend("deploy");
+    invoke.mockResolvedValue({ item: "op://dwit/web-rrhh prod", names: ["DATABASE_URL", "MAIL_HOST"] });
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    expect((screen.getByLabelText(/^(bóveda|vault)$/i) as HTMLInputElement).value).toBe("dwit");
+    fireEvent.change(screen.getByLabelText(/^(ítem nuevo|new item)$/i), { target: { value: "web-rrhh prod" } });
+    fireEvent.click(screen.getByRole("button", { name: /^(guardar en 1password|save to 1password)$/i }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("capture_service_env", expect.objectContaining({
+      service: "web-rrhh-prod_app", vault: "dwit", title: "web-rrhh prod",
+    })));
+    expect(confirmar.mock.calls[0][0].description).toContain("op://dwit/web-rrhh prod");
+    await waitFor(() => expect(screen.getByDisplayValue("op://dwit/web-rrhh prod/MAIL_HOST")).toBeTruthy());
+    // DATABASE_URL ya estaba: se queda la suya.
+    expect(screen.getByDisplayValue("op://dwit/Web RRHH/DATABASE_URL")).toBeTruthy();
+    expect(screen.queryByDisplayValue("op://dwit/web-rrhh prod/DATABASE_URL")).toBeNull();
+  });
+
+  it("sin confirmar no se lee nada del servicio", async () => {
+    backend("deploy");
+    confirmar.mockResolvedValue(false);
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    fireEvent.click(screen.getByRole("button", { name: /^(guardar en 1password|save to 1password)$/i }));
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(invoke).not.toHaveBeenCalledWith("capture_service_env", expect.anything());
+  });
+
   it("un nombre que no vale no se guarda", async () => {
     backend("deploy");
     pintar();

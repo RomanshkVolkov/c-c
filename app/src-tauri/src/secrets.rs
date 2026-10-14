@@ -285,6 +285,113 @@ pub fn op_item_fields(item: String) -> Result<Vec<ItemField>, String> {
     item_fields(&String::from_utf8_lossy(&out.stdout))
 }
 
+// ─── Capturar lo que ya corre (la primera vez) ────────────────────────────────
+//
+// Un servicio que pasa a desplegarse por cac ya tiene sus valores: el CI los
+// puso como variables de entorno al desplegarlo, y en GitHub no se pueden leer
+// de vuelta. Esto los lleva del servicio a un ítem nuevo de 1Password, con un
+// campo por variable y su nombre exacto, para que desde ahí sean la fuente de
+// verdad. Los valores van del servidor (por ssh) a 1Password (por la entrada
+// estándar de `op`): no pasan por el backend, ni por la pantalla, ni por una
+// línea de comandos. Lo que vuelve a la app son nombres.
+
+/// El guion que lee el entorno del servicio. Sólo lee.
+pub fn env_capture_script(service: &str) -> Result<String, String> {
+    if !valid_service(service) {
+        return Err(format!("`{service}` is not a service name"));
+    }
+    Ok(format!(
+        "set -euo pipefail\nSVC={}\ndocker service inspect \"$SVC\" --format '{{{{json .Spec.TaskTemplate.ContainerSpec.Env}}}}'\n",
+        sh_quote(service)
+    ))
+}
+
+/// Las variables del servicio (`["NOMBRE=valor", …]`), sólo las que pueden
+/// ser el nombre de un secret y sin repetir.
+pub fn parse_service_env(json: &str) -> Result<Vec<(String, String)>, String> {
+    let list: Option<Vec<String>> = serde_json::from_str(json.trim()).map_err(|_| "the service's environment is not readable".to_string())?;
+    let mut out: Vec<(String, String)> = vec![];
+    for kv in list.unwrap_or_default() {
+        let Some((k, v)) = kv.split_once('=') else { continue };
+        if valid_key(k) && !out.iter().any(|(n, _)| n == k) {
+            out.push((k.to_string(), v.to_string()));
+        }
+    }
+    Ok(out)
+}
+
+/// La plantilla del ítem, para la entrada estándar de `op item create`: una
+/// nota segura con un campo oculto por variable, con la variable como nombre.
+pub fn capture_template(title: &str, entries: &[(String, String)]) -> String {
+    let fields: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(k, v)| serde_json::json!({ "id": k, "label": k, "type": "CONCEALED", "value": v }))
+        .collect();
+    serde_json::json!({ "title": title, "category": "SECURE_NOTE", "fields": fields }).to_string()
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureResult {
+    /// `op://bóveda/ítem`.
+    pub item: String,
+    pub names: Vec<String>,
+}
+
+/// Lee las variables del servicio y crea con ellas un ítem nuevo de
+/// 1Password. Un ítem con ese nombre que ya exista no se toca: dos con el
+/// mismo nombre harían ambiguas las referencias.
+#[tauri::command]
+pub fn capture_service_env(target: SshTarget, service: String, vault: String, title: String) -> Result<CaptureResult, String> {
+    let (vault, title) = (vault.trim().to_string(), title.trim().to_string());
+    if vault.is_empty() || title.is_empty() || title.contains('/') || vault.contains('/') {
+        return Err("the vault and the item need a name, without /".into());
+    }
+    let exists = std::process::Command::new("op")
+        .args(["item", "get", &title, "--vault", &vault, "--format", "json"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if exists.status.success() {
+        return Err(format!("1Password already has an item called «{title}» in {vault}; pick another name"));
+    }
+
+    let script = env_capture_script(&service)?;
+    let staged = match stored_ssh_key(&target.server_id).ok().flatten().filter(|k| !k.trim().is_empty()) {
+        Some(k) => Some(stage_public_key(&k)?),
+        None => None,
+    };
+    let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+    let out = ssh_run_input(&target.host, target.ssh_port, &target.ssh_user, "bash -s", identity.as_deref(), Some(&script))?;
+    let entries = parse_service_env(&out.stdout)?;
+    if entries.is_empty() {
+        return Err(format!("{service} has no environment variables to capture"));
+    }
+
+    use std::io::Write;
+    let mut child = std::process::Command::new("op")
+        .args(["item", "create", "--vault", &vault, "--format", "json", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    child
+        .stdin
+        .take()
+        .ok_or("op has no stdin")?
+        .write_all(capture_template(&title, &entries).as_bytes())
+        .map_err(|e| e.to_string())?;
+    let done = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !done.status.success() {
+        // El error de `op` no repite valores: habla del ítem y de la sesión.
+        return Err(String::from_utf8_lossy(&done.stderr).trim().to_string());
+    }
+    Ok(CaptureResult {
+        item: format!("op://{vault}/{title}"),
+        names: entries.into_iter().map(|(k, _)| k).collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,5 +558,27 @@ mod tests {
         let build = s.split("N=\"cac_NEXT_PUBLIC_STRIPE_KEY_").nth(1).unwrap();
         assert!(build.split("N=\"cac_").next().unwrap().contains(r#"KEEP+=("$N")"#), "la poda se lo llevaría");
         assert_eq!(s.matches(&sh_quote("pk_live_x")).count(), 1);
+    }
+
+    // Capturar lo que corre: el guion sólo lee; se quedan las variables que
+    // pueden ser un secret; y el ítem lleva cada valor oculto y con la
+    // variable como nombre. Mutantes: un guion que cambie el servicio; no
+    // filtrar los nombres; campos visibles en vez de ocultos.
+    #[test]
+    fn capturing_reads_the_service_and_hides_each_value() {
+        let script = env_capture_script("boat-dev_app").unwrap();
+        assert!(script.contains("docker service inspect") && !script.contains("update") && !script.contains("secret create"));
+        assert!(script.contains("'{{json .Spec.TaskTemplate.ContainerSpec.Env}}'"), "{script}");
+        assert!(env_capture_script("x; rm -rf /").is_err());
+
+        let env = parse_service_env(r#"["DATABASE_URL=sqlserver://a=b","lower=x","PORT=3000","PORT=4000","SIN_VALOR"]"#).unwrap();
+        assert_eq!(env, vec![("DATABASE_URL".into(), "sqlserver://a=b".into()), ("PORT".into(), "3000".into())]);
+        assert!(parse_service_env("null").unwrap().is_empty());
+
+        let t: serde_json::Value = serde_json::from_str(&capture_template("web-boaty dev", &env)).unwrap();
+        assert_eq!(t["title"], "web-boaty dev");
+        assert_eq!(t["fields"][0]["label"], "DATABASE_URL");
+        assert_eq!(t["fields"][0]["type"], "CONCEALED");
+        assert_eq!(t["fields"][0]["value"], "sqlserver://a=b");
     }
 }

@@ -1945,6 +1945,7 @@ pub fn run() {
             op_item_create,
             op_list_vaults,
             secrets::rotate_service_secrets,
+            secrets::capture_service_env,
             secrets::check_op_refs,
             secrets::op_item_fields,
             ansible::ansible_tools,

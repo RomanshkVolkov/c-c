@@ -817,6 +817,15 @@
     "bridgeCopied": "Copiado",
     "readArgs": "Leer los build args del Dockerfile",
     "argsMerged": "{{count}} build args en el Dockerfile: {{added}} añadidos, {{promoted}} pasan a los dos. Pon las referencias de 1Password que faltan y guarda.",
-    "argsFailed": "No se pudo leer el Dockerfile"
+    "argsFailed": "No se pudo leer el Dockerfile",
+    "captureSummary": "La primera vez: guardar en 1Password lo que ya corre el servicio",
+    "captureLead": "Lee las variables de entorno que el CI dejó en el servicio y crea un ítem nuevo de 1Password con un campo oculto por variable, con su mismo nombre. Los valores van del servidor a 1Password: no pasan por cac ni por la pantalla.",
+    "captureVault": "Bóveda",
+    "captureItem": "Ítem nuevo",
+    "capture": "Guardar en 1Password",
+    "captureTitle": "¿Guardar en 1Password las variables de {{service}}?",
+    "captureBody": "Lee por ssh el entorno de {{service}} en {{server}} y crea {{item}} con cada variable como campo oculto. En el servidor no cambia nada.",
+    "captured": "{{count}} variables guardadas en {{item}}. Revisa cuáles usa el build y guarda.",
+    "captureFailed": "No se pudieron guardar las variables en 1Password"
   }
 }

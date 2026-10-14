@@ -817,6 +817,15 @@
     "bridgeCopied": "Copied",
     "readArgs": "Read build args from the Dockerfile",
     "argsMerged": "{{count}} build args in the Dockerfile: {{added}} added, {{promoted}} now used by both. Fill in the missing 1Password references and save.",
-    "argsFailed": "Couldn't read the Dockerfile"
+    "argsFailed": "Couldn't read the Dockerfile",
+    "captureSummary": "First time: save what the service already runs in 1Password",
+    "captureLead": "Reads the environment variables the CI left on the service and creates a new 1Password item with one hidden field per variable, named exactly like it. Values go from the server to 1Password: they never reach cac or the screen.",
+    "captureVault": "Vault",
+    "captureItem": "New item",
+    "capture": "Save to 1Password",
+    "captureTitle": "Save {{service}}'s variables to 1Password?",
+    "captureBody": "Reads the environment of {{service}} on {{server}} over ssh and creates {{item}} with each variable as a hidden field. Nothing changes on the server.",
+    "captured": "{{count}} variables saved in {{item}}. Review which the build uses, then save.",
+    "captureFailed": "Couldn't save the variables to 1Password"
   }
 }
