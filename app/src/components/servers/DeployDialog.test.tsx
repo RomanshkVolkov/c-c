@@ -195,14 +195,14 @@ describe("el aviso del CI", () => {
     respuestas([{ ...deployable, repoFullName: "dwit/api", buildOnHost: true }], []);
     pintar();
     await screen.findByText(/(sin llave del CI|no CI key needed)/i);
-    expect(screen.queryByRole("button", { name: /^(acuñar llave|mint key)$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(generar llave|mint key)$/i })).toBeNull();
   });
 
   it("la llave se enseña una vez, con el paso para el workflow, y no se queda en el store", async () => {
     respuestas([deployable], []);
     post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
     pintar();
-    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(generar llave|mint key)$/i }));
     await waitFor(() => expect(screen.getByTestId("ci-key").textContent).toBe(KEY));
     // La primera no tumba nada: no se pregunta.
     expect(confirmar).not.toHaveBeenCalled();
@@ -221,7 +221,7 @@ describe("el aviso del CI", () => {
     respuestas([{ ...deployable, ciKeyPreview: "dk_viejaa…" }], []);
     confirmar.mockResolvedValue(false);
     pintar();
-    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar otra|mint another)$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(generar otra|mint another)$/i }));
     await waitFor(() => expect(confirmar).toHaveBeenCalled());
     expect(confirmar.mock.calls[0][0].description).toContain("dk_viejaa…");
     expect(post).not.toHaveBeenCalled();
@@ -306,7 +306,7 @@ describe("sin ir a GitHub", () => {
     post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
     patch.mockResolvedValue({ success: true, data: { ...deployable, repoFullName: "dwit-mexico/api" } });
     pintar();
-    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(generar llave|mint key)$/i }));
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("set_github_secret", {
         serverId: "PATK_global_usage", owner: "dwit-mexico", repo: "api", name: "CAC_DEPLOY_KEY", value: KEY,
@@ -324,7 +324,7 @@ describe("sin ir a GitHub", () => {
     respuestas([deployable], []);
     post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
     pintar();
-    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(generar llave|mint key)$/i }));
     await waitFor(() => expect(screen.getByTestId("ci-key").textContent).toBe(KEY));
   });
 
@@ -358,7 +358,7 @@ describe("sin ir a GitHub", () => {
     respuestas([deployable], []);
     post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
     render(<DeployDialog server={server()} service={{ ...service, image: "ghcr.io/dwit-mexico/api:9c55939" }} open onOpenChange={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: /^(acuñar llave|mint key)$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(generar llave|mint key)$/i }));
     const paso = (await screen.findByText(/X-Deploy-Key/)).textContent ?? "";
     expect(paso).toContain("git rev-parse --short=7 HEAD");
     expect(paso).not.toContain("$GITHUB_SHA");
