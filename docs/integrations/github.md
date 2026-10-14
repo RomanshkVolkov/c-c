@@ -204,6 +204,17 @@ Son de **sólo lectura**: el repo es la fuente, y se editan allí, con una PR.
   empiece por punto (`.github` incluida: sus plantillas son formularios, no
   documentación) o en `node_modules`, `vendor`, `dist`, `build` o `target`.
   Como mucho 1000 ficheros por repo.
+- **Qué no entra, desde el repo:** un `.cacignore` en la raíz, con la sintaxis
+  de `.gitignore` (`#`, `!`, `/` al final para carpetas, `/` para anclar, `*`,
+  `?`, `**`). Una diferencia: manda la última regla que case, también bajo una
+  carpeta ignorada, así que `docs/` y luego `!docs/guia.md` deja la guía.
+  Cambiarlo surte efecto en el siguiente push.
+
+  ```gitignore
+  CHANGELOG.md
+  packages/**/README.md
+  /drafts
+  ```
 - **De qué rama:** la rama por defecto del repo. Un push a otra rama no los
   toca.
 - **Cuándo se ponen al día:**

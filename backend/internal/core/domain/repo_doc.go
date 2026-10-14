@@ -2,6 +2,7 @@ package domain
 
 import (
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -167,4 +168,120 @@ type RepoDocResponse struct {
 	SpaceID  string     `json:"spaceId"`
 	HTMLURL  string     `json:"htmlUrl"`
 	SyncedAt *time.Time `json:"syncedAt"`
+}
+
+// ─── .cacignore ──────────────────────────────────────────────────────────────
+
+// RepoIgnoreFile: el fichero, en la raíz del repo, que dice qué .md no salen
+// en cac. Con la sintaxis de `.gitignore`, que cualquiera ya conoce, y en el
+// repo y no en una pantalla: lo que se documenta se decide donde se escribe.
+const RepoIgnoreFile = ".cacignore"
+
+// RepoIgnore: las reglas de un `.cacignore`.
+//
+// Lo de `.gitignore` que se usa de verdad: comentarios (`#`), líneas en
+// blanco, `!` para volver a meter algo, `/` al final para sólo carpetas, `/`
+// al principio (o en medio) para anclar a la raíz, y `*`, `?` y `**`.
+//
+// Una diferencia a propósito: aquí manda la **última regla que case**, también
+// con una carpeta ignorada por encima, así que `docs/` seguido de
+// `!docs/guia.md` deja la guía. En git no se puede (no mira dentro de una
+// carpeta ignorada), pero aquí no hay nada que recorrer y es lo que se espera
+// al escribirlo.
+type RepoIgnore struct{ rules []ignoreRule }
+
+type ignoreRule struct {
+	re      *regexp.Regexp
+	negate  bool
+	dirOnly bool
+}
+
+// ParseRepoIgnore lee un `.cacignore`. Una línea que no se entiende se salta:
+// un error de sintaxis no puede dejar un repo sin docs.
+func ParseRepoIgnore(text string) *RepoIgnore {
+	out := &RepoIgnore{}
+	for _, line := range strings.Split(text, "\n") {
+		l := strings.TrimRight(line, " \t\r")
+		if l == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+		r := ignoreRule{}
+		if strings.HasPrefix(l, "!") {
+			r.negate, l = true, l[1:]
+		}
+		if strings.HasSuffix(l, "/") {
+			r.dirOnly, l = true, strings.TrimRight(l, "/")
+		}
+		anchored := strings.Contains(l, "/")
+		l = strings.TrimPrefix(l, "/")
+		if l == "" {
+			continue
+		}
+		expr := globToRegexp(l)
+		if !anchored {
+			// Sin barra, casa con el nombre a cualquier profundidad.
+			expr = `(?:^|.*/)` + expr
+		}
+		re, err := regexp.Compile("^" + expr + "$")
+		if err != nil {
+			continue
+		}
+		r.re = re
+		out.rules = append(out.rules, r)
+	}
+	return out
+}
+
+func globToRegexp(g string) string {
+	var b strings.Builder
+	for i := 0; i < len(g); i++ {
+		switch c := g[i]; c {
+		case '*':
+			if i+1 < len(g) && g[i+1] == '*' {
+				// `**/` es cero o más carpetas; `**` suelto, cualquier cosa.
+				if i+2 < len(g) && g[i+2] == '/' {
+					b.WriteString(`(?:.*/)?`)
+					i += 2
+				} else {
+					b.WriteString(`.*`)
+					i++
+				}
+			} else {
+				b.WriteString(`[^/]*`)
+			}
+		case '?':
+			b.WriteString(`[^/]`)
+		default:
+			b.WriteString(regexp.QuoteMeta(string(c)))
+		}
+	}
+	return b.String()
+}
+
+// Ignored: si un fichero del repo queda fuera. Cada regla se prueba contra
+// el fichero y contra cada carpeta por encima (una carpeta ignorada se lleva
+// lo de dentro); manda la última que case.
+func (ig *RepoIgnore) Ignored(p string) bool {
+	if ig == nil {
+		return false
+	}
+	parts := strings.Split(p, "/")
+	ignored := false
+	for _, r := range ig.rules {
+		hit := false
+		for i := 1; i <= len(parts); i++ {
+			isDir := i < len(parts)
+			if r.dirOnly && !isDir {
+				continue
+			}
+			if r.re.MatchString(strings.Join(parts[:i], "/")) {
+				hit = true
+				break
+			}
+		}
+		if hit {
+			ignored = !r.negate
+		}
+	}
+	return ignored
 }

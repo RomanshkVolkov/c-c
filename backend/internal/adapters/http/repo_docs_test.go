@@ -324,3 +324,30 @@ func TestARepoDocIsFoundByItsGitHubPath(t *testing.T) {
 		t.Fatalf("un fichero que no está → %d", rec.Code)
 	}
 }
+
+// Un `.cacignore` en la raíz tapa lo que nombra, y quitarlo lo devuelve.
+// Mutantes: no leer el `.cacignore`; leerlo de cualquier carpeta.
+func TestCacIgnoreHidesWhatItNames(t *testing.T) {
+	f, fake, repoID := docsSetup(t)
+	fake.set(map[string]string{
+		"README.md":      "# Web",
+		"docs/deploy.md": "# Desplegar",
+		".cacignore":     "docs/\n",
+		"sub/.cacignore": "README.md\n",
+		"CHANGELOG.md":   "# Cambios",
+	}, "tree-i1")
+	f.linkWeb(t, repoID, `{"spaceId":"sp-1"}`)
+	docs := f.docs(t)
+	if _, ok := docs["docs/deploy.md"]; ok || len(docs) != 2 {
+		t.Fatalf("con docs/ tapado: %+v", docs)
+	}
+	if _, ok := docs["README.md"]; !ok {
+		t.Fatal("un .cacignore fuera de la raíz tapó el README")
+	}
+
+	fake.set(map[string]string{"README.md": "# Web", "docs/deploy.md": "# Desplegar", "CHANGELOG.md": "# Cambios"}, "tree-i2")
+	f.pushWeb(t, "refs/heads/main")
+	if _, ok := f.docs(t)["docs/deploy.md"]; !ok {
+		t.Fatal("sin .cacignore, lo tapado no volvió")
+	}
+}

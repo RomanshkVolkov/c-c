@@ -113,9 +113,23 @@ func (s *GitHubService) syncRepoDocs(repo *domain.GitHubRepo) error {
 		path, sha string
 		size      int64
 	}
+	// El `.cacignore` de la raíz, si lo hay: lo que el repo dice que no sale.
+	// Se lee cada vez que cambia el árbol; cambiarlo cambia el árbol, así que
+	// quitar una línea vuelve a traer lo que tapaba.
+	var ignore *domain.RepoIgnore
+	for _, e := range tree.Tree {
+		if e.Type == "blob" && e.Path == domain.RepoIgnoreFile {
+			text, err := s.repoBlob(repo, e.Sha)
+			if err != nil {
+				return err
+			}
+			ignore = domain.ParseRepoIgnore(text)
+			break
+		}
+	}
 	var files []blob
 	for _, e := range tree.Tree {
-		if e.Type == "blob" && domain.IsRepoDocPath(e.Path) {
+		if e.Type == "blob" && domain.IsRepoDocPath(e.Path) && !ignore.Ignored(e.Path) {
 			files = append(files, blob{e.Path, e.Sha, e.Size})
 		}
 	}

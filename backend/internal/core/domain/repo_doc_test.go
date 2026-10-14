@@ -58,3 +58,51 @@ func TestRepoImagePathOnlyLetsImagesThrough(t *testing.T) {
 		}
 	}
 }
+
+// El `.cacignore`, con lo de `.gitignore` que se usa de verdad.
+// Mutantes: sin `!`; `/` al final que también tape ficheros; un patrón sin
+// barra sólo en la raíz; `**` como `*`; la primera regla que case en vez de
+// la última.
+func TestRepoIgnore(t *testing.T) {
+	ig := ParseRepoIgnore(`
+# fuera lo que no se lee
+CHANGELOG.md
+packages/**/README.md
+/drafts
+plantillas/
+*.tmp.md
+docs/
+!docs/guia.md
+!guia-de-estilo.md
+plantillas.md
+viejo*/
+`)
+	for p, want := range map[string]bool{
+		"README.md":                   false,
+		"CHANGELOG.md":                true,
+		"app/CHANGELOG.md":            true,
+		"packages/ui/README.md":       true,
+		"packages/ui/forms/README.md": true,
+		"packages/ui/GUIDE.md":        false,
+		"drafts/idea.md":              true,
+		"app/drafts/idea.md":          false,
+		"plantillas/bug.md":           true,
+		"x/plantillas/bug.md":         true,
+		"notas.tmp.md":                true,
+		"docs/deploy.md":              true,
+		"docs/guia.md":                false,
+		"plantillas.md":               true,
+		"guia-de-estilo.md":           false,
+		// `viejo*/` es sólo carpetas: un fichero que se llame así se queda.
+		"viejo/plan.md": true,
+		"viejo-plan.md": false,
+	} {
+		if got := ig.Ignored(p); got != want {
+			t.Errorf("Ignored(%q) = %v, want %v", p, got, want)
+		}
+	}
+	var none *RepoIgnore
+	if none.Ignored("CHANGELOG.md") {
+		t.Fatal("sin .cacignore no se tapa nada")
+	}
+}
