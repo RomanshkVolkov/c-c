@@ -2,7 +2,9 @@ import { toast } from "sonner";
 
 import { docRefFromHref, recordingIdFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
 import { userIdFromHref } from "@/components/markdown/mention-menu";
+import { matchRepoBlobUrl } from "@/lib/repo-links";
 import { useDocPages } from "@/store/doc-pages.store";
+import { useRepoDocs } from "@/store/repo-docs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { isDocOwnerKind } from "@/types/task";
 
@@ -44,6 +46,12 @@ export function openInternalRef(href: string, opts: { onOpenRecordings?: () => v
         .openDoc(ref.kind, ref.id, "")
         .catch((e) => toast.error(String(e)));
     }
+    return true;
+  }
+  // Un .md en GitHub de un repo de la org (docs as code): se lee en cac, que
+  // tiene su copia. Si no está copiado, `openByUrl` lo manda a GitHub igual.
+  if (matchRepoBlobUrl(href)) {
+    useRepoDocs.getState().openByUrl(href);
     return true;
   }
   // Una grabación se abre en su pestaña, que es donde está el reproductor. Sin

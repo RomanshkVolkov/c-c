@@ -224,7 +224,19 @@ Las rutas de lectura, para cualquiera de la org del espacio:
 |---|---|
 | `GET /api/v1/repo-docs?spaceId=` | los repos del espacio con sus ficheros (sin cuerpo) |
 | `GET /api/v1/repo-docs/{id}` | un fichero, con su cuerpo y su URL en GitHub |
+| `GET /api/v1/repo-docs/lookup?orgId=&repo=owner/name&path=` | el fichero que nombra una URL de GitHub (`…/blob/<rama>/<ruta>`), sólo de un repo de esa org |
 | `GET /api/v1/repo-docs/raw/{repoId}?path=` | una imagen del repo, para un repo privado; **sólo imágenes** (png, jpg, gif, webp, svg) y nunca con `..` |
+
+**En la app:**
+- **Los enlaces** de un `.md` se resuelven contra su ruta, como en GitHub: un
+  `../deploy.md` que está copiado se abre en cac; cualquier otra ruta relativa
+  va a su página en GitHub. Las imágenes relativas se piden a cac.
+- **La URL de GitHub de un `.md`** pegada en cualquier sitio de cac (un doc, el
+  chat) se abre en cac si está copiado, y si no, en GitHub.
+- **El «include» de Confluence:** pegada **sola en su línea** de un documento o
+  de una página, esa URL se ve con el contenido del fichero debajo, al día con
+  el repo. El markdown guardado sigue siendo la URL, así que en GitHub, en el
+  editor y por MCP se lee un enlace corriente.
 
 Los permisos de la App **no cambian**: `Contents: read` ya estaba desde la
 sección 1, y el evento `Push` también.

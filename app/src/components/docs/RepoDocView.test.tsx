@@ -5,7 +5,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  * Un .md del repo, leído en cac: de sólo lectura y diciéndolo.
  * Mutantes: «Ver en GitHub» a otra URL; pintarlo con el editor (habría un
  * cuadro de texto); no cerrar el fichero al salir (el panel lo seguiría
- * marcando); pintar el cuerpo de uno demasiado grande.
+ * marcando); pintar el cuerpo de uno demasiado grande; no resolver los
+ * enlaces contra la ruta (un `../a.md` iría al navegador); pedir las imágenes
+ * relativas tal cual (en un repo privado no cargan).
  */
 
 const { get, openExternal } = vi.hoisted(() => ({ get: vi.fn(), openExternal: vi.fn() }));
@@ -15,6 +17,15 @@ vi.mock("@/components/docs/DocToc", () => ({ default: () => null }));
 
 const { default: RepoDocView } = await import("@/components/docs/RepoDocView");
 const { useRepoDocs } = await import("@/store/repo-docs.store");
+
+const GROUP = {
+  repoId: 200,
+  fullName: "dwit/web",
+  branch: "main",
+  state: "ok",
+  syncedAt: null,
+  files: [{ id: "rd-readme", path: "README.md", title: "Web" }],
+};
 
 const DOC = {
   id: "rd-1",
@@ -33,7 +44,9 @@ const DOC = {
 
 beforeEach(() => {
   openExternal.mockResolvedValue(undefined);
-  useRepoDocs.setState({ bySpace: {}, open: null });
+  useRepoDocs.setState({ bySpace: {}, open: null, pendingRoute: null });
+  get.mockReset();
+  openExternal.mockClear();
 });
 afterEach(cleanup);
 
@@ -68,5 +81,25 @@ describe("un .md del repo", () => {
     get.mockRejectedValue(new Error("not-found"));
     render(<RepoDocView id="rd-x" />);
     await waitFor(() => expect(screen.getByText(/no longer in the repository/)).toBeTruthy());
+  });
+});
+
+describe("los enlaces y las imágenes de un .md del repo", () => {
+  it("un .md vecino se abre en cac; lo demás, en GitHub; la imagen se pide a cac", async () => {
+    const body = "Ver [la portada](../README.md) y [el código](../src/main.go).\n\n![arq](img/arq.png)";
+    get.mockImplementation(async (url: string) =>
+      url.startsWith("/api/v1/repo-docs?") ? { success: true, data: [GROUP] } : { success: true, data: { ...DOC, body } },
+    );
+    render(<RepoDocView id="rd-1" />);
+    await waitFor(() => expect(useRepoDocs.getState().bySpace["sp-1"]).toBeTruthy());
+
+    fireEvent.click(screen.getByText("la portada"));
+    expect(useRepoDocs.getState().pendingRoute).toBe("/docs?repoDoc=rd-readme");
+
+    fireEvent.click(screen.getByText("el código"));
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/dwit/web/blob/main/src/main.go");
+
+    const img = screen.getByAltText("arq") as HTMLImageElement;
+    expect(img.getAttribute("src")).toContain("/api/v1/repo-docs/raw/200?path=docs%2Fimg%2Farq.png");
   });
 });

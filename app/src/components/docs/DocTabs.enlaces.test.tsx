@@ -19,8 +19,18 @@ vi.mock("@/lib/api", () => ({
 // El Markdown de verdad decide qué es interno; aquí basta con que se le pase
 // quién lo abre, y con pulsarlo.
 vi.mock("@/components/markdown/Markdown", () => ({
-  default: ({ children, onInternalLink }: { children: string; onInternalLink?: (h: string) => boolean }) => (
-    <button onClick={() => onInternalLink?.("/tasks?doc=list:l2&page=p1")}>{children}</button>
+  default: ({
+    children,
+    onInternalLink,
+    includes,
+  }: {
+    children: string;
+    onInternalLink?: (h: string) => boolean;
+    includes?: boolean;
+  }) => (
+    <button data-includes={includes ? "on" : "off"} onClick={() => onInternalLink?.("/tasks?doc=list:l2&page=p1")}>
+      {children}
+    </button>
   ),
 }));
 vi.mock("@/components/docs/DocHeader", () => ({ default: () => null }));
@@ -63,6 +73,13 @@ describe("un enlace dentro de la portada", () => {
     render(<DocTabs onView={() => {}} />);
     fireEvent.click(screen.getByText("ver la otra"));
     expect(abrirDentro).toHaveBeenCalledWith("/tasks?doc=list:l2&page=p1");
+  });
+
+  // La URL de GitHub de un .md sola en su línea se ve con su contenido (el
+  // include de Confluence): en la documentación, sí. Mutante: sin `includes`.
+  it("enseña los .md del repo que se pegan solos en su línea", () => {
+    render(<DocTabs onView={() => {}} />);
+    expect(screen.getByText("ver la otra").getAttribute("data-includes")).toBe("on");
   });
 });
 

@@ -268,6 +268,28 @@ func (h *GitHubHandler) RepoDoc(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.RepoDocResponse]{Success: true, Data: d})
 }
 
+// RepoDocLookup: `GET /api/v1/repo-docs/lookup?orgId=&repo=owner/name&path=`,
+// el doc que nombra una URL de GitHub pegada en un documento de esa org.
+func (h *GitHubHandler) RepoDocLookup(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	q := r.URL.Query()
+	orgID := q.Get("orgId")
+	if _, member := user.RoleInOrg(orgID); !member && !user.Superadmin {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	d, err := h.svc.RepoDocByPath(orgID, q.Get("repo"), q.Get("path"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.RepoDocResponse]{Success: true, Data: d})
+}
+
 // RepoImage: `GET /api/v1/repo-docs/raw/{repoId}?path=`, una imagen de un
 // repo privado para el `<img>` de uno de sus docs. Fuera del JWT, como los
 // adjuntos: un `<img>` no manda la cabecera, y lo pide `cacmedia://` o un

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronRight, ExternalLink, GitBranch, Github } from "lucide-react";
 
 import DocToc from "@/components/docs/DocToc";
-import Markdown from "@/components/markdown/Markdown";
+import RepoMarkdown from "@/components/docs/RepoMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { desde } from "@/lib/desde";
@@ -79,7 +79,7 @@ export default function RepoDocView({ id }: { id: string }) {
               <p className="text-sm text-muted-foreground">{t("work:repoDocs.tooLarge")}</p>
             ) : doc.body ? (
               <div className="prose-doc">
-                <Markdown allowHtml>{doc.body}</Markdown>
+                <RepoMarkdown doc={doc} />
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">{t("work:repoDocs.empty")}</p>

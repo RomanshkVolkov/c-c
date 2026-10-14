@@ -128,3 +128,12 @@ func (r *GitHubRepository) SpaceOrg(spaceID string) (string, error) {
 	}
 	return sp.OrgID, nil
 }
+
+// FindRepoDocByPath: un doc por su ruta en el repo.
+func (r *GitHubRepository) FindRepoDocByPath(repoID int64, path string) (*domain.RepoDoc, error) {
+	var d domain.RepoDoc
+	if err := r.db.First(&d, "repo_id = ? AND path = ?", repoID, path).Error; err != nil {
+		return nil, err
+	}
+	return &d, nil
+}

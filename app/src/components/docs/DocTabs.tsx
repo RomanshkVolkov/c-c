@@ -348,7 +348,7 @@ export default function DocTabs({
                       // Medida de línea corta y texto más grande: es un documento,
                       // no un panel. `prose-doc` lo fija en un solo sitio.
                       <div className="prose-doc">
-                        <Markdown allowHtml onInternalLink={(href) => openInternalRef(href)}>
+                        <Markdown allowHtml includes onInternalLink={(href) => openInternalRef(href)}>
                           {body}
                         </Markdown>
                       </div>

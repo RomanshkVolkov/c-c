@@ -1,6 +1,7 @@
 import { useDMStore } from "@/store/dm.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { restoreTasksPlace } from "@/store/places";
+import { useRepoDocs } from "@/store/repo-docs.store";
 import { useTasksStore } from "@/store/tasks.store";
 
 /**
@@ -37,6 +38,8 @@ export function alCambiarDeOrg(_antes: string | null, ahora: string | null) {
   // descarta la selección si no está en el árbol nuevo; mientras llega, no se
   // pinta el tablero de la otra.
   useTasksStore.setState({ board: null });
+  // Una URL de GitHub se busca en los repos de la org: en otra, otra respuesta.
+  useRepoDocs.setState({ byUrl: {} });
 
   // Y lo que tenías abierto en la org a la que vas. Ver `store/places.store.ts`.
   restoreTasksPlace(ahora);

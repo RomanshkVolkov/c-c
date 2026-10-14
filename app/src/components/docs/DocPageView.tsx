@@ -209,7 +209,7 @@ export default function DocPageView({
               </div>
             ) : page.body ? (
               <div className="prose-doc">
-                <Markdown allowHtml onInternalLink={onInternalLink}>
+                <Markdown allowHtml includes onInternalLink={onInternalLink}>
                   {page.body}
                 </Markdown>
               </div>

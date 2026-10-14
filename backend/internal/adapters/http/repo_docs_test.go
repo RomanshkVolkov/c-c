@@ -306,3 +306,21 @@ func TestRepoDocRawOnlyServesImages(t *testing.T) {
 		t.Fatalf("otra org → %d", rec.Code)
 	}
 }
+
+// Una URL de GitHub pegada en un doc encuentra su fichero, sólo en la org que
+// tiene el repo. Mutante: no comprobar la org (otra lo leería).
+func TestARepoDocIsFoundByItsGitHubPath(t *testing.T) {
+	f, _, repoID := docsSetup(t)
+	f.linkWeb(t, repoID, `{"spaceId":"sp-1"}`)
+	q := "/api/v1/repo-docs/lookup?repo=DWIT/web&path=docs/deploy.md&orgId="
+	rec := f.as(t, http.MethodGet, q+"org-1", "", member1)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"title":"Desplegar"`) {
+		t.Fatalf("de la org → %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := f.as(t, http.MethodGet, q+"org-1", "", member2); rec.Code != http.StatusNotFound {
+		t.Fatalf("pidiendo la org ajena → %d", rec.Code)
+	}
+	if rec := f.as(t, http.MethodGet, "/api/v1/repo-docs/lookup?repo=dwit/web&path=nada.md&orgId=org-1", "", member1); rec.Code != http.StatusNotFound {
+		t.Fatalf("un fichero que no está → %d", rec.Code)
+	}
+}

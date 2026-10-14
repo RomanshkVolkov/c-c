@@ -1,6 +1,9 @@
 import { create } from "zustand";
 
 import { api } from "@/lib/api";
+import { openExternal } from "@/lib/platform";
+import { matchRepoBlobUrl } from "@/lib/repo-links";
+import { useOrgsStore } from "@/store/orgs.store";
 import { useAuthStore } from "@/store/auth.store";
 import type { APIResponse } from "@/types/auth";
 import type { RepoDoc, RepoDocsGroup } from "@/types/github";
@@ -23,6 +26,24 @@ interface RepoDocsState {
   fetchSpace: (spaceId: string, force?: boolean) => Promise<void>;
   openDoc: (id: string) => Promise<RepoDoc>;
   closeDoc: () => void;
+
+  /**
+   * El .md que nombra una URL de GitHub, si es de un repo de la org actual.
+   * Cacheado por URL (también los que no están, como `null`): una página con
+   * diez includes no hace diez peticiones cada vez que se pinta.
+   */
+  byUrl: Record<string, RepoDoc | null>;
+  lookup: (url: string) => Promise<RepoDoc | null>;
+  /**
+   * Abrir un .md del repo desde donde no hay router (`openInternalRef`, el
+   * chat, un include): se apunta aquí la ruta y `RepoDocNavigator`, dentro
+   * del router, navega.
+   */
+  pendingRoute: string | null;
+  goTo: (id: string, hash?: string) => void;
+  takeRoute: () => string | null;
+  /** Una URL de GitHub de un .md: en cac si está copiado; si no, en GitHub. */
+  openByUrl: (url: string) => void;
 }
 
 const inFlight = new Map<string, Promise<void>>();
@@ -54,8 +75,39 @@ export const useRepoDocs = create<RepoDocsState>()((set, get) => ({
   },
 
   closeDoc: () => set({ open: null }),
+
+  byUrl: {},
+  lookup: async (url) => {
+    if (url in get().byUrl) return get().byUrl[url];
+    const m = matchRepoBlobUrl(url);
+    const orgId = useOrgsStore.getState().currentOrgId;
+    if (!m || !orgId) return null;
+    const q = new URLSearchParams({ orgId, repo: m.repo, path: m.path });
+    const doc = await api
+      .get<APIResponse<RepoDoc>>(`/api/v1/repo-docs/lookup?${q}`)
+      .then((res) => res.data ?? null)
+      .catch(() => null);
+    set((s) => ({ byUrl: { ...s.byUrl, [url]: doc } }));
+    return doc;
+  },
+
+  pendingRoute: null,
+  goTo: (id, hash) => set({ pendingRoute: `/docs?repoDoc=${encodeURIComponent(id)}${hash ? `#${hash}` : ""}` }),
+  takeRoute: () => {
+    const r = get().pendingRoute;
+    if (r) set({ pendingRoute: null });
+    return r;
+  },
+  openByUrl: (url) => {
+    void get()
+      .lookup(url)
+      .then((doc) => {
+        if (doc) get().goTo(doc.id, new URL(url).hash.slice(1));
+        else openExternal(url).catch(() => window.open(url, "_blank"));
+      });
+  },
 }));
 
 useAuthStore.subscribe((state, prev) => {
-  if (prev.accessToken && !state.accessToken) useRepoDocs.setState({ bySpace: {}, open: null });
+  if (prev.accessToken && !state.accessToken) useRepoDocs.setState({ bySpace: {}, open: null, byUrl: {} });
 });

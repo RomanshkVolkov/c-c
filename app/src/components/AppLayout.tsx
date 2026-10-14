@@ -32,6 +32,7 @@ import { useLayoutStore } from "@/store/layout.store";
 import { useThemeStore } from "@/store/theme.store";
 import { useT } from "@/lib/i18n";
 import { ForcedChangePassword } from "@/components/ChangePassword";
+import RepoDocNavigator from "@/components/docs/RepoDocNavigator";
 
 export default function AppLayout() {
   const { t } = useT();
@@ -203,6 +204,8 @@ export default function AppLayout() {
             meant "my work", the channels and the dashboard could all ask for a
             task and nothing would appear. */}
         <TaskDetailDrawer />
+        {/* Un .md del repo pedido desde donde no hay router (chat, un include). */}
+        <RepoDocNavigator />
         <MobileTabBar />
       </SidebarInset>
       {/* Encima de todo, y montado una sola vez: una llamada puede entrar

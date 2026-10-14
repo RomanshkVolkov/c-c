@@ -13,6 +13,8 @@ import { attachmentPath, isPdfAttachment, mediaSrc, openAttachment } from "@/lib
 import Lightbox from "@/components/Lightbox";
 import PdfPreview from "@/components/PdfPreview";
 import PdfCard from "@/components/PdfCard";
+import RepoInclude from "@/components/docs/RepoInclude";
+import { matchRepoBlobUrl } from "@/lib/repo-links";
 
 /**
  * Read-only markdown. Used wherever stored markdown is displayed (task
@@ -69,12 +71,38 @@ export function mermaidSource(node: unknown): string | null {
   return texto.replace(/\n$/, "");
 }
 
+/**
+ * Si un párrafo no es más que un enlace a un .md en GitHub, su URL. Lo que se
+ * pega solo en su línea es lo que se quiere ver entero; un enlace en mitad de
+ * una frase es una referencia, y se queda como enlace.
+ */
+export function loneLink(node: unknown): string | null {
+  const p = node as { children?: { type: string; tagName?: string; value?: string; properties?: { href?: unknown } }[] } | undefined;
+  const kids = (p?.children ?? []).filter((c) => !(c.type === "text" && !c.value?.trim()));
+  if (kids.length !== 1 || kids[0].tagName !== "a") return null;
+  const href = kids[0].properties?.href;
+  return typeof href === "string" && matchRepoBlobUrl(href) ? href : null;
+}
+
 export default function Markdown({
   children,
   className,
   onInternalLink,
   allowHtml = false,
+  imageSrc,
+  includes = false,
 }: {
+  /**
+   * Reescribe el `src` de una imagen antes de pedirla: un .md del repo pide
+   * las suyas relativas a su ruta (ver `repoImageSrc`).
+   */
+  imageSrc?: (src: string) => string | null;
+  /**
+   * Un párrafo que sólo es la URL de GitHub de un .md de un repo de la org se
+   * pinta con su contenido (el «include» de Confluence; ver `RepoInclude`).
+   * Sólo en documentación, y nunca dentro de un include.
+   */
+  includes?: boolean;
   children: string;
   className?: string;
   /** Render a sanitized subset of raw HTML — collapsible sections. Notes only. */
@@ -165,9 +193,18 @@ export default function Markdown({
           },
           // Capped at max-h-80 so a screenshot doesn't push the rest of the
           // comment off the screen; clicking it lifts that cap.
+          ...(includes
+            ? {
+                p: ({ children, node }) => {
+                  const href = loneLink(node);
+                  if (href) return <RepoInclude href={href}>{children}</RepoInclude>;
+                  return <p>{children}</p>;
+                },
+              }
+            : {}),
           img: ({ src, alt }) => (
             <Imagen
-              src={mediaSrc(typeof src === "string" ? src : undefined)}
+              src={mediaSrc(typeof src === "string" ? (imageSrc ? (imageSrc(src) ?? undefined) : src) : undefined)}
               alt={alt ?? ""}
               onZoom={setZoomed}
             />

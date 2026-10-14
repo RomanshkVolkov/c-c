@@ -264,6 +264,21 @@ func (s *GitHubService) RepoDoc(id string) (*domain.RepoDocResponse, error) {
 	}, nil
 }
 
+// RepoDocByPath: el doc de un repo de la org por su ruta, para lo que llega
+// como URL de GitHub (`…/blob/<rama>/<ruta>`): un enlace o un include. Sólo
+// repos de esa org: pegar la URL de un repo ajeno no lee nada.
+func (s *GitHubService) RepoDocByPath(orgID, fullName, path string) (*domain.RepoDocResponse, error) {
+	repo, err := s.repo.FindRepoByName(orgID, fullName)
+	if err != nil {
+		return nil, err
+	}
+	d, err := s.repo.FindRepoDocByPath(repo.RepoID, strings.TrimPrefix(path, "/"))
+	if err != nil {
+		return nil, err
+	}
+	return s.RepoDoc(d.ID)
+}
+
 // RepoForDocs: un repo que enseña sus docs, por su id de GitHub.
 func (s *GitHubService) RepoForDocs(repoID int64) (*domain.GitHubRepo, error) {
 	repo, err := s.repo.FindRepo(repoID)

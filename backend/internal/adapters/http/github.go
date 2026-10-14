@@ -74,6 +74,7 @@ func InitGitHubRoutesWith(r *chi.Mux, svc *service.GitHubService) {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware)
 			r.Get("/", h.RepoDocs)
+			r.Get("/lookup", h.RepoDocLookup)
 			r.Get("/{id}", h.RepoDoc)
 		})
 	})
