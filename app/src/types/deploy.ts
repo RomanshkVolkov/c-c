@@ -21,6 +21,14 @@ export interface Deployable {
   migrateCommand?: string;
   /** Qué hace cac cuando el CI avisa: apuntarlo, o además desplegarlo. */
   onCINotify: CINotifyMode;
+  /** La rama que despliega este servicio; vacía = cualquiera. Vale para el CI y para el build. */
+  branch?: string;
+  /** El servidor construye la imagen desde el commit al recibir el push (agente v6). */
+  buildOnHost?: boolean;
+  /** El Dockerfile, relativo a la carpeta del build; vacío = `Dockerfile`. */
+  dockerfile?: string;
+  /** La carpeta del repo desde la que se construye; vacía = la raíz. */
+  buildContext?: string;
   /** El principio de la llave del CI, para reconocerla; vacío si no tiene. */
   ciKeyPreview: string;
   currentImage: string;

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import CINoticeSection from "./CINoticeSection";
 import CommitPicker from "./CommitPicker";
 import MigrateCommandField from "./MigrateCommandField";
+import BuildOnHostSection from "./BuildOnHostSection";
 import type { Server } from "@/types/server";
 import type { SwarmService } from "@/types/swarm";
 import type { Deployment, DeployStatus } from "@/types/deploy";
@@ -225,6 +226,8 @@ export default function DeployDialog({
             </div>
 
             <MigrateCommandField key={deployable.id} server={server} deployable={deployable} />
+
+            <BuildOnHostSection key={`build-${deployable.id}`} server={server} deployable={deployable} />
 
             <CINoticeSection
               server={server}

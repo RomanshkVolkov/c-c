@@ -718,7 +718,21 @@
     "migrateSave": "Save command",
     "migrateLead": "Runs before every deploy with the new image and the service's own networks and secrets. If it fails, the service isn't touched.",
     "migrateAgentOld": "This server's agent can't run migrations: update it, or deploys will be refused.",
-    "activity": "Activity"
+    "activity": "Activity",
+    "build": {
+      "title": "Branch and build",
+      "branch": "Branch it deploys",
+      "branchLead": "A notice or a push from another branch doesn't touch this service, so prod and test can share a repository. Empty = any branch.",
+      "onHost": "Build on the server",
+      "onHostLead": "A push to this branch makes the server build that commit's image and deploy it, with no CI. Build args are this service's secrets marked “build” or “both” (Secrets tab).",
+      "context": "Folder to build from",
+      "dockerfile": "Dockerfile (inside that folder)",
+      "agentOld": "This server's agent can't build: update it to v{{version}}, or builds will be refused.",
+      "noRepo": "Building needs the service's repository (owner/name), set it in the CI section.",
+      "save": "Save branch and build",
+      "saved": "Saved",
+      "saveFailed": "Couldn't save the build settings"
+    }
   },
   "stale": {
     "body": "cac was updated while this window was open. Restart it: until then, 1Password won't answer it.",
@@ -788,6 +802,14 @@
     "status": {
       "succeeded": "OK",
       "failed": "Failed"
-    }
+    },
+    "usage": "Used by",
+    "usageRuntime": "the app",
+    "usageBuild": "the build",
+    "usageBoth": "both",
+    "bridgeTitle": "The Dockerfile block that turns these secrets into environment variables",
+    "bridgeLead": "Secrets arrive as files in /run/secrets. This entrypoint exports each one as a variable unless the environment already has it, and `exec \"$@\"` lets the same image run the app or the migrations job.",
+    "bridgeCopy": "Copy",
+    "bridgeCopied": "Copied"
   }
 }

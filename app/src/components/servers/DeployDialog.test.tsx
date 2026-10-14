@@ -228,7 +228,7 @@ describe("el aviso del CI", () => {
     expect(confirmar).toHaveBeenCalledTimes(1);
     expect(patch).toHaveBeenCalledWith(
       "/api/v1/servers/srv-1/deployables/dp-1",
-      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy", buildWorkflow: "", shortTags: false, migrateCommand: "" },
+      { name: "app", environment: "prod", repoFullName: "", onCINotify: "deploy", buildWorkflow: "", shortTags: false, migrateCommand: "", branch: "", buildOnHost: false, dockerfile: "", buildContext: "" },
       true,
     );
     await waitFor(() =>
@@ -253,7 +253,7 @@ describe("el aviso del CI", () => {
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith(
         "/api/v1/servers/srv-1/deployables/dp-1",
-        { name: "app", environment: "prod", repoFullName: "dwit/api", onCINotify: "deploy", buildWorkflow: "prod.yml", shortTags: false, migrateCommand: "" },
+        { name: "app", environment: "prod", repoFullName: "dwit/api", onCINotify: "deploy", buildWorkflow: "prod.yml", shortTags: false, migrateCommand: "", branch: "", buildOnHost: false, dockerfile: "", buildContext: "" },
         true,
       ),
     );

@@ -34,6 +34,19 @@ pub fn valid_key(s: &str) -> bool {
 /// El guion de la rotación. Cada valor aparece **una vez**, en su asignación
 /// entre comillas simples, y se borra de la shell en cuanto se usa.
 pub fn rotation_script(service: &str, entries: &[(String, String)]) -> Result<String, String> {
+    rotation_script_with(service, entries, &std::collections::HashSet::new())
+}
+
+/// Lo mismo, con los nombres que son **sólo del build** (build en el servidor,
+/// v6): se crean como Docker secrets del servicio, con sus etiquetas, para que
+/// el agente los monte en el job que construye, pero **no** se cuelgan del
+/// servicio en marcha. Entran en lo que se guarda, así que la poda no se los
+/// lleva.
+pub fn rotation_script_with(
+    service: &str,
+    entries: &[(String, String)],
+    build_only: &std::collections::HashSet<String>,
+) -> Result<String, String> {
     if !valid_service(service) {
         return Err(format!("`{service}` is not a service name"));
     }
@@ -74,6 +87,19 @@ KEEP=()
     );
     for (k, v) in entries {
         s.push_str(&format!("V={}\n", sh_quote(v)));
+        if build_only.contains(k) {
+            s.push_str(&format!(
+                r#"N="cac_{k}_$(ver {k} "$V")"
+if docker secret inspect "$N" >/dev/null 2>&1; then echo "same {k} $N"; else
+  printf '%s' "$V" | docker secret create --label "cac.service=$SVC" --label "cac.key={k}" --label "cac.use=build" "$N" - >/dev/null
+  echo "changed {k} $N"
+fi
+unset V
+KEEP+=("$N")
+"#
+            ));
+            continue;
+        }
         s.push_str(&format!(
             r#"N="cac_{k}_$(ver {k} "$V")"
 docker secret inspect "$N" >/dev/null 2>&1 || printf '%s' "$V" | docker secret create --label "cac.service=$SVC" --label "cac.key={k}" "$N" - >/dev/null
@@ -159,6 +185,9 @@ pub struct SshTarget {
 pub struct SecretRef {
     pub name: String,
     pub op_ref: String,
+    /// `runtime` (o nada), `build` o `both`. Ver `rotation_script_with`.
+    #[serde(default)]
+    pub usage: Option<String>,
 }
 
 /// Lee cada referencia en 1Password y la lleva al servicio. Devuelve nombres.
@@ -172,7 +201,12 @@ pub fn rotate_service_secrets(target: SshTarget, service: String, refs: Vec<Secr
         let value = crate::op_read(&r.op_ref).map_err(|e| format!("{}: {e}", r.name))?;
         entries.push((r.name.clone(), value));
     }
-    let script = rotation_script(&service, &entries)?;
+    let build_only: std::collections::HashSet<String> = refs
+        .iter()
+        .filter(|r| r.usage.as_deref() == Some("build"))
+        .map(|r| r.name.clone())
+        .collect();
+    let script = rotation_script_with(&service, &entries, &build_only)?;
     drop(entries);
 
     let staged = match stored_ssh_key(&target.server_id).ok().flatten().filter(|k| !k.trim().is_empty()) {
@@ -391,5 +425,29 @@ mod tests {
         let mode = std::fs::metadata(dir.join(".cac/secret-version.key")).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // Un secret sólo del build se crea con sus etiquetas (el agente lo busca
+    // por ellas) pero no se cuelga del servicio, y se guarda de la poda; uno de
+    // los dos usos va como siempre. Mutantes: colgarlo del servicio; no
+    // guardarlo de la poda; sin la etiqueta `cac.key`.
+    #[test]
+    fn a_build_only_secret_is_kept_but_not_attached() {
+        let only: std::collections::HashSet<String> = ["NEXT_PUBLIC_STRIPE_KEY".to_string()].into();
+        let s = rotation_script_with(
+            "boat_app",
+            &[
+                ("DATABASE_URL".into(), "postgres://x".into()),
+                ("NEXT_PUBLIC_STRIPE_KEY".into(), "pk_live_x".into()),
+            ],
+            &only,
+        )
+        .unwrap();
+        assert!(!s.contains("target=NEXT_PUBLIC_STRIPE_KEY"), "se colgó del servicio:\n{s}");
+        assert!(s.contains("target=DATABASE_URL"));
+        assert!(s.contains(r#"--label "cac.key=NEXT_PUBLIC_STRIPE_KEY" --label "cac.use=build""#));
+        let build = s.split("N=\"cac_NEXT_PUBLIC_STRIPE_KEY_").nth(1).unwrap();
+        assert!(build.split("N=\"cac_").next().unwrap().contains(r#"KEEP+=("$N")"#), "la poda se lo llevaría");
+        assert_eq!(s.matches(&sh_quote("pk_live_x")).count(), 1);
     }
 }

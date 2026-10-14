@@ -1,3 +1,4 @@
+import { pick } from "@/test-pick";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -93,7 +94,9 @@ describe("los secrets de un servicio", () => {
     expect(invoke).toHaveBeenCalledWith("rotate_service_secrets", {
       target: { serverId: "srv-1", host: "1.2.3.4", sshPort: 22, sshUser: "deploy" },
       service: "web-rrhh-prod_app",
-      refs,
+      // Cada uno dice dónde se usa: la rotación cuelga del servicio sólo los
+      // que no son sólo del build.
+      refs: refs.map((r) => ({ ...r, usage: "runtime" })),
     });
     expect(api.post).toHaveBeenCalledWith(
       "/api/v1/servers/srv-1/deployables/dp-1/secret-rotations",
@@ -147,6 +150,22 @@ describe("los secrets de un servicio", () => {
     fireEvent.click(screen.getByRole("button", { name: /^(guardar|save)$/i }));
     await waitFor(() => expect(api.put).toHaveBeenCalled());
     expect(api.put.mock.calls[0][1].refs.map((r: { name: string }) => r.name)).toEqual(["AUTH_SECRET", "DATABASE_URL", "MAIL_HOST"]);
+  });
+
+  // Un secret puede ser de la app, del build en el servidor o de los dos, y
+  // se guarda diciéndolo. Mutante: guardar sin `usage` (todo volvería a ser
+  // de runtime, y el build se quedaría sin sus build args).
+  it("dónde se usa cada secret se guarda", async () => {
+    backend("deploy");
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    await pick(screen.getAllByLabelText(/^(lo usa|used by)$/i)[1], /^(los dos|both)$/i);
+    fireEvent.click(screen.getByRole("button", { name: /^(guardar|save)$/i }));
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    expect(api.put.mock.calls[0][1].refs).toEqual([
+      { name: "AUTH_SECRET", opRef: "op://dwit/Web RRHH/AUTH_SECRET", usage: "runtime" },
+      { name: "DATABASE_URL", opRef: "op://dwit/Web RRHH/DATABASE_URL", usage: "both" },
+    ]);
   });
 
   it("un nombre que no vale no se guarda", async () => {

@@ -120,7 +120,10 @@ func BuildScript(b BuildRequest) (string, error) {
 	s.WriteString("exec docker buildx build --progress=plain")
 	fmt.Fprintf(&s, " --secret id=GIT_AUTH_TOKEN,src=/run/secrets/%s", BuildTokenFile)
 	for _, a := range b.BuildArgs {
-		fmt.Fprintf(&s, " --build-arg %s", a)
+		// Como build arg (lo que lee un `ARG` de hoy) y como secret de
+		// BuildKit (`RUN --mount=type=secret,id=NOMBRE`, que no deja el valor
+		// en el historial de la imagen).
+		fmt.Fprintf(&s, " --build-arg %s --secret id=%s,src=/run/secrets/%s", a, a, a)
 	}
 	fmt.Fprintf(&s, " -f %s -t %s --load %s\n", b.Dockerfile, b.Image, b.RemoteContext())
 	return s.String(), nil

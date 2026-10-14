@@ -26,7 +26,8 @@ func TestTheBuildScriptKeepsValuesOutOfArgv(t *testing.T) {
 	}
 	for _, want := range []string{
 		`DATABASE_URL="$(cat /run/secrets/DATABASE_URL)"; export DATABASE_URL`,
-		" --build-arg DATABASE_URL --build-arg NEXT_PUBLIC_STRIPE_KEY ",
+		" --build-arg DATABASE_URL --secret id=DATABASE_URL,src=/run/secrets/DATABASE_URL ",
+		" --build-arg NEXT_PUBLIC_STRIPE_KEY --secret id=NEXT_PUBLIC_STRIPE_KEY,src=/run/secrets/NEXT_PUBLIC_STRIPE_KEY ",
 		" --secret id=GIT_AUTH_TOKEN,src=/run/secrets/" + BuildTokenFile,
 		" https://github.com/dwit-mexico/boat.git#" + sha40 + ":boat\n",
 		" -t ghcr.io/dwit-mexico/boat:abc1234 ",

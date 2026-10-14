@@ -13,6 +13,19 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**14-oct, sin soltar la app (backend y agente v6 publicados): desplegar sin
+GitHub Actions** (Backend #155). La cuenta dwit-mexico se quedó sin minutos.
+Cada servicio dice su **rama** (un aviso o push de otra no lo toca), y con
+**«Construir en el servidor»** un push a esa rama, por la GitHub App, hace que
+el agente v6 construya la imagen del commit con un job de buildx en el host y
+la despliegue, sin registro. Los build args son secrets del servicio marcados
+«build» o «los dos» (desde 1Password, por la rotación). `DATABASE_URL` se queda
+en el build de un Next con prerender: es SEO. Ver `docs/integrations/deploys.md`
+§6–7. Falta la primera vez de verdad, con `staging` de Boaty. De paso: el
+backend ya no se cae un minuto en cada deploy (rolling update en vez de
+Recreate; era el «503 del agente») y «Update agent» espera al agente nuevo y
+dice qué versión quedó.
+
 **13-oct, sin soltar (sólo app, #147): toda la navegación en un sidebar.**
 Riel de módulos (Trabajo, Documentación, Comunicación, Plataforma; ⌘1–⌘4) y un
 panel que cambia con el módulo; ⌘B lo pliega al riel. Sólo la rama de lo que

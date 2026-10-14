@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
-import { CheckCircle2, Download, KeyRound, Loader2, Plus, RotateCw, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Copy, Download, KeyRound, Loader2, Plus, RotateCw, Trash2, XCircle } from "lucide-react";
+import { SECRETS_ENTRYPOINT_SNIPPET } from "@/lib/deploy";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { desde } from "@/lib/desde";
@@ -15,13 +16,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import Picker from "@/components/ui/picker";
 import type { APIResponse } from "@/types/auth";
 import type { Server } from "@/types/server";
 import type { SwarmService } from "@/types/swarm";
 
+/** Dónde se usa un secret: la app en marcha, el build en el servidor, o los dos. */
+type SecretUsage = "runtime" | "build" | "both";
+
 interface SecretRef {
   name: string;
   opRef: string;
+  usage?: SecretUsage;
 }
 
 interface Rotation {
@@ -96,7 +102,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
       api.get<APIResponse<SecretRef[]>>(`${base}/secret-refs`, true).catch(() => null),
       api.get<APIResponse<Rotation[]>>(`${base}/secret-rotations`, true).catch(() => null),
     ]);
-    const list = (refs?.data ?? []).map((r) => ({ name: r.name, opRef: r.opRef }));
+    const list = (refs?.data ?? []).map((r) => ({ name: r.name, opRef: r.opRef, usage: r.usage ?? "runtime" }));
     setSaved(list);
     setRows(list);
     setRotations(rots?.data ?? []);
@@ -134,7 +140,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
     try {
       const res = await api.put<APIResponse<SecretRef[]>>(
         `${base}/secret-refs`,
-        { refs: rows.map((r) => ({ name: r.name.trim(), opRef: r.opRef.trim() })) },
+        { refs: rows.map((r) => ({ name: r.name.trim(), opRef: r.opRef.trim(), usage: r.usage ?? "runtime" })) },
         true,
       );
       if (!res?.success) throw new Error(res?.error ?? "secret-refs");
@@ -161,7 +167,9 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
     try {
       const fields = await invoke<{ label: string; opRef: string }[]>("op_item_fields", { item: item.trim() });
       const have = new Set(rows.map((r) => r.name));
-      const more = fields.map((f) => ({ name: labelToName(f.label), opRef: f.opRef })).filter((r) => NAME.test(r.name) && !have.has(r.name));
+      const more = fields
+        .map((f) => ({ name: labelToName(f.label), opRef: f.opRef, usage: "runtime" as const }))
+        .filter((r) => NAME.test(r.name) && !have.has(r.name));
       setRows([...rows, ...more]);
       setItem("");
     } catch (e) {
@@ -213,6 +221,28 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
           <KeyRound className="size-4" /> {t("common:secrets.title")}
         </CardTitle>
         <p className="text-xs text-muted-foreground">{t("common:secrets.lead")}</p>
+        {/* Cómo los lee la app: los secrets llegan como ficheros, y casi todo
+            espera variables de entorno. */}
+        <details className="text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            {t("common:secrets.bridgeTitle")}
+          </summary>
+          <p className="mt-1 text-muted-foreground">{t("common:secrets.bridgeLead")}</p>
+          <pre className="mt-1 overflow-x-auto rounded-md bg-muted p-2 font-mono text-[11px]">{SECRETS_ENTRYPOINT_SNIPPET}</pre>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-1 h-7 text-xs"
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(SECRETS_ENTRYPOINT_SNIPPET)
+                .then(() => toast.success(t("common:secrets.bridgeCopied")))
+                .catch(() => {})
+            }
+          >
+            <Copy className="mr-1 size-3" /> {t("common:secrets.bridgeCopy")}
+          </Button>
+        </details>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         {rows.length === 0 && <p className="text-muted-foreground">{t("common:secrets.empty")}</p>}
@@ -236,6 +266,20 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
                 disabled={!canEdit}
                 onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, opRef: e.target.value } : x)))}
               />
+              {/* Un build arg (`build`) no se cuelga del servicio en marcha:
+                  sólo lo monta el job que construye. `DATABASE_URL` de un Next
+                  con prerender suele ser de los dos. */}
+              <Picker
+                aria-label={t("common:secrets.usage")}
+                value={r.usage ?? "runtime"}
+                disabled={!canEdit}
+                onChange={(v) => setRows(rows.map((x, j) => (j === i ? { ...x, usage: v as SecretUsage } : x)))}
+                options={[
+                  { value: "runtime", label: t("common:secrets.usageRuntime") },
+                  { value: "build", label: t("common:secrets.usageBuild") },
+                  { value: "both", label: t("common:secrets.usageBoth") },
+                ]}
+              />
               {c === true && <CheckCircle2 className="size-4 text-success" aria-label={t("common:secrets.resolves")} />}
               {typeof c === "string" && (
                 <span title={c}>
@@ -253,7 +297,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
 
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setRows([...rows, { name: "", opRef: "" }])}>
+            <Button variant="outline" size="sm" onClick={() => setRows([...rows, { name: "", opRef: "", usage: "runtime" }])}>
               <Plus className="mr-1 size-3.5" /> {t("common:secrets.add")}
             </Button>
             <Input

@@ -718,7 +718,21 @@
     "migrateSave": "Guardar comando",
     "migrateLead": "Corre antes de cada deploy con la imagen nueva y las mismas redes y secrets que el servicio. Si falla, el servicio no se toca.",
     "migrateAgentOld": "El agente de este servidor no sabe correr migraciones: actualízalo, o los deploys se rechazarán.",
-    "activity": "Actividad"
+    "activity": "Actividad",
+    "build": {
+      "title": "Rama y build",
+      "branch": "Rama que despliega",
+      "branchLead": "Un aviso o un push de otra rama no toca este servicio, así que prod y test pueden compartir repo. Vacía = cualquier rama.",
+      "onHost": "Construir en el servidor",
+      "onHostLead": "Un push a esta rama hace que el servidor construya la imagen de ese commit y la despliegue, sin CI. Los build args son los secrets del servicio marcados «build» o «los dos» (pestaña Secrets).",
+      "context": "Carpeta desde la que se construye",
+      "dockerfile": "Dockerfile (dentro de esa carpeta)",
+      "agentOld": "El agente de este servidor no sabe construir: actualízalo a la v{{version}}, o los builds se rechazarán.",
+      "noRepo": "Construir necesita el repo del servicio (owner/name); ponlo en la sección del CI.",
+      "save": "Guardar rama y build",
+      "saved": "Guardado",
+      "saveFailed": "No se pudo guardar el build"
+    }
   },
   "stale": {
     "body": "cac se actualizó mientras esta ventana estaba abierta. Reiníciala: hasta entonces, 1Password no le contesta.",
@@ -788,6 +802,14 @@
     "status": {
       "succeeded": "Bien",
       "failed": "Falló"
-    }
+    },
+    "usage": "Lo usa",
+    "usageRuntime": "la app",
+    "usageBuild": "el build",
+    "usageBoth": "los dos",
+    "bridgeTitle": "El bloque del Dockerfile que pasa estos secrets a variables de entorno",
+    "bridgeLead": "Los secrets llegan como ficheros en /run/secrets. Este entrypoint exporta cada uno como variable si el entorno no la trae ya, y `exec \"$@\"` deja que la misma imagen corra la app o el job de migraciones.",
+    "bridgeCopy": "Copiar",
+    "bridgeCopied": "Copiado"
   }
 }

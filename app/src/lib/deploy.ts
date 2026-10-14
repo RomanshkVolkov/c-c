@@ -9,6 +9,9 @@ export const AGENT_VERSION_DEPLOYS = 3;
 /** La primera que corre migraciones antes del deploy (`domain.AgentVersionMigrates`). */
 export const AGENT_VERSION_MIGRATES = 4;
 
+/** La primera que construye la imagen en el servidor (`domain.AgentVersionBuilds`). */
+export const AGENT_VERSION_BUILDS = 6;
+
 /**
  * La versión del agente que instala esta app (la de `swarm-manage/VERSION`, la
  * misma que la imagen de `agent_install.rs`; lo vigila `deploy.test.ts`). Es
@@ -98,3 +101,23 @@ export function usesShortSha(image: string): boolean {
   const tag = image.split("@")[0].split("/").pop()?.split(":")[1] ?? "";
   return /^[0-9a-f]{7,8}$/.test(tag);
 }
+
+/**
+ * El puente de los Docker secrets al entorno, para el Dockerfile de un
+ * servicio: cada `/run/secrets/NOMBRE` se exporta como `NOMBRE` si no viene ya
+ * en el entorno, y `exec "$@"` deja que el mismo contenedor corra la app o el
+ * job de migraciones. Es el que escribió Boaty (14-oct-2026); RRHH tenía otro,
+ * y cada repo Node/Prisma lo reinventaba.
+ */
+export const SECRETS_ENTRYPOINT_SNIPPET = `# Docker secrets → entorno (cac). Va en la imagen final, antes de USER.
+RUN printf '%s\\n' \\
+  '#!/bin/sh' \\
+  'for f in /run/secrets/*; do' \\
+  '  [ -f "$f" ] || continue' \\
+  '  n=\${f##*/}' \\
+  '  case $n in *[!A-Za-z0-9_]*) continue;; esac' \\
+  '  printenv "$n" > /dev/null || export "$n=$(cat "$f")"' \\
+  'done' \\
+  'exec "$@"' \\
+  > /usr/local/bin/docker-entrypoint && chmod 755 /usr/local/bin/docker-entrypoint
+ENTRYPOINT ["docker-entrypoint"]`;

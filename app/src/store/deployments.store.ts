@@ -38,6 +38,12 @@ interface DeploymentsState {
   /** El repo de GitHub y el workflow que publica la imagen. */
   /** Lo que corre antes de cada deploy; "" lo quita. */
   setMigrateCommand: (serverId: string, d: Deployable, command: string) => Promise<void>;
+  /** La rama del servicio y el build en el servidor. */
+  setBuild: (
+    serverId: string,
+    d: Deployable,
+    b: Pick<Deployable, "branch" | "buildOnHost" | "dockerfile" | "buildContext">,
+  ) => Promise<void>;
   setGitHub: (
     serverId: string,
     d: Deployable,
@@ -63,7 +69,12 @@ async function patchDeployable(
   set: (fn: (s: DeploymentsState) => Partial<DeploymentsState>) => void,
   serverId: string,
   d: Deployable,
-  patch: Partial<Pick<Deployable, "onCINotify" | "repoFullName" | "buildWorkflow" | "shortTags" | "migrateCommand">>,
+  patch: Partial<
+    Pick<
+      Deployable,
+      "onCINotify" | "repoFullName" | "buildWorkflow" | "shortTags" | "migrateCommand" | "branch" | "buildOnHost" | "dockerfile" | "buildContext"
+    >
+  >,
 ) {
   const body = {
     name: d.name,
@@ -73,6 +84,10 @@ async function patchDeployable(
     buildWorkflow: d.buildWorkflow ?? "",
     shortTags: d.shortTags ?? false,
     migrateCommand: d.migrateCommand ?? "",
+    branch: d.branch ?? "",
+    buildOnHost: d.buildOnHost ?? false,
+    dockerfile: d.dockerfile ?? "",
+    buildContext: d.buildContext ?? "",
     ...patch,
   };
   const next = must(await api.patch<APIResponse<Deployable>>(`${base(serverId)}/${d.id}`, body, true));
@@ -154,6 +169,8 @@ export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
   setCINotify: (serverId, d, mode) => patchDeployable(set, serverId, d, { onCINotify: mode }),
 
   setMigrateCommand: (serverId, d, migrateCommand) => patchDeployable(set, serverId, d, { migrateCommand }),
+
+  setBuild: (serverId, d, b) => patchDeployable(set, serverId, d, b),
 
   setGitHub: (serverId, d, repoFullName, buildWorkflow, shortTags) =>
     patchDeployable(set, serverId, d, { repoFullName, buildWorkflow, shortTags }),

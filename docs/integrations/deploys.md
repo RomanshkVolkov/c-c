@@ -114,10 +114,99 @@ deploy**, con la imagen nueva.
   deploy de un servicio con migraciones —lo desplegaría sin migrar—, y un
   aviso del CI en ese caso queda apuntado con el motivo `agent-cannot-migrate`.
 
-## 6. Lo que no hace (todavía)
+## 6. Una rama por servicio
 
-- No sabe de ramas: despliega lo que el workflow avise. Si el paso sólo corre en
-  `main`, sólo se despliega `main`.
+Cada servicio dice qué rama despliega (Deploy → «Rama y build»). Un aviso del
+CI, un `workflow_run` o un push de **otra** rama no lo toca: el aviso contesta
+`skipped` con el motivo `other-branch` y no deja ni la versión apuntada. Así
+prod (`main`) y test (`staging`) pueden compartir repo, workflow y paso de
+aviso, cada uno con su servicio y su llave. Sin rama, como antes: cualquiera.
+
+El `ref` que manda el `curl` es el que se compara (`$GITHUB_REF`, con
+`refs/heads/`). Un aviso sin `ref` sólo vale para un servicio sin rama.
+
+## 7. Construir en el servidor, sin CI
+
+Para cuando no hay minutos de Actions, o no se quiere depender de ellos. En
+«Rama y build», «Construir en el servidor»: un **push** a la rama del servicio,
+que llega por la [GitHub App](github.md), hace que el servidor construya la
+imagen de ese commit y la despliegue. No hay paso de aviso ni llave que guardar
+en el repo.
+
+- **Hace falta:** la GitHub App con el repo, el repo del servicio puesto
+  (`owner/name`), y el agente **v6** («Update agent»). A uno anterior no se le
+  encola un build: contesta `agent-cannot-build`.
+- **Qué hace el servidor:** un job de Swarm con la imagen oficial `docker:cli`
+  (trae buildx) construye en el Docker del host. BuildKit clona **el commit
+  exacto** con el token de la App, que dura una hora y sólo lee el repo, y
+  nunca aparece en un comando ni en un log. La imagen se queda en el servidor,
+  sin registro, y se despliega como siempre (migraciones incluidas).
+- **Carpeta y Dockerfile:** la carpeta del repo desde la que se construye
+  (`boat` en un monorepo; vacía = la raíz) y el Dockerfile **dentro de esa
+  carpeta** (vacío = `Dockerfile`).
+- **El log** del deploy lleva el final de la salida del build, que es donde está
+  el error, y un «sigue construyendo» cada minuto. Un deploy con build tiene 45
+  minutos antes de darse por perdido; el build en sí, 40.
+- **Un solo nodo:** una imagen construida en el host sólo existe en ese nodo.
+  En un swarm de varios nodos el agente lo rechaza; para eso hará falta un
+  registro.
+- **En modo Apuntar**, el push sólo deja la versión en la lista, como el aviso
+  de un CI.
+
+### Los build args
+
+Lo que un Dockerfile recibe con `ARG` (`NEXT_PUBLIC_*`, y en un Next con
+prerender, `DATABASE_URL`) sale de los **secrets del servicio**, en la pestaña
+Secrets, marcados «el build» o «los dos»:
+
+- **la app**: va al servicio en marcha, como `/run/secrets/NOMBRE` (lo de
+  siempre);
+- **el build**: sólo al job que construye, como build arg. No se cuelga del
+  servicio;
+- **los dos**: a los dos. Es el caso de `DATABASE_URL` en un Next que
+  prerenderiza páginas con datos de la base.
+
+Se rotan con el mismo botón que los demás: los valores salen de 1Password en
+tu máquina y llegan al servidor por ssh. El backend sólo sabe sus nombres. En
+el job van del fichero al entorno y como `--build-arg NOMBRE`, sin valor, así
+que nunca salen en la línea de comandos.
+
+> **Los secrets por referencia no son build args por sí solos.** Si el servicio
+> sigue construyendo en su CI, lo que entra por `--build-arg` sigue viniendo
+> del CI. Construyendo en el servidor, viene de aquí.
+
+**No hace falta sacar `DATABASE_URL` del build** de un Next que prerenderiza
+(páginas de `generateStaticParams`, `"use cache"`): sin ella el build falla o,
+peor, publica páginas vacías, y eso se nota en el SEO. Construyendo en el
+servidor, la base se alcanza desde ahí con la misma URL.
+
+Para un repo nuevo, mejor `RUN --mount=type=secret,id=NOMBRE` que `ARG`: así el
+valor no queda en el historial de la imagen. El job monta cada build arg
+también como secret de BuildKit con su nombre.
+
+### Leer los secrets desde la app
+
+Los secrets llegan como ficheros. Este bloque, en la imagen final del
+Dockerfile, los exporta como variables si el entorno no las trae ya, y
+`exec "$@"` deja que la misma imagen corra la app o el job de migraciones (está
+también en la pestaña Secrets, para copiarlo):
+
+```dockerfile
+RUN printf '%s\n' \
+  '#!/bin/sh' \
+  'for f in /run/secrets/*; do' \
+  '  [ -f "$f" ] || continue' \
+  '  n=${f##*/}' \
+  '  case $n in *[!A-Za-z0-9_]*) continue;; esac' \
+  '  printenv "$n" > /dev/null || export "$n=$(cat "$f")"' \
+  'done' \
+  'exec "$@"' \
+  > /usr/local/bin/docker-entrypoint && chmod 755 /usr/local/bin/docker-entrypoint
+ENTRYPOINT ["docker-entrypoint"]
+```
+
+## 8. Lo que no hace (todavía)
+
 - Con la [GitHub App](github.md) instalada y el workflow que publica la imagen
   puesto en el servicio, este paso **sobra**: el final de ese workflow cuenta
   como el aviso. Y cada deploy aparece en GitHub como un Deployment.
