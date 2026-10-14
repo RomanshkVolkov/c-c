@@ -4,13 +4,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 /**
  * Qué módulo manda en el panel, según dónde estés.
  *
- * Lo decide la ruta, con una excepción: leer un documento en `/tasks` (el
- * conmutador «Docs» de una lista) es Documentación. Las páginas de ese
- * documento viven en el panel de Documentación; con el de Trabajo, en el
- * escritorio no habría forma de llegar a ellas. Y ese `/tasks` no se apunta
- * como el sitio de Documentación: volver a él con el documento cerrado sería
- * volver a un tablero. Mutantes: decidir sólo por la ruta; apuntar la ruta
- * igualmente; contar un documento de otra org.
+ * Lo decide la ruta, y nada más. Leer la documentación de una lista en
+ * `/tasks` (su pestaña «Documentación») sigue siendo Trabajo: hasta el
+ * 13-oct-2026 cambiaba a Documentación, y pasar entre las pestañas de una
+ * lista hacía saltar el panel de un módulo a otro. Mutante: volver a mirar el
+ * documento abierto.
  */
 
 const { api } = vi.hoisted(() => ({
@@ -59,17 +57,16 @@ describe("el módulo del panel", () => {
     expect(useLayoutStore.getState().lastRoute.work).toBe("/tasks");
   });
 
-  it("leer un documento en el tablero es Documentación, y no se apunta", () => {
+  it("leer la documentación de una lista en el tablero sigue siendo Trabajo", () => {
     useTasksStore.setState({ activeDoc: { kind: "list", id: "li-1", name: "Backlog", orgId: "org-1" } } as never);
     mount("/tasks");
-    expect(heading()).toBe("Documentation");
+    expect(heading()).toBe("Work");
+    expect(useLayoutStore.getState().lastRoute.work).toBe("/tasks");
     expect(useLayoutStore.getState().lastRoute.docs).toBeUndefined();
-    expect(useLayoutStore.getState().lastRoute.work).toBeUndefined();
   });
 
-  it("un documento de otra org no cuenta", () => {
-    useTasksStore.setState({ activeDoc: { kind: "list", id: "li-9", name: "Ajeno", orgId: "org-2" } } as never);
-    mount("/tasks");
-    expect(heading()).toBe("Work");
+  it("en /docs es Documentación", () => {
+    mount("/docs");
+    expect(heading()).toBe("Documentation");
   });
 });

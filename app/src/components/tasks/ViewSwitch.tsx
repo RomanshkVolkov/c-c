@@ -12,11 +12,16 @@ import type { TaskView } from "@/types/task";
  *
  * El divisor antes de `docs` es la parte que sí la distingue: las tres primeras
  * enseñan las tarjetas, la cuarta enseña lo que se escribió sobre ellas.
+ *
+ * Son pestañas subrayadas en su propia fila, bajo el nombre de la lista (13-oct
+ * -2026): metidas en la misma fila que el nombre, la cuenta y los filtros, en
+ * una ventana normal el nombre quedaba en «t…». La fila la pone quien la usa
+ * (`ListToolbar`); aquí sólo van las cuatro.
  */
 
 export type ListView = TaskView | "docs";
 
-const ROTULOS: Record<ListView, MessageKey> = {
+const LABELS: Record<ListView, MessageKey> = {
   board: "work:board.view.board",
   list: "work:board.view.list",
   calendar: "work:board.view.calendar",
@@ -32,18 +37,21 @@ export default function ViewSwitch({
 }) {
   const { t } = useT();
   return (
-    <div className="ml-2 flex items-center rounded-md border p-0.5">
+    <div className="flex h-full items-stretch gap-4">
       {(["board", "list", "calendar", "docs"] as const).map((v) => (
-        <div key={v} className="flex items-center">
-          {v === "docs" && <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />}
+        <div key={v} className="flex items-stretch gap-4">
+          {v === "docs" && <span aria-hidden className="my-2.5 w-px bg-border" />}
           <button
             onClick={() => onChange(v)}
+            aria-current={value === v ? "page" : undefined}
             className={cn(
-              "rounded px-2 py-0.5 text-xs",
-              value === v ? "bg-accent text-foreground" : "text-muted-foreground",
+              "-mb-px border-b-2 text-sm whitespace-nowrap",
+              value === v
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {t(ROTULOS[v])}
+            {t(LABELS[v])}
           </button>
         </div>
       ))}

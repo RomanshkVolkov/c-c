@@ -141,7 +141,9 @@ function ActiveBranch({
       .catch((e) => toast.error(String(e)));
   };
 
-  const icon = "grid size-5 shrink-0 place-items-center rounded hover:bg-background";
+  // Como en cada página: al pasar el ratón o enfocar, no siempre a la vista.
+  const icon =
+    "hidden size-5 shrink-0 place-items-center rounded hover:bg-background group-focus-within:grid group-hover:grid";
 
   return (
     <div>

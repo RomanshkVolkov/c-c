@@ -120,7 +120,18 @@ describe("el panel de Documentación", () => {
     expect(shows("Accesos")).toBe(true);
     expect(shows("Inventario")).toBe(false);
     expect(shows("Operación")).toBe(false);
-    // Y el documento que lees, marcado.
+    // Lo que lees es la portada; Backlog sólo es el camino hasta ella.
+    expect(screen.getByText("Home").closest("button")?.getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: /^Backlog/ }).getAttribute("aria-current")).toBe("location");
+  });
+
+  // Dos filas con fondo una encima de otra se leían como dos cosas abiertas
+  // (13-oct-2026). Plegado, el documento vuelve a llevar la marca: si no, no
+  // quedaría ninguna a la vista. Mutantes: siempre «path»; siempre `true`.
+  it("plegar el documento que lees le devuelve la marca", () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Backlog" }));
+    expect(screen.queryByText("Home")).toBeNull();
     expect(screen.getByRole("button", { name: /^Backlog/ }).getAttribute("aria-current")).toBe("page");
   });
 

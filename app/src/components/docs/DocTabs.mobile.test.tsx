@@ -2,13 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 /**
- * Las páginas de un documento, en el teléfono.
+ * Las páginas de un documento, donde el panel no las enseña.
  *
- * En el escritorio viven en el panel de Documentación; en el teléfono no hay
- * panel, así que la cabecera lleva un botón «Páginas» que abre una hoja con la
- * portada y las páginas. En el escritorio el botón no está: sería la segunda
- * puerta a lo mismo. Y el documento ya no lleva su columna de páginas al lado.
- * Mutantes: sin la condición del móvil; no cerrar la hoja al elegir.
+ * En `/docs` del escritorio viven en el panel de Documentación, y ahí el botón
+ * no está: sería la segunda puerta a lo mismo. En el teléfono no hay panel, y
+ * leyendo la documentación de una lista en el tablero el panel es el de
+ * Trabajo: en los dos casos la cabecera lleva un botón «Páginas» que abre una
+ * hoja con la portada y las páginas. Y el documento ya no lleva su columna de
+ * páginas al lado.
+ * Mutantes: sin la condición del móvil; sin la del panel; no cerrar la hoja
+ * al elegir.
  */
 
 // El documento pide su árbol al montarse (`enter`): contesta con la página.
@@ -59,11 +62,11 @@ const { useDocPages } = await import("@/store/doc-pages.store");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
 const { PromptProvider } = await import("@/components/PromptDialog");
 
-const mount = () =>
+const mount = (inDocsPanel = false) =>
   render(
     <ConfirmProvider>
       <PromptProvider>
-        <DocTabs onView={() => {}} />
+        <DocTabs onView={() => {}} inDocsPanel={inDocsPanel} />
       </PromptProvider>
     </ConfirmProvider>,
   );
@@ -100,9 +103,21 @@ describe("las páginas en el teléfono", () => {
     await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("en el escritorio no hay botón, ni columna de páginas al lado", () => {
+  it("en el teléfono el botón está aunque la pantalla sea /docs", () => {
+    width = 390;
+    mount(true);
+    expect(screen.getByRole("button", { name: "Pages" })).toBeTruthy();
+  });
+
+  it("en el tablero del escritorio el botón está, porque el panel es el de Trabajo", () => {
     width = 1280;
-    mount();
+    mount(false);
+    expect(screen.getByRole("button", { name: "Pages" })).toBeTruthy();
+  });
+
+  it("en /docs del escritorio no hay botón, ni columna de páginas al lado", () => {
+    width = 1280;
+    mount(true);
     expect(screen.queryByRole("button", { name: "Pages" })).toBeNull();
     expect(screen.queryByText("Entrega")).toBeNull();
     expect(screen.getByText("la portada")).toBeTruthy();

@@ -26,6 +26,7 @@ import { isPdfFile } from "@/components/PdfAttachment";
 import { cn } from "@/lib/utils";
 import CopyId from "@/components/CopyId";
 import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
+import ListToolbar from "@/components/tasks/ListToolbar";
 import { useTasksStore } from "@/store/tasks.store";
 import { useDocPages } from "@/store/doc-pages.store";
 import { DOC_TABS, type DocTabKey } from "@/types/task";
@@ -52,7 +53,14 @@ const TAB_LABELS: Record<DocTabKey, { label: MessageKey; hint: MessageKey }> = {
 /** El índice sólo donde aporta. En una lista de entradas repetiría lo que se ve. */
 const WITH_TOC: DocTabKey[] = ["overview", "runbook"];
 
-export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "docs">) => void }) {
+export default function DocTabs({
+  onView,
+  inDocsPanel = false,
+}: {
+  onView: (v: Exclude<ListView, "docs">) => void;
+  /** En `/docs` las páginas están en el panel de al lado; fuera, tras un botón. */
+  inDocsPanel?: boolean;
+}) {
   const { t } = useT();
   const target = useTasksStore((s) => s.activeDoc);
   const doc = useTasksStore((s) => s.doc);
@@ -175,32 +183,15 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+      <header className={cn("flex h-12 shrink-0 items-center gap-2 px-4", target.kind !== "list" && "border-b")}>
         <FileText className="size-4 shrink-0 text-muted-foreground" />
         {/* `min-w-0` además de `truncate`: dentro de un flex, un hijo no baja de
             su ancho de contenido sin esto, así que el nombre empujaba a los
             botones fuera de la ventana en vez de recortarse él. */}
         <h1 className="min-w-0 truncate text-sm font-medium">{target.name}</h1>
         <CopyId id={target.id} label={target.kind} />
-        {/* El grupo de las cuatro sólo para la documentación de una **lista**:
-            un espacio o una carpeta no tienen tarjetas detrás, y ofrecer
-            «Tablero» ahí llevaría a la lista de otra cosa.
-            Y no se pide además que ese tablero esté ya cargado: entrando por
-            «Documentación» de la barra lateral no lo está, y el conmutador
-            desaparecía sin explicación. Quien lo pulsa selecciona la lista, que
-            es lo que lo carga. */}
-        {target.kind === "list" ? (
-          <ViewSwitch
-            value="docs"
-            onChange={(v) => {
-              if (v === "docs") return;
-              onView(v);
-              closeDoc();
-            }}
-          />
-        ) : null}
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <DocPagesSheet kind={target.kind} ownerId={target.id} />
+          <DocPagesSheet kind={target.kind} ownerId={target.id} inDocsPanel={inDocsPanel} />
           {doc?.doc && (
             <ShareDoc
               doc={doc.doc}
@@ -218,6 +209,30 @@ export default function DocTabs({ onView }: { onView: (v: Exclude<ListView, "doc
           </Button>
         </div>
       </header>
+
+      {/* El grupo de las cuatro sólo para la documentación de una **lista**:
+          un espacio o una carpeta no tienen tarjetas detrás, y ofrecer
+          «Tablero» ahí llevaría a la lista de otra cosa. En su fila, debajo del
+          nombre, como en el tablero (`ListToolbar`): pasar de una vista a otra
+          no mueve las pestañas.
+          Y no se pide además que ese tablero esté ya cargado: entrando por
+          «Documentación» de la barra lateral no lo está, y el conmutador
+          desaparecía sin explicación. Quien lo pulsa selecciona la lista, que
+          es lo que lo carga. */}
+      {target.kind === "list" && (
+        <ListToolbar
+          views={
+            <ViewSwitch
+              value="docs"
+              onChange={(v) => {
+                if (v === "docs") return;
+                onView(v);
+                closeDoc();
+              }}
+            />
+          }
+        />
+      )}
 
       {/* Lo que se lee, a todo el ancho. Las páginas que cuelgan de la portada
           están en el panel de Documentación del sidebar (12-oct-2026), no en

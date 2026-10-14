@@ -27,6 +27,7 @@ export default function DocIndexPage() {
     <div className="flex min-h-0 flex-1">
       {activeDoc ? (
         <DocTabs
+          inDocsPanel
           onView={(v) => {
             // El conmutador dice «Tablero», así que tiene que llevar al tablero.
             //

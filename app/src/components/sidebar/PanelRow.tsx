@@ -28,7 +28,12 @@ export default function PanelRow({
   label: string;
   /** Un número a la derecha, o un nodo propio. Nada con 0. */
   badge?: number | ReactNode;
-  active?: boolean;
+  /**
+   * `true`: es lo que tienes delante, con fondo. `"path"`: lo que tienes
+   * delante cuelga de aquí y se ve debajo; sólo en negrita, para que no haya
+   * dos filas con fondo una encima de otra.
+   */
+  active?: boolean | "path";
   /** Para sangrar: un nivel son 12px, como en el árbol de páginas. */
   depth?: number;
   onClick: () => void;
@@ -54,7 +59,11 @@ export default function PanelRow({
     <div
       className={cn(
         "group flex items-center gap-1 rounded-md pr-1 text-sm",
-        active ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+        active === true
+          ? "bg-accent font-medium text-accent-foreground"
+          : active === "path"
+            ? "font-medium text-foreground hover:bg-accent/50"
+            : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
         className,
       )}
       style={{ paddingLeft: 4 + depth * 12 }}
@@ -73,7 +82,7 @@ export default function PanelRow({
       <button
         type="button"
         onClick={onClick}
-        aria-current={active ? "page" : undefined}
+        aria-current={active === true ? "page" : active === "path" ? "location" : undefined}
         title={title}
         className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
       >

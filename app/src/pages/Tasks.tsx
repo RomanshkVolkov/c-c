@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
 import DocTabs from "@/components/docs/DocTabs";
 import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
+import ListToolbar from "@/components/tasks/ListToolbar";
 import PinnedLine from "@/components/docs/PinnedLine";
 import CopyId from "@/components/CopyId";
 import ItemCalendar from "@/components/ItemCalendar";
@@ -199,20 +200,20 @@ function Board({
   const board = useTasksStore((s) => s.board);
 
   // La máquina de estados del servidor, para no ofrecer destinos imposibles.
-  const transiciones = useReportsStore((s) => s.transitions);
-  const transicionesInternas = useReportsStore((s) => s.internalTransitions);
-  const exigeSubtareas = useOrgsStore((s) => s.currentOrg()?.doneNeedsSubtasksDone ?? false);
+  const transitions = useReportsStore((s) => s.transitions);
+  const internalTransitions = useReportsStore((s) => s.internalTransitions);
+  const requiresSubtasks = useOrgsStore((s) => s.currentOrg()?.doneNeedsSubtasksDone ?? false);
   // Ante la duda, la estricta: proteger de más no rompe nada de nadie, y es lo
   // que contesta un servidor anterior a que existieran las dos.
-  const mapaDe = (flow?: string) =>
-    flow === "internal" && transicionesInternas ? transicionesInternas : transiciones;
+  const machineFor = (flow?: string) =>
+    flow === "internal" && internalTransitions ? internalTransitions : transitions;
   const fetchTransitions = useReportsStore((s) => s.fetchTransitions);
   useEffect(() => {
     fetchTransitions().catch(() => {});
   }, [fetchTransitions]);
 
   /** De un id de columna al estado que representa, según lo que dijo el servidor. */
-  const estadoDeColumna = useCallback(
+  const statusOfColumn = useCallback(
     (id: string): ReportStatus | null => {
       const col = board?.statuses.find((s) => s.id === id);
       return col ? normalizeStatus(col.status) : null;
@@ -303,7 +304,7 @@ function Board({
           createTask(title, s.id, visibility).catch((e) => toast.error(String(e)));
         }}
       >
-        <Plus className="size-3" /> Add task
+        <Plus className="size-3" /> {t("work:board.addTask")}
       </button>
     ),
   }));
@@ -317,32 +318,41 @@ function Board({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-        <h1 className="truncate text-sm font-medium">{board.list.name}</h1>
+      {/* Dos filas: el nombre con lo que lo identifica, y debajo las vistas
+          con sus filtros. En una sola, en una ventana normal, el nombre era lo
+          que cedía y quedaba en «t…». */}
+      <header className="flex h-12 shrink-0 items-center gap-2 px-4">
+        <h1 className="min-w-0 truncate text-sm font-medium">{board.list.name}</h1>
         {/* create_task takes this listId. */}
         <CopyId id={board.list.id} label="list" />
-        <Badge variant="secondary" className="text-xs">
-          {board.tasks.length} tasks
+        <Badge variant="secondary" className="shrink-0 text-xs">
+          {t("common:count.tasks", { count: board.tasks.length })}
         </Badge>
-        <ViewSwitch
-          value={view}
-          onChange={(v) =>
-            v === "docs" ? openDoc("list", board.list.id, board.list.name) : setView(v)
-          }
-        />
-        <TaxonomyPicker label={t("work:board.anyKind")} value={category} options={categories} onChange={setCategory} />
-        <TaxonomyPicker label={t("work:board.anyArea")} value={area} options={areas} onChange={setArea} />
         <Button
           size="icon-xs"
           variant="ghost"
-          className="ml-auto"
+          className="ml-auto shrink-0"
           title={t("work:board.refresh")}
+          aria-label={t("work:board.refresh")}
           disabled={loading}
           onClick={() => refreshBoard()}
         >
           <RefreshCw className={cn("size-3", loading && "animate-spin")} />
         </Button>
       </header>
+      <ListToolbar
+        views={
+          <ViewSwitch
+            value={view}
+            onChange={(v) =>
+              v === "docs" ? openDoc("list", board.list.id, board.list.name) : setView(v)
+            }
+          />
+        }
+      >
+        <TaxonomyPicker label={t("work:board.anyKind")} value={category} options={categories} onChange={setCategory} />
+        <TaxonomyPicker label={t("work:board.anyArea")} value={area} options={areas} onChange={setArea} />
+      </ListToolbar>
 
       <PinnedLine listId={board.list.id} />
 
@@ -364,14 +374,14 @@ function Board({
             // estado se resuelve por `board.statuses` y **no partiendo el id
             // por la barra**: esa forma es una regla del servidor, y copiarla
             // al cliente es cómo se acaba con dos versiones de la misma verdad.
-            puedeSoltar={(item, aColumna) => {
-              const de = estadoDeColumna(item.columnId);
-              const a = estadoDeColumna(aColumna);
-              if (!de || !a) return true;
+            puedeSoltar={(item, toColumn) => {
+              const from = statusOfColumn(item.columnId);
+              const to = statusOfColumn(toColumn);
+              if (!from || !to) return true;
               // Lo que pide la organización, comprobado antes de dejar soltar:
               // si no, la tarjeta viaja, la rechazan y vuelve sola — que se lee
               // como que la app va mal, no como una regla.
-              if (faltanSubtareas(exigeSubtareas, a, item.subtaskCount, item.subtaskDone)) {
+              if (faltanSubtareas(requiresSubtasks, to, item.subtaskCount, item.subtaskDone)) {
                 return false;
               }
               // La máquina de **esta** tarjeta. Un tablero mezcla trabajo
@@ -379,7 +389,7 @@ function Board({
               // para todas obligaba a elegir a quién mentirle: con la estricta,
               // una tarea interna no podía ir de Open a Done; con la otra, el
               // ticket de un cliente saltaría a resuelto sin tocarlo.
-              return puedeIr(mapaDe(item.flow), de, a);
+              return puedeIr(machineFor(item.flow), from, to);
             }}
           />
         ) : view === "calendar" ? (

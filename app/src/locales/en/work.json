@@ -271,7 +271,8 @@
       "list": "List",
       "calendar": "Calendar",
       "docs": "Docs"
-    }
+    },
+    "addTask": "Add task"
   },
   "docs": {
     "overview": "Overview",

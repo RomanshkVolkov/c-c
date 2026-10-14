@@ -271,7 +271,8 @@
       "list": "Lista",
       "calendar": "Calendario",
       "docs": "Documentación"
-    }
+    },
+    "addTask": "Añadir tarea"
   },
   "docs": {
     "overview": "Resumen",

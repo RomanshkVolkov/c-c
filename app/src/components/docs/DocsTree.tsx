@@ -144,7 +144,9 @@ function DocNodeRow({ node, depth }: { node: DocNode; depth: number }) {
         // Sin chevrón, sus 24px (20 del botón y 4 de hueco) como sangría: si no,
         // una lista sin páginas quedaría más a la izquierda que su hermana.
         depth={expandable ? depth : depth + 2}
-        active={onScreen}
+        // Con la rama abierta, el fondo va en la portada o la página que lees,
+        // debajo; aquí sólo la negrita. Plegada, lo lleva el documento.
+        active={onScreen && (expandable && branch.open && hasPages && !branch.filtering ? "path" : true)}
         onClick={() => open.node(node)}
         badge={written ? <FileText className="ml-auto size-3 shrink-0 text-muted-foreground" /> : undefined}
         expandable={
