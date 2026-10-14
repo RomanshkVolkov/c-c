@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { BookOpen, ExternalLink, Github, Loader2, RefreshCw, Workflow } from "lucide-react";
+import { BookOpen, ExternalLink, Github, Loader2, RefreshCw, Search, Workflow } from "lucide-react";
 import { desde } from "@/lib/desde";
 import { openExternal } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
@@ -12,6 +12,7 @@ import { useRepoDocs } from "@/store/repo-docs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { APIResponse } from "@/types/auth";
 import type { GitHubRepo, GitHubStatus } from "@/types/github";
 import Picker from "@/components/ui/picker";
@@ -33,6 +34,7 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
   const [status, setStatus] = useState<GitHubStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const fetchRepoDocs = useRepoDocs((s) => s.fetchSpace);
 
   const base = `/api/v1/organizations/${orgId}/github`;
@@ -100,6 +102,11 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
     }
   };
 
+  const q = query.trim().toLowerCase();
+  const shownRepos = (status?.repos ?? [])
+    .filter((r) => !q || r.fullName.toLowerCase().includes(q))
+    .sort((a, b) => Number(!!b.spaceId) - Number(!!a.spaceId) || a.fullName.localeCompare(b.fullName));
+
   if (!status) {
     return <Loader2 className="size-4 animate-spin text-muted-foreground" />;
   }
@@ -135,9 +142,30 @@ export default function OrgGitHub({ canManage }: { canManage: boolean }) {
         )}
       </div>
 
+      {/* Una instalación de una cuenta entera trae decenas de repos: se busca
+          por nombre, y los atados a un espacio van primero, que son los que
+          se vienen a tocar. */}
       {status.repos.length > 0 && (
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("org:github.filter")}
+            aria-label={t("org:github.filter")}
+            className="h-8 pl-8 text-sm"
+          />
+        </div>
+      )}
+
+      {status.repos.length > 0 && shownRepos.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t("org:github.noMatch")}</p>
+      )}
+
+      {shownRepos.length > 0 && (
         <ul className="divide-y rounded-md border">
-          {status.repos.map((repo) => (
+          {shownRepos.map((repo) => (
             <li key={repo.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
               <span className="min-w-0 flex-1 truncate font-mono text-xs">{repo.fullName}</span>
               {/* La actividad de CI de este repo (R9): misma org, así que un enlace llano. */}

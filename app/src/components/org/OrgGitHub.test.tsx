@@ -138,3 +138,31 @@ describe("los docs de un repo", () => {
     );
   });
 });
+
+/**
+ * Una cuenta de GitHub entera trae decenas de repos: se buscan por nombre, y
+ * los atados a un espacio van primero.
+ * Mutantes: el filtro sin efecto; sin ordenar los atados primero.
+ */
+describe("muchos repos", () => {
+  it("se buscan por nombre, y los atados van primero", async () => {
+    api.get.mockResolvedValue(
+      estado({
+        repos: [
+          repo({ id: "r-a", fullName: "dwit/aaa" }),
+          repo({ id: "r-z", fullName: "dwit/zzz", spaceId: "sp-1", showDocs: true }),
+          repo({ id: "r-m", fullName: "dwit/mmm" }),
+        ],
+      }),
+    );
+    render(<MemoryRouter><OrgGitHub canManage /></MemoryRouter>);
+    await screen.findByLabelText(/dwit\/aaa/);
+    const names = () => [...document.querySelectorAll("li .font-mono")].map((n) => n.textContent);
+    expect(names()).toEqual(["dwit/zzz", "dwit/aaa", "dwit/mmm"]);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: /Find a repository/ }), { target: { value: "MM" } });
+    expect(names()).toEqual(["dwit/mmm"]);
+    fireEvent.change(screen.getByRole("searchbox", { name: /Find a repository/ }), { target: { value: "nada" } });
+    expect(screen.getByText(/No repository with that name/)).toBeTruthy();
+  });
+});

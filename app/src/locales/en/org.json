@@ -142,7 +142,9 @@
     "notLinked": "Not linked",
     "bareRefs": "bare #12",
     "bareRefsHint": "Let #12 without «cac» name task 12 too. On GitHub, #12 is the repo's issue 12.",
-    "activityOf": "CI activity of {{repo}}"
+    "activityOf": "CI activity of {{repo}}",
+    "filter": "Find a repository",
+    "noMatch": "No repository with that name."
   },
   "zoneUnset": "Not set (the creator's)",
   "zoneSuggested": "Suggested",
