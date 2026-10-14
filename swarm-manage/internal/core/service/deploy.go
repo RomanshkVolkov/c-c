@@ -37,6 +37,20 @@ type DeployJob struct {
 	// MigrateCommand: lo que corre antes del update, con la imagen nueva. Vacío
 	// = no hay migraciones.
 	MigrateCommand string `json:"migrateCommand,omitempty"`
+	// Build: construir Image en este servidor antes de desplegarla (v6). Nil
+	// = la imagen ya existe en un registro.
+	Build *BuildSpec `json:"build,omitempty"`
+}
+
+// BuildSpec: domain.BuildSpec del backend. Nombres de build args, nunca
+// valores; el token clona el repo y dura una hora.
+type BuildSpec struct {
+	Repo       string   `json:"repo"`
+	Sha        string   `json:"sha"`
+	Dockerfile string   `json:"dockerfile"`
+	Context    string   `json:"context"`
+	BuildArgs  []string `json:"buildArgs"`
+	CloneToken string   `json:"cloneToken"`
 }
 
 // FinishReport: cómo acabó (domain.AgentFinishRequest en el backend).
@@ -59,6 +73,12 @@ type DeployDocker interface {
 	JobTask(ctx context.Context, serviceID string) (repository.TaskState, error)
 	JobLogs(ctx context.Context, serviceID string, tail int) ([]string, error)
 	RemoveService(ctx context.Context, id string) error
+	// Para construir en el servidor (v6).
+	NodeCount(ctx context.Context) (int, error)
+	FindServiceSecret(ctx context.Context, service, key string) (id, name string, err error)
+	CreateSecret(ctx context.Context, name string, data []byte, labels map[string]string) (string, error)
+	RemoveSecret(ctx context.Context, id string) error
+	CreateJob(ctx context.Context, spec map[string]any) (string, error)
 }
 
 // DeployReporter: a quién se le cuenta cómo va.
@@ -77,10 +97,14 @@ type Deployer struct {
 	Converge, Poll time.Duration
 	// Cuánto puede durar una migración.
 	Migrate time.Duration
+	// Cuánto puede durar un build (el backend da el deploy por perdido a los
+	// 45 minutos; esto acaba antes, con su motivo).
+	Build time.Duration
 }
 
 func NewDeployer(docker DeployDocker, report DeployReporter, auth func(string) string) *Deployer {
-	return &Deployer{Docker: docker, Report: report, RegistryAuth: auth, Converge: 5 * time.Minute, Poll: 2 * time.Second, Migrate: 15 * time.Minute}
+	return &Deployer{Docker: docker, Report: report, RegistryAuth: auth, Converge: 5 * time.Minute, Poll: 2 * time.Second,
+		Migrate: 15 * time.Minute, Build: 40 * time.Minute}
 }
 
 // migrateLogTail: las líneas de la migración que pasan al log del deploy.
@@ -137,7 +161,15 @@ func (d *Deployer) Run(ctx context.Context, jobID string, raw json.RawMessage) {
 		auth = d.RegistryAuth(job.Image)
 	}
 	final := job.Image
-	if !strings.Contains(job.Image, "@") {
+	if job.Build != nil {
+		// Construida aquí: no hay registro del que bajarla ni digest que
+		// clavar (una imagen local no tiene RepoDigests). Se despliega
+		// `repo:tag`, que es único por commit.
+		if err := d.build(ctx, svc, job, log); err != nil {
+			fail(prev, err)
+			return
+		}
+	} else if !strings.Contains(job.Image, "@") {
 		log("bajando %s", job.Image)
 		if err := d.Docker.PullImage(ctx, job.Image, auth); err != nil {
 			if auth == "" && strings.Contains(strings.ToLower(err.Error()), "denied") {
@@ -266,4 +298,99 @@ func shortID(id string) string {
 		return id[:8]
 	}
 	return id
+}
+
+// buildLogTail: las líneas del build que pasan al log del deploy. Un build de
+// Next escribe miles; lo que importa es el final, donde está el error.
+const buildLogTail = 400
+
+// build construye la imagen del trabajo en este servidor con un job de Swarm
+// y espera a que acabe. El job y el secret del token se borran salga como
+// salga: no queda nada colgado, y el token no se queda en el servidor.
+func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job DeployJob, log func(string, ...any)) error {
+	b := job.Build
+	req := repository.BuildRequest{
+		Repo: b.Repo, Sha: b.Sha, Dockerfile: b.Dockerfile, Context: b.Context,
+		BuildArgs: b.BuildArgs, Image: job.Image,
+	}
+	script, err := repository.BuildScript(req)
+	if err != nil {
+		return err
+	}
+	if b.CloneToken == "" {
+		return fmt.Errorf("el trabajo no trae con qué clonar %s", b.Repo)
+	}
+	// Una imagen hecha aquí sólo existe en este nodo.
+	if n, err := d.Docker.NodeCount(ctx); err != nil {
+		return err
+	} else if n > 1 {
+		return fmt.Errorf("este swarm tiene %d nodos y una imagen construida aquí sólo llega a uno; hace falta un registro", n)
+	}
+
+	secrets := make([]repository.BuildSecret, 0, len(b.BuildArgs)+1)
+	for _, a := range b.BuildArgs {
+		id, name, err := d.Docker.FindServiceSecret(ctx, svc.Name, a)
+		if err != nil {
+			return err
+		}
+		secrets = append(secrets, repository.BuildSecret{ID: id, Name: name, File: a})
+	}
+	tokenName := "cac_build_token_" + shortID(job.DeploymentID)
+	tokenID, err := d.Docker.CreateSecret(ctx, tokenName, []byte(b.CloneToken), map[string]string{"cac.build.token": svc.Name})
+	if err != nil {
+		return err
+	}
+	// Después del job (va en el defer de abajo, que corre antes): Docker no
+	// deja borrar un secret que monta un servicio.
+	defer func() { _ = d.Docker.RemoveSecret(context.Background(), tokenID) }()
+	secrets = append(secrets, repository.BuildSecret{ID: tokenID, Name: tokenName, File: repository.BuildTokenFile})
+
+	log("construyendo %s@%s (%s)", b.Repo, shortID(b.Sha), job.Image)
+	spec := repository.BuildJobSpec(svc.Name+"-build-"+shortID(job.DeploymentID), svc.Name, script, secrets)
+	id, err := d.Docker.CreateJob(ctx, spec)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Docker.RemoveService(context.Background(), id) }()
+
+	start := time.Now()
+	deadline := start.Add(d.Build)
+	lastNote := start
+	var st repository.TaskState
+	for {
+		st, err = d.Docker.JobTask(ctx, id)
+		if err != nil {
+			return err
+		}
+		if st.Done() {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("el build no acabó en %s", d.Build)
+		}
+		// Un build largo calla minutos: que el log diga que sigue.
+		if time.Since(lastNote) >= time.Minute {
+			log("sigue construyendo (%s)", time.Since(start).Round(time.Second))
+			lastNote = time.Now()
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(d.Poll):
+		}
+	}
+	if lines, err := d.Docker.JobLogs(ctx, id, buildLogTail); err == nil {
+		for _, l := range lines {
+			log("  %s", l)
+		}
+	}
+	if st.State != "complete" || st.ExitCode != 0 {
+		msg := fmt.Sprintf("el build falló (%s, código %d)", st.State, st.ExitCode)
+		if st.Err != "" {
+			msg += ": " + st.Err
+		}
+		return fmt.Errorf("%s; el servicio no se tocó", msg)
+	}
+	log("construida %s en %s", job.Image, time.Since(start).Round(time.Second))
+	return nil
 }

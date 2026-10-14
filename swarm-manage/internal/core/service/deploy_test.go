@@ -33,6 +33,44 @@ type fakeDocker struct {
 	migCreated       bool
 	// Si ya se había actualizado el servicio cuando se creó el job.
 	updatedBeforeMig bool
+
+	// El build (v6): nodos del swarm, secrets del servicio por nombre, y lo
+	// que se creó y se borró.
+	nodes          int
+	serviceSecrets map[string]string
+	jobSpec        map[string]any
+	secretsMade    map[string][]byte
+	secretsGone    []string
+	jobsGone       []string
+}
+
+func (f *fakeDocker) NodeCount(context.Context) (int, error) {
+	if f.nodes == 0 {
+		return 1, nil
+	}
+	return f.nodes, nil
+}
+func (f *fakeDocker) FindServiceSecret(_ context.Context, service, key string) (string, string, error) {
+	name, ok := f.serviceSecrets[key]
+	if !ok || service != f.svc.Name {
+		return "", "", errors.New("no tiene el secret " + key)
+	}
+	return "id-" + name, name, nil
+}
+func (f *fakeDocker) CreateSecret(_ context.Context, name string, data []byte, _ map[string]string) (string, error) {
+	if f.secretsMade == nil {
+		f.secretsMade = map[string][]byte{}
+	}
+	f.secretsMade[name] = data
+	return "id-" + name, nil
+}
+func (f *fakeDocker) RemoveSecret(_ context.Context, id string) error {
+	f.secretsGone = append(f.secretsGone, id)
+	return nil
+}
+func (f *fakeDocker) CreateJob(_ context.Context, spec map[string]any) (string, error) {
+	f.jobSpec = spec
+	return "build-1", nil
 }
 
 func (f *fakeDocker) CreateMigrationJob(_ context.Context, from, name, image, cmd, _ string) (string, error) {
@@ -48,6 +86,7 @@ func (f *fakeDocker) RemoveService(_ context.Context, id string) error {
 	if id == "job-1" {
 		f.migRemoved = true
 	}
+	f.jobsGone = append(f.jobsGone, id)
 	return nil
 }
 
@@ -291,5 +330,84 @@ func TestNoCommandNoMigration(t *testing.T) {
 	deployer(d, r).Run(context.Background(), "d-1", job(repo+":abc1234"))
 	if d.migCreated {
 		t.Error("se creó un job de migración sin comando")
+	}
+}
+
+// ─── Construir en el servidor (v6) ────────────────────────────────────────────
+
+func buildJob() json.RawMessage {
+	raw, _ := json.Marshal(DeployJob{
+		DeploymentID: "d-1", Stack: "api", ServiceName: "api_app", ImageRepo: repo, Image: repo + ":abc1234",
+		Build: &BuildSpec{Repo: "a/api", Sha: "abc1234def5678abc1234def5678abc1234def56", Dockerfile: "Dockerfile",
+			BuildArgs: []string{"DATABASE_URL"}, CloneToken: "ghs_x"},
+	})
+	return raw
+}
+
+func buildDocker() *fakeDocker {
+	return &fakeDocker{
+		svc:            repository.ServiceState{ID: "s1", Name: "api_app", Stack: "api", Version: 7, Image: repo + ":old"},
+		serviceSecrets: map[string]string{"DATABASE_URL": "cac_DATABASE_URL_0011223344556677"},
+		migState:       repository.TaskState{State: "complete"},
+	}
+}
+
+// Un deploy con build construye aquí y despliega `repo:tag` sin bajarlo ni
+// clavar digest (una imagen local no tiene); el token va en un secret que se
+// borra, y el job también.
+// Mutantes: bajar la imagen igual; no borrar el secret del token; no borrar
+// el job; montar el secret que no es del servicio.
+func TestABuildDeploysTheLocalImage(t *testing.T) {
+	d, r := buildDocker(), &fakeReport{}
+	deployer(d, r).Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "succeeded" || r.finish.FinalImage != repo+":abc1234" {
+		t.Fatalf("acabó %+v\n%s", r.finish, strings.Join(r.lines, "\n"))
+	}
+	if len(d.pulled) != 0 {
+		t.Fatalf("bajó una imagen construida aquí: %v", d.pulled)
+	}
+	if string(d.secretsMade["cac_build_token_d-1"]) != "ghs_x" {
+		t.Fatalf("el token: %v", d.secretsMade)
+	}
+	if strings.Join(d.secretsGone, ",") != "id-cac_build_token_d-1" || strings.Join(d.jobsGone, ",") != "build-1" {
+		t.Fatalf("quedó algo: secrets borrados %v, jobs borrados %v", d.secretsGone, d.jobsGone)
+	}
+	cs := d.jobSpec["TaskTemplate"].(map[string]any)["ContainerSpec"].(map[string]any)
+	script := cs["Command"].([]string)[2]
+	if strings.Contains(script, "ghs_x") {
+		t.Fatalf("el token en el guion:\n%s", script)
+	}
+}
+
+// Si el build falla, el servicio no se toca y no queda nada en el servidor.
+// Mutantes: actualizar igual; dejar el secret del token.
+func TestAFailedBuildLeavesTheServiceAndNothingBehind(t *testing.T) {
+	d, r := buildDocker(), &fakeReport{}
+	d.migState = repository.TaskState{State: "failed", ExitCode: 1}
+	deployer(d, r).Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "failed" || d.updatedTo != "" {
+		t.Fatalf("acabó %+v, actualizado a %q", r.finish, d.updatedTo)
+	}
+	if len(d.secretsGone) != 1 || len(d.jobsGone) != 1 {
+		t.Fatalf("quedó algo: %v %v", d.secretsGone, d.jobsGone)
+	}
+}
+
+// Con varios nodos, una imagen hecha aquí no llega a los otros: se rechaza
+// antes de construir. Y un build arg que el servicio no tiene, también.
+// Mutantes: no mirar los nodos; seguir sin el secret.
+func TestABuildRefusesWhatItCannotDo(t *testing.T) {
+	d, r := buildDocker(), &fakeReport{}
+	d.nodes = 2
+	deployer(d, r).Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "failed" || d.jobSpec != nil || !strings.Contains(r.finish.Error, "nodos") {
+		t.Fatalf("con dos nodos: %+v", r.finish)
+	}
+
+	d, r = buildDocker(), &fakeReport{}
+	d.serviceSecrets = map[string]string{}
+	deployer(d, r).Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "failed" || d.jobSpec != nil {
+		t.Fatalf("sin el secret: %+v", r.finish)
 	}
 }
