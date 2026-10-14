@@ -32,7 +32,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { servers, loading, createServer, updateServer, deleteServer, refresh } = useServers();
   const confirm = useConfirm();
-  const { busyId, error: agentError, install } = useAgentLifecycle(refresh);
+  const { busyId, waitingId, error: agentError, install } = useAgentLifecycle(refresh);
 
   // `status` only tracks the swarm-manage agent, so the count is out of swarm
   // servers — a kubernetes row has no agent and would drag the total down.
@@ -248,7 +248,11 @@ export default function Dashboard() {
                               onClick={() => void install(server)}
                             >
                               <RefreshCw className={`h-3 w-3 mr-1 ${isBusy ? "animate-spin" : ""}`} />
-                              {isBusy ? t("common:admin.updating") : t("common:admin.updateAgent")}
+                              {waitingId === server.id
+                                ? t("common:servers.agentUpdate.waiting")
+                                : isBusy
+                                  ? t("common:admin.updating")
+                                  : t("common:admin.updateAgent")}
                             </Button>
                           )}
                           {isSwarm && server.status === "online" && (

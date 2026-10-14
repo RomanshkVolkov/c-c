@@ -35,7 +35,7 @@ interface ProvisioningRun {
 export default function ServerOverview() {
   const { t } = useT();
   const { server, refreshServer } = useServerContext();
-  const { busyId, error, install } = useAgentLifecycle(refreshServer);
+  const { busyId, waitingId, error, install } = useAgentLifecycle(refreshServer);
   const deployables = useDeploymentsStore((s) => s.deployables[server.id] ?? NADA);
   const loadDeployables = useDeploymentsStore((s) => s.loadDeployables);
   const [runs, setRuns] = useState<ProvisioningRun[]>([]);
@@ -81,7 +81,11 @@ export default function ServerOverview() {
           {error && <p className="text-destructive">{error}</p>}
           <Button variant="outline" size="sm" disabled={busy} onClick={() => void install(server)}>
             <RefreshCw className={`mr-1 size-3.5 ${busy ? "animate-spin" : ""}`} />
-            {server.hasAgentToken ? t("common:admin.updateAgent") : t("common:admin.deployAgent")}
+            {waitingId === server.id
+              ? t("common:servers.agentUpdate.waiting")
+              : server.hasAgentToken
+                ? t("common:admin.updateAgent")
+                : t("common:admin.deployAgent")}
           </Button>
         </CardContent>
       </Card>

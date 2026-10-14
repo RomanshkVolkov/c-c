@@ -323,6 +323,14 @@
       "provisioning": "Provisioning",
       "provisioningEmpty": "Todavía no se ha aplicado ningún playbook a este servidor desde cac.",
       "provisioningStart": "Aplicar un playbook"
+    },
+    "agentUpdate": {
+      "changed": "{{name}}: agente v{{from}} → v{{to}}, en línea",
+      "same": "{{name}}: agente reinstalado, sigue en v{{version}} y en línea",
+      "silent": "{{name}}: el agente nuevo no ha dado señales en 90 s",
+      "silentHint": "Mira los logs del servicio cac_swarm-manage en el servidor: puede que la imagen no bajara o que un secret esté mal.",
+      "behind": "Volvió en v{{version}}, pero esta app instala la v{{latest}}: la imagen nueva no se bajó.",
+      "waiting": "Esperando al agente…"
     }
   },
   "admin": {

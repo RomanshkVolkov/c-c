@@ -53,3 +53,29 @@ describe("el paso del CI con tags cortos", () => {
     expect(entero).not.toContain("SHORT_SHA");
   });
 });
+
+/**
+ * «Update agent» espera el primer latido del agente nuevo. Un latido nuevo es
+ * un `agentSeenAt` distinto del de antes de instalar: la identidad nueva tumba
+ * la vieja, así que el viejo ya no puede latir. Y la versión que instala la app
+ * es la de `swarm-manage/VERSION`.
+ * Mutantes: dar por bueno el mismo latido de antes; olvidar subir la versión.
+ */
+describe("actualizar el agente", () => {
+  it("sólo un latido nuevo cuenta, y dice de qué versión a cuál", async () => {
+    const { agentUpdateOutcome } = await import("@/lib/deploy");
+    const before = { agentSeenAt: "2026-10-14T10:00:00Z", agentVersion: 4 };
+    expect(agentUpdateOutcome(before, before)).toBeNull();
+    expect(agentUpdateOutcome(before, { agentVersion: 5 })).toBeNull();
+    expect(agentUpdateOutcome(before, { agentSeenAt: "2026-10-14T10:00:07Z", agentVersion: 5 })).toEqual({ from: 4, to: 5 });
+    expect(agentUpdateOutcome({}, { agentSeenAt: "2026-10-14T10:00:07Z", agentVersion: 5 })).toEqual({ from: 0, to: 5 });
+  });
+
+  it("la app instala la versión de swarm-manage/VERSION", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { AGENT_VERSION_LATEST } = await import("@/lib/deploy");
+    const version = Number(readFileSync(join(process.cwd(), "..", "swarm-manage", "VERSION"), "utf-8").trim());
+    expect(AGENT_VERSION_LATEST).toBe(version);
+  });
+});

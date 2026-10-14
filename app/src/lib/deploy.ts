@@ -9,6 +9,30 @@ export const AGENT_VERSION_DEPLOYS = 3;
 /** La primera que corre migraciones antes del deploy (`domain.AgentVersionMigrates`). */
 export const AGENT_VERSION_MIGRATES = 4;
 
+/**
+ * La versión del agente que instala esta app (la de `swarm-manage/VERSION`, la
+ * misma que la imagen de `agent_install.rs`; lo vigila `deploy.test.ts`). Es
+ * a la que llega un servidor al pulsar «Update agent».
+ */
+export const AGENT_VERSION_LATEST = 5;
+
+/** El agente nuevo ya habló: de qué versión venía y en cuál está. */
+export type AgentUpdateOutcome = { from: number; to: number };
+
+/**
+ * Si el agente nuevo ya habló. Instalar acuña una identidad nueva, que tumba
+ * la del agente viejo: desde entonces, un latido nuevo sólo puede ser del
+ * nuevo. Por eso basta con que `agentSeenAt` cambie respecto a lo que había
+ * antes de instalar, sin comparar relojes de dos máquinas.
+ */
+export function agentUpdateOutcome(
+  before: { agentSeenAt?: string; agentVersion?: number },
+  now: { agentSeenAt?: string; agentVersion?: number },
+): AgentUpdateOutcome | null {
+  if (!now.agentSeenAt || now.agentSeenAt === before.agentSeenAt) return null;
+  return { from: before.agentVersion ?? 0, to: now.agentVersion ?? 0 };
+}
+
 /** El repositorio de una imagen, sin tag ni digest. El `:` de un puerto no es un tag. */
 export function repoFromImage(image: string): string {
   const sinDigest = image.split("@")[0];
