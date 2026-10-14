@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
-import { CheckCircle2, Copy, Download, KeyRound, Loader2, Plus, RotateCw, Trash2, XCircle } from "lucide-react";
-import { SECRETS_ENTRYPOINT_SNIPPET } from "@/lib/deploy";
+import { CheckCircle2, Copy, Download, FileSearch, KeyRound, Loader2, Plus, RotateCw, Trash2, XCircle } from "lucide-react";
+import { SECRETS_ENTRYPOINT_SNIPPET, mergeBuildArgs } from "@/lib/deploy";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { desde } from "@/lib/desde";
@@ -87,7 +87,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
   const [rotations, setRotations] = useState<Rotation[]>([]);
   const [checks, setChecks] = useState<Record<string, string | true>>({});
   const [item, setItem] = useState("");
-  const [busy, setBusy] = useState<"save" | "check" | "import" | "rotate" | null>(null);
+  const [busy, setBusy] = useState<"save" | "check" | "import" | "rotate" | "args" | null>(null);
   const [result, setResult] = useState<RotationResult | null>(null);
 
   const base = deployable ? `/api/v1/servers/${server.id}/deployables/${deployable.id}` : "";
@@ -157,6 +157,26 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
     try {
       const out = await invoke<{ opRef: string; ok: boolean; error: string }[]>("check_op_refs", { refs: rows.map((r) => r.opRef.trim()) });
       setChecks(Object.fromEntries(out.map((c) => [c.opRef, c.ok ? true : c.error])));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Los `ARG` del Dockerfile del servicio (en su rama), cruzados con la
+  // lista: uno que ya está como secret de la app pasa a «los dos»; uno que
+  // falta se añade como «el build», sin referencia, para ponérsela. Es lo que
+  // antes se hacía a ojo con el Dockerfile abierto al lado.
+  const readBuildArgs = async () => {
+    setBusy("args");
+    try {
+      const res = await api.get<APIResponse<string[]>>(`${base}/build-args`, true);
+      if (!res?.success) throw new Error(res?.error ?? "build-args");
+      const args = res.data ?? [];
+      const { rows: next, added, promoted } = mergeBuildArgs(rows, args);
+      setRows(next);
+      toast.success(t("common:secrets.argsMerged", { count: args.length, added, promoted }));
+    } catch (e) {
+      toast.error(phraseFor(e instanceof Error ? e.message : String(e), t("common:secrets.argsFailed")));
     } finally {
       setBusy(null);
     }
@@ -310,6 +330,12 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
             <Button variant="outline" size="sm" disabled={!item.trim().startsWith("op://") || busy !== null} onClick={() => void importItem()}>
               <Download className="mr-1 size-3.5" /> {t("common:secrets.import")}
             </Button>
+            {deployable.buildOnHost && (
+              <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => void readBuildArgs()}>
+                {busy === "args" ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <FileSearch className="mr-1 size-3.5" />}
+                {t("common:secrets.readArgs")}
+              </Button>
+            )}
           </div>
         )}
 

@@ -181,5 +181,6 @@
   "build-needs-repo": "Building on the server needs the service's repository (owner/name).",
   "bad-branch": "That isn't a branch name.",
   "bad-build-path": "That isn't a path inside the repository.",
-  "bad-secret-usage": "A secret is for runtime, for the build, or for both."
+  "bad-secret-usage": "A secret is for runtime, for the build, or for both.",
+  "dockerfile-not-found": "The Dockerfile isn't in that branch of the repository. Check the branch, the folder and the Dockerfile in “Branch and build”."
 }

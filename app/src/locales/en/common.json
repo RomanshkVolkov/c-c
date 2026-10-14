@@ -814,6 +814,9 @@
     "bridgeTitle": "The Dockerfile block that turns these secrets into environment variables",
     "bridgeLead": "Secrets arrive as files in /run/secrets. This entrypoint exports each one as a variable unless the environment already has it, and `exec \"$@\"` lets the same image run the app or the migrations job.",
     "bridgeCopy": "Copy",
-    "bridgeCopied": "Copied"
+    "bridgeCopied": "Copied",
+    "readArgs": "Read build args from the Dockerfile",
+    "argsMerged": "{{count}} build args in the Dockerfile: {{added}} added, {{promoted}} now used by both. Fill in the missing 1Password references and save.",
+    "argsFailed": "Couldn't read the Dockerfile"
   }
 }

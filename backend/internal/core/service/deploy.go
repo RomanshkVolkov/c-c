@@ -537,3 +537,16 @@ func (s *DeployService) Finish(serverID, id string, req domain.AgentFinishReques
 	s.changed(d, dep)
 	return nil
 }
+
+// DockerfilePath: dónde está el Dockerfile de un servicio dentro del repo
+// (la carpeta del build más el Dockerfile, que es relativo a ella).
+func DockerfilePath(d *domain.Deployable) string {
+	f := d.Dockerfile
+	if f == "" {
+		f = "Dockerfile"
+	}
+	if d.BuildContext == "" {
+		return f
+	}
+	return strings.Trim(d.BuildContext, "/") + "/" + f
+}

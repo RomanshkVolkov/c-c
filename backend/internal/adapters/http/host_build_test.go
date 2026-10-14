@@ -308,3 +308,29 @@ func TestTheRepoWorkflowsAreListed(t *testing.T) {
 		t.Fatalf("el repo de otra org → %d", rec.Code)
 	}
 }
+
+// Los build args se leen del Dockerfile del servicio, en su rama y en su
+// carpeta, para proponerlos como secrets del build. Mutantes: leer de la rama
+// por defecto; no tener en cuenta la carpeta.
+func TestTheDockerfileArgsAreRead(t *testing.T) {
+	f := hostBuildSetup(t, "deploy")
+	member := domain.OrgMembershipClaim{OrgID: "org-1", Role: domain.OrgRoleMember}
+	path := "/api/v1/servers/srv-1/deployables/" + f.d.ID + "/build-args"
+	rec := f.as(t, "GET", path, "", member)
+	var out domain.APIResponse[[]string]
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 200 || strings.Join(out.Data, ",") != "DATABASE_URL,NEXT_PUBLIC_STRIPE_KEY" {
+		t.Fatalf("build args → %d %s", rec.Code, rec.Body.String())
+	}
+	boat := "boat"
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", RepoFullName: "dwit/api", OnCINotify: "deploy", BuildContext: &boat,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec = f.as(t, "GET", path, "", member)
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 200 || strings.Join(out.Data, ",") != "ONLY_IN_BOAT" {
+		t.Fatalf("con carpeta → %d %s", rec.Code, rec.Body.String())
+	}
+}

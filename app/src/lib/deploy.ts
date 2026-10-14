@@ -121,3 +121,33 @@ RUN printf '%s\\n' \\
   'exec "$@"' \\
   > /usr/local/bin/docker-entrypoint && chmod 755 /usr/local/bin/docker-entrypoint
 ENTRYPOINT ["docker-entrypoint"]`;
+
+/**
+ * Cruza los build args de un Dockerfile con los secrets del servicio. Uno que
+ * ya está como secret de la app (`runtime`) pasa a `both`: lo pide el build y
+ * lo usa la app. Uno que falta se añade como `build`, sin referencia, para que
+ * se la pongan. Lo demás no se toca.
+ */
+export function mergeBuildArgs<T extends { name: string; opRef: string; usage?: "runtime" | "build" | "both" }>(
+  rows: T[],
+  args: string[],
+): { rows: T[]; added: number; promoted: number } {
+  let added = 0;
+  let promoted = 0;
+  const wanted = new Set(args);
+  const next = rows.map((r) => {
+    if (wanted.has(r.name.trim()) && (r.usage ?? "runtime") === "runtime") {
+      promoted++;
+      return { ...r, usage: "both" as const };
+    }
+    return r;
+  });
+  const have = new Set(rows.map((r) => r.name.trim()));
+  for (const a of args) {
+    if (!have.has(a)) {
+      added++;
+      next.push({ name: a, opRef: "", usage: "build" } as T);
+    }
+  }
+  return { rows: next, added, promoted };
+}

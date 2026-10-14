@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Lo que se puede desplegar en un servicio: su repositorio y una referencia
 // segura, nada más. Es la primera puerta; el agente lo vuelve a comprobar.
@@ -40,5 +43,15 @@ func TestADeployIsOfACommit(t *testing.T) {
 		if ValidSha(s) {
 			t.Errorf("%q no es un sha", s)
 		}
+	}
+}
+
+// Los build args de un Dockerfile, para proponerlos como secrets del build.
+// Mutantes: cortar en el primer nombre de una línea con varios; contar los de
+// BuildKit; repetir uno que sale dos veces.
+func TestDockerfileArgs(t *testing.T) {
+	got := DockerfileArgs("FROM base AS b\nARG NEXT_PUBLIC_STRIPE_KEY\n  arg DATABASE_URL\nARG A=1 B\nARG TARGETARCH\nARG lower\nENV X=$A\nARG DATABASE_URL\n# ARG COMMENTED\n")
+	if strings.Join(got, ",") != "NEXT_PUBLIC_STRIPE_KEY,DATABASE_URL,A,B" {
+		t.Fatalf("args: %v", got)
 	}
 }

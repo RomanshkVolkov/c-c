@@ -592,3 +592,47 @@ func (s *GitHubService) RepoWorkflows(orgID, repoFullName string) ([]RepoWorkflo
 	}
 	return list, nil
 }
+
+// RepoFile: un fichero de texto de un repo de la org, en una rama (vacía = la
+// por defecto). Con `Contents: read`, el permiso que la App ya tiene. Para
+// leer el Dockerfile de un servicio y proponer sus build args.
+func (s *GitHubService) RepoFile(orgID, repoFullName, ref, path string) (string, error) {
+	if !s.CanRead() {
+		return "", ErrGitHubOff
+	}
+	repo, err := s.repo.FindRepoByName(orgID, repoFullName)
+	if err != nil {
+		return "", ErrRepoNotInOrg
+	}
+	tok, err := s.installationToken(repo.InstallationID)
+	if err != nil {
+		return "", err
+	}
+	u := "/repos/" + repo.FullName + "/contents/" + escapePath(path)
+	if ref != "" {
+		u += "?ref=" + url.QueryEscape(ref)
+	}
+	req, err := http.NewRequest(http.MethodGet, s.app.APIURL+u, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "token "+tok)
+	req.Header.Set("Accept", "application/vnd.github.raw")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	res, err := s.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return "", ErrRepoFileNotFound
+	}
+	if res.StatusCode >= 300 {
+		return "", fmt.Errorf("github GET %s: %d", u, res.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	return string(b), err
+}
+
+// ErrRepoFileNotFound: el fichero no está en esa rama del repo.
+var ErrRepoFileNotFound = errors.New("repo-file-not-found")

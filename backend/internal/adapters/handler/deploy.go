@@ -19,6 +19,7 @@ type DeployHandler struct {
 	svc     *service.DeployService
 	limiter *ingestLimiter
 	secrets *service.SecretRefService
+	files   RepoFiles
 }
 
 func NewDeployHandler(servers *service.ServerService, svc *service.DeployService) *DeployHandler {
@@ -98,6 +99,48 @@ func (h *DeployHandler) RecordRotation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.SecretRotation]{Success: true, Data: out})
+}
+
+// RepoFiles lee un fichero de un repo de la org (lo pone la GitHub App).
+type RepoFiles interface {
+	RepoFile(orgID, repoFullName, ref, path string) (string, error)
+}
+
+// WithRepoFiles: sin esto, no se pueden leer los build args del Dockerfile.
+func (h *DeployHandler) WithRepoFiles(f RepoFiles) *DeployHandler {
+	h.files = f
+	return h
+}
+
+// BuildArgs: `GET …/deployables/{did}/build-args`, los `ARG` del Dockerfile
+// del servicio en su rama, para proponerlos como secrets del build en vez de
+// cruzarlos a ojo con el repo.
+func (h *DeployHandler) BuildArgs(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	if d.RepoFullName == "" {
+		SendErrorResponse(w, http.StatusBadRequest, "The service has no repository", "build-needs-repo")
+		return
+	}
+	if h.files == nil {
+		SendErrorResponse(w, http.StatusServiceUnavailable, "GitHub is not configured", "github-off")
+		return
+	}
+	text, err := h.files.RepoFile(d.OrgID, d.RepoFullName, d.Branch, service.DockerfilePath(d))
+	switch {
+	case err == nil:
+		SendResult(w, http.StatusOK, domain.APIResponse[[]string]{Success: true, Data: domain.DockerfileArgs(text)})
+	case errors.Is(err, service.ErrRepoFileNotFound):
+		SendErrorResponse(w, http.StatusNotFound, "The Dockerfile is not in that branch of the repository", "dockerfile-not-found")
+	case errors.Is(err, service.ErrRepoNotInOrg):
+		SendErrorResponse(w, http.StatusNotFound, "That repository is not connected to this organization", "repo-not-in-org")
+	case errors.Is(err, service.ErrGitHubOff):
+		SendErrorResponse(w, http.StatusServiceUnavailable, "GitHub is not configured", "github-off")
+	default:
+		SendErrorResponse(w, http.StatusBadGateway, "GitHub did not answer", "github-unreachable")
+	}
 }
 
 // deployable carga el deployable de la URL, sólo si es de ese servidor.

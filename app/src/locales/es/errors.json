@@ -181,5 +181,6 @@
   "build-needs-repo": "Construir en el servidor necesita el repo del servicio (owner/name).",
   "bad-branch": "Eso no es un nombre de rama.",
   "bad-build-path": "Eso no es una ruta dentro del repo.",
-  "bad-secret-usage": "Un secret es para el runtime, para el build o para los dos."
+  "bad-secret-usage": "Un secret es para el runtime, para el build o para los dos.",
+  "dockerfile-not-found": "El Dockerfile no está en esa rama del repo. Revisa la rama, la carpeta y el Dockerfile en «Rama y build»."
 }

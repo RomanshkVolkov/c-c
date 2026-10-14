@@ -79,3 +79,27 @@ describe("actualizar el agente", () => {
     expect(AGENT_VERSION_LATEST).toBe(version);
   });
 });
+
+/**
+ * Los build args del Dockerfile, cruzados con los secrets del servicio.
+ * Mutantes: pasar a «los dos» uno que ya era del build; no añadir los que
+ * faltan; añadir uno que ya estaba.
+ */
+describe("los build args del Dockerfile", () => {
+  it("el de la app pasa a los dos, el que falta se añade, lo demás no se toca", async () => {
+    const { mergeBuildArgs } = await import("@/lib/deploy");
+    const rows = [
+      { name: "DATABASE_URL", opRef: "op://a/b/db", usage: "runtime" as const },
+      { name: "NEXT_PUBLIC_X", opRef: "op://a/b/x", usage: "build" as const },
+      { name: "SESSION_SECRET", opRef: "op://a/b/s", usage: "runtime" as const },
+    ];
+    const out = mergeBuildArgs(rows, ["DATABASE_URL", "NEXT_PUBLIC_X", "MJ_APIKEY_PUBLIC"]);
+    expect(out.rows).toEqual([
+      { name: "DATABASE_URL", opRef: "op://a/b/db", usage: "both" },
+      { name: "NEXT_PUBLIC_X", opRef: "op://a/b/x", usage: "build" },
+      { name: "SESSION_SECRET", opRef: "op://a/b/s", usage: "runtime" },
+      { name: "MJ_APIKEY_PUBLIC", opRef: "", usage: "build" },
+    ]);
+    expect([out.added, out.promoted]).toEqual([1, 1]);
+  });
+});

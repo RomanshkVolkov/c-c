@@ -344,3 +344,38 @@ var branchPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_./-]{0,199}$`)
 func ValidBranch(b string) bool {
 	return b == "" || (branchPattern.MatchString(b) && !strings.Contains(b, "..") && !strings.HasSuffix(b, "/"))
 }
+
+// dockerArgLine: una instrucción `ARG` de un Dockerfile (con lo de detrás).
+var dockerArgLine = regexp.MustCompile(`(?i)^\s*ARG\s+(.+)$`)
+
+// builtinBuildArgs: los que pone BuildKit solo; no son de nadie que configurar.
+var builtinBuildArgs = map[string]bool{
+	"TARGETPLATFORM": true, "TARGETOS": true, "TARGETARCH": true, "TARGETVARIANT": true,
+	"BUILDPLATFORM": true, "BUILDOS": true, "BUILDARCH": true, "BUILDVARIANT": true,
+	"HTTP_PROXY": true, "HTTPS_PROXY": true, "FTP_PROXY": true, "NO_PROXY": true, "ALL_PROXY": true,
+}
+
+// DockerfileArgs: los nombres de los build args que pide un Dockerfile, en
+// el orden en que aparecen y sin repetir, para proponerlos como secrets del
+// build en vez de cruzarlos a ojo. Sólo los que pueden ser el nombre de un
+// secret (SecretNamePattern); un `ARG` con valor por defecto también cuenta:
+// el defecto puede no ser el de producción.
+func DockerfileArgs(dockerfile string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(dockerfile, "\n") {
+		m := dockerArgLine.FindStringSubmatch(strings.TrimRight(line, "\r"))
+		if m == nil {
+			continue
+		}
+		for _, field := range strings.Fields(m[1]) {
+			name, _, _ := strings.Cut(field, "=")
+			if !SecretNamePattern.MatchString(name) || builtinBuildArgs[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}

@@ -89,6 +89,17 @@ func (g *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.statuses = append(g.statuses, fmt.Sprint(m["state"]))
 		w.WriteHeader(http.StatusCreated)
 		io.WriteString(w, `{}`)
+	// El Dockerfile, sólo en la rama `main`: así se ve que se pide el de la
+	// rama del servicio.
+	case strings.HasPrefix(r.URL.Path, "/repos/dwit/api/contents/") && r.URL.Query().Get("ref") == "main":
+		switch strings.TrimPrefix(r.URL.Path, "/repos/dwit/api/contents/") {
+		case "Dockerfile":
+			io.WriteString(w, "FROM base\nARG DATABASE_URL\nARG NEXT_PUBLIC_STRIPE_KEY\nRUN build\n")
+		case "boat/Dockerfile":
+			io.WriteString(w, "FROM base\nARG ONLY_IN_BOAT\n")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
 	case r.URL.Path == "/repos/dwit/api/actions/workflows":
 		io.WriteString(w, `{"workflows":[
 			{"name":"Deploy","path":".github/workflows/prod.yml","state":"active"},

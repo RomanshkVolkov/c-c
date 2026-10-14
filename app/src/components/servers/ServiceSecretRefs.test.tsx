@@ -168,6 +168,30 @@ describe("los secrets de un servicio", () => {
     ]);
   });
 
+  // Un servicio que construye en el servidor lee los build args de su
+  // Dockerfile. Mutantes: ofrecer el botón sin build en el servidor; pedir a
+  // otra ruta.
+  it("lee los build args del Dockerfile y los cruza con la lista", async () => {
+    backend("deploy");
+    api.get.mockImplementation(async (url: string) => {
+      if (url.endsWith("/deployables")) return { success: true, data: [{ ...deployable("deploy"), buildOnHost: true }] };
+      if (url.endsWith("/build-args")) return { success: true, data: ["DATABASE_URL", "NEXT_PUBLIC_STRIPE_KEY"] };
+      if (url.endsWith("/secret-refs")) return { success: true, data: refs };
+      return { success: true, data: [] };
+    });
+    pintar();
+    fireEvent.click(await screen.findByRole("button", { name: /(leer los build args|read build args)/i }));
+    await waitFor(() => expect(screen.getByDisplayValue("NEXT_PUBLIC_STRIPE_KEY")).toBeTruthy());
+    expect(api.get).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/build-args", true);
+  });
+
+  it("sin build en el servidor no se ofrece leer el Dockerfile", async () => {
+    backend("deploy");
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    expect(screen.queryByRole("button", { name: /(leer los build args|read build args)/i })).toBeNull();
+  });
+
   it("un nombre que no vale no se guarda", async () => {
     backend("deploy");
     pintar();
