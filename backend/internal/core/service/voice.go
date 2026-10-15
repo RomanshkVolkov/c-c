@@ -13,6 +13,7 @@ import (
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 
+	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 )
 
@@ -33,6 +34,23 @@ type VoiceService struct {
 	url    string
 	key    string
 	secret string
+	// moves dice si la llamada de un canal se acaba de mudar a una reunión.
+	// Opcional: sin él, entrar al canal es entrar al canal.
+	moves func(spaceID string) *domain.MovedCall
+}
+
+// WithMoves conecta la pregunta «¿se mudó esta llamada?». Ver CallMoveWindow.
+func (s *VoiceService) WithMoves(f func(spaceID string) *domain.MovedCall) *VoiceService {
+	s.moves = f
+	return s
+}
+
+// MovedCall: a dónde se mudó la llamada de este canal, si se acaba de mudar.
+func (s *VoiceService) MovedCall(spaceID string) *domain.MovedCall {
+	if s == nil || s.moves == nil {
+		return nil
+	}
+	return s.moves(spaceID)
 }
 
 func NewVoiceService(url, key, secret string) *VoiceService {

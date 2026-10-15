@@ -42,9 +42,29 @@ type CallInvite struct {
 	// dentro ahora: un enlace para dos que se reenvía a veinte no tiene que
 	// dejar entrar a veinte por turnos.
 	MaxGuests int `json:"maxGuests"`
+
+	// MovedAt: la llamada del canal **se mudó aquí**. Se abrió desde dentro de
+	// la llamada para meter a alguien de fuera, y quienes estaban en ella se
+	// vienen detrás sin tener que pedírselo. Ver CallMoveWindow.
+	MovedAt *time.Time `json:"movedAt,omitempty"`
 }
 
 func (CallInvite) TableName() string { return "call_invites" }
+
+// CallMoveWindow: cuánto tiempo después de mudarse la llamada, quien entra a la
+// del canal acaba en la reunión en vez de en una sala vacía.
+//
+// Los que estaban dentro se mudan por el aviso (`voice.moved`); esto es para
+// quien llegaba tarde —el que pulsó «Unirse» justo ahora—, que si no entraría
+// solo al canal y tendría que preguntar a dónde se fue todo el mundo. Corto a
+// propósito: pasado el rato, el canal vuelve a ser el canal.
+const CallMoveWindow = 30 * time.Second
+
+// MovedCall: a dónde se mudó la llamada de un canal.
+type MovedCall struct {
+	InviteID string `json:"inviteId"`
+	Title    string `json:"title"`
+}
 
 // Room es la sala de la invitación. Derivada del id **en el servidor**, igual
 // que la de un canal: nunca se acepta del cliente.
@@ -150,6 +170,9 @@ type CreateCallInviteRequest struct {
 	// TTLHours: cuántas horas vale el enlace. Cero es el valor por defecto.
 	TTLHours  int `json:"ttlHours"  validate:"omitempty,min=1,max=168"`
 	MaxGuests int `json:"maxGuests" validate:"omitempty,min=0,max=100"`
+	// MoveCall: se crea desde dentro de la llamada del canal, y la llamada se
+	// muda a la reunión con todos los que están. Sólo con SpaceID.
+	MoveCall bool `json:"moveCall"`
 }
 
 // CallInviteResponse es la invitación para un miembro: con su enlace y con

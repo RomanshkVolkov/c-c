@@ -56,10 +56,11 @@
   "rejectedTitle": "You weren't let in",
   "inviteByLink": "Invite by link",
   "fromCallTitle": "Invite people from outside",
-  "fromCallBody": "Guests can't join this channel's voice. This opens a separate call: you move to it now, the people with you get a call to follow you, and the link is copied. Anyone with the link waits until someone inside lets them in.",
+  "fromCallBody": "Guests can't join this channel's voice. This opens a separate call and takes the whole call with it: you and the people with you move to it now, so does anyone who joins the channel in the next few seconds, and the link is copied. Anyone with the link waits until someone inside lets them in.",
   "createAndMove": "Create link and move",
-  "movedRinging_one": "Calling {{count}} person from the channel to follow you.",
-  "movedRinging_other": "Calling {{count}} people from the channel to follow you.",
+  "movedTogether_one": "The call moved: {{count}} person from the channel is coming with you.",
+  "movedTogether_other": "The call moved: {{count}} people from the channel are coming with you.",
+  "followedMove": "The call moved to “{{title}}”, with people from outside.",
   "callingYouTo": "Calling you to {{title}}",
   "copyFailed": "Couldn't copy the link: copy it from the list."
 }

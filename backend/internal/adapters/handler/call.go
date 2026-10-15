@@ -96,7 +96,7 @@ func (h *callHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 		spaceID = &sp.ID
 	}
-	inv, err := h.svc.Create(req.OrgID, spaceID, user.UserID, req.Title, req.TTLHours, req.MaxGuests)
+	inv, err := h.svc.Create(req.OrgID, spaceID, user.UserID, req.Title, req.TTLHours, req.MaxGuests, req.MoveCall)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to create the invite", err.Error())
 		return

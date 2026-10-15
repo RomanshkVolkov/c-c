@@ -76,7 +76,7 @@ interface CallsState {
   /** Por canal: las reuniones abiertas que cuelgan de él. */
   bySpace: Record<string, CallInvite[]>;
   load: (orgId: string, spaceId: string) => Promise<void>;
-  create: (a: { orgId: string; spaceId: string; title: string; ttlHours: number }) => Promise<CallInvite>;
+  create: (a: { orgId: string; spaceId: string; title: string; ttlHours: number; moveCall?: boolean }) => Promise<CallInvite>;
   get: (id: string) => Promise<CallInvite>;
   revoke: (invite: CallInvite) => Promise<void>;
   kick: (inviteId: string, identity: string) => Promise<void>;
@@ -107,10 +107,10 @@ export const useCalls = create<CallsState>((set) => ({
     set((s) => ({ bySpace: { ...s.bySpace, [spaceId]: r.data ?? [] } }));
   },
 
-  create: async ({ orgId, spaceId, title, ttlHours }) => {
+  create: async ({ orgId, spaceId, title, ttlHours, moveCall }) => {
     const r = await api.post<APIResponse<CallInvite>>(
       "/api/v1/call-invites",
-      { orgId, spaceId, title, ttlHours },
+      moveCall ? { orgId, spaceId, title, ttlHours, moveCall } : { orgId, spaceId, title, ttlHours },
       true,
     );
     if (!r.data) throw new Error(r.error ?? "invite-invalid");

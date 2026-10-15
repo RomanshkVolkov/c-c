@@ -19,19 +19,21 @@ afterEach(cleanup);
 
 const ring = vi.fn(async () => {});
 const entrarEnReunion = vi.fn(async () => {});
+const create = vi.fn(async (_a: { moveCall?: boolean }) => ({
+  id: "inv-9", orgId: "org-1", spaceId: "esp-1", title: "Con el cliente", createdBy: "u-ana",
+  expiresAt: "2026-10-09T00:00:00Z", maxGuests: 0, link: "inv-9.firma", occupants: [],
+}));
 
 beforeEach(() => {
   ring.mockClear();
   entrarEnReunion.mockClear();
+  create.mockClear();
   Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => {}) } });
   useCalls.setState({
     bySpace: {},
     load: vi.fn(async () => {}),
     ring,
-    create: vi.fn(async () => ({
-      id: "inv-9", orgId: "org-1", spaceId: "esp-1", title: "Con el cliente", createdBy: "u-ana",
-      expiresAt: "2026-10-09T00:00:00Z", maxGuests: 0, link: "inv-9.firma", occupants: [],
-    })),
+    create,
   });
   useVoice.setState({
     entrarEnReunion,
@@ -45,10 +47,11 @@ beforeEach(() => {
 });
 
 // Desde la llamada del canal, crear el enlace **muda la llamada**: un invitado
-// no puede entrar a la sala del canal, así que la conversación se va a la
-// reunión y se llama a quienes estaban para que sigan.
+// no puede entrar a la sala del canal, así que la conversación se va entera a
+// la reunión. A quienes estaban ya no se les llama para que te sigan: se
+// vienen solos (lo hace el servidor con `moveCall`; ver call_move_test.go).
 describe("invitar por enlace desde la llamada", () => {
-  it("te pasa a la reunión y llama a los que estaban contigo", async () => {
+  it("muda la llamada entera, sin llamar a nadie para que te siga", async () => {
     render(
       <MemoryRouter>
         <GuestInviteDialog open onOpenChange={() => {}} orgId="org-1" spaceId="esp-1" fromCall />
@@ -57,9 +60,10 @@ describe("invitar por enlace desde la llamada", () => {
     fireEvent.change(screen.getByLabelText("What it's about"), { target: { value: "Con el cliente" } });
     fireEvent.click(screen.getByRole("button", { name: /Create link and move/ }));
     await vi.waitFor(() => expect(entrarEnReunion).toHaveBeenCalledWith("inv-9"));
-    await vi.waitFor(() => expect(ring).toHaveBeenCalledTimes(2));
-    // A los demás, no a ti.
-    expect(ring.mock.calls.map((c) => (c as unknown as [string, string])[1]).sort()).toEqual(["u-bea", "u-cris"]);
+    expect(create.mock.calls[0][0].moveCall).toBe(true);
+    // El timbre era el arreglo de antes: con la mudanza, sonarle a quien ya se
+    // está mudando le pondría una llamada encima de la reunión.
+    expect(ring).not.toHaveBeenCalled();
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("https://cac.example/app/join#inv-9.firma");
   });
 
@@ -74,6 +78,7 @@ describe("invitar por enlace desde la llamada", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Create link$/ }));
     await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
     expect(entrarEnReunion).not.toHaveBeenCalled();
+    expect(create.mock.calls[0][0].moveCall).toBeFalsy();
     expect(ring).not.toHaveBeenCalled();
   });
 });

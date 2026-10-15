@@ -32,7 +32,7 @@ func callsUnderTest(t *testing.T, sfu *fakeSFU) (*CallInviteService, *RecordingS
 
 func newInvite(t *testing.T, svc *CallInviteService, spaceID *string, maxGuests int) *domain.CallInvite {
 	t.Helper()
-	inv, err := svc.Create("org-1", spaceID, "u-host", "Revisión con el cliente", 0, maxGuests)
+	inv, err := svc.Create("org-1", spaceID, "u-host", "Revisión con el cliente", 0, maxGuests, false)
 	if err != nil {
 		t.Fatal(err)
 	}

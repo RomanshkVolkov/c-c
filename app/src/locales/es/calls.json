@@ -56,10 +56,11 @@
   "rejectedTitle": "No te dejaron entrar",
   "inviteByLink": "Invitar por enlace",
   "fromCallTitle": "Invitar a gente de fuera",
-  "fromCallBody": "Los invitados no pueden entrar a la voz de este canal. Esto abre una llamada aparte: tú pasas a ella ahora, a quienes están contigo se les llama para que te sigan, y el enlace se copia. Quien lo tenga espera a que alguien de dentro le deje entrar.",
+  "fromCallBody": "Los invitados no pueden entrar a la voz de este canal. Esto abre una llamada aparte y se lleva la llamada entera: tú y quienes están contigo pasan a ella ahora, quien entre al canal en los próximos segundos también, y el enlace se copia. Quien lo tenga espera a que alguien de dentro le deje entrar.",
   "createAndMove": "Crear enlace y pasar",
-  "movedRinging_one": "Llamando a {{count}} persona del canal para que te siga.",
-  "movedRinging_other": "Llamando a {{count}} personas del canal para que te sigan.",
+  "movedTogether_one": "La llamada se mudó: {{count}} persona del canal viene contigo.",
+  "movedTogether_other": "La llamada se mudó: {{count}} personas del canal vienen contigo.",
+  "followedMove": "La llamada se pasó a «{{title}}», con gente de fuera.",
   "callingYouTo": "Te llama a {{title}}",
   "copyFailed": "No se pudo copiar el enlace: cópialo de la lista."
 }

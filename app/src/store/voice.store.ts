@@ -210,6 +210,12 @@ interface VoiceState {
   llamando: TimbreSaliente | null;
   /** Quién te llama a ti. */
   entrante: TimbreEntrante | null;
+  /**
+   * La llamada del canal en la que estabas (o a la que ibas a entrar) se mudó a
+   * una reunión, y te has ido con ella. Lo lee `FollowMove` para llevarte a su
+   * pantalla y decirlo; luego lo limpia. Ver `domain.CallMoveWindow`.
+   */
+  mudanza: { inviteId: string; title: string } | null;
   yo: string | null;
   mic: boolean;
   /** Sordera: ni oyes ni te oyen. */
@@ -257,6 +263,12 @@ interface VoiceState {
   entrar: (spaceId: string, donde?: { orgId?: string | null; spaceName?: string | null }) => Promise<void>;
   /** Entrar a una reunión con invitados, como miembro. */
   entrarEnReunion: (inviteId: string) => Promise<void>;
+  /**
+   * La llamada de `spaceId` se mudó a esta reunión. Si estás en ella, te vas
+   * detrás; si no, nada.
+   */
+  seguirMudanza: (spaceId: string, inviteId: string, title: string) => Promise<void>;
+  limpiarMudanza: () => void;
   /** Entrar a una reunión como invitado, con lo que dio la puerta pública. */
   entrarComoInvitado: (entrada: GuestEntry) => Promise<void>;
   /**
@@ -413,6 +425,7 @@ export const useVoice = create<VoiceState>((set, get) => {
   return {
   ...VACIO,
   entrante: null,
+  mudanza: null,
   // Fuera de `VACIO` a propósito: salir de una sala no vacía los demás canales.
   ocupacion: {},
 
@@ -433,9 +446,10 @@ export const useVoice = create<VoiceState>((set, get) => {
       spaceName: donde?.spaceName ?? useTasksStore.getState().tree.find((e) => e.id === spaceId)?.name ?? null,
     };
     set({ ...VACIO, spaceId, orgId: meta.orgId, spaceName: meta.spaceName, estado: "entrando", escenario: true });
-    let res: APIResponse<{ url: string; token: string; room: string }>;
+    type Entrada = { url: string; token: string; room: string; movedTo?: { inviteId: string; title: string } | null };
+    let res: APIResponse<Entrada>;
     try {
-      res = await api.post<APIResponse<{ url: string; token: string; room: string }>>(
+      res = await api.post<APIResponse<Entrada>>(
         `/api/v1/task-spaces/${spaceId}/voice/token`,
         {},
         true,
@@ -448,8 +462,27 @@ export const useVoice = create<VoiceState>((set, get) => {
     // Puede haberse pulsado «salir» mientras se pedía; entonces esto ya no es
     // la sala actual y entrar dejaría un micrófono abierto.
     if (mio !== intento) return;
+    // Llegas tarde: la llamada se acaba de mudar a una reunión con gente de
+    // fuera. Entrar aquí sería quedarte solo en el canal.
+    const movida = res.data.movedTo;
+    if (movida) {
+      set({ mudanza: movida });
+      await get().entrarEnReunion(movida.inviteId);
+      return;
+    }
     await conectar(res.data.url, res.data.token, meta, mio, spaceId);
   },
+
+  seguirMudanza: async (spaceId, inviteId, title) => {
+    const s = get();
+    // Sólo quien está en **esa** llamada. Entrando también cuenta: la entrada
+    // ya pedida llegaría al canal vacío.
+    if (s.spaceId !== spaceId || s.estado === "fuera") return;
+    set({ mudanza: { inviteId, title } });
+    await get().entrarEnReunion(inviteId);
+  },
+
+  limpiarMudanza: () => set({ mudanza: null }),
 
   entrarEnReunion: async (inviteId) => {
     if (get().meetId === inviteId && get().estado !== "fuera") return;

@@ -70,7 +70,7 @@ func NewCallInviteService(repo *repository.CallInviteRepository, voice *VoiceSer
 // Create abre una invitación. Quien llama ya comprobó que puede escribir en la
 // organización y, si hay canal, que el canal es de ella.
 func (s *CallInviteService) Create(orgID string, spaceID *string, createdBy, title string,
-	ttlHours, maxGuests int) (*domain.CallInvite, error) {
+	ttlHours, maxGuests int, moveCall bool) (*domain.CallInvite, error) {
 	ttl := domain.CallInviteTTLDefault
 	if ttlHours > 0 {
 		ttl = time.Duration(ttlHours) * time.Hour
@@ -80,10 +80,38 @@ func (s *CallInviteService) Create(orgID string, spaceID *string, createdBy, tit
 		OrgID: orgID, SpaceID: spaceID, Title: strings.TrimSpace(title),
 		CreatedBy: createdBy, ExpiresAt: s.now().Add(ttl), MaxGuests: max(maxGuests, 0),
 	}
+	// Mudarse sólo tiene sentido desde la llamada de un canal.
+	moving := moveCall && spaceID != nil
+	if moving {
+		now := s.now()
+		inv.MovedAt = &now
+	}
 	if err := s.repo.Create(inv); err != nil {
 		return nil, err
 	}
+	if moving && s.hub != nil {
+		// A la organización entera, como el chat: cada consola mira si está en
+		// la llamada de ese canal, y sólo entonces se muda. Quien la mudó ya va
+		// de camino y se reconoce por el actorId.
+		s.hub.Publish(events.Event{
+			Type: "voice.moved", OrgID: orgID,
+			Data: map[string]any{
+				"spaceId": *spaceID, "inviteId": inv.ID, "title": inv.Title, "actorId": createdBy,
+			},
+		})
+	}
 	return inv, nil
+}
+
+// MovedCallFor: a dónde se mudó hace menos de CallMoveWindow la llamada de este
+// canal. Es lo que VoiceService pregunta al dar la entrada al canal.
+func (s *CallInviteService) MovedCallFor(spaceID string) *domain.MovedCall {
+	now := s.now()
+	inv, err := s.repo.MovedFrom(spaceID, now.Add(-domain.CallMoveWindow), now)
+	if err != nil || inv == nil {
+		return nil
+	}
+	return &domain.MovedCall{InviteID: inv.ID, Title: inv.Title}
 }
 
 func (s *CallInviteService) Find(id string) (*domain.CallInvite, error) {

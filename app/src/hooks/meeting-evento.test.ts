@@ -57,3 +57,19 @@ describe("dar de alta el evento de una reunión", () => {
     expect(lista.slice(0, cierre)).toContain('"meeting:reminder"');
   });
 });
+
+// La mudanza de una llamada: el mismo alta en dos sitios, y sin fila en la
+// campana — es un cambio de sala, no algo que quede pendiente de leer.
+describe("dar de alta la mudanza de una llamada", () => {
+  const fuente = () => readFileSync(join(process.cwd(), "src/hooks/use-report-events.ts"), "utf-8");
+
+  it("el repartidor la atiende y el navegador la escucha", () => {
+    expect(fuente()).toContain('case "voice.moved":');
+    const lista = fuente().slice(fuente().indexOf("for (const kind of ["));
+    expect(lista.slice(0, lista.indexOf("]"))).toContain('"voice.moved"');
+  });
+
+  it("no deja fila en la campana", () => {
+    expect(tocaLaCampana("voice.moved")).toBe(false);
+  });
+});

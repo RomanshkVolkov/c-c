@@ -255,6 +255,10 @@ type VoiceTokenResponse struct {
 	// cuando en pantalla hay otra org, cuyo árbol ya no sabe cómo se llama.
 	OrgID     string `json:"orgId"`
 	SpaceName string `json:"spaceName"`
+	// MovedTo: la llamada de este canal acaba de mudarse a una reunión (ver
+	// CallMoveWindow). La app entra allí en vez de aquí; una app anterior no lo
+	// lee y entra al canal, que es como era.
+	MovedTo *MovedCall `json:"movedTo,omitempty"`
 }
 
 // ─── El timbre de la voz ──────────────────────────────────────────────────────

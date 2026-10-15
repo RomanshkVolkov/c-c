@@ -61,7 +61,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		repository.GetEnv("LIVEKIT_URL", ""),
 		repository.GetEnv("LIVEKIT_API_KEY", ""),
 		repository.GetEnv("LIVEKIT_API_SECRET", ""),
-	)
+	).WithMoves(service.NewCallInviteService(repository.NewCallInviteRepository(db), nil, nil, nil).MovedCallFor)
 	// Un solo servicio de documentación para las dos rutas: el de abajo sirve el
 	// documento, y las tarjetas lo necesitan para `/decision`.
 	docSvc := service.NewDocService(repository.NewDocRepository(db)).WithNotifier(inbox)

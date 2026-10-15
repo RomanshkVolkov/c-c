@@ -635,6 +635,16 @@ export function useReportEvents() {
         // lleguen ya significa que son tuyos. Y no pasan por `notify` con un
         // texto cualquiera — la llamada tiene tarjeta propia, y la notificación
         // del sistema es sólo para cuando la ventana no está delante.
+        // La llamada de un canal se mudó a una reunión con gente de fuera.
+        // Llega a toda la organización; se muda sólo quien está en esa
+        // llamada, y no quien la mudó, que ya va de camino.
+        case "voice.moved": {
+          const m = parse(data) as { spaceId?: string; inviteId?: string; title?: string; actorId?: string } | null;
+          if (!m?.spaceId || !m.inviteId) break;
+          if (m.actorId && m.actorId === useAuthStore.getState().session?.id) break;
+          void useVoice.getState().seguirMudanza(m.spaceId, m.inviteId, m.title ?? "");
+          break;
+        }
         case "voice.ring": {
           const t = parse(data) as unknown as TimbreEntrante | null;
           if (!t?.ringId) break;
@@ -841,6 +851,7 @@ export function useReportEvents() {
         // mientras la web no tenía voz (W3).
         "voice.ring",
         "voice.ring.cancel",
+        "voice.moved",
         "call:knock",
         "deploy:status",
         "deploy:log",

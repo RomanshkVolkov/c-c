@@ -60,6 +60,21 @@ func (r *CallInviteRepository) ListLive(orgID, spaceID string, now time.Time) ([
 	return out, err
 }
 
+// MovedFrom: la reunión a la que se mudó la llamada de este canal desde
+// `since`, si sigue viva. La más reciente, si se mudó dos veces.
+func (r *CallInviteRepository) MovedFrom(spaceID string, since, now time.Time) (*domain.CallInvite, error) {
+	var inv domain.CallInvite
+	err := r.db.Where("space_id = ? AND moved_at > ? AND revoked_at IS NULL AND expires_at > ?", spaceID, since, now).
+		Order("moved_at DESC").First(&inv).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &inv, nil
+}
+
 // Revoke cierra el enlace. Idempotente: revocar dos veces deja la primera fecha.
 func (r *CallInviteRepository) Revoke(id string, now time.Time) error {
 	return r.db.Model(&domain.CallInvite{}).

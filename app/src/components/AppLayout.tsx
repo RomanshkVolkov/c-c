@@ -14,6 +14,7 @@ import { Bell } from "lucide-react";
 import UpdateChecker from "@/components/UpdateChecker";
 import StaleBinaryNotice from "@/components/StaleBinaryNotice";
 import IncomingCall from "@/components/voice/IncomingCall";
+import FollowMove from "@/components/voice/FollowMove";
 import MeetingCall from "@/components/meetings/MeetingCall";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import MobileTabBar from "@/components/mobile/MobileTabBar";
@@ -211,6 +212,7 @@ export default function AppLayout() {
       {/* Encima de todo, y montado una sola vez: una llamada puede entrar
           mientras miras un servidor o una nota, no sólo desde un canal. */}
       <IncomingCall />
+      <FollowMove />
       <MeetingCall />
       {/* El actualizador y el aviso de «binario reemplazado» son de la app de
           escritorio: en web la versión nueva llega al recargar. */}

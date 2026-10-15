@@ -43,7 +43,8 @@ export default function GuestInviteDialog({
   /**
    * Se abre desde dentro de la llamada del canal. Un invitado no puede entrar a
    * esa sala, así que crear el enlace **muda la llamada**: tú pasas a la
-   * reunión y a quienes estaban contigo se les llama para que te sigan.
+   * reunión, quienes estaban contigo se vienen solos, y quien entre al canal en
+   * los próximos segundos también (ver `domain.CallMoveWindow`).
    */
   fromCall?: boolean;
 }) {
@@ -54,7 +55,6 @@ export default function GuestInviteDialog({
   const load = useCalls((s) => s.load);
   const create = useCalls((s) => s.create);
   const revoke = useCalls((s) => s.revoke);
-  const ring = useCalls((s) => s.ring);
   const entrarEnReunion = useVoice((s) => s.entrarEnReunion);
   const [titulo, setTitulo] = useState("");
   const [horas, setHoras] = useState("24");
@@ -73,13 +73,17 @@ export default function GuestInviteDialog({
     if (!titulo.trim() || creando) return;
     setCreando(true);
     try {
-      // Quién estaba contigo, **antes** de salir del canal: al entrar a la
+      // Cuántos estaban contigo, **antes** de salir del canal: al entrar a la
       // reunión la lista de gente pasa a ser la de allí.
       const { gente, yo } = useVoice.getState();
-      const conmigo = gente.map((p) => p.identity).filter((id) => id !== yo && !isGuestIdentity(id));
+      const conmigo = gente.filter((p) => p.identity !== yo && !isGuestIdentity(p.identity)).length;
       // La copia se pide **ya**, en el clic, con la promesa de la invitación:
       // esperar a crearla y copiar después pierde el gesto (ver `copyText`).
-      const creada = create({ orgId, spaceId, title: titulo.trim(), ttlHours: Number(horas) });
+      // `moveCall`: la llamada se muda entera. A quienes están se les lleva
+      // solos, y quien entre al canal en los próximos segundos acaba aquí
+      // también. Antes sólo te ibas tú y se les llamaba para que te siguieran:
+      // había que ir diciendo «muévanse acá» (jose, 15-oct-2026).
+      const creada = create({ orgId, spaceId, title: titulo.trim(), ttlHours: Number(horas), moveCall: fromCall });
       const copia = copiar(creada);
       const inv = await creada;
       setTitulo("");
@@ -89,10 +93,7 @@ export default function GuestInviteDialog({
         onOpenChange(false);
         await entrarEnReunion(inv.id);
         navigate(`/call/${inv.id}`);
-        // Mejor esfuerzo: si a alguien no se le pudo llamar, la reunión sigue y
-        // el enlace ya está copiado.
-        await Promise.allSettled(conmigo.map((id) => ring(inv.id, id)));
-        if (conmigo.length > 0) toast.info(t("calls:movedRinging", { count: conmigo.length }));
+        if (conmigo > 0) toast.info(t("calls:movedTogether", { count: conmigo }));
       }
     } catch (e) {
       toast.error(phraseFor(codigoDe(e), String((e as Error)?.message ?? e)));
