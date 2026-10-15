@@ -13,6 +13,17 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**15-oct, v1.6.101: responder, mudar la llamada y el eco** (App #156, #157,
+#158). Responder a un mensaje con su cita, en canales, directos y el chat de
+la llamada; la cita se lee al pintar, no se copia (`domain/reply.go`). Invitar
+por enlace desde una llamada se lleva a todos, y quien entra al canal en los
+30 s siguientes acaba en la reunión (`domain.CallMoveWindow`). El escritorio
+cancela el eco con una sola salida que mezcla y da la referencia; sin control
+de ganancia, que deshacía la supresión (`docs/voz.md`). Falta probar las tres
+con la app de verdad. Los permisos de micrófono repetidos en el Mac de
+Alexander esperan datos (#158). Los enlaces del chat de la llamada ya se
+pulsan. Las tandas 2–4 del chat propio de la llamada (#146) siguen pendientes.
+
 **14-oct, sin soltar la app (backend y agente v6 publicados): desplegar sin
 GitHub Actions** (Backend #155). La cuenta dwit-mexico se quedó sin minutos.
 Cada servicio dice su **rama** (un aviso o push de otra no lo toca), y con
