@@ -57,8 +57,14 @@ func (r *ChatRepository) List(spaceID, query string, before time.Time, limit int
 	q := r.db.Table("chat_messages m").
 		Select(`m.id, m.space_id, m.author_user_id,
 			COALESCE(u.username,'') AS author_name,
-			m.kind, m.body, m.created_at, m.updated_at`).
+			m.kind, m.body, m.created_at, m.updated_at,
+			m.reply_to_id, COALESCE(ru.username,'') AS reply_author,
+			COALESCE(LEFT(r.body, 400),'') AS reply_body, (r.id IS NULL OR r.deleted_at IS NOT NULL) AS reply_withdrawn`).
 		Joins("LEFT JOIN users u ON u.id = m.author_user_id").
+		// La cita: lo que se contesta, leído ahora y no copiado al escribir.
+		// Ver domain/reply.go.
+		Joins("LEFT JOIN chat_messages r ON r.id = m.reply_to_id").
+		Joins("LEFT JOIN users ru ON ru.id = r.author_user_id").
 		Where("m.space_id = ? AND m.deleted_at IS NULL", spaceID)
 	if !before.IsZero() {
 		q = q.Where("m.created_at < ?", before)
@@ -72,6 +78,9 @@ func (r *ChatRepository) List(spaceID, query string, before time.Time, limit int
 	// but a channel reads top-down.
 	if err := q.Order("m.created_at DESC").Limit(limit).Scan(&out).Error; err != nil {
 		return nil, err
+	}
+	for i := range out {
+		out[i].Quotes()
 	}
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]

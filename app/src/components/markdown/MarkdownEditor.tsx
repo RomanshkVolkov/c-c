@@ -199,6 +199,8 @@ export interface MarkdownEditorHandle {
    * recoge lo que se suelta en cualquier parte de la conversación.
    */
   insertFiles: (files: File[]) => void;
+  /** Pone el cursor al final. Lo usa «Responder»: eliges a qué y escribes. */
+  focus: () => void;
 }
 
 /**
@@ -431,6 +433,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         void (async () => {
           for (const f of files) await insertUploadRef.current?.(f);
         })();
+      },
+      focus: () => {
+        editorRef.current?.commands.focus("end");
       },
     }),
     [],

@@ -16,6 +16,18 @@ import { nombreDe } from "@/lib/nombres";
  * once, so it comes from a single grouped endpoint rather than a request per row.
  */
 
+/**
+ * Lo que una respuesta enseña de lo que contesta. Lo lee el servidor al pedir
+ * el hilo, no se copia al escribir: si lo citado se edita, la cita dice lo
+ * nuevo, y si se retira vuelve `gone` y sin texto. Ver `backend/.../domain/reply.go`.
+ */
+export interface MessageQuote {
+  id: string;
+  authorName: string;
+  body: string;
+  gone: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   spaceId: string;
@@ -38,6 +50,8 @@ export interface ChatMessage {
   updatedAt: string;
   /** Contadas para mí. Un backend anterior a las reacciones no las manda. */
   reactions?: Reaction[];
+  /** A qué contesta, si contesta a algo. */
+  replyTo?: MessageQuote;
 }
 
 /** Un fichero que se enseñó en el canal. Sale de los cuerpos, no de una tabla. */
@@ -112,7 +126,7 @@ interface ChatState {
    */
   refrescar: () => Promise<void>;
   fetchOlder: () => Promise<void>;
-  post: (spaceId: string, body: string) => Promise<void>;
+  post: (spaceId: string, body: string, replyToId?: string) => Promise<void>;
   edit: (spaceId: string, messageId: string, body: string) => Promise<void>;
   withdraw: (spaceId: string, messageId: string) => Promise<void>;
   /**
@@ -232,8 +246,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  post: async (spaceId, body) => {
-    await api.post(`/api/v1/task-spaces/${spaceId}/chat`, { body }, true);
+  post: async (spaceId, body, replyToId) => {
+    await api.post(`/api/v1/task-spaces/${spaceId}/chat`, replyToId ? { body, replyToId } : { body }, true);
     // Refetch rather than append the response: the server assigns the timestamp,
     // and a locally-appended line would sort wrong against anything that landed
     // in between.

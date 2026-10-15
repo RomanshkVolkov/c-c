@@ -507,6 +507,7 @@ export function useReportEvents() {
           const p = parse(data) as Payload & {
             spaceId?: string;
             mentions?: string[];
+            repliedTo?: string;
             spaceName?: string;
             authorName?: string;
             preview?: string;
@@ -555,6 +556,13 @@ export function useReportEvents() {
           if (me && p.mentions?.includes(me)) {
             toast.message(i18next.t("common:last.mentionedIn", { where }));
             notify("chat:mention", `Mentioned in ${where}`, linea);
+            break;
+          }
+          // Contestarte es hablarte a ti, igual que nombrarte: interrumpe aunque
+          // estés mirando el canal. La misma clase de aviso que la mención.
+          if (me && p.repliedTo === me && !own) {
+            toast.message(i18next.t("common:last.repliedIn", { where }));
+            notify("chat:mention", i18next.t("common:last.repliedIn", { where }), linea);
             break;
           }
 

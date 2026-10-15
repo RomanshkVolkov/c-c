@@ -83,6 +83,9 @@ type DMMessage struct {
 	OrgID        string `gorm:"type:varchar(36);index;not null" json:"orgId"`
 	AuthorUserID string `gorm:"type:varchar(36);index;not null" json:"authorUserId"`
 	Body         string `gorm:"type:text;not null"              json:"body"`
+	// ReplyToID: el mensaje de la misma conversación al que éste contesta. Ver
+	// domain/reply.go.
+	ReplyToID *string `gorm:"type:varchar(36)" json:"replyToId,omitempty"`
 	// Withdrawing hides; it does not destroy — as in the channels. The read
 	// filters it explicitly rather than trusting the scope, because that exact
 	// omission has shipped here before.
@@ -111,6 +114,8 @@ type OpenDMRequest struct {
 
 type DMMessageRequest struct {
 	Body string `json:"body" validate:"required,min=1,max=8000"`
+	// Como en un canal: sólo al escribir.
+	ReplyToID string `json:"replyToId,omitempty" validate:"omitempty,max=36"`
 }
 
 // DMMessageResponse carries the author's name so a thread renders without a
@@ -126,7 +131,12 @@ type DMMessageResponse struct {
 	// Reactions, contadas para quien pregunta (ver domain/reaction.go). No es
 	// columna: lo rellena el servicio después de leer la página.
 	Reactions []ReactionSummary `json:"reactions" gorm:"-"`
+	ReplyTo   *MessageQuote     `json:"replyTo,omitempty" gorm:"-"`
+	QuoteRow  `gorm:"embedded"`
 }
+
+// Quotes arma la cita con lo que trajo el join.
+func (m *DMMessageResponse) Quotes() { m.ReplyTo = m.quote() }
 
 // DMSummary is one row of the conversation list: who it's with, and whether
 // they have said anything you haven't read.

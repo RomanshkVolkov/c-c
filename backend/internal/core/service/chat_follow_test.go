@@ -25,13 +25,13 @@ import (
 // que sí te buscaba. Seguir es cómo se dice «este sitio me importa».
 
 type avisoEspiado struct {
-	userID, kind, via, grupo string
+	userID, kind, via, grupo, titulo string
 }
 
 type notificadorEspia struct{ avisos []avisoEspiado }
 
 func (n *notificadorEspia) Notify(a domain.Aviso) {
-	n.avisos = append(n.avisos, avisoEspiado{a.UserID, a.Kind, a.Via, a.Group})
+	n.avisos = append(n.avisos, avisoEspiado{a.UserID, a.Kind, a.Via, a.Group, a.TitleKey})
 }
 
 // gruposDe: con qué clave de agrupación salió cada aviso de esa clase.

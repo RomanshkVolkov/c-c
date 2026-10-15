@@ -268,6 +268,12 @@
    @tailwindcss/typography: that plugin ships its own colour scale, which would
    fight the design tokens in both themes. */
 @layer components {
+  /* El mensaje al que lleva una cita, resaltado un momento para que se vea
+     dónde ha caído la vista. Ver `jumpToMessage`. */
+  .reply-flash {
+    @apply rounded-md;
+    animation: reply-flash 1.6s ease-out;
+  }
   .md-body,
   .prose-editor {
     @apply text-foreground;
@@ -465,4 +471,9 @@
   [data-slot="sidebar-container"] {
     transition: none;
   }
+}
+
+@keyframes reply-flash {
+  0%, 30% { background-color: color-mix(in oklab, var(--primary) 18%, transparent); }
+  100% { background-color: transparent; }
 }

@@ -185,12 +185,29 @@ func (s *DMService) React(conversationID, messageID, userID, emoji string, on bo
 }
 
 func (s *DMService) Post(conversationID, userID, body string) (*domain.DMMessage, error) {
+	return s.Reply(conversationID, userID, body, "")
+}
+
+// Reply escribe una línea que contesta a otra de la misma conversación. Con
+// replyToID vacío es Post. La misma guarda que en un canal (ver
+// ChatService.Reply): lo citado tiene que ser de esta conversación y seguir en
+// pie, porque la cita se lee con un join que no lo comprueba.
+//
+// No avisa aparte: en un directo el otro ya recibe el aviso del mensaje.
+func (s *DMService) Reply(conversationID, userID, body, replyToID string) (*domain.DMMessage, error) {
 	c, err := s.mine(conversationID, userID)
 	if err != nil {
 		return nil, err
 	}
 	m := &domain.DMMessage{
 		ConversationID: c.ID, OrgID: c.OrgID, AuthorUserID: userID, Body: body,
+	}
+	if replyToID != "" {
+		target, err := s.repo.Find(replyToID)
+		if err != nil || target.ConversationID != c.ID {
+			return nil, ErrReplyElsewhere
+		}
+		m.ReplyToID = &target.ID
 	}
 	m.ID = uuid.NewString()
 	if err := s.repo.Create(m); err != nil {

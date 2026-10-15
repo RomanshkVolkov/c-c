@@ -68,6 +68,9 @@ type ChatMessage struct {
 	// signed by that person, which reads correctly as long as the prose does.
 	// That is what makes this deployable before the app that understands it.
 	Kind ChatKind `gorm:"type:varchar(12);not null;default:'user'" json:"kind"`
+	// ReplyToID: el mensaje del mismo canal al que éste contesta. Ver
+	// domain/reply.go.
+	ReplyToID *string `gorm:"type:varchar(36)" json:"replyToId,omitempty"`
 	// Withdrawing hides; it does not destroy. The same choice the item threads
 	// made — and the read below has to filter it explicitly, because a message
 	// that stayed on screen after being deleted is a bug this codebase has
@@ -128,6 +131,9 @@ func ChatAttachmentRef(spaceID, attachmentID string) string {
 
 type ChatMessageRequest struct {
 	Body string `json:"body" validate:"required,min=1,max=8000"`
+	// ReplyToID sólo cuenta al escribir; al editar se ignora: una respuesta no
+	// cambia de a quién contesta.
+	ReplyToID string `json:"replyToId,omitempty" validate:"omitempty,max=36"`
 }
 
 // ChatMessageResponse carries the author's name so a channel renders without a
@@ -144,7 +150,13 @@ type ChatMessageResponse struct {
 	// Reactions, contadas para quien pregunta (ver domain/reaction.go). No es
 	// columna: lo rellena el servicio después de leer la página.
 	Reactions []ReactionSummary `json:"reactions" gorm:"-"`
+	// ReplyTo, la cita. La arma Quotes() con las columnas de QuoteRow.
+	ReplyTo  *MessageQuote `json:"replyTo,omitempty" gorm:"-"`
+	QuoteRow `gorm:"embedded"`
 }
+
+// Quotes arma la cita de cada mensaje con lo que trajo el join.
+func (m *ChatMessageResponse) Quotes() { m.ReplyTo = m.quote() }
 
 // ─── What the channel's tabs list ─────────────────────────────────────────────
 //

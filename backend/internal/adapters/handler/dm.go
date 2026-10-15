@@ -101,7 +101,7 @@ func (h *taskHandler) PostDM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	m, err := h.dms.Post(id, user.UserID, req.Body)
+	m, err := h.dms.Reply(id, user.UserID, req.Body, req.ReplyToID)
 	if mapDMError(w, err) {
 		return
 	}
@@ -188,6 +188,9 @@ func mapDMError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, service.ErrNotTheAuthor):
 		SendErrorResponse(w, http.StatusForbidden,
 			"Only the person who wrote this can change it.", "not-the-author")
+	case errors.Is(err, service.ErrReplyElsewhere):
+		SendErrorResponse(w, http.StatusBadRequest,
+			"The message you reply to is not in this conversation", "reply-elsewhere")
 	case errors.Is(err, service.ErrBadReaction):
 		SendErrorResponse(w, http.StatusBadRequest,
 			"That reaction is not one of the accepted emoji.", "bad-reaction")

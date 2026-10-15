@@ -5,7 +5,7 @@ import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Bell, BellOff, ChevronDown, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, UserPlus, Volume2, X } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, ChevronDown, CornerUpLeft, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, UserPlus, Volume2, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +17,7 @@ import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown
 import FileDropZone from "@/components/FileDropZone";
 import MessageToDoc from "@/components/chat/MessageToDoc";
 import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
+import { ReplyingBar, ReplyQuote } from "@/components/chat/ReplyQuote";
 import Markdown from "@/components/markdown/Markdown";
 import { openInternalRef } from "@/lib/open-ref";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -98,6 +99,11 @@ export default function ChannelView({
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // A qué se contesta, si se contesta a algo. Lo de otro canal no viaja:
+  // cambiar de canal lo suelta.
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  useEffect(() => setReplyingTo(null), [spaceId]);
+  const myId = useAuthStore((s) => s.session?.id);
   // El compositor, para que la zona para soltar le entregue los ficheros.
   const composer = useRef<MarkdownEditorHandle>(null);
   const [tab, setTab] = useState<Tab>("thread");
@@ -167,8 +173,9 @@ export default function ChannelView({
     if (!body || sending) return;
     setSending(true);
     try {
-      await post(spaceId, body);
+      await post(spaceId, body, replyingTo?.id);
       setDraft("");
+      setReplyingTo(null);
     } catch (e) {
       // The draft stays in the box: losing what someone typed because the
       // network blinked is worse than the failure itself.
@@ -318,7 +325,7 @@ export default function ChannelView({
       ) : (
       <>
       <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={caja} onScroll={enScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div ref={caja} onScroll={enScroll} data-thread className="min-h-0 flex-1 overflow-y-auto p-3">
         {loadingOlder && (
           <div className="flex justify-center pb-2">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -347,6 +354,10 @@ export default function ChannelView({
                 // y pulsarla salta a su pestaña en vez de sacar a nadie al
                 // navegador con una URL que sólo significa algo aquí dentro.
                 onOpenRecordings={() => switchTab("recordings")}
+                onReply={() => {
+                  setReplyingTo(m);
+                  composer.current?.focus();
+                }}
                 // Consecutive lines from one person read as one turn of speech.
                 grouped={i > 0 && messages[i - 1].authorUserId === m.authorUserId}
               />
@@ -375,6 +386,13 @@ export default function ChannelView({
       <VozEnCurso spaceId={spaceId} />
 
       <div className="shrink-0 border-t p-2">
+        {replyingTo && (
+          <ReplyingBar
+            authorName={replyingTo.authorUserId === myId ? t("chat:you") : replyingTo.authorName}
+            body={replyingTo.body}
+            onCancel={() => setReplyingTo(null)}
+          />
+        )}
         <MarkdownEditor
           ref={composer}
           value={draft}
@@ -419,6 +437,7 @@ function Message({
   cards,
   people,
   onOpenRecordings,
+  onReply,
 }: {
   m: ChatMessage;
   spaceId: string;
@@ -430,6 +449,7 @@ function Message({
   cards: () => { id: string; seq: number; title: string }[];
   people: () => { id: string; username: string }[];
   onOpenRecordings: () => void;
+  onReply: () => void;
 }) {
   const { t } = useT();
   const session = useAuthStore((s) => s.session);
@@ -490,7 +510,7 @@ function Message({
     // dejaría los mensajes de terceros a media anchura sin ganar nada —son los
     // que más se leen—, así que los ajenos siguen ocupando la línea entera y es
     // el mío el que se aparta.
-    <div className={cn("group flex flex-col", mine && "items-end")}>
+    <div data-msg-id={m.id} className={cn("group flex flex-col", mine && "items-end")}>
       {!grouped && (
         <div
           className={cn(
@@ -556,6 +576,7 @@ function Message({
           </div>
         ) : (
           <>
+            {m.replyTo && <ReplyQuote quote={m.replyTo} />}
             <Markdown onInternalLink={openCited}>{m.body}</Markdown>
             {/* Poner la primera reacción: al pasar por encima, junto a la
                 flecha. También en una línea del sistema —celebrar que la
@@ -589,6 +610,10 @@ function Message({
                 <ChevronDown className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-40">
+                <DropdownMenuItem onClick={onReply}>
+                  <CornerUpLeft className="size-4" />
+                  {t("chat:reply")}
+                </DropdownMenuItem>
                 <MessageToTask body={m.body} spaceId={spaceId} spaceName={spaceName} />
                 <MessageToDoc
                   body={m.body}

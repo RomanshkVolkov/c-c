@@ -616,6 +616,7 @@
     "newReport": "Reporte nuevo",
     "reportStatusChanged": "Cambió el estado de un reporte",
     "mentionedIn": "Te mencionaron en {{where}}",
+    "repliedIn": "Te respondieron en {{where}}",
     "newMessageIn": "Mensaje nuevo en {{where}}",
     "serverRemoved": "{{name}} quitado",
     "joinedOrg": "Ya estás en {{name}}",

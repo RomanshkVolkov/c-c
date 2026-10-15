@@ -1,10 +1,12 @@
 import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { CornerUpLeft, Loader2, X } from "lucide-react";
 
 import { iniciales } from "@/lib/desde";
-import { useChatStore } from "@/store/chat.store";
+import { useChatStore, type ChatMessage } from "@/store/chat.store";
+import { useAuthStore } from "@/store/auth.store";
+import { ReplyingBar, ReplyQuote } from "@/components/chat/ReplyQuote";
 import { cn } from "@/lib/utils";
 import { linkify } from "@/lib/linkify";
 import { openInternalRef } from "@/lib/open-ref";
@@ -47,6 +49,11 @@ export default function VoiceChat({
 
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  // Responder también aquí: «¿esto lo dices por lo que puso Bea?» es de las
+  // cosas que más se preguntan con una llamada en curso.
+  const [contestando, setContestando] = useState<ChatMessage | null>(null);
+  const caja = useRef<HTMLInputElement>(null);
+  const yo = useAuthStore((s) => s.session?.id);
   const fondo = useRef<HTMLDivElement>(null);
 
   // Sólo si el hilo cargado es otro. Estando en el canal ya suele estar puesto
@@ -67,8 +74,9 @@ export default function VoiceChat({
     if (!cuerpo || enviando) return;
     setEnviando(true);
     try {
-      await post(spaceId, cuerpo);
+      await post(spaceId, cuerpo, contestando?.id);
       setTexto("");
+      setContestando(null);
     } finally {
       setEnviando(false);
     }
@@ -97,7 +105,7 @@ export default function VoiceChat({
           Y explica lo otro: `scrollIntoView` desplaza el ancestro que sí
           desborda, así que al no desbordar ésta movía otra cosa. De ahí que
           apareciera scroll donde no tocaba en cuanto el chat crecía. */}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+      <div data-thread className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {cargando && messages.length === 0 ? (
           <p className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" /> {t("chat:loading")}
@@ -108,20 +116,35 @@ export default function VoiceChat({
           </p>
         ) : (
           messages.map((m) => (
-            <div key={m.id} className="flex gap-2">
+            <div key={m.id} data-msg-id={m.id} className="group relative flex gap-2">
               <span className="grid size-6.5 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-bold">
                 {iniciales(m.authorName)}
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 pr-5">
                 <div className="text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground">{m.authorName}</span>{" "}
                   {horaCorta(m.createdAt)}
                 </div>
+                {m.replyTo && <ReplyQuote quote={m.replyTo} className="mt-0.5" />}
                 {/* En texto plano a propósito: ver el comentario de arriba. */}
                 <div className="whitespace-pre-wrap break-words text-[13px]">
                   <Body text={m.body} />
                 </div>
               </div>
+              {m.kind !== "system" && (
+                <button
+                  type="button"
+                  aria-label={t("chat:reply")}
+                  title={t("chat:reply")}
+                  onClick={() => {
+                    setContestando(m);
+                    caja.current?.focus();
+                  }}
+                  className="absolute right-0 top-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                >
+                  <CornerUpLeft className="size-3.5" />
+                </button>
+              )}
             </div>
           ))
         )}
@@ -129,7 +152,15 @@ export default function VoiceChat({
       </div>
 
       <div className="shrink-0 border-t p-2">
+        {contestando && (
+          <ReplyingBar
+            authorName={contestando.authorUserId === yo ? t("chat:you") : contestando.authorName}
+            body={contestando.body}
+            onCancel={() => setContestando(null)}
+          />
+        )}
         <input
+          ref={caja}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => {

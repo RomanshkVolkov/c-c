@@ -99,7 +99,7 @@ describe("el chat de la sala", () => {
     const caja = screen.getByPlaceholderText("Message #pixel");
     fireEvent.change(caja, { target: { value: "portentosoftware.com/muro" } });
     fireEvent.keyDown(caja, { key: "Enter" });
-    expect(post).toHaveBeenCalledWith("esp-1", "portentosoftware.com/muro");
+    expect(post).toHaveBeenCalledWith("esp-1", "portentosoftware.com/muro", undefined);
   });
 
   it("enseña lo que ya hay en el hilo", () => {
@@ -122,6 +122,19 @@ describe("el chat de la sala", () => {
     // Cancelado: si no, el webview navega a la URL y la app se va con ella.
     expect(fireEvent.click(link)).toBe(false);
     expect(openExternal).toHaveBeenCalledWith("https://figma.com/file/abc");
+  });
+
+  // Responder también desde la llamada, y lo mandado lleva a qué contesta.
+  it("se contesta a un mensaje del hilo", () => {
+    sala();
+    abrirChat();
+    const panel = within(screen.getByText("Channel chat").closest("aside")!);
+    fireEvent.click(panel.getByRole("button", { name: "Reply" }));
+    expect(panel.getByText("Replying to Bea")).toBeTruthy();
+    const caja = screen.getByPlaceholderText("Message #pixel");
+    fireEvent.change(caja, { target: { value: "va" } });
+    fireEvent.keyDown(caja, { key: "Enter" });
+    expect(post).toHaveBeenCalledWith("esp-1", "va", "m1");
   });
 
   it("no manda una línea en blanco", () => {

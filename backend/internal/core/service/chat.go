@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +56,9 @@ type broadcast struct {
 	// than the inbox showing somebody a raw `[watch it](cac:recording/…)`.
 	notice   string
 	mentions []string
+	// repliedTo: quien escribió lo que esta línea contesta. Se le avisa como a
+	// alguien nombrado — le están hablando a él —, salvo que sea quien escribe.
+	repliedTo string
 }
 
 type ChatService struct {
@@ -151,6 +155,9 @@ func (s *ChatService) publicarAlStream(b broadcast) {
 			// console decides whether it is being spoken to. Nothing private
 			// travels here: these are ids of people who share this channel.
 			"mentions": b.mentions,
+			// A quién se contesta, para que su consola le avise como a una
+			// mención y no como a una línea más del canal.
+			"repliedTo": b.repliedTo,
 		},
 	})
 }
@@ -197,6 +204,19 @@ func (s *ChatService) anotarAvisos(b broadcast) {
 		})
 	}
 
+	// A quien le contestan, como a quien nombran, y con su título. Si además lo
+	// nombraron, ya tiene su aviso: uno basta.
+	if b.repliedTo != "" && b.repliedTo != b.actorID && !slices.Contains(b.mentions, b.repliedTo) {
+		s.notifier.Notify(domain.Aviso{
+			UserID: b.repliedTo, OrgID: b.orgID, Kind: "chat:mention",
+			TitleKey:  "notify.chat.replied",
+			TitleArgs: map[string]string{"where": where},
+			Body:      line,
+			Link:      "/chat?space=" + b.spaceID, Via: domain.ViaApp,
+			Group: domain.ChannelGroup(b.spaceID), Label: where,
+		})
+	}
+
 	// Y a quien sigue el canal, por lo corriente. Sólo a quien lo sigue: avisar
 	// a todo el espacio de cada línea convierte la bandeja en una copia del
 	// chat, y cuarenta mensajes de un canal ajeno tapan la mención que sí te
@@ -204,6 +224,9 @@ func (s *ChatService) anotarAvisos(b broadcast) {
 	named := make(map[string]bool, len(b.mentions))
 	for _, uid := range b.mentions {
 		named[uid] = true
+	}
+	if b.repliedTo != "" {
+		named[b.repliedTo] = true
 	}
 	followers, err := s.repo.Followers(b.spaceID)
 	if err != nil {
@@ -275,7 +298,36 @@ func (s *ChatService) List(spaceID, query string, before time.Time, limit int) (
 
 // Post writes a person's line. The kind is fixed here and nowhere else.
 func (s *ChatService) Post(spaceID, orgID, userID, body string) (*domain.ChatMessage, error) {
-	return s.write(domain.ChatKindUser, spaceID, orgID, userID, body, "")
+	return s.Reply(spaceID, orgID, userID, body, "")
+}
+
+// ErrReplyElsewhere: lo que se quiere contestar no es una línea viva de este
+// hilo. Lo mismo si no existe, si se retiró o si es de otro canal — no se
+// distingue, para no contestar preguntas sobre hilos ajenos.
+var ErrReplyElsewhere = errors.New("the message you reply to is not in this thread")
+
+// Reply writes a person's line that answers another one of the same channel.
+// Con replyToID vacío es Post.
+//
+// **La guarda es el canal.** El id llega de fuera, y la cita se lee con un
+// join que no mira de qué canal es lo citado: sin esta comprobación,
+// contestar a un id de otro canal —de otra org— enseñaría aquí un trozo de
+// su texto. Un mensaje retirado tampoco: retirar es dejar de enseñarlo.
+func (s *ChatService) Reply(spaceID, orgID, userID, body, replyToID string) (*domain.ChatMessage, error) {
+	if replyToID == "" {
+		return s.write(domain.ChatKindUser, spaceID, orgID, userID, body, "", nil, "")
+	}
+	target, err := s.repo.Find(replyToID)
+	if err != nil || target.SpaceID != spaceID {
+		return nil, ErrReplyElsewhere
+	}
+	// A una línea del sistema se puede contestar, pero no se avisa a nadie:
+	// su autor es quien la provocó, no quien la dijo.
+	repliedTo := target.AuthorUserID
+	if target.Kind == domain.ChatKindSystem {
+		repliedTo = ""
+	}
+	return s.write(domain.ChatKindUser, spaceID, orgID, userID, body, "", &target.ID, repliedTo)
 }
 
 // PostSystem writes a line that nobody typed.
@@ -295,14 +347,16 @@ func (s *ChatService) Post(spaceID, orgID, userID, body string) (*domain.ChatMes
 // signs the line with, and — because they caused it — who is not notified
 // about it.
 func (s *ChatService) PostSystem(spaceID, orgID, actorID, body, notice string) (*domain.ChatMessage, error) {
-	return s.write(domain.ChatKindSystem, spaceID, orgID, actorID, body, notice)
+	return s.write(domain.ChatKindSystem, spaceID, orgID, actorID, body, notice, nil, "")
 }
 
 func (s *ChatService) write(
 	kind domain.ChatKind, spaceID, orgID, actorID, body, notice string,
+	replyToID *string, repliedTo string,
 ) (*domain.ChatMessage, error) {
 	m := &domain.ChatMessage{
 		SpaceID: spaceID, OrgID: orgID, AuthorUserID: actorID, Body: body, Kind: kind,
+		ReplyToID: replyToID,
 	}
 	m.ID = uuid.NewString()
 	if err := s.repo.Create(m); err != nil {
@@ -313,7 +367,8 @@ func (s *ChatService) write(
 		kind: kind, body: body, notice: notice,
 		// Las menciones se leen del cuerpo también aquí: si algún día una línea
 		// del sistema nombra a alguien, que le llegue. Hoy ninguna lo hace.
-		mentions: s.mentioned(orgID, body),
+		mentions:  s.mentioned(orgID, body),
+		repliedTo: repliedTo,
 	})
 	return m, nil
 }

@@ -51,6 +51,10 @@ var catalogo = map[string]map[Locale]string{
 		EN: "Mentioned in {{where}}",
 		ES: "Te nombraron en {{where}}",
 	},
+	"notify.chat.replied": {
+		EN: "Replied to you in {{where}}",
+		ES: "Te respondieron en {{where}}",
+	},
 	"notify.item.assigned": {
 		EN: "Assigned to you",
 		ES: "Te la asignaron",

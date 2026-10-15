@@ -4,6 +4,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { applyReaction, type Reaction } from "@/lib/reactions";
 import { nombreDe } from "@/lib/nombres";
 import type { APIResponse } from "@/types/auth";
+import type { MessageQuote } from "@/store/chat.store";
 
 /**
  * Private conversations: two people, one organization.
@@ -25,6 +26,8 @@ export interface DMMessage {
   updatedAt: string;
   /** Contadas para mí. Un backend anterior a las reacciones no las manda. */
   reactions?: Reaction[];
+  /** A qué contesta, si contesta a algo. */
+  replyTo?: MessageQuote;
 }
 
 export interface DMSummary {
@@ -80,7 +83,7 @@ interface DMState {
   /** Alguien reaccionó en una conversación: si es la abierta, se relee. */
   onReaction: (conversationId: string) => Promise<void>;
   fetchOlder: () => Promise<void>;
-  post: (conversationId: string, body: string) => Promise<void>;
+  post: (conversationId: string, body: string, replyToId?: string) => Promise<void>;
   /**
    * Sube un fichero a la conversación (una captura pegada, un PDF) y devuelve
    * lo que el editor mete en el texto. Sólo lo ven las dos personas.
@@ -201,8 +204,8 @@ export const useDMStore = create<DMState>((set, get) => ({
     return { url: res.data.url, fileName: res.data.fileName };
   },
 
-  post: async (conversationId, body) => {
-    await api.post(`/api/v1/dm/${conversationId}/messages`, { body }, true);
+  post: async (conversationId, body, replyToId) => {
+    await api.post(`/api/v1/dm/${conversationId}/messages`, replyToId ? { body, replyToId } : { body }, true);
     await get().refrescar();
   },
 

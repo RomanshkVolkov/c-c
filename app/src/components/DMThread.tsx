@@ -4,7 +4,7 @@ import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ArrowLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
+import { ChevronDown, ArrowLeft, CornerUpLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +19,8 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useDMStore } from "@/store/dm.store";
 import type { Reaction } from "@/lib/reactions";
 import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
+import { ReplyingBar, ReplyQuote } from "@/components/chat/ReplyQuote";
+import type { DMMessage } from "@/store/dm.store";
 import { useAuthStore } from "@/store/auth.store";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +64,10 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // A qué se contesta. Cambiar de conversación lo suelta.
+  const [replyingTo, setReplyingTo] = useState<DMMessage | null>(null);
+  useEffect(() => setReplyingTo(null), [conversationId]);
+  const myId = useAuthStore((s) => s.session?.id);
   const other = conversations.find((c) => c.conversationId === conversationId);
   const { caja, enScroll, alFinal, hayNuevos } = useAnclajeDeScroll({
     items: messages,
@@ -77,8 +83,9 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
     if (!body || sending || !conversationId) return;
     setSending(true);
     try {
-      await post(conversationId, body);
+      await post(conversationId, body, replyingTo?.id);
       setDraft("");
+      setReplyingTo(null);
     } catch (e) {
       // The draft stays put: losing what somebody typed to a network blink is
       // worse than the failure.
@@ -107,7 +114,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
       </header>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={caja} onScroll={enScroll} className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div ref={caja} onScroll={enScroll} data-thread className="min-h-0 flex-1 overflow-y-auto p-3">
         {loadingOlder && (
           <div className="flex justify-center pb-2">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -129,6 +136,10 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
                 m={m}
                 conversationId={conversationId}
                 grouped={i > 0 && messages[i - 1].authorUserId === m.authorUserId}
+                onReply={() => {
+                  setReplyingTo(m);
+                  composer.current?.focus();
+                }}
               />
             ))}
           </div>
@@ -153,6 +164,13 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="shrink-0 border-t p-2">
+        {replyingTo && (
+          <ReplyingBar
+            authorName={replyingTo.authorUserId === myId ? t("chat:you") : replyingTo.authorName}
+            body={replyingTo.body}
+            onCancel={() => setReplyingTo(null)}
+          />
+        )}
         <MarkdownEditor
           ref={composer}
           value={draft}
@@ -182,6 +200,7 @@ function DMLine({
   m,
   conversationId,
   grouped,
+  onReply,
 }: {
   m: {
     id: string;
@@ -191,9 +210,11 @@ function DMLine({
     createdAt: string;
     updatedAt: string;
     reactions?: Reaction[];
+    replyTo?: DMMessage["replyTo"];
   };
   conversationId: string;
   grouped: boolean;
+  onReply: () => void;
 }) {
   const { t } = useT();
   const session = useAuthStore((s) => s.session);
@@ -232,7 +253,7 @@ function DMLine({
     // Igual que en un canal: lo propio a la derecha. La misma señal en los dos
     // sitios, porque es la misma pregunta —¿esto lo dije yo?— y aprenderla dos
     // veces no tiene sentido.
-    <div className={cn("group flex flex-col", mine && "items-end")}>
+    <div data-msg-id={m.id} className={cn("group flex flex-col", mine && "items-end")}>
       {!grouped && (
         <div
           className={cn(
@@ -251,11 +272,10 @@ function DMLine({
       )}
       <div
         className={cn(
-          // El hueco de los iconos (la carita y, en lo mío, la flecha). Sin él
-          // el texto pasa por debajo y los iconos tapan justo las primeras
-          // letras de la línea que ibas a leer.
-          "relative rounded-md py-1 pl-2 hover:bg-muted/40",
-          mine ? "pr-12" : "pr-7",
+          // El hueco de los iconos (la carita y la flecha). Sin él el texto
+          // pasa por debajo y los iconos tapan justo las primeras letras de la
+          // línea que ibas a leer.
+          "relative rounded-md py-1 pl-2 pr-12 hover:bg-muted/40",
           grouped && "mt-0.5",
           mine
             ? "max-w-[75%] rounded-tr-sm border border-primary/25 bg-primary/10"
@@ -277,51 +297,59 @@ function DMLine({
           </div>
         ) : (
           <>
+            {m.replyTo && <ReplyQuote quote={m.replyTo} />}
             <Markdown>{m.body}</Markdown>
-            {/* Reaccionar, al pasar por encima; junto a la flecha en lo mío. */}
+            {/* Reaccionar, al pasar por encima, junto a la flecha. */}
             <ReactionPicker
               reactions={m.reactions}
               onReact={(e, on) => reaccionar(e, on).catch(() => toast.error(t("chat:reactFailed")))}
               className={cn(
                 "absolute top-1 rounded p-0.5 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100",
-                mine ? "right-6" : "right-1",
+                "right-6",
               )}
             />
             {/* La misma flecha que en un canal, por lo mismo: tres iconos
                 diminutos encima del texto eran tres blancos que además tapaban
-                lo escrito. */}
-            {mine && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  aria-label={t("common:misc.messageActions")}
-                  className="absolute right-1 top-1 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100"
-                >
-                  <ChevronDown className="size-3.5" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-40">
-                  <DropdownMenuItem onClick={() => setEditing(true)}>
-                    <Pencil className="size-4" />
-                    {t("common:misc.edit")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={async () => {
-                      const ok = await confirm({
-                        title: t("common:misc.withdrawTitle"),
-                        description: t("common:misc.withdrawDmBody"),
-                        confirmText: t("common:misc.withdraw"),
-                        destructive: true,
-                      });
-                      if (!ok) return;
-                      withdraw(conversationId, m.id).catch((e) => toast.error(String(e)));
-                    }}
-                  >
-                    <Trash2 className="size-4" />
-                    {t("common:misc.withdraw")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                lo escrito. En todos los mensajes, porque a cualquiera se le
+                contesta; Editar y Retirar, sólo en lo mío. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label={t("common:misc.messageActions")}
+                className="absolute right-1 top-1 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100"
+              >
+                <ChevronDown className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-40">
+                <DropdownMenuItem onClick={onReply}>
+                  <CornerUpLeft className="size-4" />
+                  {t("chat:reply")}
+                </DropdownMenuItem>
+                {mine && (
+                  <>
+                    <DropdownMenuItem onClick={() => setEditing(true)}>
+                      <Pencil className="size-4" />
+                      {t("common:misc.edit")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: t("common:misc.withdrawTitle"),
+                          description: t("common:misc.withdrawDmBody"),
+                          confirmText: t("common:misc.withdraw"),
+                          destructive: true,
+                        });
+                        if (!ok) return;
+                        withdraw(conversationId, m.id).catch((e) => toast.error(String(e)));
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                      {t("common:misc.withdraw")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
       </div>

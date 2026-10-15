@@ -64,7 +64,11 @@ func (h *taskHandler) PostChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r)
-	m, err := h.chat.Post(sp.ID, sp.OrgID, user.UserID, req.Body)
+	m, err := h.chat.Reply(sp.ID, sp.OrgID, user.UserID, req.Body, req.ReplyToID)
+	if errors.Is(err, service.ErrReplyElsewhere) {
+		SendErrorResponse(w, http.StatusBadRequest, "The message you reply to is not in this channel", "reply-elsewhere")
+		return
+	}
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to post", err.Error())
 		return

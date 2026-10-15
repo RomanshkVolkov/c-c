@@ -36,5 +36,11 @@
   "clearSearch": "Clear the search",
   "react": "React",
   "reactFailed": "Could not save the reaction",
-  "reactionCount": "{{emoji}} {{count}}"
+  "reactionCount": "{{emoji}} {{count}}",
+  "reply": "Reply",
+  "replyingTo": "Replying to {{name}}",
+  "cancelReply": "Cancel reply",
+  "quoteGone": "This message was withdrawn",
+  "quoteNotLoaded": "That message is further up — scroll to load it",
+  "you": "You"
 }
