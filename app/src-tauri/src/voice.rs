@@ -554,9 +554,77 @@ fn mezclar(muestras: impl Iterator<Item = i16>) -> i16 {
         .clamp(i16::MIN as i32, i16::MAX as i32) as i16
 }
 
-/// Una cola por pista remota, a `SAMPLE_RATE` y mono. La llena el hilo de esa
-/// pista y la vacía la salida.
-type ColaPista = Arc<Mutex<std::collections::VecDeque<i16>>>;
+/// Lo que se guarda de cada pista antes de que empiece a sonar: 60 ms.
+///
+/// Sin colchón, la v1.6.101 sonaba a clics con una persona del navegador
+/// (jose, 15-oct-2026, grabado con el teléfono). Las tramas llegan al ritmo
+/// del SDK y la tarjeta de sonido consume al suyo, así que una cola que
+/// empieza vacía ronda el cero, y cada vez que se vacía a mitad de un bloque
+/// de la tarjeta sale un hueco de silencio: un clic. Con 60 ms de margen, el
+/// vaivén de llegada de las tramas no la vacía.
+const COLCHON: usize = MUESTRAS_POR_TRAMA * 6;
+
+/// Lo más que se deja acumular: 200 ms. Pasado eso se tira lo más viejo hasta
+/// el colchón, en vez de vaciar la cola (que era otro hueco).
+const COLA_MAX: usize = MUESTRAS_POR_TRAMA * 20;
+
+/// Una pista remota en la mezcla: su cola a `SAMPLE_RATE` y mono, y si está
+/// sonando o esperando a tener colchón.
+#[derive(Default)]
+struct Pista {
+    cola: std::collections::VecDeque<i16>,
+    sonando: bool,
+    /// Veces que se quedó sin muestras sonando. Va al diario: es la medida
+    /// de los clics.
+    huecos: u64,
+}
+
+impl Pista {
+    /// Lo que llega del SDK.
+    fn meter(&mut self, muestras: &[i16]) {
+        self.cola.extend(muestras.iter().copied());
+        if self.cola.len() > COLA_MAX {
+            let sobra = self.cola.len() - COLCHON;
+            self.cola.drain(..sobra);
+        }
+    }
+
+    /// La siguiente muestra para la mezcla. Sin colchón, silencio y a esperar;
+    /// si se vacía sonando, cuenta un hueco y vuelve a esperar al colchón, en
+    /// vez de ir soltando muestras sueltas entre huecos.
+    fn sacar(&mut self) -> i16 {
+        if !self.sonando {
+            if self.cola.len() < COLCHON {
+                return 0;
+            }
+            self.sonando = true;
+        }
+        match self.cola.pop_front() {
+            Some(m) => m,
+            None => {
+                self.sonando = false;
+                self.huecos += 1;
+                0
+            }
+        }
+    }
+}
+
+/// Una trama del SDK, a mono. Se pide mono, pero si llegara con más canales
+/// se promedian: tratar un estéreo intercalado como mono lo reproduciría a
+/// media velocidad y llenaría la cola el doble de rápido.
+fn a_mono(datos: &[i16], canales: usize) -> Vec<i16> {
+    if canales <= 1 {
+        return datos.to_vec();
+    }
+    datos
+        .chunks(canales)
+        .map(|c| (c.iter().map(|&v| v as i32).sum::<i32>() / c.len() as i32) as i16)
+        .collect()
+}
+
+/// Una pista en la mezcla, compartida entre su hilo y la salida.
+type ColaPista = Arc<Mutex<Pista>>;
 
 static PISTAS: Mutex<Vec<ColaPista>> = Mutex::new(Vec::new());
 
@@ -605,7 +673,7 @@ fn asegurar_salida() {
                         // chirrido. Sordo también consume la muestra: si no,
                         // la cola crece mientras no oyes y al volver sonaría
                         // lo de hace un minuto.
-                        let m = mezclar(colas.iter_mut().map(|q| q.pop_front().unwrap_or(0)));
+                        let m = mezclar(colas.iter_mut().map(|q| q.sacar()));
                         let m = if sordo { 0 } else { m };
                         // Lo que suena, que es lo que el cancelador tiene que
                         // restar. Sordo no suena nada, y la referencia lo dice.
@@ -2159,7 +2227,7 @@ fn fuente_de(source: TrackSource) -> crate::video_frames::Fuente {
 /// diferencia no se nota.
 fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
     asegurar_salida();
-    let cola: ColaPista = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+    let cola: ColaPista = Arc::new(Mutex::new(Pista::default()));
     PISTAS.lock().unwrap().push(cola.clone());
     std::thread::spawn(move || {
         // A `SAMPLE_RATE` y mono, que es como mezcla la salida: así todas las
@@ -2167,14 +2235,32 @@ fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
         // ritmo de la captura sin otro remuestreo.
         let mut entrante = NativeAudioStream::new(pista, SAMPLE_RATE as i32, 1);
         tauri::async_runtime::block_on(async {
+            let mut tramas: u64 = 0;
+            let mut huecos_antes = 0;
             while let Some(trama) = entrante.next().await {
-                let mut q = cola.lock().unwrap();
-                // Un tope: si nadie consume —altavoz dormido, sistema
-                // ocupado— la cola crecería sin fin y la latencia con ella.
-                if q.len() > SAMPLE_RATE as usize {
-                    q.clear();
+                tramas += 1;
+                // Cómo llega lo que entrega el SDK, una vez por pista: si el
+                // ritmo o los canales no son los pedidos, aquí se ve.
+                if tramas == 1 {
+                    nota(format!(
+                        "altavoz: pista a {} Hz, {} canal(es), {} muestras por trama",
+                        trama.sample_rate, trama.num_channels, trama.samples_per_channel
+                    ));
                 }
-                q.extend(trama.data.iter().copied());
+                let muestras = a_mono(&trama.data, trama.num_channels.max(1) as usize);
+                let mut q = cola.lock().unwrap();
+                q.meter(&muestras);
+                // Cada 5 s (500 tramas de 10 ms), los huecos de esta pista y
+                // cuánto colchón lleva. Cero huecos es lo sano.
+                if tramas % 500 == 0 {
+                    let huecos = q.huecos - huecos_antes;
+                    huecos_antes = q.huecos;
+                    let ms = q.cola.len() * 1000 / SAMPLE_RATE as usize;
+                    drop(q);
+                    if huecos > 0 {
+                        nota(format!("altavoz: {huecos} hueco(s) en 5 s, cola de {ms} ms"));
+                    }
+                }
             }
         });
         // La pista terminó (se fue, o se colgó): fuera de la mezcla.
@@ -4066,6 +4152,61 @@ mod pruebas_procesado {
 mod pruebas_eco {
     use super::*;
 
+    /// Tramas de 10 ms que llegan a trompicones —dos de golpe, luego nada—
+    /// mientras la tarjeta consume a ritmo fijo: con el colchón, ni un hueco.
+    /// Sin él (la v1.6.101), un hueco cada vez que la tarjeta llegaba antes.
+    #[test]
+    fn una_pista_a_trompicones_no_deja_huecos() {
+        let mut p = Pista::default();
+        let trama = vec![1000i16; MUESTRAS_POR_TRAMA];
+        let mut sale = Vec::new();
+        for paso in 0..200 {
+            // Llegan de dos en dos cada 20 ms; la tarjeta pide 10 ms cada 10 ms.
+            if paso % 2 == 0 {
+                p.meter(&trama);
+                p.meter(&trama);
+            }
+            for _ in 0..MUESTRAS_POR_TRAMA {
+                sale.push(p.sacar());
+            }
+        }
+        assert_eq!(p.huecos, 0, "la pista se vació sonando");
+        // Al principio espera al colchón, y después no vuelve a callar.
+        let empieza = sale.iter().position(|&m| m != 0).unwrap();
+        assert!(sale[empieza..].iter().all(|&m| m != 0), "un silencio a mitad: un clic");
+    }
+
+    #[test]
+    fn sin_colchon_no_suena_y_al_vaciarse_vuelve_a_esperar() {
+        let mut p = Pista::default();
+        p.meter(&vec![5i16; COLCHON - 1]);
+        assert_eq!(p.sacar(), 0, "con menos del colchón todavía no suena");
+        p.meter(&[5]);
+        assert_eq!(p.sacar(), 5);
+        while !p.cola.is_empty() {
+            p.sacar();
+        }
+        assert_eq!(p.sacar(), 0);
+        assert_eq!(p.huecos, 1);
+        p.meter(&[7; 10]);
+        assert_eq!(p.sacar(), 0, "tras un hueco vuelve a esperar el colchón, no suelta muestras sueltas");
+    }
+
+    #[test]
+    fn la_cola_no_crece_sin_fin_y_se_queda_con_lo_ultimo() {
+        let mut p = Pista::default();
+        let mucho: Vec<i16> = (0..(COLA_MAX as i32 + 10)).map(|i| (i % 30_000) as i16).collect();
+        p.meter(&mucho);
+        assert!(p.cola.len() <= COLA_MAX);
+        assert_eq!(p.cola.back().copied(), mucho.last().copied());
+    }
+
+    #[test]
+    fn un_estereo_se_promedia_a_mono() {
+        assert_eq!(a_mono(&[100, 300, -50, 50], 2), vec![200, 0]);
+        assert_eq!(a_mono(&[1, 2, 3], 1), vec![1, 2, 3]);
+    }
+
     #[test]
     fn dos_voces_fuertes_se_recortan_no_dan_la_vuelta() {
         assert_eq!(mezclar([1000i16, -300, 50].into_iter()), 750);
@@ -4144,6 +4285,13 @@ mod pruebas_eco {
         let salida = codigo.find("fn asegurar_salida()").unwrap();
         let abre = codigo.find(".build_output_stream(").unwrap();
         assert!(abre > salida, "la única salida es la del mezclador");
+        // Y la salida saca por el colchón, y la pista mete por él y a mono:
+        // sin esto, la pieza probada arriba no es la que suena.
+        let salida_fn = &codigo[salida..codigo[salida..].find("\nfn cerrar_salida").unwrap() + salida];
+        assert!(salida_fn.contains("q.sacar()"), "la salida no usa el colchón de cada pista");
+        let pista_fn = &codigo[codigo.find("fn reproducir(").unwrap()..];
+        let pista_fn = &pista_fn[..pista_fn.find("\n}\n").unwrap()];
+        assert!(pista_fn.contains("a_mono(") && pista_fn.contains(".meter("), "la pista no mete por el colchón");
         assert!(
             codigo.contains("AudioProcessingModule::new(true, false, true, true)"),
             "el módulo tiene que crearse con el cancelador de eco encendido"
