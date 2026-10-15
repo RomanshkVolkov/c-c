@@ -6,6 +6,9 @@ import { Loader2, X } from "lucide-react";
 import { iniciales } from "@/lib/desde";
 import { useChatStore } from "@/store/chat.store";
 import { cn } from "@/lib/utils";
+import { linkify } from "@/lib/linkify";
+import { openInternalRef } from "@/lib/open-ref";
+import { openExternal } from "@/lib/platform";
 
 /**
  * El hilo del canal, dentro de la llamada.
@@ -115,7 +118,9 @@ export default function VoiceChat({
                   {horaCorta(m.createdAt)}
                 </div>
                 {/* En texto plano a propósito: ver el comentario de arriba. */}
-                <div className="whitespace-pre-wrap break-words text-[13px]">{m.body}</div>
+                <div className="whitespace-pre-wrap break-words text-[13px]">
+                  <Body text={m.body} />
+                </div>
               </div>
             </div>
           ))
@@ -141,5 +146,34 @@ export default function VoiceChat({
         />
       </div>
     </aside>
+  );
+}
+
+/**
+ * El cuerpo de un mensaje, con sus URLs como enlaces. Sigue siendo texto
+ * plano: sólo se reconocen `http://` y `https://`. Un enlace de cac (tarea, documento)
+ * se abre dentro de la app; los demás, en el navegador.
+ */
+function Body({ text }: { text: string }) {
+  return (
+    <>
+      {linkify(text).map((part, i) =>
+        part.kind === "text" ? (
+          part.text
+        ) : (
+          <a
+            key={i}
+            href={part.href}
+            className="text-primary underline underline-offset-2 hover:opacity-80"
+            onClick={(e) => {
+              e.preventDefault();
+              if (!openInternalRef(part.href)) void openExternal(part.href);
+            }}
+          >
+            {part.href}
+          </a>
+        ),
+      )}
+    </>
   );
 }

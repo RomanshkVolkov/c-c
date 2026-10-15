@@ -13,10 +13,11 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
  * se te vuelvan a cerrar.
  */
 
-const { estado, post, fetchChat } = vi.hoisted(() => ({
+const { estado, post, fetchChat, openExternal } = vi.hoisted(() => ({
   estado: { current: {} as Record<string, unknown>, chat: {} as Record<string, unknown> },
   post: vi.fn(),
   fetchChat: vi.fn(),
+  openExternal: vi.fn(),
 }));
 
 // `useConfirm` lanza fuera de su proveedor —es una guarda deliberada, para que
@@ -43,6 +44,7 @@ vi.mock("@/components/voice/InvitePicker", () => ({
   InviteButton: () => null,
 }));
 vi.mock("@/components/voice/DeviceSettings", () => ({ default: () => null }));
+vi.mock("@/lib/platform", async (orig) => ({ ...(await orig<typeof import("@/lib/platform")>()), openExternal }));
 
 const { default: VoiceStage } = await import("./VoiceStage");
 
@@ -108,6 +110,18 @@ describe("el chat de la sala", () => {
     const panel = within(screen.getByText("Channel chat").closest("aside")!);
     expect(panel.getByText("te paso el link")).toBeTruthy();
     expect(panel.getByText("Bea")).toBeTruthy();
+  });
+
+  // Se pintaban como texto y había que seleccionarlos y copiarlos a mano.
+  it("un enlace del hilo se pulsa, no se copia", () => {
+    sala();
+    (estado.chat.messages as { body: string }[])[0].body = "mira https://figma.com/file/abc. ahí está";
+    abrirChat();
+    const panel = within(screen.getByText("Channel chat").closest("aside")!);
+    const link = panel.getByRole("link", { name: "https://figma.com/file/abc" });
+    // Cancelado: si no, el webview navega a la URL y la app se va con ella.
+    expect(fireEvent.click(link)).toBe(false);
+    expect(openExternal).toHaveBeenCalledWith("https://figma.com/file/abc");
   });
 
   it("no manda una línea en blanco", () => {
