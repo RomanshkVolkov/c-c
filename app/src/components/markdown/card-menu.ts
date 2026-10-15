@@ -103,6 +103,23 @@ export function recordingIdFromHref(href: string): string | null {
   return /^[0-9a-fA-F-]{36}$/.test(id) ? id : null;
 }
 
+/**
+ * Una llamada terminada, citada por su resumen en el canal (`domain.CallRef`).
+ * Misma forma que la grabación, por lo mismo.
+ */
+export function callIdFromHref(href: string): string | null {
+  const prefix = "cac:call/";
+  if (!href.startsWith(prefix)) return null;
+  const id = href.slice(prefix.length);
+  return /^[0-9a-fA-F-]{36}$/.test(id) ? id : null;
+}
+
+/** La llamada que resume un cuerpo, si es el resumen de una. */
+export function callIdInBody(body: string): string | null {
+  const m = body.match(/\(cac:call\/([0-9a-fA-F-]{36})\)/);
+  return m ? m[1] : null;
+}
+
 function matching(cards: CardRef[], query: string): CardRef[] {
   const q = query.toLowerCase().trim();
   const hits = q

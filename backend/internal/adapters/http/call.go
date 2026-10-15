@@ -13,12 +13,12 @@ import (
 )
 
 // InitCallRoutes monta las reuniones con invitados (W3).
-func InitCallRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, recordings *service.RecordingService) {
+func InitCallRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, recordings *service.RecordingService, calls *service.CallSessionService) {
 	voice := service.NewVoiceService(
 		repository.GetEnv("LIVEKIT_URL", ""),
 		repository.GetEnv("LIVEKIT_API_KEY", ""),
 		repository.GetEnv("LIVEKIT_API_SECRET", ""),
-	)
+	).WithSessions(calls)
 	lk := lkclient.New(
 		repository.GetEnv("LIVEKIT_URL", ""),
 		repository.GetEnv("LIVEKIT_API_KEY", ""),

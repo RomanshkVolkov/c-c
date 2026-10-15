@@ -35,7 +35,7 @@ const recordingTick = 10 * time.Second
 
 // InitRecordingRoutes monta las rutas de grabación y arranca su reloj. Devuelve
 // el servicio para que las reuniones con invitados graben con el mismo.
-func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) *service.RecordingService {
+func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.CallSessionService) *service.RecordingService {
 	// El mismo bucket privado que las capturas y los adjuntos. Aquí sólo se
 	// comprueba que existe: quien escribe las pistas es Egress con su propia
 	// credencial, que **sólo puede escribir bajo `recordings/`**.
@@ -70,7 +70,7 @@ func InitRecordingRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) *service.Reco
 		// nadie, que es exactamente el problema de partida.
 		service.NewChatService(repository.NewChatRepository(db), hub).
 			WithNotifier(service.NewNotificationService(repository.NewNotificationRepository(db))),
-	)
+	).WithCalls(calls)
 	h := handler.NewRecordingHandler(svc, repository.NewTaskRepository(db))
 
 	r.Route("/api/v1/task-spaces/{id}/recordings", func(r chi.Router) {

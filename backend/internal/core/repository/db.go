@@ -149,6 +149,8 @@ func DBConnection() {
 		&domain.Recording{}, &domain.RecordingTrack{},
 		// Llamar con gente de fuera (W3). Ver domain/call_invite.go.
 		&domain.CallInvite{}, &domain.CallGuest{},
+		// Las llamadas, guardadas (ver domain/call_session.go).
+		&domain.CallSession{}, &domain.CallSessionParticipant{},
 		// Las páginas de documentación (ver domain/doc_page.go).
 		&domain.DocPage{}, &domain.DocPageVersion{},
 		// Lo que GitHub tiene enlazado a cada tarea (ver domain/github.go).

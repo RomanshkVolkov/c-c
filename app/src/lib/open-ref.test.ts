@@ -67,6 +67,11 @@ describe("un enlace de dentro", () => {
     expect(openInternalRef(href)).toBe(true);
   });
 
+  // El resumen de una llamada: no sale al navegador con un «cac:call/…».
+  it("una llamada se reclama", () => {
+    expect(openInternalRef("cac:call/0f8fad5b-d9cb-469f-a165-70867728950e")).toBe(true);
+  });
+
   it("un enlace de fuera sigue siendo de fuera", () => {
     expect(openInternalRef("https://ejemplo.com/tasks?doc=list:l1")).toBe(false);
     expect(orden).toEqual([]);

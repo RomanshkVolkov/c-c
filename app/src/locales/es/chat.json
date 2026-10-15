@@ -42,5 +42,10 @@
   "cancelReply": "Cancelar la respuesta",
   "quoteGone": "Este mensaje se retiró",
   "quoteNotLoaded": "Ese mensaje está más arriba: sube para cargarlo",
-  "you": "Tú"
+  "you": "Tú",
+  "callEnded": "Llamada terminada",
+  "callGuest": "{{name}} (invitado)",
+  "callPeople_one": "{{names}}",
+  "callPeople_other": "{{count}} personas: {{names}}",
+  "callWatchRecording": "Ver la grabación"
 }

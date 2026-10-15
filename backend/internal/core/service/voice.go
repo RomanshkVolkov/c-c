@@ -37,6 +37,23 @@ type VoiceService struct {
 	// moves dice si la llamada de un canal se acaba de mudar a una reunión.
 	// Opcional: sin él, entrar al canal es entrar al canal.
 	moves func(spaceID string) *domain.MovedCall
+	// sessions abre la sesión de la sala al dar la entrada (ver
+	// CallSessionService.Open). Opcional.
+	sessions *CallSessionService
+}
+
+// WithSessions: dar la entrada a una sala abre su llamada guardada.
+func (s *VoiceService) WithSessions(c *CallSessionService) *VoiceService {
+	s.sessions = c
+	return s
+}
+
+// OpenSession: alguien va a entrar a `room`. Ver CallSessionService.Open.
+func (s *VoiceService) OpenSession(orgID string, spaceID *string, room string, inviteID *string, userID string) {
+	if s == nil || s.sessions == nil {
+		return
+	}
+	s.sessions.Open(orgID, spaceID, room, inviteID, userID)
 }
 
 // WithMoves conecta la pregunta «¿se mudó esta llamada?». Ver CallMoveWindow.

@@ -18,6 +18,8 @@ import FileDropZone from "@/components/FileDropZone";
 import MessageToDoc from "@/components/chat/MessageToDoc";
 import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
 import { ReplyingBar, ReplyQuote } from "@/components/chat/ReplyQuote";
+import CallSummaryCard from "@/components/chat/CallSummaryCard";
+import { callIdInBody } from "@/components/markdown/card-menu";
 import Markdown from "@/components/markdown/Markdown";
 import { openInternalRef } from "@/lib/open-ref";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -577,7 +579,20 @@ function Message({
         ) : (
           <>
             {m.replyTo && <ReplyQuote quote={m.replyTo} />}
-            <Markdown onInternalLink={openCited}>{m.body}</Markdown>
+            {/* El resumen de una llamada es una tarjeta, no una frase. Con
+                `key` en el cuerpo: cuando la grabación queda lista el
+                servidor reescribe la línea, y la tarjeta se vuelve a pedir. */}
+            {fromSystem && callIdInBody(m.body) ? (
+              <CallSummaryCard
+                key={m.body}
+                sessionId={callIdInBody(m.body)!}
+                body={m.body}
+                onOpenRecording={onOpenRecordings}
+                onInternalLink={openCited}
+              />
+            ) : (
+              <Markdown onInternalLink={openCited}>{m.body}</Markdown>
+            )}
             {/* Poner la primera reacción: al pasar por encima, junto a la
                 flecha. También en una línea del sistema —celebrar que la
                 grabación ya está es para lo que sirven—, y entonces ocupa el

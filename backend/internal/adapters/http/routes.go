@@ -51,7 +51,9 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 		WithActivity(repository.NewActivityRepository(db))
 	InitServerRoutesWith(db, r, hub, gh)
 	InitReportRoutes(db, r, hub)
-	InitTaskRoutes(db, r, hub)
+	// Las llamadas guardadas, antes que quien da entradas a las salas.
+	calls := InitCallSessionRoutes(db, r, hub)
+	InitTaskRoutes(db, r, hub, calls)
 	// La campana al teléfono (W2): Web Push con las llaves VAPID del entorno.
 	// Sin ellas el servicio queda apagado y la web no ofrece suscribirse.
 	push := service.NewPushService(repository.NewPushRepository(db),
@@ -61,9 +63,9 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitNotificationRoutes(db, r, push)
 	// Las reuniones periódicas y las grabaciones: los dos relojes de fondo.
 	InitMeetingRoutes(db, r, hub)
-	recordings := InitRecordingRoutes(db, r, hub)
+	recordings := InitRecordingRoutes(db, r, hub, calls)
 	// Llamar con gente de fuera (W3): graba con el mismo servicio.
-	InitCallRoutes(db, r, hub, recordings)
+	InitCallRoutes(db, r, hub, recordings, calls)
 	InitGitHubRoutesWith(r, gh)
 	InitActivityRoutes(db, r)
 

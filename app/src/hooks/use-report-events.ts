@@ -512,6 +512,7 @@ export function useReportEvents() {
             authorName?: string;
             preview?: string;
             kind?: "user" | "system";
+            edited?: boolean;
           };
           if (!p.spaceId) break;
           // Your own line, echoed back by the stream every console hears. The
@@ -529,6 +530,9 @@ export function useReportEvents() {
           const own = mine(p);
           if (own && p.kind !== "system") break;
           void useChatStore.getState().onIncoming(p.spaceId);
+          // Una línea que ya estaba y cambió (el resumen de una llamada cuando
+          // su grabación queda lista): se refresca, pero ya avisó al ponerse.
+          if (p.edited) break;
           // Only announce what you aren't already looking at. onIncoming has the
           // same condition; it is repeated rather than returned because the two
           // decisions are different — one updates a badge, one interrupts you.

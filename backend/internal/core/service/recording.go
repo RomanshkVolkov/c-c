@@ -67,6 +67,8 @@ type RecordingService struct {
 	// grabación funciona igual y nadie se entera, que es exactamente como
 	// estaba antes.
 	announcer Announcer
+	// calls: la llamada guardada de cada grabación. Opcional.
+	calls CallLinker
 }
 
 // Announcer es lo único que grabar necesita del chat: poner una línea que no
@@ -106,6 +108,19 @@ func NewRecordingService(
 // WithAnnouncer engancha el canal, igual que `WithNotifier` engancha la bandeja
 // en el chat. Fuera del constructor porque el chat se construye en otro sitio
 // —`InitTaskRoutes`— y no todas las instalaciones montan los dos.
+// CallLinker: la llamada guardada a la que pertenece una grabación, si la hay.
+// Ver CallSessionService.RecordingReady.
+type CallLinker interface {
+	RecordingReady(rec *domain.Recording) bool
+}
+
+// WithCalls: con llamadas guardadas, la grabación lista va en el resumen de su
+// llamada y no en una línea propia.
+func (s *RecordingService) WithCalls(c CallLinker) *RecordingService {
+	s.calls = c
+	return s
+}
+
 func (s *RecordingService) WithAnnouncer(a Announcer) *RecordingService {
 	s.announcer = a
 	return s
@@ -908,6 +923,10 @@ func (s *RecordingService) announce(rec *domain.Recording) {
 	}
 	body, notice := domain.RecordingAnnouncement(rec.ID, rec.Status, rec.DurationMs)
 	if body == "" {
+		return
+	}
+	// De una llamada guardada: va en su resumen. Ver CallSessionService.
+	if s.calls != nil && s.calls.RecordingReady(rec) {
 		return
 	}
 	// El actor es quien grabó: es lo que hace legal la fila contra el `not

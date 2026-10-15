@@ -56,6 +56,9 @@ type broadcast struct {
 	// than the inbox showing somebody a raw `[watch it](cac:recording/…)`.
 	notice   string
 	mentions []string
+	// edited: la línea ya estaba y cambió. Viaja en el evento para que la app
+	// refresque sin anunciarla otra vez.
+	edited bool
 	// repliedTo: quien escribió lo que esta línea contesta. Se le avisa como a
 	// alguien nombrado — le están hablando a él —, salvo que sea quien escribe.
 	repliedTo string
@@ -158,6 +161,7 @@ func (s *ChatService) publicarAlStream(b broadcast) {
 			// A quién se contesta, para que su consola le avise como a una
 			// mención y no como a una línea más del canal.
 			"repliedTo": b.repliedTo,
+			"edited":    b.edited,
 		},
 	})
 }
@@ -401,6 +405,32 @@ func (s *ChatService) Edit(messageID, userID string, superadmin bool, body strin
 		orgID: m.OrgID, spaceID: m.SpaceID, messageID: m.ID, actorID: userID,
 		kind: m.Kind, body: body, mentions: s.mentioned(m.OrgID, body),
 	})
+	return nil
+}
+
+// UpdateSystem reescribe una línea del sistema: el resumen de una llamada
+// cuando su grabación queda lista (ver CallSessionService.RecordingReady).
+//
+// **Sin bandeja**: la línea ya avisó al ponerse, y que la grabación esté
+// lista no es otra línea del canal. Sólo el evento, marcado como edición, para
+// que quien lo tenga abierto lo vea cambiar.
+func (s *ChatService) UpdateSystem(messageID, body string) error {
+	m, err := s.repo.Find(messageID)
+	if err != nil {
+		return err
+	}
+	if m.Kind != domain.ChatKindSystem {
+		return ErrNotAUserMessage
+	}
+	if err := s.repo.UpdateBody(messageID, body); err != nil {
+		return err
+	}
+	if s.hub != nil {
+		s.publicarAlStream(broadcast{
+			orgID: m.OrgID, spaceID: m.SpaceID, messageID: m.ID, actorID: m.AuthorUserID,
+			kind: m.Kind, body: body, edited: true,
+		})
+	}
 	return nil
 }
 

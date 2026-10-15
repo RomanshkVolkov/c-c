@@ -1054,6 +1054,41 @@ personas de fuera. → `TestTheVoiceNameIsTheVisibleName`.
 - **Las redes que sólo dejan salir el 443** pasan por el relé TURN (§6 bis).
   Sin él, un invitado de una red corporativa se quedaba en «conectando».
 
+## 10 · La llamada, guardada (15-oct-2026)
+
+Tanda 2 del plan del chat de la llamada (tarjeta App #146). Antes, una sala era
+sólo un nombre y de una llamada terminada no quedaba nada, salvo el aviso de la
+grabación. Ahora cada llamada deja **un solo mensaje en el canal** con cuánto
+duró, quién estuvo y, si se grabó, la grabación.
+
+- **Se abre al dar la entrada.** `VoiceToken` (canal) y `MemberToken`
+  (reunión) llaman a `CallSessionService.Open`. Dos entradas a la vez abren
+  una sola sesión: lo decide el índice único parcial `(room) WHERE ended_at
+  IS NULL`, sin candados (`TestARoomHasOneOpenCall`). Quien entra a la reunión
+  porque la llamada se mudó no abre la del canal.
+- **La cierra un reloj** cada 10 s, con la forma del de la grabación:
+  `ClaimTick` para repartir entre réplicas, y dos vueltas vacías, no una. El
+  final es la última vez que se vio a alguien (`LastSeenAt`), no el tick que
+  cierra. Los participantes los apunta el reloj, porque tener la entrada no es
+  haber entrado.
+- **Una sola vez.** `Close` es un UPDATE condicional y sólo quien cerró
+  resume (`TestOnlyOneCloseWins`).
+- **Un clic por error no deja rastro:** menos de 30 s, una persona y sin
+  mensajes no se resume (`domain.WorthSummarizing`). Sin canal (una invitación
+  suelta) tampoco.
+- **La grabación va dentro.** `RecordingService.announce` pregunta primero a
+  `CallSessionService.RecordingReady`:
+  - si la llamada sigue abierta, se enlaza y sale en el resumen al terminar;
+  - si ya está resumida, se reescribe el resumen con `ChatService.UpdateSystem`,
+    que sólo manda el evento, marcado `edited`, y no vuelve a avisar;
+  - sin llamada guardada (grabaciones de antes), se anuncia como siempre.
+- **La app** pinta la línea `cac:call/<id>` como tarjeta (`CallSummaryCard`):
+  la pide a `GET /api/v1/call-sessions/{id}` y, mientras carga o si falla,
+  enseña la frase del servidor, que es lo que ve una app de antes.
+
+Falta, en las tandas 3 y 4: el chat propio de la llamada, que cuelga de esta
+sesión, el visor «Ver chat» y los invitados.
+
 ## Fuera de v1
 
 Llamadas 1:1 en directos con timbre. TURN sobre TLS ya no está aquí: entró con

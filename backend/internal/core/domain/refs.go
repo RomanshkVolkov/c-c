@@ -24,6 +24,10 @@ import "regexp"
 // own is unambiguous to extract and inert everywhere else.
 func RecordingRef(recordingID string) string { return "cac:recording/" + recordingID }
 
+// CallRef apunta a una llamada terminada: su resumen y, después, su chat. Ver
+// domain/call_session.go.
+func CallRef(sessionID string) string { return "cac:call/" + sessionID }
+
 // linkPattern matches a URL in a body, whether it was written as
 // `[label](url)` or pasted bare.
 //

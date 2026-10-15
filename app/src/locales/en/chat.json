@@ -42,5 +42,10 @@
   "cancelReply": "Cancel reply",
   "quoteGone": "This message was withdrawn",
   "quoteNotLoaded": "That message is further up — scroll to load it",
-  "you": "You"
+  "you": "You",
+  "callEnded": "Call ended",
+  "callGuest": "{{name}} (guest)",
+  "callPeople_one": "{{names}}",
+  "callPeople_other": "{{count}} people: {{names}}",
+  "callWatchRecording": "Watch the recording"
 }

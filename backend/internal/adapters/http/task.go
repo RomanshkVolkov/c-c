@@ -17,7 +17,7 @@ import (
 
 // InitTaskRoutes mounts the task module. Everything is JWT-authenticated and
 // org-scoped through the space that owns each node.
-func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
+func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.CallSessionService) {
 	taskRepo := repository.NewTaskRepository(db)
 	// El buzón se construye antes que nada porque ahora lo comparten cuatro
 	// servicios, no dos. Ver el comentario de más abajo, que ya explicaba por
@@ -61,7 +61,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		repository.GetEnv("LIVEKIT_URL", ""),
 		repository.GetEnv("LIVEKIT_API_KEY", ""),
 		repository.GetEnv("LIVEKIT_API_SECRET", ""),
-	).WithMoves(service.NewCallInviteService(repository.NewCallInviteRepository(db), nil, nil, nil).MovedCallFor)
+	).WithMoves(service.NewCallInviteService(repository.NewCallInviteRepository(db), nil, nil, nil).MovedCallFor).
+		WithSessions(calls)
 	// Un solo servicio de documentación para las dos rutas: el de abajo sirve el
 	// documento, y las tarjetas lo necesitan para `/decision`.
 	docSvc := service.NewDocService(repository.NewDocRepository(db)).WithNotifier(inbox)

@@ -463,12 +463,18 @@ func (h *taskHandler) VoiceToken(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to mint a voice token", err.Error())
 		return
 	}
+	moved := h.voice.MovedCall(sp.ID)
+	// Quien va a la reunión porque la llamada se mudó no abre la del canal.
+	if moved == nil {
+		spaceID := sp.ID
+		h.voice.OpenSession(sp.OrgID, &spaceID, service.RoomFor(sp.ID), nil, user.UserID)
+	}
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.VoiceTokenResponse]{
 		Success: true,
 		Data: &domain.VoiceTokenResponse{
 			URL: h.voice.URL(), Token: token, Room: service.RoomFor(sp.ID),
 			OrgID: sp.OrgID, SpaceName: sp.Name,
-			MovedTo: h.voice.MovedCall(sp.ID),
+			MovedTo: moved,
 		},
 	})
 }

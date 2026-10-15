@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 
-import { docRefFromHref, recordingIdFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
+import { callIdFromHref, docRefFromHref, recordingIdFromHref, taskIdFromHref } from "@/components/markdown/card-menu";
 import { userIdFromHref } from "@/components/markdown/mention-menu";
 import { matchRepoBlobUrl } from "@/lib/repo-links";
 import { useDocPages } from "@/store/doc-pages.store";
@@ -61,6 +61,9 @@ export function openInternalRef(href: string, opts: { onOpenRecordings?: () => v
     opts.onOpenRecordings?.();
     return true;
   }
+  // Una llamada terminada: su tarjeta ya está en el canal. Se reclama para
+  // que no salga al navegador; abrir su chat llega con el chat de la llamada.
+  if (callIdFromHref(href)) return true;
   // Una mención nombra a una persona, no apunta a ningún sitio. Se reclama por
   // lo mismo que la grabación.
   return userIdFromHref(href) !== null;
