@@ -359,6 +359,7 @@ pub async fn voice_leave() {
         // El guard de captura muere con `s` y con él el hilo del micrófono.
         let _ = s.room.close().await;
     }
+    cerrar_salida();
 }
 
 /// Silenciar sin salirse.
@@ -444,12 +445,26 @@ pub async fn voice_set_noise_suppression(on: bool) {
 /// el módulo de procesado de WebRTC del propio SDK (`AudioProcessingModule`),
 /// sin dependencias nuevas, aplicado a cada trama de 10 ms antes de publicarla.
 ///
-/// Sin cancelación de eco: necesita saber qué suena por los altavoces, y hoy
-/// cada pista remota suena por su propio flujo de cpal, sin una mezcla común
-/// que darle como referencia. Es la fase 2 (`docs/voz.md`).
+/// **Con cancelación de eco desde la v1.6.101** (fase 2 de `docs/voz.md`).
+/// El cancelador necesita, como referencia, lo que suena por los altavoces:
+/// sin eso no sabe qué restar. Hasta entonces cada pista remota sonaba por su
+/// propio flujo de cpal y no había una mezcla que darle, así que iba apagado y
+/// quien te escuchaba con altavoces te devolvía tu propia voz por su micrófono
+/// (Alexander, en Mac, 15-oct-2026). Ahora todo suena por una sola salida
+/// (`Mezclador`), que deja lo que reproduce en `REFERENCIA`; antes de cada
+/// trama del micrófono se le pasa al módulo con `process_reverse_stream`.
+///
+/// **Sin control de ganancia desde entonces**, y medido: con el cancelador
+/// encendido, el control de ganancia vuelve a subir el ruido que el supresor
+/// acaba de bajar —un ruido sostenido pasaba de −14 dB a −0,2 dB— y el
+/// ventilador volvía a encender el aro de hablar. Sin él: el ruido baja 15 dB
+/// y un eco a −10 dB y 30 ms de retardo baja 69 dB (`pruebas_procesado`).
+///
+/// Apagado (la música, un instrumento) no se toca nada, eco incluido, como
+/// antes: es para mandar el sonido tal cual.
 ///
 /// Una instancia por captura: cambiar de micrófono empieza otra, que aprende el
-/// ruido desde cero en unos cientos de milisegundos.
+/// ruido y el eco desde cero en unos cientos de milisegundos.
 struct Procesador {
     apm: Option<AudioProcessingModule>,
 }
@@ -459,14 +474,19 @@ impl Procesador {
         Self { apm: None }
     }
 
-    /// Procesa una trama en su sitio. `on` apagado la deja tal cual (y suelta
-    /// el módulo: al volver a encender empieza limpio).
+    /// Procesa una trama en su sitio, después de darle al cancelador lo que
+    /// sonó desde la anterior (`referencia`, en tramas de 10 ms). `on` apagado
+    /// la deja tal cual (y suelta el módulo: al volver a encender empieza
+    /// limpio).
+    ///
+    /// La referencia llega como argumento y no se lee aquí de `REFERENCIA`
+    /// para poder probar el cancelador sin una tarjeta de sonido.
     ///
     /// `process_stream` **hace panic** si la longitud no es un múltiplo de
     /// 10 ms; antes de llamarlo se comprueba, y una trama que no cuadra se
     /// devuelve como error y sin tocar: mejor sin procesar que tirar la
     /// captura.
-    fn procesar(&mut self, on: bool, trama: &mut [i16]) -> Result<(), String> {
+    fn procesar(&mut self, on: bool, trama: &mut [i16], referencia: Vec<Vec<i16>>) -> Result<(), String> {
         if !on {
             self.apm = None;
             return Ok(());
@@ -474,12 +494,159 @@ impl Procesador {
         if trama.is_empty() || trama.len() % MUESTRAS_POR_TRAMA != 0 {
             return Err(format!("trama de {} muestras, no múltiplo de 10 ms", trama.len()));
         }
+        // (eco, ganancia, paso alto, ruido).
         let apm = self
             .apm
-            .get_or_insert_with(|| AudioProcessingModule::new(false, true, true, true));
+            .get_or_insert_with(|| AudioProcessingModule::new(true, false, true, true));
+        // Lo que sonó, antes de la trama: el cancelador tiene que haber oído
+        // la referencia para poder restarla.
+        for mut referencia in referencia {
+            apm.process_reverse_stream(&mut referencia, SAMPLE_RATE as i32, CANALES as i32)
+                .map_err(|e| e.to_string())?;
+        }
         apm.process_stream(trama, SAMPLE_RATE as i32, CANALES as i32)
             .map_err(|e| e.to_string())
     }
+}
+
+// ─── Lo que suena: una sola salida, que es la referencia del eco ──────────────
+
+/// Lo que ha sonado por los altavoces y el cancelador todavía no ha visto, a
+/// `SAMPLE_RATE` y en mono. Lo llena la salida (`Mezclador`) y lo vacía la
+/// captura (`Procesador`).
+static REFERENCIA: Mutex<std::collections::VecDeque<i16>> = Mutex::new(std::collections::VecDeque::new());
+
+/// Cuánta referencia se guarda como mucho: 200 ms. Si la captura no la
+/// consume —micro parado, cambiando de dispositivo—, lo viejo no sirve para
+/// cancelar nada y sólo desalinearía lo que llega después.
+const REFERENCIA_MAX: usize = MUESTRAS_POR_TRAMA * 20;
+
+/// Lo que sonó, en tramas de 10 ms, y lo que no llega a trama se queda para
+/// la siguiente vez.
+fn tomar_referencia() -> Vec<Vec<i16>> {
+    tramas_de(&mut REFERENCIA.lock().unwrap())
+}
+
+fn tramas_de(cola: &mut std::collections::VecDeque<i16>) -> Vec<Vec<i16>> {
+    let mut out = Vec::with_capacity(cola.len() / MUESTRAS_POR_TRAMA);
+    while cola.len() >= MUESTRAS_POR_TRAMA {
+        out.push(cola.drain(..MUESTRAS_POR_TRAMA).collect());
+    }
+    out
+}
+
+/// Deja lo que acaba de sonar para el cancelador, sin pasar del tope.
+fn anotar_referencia(cola: &mut std::collections::VecDeque<i16>, muestras: &[i16]) {
+    cola.extend(muestras.iter().copied());
+    if cola.len() > REFERENCIA_MAX {
+        let sobra = cola.len() - REFERENCIA_MAX;
+        cola.drain(..sobra);
+    }
+}
+
+/// Suma una muestra de cada persona, sin desbordar. En `i32` y recortada: dos
+/// voces fuertes a la vez pasan de `i16::MAX`, y dar la vuelta suena a un
+/// chasquido brutal; recortar sólo a algo áspero.
+fn mezclar(muestras: impl Iterator<Item = i16>) -> i16 {
+    muestras
+        .map(i32::from)
+        .sum::<i32>()
+        .clamp(i16::MIN as i32, i16::MAX as i32) as i16
+}
+
+/// Una cola por pista remota, a `SAMPLE_RATE` y mono. La llena el hilo de esa
+/// pista y la vacía la salida.
+type ColaPista = Arc<Mutex<std::collections::VecDeque<i16>>>;
+
+static PISTAS: Mutex<Vec<ColaPista>> = Mutex::new(Vec::new());
+
+/// La salida, mientras haya llamada. Una sola para todas las pistas: es lo
+/// que permite saber qué está sonando.
+static SALIDA: Mutex<Option<StreamGuard>> = Mutex::new(None);
+
+/// Abre la salida si no está abierta.
+fn asegurar_salida() {
+    let mut salida = SALIDA.lock().unwrap();
+    if salida.is_some() {
+        return;
+    }
+    let (fin_tx, fin_rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let host = cpal::default_host();
+        let Some(dispositivo) = host.default_output_device() else {
+            nota("altavoz: no hay dispositivo de salida");
+            return;
+        };
+        let Ok(config) = dispositivo.default_output_config() else {
+            nota("altavoz: el dispositivo no dice su formato");
+            return;
+        };
+        let salida_canales = config.channels() as usize;
+        let ritmo = config.sample_rate();
+        nota(format!("altavoz: «{dispositivo}» a {ritmo} Hz, {salida_canales} canal(es)"));
+        // De `SAMPLE_RATE` (la mezcla) al ritmo del dispositivo, por
+        // interpolación lineal como en la captura: `pos` es la fracción entre
+        // la muestra anterior y la siguiente de la mezcla.
+        let paso = SAMPLE_RATE as f32 / ritmo as f32;
+        let (mut pos, mut antes, mut despues) = (1.0f32, 0i16, 0i16);
+        let mut sonado: Vec<i16> = Vec::with_capacity(1024);
+
+        let stream = dispositivo.build_output_stream(
+            config.config(),
+            move |salida: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                let sordo = SORDO.load(std::sync::atomic::Ordering::Relaxed);
+                let pistas = PISTAS.lock().unwrap();
+                let mut colas: Vec<_> = pistas.iter().map(|c| c.lock().unwrap()).collect();
+                sonado.clear();
+                for trozo in salida.chunks_mut(salida_canales) {
+                    while pos >= 1.0 {
+                        // Silencio cuando una cola se vacía: es preferible un
+                        // hueco a repetir la última muestra, que suena a
+                        // chirrido. Sordo también consume la muestra: si no,
+                        // la cola crece mientras no oyes y al volver sonaría
+                        // lo de hace un minuto.
+                        let m = mezclar(colas.iter_mut().map(|q| q.pop_front().unwrap_or(0)));
+                        let m = if sordo { 0 } else { m };
+                        // Lo que suena, que es lo que el cancelador tiene que
+                        // restar. Sordo no suena nada, y la referencia lo dice.
+                        sonado.push(m);
+                        antes = despues;
+                        despues = m;
+                        pos -= 1.0;
+                    }
+                    let v = antes as f32 + (despues as f32 - antes as f32) * pos;
+                    pos += paso;
+                    let v = v / i16::MAX as f32;
+                    for canal in trozo.iter_mut() {
+                        *canal = v;
+                    }
+                }
+                drop(colas);
+                drop(pistas);
+                anotar_referencia(&mut REFERENCIA.lock().unwrap(), &sonado);
+            },
+            |e| nota(format!("altavoz: error de reproducción: {e}")),
+            None,
+        );
+        let Ok(stream) = stream else {
+            nota("altavoz: no se pudo abrir");
+            return;
+        };
+        if stream.play().is_err() {
+            nota("altavoz: no se pudo arrancar");
+            return;
+        }
+        let _ = fin_rx.recv();
+        drop(stream);
+    });
+    *salida = Some(StreamGuard(Some(fin_tx)));
+}
+
+/// Cierra la salida y olvida lo que sonaba. Al colgar.
+fn cerrar_salida() {
+    *SALIDA.lock().unwrap() = None;
+    PISTAS.lock().unwrap().clear();
+    REFERENCIA.lock().unwrap().clear();
 }
 
 // ─── Lo que hace falta para contestar «¿por qué no se me oye?» ────────────────
@@ -1358,6 +1525,7 @@ pub fn close_all() {
             let _ = s.room.close().await;
         });
     }
+    cerrar_salida();
 }
 
 /// Pedir el micrófono **una vez**, y saber la respuesta, antes de abrirlo.
@@ -1570,6 +1738,7 @@ fn arrancar_captura(fuente: NativeAudioSource) -> Result<StreamGuard, String> {
                 if let Err(e) = procesador.procesar(
                     SUPRESION_RUIDO.load(std::sync::atomic::Ordering::Relaxed),
                     &mut datos,
+                    tomar_referencia(),
                 ) {
                     nota(format!("micro: trama sin procesar: {e}"));
                 }
@@ -1989,49 +2158,14 @@ fn fuente_de(source: TrackSource) -> crate::video_frames::Fuente {
 /// más robusto que mantener un mezclador propio, y a este tamaño de equipo la
 /// diferencia no se nota.
 fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
+    asegurar_salida();
+    let cola: ColaPista = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+    PISTAS.lock().unwrap().push(cola.clone());
     std::thread::spawn(move || {
-        let host = cpal::default_host();
-        let Some(dispositivo) = host.default_output_device() else {
-            return;
-        };
-        let Ok(config) = dispositivo.default_output_config() else {
-            return;
-        };
-        let salida_canales = config.channels() as usize;
-
-        let cola = Arc::new(Mutex::new(std::collections::VecDeque::<i16>::new()));
-        let cola_cb = cola.clone();
-        let stream = dispositivo.build_output_stream(
-            config.config(),
-            move |salida: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                let mut q = cola_cb.lock().unwrap();
-                let sordo = SORDO.load(std::sync::atomic::Ordering::Relaxed);
-                for trozo in salida.chunks_mut(salida_canales) {
-                    // Silencio cuando la cola se vacía: es preferible un hueco
-                    // a repetir la última muestra, que suena a chirrido.
-                    //
-                    // Sordo también consume la muestra en vez de saltarse el
-                    // `pop`: si no, la cola crece mientras no oyes y al volver
-                    // sonaría lo de hace un minuto.
-                    let v = q
-                        .pop_front()
-                        .map(|s| s as f32 / i16::MAX as f32)
-                        .unwrap_or(0.0);
-                    let v = if sordo { 0.0 } else { v };
-                    for canal in trozo.iter_mut() {
-                        *canal = v;
-                    }
-                }
-            },
-            |e| eprintln!("voz: error de reproducción: {e}"),
-            None,
-        );
-        let Ok(stream) = stream else { return };
-        if stream.play().is_err() {
-            return;
-        }
-
-        let mut entrante = NativeAudioStream::new(pista, config.sample_rate() as i32, 1);
+        // A `SAMPLE_RATE` y mono, que es como mezcla la salida: así todas las
+        // pistas suman muestra con muestra y la referencia del eco sale al
+        // ritmo de la captura sin otro remuestreo.
+        let mut entrante = NativeAudioStream::new(pista, SAMPLE_RATE as i32, 1);
         tauri::async_runtime::block_on(async {
             while let Some(trama) = entrante.next().await {
                 let mut q = cola.lock().unwrap();
@@ -2043,7 +2177,8 @@ fn reproducir(pista: livekit::webrtc::prelude::RtcAudioTrack) {
                 q.extend(trama.data.iter().copied());
             }
         });
-        drop(stream);
+        // La pista terminó (se fue, o se colgó): fuera de la mezcla.
+        PISTAS.lock().unwrap().retain(|c| !Arc::ptr_eq(c, &cola));
     });
 }
 
@@ -3812,7 +3947,7 @@ mod pruebas_procesado {
         let mut out = Vec::with_capacity(senal.len());
         for t in senal.chunks(MUESTRAS_POR_TRAMA) {
             let mut t = t.to_vec();
-            p.procesar(on, &mut t).unwrap();
+            p.procesar(on, &mut t, vec![]).unwrap();
             out.extend(t);
         }
         out
@@ -3901,9 +4036,9 @@ mod pruebas_procesado {
         let mut p = Procesador::new();
         let mut corta = vec![100i16; MUESTRAS_POR_TRAMA - 1];
         let antes = corta.clone();
-        assert!(p.procesar(true, &mut corta).is_err());
+        assert!(p.procesar(true, &mut corta, vec![]).is_err());
         assert_eq!(corta, antes);
-        assert!(p.procesar(true, &mut []).is_err());
+        assert!(p.procesar(true, &mut [], vec![]).is_err());
     }
 
     /// El orden en la captura: procesar, y después medir el pico y la voz. Se
@@ -3919,5 +4054,112 @@ mod pruebas_procesado {
         let voz = cuerpo.find("hay_voz(&datos)").expect("la captura no mira si hablas");
         let manda = cuerpo.find("fuente.capture_frame(").unwrap();
         assert!(procesa < pico && procesa < voz && procesa < manda);
+    }
+}
+
+/// El eco: una sola salida que suma a todos y deja lo que suena de referencia
+/// para el cancelador. Mutantes: dar la vuelta al sumar en vez de recortar;
+/// guardar la referencia sin tope o tirando lo nuevo; volver a abrir un
+/// altavoz por pista (sin mezcla no hay referencia); crear el módulo sin eco,
+/// o con el control de ganancia (que deshace la supresión del ruido).
+#[cfg(test)]
+mod pruebas_eco {
+    use super::*;
+
+    #[test]
+    fn dos_voces_fuertes_se_recortan_no_dan_la_vuelta() {
+        assert_eq!(mezclar([1000i16, -300, 50].into_iter()), 750);
+        assert_eq!(mezclar([30_000i16, 30_000].into_iter()), i16::MAX);
+        assert_eq!(mezclar([-30_000i16, -30_000].into_iter()), i16::MIN);
+        assert_eq!(mezclar(std::iter::empty()), 0);
+    }
+
+    #[test]
+    fn la_referencia_guarda_lo_ultimo_y_no_crece_sin_fin() {
+        let mut cola = std::collections::VecDeque::new();
+        let mucho: Vec<i16> = (0..(REFERENCIA_MAX as i32 + 100)).map(|i| (i % 30_000) as i16).collect();
+        anotar_referencia(&mut cola, &mucho);
+        assert_eq!(cola.len(), REFERENCIA_MAX);
+        // Lo que se tira es lo viejo: lo último que sonó es lo que el micro
+        // está a punto de recoger.
+        assert_eq!(cola.back().copied(), mucho.last().copied());
+        assert_eq!(cola.front().copied(), Some(mucho[100]));
+    }
+
+    #[test]
+    fn la_referencia_sale_en_tramas_de_10_ms_y_el_resto_espera() {
+        let mut cola: std::collections::VecDeque<i16> =
+            std::iter::repeat_n(7i16, MUESTRAS_POR_TRAMA * 2 + 5).collect();
+        let tramas = tramas_de(&mut cola);
+        assert_eq!(tramas.len(), 2);
+        assert!(tramas.iter().all(|t| t.len() == MUESTRAS_POR_TRAMA));
+        assert_eq!(cola.len(), 5);
+    }
+
+    /// Lo que suena vuelve al micro a −10 dB y 30 ms tarde, como unos
+    /// altavoces en la mesa. Con la referencia, el último segundo de seis baja
+    /// 69 dB (medido al escribirlo); sin ella, 4. El umbral deja margen.
+    #[test]
+    fn el_eco_de_los_altavoces_se_cancela() {
+        let mut sem: u32 = 11;
+        let n = SAMPLE_RATE as usize * 6;
+        // Voz de mentira: ruido a ráfagas, con silencios entre medias.
+        let suena: Vec<i16> = (0..n)
+            .map(|i| {
+                sem = sem.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let env = if (i / 9600) % 3 == 2 { 0.0 } else { 0.4 };
+                (((sem >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0) * env * i16::MAX as f32) as i16
+            })
+            .collect();
+        let retardo = SAMPLE_RATE as usize * 30 / 1000;
+        let micro: Vec<i16> = (0..n)
+            .map(|i| if i >= retardo { (suena[i - retardo] as f32 * 0.3) as i16 } else { 0 })
+            .collect();
+        let mut p = Procesador::new();
+        let mut sale = Vec::with_capacity(n);
+        for (k, t) in micro.chunks(MUESTRAS_POR_TRAMA).enumerate() {
+            let referencia = suena[k * MUESTRAS_POR_TRAMA..(k + 1) * MUESTRAS_POR_TRAMA].to_vec();
+            let mut t = t.to_vec();
+            p.procesar(true, &mut t, vec![referencia]).unwrap();
+            sale.extend(t);
+        }
+        let rms = |x: &[i16]| (x.iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
+        let u = n - SAMPLE_RATE as usize;
+        let baja = 20.0 * (rms(&sale[u..]).max(1e-6) / rms(&micro[u..])).log10();
+        assert!(baja <= -30.0, "el eco sólo bajó {baja:.1} dB");
+    }
+
+    /// Lo que hace posible cancelar: nadie suena por su cuenta. Lee su propio
+    /// fichero, como `ningun_bucle_guarda_su_propio_canal`.
+    #[test]
+    fn todo_suena_por_una_sola_salida_y_el_modulo_cancela_el_eco() {
+        let fuente = include_str!("voice.rs");
+        let fin = fuente.find("#[cfg(test)]").unwrap_or(fuente.len());
+        let codigo = &fuente[..fin];
+        assert_eq!(
+            codigo.matches(".build_output_stream(").count(),
+            1,
+            "un altavoz por pista deja al cancelador sin saber qué suena"
+        );
+        let salida = codigo.find("fn asegurar_salida()").unwrap();
+        let abre = codigo.find(".build_output_stream(").unwrap();
+        assert!(abre > salida, "la única salida es la del mezclador");
+        assert!(
+            codigo.contains("AudioProcessingModule::new(true, false, true, true)"),
+            "el módulo tiene que crearse con el cancelador de eco encendido"
+        );
+        let procesa = codigo.find("fn procesar(&mut self").unwrap();
+        let reverso = codigo[procesa..].find("process_reverse_stream").unwrap();
+        let directo = codigo[procesa..].find("apm.process_stream").unwrap();
+        assert!(reverso < directo, "la referencia va antes que la trama del micro");
+        // Y la captura de verdad se la da: sin esto el cancelador está
+        // encendido y no sabe qué restar.
+        let captura = codigo.find("fn arrancar_captura(").unwrap();
+        let llamada = codigo[captura..].find("procesador.procesar(").unwrap() + captura;
+        let cierre = codigo[llamada..].find(")?").or(codigo[llamada..].find(") {")).unwrap() + llamada;
+        assert!(
+            codigo[llamada..cierre].contains("tomar_referencia()"),
+            "la captura no le pasa al cancelador lo que suena"
+        );
     }
 }

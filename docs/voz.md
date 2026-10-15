@@ -88,7 +88,7 @@ mide antes de casarse.
 | Compilación en frío (release) | **3m 54s** |
 | Binario del spike (release, sin strip) | **36,4 MB** |
 | Conectar + publicar contra LiveKit real | ✓ verificado **por el servidor** (`ListParticipants` ve la pista) |
-| Cancelación de eco | ~~✓ expuesta~~ **expuesta, pero no se aplica** con una fuente nativa (ver «El procesado de la voz», 9-oct-2026). El `AudioProcessingModule` sí existe y se usa a mano. |
+| Cancelación de eco | ~~✓ expuesta~~ **expuesta, pero no se aplica** con una fuente nativa (ver «El procesado de la voz», 9-oct-2026). El `AudioProcessingModule` sí existe y se usa a mano, **con el eco desde el 15-oct-2026**. |
 
 Los 36 MB son del binario del spike aislado; lo que engorda la app es libwebrtc
 enlazado, y ese coste se paga una vez. La cancelación de eco era el riesgo que
@@ -376,11 +376,27 @@ defecto y recordado. Apagado manda la voz tal cual (música, un instrumento). En
 la web apaga `noiseSuppression` y `autoGainControl` del navegador; el eco se
 queda siempre.
 
-**Sin cancelación de eco todavía (fase 2).** Necesita, como referencia, lo que
-suena por los altavoces, y hoy cada pista remota suena por **su propio** flujo
-de cpal (`reproducir`): no hay una mezcla que dársela. La fase 2 es un mezclador
-único de reproducción que alimente `process_reverse_stream` del mismo módulo.
-Hasta entonces, con altavoces, los demás pueden oírse a sí mismos.
+**Con cancelación de eco desde el 15-oct-2026 (fase 2).** Se pidió porque
+quien hablaba fuerte se oía a sí mismo: le volvía su voz por los altavoces y el
+micrófono de otro. El cancelador necesita, como referencia, lo que suena por
+los altavoces, y antes cada pista remota sonaba por su propio flujo de cpal.
+Ahora:
+
+- **Una sola salida** (`asegurar_salida`) mezcla todas las pistas. Cada una
+  deja sus muestras, a 48 kHz y en mono, en su cola (`PISTAS`).
+- **La referencia.** La salida deja lo que reproduce en `REFERENCIA`, con un
+  tope de 200 ms. La captura se lo pasa al módulo con `process_reverse_stream`
+  antes de cada trama.
+- **Sin control de ganancia.** Con el eco encendido, el control de ganancia
+  vuelve a subir el ruido que el supresor baja: un ruido sostenido pasaba de
+  −14 dB a −0,2 dB. Sin él, el ruido baja 15 dB y un eco a −10 dB y 30 ms baja
+  69 dB. Medido en `pruebas_procesado::el_eco_de_los_altavoces_se_cancela`.
+
+Apagar la supresión sigue mandando el sonido tal cual, eco incluido.
+
+**Lo que no prueba nada de esto:** el retardo real entre lo que se manda a la
+tarjeta y lo que recoge el micrófono. El módulo lo estima solo (AEC3), y sólo
+se ve en una llamada de verdad, con alguien en altavoces.
 
 Medida de una llamada real, el fichero final de la grabación (AAC, 48 kHz,
 mono) descargado y medido con `ffmpeg … -af astats` por tramos. Una sola
