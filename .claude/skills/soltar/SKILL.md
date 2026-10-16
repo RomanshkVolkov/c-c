@@ -61,13 +61,34 @@ migración de GORM hubiera reventado, el pod no estaría contestando.
 
 ## 4 · Cortar la release, con la versión siguiente
 
+**Cuándo:** con una feature (o un plan de tandas) **terminada**, juntando lo
+que haya, no por tanda. Una release son ~40 min de CI y obliga a todo el equipo
+a actualizar. Un arreglo urgente de algo roto en producción sí sale solo.
+
+**Qué número:** no se elige a mano, lo da el script.
+
 ```sh
-git tag --sort=-v:refname | head -3     # de dónde se viene
+scripts/next-version.sh     # imprime vX.Y.Z y el porqué
 ```
 
-La versión es la **siguiente**. **Nunca se re-corta una publicada**: quien
-instaló la mala se queda tirado ahí, porque el actualizador no le ofrece una
-versión que ya tiene.
+Versionado semántico sobre los prefijos de los commits desde la última
+etiqueta:
+- **algo que rompe** (`feat!:`, `BREAKING CHANGE`): la primera, 1.7.3 → 2.0.0;
+- **algún `feat`**: la del medio, 1.7.3 → 1.8.0;
+- **sólo arreglos**: la última, 1.7.3 → 1.7.4.
+
+Hasta la v1.6.105 todo salió como parche, y el número no decía si una versión
+traía algo nuevo. Lo guarda `app/src/lib/next-version.test.ts`.
+
+La base es la etiqueta **más alta**, publicada o no. **Nunca se re-corta un
+número gastado**: quien instaló la mala se queda tirado ahí, porque el
+actualizador no le ofrece una versión que ya tiene. La v1.6.104 se canceló y
+también cuenta como gastada.
+
+**Nunca dejes un `gh release create` programado en segundo plano.** Se corta a
+mano, después de comprobar los pasos 2 y 3. Una release cancelada que queda
+marcada «Latest» sin `latest.json` deja **a todos sin actualizador**: se arregla
+con `gh release edit <la-buena> --latest` y pasando la mala a borrador.
 
 ```sh
 gh release create vX.Y.Z --title "C-C vX.Y.Z — <el titular>" --notes-file /tmp/notas.md

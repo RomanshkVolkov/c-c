@@ -220,6 +220,13 @@ que la app**. Al revés, una app nueva habla con un servidor que no la entiende 
 quien actualiza rápido se come el rato. La versión es siempre la **siguiente**;
 nunca se re-corta una publicada.
 
+**El número lo da `scripts/next-version.sh`, no la cabeza.** Es versionado
+semántico sobre los prefijos de los commits: algún `feat` sube la del medio
+(1.7.0), sólo arreglos la última (1.7.1), y algo que rompe la primera. Una
+release sale con la feature **terminada**, juntando, no por tanda. Hasta la
+v1.6.105 todo salió como parche.
+→ Guardián: `app/src/lib/next-version.test.ts`.
+
 ## Convenciones
 
 - **El código se escribe en inglés y se comenta en castellano.** Ficheros,
