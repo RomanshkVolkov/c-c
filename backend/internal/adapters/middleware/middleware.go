@@ -374,6 +374,13 @@ var patWritable = []struct {
 	// through itself.
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/tasks/[^/]+/comments/[^/]+$`), domain.ScopeTasksManage},
+	// Configurar un servicio desplegable: registrarlo, editar su despliegue y
+	// sus secrets por nombre. Desplegar, volver atrás, borrar y la llave del
+	// CI **no** están: un token configura, una persona aprieta el botón. El
+	// comando de migraciones lo rechaza el handler (ver ScopeDeploysManage).
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/?$`), domain.ScopeDeploysManage},
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/[^/]+$`), domain.ScopeDeploysManage},
+	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/[^/]+/secret-refs$`), domain.ScopeDeploysManage},
 }
 
 // patScopeFor reports the scope this request needs, and whether it's reachable

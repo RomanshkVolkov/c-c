@@ -1436,6 +1436,98 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "list_servers",
+            "description": "The servers cac manages (Docker Swarm or Kubernetes), with their id, name, type and status. Use it to find the serverId the deploy tools take.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "list_deployables",
+            "description": "The services of a server that cac deploys (its \"deployables\"), with how each one deploys: image repo, GitHub repo, branch, whether it builds on the server, Dockerfile and build context, the CI workflow and what a CI notice does. Use it to find the deployableId.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "serverId": { "type": "string" } },
+                "required": ["serverId"]
+            }
+        },
+        {
+            "name": "get_deploy_config",
+            "description": "Everything about how one service deploys, in one call: its configuration, its secrets BY NAME with where each value lives in 1Password (opRef) and whether it is used at runtime, at build time or both, and the build args its Dockerfile declares (to cross them with the secrets). Never returns a secret value.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "serverId": { "type": "string" }, "deployableId": { "type": "string" } },
+                "required": ["serverId", "deployableId"]
+            }
+        },
+        {
+            "name": "create_deployable",
+            "description": "Register a service of the server as deployable by cac. Needs the `deploys:manage` scope (and an org admin behind the token). It does not deploy anything.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "name": { "type": "string", "description": "What cac calls it." },
+                    "stack": { "type": "string", "description": "The Swarm stack it belongs to." },
+                    "serviceName": { "type": "string", "description": "The Swarm service, e.g. stack_web." },
+                    "imageRepo": { "type": "string", "description": "e.g. ghcr.io/org/app" },
+                    "environment": { "type": "string" },
+                    "repoFullName": { "type": "string", "description": "owner/repo on GitHub." },
+                    "shortTags": { "type": "boolean" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["serverId", "name", "stack", "serviceName", "imageRepo"]
+            }
+        },
+        {
+            "name": "update_deploy_config",
+            "description": "Change how a service deploys. Only the fields you send are touched. Needs the `deploys:manage` scope (and an org admin behind the token). It never deploys, and it cannot change the migration command: that one runs on the server and stays a person's decision in the app.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "deployableId": { "type": "string" },
+                    "name": { "type": "string" },
+                    "environment": { "type": "string" },
+                    "repoFullName": { "type": "string", "description": "owner/repo on GitHub." },
+                    "onCINotify": { "type": "string", "enum": ["record", "deploy"], "description": "What a CI notice does: just record the build, or deploy it." },
+                    "buildWorkflow": { "type": "string", "description": "The workflow file that builds the image, e.g. prod.yml." },
+                    "shortTags": { "type": "boolean" },
+                    "branch": { "type": "string", "description": "Only pushes/notices of this branch touch the service." },
+                    "buildOnHost": { "type": "boolean", "description": "Build the image of each push on the server itself (agent v6+), without a registry." },
+                    "dockerfile": { "type": "string", "description": "Path of the Dockerfile in the repo." },
+                    "buildContext": { "type": "string", "description": "Folder the build runs from; empty is the repo root." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["serverId", "deployableId"]
+            }
+        },
+        {
+            "name": "set_secret_refs",
+            "description": "Set a service's secrets BY NAME: each one says where its value lives in 1Password (opRef, op://vault/item/field) and whether it is used at runtime, at build time or both. By default it merges by name: what you send is added or changed, the rest stays; `remove` takes names out, and `replace: true` makes the list exactly what you send. No secret value ever goes through cac: the app's \"Rotate on the server\" reads them from 1Password. Needs the `deploys:manage` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "deployableId": { "type": "string" },
+                    "refs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": { "type": "string", "description": "UPPER_SNAKE_CASE, as the service reads it." },
+                                "opRef": { "type": "string", "description": "op://vault/item/field" },
+                                "usage": { "type": "string", "enum": ["runtime", "build", "both"] }
+                            },
+                            "required": ["name", "opRef"]
+                        }
+                    },
+                    "remove": { "type": "array", "items": { "type": "string" } },
+                    "replace": { "type": "boolean" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["serverId", "deployableId"]
+            }
+        },
+        {
             "name": "list_task_spaces",
             "description": "The task navigator: spaces, folders and lists with their task counts. Use it to resolve a list name to the listId that get_board takes.",
             "inputSchema": { "type": "object", "properties": {} }
@@ -2110,6 +2202,101 @@ fn attachment_markdown(file_name: &str, content_type: &str, url: &str) -> String
     }
 }
 
+/// Un servicio desplegable de un servidor, por su id. La ruta lista todos: no
+/// hay una para uno solo.
+fn find_deployable(cfg: &Cfg, server: &str, id: &str) -> Result<Value, String> {
+    let list = api_get(cfg, &format!("/api/v1/servers/{}/deployables", urlencode(server)))?;
+    list.as_array()
+        .and_then(|a| a.iter().find(|d| d.get("id").and_then(|v| v.as_str()) == Some(id)))
+        .cloned()
+        .ok_or_else(|| format!("No deployable {id} on server {server}: use list_deployables"))
+}
+
+/// El cuerpo del PATCH de un servicio: lo que se pide, sobre lo que ya tiene.
+///
+/// La ruta pide la fila entera —`name`, `environment`, `repoFullName` y
+/// `onCINotify` no son opcionales—, así que lo que no se manda se rellena con
+/// lo actual en vez de borrarlo. Los campos opcionales del servidor (punteros)
+/// sólo van si se piden: ausentes, no se tocan.
+///
+/// **El comando de migraciones no se toca nunca desde aquí**: corre en el
+/// servidor, y es de una persona en la app. Pedirlo es un error, no un silencio.
+fn deploy_update_body(current: &Value, args: &Value) -> Result<(Value, Vec<String>), String> {
+    if args.get("migrateCommand").is_some() {
+        return Err("The migration command runs on the server: change it in the app, not with a token".into());
+    }
+    let pick = |key: &str| -> Value {
+        args.get(key).cloned().unwrap_or_else(|| current.get(key).cloned().unwrap_or(json!("")))
+    };
+    let mut body = json!({
+        "name": pick("name"),
+        "environment": pick("environment"),
+        "repoFullName": pick("repoFullName"),
+        "onCINotify": pick("onCINotify"),
+    });
+    if body["onCINotify"].as_str().unwrap_or("").is_empty() {
+        body["onCINotify"] = json!("record");
+    }
+    let mut changed = vec![];
+    for key in ["name", "environment", "repoFullName", "onCINotify"] {
+        if args.get(key).is_some() {
+            changed.push(key.to_string());
+        }
+    }
+    for key in ["buildWorkflow", "shortTags", "branch", "buildOnHost", "dockerfile", "buildContext"] {
+        if let Some(v) = args.get(key) {
+            body[key] = v.clone();
+            changed.push(key.to_string());
+        }
+    }
+    if changed.is_empty() {
+        return Err("Nothing to change: send at least one field".into());
+    }
+    Ok((body, changed))
+}
+
+/// La lista de secrets por nombre que se guarda: por defecto, lo que hay con
+/// lo pedido encima (por nombre); `remove` quita; `replace` deja sólo lo
+/// pedido. La ruta reemplaza la lista entera, así que «añadir uno» tiene que
+/// mandar también los demás o se perderían.
+fn merge_secret_refs(current: &[Value], set: &[Value], remove: &[String], replace: bool) -> Result<Vec<Value>, String> {
+    let entry = |v: &Value| -> Result<Value, String> {
+        let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("").trim().to_string();
+        let op_ref = v.get("opRef").and_then(|n| n.as_str()).unwrap_or("").trim().to_string();
+        if name.is_empty() || op_ref.is_empty() {
+            return Err("Each ref needs a name and an opRef (op://vault/item/field)".into());
+        }
+        let usage = v.get("usage").and_then(|n| n.as_str()).unwrap_or("runtime").to_string();
+        if !["runtime", "build", "both"].contains(&usage.as_str()) {
+            return Err(format!("usage of {name} must be runtime, build or both"));
+        }
+        Ok(json!({ "name": name, "opRef": op_ref, "usage": usage }))
+    };
+    let mut out: Vec<Value> = if replace {
+        vec![]
+    } else {
+        current
+            .iter()
+            .map(|v| {
+                json!({
+                    "name": v.get("name").cloned().unwrap_or(json!("")),
+                    "opRef": v.get("opRef").cloned().unwrap_or(json!("")),
+                    "usage": v.get("usage").and_then(|u| u.as_str()).filter(|u| !u.is_empty()).unwrap_or("runtime"),
+                })
+            })
+            .collect()
+    };
+    for v in set {
+        let e = entry(v)?;
+        match out.iter_mut().find(|o| o["name"] == e["name"]) {
+            Some(slot) => *slot = e,
+            None => out.push(e),
+        }
+    }
+    out.retain(|o| !remove.iter().any(|r| o["name"].as_str() == Some(r.as_str())));
+    Ok(out)
+}
+
 fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "list_projects" => {
@@ -2324,6 +2511,109 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 // escribe cac la referencia a un adjunto.
                 "markdown": attachment_markdown(&file_name, &ctype, rel),
             }))
+        }
+
+        "list_servers" => {
+            let data = api_get(cfg, "/api/v1/servers")?;
+            let items: Vec<Value> = data
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .map(|v| {
+                    json!({
+                        "id": v.get("id"), "name": v.get("name"), "type": v.get("type"),
+                        "status": v.get("status"), "orgId": v.get("orgId"),
+                    })
+                })
+                .collect();
+            Ok(json!({ "servers": items }))
+        }
+
+        "list_deployables" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let data = api_get(cfg, &format!("/api/v1/servers/{}/deployables", urlencode(&server)))?;
+            Ok(json!({ "deployables": data }))
+        }
+
+        "get_deploy_config" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let id = arg_str(args, "deployableId").ok_or("deployableId is required")?;
+            let current = find_deployable(cfg, &server, &id)?;
+            let base = format!("/api/v1/servers/{}/deployables/{}", urlencode(&server), urlencode(&id));
+            let refs = api_get(cfg, &format!("{base}/secret-refs"))?;
+            // Los build args salen del Dockerfile del repo, por la GitHub App:
+            // si no se pueden leer, el resto sigue valiendo.
+            let build_args = match api_get(cfg, &format!("{base}/build-args")) {
+                Ok(v) => v,
+                Err(e) => json!({ "unavailable": e }),
+            };
+            Ok(json!({ "deployable": current, "secretRefs": refs, "buildArgs": build_args }))
+        }
+
+        "create_deployable" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let path = format!("/api/v1/servers/{}/deployables", urlencode(&server));
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &path);
+                return dry_run(cfg, "deploys:manage", target);
+            }
+            let mut body = json!({});
+            for key in ["name", "stack", "serviceName", "imageRepo"] {
+                body[key] = json!(arg_str(args, key).ok_or(format!("{key} is required"))?);
+            }
+            for key in ["environment", "repoFullName"] {
+                if let Some(v) = arg_str(args, key) {
+                    body[key] = json!(v);
+                }
+            }
+            if let Some(v) = args.get("shortTags").and_then(|v| v.as_bool()) {
+                body["shortTags"] = json!(v);
+            }
+            let created = api_post(cfg, &path, body)?;
+            Ok(json!({ "created": created }))
+        }
+
+        "update_deploy_config" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let id = arg_str(args, "deployableId").ok_or("deployableId is required")?;
+            let current = find_deployable(cfg, &server, &id)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "deploys:manage", Ok(current));
+            }
+            let (body, changed) = deploy_update_body(&current, args)?;
+            let updated = api_patch(
+                cfg,
+                &format!("/api/v1/servers/{}/deployables/{}", urlencode(&server), urlencode(&id)),
+                body,
+            )?;
+            Ok(json!({ "updated": updated, "changed": changed }))
+        }
+
+        "set_secret_refs" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let id = arg_str(args, "deployableId").ok_or("deployableId is required")?;
+            let path = format!(
+                "/api/v1/servers/{}/deployables/{}/secret-refs",
+                urlencode(&server),
+                urlencode(&id)
+            );
+            let current = api_get(cfg, &path)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "deploys:manage", Ok(current));
+            }
+            let set: Vec<Value> = args.get("refs").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let remove: Vec<String> = arg_names(args, "remove").unwrap_or_default();
+            if set.is_empty() && remove.is_empty() && !arg_bool(args, "replace") {
+                return Err("Nothing to change: send refs to add or change, or remove".into());
+            }
+            let refs = merge_secret_refs(
+                current.as_array().map(|a| a.as_slice()).unwrap_or(&[]),
+                &set,
+                &remove,
+                arg_bool(args, "replace"),
+            )?;
+            let saved = api_put(cfg, &path, json!({ "refs": refs }))?;
+            Ok(json!({ "secretRefs": saved }))
         }
 
         "list_task_spaces" => {
@@ -4374,4 +4664,76 @@ mod tests {
         assert_eq!(out["tooLarge"], true);
         assert!(out.get("body").is_none());
     }
+
+    // ── Configurar el despliegue (16-oct-2026) ──────────────────────────────
+
+    /// Editar un servicio rellena lo obligatorio con lo que ya tiene, sólo
+    /// toca lo pedido y nunca el comando de migraciones. Mutantes: mandar
+    /// vacío lo no pedido (borraría el repo); dejar pasar `migrateCommand`;
+    /// mandar los opcionales aunque no se pidan.
+    #[test]
+    fn editing_a_deployable_keeps_what_was_not_asked() {
+        let current = json!({
+            "id": "d1", "name": "web", "environment": "prod", "repoFullName": "dwit/web",
+            "onCINotify": "deploy", "branch": "main", "migrateCommand": "make migrate"
+        });
+        let (body, changed) = deploy_update_body(&current, &json!({ "branch": "dev", "buildOnHost": true })).unwrap();
+        assert_eq!(body["name"], "web");
+        assert_eq!(body["repoFullName"], "dwit/web");
+        assert_eq!(body["onCINotify"], "deploy");
+        assert_eq!(body["branch"], "dev");
+        assert_eq!(body["buildOnHost"], true);
+        assert!(body.get("dockerfile").is_none(), "lo no pedido no viaja");
+        assert!(body.get("migrateCommand").is_none());
+        assert_eq!(changed, vec!["branch", "buildOnHost"]);
+        // Junto con algo válido, para que el error sea por el comando y no por
+        // «nada que cambiar».
+        let err = deploy_update_body(&current, &json!({ "branch": "dev", "migrateCommand": "rm -rf /" })).unwrap_err();
+        assert!(err.contains("migration"), "{err}");
+        assert!(deploy_update_body(&current, &json!({})).is_err());
+    }
+
+    /// Los secrets por nombre: por defecto se combinan; `remove` quita y
+    /// `replace` deja sólo lo pedido. Mutantes: reemplazar siempre (perdería
+    /// los demás); duplicar uno que ya estaba; no validar `usage`.
+    #[test]
+    fn secret_refs_merge_by_name() {
+        let current = vec![
+            json!({ "name": "DATABASE_URL", "opRef": "op://v/db/url", "usage": "both" }),
+            json!({ "name": "GTM_ID", "opRef": "op://v/gtm/id", "usage": "" }),
+        ];
+        let out = merge_secret_refs(
+            &current,
+            &[json!({ "name": "GTM_ID", "opRef": "op://v/gtm/id2", "usage": "build" }),
+              json!({ "name": "SENTRY_DSN", "opRef": "op://v/sentry/dsn" })],
+            &[],
+            false,
+        )
+        .unwrap();
+        assert_eq!(out.len(), 3, "uno cambia, uno se añade y el otro se queda");
+        assert_eq!(out[0]["usage"], "both");
+        assert_eq!(out[1]["opRef"], "op://v/gtm/id2");
+        assert_eq!(out[2]["usage"], "runtime", "sin usage, runtime");
+        let out = merge_secret_refs(&current, &[], &["GTM_ID".to_string()], false).unwrap();
+        assert_eq!(out.len(), 1);
+        let out = merge_secret_refs(&current, &[json!({ "name": "A", "opRef": "op://v/a/b" })], &[], true).unwrap();
+        assert_eq!(out.len(), 1);
+        assert!(merge_secret_refs(&current, &[json!({ "name": "A", "opRef": "op://x", "usage": "siempre" })], &[], false).is_err());
+        assert!(merge_secret_refs(&current, &[json!({ "name": "A" })], &[], false).is_err());
+    }
+
+    /// Las herramientas existen, piden el permiso propio y `update_deploy_config`
+    /// no ofrece el comando de migraciones. Mutante: anunciarlo.
+    #[test]
+    fn the_deploy_tools_are_there_and_never_touch_migrations() {
+        let defs = tool_defs();
+        for name in ["list_servers", "list_deployables", "get_deploy_config", "create_deployable", "update_deploy_config", "set_secret_refs"] {
+            assert!(!tool(&defs, name).is_null(), "falta {name}");
+        }
+        for name in ["create_deployable", "update_deploy_config", "set_secret_refs"] {
+            assert!(tool(&defs, name)["description"].as_str().unwrap().contains("deploys:manage"), "{name}");
+        }
+        assert!(tool(&defs, "update_deploy_config")["inputSchema"]["properties"].get("migrateCommand").is_none());
+    }
 }
+

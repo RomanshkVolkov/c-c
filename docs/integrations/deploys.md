@@ -205,7 +205,34 @@ RUN printf '%s\n' \
 ENTRYPOINT ["docker-entrypoint"]
 ```
 
-## 8. Lo que no hace (todavía)
+## 8. Configurarlo con un agente (MCP)
+
+Dejar listo un servicio a mano —repo, rama, build en el servidor, Dockerfile y
+la lista de secrets con su referencia de 1Password— es mucho rato en la página
+Despliegue (jose, 16-oct-2026, con Boaty). El MCP de cac lo hace por ti con un
+token que lleve el permiso **`deploys:manage`** («Configurar despliegues» en
+Connect Claude Code):
+
+| Herramienta | Qué hace |
+|---|---|
+| `list_servers` | Los servidores, para el `serverId`. |
+| `list_deployables` | Los servicios de un servidor, para el `deployableId`. |
+| `get_deploy_config` | La configuración entera de uno: lo de arriba, sus secrets **por nombre** con su `opRef` y uso, y los build args del Dockerfile. |
+| `create_deployable` | Registrar un servicio. |
+| `update_deploy_config` | Cambiar sólo lo que se pide. La ruta pide la fila entera, y la herramienta rellena el resto con lo que ya hay. |
+| `set_secret_refs` | Los secrets por nombre. Por defecto **combina por nombre**; `remove` quita y `replace` sustituye la lista. |
+
+**Lo que no hace, a propósito:**
+- **Desplegar ni volver atrás.** Un token configura; una persona aprieta el
+  botón. Tampoco borra un servicio ni saca la llave del CI. Lo vigila
+  `middleware.TestATokenConfiguresButNeverDeploys`.
+- **Cambiar el comando de migraciones.** Es un `sh -c` que corre en el
+  servidor: con un token, el handler contesta 403 `migrate-needs-a-person`.
+  Lo vigila `handler.TestAMigrationCommandNeedsAPerson`.
+- **Tocar el valor de un secret.** Por aquí sólo viajan nombres y referencias.
+  Los valores los lee de 1Password el botón «Rotar en el servidor» de la app.
+
+## 9. Lo que no hace (todavía)
 
 - Con la [GitHub App](github.md) instalada y el workflow que publica la imagen
   puesto en el servicio, este paso **sobra**: el final de ese workflow cuenta

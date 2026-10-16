@@ -81,6 +81,11 @@ export const SCOPES: ScopeOption[] = [
     labelKey: "common:scopes.collectionsWrite",
     detailKey: "scopes.collectionsWriteDetail",
   },
+  {
+    id: "deploys:manage",
+    labelKey: "common:scopes.deploysManage",
+    detailKey: "scopes.deploysManageDetail",
+  },
 ];
 
 export function ScopeChecklist({

@@ -175,6 +175,7 @@
   "bad-reaction": "Esa reacción no es de las que se pueden poner.",
   "reply-elsewhere": "Ese mensaje ya no está en esta conversación: puede que lo hayan retirado.",
   "call-ended": "La llamada ya terminó: su chat sólo se puede leer.",
+  "migrate-needs-a-person": "El comando de migraciones corre en el servidor: se cambia desde la app, no con un token.",
   "guest-not-admitted": "Todavía no estás dentro de la llamada: espera a que te dejen pasar.",
   "empty-body": "El mensaje está vacío.",
   "repo-docs-off": "Este repo no enseña sus docs. Enciéndelos en la configuración de GitHub de la organización.",

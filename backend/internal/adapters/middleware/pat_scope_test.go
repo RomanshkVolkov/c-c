@@ -73,6 +73,11 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		// Reemplazar una sección entera, y poner dueño o línea fijada.
 		{http.MethodPut, "/api/v1/docs/list/abc/tabs/overview", domain.ScopeDocsManage},
 		{http.MethodPatch, "/api/v1/docs/folder/abc", domain.ScopeDocsManage},
+		// Configurar el despliegue de un servicio (16-oct-2026): registrar uno,
+		// editarlo y poner sus secrets por nombre.
+		{http.MethodPost, "/api/v1/servers/s1/deployables", domain.ScopeDeploysManage},
+		{http.MethodPatch, "/api/v1/servers/s1/deployables/d1", domain.ScopeDeploysManage},
+		{http.MethodPut, "/api/v1/servers/s1/deployables/d1/secret-refs", domain.ScopeDeploysManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -208,5 +213,22 @@ func TestTheAccessLogNeverWritesACredential(t *testing.T) {
 	// A query we can't parse is dropped rather than logged hopefully.
 	if got := redactQuery("/x?%zz"); strings.Contains(got, "%zz") {
 		t.Errorf("unparseable query should not be logged verbatim, got %q", got)
+	}
+}
+
+// Un token configura un servicio; **no** lo despliega, ni vuelve atrás, ni lo
+// borra, ni saca la llave del CI. Mutante: abrir alguna de éstas a un token.
+func TestATokenConfiguresButNeverDeploys(t *testing.T) {
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/deploy"},
+		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/deployments/x/rollback"},
+		{http.MethodDelete, "/api/v1/servers/s1/deployables/d1"},
+		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/ci-key"},
+		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/secret-rotations"},
+		{http.MethodPatch, "/api/v1/servers/s1"},
+	} {
+		if scope, ok := patScopeFor(req(c.method, c.path)); ok {
+			t.Errorf("%s %s se abrió a un token (%s)", c.method, c.path, scope)
+		}
 	}
 }

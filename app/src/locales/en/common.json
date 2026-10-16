@@ -546,7 +546,9 @@
     "docsWrite": "Add to project docs",
     "docsWriteDetail": "Append-only: adds to the end of a section and records decisions, and can never delete what somebody else wrote. Safe while a person has the document open.",
     "docsManage": "Rewrite project docs",
-    "docsManageDetail": "Replaces a whole section and decides who a document belongs to. A save that arrives after somebody else's is refused rather than applied, but this is still the permission that can overwrite work. It cannot mark a document reviewed — that says a person confirmed it, and only a superadmin signs it."
+    "docsManageDetail": "Replaces a whole section and decides who a document belongs to. A save that arrives after somebody else's is refused rather than applied, but this is still the permission that can overwrite work. It cannot mark a document reviewed — that says a person confirmed it, and only a superadmin signs it.",
+    "deploysManage": "Configure deploys",
+    "deploysManageDetail": "Set up how a service deploys — repo, branch, server builds, Dockerfile and its secrets <1>by name</1> — and register new ones. <1>Never</1> deploys, rolls back, deletes or changes the migration command; no secret value goes through it."
   },
   "last": {
     "webviewRecovered": "The page closed unexpectedly and was reloaded. It has been reported.",

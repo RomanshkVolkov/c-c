@@ -109,6 +109,20 @@ const (
 	// Editing, deleting and sharing one all reach work a person already owns,
 	// and sharing reaches other people — that stays a human decision.
 	ScopeCollectionsWrite = "collections:write"
+	// ScopeDeploysManage: configurar cómo despliega un servicio —repo, rama,
+	// build en el servidor, Dockerfile, sus secrets **por nombre**— y
+	// registrar uno nuevo. Para que un agente deje listo un servicio sin que
+	// alguien rellene a mano la página Despliegue (jose, 16-oct-2026: «me
+	// tardé demasiado sólo en el de Boaty»).
+	//
+	// **No** alcanza el comando de migraciones: es un `sh -c` que corre en el
+	// servidor, y que un token lo pudiera cambiar sería dar a un agente una
+	// consola en la máquina. Eso lo cambia una persona en la app
+	// (el handler contesta `migrate-needs-a-person` a un token, con `ViaToken`).
+	// Tampoco desplegar ni volver
+	// atrás, ni ningún valor de un secret: aquí sólo viajan nombres y
+	// referencias de 1Password.
+	ScopeDeploysManage = "deploys:manage"
 )
 
 func ValidScope(s string) bool {
@@ -117,7 +131,7 @@ func ValidScope(s string) bool {
 		ScopeNotesWrite, ScopeNotesManage,
 		ScopeReportsWrite, ScopeReportsManage,
 		ScopeDocsWrite, ScopeDocsManage,
-		ScopeCollectionsWrite:
+		ScopeCollectionsWrite, ScopeDeploysManage:
 		return true
 	default:
 		return false

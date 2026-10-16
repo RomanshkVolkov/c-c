@@ -206,6 +206,16 @@ func (h *DeployHandler) Update(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
+	// El comando de migraciones corre en el servidor: con un token no se
+	// cambia (ver domain.ScopeDeploysManage). Mandar el mismo que ya tiene sí
+	// vale, porque no cambia nada.
+	if user, ok := currentUser(r); ok && user.ViaToken && req.MigrateCommand != nil &&
+		*req.MigrateCommand != d.MigrateCommand {
+		SendErrorResponse(w, http.StatusForbidden,
+			"The migration command runs on the server; change it in the app, not with a token",
+			"migrate-needs-a-person")
+		return
+	}
 	out, err := h.svc.UpdateDeployable(d, req)
 	if err != nil {
 		deployError(w, err)
