@@ -7,6 +7,17 @@ import { useDocPages } from "@/store/doc-pages.store";
 import { useRepoDocs } from "@/store/repo-docs.store";
 import { useTasksStore } from "@/store/tasks.store";
 import { isDocOwnerKind } from "@/types/task";
+import { useRouteRequest } from "@/store/route-request.store";
+
+/**
+ * Si la pantalla de ahora ya pinta el documento abierto: Documentación
+ * (`/docs`) y Trabajo (`/tasks`). Desde cualquier otra —el chat—, abrirlo en la
+ * store no se veía.
+ */
+function onDocScreen(): boolean {
+  const path = typeof window === "undefined" ? "" : window.location.pathname.replace(/\/+$/, "");
+  return path.endsWith("/docs") || path.endsWith("/tasks");
+}
 
 /**
  * Abre dentro de la app un enlace que sólo significa algo aquí dentro: una
@@ -46,6 +57,8 @@ export function openInternalRef(href: string, opts: { onOpenRecordings?: () => v
         .openDoc(ref.kind, ref.id, "")
         .catch((e) => toast.error(String(e)));
     }
+    // Y a la pantalla donde se ve, si no se está ya en una.
+    if (!onDocScreen()) useRouteRequest.getState().request("/docs");
     return true;
   }
   // Un .md en GitHub de un repo de la org (docs as code): se lee en cac, que

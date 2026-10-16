@@ -23,6 +23,7 @@ vi.mock("@/store/doc-pages.store", () => ({
 }));
 
 const { openInternalRef } = await import("@/lib/open-ref");
+const { useRouteRequest } = await import("@/store/route-request.store");
 
 beforeEach(() => {
   orden.length = 0;
@@ -79,5 +80,23 @@ describe("un enlace de dentro", () => {
 
   it("un tipo de nodo que no existe no se abre", () => {
     expect(openInternalRef("/tasks?doc=board:x1")).toBe(false);
+  });
+});
+
+// Desde el chat, abrir un documento tiene que llevar a donde se ve: la store lo
+// abría, la pantalla seguía en el chat y no pasaba nada (16-oct-2026).
+// Mutantes: no pedir la ruta; pedirla también estando ya en Documentación.
+describe("un enlace a un documento lleva a donde se ve", () => {
+  it("desde el chat, a Documentación; desde Documentación, se queda", () => {
+    window.history.pushState({}, "", "/chat?space=s1");
+    useRouteRequest.setState({ pending: null });
+    openInternalRef("/tasks?doc=list:l1");
+    expect(useRouteRequest.getState().pending).toBe("/docs");
+
+    window.history.pushState({}, "", "/docs");
+    useRouteRequest.setState({ pending: null });
+    openInternalRef("/tasks?doc=list:l1");
+    expect(useRouteRequest.getState().pending).toBeNull();
+    window.history.pushState({}, "", "/");
   });
 });

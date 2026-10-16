@@ -21,8 +21,24 @@ export function quoteText(body: string): string {
       .replace(/(^|\W)[*_](\S[^*_]*?)[*_](?=\W|$)/g, "$1$2")
       .replace(/\s+/g, " ")
       .trim()
+      // Las entidades que escribe el editor: guarda `<` como `&lt;`, y el
+      // lector las deshace al pintar, así que aquí también. Sin esto, un
+      // «<3» salía como «&lt;3» en la lista de directos (16-oct-2026).
+      .replace(/&(lt|gt|quot|#39|apos|nbsp|#(\d+)|amp);/g, (_, name: string, code?: string) =>
+        code ? String.fromCharCode(Number(code)) : ENTITIES[name] ?? "",
+      )
   );
 }
+
+const ENTITIES: Record<string, string> = {
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  "#39": "'",
+  apos: "'",
+  nbsp: " ",
+  amp: "&",
+};
 
 /**
  * Lleva la vista al mensaje citado y lo resalta un momento. Devuelve false si
