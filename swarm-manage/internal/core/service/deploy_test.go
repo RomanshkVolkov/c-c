@@ -42,6 +42,13 @@ type fakeDocker struct {
 	secretsMade    map[string][]byte
 	secretsGone    []string
 	jobsGone       []string
+
+	// El log en vivo del build: `running` preguntas sigue corriendo, y en la
+	// pregunta i aparecen las líneas de `steps[i]`.
+	running   int
+	taskCalls int
+	steps     [][]repository.LogLine
+	written   []repository.LogLine
 }
 
 func (f *fakeDocker) NodeCount(context.Context) (int, error) {
@@ -79,7 +86,26 @@ func (f *fakeDocker) CreateMigrationJob(_ context.Context, from, name, image, cm
 	return "job-1", nil
 }
 func (f *fakeDocker) JobTask(context.Context, string) (repository.TaskState, error) {
+	if f.taskCalls < len(f.steps) {
+		f.written = append(f.written, f.steps[f.taskCalls]...)
+	}
+	f.taskCalls++
+	if f.taskCalls <= f.running {
+		return repository.TaskState{State: "running"}, nil
+	}
 	return f.migState, nil
+}
+
+// Como Docker: desde `since` **incluido**, que es por lo que la línea del
+// borde vuelve.
+func (f *fakeDocker) JobLogsSince(_ context.Context, _ string, since time.Time) ([]repository.LogLine, error) {
+	var out []repository.LogLine
+	for _, l := range f.written {
+		if !l.At.Before(since) {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }
 func (f *fakeDocker) JobLogs(context.Context, string, int) ([]string, error) { return f.migLogs, nil }
 func (f *fakeDocker) RemoveService(_ context.Context, id string) error {
@@ -129,9 +155,17 @@ func (f *fakeDocker) UpdateServiceImage(_ context.Context, id string, version in
 type fakeReport struct {
 	lines  []string
 	finish *FinishReport
+	// Si está, apunta junto a cada línea cuántas preguntas llevaba el build.
+	stamp  func() int
+	stamps []int
 }
 
-func (r *fakeReport) Log(_ context.Context, _, line string) { r.lines = append(r.lines, line) }
+func (r *fakeReport) Log(_ context.Context, _, line string) {
+	r.lines = append(r.lines, line)
+	if r.stamp != nil {
+		r.stamps = append(r.stamps, r.stamp())
+	}
+}
 func (r *fakeReport) Finish(_ context.Context, _ string, f FinishReport) error {
 	r.finish = &f
 	return nil
@@ -376,6 +410,45 @@ func TestABuildDeploysTheLocalImage(t *testing.T) {
 	script := cs["Command"].([]string)[2]
 	if strings.Contains(script, "ghs_x") {
 		t.Fatalf("el token en el guion:\n%s", script)
+	}
+}
+
+// El log del build llega mientras construye, no al final, y cada línea una
+// vez aunque Docker devuelva la del borde.
+// Mutantes: pasar el log sólo al acabar (llega tarde); no descartar la del
+// borde (se repite); caer a las últimas líneas habiendo leído en vivo.
+func TestTheBuildLogArrivesWhileItBuilds(t *testing.T) {
+	d, r := buildDocker(), &fakeReport{}
+	t0 := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
+	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
+	d.running = 4
+	d.steps = [][]repository.LogLine{
+		{{At: at(1), Text: "#1 load build definition"}},
+		{{At: at(2), Text: "#5 RUN npm ci"}, {At: at(3), Text: "#5 added 812 packages"}},
+		nil,
+		{{At: at(9), Text: "#7 RUN next build"}},
+	}
+	d.migLogs = []string{"lo que daba el log de antes, al final"}
+	r.stamp = func() int { return d.taskCalls }
+	dep := deployer(d, r)
+	dep.BuildLogEvery = 0
+	dep.Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "succeeded" {
+		t.Fatalf("acabó %+v\n%s", r.finish, strings.Join(r.lines, "\n"))
+	}
+	all := strings.Join(r.lines, "\n")
+	for _, want := range []string{"#1 load build definition", "#5 RUN npm ci", "#5 added 812 packages", "#7 RUN next build"} {
+		if n := strings.Count(all, want); n != 1 {
+			t.Errorf("%q salió %d veces:\n%s", want, n, all)
+		}
+	}
+	for i, l := range r.lines {
+		if strings.Contains(l, "#5 RUN npm ci") && r.stamps[i] > d.running {
+			t.Errorf("la línea del npm llegó con el build acabado (pregunta %d de %d)", r.stamps[i], d.running)
+		}
+	}
+	if strings.Contains(all, "lo que daba el log de antes") {
+		t.Errorf("leyendo en vivo, también pasó la cola de antes:\n%s", all)
 	}
 }
 

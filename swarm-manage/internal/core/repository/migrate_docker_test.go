@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"reflect"
 	"testing"
+	"time"
 )
 
 // El job copia del servicio lo que hace falta para llegar a la base (redes,
@@ -91,5 +92,25 @@ func TestATaskThatStoppedIsDone(t *testing.T) {
 		if (TaskState{State: s}).Done() {
 			t.Errorf("%s cuenta como acabada", s)
 		}
+	}
+}
+
+// Con `timestamps=1`, cada línea trae delante su instante: se separa, y una
+// sin él se queda con el de la anterior en vez de perderse.
+// Mutantes: dejar el instante pegado al texto; tirar la línea sin instante.
+func TestParseTimestampedSplitsTheInstantFromTheText(t *testing.T) {
+	got := ParseTimestamped([]string{
+		"2026-10-16T15:30:00.123456789Z #5 RUN npm ci",
+		"sin instante",
+	})
+	if len(got) != 2 {
+		t.Fatalf("%d líneas: %+v", len(got), got)
+	}
+	want := time.Date(2026, 10, 16, 15, 30, 0, 123456789, time.UTC)
+	if got[0].Text != "#5 RUN npm ci" || !got[0].At.Equal(want) {
+		t.Errorf("la primera: %+v", got[0])
+	}
+	if got[1].Text != "sin instante" || !got[1].At.Equal(want) {
+		t.Errorf("la segunda: %+v", got[1])
 	}
 }

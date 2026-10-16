@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 )
 
 // Las migraciones de un deploy (R8b): un **job** de Swarm de un solo disparo,
@@ -166,6 +168,58 @@ func (c *DockerClient) JobLogs(ctx context.Context, serviceID string, tail int) 
 		return nil, err
 	}
 	return Demux(raw), nil
+}
+
+// LogLine: una línea del log de un job con el instante en que la escribió.
+type LogLine struct {
+	At   time.Time
+	Text string
+}
+
+// JobLogsSince: las líneas de un job escritas desde `since` (todas, con el
+// cero), con su instante, para ir pasando el log de un build mientras corre.
+// Docker corta por segundos fraccionarios; la línea justo en el borde puede
+// volver, y quien llama descarta lo que no sea posterior a lo que ya tiene.
+func (c *DockerClient) JobLogsSince(ctx context.Context, serviceID string, since time.Time) ([]LogLine, error) {
+	q := "stdout=1&stderr=1&timestamps=1"
+	if !since.IsZero() {
+		q += fmt.Sprintf("&since=%d.%09d", since.Unix(), since.Nanosecond())
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiURL(fmt.Sprintf("/services/%s/logs?%s", serviceID, q)), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpStream.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("docker no dio los logs del job: %s", resp.Status)
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, err
+	}
+	return ParseTimestamped(Demux(raw)), nil
+}
+
+// ParseTimestamped separa el instante que pone Docker con `timestamps=1`
+// («2026-10-16T15:30:00.123456789Z texto»). Una línea sin él (no debería
+// haberla) se queda con el instante de la anterior, para no perderla.
+func ParseTimestamped(lines []string) []LogLine {
+	out := make([]LogLine, 0, len(lines))
+	var last time.Time
+	for _, l := range lines {
+		ts, text, ok := strings.Cut(l, " ")
+		if at, err := time.Parse(time.RFC3339Nano, ts); ok && err == nil {
+			last = at
+			out = append(out, LogLine{At: at, Text: text})
+			continue
+		}
+		out = append(out, LogLine{At: last, Text: l})
+	}
+	return out
 }
 
 // RemoveService borra un servicio (el job, al acabar).

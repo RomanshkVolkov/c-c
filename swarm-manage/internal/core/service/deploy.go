@@ -72,6 +72,7 @@ type DeployDocker interface {
 	CreateMigrationJob(ctx context.Context, fromServiceID, name, image, command, registryAuth string) (string, error)
 	JobTask(ctx context.Context, serviceID string) (repository.TaskState, error)
 	JobLogs(ctx context.Context, serviceID string, tail int) ([]string, error)
+	JobLogsSince(ctx context.Context, serviceID string, since time.Time) ([]repository.LogLine, error)
 	RemoveService(ctx context.Context, id string) error
 	// Para construir en el servidor (v6).
 	NodeCount(ctx context.Context) (int, error)
@@ -100,11 +101,13 @@ type Deployer struct {
 	// Cuánto puede durar un build (el backend da el deploy por perdido a los
 	// 45 minutos; esto acaba antes, con su motivo).
 	Build time.Duration
+	// Cada cuánto pasa al deploy lo nuevo del log del build.
+	BuildLogEvery time.Duration
 }
 
 func NewDeployer(docker DeployDocker, report DeployReporter, auth func(string) string) *Deployer {
 	return &Deployer{Docker: docker, Report: report, RegistryAuth: auth, Converge: 5 * time.Minute, Poll: 2 * time.Second,
-		Migrate: 15 * time.Minute, Build: 40 * time.Minute}
+		Migrate: 15 * time.Minute, Build: 40 * time.Minute, BuildLogEvery: 5 * time.Second}
 }
 
 // migrateLogTail: las líneas de la migración que pasan al log del deploy.
@@ -293,6 +296,38 @@ func (d *Deployer) migrate(ctx context.Context, svc *repository.ServiceState, jo
 	return nil
 }
 
+// buildTail recuerda hasta dónde se ha pasado el log de un build.
+type buildTail struct{ last time.Time }
+
+// pull pasa al deploy las líneas posteriores a la última pasada, como mucho
+// las `buildLogTail` más nuevas (un build de Next escupe miles de golpe, y lo
+// que importa es dónde va). true si pasó alguna.
+func (t *buildTail) pull(ctx context.Context, docker DeployDocker, id string, log func(string, ...any)) bool {
+	lines, err := docker.JobLogsSince(ctx, id, t.last)
+	if err != nil {
+		return false
+	}
+	fresh := lines[:0:0]
+	for _, l := range lines {
+		// Docker corta por el instante y la del borde vuelve: fuera.
+		if t.last.IsZero() || l.At.After(t.last) {
+			fresh = append(fresh, l)
+		}
+	}
+	if len(fresh) == 0 {
+		return false
+	}
+	if n := len(fresh) - buildLogTail; n > 0 {
+		log("  … %d líneas más", n)
+		fresh = fresh[n:]
+	}
+	for _, l := range fresh {
+		log("  %s", l.Text)
+	}
+	t.last = fresh[len(fresh)-1].At
+	return true
+}
+
 func shortID(id string) string {
 	if len(id) > 8 {
 		return id[:8]
@@ -355,7 +390,11 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 
 	start := time.Now()
 	deadline := start.Add(d.Build)
-	lastNote := start
+	// El log del build va pasando mientras corre: hasta la v6 sólo llegaba al
+	// final (las últimas 400 líneas), y un build de diez minutos se veía como
+	// dos líneas y nada más (boaty, 16-oct-2026).
+	tail := &buildTail{}
+	lastPull, lastNote := start, start
 	var st repository.TaskState
 	for {
 		st, err = d.Docker.JobTask(ctx, id)
@@ -368,7 +407,14 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 		if time.Now().After(deadline) {
 			return fmt.Errorf("el build no acabó en %s", d.Build)
 		}
-		// Un build largo calla minutos: que el log diga que sigue.
+		if time.Since(lastPull) >= d.BuildLogEvery {
+			if tail.pull(ctx, d.Docker, id, log) {
+				lastNote = time.Now()
+			}
+			lastPull = time.Now()
+		}
+		// Un build puede callar minutos (un `npm install` sin salida): que el
+		// log diga que sigue.
 		if time.Since(lastNote) >= time.Minute {
 			log("sigue construyendo (%s)", time.Since(start).Round(time.Second))
 			lastNote = time.Now()
@@ -379,9 +425,12 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 		case <-time.After(d.Poll):
 		}
 	}
-	if lines, err := d.Docker.JobLogs(ctx, id, buildLogTail); err == nil {
-		for _, l := range lines {
-			log("  %s", l)
+	// Lo que quede. Si nunca se pudo leer en vivo, las últimas líneas, como antes.
+	if !tail.pull(ctx, d.Docker, id, log) && tail.last.IsZero() {
+		if lines, err := d.Docker.JobLogs(ctx, id, buildLogTail); err == nil {
+			for _, l := range lines {
+				log("  %s", l)
+			}
 		}
 	}
 	if st.State != "complete" || st.ExitCode != 0 {

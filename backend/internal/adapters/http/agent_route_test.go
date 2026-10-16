@@ -182,6 +182,62 @@ func TestTheAgentPollHandsOverAQueuedDeploy(t *testing.T) {
 	}
 }
 
+// Mientras despliega, el agente no pregunta por trabajo: late por
+// `/heartbeat`. Ese latido lo devuelve a online y **no** reclama el deploy que
+// espera en la cola, que sería empezar otro a media obra.
+// Mutantes: no anotar el latido (sigue offline); contestar con `Jobs`
+// (se lleva el deploy encolado).
+func TestAHeartbeatKeepsABusyAgentOnlineWithoutClaimingWork(t *testing.T) {
+	db, cleanup := agentDB(t)
+	defer cleanup()
+	r := chi.NewRouter()
+	InitServerRoutes(db, r, events.NewHub())
+	servers := service.NewServerService(repository.NewServerRepository(db))
+	deploys := service.NewDeployService(repository.NewDeployRepository(db), repository.NewServerRepository(db), nil)
+
+	tok, err := servers.MintAgentToken("srv-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := servers.Heartbeat("srv-1", domain.AgentVersionDeploys, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	srv, _ := servers.Find("srv-1")
+	d, err := deploys.CreateDeployable(srv, domain.CreateDeployableRequest{
+		Name: "api", Stack: "api", ServiceName: "api_app", ImageRepo: "ghcr.io/a/api",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, _, err := deploys.RequestDeploy(d, domain.DeployByUser, "u-ana", "abc1234", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Dos minutos sin preguntar: el build de turno.
+	if err := db.Exec("UPDATE servers SET agent_seen_at = ? WHERE id = 'srv-1'", time.Now().Add(-2*time.Minute)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/agent/v1/heartbeat", nil)
+	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	req.Header.Set("X-Agent-Version", "7")
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("el latido → %d: %s", rec.Code, rec.Body.String())
+	}
+	if s, _ := servers.Find("srv-1"); s.Status != "online" || s.AgentVersion != 7 {
+		t.Errorf("tras el latido: %s, versión %d; se esperaba online y 7", s.Status, s.AgentVersion)
+	}
+	got, err := deploys.FindDeployment(d.ID, dep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != domain.DeployQueued {
+		t.Errorf("el latido se llevó el deploy de la cola: quedó %s", got.Status)
+	}
+}
+
 func agentDB(t *testing.T) (*gorm.DB, func()) {
 	t.Helper()
 	if repository.GetEnv("DB_HOST", "") == "" {

@@ -24,7 +24,7 @@ import (
 // Version es la versión de este agente, la de `swarm-manage/VERSION`. Va en
 // cada pregunta (`X-Agent-Version`): el backend no le encola un deploy a un
 // agente que no sabe hacerlo. Lo ata al fichero `TestTheVersionIsTheFile`.
-const Version = 6
+const Version = 7
 
 type Poller struct {
 	BaseURL string
@@ -36,6 +36,8 @@ type Poller struct {
 	MinBackoff, MaxBackoff time.Duration
 	// OnJob recibe cada trabajo. nil: se registra y se ignora.
 	OnJob func(ctx context.Context, job Job)
+	// BeatEvery: cada cuánto late mientras hace un trabajo (ver runJob).
+	BeatEvery time.Duration
 }
 
 // Job es lo que el backend manda cuando hay algo que hacer.
@@ -55,6 +57,9 @@ func NewPoller(baseURL, token string) *Poller {
 		Wait:       25 * time.Second,
 		MinBackoff: time.Second,
 		MaxBackoff: time.Minute,
+		// Lo que tarda en volver una pregunta sin trabajo: el backend ve el
+		// mismo ritmo trabajando que esperando.
+		BeatEvery: 25 * time.Second,
 	}
 }
 
@@ -87,8 +92,55 @@ func (p *Poller) Run(ctx context.Context) {
 			log.Printf("backend: trabajo %s de tipo %q, que esta versión no sabe hacer", job.ID, job.Kind)
 			continue
 		}
-		p.OnJob(ctx, *job)
+		p.runJob(ctx, *job)
 	}
+}
+
+// runJob hace el trabajo latiendo mientras tanto. Preguntar por trabajo es el
+// latido, y mientras se despliega no se pregunta: hasta la v6, un build de
+// diez minutos dejaba el servidor offline en cac con el agente sano (boaty,
+// 16-oct-2026). Se late en paralelo y por su propia ruta, que no reclama el
+// siguiente trabajo de la cola.
+func (p *Poller) runJob(ctx context.Context, job Job) {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(p.BeatEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := p.beat(ctx); err != nil {
+					log.Printf("backend: el latido no llegó: %v", err)
+				}
+			}
+		}
+	}()
+	defer close(done)
+	p.OnJob(ctx, job)
+}
+
+// beat: «sigo aquí». Un backend de antes de esta ruta contesta 404, y el
+// servidor se verá offline mientras construye, como antes.
+func (p *Poller) beat(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.BaseURL+"/agent/v1/heartbeat", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+p.Token)
+	req.Header.Set("X-Agent-Version", strconv.Itoa(Version))
+	res, err := p.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("el backend contestó %d", res.StatusCode)
+	}
+	return nil
 }
 
 // poll hace una pregunta. nil, nil = sin trabajo (204).

@@ -98,3 +98,53 @@ func TestTheVersionIsTheFile(t *testing.T) {
 		t.Errorf("VERSION dice %q y el agente dice %d", strings.TrimSpace(string(raw)), Version)
 	}
 }
+
+// Mientras hace un trabajo no pregunta por otro, así que late por su ruta,
+// con su token; y al acabar deja de latir.
+// Mutantes: no latir durante el trabajo; latir por `GET /jobs` (reclamaría
+// el siguiente deploy de la cola); seguir latiendo al acabar.
+func TestThePollerBeatsWhileItWorks(t *testing.T) {
+	var beats, polls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/agent/v1/heartbeat":
+			if r.Header.Get("Authorization") != "Bearer cac_agent_x" {
+				t.Errorf("latió sin su token")
+			}
+			beats.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/agent/v1/jobs":
+			if polls.Add(1) == 1 {
+				w.Write([]byte(`{"id":"j-1","kind":"deploy","data":{}}`))
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer srv.Close()
+
+	p := NewPoller(srv.URL, "cac_agent_x")
+	p.Wait = 0
+	p.BeatEvery = 10 * time.Millisecond
+	var during int32
+	var pollsDuring int32
+	p.OnJob = func(context.Context, Job) {
+		time.Sleep(120 * time.Millisecond)
+		during = beats.Load()
+		pollsDuring = polls.Load()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.runJob(ctx, Job{ID: "j-1"})
+	if during < 3 {
+		t.Errorf("latió %d veces en un trabajo de 120 ms con un latido cada 10", during)
+	}
+	if pollsDuring != 0 {
+		t.Errorf("preguntó por trabajo %d veces mientras trabajaba", pollsDuring)
+	}
+	after := beats.Load()
+	time.Sleep(60 * time.Millisecond)
+	cancel()
+	if n := beats.Load() - after; n > 0 {
+		t.Errorf("siguió latiendo %d veces después de acabar", n)
+	}
+}

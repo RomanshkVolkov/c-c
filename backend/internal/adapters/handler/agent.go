@@ -101,10 +101,7 @@ func (h *AgentHandler) Jobs(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-agent")
 		return
 	}
-	// La versión que dice el agente; uno de antes de decirla cuenta como 0.
-	version, _ := strconv.Atoi(r.Header.Get("X-Agent-Version"))
-	if err := h.servers.Heartbeat(server.ID, version, h.now()); err != nil {
-		SendErrorResponse(w, http.StatusInternalServerError, "Failed to record heartbeat", err.Error())
+	if !h.beat(w, r, server.ID) {
 		return
 	}
 	wait := h.maxWait
@@ -148,6 +145,33 @@ func (h *AgentHandler) Jobs(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-tick.C:
 		}
+	}
+}
+
+// beat anota el latido con la versión que dice el agente (uno de antes de
+// decirla cuenta como 0). false si no se pudo, y ya se contestó.
+func (h *AgentHandler) beat(w http.ResponseWriter, r *http.Request, serverID string) bool {
+	version, _ := strconv.Atoi(r.Header.Get("X-Agent-Version"))
+	if err := h.servers.Heartbeat(serverID, version, h.now()); err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to record heartbeat", err.Error())
+		return false
+	}
+	return true
+}
+
+// Heartbeat: «sigo aquí», sin pedir trabajo. Lo manda el agente mientras
+// despliega, porque mientras despliega no pregunta por trabajo, y preguntar
+// era el único latido: un build de más de 90 s dejaba el servidor offline
+// en cac con el agente sano (boaty, 16-oct-2026). No vale `GET /jobs` con
+// `wait=0`, que reclamaría el siguiente deploy de la cola a media obra.
+func (h *AgentHandler) Heartbeat(w http.ResponseWriter, r *http.Request) {
+	server, ok := AgentServer(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-agent")
+		return
+	}
+	if h.beat(w, r, server.ID) {
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

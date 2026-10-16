@@ -105,6 +105,7 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 	r.Route("/agent/v1", func(r chi.Router) {
 		r.Use(middleware.AgentTokenMiddleware(svc.AgentByToken))
 		r.Get("/jobs", agentH.Jobs)
+		r.Post("/heartbeat", agentH.Heartbeat)
 		r.Post("/jobs/{jid}/log", agentH.JobLog)
 		r.Post("/jobs/{jid}/finish", agentH.JobFinish)
 	})
