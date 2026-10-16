@@ -184,6 +184,19 @@ describe("desplegar un servicio", () => {
       expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deployments/d-2/rollback", {}, true),
     );
   });
+
+  // Volver atrás despliega en producción: se pregunta antes, diciendo qué
+  // imagen vuelve, y un «no» no manda nada. Mutante: volver sin preguntar.
+  it("volver atrás se confirma, y si no, no se manda", async () => {
+    respuestas([deployable], [fila({ id: "d-2", status: "succeeded", previousImage: "ghcr.io/dwit-mexico/api:viejo" })]);
+    confirmar.mockResolvedValue(false);
+    pintar();
+    fireEvent.click(await screen.findByRole("button", { name: /(volver a lo de antes|go back to the previous)/i }));
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(JSON.stringify(confirmar.mock.calls[0][0])).toContain("viejo");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(post).not.toHaveBeenCalledWith(expect.stringContaining("/rollback"), expect.anything(), expect.anything());
+  });
 });
 
 // El modal es para desplegar: la configuración vive en la página
