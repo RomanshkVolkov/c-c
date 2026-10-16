@@ -96,6 +96,7 @@ export default function JoinCall() {
       name: entrada.name,
       pass: entrada.pass,
       title: entrada.title,
+      inviteToken: token,
     });
     const v = useVoice.getState();
     if (v.estado === "dentro") {

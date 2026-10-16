@@ -19,6 +19,7 @@ type CallSessionHandler interface {
 	PostMessage(w http.ResponseWriter, r *http.Request)
 	EditMessage(w http.ResponseWriter, r *http.Request)
 	WithdrawMessage(w http.ResponseWriter, r *http.Request)
+	React(w http.ResponseWriter, r *http.Request)
 }
 
 type callSessionHandler struct{ svc *service.CallSessionService }
@@ -65,12 +66,13 @@ func (h *callSessionHandler) ListMessages(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	out, err := h.svc.Messages(cs.ID)
+	user, _ := currentUser(r)
+	out, err := h.svc.Messages(cs.ID, user.UserID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load the chat", err.Error())
 		return
 	}
-	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.CallMessage]{Success: true, Data: out})
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.CallMessageResponse]{Success: true, Data: out})
 }
 
 func (h *callSessionHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +119,23 @@ func (h *callSessionHandler) WithdrawMessage(w http.ResponseWriter, r *http.Requ
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
 }
 
+// React: poner o quitar una reacción a un mensaje del chat de la llamada.
+func (h *callSessionHandler) React(w http.ResponseWriter, r *http.Request) {
+	cs, user, ok := h.session(w, r, false)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.ReactionRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	if callChatError(w, h.svc.React(cs, chi.URLParam(r, "mid"), user.UserID, req.Emoji, req.On)) {
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
+}
+
 func callChatError(w http.ResponseWriter, err error) bool {
 	switch {
 	case err == nil:
@@ -125,7 +144,9 @@ func callChatError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusConflict, "This call has ended; its chat is read-only", "call-ended")
 	case errors.Is(err, service.ErrNotYourCallMessage):
 		SendErrorResponse(w, http.StatusForbidden, "Only the person who wrote this can change it.", "not-the-author")
-	case errors.Is(err, repository.ErrCallMessageNotFound):
+	case errors.Is(err, service.ErrBadReaction):
+		SendErrorResponse(w, http.StatusBadRequest, "That reaction is not one of the accepted emoji.", "bad-reaction")
+	case errors.Is(err, repository.ErrCallMessageNotFound), errors.Is(err, repository.ErrCallSessionNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 	default:
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed", err.Error())

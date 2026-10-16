@@ -92,10 +92,11 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   // El chat de la sala es el hilo del canal; en una reunión, el del canal del
   // que cuelga. Un invitado no tiene sesión con la que escribirlo.
   const chatSpaceId = visitor ? null : (spaceId ?? meetSpaceId);
-  // La llamada guardada, de la que cuelga su chat. El invitado aún no lo ve
-  // (tanda 4: no tiene sesión de cac con la que pedirlo).
+  // La llamada guardada, de la que cuelga su chat. El invitado no tiene sesión
+  // de cac: entra con su enlace y su pase (`guestChat`), y sólo a «Llamada».
   const callSessionId = useVoice((s) => (s.visitor ? null : s.sessionId));
-  const hasChat = !!chatSpaceId || !!callSessionId;
+  const guestChat = useVoice((s) => (s.visitor ? s.guestChat : null));
+  const hasChat = !!chatSpaceId || !!callSessionId || !!guestChat;
   const kick = useCalls((s) => s.kick);
   const getInvite = useCalls((s) => s.get);
   const orgId = useVoice((s) => s.orgId);
@@ -412,6 +413,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
             {chat && hasChat && (
               <CallChatPanel
                 sessionId={callSessionId}
+                guest={guestChat}
                 spaceId={chatSpaceId}
                 spaceName={spaceName || nombreSala}
                 onClose={() => setChat(false)}

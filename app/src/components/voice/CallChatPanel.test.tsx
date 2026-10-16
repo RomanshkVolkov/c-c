@@ -82,3 +82,64 @@ describe("el chat de otra llamada", () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 });
+
+// El invitado (tanda 4): sólo «Llamada», por la puerta pública con su enlace y
+// su pase, preguntando cada 3 s mientras está dentro y no después. Ve las
+// reacciones, pero no las pone ni retira nada. Mutantes: preguntar con la
+// sesión de miembro; no dejar de preguntar al salir; ofrecerle reaccionar.
+describe("el chat del invitado", () => {
+  const guest = { token: "inv.firma", pass: "pase-1" };
+  const withReaction = [{ ...msgs[0], reactions: [{ emoji: "👍", count: 1, mine: false, names: ["Ana"] }] }];
+
+  it("sólo la llamada, por la puerta pública, y escribe por ella", async () => {
+    post.mockImplementation(async (url: string) => (url === "/api/v1/public/calls/chat" ? { data: withReaction } : { data: {} }));
+    render(<CallChatPanel sessionId={null} guest={guest} spaceId={null} spaceName="" onClose={() => {}} />);
+    expect(screen.queryByRole("tab", { name: "Channel chat" })).toBeNull();
+    expect(await screen.findByText("hola")).toBeTruthy();
+    expect(post).toHaveBeenCalledWith("/api/v1/public/calls/chat", guest);
+    expect(get).not.toHaveBeenCalled();
+    // Ve la reacción, pero no la puede tocar ni poner otra; ni retirar nada.
+    expect((screen.getByRole("button", { name: /👍/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Withdraw" })).toBeNull();
+    const box = screen.getByPlaceholderText("Message the call");
+    fireEvent.change(box, { target: { value: "soy el cliente" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/public/calls/chat/send", { ...guest, body: "soy el cliente" }),
+    );
+  });
+
+  it("pregunta cada 3 s mientras está dentro, y al salir deja de preguntar", async () => {
+    vi.useFakeTimers();
+    try {
+      post.mockResolvedValue({ data: [] });
+      const r = render(<CallChatPanel sessionId={null} guest={guest} spaceId={null} spaceName="" onClose={() => {}} />);
+      await vi.advanceTimersByTimeAsync(0);
+      const asked = () => post.mock.calls.filter((c) => c[0] === "/api/v1/public/calls/chat").length;
+      expect(asked()).toBe(1);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(asked()).toBe(2);
+      r.unmount();
+      await vi.advanceTimersByTimeAsync(9000);
+      expect(asked()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// Reaccionar como miembro: al momento, y vuelta atrás si el servidor dice que
+// no. Mutantes: no pintarla hasta que conteste; no deshacerla al fallar.
+describe("reaccionar en el chat de la llamada", () => {
+  it("se pinta al momento y vuelve atrás si falla", async () => {
+    await useCallChat.getState().load("cs-1");
+    let fail: (e: Error) => void = () => {};
+    post.mockReturnValueOnce(new Promise((_, rej) => (fail = rej)));
+    const doing = useCallChat.getState().react("m1", "🎉", true);
+    expect(useCallChat.getState().messages[0].reactions?.some((r) => r.emoji === "🎉" && r.mine)).toBe(true);
+    fail(new Error("no"));
+    await expect(doing).rejects.toThrow();
+    expect(useCallChat.getState().messages[0].reactions ?? []).toEqual([]);
+    expect(post).toHaveBeenCalledWith("/api/v1/call-sessions/cs-1/messages/m1/reactions", { emoji: "🎉", on: true }, true);
+  });
+});

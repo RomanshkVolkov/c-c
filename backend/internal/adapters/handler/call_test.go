@@ -33,7 +33,7 @@ func callTestHandler(t *testing.T) (*callHandler, *gorm.DB) {
 	rec := service.NewRecordingService(repository.NewRecordingRepository(db), nil, nil,
 		mediastore.Fake(), "recordings", false, 240)
 	svc := service.NewCallInviteService(repository.NewCallInviteRepository(db), voice, nil, rec)
-	return NewCallHandler(svc, rec, voice, repository.NewTaskRepository(db)).(*callHandler), db
+	return NewCallHandler(svc, rec, voice, repository.NewTaskRepository(db), nil).(*callHandler), db
 }
 
 func member(org string, role domain.OrgRole) *domain.ClaimsJWT {

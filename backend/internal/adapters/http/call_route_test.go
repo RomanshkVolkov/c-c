@@ -28,11 +28,17 @@ func (stubCalls) StartRecording(w http.ResponseWriter, r *http.Request)  { ok(w,
 func (stubCalls) PublicInspect(w http.ResponseWriter, r *http.Request)   { ok(w, r) }
 func (stubCalls) PublicJoin(w http.ResponseWriter, r *http.Request)      { ok(w, r) }
 func (stubCalls) PublicStatus(w http.ResponseWriter, r *http.Request)    { ok(w, r) }
+func (stubCalls) PublicChat(w http.ResponseWriter, r *http.Request)      { ok(w, r) }
+func (stubCalls) PublicChatSend(w http.ResponseWriter, r *http.Request)  { ok(w, r) }
 func (stubCalls) Waiting(w http.ResponseWriter, r *http.Request)         { ok(w, r) }
 func (stubCalls) Admit(w http.ResponseWriter, r *http.Request)           { ok(w, r) }
 func (stubCalls) Reject(w http.ResponseWriter, r *http.Request)          { ok(w, r) }
 
-// Sólo las dos rutas públicas entran sin JWT. Todas las demás, 401.
+// Sólo las rutas públicas entran sin JWT: las tres de la puerta y, desde la
+// tanda 4 del chat de la llamada (16-oct-2026), las dos del chat del
+// invitado. Ampliada **a propósito**: esas dos piden el pase de un invitado
+// admitido y la llamada abierta (`callHandler.guestChat`). Todas las demás,
+// 401.
 //
 // Recorre el enrutado de verdad (`mountCallRoutes`) con `chi.Walk`, igual que
 // `TestNoAgentRouteWithoutAuth` en el agente: una ruta nueva que se monte sin
@@ -45,9 +51,11 @@ func TestOnlyThePublicCallRoutesSkipAuth(t *testing.T) {
 	mountCallRoutes(r, stubCalls{})
 
 	public := map[string]bool{
-		"POST /api/v1/public/calls/inspect": true,
-		"POST /api/v1/public/calls/join":    true,
-		"POST /api/v1/public/calls/status":  true,
+		"POST /api/v1/public/calls/inspect":   true,
+		"POST /api/v1/public/calls/join":      true,
+		"POST /api/v1/public/calls/status":    true,
+		"POST /api/v1/public/calls/chat":      true,
+		"POST /api/v1/public/calls/chat/send": true,
 	}
 	seen, open := 0, 0
 	err := chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {

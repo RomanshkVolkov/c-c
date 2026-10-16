@@ -153,3 +153,14 @@ describe("entrar le dice al motor de qué es la llamada", () => {
     );
   });
 });
+
+// Recargar a media llamada no se lleva su chat: la llamada guardada vuelve con
+// la sala, y el canal de la reunión también. Mutante: no leerlos de `meta`.
+describe("el chat de la llamada tras recargar", () => {
+  it("vuelve la llamada guardada y el canal de la reunión", async () => {
+    motorConLlamada({ spaceId: null, orgId: "org-a", spaceName: null, meetId: "inv-1", sessionId: "cs-1", meetSpaceId: "esp-2" });
+    await useVoice.getState().reanudar();
+    expect(useVoice.getState().sessionId).toBe("cs-1");
+    expect(useVoice.getState().meetSpaceId).toBe("esp-2");
+  });
+});

@@ -45,7 +45,7 @@ var callT0 = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 func callsUnderTestDB(t *testing.T, sfu *fakeSFU) (*CallSessionService, *fakeSummarizer, *gorm.DB) {
 	t.Helper()
 	db := recordingDB(t)
-	if err := db.AutoMigrate(&domain.CallSession{}, &domain.CallSessionParticipant{}, &domain.CallMessage{}); err != nil {
+	if err := db.AutoMigrate(&domain.CallSession{}, &domain.CallSessionParticipant{}, &domain.CallMessage{}, &domain.ChatReaction{}); err != nil {
 		t.Fatal(err)
 	}
 	sum := &fakeSummarizer{}

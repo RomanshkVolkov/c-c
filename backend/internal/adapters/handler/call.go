@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -39,6 +40,8 @@ type CallHandler interface {
 	PublicInspect(http.ResponseWriter, *http.Request)
 	PublicJoin(http.ResponseWriter, *http.Request)
 	PublicStatus(http.ResponseWriter, *http.Request)
+	PublicChat(http.ResponseWriter, *http.Request)
+	PublicChatSend(http.ResponseWriter, *http.Request)
 }
 
 // NameFinder: cómo se llama una persona. Lo da el repositorio de tareas.
@@ -53,11 +56,14 @@ type callHandler struct {
 	voice   *service.VoiceService
 	spaces  SpaceFinder
 	limiter *ingestLimiter
+	// calls: el chat de la llamada, para la puerta del invitado (tanda 4).
+	calls *service.CallSessionService
 }
 
 func NewCallHandler(svc *service.CallInviteService, rec *service.RecordingService,
-	voice *service.VoiceService, spaces *repository.TaskRepository) CallHandler {
-	return &callHandler{svc: svc, rec: rec, voice: voice, spaces: spaces, names: spaces, limiter: newIngestLimiter()}
+	voice *service.VoiceService, spaces *repository.TaskRepository, calls *service.CallSessionService) CallHandler {
+	return &callHandler{svc: svc, rec: rec, voice: voice, spaces: spaces, names: spaces, calls: calls,
+		limiter: newIngestLimiter()}
 }
 
 // Cuántas veces por hora se puede tocar la puerta pública. Por IP, para quien
@@ -420,6 +426,86 @@ func (h *callHandler) PublicStatus(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.GuestJoinResponse]{Success: true, Data: out})
 }
 
+// Cuánto puede tocar un invitado el chat de la llamada. Leer, cada 3 s
+// mientras está dentro (1200 por hora, con margen); escribir, como una
+// persona que escribe mucho y nada más.
+const (
+	publicChatReadsPerGuestPerHour = 1500
+	publicChatSendsPerGuestPerHour = 240
+)
+
+// guestChat: la puerta del chat para el invitado. El enlace y el pase dicen
+// quién es; tiene que estar **admitido** y la llamada **abierta**. Cuando la
+// llamada termina, el invitado deja de verlo: lo leen después los miembros.
+func (h *callHandler) guestChat(w http.ResponseWriter, r *http.Request, sends bool) (
+	*domain.GuestChatRequest, *domain.CallGuest, *domain.CallSession, bool) {
+	req, err := ValidateRequest[domain.GuestChatRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return nil, nil, nil, false
+	}
+	inv, g, err := h.svc.AdmittedGuest(req.Token, req.Pass)
+	if err != nil {
+		// Sin invitado bueno, el límite va por IP, como el resto de la puerta.
+		if !h.limiter.allow("ip:"+clientIP(r), publicCallPerIPPerHour) {
+			SendErrorResponse(w, http.StatusTooManyRequests, "Too many requests", "rate-limited")
+			return nil, nil, nil, false
+		}
+		callError(w, err)
+		return nil, nil, nil, false
+	}
+	limit, key := publicChatReadsPerGuestPerHour, "guestchat:"+g.ID
+	if sends {
+		limit, key = publicChatSendsPerGuestPerHour, "guestchat-send:"+g.ID
+	}
+	if !h.limiter.allow(key, limit) {
+		SendErrorResponse(w, http.StatusTooManyRequests, "Too many requests", "rate-limited")
+		return nil, nil, nil, false
+	}
+	if h.calls == nil {
+		SendErrorResponse(w, http.StatusConflict, "This call has ended; its chat is read-only", "call-ended")
+		return nil, nil, nil, false
+	}
+	cs, err := h.calls.OpenIn(inv.Room())
+	if err != nil {
+		SendErrorResponse(w, http.StatusConflict, "This call has ended; its chat is read-only", "call-ended")
+		return nil, nil, nil, false
+	}
+	return &req, g, cs, true
+}
+
+// PublicChat: el chat de la llamada, para el invitado que está dentro.
+func (h *callHandler) PublicChat(w http.ResponseWriter, r *http.Request) {
+	_, g, cs, ok := h.guestChat(w, r, false)
+	if !ok {
+		return
+	}
+	out, err := h.calls.Messages(cs.ID, domain.GuestIdentity(g.ID))
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load the chat", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.CallMessageResponse]{Success: true, Data: out})
+}
+
+// PublicChatSend: el invitado escribe en el chat de la llamada.
+func (h *callHandler) PublicChatSend(w http.ResponseWriter, r *http.Request) {
+	req, g, cs, ok := h.guestChat(w, r, true)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(req.Body) == "" {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", "empty-body")
+		return
+	}
+	m, err := h.calls.PostGuestMessage(cs, g.ID, g.Name, req.Body)
+	if err != nil {
+		SendErrorResponse(w, http.StatusConflict, "This call has ended; its chat is read-only", "call-ended")
+		return
+	}
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.CallMessage]{Success: true, Data: m})
+}
+
 func (h *callHandler) publicRequest(w http.ResponseWriter, r *http.Request) (*domain.PublicCallRequest, bool) {
 	req, err := ValidateRequest[domain.PublicCallRequest](r)
 	if err != nil {
@@ -460,6 +546,10 @@ func callError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusForbidden, "You were not let into this call", "guest-rejected")
 	case errors.Is(err, repository.ErrGuestNotWaiting):
 		SendErrorResponse(w, http.StatusConflict, "That person is no longer waiting", "guest-not-waiting")
+	case errors.Is(err, service.ErrGuestNotAdmitted):
+		SendErrorResponse(w, http.StatusForbidden, "You are not in this call yet", "guest-not-admitted")
+	case errors.Is(err, service.ErrGuestNotAdmitted):
+		SendErrorResponse(w, http.StatusForbidden, "You are not in this call yet", "guest-not-admitted")
 	case errors.Is(err, service.ErrGuestName):
 		SendErrorResponse(w, http.StatusBadRequest, "A name is required", "guest-name-required")
 	case errors.Is(err, service.ErrOnlyGuests):

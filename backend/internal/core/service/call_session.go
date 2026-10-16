@@ -269,10 +269,71 @@ var (
 	ErrNotYourCallMessage = errors.New("only whoever wrote it can change it")
 )
 
-// Messages: el chat de una llamada, abierta o terminada. Quién puede leerlo
-// lo decide el handler (la organización de la llamada).
-func (s *CallSessionService) Messages(sessionID string) ([]domain.CallMessage, error) {
-	return s.repo.Messages(sessionID)
+// Messages: el chat de una llamada, abierta o terminada, con sus reacciones
+// contadas para `viewerID` (un usuario, o la identidad de un invitado). Quién
+// puede leerlo lo decide el handler.
+func (s *CallSessionService) Messages(sessionID, viewerID string) ([]domain.CallMessageResponse, error) {
+	msgs, err := s.repo.Messages(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	sums, err := s.repo.Reactions().Summaries(domain.ReactionCall, ids, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.CallMessageResponse, len(msgs))
+	for i, m := range msgs {
+		out[i] = domain.CallMessageResponse{CallMessage: m, Reactions: sums[m.ID]}
+		if out[i].Reactions == nil {
+			out[i].Reactions = []domain.ReactionSummary{}
+		}
+	}
+	return out, nil
+}
+
+// OpenIn: la llamada abierta de una sala, para el invitado (que no sabe su id).
+func (s *CallSessionService) OpenIn(room string) (*domain.CallSession, error) {
+	return s.repo.OpenIn(room)
+}
+
+// PostGuestMessage: lo que escribe un invitado admitido. Quién es lo decide el
+// handler con su enlace y su pase; aquí, sólo que la llamada siga abierta.
+func (s *CallSessionService) PostGuestMessage(cs *domain.CallSession, guestID, name, body string) (*domain.CallMessage, error) {
+	if cs.EndedAt != nil {
+		return nil, ErrCallEnded
+	}
+	gid := guestID
+	m := &domain.CallMessage{
+		SessionID: cs.ID, OrgID: cs.OrgID, AuthorGuestID: &gid,
+		AuthorName: truncateName(name), Body: strings.TrimSpace(body),
+	}
+	if err := s.repo.CreateMessage(m); err != nil {
+		return nil, err
+	}
+	s.publishMessage(cs, m.ID, domain.GuestIdentity(guestID))
+	return m, nil
+}
+
+// React: un miembro reacciona a un mensaje del chat de una llamada (los
+// invitados las ven, pero en la v1 no reaccionan). Con la llamada abierta o
+// terminada: celebrar lo dicho no lo cambia.
+func (s *CallSessionService) React(cs *domain.CallSession, messageID, userID, emoji string, on bool) error {
+	if !domain.ValidReaction(emoji) {
+		return ErrBadReaction
+	}
+	m, err := s.repo.FindMessage(messageID)
+	if err != nil || m.SessionID != cs.ID {
+		return repository.ErrCallMessageNotFound
+	}
+	if err := s.repo.Reactions().Set(domain.ReactionCall, m.ID, userID, emoji, on); err != nil {
+		return err
+	}
+	s.publishMessage(cs, m.ID, userID)
+	return nil
 }
 
 // PostMessage escribe en el chat **mientras dura la llamada**. Después es de

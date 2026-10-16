@@ -40,6 +40,14 @@ export interface VoiceMeta {
   meetId?: string | null;
   /** El título de la reunión, para la cabecera. */
   title?: string | null;
+  /**
+   * La llamada guardada y el canal de la reunión: viajan con los datos de la
+   * sala para que, al recargar la página a media llamada, vuelvan con ella
+   * (el chat de la llamada cuelga de `sessionId`). El motor nativo los guarda
+   * tal cual, como JSON.
+   */
+  sessionId?: string | null;
+  meetSpaceId?: string | null;
 }
 
 /** Lo que contesta el motor al engancharse a una llamada en curso. */

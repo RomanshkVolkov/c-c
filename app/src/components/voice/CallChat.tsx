@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
 import { LinkifiedText } from "@/components/voice/VoiceChat";
 import { iniciales } from "@/lib/desde";
 import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
-import { useCallChat } from "@/store/call-chat.store";
+import { useCallChat, type GuestChatPass } from "@/store/call-chat.store";
+
+/** Cada cuánto pregunta el invitado, que no tiene avisos en vivo. */
+const GUEST_POLL_MS = 3000;
 
 /**
  * El chat de **la llamada**: la pestaña «Llamada» del panel. Lo escrito aquí
@@ -19,11 +23,13 @@ import { useCallChat } from "@/store/call-chat.store";
  * se pulsan. Lo tuyo se retira mientras dura la llamada; al terminar, el chat
  * queda tal cual.
  */
-export default function CallChat({ sessionId }: { sessionId: string }) {
+export default function CallChat({ sessionId, guest }: { sessionId?: string | null; guest?: GuestChatPass | null }) {
   const { t } = useT();
   const messages = useCallChat((s) => s.messages);
   const loading = useCallChat((s) => s.loading);
   const load = useCallChat((s) => s.load);
+  const loadAsGuest = useCallChat((s) => s.loadAsGuest);
+  const react = useCallChat((s) => s.react);
   const post = useCallChat((s) => s.post);
   const withdraw = useCallChat((s) => s.withdraw);
   const myId = useAuthStore((s) => s.session?.id);
@@ -31,9 +37,24 @@ export default function CallChat({ sessionId }: { sessionId: string }) {
   const [sending, setSending] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
+  // Un miembro pide el chat al abrirlo y luego lo trae el aviso en vivo. El
+  // invitado no tiene avisos: pregunta cada pocos segundos **mientras está
+  // dentro**, y deja de preguntar al salir (al desmontarse el panel).
+  const guestToken = guest?.token;
+  const guestPass = guest?.pass;
   useEffect(() => {
-    void load(sessionId).catch(() => {});
-  }, [sessionId, load]);
+    if (sessionId) {
+      void load(sessionId).catch(() => {});
+      return;
+    }
+    if (!guestToken || !guestPass) return;
+    const pass = { token: guestToken, pass: guestPass };
+    void loadAsGuest(pass).catch(() => {});
+    const timer = window.setInterval(() => void loadAsGuest(pass).catch(() => {}), GUEST_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [sessionId, guestToken, guestPass, load, loadAsGuest]);
+  // Reaccionar es de los miembros (v1): el invitado las ve.
+  const canReact = !!sessionId;
 
   // Al fondo con cada mensaje: en una llamada lo que importa es lo último.
   useEffect(() => {
@@ -80,7 +101,22 @@ export default function CallChat({ sessionId }: { sessionId: string }) {
                   <div className="whitespace-pre-wrap break-words text-[13px]">
                     <LinkifiedText text={m.body} />
                   </div>
+                  <Reactions
+                    reactions={m.reactions}
+                    readOnly={!canReact}
+                    onReact={(emoji, on) => react(m.id, emoji, on)}
+                  />
                 </div>
+                {canReact && (
+                  <ReactionPicker
+                    reactions={m.reactions}
+                    onReact={(emoji, on) => react(m.id, emoji, on).catch(() => toast.error(t("chat:reactFailed")))}
+                    className={cn(
+                      "absolute top-0 rounded p-0.5 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100",
+                      mine ? "right-5" : "right-0",
+                    )}
+                  />
+                )}
                 {mine && (
                   <button
                     type="button"

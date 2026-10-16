@@ -1109,9 +1109,28 @@ duró, quién estuvo y, si se grabó, la grabación.
 - **«Ver chat (N)»** en la tarjeta del resumen abre lo dicho, de sólo lectura
   (`CallChatViewer`).
 
-**Lo que no hace todavía:** al recargar la página a media llamada,
-`reanudar` no recupera el `sessionId` y queda sólo «Canal». Y los invitados no
-ven el chat: es la tanda 4.
+Al recargar la página a media llamada, el `sessionId` y el canal de la reunión
+vuelven con los datos de la sala que guarda el motor (`VoiceMeta`), así que el
+panel no pierde «Llamada».
+
+### Invitados y reacciones (tanda 4, 16-oct-2026)
+
+- **El invitado entra al chat con el enlace firmado y su pase,** por dos rutas
+  públicas: `POST /api/v1/public/calls/chat` (leer) y `…/chat/send` (escribir).
+  Tiene que estar **admitido** y la llamada **abierta**; al terminar deja de
+  verlo (409 `call-ended`). `TestOnlyThePublicCallRoutesSkipAuth` se amplió **a
+  propósito** a estas dos.
+- **Límites propios por invitado:** 1500 lecturas y 240 envíos por hora.
+- **Sin avisos en vivo:** el invitado no tiene SSE, así que pregunta cada 3 s
+  mientras el panel está abierto y deja de preguntar al cerrarlo
+  (`CallChat`).
+- **Su mensaje va firmado con su nombre de invitado** (`author_guest_id`), y
+  sólo ve la pestaña «Llamada».
+- **Reacciones:** el chat de la llamada usa la tabla de todas, con destino
+  `call`. Los miembros reaccionan con el mismo juego cerrado de emojis; el
+  invitado las ve, pero en la v1 no reacciona (`Reactions readOnly`).
+
+Con esto el plan del chat de la llamada está entero (App #146).
 
 ## Fuera de v1
 

@@ -88,9 +88,27 @@ describe("la llamada guardada de la sala", () => {
   it("la da la entrada al canal y la de la reunión, cada una la suya", async () => {
     await useVoice.getState().entrar("esp-1", { orgId: "org-1", spaceName: "diseño" });
     expect(useVoice.getState().sessionId).toBe("cs-channel");
+    // Y se le da al motor, para que vuelva tras una recarga.
+    expect(invoke).toHaveBeenCalledWith("voice_join", expect.objectContaining({
+      meta: expect.objectContaining({ sessionId: "cs-channel" }),
+    }));
     await useVoice.getState().entrarEnReunion("inv-1");
     expect(useVoice.getState().sessionId).toBe("cs-meet");
     await useVoice.getState().salir();
     expect(useVoice.getState().sessionId).toBeNull();
+  });
+});
+
+// El invitado entra con su enlace: queda guardado para el chat de la llamada,
+// y al salir se olvida. Mutante: no guardarlo.
+describe("el chat del invitado", () => {
+  it("guarda el enlace y el pase al entrar, y los suelta al salir", async () => {
+    await useVoice.getState().entrarComoInvitado({
+      url: "wss://rtc.example", token: "jwt", room: "meet:inv-1", identity: "guest:g1",
+      name: "Cliente", pass: "pase-1", title: "Con el cliente", inviteToken: "inv.firma",
+    });
+    expect(useVoice.getState().guestChat).toEqual({ token: "inv.firma", pass: "pase-1" });
+    await useVoice.getState().salir();
+    expect(useVoice.getState().guestChat).toBeNull();
   });
 });

@@ -23,14 +23,17 @@ export function Reactions({
   reactions,
   onReact,
   align = "start",
+  readOnly = false,
 }: {
   reactions?: Reaction[];
   onReact: (emoji: string, on: boolean) => Promise<void>;
   align?: "start" | "end";
+  /** Se ven, pero no se ponen: el invitado del chat de la llamada (v1). */
+  readOnly?: boolean;
 }) {
   const { t } = useT();
   if (!reactions?.length) return null;
-  const pulsar = (emoji: string, on: boolean) =>
+  const react = (emoji: string, on: boolean) =>
     onReact(emoji, on).catch(() => toast.error(t("chat:reactFailed")));
   return (
     <div className={cn("mt-1 flex flex-wrap items-center gap-1", align === "end" && "justify-end")}>
@@ -41,7 +44,8 @@ export function Reactions({
           aria-pressed={r.mine}
           title={r.names.join(", ")}
           aria-label={t("chat:reactionCount", { emoji: r.emoji, count: r.count })}
-          onClick={() => void pulsar(r.emoji, !r.mine)}
+          disabled={readOnly}
+          onClick={() => void react(r.emoji, !r.mine)}
           className={cn(
             "flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums transition-colors",
             r.mine
@@ -53,7 +57,7 @@ export function Reactions({
           {r.count}
         </button>
       ))}
-      <ReactionPicker reactions={reactions} onReact={pulsar} className="h-6 rounded-full border px-1.5" />
+      {!readOnly && <ReactionPicker reactions={reactions} onReact={react} className="h-6 rounded-full border px-1.5" />}
     </div>
   );
 }
@@ -72,7 +76,7 @@ export function ReactionPicker({
   className?: string;
 }) {
   const { t } = useT();
-  const mias = new Set((reactions ?? []).filter((r) => r.mine).map((r) => r.emoji));
+  const mine = new Set((reactions ?? []).filter((r) => r.mine).map((r) => r.emoji));
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -90,8 +94,8 @@ export function ReactionPicker({
           <DropdownMenuItem
             key={e}
             aria-label={e}
-            onClick={() => void onReact(e, !mias.has(e))}
-            className={cn("justify-center px-1.5 text-base", mias.has(e) && "bg-primary/10")}
+            onClick={() => void onReact(e, !mine.has(e))}
+            className={cn("justify-center px-1.5 text-base", mine.has(e) && "bg-primary/10")}
           >
             {e}
           </DropdownMenuItem>

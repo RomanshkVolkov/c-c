@@ -25,7 +25,7 @@ func InitCallRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, recordings *servic
 		repository.GetEnv("LIVEKIT_API_SECRET", ""),
 	)
 	svc := service.NewCallInviteService(repository.NewCallInviteRepository(db), voice, lk, recordings).WithHub(hub)
-	mountCallRoutes(r, handler.NewCallHandler(svc, recordings, voice, repository.NewTaskRepository(db)))
+	mountCallRoutes(r, handler.NewCallHandler(svc, recordings, voice, repository.NewTaskRepository(db), calls))
 }
 
 // mountCallRoutes, aparte para que la prueba de las puertas recorra **este**
@@ -51,10 +51,14 @@ func mountCallRoutes(r chi.Router, h handler.CallHandler) {
 	})
 
 	// La puerta de quien no tiene cuenta. **Sin JWT, a propósito, y sólo
-	// estas tres**: lo que las abre es el enlace firmado que viaja en el
-	// cuerpo, y `join` no da entrada a la sala sino a la de espera. Hay una
-	// prueba que recorre el enrutado y falla si aparece otra.
+	// estas cinco**: lo que las abre es el enlace firmado que viaja en el
+	// cuerpo, y `join` no da entrada a la sala sino a la de espera. Las dos
+	// del chat piden además el pase de un invitado admitido y la llamada
+	// abierta (tanda 4). Hay una prueba que recorre el enrutado y falla si
+	// aparece otra.
 	r.Post("/api/v1/public/calls/inspect", h.PublicInspect)
 	r.Post("/api/v1/public/calls/join", h.PublicJoin)
 	r.Post("/api/v1/public/calls/status", h.PublicStatus)
+	r.Post("/api/v1/public/calls/chat", h.PublicChat)
+	r.Post("/api/v1/public/calls/chat/send", h.PublicChatSend)
 }

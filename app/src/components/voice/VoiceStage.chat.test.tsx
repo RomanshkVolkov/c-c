@@ -144,6 +144,12 @@ describe("el chat de la sala", () => {
     expect(screen.getByText("Chat")).toBeTruthy();
   });
 
+  // El invitado también tiene chat: el de la llamada, con su enlace y su pase.
+  it("el invitado tiene el chat de la llamada", () => {
+    sala({ spaceId: null, visitor: true, guestChat: { token: "inv.firma", pass: "p" } });
+    expect(screen.getByText("Chat")).toBeTruthy();
+  });
+
   it("no manda una línea en blanco", () => {
     sala();
     abrirChat();

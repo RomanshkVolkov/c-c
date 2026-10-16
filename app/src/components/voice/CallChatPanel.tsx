@@ -5,6 +5,7 @@ import CallChat from "@/components/voice/CallChat";
 import VoiceChat from "@/components/voice/VoiceChat";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import type { GuestChatPass } from "@/store/call-chat.store";
 
 type Tab = "call" | "channel";
 
@@ -20,20 +21,24 @@ type Tab = "call" | "channel";
  */
 export default function CallChatPanel({
   sessionId,
+  guest = null,
   spaceId,
   spaceName,
   onClose,
 }: {
   sessionId: string | null;
+  /** El invitado: entra al chat de la llamada con su enlace y su pase. */
+  guest?: GuestChatPass | null;
   spaceId: string | null;
   spaceName: string;
   onClose: () => void;
 }) {
   const { t } = useT();
-  const [tab, setTab] = useState<Tab>(sessionId ? "call" : "channel");
-  const shown: Tab = tab === "call" && !sessionId ? "channel" : tab === "channel" && !spaceId ? "call" : tab;
+  const hasCall = !!sessionId || !!guest;
+  const [tab, setTab] = useState<Tab>(hasCall ? "call" : "channel");
+  const shown: Tab = tab === "call" && !hasCall ? "channel" : tab === "channel" && !spaceId ? "call" : tab;
   const tabs: { id: Tab; label: string }[] = [];
-  if (sessionId) tabs.push({ id: "call", label: t("chat:callChat") });
+  if (hasCall) tabs.push({ id: "call", label: t("chat:callChat") });
   if (spaceId) tabs.push({ id: "channel", label: t("common:last.channelChat") });
 
   return (
@@ -65,8 +70,8 @@ export default function CallChatPanel({
           <X className="size-[15px]" />
         </button>
       </header>
-      {shown === "call" && sessionId ? (
-        <CallChat sessionId={sessionId} />
+      {shown === "call" && hasCall ? (
+        <CallChat sessionId={sessionId} guest={guest} />
       ) : spaceId ? (
         <VoiceChat spaceId={spaceId} spaceName={spaceName} />
       ) : null}

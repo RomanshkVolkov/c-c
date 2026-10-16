@@ -28,6 +28,9 @@ var (
 	ErrGuestRejected = errors.New("guest-rejected")
 	// ErrGuestName: hace falta un nombre que se pueda enseñar.
 	ErrGuestName = errors.New("guest-name-required")
+	// ErrGuestNotAdmitted: el pase vale, pero todavía espera (o nunca entró).
+	// El chat de la llamada es de quien está dentro.
+	ErrGuestNotAdmitted = errors.New("guest-not-admitted")
 	// ErrOnlyGuests: desde una reunión sólo se puede echar a gente de fuera. A
 	// un miembro no se le echa desde aquí: sigue teniendo su canal y su cuenta.
 	ErrOnlyGuests = errors.New("kick-member-not-allowed")
@@ -392,6 +395,27 @@ func (s *CallInviteService) GuestStatus(token, pass string) (*domain.GuestJoinRe
 		return nil, ErrInviteInvalid
 	}
 	return s.entry(inv, g)
+}
+
+// AdmittedGuest: el invitado de este enlace y este pase, **si está dentro**.
+// Es la puerta del chat de la llamada para quien no tiene cuenta: el enlace
+// vivo, el pase bueno, admitido y no echado.
+func (s *CallInviteService) AdmittedGuest(token, pass string) (*domain.CallInvite, *domain.CallGuest, error) {
+	inv, err := s.open(token)
+	if err != nil {
+		return nil, nil, err
+	}
+	g, err := s.guestByPass(inv, pass)
+	if err != nil {
+		return nil, nil, err
+	}
+	if g == nil {
+		return nil, nil, ErrInviteInvalid
+	}
+	if g.Status != domain.GuestAdmitted {
+		return nil, nil, ErrGuestNotAdmitted
+	}
+	return inv, g, nil
 }
 
 // guestByPass: la fila del pase, si el pase vale. `nil, nil` si no vale.

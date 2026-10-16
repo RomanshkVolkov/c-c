@@ -67,7 +67,11 @@ describe("la sala de espera", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3500);
       });
-      expect(entrar).toHaveBeenCalledWith(expect.objectContaining({ token: "jwt", url: "wss://rtc" }));
+      // Con el enlace de la invitación: es con lo que lee y escribe el chat
+      // de la llamada, que no tiene sesión de cac (tanda 4).
+      expect(entrar).toHaveBeenCalledWith(
+        expect.objectContaining({ token: "jwt", url: "wss://rtc", inviteToken: "inv-1.firma" }),
+      );
       // Preguntó con su pase, sin sesión.
       expect(post).toHaveBeenCalledWith("/api/v1/public/calls/status", { token: "inv-1.firma", pass: "g1.9.x" }, false);
     } finally {

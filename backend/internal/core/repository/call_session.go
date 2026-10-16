@@ -87,6 +87,23 @@ func (r *CallSessionRepository) WithdrawMessage(id string) error {
 	return r.db.Delete(&domain.CallMessage{}, "id = ?", id).Error
 }
 
+// OpenIn: la llamada abierta de una sala, si la hay.
+func (r *CallSessionRepository) OpenIn(room string) (*domain.CallSession, error) {
+	var s domain.CallSession
+	err := r.db.Where("room = ? AND ended_at IS NULL", room).First(&s).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrCallSessionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// Reactions: las del chat de las llamadas van a la tabla de todas, con su
+// destino propio (domain/reaction.go).
+func (r *CallSessionRepository) Reactions() *ReactionRepository { return NewReactionRepository(r.db) }
+
 func (r *CallSessionRepository) FindByID(id string) (*domain.CallSession, error) {
 	var s domain.CallSession
 	if err := r.db.First(&s, "id = ?", id).Error; err != nil {

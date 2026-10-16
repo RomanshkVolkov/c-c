@@ -93,6 +93,8 @@ export interface GuestEntry {
   name: string;
   pass: string;
   title: string;
+  /** El enlace firmado de la invitación: con él y el pase, el chat de la llamada. */
+  inviteToken?: string;
 }
 
 /**
@@ -137,6 +139,11 @@ interface VoiceState {
    * `null` si no la abrió (la llamada sigue, sin chat propio).
    */
   sessionId: string | null;
+  /**
+   * El invitado no tiene sesión de cac: lee y escribe el chat de la llamada
+   * con el enlace y su pase (las rutas públicas de la tanda 4).
+   */
+  guestChat: { token: string; pass: string } | null;
   /** El título de la reunión, para la cabecera. */
   title: string | null;
   /**
@@ -321,6 +328,7 @@ const VACIO = {
   meetId: null,
   meetSpaceId: null,
   sessionId: null,
+  guestChat: null,
   title: null,
   visitor: false,
   orgId: null,
@@ -486,6 +494,7 @@ export const useVoice = create<VoiceState>((set, get) => {
       return;
     }
     set({ sessionId: res.data.sessionId ?? null });
+    if (res.data.sessionId) meta.sessionId = res.data.sessionId;
     await conectar(res.data.url, res.data.token, meta, mio, spaceId);
   },
 
@@ -521,6 +530,8 @@ export const useVoice = create<VoiceState>((set, get) => {
       spaceName: null,
       meetId: inviteId,
       title: t.title,
+      sessionId: t.sessionId ?? null,
+      meetSpaceId: t.spaceId ?? null,
     };
     set({ orgId: t.orgId, title: t.title, meetSpaceId: t.spaceId ?? null, sessionId: t.sessionId ?? null });
     await conectar(t.url, t.token, meta, mio, null);
@@ -529,7 +540,14 @@ export const useVoice = create<VoiceState>((set, get) => {
   entrarComoInvitado: async (entrada) => {
     if (get().estado !== "fuera") await get().salir();
     const mio = ++intento;
-    set({ ...VACIO, visitor: true, title: entrada.title, estado: "entrando", escenario: true });
+    set({
+      ...VACIO,
+      visitor: true,
+      title: entrada.title,
+      estado: "entrando",
+      escenario: true,
+      guestChat: entrada.inviteToken ? { token: entrada.inviteToken, pass: entrada.pass } : null,
+    });
     const meta: VoiceMeta = { spaceId: null, orgId: null, spaceName: null, title: entrada.title };
     await conectar(entrada.url, entrada.token, meta, mio, null);
   },
@@ -566,6 +584,10 @@ export const useVoice = create<VoiceState>((set, get) => {
       title: r.meta?.title ?? null,
       orgId: r.meta?.orgId ?? null,
       spaceName: r.meta?.spaceName ?? null,
+      // Con la sala vuelven su llamada guardada y el canal de la reunión: sin
+      // ellos, tras recargar, el panel de chat se quedaba sin «Llamada».
+      sessionId: r.meta?.sessionId ?? null,
+      meetSpaceId: r.meta?.meetSpaceId ?? null,
       estado: "dentro",
       // Minimizada: recargar no es pedir la sala a pantalla completa, y la
       // barra lateral ya dice que sigues dentro.

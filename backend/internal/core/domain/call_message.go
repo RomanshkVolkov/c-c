@@ -34,3 +34,19 @@ func (CallMessage) TableName() string { return "call_messages" }
 type CallMessageRequest struct {
 	Body string `json:"body" validate:"required,min=1,max=8000"`
 }
+
+// CallMessageResponse: un mensaje con sus reacciones, contadas para quien
+// pregunta.
+type CallMessageResponse struct {
+	CallMessage
+	Reactions []ReactionSummary `json:"reactions"`
+}
+
+// GuestChatRequest: el invitado, que no tiene sesión de cac, se identifica con
+// el enlace firmado y su pase, como en `status` (tanda 4). Body sólo al
+// escribir.
+type GuestChatRequest struct {
+	Token string `json:"token" validate:"required"`
+	Pass  string `json:"pass" validate:"required"`
+	Body  string `json:"body" validate:"omitempty,max=8000"`
+}

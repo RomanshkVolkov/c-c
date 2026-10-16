@@ -46,7 +46,7 @@ func TestTheCallChatIsWrittenDuringTheCallAndReadAfter(t *testing.T) {
 	if _, err := svc.PostMessage(cs, "u-ana", "ana", "tarde"); err != ErrCallEnded {
 		t.Errorf("con la llamada terminada el chat es de sólo lectura: %v", err)
 	}
-	msgs, err := svc.Messages(cs.ID)
+	msgs, err := svc.Messages(cs.ID, "u-ana")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestOnlyTheAuthorChangesACallMessage(t *testing.T) {
 	if err := svc.WithdrawMessage(cs, m.ID, "u-ana"); err != nil {
 		t.Fatal(err)
 	}
-	if msgs, _ := svc.Messages(cs.ID); len(msgs) != 0 {
+	if msgs, _ := svc.Messages(cs.ID, "u-ana"); len(msgs) != 0 {
 		t.Errorf("retirado, no se lee: %+v", msgs)
 	}
 }

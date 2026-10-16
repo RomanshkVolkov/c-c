@@ -22,6 +22,8 @@ type ReactionTarget string
 const (
 	ReactionChannel ReactionTarget = "channel"
 	ReactionDM      ReactionTarget = "dm"
+	// ReactionCall: un mensaje del chat de una llamada (domain/call_message.go).
+	ReactionCall ReactionTarget = "call"
 )
 
 // ReactionEmojis es el juego cerrado que se acepta, en el orden del selector.

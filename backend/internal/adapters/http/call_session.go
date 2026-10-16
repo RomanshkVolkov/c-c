@@ -47,6 +47,7 @@ func InitCallSessionRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) *service.Ca
 		r.Post("/messages", h.PostMessage)
 		r.Patch("/messages/{mid}", h.EditMessage)
 		r.Delete("/messages/{mid}", h.WithdrawMessage)
+		r.Post("/messages/{mid}/reactions", h.React)
 	})
 	startCallSessionClock(svc)
 	return svc
