@@ -28,7 +28,7 @@ Todos los eventos que emite el backend, y qué deja cada uno.
 | Evento | Se emite en | ¿Deja fila? | Clase | A quién |
 |---|---|---|---|---|
 | `report:new` — un cliente levanta algo | `report.go:243` | **Sí** | `report:new` | responsable del proyecto; sin él, toda la org |
-| `report:new` — el equipo publica en el tablero de un cliente | `task.go:708` | No, **a propósito** | — | lo causa un compañero; ver §5 |
+| `report:new` — el equipo pone una tarjeta en el tablero de un cliente, al crearla visible o al publicarla después | `task.go`, `announceToChannel` | No, **a propósito** | — | lo causa un compañero; ver §5. Hasta el 16-oct-2026 sólo salía al publicar; creada visible, el webhook del cliente no se enteraba (`TestATaskBornOnAClientsBoardIsAnnounced`) |
 | `report:comment` — el reporter en su propio hilo | `report.go:381` | **Sí** | `task:comment` | toda la organización |
 | `report:comment` — camino compartido (equipo o app del tenant) | `report.go:710` | **Sí** | `task:comment` | de fuera → toda la org; `team` → los implicados |
 | `report:comment` — una **edición** de un comentario | `report.go:856` | No, a propósito | — | corregir una errata no es noticia |

@@ -502,7 +502,29 @@ func (s *TaskService) CreateTask(ctx context.Context, list *domain.TaskList, org
 		}
 	}
 	s.publish("task:new", orgID, list.ID, t.ID)
+	// Nacida ya en el tablero de un cliente: se le anuncia como a una publicada
+	// después (server-to-server.md §5.b). Sólo salía al publicar una interna, y
+	// una tarjeta creada visible le llegaba al cliente sin su `report:new`.
+	if t.IsVisibleToChannel() {
+		s.announceToChannel(t, t.ProjectID)
+	}
 	return t, nil
+}
+
+// announceToChannel: el `report:new` de una tarjeta que el equipo pone en el
+// tablero de un cliente, nazca así o se publique después. Una sola función para
+// los dos caminos: eran dos sitios, y uno se había quedado sin aviso.
+//
+// Sin aviso en la campana, y a propósito. Este `report:new` lo causa alguien
+// del equipo publicando en el tablero de un cliente; el de `report.go` lo causa
+// el cliente levantando algo. Sólo el segundo es noticia para toda la
+// organización — avisar a todo el mundo de cada tarjeta que publica un
+// compañero es justo el ruido que hace que se deje de mirar la campana. Ver la
+// regla en avisos.go.
+func (s *TaskService) announceToChannel(task *domain.Task, channel string) {
+	emitItemEvent(s.hub, s.reports, "report:new", task.ID, "team", map[string]any{
+		"reportId": task.ID, "projectId": channel, "title": task.Title,
+	})
 }
 
 func (s *TaskService) FindTask(id string) (*domain.Task, error) { return s.repo.FindTask(id) }
@@ -856,15 +878,7 @@ func (s *TaskService) setVisibility(task *domain.Task, want domain.ItemVisibilit
 		}
 		task.ProjectID, task.Seq = channel, seq
 		task.Visibility = domain.VisibilityPublic
-		// Sin aviso en la campana, y a propósito. Este `report:new` lo causa
-		// alguien del equipo publicando en el tablero de un cliente; el de
-		// `report.go` lo causa el cliente levantando algo. Sólo el segundo es
-		// noticia para toda la organización — avisar a todo el mundo de cada
-		// tarjeta que publica un compañero es justo el ruido que hace que se
-		// deje de mirar la campana. Ver la regla en avisos.go.
-		emitItemEvent(s.hub, s.reports, "report:new", task.ID, "team", map[string]any{
-			"reportId": task.ID, "projectId": channel, "title": task.Title,
-		})
+		s.announceToChannel(task, channel)
 	}
 	return nil
 }
