@@ -10,6 +10,9 @@ import { initI18n } from "./lib/i18n";
 import { installOrgSwitch } from "./store/org-switch";
 import { installPlaces } from "./store/places";
 import { guardWindowAgainstFileDrops } from "./lib/dropped";
+import { installPasteGuard } from "./lib/paste-guard";
+import { toast } from "sonner";
+import i18next from "i18next";
 import { closeOrphanTerminals } from "./store/terminal.store";
 
 // Apply the theme before the first paint — doing it inside a component would
@@ -30,6 +33,9 @@ installOrgSwitch();
 installPlaces();
 // Un fichero soltado fuera de una zona no abre la ventana en él.
 guardWindowAgainstFileDrops();
+// Y una imagen pegada en un campo de texto no se intenta meter (ver
+// `paste-guard`): se dice que ahí sólo cabe texto.
+installPasteGuard(() => toast.info(i18next.t("common:misc.textOnlyHere")));
 void closeOrphanTerminals();
 // La versión web registra su service worker: es lo que recibe la campana con
 // la app cerrada (W2). En el escritorio no hay.

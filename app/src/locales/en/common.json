@@ -525,7 +525,8 @@
     "pickSomebody": "Pick somebody to write to.",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
-    "notYourOrg": "That belongs to an organization you're no longer part of."
+    "notYourOrg": "That belongs to an organization you're no longer part of.",
+    "textOnlyHere": "Only text goes here — the image was not pasted."
   },
   "scopes": {
     "tasksWrite": "Create tasks and comments",

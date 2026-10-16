@@ -525,7 +525,8 @@
     "pickSomebody": "Elige a quién escribirle.",
     "showPassword": "Mostrar la contraseña",
     "hidePassword": "Ocultar la contraseña",
-    "notYourOrg": "Eso es de una organización de la que ya no formas parte."
+    "notYourOrg": "Eso es de una organización de la que ya no formas parte.",
+    "textOnlyHere": "Aquí sólo cabe texto: la imagen no se pegó."
   },
   "scopes": {
     "tasksWrite": "Crear tareas y comentarios",
