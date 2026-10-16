@@ -529,6 +529,12 @@ export function useReportEvents() {
           // que acaba de pasar; anunciarlo es interrumpirle con algo que pidió.
           const own = mine(p);
           if (own && p.kind !== "system") break;
+          // La última línea del canal, para su fila en la lista: con lo que
+          // trae el evento, sin pedir nada.
+          useChatStore.getState().noteLatest({
+            spaceId: p.spaceId, authorUserId: p.actorId ?? "", authorName: p.authorName ?? "",
+            kind: p.kind, body: p.preview ?? "", createdAt: new Date().toISOString(),
+          });
           void useChatStore.getState().onIncoming(p.spaceId);
           // Una línea que ya estaba y cambió (el resumen de una llamada cuando
           // su grabación queda lista): se refresca, pero ya avisó al ponerse.
@@ -601,6 +607,12 @@ export function useReportEvents() {
               ? i18next.t("org:membership.added", { org: donde })
               : i18next.t("org:membership.removed", { org: donde }),
           );
+          break;
+        }
+        // El otro leyó la conversación: lo tuyo pasa a leído (las palomitas).
+        case "dm:read": {
+          const r = parse(data) as { conversationId?: string; at?: string } | null;
+          if (r?.conversationId && r.at) useDMStore.getState().onRead(r.conversationId, r.at);
           break;
         }
         case "dm:message": {
@@ -847,6 +859,7 @@ export function useReportEvents() {
         // porque Rust reenvía cada trama, pero en un navegador se perdían.
         "chat:message",
         "dm:message",
+        "dm:read",
         "chat:reaction",
         "dm:reaction",
         "org:membership",

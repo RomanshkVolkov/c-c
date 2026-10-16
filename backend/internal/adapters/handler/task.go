@@ -36,6 +36,7 @@ type TaskHandler interface {
 	UploadDMAttachment(w http.ResponseWriter, r *http.Request)
 	RawDMAttachment(w http.ResponseWriter, r *http.Request)
 	ChatUnread(w http.ResponseWriter, r *http.Request)
+	ChatLatest(w http.ResponseWriter, r *http.Request)
 	OpenDM(w http.ResponseWriter, r *http.Request)
 	ListDMConversations(w http.ResponseWriter, r *http.Request)
 	ListDMMessages(w http.ResponseWriter, r *http.Request)

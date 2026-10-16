@@ -150,6 +150,20 @@ type DMSummary struct {
 	// Del otro, no tuyo: la lista de conversaciones existe para decidir a quién
 	// escribir, y saber si está por aquí es la mitad de esa decisión.
 	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
+	// El último mensaje, recortado, y de quién es: la línea de debajo del
+	// nombre en la lista, como en WhatsApp (jose, 15-oct-2026).
+	LastBody     string `json:"lastBody,omitempty"`
+	LastAuthorID string `json:"lastAuthorId,omitempty"`
+	// OtherReadAt: hasta dónde leyó **el otro**. Con esto la app pinta las
+	// palomitas de leído en lo tuyo: leído es lo escrito antes de esta hora.
+	OtherReadAt *time.Time `json:"otherReadAt,omitempty"`
+}
+
+// DMReadEvent: alguien leyó una conversación hasta `at`. Va sólo al otro.
+type DMReadEvent struct {
+	ConversationID string    `json:"conversationId"`
+	UserID         string    `json:"userId"`
+	At             time.Time `json:"at"`
 }
 
 // DMAttachment: un fichero de una conversación directa (una captura pegada,

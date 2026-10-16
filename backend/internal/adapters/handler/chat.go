@@ -208,6 +208,22 @@ func (h *taskHandler) ChatUnread(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.ChatUnread]{Success: true, Data: out})
 }
 
+// ChatLatest: la última línea de cada canal, para la lista de canales. El mismo
+// alcance que los no leídos: las orgs de quien pregunta.
+func (h *taskHandler) ChatLatest(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "unauthorized")
+		return
+	}
+	out, err := h.chat.Latest(user.OrgIDs(), user.Superadmin)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to read", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.ChatLatest]{Success: true, Data: out})
+}
+
 // ChatMedia y ChatLinks: las pestañas del canal.
 //
 // El mismo guard que el hilo —`resolveSpace`, 404 a quien no pertenece— porque

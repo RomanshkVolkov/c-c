@@ -6,6 +6,7 @@ import PanelRow from "@/components/sidebar/PanelRow";
 import PanelSection from "@/components/sidebar/PanelSection";
 import { useTreeExpansion } from "@/components/sidebar/useTreeExpansion";
 import { useCommsUnread } from "@/hooks/use-comms-unread";
+import { listTime, previewLine } from "@/lib/comms-preview";
 import { orderedChannels, resolveSpace } from "@/lib/comms";
 import { iniciales } from "@/lib/desde";
 import { useT } from "@/lib/i18n";
@@ -31,8 +32,10 @@ export const CHANNELS_SECTION = "section:channels";
  * selector «Canales | Directos» ya dice qué es.
  */
 export default function ChannelsSection({ filter = "", plain = false }: { filter?: string; plain?: boolean }) {
-  const { t } = useT();
+  const { t, i18n } = useT();
   const navigate = useNavigate();
+  const latest = useChatStore((s) => s.latestBySpace);
+  const myId = useAuthStore((s) => s.session?.id);
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const tree = useTasksStore((s) => s.tree);
@@ -63,6 +66,7 @@ export default function ChannelsSection({ filter = "", plain = false }: { filter
     const inVoice = occupancy[s.id] ?? [];
     const count = unread[s.id] ?? 0;
     const isGeneral = s.kind === "general";
+    const last = latest[s.id];
     return (
       <div key={s.id} className={cn(isGeneral && shown.length > 0 && "mb-1 border-b border-sidebar-border pb-1")}>
         <PanelRow
@@ -70,6 +74,17 @@ export default function ChannelsSection({ filter = "", plain = false }: { filter
           label={s.name}
           active={s.id === onScreen}
           onClick={() => navigate(`/chat?space=${s.id}`)}
+          // La última línea y su hora, como en WhatsApp. Sin ella (canal sin
+          // mensajes, o un backend de antes) la fila es la de siempre.
+          preview={
+            last &&
+            previewLine(
+              { ...last, mine: !!myId && last.authorUserId === myId && last.kind !== "system" },
+              { you: t("chat:you"), callEnded: t("chat:callEnded") },
+              true,
+            )
+          }
+          meta={last && listTime(last.createdAt, new Date(), i18n.language, t("chat:yesterday"))}
           badge={
             (inVoice.length > 0 || count > 0) && (
               <span className="ml-auto flex shrink-0 items-center gap-1.5">

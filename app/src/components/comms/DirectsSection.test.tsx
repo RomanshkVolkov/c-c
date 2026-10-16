@@ -158,3 +158,28 @@ describe("la sección", () => {
     expect(useDMStore.getState().conversationId).toBe("c-1");
   });
 });
+
+// La fila de un directo: la última línea, y si es tuya, sus palomitas: una si
+// el otro no la ha leído, dos si sí. Mutantes: sin la línea; palomitas en lo
+// del otro; leído con la marca al revés.
+describe("la última línea de un directo", () => {
+  it("lo suyo sin firma; lo tuyo con palomitas, leído o no", () => {
+    const at = "2026-10-15T10:00:00Z";
+    useDMStore.setState({
+      conversations: [
+        { conversationId: "c-1", orgId: "org-b", userId: "u-ana", username: "ana", unread: 1,
+          lastBody: "¿vienes?", lastAuthorId: "u-ana", lastMessageAt: at },
+        { conversationId: "c-2", orgId: "org-b", userId: "u-luis", username: "luis", unread: 0,
+          lastBody: "voy", lastAuthorId: "u-yo", lastMessageAt: at, otherReadAt: "2026-10-15T10:01:00Z" },
+        { conversationId: "c-4", orgId: "org-b", userId: "u-eva", username: "eva", unread: 0,
+          lastBody: "¿y tú?", lastAuthorId: "u-yo", lastMessageAt: at, otherReadAt: "2026-10-15T09:00:00Z" },
+      ] as never,
+    });
+    mount();
+    const ana = screen.getByRole("button", { name: /ana/ });
+    expect(ana.textContent).toContain("¿vienes?");
+    expect(ana.querySelector('[aria-label="Read"], [aria-label="Sent"]')).toBeNull();
+    expect(screen.getByRole("button", { name: /luis/ }).querySelector('[aria-label="Read"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: /eva/ }).querySelector('[aria-label="Sent"]')).toBeTruthy();
+  });
+});

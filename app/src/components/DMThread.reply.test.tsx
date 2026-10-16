@@ -89,3 +89,25 @@ describe("responder en un directo", () => {
     expect(within(rowOf("m-yo")).getByText("¿vienes?")).toBeTruthy();
   });
 });
+
+// Las palomitas en cada mensaje mío, y sólo en lo mío: dos si el otro leyó
+// hasta después de escribirlo. Mutantes: palomitas en lo del otro; leer la
+// marca de otra conversación; leído siempre.
+describe("las palomitas de lo mío", () => {
+  it("una sin leer, dos leído, ninguna en lo del otro", () => {
+    useDMStore.setState({
+      conversations: [{ conversationId: "c-1", orgId: "o", userId: BEA, username: "bea", unread: 0, otherReadAt: null }] as never,
+    });
+    const r = render(<DMThread onBack={() => {}} />);
+    expect(rowOf("m-yo").querySelector('[aria-label="Sent"]')).toBeTruthy();
+    expect(rowOf("m-bea").querySelector('[aria-label="Sent"], [aria-label="Read"]')).toBeNull();
+    r.unmount();
+    useDMStore.setState({
+      conversations: [
+        { conversationId: "c-1", orgId: "o", userId: BEA, username: "bea", unread: 0, otherReadAt: new Date(Date.now() + 60_000).toISOString() },
+      ] as never,
+    });
+    render(<DMThread onBack={() => {}} />);
+    expect(rowOf("m-yo").querySelector('[aria-label="Read"]')).toBeTruthy();
+  });
+});

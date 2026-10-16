@@ -264,10 +264,22 @@ func (s *DMService) Withdraw(conversationID, messageID, userID string, superadmi
 }
 
 func (s *DMService) MarkRead(conversationID, userID string) error {
-	if _, err := s.mine(conversationID, userID); err != nil {
+	c, err := s.mine(conversationID, userID)
+	if err != nil {
 		return err
 	}
-	return s.repo.MarkRead(conversationID, userID)
+	if err := s.repo.MarkRead(conversationID, userID); err != nil {
+		return err
+	}
+	// Al otro, para que sus palomitas pasen a leído sin recargar. Sólo a él:
+	// hasta dónde lee alguien una conversación privada no es de nadie más.
+	if s.hub != nil {
+		s.hub.Publish(events.Event{
+			Type: "dm:read", UserID: c.Other(userID),
+			Data: domain.DMReadEvent{ConversationID: c.ID, UserID: userID, At: time.Now().UTC()},
+		})
+	}
+	return nil
 }
 
 func (s *DMService) Conversations(userID string, orgIDs []string) ([]domain.DMSummary, error) {

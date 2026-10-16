@@ -531,6 +531,11 @@ func (s *ChatService) FillReactions(msgs []domain.ChatMessageResponse, viewerID 
 	return nil
 }
 
+// Latest: la última línea de cada canal que esta persona puede ver.
+func (s *ChatService) Latest(orgIDs []string, superadmin bool) ([]domain.ChatLatest, error) {
+	return s.repo.LatestBySpace(orgIDs, superadmin)
+}
+
 func (s *ChatService) MarkRead(spaceID, userID string) error {
 	return s.repo.MarkRead(spaceID, userID)
 }

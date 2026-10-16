@@ -20,6 +20,7 @@ import { useDMStore } from "@/store/dm.store";
 import type { Reaction } from "@/lib/reactions";
 import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
 import { ReplyingBar, ReplyQuote } from "@/components/chat/ReplyQuote";
+import ReadTicks, { wasRead } from "@/components/chat/ReadTicks";
 import type { DMMessage } from "@/store/dm.store";
 import { useAuthStore } from "@/store/auth.store";
 import { cn } from "@/lib/utils";
@@ -136,6 +137,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
                 m={m}
                 conversationId={conversationId}
                 grouped={i > 0 && messages[i - 1].authorUserId === m.authorUserId}
+                readUpTo={other?.otherReadAt}
                 onReply={() => {
                   setReplyingTo(m);
                   composer.current?.focus();
@@ -201,6 +203,7 @@ function DMLine({
   conversationId,
   grouped,
   onReply,
+  readUpTo,
 }: {
   m: {
     id: string;
@@ -215,6 +218,8 @@ function DMLine({
   conversationId: string;
   grouped: boolean;
   onReply: () => void;
+  /** Hasta dónde leyó el otro: lo mío de antes, leído. */
+  readUpTo?: string | null;
 }) {
   const { t } = useT();
   const session = useAuthStore((s) => s.session);
@@ -299,6 +304,12 @@ function DMLine({
           <>
             {m.replyTo && <ReplyQuote quote={m.replyTo} />}
             <Markdown>{m.body}</Markdown>
+            {/* Las palomitas de lo mío, abajo a la derecha como en WhatsApp. */}
+            {mine && (
+              <span className="mt-0.5 flex justify-end">
+                <ReadTicks read={wasRead(m.createdAt, readUpTo)} />
+              </span>
+            )}
             {/* Reaccionar, al pasar por encima, junto a la flecha. */}
             <ReactionPicker
               reactions={m.reactions}

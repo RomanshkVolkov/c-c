@@ -47,5 +47,8 @@
   "callGuest": "{{name}} (guest)",
   "callPeople_one": "{{names}}",
   "callPeople_other": "{{count}} people: {{names}}",
-  "callWatchRecording": "Watch the recording"
+  "callWatchRecording": "Watch the recording",
+  "yesterday": "Yesterday",
+  "readByOther": "Read",
+  "sentNotRead": "Sent"
 }

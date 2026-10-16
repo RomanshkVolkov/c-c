@@ -40,6 +40,11 @@ export interface DMSummary {
   lastMessageAt?: string | null;
   /** Del otro, no tuyo: es la mitad de decidir si escribirle ahora. */
   lastSeenAt?: string | null;
+  /** La última línea, recortada, y de quién es: la fila de la lista. */
+  lastBody?: string;
+  lastAuthorId?: string;
+  /** Hasta dónde leyó el otro: lo tuyo de antes de esta hora, leído. */
+  otherReadAt?: string | null;
 }
 
 interface DMState {
@@ -63,6 +68,8 @@ interface DMState {
   loadingOlder: boolean;
 
   fetchConversations: () => Promise<void>;
+  /** El otro leyó hasta `at`: las palomitas de lo tuyo pasan a leído. */
+  onRead: (conversationId: string, at: string) => void;
   openWith: (orgId: string, userId: string) => Promise<string>;
   /**
    * Abrir una conversación: vacía lo que hubiera y trae la primera página.
@@ -207,6 +214,8 @@ export const useDMStore = create<DMState>((set, get) => ({
   post: async (conversationId, body, replyToId) => {
     await api.post(`/api/v1/dm/${conversationId}/messages`, replyToId ? { body, replyToId } : { body }, true);
     await get().refrescar();
+    // La fila de la lista: lo último ahora es lo mío.
+    void get().fetchConversations().catch(() => {});
   },
 
   edit: async (conversationId, messageId, body) => {
@@ -251,12 +260,21 @@ export const useDMStore = create<DMState>((set, get) => ({
 
   onIncoming: async (conversationId) => {
     if (get().conversationId === conversationId) {
-      // You are looking at it, so it is read the moment it lands.
+      // You are looking at it, so it is read the moment it lands — y el
+      // servidor lo sabe, que es lo que pone las palomitas del otro en leído.
       await get().refrescar();
-      return;
+      await get().markRead(conversationId).catch(() => {});
     }
+    // La fila de la lista cambia igual: su última línea es la que acaba de llegar.
     await get().fetchConversations();
   },
+
+  onRead: (conversationId, at) =>
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.conversationId === conversationId ? { ...c, otherReadAt: at } : c,
+      ),
+    })),
 }));
 
 // Somebody else's private conversation must not survive a logout.

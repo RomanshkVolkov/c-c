@@ -47,5 +47,8 @@
   "callGuest": "{{name}} (invitado)",
   "callPeople_one": "{{names}}",
   "callPeople_other": "{{count}} personas: {{names}}",
-  "callWatchRecording": "Ver la grabación"
+  "callWatchRecording": "Ver la grabación",
+  "yesterday": "Ayer",
+  "readByOther": "Leído",
+  "sentNotRead": "Enviado"
 }

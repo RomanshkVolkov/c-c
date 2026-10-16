@@ -208,6 +208,18 @@ type ChatLinkPage struct {
 	Before *time.Time     `json:"before,omitempty"`
 }
 
+// ChatLatest: la última línea de un canal, para pintarla debajo de su nombre
+// en la lista, como en WhatsApp (jose, 15-oct-2026). Recortada: es un
+// adelanto, no el mensaje.
+type ChatLatest struct {
+	SpaceID      string    `json:"spaceId"`
+	AuthorUserID string    `json:"authorUserId"`
+	AuthorName   string    `json:"authorName"`
+	Kind         ChatKind  `json:"kind"`
+	Body         string    `json:"body"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
 // ChatUnread is one space's unread count for the badge in the navigator.
 type ChatUnread struct {
 	SpaceID string `json:"spaceId"`

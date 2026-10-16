@@ -73,3 +73,14 @@ describe("dar de alta la mudanza de una llamada", () => {
     expect(tocaLaCampana("voice.moved")).toBe(false);
   });
 });
+
+// Que el otro leyó: llega a una sola persona y no deja fila en la campana.
+describe("dar de alta la lectura de un directo", () => {
+  const source = () => readFileSync(join(process.cwd(), "src/hooks/use-report-events.ts"), "utf-8");
+  it("el repartidor la atiende, el navegador la escucha y la campana no suena", () => {
+    expect(source()).toContain('case "dm:read":');
+    const list = source().slice(source().indexOf("for (const kind of ["));
+    expect(list.slice(0, list.indexOf("]"))).toContain('"dm:read"');
+    expect(tocaLaCampana("dm:read")).toBe(false);
+  });
+});

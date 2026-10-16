@@ -54,6 +54,19 @@ export interface ChatMessage {
   replyTo?: MessageQuote;
 }
 
+/**
+ * La última línea de un canal, para pintarla debajo de su nombre en la lista,
+ * como en WhatsApp. El cuerpo viene recortado: es un adelanto.
+ */
+export interface ChatLatest {
+  spaceId: string;
+  authorUserId: string;
+  authorName: string;
+  kind?: "user" | "system";
+  body: string;
+  createdAt: string;
+}
+
 /** Un fichero que se enseñó en el canal. Sale de los cuerpos, no de una tabla. */
 export interface ChatMediaItem {
   id: string;
@@ -98,6 +111,8 @@ interface ChatState {
   /** False once a backwards page comes back short — there is no more history. */
   hasMore: boolean;
   unreadBySpace: Record<string, number>;
+  /** La última línea de cada canal. Ver `ChatLatest`. */
+  latestBySpace: Record<string, ChatLatest>;
   /**
    * Los canales que sigo. Seguir es decir «avísame también de lo corriente»:
    * sin eso, sólo una mención genera notificación, y con eso encendido para
@@ -146,6 +161,11 @@ interface ChatState {
    * message is somebody else's or the panel is open on it.
    */
   onIncoming: (spaceId: string) => Promise<void>;
+  /**
+   * Una línea nueva en un canal, con lo que trae el evento: se pone como su
+   * última línea sin pedir nada al servidor.
+   */
+  noteLatest: (latest: ChatLatest) => void;
 }
 
 const PAGE = 50;
@@ -157,6 +177,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadingOlder: false,
   hasMore: true,
   unreadBySpace: {},
+  latestBySpace: {},
   following: [],
   panelOpen: false,
 
@@ -248,6 +269,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   post: async (spaceId, body, replyToId) => {
     await api.post(`/api/v1/task-spaces/${spaceId}/chat`, replyToId ? { body, replyToId } : { body }, true);
+    // Lo mío también es la última línea del canal. El eco del evento no llega
+    // a quien escribe (ver `mine` en use-report-events), así que se pone aquí.
+    const me = useAuthStore.getState().session;
+    get().noteLatest({
+      spaceId, body, kind: "user", createdAt: new Date().toISOString(),
+      authorUserId: me?.id ?? "", authorName: me ? nombreDe(me) : "",
+    });
     // Refetch rather than append the response: the server assigns the timestamp,
     // and a locally-appended line would sort wrong against anything that landed
     // in between.
@@ -298,13 +326,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   fetchUnread: async () => {
-    const res = await api.get<{ data: { spaceId: string; count: number }[] }>(
-      "/api/v1/chat/unread",
-    );
+    // Las dos a la vez: la lista de canales pinta el número y la última línea
+    // de cada uno, y las dos salen de la misma carga.
+    const [res, latest] = await Promise.all([
+      api.get<{ data: { spaceId: string; count: number }[] }>("/api/v1/chat/unread"),
+      // Un backend anterior no tiene la ruta: la lista sale sin última línea.
+      api.get<{ data: ChatLatest[] }>("/api/v1/chat/latest").catch(() => ({ data: [] as ChatLatest[] })),
+    ]);
     const map: Record<string, number> = {};
     for (const row of res.data ?? []) map[row.spaceId] = row.count;
-    set({ unreadBySpace: map });
+    const last: Record<string, ChatLatest> = {};
+    for (const row of latest.data ?? []) last[row.spaceId] = row;
+    set({ unreadBySpace: map, latestBySpace: last });
   },
+
+  noteLatest: (latest) =>
+    set((s) => ({ latestBySpace: { ...s.latestBySpace, [latest.spaceId]: latest } })),
 
   fetchFollowing: async () => {
     const res = await api.get<{ data: string[] }>("/api/v1/chat/following");

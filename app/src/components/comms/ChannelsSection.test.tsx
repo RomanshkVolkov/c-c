@@ -67,7 +67,7 @@ beforeEach(() => {
     tree: [space("sp-1", "Boaty"), space("sp-2", "Eleva"), space("sp-g", "General", "general")],
     abrirSalaGeneral,
   } as never);
-  useChatStore.setState({ unreadBySpace: { "sp-2": 4 } } as never);
+  useChatStore.setState({ unreadBySpace: { "sp-2": 4 }, latestBySpace: {} } as never);
   useOrgsStore.setState({
     orgs: [{ id: "org-1", name: "Guz", slug: "guz", role: "member", memberCount: 2 }],
     currentOrgId: "org-1",
@@ -217,5 +217,29 @@ describe("abrir la sala general es del admin", () => {
     mount();
     fireEvent.click(screen.getByText("Open a general room"));
     await vi.waitFor(() => expect(abrirSalaGeneral).toHaveBeenCalledWith("org-1"));
+  });
+});
+
+// Como en WhatsApp: debajo del nombre, la última línea y su hora, sin que el
+// contador desaparezca. Mutantes: sin la línea; sin el autor; sin el contador.
+describe("la última línea de cada canal", () => {
+  it("con quién la dijo, en limpio, y el contador sigue", () => {
+    useChatStore.setState({
+      latestBySpace: {
+        "sp-2": {
+          spaceId: "sp-2", authorUserId: "u-bea", authorName: "Bea", kind: "user",
+          body: "**listo** el deploy", createdAt: new Date().toISOString(),
+        },
+        "sp-1": {
+          spaceId: "sp-1", authorUserId: "u-1", authorName: "ana", kind: "user",
+          body: "lo mío", createdAt: new Date().toISOString(),
+        },
+      },
+    } as never);
+    mount();
+    const eleva = screen.getByRole("button", { name: /Eleva/ });
+    expect(eleva.textContent).toContain("Bea: listo el deploy");
+    expect(eleva.textContent).toContain("4");
+    expect(screen.getByRole("button", { name: /Boaty/ }).textContent).toContain("You: lo mío");
   });
 });

@@ -167,6 +167,29 @@ func (r *ChatRepository) UnreadBySpace(userID string, orgIDs []string, superadmi
 	return out, q.Group("m.space_id").Scan(&out).Error
 }
 
+// LatestBySpace: la última línea viva de cada canal, de una vez para toda la
+// lista. `DISTINCT ON` sobre el índice (space_id, created_at): una fila por
+// canal, sin una consulta por canal. El mismo alcance que UnreadBySpace.
+func (r *ChatRepository) LatestBySpace(orgIDs []string, superadmin bool) ([]domain.ChatLatest, error) {
+	out := []domain.ChatLatest{}
+	if !superadmin && len(orgIDs) == 0 {
+		return out, nil
+	}
+	scope, args := "", []any{}
+	if !superadmin {
+		scope, args = " AND m.org_id IN ?", []any{orgIDs}
+	}
+	err := r.db.Raw(`
+		SELECT DISTINCT ON (m.space_id)
+		       m.space_id, m.author_user_id,
+		       COALESCE((SELECT `+nombreVisible+` FROM users WHERE id = m.author_user_id), '') AS author_name,
+		       m.kind, LEFT(m.body, 200) AS body, m.created_at
+		FROM chat_messages m
+		WHERE m.deleted_at IS NULL`+scope+`
+		ORDER BY m.space_id, m.created_at DESC`, args...).Scan(&out).Error
+	return out, err
+}
+
 // MembersOf narrows a list of asserted user ids to the ones that actually
 // belong to an organization.
 //

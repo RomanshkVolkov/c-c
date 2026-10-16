@@ -9,6 +9,9 @@ import PanelRow from "@/components/sidebar/PanelRow";
 import PanelSection from "@/components/sidebar/PanelSection";
 import { useTreeExpansion } from "@/components/sidebar/useTreeExpansion";
 import { useCommsUnread } from "@/hooks/use-comms-unread";
+import ReadTicks, { wasRead } from "@/components/chat/ReadTicks";
+import { listTime, previewLine } from "@/lib/comms-preview";
+import { useAuthStore } from "@/store/auth.store";
 import { useT } from "@/lib/i18n";
 import { nombreDe } from "@/lib/nombres";
 import { useDMStore, type DMSummary } from "@/store/dm.store";
@@ -29,8 +32,9 @@ export const DIRECTS_SECTION = "section:directs";
  * `plain` la pinta sin cabecera plegable, para la lista del teléfono.
  */
 export default function DirectsSection({ filter = "", plain = false }: { filter?: string; plain?: boolean }) {
-  const { t } = useT();
+  const { t, i18n } = useT();
   const navigate = useNavigate();
+  const myId = useAuthStore((s) => s.session?.id);
   const { pathname } = useLocation();
   const orgId = useOrgsStore((s) => s.currentOrgId);
   const conversations = useDMStore((s) => s.conversations);
@@ -57,16 +61,36 @@ export default function DirectsSection({ filter = "", plain = false }: { filter?
     if (pathname !== "/dm") navigate("/dm");
   };
 
-  const row = (c: DMSummary) => (
-    <PanelRow
-      key={c.conversationId}
-      icon={<PresenceDot lastSeenAt={c.lastSeenAt} />}
-      label={nombreDe(c)}
-      badge={c.unread}
-      active={c.conversationId === onScreen}
-      onClick={() => go(c)}
-    />
-  );
+  const row = (c: DMSummary) => {
+    // Lo último es mío: sus palomitas delante, como en WhatsApp, y sin «Tú:»
+    // (las palomitas ya lo dicen).
+    const mine = !!myId && c.lastAuthorId === myId;
+    return (
+      <PanelRow
+        key={c.conversationId}
+        icon={<PresenceDot lastSeenAt={c.lastSeenAt} />}
+        label={nombreDe(c)}
+        badge={c.unread}
+        active={c.conversationId === onScreen}
+        onClick={() => go(c)}
+        preview={
+          c.lastBody && (
+            <span className="flex min-w-0 items-center gap-1">
+              {mine && <ReadTicks read={wasRead(c.lastMessageAt, c.otherReadAt)} />}
+              <span className="truncate">
+                {previewLine(
+                  { body: c.lastBody, mine: false },
+                  { you: t("chat:you"), callEnded: t("chat:callEnded") },
+                  false,
+                )}
+              </span>
+            </span>
+          )
+        }
+        meta={c.lastMessageAt ? listTime(c.lastMessageAt, new Date(), i18n.language, t("chat:yesterday")) : undefined}
+      />
+    );
+  };
 
   const body = (
     <>

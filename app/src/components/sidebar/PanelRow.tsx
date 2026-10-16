@@ -23,6 +23,8 @@ export default function PanelRow({
   expandable,
   title,
   className,
+  preview,
+  meta,
 }: {
   icon?: ReactNode;
   label: string;
@@ -43,6 +45,14 @@ export default function PanelRow({
   expandable?: { open: boolean; onToggle: () => void; collapseLabel: string; expandLabel: string };
   title?: string;
   className?: string;
+  /**
+   * Una segunda línea debajo del nombre: el último mensaje de un canal o un
+   * directo, como en WhatsApp. Con ella el contador baja a su altura y la hora
+   * (`meta`) se queda arriba, a la derecha del nombre.
+   */
+  preview?: ReactNode;
+  /** Arriba a la derecha, junto al nombre: la hora del último mensaje. */
+  meta?: ReactNode;
 }) {
   const pill =
     typeof badge === "number" ? (
@@ -87,8 +97,23 @@ export default function PanelRow({
         className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
       >
         {icon && <span className="grid size-4 shrink-0 place-items-center [&>svg]:size-4">{icon}</span>}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {pill}
+        {preview || meta ? (
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+              {meta && <span className="shrink-0 text-[10px] font-normal text-muted-foreground">{meta}</span>}
+            </span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-xs font-normal text-muted-foreground">{preview}</span>
+              {pill}
+            </span>
+          </span>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            {pill}
+          </>
+        )}
       </button>
       {actions && (
         <span className="hidden shrink-0 items-center gap-0.5 group-focus-within:flex group-hover:flex">
