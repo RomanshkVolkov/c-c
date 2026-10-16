@@ -39,6 +39,54 @@ func (r *CallSessionRepository) Open(s *domain.CallSession) (*domain.CallSession
 	return &open, nil
 }
 
+// El chat de la llamada (domain/call_message.go).
+
+var ErrCallMessageNotFound = errors.New("call message not found")
+
+func (r *CallSessionRepository) CreateMessage(m *domain.CallMessage) error {
+	return r.db.Create(m).Error
+}
+
+// Messages: el chat entero de una llamada, en orden. Sin paginar: dura lo
+// que dura una llamada, no lo que dura un canal.
+func (r *CallSessionRepository) Messages(sessionID string) ([]domain.CallMessage, error) {
+	out := []domain.CallMessage{}
+	err := r.db.Where("session_id = ?", sessionID).Order("created_at ASC").Limit(2000).Find(&out).Error
+	return out, err
+}
+
+func (r *CallSessionRepository) CountMessages(sessionID string) (int64, error) {
+	var n int64
+	err := r.db.Model(&domain.CallMessage{}).Where("session_id = ?", sessionID).Count(&n).Error
+	return n, err
+}
+
+func (r *CallSessionRepository) FindMessage(id string) (*domain.CallMessage, error) {
+	var m domain.CallMessage
+	if err := r.db.First(&m, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrCallMessageNotFound
+		}
+		return nil, err
+	}
+	return &m, nil
+}
+
+// DisplayName: cómo se llama a quien escribe (ver `nombreVisible`).
+func (r *CallSessionRepository) DisplayName(userID string) string {
+	var name string
+	r.db.Table("users").Select(nombreVisible).Where("id = ?", userID).Scan(&name)
+	return name
+}
+
+func (r *CallSessionRepository) UpdateMessage(id, body string) error {
+	return r.db.Model(&domain.CallMessage{}).Where("id = ?", id).Update("body", body).Error
+}
+
+func (r *CallSessionRepository) WithdrawMessage(id string) error {
+	return r.db.Delete(&domain.CallMessage{}, "id = ?", id).Error
+}
+
 func (r *CallSessionRepository) FindByID(id string) (*domain.CallSession, error) {
 	var s domain.CallSession
 	if err := r.db.First(&s, "id = ?", id).Error; err != nil {

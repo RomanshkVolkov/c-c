@@ -216,10 +216,10 @@ func (s *CallInviteService) MemberToken(inv *domain.CallInvite, userID, fallback
 		return nil, err
 	}
 	id := inv.ID
-	s.voice.OpenSession(inv.OrgID, inv.SpaceID, inv.Room(), &id, userID)
+	session := s.voice.OpenSession(inv.OrgID, inv.SpaceID, inv.Room(), &id, userID)
 	return &domain.MeetTokenResponse{
 		URL: s.voice.URL(), Token: tok, Room: inv.Room(), OrgID: inv.OrgID,
-		SpaceID: inv.SpaceID, InviteID: inv.ID, Title: inv.Title,
+		SpaceID: inv.SpaceID, InviteID: inv.ID, Title: inv.Title, SessionID: session,
 	}, nil
 }
 

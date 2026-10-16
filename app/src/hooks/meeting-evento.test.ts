@@ -84,3 +84,14 @@ describe("dar de alta la lectura de un directo", () => {
     expect(tocaLaCampana("dm:read")).toBe(false);
   });
 });
+
+// Un mensaje del chat de una llamada: llega a la org y no deja fila.
+describe("dar de alta el chat de la llamada", () => {
+  const source = () => readFileSync(join(process.cwd(), "src/hooks/use-report-events.ts"), "utf-8");
+  it("el repartidor lo atiende, el navegador lo escucha y la campana no suena", () => {
+    expect(source()).toContain('case "call:message":');
+    const list = source().slice(source().indexOf("for (const kind of ["));
+    expect(list.slice(0, list.indexOf("]"))).toContain('"call:message"');
+    expect(tocaLaCampana("call:message")).toBe(false);
+  });
+});

@@ -1,7 +1,7 @@
 import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
-import { CornerUpLeft, Loader2, X } from "lucide-react";
+import { CornerUpLeft, Loader2 } from "lucide-react";
 
 import { iniciales } from "@/lib/desde";
 import { useChatStore, type ChatMessage } from "@/store/chat.store";
@@ -13,17 +13,16 @@ import { openInternalRef } from "@/lib/open-ref";
 import { openExternal } from "@/lib/platform";
 
 /**
- * El hilo del canal, dentro de la llamada.
+ * El hilo del canal, dentro de la llamada: la pestaña «Canal» del panel de la
+ * llamada (`CallChatPanel`).
  *
- * **No es un chat aparte**, y esa es la decisión que lo define: lo que se
- * escribe aquí sale en `#canal` y lo lee quien no está en la sala. Un chat
- * propio de la llamada habría partido la conversación en dos —una mitad que
- * sobrevive y otra que se evapora al colgar— y nadie sabría dónde buscar
- * después.
- *
- * Con la sala ocupando la pantalla el hilo no se ve, así que compartir un
- * enlace obligaba a minimizar, escribir y volver. Eso es todo lo que esto
- * resuelve.
+ * Hasta el 15-oct-2026 era **el único chat** de la llamada, y a propósito: un
+ * chat propio partiría la conversación en dos —una mitad que sobrevive y otra
+ * que se evapora al colgar—. Lo que cambió es lo segundo: el chat de la
+ * llamada ya **no se evapora**. Se guarda con la llamada, se consulta desde su
+ * resumen en el canal, y es el único sitio donde pueden escribir los invitados,
+ * que no ven el canal. Así que ahora hay dos pestañas, y cada una dice dónde
+ * queda lo escrito: «Llamada» (`CallChat`) o «Canal» (esto).
  *
  * Deliberadamente **más pobre que el canal de verdad**: sin markdown, sin
  * adjuntos, sin editar ni retirar. Aquí se pasa un enlace o una frase mientras
@@ -31,70 +30,51 @@ import { openExternal } from "@/lib/platform";
  * editor entero en 340 px sería arrastrar una superficie que nadie va a usar
  * con una llamada en curso.
  */
-export default function VoiceChat({
-  spaceId,
-  spaceName,
-  onClose,
-}: {
-  spaceId: string;
-  spaceName: string;
-  onClose: () => void;
-}) {
+export default function VoiceChat({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const { t } = useT();
   const messages = useChatStore((s) => s.messages);
-  const cargando = useChatStore((s) => s.loading);
-  const abierto = useChatStore((s) => s.spaceId);
+  const loading = useChatStore((s) => s.loading);
+  const openSpaceId = useChatStore((s) => s.spaceId);
   const fetch = useChatStore((s) => s.fetch);
   const post = useChatStore((s) => s.post);
 
-  const [texto, setTexto] = useState("");
-  const [enviando, setEnviando] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
   // Responder también aquí: «¿esto lo dices por lo que puso Bea?» es de las
   // cosas que más se preguntan con una llamada en curso.
-  const [contestando, setContestando] = useState<ChatMessage | null>(null);
-  const caja = useRef<HTMLInputElement>(null);
-  const yo = useAuthStore((s) => s.session?.id);
-  const fondo = useRef<HTMLDivElement>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const myId = useAuthStore((s) => s.session?.id);
+  const bottom = useRef<HTMLDivElement>(null);
 
   // Sólo si el hilo cargado es otro. Estando en el canal ya suele estar puesto
   // —`ChannelView` lo pidió al entrar— y volver a pedirlo por abrir el panel
   // sería una petición por cada vez que se pulsa el botón.
   useEffect(() => {
-    if (abierto !== spaceId) void fetch(spaceId);
-  }, [abierto, spaceId, fetch]);
+    if (openSpaceId !== spaceId) void fetch(spaceId);
+  }, [openSpaceId, spaceId, fetch]);
 
   // Al fondo con cada mensaje: en una llamada lo que importa es lo último, y
   // aquí no cabe el historial de todos modos.
   useEffect(() => {
-    fondo.current?.scrollIntoView({ block: "end" });
+    bottom.current?.scrollIntoView({ block: "end" });
   }, [messages]);
 
-  const enviar = async () => {
-    const cuerpo = texto.trim();
-    if (!cuerpo || enviando) return;
-    setEnviando(true);
+  const send = async () => {
+    const body = draft.trim();
+    if (!body || sending) return;
+    setSending(true);
     try {
-      await post(spaceId, cuerpo, contestando?.id);
-      setTexto("");
-      setContestando(null);
+      await post(spaceId, body, replyingTo?.id);
+      setDraft("");
+      setReplyingTo(null);
     } finally {
-      setEnviando(false);
+      setSending(false);
     }
   };
 
   return (
-    <aside className="flex w-85 shrink-0 flex-col overflow-hidden rounded-xl border bg-card/95 backdrop-blur">
-      <header className="flex h-11 shrink-0 items-center border-b px-3">
-        <span className="text-[13px] font-semibold">{t("common:last.channelChat")}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t("common:last.hideChat")}
-          className="ml-auto grid size-6 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <X className="size-[15px]" />
-        </button>
-      </header>
+    <>
 
       {/* `min-h-0`, que es lo que faltaba.
           
@@ -106,7 +86,7 @@ export default function VoiceChat({
           desborda, así que al no desbordar ésta movía otra cosa. De ahí que
           apareciera scroll donde no tocaba en cuanto el chat crecía. */}
       <div data-thread className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {cargando && messages.length === 0 ? (
+        {loading && messages.length === 0 ? (
           <p className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" /> {t("chat:loading")}
           </p>
@@ -128,7 +108,7 @@ export default function VoiceChat({
                 {m.replyTo && <ReplyQuote quote={m.replyTo} className="mt-0.5" />}
                 {/* En texto plano a propósito: ver el comentario de arriba. */}
                 <div className="whitespace-pre-wrap break-words text-[13px]">
-                  <Body text={m.body} />
+                  <LinkifiedText text={m.body} />
                 </div>
               </div>
               {m.kind !== "system" && (
@@ -137,8 +117,8 @@ export default function VoiceChat({
                   aria-label={t("chat:reply")}
                   title={t("chat:reply")}
                   onClick={() => {
-                    setContestando(m);
-                    caja.current?.focus();
+                    setReplyingTo(m);
+                    inputRef.current?.focus();
                   }}
                   className="absolute right-0 top-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
                 >
@@ -148,25 +128,25 @@ export default function VoiceChat({
             </div>
           ))
         )}
-        <div ref={fondo} />
+        <div ref={bottom} />
       </div>
 
       <div className="shrink-0 border-t p-2">
-        {contestando && (
+        {replyingTo && (
           <ReplyingBar
-            authorName={contestando.authorUserId === yo ? t("chat:you") : contestando.authorName}
-            body={contestando.body}
-            onCancel={() => setContestando(null)}
+            authorName={replyingTo.authorUserId === myId ? t("chat:you") : replyingTo.authorName}
+            body={replyingTo.body}
+            onCancel={() => setReplyingTo(null)}
           />
         )}
         <input
-          ref={caja}
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              void enviar();
+              void send();
             }
           }}
           placeholder={`Message #${spaceName}`}
@@ -176,7 +156,7 @@ export default function VoiceChat({
           )}
         />
       </div>
-    </aside>
+    </>
   );
 }
 
@@ -185,7 +165,7 @@ export default function VoiceChat({
  * plano: sólo se reconocen `http://` y `https://`. Un enlace de cac (tarea, documento)
  * se abre dentro de la app; los demás, en el navegador.
  */
-function Body({ text }: { text: string }) {
+export function LinkifiedText({ text }: { text: string }) {
   return (
     <>
       {linkify(text).map((part, i) =>

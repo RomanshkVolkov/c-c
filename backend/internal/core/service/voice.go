@@ -48,12 +48,13 @@ func (s *VoiceService) WithSessions(c *CallSessionService) *VoiceService {
 	return s
 }
 
-// OpenSession: alguien va a entrar a `room`. Ver CallSessionService.Open.
-func (s *VoiceService) OpenSession(orgID string, spaceID *string, room string, inviteID *string, userID string) {
+// OpenSession: alguien va a entrar a `room`; devuelve su llamada guardada, o
+// "". Ver CallSessionService.Open.
+func (s *VoiceService) OpenSession(orgID string, spaceID *string, room string, inviteID *string, userID string) string {
 	if s == nil || s.sessions == nil {
-		return
+		return ""
 	}
-	s.sessions.Open(orgID, spaceID, room, inviteID, userID)
+	return s.sessions.Open(orgID, spaceID, room, inviteID, userID)
 }
 
 // WithMoves conecta la pregunta «¿se mudó esta llamada?». Ver CallMoveWindow.

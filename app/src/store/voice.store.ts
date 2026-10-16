@@ -80,6 +80,8 @@ export interface MeetToken {
   spaceId?: string | null;
   inviteId: string;
   title: string;
+  /** La llamada guardada de la sala, para su chat. */
+  sessionId?: string;
 }
 
 /** La entrada de alguien de fuera, como la da la puerta pública. */
@@ -129,6 +131,12 @@ interface VoiceState {
   meetId: string | null;
   /** El canal del que cuelga la reunión: su chat y sus grabaciones. */
   meetSpaceId: string | null;
+  /**
+   * La llamada guardada de la sala en la que estás (`domain.CallSession`), de
+   * la que cuelga el chat de la llamada. La da el servidor con la entrada;
+   * `null` si no la abrió (la llamada sigue, sin chat propio).
+   */
+  sessionId: string | null;
   /** El título de la reunión, para la cabecera. */
   title: string | null;
   /**
@@ -312,6 +320,7 @@ const VACIO = {
   spaceId: null,
   meetId: null,
   meetSpaceId: null,
+  sessionId: null,
   title: null,
   visitor: false,
   orgId: null,
@@ -446,7 +455,13 @@ export const useVoice = create<VoiceState>((set, get) => {
       spaceName: donde?.spaceName ?? useTasksStore.getState().tree.find((e) => e.id === spaceId)?.name ?? null,
     };
     set({ ...VACIO, spaceId, orgId: meta.orgId, spaceName: meta.spaceName, estado: "entrando", escenario: true });
-    type Entrada = { url: string; token: string; room: string; movedTo?: { inviteId: string; title: string } | null };
+    type Entrada = {
+      url: string;
+      token: string;
+      room: string;
+      movedTo?: { inviteId: string; title: string } | null;
+      sessionId?: string;
+    };
     let res: APIResponse<Entrada>;
     try {
       res = await api.post<APIResponse<Entrada>>(
@@ -470,6 +485,7 @@ export const useVoice = create<VoiceState>((set, get) => {
       await get().entrarEnReunion(movida.inviteId);
       return;
     }
+    set({ sessionId: res.data.sessionId ?? null });
     await conectar(res.data.url, res.data.token, meta, mio, spaceId);
   },
 
@@ -506,7 +522,7 @@ export const useVoice = create<VoiceState>((set, get) => {
       meetId: inviteId,
       title: t.title,
     };
-    set({ orgId: t.orgId, title: t.title, meetSpaceId: t.spaceId ?? null });
+    set({ orgId: t.orgId, title: t.title, meetSpaceId: t.spaceId ?? null, sessionId: t.sessionId ?? null });
     await conectar(t.url, t.token, meta, mio, null);
   },
 

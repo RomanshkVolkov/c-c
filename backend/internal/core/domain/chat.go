@@ -271,6 +271,8 @@ type VoiceTokenResponse struct {
 	// CallMoveWindow). La app entra allí en vez de aquí; una app anterior no lo
 	// lee y entra al canal, que es como era.
 	MovedTo *MovedCall `json:"movedTo,omitempty"`
+	// SessionID: la llamada guardada de la sala, para su chat.
+	SessionID string `json:"sessionId,omitempty"`
 }
 
 // ─── El timbre de la voz ──────────────────────────────────────────────────────

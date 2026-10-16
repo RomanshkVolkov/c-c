@@ -269,4 +269,7 @@ type MeetTokenResponse struct {
 	SpaceID  *string `json:"spaceId,omitempty"`
 	InviteID string  `json:"inviteId"`
 	Title    string  `json:"title"`
+	// SessionID: la llamada guardada de la sala, para su chat. Vacío si no se
+	// pudo abrir (la llamada sigue, sin chat propio).
+	SessionID string `json:"sessionId,omitempty"`
 }

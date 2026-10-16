@@ -45,7 +45,7 @@ var callT0 = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 func callsUnderTestDB(t *testing.T, sfu *fakeSFU) (*CallSessionService, *fakeSummarizer, *gorm.DB) {
 	t.Helper()
 	db := recordingDB(t)
-	if err := db.AutoMigrate(&domain.CallSession{}, &domain.CallSessionParticipant{}); err != nil {
+	if err := db.AutoMigrate(&domain.CallSession{}, &domain.CallSessionParticipant{}, &domain.CallMessage{}); err != nil {
 		t.Fatal(err)
 	}
 	sum := &fakeSummarizer{}
@@ -224,7 +224,7 @@ func TestWhatIsWorthSummarizing(t *testing.T) {
 	for d, want := range map[time.Duration]string{
 		45 * time.Second: "45 s", 12*time.Minute + 20*time.Second: "12 min",
 		12*time.Minute + 40*time.Second: "13 min",
-		65 * time.Minute: "1 h 05 min", 0: "",
+		65 * time.Minute:                "1 h 05 min", 0: "",
 	} {
 		if got := domain.CallLength(d); got != want {
 			t.Errorf("CallLength(%v) = %q, quería %q", d, got, want)

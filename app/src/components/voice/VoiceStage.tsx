@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Check, Link2, Loader2, MessageSquare, Minimize2, UserPlus, Volume2, X } from "lucide-react";
 import GuestInviteDialog from "@/components/voice/GuestInviteDialog";
 import { iniciales } from "@/lib/desde";
-import VoiceChat from "@/components/voice/VoiceChat";
+import CallChatPanel from "@/components/voice/CallChatPanel";
 import DeviceSettings from "@/components/voice/DeviceSettings";
 import InvitePicker, { InviteButton } from "@/components/voice/InvitePicker";
 import RingRow from "@/components/voice/RingRow";
@@ -92,6 +92,10 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   // El chat de la sala es el hilo del canal; en una reunión, el del canal del
   // que cuelga. Un invitado no tiene sesión con la que escribirlo.
   const chatSpaceId = visitor ? null : (spaceId ?? meetSpaceId);
+  // La llamada guardada, de la que cuelga su chat. El invitado aún no lo ve
+  // (tanda 4: no tiene sesión de cac con la que pedirlo).
+  const callSessionId = useVoice((s) => (s.visitor ? null : s.sessionId));
+  const hasChat = !!chatSpaceId || !!callSessionId;
   const kick = useCalls((s) => s.kick);
   const getInvite = useCalls((s) => s.get);
   const orgId = useVoice((s) => s.orgId);
@@ -262,7 +266,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
         )}
         {/* La etiqueta dice lo que va a hacer, no en qué estado está: es el
             patrón del resto de la cabecera y del diseño. */}
-        {chatSpaceId && (
+        {hasChat && (
           <button
             type="button"
             onClick={() => setChat((v) => !v)}
@@ -405,8 +409,13 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
               ))}
               </div>
             </div>
-            {chat && chatSpaceId && (
-              <VoiceChat spaceId={chatSpaceId} spaceName={spaceName || nombreSala} onClose={() => setChat(false)} />
+            {chat && hasChat && (
+              <CallChatPanel
+                sessionId={callSessionId}
+                spaceId={chatSpaceId}
+                spaceName={spaceName || nombreSala}
+                onClose={() => setChat(false)}
+              />
             )}
           </div>
         )}

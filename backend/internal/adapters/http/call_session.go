@@ -32,7 +32,7 @@ func InitCallSessionRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) *service.Ca
 	)
 	svc := service.NewCallSessionService(
 		repository.NewCallSessionRepository(db), repository.NewRecordingRepository(db), lk,
-	).WithSummarizer(
+	).WithHub(hub).WithSummarizer(
 		// Con el buzón, como el de la grabación: el resumen avisa a quien
 		// sigue el canal igual que avisaba el aviso de la grabación.
 		service.NewChatService(repository.NewChatRepository(db), hub).
@@ -42,6 +42,11 @@ func InitCallSessionRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) *service.Ca
 	r.Route("/api/v1/call-sessions/{id}", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.Get)
+		// El chat de la llamada: se lee siempre, se escribe mientras dura.
+		r.Get("/messages", h.ListMessages)
+		r.Post("/messages", h.PostMessage)
+		r.Patch("/messages/{mid}", h.EditMessage)
+		r.Delete("/messages/{mid}", h.WithdrawMessage)
 	})
 	startCallSessionClock(svc)
 	return svc

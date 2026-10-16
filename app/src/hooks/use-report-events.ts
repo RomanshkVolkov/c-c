@@ -29,6 +29,7 @@ import { useNotificationsStore } from "@/store/notifications.store";
 import { useInboxStore } from "@/store/inbox.store";
 import { meetScope, useRecordings, type Recording } from "@/store/recordings.store";
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
+import { useCallChat } from "@/store/call-chat.store";
 import { useMeetingsStore, type ReunionEntrante } from "@/store/meetings.store";
 import { useMyWorkStore } from "@/store/mywork.store";
 import { useRepoDocs } from "@/store/repo-docs.store";
@@ -609,6 +610,13 @@ export function useReportEvents() {
           );
           break;
         }
+        // Un mensaje en el chat de una llamada. Sin texto: si es la llamada en
+        // la que estás, se vuelve a pedir el chat; si no, nada.
+        case "call:message": {
+          const c = parse(data) as { sessionId?: string } | null;
+          if (c?.sessionId) void useCallChat.getState().onIncoming(c.sessionId);
+          break;
+        }
         // El otro leyó la conversación: lo tuyo pasa a leído (las palomitas).
         case "dm:read": {
           const r = parse(data) as { conversationId?: string; at?: string } | null;
@@ -860,6 +868,7 @@ export function useReportEvents() {
         "chat:message",
         "dm:message",
         "dm:read",
+        "call:message",
         "chat:reaction",
         "dm:reaction",
         "org:membership",

@@ -72,3 +72,27 @@ describe("leer el resumen", () => {
     expect(callLength(0)).toBe("");
   });
 });
+
+// «Ver chat»: sólo si hubo chat, y de sólo lectura. Mutantes: ofrecerlo sin
+// mensajes; no pedir el chat de esa llamada.
+describe("ver el chat de una llamada", () => {
+  it("con mensajes se ofrece, y abre lo que se dijo", async () => {
+    get.mockImplementation(async (url: string) =>
+      url.endsWith("/messages")
+        ? { data: [{ id: "m1", sessionId: ID, authorName: "Bea", body: "el enlace", createdAt: "2026-10-15T18:05:00Z" }] }
+        : llamada({ messages: 1 }),
+    );
+    render(<CallSummaryCard sessionId={ID} body={BODY} onOpenRecording={() => {}} onInternalLink={() => true} />);
+    fireEvent.click(await screen.findByText("View chat (1)"));
+    expect(await screen.findByText("el enlace")).toBeTruthy();
+    expect(get).toHaveBeenCalledWith(`/api/v1/call-sessions/${ID}/messages`, true);
+    expect(screen.queryByPlaceholderText("Message the call")).toBeNull();
+  });
+
+  it("sin mensajes no se ofrece, aunque haya grabación", async () => {
+    get.mockResolvedValue(llamada({ messages: 0, recordingId: "11111111-aaaa-4aaa-8aaa-111111111111" }));
+    render(<CallSummaryCard sessionId={ID} body={BODY} onOpenRecording={() => {}} onInternalLink={() => true} />);
+    await screen.findByText("Call ended");
+    expect(screen.queryByText(/View chat/)).toBeNull();
+  });
+});

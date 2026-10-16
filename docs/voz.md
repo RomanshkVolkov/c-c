@@ -1086,8 +1086,32 @@ duró, quién estuvo y, si se grabó, la grabación.
   la pide a `GET /api/v1/call-sessions/{id}` y, mientras carga o si falla,
   enseña la frase del servidor, que es lo que ve una app de antes.
 
-Falta, en las tandas 3 y 4: el chat propio de la llamada, que cuelga de esta
-sesión, el visor «Ver chat» y los invitados.
+### El chat de la llamada (tanda 3, 16-oct-2026)
+
+- **Lo escrito se queda con la llamada y no sale en el canal.** Tabla propia,
+  `call_messages` (`domain/call_message.go`), porque en una llamada escriben
+  también los invitados, que no son cuentas.
+- **Escribir, sólo mientras dura la llamada.** Después es de sólo lectura
+  (409 `call-ended`). Sólo el autor edita o retira.
+- **Leer:** la organización de la llamada; otra org recibe 404.
+- **Rutas:** `GET|POST /api/v1/call-sessions/{id}/messages` y
+  `PATCH|DELETE …/messages/{mid}`.
+- **El aviso en vivo, `call:message`,** va a la org **sin el texto**. Sólo
+  quien está en esa llamada vuelve a pedir el chat.
+- **La entrada a la sala** (canal o reunión) devuelve `sessionId`, y de ahí
+  cuelga el chat en `voice.store`.
+- **El resumen cuenta los mensajes** («· 3 messages»). Una llamada corta de una
+  sola persona que escribió algo también deja resumen.
+- **En la app:** el panel de chat de la llamada tiene dos pestañas
+  (`CallChatPanel`). «Llamada» es `CallChat`; «Canal» es el `VoiceChat` de
+  siempre. Sin llamada guardada queda sólo «Canal»; sin canal, sólo
+  «Llamada».
+- **«Ver chat (N)»** en la tarjeta del resumen abre lo dicho, de sólo lectura
+  (`CallChatViewer`).
+
+**Lo que no hace todavía:** al recargar la página a media llamada,
+`reanudar` no recupera el `sessionId` y queda sólo «Canal». Y los invitados no
+ven el chat: es la tanda 4.
 
 ## Fuera de v1
 

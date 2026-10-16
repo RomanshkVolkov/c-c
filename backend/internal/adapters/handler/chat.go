@@ -481,16 +481,18 @@ func (h *taskHandler) VoiceToken(w http.ResponseWriter, r *http.Request) {
 	}
 	moved := h.voice.MovedCall(sp.ID)
 	// Quien va a la reunión porque la llamada se mudó no abre la del canal.
+	session := ""
 	if moved == nil {
 		spaceID := sp.ID
-		h.voice.OpenSession(sp.OrgID, &spaceID, service.RoomFor(sp.ID), nil, user.UserID)
+		session = h.voice.OpenSession(sp.OrgID, &spaceID, service.RoomFor(sp.ID), nil, user.UserID)
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.VoiceTokenResponse]{
 		Success: true,
 		Data: &domain.VoiceTokenResponse{
 			URL: h.voice.URL(), Token: token, Room: service.RoomFor(sp.ID),
 			OrgID: sp.OrgID, SpaceName: sp.Name,
-			MovedTo: moved,
+			MovedTo:   moved,
+			SessionID: session,
 		},
 	})
 }

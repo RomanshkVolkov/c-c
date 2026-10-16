@@ -137,6 +137,13 @@ describe("el chat de la sala", () => {
     expect(post).toHaveBeenCalledWith("esp-1", "va", "m1");
   });
 
+  // Una reunión suelta, sin canal: su chat es el de la llamada, y el botón
+  // tiene que estar. Antes sólo salía con canal.
+  it("en una reunión sin canal, el chat de la llamada", () => {
+    sala({ spaceId: null, meetId: "inv-1", meetSpaceId: null, sessionId: "cs-1" });
+    expect(screen.getByText("Chat")).toBeTruthy();
+  });
+
   it("no manda una línea en blanco", () => {
     sala();
     abrirChat();

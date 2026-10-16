@@ -50,5 +50,10 @@
   "callWatchRecording": "Ver la grabación",
   "yesterday": "Ayer",
   "readByOther": "Leído",
-  "sentNotRead": "Enviado"
+  "sentNotRead": "Enviado",
+  "callChat": "Llamada",
+  "callChatEmpty": "Nada todavía. Lo que escribas aquí se queda con la llamada: no sale en el canal.",
+  "callChatPlaceholder": "Escribe a la llamada",
+  "viewCallChat": "Ver chat ({{count}})",
+  "callChatTitle": "Chat de la llamada"
 }

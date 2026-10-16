@@ -2,12 +2,15 @@ package service
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	lksdk "github.com/livekit/protocol/livekit"
 
 	lkclient "github.com/guz-studio/cac/backend/internal/adapters/livekit"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
@@ -27,7 +30,14 @@ type CallSessionService struct {
 	recordings *repository.RecordingRepository
 	lk         lkclient.Client
 	summarizer Summarizer
-	now        func() time.Time
+	// hub: por donde llega cada mensaje del chat a quien está en la llamada.
+	hub *events.Hub
+	now func() time.Time
+}
+
+func (s *CallSessionService) WithHub(h *events.Hub) *CallSessionService {
+	s.hub = h
+	return s
 }
 
 func NewCallSessionService(repo *repository.CallSessionRepository, recordings *repository.RecordingRepository,
@@ -41,21 +51,24 @@ func (s *CallSessionService) WithSummarizer(sum Summarizer) *CallSessionService 
 	return s
 }
 
-// Open: alguien va a entrar a esta sala. **Nunca falla la entrada**: una
-// llamada sin sesión es una llamada sin resumen, no una llamada que no se
-// puede hacer. Lo que falle se queda en el log.
-func (s *CallSessionService) Open(orgID string, spaceID *string, room string, inviteID *string, userID string) {
+// Open: alguien va a entrar a esta sala. Devuelve la sesión abierta, para su
+// chat. **Nunca falla la entrada**: una llamada sin sesión es una llamada sin
+// resumen ni chat propio, no una llamada que no se puede hacer. Lo que falle
+// se queda en el log y devuelve "".
+func (s *CallSessionService) Open(orgID string, spaceID *string, room string, inviteID *string, userID string) string {
 	if s == nil {
-		return
+		return ""
 	}
 	now := s.now()
-	_, err := s.repo.Open(&domain.CallSession{
+	cs, err := s.repo.Open(&domain.CallSession{
 		OrgID: orgID, SpaceID: spaceID, Room: room, InviteID: inviteID,
 		StartedBy: userID, StartedAt: now, TickedAt: now,
 	})
 	if err != nil {
 		lg.Error("call: opening the session of " + room + ": " + err.Error())
+		return ""
 	}
+	return cs.ID
 }
 
 // Tick: una vuelta del reloj por cada sesión abierta. Corre en todas las
@@ -142,12 +155,11 @@ func (s *CallSessionService) summarize(cs *domain.CallSession) {
 		return
 	}
 	duration := cs.EndedAt.Sub(cs.StartedAt)
-	// Los mensajes del chat de la llamada llegan en la tanda 3; hasta
-	// entonces, cero.
-	if !domain.WorthSummarizing(duration, len(people), 0) {
+	messages, _ := s.repo.CountMessages(cs.ID)
+	if !domain.WorthSummarizing(duration, len(people), int(messages)) {
 		return
 	}
-	body, notice := domain.CallSummary(cs.ID, duration, len(people), s.readyRecording(cs.RecordingID))
+	body, notice := domain.CallSummary(cs.ID, duration, len(people), int(messages), s.readyRecording(cs.RecordingID))
 	msg, err := s.summarizer.PostSystem(*cs.SpaceID, cs.OrgID, cs.StartedBy, body, notice)
 	if err != nil {
 		lg.Error("call: summarizing " + cs.ID + " in the channel: " + err.Error())
@@ -205,7 +217,8 @@ func (s *CallSessionService) rewrite(cs *domain.CallSession, messageID string) {
 		lg.Error("call: reading who was in " + cs.ID + ": " + err.Error())
 		return
 	}
-	body, _ := domain.CallSummary(cs.ID, cs.EndedAt.Sub(cs.StartedAt), len(people), s.readyRecording(cs.RecordingID))
+	messages, _ := s.repo.CountMessages(cs.ID)
+	body, _ := domain.CallSummary(cs.ID, cs.EndedAt.Sub(cs.StartedAt), len(people), int(messages), s.readyRecording(cs.RecordingID))
 	if err := s.summarizer.UpdateSystem(messageID, body); err != nil {
 		lg.Error("call: rewriting the summary of " + cs.ID + ": " + err.Error())
 	}
@@ -220,6 +233,10 @@ func (s *CallSessionService) readyRecording(id *string) *domain.Recording {
 		return nil
 	}
 	return rec
+}
+
+func (s *CallSessionService) Find(id string) (*domain.CallSession, error) {
+	return s.repo.FindByID(id)
 }
 
 // Get: una llamada con quién estuvo, para su tarjeta.
@@ -239,7 +256,98 @@ func (s *CallSessionService) Get(id string) (*domain.CallSession, *domain.CallSe
 	if cs.EndedAt != nil {
 		out.DurationMs = cs.EndedAt.Sub(cs.StartedAt).Milliseconds()
 	}
+	out.Messages, _ = s.repo.CountMessages(id)
 	return cs, out, nil
+}
+
+// ─── El chat de la llamada ────────────────────────────────────────────────────
+
+var (
+	// ErrCallEnded: la llamada terminó y su chat ya es de sólo lectura.
+	ErrCallEnded = errors.New("this call has ended; its chat is read-only")
+	// ErrNotYourCallMessage: editar o retirar lo de otro.
+	ErrNotYourCallMessage = errors.New("only whoever wrote it can change it")
+)
+
+// Messages: el chat de una llamada, abierta o terminada. Quién puede leerlo
+// lo decide el handler (la organización de la llamada).
+func (s *CallSessionService) Messages(sessionID string) ([]domain.CallMessage, error) {
+	return s.repo.Messages(sessionID)
+}
+
+// PostMessage escribe en el chat **mientras dura la llamada**. Después es de
+// sólo lectura: lo que se dijo en una reunión no se reescribe al día
+// siguiente.
+func (s *CallSessionService) PostMessage(cs *domain.CallSession, userID, fallbackName, body string) (*domain.CallMessage, error) {
+	if cs.EndedAt != nil {
+		return nil, ErrCallEnded
+	}
+	name := s.repo.DisplayName(userID)
+	if name == "" {
+		name = fallbackName
+	}
+	uid := userID
+	m := &domain.CallMessage{
+		SessionID: cs.ID, OrgID: cs.OrgID, AuthorUserID: &uid,
+		AuthorName: truncateName(name), Body: strings.TrimSpace(body),
+	}
+	if err := s.repo.CreateMessage(m); err != nil {
+		return nil, err
+	}
+	s.publishMessage(cs, m.ID, userID)
+	return m, nil
+}
+
+// EditMessage y WithdrawMessage: sólo el autor, y sólo con la llamada abierta.
+func (s *CallSessionService) EditMessage(cs *domain.CallSession, messageID, userID, body string) error {
+	m, err := s.mine(cs, messageID, userID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.UpdateMessage(m.ID, strings.TrimSpace(body)); err != nil {
+		return err
+	}
+	s.publishMessage(cs, m.ID, userID)
+	return nil
+}
+
+func (s *CallSessionService) WithdrawMessage(cs *domain.CallSession, messageID, userID string) error {
+	m, err := s.mine(cs, messageID, userID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.WithdrawMessage(m.ID); err != nil {
+		return err
+	}
+	s.publishMessage(cs, m.ID, userID)
+	return nil
+}
+
+func (s *CallSessionService) mine(cs *domain.CallSession, messageID, userID string) (*domain.CallMessage, error) {
+	if cs.EndedAt != nil {
+		return nil, ErrCallEnded
+	}
+	m, err := s.repo.FindMessage(messageID)
+	if err != nil || m.SessionID != cs.ID {
+		return nil, repository.ErrCallMessageNotFound
+	}
+	if m.AuthorUserID == nil || *m.AuthorUserID != userID {
+		return nil, ErrNotYourCallMessage
+	}
+	return m, nil
+}
+
+// publishMessage: a la organización, sin el texto. Cada consola mira si es
+// la llamada en la que está y sólo entonces pide el chat: el texto de una
+// reunión no viaja a quien no está en ella.
+func (s *CallSessionService) publishMessage(cs *domain.CallSession, messageID, actorID string) {
+	if s.hub == nil {
+		return
+	}
+	s.hub.Publish(events.Event{
+		Type: "call:message", OrgID: cs.OrgID,
+		Data: map[string]any{"sessionId": cs.ID, "messageId": messageID, "actorId": actorID},
+	})
 }
 
 func samePtr(a, b *string) bool {

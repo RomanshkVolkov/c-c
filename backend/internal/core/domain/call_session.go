@@ -73,6 +73,7 @@ type CallSessionResponse struct {
 	StartedAt    time.Time                `json:"startedAt"`
 	EndedAt      *time.Time               `json:"endedAt,omitempty"`
 	DurationMs   int64                    `json:"durationMs"`
+	Messages     int64                    `json:"messages"`
 	Participants []CallSessionParticipant `json:"participants"`
 	RecordingID  *string                  `json:"recordingId,omitempty"`
 }
@@ -100,7 +101,7 @@ func WorthSummarizing(duration time.Duration, people, messages int) bool {
 // La grabación entra en la misma línea, cuando la hay y está lista: el resumen
 // **sustituye** al aviso de la grabación, que si no serían dos líneas de la
 // misma llamada.
-func CallSummary(sessionID string, duration time.Duration, people int, rec *Recording) (body, notice string) {
+func CallSummary(sessionID string, duration time.Duration, people, messages int, rec *Recording) (body, notice string) {
 	what := "Call ended"
 	if d := CallLength(duration); d != "" {
 		what += " · " + d
@@ -109,6 +110,11 @@ func CallSummary(sessionID string, duration time.Duration, people int, rec *Reco
 		what += " · 1 person"
 	} else if people > 1 {
 		what += " · " + strconv.Itoa(people) + " people"
+	}
+	if messages == 1 {
+		what += " · 1 message"
+	} else if messages > 1 {
+		what += " · " + strconv.Itoa(messages) + " messages"
 	}
 	body = what + " — [details](" + CallRef(sessionID) + ")"
 	if rec != nil && (rec.Status == RecordingReady || rec.Status == RecordingPartial) {

@@ -24,11 +24,11 @@ const inicial = useVoice.getState();
 
 const meetToken = {
   success: true,
-  data: { url: "wss://rtc.example", token: "jwt", room: "meet:inv-1", orgId: "org-1", spaceId: "esp-1", inviteId: "inv-1", title: "Con el cliente" },
+  data: { url: "wss://rtc.example", token: "jwt", room: "meet:inv-1", orgId: "org-1", spaceId: "esp-1", inviteId: "inv-1", title: "Con el cliente", sessionId: "cs-meet" },
 };
 const channelToken = (movedTo?: { inviteId: string; title: string }) => ({
   success: true,
-  data: { url: "wss://rtc.example", token: "jwt", room: "voice:esp-1", orgId: "org-1", spaceName: "diseño", movedTo },
+  data: { url: "wss://rtc.example", token: "jwt", room: "voice:esp-1", orgId: "org-1", spaceName: "diseño", movedTo, sessionId: "cs-channel" },
 });
 
 beforeEach(() => {
@@ -79,5 +79,18 @@ describe("cuando la llamada del canal se muda", () => {
     expect(s.spaceId).toBeNull();
     expect(s.mudanza?.inviteId).toBe("inv-1");
     expect(invoke).not.toHaveBeenCalledWith("voice_join", expect.objectContaining({ token: expect.anything(), room: "voice:esp-1" }));
+  });
+});
+
+// La llamada guardada de la sala viaja con la entrada, y es de la que cuelga
+// su chat. Mutante: no guardarla, o quedarse con la de la sala anterior.
+describe("la llamada guardada de la sala", () => {
+  it("la da la entrada al canal y la de la reunión, cada una la suya", async () => {
+    await useVoice.getState().entrar("esp-1", { orgId: "org-1", spaceName: "diseño" });
+    expect(useVoice.getState().sessionId).toBe("cs-channel");
+    await useVoice.getState().entrarEnReunion("inv-1");
+    expect(useVoice.getState().sessionId).toBe("cs-meet");
+    await useVoice.getState().salir();
+    expect(useVoice.getState().sessionId).toBeNull();
   });
 });

@@ -50,5 +50,10 @@
   "callWatchRecording": "Watch the recording",
   "yesterday": "Yesterday",
   "readByOther": "Read",
-  "sentNotRead": "Sent"
+  "sentNotRead": "Sent",
+  "callChat": "Call",
+  "callChatEmpty": "Nothing yet. What you write here stays with the call — it doesn't go to the channel.",
+  "callChatPlaceholder": "Message the call",
+  "viewCallChat": "View chat ({{count}})",
+  "callChatTitle": "Call chat"
 }
