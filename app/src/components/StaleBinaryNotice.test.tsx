@@ -38,6 +38,6 @@ describe("una copia vieja de cac", () => {
     expect(aviso.textContent).toMatch(/(se actualizó|was updated)/i);
 
     fireEvent.click(screen.getByRole("button", { name: /(reiniciar|restart)/i }));
-    expect(relaunch).toHaveBeenCalled();
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("relaunch_app"));
   });
 });

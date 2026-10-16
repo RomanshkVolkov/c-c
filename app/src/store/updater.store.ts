@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { check } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { relaunchApp } from "@/lib/relaunch";
 
 export interface UpdateInfo {
   version: string;
@@ -144,7 +144,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
           set({ progress: "Installing…" });
         }
       });
-      await relaunch();
+      await relaunchApp();
     } catch (e) {
       set({
         downloading: false,

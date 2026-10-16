@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { RotateCw } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { relaunchApp } from "@/lib/relaunch";
 
 /**
  * Un aviso fijo cuando esta ventana es de una copia de cac que ya no existe.
@@ -39,7 +39,7 @@ export default function StaleBinaryNotice() {
       className="fixed bottom-4 left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-center gap-3 rounded-lg border border-warning/50 bg-card p-3 text-sm shadow-lg"
     >
       <p className="min-w-0 flex-1">{t("common:stale.body")}</p>
-      <Button size="sm" onClick={() => void relaunch()}>
+      <Button size="sm" onClick={() => void relaunchApp()}>
         <RotateCw className="mr-1 size-3.5" />
         {t("common:stale.restart")}
       </Button>

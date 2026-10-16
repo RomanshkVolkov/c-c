@@ -17,6 +17,7 @@ mod mcp;
 mod media;
 mod notes_export;
 mod pty;
+mod relaunch;
 mod sse;
 mod video_frames;
 mod voice;
@@ -1900,6 +1901,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            relaunch::relaunch_app,
             agent_install::install_swarm_manage_agent,
             set_github_token,
             delete_github_token,
