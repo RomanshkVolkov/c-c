@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, RotateCcw, Rocket, Settings2, Workflow } from "lucide-react";
+import { Loader2, Rocket, Settings2, Undo2, Workflow } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { desde } from "@/lib/desde";
@@ -259,7 +259,7 @@ export default function DeployPanel({
                           aria-label={t("common:deploy.rollback")}
                           onClick={() => void volver(d)}
                         >
-                          <RotateCcw className="size-3.5" />
+                          <Undo2 className="size-3.5" />
                         </Button>
                       )}
                     </li>
