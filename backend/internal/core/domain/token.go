@@ -123,6 +123,11 @@ const (
 	// atrás, ni ningún valor de un secret: aquí sólo viajan nombres y
 	// referencias de 1Password.
 	ScopeDeploysManage = "deploys:manage"
+	// ScopeNotifyMe: que un agente avise a la persona dueña del token —«paré
+	// porque hay una decisión»— por la campana, el teléfono y el aviso del
+	// sistema (jose, 14-oct-2026). Sólo a esa persona: el destinatario no es
+	// un parámetro, así que un token no sirve para mandarle avisos a nadie más.
+	ScopeNotifyMe = "notify:me"
 )
 
 func ValidScope(s string) bool {
@@ -131,7 +136,7 @@ func ValidScope(s string) bool {
 		ScopeNotesWrite, ScopeNotesManage,
 		ScopeReportsWrite, ScopeReportsManage,
 		ScopeDocsWrite, ScopeDocsManage,
-		ScopeCollectionsWrite, ScopeDeploysManage:
+		ScopeCollectionsWrite, ScopeDeploysManage, ScopeNotifyMe:
 		return true
 	default:
 		return false

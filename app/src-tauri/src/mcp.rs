@@ -377,6 +377,15 @@ fn api_write(cfg: &Cfg, method: &str, path: &str, body: Value) -> Result<Value, 
                     "doc": body.get("data").cloned().unwrap_or(Value::Null),
                 }));
             }
+            // «¿En cuál?» de notify_me: la respuesta trae las organizaciones,
+            // y con ellas el agente lo arregla sin otra consulta.
+            if status.as_u16() == 409 && body.get("error").and_then(|v| v.as_str()) == Some("pick-an-org") {
+                return Ok(json!({
+                    "sent": false,
+                    "reason": "This person belongs to several organizations: call again with orgId set to one of these.",
+                    "organizations": body.get("data").cloned().unwrap_or(Value::Null),
+                }));
+            }
             return Err(explain_write_failure(status, &body));
         }
         Ok(body.get("data").cloned().unwrap_or(Value::Null))
@@ -1955,6 +1964,21 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "notify_me",
+            "description": "Notify the person who owns this token — and only them: there is no way to send it to anyone else. It lands in their bell, on their phone and as a desktop notice. Use it when you stop and need them: a decision to make, a blocker, a long job that finished. Not for progress updates: at most 10 every 10 minutes. Needs a token with the `notify:me` scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "What they need to know, in one line (max 120): \"Stopped: should v1.7.2 go out now?\"" },
+                    "body": { "type": "string", "description": "Optional detail (max 1000)." },
+                    "link": { "type": "string", "description": "Optional path inside cac to open when they click it, e.g. /tasks?item=<id>. External URLs are refused." },
+                    "orgId": { "type": "string", "description": "Which organization's bell. Optional when they belong to only one; if they belong to several and you leave it out, the answer lists them." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["title"]
+            }
+        },
+        {
             "name": "request_doc_review",
             "description": "Ask a person to review a doc after you changed it — you can't sign a review yourself, and that's on purpose: a signed review says a PERSON checked it's still true. The doc's maintainer and the superadmins get a notification, and the doc shows \"review requested\" next to its freshness until someone signs. Asking again replaces the pending request instead of piling up. Needs a token with the `docs:write` scope.",
             "inputSchema": {
@@ -3219,6 +3243,20 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 );
             }
             write_section(cfg, &kind, &id, &tab, &wanted, &expected, content)
+        }
+
+        "notify_me" => {
+            let title = arg_str(args, "title").ok_or("title is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "notify:me", api_get(cfg, "/api/v1/auth/me"));
+            }
+            let mut body = json!({ "title": title });
+            for key in ["body", "link", "orgId"] {
+                if let Some(v) = arg_str(args, key) {
+                    body[key] = json!(v);
+                }
+            }
+            api_post(cfg, "/api/v1/notifications/self", body)
         }
 
         "request_doc_review" => {
@@ -4734,6 +4772,20 @@ mod tests {
             assert!(tool(&defs, name)["description"].as_str().unwrap().contains("deploys:manage"), "{name}");
         }
         assert!(tool(&defs, "update_deploy_config")["inputSchema"]["properties"].get("migrateCommand").is_none());
+    }
+
+    /// `notify_me` existe, pide su permiso y **no** ofrece a quién: el
+    /// destinatario es siempre la persona del token. Mutante: anunciar un
+    /// `userId` (o cualquier otro destinatario).
+    #[test]
+    fn notify_me_has_no_recipient() {
+        let defs = tool_defs();
+        let t = tool(&defs, "notify_me");
+        assert!(t["description"].as_str().unwrap().contains("notify:me"));
+        let props = t["inputSchema"]["properties"].as_object().unwrap();
+        let mut keys: Vec<&str> = props.keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, ["body", "dryRun", "link", "orgId", "title"]);
     }
 }
 

@@ -29,7 +29,8 @@
     "meeting": "meeting",
     "ci": "CI",
     "deploy": "deploy",
-    "telemetry": "telemetry"
+    "telemetry": "telemetry",
+    "agent": "agent"
   },
   "prefs": {
     "title": "What reaches you",

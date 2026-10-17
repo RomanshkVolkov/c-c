@@ -78,6 +78,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/servers/s1/deployables", domain.ScopeDeploysManage},
 		{http.MethodPatch, "/api/v1/servers/s1/deployables/d1", domain.ScopeDeploysManage},
 		{http.MethodPut, "/api/v1/servers/s1/deployables/d1/secret-refs", domain.ScopeDeploysManage},
+		// Avisarse a uno mismo (#153). La ruta no lleva destinatario.
+		{http.MethodPost, "/api/v1/notifications/self", domain.ScopeNotifyMe},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))

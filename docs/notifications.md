@@ -49,6 +49,7 @@ Todos los eventos que emite el backend, y qué deja cada uno.
 | `ci:run` — un `workflow_run` de un repo de la org | `github_app.go` (`onWorkflowRun`) | **Sí, sólo al terminar** (`completed`, y sólo si esa entrega lo terminó) | `ci:run` | **toda la org, sin saltarse a nadie**: no hay mapa login de GitHub ↔ usuario, así que a quien hizo el push le llega su propio CI |
 | `deploy:status` — un deploy cambia de estado | `deploy.go` (`changed`) | **Sí, sólo en terminal** (`succeeded`, `failed`, incluido el caducado) | `deploy:done` | toda la org menos `RequestedByUserID`; un deploy del CI no lo pidió nadie de cac y llega a todos |
 | `deploy:log` — líneas del log de un deploy | `deploy.go` (`AppendLog`) | No, a propósito | — | es el log en vivo; lo guardado está en la fila del deploy |
+| `agent:notice` — un agente avisa a la persona de su token (#153) | `self_notice.go` (`Send`), ruta `POST /api/v1/notifications/self`, MCP `notify_me` | **Sí** | `WorkQuiet` | **sólo la persona del token**, vía `Event.UserID`; el destinatario no es un parámetro. Permiso `notify:me`, enlace sólo interno, tope de 10 cada 10 minutos (`TestATokenNotifiesOnlyItsOwner`) |
 
 **El timbre no deja fila en la campana**, y eso es una decisión y no un
 descuido. Una llamada caduca en veinte segundos: una entrada en el historial

@@ -86,6 +86,11 @@ export const SCOPES: ScopeOption[] = [
     labelKey: "common:scopes.deploysManage",
     detailKey: "scopes.deploysManageDetail",
   },
+  {
+    id: "notify:me",
+    labelKey: "common:scopes.notifyMe",
+    detailKey: "scopes.notifyMeDetail",
+  },
 ];
 
 export function ScopeChecklist({

@@ -29,7 +29,8 @@
     "meeting": "reunión",
     "ci": "CI",
     "deploy": "deploy",
-    "telemetry": "telemetría"
+    "telemetry": "telemetría",
+    "agent": "agente"
   },
   "prefs": {
     "title": "Qué te llega",

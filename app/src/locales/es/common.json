@@ -548,7 +548,9 @@
     "docsManage": "Reescribir la documentación",
     "docsManageDetail": "Reemplaza una sección entera y decide de quién es un documento. Un guardado que llega después del de otra persona se rechaza en vez de aplicarse, pero éste sigue siendo el permiso que puede pisar trabajo. No puede marcar un documento como revisado: eso dice que una persona lo confirmó, y sólo lo firma un superadmin.",
     "deploysManage": "Configurar despliegues",
-    "deploysManageDetail": "Dejar listo cómo despliega un servicio —repo, rama, build en el servidor, Dockerfile y sus secrets <1>por nombre</1>— y registrar uno nuevo. <1>Nunca</1> despliega, vuelve atrás, borra ni cambia el comando de migraciones, y ningún valor de un secret pasa por aquí."
+    "deploysManageDetail": "Dejar listo cómo despliega un servicio —repo, rama, build en el servidor, Dockerfile y sus secrets <1>por nombre</1>— y registrar uno nuevo. <1>Nunca</1> despliega, vuelve atrás, borra ni cambia el comando de migraciones, y ningún valor de un secret pasa por aquí.",
+    "notifyMe": "Avisarme",
+    "notifyMeDetail": "Que un agente que trabaja con este token <1>te</1> avise —«paré: hay una decisión»— en la campana, en el teléfono y con un aviso del sistema. Sólo a ti: no hay forma de mandárselo a nadie más."
   },
   "last": {
     "webviewRecovered": "La página se cerró inesperadamente y se volvió a cargar. Ya quedó reportado.",

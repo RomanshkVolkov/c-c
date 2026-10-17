@@ -53,6 +53,9 @@ const KINDS: Record<string, { group: Tab; tagKey?: MessageKey; icon: typeof AtSi
   // Alguien —muchas veces un agente— cambió un doc y pide que se lea (#92). Con
   // las tareas: es trabajo que te llega, como una asignación.
   "doc:review": { group: "tasks", tagKey: "notifications:kind.review", icon: BellRing, color: "text-primary" },
+  // Un agente que trabaja con tu token te pide mirar algo (#153): trabajo que
+  // te llega, como una revisión.
+  "agent:notice": { group: "tasks", tagKey: "notifications:kind.agent", icon: Bot, color: "text-primary" },
   // Sin esta entrada caería en UNKNOWN_KIND: funcionaría, pero sin etiqueta y en
   // «System», que es donde se guarda lo que no se supo clasificar.
   "meeting:reminder": {

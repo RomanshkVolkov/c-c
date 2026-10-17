@@ -154,6 +154,8 @@ const DEJAN_FILA = new Set([
   // minuto, y quien no estaba delante tiene que poder enterarse después de que
   // la hubo.
   "meeting:reminder",
+  // Un agente que te avisa (#153): llega ya escrito en tu campana.
+  "agent:notice",
 ]);
 
 /**
@@ -691,6 +693,16 @@ export function useReportEvents() {
           notify("telemetry:alert", i18next.t(titulo, { device: a.device }), [a.project, a.body].filter(Boolean).join(" · "));
           break;
         }
+        // Un agente que trabaja con tu token te pide mirar algo (#153). Sólo
+        // llega a ti: el servidor lo dirige a una persona.
+        case "agent:notice": {
+          const a = parse(data) as { title?: string; body?: string } | null;
+          // Se calla con lo mismo que el servidor para la fila: es trabajo
+          // que te llega (`WorkQuiet`).
+          if (!a?.title || useInboxStore.getState().prefs?.workQuiet) break;
+          notify("agent:notice", a.title, a.body ?? "");
+          break;
+        }
         case "meeting:reminder": {
           const t = parse(data) as unknown as ReunionEntrante | null;
           if (!t?.meetingId) break;
@@ -883,6 +895,7 @@ export function useReportEvents() {
         "deploy:log",
         "ci:run",
         "telemetry:alert",
+        "agent:notice",
       ]) {
         es.addEventListener(kind, (e) => {
           seen();

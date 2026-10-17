@@ -315,6 +315,8 @@ var patWritable = []struct {
 	// ready to run. Sharing one is not here on purpose: that reaches other
 	// people, and it should take a person to decide.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/collections/?$`), domain.ScopeCollectionsWrite},
+	// Avisarse a uno mismo: la ruta no admite otro destinatario (#153).
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/notifications/self$`), domain.ScopeNotifyMe},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`), domain.ScopeReportsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/?$`), domain.ScopeReportsWrite},
 	// Changes what already exists.

@@ -60,7 +60,7 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 		repository.GetEnv("VAPID_PUBLIC_KEY", ""), repository.GetEnv("VAPID_PRIVATE_KEY", ""),
 		repository.GetEnv("VAPID_SUBJECT", ""))
 	service.SetPush(push)
-	InitNotificationRoutes(db, r, push)
+	InitNotificationRoutes(db, r, hub, push)
 	// Las reuniones periódicas y las grabaciones: los dos relojes de fondo.
 	InitMeetingRoutes(db, r, hub)
 	recordings := InitRecordingRoutes(db, r, hub, calls)

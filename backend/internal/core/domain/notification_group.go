@@ -29,6 +29,7 @@ const (
 	groupRepo       = "repo"
 	groupDeployable = "deployable"
 	groupTelemetry  = "telemetry"
+	groupAgent      = "agent"
 )
 
 // TelemetryGroup: los avisos del vigilante de un proyecto. Por proyecto y no
