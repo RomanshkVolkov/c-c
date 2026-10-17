@@ -76,6 +76,7 @@ type DeployDocker interface {
 	RemoveService(ctx context.Context, id string) error
 	// Para construir en el servidor (v6).
 	NodeCount(ctx context.Context) (int, error)
+	HostMemory(ctx context.Context) (int64, error)
 	FindServiceSecret(ctx context.Context, service, key string) (id, name string, err error)
 	CreateSecret(ctx context.Context, name string, data []byte, labels map[string]string) (string, error)
 	RemoveSecret(ctx context.Context, id string) error
@@ -296,8 +297,24 @@ func (d *Deployer) migrate(ctx context.Context, svc *repository.ServiceState, jo
 	return nil
 }
 
-// buildTail recuerda hasta dónde se ha pasado el log de un build.
-type buildTail struct{ last time.Time }
+// buildTail recuerda hasta dónde se ha pasado el log de un build, y si en él
+// algún paso murió matado (lo que hace el kernel al pasar del tope de memoria).
+type buildTail struct {
+	last   time.Time
+	killed bool
+}
+
+// killedLine: cómo cuenta BuildKit un paso que se quedó sin memoria. Con el
+// tope del constructor sale `ResourceExhausted: … cannot allocate memory`
+// (medido con buildx 0.20 y BuildKit 0.33); si el kernel lo mata, código 137.
+func killedLine(s string) bool {
+	for _, m := range []string{"ResourceExhausted", "cannot allocate memory", "exit code: 137", "signal: killed"} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
 
 // pull pasa al deploy las líneas posteriores a la última pasada, como mucho
 // las `buildLogTail` más nuevas (un build de Next escupe miles de golpe, y lo
@@ -323,6 +340,9 @@ func (t *buildTail) pull(ctx context.Context, docker DeployDocker, id string, lo
 	}
 	for _, l := range fresh {
 		log("  %s", l.Text)
+		if killedLine(l.Text) {
+			t.killed = true
+		}
 	}
 	t.last = fresh[len(fresh)-1].At
 	return true
@@ -347,6 +367,11 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 	req := repository.BuildRequest{
 		Repo: b.Repo, Sha: b.Sha, Dockerfile: b.Dockerfile, Context: b.Context,
 		BuildArgs: b.BuildArgs, Image: job.Image,
+	}
+	// Sin saber cuánta memoria hay, se construye como antes, sin límites: un
+	// tope inventado podría no dejar acabar ningún build.
+	if total, err := d.Docker.HostMemory(ctx); err == nil {
+		req.MemoryMB = repository.BuildMemoryMB(total)
 	}
 	script, err := repository.BuildScript(req)
 	if err != nil {
@@ -437,6 +462,9 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 		msg := fmt.Sprintf("el build falló (%s, código %d)", st.State, st.ExitCode)
 		if st.Err != "" {
 			msg += ": " + st.Err
+		}
+		if req.MemoryMB > 0 && tail.killed {
+			msg += fmt.Sprintf("; parece que se quedó sin memoria (el build tiene un tope de %d MB para no ahogar lo que corre en el servidor)", req.MemoryMB)
 		}
 		return fmt.Errorf("%s; el servicio no se tocó", msg)
 	}

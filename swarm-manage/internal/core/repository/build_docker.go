@@ -47,6 +47,47 @@ type BuildRequest struct {
 	BuildArgs  []string
 	// Image: `repo:tag` a crear en el host.
 	Image string
+	// MemoryMB: el tope de memoria del build (ver BuildMemoryMB). 0: sin
+	// constructor propio, en el BuildKit de dockerd y sin límites, como hasta
+	// la v7.
+	MemoryMB int
+}
+
+// BuilderImage: el BuildKit del constructor propio, fijado como BuildImage.
+const BuilderImage = "moby/buildkit:v0.33.1"
+
+// builderCPUShares: el peso del build frente al resto, que va con el de
+// Docker por defecto (1024). No es un tope: con la máquina tranquila el build
+// usa todo el procesador; sólo cuando alguien más lo pide, ese gana. En boaty
+// (2 núcleos) un build de Next dejaba sin contestar a la web y al agente.
+const builderCPUShares = 256
+
+// buildCacheKeep: cuánta caché de builds se guarda al acabar. En boaty había
+// 14 GB, casi 11 sin usar.
+const buildCacheKeep = "5gb"
+
+// buildMemoryReserve: lo que el build deja para los demás.
+const buildMemoryReserve = 2048
+
+// BuildMemoryMB: el tope de memoria de un build en una máquina con `total`
+// bytes: todo menos 2 GB para lo que ya corre ahí, y nunca menos de 1 GB (por
+// debajo, un build de Next no acaba). 0 si no se sabe cuánta hay.
+func BuildMemoryMB(total int64) int {
+	if total <= 0 {
+		return 0
+	}
+	mb := int(total/(1<<20)) - buildMemoryReserve
+	if mb < 1024 {
+		mb = 1024
+	}
+	return mb
+}
+
+// BuilderName: el constructor de un tope. El tope va en el nombre porque las
+// opciones de un constructor no se cambian una vez creado: con otro tope (la
+// máquina creció) sale otro constructor, en vez de seguir con el viejo.
+func BuilderName(memoryMB int) string {
+	return fmt.Sprintf("cac-build-%dm", memoryMB)
 }
 
 var (
@@ -117,7 +158,26 @@ func BuildScript(b BuildRequest) (string, error) {
 		// Del fichero al entorno, sin pasar por la línea de comandos.
 		fmt.Fprintf(&s, "%s=\"$(cat /run/secrets/%s)\"; export %s\n", a, a, a)
 	}
-	s.WriteString("exec docker buildx build --progress=plain")
+	builder := ""
+	if b.MemoryMB > 0 {
+		// Un constructor propio (driver `docker-container`): el BuildKit de
+		// dockerd construye dentro del demonio y ahí no hay tope que valga.
+		// `--bootstrap` lo arranca ya, para que si no se puede (sin red a
+		// Docker Hub, por ejemplo) se sepa aquí y se construya como antes en
+		// vez de fallar el deploy.
+		name := BuilderName(b.MemoryMB)
+		fmt.Fprintf(&s, `B=%s
+BUILDER=""
+if docker buildx inspect --bootstrap "$B" >/dev/null 2>&1 || docker buildx create --bootstrap --name "$B" --driver docker-container --driver-opt image=%s --driver-opt memory=%dm --driver-opt memory-swap=%dm --driver-opt cpu-shares=%d >/dev/null; then
+  BUILDER="--builder $B"
+  echo "cac: build con prioridad baja de CPU y un tope de %d MB"
+else
+  echo "cac: no se pudo preparar el constructor con límites; se construye sin ellos"
+fi
+`, name, BuilderImage, b.MemoryMB, b.MemoryMB, builderCPUShares, b.MemoryMB)
+		builder = " $BUILDER"
+	}
+	s.WriteString("docker buildx build" + builder + " --progress=plain")
 	fmt.Fprintf(&s, " --secret id=GIT_AUTH_TOKEN,src=/run/secrets/%s", BuildTokenFile)
 	for _, a := range b.BuildArgs {
 		// Como build arg (lo que lee un `ARG` de hoy) y como secret de
@@ -126,6 +186,9 @@ func BuildScript(b BuildRequest) (string, error) {
 		fmt.Fprintf(&s, " --build-arg %s --secret id=%s,src=/run/secrets/%s", a, a, a)
 	}
 	fmt.Fprintf(&s, " -f %s -t %s --load %s\n", b.Dockerfile, b.Image, b.RemoteContext())
+	// Sólo tras un build bueno (`set -e`), y sin que un fallo al limpiar
+	// tumbe un deploy que ya construyó.
+	fmt.Fprintf(&s, "docker buildx prune%s --force --keep-storage %s >/dev/null 2>&1 || true\n", builder, buildCacheKeep)
 	return s.String(), nil
 }
 
@@ -242,6 +305,17 @@ func (c *DockerClient) NodeCount(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return len(nodes), nil
+}
+
+// HostMemory: la memoria de la máquina, en bytes (`MemTotal` de /info).
+func (c *DockerClient) HostMemory(ctx context.Context) (int64, error) {
+	var info struct {
+		MemTotal int64 `json:"MemTotal"`
+	}
+	if err := c.get(ctx, "/info", &info); err != nil {
+		return 0, err
+	}
+	return info.MemTotal, nil
 }
 
 func (c *DockerClient) post(ctx context.Context, path string, body []byte, out any) error {

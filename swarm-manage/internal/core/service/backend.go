@@ -24,7 +24,7 @@ import (
 // Version es la versión de este agente, la de `swarm-manage/VERSION`. Va en
 // cada pregunta (`X-Agent-Version`): el backend no le encola un deploy a un
 // agente que no sabe hacerlo. Lo ata al fichero `TestTheVersionIsTheFile`.
-const Version = 7
+const Version = 8
 
 type Poller struct {
 	BaseURL string
@@ -102,8 +102,9 @@ func (p *Poller) Run(ctx context.Context) {
 // 16-oct-2026). Se late en paralelo y por su propia ruta, que no reclama el
 // siguiente trabajo de la cola.
 func (p *Poller) runJob(ctx context.Context, job Job) {
-	done := make(chan struct{})
+	done, stopped := make(chan struct{}), make(chan struct{})
 	go func() {
+		defer close(stopped)
 		t := time.NewTicker(p.BeatEvery)
 		defer t.Stop()
 		for {
@@ -119,7 +120,9 @@ func (p *Poller) runJob(ctx context.Context, job Job) {
 			}
 		}
 	}()
-	defer close(done)
+	// Al acabar, se espera al latido que estuviera en el aire: un latido
+	// tardío no debe llegar después de que el agente vuelva a preguntar.
+	defer func() { close(done); <-stopped }()
 	p.OnJob(ctx, job)
 }
 

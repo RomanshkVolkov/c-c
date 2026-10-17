@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -88,5 +89,60 @@ func TestTheBuildJobMountsTheSocketAndTheSecrets(t *testing.T) {
 	}
 	if tt["RestartPolicy"].(map[string]any)["Condition"] != "none" {
 		t.Fatalf("un build que falla se reintenta: %v", tt["RestartPolicy"])
+	}
+}
+
+// El tope de un build: todo menos 2 GB para lo que ya corre, con un suelo de
+// 1 GB, y sin tope si no se sabe cuánta memoria hay.
+// Mutantes: sin la reserva; sin el suelo; un tope inventado sin saber.
+func TestTheBuildLeavesMemoryForTheRest(t *testing.T) {
+	for total, want := range map[int64]int{8 << 30: 6144, 2 << 30: 1024, 0: 0} {
+		if got := BuildMemoryMB(total); got != want {
+			t.Errorf("con %d bytes: %d MB, se esperaba %d", total, got, want)
+		}
+	}
+}
+
+// Con tope, el build va por un constructor propio con la memoria, sin swap
+// propia y con poco peso de CPU, y limpia la caché **después** de construir;
+// si el constructor no arranca, construye como antes. Sin tope, como hasta
+// la v7. Y el guion es shell válida.
+// Mutantes: sin `cpu-shares`; `memory-swap` sin poner (el build se va a la
+// swap de la máquina); limpiar antes de construir; fallar sin constructor.
+func TestTheBuildScriptCapsTheBuilder(t *testing.T) {
+	r := req()
+	r.MemoryMB = 5894
+	s, err := BuildScript(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"--driver docker-container --driver-opt image=" + BuilderImage,
+		"--driver-opt memory=5894m --driver-opt memory-swap=5894m --driver-opt cpu-shares=256",
+		"B=" + BuilderName(5894),
+		`BUILDER="--builder $B"`,
+		"docker buildx build $BUILDER --progress=plain",
+		"docker buildx prune $BUILDER --force --keep-storage 5gb",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("al guion le falta %q:\n%s", want, s)
+		}
+	}
+	if strings.Index(s, "docker buildx prune") < strings.Index(s, "docker buildx build") {
+		t.Errorf("limpia la caché antes de construir:\n%s", s)
+	}
+	if !strings.Contains(s, "else\n  echo") {
+		t.Errorf("sin constructor, el build no sigue:\n%s", s)
+	}
+
+	plain, _ := BuildScript(req())
+	if strings.Contains(plain, "cac-build") || !strings.Contains(plain, "docker buildx build --progress=plain") {
+		t.Errorf("sin tope, el guion cambió:\n%s", plain)
+	}
+
+	for _, sc := range []string{s, plain} {
+		if out, err := exec.Command("sh", "-n", "-c", sc).CombinedOutput(); err != nil {
+			t.Errorf("el guion no es shell válida: %v %s\n%s", err, out, sc)
+		}
 	}
 }

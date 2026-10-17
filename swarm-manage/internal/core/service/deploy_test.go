@@ -49,6 +49,16 @@ type fakeDocker struct {
 	taskCalls int
 	steps     [][]repository.LogLine
 	written   []repository.LogLine
+
+	// La memoria de la máquina; 0, que no se sabe.
+	memory int64
+}
+
+func (f *fakeDocker) HostMemory(context.Context) (int64, error) {
+	if f.memory == 0 {
+		return 0, errors.New("sin /info")
+	}
+	return f.memory, nil
 }
 
 func (f *fakeDocker) NodeCount(context.Context) (int, error) {
@@ -449,6 +459,27 @@ func TestTheBuildLogArrivesWhileItBuilds(t *testing.T) {
 	}
 	if strings.Contains(all, "lo que daba el log de antes") {
 		t.Errorf("leyendo en vivo, también pasó la cola de antes:\n%s", all)
+	}
+}
+
+// El build lleva el tope de la máquina en la que corre; y si un paso muere
+// matado, el error dice que fue la memoria y cuál era el tope.
+// Mutantes: no pasarle la memoria al guion; no mirar si lo mataron.
+func TestTheBuildIsCappedToTheMachineAndSaysWhenItRanOut(t *testing.T) {
+	d, r := buildDocker(), &fakeReport{}
+	d.memory = 8 << 30
+	d.running = 1
+	d.steps = [][]repository.LogLine{{{At: time.Unix(1, 0), Text: "#14 ERROR: process \"/bin/sh -c next build\" did not complete successfully: exit code: 137"}}}
+	d.migState = repository.TaskState{State: "failed", ExitCode: 1}
+	dep := deployer(d, r)
+	dep.BuildLogEvery = 0
+	dep.Run(context.Background(), "d-1", buildJob())
+	cs := d.jobSpec["TaskTemplate"].(map[string]any)["ContainerSpec"].(map[string]any)
+	if script := cs["Command"].([]string)[2]; !strings.Contains(script, "memory=6144m") {
+		t.Errorf("el guion no lleva el tope de la máquina:\n%s", script)
+	}
+	if r.finish == nil || r.finish.Status != "failed" || !strings.Contains(r.finish.Error, "sin memoria") || !strings.Contains(r.finish.Error, "6144 MB") {
+		t.Fatalf("acabó %+v", r.finish)
 	}
 }
 
