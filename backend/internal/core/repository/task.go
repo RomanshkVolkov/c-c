@@ -81,9 +81,13 @@ func (r *TaskRepository) FindSpace(id string) (*domain.TaskSpace, error) {
 	return &s, nil
 }
 
-func (r *TaskRepository) UpdateSpace(id, name, color string) error {
-	return r.db.Model(&domain.TaskSpace{}).Where("id = ?", id).
-		Updates(map[string]any{"name": name, "color": color}).Error
+// UpdateSpace renombra; el color sólo si llega (ver `RenameRequest.Color`).
+func (r *TaskRepository) UpdateSpace(id, name string, color *string) error {
+	fields := map[string]any{"name": name}
+	if color != nil {
+		fields["color"] = *color
+	}
+	return r.db.Model(&domain.TaskSpace{}).Where("id = ?", id).Updates(fields).Error
 }
 
 // DeleteSpace removes a space and everything under it in one transaction.
@@ -981,6 +985,31 @@ func (r *TaskRepository) ListTags(orgIDs []string, superadmin bool, orgID string
 }
 
 func (r *TaskRepository) CreateTag(t *domain.TaskTag) error { return r.db.Create(t).Error }
+
+func (r *TaskRepository) FindTag(id string) (*domain.TaskTag, error) {
+	var t domain.TaskTag
+	if err := r.db.First(&t, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// UpdateTag cambia lo que llega y devuelve la etiqueta como queda.
+func (r *TaskRepository) UpdateTag(id string, name, color *string) (*domain.TaskTag, error) {
+	fields := map[string]any{}
+	if name != nil {
+		fields["name"] = *name
+	}
+	if color != nil {
+		fields["color"] = *color
+	}
+	if len(fields) > 0 {
+		if err := r.db.Model(&domain.TaskTag{}).Where("id = ?", id).Updates(fields).Error; err != nil {
+			return nil, err
+		}
+	}
+	return r.FindTag(id)
+}
 
 func (r *TaskRepository) SetTags(taskID string, tagIDs []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {

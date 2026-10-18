@@ -6,6 +6,7 @@
  * here unchanged: any difference in behaviour at this point is a mistake in the
  * move, not a decision.
  */
+import { ColorDot } from "@/components/ui/color-swatches";
 import { hueVar } from "@/lib/person-color";
 import { useT } from "@/lib/i18n";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
@@ -443,7 +444,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
   const confirm = useConfirm();
-  const { createFolder, createList, renameSpace, deleteSpace, moveSpace, sortChildren } =
+  const { createFolder, createList, renameSpace, setSpaceColor, deleteSpace, moveSpace, sortChildren } =
     useTasksStore.getState();
   const [channelOpen, setChannelOpen] = useState(false);
   const [adding, setAdding] = useState<null | "folder" | "list">(null);
@@ -481,9 +482,13 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         >
           {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
         </button>
-        <span
-          className="size-2 shrink-0 rounded-sm"
-          style={{ backgroundColor: space.color || hueVar(space.id) }}
+        {/* El punto es lo que se pulsa para cambiarle el color. Sin uno
+            elegido, uno estable de la paleta: el cian era para todos. */}
+        <ColorDot
+          color={space.color || hueVar(space.id)}
+          label={t("common:colors.of", { name: space.name })}
+          onChange={(hex) => void reportingFailure(setSpaceColor(space.id, space.name, hex))}
+          className="size-2.5 rounded-sm"
         />
         {/* A bound space is one a client can see into. The list already said so;
             without this the space it hangs under looked like any other. */}

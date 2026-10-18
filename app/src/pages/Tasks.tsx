@@ -1,3 +1,4 @@
+import TagChip from "@/components/tasks/TagChip";
 import PriorityChip from "@/components/tasks/PriorityChip";
 import { cuando, dueClass } from "@/components/tasks/TaskCardMini";
 import { fecha } from "@/lib/fechas";
@@ -428,13 +429,7 @@ function ListView({
                     </span>
                     <span className="min-w-0 flex-1 truncate">{t.title}</span>
                     {t.tags.slice(0, 3).map((g) => (
-                      <span
-                        key={g.id}
-                        className="hidden rounded px-1.5 py-0.5 text-xs sm:inline"
-                        style={{ backgroundColor: `${g.color || "#8B5CF6"}22`, color: g.color || undefined }}
-                      >
-                        {g.name}
-                      </span>
+                      <TagChip key={g.id} name={g.name} color={g.color} className="hidden sm:inline-flex" />
                     ))}
                     <PriorityChip priority={t.priority} />
                     {t.dueAt && (
@@ -495,16 +490,7 @@ function TaskCardView({
       {card.tags.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {card.tags.map((t) => (
-            <span
-              key={t.id}
-              className="rounded px-1.5 py-0.5 text-xs"
-              style={{
-                backgroundColor: `${t.color || "#8B5CF6"}22`,
-                color: t.color || "var(--foreground)",
-              }}
-            >
-              {t.name}
-            </span>
+            <TagChip key={t.id} name={t.name} color={t.color} />
           ))}
         </div>
       )}

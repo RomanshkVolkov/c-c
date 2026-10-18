@@ -849,6 +849,12 @@ func (s *TaskService) CreateTag(req domain.CreateTagRequest) (*domain.TaskTag, e
 	return t, nil
 }
 
+func (s *TaskService) FindTag(id string) (*domain.TaskTag, error) { return s.repo.FindTag(id) }
+
+func (s *TaskService) UpdateTag(id string, req domain.UpdateTagRequest) (*domain.TaskTag, error) {
+	return s.repo.UpdateTag(id, req.Name, req.Color)
+}
+
 // setVisibility publishes an item to a client's board or takes it back.
 //
 // Taking it back leaves the folio spent: the client may already have quoted that

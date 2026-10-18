@@ -240,6 +240,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.Cal
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.ListTags)
 		r.Post("/", h.CreateTag)
+		r.Patch("/{id}", h.UpdateTag)
 	})
 
 	// Notes: a separate, personally-owned module (see note.go's package doc).

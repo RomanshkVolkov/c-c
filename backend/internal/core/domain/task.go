@@ -715,8 +715,12 @@ type CreateSpaceRequest struct {
 }
 
 type RenameRequest struct {
-	Name  string `json:"name"  validate:"required,min=1,max=120"`
-	Color string `json:"color" validate:"omitempty,max=20"`
+	Name string `json:"name"  validate:"required,min=1,max=120"`
+	// Color es un puntero porque no mandarlo es no tocarlo. Hasta el
+	// 18-oct-2026 era texto y cada renombrado guardaba el que llegara: la app
+	// renombra mandando sólo el nombre, así que renombrar un espacio le borraba
+	// el color. `""` sí lo quita.
+	Color *string `json:"color" validate:"omitempty,max=20"`
 	// ProjectID binds the node to a tenant's channel. A pointer because absent
 	// and empty mean different things: leaving it out renames without touching
 	// the binding, sending "" clears it.
@@ -848,6 +852,13 @@ type CreateTagRequest struct {
 	OrgID string `json:"orgId" validate:"required"`
 	Name  string `json:"name"  validate:"required,min=1,max=60"`
 	Color string `json:"color" validate:"omitempty,max=20"`
+}
+
+// UpdateTagRequest cambia el nombre o el color de una etiqueta. Lo que no se
+// manda no se toca.
+type UpdateTagRequest struct {
+	Name  *string `json:"name"  validate:"omitempty,min=1,max=60"`
+	Color *string `json:"color" validate:"omitempty,max=20"`
 }
 
 type TaskCommentRequest struct {

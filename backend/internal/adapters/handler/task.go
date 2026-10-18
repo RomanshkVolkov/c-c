@@ -92,6 +92,7 @@ type TaskHandler interface {
 	DeleteComment(w http.ResponseWriter, r *http.Request)
 	ListTags(w http.ResponseWriter, r *http.Request)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	UpdateTag(w http.ResponseWriter, r *http.Request)
 	UploadAttachment(w http.ResponseWriter, r *http.Request)
 	RawAttachment(w http.ResponseWriter, r *http.Request)
 	DeleteAttachment(w http.ResponseWriter, r *http.Request)
@@ -1171,6 +1172,31 @@ func (h *taskHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.TaskTag]{Success: true, Data: tag})
+}
+
+// UpdateTag cambia el nombre o el color de una etiqueta, con permiso de
+// escritura en su organización: una etiqueta es de toda la org, y cambiarla
+// cambia cómo se ve en todas las tarjetas que la llevan.
+func (h *taskHandler) UpdateTag(w http.ResponseWriter, r *http.Request) {
+	tag, err := h.svc.FindTag(chi.URLParam(r, "id"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "Tag not found", "not-found")
+		return
+	}
+	if _, ok := h.authorizeOrg(w, r, tag.OrgID, true); !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.UpdateTagRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	updated, err := h.svc.UpdateTag(tag.ID, req)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update tag", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.TaskTag]{Success: true, Data: updated})
 }
 
 // ─── The channel into a space ─────────────────────────────────────────────────

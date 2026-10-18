@@ -994,5 +994,19 @@
     },
     "testTitle": "¿Probar la restauración ahora?",
     "testBody": "Restaura una copia completa de {{db}} en el mismo servidor y la revisa entera. Mientras tanto y unos minutos después, la base puede ir más lenta para quien use la web. La prueba automática ya se hace de madrugada; a mano, mejor fuera de horas de uso."
+  },
+  "colors": {
+    "pick": "Elegir color",
+    "of": "Color de {{name}}",
+    "blue": "Azul",
+    "cyan": "Cian",
+    "teal": "Verde azulado",
+    "green": "Verde",
+    "yellow": "Amarillo",
+    "orange": "Naranja",
+    "red": "Rojo",
+    "pink": "Rosa",
+    "violet": "Violeta",
+    "slate": "Gris"
   }
 }

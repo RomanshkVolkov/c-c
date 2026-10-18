@@ -1,3 +1,5 @@
+import { ColorDot, paletteFor } from "@/components/ui/color-swatches";
+import TagChip from "@/components/tasks/TagChip";
 import PriorityChip from "@/components/tasks/PriorityChip";
 import { nombreDe } from "@/lib/nombres";
 import { fechaYHora } from "@/lib/fechas";
@@ -297,6 +299,7 @@ function Content() {
   const openTask = useTasksStore((s) => s.openTask);
   const createSubtask = useTasksStore((s) => s.createSubtask);
   const createTag = useTasksStore((s) => s.createTag);
+  const setTagColor = useTasksStore((s) => s.setTagColor);
   const confirm = useConfirm();
   const prompt = usePrompt();
 
@@ -1036,14 +1039,20 @@ function Content() {
             <TagIcon className="size-3.5" /> Tags
           </span>
           <div className="flex flex-wrap items-center gap-1">
-            {detail.tags.map((t) => (
-              <span
-                key={t.id}
-                className="rounded px-1.5 py-0.5 text-xs"
-                style={{ backgroundColor: `${t.color || "#8B5CF6"}22`, color: t.color || undefined }}
-              >
-                {t.name}
-              </span>
+            {detail.tags.map((g) => (
+              <TagChip
+                key={g.id}
+                name={g.name}
+                color={g.color}
+                dot={
+                  <ColorDot
+                    color={g.color || "#8B5CF6"}
+                    label={t("common:colors.of", { name: g.name })}
+                    onChange={(hex) => setTagColor(g.id, hex).catch((e) => toast.error(String(e)))}
+                    className="size-2"
+                  />
+                }
+              />
             ))}
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -1078,7 +1087,10 @@ function Content() {
                         confirmText: t("work:task.create"),
                       });
                       if (!name) return;
-                      const created = await createTag(task.orgId, name, "#8B5CF6");
+                      // Uno de la paleta, estable para el nombre, y no el violeta
+                      // de siempre: con todas iguales no se distinguía ninguna.
+                      // Se cambia pulsando su punto.
+                      const created = await createTag(task.orgId, name, paletteFor(name));
                       if (created) {
                         updateTask(task.id, {
                           tagIds: [...detail.tags.map((x) => x.id), created.id],

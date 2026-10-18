@@ -994,5 +994,19 @@
     },
     "testTitle": "Test the restore now?",
     "testBody": "It restores a full copy of {{db}} on the same server and checks all of it. Meanwhile and for a few minutes after, the database can be slower for the website's users. The automatic test already runs at night; by hand, better outside busy hours."
+  },
+  "colors": {
+    "pick": "Pick a color",
+    "of": "Color of {{name}}",
+    "blue": "Blue",
+    "cyan": "Cyan",
+    "teal": "Teal",
+    "green": "Green",
+    "yellow": "Yellow",
+    "orange": "Orange",
+    "red": "Red",
+    "pink": "Pink",
+    "violet": "Violet",
+    "slate": "Slate"
   }
 }

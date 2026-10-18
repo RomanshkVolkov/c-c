@@ -97,6 +97,8 @@ interface TasksState {
    */
   abrirSalaGeneral: (orgId: string) => Promise<void>;
   renameSpace: (id: string, name: string) => Promise<void>;
+  /** El nombre va porque el servidor lo pide; el color es lo que cambia. */
+  setSpaceColor: (id: string, name: string, color: string) => Promise<void>;
   deleteSpace: (id: string) => Promise<void>;
   /** Returns the new folder's id, which is what lets `Tab` nest under it. */
   createFolder: (spaceId: string, name: string, parentFolderId?: string) => Promise<string | undefined>;
@@ -187,6 +189,7 @@ interface TasksState {
   uploadAttachment: (taskId: string, file: File) => Promise<{ url: string; fileName: string } | null>;
   deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
   createTag: (orgId: string, name: string, color: string) => Promise<TaskTag | null>;
+  setTagColor: (id: string, color: string) => Promise<void>;
 
   // ── The channel a space or list belongs to ──
   //
@@ -446,6 +449,10 @@ export const useTasksStore = create<TasksState>()(
       },
       renameSpace: async (id, name) => {
         await api.patch<APIResponse<unknown>>(`/api/v1/task-spaces/${id}`, { name }, true);
+        await get().fetchTree();
+      },
+      setSpaceColor: async (id, name, color) => {
+        await api.patch<APIResponse<unknown>>(`/api/v1/task-spaces/${id}`, { name, color }, true);
         await get().fetchTree();
       },
       deleteSpace: async (id) => {
@@ -1057,6 +1064,18 @@ export const useTasksStore = create<TasksState>()(
         if (!res.success || !res.data) return null;
         set((s) => ({ tags: [...s.tags, res.data!] }));
         return res.data;
+      },
+      setTagColor: async (id, color) => {
+        const res = await api.patch<APIResponse<TaskTag>>(`/api/v1/task-tags/${id}`, { color }, true);
+        if (!res.success || !res.data) return;
+        // La etiqueta va copiada dentro de cada tarjeta y del detalle abierto:
+        // se cambia en los tres sitios para no esperar a la próxima recarga.
+        const recolor = (tags: TaskTag[]) => tags.map((t) => (t.id === id ? { ...t, color } : t));
+        set((s) => ({
+          tags: recolor(s.tags),
+          board: s.board ? { ...s.board, tasks: s.board.tasks.map((c) => ({ ...c, tags: recolor(c.tags) })) } : s.board,
+          detail: s.detail ? { ...s.detail, tags: recolor(s.detail.tags) } : s.detail,
+        }));
       },
     }),
     {
