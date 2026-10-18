@@ -41,6 +41,20 @@ afterEach(cleanup);
  * Mutantes: descargar sin preguntar; pedir la URL aunque digan que no.
  */
 describe("la pestaña Backups", () => {
+  // La primera vez no hay llaves ni bases, y el backend omite `data` en una
+  // lista vacía. Mutante: tratar la falta de `data` como error (la pestaña
+  // entera salía en rojo con «backups»).
+  it("sin nada configurado enseña cómo empezar, no un error", async () => {
+    get.mockImplementation((path: string) => {
+      if (path.endsWith("/status")) return Promise.resolve(ok({ enabled: true, agentReady: true, agentVersion: 9, minAgent: 9, hasRecipients: false, everyHours: [24] }));
+      return Promise.resolve({ success: true });
+    });
+    render(<ServerBackups />);
+    expect(await screen.findByText(/^(llaves de cifrado|encryption keys)$/i)).toBeTruthy();
+    expect(await screen.findByText(/(todavía no se respalda|no database is backed up)/i)).toBeTruthy();
+    expect(screen.queryByText(/^backups$/)).toBeNull();
+  });
+
   it("enseña la base y su historial, y descargar pide confirmación", async () => {
     render(<ServerBackups />);
     expect(await screen.findByText("boaty")).toBeTruthy();

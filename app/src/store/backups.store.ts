@@ -49,6 +49,17 @@ function must<T>(res: APIResponse<T>): T {
   return res.data;
 }
 
+/**
+ * Una lista. El backend omite `data` cuando va vacía (`omitempty` en
+ * `APIResponse`), así que sin nada configurado no llega el campo: eso es una
+ * lista vacía, no un error. Tratarlo como error dejaba la pestaña entera en
+ * rojo justo la primera vez que alguien la abría (18-oct-2026).
+ */
+function list<T>(res: APIResponse<T[]>): T[] {
+  if (!res.success) throw new Error(res.error ?? "backups");
+  return res.data ?? [];
+}
+
 export const useBackupsStore = create<BackupsState>((set, get) => ({
   status: {},
   targets: {},
@@ -64,8 +75,8 @@ export const useBackupsStore = create<BackupsState>((set, get) => ({
     ]);
     set((s) => ({
       status: { ...s.status, [serverId]: must(status) },
-      targets: { ...s.targets, [serverId]: must(targets) },
-      recipients: { ...s.recipients, [serverId]: must(recipients) },
+      targets: { ...s.targets, [serverId]: list(targets) },
+      recipients: { ...s.recipients, [serverId]: list(recipients) },
     }));
   },
 
@@ -99,8 +110,8 @@ export const useBackupsStore = create<BackupsState>((set, get) => ({
   },
 
   loadHistory: async (serverId, targetId) => {
-    const list = must(await api.get<APIResponse<Backup[]>>(`${base(serverId)}/targets/${targetId}/history`, true));
-    set((s) => ({ history: { ...s.history, [targetId]: list } }));
+    const rows = list(await api.get<APIResponse<Backup[]>>(`${base(serverId)}/targets/${targetId}/history`, true));
+    set((s) => ({ history: { ...s.history, [targetId]: rows } }));
   },
 
   loadLog: async (serverId, backupId) => {
