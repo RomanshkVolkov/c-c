@@ -1,3 +1,4 @@
+import { sessionLog, tokenId8 } from "@/lib/session-log";
 import { isTauri } from "@/lib/platform";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -79,7 +80,11 @@ export const useAuthStore = create<AuthState>()(
       // On a cold start the token comes back from storage without going through
       // setAuth, so the core would never learn it and every attachment would
       // 401 until the next sign-in.
-      onRehydrateStorage: () => (state) => mirrorToCore(state?.accessToken ?? null),
+      onRehydrateStorage: () => (state) => {
+        mirrorToCore(state?.accessToken ?? null);
+        // #175: con qué refresco arranca cada ventana.
+        sessionLog(`boot disk=${tokenId8(state?.refreshToken)}`);
+      },
     }
   )
 );

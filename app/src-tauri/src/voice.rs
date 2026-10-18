@@ -1044,7 +1044,7 @@ fn t_unix() -> u64 {
 /// prueba fue una nota de voz grabada con el teléfono. En disco, lo que pasó en
 /// una llamada se puede leer después, sin que nadie tenga que acordarse de
 /// copiarlo a tiempo.
-fn diary_path() -> Option<std::path::PathBuf> {
+pub(crate) fn diary_path() -> Option<std::path::PathBuf> {
     let base = if cfg!(target_os = "macos") {
         std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library/Application Support"))
     } else if cfg!(target_os = "windows") {
@@ -1072,7 +1072,7 @@ fn to_file(line: &str) {
     }
 }
 
-fn write_diary(path_buf: &std::path::Path, line: &str, cap_bytes: u64) {
+pub(crate) fn write_diary(path_buf: &std::path::Path, line: &str, cap_bytes: u64) {
     use std::io::Write;
     if let Some(dir) = path_buf.parent() {
         let _ = std::fs::create_dir_all(dir);

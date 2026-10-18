@@ -204,6 +204,21 @@ struct OpVault {
 /// Returns an empty list rather than an error when 1Password isn't reachable:
 /// the caller hides the feature instead of showing a scary message next to
 /// secrets the user still needs to copy.
+/// Diario temporal de la sesión: qué token de refresco tiene cada ventana al
+/// refrescar (#175). Tras actualizar, cac echaba a jose a pedir la contraseña
+/// porque algo presentaba un refresco ya rotado hace 46 minutos; para saber
+/// quién, cada refresco apunta aquí su proceso, su ventana y los 8 primeros
+/// caracteres del id del token en memoria y en disco (el mismo id que guarda
+/// la base, que solo no sirve de credencial). Se quita al cerrar #175.
+#[tauri::command]
+fn session_log(line: String) {
+    let Some(voice) = voice::diary_path() else { return };
+    let path = voice.with_file_name("session.log");
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let clean: String = line.chars().filter(|c| !c.is_control()).take(300).collect();
+    voice::write_diary(&path, &format!("{secs} pid={} v{} {clean}", std::process::id(), env!("CARGO_PKG_VERSION")), 512 * 1024);
+}
+
 #[tauri::command]
 fn op_list_vaults() -> Vec<OpVault> {
     use std::process::Command;
@@ -1946,6 +1961,7 @@ pub fn run() {
             export_notes,
             op_item_create,
             op_list_vaults,
+            session_log,
             secrets::create_backup_key,
             secrets::rotate_service_secrets,
             secrets::capture_service_env,

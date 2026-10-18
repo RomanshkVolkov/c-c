@@ -1,3 +1,4 @@
+import { sessionLog, storedRefresh, tokenId8 } from "@/lib/session-log";
 import { isTauri } from "@/lib/platform";
 import { phraseFor } from "@/lib/server-errors";
 
@@ -102,6 +103,8 @@ async function tryRefresh(): Promise<string | null> {
   refreshPromise = (async () => {
     const { refreshToken, session, setAuth, clearAuth } = useAuthStore.getState();
     if (!refreshToken) { clearAuth(); return null; }
+    const used = tokenId8(refreshToken);
+    sessionLog(`refresh mem=${used} disk=${tokenId8(storedRefresh())}`);
 
     try {
       const reply = await send(`${BASE_URL}/api/v1/auth/refresh`, "POST", {
@@ -114,10 +117,15 @@ async function tryRefresh(): Promise<string | null> {
       // un 500 es el servidor que no pudo mirar, y echar a alguien por eso es
       // convertir un hipo de Postgres en un logout masivo: se queda la sesión y
       // la siguiente acción vuelve a intentarlo.
-      if (reply.status === 401) { clearAuth(); return null; }
+      if (reply.status === 401) {
+        sessionLog(`refresh ${used} -> 401, signed out`);
+        clearAuth();
+        return null;
+      }
       if (reply.status >= 400 || !json.success || !json.data) return null;
 
       setAuth(session!, json.data.accessToken, json.data.refreshToken);
+      sessionLog(`refresh ${used} -> ok new=${tokenId8(json.data.refreshToken)}`);
       return json.data.accessToken;
     } catch {
       // Network/timeout (e.g. stale socket after idle) is transient — keep the
