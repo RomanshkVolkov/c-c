@@ -106,6 +106,15 @@ type Deployer struct {
 	BuildLogEvery time.Duration
 	// MemAvailable: la memoria libre de la máquina; inyectable en las pruebas.
 	MemAvailable func() int64
+	// SwapFree: la swap libre de la máquina; inyectable en las pruebas.
+	SwapFree func() int64
+}
+
+func (d *Deployer) swapFree() int64 {
+	if d.SwapFree != nil {
+		return d.SwapFree()
+	}
+	return repository.SwapFree()
 }
 
 func (d *Deployer) memAvailable() int64 {
@@ -388,7 +397,8 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 		}
 		req.MemoryMB = mb
 		if mb > 0 {
-			log("memoria libre ahora: %d MB; tope del build: %d MB", avail>>20, mb)
+			req.SwapMB = repository.BuildSwapMB(d.swapFree())
+			log("memoria libre ahora: %d MB; tope del build: %d MB, más %d MB de swap propia", avail>>20, mb, req.SwapMB)
 		}
 	}
 	script, err := repository.BuildScript(req)

@@ -53,6 +53,10 @@ type BuildRequest struct {
 	// constructor propio, en el BuildKit de dockerd y sin límites, como hasta
 	// la v7.
 	MemoryMB int
+	// SwapMB: la swap que el build puede usar además de su tope (ver
+	// BuildSwapMB). La suya, dentro de su cgroup: la de la máquina sólo la
+	// toca a través de él.
+	SwapMB int
 }
 
 // BuilderImage: el BuildKit del constructor propio, fijado como BuildImage.
@@ -103,15 +107,48 @@ func BuildMemoryMB(total, available int64) (mb int, ok bool) {
 	return mb, true
 }
 
+// buildSwapMax / buildSwapMargin: la swap que puede usar un build, como
+// mucho, y la que se deja libre siempre.
+const (
+	buildSwapMax    = 4096
+	buildSwapMargin = 512
+)
+
+// BuildSwapMB: la swap propia de un build, de la swap libre de la máquina
+// (en bytes), menos un margen, hasta 4 GB, redondeada a 256 MB.
+//
+// Hasta la v10 era ninguna (`memory-swap` igual a `memory`), y un build que
+// necesitaba un poco más que su tope no fallaba: se quedaba reclamando
+// memoria sin avanzar. En boaty un `next build` estuvo 26 minutos chocando
+// contra 2,25 GB —1,37 millones de veces— hasta que se le dio swap a mano, y
+// entonces acabó en dos (18-oct-2026). Con swap propia la presión cae sobre
+// el build, más lento pero termina, y no sobre lo que corre al lado: SQL
+// Server no se movió de sus 2,86 GB.
+func BuildSwapMB(swapFree int64) int {
+	mb := int(swapFree/(1<<20)) - buildSwapMargin
+	if mb < 0 {
+		return 0
+	}
+	if mb > buildSwapMax {
+		mb = buildSwapMax
+	}
+	return mb / 256 * 256
+}
+
 // MemAvailable: la memoria libre de verdad de la máquina, en bytes. El
 // `/proc/meminfo` de un contenedor es el de la máquina.
-func MemAvailable() int64 {
+func MemAvailable() int64 { return meminfo("MemAvailable:") }
+
+// SwapFree: la swap libre de la máquina, en bytes.
+func SwapFree() int64 { return meminfo("SwapFree:") }
+
+func meminfo(key string) int64 {
 	raw, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return 0
 	}
 	for _, l := range strings.Split(string(raw), "\n") {
-		if strings.HasPrefix(l, "MemAvailable:") {
+		if strings.HasPrefix(l, key) {
 			f := strings.Fields(l)
 			if len(f) >= 2 {
 				if kb, err := strconv.ParseInt(f[1], 10, 64); err == nil {
@@ -209,14 +246,14 @@ BUILDER=""
 if docker buildx inspect --bootstrap "$B" >/dev/null 2>&1 || docker buildx create --bootstrap --name "$B" --driver docker-container --driver-opt image=%s --driver-opt memory=%dm --driver-opt memory-swap=%dm --driver-opt cpu-shares=%d >/dev/null; then
   BUILDER="--builder $B"
   if docker update --memory %dm --memory-swap %dm "buildx_buildkit_${B}0" >/dev/null 2>&1; then
-    echo "cac: build con prioridad baja de CPU y un tope de %d MB (la memoria libre ahora)"
+    echo "cac: build con prioridad baja de CPU, un tope de %d MB (la memoria libre ahora) y %d MB de swap propia"
   else
     echo "cac: no se pudo ajustar el tope del constructor; se usa el que tenía"
   fi
 else
   echo "cac: no se pudo preparar el constructor con límites; se construye sin ellos"
 fi
-`, BuilderName, BuilderImage, b.MemoryMB, b.MemoryMB, builderCPUShares, b.MemoryMB, b.MemoryMB, b.MemoryMB)
+`, BuilderName, BuilderImage, b.MemoryMB, b.MemoryMB+b.SwapMB, builderCPUShares, b.MemoryMB, b.MemoryMB+b.SwapMB, b.MemoryMB, b.SwapMB)
 		builder = " $BUILDER"
 	}
 	s.WriteString("docker buildx build" + builder + " --progress=plain")

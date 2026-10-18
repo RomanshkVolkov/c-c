@@ -474,10 +474,12 @@ func TestTheBuildIsCappedToTheMachineAndSaysWhenItRanOut(t *testing.T) {
 	dep := deployer(d, r)
 	dep.BuildLogEvery = 0
 	dep.MemAvailable = func() int64 { return 7 << 30 }
+	// 3 GB de swap libre: el build puede usar 2,5 (deja medio GB).
+	dep.SwapFree = func() int64 { return 3 << 30 }
 	dep.Run(context.Background(), "d-1", buildJob())
 	cs := d.jobSpec["TaskTemplate"].(map[string]any)["ContainerSpec"].(map[string]any)
-	if script := cs["Command"].([]string)[2]; !strings.Contains(script, "memory=6144m") {
-		t.Errorf("el guion no lleva el tope de la máquina:\n%s", script)
+	if script := cs["Command"].([]string)[2]; !strings.Contains(script, "memory=6144m") || !strings.Contains(script, "memory-swap=8704m") {
+		t.Errorf("el guion no lleva el tope de la máquina y su swap propia:\n%s", script)
 	}
 	if r.finish == nil || r.finish.Status != "failed" || !strings.Contains(r.finish.Error, "sin memoria") || !strings.Contains(r.finish.Error, "6144 MB") {
 		t.Fatalf("acabó %+v", r.finish)

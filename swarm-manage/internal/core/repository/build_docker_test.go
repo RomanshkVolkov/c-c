@@ -118,8 +118,27 @@ func TestTheBuildOnlyUsesFreeMemory(t *testing.T) {
 	}
 }
 
-// Con tope, el build va por un constructor propio con la memoria, sin swap
-// propia y con poco peso de CPU, y limpia la caché **después** de construir;
+// La swap propia de un build: de la libre, menos medio GB, hasta 4 GB.
+// Mutantes: sin margen; sin máximo; sin suelo en cero.
+func TestBuildSwapMB(t *testing.T) {
+	for _, c := range []struct {
+		free int64
+		want int
+	}{
+		{3 << 30, 2560},
+		{16 << 30, 4096},
+		{300 << 20, 0},
+		{0, 0},
+		{(1 << 30) + 100<<20, 512},
+	} {
+		if got := BuildSwapMB(c.free); got != c.want {
+			t.Errorf("swap libre %d MB → %d MB; se esperaba %d", c.free>>20, got, c.want)
+		}
+	}
+}
+
+// Con tope, el build va por un constructor propio con la memoria, su swap
+// propia acotada (la memoria más SwapMB) y con poco peso de CPU, y limpia la caché **después** de construir;
 // si el constructor no arranca, construye como antes. Sin tope, como hasta
 // la v7. Y el guion es shell válida.
 // Mutantes: sin `cpu-shares`; `memory-swap` sin poner (el build se va a la
@@ -127,15 +146,16 @@ func TestTheBuildOnlyUsesFreeMemory(t *testing.T) {
 func TestTheBuildScriptCapsTheBuilder(t *testing.T) {
 	r := req()
 	r.MemoryMB = 5894
+	r.SwapMB = 2048
 	s, err := BuildScript(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
 		"--driver docker-container --driver-opt image=" + BuilderImage,
-		"--driver-opt memory=5894m --driver-opt memory-swap=5894m --driver-opt cpu-shares=256",
+		"--driver-opt memory=5894m --driver-opt memory-swap=7942m --driver-opt cpu-shares=256",
 		"B=" + BuilderName,
-		`docker update --memory 5894m --memory-swap 5894m "buildx_buildkit_${B}0"`,
+		`docker update --memory 5894m --memory-swap 7942m "buildx_buildkit_${B}0"`,
 		`BUILDER="--builder $B"`,
 		"docker buildx build $BUILDER --progress=plain",
 		"docker buildx prune $BUILDER --force --keep-storage 5gb",
