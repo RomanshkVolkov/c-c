@@ -991,6 +991,8 @@
       "weeks_other": "any week in the last {{count}}",
       "months_one": "last month",
       "months_other": "any month in the last {{count}}"
-    }
+    },
+    "testTitle": "Test the restore now?",
+    "testBody": "It restores a full copy of {{db}} on the same server and checks all of it. Meanwhile and for a few minutes after, the database can be slower for the website's users. The automatic test already runs at night; by hand, better outside busy hours."
   }
 }

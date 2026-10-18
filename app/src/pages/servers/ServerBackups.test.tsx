@@ -159,3 +159,19 @@ describe("el resumen de la retención", () => {
     expect(screen.getByTestId("retention-summary").textContent).not.toMatch(/(semana|week)/);
   });
 });
+
+/**
+ * Probar la restauración a mano avisa antes de que puede hacer lenta la base,
+ * y un «no» no la lanza. Mutante: lanzarla sin preguntar.
+ */
+describe("probar la restauración a mano", () => {
+  it("avisa del impacto y un no no la lanza", async () => {
+    render(<ServerBackups />);
+    const probar = await screen.findByRole("button", { name: /(probar restauración|test restore)/i });
+    confirmar.mockResolvedValue(false);
+    fireEvent.click(probar);
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(JSON.stringify(confirmar.mock.calls[0][0])).toMatch(/(más lenta|slower)/);
+    expect(post).not.toHaveBeenCalledWith(expect.stringContaining("/test"), expect.anything(), true);
+  });
+});

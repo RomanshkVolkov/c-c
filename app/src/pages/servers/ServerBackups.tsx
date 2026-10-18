@@ -388,7 +388,19 @@ function TargetCard({
           size="sm"
           variant="ghost"
           disabled={live || !target.lastSuccessAt}
-          onClick={() => onError(() => useBackupsStore.getState().testNow(serverId, target.id))}
+          onClick={async () => {
+            // Restaura una copia entera en la misma instancia y la revisa con
+            // CHECKDB: saca de la memoria de la base los datos de la web y la
+            // deja más lenta unos minutos (boaty, 18-oct-2026: una prueba a
+            // mano a las 00:41 y «se ve lenta» a las 00:47). La automática va
+            // de madrugada; a mano, que se sepa antes.
+            const ok = await confirm({
+              title: t("common:backups.testTitle"),
+              description: t("common:backups.testBody", { db: target.database }),
+              confirmText: t("common:backups.testNow"),
+            });
+            if (ok) await onError(() => useBackupsStore.getState().testNow(serverId, target.id));
+          }}
         >
           <FlaskConical className="size-3.5" /> {t("common:backups.testNow")}
         </Button>
