@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -85,6 +86,24 @@ func TestAPresignedUploadIsLockedAndExact(t *testing.T) {
 	}
 	if ret.Retention.Mode != types.ObjectLockRetentionModeGovernance || !aws.ToTime(ret.Retention.RetainUntilDate).Equal(until) {
 		t.Fatalf("retención: %s hasta %s, se pidió GOVERNANCE hasta %s", ret.Retention.Mode, aws.ToTime(ret.Retention.RetainUntilDate), until)
+	}
+	// Y se baja con un GET a secas, sin ninguna cabecera: como un navegador
+	// (el botón «Descargar») y como el agente en la prueba de restauración.
+	get, err := s.PresignGet(ctx, key, 5*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(get.Headers) != 0 {
+		t.Errorf("la bajada pide cabeceras %v: un navegador no puede mandarlas", get.Headers)
+	}
+	res, err := http.Get(get.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	down, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !bytes.Equal(down, body) {
+		t.Fatalf("la bajada → %d (%d bytes): %s", res.StatusCode, len(down), down)
 	}
 	// Y no se deja borrar.
 	if err := s.DeleteAllVersions(ctx, key); err == nil {

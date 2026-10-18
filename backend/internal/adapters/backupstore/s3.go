@@ -38,8 +38,14 @@ const (
 type Store struct {
 	client  *s3.Client
 	presign *s3.PresignClient
-	bucket  string
-	prefix  string
+	// presignGet firma las bajadas con todo en la URL (el firmante por
+	// defecto): una bajada la puede pedir un navegador, que no manda
+	// cabeceras, y la subida sin «hoisting» de arriba firmaba cabeceras que
+	// luego nadie mandaba (`SignatureDoesNotMatch` en la primera prueba de
+	// restauración, 18-oct-2026).
+	presignGet *s3.PresignClient
+	bucket     string
+	prefix     string
 }
 
 // New: sin bucket o región, apagado (Enabled() es false) y la app lo dice.
@@ -70,7 +76,7 @@ func New(ctx context.Context, bucket, region, prefix, accessKeyID, secretKey str
 	presign := s3.NewPresignClient(c, func(o *s3.PresignOptions) {
 		o.Presigner = v4.NewSigner(func(so *v4.SignerOptions) { so.DisableHeaderHoisting = true })
 	})
-	return &Store{client: c, presign: presign, bucket: bucket, prefix: prefix}, nil
+	return &Store{client: c, presign: presign, presignGet: s3.NewPresignClient(c), bucket: bucket, prefix: prefix}, nil
 }
 
 func (s *Store) Enabled() bool { return s != nil && s.client != nil }
@@ -119,7 +125,7 @@ func (s *Store) PresignGet(ctx context.Context, key string, ttl time.Duration) (
 	if !s.Enabled() {
 		return nil, ErrDisabled
 	}
-	req, err := s.presign.PresignGetObject(ctx, &s3.GetObjectInput{
+	req, err := s.presignGet.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket), Key: aws.String(key),
 	}, s3.WithPresignExpires(ttl))
 	if err != nil {
