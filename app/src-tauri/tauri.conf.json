@@ -54,6 +54,9 @@
       "appimage": {
         "bundleMediaFramework": true
       }
+    },
+    "resources": {
+      "resources/icu-tz/": "icu-tz/"
     }
   }
 }

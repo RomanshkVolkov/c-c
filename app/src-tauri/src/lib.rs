@@ -17,6 +17,7 @@ mod mcp;
 mod media;
 mod notes_export;
 mod pty;
+pub mod icu_tz;
 mod relaunch;
 mod sse;
 mod video_frames;

@@ -19,6 +19,10 @@ fn main() {
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
+    // El ICU del WebKit de la AppImage tiene zonas de 2021: México con horario
+    // de verano. Sus datos de zonas, actualizados (ver src/icu_tz.rs).
+    #[cfg(target_os = "linux")]
+    app_lib::icu_tz::use_bundled_timezones();
 
     app_lib::run()
 }
