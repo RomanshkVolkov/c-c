@@ -809,7 +809,11 @@ pub(crate) fn stored_ssh_key(server_id: &str) -> Result<Option<String>, String> 
         .get_password()
     {
         Ok(v) => Ok(Some(v)),
-        Err(_) => Ok(None),
+        // Sólo «no hay» es no tener llave. Un llavero bloqueado o caído se
+        // dice: tragárselo era conectar ofreciendo todas las llaves y acabar
+        // en «Too many authentication failures», que apunta a otro sitio.
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("keychain: {e}")),
     }
 }
 
@@ -1609,6 +1613,28 @@ fn free_name(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
         .map(|n| dir.join(format!("{stem} ({n}){ext}")))
         .find(|p| !p.exists())
         .expect("siempre hay un número libre")
+}
+
+#[cfg(test)]
+mod keychain_tests {
+    use super::*;
+
+    /// Lo que se guarda en el llavero va a un llavero de verdad.
+    ///
+    /// Sin features, keyring 3 usa su almacén de pruebas en memoria y todo
+    /// «se guarda» sin guardarse (ver el comentario en `Cargo.toml`). No toca
+    /// el llavero de la máquina: sólo mira qué clase de credencial construye.
+    #[test]
+    fn the_keychain_is_a_real_one() {
+        let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &ssh_key_account("probe")).unwrap();
+        assert!(
+            entry
+                .get_credential()
+                .downcast_ref::<keyring::mock::MockCredential>()
+                .is_none(),
+            "keyring está usando su almacén de mentira: faltan las features de plataforma"
+        );
+    }
 }
 
 #[cfg(test)]

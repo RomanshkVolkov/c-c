@@ -22,7 +22,15 @@ log = "0.4"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-http = "2"
-keyring = "3"
+# Sin features, keyring 3 no trae ningún llavero y cae en uno de mentira en
+# memoria: `set_password` dice que sí y no guarda nada, y el siguiente
+# `Entry` ya no lo encuentra. Así estuvieron la llave SSH de cada servidor, su
+# token de GitHub y su referencia de 1Password hasta el 18-oct-2026 («como que
+# no se guarda»). En Linux, el Secret Service (gnome-keyring, KWallet) por
+# zbus, que es Rust puro: nada de libdbus que instalar en el CI; con async-io
+# y no tokio, porque keyring bloquea por dentro y desde un hilo de tokio eso
+# revienta. Guardián: `keychain_tests::the_keychain_is_a_real_one`.
+keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "async-io", "crypto-rust"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 crypto_box = "0.9"
 blake2 = "0.10"
