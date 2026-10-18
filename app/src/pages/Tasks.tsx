@@ -485,7 +485,9 @@ function TaskCardView({
     <div
       onClick={onOpen}
       className={cn(
-        "rounded-md border bg-raised p-2.5 shadow-sm transition-colors hover:border-primary/50",
+        // Se levanta al pasar por encima y se hunde al pulsarla, con muelle:
+        // se lee como algo que se coge, no como una fila de una tabla.
+        "motion-press rounded-md border bg-raised p-2.5 shadow-sm hover:-translate-y-px hover:border-primary/50 hover:shadow-md",
         dragging && "shadow-lg",
       )}
     >

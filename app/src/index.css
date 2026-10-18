@@ -541,63 +541,133 @@
 :root {
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-quick: cubic-bezier(0.5, 0, 0.75, 0);
+  /* Muelles de verdad (oscilador amortiguado, muestreado en `linear()`), que
+     es lo que hace que lo de Apple se sienta físico: arranca rápido, se pasa
+     un pelo y se asienta. `--ease-spring` se pasa un 4% (ζ = 0,72); el
+     `snappy` casi nada (ζ = 0,85), para lo pequeño y lo que se pulsa. Una
+     Bézier sólo puede pasarse una vez y volver; un muelle se asienta. */
+  /* La reserva, para un WebKit que no entienda `linear()` (la AppImage se
+     compila en Ubuntu 22.04 y lleva el de esa distro): una Bézier que también
+     se pasa del final. Sin esto, una curva que no se entiende anula la
+     transición entera, en silencio, y todo aparecería de golpe. */
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --ease-spring-snappy: cubic-bezier(0.25, 1.1, 0.5, 1);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --ease-spring: linear(0, 0.018, 0.066, 0.133, 0.214, 0.302, 0.392, 0.48, 0.565, 0.643, 0.714, 0.777, 0.832, 0.879, 0.919, 0.951, 0.977, 0.998, 1.013, 1.024, 1.031, 1.036, 1.038, 1.038, 1.037, 1.035, 1.032, 1.029, 1.026, 1.022, 1.019, 1.016, 1.013, 1.01, 1.008, 1.006, 1.004, 1.003, 1.002, 1.001, 1);
+    --ease-spring-snappy: linear(0, 0.013, 0.047, 0.097, 0.156, 0.221, 0.29, 0.359, 0.426, 0.491, 0.553, 0.61, 0.662, 0.71, 0.753, 0.791, 0.825, 0.855, 0.881, 0.904, 0.923, 0.939, 0.953, 0.964, 0.974, 0.982, 0.988, 0.993, 0.997, 1, 1.002, 1.004, 1.005, 1.006, 1.006, 1.006, 1.006, 1.006, 1.006, 1.005, 1);
+  }
 }
 
-/* Un diálogo: sube un poco y se enfoca. */
+/* Un diálogo: crece con muelle desde donde se hizo clic (`--motion-origin`,
+   ver motion-origin.ts) y se enfoca. La opacidad va más rápida que la
+   escala: en Apple lo que aparece ya está ahí mientras termina de crecer.
+   Sale encogiéndose un poco y deprisa, sin muelle: lo que se cierra ya no
+   interesa. */
 .motion-dialog {
-  transition-property: opacity, scale, filter, margin-top;
-  transition-duration: 220ms;
-  transition-timing-function: var(--ease-out-expo);
+  transform-origin: var(--motion-origin, 50% 50%);
+  transition:
+    opacity 180ms ease-out,
+    scale 460ms var(--ease-spring),
+    filter 220ms ease-out;
 }
-.motion-dialog[data-starting-style],
+.motion-dialog[data-starting-style] {
+  opacity: 0;
+  scale: 0.82;
+  filter: blur(6px);
+}
 .motion-dialog[data-ending-style] {
   opacity: 0;
-  scale: 0.97;
-  margin-top: 8px;
+  scale: 0.94;
   filter: blur(2px);
-}
-.motion-dialog[data-ending-style] {
-  transition-duration: 140ms;
-  transition-timing-function: var(--ease-in-quick);
+  transition:
+    opacity 160ms var(--ease-in-quick),
+    scale 180ms var(--ease-in-quick),
+    filter 160ms var(--ease-in-quick);
 }
 
 /* Lo que se abre desde un botón (menú, select, tooltip, popover): nace del
-   propio botón (`--transform-origin` lo pone base-ui). */
+   propio botón (`--transform-origin` lo pone base-ui), con muelle. */
 .motion-pop {
   transform-origin: var(--transform-origin);
-  transition-property: opacity, scale, filter;
-  transition-duration: 160ms;
-  transition-timing-function: var(--ease-out-expo);
+  transition:
+    opacity 140ms ease-out,
+    scale 340ms var(--ease-spring),
+    filter 160ms ease-out;
 }
-.motion-pop[data-starting-style],
+.motion-pop[data-starting-style] {
+  opacity: 0;
+  scale: 0.86;
+  filter: blur(3px);
+}
 .motion-pop[data-ending-style] {
   opacity: 0;
-  scale: 0.92;
-  filter: blur(2px);
-}
-.motion-pop[data-ending-style] {
-  transition-duration: 100ms;
-  transition-timing-function: var(--ease-in-quick);
+  scale: 0.95;
+  transition:
+    opacity 110ms var(--ease-in-quick),
+    scale 130ms var(--ease-in-quick);
 }
 
-/* El fondo detrás de un diálogo o un panel. */
+/* El fondo detrás de un diálogo o un panel: oscurece y desenfoca a la vez. */
 .motion-backdrop {
-  transition: opacity 200ms var(--ease-out-expo);
+  transition:
+    opacity 260ms ease-out,
+    backdrop-filter 260ms ease-out;
 }
 .motion-backdrop[data-starting-style],
 .motion-backdrop[data-ending-style] {
   opacity: 0;
+  backdrop-filter: blur(0);
+}
+
+/* Algo que ocupa toda la ventana y aparece al montarse (el detalle de una
+   tarea): crece desde la tarjeta que se pulsó, como una app que se abre
+   desde el Dock. Sin estados de base-ui: entra con `@starting-style`. */
+.motion-open {
+  transform-origin: var(--motion-origin, 50% 50%);
+  transition:
+    opacity 200ms ease-out,
+    scale 520ms var(--ease-spring),
+    border-radius 520ms var(--ease-spring);
+  @starting-style {
+    opacity: 0;
+    scale: 0.6;
+    border-radius: 24px;
+  }
+}
+
+/* Lo que se pulsa se hunde un poco y vuelve con muelle: la respuesta táctil
+   de un botón de iOS. Sólo la escala, para no mover el layout.
+   La lista lleva también los colores, la sombra y el levantarse al pasar por
+   encima: esta clase está fuera de las capas de Tailwind y su `transition`
+   pisaría la de cualquier utilidad, así que lo que se anima va todo aquí. */
+.motion-press {
+  transition:
+    scale 260ms var(--ease-spring-snappy),
+    translate 260ms var(--ease-spring-snappy),
+    color 150ms ease-out,
+    background-color 150ms ease-out,
+    border-color 200ms ease-out,
+    box-shadow 200ms ease-out,
+    opacity 150ms ease-out;
+}
+.motion-press:active {
+  scale: 0.97;
+  transition-duration: 80ms;
 }
 
 /* Una tarjeta que aparece (al cargar, o al quitar un filtro) entra en vez de
    saltar a su sitio. */
 .motion-enter {
-  transition-property: opacity, translate;
-  transition-duration: 240ms;
-  transition-timing-function: var(--ease-out-expo);
+  transition:
+    opacity 200ms ease-out,
+    translate 420ms var(--ease-spring),
+    scale 420ms var(--ease-spring);
   @starting-style {
     opacity: 0;
-    translate: 0 4px;
+    translate: 0 8px;
+    scale: 0.97;
   }
 }
 

@@ -61,6 +61,7 @@ import { PRIORITIES } from "@/types/task";
 import type { TaskStatus } from "@/types/task";
 import type { TaskComment } from "@/types/task";
 import { cn } from "@/lib/utils";
+import { originRef } from "@/lib/motion-origin";
 import { statusTone } from "@/lib/status-color";
 import { useOrgsStore } from "@/store/orgs.store";
 
@@ -112,7 +113,9 @@ export default function TaskDetailDrawer() {
           the reading column stays a reading column. Closing is still the header
           button — the click-away layer is gone, because there is nothing left
           beside it to click away to. */}
-      <aside className="fixed inset-0 z-50 flex flex-col bg-background">
+      {/* Crece desde la tarjeta que se pulsó, como una app que se abre
+          desde el Dock (ver `motion-origin.ts` y `.motion-open` en index.css). */}
+      <aside ref={originRef("viewport")} className="motion-open fixed inset-0 z-50 flex flex-col bg-background">
         {loading && !detail ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 size-4 animate-spin" /> Loading task…

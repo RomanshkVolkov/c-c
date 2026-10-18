@@ -56,6 +56,32 @@ describe("diálogos y menús", () => {
   });
 });
 
+describe("el muelle", () => {
+  /**
+   * Una curva que el WebKit no entiende anula la transición entera, en
+   * silencio: la Bézier de reserva va primero y `linear()` sólo donde se
+   * entiende. El mutante que mata: quitar la reserva.
+   */
+  it("hay curva de reserva para un WebKit sin linear()", () => {
+    const root = css.slice(css.indexOf("--ease-out-expo"), css.indexOf("@supports (transition-timing-function: linear(0, 1))"));
+    expect(root).toMatch(/--ease-spring:\s*cubic-bezier\(/);
+    const supported = css.slice(css.indexOf("@supports (transition-timing-function: linear(0, 1))"));
+    expect(supported).toMatch(/--ease-spring:\s*linear\(0,/);
+  });
+
+  /**
+   * Las clases de movimiento están fuera de las capas de Tailwind, así que su
+   * `transition` pisa la de las utilidades: lo que pulsa tiene que llevar en
+   * su lista también los colores, o un botón dejaría de animar su hover.
+   */
+  it("lo que se pulsa sigue animando sus colores", () => {
+    const press = css.slice(css.indexOf(".motion-press {"), css.indexOf(".motion-press:active"));
+    for (const p of ["scale", "translate", "background-color", "border-color", "box-shadow"]) {
+      expect(press).toContain(p);
+    }
+  });
+});
+
 describe("menos movimiento", () => {
   /**
    * Quien lo pide en el sistema no recibe animaciones en ningún sitio, no

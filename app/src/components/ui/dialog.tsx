@@ -2,6 +2,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
+import { originRef } from "@/lib/motion-origin"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -57,6 +58,8 @@ function DialogContent({
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
+        // Crece desde donde se hizo clic (ver `motion-origin.ts`).
+        ref={originRef("centered")}
         data-slot="dialog-content"
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-background p-4 text-sm shadow-2xl ring-1 ring-foreground/10 outline-none motion-dialog",
