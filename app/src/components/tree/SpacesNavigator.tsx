@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Folder,
   FolderPlus,
+  KanbanSquare,
   ListChecks,
   Eye,
   Copy,
@@ -58,6 +59,7 @@ import {
 import ChannelDialog from "@/components/ChannelDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useTasksStore, type DropWhere, type TreeNodeRef } from "@/store/tasks.store";
+import { useMyWorkStore } from "@/store/mywork.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { docsRoute } from "@/lib/doc-mode";
 import { docKey, type FolderTree, type SpaceTree } from "@/types/task";
@@ -834,9 +836,11 @@ function ListNode({
 }) {
   const { t } = useT();
   const activeListId = useTasksStore((s) => s.activeListId);
-  // `selectList` y no sólo marcarla: si `Tasks` ya está montado, su efecto de
-  // montaje no vuelve a correr y nadie más pediría el tablero.
+  const focusList = useTasksStore((s) => s.focusList);
+  // El del menú de la fila, que sí va al tablero: si `Tasks` ya está montado,
+  // su efecto de montaje no vuelve a correr y nadie más lo pediría.
   const selectList = useTasksStore((s) => s.selectList);
+  const setScope = useMyWorkStore((s) => s.setScope);
   const navigate = useNavigate();
   const confirm = useConfirm();
   const docIndex = useTasksStore((s) => s.docIndex);
@@ -885,12 +889,18 @@ function ListNode({
         active && "bg-accent",
       )}
       onClick={() => {
-        // Abre la lista, en la vista que se usó la última vez (tablero, lista
-        // o calendario: `boardView`). Hasta el 18-oct-2026 acotaba «Mi
-        // trabajo» a la lista, y pulsar una lista llevaba a otra pantalla con
-        // otra cabecera, otras pestañas y la lista convertida en un chip: jose
-        // no sabía de dónde salía. Lo que es mío dentro de una lista se busca
-        // ahora con el filtro de responsable de la propia lista.
+        // Acota «Mi trabajo» a esta lista en vez de abrir su tablero: la
+        // pregunta que se estaba haciendo —qué es mío, qué sigo— sobrevive, y
+        // el árbol la apunta a algo más pequeño. El tablero sigue en el menú
+        // de la fila, porque es otra pregunta.
+        //
+        // Se probó lo contrario el 18-oct-2026 (abrir el tablero) y jose lo
+        // quiso de vuelta así el mismo día: la pantalla buena es ésta, y por
+        // eso el buscador y los filtros viven también aquí.
+        //
+        // Y por eso `focusList` y no `selectList`: el tablero que pediría no lo
+        // va a ver nadie. Cuando sí se va a él, lo carga el efecto de montaje de
+        // `Tasks`.
         // Salvo que se esté leyendo documentación: entonces se abre la de esta
         // lista y se queda ahí (ver `docsRoute`).
         if (docsScreen) {
@@ -898,8 +908,9 @@ function ListNode({
           navigate(docsScreen);
           return;
         }
-        void selectList(list.id).catch(() => {});
-        navigate("/tasks");
+        focusList(list.id);
+        setScope({ kind: "list", id: list.id, name: list.name });
+        navigate("/my-work");
       }}
     >
       <ListChecks className="size-3.5 shrink-0 text-muted-foreground" />
@@ -943,6 +954,14 @@ function ListNode({
         />
         <DropdownMenuContent align="start">
           <DropdownMenuGroup>
+            <DropdownMenuItem
+              onClick={() => {
+                selectList(list.id);
+                navigate("/tasks");
+              }}
+            >
+              <KanbanSquare className="size-4" /> {t("work:tree.openBoard")}
+            </DropdownMenuItem>
             {/* Faltaba, y era el sitio obvio: una lista tiene tablero y tiene
                 documentación, y sólo una de las dos se podía abrir desde aquí.
                 Con `navigate`, porque abrir un documento sólo cambia el estado

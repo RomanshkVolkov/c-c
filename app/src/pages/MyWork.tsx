@@ -1,3 +1,5 @@
+import TaskFilters from "@/components/tasks/TaskFilters";
+import { EMPTY_FILTER, fromOpenTask, isFiltering, matchesFilter, type TaskFilter } from "@/lib/task-filter";
 import PriorityChip from "@/components/tasks/PriorityChip";
 import i18next from "i18next";
 
@@ -205,6 +207,18 @@ export default function MyWork() {
     );
   }, [tasks, scope]);
 
+  // El buscador y los filtros, sobre lo que ya se ve (18-oct-2026). Son del
+  // ámbito en el que se pusieron: al pulsar otra lista en el árbol vuelven a
+  // vacío, o una búsqueda olvidada la dejaría en blanco sin decir por qué.
+  const scopeKey = scope ? `${scope.kind}:${scope.id}` : "";
+  const [filterOf, setFilterOf] = useState<{ key: string; filter: TaskFilter }>({ key: "", filter: EMPTY_FILTER });
+  const filter = filterOf.key === scopeKey ? filterOf.filter : EMPTY_FILTER;
+  const filterable = useMemo(() => visible.map(fromOpenTask), [visible]);
+  const shown = useMemo(
+    () => (isFiltering(filter) ? visible.filter((_, i) => matchesFilter(filterable[i], filter)) : visible),
+    [visible, filterable, filter],
+  );
+
   // Grouped in the order the tree shows spaces, so the two read the same way.
   //
   // The tree itself is selected, and the order derived out here. A selector
@@ -215,7 +229,7 @@ export default function MyWork() {
   const spaceOrder = useMemo(() => tree.map((t) => t.id), [tree]);
   const groups = useMemo(() => {
     const by = new Map<string, { name: string; items: OpenTask[] }>();
-    for (const t of visible) {
+    for (const t of shown) {
       const g = by.get(t.spaceId) ?? { name: t.spaceName, items: [] };
       g.items.push(t);
       by.set(t.spaceId, g);
@@ -223,7 +237,7 @@ export default function MyWork() {
     return [...by.entries()].sort(
       (a, b) => (spaceOrder.indexOf(a[0]) + 1 || 99) - (spaceOrder.indexOf(b[0]) + 1 || 99),
     );
-  }, [visible, spaceOrder]);
+  }, [shown, spaceOrder]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -231,13 +245,13 @@ export default function MyWork() {
         <div className="flex items-baseline gap-2">
           <h1 className="text-lg font-semibold">{t("work:myWork.title")}</h1>
           <span className="text-xs text-muted-foreground">
-            {loading ? "…" : t("work:myWork.visible", { count: visible.length })}
+            {loading ? "…" : t("work:myWork.visible", { count: shown.length })}
           </span>
           <button
             onClick={() => setCreating(true)}
             className="ml-auto rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
           >
-            New task
+            {t("work:myWork.newTask")}
           </button>
           <button
             onClick={() => setIncludeClosed(!includeClosed)}
@@ -325,6 +339,14 @@ export default function MyWork() {
         </nav>
       </header>
 
+      <TaskFilters
+        cards={filterable}
+        shown={shown.length}
+        value={filter}
+        onChange={(f) => setFilterOf({ key: scopeKey, filter: f })}
+        showCount={false}
+      />
+
       {/* Lo que hay que saber antes de coger una tarjeta, donde se cogen. */}
       {scope?.kind === "list" && <PinnedLine listId={scope.id} />}
 
@@ -352,6 +374,8 @@ export default function MyWork() {
         )}
         {loading && visible.length === 0 ? (
           <WorkSkeleton />
+        ) : shown.length === 0 && visible.length > 0 ? (
+          <p className="text-sm text-muted-foreground">{t("work:board.filter.noMatch")}</p>
         ) : visible.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {lens === "watching"
@@ -364,13 +388,13 @@ export default function MyWork() {
               // Placed by when it is due, not by when it was raised: this
               // screen answers "what is coming", and a month view of creation
               // dates answers nothing anybody asked.
-              items={dueCalendarItems(visible)}
+              items={dueCalendarItems(shown)}
               // Lo que no tiene fecha, debajo en vez de descartado.
               //
               // Casi nadie pone vencimientos, así que esta vista enseñaba **una**
               // de sesenta y cinco tareas mientras la cabecera decía sesenta y
               // cinco. No estaba filtrando: estaba escondiendo.
-              undated={visible
+              undated={shown
                 .filter((t) => !t.dueAt)
                 .map((t) => ({
                   id: t.id,
@@ -409,7 +433,7 @@ export default function MyWork() {
                   emptyHint: notAsked ? t("work:myWork.notAsked") : undefined,
                 };
               })}
-              items={visible.map((t) => ({
+              items={shown.map((t) => ({
                 ...t,
                 // La columna es el estado **normalizado**: las tarjetas vienen
                 // de listas distintas y cada una trae el suyo en crudo.

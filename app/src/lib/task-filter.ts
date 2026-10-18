@@ -1,4 +1,31 @@
-import { PRIORITIES, type TaskCard, type TaskPriority } from "@/types/task";
+import { PRIORITIES, type TaskPriority } from "@/types/task";
+
+/**
+ * Lo mínimo que hace falta de una tarjeta para filtrarla. Una `TaskCard` del
+ * tablero lo cumple tal cual; las de «Mi trabajo» se adaptan con
+ * `fromOpenTask`, porque traen al responsable sólo por nombre y no traen
+ * etiquetas.
+ */
+export interface FilterableCard {
+  seq: number;
+  title: string;
+  priority: string;
+  assignees: { id: string; username: string }[];
+  tags: { id: string; name: string }[];
+  category?: string;
+  area?: string;
+}
+
+/** Una tarea de «Mi trabajo», filtrable: su responsable por nombre hace de id. */
+export function fromOpenTask(t: { seq: number; title: string; priority: string; assignee?: string }): FilterableCard {
+  return {
+    seq: t.seq,
+    title: t.title,
+    priority: t.priority,
+    assignees: t.assignee ? [{ id: t.assignee, username: t.assignee }] : [],
+    tags: [],
+  };
+}
 
 /**
  * Lo que filtra las tres vistas de una lista (tablero, lista y calendario).
@@ -38,7 +65,7 @@ const fold = (s: string) =>
  */
 const canonicalPriority = (p: string) => (p === "medium" ? "normal" : p || "none");
 
-export function matchesFilter(card: TaskCard, f: TaskFilter): boolean {
+export function matchesFilter(card: FilterableCard, f: TaskFilter): boolean {
   const q = f.query.trim();
   if (q) {
     // Un número es un folio, y se busca entero: «#1» no es «#12». Pero un
@@ -75,7 +102,7 @@ export function isFiltering(f: TaskFilter): boolean {
  * siempre: si no, el desplegable desaparecería con el filtro puesto y no
  * habría cómo quitarlo.
  */
-export function filterOptions(cards: TaskCard[], f: TaskFilter = EMPTY_FILTER) {
+export function filterOptions(cards: FilterableCard[], f: TaskFilter = EMPTY_FILTER) {
   const people = new Map<string, string>();
   const tags = new Map<string, string>();
   let unassigned = false;

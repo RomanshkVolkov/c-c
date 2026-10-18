@@ -2,8 +2,7 @@ import { Search, X } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import Picker from "@/components/ui/picker";
-import { EMPTY_FILTER, NOBODY, filterOptions, isFiltering, type TaskFilter } from "@/lib/task-filter";
-import type { TaskCard } from "@/types/task";
+import { EMPTY_FILTER, NOBODY, filterOptions, isFiltering, type FilterableCard, type TaskFilter } from "@/lib/task-filter";
 
 /**
  * La fila de buscar y filtrar de una lista, bajo sus pestañas.
@@ -21,8 +20,11 @@ export default function TaskFilters({
   shown,
   value,
   onChange,
+  showCount = true,
 }: {
-  cards: TaskCard[];
+  cards: FilterableCard[];
+  /** «Mi trabajo» ya dice cuántas se ven en su cabecera; no lo repite aquí. */
+  showCount?: boolean;
   /** Cuántas pasan el filtro, para decir «3 de 12». */
   shown: number;
   value: TaskFilter;
@@ -129,11 +131,13 @@ export default function TaskFilters({
           <X className="size-3" /> {t("work:board.filter.clear")}
         </Button>
       )}
-      <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-        {filtering
-          ? t("work:board.filter.shown", { shown, total: cards.length })
-          : t("common:count.tasks", { count: cards.length })}
-      </span>
+      {showCount && (
+        <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
+          {filtering
+            ? t("work:board.filter.shown", { shown, total: cards.length })
+            : t("common:count.tasks", { count: cards.length })}
+        </span>
+      )}
     </div>
   );
 }

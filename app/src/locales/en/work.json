@@ -58,7 +58,8 @@
     "deleteFolderBody": "Its lists move up to the space — no tasks are deleted.",
     "deleteListTitle": "Delete list \"{{name}}\"?",
     "delete": "Delete",
-    "openDocs": "Docs"
+    "openDocs": "Docs",
+    "openBoard": "Open the board"
   },
   "myWork": {
     "title": "My work",
@@ -86,7 +87,8 @@
     "notAsked": "Not asked for — showing open only",
     "nothing": "Nothing",
     "visible_one": "{{count}} visible",
-    "visible_other": "{{count}} visible"
+    "visible_other": "{{count}} visible",
+    "newTask": "New task"
   },
   "task": {
     "edited": "edited",

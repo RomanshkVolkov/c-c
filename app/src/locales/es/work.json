@@ -58,7 +58,8 @@
     "deleteFolderBody": "Sus listas suben al espacio — no se borra ninguna tarea.",
     "deleteListTitle": "¿Borrar la lista «{{name}}»?",
     "delete": "Borrar",
-    "openDocs": "Documentación"
+    "openDocs": "Documentación",
+    "openBoard": "Abrir el tablero"
   },
   "myWork": {
     "title": "Mi trabajo",
@@ -86,7 +87,8 @@
     "notAsked": "No lo pediste — se enseña sólo lo abierto",
     "nothing": "Nada",
     "visible_one": "{{count}} visible",
-    "visible_other": "{{count}} visibles"
+    "visible_other": "{{count}} visibles",
+    "newTask": "Tarea nueva"
   },
   "task": {
     "edited": "editado",
