@@ -979,8 +979,7 @@
         "example": "7 = una vez por semana"
       },
       "enabled": {
-        "text": "Apagada, la base deja de respaldarse pero conserva su configuración y los backups que ya tiene.",
-        "example": ""
+        "text": "Apagada, la base deja de respaldarse pero conserva su configuración y los backups que ya tiene."
       }
     },
     "databaseHint": "El nombre de la base dentro de SQL Server o PostgreSQL, no el del servicio."

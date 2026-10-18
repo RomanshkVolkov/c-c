@@ -471,8 +471,8 @@ function FieldLabel({ field, htmlFor }: { field: HelpField; htmlFor?: string }) 
 }
 
 type HelpField = { key: HelpKey; label: LabelKey };
-type HelpKey = "engine" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery" | "enabled";
-type LabelKey = "engineLabel" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery" | "enabled";
+type HelpKey = "engine" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery";
+type LabelKey = "engineLabel" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery";
 const F = (key: HelpKey, label: LabelKey = key as LabelKey): HelpField => ({ key, label });
 
 function TargetDialog({

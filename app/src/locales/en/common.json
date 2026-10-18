@@ -979,8 +979,7 @@
         "example": "7 = once a week"
       },
       "enabled": {
-        "text": "Turned off, the database stops being backed up but keeps its settings and the backups it already has.",
-        "example": ""
+        "text": "Turned off, the database stops being backed up but keeps its settings and the backups it already has."
       }
     },
     "databaseHint": "The database's name inside SQL Server or PostgreSQL, not the service's."
