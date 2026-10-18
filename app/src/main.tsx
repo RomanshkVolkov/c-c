@@ -14,6 +14,7 @@ import { installPasteGuard } from "./lib/paste-guard";
 import { toast } from "sonner";
 import i18next from "i18next";
 import { closeOrphanTerminals } from "./store/terminal.store";
+import { installPauseWhenHidden } from "./lib/pause-hidden";
 
 // Apply the theme before the first paint — doing it inside a component would
 // flash the light palette for a frame on every launch.
@@ -37,6 +38,8 @@ guardWindowAgainstFileDrops();
 // `paste-guard`): se dice que ahí sólo cabe texto.
 installPasteGuard(() => toast.info(i18next.t("common:misc.textOnlyHere")));
 void closeOrphanTerminals();
+// Con la ventana oculta, las animaciones en pausa.
+installPauseWhenHidden();
 // La versión web registra su service worker: es lo que recibe la campana con
 // la app cerrada (W2). En el escritorio no hay.
 if (isWebBuild) void registerServiceWorker();

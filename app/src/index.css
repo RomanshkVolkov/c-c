@@ -560,31 +560,42 @@
   }
 }
 
+/* ─── Reglas de rendimiento (WebKitGTK, a menudo sin aceleración) ─────────
+ *
+ * Sólo se animan `opacity`, `scale` y `translate`, que el compositor mueve sin
+ * volver a pintar. Nada de `filter: blur` ni `backdrop-filter` animados (en
+ * WebKitGTK sin GPU cada fotograma repinta toda el área desenfocada), nada de
+ * `box-shadow` animado (repinta la sombra entera; la sombra va en una capa
+ * aparte que sólo cambia de opacidad, ver `.lift`), y nada de `width`,
+ * `height`, `left` o `margin` (recalculan el layout). Lo vigila
+ * `motion.test.tsx`.
+ */
+:root {
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-spring: 460ms;
+}
+
 /* Un diálogo: crece con muelle desde donde se hizo clic (`--motion-origin`,
-   ver motion-origin.ts) y se enfoca. La opacidad va más rápida que la
-   escala: en Apple lo que aparece ya está ahí mientras termina de crecer.
-   Sale encogiéndose un poco y deprisa, sin muelle: lo que se cierra ya no
-   interesa. */
+   ver motion-origin.ts). La opacidad va más rápida que la escala: en Apple lo
+   que aparece ya está ahí mientras termina de crecer. Sale encogiéndose un
+   poco y deprisa, sin muelle: lo que se cierra ya no interesa. */
 .motion-dialog {
   transform-origin: var(--motion-origin, 50% 50%);
   transition:
-    opacity 180ms ease-out,
-    scale 460ms var(--ease-spring),
-    filter 220ms ease-out;
+    opacity var(--dur-fast) ease-out,
+    scale var(--dur-spring) var(--ease-spring);
 }
 .motion-dialog[data-starting-style] {
   opacity: 0;
   scale: 0.82;
-  filter: blur(6px);
 }
 .motion-dialog[data-ending-style] {
   opacity: 0;
   scale: 0.94;
-  filter: blur(2px);
   transition:
-    opacity 160ms var(--ease-in-quick),
-    scale 180ms var(--ease-in-quick),
-    filter 160ms var(--ease-in-quick);
+    opacity 150ms var(--ease-in-quick),
+    scale 170ms var(--ease-in-quick);
 }
 
 /* Lo que se abre desde un botón (menú, select, tooltip, popover): nace del
@@ -592,14 +603,12 @@
 .motion-pop {
   transform-origin: var(--transform-origin);
   transition:
-    opacity 140ms ease-out,
-    scale 340ms var(--ease-spring),
-    filter 160ms ease-out;
+    opacity 120ms ease-out,
+    scale 340ms var(--ease-spring);
 }
 .motion-pop[data-starting-style] {
   opacity: 0;
   scale: 0.86;
-  filter: blur(3px);
 }
 .motion-pop[data-ending-style] {
   opacity: 0;
@@ -609,16 +618,14 @@
     scale 130ms var(--ease-in-quick);
 }
 
-/* El fondo detrás de un diálogo o un panel: oscurece y desenfoca a la vez. */
+/* El fondo detrás de un diálogo o un panel: sólo oscurece. Sin desenfoque:
+   detrás de un diálogo abierto es lo más caro que hay en WebKitGTK. */
 .motion-backdrop {
-  transition:
-    opacity 260ms ease-out,
-    backdrop-filter 260ms ease-out;
+  transition: opacity 240ms ease-out;
 }
 .motion-backdrop[data-starting-style],
 .motion-backdrop[data-ending-style] {
   opacity: 0;
-  backdrop-filter: blur(0);
 }
 
 /* Algo que ocupa toda la ventana y aparece al montarse (el detalle de una
@@ -628,20 +635,18 @@
   transform-origin: var(--motion-origin, 50% 50%);
   transition:
     opacity 200ms ease-out,
-    scale 520ms var(--ease-spring),
-    border-radius 520ms var(--ease-spring);
+    scale 520ms var(--ease-spring);
   @starting-style {
     opacity: 0;
     scale: 0.6;
-    border-radius: 24px;
   }
 }
 
 /* Lo que se pulsa se hunde un poco y vuelve con muelle: la respuesta táctil
    de un botón de iOS. Sólo la escala, para no mover el layout.
-   La lista lleva también los colores, la sombra y el levantarse al pasar por
-   encima: esta clase está fuera de las capas de Tailwind y su `transition`
-   pisaría la de cualquier utilidad, así que lo que se anima va todo aquí. */
+   La lista lleva también los colores y el levantarse al pasar por encima:
+   esta clase está fuera de las capas de Tailwind y su `transition` pisaría
+   la de cualquier utilidad, así que lo que se anima va todo aquí. */
 .motion-press {
   transition:
     scale 260ms var(--ease-spring-snappy),
@@ -649,7 +654,6 @@
     color 150ms ease-out,
     background-color 150ms ease-out,
     border-color 200ms ease-out,
-    box-shadow 200ms ease-out,
     opacity 150ms ease-out;
 }
 .motion-press:active {
@@ -657,9 +661,37 @@
   transition-duration: 80ms;
 }
 
+/* Se levanta al pasar por encima: un píxel hacia arriba y una sombra que
+   aparece. La sombra está en una capa aparte y sólo cambia de opacidad, que
+   el compositor hace gratis; animar el `box-shadow` repintaría la tarjeta
+   en cada fotograma. Va con `.motion-press`, que anima el `translate`. */
+.lift {
+  position: relative;
+}
+.lift::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.35);
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .lift:hover {
+    translate: 0 -1px;
+  }
+  .lift:hover::after {
+    opacity: 1;
+  }
+}
+
 /* Una tarjeta que aparece (al cargar, o al quitar un filtro) entra en vez de
-   saltar a su sitio. */
-.motion-enter {
+   saltar a su sitio. Sólo las primeras de cada columna: en una lista larga
+   (no hay virtualización) animar doscientas a la vez es trabajo para nada,
+   y las de abajo ni se ven. */
+.motion-enter:nth-child(-n + 12) {
   transition:
     opacity 200ms ease-out,
     translate 420ms var(--ease-spring),
@@ -669,6 +701,15 @@
     translate: 0 8px;
     scale: 0.97;
   }
+}
+
+/* Con la ventana oculta (minimizada, en otra pestaña o escritorio) no se
+   anima nada: un brillo de carga o un punto que late siguen gastando
+   procesador aunque nadie los vea. `main.tsx` pone la clase. */
+html.app-hidden *,
+html.app-hidden ::before,
+html.app-hidden ::after {
+  animation-play-state: paused !important;
 }
 
 /* El brillo que recorre un hueco mientras carga: dice «viene algo» mejor que

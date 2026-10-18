@@ -45,7 +45,7 @@ export default function TaskCardMini({ task, onOpen }: { task: OpenTask; onOpen:
   return (
     <button
       onClick={onOpen}
-      className="motion-press w-full rounded-lg border bg-raised px-2.5 py-2 text-left shadow-sm hover:-translate-y-px hover:border-primary/40 hover:shadow-md"
+      className="motion-press lift w-full rounded-lg border bg-raised px-2.5 py-2 text-left shadow-sm hover:border-primary/40"
     >
       <div className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
         <span className="font-mono shrink-0">#{task.seq}</span>

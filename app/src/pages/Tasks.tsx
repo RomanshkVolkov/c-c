@@ -487,7 +487,7 @@ function TaskCardView({
       className={cn(
         // Se levanta al pasar por encima y se hunde al pulsarla, con muelle:
         // se lee como algo que se coge, no como una fila de una tabla.
-        "motion-press rounded-md border bg-raised p-2.5 shadow-sm hover:-translate-y-px hover:border-primary/50 hover:shadow-md",
+        "motion-press lift rounded-md border bg-raised p-2.5 shadow-sm hover:border-primary/50",
         dragging && "shadow-lg",
       )}
     >

@@ -76,9 +76,47 @@ describe("el muelle", () => {
    */
   it("lo que se pulsa sigue animando sus colores", () => {
     const press = css.slice(css.indexOf(".motion-press {"), css.indexOf(".motion-press:active"));
-    for (const p of ["scale", "translate", "background-color", "border-color", "box-shadow"]) {
+    for (const p of ["scale", "translate", "background-color", "border-color"]) {
       expect(press).toContain(p);
     }
+    // Y la sombra no: va en la capa de `.lift`, que sólo cambia de opacidad.
+    expect(press).not.toContain("box-shadow");
+  });
+});
+
+describe("el rendimiento en WebKitGTK", () => {
+  const motion = css.slice(css.indexOf("Reglas de rendimiento"), css.indexOf("/* El brillo que recorre"));
+  /** Las propiedades que se animan en las clases de movimiento. */
+  const animated = [...motion.matchAll(/transition:\s*([^;]+);/g)].flatMap((m) =>
+    m[1].split(",").map((part) => part.trim().split(/\s+/)[0]),
+  );
+
+  /**
+   * Sólo lo que mueve el compositor sin repintar. El mutante que mata:
+   * volver a animar el desenfoque de un diálogo o la sombra de una tarjeta.
+   */
+  it("sólo se animan opacidad, escala, posición y colores", () => {
+    const allowed = ["opacity", "scale", "translate", "color", "background-color", "border-color"];
+    expect(animated.length).toBeGreaterThan(5);
+    expect(animated.filter((p) => !allowed.includes(p))).toEqual([]);
+  });
+
+  it("ni desenfoque animado, ni detrás de un diálogo o un panel", () => {
+    // Declaraciones, no el comentario que explica por qué no.
+    expect(motion).not.toMatch(/^\s*(backdrop-)?filter:/m);
+    for (const f of ["src/components/ui/dialog.tsx", "src/components/ui/sheet.tsx"]) {
+      expect(readFileSync(join(process.cwd(), f), "utf8")).not.toContain("backdrop-blur");
+    }
+  });
+
+  /** En una lista larga, sólo las primeras de cada columna entran animadas. */
+  it("la entrada de las tarjetas se limita a las primeras", () => {
+    expect(css).toContain(".motion-enter:nth-child(-n + 12)");
+    expect(css).not.toMatch(/\.motion-enter\s*\{/);
+  });
+
+  it("con la ventana oculta, las animaciones en pausa", () => {
+    expect(css).toMatch(/html\.app-hidden \*[^{]*\{[^}]*animation-play-state:\s*paused/);
   });
 });
 
