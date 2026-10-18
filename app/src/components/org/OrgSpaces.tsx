@@ -1,3 +1,4 @@
+import { hueVar } from "@/lib/person-color";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -120,7 +121,7 @@ export default function OrgSpaces({ canManage = false }: { canManage?: boolean }
                 <div className="flex items-center gap-2">
                   <span
                     className="size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: sp.color || "var(--primary)" }}
+                    style={{ backgroundColor: sp.color || hueVar(sp.id) }}
                   />
                   <span className="min-w-0 flex-1 truncate font-semibold">{sp.name}</span>
                 </div>

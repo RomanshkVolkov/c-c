@@ -3,6 +3,7 @@ import { dueDay } from "@/lib/month";
 import type { OpenTask } from "@/types/task";
 import { priorityMeta } from "@/types/task";
 import { cn } from "@/lib/utils";
+import Initials from "@/components/ui/initials";
 
 /**
  * One card, as it appears on a board that crosses lists.
@@ -54,12 +55,12 @@ export default function TaskCardMini({ task, onOpen }: { task: OpenTask; onOpen:
           {vence.texto || "—"}
         </span>
         {task.assignee && (
-          <span
+          <Initials
+            colorKey={task.assignee}
             title={task.assignee}
-            className="ml-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[9px] font-semibold uppercase text-primary"
-          >
-            {task.assignee.slice(0, 2)}
-          </span>
+            text={task.assignee.slice(0, 2)}
+            className="ml-auto size-5 text-[9px]"
+          />
         )}
       </div>
     </button>

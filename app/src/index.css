@@ -92,8 +92,9 @@
        sidebar: por debajo del 4.5 de WCAG AA para texto normal, y
        `theme.contrast.test.ts` lo caza. #737373 es el gris más claro que pasa
        los tres casos (4.74 / 4.74 / 4.54) — seis puntos de hex, invisible a
-       ojo. */
-    --muted-foreground: #737373;
+       ojo. Y #676767 desde las capas (18-oct-2026): sobre la superficie
+       hundida y en el chip de prioridad baja, #737373 se quedaba en 4.3. */
+    --muted-foreground: #676767;
     --accent: #f2f4f6;
     --accent-foreground: #343434;
     --destructive: #BE123C;
@@ -124,6 +125,33 @@
     --chart-4: #059669;
     --chart-5: #D97706;
     --error: #BE123C;
+
+    /* Capas (18-oct-2026). Antes todo era el mismo gris y nada se separaba de
+       nada: ahora el fondo, lo hundido (las columnas de un tablero) y lo que
+       se levanta encima (una tarjeta) son tres superficies distintas. */
+    --sunken: #F3F4F6;
+    --raised: #ffffff;
+
+    /* Un color por estado, con propósito: abierta espera (azul), en curso
+       avanza (ámbar), hecha terminó (verde), cerrada se apartó (gris). Los
+       pinta `lib/status-color.ts`; el hex que manda el servidor no cambia con
+       el tema y por eso no se usa. */
+    --status-open: #1D4ED8;
+    --status-progress: #9E4400;
+    --status-done: #006D4E;
+    --status-closed: #5F5F6B;
+
+    /* Una paleta de ocho para lo que necesita distinguirse sin significar
+       nada: personas (avatares) y espacios sin color propio. El cian queda
+       para acción y foco. Ver `lib/person-color.ts`. */
+    --hue-1: #1D4ED8;
+    --hue-2: #6D28D9;
+    --hue-3: #BE185D;
+    --hue-4: #B43C0B;
+    --hue-5: #925906;
+    --hue-6: #137538;
+    --hue-7: #0E736B;
+    --hue-8: #B91C1C;
 }
 
 .dark {
@@ -132,7 +160,9 @@
     --foreground: #ECECEE;
     --card: #17171B;
     --card-foreground: #ECECEE;
-    --popover: #17171B;
+    /* Lo que flota (menús, diálogos) va en la capa levantada: con el mismo
+       gris que la tarjeta de debajo, un menú abierto no se despegaba. */
+    --popover: #1D1D23;
     --popover-foreground: #ECECEE;
     --primary: #20D9E8;
     --primary-foreground: #0B0B0E;
@@ -166,6 +196,23 @@
     --chart-4: #34D399;
     --chart-5: #F59E0B;
     --error: #FB7185;
+
+    --sunken: #131317;
+    --raised: #1D1D23;
+
+    --status-open: #60A5FA;
+    --status-progress: #FBBF24;
+    --status-done: #34D399;
+    --status-closed: #9A9AA4;
+
+    --hue-1: #60A5FA;
+    --hue-2: #A78BFA;
+    --hue-3: #F472B6;
+    --hue-4: #FB923C;
+    --hue-5: #FACC15;
+    --hue-6: #4ADE80;
+    --hue-7: #2DD4BF;
+    --hue-8: #F87171;
 }
 
 @theme inline {
@@ -187,6 +234,20 @@
     --text-xs--line-height: 1.125rem;
 
     --color-success: var(--success);
+    --color-sunken: var(--sunken);
+    --color-raised: var(--raised);
+    --color-status-open: var(--status-open);
+    --color-status-progress: var(--status-progress);
+    --color-status-done: var(--status-done);
+    --color-status-closed: var(--status-closed);
+    --color-hue-1: var(--hue-1);
+    --color-hue-2: var(--hue-2);
+    --color-hue-3: var(--hue-3);
+    --color-hue-4: var(--hue-4);
+    --color-hue-5: var(--hue-5);
+    --color-hue-6: var(--hue-6);
+    --color-hue-7: var(--hue-7);
+    --color-hue-8: var(--hue-8);
     --color-warning: var(--warning);
     --color-error: var(--error);
     --color-info: var(--info);

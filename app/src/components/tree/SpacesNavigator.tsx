@@ -6,6 +6,7 @@
  * here unchanged: any difference in behaviour at this point is a mistake in the
  * move, not a decision.
  */
+import { hueVar } from "@/lib/person-color";
 import { useT } from "@/lib/i18n";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
@@ -482,7 +483,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
         </button>
         <span
           className="size-2 shrink-0 rounded-sm"
-          style={{ backgroundColor: space.color || "var(--primary)" }}
+          style={{ backgroundColor: space.color || hueVar(space.id) }}
         />
         {/* A bound space is one a client can see into. The list already said so;
             without this the space it hangs under looked like any other. */}

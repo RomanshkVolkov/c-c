@@ -103,7 +103,38 @@ const PAIRS: [fg: string, bg: string][] = [
   ["warning", "card"],
   ["error", "background"],
   ["info", "background"],
+  // Las capas (18-oct-2026): el texto apagado se lee en una columna hundida y
+  // en una tarjeta levantada, no sólo en el fondo.
+  ["muted-foreground", "sunken"],
+  ["muted-foreground", "raised"],
+  ["foreground", "raised"],
+  ["foreground", "sunken"],
+  // El color de cada estado es el de su cuenta y su nombre, sobre la columna.
+  ...(["open", "progress", "done", "closed"] as const).flatMap(
+    (s): [string, string][] => [
+      [`status-${s}`, "sunken"],
+      [`status-${s}`, "background"],
+    ],
+  ),
+  // Las iniciales de un avatar van en su color, sobre la tarjeta.
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((n): [string, string] => [`hue-${n}`, "raised"]),
 ];
+
+/**
+ * Un chip tintado: el color como texto sobre ese mismo color al 15% encima de
+ * la superficie. Es como se pintan la prioridad, los estados y los avatares
+ * (`bg-x/15 text-x`), y es el par que más fácil se queda corto: el fondo se
+ * acerca al texto justo lo que el tinte le suma.
+ */
+const TINTED: [color: string, surface: string][] = [
+  ...["error", "warning", "info", "muted-foreground"].map((c): [string, string] => [c, "raised"]),
+  ...(["open", "progress", "done", "closed"] as const).map((s): [string, string] => [`status-${s}`, "sunken"]),
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((n): [string, string] => [`hue-${n}`, "raised"]),
+];
+
+const TINT = 0.15;
+const over = (fg: RGB, bg: RGB, alpha: number): RGB =>
+  fg.map((c, i) => c * alpha + bg[i] * (1 - alpha)) as RGB;
 
 describe.each([
   ["light", ":root"],
@@ -117,5 +148,11 @@ describe.each([
     expect(t[fg], `${fg} missing from ${selector}`).toBeDefined();
     expect(t[bg], `${bg} missing from ${selector}`).toBeDefined();
     expect(contrast(t[fg], t[bg])).toBeGreaterThanOrEqual(AA_NORMAL);
+  });
+
+  it.each(TINTED)("%s on its own tint over %s clears AA", (color, surface) => {
+    expect(t[color], `${color} missing from ${selector}`).toBeDefined();
+    expect(t[surface], `${surface} missing from ${selector}`).toBeDefined();
+    expect(contrast(t[color], over(t[color], t[surface], TINT))).toBeGreaterThanOrEqual(AA_NORMAL);
   });
 });

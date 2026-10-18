@@ -20,6 +20,7 @@ import { useConnectionStore } from "@/store/connection.store";
 import { useAuth } from "@/hooks/use-auth";
 import { useAppVersion } from "@/hooks/use-app-version";
 import { cn } from "@/lib/utils";
+import Initials from "@/components/ui/initials";
 
 /**
  * The account, and everything that is about you rather than about the work.
@@ -160,9 +161,7 @@ export default function AccountMenu({
   );
 
   const initials = (
-    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
-      {inicialesDe(session)}
-    </span>
+    <Initials colorKey={session.username} text={inicialesDe(session)} className="size-6 text-[10px]" />
   );
 
   return (
@@ -177,9 +176,7 @@ export default function AccountMenu({
           )}
         >
           <div className="flex items-center gap-2 px-2 py-1.5">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
-              {inicialesDe(session)}
-            </span>
+            <Initials colorKey={session.username} text={inicialesDe(session)} className="size-7 text-[10px]" />
             <div className="min-w-0">
               <p className="truncate text-xs font-semibold">{nombreDe(session)}</p>
               {session.email && (

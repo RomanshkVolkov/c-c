@@ -24,6 +24,7 @@ import TaskFilters from "@/components/tasks/TaskFilters";
 import { EMPTY_FILTER, matchesFilter, type TaskFilter } from "@/lib/task-filter";
 import PinnedLine from "@/components/docs/PinnedLine";
 import CopyId from "@/components/CopyId";
+import Initials from "@/components/ui/initials";
 import ItemCalendar from "@/components/ItemCalendar";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { usePrompt } from "@/components/PromptDialog";
@@ -457,13 +458,13 @@ function ListView({
                         </>
                       )}
                       {t.assignees.slice(0, 2).map((a) => (
-                        <span
+                        <Initials
                           key={a.id}
+                          colorKey={a.username}
                           title={a.username}
-                          className="inline-flex size-4 items-center justify-center rounded-full bg-primary/20 text-xs uppercase text-foreground"
-                        >
-                          {a.username.slice(0, 2)}
-                        </span>
+                          text={a.username.slice(0, 2)}
+                          className="size-4 text-[9px]"
+                        />
                       ))}
                     </span>
                   </button>
@@ -552,13 +553,13 @@ function TaskCardView({
         {card.assignees.length > 0 && (
           <span className="flex items-center gap-0.5">
             {card.assignees.slice(0, 2).map((a) => (
-              <span
+              <Initials
                 key={a.id}
+                colorKey={a.username}
                 title={a.username}
-                className="inline-flex size-4 items-center justify-center rounded-full bg-primary/20 text-xs uppercase text-foreground"
-              >
-                {a.username.slice(0, 2)}
-              </span>
+                text={a.username.slice(0, 2)}
+                className="size-4 text-[9px]"
+              />
             ))}
           </span>
         )}

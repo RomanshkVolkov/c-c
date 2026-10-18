@@ -3,6 +3,7 @@ import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
+import Initials from "@/components/ui/initials";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
 import OrgGitHub from "@/components/org/OrgGitHub";
 import OrgMeetings from "@/components/org/OrgMeetings";
@@ -318,9 +319,7 @@ export default function OrganizationSettings() {
                       <TableRow key={m.userId}>
                         <TableCell className="font-medium">
                           <span className="flex items-center gap-2">
-                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold uppercase text-primary">
-                              {m.username.slice(0, 2)}
-                            </span>
+                            <Initials colorKey={m.username} text={m.username.slice(0, 2)} className="size-6 text-[10px]" />
                             <span className="min-w-0">
                               <span className="block truncate">{m.username}</span>
                               <span className="block truncate font-mono text-[11px] text-muted-foreground">
