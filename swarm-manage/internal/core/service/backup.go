@@ -144,6 +144,14 @@ func (r *BackupRunner) Run(ctx context.Context, raw json.RawMessage) {
 		}
 	}
 	status, msg := "succeeded", ""
+	if err == nil {
+		// Aquí y no dentro: así va después de la limpieza.
+		if job.Kind == "restore_test" {
+			log("✓ restauración correcta")
+		} else {
+			log("✓ backup listo")
+		}
+	}
 	if err != nil {
 		status, msg = "failed", err.Error()
 		log("✗ %s", msg)
@@ -171,27 +179,41 @@ func (r *BackupRunner) backup(ctx context.Context, job BackupJob, log func(strin
 		}
 		recipients = append(recipients, rc)
 	}
+	log("→ backup de %s (%s) en el servicio %s", job.Database, engineName(job.Engine), job.ServiceName)
 	container, err := r.Docker.ContainerForService(ctx, job.ServiceName)
 	if err != nil {
 		return err
 	}
+	log("contenedor de la base: %s", shortID(container))
 	size, err := r.databaseSize(ctx, container, job)
 	if err != nil {
 		return fmt.Errorf("could not measure the database: %w", err)
 	}
-	log("%s %s: %d MB", job.Engine, job.Database, size>>20)
+	log("tamaño de la base: %s", mb(size))
 	// El doble y un margen: el cifrado vive aquí hasta que sube, y en SQL
 	// Server el `.bak` vive además un rato en el volumen de la base.
-	if free, err := r.FreeBytes(r.TempDir); err == nil && free < 2*size+(256<<20) {
-		return fmt.Errorf("not enough disk: %d MB free, %d MB needed", free>>20, (2*size+(256<<20))>>20)
+	need := 2*size + (256 << 20)
+	if free, err := r.FreeBytes(r.TempDir); err == nil {
+		if free < need {
+			return fmt.Errorf("not enough disk: %d MB free, %d MB needed", free>>20, need>>20)
+		}
+		log("disco libre en el agente: %s (hacen falta %s)", mb(free), mb(need))
 	}
+	names := make([]string, 0, len(job.Recipients))
+	for _, k := range job.Recipients {
+		names = append(names, shortKey(k))
+	}
+	log("se cifrará con age para %d destinatarios: %s", len(recipients), strings.Join(names, ", "))
 
 	f, err := os.CreateTemp(r.TempDir, "cac-backup-*.age")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
-	defer f.Close()
+	defer func() {
+		f.Close()
+		os.Remove(f.Name())
+		log("limpieza: fichero cifrado borrado del agente")
+	}()
 	sum := sha256.New()
 	enc, err := age.Encrypt(io.MultiWriter(f, sum), recipients...)
 	if err != nil {
@@ -217,12 +239,13 @@ func (r *BackupRunner) backup(ctx context.Context, job BackupJob, log func(strin
 		return fmt.Errorf("the encrypted backup is %d MB; a single upload takes up to 5 GB", info.Size()>>20)
 	}
 	sha := hex.EncodeToString(sum.Sum(nil))
-	log("cifrado para %d destinatarios: %d MB, sha256 %s…", len(recipients), info.Size()>>20, sha[:12])
+	log("cifrado y sellado: %s, sha256 %s…", mb(info.Size()), sha[:16])
 
 	put, err := r.Backend.BackupUploadURL(ctx, job.BackupID, info.Size(), sha)
 	if err != nil {
 		return fmt.Errorf("upload url: %w", err)
 	}
+	log("URL de subida firmada por cac: dura 30 min y lleva el tamaño, el sha256 y la retención (Object Lock) dentro de la firma")
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -230,7 +253,8 @@ func (r *BackupRunner) backup(ctx context.Context, job BackupJob, log func(strin
 	if err := r.upload(ctx, put, f, info.Size()); err != nil {
 		return err
 	}
-	log("subido en %s", time.Since(start).Round(time.Second))
+	took := time.Since(start)
+	log("subido a S3: %s en %s (%s/s); S3 comprobó el sha256 y bloqueó el objeto", mb(info.Size()), took.Round(100*time.Millisecond), mb(rate(info.Size(), took)))
 	return nil
 }
 
@@ -273,7 +297,10 @@ func sqlcmd(credentialEnv string) string {
 func (r *BackupRunner) dumpMSSQL(ctx context.Context, container string, job BackupJob, enc io.Writer, log func(string, ...any)) error {
 	bak := mssqlBackupDir + "/" + job.BackupID + ".bak"
 	script := mssqlBackupDir + "/" + job.BackupID + ".sql"
-	defer r.Docker.Exec(context.Background(), container, []string{"rm", "-f", bak, script}, nil, nil)
+	defer func() {
+		r.Docker.Exec(context.Background(), container, []string{"rm", "-f", bak, script}, nil, nil)
+		log("limpieza: .bak y .sql borrados del contenedor")
+	}()
 	if res, err := r.Docker.Exec(ctx, container, []string{"mkdir", "-p", mssqlBackupDir}, nil, nil); err != nil || res.ExitCode != 0 {
 		return fmt.Errorf("could not create %s: %v %s", mssqlBackupDir, err, res.Stderr)
 	}
@@ -281,6 +308,9 @@ func (r *BackupRunner) dumpMSSQL(ctx context.Context, container string, job Back
 	if err := r.Docker.CopyTo(ctx, container, mssqlBackupDir, job.BackupID+".sql", int64(len(sql)), strings.NewReader(sql)); err != nil {
 		return err
 	}
+	log("guion copiado al contenedor: BACKUP DATABASE [%s] … WITH COPY_ONLY, COMPRESSION, CHECKSUM y RESTORE VERIFYONLY", job.Database)
+	log("sqlcmd con la contraseña de $%s, leída dentro del contenedor", job.CredentialEnv)
+	start := time.Now()
 	var out bytes.Buffer
 	res, err := r.Docker.Exec(ctx, container, []string{"sh", "-c", sqlcmd(job.CredentialEnv) + ` -v F="$F" -i "$S"`},
 		[]string{"F=" + bak, "S=" + script}, &out)
@@ -295,11 +325,13 @@ func (r *BackupRunner) dumpMSSQL(ctx context.Context, container string, job Back
 	if res.ExitCode != 0 {
 		return fmt.Errorf("BACKUP failed (exit %d): %s", res.ExitCode, firstLines(res.Stderr+out.String(), 8))
 	}
-	rd, _, err := r.Docker.CopyFrom(ctx, container, bak)
+	log("BACKUP y VERIFYONLY terminados en %s: el .bak es válido según SQL Server", time.Since(start).Round(100*time.Millisecond))
+	rd, size, err := r.Docker.CopyFrom(ctx, container, bak)
 	if err != nil {
 		return err
 	}
 	defer rd.Close()
+	log("sacando el .bak del contenedor (%s, ya comprimido por SQL Server) y cifrándolo a la vez", mb(size))
 	_, err = io.Copy(enc, rd)
 	return err
 }
@@ -313,15 +345,18 @@ func MSSQLBackupScript(database string) string {
 
 // dumpPostgres: `pg_dump` en formato custom, en streaming hasta el cifrado.
 func (r *BackupRunner) dumpPostgres(ctx context.Context, container string, job BackupJob, enc io.Writer, log func(string, ...any)) error {
+	log("pg_dump -Fc --no-owner de %s, con el usuario de $%s, en streaming hasta el cifrado", job.Database, job.CredentialEnv)
+	start := time.Now()
+	counted := &countingWriter{w: enc}
 	res, err := r.Docker.Exec(ctx, container, []string{"sh", "-c",
-		`pg_dump -Fc --no-owner -U "$` + job.CredentialEnv + `" -d "$DB"`}, []string{"DB=" + job.Database}, enc)
+		`pg_dump -Fc --no-owner -U "$` + job.CredentialEnv + `" -d "$DB"`}, []string{"DB=" + job.Database}, counted)
 	if err != nil {
 		return err
 	}
 	if res.ExitCode != 0 {
 		return fmt.Errorf("pg_dump failed (exit %d): %s", res.ExitCode, firstLines(res.Stderr, 8))
 	}
-	log("  pg_dump terminó")
+	log("pg_dump terminó en %s: %s (formato custom, ya comprimido)", time.Since(start).Round(100*time.Millisecond), mb(counted.n))
 	return nil
 }
 
@@ -404,6 +439,11 @@ func guardDrop(name string) error {
 }
 
 func (r *BackupRunner) restoreTest(ctx context.Context, job BackupJob, log func(string, ...any)) error {
+	if job.SourceBackupID != "" {
+		log("→ prueba de restauración del backup %s de %s (%s)", shortID(job.SourceBackupID), job.Database, engineName(job.Engine))
+	} else {
+		log("→ prueba de restauración del último backup de %s (%s)", job.Database, engineName(job.Engine))
+	}
 	if r.Identity == nil {
 		return errors.New("this agent has no restore key yet")
 	}
@@ -411,10 +451,12 @@ func (r *BackupRunner) restoreTest(ctx context.Context, job BackupJob, log func(
 	if err != nil {
 		return err
 	}
+	log("contenedor de la base: %s", shortID(container))
 	get, err := r.Backend.BackupDownloadURL(ctx, job.BackupID)
 	if err != nil {
 		return fmt.Errorf("download url: %w", err)
 	}
+	log("URL de bajada firmada por cac (30 min); descargando de S3…")
 	enc, err := os.CreateTemp(r.TempDir, "cac-restore-*.age")
 	if err != nil {
 		return err
@@ -422,19 +464,31 @@ func (r *BackupRunner) restoreTest(ctx context.Context, job BackupJob, log func(
 	defer os.Remove(enc.Name())
 	defer enc.Close()
 	sum := sha256.New()
+	start := time.Now()
 	n, err := r.download(ctx, get, io.MultiWriter(enc, sum))
 	if err != nil {
 		return err
 	}
-	if job.SourceSha256 != "" && hex.EncodeToString(sum.Sum(nil)) != job.SourceSha256 {
-		return errors.New("the downloaded backup does not match its sha256")
+	took := time.Since(start)
+	log("descargado: %s en %s (%s/s)", mb(n), took.Round(100*time.Millisecond), mb(rate(n, took)))
+	got := hex.EncodeToString(sum.Sum(nil))
+	if job.SourceSha256 != "" {
+		if got != job.SourceSha256 {
+			return fmt.Errorf("the downloaded backup does not match its sha256 (%s… vs %s…)", got[:12], job.SourceSha256[:12])
+		}
+		log("sha256 comprobado: %s… es el mismo que se apuntó al subirlo", got[:16])
 	}
-	log("descargado: %d MB, sha256 correcto", n>>20)
-	if free, err := r.FreeBytes(r.TempDir); err == nil && free < 3*n+(256<<20) {
-		return fmt.Errorf("not enough disk to restore: %d MB free", free>>20)
+	if free, err := r.FreeBytes(r.TempDir); err == nil {
+		if free < 3*n+(256<<20) {
+			return fmt.Errorf("not enough disk to restore: %d MB free", free>>20)
+		}
+		log("disco libre en el agente: %s", mb(free))
 	}
 	if _, err := enc.Seek(0, io.SeekStart); err != nil {
 		return err
+	}
+	if x, ok := r.Identity.(*age.X25519Identity); ok {
+		log("descifrando con la llave de restauración de este servidor (%s): age prueba la llave contra la cabecera, saca la llave del fichero y comprueba el sello", shortKey(x.Recipient().String()))
 	}
 	plain, err := age.Decrypt(enc, r.Identity)
 	if err != nil {
@@ -444,32 +498,39 @@ func (r *BackupRunner) restoreTest(ctx context.Context, job BackupJob, log func(
 	if err != nil {
 		return err
 	}
-	defer os.Remove(dec.Name())
-	defer dec.Close()
+	defer func() {
+		dec.Close()
+		os.Remove(dec.Name())
+		log("limpieza: ficheros cifrado y descifrado borrados del agente")
+	}()
+	start = time.Now()
 	size, err := io.Copy(dec, plain)
 	if err != nil {
 		return fmt.Errorf("decrypt: %w", err)
 	}
+	log("descifrado y autenticado trozo a trozo: %s en claro, en %s", mb(size), time.Since(start).Round(100*time.Millisecond))
 	if _, err := dec.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	name := RestoreTestName(job.BackupID)
-	var tables int
+	var c restoredContents
 	switch job.Engine {
 	case "mssql":
-		tables, err = r.restoreMSSQL(ctx, container, job, name, dec, size, log)
+		c, err = r.restoreMSSQL(ctx, container, job, name, dec, size, log)
 	case "postgres":
-		tables, err = r.restorePostgres(ctx, container, job, name, dec, size, log)
+		c, err = r.restorePostgres(ctx, container, job, name, dec, size, log)
 	}
 	if err != nil {
 		return err
 	}
-	if tables == 0 {
+	if c.tables == 0 {
 		return errors.New("the restored database has no tables")
 	}
-	log("✓ restaurada con %d tablas, y borrada", tables)
 	return nil
 }
+
+// restoredContents: lo que tenía la base restaurada.
+type restoredContents struct{ tables, rows int64 }
 
 func (r *BackupRunner) download(ctx context.Context, p *Presigned, w io.Writer) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.URL, nil)
@@ -492,11 +553,13 @@ func (r *BackupRunner) download(ctx context.Context, p *Presigned, w io.Writer) 
 }
 
 // restoreMSSQL restaura en la misma instancia como `name`, comprueba con
-// CHECKDB, cuenta tablas y la borra. Los nombres lógicos de los ficheros se
-// leen del propio backup (FILELISTONLY) para moverlos a ficheros nuevos.
-func (r *BackupRunner) restoreMSSQL(ctx context.Context, container string, job BackupJob, name string, f io.Reader, size int64, log func(string, ...any)) (int, error) {
+// CHECKDB, cuenta tablas y filas y la borra. Los nombres lógicos de los
+// ficheros se leen del propio backup (FILELISTONLY) para moverlos a ficheros
+// nuevos.
+func (r *BackupRunner) restoreMSSQL(ctx context.Context, container string, job BackupJob, name string, f io.Reader, size int64, log func(string, ...any)) (restoredContents, error) {
+	var none restoredContents
 	if err := guardDrop(name); err != nil {
-		return 0, err
+		return none, err
 	}
 	bak := mssqlBackupDir + "/" + name + ".bak"
 	script := mssqlBackupDir + "/" + name + ".sql"
@@ -511,116 +574,255 @@ func (r *BackupRunner) restoreMSSQL(ctx context.Context, container string, job B
 		drop := "IF DB_ID(N'" + name + "') IS NOT NULL BEGIN ALTER DATABASE [" + name + "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [" + name + "]; END\n"
 		if guardDrop(name) == nil {
 			run(drop, nil)
+			log("base temporal %s borrada", name)
 		}
 		r.Docker.Exec(context.Background(), container, []string{"rm", "-f", bak, script}, nil, nil)
+		log("limpieza: .bak y .sql borrados del contenedor")
 	}()
 	if res, err := r.Docker.Exec(ctx, container, []string{"mkdir", "-p", mssqlBackupDir}, nil, nil); err != nil || res.ExitCode != 0 {
-		return 0, fmt.Errorf("could not create %s", mssqlBackupDir)
+		return none, fmt.Errorf("could not create %s", mssqlBackupDir)
 	}
 	if err := r.Docker.CopyTo(ctx, container, mssqlBackupDir, name+".bak", size, f); err != nil {
-		return 0, err
+		return none, err
 	}
-	var files bytes.Buffer
-	res, err := run("SET NOCOUNT ON; RESTORE FILELISTONLY FROM DISK = N'$(F)';\n", &files)
+	log("copiado al contenedor: %s (%s)", bak, mb(size))
+	var list bytes.Buffer
+	res, err := run("SET NOCOUNT ON; RESTORE FILELISTONLY FROM DISK = N'$(F)';\n", &list)
 	if err != nil {
-		return 0, err
+		return none, err
 	}
 	if res.ExitCode != 0 {
-		return 0, fmt.Errorf("FILELISTONLY failed: %s", firstLines(res.Stderr+files.String(), 5))
+		return none, fmt.Errorf("FILELISTONLY failed: %s", firstLines(res.Stderr+list.String(), 5))
 	}
-	restore, err := MSSQLRestoreScript(name, files.String())
+	files, err := MSSQLBackupFiles(list.String())
 	if err != nil {
-		return 0, err
+		return none, err
 	}
+	desc := make([]string, 0, len(files))
+	for _, fl := range files {
+		kind := "datos"
+		if fl.Log {
+			kind = "log"
+		}
+		desc = append(desc, fl.Logical+" ("+kind+")")
+	}
+	log("el backup trae %d ficheros: %s", len(files), strings.Join(desc, ", "))
+	restore, err := MSSQLRestoreScript(name, files)
+	if err != nil {
+		return none, err
+	}
+	log("RESTORE DATABASE [%s] WITH MOVE de cada fichero a uno nuevo, al lado de %s y sin tocarla", name, job.Database)
+	start := time.Now()
 	var out bytes.Buffer
-	res, err = run(restore, &out)
-	if err != nil {
-		return 0, err
+	if res, err = run(restore, &out); err != nil {
+		return none, err
 	}
 	if res.ExitCode != 0 {
-		return 0, fmt.Errorf("RESTORE failed: %s", firstLines(res.Stderr+out.String(), 8))
+		return none, fmt.Errorf("RESTORE failed: %s", firstLines(res.Stderr+out.String(), 8))
 	}
-	return lastNumber(out.String())
+	log("restaurada en %s", time.Since(start).Round(100*time.Millisecond))
+	start = time.Now()
+	out.Reset()
+	if res, err = run("DBCC CHECKDB (["+name+"]) WITH NO_INFOMSGS;\n", &out); err != nil {
+		return none, err
+	}
+	if res.ExitCode != 0 {
+		return none, fmt.Errorf("DBCC CHECKDB found problems: %s", firstLines(res.Stderr+out.String(), 8))
+	}
+	log("DBCC CHECKDB sin errores en %s: la base está íntegra página por página", time.Since(start).Round(100*time.Millisecond))
+	out.Reset()
+	if res, err = run(MSSQLCountScript(name), &out); err != nil {
+		return none, err
+	}
+	if res.ExitCode != 0 {
+		return none, fmt.Errorf("counting failed: %s", firstLines(res.Stderr+out.String(), 4))
+	}
+	c, err := tablesAndRows(out.String())
+	if err != nil {
+		return none, err
+	}
+	log("contenido: %s", contents(c))
+	return c, nil
 }
 
-// MSSQLRestoreScript arma el RESTORE con un MOVE por fichero lógico (de la
-// salida de FILELISTONLY, columnas separadas por `|`), seguido de CHECKDB y
-// del recuento de tablas.
-func MSSQLRestoreScript(name, fileList string) (string, error) {
-	if err := guardDrop(name); err != nil {
-		return "", err
-	}
-	var moves []string
+// MSSQLFile: un fichero lógico de un backup de SQL Server.
+type MSSQLFile struct {
+	Logical string
+	Log     bool
+}
+
+// MSSQLBackupFiles lee la salida de FILELISTONLY (columnas separadas por
+// `|`): el nombre lógico y si es de log (`L`).
+func MSSQLBackupFiles(fileList string) ([]MSSQLFile, error) {
+	var files []MSSQLFile
 	sc := bufio.NewScanner(strings.NewReader(fileList))
-	i := 0
 	for sc.Scan() {
 		cols := strings.Split(sc.Text(), "|")
 		if len(cols) < 3 || strings.TrimSpace(cols[0]) == "" {
 			continue
 		}
-		logical := strings.ReplaceAll(strings.TrimSpace(cols[0]), "'", "''")
+		files = append(files, MSSQLFile{Logical: strings.TrimSpace(cols[0]), Log: strings.TrimSpace(cols[2]) == "L"})
+	}
+	if len(files) == 0 {
+		return nil, errors.New("the backup lists no files")
+	}
+	return files, nil
+}
+
+// MSSQLRestoreScript arma el RESTORE con un MOVE por fichero lógico, a
+// ficheros nuevos con el nombre de la base temporal.
+func MSSQLRestoreScript(name string, files []MSSQLFile) (string, error) {
+	if err := guardDrop(name); err != nil {
+		return "", err
+	}
+	moves := make([]string, 0, len(files))
+	for i, fl := range files {
 		ext := ".mdf"
-		if strings.TrimSpace(cols[2]) == "L" {
+		if fl.Log {
 			ext = ".ldf"
 		}
-		moves = append(moves, fmt.Sprintf("MOVE N'%s' TO N'/var/opt/mssql/data/%s_%d%s'", logical, name, i, ext))
-		i++
+		moves = append(moves, fmt.Sprintf("MOVE N'%s' TO N'/var/opt/mssql/data/%s_%d%s'", strings.ReplaceAll(fl.Logical, "'", "''"), name, i, ext))
 	}
-	if len(moves) == 0 {
-		return "", errors.New("the backup lists no files")
-	}
-	return "RESTORE DATABASE [" + name + "] FROM DISK = N'$(F)' WITH " + strings.Join(moves, ", ") + ", RECOVERY;\n" +
-		"DBCC CHECKDB ([" + name + "]) WITH NO_INFOMSGS;\n" +
-		"SET NOCOUNT ON; SELECT COUNT(*) FROM [" + name + "].sys.tables;\n", nil
+	return "RESTORE DATABASE [" + name + "] FROM DISK = N'$(F)' WITH " + strings.Join(moves, ", ") + ", RECOVERY;\n", nil
+}
+
+// MSSQLCountScript: tablas y filas de la base restaurada, en una línea
+// `tablas|filas`.
+func MSSQLCountScript(name string) string {
+	return "SET NOCOUNT ON; SELECT (SELECT COUNT(*) FROM [" + name + "].sys.tables), " +
+		"(SELECT ISNULL(SUM(p.rows), 0) FROM [" + name + "].sys.partitions p JOIN [" + name + "].sys.tables t ON p.object_id = t.object_id WHERE p.index_id IN (0, 1));\n"
 }
 
 // restorePostgres crea la base temporal, restaura con pg_restore, cuenta
-// tablas y la borra.
-func (r *BackupRunner) restorePostgres(ctx context.Context, container string, job BackupJob, name string, f io.Reader, size int64, log func(string, ...any)) (int, error) {
+// tablas y filas y la borra.
+func (r *BackupRunner) restorePostgres(ctx context.Context, container string, job BackupJob, name string, f io.Reader, size int64, log func(string, ...any)) (restoredContents, error) {
+	var none restoredContents
 	if err := guardDrop(name); err != nil {
-		return 0, err
+		return none, err
 	}
 	user := `"$` + job.CredentialEnv + `"`
 	dump := "/tmp/" + name + ".dump"
 	psql := func(db, sql string, out io.Writer) (repository.ExecResult, error) {
-		return r.Docker.Exec(ctx, container, []string{"sh", "-c", `psql -U ` + user + ` -d "$D" -v ON_ERROR_STOP=1 -tAc "$Q"`},
+		return r.Docker.Exec(ctx, container, []string{"sh", "-c", `psql -U ` + user + ` -d "$D" -v ON_ERROR_STOP=1 -tA -F "|" -c "$Q"`},
 			[]string{"D=" + db, "Q=" + sql}, out)
 	}
 	defer func() {
 		if guardDrop(name) == nil {
 			psql("postgres", `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`, nil)
+			log("base temporal %s borrada", name)
 		}
 		r.Docker.Exec(context.Background(), container, []string{"rm", "-f", dump}, nil, nil)
+		log("limpieza: dump borrado del contenedor")
 	}()
 	if res, err := psql("postgres", `CREATE DATABASE "`+name+`"`, nil); err != nil || res.ExitCode != 0 {
-		return 0, fmt.Errorf("CREATE DATABASE failed: %v %s", err, firstLines(res.Stderr, 4))
+		return none, fmt.Errorf("CREATE DATABASE failed: %v %s", err, firstLines(res.Stderr, 4))
 	}
+	log("base temporal %s creada", name)
 	if err := r.Docker.CopyTo(ctx, container, "/tmp", name+".dump", size, f); err != nil {
-		return 0, err
+		return none, err
 	}
+	log("copiado al contenedor: %s (%s)", dump, mb(size))
+	start := time.Now()
 	res, err := r.Docker.Exec(ctx, container, []string{"sh", "-c", `pg_restore --no-owner -U ` + user + ` -d "$D" "$F"`},
 		[]string{"D=" + name, "F=" + dump}, nil)
 	if err != nil {
-		return 0, err
+		return none, err
 	}
 	if res.ExitCode != 0 {
-		return 0, fmt.Errorf("pg_restore failed: %s", firstLines(res.Stderr, 8))
+		return none, fmt.Errorf("pg_restore failed: %s", firstLines(res.Stderr, 8))
+	}
+	log("pg_restore terminó en %s", time.Since(start).Round(100*time.Millisecond))
+	if res, err := psql(name, "ANALYZE", nil); err != nil || res.ExitCode != 0 {
+		return none, fmt.Errorf("ANALYZE failed: %v %s", err, firstLines(res.Stderr, 4))
 	}
 	var out bytes.Buffer
-	if res, err := psql(name, "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema')", &out); err != nil || res.ExitCode != 0 {
-		return 0, fmt.Errorf("counting tables failed: %v %s", err, firstLines(res.Stderr, 4))
+	q := "SELECT count(*), COALESCE(sum(c.reltuples), 0)::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace " +
+		"WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%'"
+	if res, err := psql(name, q, &out); err != nil || res.ExitCode != 0 {
+		return none, fmt.Errorf("counting failed: %v %s", err, firstLines(res.Stderr, 4))
 	}
-	return lastNumber(out.String())
+	c, err := tablesAndRows(out.String())
+	if err != nil {
+		return none, err
+	}
+	log("contenido: %s (las filas, según ANALYZE)", contents(c))
+	return c, nil
 }
 
-// lastNumber: el último número de una salida (el recuento que cierra el
-// guion).
-func lastNumber(s string) (int, error) {
+// tablesAndRows: la línea `tablas|filas` de una salida.
+func tablesAndRows(s string) (restoredContents, error) {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		if n, err := strconv.Atoi(strings.TrimSpace(lines[i])); err == nil {
-			return n, nil
+		parts := strings.Split(strings.TrimSpace(lines[i]), "|")
+		if len(parts) != 2 {
+			continue
+		}
+		t, err1 := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+		r, err2 := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+		if err1 == nil && err2 == nil {
+			return restoredContents{tables: t, rows: r}, nil
 		}
 	}
-	return 0, fmt.Errorf("no table count in the output: %s", firstLines(s, 4))
+	return restoredContents{}, fmt.Errorf("no table count in the output: %s", firstLines(s, 4))
+}
+
+// ─── Para el log ──────────────────────────────────────────────────────────────
+
+// contents: «1 tabla, 500 filas», con el plural bien.
+func contents(c restoredContents) string {
+	t, r := "tablas", "filas"
+	if c.tables == 1 {
+		t = "tabla"
+	}
+	if c.rows == 1 {
+		r = "fila"
+	}
+	return fmt.Sprintf("%d %s, %d %s", c.tables, t, c.rows, r)
+}
+
+func engineName(e string) string {
+	if e == "mssql" {
+		return "SQL Server"
+	}
+	return "PostgreSQL"
+}
+
+// mb: un tamaño legible.
+func mb(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.2f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	default:
+		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
+	}
+}
+
+func rate(n int64, d time.Duration) int64 {
+	if d <= 0 {
+		return n
+	}
+	return int64(float64(n) / d.Seconds())
+}
+
+// shortKey: una llave pública age recortada (`age1abcd…wxyz`). Es pública:
+// se recorta para que se lea, no por secreta.
+func shortKey(k string) string {
+	if len(k) <= 14 {
+		return k
+	}
+	return k[:8] + "…" + k[len(k)-4:]
+}
+
+// countingWriter cuenta lo que pasa por él.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
 }

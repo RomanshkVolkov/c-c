@@ -473,6 +473,7 @@ func TestTheBuildIsCappedToTheMachineAndSaysWhenItRanOut(t *testing.T) {
 	d.migState = repository.TaskState{State: "failed", ExitCode: 1}
 	dep := deployer(d, r)
 	dep.BuildLogEvery = 0
+	dep.MemAvailable = func() int64 { return 7 << 30 }
 	dep.Run(context.Background(), "d-1", buildJob())
 	cs := d.jobSpec["TaskTemplate"].(map[string]any)["ContainerSpec"].(map[string]any)
 	if script := cs["Command"].([]string)[2]; !strings.Contains(script, "memory=6144m") {
@@ -480,6 +481,23 @@ func TestTheBuildIsCappedToTheMachineAndSaysWhenItRanOut(t *testing.T) {
 	}
 	if r.finish == nil || r.finish.Status != "failed" || !strings.Contains(r.finish.Error, "sin memoria") || !strings.Contains(r.finish.Error, "6144 MB") {
 		t.Fatalf("acabó %+v", r.finish)
+	}
+}
+
+// Con poca memoria libre no se construye: el deploy falla diciéndolo, antes
+// de crear nada, en vez de mandar a la swap lo que corre (la web iba lenta).
+// Mutante: construir igual con el suelo de 1 GB.
+func TestABuildWithoutFreeMemoryDoesNotStart(t *testing.T) {
+	d, r := buildDocker(), &fakeReport{}
+	d.memory = 8 << 30
+	dep := deployer(d, r)
+	dep.MemAvailable = func() int64 { return 1200 << 20 }
+	dep.Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "failed" || !strings.Contains(r.finish.Error, "not enough free memory") {
+		t.Fatalf("acabó %+v", r.finish)
+	}
+	if d.jobSpec != nil || len(d.secretsMade) != 0 || d.updatedTo != "" {
+		t.Fatalf("empezó igual: job %v, secrets %v, actualizado a %q", d.jobSpec != nil, d.secretsMade, d.updatedTo)
 	}
 }
 

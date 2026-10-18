@@ -116,15 +116,17 @@ func roundTrip(t *testing.T, id, engine, env string) {
 		t.Fatalf("la llave de jose no abre el backup: %v", err)
 	}
 
+	t.Logf("log del backup:\n%s", strings.Join(backend.lines, "\n"))
 	backend.status, backend.lines = "", nil
 	test := BackupJob{BackupID: "b-e2e-2", Kind: "restore_test", ServiceName: "db", Engine: engine, Database: "boaty", CredentialEnv: env}
 	r.Run(context.Background(), mustJSON(t, test))
 	if backend.status != "succeeded" {
 		t.Fatalf("prueba de restauración %s: %s\n%s", backend.status, backend.errMsg, strings.Join(backend.lines, "\n"))
 	}
-	if !strings.Contains(strings.Join(backend.lines, "\n"), "restaurada con 1 tablas") {
+	if !strings.Contains(strings.Join(backend.lines, "\n"), "contenido: 1 tabla, 500 filas") {
 		t.Errorf("el log no dice que restauró la tabla:\n%s", strings.Join(backend.lines, "\n"))
 	}
+	t.Logf("log de la prueba:\n%s", strings.Join(backend.lines, "\n"))
 	left, _ := os.ReadDir(r.TempDir)
 	if len(left) != 0 {
 		t.Errorf("quedó en el temporal: %v", left)

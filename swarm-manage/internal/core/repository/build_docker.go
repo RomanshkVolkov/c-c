@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -69,26 +71,63 @@ const buildCacheKeep = "5gb"
 // buildMemoryReserve: lo que el build deja para los demás.
 const buildMemoryReserve = 2048
 
-// BuildMemoryMB: el tope de memoria de un build en una máquina con `total`
-// bytes: todo menos 2 GB para lo que ya corre ahí, y nunca menos de 1 GB (por
-// debajo, un build de Next no acaba). 0 si no se sabe cuánta hay.
-func BuildMemoryMB(total int64) int {
+// buildFreeMargin: lo que se deja libre además de lo que ya está en uso.
+const buildFreeMargin = 512
+
+// BuildMemoryMB: el tope de memoria de un build, según la memoria total y la
+// que está **libre de verdad** al empezar (`MemAvailable`, en bytes).
+//
+// Hasta la v9 era «todo menos 2 GB», que en boaty (8 GB, con SQL Server en
+// 2,5) dejaba al build 5,9 GB: más de lo libre. El kernel hacía sitio
+// mandando a la swap la memoria fría de SQL Server, y la web iba lenta
+// después hasta que volvía (18-oct-2026: 879 MB de SQL Server en swap). Ahora
+// el tope es lo menor de las dos cosas, menos un margen, redondeado a 256 MB.
+//
+// `ok` es false si lo libre no da para un build (menos de 1 GB): mejor un
+// deploy que falla diciéndolo que una web lenta. Sin saber la memoria total,
+// 0 y ok: se construye como antes, sin tope.
+func BuildMemoryMB(total, available int64) (mb int, ok bool) {
 	if total <= 0 {
-		return 0
+		return 0, true
 	}
-	mb := int(total/(1<<20)) - buildMemoryReserve
+	mb = int(total/(1<<20)) - buildMemoryReserve
+	if available > 0 {
+		if free := int(available/(1<<20)) - buildFreeMargin; free < mb {
+			mb = free
+		}
+	}
+	mb = mb / 256 * 256
 	if mb < 1024 {
-		mb = 1024
+		return mb, false
 	}
-	return mb
+	return mb, true
 }
 
-// BuilderName: el constructor de un tope. El tope va en el nombre porque las
-// opciones de un constructor no se cambian una vez creado: con otro tope (la
-// máquina creció) sale otro constructor, en vez de seguir con el viejo.
-func BuilderName(memoryMB int) string {
-	return fmt.Sprintf("cac-build-%dm", memoryMB)
+// MemAvailable: la memoria libre de verdad de la máquina, en bytes. El
+// `/proc/meminfo` de un contenedor es el de la máquina.
+func MemAvailable() int64 {
+	raw, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0
+	}
+	for _, l := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(l, "MemAvailable:") {
+			f := strings.Fields(l)
+			if len(f) >= 2 {
+				if kb, err := strconv.ParseInt(f[1], 10, 64); err == nil {
+					return kb * 1024
+				}
+			}
+		}
+	}
+	return 0
 }
+
+// BuilderName: el constructor de los builds. Uno solo, con su caché: el tope
+// se le cambia en cada build con `docker update` (ver BuildScript). Hasta la
+// v9 el tope iba en el nombre, y con un tope que cambia según la memoria libre
+// cada build habría estrenado constructor con la caché vacía.
+const BuilderName = "cac-build"
 
 var (
 	buildRepoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$`)
@@ -165,16 +204,19 @@ func BuildScript(b BuildRequest) (string, error) {
 		// `--bootstrap` lo arranca ya, para que si no se puede (sin red a
 		// Docker Hub, por ejemplo) se sepa aquí y se construya como antes en
 		// vez de fallar el deploy.
-		name := BuilderName(b.MemoryMB)
 		fmt.Fprintf(&s, `B=%s
 BUILDER=""
 if docker buildx inspect --bootstrap "$B" >/dev/null 2>&1 || docker buildx create --bootstrap --name "$B" --driver docker-container --driver-opt image=%s --driver-opt memory=%dm --driver-opt memory-swap=%dm --driver-opt cpu-shares=%d >/dev/null; then
   BUILDER="--builder $B"
-  echo "cac: build con prioridad baja de CPU y un tope de %d MB"
+  if docker update --memory %dm --memory-swap %dm "buildx_buildkit_${B}0" >/dev/null 2>&1; then
+    echo "cac: build con prioridad baja de CPU y un tope de %d MB (la memoria libre ahora)"
+  else
+    echo "cac: no se pudo ajustar el tope del constructor; se usa el que tenía"
+  fi
 else
   echo "cac: no se pudo preparar el constructor con límites; se construye sin ellos"
 fi
-`, name, BuilderImage, b.MemoryMB, b.MemoryMB, builderCPUShares, b.MemoryMB)
+`, BuilderName, BuilderImage, b.MemoryMB, b.MemoryMB, builderCPUShares, b.MemoryMB, b.MemoryMB, b.MemoryMB)
 		builder = " $BUILDER"
 	}
 	s.WriteString("docker buildx build" + builder + " --progress=plain")
@@ -189,6 +231,12 @@ fi
 	// Sólo tras un build bueno (`set -e`), y sin que un fallo al limpiar
 	// tumbe un deploy que ya construyó.
 	fmt.Fprintf(&s, "docker buildx prune%s --force --keep-storage %s >/dev/null 2>&1 || true\n", builder, buildCacheKeep)
+	if builder != "" {
+		// Parado al acabar: el contenedor de BuildKit se quedaba encendido entre
+		// builds ocupando memoria (en boaty, 233 MB 24 horas sin hacer nada).
+		// La caché vive en su volumen, y el siguiente build lo arranca solo.
+		s.WriteString(`[ -n "$BUILDER" ] && docker buildx stop "$B" >/dev/null 2>&1 || true` + "\n")
+	}
 	return s.String(), nil
 }
 

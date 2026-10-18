@@ -92,13 +92,28 @@ func TestTheBuildJobMountsTheSocketAndTheSecrets(t *testing.T) {
 	}
 }
 
-// El tope de un build: todo menos 2 GB para lo que ya corre, con un suelo de
-// 1 GB, y sin tope si no se sabe cuánta memoria hay.
-// Mutantes: sin la reserva; sin el suelo; un tope inventado sin saber.
-func TestTheBuildLeavesMemoryForTheRest(t *testing.T) {
-	for total, want := range map[int64]int{8 << 30: 6144, 2 << 30: 1024, 0: 0} {
-		if got := BuildMemoryMB(total); got != want {
-			t.Errorf("con %d bytes: %d MB, se esperaba %d", total, got, want)
+// El tope de un build: lo menor entre «todo menos 2 GB» y «lo libre menos
+// 512 MB», en pasos de 256 MB; sin tope si no se sabe; y si lo libre no da
+// para 1 GB, no se construye.
+// Mutantes: no mirar lo libre (vuelve a mandar la base a la swap); sin la
+// reserva; aceptar un tope de menos de 1 GB; un tope inventado sin saber.
+func TestTheBuildOnlyUsesFreeMemory(t *testing.T) {
+	const gb = int64(1 << 30)
+	for _, c := range []struct {
+		total, avail int64
+		want         int
+		ok           bool
+	}{
+		{8 * gb, 7 * gb, 6144, true},             // mucho libre: manda «todo menos 2 GB»
+		{8 * gb, 3584 << 20, 3072, true},         // boaty con SQL Server: manda lo libre
+		{8 * gb, 1229 << 20, 512, false},         // poco libre: no se construye
+		{8 * gb, 0, 6144, true},                  // sin dato de libre: como antes
+		{0, 3 * gb, 0, true},                     // sin dato de total: sin tope
+		{8 * gb, (3584 + 100) << 20, 3072, true}, // redondeado a 256 MB
+	} {
+		mb, ok := BuildMemoryMB(c.total, c.avail)
+		if mb != c.want || ok != c.ok {
+			t.Errorf("total %d MB, libre %d MB → %d MB ok=%v; se esperaba %d ok=%v", c.total>>20, c.avail>>20, mb, ok, c.want, c.ok)
 		}
 	}
 }
@@ -119,10 +134,12 @@ func TestTheBuildScriptCapsTheBuilder(t *testing.T) {
 	for _, want := range []string{
 		"--driver docker-container --driver-opt image=" + BuilderImage,
 		"--driver-opt memory=5894m --driver-opt memory-swap=5894m --driver-opt cpu-shares=256",
-		"B=" + BuilderName(5894),
+		"B=" + BuilderName,
+		`docker update --memory 5894m --memory-swap 5894m "buildx_buildkit_${B}0"`,
 		`BUILDER="--builder $B"`,
 		"docker buildx build $BUILDER --progress=plain",
 		"docker buildx prune $BUILDER --force --keep-storage 5gb",
+		`docker buildx stop "$B"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("al guion le falta %q:\n%s", want, s)

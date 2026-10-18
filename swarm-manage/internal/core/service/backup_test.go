@@ -215,15 +215,31 @@ func TestOnlyRestoreTestDatabasesCanBeDropped(t *testing.T) {
 	if name := RestoreTestName("A1-b2/../x"); guardDrop(name) != nil || !strings.HasPrefix(name, RestoreTestPrefix) {
 		t.Errorf("el nombre de la prueba %q no pasa su propia guarda", name)
 	}
-	if _, err := MSSQLRestoreScript("boaty", "boaty_lts|/x.mdf|D\n"); err == nil {
+	files, err := MSSQLBackupFiles("boaty_lts|/var/opt/mssql/data/boaty.mdf|D|PRIMARY\nboaty_lts_log|/x.ldf|L|NULL\n")
+	if err != nil || len(files) != 2 || files[0].Logical != "boaty_lts" || files[0].Log || !files[1].Log {
+		t.Fatalf("los ficheros: %+v %v", files, err)
+	}
+	if _, err := MSSQLRestoreScript("boaty", files); err == nil {
 		t.Error("el guion de restauración aceptó restaurar sobre una base ajena")
 	}
-	s, err := MSSQLRestoreScript(RestoreTestName("b-1"), "boaty_lts|/var/opt/mssql/data/boaty.mdf|D|PRIMARY\nboaty_lts_log|/x.ldf|L|NULL\n")
+	s, err := MSSQLRestoreScript(RestoreTestName("b-1"), files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(s, "MOVE N'boaty_lts' TO") || !strings.Contains(s, "_1.ldf'") || !strings.Contains(s, "DBCC CHECKDB") {
+	if !strings.Contains(s, "MOVE N'boaty_lts' TO") || !strings.Contains(s, "_1.ldf'") {
 		t.Errorf("el guion:\n%s", s)
+	}
+}
+
+// El recuento de tablas y filas se lee de la línea `tablas|filas`.
+// Mutante: tomar sólo un número.
+func TestTablesAndRowsAreRead(t *testing.T) {
+	c, err := tablesAndRows("Changed database context.\n42|18304\n")
+	if err != nil || c.tables != 42 || c.rows != 18304 {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if _, err := tablesAndRows("nada"); err == nil {
+		t.Error("sin recuento se aceptó")
 	}
 }
 

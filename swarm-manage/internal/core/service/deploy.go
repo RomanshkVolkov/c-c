@@ -104,6 +104,15 @@ type Deployer struct {
 	Build time.Duration
 	// Cada cuánto pasa al deploy lo nuevo del log del build.
 	BuildLogEvery time.Duration
+	// MemAvailable: la memoria libre de la máquina; inyectable en las pruebas.
+	MemAvailable func() int64
+}
+
+func (d *Deployer) memAvailable() int64 {
+	if d.MemAvailable != nil {
+		return d.MemAvailable()
+	}
+	return repository.MemAvailable()
 }
 
 func NewDeployer(docker DeployDocker, report DeployReporter, auth func(string) string) *Deployer {
@@ -369,9 +378,18 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 		BuildArgs: b.BuildArgs, Image: job.Image,
 	}
 	// Sin saber cuánta memoria hay, se construye como antes, sin límites: un
-	// tope inventado podría no dejar acabar ningún build.
+	// tope inventado podría no dejar acabar ningún build. Con poca libre, no se
+	// construye: un build que manda la base a la swap deja la web lenta.
 	if total, err := d.Docker.HostMemory(ctx); err == nil {
-		req.MemoryMB = repository.BuildMemoryMB(total)
+		avail := d.memAvailable()
+		mb, ok := repository.BuildMemoryMB(total, avail)
+		if !ok {
+			return fmt.Errorf("not enough free memory to build here: %d MB free; a build needs at least 1.5 GB without pushing what runs to swap", avail>>20)
+		}
+		req.MemoryMB = mb
+		if mb > 0 {
+			log("memoria libre ahora: %d MB; tope del build: %d MB", avail>>20, mb)
+		}
 	}
 	script, err := repository.BuildScript(req)
 	if err != nil {
