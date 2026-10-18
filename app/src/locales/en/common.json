@@ -915,12 +915,12 @@
     "everyValue": "{{hours}} h",
     "at": "Starting at",
     "timezone": "Time zone",
-    "keepDays": "Daily backups kept (days)",
-    "keepWeekly": "Weekly kept (weeks)",
-    "keepMonthly": "Monthly kept (months)",
-    "restoreEvery": "Restore test every (days, 0 = off)",
+    "keepDays": "One per day, for (days)",
+    "keepWeekly": "Plus one per week, for (weeks)",
+    "keepMonthly": "Plus one per month, for (months)",
+    "restoreEvery": "Test that it restores, every (days)",
     "enabled": "Enabled",
-    "retained": "Up to {{n}} backups are kept at a time.",
+    "retained": "In total, about {{n}} backups kept at a time.",
     "save": "Save",
     "saved": "Saved",
     "createInOp": "Create key in 1Password",
@@ -963,25 +963,34 @@
         "example": "America/Mexico_City"
       },
       "keepDays": {
-        "text": "How many days a regular backup is kept before it deletes itself. Before that date nobody can delete it, not even with cac's keys.",
-        "example": "7 = the last week, day by day"
+        "text": "Each backup is kept at least this many days and then deletes itself. With one backup a day, that is the last N days, one per day. Before that date nobody can delete it, not even with cac's keys.",
+        "example": "7 = you can go back to any day of the last week"
       },
       "keepWeekly": {
-        "text": "The first backup of each week is kept longer: this many weeks. 0 = no separate weeklies.",
-        "example": "4 = the last month, one per week"
+        "text": "On top of the dailies, the first backup of each week (Monday's) is not deleted after a few days: it stays this many weeks. It lets you go further back without keeping one for every day. 0 = no weeklies.",
+        "example": "4 = you can go back to any week of the last month"
       },
       "keepMonthly": {
-        "text": "The first backup of each month is kept this many months. It is what lets you go far back. 0 = no monthlies.",
-        "example": "6 = half a year, one per month"
+        "text": "The same, by month: the first backup of each month (the 1st) stays this many months. It is what lets you go far back. 0 = no monthlies.",
+        "example": "6 = you can go back to any month of the last half year"
       },
       "restoreEvery": {
-        "text": "Every how many days the latest backup is restored into a temporary database (checked and dropped), to know it really works. 0 turns it off; not recommended.",
-        "example": "7 = once a week"
+        "text": "Every how many days cac takes the latest backup, restores it into a temporary database, checks it has its tables and drops it. That is how you know the backups really work. 0 turns it off; not recommended.",
+        "example": "7 = one test a week"
       },
       "enabled": {
         "text": "Turned off, the database stops being backed up but keeps its settings and the backups it already has."
       }
     },
-    "databaseHint": "The database's name inside SQL Server or PostgreSQL, not the service's."
+    "databaseHint": "The database's name inside SQL Server or PostgreSQL, not the service's.",
+    "summary": {
+      "lead": "You will be able to go back to:",
+      "days_one": "yesterday",
+      "days_other": "any day in the last {{count}}",
+      "weeks_one": "last week",
+      "weeks_other": "any week in the last {{count}}",
+      "months_one": "last month",
+      "months_other": "any month in the last {{count}}"
+    }
   }
 }

@@ -139,3 +139,23 @@ describe("la ayuda del formulario", () => {
     }
   });
 });
+
+/**
+ * La retención se dice como frase: a qué se puede volver. Y cambia al tocar
+ * los números. Mutantes: no quitar las semanas al ponerlas a 0; un resumen
+ * fijo que no sigue al formulario.
+ */
+describe("el resumen de la retención", () => {
+  it("dice a qué se puede volver y sigue a los números", async () => {
+    render(<ServerBackups />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(añadir base|add database)$/i }));
+    const summary = await screen.findByTestId("retention-summary");
+    expect(summary.textContent).toMatch(/(cualquier día de los últimos 7|any day in the last 7)/);
+    expect(summary.textContent).toMatch(/(cualquier semana de las últimas 4|any week in the last 4)/);
+    expect(summary.textContent).toMatch(/(cualquier mes de los últimos 6|any month in the last 6)/);
+
+    const weeks = screen.getAllByRole("spinbutton")[1];
+    fireEvent.change(weeks, { target: { value: "0" } });
+    expect(screen.getByTestId("retention-summary").textContent).not.toMatch(/(semana|week)/);
+  });
+});

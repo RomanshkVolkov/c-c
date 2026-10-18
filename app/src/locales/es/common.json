@@ -915,12 +915,12 @@
     "everyValue": "{{hours}} h",
     "at": "A partir de las",
     "timezone": "Zona horaria",
-    "keepDays": "Diarios que se guardan (días)",
-    "keepWeekly": "Semanales (semanas)",
-    "keepMonthly": "Mensuales (meses)",
-    "restoreEvery": "Prueba de restauración cada (días, 0 = apagada)",
+    "keepDays": "Uno por día, durante (días)",
+    "keepWeekly": "Además, uno por semana, durante (semanas)",
+    "keepMonthly": "Además, uno por mes, durante (meses)",
+    "restoreEvery": "Probar que se puede restaurar, cada (días)",
     "enabled": "Encendido",
-    "retained": "Se guardan como mucho {{n}} backups a la vez.",
+    "retained": "En total, unos {{n}} backups guardados a la vez.",
     "save": "Guardar",
     "saved": "Guardado",
     "createInOp": "Crear llave en 1Password",
@@ -963,25 +963,34 @@
         "example": "America/Mexico_City"
       },
       "keepDays": {
-        "text": "Cuántos días se guarda un backup normal antes de borrarse solo. Antes de esa fecha nadie puede borrarlo, ni con las llaves de cac.",
-        "example": "7 = la última semana, día por día"
+        "text": "Cada backup se guarda al menos estos días y luego se borra solo. Con un backup al día, es como tener los últimos N días, uno por día. Antes de esa fecha nadie puede borrarlo, ni con las llaves de cac.",
+        "example": "7 = puedes volver a cualquier día de la última semana"
       },
       "keepWeekly": {
-        "text": "El primer backup de cada semana se guarda más tiempo: este número de semanas. 0 = sin semanales aparte.",
-        "example": "4 = el último mes, uno por semana"
+        "text": "Además de los diarios, el primer backup de cada semana (el del lunes) no se borra a los pocos días: se queda estas semanas. Sirve para volver más atrás sin guardar uno de cada día. 0 = no guardar semanales.",
+        "example": "4 = puedes volver a cualquier semana del último mes"
       },
       "keepMonthly": {
-        "text": "El primer backup de cada mes se guarda este número de meses. Es lo que deja volver muy atrás. 0 = sin mensuales.",
-        "example": "6 = medio año, uno por mes"
+        "text": "Igual, pero por meses: el primer backup de cada mes (el del día 1) se queda estos meses. Es lo que te deja volver muy atrás. 0 = no guardar mensuales.",
+        "example": "6 = puedes volver a cualquier mes del último medio año"
       },
       "restoreEvery": {
-        "text": "Cada cuántos días se prueba restaurar el último backup en una base temporal (se comprueba y se borra), para saber que de verdad sirve. 0 la apaga; no es recomendable.",
-        "example": "7 = una vez por semana"
+        "text": "Cada cuántos días cac toma el último backup, lo restaura en una base temporal, comprueba que tiene sus tablas y la borra. Así sabes que los backups de verdad sirven. 0 la apaga; no es recomendable.",
+        "example": "7 = una prueba por semana"
       },
       "enabled": {
         "text": "Apagada, la base deja de respaldarse pero conserva su configuración y los backups que ya tiene."
       }
     },
-    "databaseHint": "El nombre de la base dentro de SQL Server o PostgreSQL, no el del servicio."
+    "databaseHint": "El nombre de la base dentro de SQL Server o PostgreSQL, no el del servicio.",
+    "summary": {
+      "lead": "Podrás volver a:",
+      "days_one": "el día de ayer",
+      "days_other": "cualquier día de los últimos {{count}}",
+      "weeks_one": "la semana pasada",
+      "weeks_other": "cualquier semana de las últimas {{count}}",
+      "months_one": "el mes pasado",
+      "months_other": "cualquier mes de los últimos {{count}}"
+    }
   }
 }

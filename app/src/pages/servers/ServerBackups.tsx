@@ -456,6 +456,22 @@ function TargetCard({
   );
 }
 
+/**
+ * Lo que dejan esos tres números, dicho como frase: a qué se puede volver.
+ * Los números solos («7, 4, 6») no lo decían (jose, 18-oct-2026).
+ */
+function RetentionSummary({ p }: { p: BackupTargetPayload }) {
+  const { t } = useT();
+  const parts = [t("common:backups.summary.days", { count: p.keepDays })];
+  if (p.keepWeekly > 0) parts.push(t("common:backups.summary.weeks", { count: p.keepWeekly }));
+  if (p.keepMonthly > 0) parts.push(t("common:backups.summary.months", { count: p.keepMonthly }));
+  return (
+    <p className="rounded-md bg-muted/60 px-3 py-2 text-xs" data-testid="retention-summary">
+      {t("common:backups.summary.lead")} {parts.join(", ")}. {t("common:backups.retained", { n: retainedCount(p) })}
+    </p>
+  );
+}
+
 /** Una etiqueta con su «?»: qué es el campo y un ejemplo. */
 function FieldLabel({ field, htmlFor }: { field: HelpField; htmlFor?: string }) {
   const { t } = useT();
@@ -573,7 +589,7 @@ function TargetDialog({
             <HelpTip label={t("common:backups.help.aria", { field: t("common:backups.enabled") })}>{t("common:backups.help.enabled.text")}</HelpTip>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{t("common:backups.retained", { n: retainedCount(p) })}</p>
+        <RetentionSummary p={p} />
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             {t("common:action.cancel")}
