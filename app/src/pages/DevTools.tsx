@@ -1,5 +1,7 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { ImageDown, Send, KeyRound, Mic, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,8 @@ const TOOLS = [
 
 export default function DevTools() {
   const [open, setOpen] = useState(true);
+  const { pathname } = useLocation();
+  const navBar = useSlidingIndicator<HTMLElement>(`${pathname}|${open}`);
   // Signed out, the two that need no backend are the only ones that could work.
   // Listing the third and bouncing whoever clicks it to a login screen would be
   // an invitation the app then refuses.
@@ -52,7 +56,8 @@ export default function DevTools() {
             {open ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
           </button>
         </div>
-        <nav className="flex-1 space-y-0.5 p-1">
+        <nav ref={navBar.ref} className="relative flex-1 space-y-0.5 p-1">
+          <TabIndicator rect={navBar.rect} first={navBar.first} variant="pill" />
           {tools.map((t) => (
             <NavLink
               key={t.to}
@@ -60,10 +65,10 @@ export default function DevTools() {
               title={t.label}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-2 rounded px-2 py-1.5 text-sm",
+                  "motion-press relative flex items-center gap-2 rounded px-2 py-1.5 text-sm",
                   open ? "" : "justify-center",
                   isActive
-                    ? "bg-accent font-medium text-accent-foreground"
+                    ? cn("font-medium text-accent-foreground", !navBar.rect && "bg-accent")
                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                 )
               }

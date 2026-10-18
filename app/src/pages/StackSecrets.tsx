@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useState, useEffect, useCallback } from "react";
@@ -75,6 +77,7 @@ export default function StackSecrets() {
   })();
 
   const [tab, setTab] = useState<"secrets" | "variables">("secrets");
+  const tabBar = useSlidingIndicator<HTMLDivElement>(tab);
 
   // Token state
   const [tokenConfigured, setTokenConfigured] = useState<boolean | null>(null);
@@ -411,10 +414,10 @@ export default function StackSecrets() {
   const stackName = service?.stack ?? "unknown";
 
   const tabClass = (t: typeof tab) =>
-    `px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
+    `-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
       tab === t
-        ? "border-b-2 border-primary text-foreground"
-        : "text-muted-foreground hover:text-foreground"
+        ? `text-foreground ${tabBar.rect ? "border-transparent" : "border-primary"}`
+        : "border-transparent text-muted-foreground hover:text-foreground"
     }`;
 
   const canLoad = tokenConfigured && owner.trim() !== "" && repo.trim() !== "";
@@ -602,8 +605,9 @@ export default function StackSecrets() {
         {canLoad && (
           <Card>
             <CardHeader className="pb-0">
-              <div className="flex border-b -mx-6 px-6">
+              <div ref={tabBar.ref} className="relative flex border-b -mx-6 px-6">
                 <button
+                  data-active={tab === "secrets"}
                   className={tabClass("secrets")}
                   onClick={() => setTab("secrets")}
                 >
@@ -611,12 +615,14 @@ export default function StackSecrets() {
                   Secrets {!secretsLoading && `(${secrets.length})`}
                 </button>
                 <button
+                  data-active={tab === "variables"}
                   className={tabClass("variables")}
                   onClick={() => setTab("variables")}
                 >
                   <Variable className="h-3 w-3 inline mr-1" />
                   Variables {!variablesLoading && `(${variables.length})`}
                 </button>
+                <TabIndicator rect={tabBar.rect} first={tabBar.first} />
               </div>
             </CardHeader>
             <CardContent className="pt-4">

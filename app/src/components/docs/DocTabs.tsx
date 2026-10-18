@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { DocSkeleton } from "@/components/ui/skeletons";
 import { useEffect, useRef, useState } from "react";
 import { FileText, Gavel, Pencil, X } from "lucide-react";
@@ -77,6 +79,7 @@ export default function DocTabs({
   const enterPages = useDocPages((s) => s.enter);
 
   const [activeTab, setActiveTab] = useState<DocTabKey>("overview");
+  const tabBar = useSlidingIndicator<HTMLElement>(activeTab);
   const [editing, setEditing] = useState(false);
   // El PDF adjunto que se está viendo, en el visor de la app.
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
@@ -261,7 +264,7 @@ export default function DocTabs({
           lo que se perdía era la última —«Enlaces»— sin ninguna señal de que
           estuviera ahí. La pista desaparece primero porque es lo prescindible; el
           deslizamiento es la red por si aun así no caben. */}
-            <nav className="flex shrink-0 gap-4 overflow-x-auto border-b px-4 text-sm">
+            <nav ref={tabBar.ref} className="relative flex shrink-0 gap-4 overflow-x-auto border-b px-4 text-sm">
               {DOC_TABS.map((k) => {
                 // La de decisiones no se mide por su markdown —no tiene—: se mide
                 // por si hay entradas. Sin esto siempre saldría en gris, incluso con
@@ -274,10 +277,11 @@ export default function DocTabs({
                   <button
                     key={k}
                     onClick={() => setActiveTab(k)}
+                    data-active={k === activeTab}
                     className={cn(
-                      "flex shrink-0 items-baseline gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-2",
+                      "flex shrink-0 items-baseline gap-1.5 whitespace-nowrap border-b-2 pb-2 pt-2 transition-colors",
                       k === activeTab
-                        ? "border-primary font-medium text-foreground"
+                        ? cn("font-medium text-foreground", tabBar.rect ? "border-transparent" : "border-primary")
                         : "border-transparent hover:text-foreground",
                       empty && k !== activeTab ? "text-muted-foreground/60" : "text-muted-foreground",
                     )}
@@ -289,6 +293,7 @@ export default function DocTabs({
                   </button>
                 );
               })}
+              <TabIndicator rect={tabBar.rect} first={tabBar.first} />
             </nav>
 
             <div data-doc-scroll className="min-h-0 flex-1 overflow-auto p-6">

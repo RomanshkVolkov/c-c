@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { MessagesSkeleton } from "@/components/ui/skeletons";
 import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
@@ -110,6 +112,7 @@ export default function ChannelView({
   // El compositor, para que la zona para soltar le entregue los ficheros.
   const composer = useRef<MarkdownEditorHandle>(null);
   const [tab, setTab] = useState<Tab>("thread");
+  const tabBar = useSlidingIndicator<HTMLElement>(tab);
   const [invitados, setInvitados] = useState(false);
   const orgDelCanal = useOrgsStore((s) => s.currentOrgId);
   /**
@@ -270,22 +273,23 @@ export default function ChannelView({
           48px y ya lleva el nombre del canal, quién anda, la voz y el botón de
           seguir. Una fila más de 28px es más barata que perder el nombre del
           canal, que es lo que la gente viene a leer. */}
-      <nav role="tablist" className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
-        <TabButton current={tab} value="thread" onPick={switchTab} icon={MessageSquare}>
+      <nav ref={tabBar.ref} role="tablist" className="relative flex shrink-0 items-center gap-1 border-b px-2 py-1">
+        <TabIndicator rect={tabBar.rect} first={tabBar.first} variant="pill" className="bg-primary/10" />
+        <TabButton slid={!!tabBar.rect} current={tab} value="thread" onPick={switchTab} icon={MessageSquare}>
           {t("chat:tabConversation")}
         </TabButton>
-        <TabButton current={tab} value="media" onPick={switchTab} icon={Image}>
+        <TabButton slid={!!tabBar.rect} current={tab} value="media" onPick={switchTab} icon={Image}>
           {t("chat:tabMedia")}
         </TabButton>
         {/* Sólo si el servidor graba. Sin política no hay pestaña, igual que
             antes no había botón: una instalación sin grabación montada no debe
             enseñar una bySpace que siempre va a estar vacía. */}
         {politica?.enabled && (
-          <TabButton current={tab} value="recordings" onPick={switchTab} icon={Film}>
+          <TabButton slid={!!tabBar.rect} current={tab} value="recordings" onPick={switchTab} icon={Film}>
             {t("recordings:panelTitle")}
           </TabButton>
         )}
-        <TabButton current={tab} value="links" onPick={switchTab} icon={Link2}>
+        <TabButton slid={!!tabBar.rect} current={tab} value="links" onPick={switchTab} icon={Link2}>
           {t("chat:tabLinks")}
         </TabButton>
         {/* La caja a la derecha de las pestañas, en la misma fila: es un
@@ -680,6 +684,7 @@ function Message({
  * pantalla ni de URL, sólo de lo que ocupa el carril.
  */
 function TabButton({
+  slid,
   current,
   value,
   onPick,
@@ -688,6 +693,8 @@ function TabButton({
 }: {
   current: Tab;
   value: Tab;
+  /** Si la pastilla que se desliza ya marca la activa. */
+  slid?: boolean;
   onPick: (t: Tab) => void;
   icon: typeof Film;
   children: React.ReactNode;
@@ -699,9 +706,10 @@ function TabButton({
       aria-selected={active}
       onClick={() => onPick(value)}
       className={cn(
-        "flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs",
+        // `relative` para quedar encima de la pastilla que se desliza.
+        "motion-press relative flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs",
         active
-          ? "bg-primary/10 font-medium text-primary"
+          ? cn("font-medium text-primary", !slid && "bg-primary/10")
           : "text-muted-foreground hover:text-foreground",
       )}
     >

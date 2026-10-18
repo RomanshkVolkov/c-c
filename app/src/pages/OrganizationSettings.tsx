@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { fechaConAno } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
@@ -60,6 +62,7 @@ type Pestana = (typeof PESTANAS)[number]["key"];
 export default function OrganizationSettings() {
   const { t } = useT();
   const [pestana, setPestana] = useState<Pestana>("members");
+  const tabBar = useSlidingIndicator<HTMLElement>(pestana);
   const espacios = useTasksStore((s) => s.tree.length);
   const current = useOrgsStore((s) => s.currentOrg());
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
@@ -218,15 +221,16 @@ export default function OrganizationSettings() {
             of them makes each one look like part of the next. Tabs also mean
             the invitation list is not the first thing between you and the
             member you came to find. */}
-        <nav className="mb-4 flex gap-4 border-b text-sm">
+        <nav ref={tabBar.ref} className="relative mb-4 flex gap-4 border-b text-sm">
           {PESTANAS.filter((p) => p.key !== "invites" || canManage).map((p) => (
             <button
               key={p.key}
               onClick={() => setPestana(p.key)}
+              data-active={p.key === pestana}
               className={cn(
-                "border-b-2 pb-2",
+                "border-b-2 pb-2 transition-colors",
                 p.key === pestana
-                  ? "border-primary font-medium text-foreground"
+                  ? cn("font-medium text-foreground", tabBar.rect ? "border-transparent" : "border-primary")
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
@@ -236,6 +240,7 @@ export default function OrganizationSettings() {
               )}
             </button>
           ))}
+          <TabIndicator rect={tabBar.rect} first={tabBar.first} />
         </nav>
 
         {pestana === "members" && (

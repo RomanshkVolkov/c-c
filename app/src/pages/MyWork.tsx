@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import TaskFilters from "@/components/tasks/TaskFilters";
 import { EMPTY_FILTER, fromOpenTask, isFiltering, matchesFilter, type TaskFilter } from "@/lib/task-filter";
 import PriorityChip from "@/components/tasks/PriorityChip";
@@ -196,6 +198,8 @@ export default function MyWork() {
   // Sólo si lo que hay no responde ya a la pregunta: volver a esta pantalla
   // no vuelve a pedir nada (ver `ensureLoaded`).
   const ensureLoaded = useMyWorkStore((s) => s.ensureLoaded);
+  const lensBar = useSlidingIndicator<HTMLDivElement>(lens);
+  const viewBar = useSlidingIndicator<HTMLSpanElement>(view);
   useEffect(() => {
     ensureLoaded(orgId).catch(() => {});
   }, [ensureLoaded, orgId, lens, includeClosed]);
@@ -285,37 +289,46 @@ export default function MyWork() {
           </div>
         )}
         <nav className="-mb-px flex items-center gap-4 pt-2 text-sm">
-          {LENSES.map((l) => (
-            <button
-              key={l.key}
-              onClick={() => setLens(l.key)}
-              className={cn(
-                "border-b-2 pb-2",
-                l.key === lens
-                  ? "border-primary font-medium text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t(l.labelKey)}
-            </button>
-          ))}
-          <span className="ml-auto flex items-center gap-0.5 pb-1.5">
-            {VIEWS.map((v) => (
+          {/* Cada grupo con su indicador, que se desliza al elegir otra: la raya
+              bajo la lente, la pastilla bajo la vista. */}
+          <div ref={lensBar.ref} className="relative flex items-center gap-4">
+            {LENSES.map((l) => (
               <button
-                key={v.key}
-                onClick={() => setView(v.key)}
-                title={t(v.labelKey)}
-                aria-pressed={v.key === view}
+                key={l.key}
+                onClick={() => setLens(l.key)}
+                data-active={l.key === lens}
                 className={cn(
-                  "rounded px-1.5 py-1",
-                  v.key === view
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                  "border-b-2 pb-2 transition-colors",
+                  l.key === lens
+                    ? cn("font-medium text-foreground", lensBar.rect ? "border-transparent" : "border-primary")
+                    : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
-                <v.icon className="size-3.5" />
+                {t(l.labelKey)}
               </button>
             ))}
+            <TabIndicator rect={lensBar.rect} first={lensBar.first} />
+          </div>
+          <span className="ml-auto flex items-center gap-0.5 pb-1.5">
+            <span ref={viewBar.ref} className="relative flex items-center gap-0.5">
+              <TabIndicator rect={viewBar.rect} first={viewBar.first} variant="pill" />
+              {VIEWS.map((v) => (
+                <button
+                  key={v.key}
+                  onClick={() => setView(v.key)}
+                  title={t(v.labelKey)}
+                  aria-pressed={v.key === view}
+                  className={cn(
+                    "motion-press relative rounded px-1.5 py-1",
+                    v.key === view
+                      ? cn("text-accent-foreground", !viewBar.rect && "bg-accent")
+                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                  )}
+                >
+                  <v.icon className="size-3.5" />
+                </button>
+              ))}
+            </span>
             {/* La documentación, detrás de un divisor.
                 Aquí y no sólo en el tablero porque **aquí** es donde se aterriza
                 al pulsar una lista en el árbol: el tablero está a dos clics, en

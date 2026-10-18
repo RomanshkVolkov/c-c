@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { isWebBuild } from "@/lib/platform";
 import { nombreDe, inicialesDe } from "@/lib/nombres";
 import type { ReactNode } from "react";
@@ -141,22 +143,7 @@ export default function AccountMenu({
       <span className="flex items-center gap-2 text-xs text-muted-foreground">
         {icon} {label}
       </span>
-      <span className="flex gap-0.5">
-        {options.map((o) => (
-          <button
-            key={o.key}
-            onClick={o.onClick}
-            className={cn(
-              "flex-1 rounded px-1.5 py-1 text-[11px]",
-              o.active
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-accent hover:text-foreground",
-            )}
-          >
-            {o.label}
-          </button>
-        ))}
-      </span>
+      <Segmented options={options} />
     </div>
   );
 
@@ -323,5 +310,37 @@ export default function AccountMenu({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Un control segmentado (tema, idioma): la marca de la opción elegida es una
+ * pastilla que se desliza a la nueva con muelle, como en iOS.
+ */
+function Segmented({
+  options,
+}: {
+  options: { key: string; label: string; active: boolean; onClick: () => void }[];
+}) {
+  const bar = useSlidingIndicator<HTMLSpanElement>(options.find((o) => o.active)?.key);
+  return (
+    <span ref={bar.ref} className="relative flex gap-0.5">
+      <TabIndicator rect={bar.rect} first={bar.first} variant="pill" className="rounded bg-primary" />
+      {options.map((o) => (
+        <button
+          key={o.key}
+          onClick={o.onClick}
+          data-active={o.active}
+          className={cn(
+            "motion-press relative flex-1 rounded px-1.5 py-1 text-[11px]",
+            o.active
+              ? cn("text-primary-foreground", !bar.rect && "bg-primary")
+              : "hover:bg-accent hover:text-foreground",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
   );
 }

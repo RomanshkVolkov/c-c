@@ -1,6 +1,8 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useEffect } from "react";
-import { NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, SquareTerminal } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { useServer } from "@/hooks/use-server";
@@ -97,6 +99,10 @@ function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer:
     { to: "backups", label: t("common:servers.tabs.backups") },
     { to: "provision", label: t("common:servers.tabs.provision") },
   ];
+  // NavLink marca la activa con `aria-current="page"`, que es lo que busca el
+  // indicador. Las cuentas de los rótulos cambian su anchura: van en la clave.
+  const { pathname } = useLocation();
+  const tabBar = useSlidingIndicator<HTMLElement>(`${pathname}|${tabs.map((x) => x.label).join()}`);
 
   const context: ServerContext = { server, refreshServer, swarm };
 
@@ -133,21 +139,24 @@ function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer:
         </Button>
       </header>
 
-      <nav className="flex shrink-0 border-b px-6" aria-label={t("common:servers.tabsLabel")}>
+      <nav ref={tabBar.ref} className="relative flex shrink-0 border-b px-6" aria-label={t("common:servers.tabsLabel")}>
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             end={tab.end}
             className={({ isActive }) =>
-              `px-4 py-2 text-sm font-medium transition-colors ${
-                isActive ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"
+              `-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                isActive
+                  ? `text-foreground ${tabBar.rect ? "border-transparent" : "border-primary"}`
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`
             }
           >
             {tab.label}
           </NavLink>
         ))}
+        <TabIndicator rect={tabBar.rect} first={tabBar.first} />
       </nav>
 
       <main

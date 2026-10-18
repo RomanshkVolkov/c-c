@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -117,6 +117,30 @@ describe("el rendimiento en WebKitGTK", () => {
 
   it("con la ventana oculta, las animaciones en pausa", () => {
     expect(css).toMatch(/html\.app-hidden \*[^{]*\{[^}]*animation-play-state:\s*paused/);
+  });
+});
+
+describe("las barras de pestañas", () => {
+  /** Todos los .tsx de la app, sin las pruebas. */
+  const files = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return files(path);
+      return path.endsWith(".tsx") && !path.includes(".test.") ? [path] : [];
+    });
+
+  /**
+   * Ninguna se hace su propio subrayado: todas usan el indicador que se
+   * desliza (`useSlidingIndicator` + `TabIndicator`). Había trece hechas a
+   * mano, cada una con su raya que se apagaba en una y se encendía en otra.
+   * El mutante que mata: una barra nueva copiada de las de antes.
+   */
+  it("ninguna lleva su propia raya de pestaña activa", () => {
+    const own = files(join(process.cwd(), "src")).filter((f) => {
+      const src = readFileSync(f, "utf8");
+      return src.includes("border-b-2") && src.includes("border-primary") && !src.includes("use-sliding-indicator");
+    });
+    expect(own.map((f) => f.slice(f.indexOf("src/")))).toEqual([]);
   });
 });
 

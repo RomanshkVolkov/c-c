@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { useEffect, useState } from "react";
 import {
   Send,
@@ -1423,6 +1425,8 @@ function RequestEditor({
 
   const [activeTab, setActiveTab] = useState<"headers" | "body">("headers");
   const [responseTab, setResponseTab] = useState<"body" | "headers">("body");
+  const reqBar = useSlidingIndicator<HTMLDivElement>(activeTab);
+  const resBar = useSlidingIndicator<HTMLDivElement>(responseTab);
   const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -1489,11 +1493,11 @@ function RequestEditor({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const tabClass = (active: boolean) =>
-    `px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+  const tabClass = (active: boolean, slid: boolean) =>
+    `-mb-px border-b-2 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
       active
-        ? "border-b-2 border-primary text-foreground"
-        : "text-muted-foreground hover:text-foreground"
+        ? `text-foreground ${slid ? "border-transparent" : "border-primary"}`
+        : "border-transparent text-muted-foreground hover:text-foreground"
     }`;
 
   return (
@@ -1604,19 +1608,22 @@ function RequestEditor({
 
       {/* Request config */}
       <Card>
-        <div className="flex border-b px-4">
+        <div ref={reqBar.ref} className="relative flex border-b px-4">
           <button
-            className={tabClass(activeTab === "headers")}
+            data-active={activeTab === "headers"}
+            className={tabClass(activeTab === "headers", !!reqBar.rect)}
             onClick={() => setActiveTab("headers")}
           >
             Headers ({req.headers.filter((h) => h.enabled && h.key).length})
           </button>
           <button
-            className={tabClass(activeTab === "body")}
+            data-active={activeTab === "body"}
+            className={tabClass(activeTab === "body", !!reqBar.rect)}
             onClick={() => setActiveTab("body")}
           >
             Body
           </button>
+          <TabIndicator rect={reqBar.rect} first={reqBar.first} />
         </div>
 
         <CardContent className="pt-4">
@@ -1707,19 +1714,22 @@ function RequestEditor({
                 {formatSize(response.size_bytes)}
               </span>
             </div>
-            <div className="flex gap-1">
+            <div ref={resBar.ref} className="relative flex gap-1">
               <button
-                className={tabClass(responseTab === "body")}
+                data-active={responseTab === "body"}
+                className={tabClass(responseTab === "body", !!resBar.rect)}
                 onClick={() => setResponseTab("body")}
               >
                 Body
               </button>
               <button
-                className={tabClass(responseTab === "headers")}
+                data-active={responseTab === "headers"}
+                className={tabClass(responseTab === "headers", !!resBar.rect)}
                 onClick={() => setResponseTab("headers")}
               >
                 Headers ({response.headers.length})
               </button>
+              <TabIndicator rect={resBar.rect} first={resBar.first} />
             </div>
           </div>
 
