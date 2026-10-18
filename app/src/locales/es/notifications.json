@@ -30,7 +30,8 @@
     "ci": "CI",
     "deploy": "deploy",
     "telemetry": "telemetría",
-    "agent": "agente"
+    "agent": "agente",
+    "backup": "backup"
   },
   "prefs": {
     "title": "Qué te llega",
@@ -54,7 +55,9 @@
     "pushCi": "CI también al teléfono",
     "pushCiHint": "Las ejecuciones de GitHub Actions y los deploys también llegan al teléfono. Viene apagado: un push pueden ser varias ejecuciones.",
     "telemetry": "Telemetría de dispositivos",
-    "telemetryHint": "Un dispositivo deja de mandar cuando debería, o su estado incumple una regla de error del proyecto. Una vez al empezar y otra al terminar."
+    "telemetryHint": "Un dispositivo deja de mandar cuando debería, o su estado incumple una regla de error del proyecto. Una vez al empezar y otra al terminar.",
+    "backups": "Backups de bases",
+    "backupsHint": "Falló un backup, una base lleva demasiado sin uno, o no pasó una prueba de restauración. Aparte del CI: esto pesa más."
   },
   "wrote": "{{who}} escribió",
   "push": {

@@ -170,3 +170,20 @@ func TestAnAgePublicKeyIsRecognised(t *testing.T) {
 		}
 	}
 }
+
+// Los avisos de backups se callan con su propio interruptor, y sólo con él:
+// callar el CI no los calla. Mutantes: dejarlos en el `return true` (no se
+// callan nunca); colgarlos de CIQuiet.
+func TestBackupNoticesHaveTheirOwnSwitch(t *testing.T) {
+	for _, k := range []string{"backup:failed", "backup:stale", "backup:restore_failed"} {
+		if !(NotificationPrefs{}).Allows(k) {
+			t.Errorf("%s no llega con todo encendido", k)
+		}
+		if (NotificationPrefs{BackupsQuiet: true}).Allows(k) {
+			t.Errorf("%s llega con los backups callados", k)
+		}
+		if !(NotificationPrefs{CIQuiet: true}).Allows(k) {
+			t.Errorf("callar el CI calló %s", k)
+		}
+	}
+}

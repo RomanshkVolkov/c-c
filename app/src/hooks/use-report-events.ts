@@ -26,6 +26,8 @@ import { useChatStore } from "@/store/chat.store";
 import { useDMStore } from "@/store/dm.store";
 import { useConnectionStore } from "@/store/connection.store";
 import { useNotificationsStore } from "@/store/notifications.store";
+import { useBackupsStore } from "@/store/backups.store";
+import type { Backup, BackupLogEvent } from "@/types/backups";
 import { useInboxStore } from "@/store/inbox.store";
 import { meetScope, useRecordings, type Recording } from "@/store/recordings.store";
 import { useVoice, type TimbreEntrante } from "@/store/voice.store";
@@ -167,6 +169,8 @@ const DEJAN_FILA = new Set([
 const DEJAN_FILA_SI: Record<string, (p: Record<string, unknown>) => boolean> = {
   "ci:run": (p) => p.status === "completed",
   "deploy:status": (p) => p.status === "succeeded" || p.status === "failed",
+  // Un backup que falla deja fila a los admins (#166); uno que va bien, no.
+  "backup:status": (p) => p.status === "failed",
 };
 
 /** Lo que manda el vigilante de la telemetría por el stream. */
@@ -376,6 +380,14 @@ export function useReportEvents() {
           break;
         case "deploy:log":
           useDeploymentsStore.getState().onLog(parse(data) as unknown as DeployLogEvent);
+          break;
+        // Los backups de bases (#166): el historial y el log en vivo de la
+        // pestaña Backups. El aviso de un fallo ya lo escribió el servidor.
+        case "backup:status":
+          useBackupsStore.getState().onStatus(parse(data) as unknown as Backup);
+          break;
+        case "backup:log":
+          useBackupsStore.getState().onLog(parse(data) as unknown as BackupLogEvent);
           break;
         case "report:new": {
           const p = parse(data);
@@ -896,6 +908,8 @@ export function useReportEvents() {
         "ci:run",
         "telemetry:alert",
         "agent:notice",
+        "backup:status",
+        "backup:log",
       ]) {
         es.addEventListener(kind, (e) => {
           seen();

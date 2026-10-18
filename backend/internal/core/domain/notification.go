@@ -115,6 +115,11 @@ type NotificationPrefs struct {
 	// dispositivo que dejó de latir o cuya ficha incumple una regla de error.
 	// Invertido como los demás y por lo mismo: cero = avísame.
 	TelemetryQuiet bool `json:"telemetryQuiet"`
+	// BackupsQuiet apaga los avisos de los backups de bases (#166): uno que
+	// falló, una base que lleva demasiado sin backup, una prueba de
+	// restauración que no pasó. Aparte del CI porque esto es más grave que un
+	// run rojo: quien calla el CI no tiene por qué callar esto.
+	BackupsQuiet bool `json:"backupsQuiet"`
 	// PushQuiet apaga los avisos al teléfono (W2), sin tocar la campana.
 	// Invertido como los de arriba: cero = el teléfono avisa, que es para lo que
 	// alguien se suscribió.
@@ -162,6 +167,8 @@ func (p NotificationPrefs) Allows(kind string) bool {
 		return !p.CIQuiet
 	case "telemetry:alert":
 		return !p.TelemetryQuiet
+	case "backup:failed", "backup:stale", "backup:restore_failed":
+		return !p.BackupsQuiet
 	}
 	return true
 }

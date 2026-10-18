@@ -187,5 +187,15 @@
   "bad-branch": "Eso no es un nombre de rama.",
   "bad-build-path": "Eso no es una ruta dentro del repo.",
   "bad-secret-usage": "Un secret es para el runtime, para el build o para los dos.",
-  "dockerfile-not-found": "El Dockerfile no está en esa rama del repo. Revisa la rama, la carpeta y el Dockerfile en «Rama y build»."
+  "dockerfile-not-found": "El Dockerfile no está en esa rama del repo. Revisa la rama, la carpeta y el Dockerfile en «Rama y build».",
+  "backups-need-a-recipient": "Añade antes una llave de cifrado de la organización: sin ella nadie podría abrir los backups.",
+  "invalid-age-public-key": "Eso no es una llave pública de age.",
+  "no-backup-to-test": "Todavía no hay un backup bueno que usar.",
+  "backups-not-configured": "Los backups no están configurados en este cac.",
+  "backup-in-flight": "Ya hay un backup de esta base en cola o en curso.",
+  "backup-not-running": "Ese backup no está en curso en este servidor.",
+  "not-a-backup-job": "Clase de trabajo equivocada para esta llamada.",
+  "backup-expired": "El agente dejó de contestar a mitad del backup.",
+  "backup-without-object": "El agente dijo que salió bien pero no subió nada.",
+  "backup-target-gone": "La base se quitó mientras su backup esperaba en cola."
 }

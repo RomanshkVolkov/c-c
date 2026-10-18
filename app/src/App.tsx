@@ -45,6 +45,7 @@ const ServerProvision = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/Serv
 const ServerStats = WEB ? NotOnWeb : lazy(() => import("@/pages/ServerStats"));
 const StackSecrets = WEB ? NotOnWeb : lazy(() => import("@/pages/StackSecrets"));
 const ServiceDeploy = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServiceDeploy"));
+const ServerBackups = WEB ? NotOnWeb : lazy(() => import("@/pages/servers/ServerBackups"));
 const ImageTool = WEB ? NotOnWeb : lazy(() => import("@/pages/ImageTool"));
 const RequestClient = WEB ? NotOnWeb : lazy(() => import("@/pages/RequestClient"));
 const CryptoTools = WEB ? NotOnWeb : lazy(() => import("@/pages/CryptoTools"));
@@ -115,6 +116,7 @@ export default function App() {
             <Route path="stats" element={<ServerStats />} />
             <Route path="deploy" element={<ServiceDeploy />} />
             <Route path="secrets" element={<StackSecrets />} />
+            <Route path="backups" element={<ServerBackups />} />
             <Route path="provision" element={<ServerProvision />} />
           </Route>
           )}

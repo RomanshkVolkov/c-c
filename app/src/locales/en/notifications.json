@@ -30,7 +30,8 @@
     "ci": "CI",
     "deploy": "deploy",
     "telemetry": "telemetry",
-    "agent": "agent"
+    "agent": "agent",
+    "backup": "backup"
   },
   "prefs": {
     "title": "What reaches you",
@@ -54,7 +55,9 @@
     "pushCi": "CI on the phone too",
     "pushCiHint": "GitHub Actions runs and deploys also reach the phone. Off by default: one push can be several runs.",
     "telemetry": "Device telemetry",
-    "telemetryHint": "A device stops sending while it should, or its state breaks one of the project's error rules. Once when it starts and once when it ends."
+    "telemetryHint": "A device stops sending while it should, or its state breaks one of the project's error rules. Once when it starts and once when it ends.",
+    "backups": "Database backups",
+    "backupsHint": "A backup failed, a database went too long without one, or a restore test did not pass. Separate from CI: this one matters more."
   },
   "wrote": "{{who}} wrote",
   "push": {

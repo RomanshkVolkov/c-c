@@ -187,5 +187,15 @@
   "bad-branch": "That isn't a branch name.",
   "bad-build-path": "That isn't a path inside the repository.",
   "bad-secret-usage": "A secret is for runtime, for the build, or for both.",
-  "dockerfile-not-found": "The Dockerfile isn't in that branch of the repository. Check the branch, the folder and the Dockerfile in “Branch and build”."
+  "dockerfile-not-found": "The Dockerfile isn't in that branch of the repository. Check the branch, the folder and the Dockerfile in “Branch and build”.",
+  "backups-need-a-recipient": "Add an encryption key for the organization first: without one nobody could open the backups.",
+  "invalid-age-public-key": "That is not an age public key.",
+  "no-backup-to-test": "There is no good backup to use yet.",
+  "backups-not-configured": "Backups are not configured on this cac.",
+  "backup-in-flight": "A backup of this database is already queued or running.",
+  "backup-not-running": "That backup is not running on this server.",
+  "not-a-backup-job": "Wrong kind of job for this call.",
+  "backup-expired": "The agent stopped responding in the middle of the backup.",
+  "backup-without-object": "The agent reported success but nothing was uploaded.",
+  "backup-target-gone": "The database was removed while its backup was queued."
 }

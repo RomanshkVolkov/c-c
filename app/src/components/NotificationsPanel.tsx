@@ -2,7 +2,7 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { goInOrg } from "@/lib/ir-en-org";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, AtSign, BellRing, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Rocket, Settings, UserPlus, Workflow, Zap } from "lucide-react";
+import { Activity, Archive, AtSign, BellRing, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Rocket, Settings, UserPlus, Workflow, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
 import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
@@ -67,6 +67,11 @@ const KINDS: Record<string, { group: Tab; tagKey?: MessageKey; icon: typeof AtSi
   "deploy:done": { group: "system", tagKey: "notifications:kind.deploy", icon: Rocket, color: "text-primary" },
   // El vigilante de la telemetría: un dispositivo que se calló o se puso mal.
   "telemetry:alert": { group: "system", tagKey: "notifications:kind.telemetry", icon: Activity, color: "text-warning" },
+  // Los backups de bases (#166): uno que falló, una base sin backup, una
+  // prueba de restauración que no pasó. Todo pide mirar: en rojo.
+  "backup:failed": { group: "system", tagKey: "notifications:kind.backup", icon: Archive, color: "text-destructive" },
+  "backup:stale": { group: "system", tagKey: "notifications:kind.backup", icon: Archive, color: "text-destructive" },
+  "backup:restore_failed": { group: "system", tagKey: "notifications:kind.backup", icon: Archive, color: "text-destructive" },
 };
 
 // Sin etiqueta a propósito: no hay palabra honesta para «no sé qué es esto».

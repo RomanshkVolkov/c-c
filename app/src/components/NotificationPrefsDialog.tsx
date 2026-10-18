@@ -39,6 +39,8 @@ const OPTIONS: { key: keyof InboxPrefs; labelKey: MessageKey; hintKey: MessageKe
   { key: "ciQuiet", labelKey: "notifications:prefs.ci", hintKey: "notifications:prefs.ciHint", inverted: true },
   // El vigilante de la telemetría: un dispositivo que se calla o se pone mal.
   { key: "telemetryQuiet", labelKey: "notifications:prefs.telemetry", hintKey: "notifications:prefs.telemetryHint", inverted: true },
+  // Los backups de bases (#166). Aparte del CI: callar el CI no los calla.
+  { key: "backupsQuiet", labelKey: "notifications:prefs.backups", hintKey: "notifications:prefs.backupsHint", inverted: true },
   // Al teléfono (W2). `pushQuiet` invertido como los demás; `pushCi` al
   // derecho, porque el CI en el teléfono se pide, no viene puesto.
   { key: "pushQuiet", labelKey: "notifications:prefs.push", hintKey: "notifications:prefs.pushHint", inverted: true },
@@ -150,7 +152,7 @@ export default function NotificationPrefsDialog({
   // dialog that lies before it is even used.
   const actual: InboxPrefs = prefs ?? {
     mentions: true, dms: true, comments: true, reports: true, messages: true, workQuiet: false,
-    meetingsQuiet: false, ciQuiet: false, telemetryQuiet: false, pushQuiet: false, pushCi: false,
+    meetingsQuiet: false, ciQuiet: false, telemetryQuiet: false, backupsQuiet: false, pushQuiet: false, pushCi: false,
   };
 
   const alternar = async (key: keyof InboxPrefs) => {
