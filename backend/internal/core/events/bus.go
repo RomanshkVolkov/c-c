@@ -32,7 +32,7 @@ type wireEvent struct {
 }
 
 type bus struct {
-	rdb       *redis.Client
+	rdb       redis.UniversalClient
 	connected atomic.Bool
 }
 
@@ -49,10 +49,49 @@ type bus struct {
 // loop keeps retrying and Publish falls back to local delivery meanwhile, so an
 // outage costs cross-pod delivery rather than the whole feature.
 func (h *Hub) UseBus(addr, password string) {
-	if addr == "" {
+	h.UseBusConfig(BusConfig{Addr: addr, Password: password})
+}
+
+// BusConfig: a qué Valkey se conecta el bus.
+//
+// Con `SentinelAddr` y `PrimaryName`, por Sentinel: el cliente pregunta cuál es
+// el primario y publica **y** escucha siempre ahí, y si el primario cambia lo
+// sigue. Hace falta en cuanto Valkey tiene réplicas: el pub/sub es de cada
+// nodo, un mensaje publicado en el primario llega a las réplicas pero **uno
+// publicado en una réplica se queda en ella**. Con `Addr` apuntando a un
+// Service que reparte entre los tres nodos (como el de producción), cada
+// conexión caía en uno al azar: los dos pods escuchaban en una réplica, y lo
+// que se publicaba por la otra no lo recibía nadie. Medido el 18-oct-2026
+// (ROLE y PUBSUB NUMSUB en cada nodo): uno de cada tres avisos se podía perder.
+type BusConfig struct {
+	Addr         string
+	Password     string
+	SentinelAddr string
+	PrimaryName  string
+}
+
+// redisOptions: el cliente que toca. Pura, para probar la elección.
+func (c BusConfig) redisOptions() (*redis.UniversalOptions, bool) {
+	switch {
+	case c.SentinelAddr != "" && c.PrimaryName != "":
+		return &redis.UniversalOptions{
+			Addrs: []string{c.SentinelAddr}, MasterName: c.PrimaryName,
+			Password: c.Password, SentinelPassword: c.Password,
+		}, true
+	case c.Addr != "":
+		return &redis.UniversalOptions{Addrs: []string{c.Addr}, Password: c.Password}, true
+	}
+	return nil, false
+}
+
+func (h *Hub) UseBusConfig(c BusConfig) {
+	opts, ok := c.redisOptions()
+	if !ok {
 		return
 	}
-	b := &bus{rdb: redis.NewClient(&redis.Options{Addr: addr, Password: password})}
+	// Con `MasterName` es un cliente de failover (por Sentinel); sin él, uno
+	// normal contra `Addrs[0]`.
+	b := &bus{rdb: redis.NewUniversalClient(opts)}
 	h.bus = b
 	go b.listen(h)
 }

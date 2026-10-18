@@ -30,8 +30,15 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	// Without a shared bus the hub only reaches subscribers on this pod, and the
 	// deployment runs more than one — see the package comment. Unset in dev and
 	// in tests, where one process is the whole world.
-	if addr := repository.GetEnv("VALKEY_ADDR", ""); addr != "" {
-		hub.UseBus(addr, repository.GetEnv("VALKEY_PASSWORD", ""))
+	// Con Sentinel (VALKEY_SENTINEL_ADDR + VALKEY_PRIMARY_NAME) el bus va
+	// siempre al primario; sólo con VALKEY_ADDR, a esa dirección. Ver BusConfig.
+	if bus := (events.BusConfig{
+		Addr:         repository.GetEnv("VALKEY_ADDR", ""),
+		Password:     repository.GetEnv("VALKEY_PASSWORD", ""),
+		SentinelAddr: repository.GetEnv("VALKEY_SENTINEL_ADDR", ""),
+		PrimaryName:  repository.GetEnv("VALKEY_PRIMARY_NAME", ""),
+	}); bus.Addr != "" || bus.SentinelAddr != "" {
+		hub.UseBusConfig(bus)
 	} else {
 		lg.Warn("events: VALKEY_ADDR not set — live notifications only reach clients " +
 			"connected to this pod, which is wrong with more than one replica")
