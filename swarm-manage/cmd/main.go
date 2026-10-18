@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"filippo.io/age"
+
 	httpRoutes "github.com/guz-studio/cac/swarm-manage/internal/adapters/http"
 	"github.com/guz-studio/cac/swarm-manage/internal/core/config"
 	"github.com/guz-studio/cac/swarm-manage/internal/core/repository"
@@ -30,15 +32,27 @@ func main() {
 	defer stop()
 	if cfg.CanPoll() {
 		poller := service.NewPoller(cfg.BackendURL, cfg.Token)
-		deployer := service.NewDeployer(
-			repository.NewDockerClient(),
-			service.NewBackendReporter(cfg.BackendURL, cfg.Token),
-			config.RegistryAuth(registryAuthPath()),
-		)
+		docker := repository.NewDockerClient()
+		reporter := service.NewBackendReporter(cfg.BackendURL, cfg.Token)
+		deployer := service.NewDeployer(docker, reporter, config.RegistryAuth(registryAuthPath()))
+		// La llave de restauración de este servidor (#166): la primera vez se
+		// crea y se monta, y Swarm reinicia el agente para que pueda leerla.
+		// Sin ella sólo falla la prueba de restauración; los backups siguen.
+		var identity age.Identity
+		keyCtx, keyCancel := context.WithTimeout(ctx, 30*time.Second)
+		if id, err := service.EnsureRestoreKey(keyCtx, "/run/secrets/"+service.RestoreKeySecret, docker, reporter); err != nil {
+			log.Printf("restore key: %v", err)
+		} else if id != nil {
+			identity = id
+		}
+		keyCancel()
+		backups := service.NewBackupRunner(docker, reporter, identity)
 		poller.OnJob = func(ctx context.Context, job service.Job) {
 			switch job.Kind {
 			case "deploy":
 				deployer.Run(ctx, job.ID, job.Data)
+			case "backup":
+				backups.Run(ctx, job.Data)
 			default:
 				log.Printf("trabajo %s de tipo %q, que esta versión no sabe hacer", job.ID, job.Kind)
 			}
