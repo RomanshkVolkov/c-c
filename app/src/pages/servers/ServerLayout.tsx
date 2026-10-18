@@ -167,7 +167,10 @@ function SwarmLayout({ server, refreshServer }: { server: Server; refreshServer:
             {swarm.error}
           </div>
         )}
-        <Outlet context={context} />
+        {/* Cada pestaña del servidor entra al elegirla. */}
+        <div key={pathname} className="motion-page flex min-h-0 flex-1 flex-col gap-4">
+          <Outlet context={context} />
+        </div>
       </main>
 
       <TerminalPanel />

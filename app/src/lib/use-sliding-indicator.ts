@@ -24,24 +24,32 @@ const ACTIVE =
  * sitio sin deslizarse desde la esquina.
  */
 export function useSlidingIndicator<T extends HTMLElement>(dep: unknown) {
-  const ref = useRef<T>(null);
+  // Un `ref` de función y el elemento en estado, no un `useRef`: la barra
+  // puede aparecer después que el componente (unas pestañas que sólo existen
+  // cuando hay respuesta, la barra del teléfono al cerrar el teclado), y con
+  // un `useRef` nadie se enteraría de que ya está para medirla.
+  const [el, ref] = useState<T | null>(null);
   const [rect, setRect] = useState<IndicatorRect | null>(null);
   const seen = useRef(false);
 
   useLayoutEffect(() => {
-    const box = ref.current;
-    if (!box) return;
+    if (!el) {
+      setRect(null);
+      return;
+    }
     const measure = () => {
-      const el = box.querySelector<HTMLElement>(ACTIVE);
+      const active = el.querySelector<HTMLElement>(ACTIVE);
       setRect(
-        el && el.offsetWidth > 0 ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : null,
+        active && active.offsetWidth > 0
+          ? { x: active.offsetLeft, y: active.offsetTop, w: active.offsetWidth, h: active.offsetHeight }
+          : null,
       );
     };
     measure();
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    ro?.observe(box);
+    ro?.observe(el);
     return () => ro?.disconnect();
-  }, [dep]);
+  }, [el, dep]);
 
   const first = !seen.current;
   if (rect) seen.current = true;

@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Inbox, Menu, MessagesSquare } from "lucide-react";
@@ -45,6 +47,9 @@ export default function MobileTabBar() {
 
   // Navegar cierra la hoja: lo que se pidió ya está en pantalla.
   useEffect(() => setMas(false), [pathname]);
+  // Una raya arriba de la pestaña activa, que se desliza a la nueva con muelle.
+  // Antes de los `return` de abajo: un hook no puede ir detrás de uno.
+  const bar = useSlidingIndicator<HTMLElement>(`${pathname}|${mas}`);
 
   if (!movil || !authed) return null;
 
@@ -64,10 +69,12 @@ export default function MobileTabBar() {
         <VoiceMini />
       </div>
       <nav
+        ref={bar.ref}
         aria-label={t("nav:mobile.label")}
         data-testid="mobile-tab-bar"
-        className="flex shrink-0 border-t bg-background pb-[env(safe-area-inset-bottom)]"
+        className="relative flex shrink-0 border-t bg-background pb-[env(safe-area-inset-bottom)]"
       >
+        <TabIndicator rect={bar.rect} first={bar.first} className="top-0 bottom-auto" />
         <Tab
           activo={activo === "work"}
           icono={<Inbox className="size-5" />}
@@ -117,7 +124,7 @@ function Tab({
       onClick={onClick}
       aria-current={activo ? "page" : undefined}
       className={cn(
-        "relative flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
+        "motion-press relative flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium",
         activo ? "text-primary" : "text-muted-foreground",
       )}
     >

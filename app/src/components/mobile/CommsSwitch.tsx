@@ -1,3 +1,5 @@
+import TabIndicator from "@/components/ui/tab-indicator";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -23,6 +25,8 @@ export default function CommsSwitch({ current }: { current: CommsPath }) {
 
   useEffect(() => setComms(current), [current, setComms]);
 
+  // La pastilla del elegido se desliza al otro, como un control segmentado de iOS.
+  const bar = useSlidingIndicator<HTMLDivElement>(current);
   const opcion = (path: CommsPath, texto: string, n: number) => (
     <button
       type="button"
@@ -30,8 +34,8 @@ export default function CommsSwitch({ current }: { current: CommsPath }) {
       aria-selected={current === path}
       onClick={() => current !== path && navigate(path)}
       className={cn(
-        "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-sm",
-        current === path ? "bg-background font-medium shadow-sm" : "text-muted-foreground",
+        "motion-press relative flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-sm",
+        current === path ? cn("font-medium", !bar.rect && "bg-background shadow-sm") : "text-muted-foreground",
       )}
     >
       {texto}
@@ -44,7 +48,8 @@ export default function CommsSwitch({ current }: { current: CommsPath }) {
   );
 
   return (
-    <div role="tablist" aria-label={t("nav:mobile.comms")} className="flex flex-1 gap-1 rounded-lg bg-muted p-0.5">
+    <div ref={bar.ref} role="tablist" aria-label={t("nav:mobile.comms")} className="relative flex flex-1 gap-1 rounded-lg bg-muted p-0.5">
+      <TabIndicator rect={bar.rect} first={bar.first} variant="pill" className="bg-background shadow-sm" />
       {opcion("/chat", t("nav:mobile.channels"), channels)}
       {opcion("/dm", t("nav:mobile.directs"), dms)}
     </div>

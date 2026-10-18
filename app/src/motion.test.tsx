@@ -171,6 +171,29 @@ describe("lo que se despliega", () => {
   });
 });
 
+describe("las pantallas", () => {
+  const src = (f: string) => readFileSync(join(process.cwd(), "src", f), "utf8");
+
+  /**
+   * Cada sección entra al llegar a ella: el contenedor de la ruta se vuelve a
+   * montar con su clave y trae `motion-page`. El mutante que mata: quitar la
+   * clave (no se vuelve a montar y no entra nada).
+   */
+  it("cambiar de sección vuelve a montar el contenedor con su entrada", () => {
+    expect(src("components/AppLayout.tsx")).toMatch(/<div key=\{section\} className="motion-page/);
+    expect(src("pages/servers/ServerLayout.tsx")).toMatch(/<div key=\{pathname\} className="motion-page/);
+    expect(src("pages/DevTools.tsx")).toMatch(/<div key=\{pathname\} className="motion-page/);
+  });
+
+  /** En el teléfono, el detalle entra desde la derecha y la lista vuelve desde la izquierda. */
+  it("en el teléfono, ir y volver se deslizan como en iOS", () => {
+    for (const f of ["pages/Channels.tsx", "pages/DirectMessages.tsx"]) {
+      expect(src(f)).toContain("motion-push-in");
+      expect(src(f)).toContain("motion-back-in");
+    }
+  });
+});
+
 describe("menos movimiento", () => {
   /**
    * Quien lo pide en el sistema no recibe animaciones en ningún sitio, no

@@ -55,6 +55,30 @@ describe("el indicador de una barra de pestañas", () => {
   });
 });
 
+function LateBar({ show }: { show: boolean }) {
+  const { ref, rect, first } = useSlidingIndicator<HTMLDivElement>("a");
+  return show ? (
+    <div ref={ref} className="relative">
+      <button aria-pressed>a</button>
+      <TabIndicator rect={rect} first={first} />
+    </div>
+  ) : null;
+}
+
+/**
+ * Una barra que aparece después que su componente (las pestañas de una
+ * respuesta HTTP, la barra del teléfono al cerrar el teclado) también se
+ * mide. El mutante que mata: volver a un `useRef`, que no avisa.
+ */
+describe("una barra que aparece más tarde", () => {
+  it("se mide al aparecer, sin que cambie la pestaña activa", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(30);
+    const { container, rerender } = render(<LateBar show={false} />);
+    rerender(<LateBar show />);
+    expect(container.querySelector('[data-slot="tab-indicator"]')).not.toBeNull();
+  });
+});
+
 describe("el popover", () => {
   it("se abre desde su botón con el movimiento de la app", async () => {
     render(

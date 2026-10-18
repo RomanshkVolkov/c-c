@@ -742,6 +742,40 @@
   }
 }
 
+/* Una pantalla nueva al cambiar de sección: sube un poco y aparece, en vez
+   de sustituir a la anterior de golpe. Sin salida: la anterior ya no está, y
+   esperarla retrasaría lo que se pidió. */
+.motion-page {
+  transition:
+    opacity 200ms ease-out,
+    translate 420ms var(--ease-spring);
+  @starting-style {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+/* En el teléfono, el detalle (un canal, una conversación) entra desde la
+   derecha como en iOS, y la lista vuelve desde la izquierda. */
+.motion-push-in {
+  transition:
+    opacity 160ms ease-out,
+    translate 440ms var(--ease-spring);
+  @starting-style {
+    opacity: 0;
+    translate: 32px 0;
+  }
+}
+.motion-back-in {
+  transition:
+    opacity 160ms ease-out,
+    translate 440ms var(--ease-spring);
+  @starting-style {
+    opacity: 0;
+    translate: -24px 0;
+  }
+}
+
 /* Lo que aparece al desplegarse (los hijos de un espacio en el árbol, una
    sección que se abre, un compositor en línea): baja un poco y aparece. Sin
    animar la altura, que recalcularía el layout de todo lo de debajo en cada

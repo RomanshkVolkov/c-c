@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
@@ -36,6 +36,7 @@ import { ForcedChangePassword } from "@/components/ChangePassword";
 import RepoDocNavigator from "@/components/docs/RepoDocNavigator";
 
 export default function AppLayout() {
+  const section = useLocation().pathname.split("/")[1] ?? "";
   const { t } = useT();
   // El panel del sidebar, abierto o plegado al riel; recordado entre arranques.
   const sidebarOpen = useLayoutStore((s) => s.panelOpen);
@@ -197,9 +198,14 @@ export default function AppLayout() {
         <NotificationPrefsDialog open={prefsOpen} onOpenChange={setPrefsOpen} />
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
         {/* Las páginas de escritorio llegan en su propio trozo (ver App). */}
-        <Suspense fallback={null}>
-          <Outlet />
-        </Suspense>
+        {/* Cada sección entra al llegar a ella (`motion-page`): la clave es el
+            primer tramo de la ruta, así que cambiar de pestaña dentro de un
+            servidor no vuelve a animar la pantalla entera. */}
+        <div key={section} className="motion-page flex min-h-0 min-w-0 flex-1 flex-col">
+          <Suspense fallback={null}>
+            <Outlet />
+          </Suspense>
+        </div>
         {/* Mounted here and not per screen. Opening a task is global state, so
             drawing it has to be too: it used to live inside the board, which
             meant "my work", the channels and the dashboard could all ask for a

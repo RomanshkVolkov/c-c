@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useT } from "@/lib/i18n";
 import { useEffect } from "react";
@@ -74,14 +75,18 @@ export default function Channels() {
   return (
     <div className="flex min-h-0 flex-1">
       {listOnMobile ? (
-        <CommsList current="/chat" />
+        <div className={cn("flex min-h-0 flex-1 flex-col", mobile && "motion-back-in")}>
+          <CommsList current="/chat" />
+        </div>
       ) : space ? (
+        <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", mobile && "motion-push-in")}>
         <ChannelView
           key={space.id}
           spaceId={space.id}
           spaceName={space.name}
           onBack={mobile ? () => setParams({}) : undefined}
         />
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           <MessagesSquare className="mr-2 size-4" /> {t("nav:comms.nothingToRead")}

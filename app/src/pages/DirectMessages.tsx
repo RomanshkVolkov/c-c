@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useT } from "@/lib/i18n";
 import { enterOrg } from "@/lib/ir-en-org";
@@ -102,11 +103,13 @@ export default function DirectMessages() {
   return (
     <div className="flex min-h-0 flex-1">
       {isOpen ? (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className={cn("flex min-h-0 flex-1 flex-col", mobile && "motion-push-in")}>
           <DMThread onBack={close} />
         </div>
       ) : mobile ? (
-        <CommsList current="/dm" />
+        <div className="motion-back-in flex min-h-0 flex-1 flex-col">
+          <CommsList current="/dm" />
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           {t("common:misc.pickSomebody")}
