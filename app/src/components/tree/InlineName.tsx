@@ -72,7 +72,7 @@ export default function InlineName({
   };
 
   return (
-    <div className="flex items-center px-2 py-1" style={{ paddingLeft: 8 + indent }}>
+    <div className="motion-reveal flex items-center px-2 py-1" style={{ paddingLeft: 8 + indent }}>
       <input
         ref={ref}
         value={value}

@@ -1,5 +1,6 @@
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { useDraggable } from "@dnd-kit/core";
-import { ChevronDown, ChevronRight, FileText, FolderInput, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { FileText, FolderInput, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import DropZone from "@/components/dnd/DropZone";
@@ -95,7 +96,7 @@ export default function PageRow({
         className={cn("grid size-4 shrink-0 place-items-center", children.length === 0 && "invisible")}
         onClick={branch.toggle}
       >
-        {branch.open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <DisclosureChevron open={branch.open} className="size-3" />
       </button>
       <button
         type="button"
@@ -165,7 +166,7 @@ export default function PageRow({
         </div>
       )}
       {children.length > 0 && branch.open && (
-        <ul>
+        <ul className="motion-reveal">
           {children.map((c) => (
             <PageRow
               key={c.id}

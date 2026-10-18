@@ -43,7 +43,7 @@ class Popup {
   constructor() {
     this.el = document.createElement("div");
     this.el.className =
-      "fixed z-50 max-h-72 w-80 overflow-auto rounded-md border bg-popover p-1 " +
+      "motion-pop-in fixed z-50 max-h-72 w-80 overflow-auto rounded-md border bg-popover p-1 " +
       "text-popover-foreground shadow-md";
     this.el.setAttribute("role", "listbox");
     this.el.style.display = "none";

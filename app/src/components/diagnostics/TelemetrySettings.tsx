@@ -52,7 +52,11 @@ export default function TelemetrySettings({ project: p, canManage }: { project: 
           · {configured ? t("diagnostics:settings.configured") : t("diagnostics:settings.notConfigured")}
         </span>
       </button>
-      {open && <Editor project={p} canManage={canManage} />}
+      {open && (
+        <div className="motion-reveal">
+          <Editor project={p} canManage={canManage} />
+        </div>
+      )}
     </div>
   );
 }

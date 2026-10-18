@@ -703,6 +703,45 @@
   }
 }
 
+/* Lo que aparece por montarse, sin estados de base-ui (los menús y
+   autocompletados hechos a mano, los del editor): nace de su esquina con
+   muelle. La esquina la dice `--pop-origin` (por defecto arriba a la
+   izquierda, que es donde suele estar el campo que lo abre). Vale también
+   para lo que pasa de `display: none` a verse: `@starting-style` se aplica
+   igual. Sólo escala, para no pisar el `translate` de quien se centra con
+   `-translate-x-1/2`. */
+.motion-pop-in {
+  transform-origin: var(--pop-origin, top left);
+  transition:
+    opacity 120ms ease-out,
+    scale 340ms var(--ease-spring);
+  @starting-style {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+
+/* Un fondo que oscurece, o algo que sólo tiene que dejar de aparecer de golpe. */
+.motion-fade-in {
+  transition: opacity 200ms ease-out;
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+/* Un aviso flotante (hay una versión nueva, una notificación): sube desde
+   abajo. Con `transform` y no `translate`, que algunos ya usan para
+   centrarse. */
+.motion-rise-in {
+  transition:
+    opacity 180ms ease-out,
+    transform 420ms var(--ease-spring);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
 /* Lo que aparece al desplegarse (los hijos de un espacio en el árbol, una
    sección que se abre, un compositor en línea): baja un poco y aparece. Sin
    animar la altura, que recalcularía el layout de todo lo de debajo en cada

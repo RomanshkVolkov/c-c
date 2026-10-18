@@ -1,3 +1,4 @@
+import { originRef } from "@/lib/motion-origin";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -122,7 +123,7 @@ export default function PdfPreview({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/85">
+    <div ref={originRef("viewport")} className="motion-open fixed inset-0 z-50 flex flex-col bg-black/85">
       <header className="flex shrink-0 items-center gap-2 px-4 py-2 text-sm text-white">
         <span className="truncate">{fileName}</span>
         {pages > 0 && (

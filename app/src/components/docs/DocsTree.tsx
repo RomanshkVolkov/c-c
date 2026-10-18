@@ -178,7 +178,7 @@ function DocNodeRow({ node, depth }: { node: DocNode; depth: number }) {
         }
       />
       {expandable && branch.open && (
-        <>
+        <div className="motion-reveal">
           {hasPages && (
             <DocPagesBranch
               kind={node.kind}
@@ -197,7 +197,7 @@ function DocNodeRow({ node, depth }: { node: DocNode; depth: number }) {
             </ul>
           )}
           {node.kind === "space" && <RepoDocsBranch spaceId={node.id} depth={depth + 1} />}
-        </>
+        </div>
       )}
     </li>
   );

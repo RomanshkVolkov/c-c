@@ -1,3 +1,4 @@
+import { originRef } from "@/lib/motion-origin";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 
@@ -35,7 +36,9 @@ export default function Lightbox({
     <div
       role="presentation"
       onClick={onClose}
-      className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
+      // Crece desde la miniatura que se pulsó (ver `motion-origin.ts`).
+      ref={originRef("viewport")}
+      className="motion-open fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
     >
       <img
         src={src}

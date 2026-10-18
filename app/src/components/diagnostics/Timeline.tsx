@@ -145,7 +145,7 @@ function Row({ row, onSession }: { row: TimelineRow; onSession: (id: string) => 
         {severity !== "info" && <span className={cn("shrink-0", TEXT[severity])}>{t(`diagnostics:severity.${severity}`)}</span>}
       </button>
       {open && (
-        <div className="ml-6 mr-3 mb-2 rounded bg-muted/30 p-2">
+        <div className="motion-reveal ml-6 mr-3 mb-2 rounded bg-muted/30 p-2">
           {fields.length > 0 ? <KeyValueTree value={Object.fromEntries(fields)} depthOpen={2} /> : <KeyValueTree value={crumb} />}
         </div>
       )}

@@ -1,5 +1,5 @@
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import type { ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,7 @@ export default function PanelSection({
           onClick={onToggle}
           className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
         >
-          {open ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
+          <DisclosureChevron open={open} className="size-3 shrink-0" />
           <span className="truncate">{label}</span>
           {!!count && count > 0 && (
             <span className="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium normal-case tracking-normal text-primary-foreground">
@@ -55,7 +55,7 @@ export default function PanelSection({
         </button>
         {action}
       </div>
-      {open ? <div className="px-1">{children}</div> : peek && <div className="px-1">{peek}</div>}
+      {open ? <div className="motion-reveal px-1">{children}</div> : peek && <div className="px-1">{peek}</div>}
     </section>
   );
 }

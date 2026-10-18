@@ -1,5 +1,6 @@
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, ExternalLink, Github } from "lucide-react";
+import { ExternalLink, Github } from "lucide-react";
 
 import RepoMarkdown from "@/components/docs/RepoMarkdown";
 import { useT } from "@/lib/i18n";
@@ -41,7 +42,7 @@ export default function RepoInclude({ href, children }: { href: string; children
           className="grid size-5 place-items-center rounded text-muted-foreground hover:text-foreground"
           onClick={() => setOpen((o) => !o)}
         >
-          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          <DisclosureChevron open={open} className="size-3.5" />
         </button>
         <Github className="size-3.5 shrink-0 text-muted-foreground" />
         <button type="button" className="min-w-0 truncate font-medium hover:underline" onClick={() => goTo(doc.id)}>
@@ -64,7 +65,7 @@ export default function RepoInclude({ href, children }: { href: string; children
         </a>
       </div>
       {open && (
-        <div className="px-4 py-3">
+        <div className="motion-reveal px-4 py-3">
           {doc.tooLarge || !doc.body ? (
             <p className="text-sm text-muted-foreground">
               {t(doc.tooLarge ? "work:repoDocs.tooLarge" : "work:repoDocs.empty")}

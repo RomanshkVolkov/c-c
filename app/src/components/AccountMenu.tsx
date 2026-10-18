@@ -156,10 +156,13 @@ export default function AccountMenu({
       {open && (
         <div
           className={cn(
-            "absolute z-50 rounded-md border bg-popover p-1 shadow-lg",
+            "motion-pop-in absolute z-50 rounded-md border bg-popover p-1 shadow-lg",
             // Desde la fila, hacia arriba; desde el avatar del riel, hacia la
             // derecha, que es donde hay sitio.
-            variant === "avatar" ? "bottom-0 left-full ml-2 w-64" : "bottom-full left-0 right-0 mb-1",
+            // Y nace de esa esquina, la que toca al botón.
+            variant === "avatar"
+              ? "bottom-0 left-full ml-2 w-64 [--pop-origin:left_bottom]"
+              : "bottom-full left-0 right-0 mb-1 [--pop-origin:bottom_center]",
           )}
         >
           <div className="flex items-center gap-2 px-2 py-1.5">

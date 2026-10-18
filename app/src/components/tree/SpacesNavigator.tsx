@@ -6,6 +6,7 @@
  * here unchanged: any difference in behaviour at this point is a mistake in the
  * move, not a decision.
  */
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { ColorDot } from "@/components/ui/color-swatches";
 import { hueVar } from "@/lib/person-color";
 import { useT } from "@/lib/i18n";
@@ -23,8 +24,6 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ChevronDown,
-  ChevronRight,
   Folder,
   FolderPlus,
   KanbanSquare,
@@ -482,7 +481,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
           aria-expanded={open}
           aria-label={open ? t("work:tree.collapse", { name: space.name }) : t("work:tree.expand", { name: space.name })}
         >
-          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          <DisclosureChevron open={open} className="size-3.5" />
         </button>
         {/* El punto es lo que se pulsa para cambiarle el color. Sin uno
             elegido, uno estable de la paleta: el cian era para todos. */}
@@ -581,7 +580,7 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
       )}
 
       {open && (
-        <div className="ml-4">
+        <div className="motion-reveal ml-4">
           {space.folders.filter((f) => !visible || visible.has(f.id)).map((folder) => (
             <FolderNode
               key={folder.id}
@@ -685,7 +684,7 @@ function FolderNode({
           aria-expanded={open}
           aria-label={open ? t("work:tree.collapse", { name: folder.name }) : t("work:tree.expand", { name: folder.name })}
         >
-          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          <DisclosureChevron open={open} className="size-3" />
         </button>
         <Folder className="size-3.5 text-muted-foreground" />
         <button
@@ -779,7 +778,7 @@ function FolderNode({
       </Reorderable>
       )}
       {open && (
-        <div className="ml-4">
+        <div className="motion-reveal ml-4">
           {folder.folders?.filter((f) => !visible || visible.has(f.id)).map((f) => (
             <FolderNode
               key={f.id}

@@ -96,7 +96,7 @@ describe("el rendimiento en WebKitGTK", () => {
    * volver a animar el desenfoque de un diálogo o la sombra de una tarjeta.
    */
   it("sólo se animan opacidad, escala, posición y colores", () => {
-    const allowed = ["opacity", "scale", "translate", "color", "background-color", "border-color"];
+    const allowed = ["opacity", "scale", "translate", "transform", "color", "background-color", "border-color"];
     expect(animated.length).toBeGreaterThan(5);
     expect(animated.filter((p) => !allowed.includes(p))).toEqual([]);
   });
@@ -141,6 +141,33 @@ describe("las barras de pestañas", () => {
       return src.includes("border-b-2") && src.includes("border-primary") && !src.includes("use-sliding-indicator");
     });
     expect(own.map((f) => f.slice(f.indexOf("src/")))).toEqual([]);
+  });
+});
+
+describe("lo que se despliega", () => {
+  const files = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return files(path);
+      return path.endsWith(".tsx") && !path.includes(".test.") ? [path] : [];
+    });
+
+  /**
+   * La flecha gira con muelle (`DisclosureChevron`) en vez de cambiar de icono
+   * de golpe. El mutante que mata: volver a `open ? <ChevronDown/> : <ChevronRight/>`.
+   */
+  it("ninguna flecha cambia de icono al abrirse", () => {
+    const swaps = files(join(process.cwd(), "src")).filter((f) =>
+      /\?\s*<ChevronDown[^>]*\/>\s*:\s*<ChevronRight/.test(readFileSync(f, "utf8")),
+    );
+    expect(swaps.map((f) => f.slice(f.indexOf("src/")))).toEqual([]);
+  });
+
+  it("y las clases de aparecer existen, con su punto de partida", () => {
+    for (const c of ["motion-reveal", "motion-pop-in", "motion-fade-in", "motion-rise-in"]) {
+      const rule = css.slice(css.indexOf(`.${c} {`));
+      expect(rule.slice(0, rule.indexOf("\n}\n"))).toContain("@starting-style");
+    }
   });
 });
 

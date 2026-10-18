@@ -38,7 +38,7 @@ export default function InvitePicker({ onClose }: { onClose: () => void }) {
   const fuera = (equipo ?? []).filter((p) => !aqui.has(p.id));
 
   return (
-    <div className="absolute right-4 top-14 z-50 w-64 rounded-lg border bg-popover p-1 shadow-lg">
+    <div className="motion-pop-in absolute right-4 top-14 z-50 w-64 [--pop-origin:top_right] rounded-lg border bg-popover p-1 shadow-lg">
       {fuera.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-muted-foreground">
           {t("common:misc.everyoneHere")}

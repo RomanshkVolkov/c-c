@@ -57,7 +57,7 @@ export default function ConnectionBanner() {
   const { failures, lastError, lastOkAt } = useConnectionStore.getState();
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-error/30 bg-error/10 px-4 py-2 text-sm">
+    <div className="motion-reveal flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-error/30 bg-error/10 px-4 py-2 text-sm">
       <WifiOff className="h-4 w-4 shrink-0 text-error" />
       <span className="font-medium text-error">
         {failing ? t("common:last.connectionProblems") : t("common:last.liveUpdatesStopped")}

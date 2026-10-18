@@ -59,7 +59,7 @@ export default function MeetingCall() {
   };
 
   return (
-    <div className="fixed inset-0 z-100 grid place-items-center bg-background/70 backdrop-blur-[3px]">
+    <div className="motion-fade-in fixed inset-0 z-100 grid place-items-center bg-background/85">
       <div className="w-90 rounded-xl border bg-card p-6 text-center shadow-2xl">
         <span className="relative mx-auto grid size-18 place-items-center rounded-full bg-accent text-accent-foreground">
           <span className="absolute inset-0 animate-ping rounded-full border-2 border-primary/50" />

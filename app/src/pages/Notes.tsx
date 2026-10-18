@@ -1,11 +1,10 @@
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { isTauri } from "@/lib/platform";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ChevronDown,
-  ChevronRight,
   Download,
   FileText,
   Link2,
@@ -544,7 +543,7 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
           onClick={() => setOpen((v) => !v)}
           className={cn("text-muted-foreground", children.length === 0 && "invisible")}
         >
-          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          <DisclosureChevron open={open} className="size-3.5" />
         </button>
         <button
           className={cn(
@@ -625,7 +624,11 @@ function NoteRow({ note, depth }: { note: NoteTreeItem; depth: number }) {
         </DropdownMenu>
         </div>
       </div>
-      {open && children.map((c) => <NoteRow key={c.id} note={c} depth={depth + 1} />)}
+      {open && (
+        <div className="motion-reveal">
+          {children.map((c) => <NoteRow key={c.id} note={c} depth={depth + 1} />)}
+        </div>
+      )}
     </div>
   );
 }

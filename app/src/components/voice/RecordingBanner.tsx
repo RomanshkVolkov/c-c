@@ -42,7 +42,7 @@ export default function RecordingBanner() {
   return (
     <div
       role="status"
-      className="flex shrink-0 flex-wrap items-center gap-2 border-b border-destructive/30
+      className="motion-reveal flex shrink-0 flex-wrap items-center gap-2 border-b border-destructive/30
                  bg-destructive/10 px-4 py-2 text-sm"
     >
       <span className="font-semibold text-destructive">{t("recordings:joinedBannerTitle")}</span>

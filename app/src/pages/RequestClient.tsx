@@ -920,7 +920,7 @@ function RemoteCollectionItem({ collection }: { collection: CollectionMeta }) {
       )}
 
       {expanded && (
-        <div>
+        <div className="motion-reveal">
           {treeError ? (
             <div className="px-3 py-1.5 ml-4 text-xs text-destructive flex items-center gap-1">
               <AlertCircle className="size-3" />
@@ -1301,7 +1301,7 @@ function ShareDialog({
                   className="font-mono text-sm"
                 />
                 {showSuggestions && suggestions.length > 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 bg-popover border rounded-md shadow-md z-20 max-h-40 overflow-auto">
+                  <div className="motion-pop-in absolute top-full mt-1 left-0 right-0 bg-popover border rounded-md shadow-md z-20 max-h-40 overflow-auto">
                     {suggestions.map((u) => (
                       <button
                         key={u.id}

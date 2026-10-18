@@ -156,7 +156,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
       {hayNuevos && (
         <button
           onClick={alFinal}
-          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1
+          className="motion-pop-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 [--pop-origin:bottom_center]
                      rounded-full border bg-primary px-3 py-1 text-xs font-medium
                      text-primary-foreground shadow-lg"
         >

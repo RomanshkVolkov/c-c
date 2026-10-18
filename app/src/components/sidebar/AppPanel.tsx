@@ -59,7 +59,11 @@ export default function AppPanel() {
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <Panel />
+        {/* Al cambiar de módulo en el riel, el panel nuevo entra en vez de
+            sustituir al anterior de golpe. */}
+        <div key={module.key} className="motion-reveal">
+          <Panel />
+        </div>
       </div>
       {authed && (
         <div className="shrink-0 border-t border-sidebar-border">

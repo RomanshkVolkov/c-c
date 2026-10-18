@@ -30,7 +30,7 @@ export default function UpdateChecker() {
   const pct = total ? Math.min(100, (downloaded / total) * 100) : null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-sm bg-card border rounded-lg shadow-lg p-4 space-y-2">
+    <div className="motion-rise-in fixed bottom-4 right-4 z-50 max-w-sm bg-card border rounded-lg shadow-lg p-4 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <Download className="h-4 w-4 text-primary shrink-0" />

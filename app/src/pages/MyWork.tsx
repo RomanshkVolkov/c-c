@@ -368,6 +368,7 @@ export default function MyWork() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {creating && (
+          <div className="motion-reveal">
           <NewTaskRow
             // Tras cada Enter, no sólo al cerrar. La fila se queda abierta a
             // propósito —se escriben cuatro seguidas—, así que preguntar sólo al
@@ -382,6 +383,7 @@ export default function MyWork() {
               load(orgId).catch(() => {});
             }}
           />
+          </div>
         )}
         {error && (
           <p className="flex items-center gap-1.5 text-xs text-destructive">

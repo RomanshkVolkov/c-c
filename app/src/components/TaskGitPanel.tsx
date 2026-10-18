@@ -1,8 +1,7 @@
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import {
-  ChevronDown,
-  ChevronRight,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
@@ -201,11 +200,11 @@ export default function TaskGitPanel({
             onClick={() => setCommitsAbiertos((v) => !v)}
             className="flex items-center gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
-            {commitsAbiertos ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+            <DisclosureChevron open={commitsAbiertos} className="size-3" />
             {t("work:task.git.commits", { count: git!.summary.commits })}
           </button>
           {commitsAbiertos && (
-            <ul className="mt-1 space-y-0.5">
+            <ul className="motion-reveal mt-1 space-y-0.5">
               {commits.map((c) => (
                 <li key={`${c.repoId}-${c.key}`}>
                   <button

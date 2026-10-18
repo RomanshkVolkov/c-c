@@ -58,7 +58,11 @@ function RepoRow({ group, depth }: { group: RepoDocsGroup; depth: number }) {
           expandLabel: t("work:tree.expand", { name: group.fullName }),
         }}
       />
-      {branch.open && <DirContents repoId={group.repoId} dir={tree} depth={depth + 1} />}
+      {branch.open && (
+        <div className="motion-reveal">
+          <DirContents repoId={group.repoId} dir={tree} depth={depth + 1} />
+        </div>
+      )}
     </li>
   );
 }
@@ -96,7 +100,11 @@ function DirRow({ repoId, dir, depth }: { repoId: number; dir: RepoDir; depth: n
           expandLabel: t("work:tree.expand", { name: dir.name }),
         }}
       />
-      {branch.open && <DirContents repoId={repoId} dir={dir} depth={depth + 1} />}
+      {branch.open && (
+        <div className="motion-reveal">
+          <DirContents repoId={repoId} dir={dir} depth={depth + 1} />
+        </div>
+      )}
     </li>
   );
 }

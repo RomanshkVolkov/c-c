@@ -36,7 +36,7 @@ export default function StaleBinaryNotice() {
   return (
     <div
       role="alert"
-      className="fixed bottom-4 left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-center gap-3 rounded-lg border border-warning/50 bg-card p-3 text-sm shadow-lg"
+      className="motion-rise-in fixed bottom-4 left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-center gap-3 rounded-lg border border-warning/50 bg-card p-3 text-sm shadow-lg"
     >
       <p className="min-w-0 flex-1">{t("common:stale.body")}</p>
       <Button size="sm" onClick={() => void relaunchApp()}>

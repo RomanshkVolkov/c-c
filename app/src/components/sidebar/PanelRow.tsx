@@ -1,5 +1,5 @@
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import type { ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -86,7 +86,7 @@ export default function PanelRow({
           className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
           onClick={expandable.onToggle}
         >
-          {expandable.open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          <DisclosureChevron open={expandable.open} className="size-3.5" />
         </button>
       )}
       <button

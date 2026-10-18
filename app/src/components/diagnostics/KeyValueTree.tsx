@@ -84,7 +84,7 @@ function Node({
         )}
       </button>
       {open && (
-        <ul className="space-y-px">
+        <ul className="motion-reveal space-y-px">
           {entries.map(([k, v]) => (
             <Node key={k} name={k} value={v} path={`${path}.${k}`} depth={depth + 1} highlight={highlight} depthOpen={depthOpen} />
           ))}

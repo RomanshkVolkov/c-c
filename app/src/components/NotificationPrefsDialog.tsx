@@ -88,7 +88,7 @@ function RegistroDeEntrega() {
         )}
       </button>
       {abierto && (
-        <div className="max-h-56 overflow-auto border-t">
+        <div className="motion-reveal max-h-56 overflow-auto border-t">
           {items.length === 0 ? (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">
               {t("common:misc.noNotificationsYet")}

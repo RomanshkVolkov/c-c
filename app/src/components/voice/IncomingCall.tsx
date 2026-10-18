@@ -41,7 +41,7 @@ export default function IncomingCall() {
   const dentro = ocupacion[entrante.spaceId]?.length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-100 grid place-items-center bg-background/70 backdrop-blur-[3px]">
+    <div className="motion-fade-in fixed inset-0 z-100 grid place-items-center bg-background/85">
       <div className="w-90 rounded-xl border bg-card p-6 text-center shadow-2xl">
         <span className="relative mx-auto grid size-18 place-items-center rounded-full bg-accent text-xl font-bold text-accent-foreground">
           {/* Dos anillos desfasados: uno solo se lee como un borde, y dos

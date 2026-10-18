@@ -59,7 +59,7 @@ export default function DeviceSettings() {
   };
 
   return (
-    <div className="absolute bottom-24 left-1/2 z-50 w-72 -translate-x-1/2 rounded-lg border bg-popover p-1 shadow-lg">
+    <div className="motion-pop-in absolute bottom-24 left-1/2 z-50 w-72 [--pop-origin:bottom_center] -translate-x-1/2 rounded-lg border bg-popover p-1 shadow-lg">
       {error && (
         <p className="px-3 py-2 text-xs text-destructive">{error}</p>
       )}

@@ -1,8 +1,9 @@
+import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { goInOrg } from "@/lib/ir-en-org";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Archive, AtSign, BellRing, Bot, CalendarClock, CheckSquare, ChevronDown, ChevronRight, Hash, Info, MessageSquare, Rocket, Settings, UserPlus, Workflow, Zap } from "lucide-react";
+import { Activity, Archive, AtSign, BellRing, Bot, CalendarClock, CheckSquare, Hash, Info, MessageSquare, Rocket, Settings, UserPlus, Workflow, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
 import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
@@ -159,8 +160,9 @@ export default function NotificationsPanel({
     <div className="fixed inset-0 z-50">
       {/* El fondo se oscurece y cierra al pulsarlo: sin él, un panel flotante
           sobre una pantalla viva no se sabe si está abierto o pegado. */}
-      <div className="absolute inset-0 bg-black/35" onClick={() => onOpenChange(false)} />
-      <div className="absolute right-3 top-11 flex max-h-[calc(100%-3.5rem)] w-[min(392px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
+      <div className="motion-fade-in absolute inset-0 bg-black/35" onClick={() => onOpenChange(false)} />
+      {/* Nace de la campana, arriba a la derecha. */}
+      <div className="motion-pop-in absolute right-3 top-11 flex [--pop-origin:top_right] max-h-[calc(100%-3.5rem)] w-[min(392px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
         <div className="flex items-center gap-2.5 border-b px-3.5 py-2.5">
           <span className="font-semibold">{t("notifications:title")}</span>
           {unread > 0 && (
@@ -314,7 +316,7 @@ function GroupRow({
           })}
           className="mt-2 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
         >
-          {abierto ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          <DisclosureChevron open={abierto} className="size-3.5" />
         </button>
 
         <button
@@ -356,7 +358,7 @@ function GroupRow({
       </div>
 
       {abierto && (
-        <div id={listId} role="group" className="ml-6 border-l pl-1">
+        <div id={listId} role="group" className="motion-reveal ml-6 border-l pl-1">
           {g.items.map((n) => (
             <Row key={n.id} n={n} isRead={isRead} onClick={() => onOpen(n)} />
           ))}

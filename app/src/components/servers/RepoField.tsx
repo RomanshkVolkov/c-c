@@ -71,7 +71,7 @@ export default function RepoField({
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
       {open && repos.length > 0 && matches.length > 0 && !(matches.length === 1 && matches[0].toLowerCase() === q) && (
-        <ul role="listbox" className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+        <ul role="listbox" className="motion-pop-in absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
           {matches.map((r) => (
             <li key={r}>
               <button

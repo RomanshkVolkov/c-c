@@ -122,7 +122,7 @@ class Popup {
   constructor() {
     this.el = document.createElement("div");
     this.el.className =
-      "fixed z-50 max-h-72 w-60 overflow-auto rounded-md border bg-popover p-1 " +
+      "motion-pop-in fixed z-50 max-h-72 w-60 overflow-auto rounded-md border bg-popover p-1 " +
       "text-popover-foreground shadow-md";
     this.el.style.display = "none";
     document.body.appendChild(this.el);

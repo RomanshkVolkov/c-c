@@ -543,7 +543,7 @@ function MeetingCard({
       </dl>
 
       {peopleOpen && (
-        <div className="border-t px-3.5 py-3">
+        <div className="motion-reveal border-t px-3.5 py-3">
           {/* Marcados por defecto, y quien entre en la organización mañana
               entra marcado: lo que se guarda es quién se quitó. */}
           <p className="mb-2 text-xs text-muted-foreground">

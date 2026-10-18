@@ -106,7 +106,7 @@ export default function UserPicker({
         ) : null}
       </div>
       {open && results.length > 0 && (
-        <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
+        <ul className="motion-pop-in absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
           {results.map((u) => (
             <li key={u.id}>
               <button
