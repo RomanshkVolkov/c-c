@@ -111,3 +111,31 @@ describe("crear la llave en 1Password", () => {
     );
   });
 });
+
+/**
+ * Cada campo del formulario dice qué es y da un ejemplo (jose, 18-oct-2026:
+ * «no entiendo qué hacen algunos inputs»).
+ * Mutantes: quitar el ejemplo del «?»; dejar un campo sin su ayuda en algún
+ * idioma.
+ */
+describe("la ayuda del formulario", () => {
+  it("el «?» de Base explica el campo y da un ejemplo", async () => {
+    render(<ServerBackups />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(añadir base|add database)$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^(ayuda|help): (base|database)$/i }));
+    expect(await screen.findByText(/(explorador de bases|database explorer)/i)).toBeTruthy();
+    expect(screen.getByText(/^(ejemplo|example):/i).textContent).toMatch(/boaty/);
+  });
+
+  it("todos los campos tienen su ayuda en los dos idiomas", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const keys = ["engine", "service", "database", "credentialEnv", "every", "at", "timezone", "keepDays", "keepWeekly", "keepMonthly", "restoreEvery", "enabled"];
+    for (const lang of ["en", "es"]) {
+      const help = JSON.parse(readFileSync(join(process.cwd(), "src/locales", lang, "common.json"), "utf-8")).backups.help;
+      for (const k of keys) {
+        expect(help[k]?.text, `${lang}: ${k}`).toBeTruthy();
+      }
+    }
+  });
+});

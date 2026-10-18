@@ -930,6 +930,59 @@
     "itemTitle": "Item name",
     "create": "Create",
     "created": "Key created in {{item}} and added",
-    "opUnavailable": "1Password is not reachable: install the op CLI, sign in, and turn on the desktop app integration."
+    "opUnavailable": "1Password is not reachable: install the op CLI, sign in, and turn on the desktop app integration.",
+    "help": {
+      "aria": "Help: {{field}}",
+      "example": "Example",
+      "engine": {
+        "text": "Which database runs in that service. It decides how the backup is made: SQL Server with BACKUP DATABASE, PostgreSQL with pg_dump.",
+        "example": "SQL Server"
+      },
+      "service": {
+        "text": "The Swarm service the database runs in. The agent goes into its container to make the backup there.",
+        "example": "sqlserver-prod_sqlserver-vps--db"
+      },
+      "database": {
+        "text": "The database's name inside the engine, not the service's. In SQL Server it is the one in the database explorer; in PostgreSQL, the one \\l lists.",
+        "example": "boaty"
+      },
+      "credentialEnv": {
+        "text": "The name of the container's environment variable that holds the credential. The agent uses it inside the container and cac never sees its value. In SQL Server it is the sa password; in PostgreSQL, the database user.",
+        "example": "MSSQL_SA_PASSWORD"
+      },
+      "every": {
+        "text": "How many hours between backups. The options divide the day or are whole days, so it always lands at the same time.",
+        "example": "24 h = once a day"
+      },
+      "at": {
+        "text": "The time of the first backup of the day; the next ones add the interval. Every 6 h from 03:30 runs at 03:30, 09:30, 15:30 and 21:30. Best in quiet hours.",
+        "example": "03:30"
+      },
+      "timezone": {
+        "text": "The time zone of that time, in IANA format. The time holds across daylight-saving changes.",
+        "example": "America/Mexico_City"
+      },
+      "keepDays": {
+        "text": "How many days a regular backup is kept before it deletes itself. Before that date nobody can delete it, not even with cac's keys.",
+        "example": "7 = the last week, day by day"
+      },
+      "keepWeekly": {
+        "text": "The first backup of each week is kept longer: this many weeks. 0 = no separate weeklies.",
+        "example": "4 = the last month, one per week"
+      },
+      "keepMonthly": {
+        "text": "The first backup of each month is kept this many months. It is what lets you go far back. 0 = no monthlies.",
+        "example": "6 = half a year, one per month"
+      },
+      "restoreEvery": {
+        "text": "Every how many days the latest backup is restored into a temporary database (checked and dropped), to know it really works. 0 turns it off; not recommended.",
+        "example": "7 = once a week"
+      },
+      "enabled": {
+        "text": "Turned off, the database stops being backed up but keeps its settings and the backups it already has.",
+        "example": ""
+      }
+    },
+    "databaseHint": "The database's name inside SQL Server or PostgreSQL, not the service's."
   }
 }

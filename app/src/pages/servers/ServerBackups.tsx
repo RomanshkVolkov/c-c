@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Picker from "@/components/ui/picker";
+import { HelpTip } from "@/components/ui/help-tip";
 import { defaultTarget, detectDatabases, isAgePublicKey, payloadOf, retainedCount, type DetectedDatabase } from "@/lib/backups";
 import { desde } from "@/lib/desde";
 import { fechaYHora } from "@/lib/fechas";
@@ -455,6 +456,25 @@ function TargetCard({
   );
 }
 
+/** Una etiqueta con su «?»: qué es el campo y un ejemplo. */
+function FieldLabel({ field, htmlFor }: { field: HelpField; htmlFor?: string }) {
+  const { t } = useT();
+  const label = t(`common:backups.${field.label}`);
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      <HelpTip label={t("common:backups.help.aria", { field: label })} example={t(`common:backups.help.${field.key}.example`)} exampleLabel={t("common:backups.help.example")}>
+        {t(`common:backups.help.${field.key}.text`)}
+      </HelpTip>
+    </div>
+  );
+}
+
+type HelpField = { key: HelpKey; label: LabelKey };
+type HelpKey = "engine" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery" | "enabled";
+type LabelKey = "engineLabel" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery" | "enabled";
+const F = (key: HelpKey, label: LabelKey = key as LabelKey): HelpField => ({ key, label });
+
 function TargetDialog({
   everyHours,
   services,
@@ -486,7 +506,7 @@ function TargetDialog({
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label>{t("common:backups.engineLabel")}</Label>
+            <FieldLabel field={F("engine", "engineLabel")} />
             <Picker
               value={p.engine}
               onChange={(v) => {
@@ -500,20 +520,21 @@ function TargetDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label>{t("common:backups.service")}</Label>
+            <FieldLabel field={F("service")} />
             <Picker value={p.serviceName} onChange={(v) => set("serviceName", v)} options={services.map((s) => ({ value: s, label: s }))} />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="bk-db">{t("common:backups.database")}</Label>
-            <Input id="bk-db" value={p.database} onChange={(e) => set("database", e.target.value)} />
+            <FieldLabel field={F("database")} htmlFor="bk-db" />
+            <Input id="bk-db" value={p.database} onChange={(e) => set("database", e.target.value)} placeholder="boaty" />
+            <p className="text-xs text-muted-foreground">{t("common:backups.databaseHint")}</p>
           </div>
           <div className="space-y-1">
-            <Label htmlFor="bk-env">{t("common:backups.credentialEnv")}</Label>
+            <FieldLabel field={F("credentialEnv")} htmlFor="bk-env" />
             <Input id="bk-env" className="font-mono" value={p.credentialEnv} onChange={(e) => set("credentialEnv", e.target.value)} />
             <p className="text-xs text-muted-foreground">{t("common:backups.credentialEnvHint")}</p>
           </div>
           <div className="space-y-1">
-            <Label>{t("common:backups.every")}</Label>
+            <FieldLabel field={F("every")} />
             <Picker
               value={String(p.everyHours)}
               onChange={(v) => set("everyHours", Number(v))}
@@ -521,33 +542,36 @@ function TargetDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="bk-at">{t("common:backups.at")}</Label>
+            <FieldLabel field={F("at")} htmlFor="bk-at" />
             <Input id="bk-at" type="time" value={p.anchorTime} onChange={(e) => set("anchorTime", e.target.value)} />
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <Label htmlFor="bk-tz">{t("common:backups.timezone")}</Label>
+            <FieldLabel field={F("timezone")} htmlFor="bk-tz" />
             <Input id="bk-tz" value={p.timezone} onChange={(e) => set("timezone", e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>{t("common:backups.keepDays")}</Label>
+            <FieldLabel field={F("keepDays")} />
             {num("keepDays")}
           </div>
           <div className="space-y-1">
-            <Label>{t("common:backups.keepWeekly")}</Label>
+            <FieldLabel field={F("keepWeekly")} />
             {num("keepWeekly")}
           </div>
           <div className="space-y-1">
-            <Label>{t("common:backups.keepMonthly")}</Label>
+            <FieldLabel field={F("keepMonthly")} />
             {num("keepMonthly")}
           </div>
           <div className="space-y-1">
-            <Label>{t("common:backups.restoreEvery")}</Label>
+            <FieldLabel field={F("restoreEvery")} />
             {num("restoreTestEveryDays")}
           </div>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <input type="checkbox" checked={p.enabled} onChange={(e) => set("enabled", e.target.checked)} />
-            {t("common:backups.enabled")}
-          </label>
+          <div className="flex items-center gap-2 text-sm sm:col-span-2">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={p.enabled} onChange={(e) => set("enabled", e.target.checked)} />
+              {t("common:backups.enabled")}
+            </label>
+            <HelpTip label={t("common:backups.help.aria", { field: t("common:backups.enabled") })}>{t("common:backups.help.enabled.text")}</HelpTip>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">{t("common:backups.retained", { n: retainedCount(p) })}</p>
         <DialogFooter>

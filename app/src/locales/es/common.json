@@ -930,6 +930,59 @@
     "itemTitle": "Nombre del ítem",
     "create": "Crear",
     "created": "Llave creada en {{item}} y añadida",
-    "opUnavailable": "No se llega a 1Password: instala la CLI op, inicia sesión y activa la integración con la app de escritorio."
+    "opUnavailable": "No se llega a 1Password: instala la CLI op, inicia sesión y activa la integración con la app de escritorio.",
+    "help": {
+      "aria": "Ayuda: {{field}}",
+      "example": "Ejemplo",
+      "engine": {
+        "text": "Qué base de datos corre en ese servicio. Decide cómo se hace el backup: SQL Server con BACKUP DATABASE, PostgreSQL con pg_dump.",
+        "example": "SQL Server"
+      },
+      "service": {
+        "text": "El servicio de Swarm donde corre la base. El agente entra a su contenedor para hacer el backup ahí dentro.",
+        "example": "sqlserver-prod_sqlserver-vps--db"
+      },
+      "database": {
+        "text": "El nombre de la base dentro del motor, no el del servicio. En SQL Server es la que ves en el explorador de bases; en PostgreSQL, la que sale con \\l.",
+        "example": "boaty"
+      },
+      "credentialEnv": {
+        "text": "El nombre de la variable de entorno del contenedor que guarda la credencial. El agente la usa dentro del contenedor y cac nunca ve su valor. En SQL Server es la contraseña del usuario sa; en PostgreSQL, el usuario de la base.",
+        "example": "MSSQL_SA_PASSWORD"
+      },
+      "every": {
+        "text": "Cada cuántas horas se hace un backup. Las opciones dividen el día o son días enteros, para que caiga siempre a la misma hora.",
+        "example": "24 h = uno al día"
+      },
+      "at": {
+        "text": "La hora del primer backup del día; los siguientes van sumando el intervalo. Con «cada 6 h» desde las 03:30 salen a las 03:30, 09:30, 15:30 y 21:30. Mejor en horas de poco uso.",
+        "example": "03:30"
+      },
+      "timezone": {
+        "text": "La zona horaria de esa hora, en formato IANA. La hora se respeta aunque cambie el horario de verano.",
+        "example": "America/Mexico_City"
+      },
+      "keepDays": {
+        "text": "Cuántos días se guarda un backup normal antes de borrarse solo. Antes de esa fecha nadie puede borrarlo, ni con las llaves de cac.",
+        "example": "7 = la última semana, día por día"
+      },
+      "keepWeekly": {
+        "text": "El primer backup de cada semana se guarda más tiempo: este número de semanas. 0 = sin semanales aparte.",
+        "example": "4 = el último mes, uno por semana"
+      },
+      "keepMonthly": {
+        "text": "El primer backup de cada mes se guarda este número de meses. Es lo que deja volver muy atrás. 0 = sin mensuales.",
+        "example": "6 = medio año, uno por mes"
+      },
+      "restoreEvery": {
+        "text": "Cada cuántos días se prueba restaurar el último backup en una base temporal (se comprueba y se borra), para saber que de verdad sirve. 0 la apaga; no es recomendable.",
+        "example": "7 = una vez por semana"
+      },
+      "enabled": {
+        "text": "Apagada, la base deja de respaldarse pero conserva su configuración y los backups que ya tiene.",
+        "example": ""
+      }
+    },
+    "databaseHint": "El nombre de la base dentro de SQL Server o PostgreSQL, no el del servicio."
   }
 }
