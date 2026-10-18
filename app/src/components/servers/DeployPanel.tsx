@@ -1,3 +1,4 @@
+import { useFollowLog } from "@/hooks/use-follow-log";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Rocket, Settings2, Undo2, Workflow } from "lucide-react";
@@ -97,6 +98,7 @@ export default function DeployPanel({
       void loadLog(server.id, deployable.id, abierto).catch(() => {});
     }
   }, [active, deployable, abierto, logs, server.id, loadLog]);
+  const follow = useFollowLog<HTMLPreElement>(abierto ? logs[abierto] : null);
 
   const vivo = useMemo(() => history.some((d) => d.status === "queued" || d.status === "running"), [history]);
   // Sin identidad, o de una versión que no sabe desplegar: el backend lo
@@ -269,7 +271,11 @@ export default function DeployPanel({
             </div>
 
             {abierto && (
-              <pre className="max-h-64 overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">
+              <pre
+                ref={follow.ref}
+                onScroll={follow.onScroll}
+                className="max-h-64 overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap"
+              >
                 {logs[abierto] ?? "…"}
               </pre>
             )}

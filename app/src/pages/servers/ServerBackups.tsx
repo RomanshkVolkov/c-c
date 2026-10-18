@@ -1,3 +1,4 @@
+import { useFollowLog } from "@/hooks/use-follow-log";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Archive, Download, FlaskConical, KeyRound, Pencil, Play, Plus, Trash2 } from "lucide-react";
@@ -350,6 +351,7 @@ function TargetCard({
   const history = useBackupsStore((s) => s.history[target.id]) ?? EMPTY_HISTORY;
   const logs = useBackupsStore((s) => s.logs);
   const [open, setOpen] = useState<string | null>(null);
+  const follow = useFollowLog<HTMLPreElement>(open ? logs[open] : null);
   const live = history.some((b) => b.status === "queued" || b.status === "running");
 
   useEffect(() => {
@@ -456,7 +458,11 @@ function TargetCard({
                 )}
               </div>
               {open === b.id && (
-                <pre className="max-h-48 overflow-auto rounded bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap">
+                <pre
+                  ref={follow.ref}
+                  onScroll={follow.onScroll}
+                  className="max-h-48 overflow-auto rounded bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap"
+                >
                   {logs[b.id] ?? "…"}
                 </pre>
               )}
