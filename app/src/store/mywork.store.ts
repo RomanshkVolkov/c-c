@@ -105,6 +105,21 @@ interface MyWorkState {
   setVista: (v: TaskView) => void;
 
   load: (orgId: string | null) => Promise<void>;
+  /**
+   * Lo que pidió la última carga buena (org, lente y si incluye lo cerrado).
+   * Con eso `ensureLoaded` sabe si lo que hay ya responde a la pregunta.
+   */
+  loadedKey: string | null;
+  /**
+   * Carga sólo si lo que hay no responde ya a lo que se pregunta.
+   *
+   * Volver a «Mi trabajo» —desde la documentación, desde el árbol— pedía la
+   * lista entera cada vez, aunque no hubiera cambiado nada: lo que cambia ya
+   * llega por eventos (`refrescarSiEsNuestra`) y por la recarga al volver la
+   * conexión. Sólo se pide de nuevo si cambió la org, la lente o el
+   * interruptor, o si la última carga falló (jose, 18-oct-2026).
+   */
+  ensureLoaded: (orgId: string | null) => Promise<void>;
   /** Follow or unfollow, and drop the row when it leaves the lens you're in. */
   setWatching: (taskId: string, on: boolean) => Promise<void>;
   /**
@@ -128,7 +143,7 @@ interface MyWorkState {
    * hubiera cargado al abrirla. Mover una tarjeta desde otra sesión, o desde el
    * MCP, no cambiaba nada aquí hasta recargar la ventana entera.
    */
-  refrescarSiEsNuestra: (taskId: string) => void;
+  refrescarSiEsNuestra: (taskId: string, nueva?: boolean) => void;
 }
 
 /**
@@ -139,6 +154,10 @@ interface MyWorkState {
  * serían cinco peticiones para llegar al mismo sitio.
  */
 const COALESCE_MS = 400;
+
+/** Qué pregunta responde una carga. */
+const keyOf = (orgId: string | null, s: { lens: string; includeClosed: boolean }) =>
+  `${orgId ?? ""}|${s.lens}|${s.includeClosed}`;
 let temporizador: ReturnType<typeof setTimeout> | null = null;
 
 export const useMyWorkStore = create<MyWorkState>()(
@@ -154,6 +173,7 @@ export const useMyWorkStore = create<MyWorkState>()(
       tasks: [],
       loading: false,
       error: null,
+      loadedKey: null,
 
       setLens: (lens) => set({ lens }),
       setScope: (scope) =>
@@ -193,16 +213,24 @@ export const useMyWorkStore = create<MyWorkState>()(
             `/api/v1/tasks/?${partes.join("&")}`,
             true,
           );
-          set({ tasks: res.data ?? [], loading: false });
+          set({ tasks: res.data ?? [], loading: false, loadedKey: keyOf(orgId, get()) });
         } catch (e) {
           set({ error: String(e), loading: false, tasks: [] });
         }
       },
 
+      ensureLoaded: async (orgId) => {
+        const s = get();
+        // Un ámbito de otra org lo tira `load`; si lo hay, se carga.
+        if (s.scope && s.scope.orgId !== orgId) return get().load(orgId);
+        if (s.loadedKey === keyOf(orgId, s) && !s.error) return;
+        return get().load(orgId);
+      },
+
       olvidar: (taskId) =>
         set((s) => ({ tasks: s.tasks.filter((t) => t.id !== taskId) })),
 
-      refrescarSiEsNuestra: (taskId) => {
+      refrescarSiEsNuestra: (taskId, nueva = false) => {
         // Sólo si ya la tenemos. Una organización con movimiento emite eventos
         // de tarjetas que a ti no te tocan, y recargar por cada una convertiría
         // esta pantalla en una encuesta continua.
@@ -211,7 +239,12 @@ export const useMyWorkStore = create<MyWorkState>()(
         // una tarea que **entra** en tu trabajo —alguien te la asigna— no está
         // en la lista todavía, así que no se refresca sola. Eso sí llega a la
         // campana, que es donde de verdad hace falta enterarse.
-        if (!get().tasks.some((t) => t.id === taskId)) return;
+        //
+        // Salvo una tarea **nueva**: no puede estar todavía, y si la pantalla
+        // ya no recarga al volver a ella (`ensureLoaded`), sin esto no
+        // aparecería nunca. Hay pocas comparadas con los movimientos. Y sólo si
+        // ya se cargó algo: si no, no hay lista que poner al día.
+        if (nueva ? get().loadedKey === null : !get().tasks.some((t) => t.id === taskId)) return;
         if (temporizador) clearTimeout(temporizador);
         temporizador = setTimeout(() => {
           temporizador = null;

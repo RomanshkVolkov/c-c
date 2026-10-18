@@ -331,6 +331,12 @@ export function useReportEvents() {
       // no se recuperaba nunca, ni volviendo a la ventana.
       const inbox = useInboxStore.getState();
       void inbox.load(inbox.orgId).catch(() => {});
+
+      // «Mi trabajo» ya no recarga al volver a la pantalla, porque los eventos
+      // la mantienen al día; durante una caída no llegó ninguno, así que aquí
+      // sí. Sólo si llegó a cargarse.
+      const work = useMyWorkStore.getState();
+      if (work.loadedKey !== null) void work.load(work.orgId).catch(() => {});
     };
 
     /**
@@ -488,7 +494,7 @@ export function useReportEvents() {
             // «My work», que junta tareas de todas las listas. Antes se quedaba
             // fuera porque el corte de abajo mira la lista en pantalla y esta
             // vista no tiene ninguna.
-            useMyWorkStore.getState().refrescarSiEsNuestra(p.taskId);
+            useMyWorkStore.getState().refrescarSiEsNuestra(p.taskId, event === "task:new");
           }
           // Y los contadores del árbol, que no dependen de qué tablero mires:
           // mover cinco tarjetas a Hecho cambia el «12 abiertas» de esa lista

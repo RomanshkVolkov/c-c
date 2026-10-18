@@ -33,6 +33,7 @@ const estado: Record<string, unknown> = {
   restoreDoc: vi.fn(),
   addDecision: vi.fn(),
   selectList: vi.fn(),
+  focusList: vi.fn(),
   setBoardView: vi.fn(),
 };
 
@@ -55,6 +56,7 @@ vi.mock("@/components/CopyId", () => ({ default: () => null }));
 vi.mock("@/components/markdown/MarkdownEditor", () => ({ default: () => null }));
 
 const DocIndexPage = (await import("@/pages/DocIndexPage")).default;
+const { useMyWorkStore } = await import("@/store/mywork.store");
 
 afterEach(() => {
   cleanup();
@@ -95,18 +97,22 @@ describe("la pantalla de documentación", () => {
  * como que la app hizo otra cosa — y encima el estado quedaba distinto del que
  * tenías antes de entrar.
  */
-describe("volver al tablero desde un documento", () => {
-  it("selecciona la lista, fija la vista y va a la pantalla del tablero", () => {
+describe("volver a las tareas desde un documento", () => {
+  /**
+   * A «Mi trabajo» acotado a esa lista y en la vista pulsada, que es a donde
+   * lleva pulsarla en el árbol (18-oct-2026). Antes llevaba al tablero suelto.
+   */
+  it("acota Mi trabajo a la lista, fija la vista y va a esa pantalla", () => {
     navegado.length = 0;
+    useMyWorkStore.setState({ scope: null, vista: "list" } as never);
     estado.activeDoc = { kind: "list", id: "l1", name: "Portento" };
     render(<DocIndexPage />);
     screen.getByText("ir al tablero").click();
 
-    // La lista, antes de ir: abrir el tablero sin seleccionarla mostraría la que
-    // estuviera abierta de antes, que es peor que no ir.
-    expect(estado.selectList).toHaveBeenCalledWith("l1");
-    expect(estado.setBoardView).toHaveBeenCalledWith("board");
+    expect(estado.focusList).toHaveBeenCalledWith("l1");
     expect(estado.closeDoc).toHaveBeenCalled();
-    expect(navegado).toEqual(["/tasks"]);
+    expect(useMyWorkStore.getState().scope).toMatchObject({ kind: "list", id: "l1", name: "Portento" });
+    expect(useMyWorkStore.getState().vista).toBe("board");
+    expect(navegado).toEqual(["/my-work"]);
   });
 });

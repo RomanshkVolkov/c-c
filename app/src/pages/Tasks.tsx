@@ -1,3 +1,4 @@
+import { showListInMyWork } from "@/lib/list-in-my-work";
 import { BoardSkeleton } from "@/components/ui/skeletons";
 import TagChip from "@/components/tasks/TagChip";
 import PriorityChip from "@/components/tasks/PriorityChip";
@@ -7,7 +8,7 @@ import { enterOrg } from "@/lib/ir-en-org";
 import { dueDay } from "@/lib/month";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ListChecks,
   Plus,
@@ -82,7 +83,6 @@ export default function Tasks() {
   // Se consume una sola vez, igual que ?task=: si se quedara en la URL, cerrar
   // el documento lo reabriría en el mismo instante.
   const openDoc = useTasksStore((s) => s.openDoc);
-  const selectList = useTasksStore((s) => s.selectList);
   useEffect(() => {
     const ref = params.get("doc");
     if (!ref) return;
@@ -118,19 +118,23 @@ export default function Tasks() {
   // lista de formas distintas.
   const view = useTasksStore((s) => s.boardView);
   const setView = useTasksStore((s) => s.setBoardView);
+  const navigate = useNavigate();
 
   return (
     <div className="flex-1 flex min-h-0">
       {activeDoc ? (
         <DocTabs
           onView={(v) => {
-            // La lista del documento, no la que estuviera abierta.
-            //
-            // Se puede llegar aquí con un documento de otra lista —desde el
-            // árbol, o desde un enlace compartido— y cerrar sin seleccionarla
-            // dejaba el tablero de otra cosa en pantalla. Se lee como que la app
-            // se equivocó de sitio.
-            if (activeDoc.kind === "list") void selectList(activeDoc.id).catch(() => {});
+            // Las tareas de la lista del documento, en «Mi trabajo» acotado a
+            // ella: es la pantalla a la que lleva pulsar la lista en el árbol, y
+            // pasar de Documentación a Tablero no puede llevar a otra distinta
+            // (jose, 18-oct-2026). La lista del documento y no la que
+            // estuviera abierta: se puede llegar aquí desde un enlace de otra.
+            if (activeDoc.kind === "list") {
+              showListInMyWork(activeDoc, v);
+              navigate("/my-work");
+              return;
+            }
             setView(v);
           }}
         />

@@ -38,7 +38,7 @@ vi.mock("@/store/mywork.store", () => ({
         vista: estado.current.vista,
         setVista: vi.fn(),
         setLens: vi.fn(), setScope: vi.fn(), setIncludeClosed: vi.fn(),
-        load, setWatching: vi.fn(),
+        load, ensureLoaded: load, setWatching: vi.fn(),
       };
       return sel ? sel(s) : s;
     },

@@ -51,6 +51,20 @@ const mount = () =>
     </MemoryRouter>,
   );
 
+/**
+ * Entrar con lo que ya hay no pide nada: los eventos lo mantienen al día.
+ * El mutante que mata: volver a `load` en el montaje.
+ */
+describe("entrar en Mi trabajo", () => {
+  it("con las tareas ya cargadas para esa pregunta, no las vuelve a pedir", async () => {
+    const { api } = await import("@/lib/api");
+    vi.mocked(api.get).mockClear();
+    useMyWorkStore.setState({ lens: "all", includeClosed: false, loadedKey: "org-1|all|false" } as never);
+    mount();
+    expect(vi.mocked(api.get).mock.calls.map((c) => String(c[0])).filter((p) => p.startsWith("/api/v1/tasks/?"))).toEqual([]);
+  });
+});
+
 describe("buscar en Mi trabajo", () => {
   it("filtra lo que se ve, dentro de la lista acotada", () => {
     mount();

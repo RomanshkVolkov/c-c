@@ -193,9 +193,12 @@ export default function MyWork() {
     fetchTransitions().catch(() => {});
   }, [fetchTransitions]);
 
+  // Sólo si lo que hay no responde ya a la pregunta: volver a esta pantalla
+  // no vuelve a pedir nada (ver `ensureLoaded`).
+  const ensureLoaded = useMyWorkStore((s) => s.ensureLoaded);
   useEffect(() => {
-    load(orgId).catch(() => {});
-  }, [load, orgId, lens, includeClosed]);
+    ensureLoaded(orgId).catch(() => {});
+  }, [ensureLoaded, orgId, lens, includeClosed]);
 
   // Narrowed in the client rather than re-asked: every row already says which
   // space and list it is in, so pointing the same answer at a smaller part of

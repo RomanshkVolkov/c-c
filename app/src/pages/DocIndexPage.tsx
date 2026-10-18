@@ -1,3 +1,4 @@
+import { showListInMyWork } from "@/lib/list-in-my-work";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import DocIndex from "@/components/docs/DocIndex";
@@ -20,8 +21,6 @@ import { useTasksStore } from "@/store/tasks.store";
 export default function DocIndexPage() {
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const closeDoc = useTasksStore((s) => s.closeDoc);
-  const selectList = useTasksStore((s) => s.selectList);
-  const setBoardView = useTasksStore((s) => s.setBoardView);
   const navigate = useNavigate();
   // Un .md del repo (docs as code) va por la URL y no por el store: no es el
   // documento de ningún nodo, y así un enlace a él se puede compartir.
@@ -36,18 +35,19 @@ export default function DocIndexPage() {
         <DocTabs
           inDocsPanel
           onView={(v) => {
-            // El conmutador dice «Tablero», así que tiene que llevar al tablero.
+            // El conmutador dice «Tablero», así que tiene que llevar a las
+            // tareas de esa lista: «Mi trabajo» acotado a ella, que es también
+            // a donde lleva pulsarla en el árbol (ver `showListInMyWork`).
             //
             // Antes sólo cerraba el documento y te dejaba en esta tabla: pulsabas
             // «Tablero» y aparecía un índice de documentación, que no se lee como
-            // un filtro sino como que la app hizo otra cosa. El tablero no está
-            // en esta ruta, así que hay que ir a la suya y seleccionar la lista
-            // antes — abrirla sin seleccionarla mostraría la que estuviera abierta
-            // de antes, que es peor que no ir.
-            if (activeDoc.kind === "list") selectList(activeDoc.id);
-            setBoardView(v);
+            // un filtro sino como que la app hizo otra cosa.
+            if (activeDoc.kind === "list") {
+              showListInMyWork(activeDoc, v);
+              navigate("/my-work");
+              return;
+            }
             closeDoc();
-            navigate("/tasks");
           }}
         />
       ) : (
