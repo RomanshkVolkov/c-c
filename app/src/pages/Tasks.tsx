@@ -1,3 +1,4 @@
+import { BoardSkeleton } from "@/components/ui/skeletons";
 import TagChip from "@/components/tasks/TagChip";
 import PriorityChip from "@/components/tasks/PriorityChip";
 import { cuando, dueClass } from "@/components/tasks/TaskCardMini";
@@ -10,7 +11,6 @@ import { useSearchParams } from "react-router-dom";
 import {
   ListChecks,
   Plus,
-  Loader2,
   MessageSquare,
   Paperclip,
   FileText,
@@ -211,8 +211,8 @@ function Board({
   }
   if (loading && !board) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" /> Loading board…
+      <div className="min-w-0 flex-1">
+        <BoardSkeleton label={t("work:tree.loading")} />
       </div>
     );
   }

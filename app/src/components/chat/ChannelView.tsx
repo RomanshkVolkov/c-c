@@ -1,3 +1,4 @@
+import { MessagesSkeleton } from "@/components/ui/skeletons";
 import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
@@ -334,9 +335,7 @@ export default function ChannelView({
           </div>
         )}
         {loading && messages.length === 0 ? (
-          <div className="flex justify-center pt-6">
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          </div>
+          <MessagesSkeleton label={t("chat:loading")} />
         ) : messages.length === 0 ? (
           <p className="pt-6 text-center text-xs text-muted-foreground">
             {t("chat:emptyTeamOnly")}

@@ -107,6 +107,14 @@ describe("buscar en una lista", () => {
     expect(screen.getByText("Portada")).toBeTruthy();
   });
 
+  /** Mientras llega el tablero, su forma; no un aspa y un texto en inglés. */
+  it("mientras carga, el hueco con forma de tablero", () => {
+    useTasksStore.setState({ board: null, loadingBoard: true } as never);
+    screenOf();
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(screen.queryByText(/Loading board/)).toBeNull();
+  });
+
   /** Las columnas del tablero de una lista, en el color de su estado. */
   it("en el tablero, cada columna lleva el color de su estado", () => {
     useTasksStore.setState({ boardView: "board" } as never);

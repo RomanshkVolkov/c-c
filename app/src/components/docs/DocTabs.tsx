@@ -1,5 +1,6 @@
+import { DocSkeleton } from "@/components/ui/skeletons";
 import { useEffect, useRef, useState } from "react";
-import { FileText, Gavel, Loader2, Pencil, X } from "lucide-react";
+import { FileText, Gavel, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 
 import DecisionForm from "@/components/docs/DecisionForm";
@@ -292,9 +293,7 @@ export default function DocTabs({
 
             <div data-doc-scroll className="min-h-0 flex-1 overflow-auto p-6">
               {loading && !doc ? (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
-                </p>
+                <DocSkeleton label={t("common:servers.loading")} />
               ) : editing ? (
                 <div className="mx-auto max-w-3xl space-y-2">
                   <MarkdownEditor

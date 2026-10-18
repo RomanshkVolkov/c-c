@@ -41,7 +41,7 @@ export function HelpTip({
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="top" sideOffset={6} className="z-[60]">
-          <Popover.Popup className="max-w-xs space-y-1.5 rounded-md border bg-popover p-3 text-xs text-popover-foreground shadow-md">
+          <Popover.Popup className="motion-pop max-w-xs space-y-1.5 rounded-md border bg-popover p-3 text-xs text-popover-foreground shadow-md">
             <div className="leading-relaxed">{children}</div>
             {example && (
               <p className="text-muted-foreground">

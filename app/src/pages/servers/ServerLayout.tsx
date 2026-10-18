@@ -1,3 +1,4 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useEffect } from "react";
 import { NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, SquareTerminal } from "lucide-react";
@@ -46,7 +47,7 @@ export default function ServerLayout() {
   }, [missing, navigate]);
 
   if (loading || !server) {
-    return <p className="p-6 text-sm text-muted-foreground">{t("common:servers.loading")}</p>;
+    return <RowsSkeleton label={t("common:servers.loading")} rows={5} className="space-y-2 p-6" />;
   }
   if (server.type === "kubernetes") return <K8sHub server={server} />;
   return <SwarmLayout server={server} refreshServer={refresh} />;

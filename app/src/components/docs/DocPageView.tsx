@@ -1,5 +1,6 @@
+import { DocSkeleton } from "@/components/ui/skeletons";
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, ClipboardList, FileText, KanbanSquare, Loader2, Pencil, Plus, Puzzle, Trash2 } from "lucide-react";
+import { ChevronRight, ClipboardList, FileText, KanbanSquare, Pencil, Plus, Puzzle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { VersionMenu } from "@/components/docs/DocHistory";
@@ -107,9 +108,7 @@ export default function DocPageView({
 
   if (loading && !view) {
     return (
-      <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
-      </p>
+      <DocSkeleton label={t("common:servers.loading")} />
     );
   }
   if (!page || !view) return null;

@@ -527,7 +527,115 @@
    Quien pidió al sistema menos movimiento no tiene que ver deslizarse el
    panel: se recorta aquí, que es el único sitio al que se llega sin editar
    `components/ui/sidebar.tsx`. */
+/* ─── Movimiento (18-oct-2026) ─────────────────────────────────────────────
+ *
+ * Diálogos, menús y paneles entran y salen con los estados de base-ui
+ * (`data-starting-style` / `data-ending-style`) en vez del zoom-95 de
+ * tw-animate, que era el mismo para todo. Entran con una curva que frena al
+ * final y salen más deprisa: lo que se cierra ya no interesa.
+ *
+ * Las propiedades `scale` y `translate` y no `transform`: Tailwind 4 pone las
+ * suyas (`-translate-x-1/2` de un diálogo centrado) en `translate`, y un
+ * `transform` aquí se les sumaría en vez de pisarlas.
+ */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-quick: cubic-bezier(0.5, 0, 0.75, 0);
+}
+
+/* Un diálogo: sube un poco y se enfoca. */
+.motion-dialog {
+  transition-property: opacity, scale, filter, margin-top;
+  transition-duration: 220ms;
+  transition-timing-function: var(--ease-out-expo);
+}
+.motion-dialog[data-starting-style],
+.motion-dialog[data-ending-style] {
+  opacity: 0;
+  scale: 0.97;
+  margin-top: 8px;
+  filter: blur(2px);
+}
+.motion-dialog[data-ending-style] {
+  transition-duration: 140ms;
+  transition-timing-function: var(--ease-in-quick);
+}
+
+/* Lo que se abre desde un botón (menú, select, tooltip, popover): nace del
+   propio botón (`--transform-origin` lo pone base-ui). */
+.motion-pop {
+  transform-origin: var(--transform-origin);
+  transition-property: opacity, scale, filter;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out-expo);
+}
+.motion-pop[data-starting-style],
+.motion-pop[data-ending-style] {
+  opacity: 0;
+  scale: 0.92;
+  filter: blur(2px);
+}
+.motion-pop[data-ending-style] {
+  transition-duration: 100ms;
+  transition-timing-function: var(--ease-in-quick);
+}
+
+/* El fondo detrás de un diálogo o un panel. */
+.motion-backdrop {
+  transition: opacity 200ms var(--ease-out-expo);
+}
+.motion-backdrop[data-starting-style],
+.motion-backdrop[data-ending-style] {
+  opacity: 0;
+}
+
+/* Una tarjeta que aparece (al cargar, o al quitar un filtro) entra en vez de
+   saltar a su sitio. */
+.motion-enter {
+  transition-property: opacity, translate;
+  transition-duration: 240ms;
+  transition-timing-function: var(--ease-out-expo);
+  @starting-style {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+
+/* El brillo que recorre un hueco mientras carga: dice «viene algo» mejor que
+   un parpadeo. */
+.skeleton-shimmer {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) 7%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+
+/* Quien pide menos movimiento no lo recibe, en ningún sitio: antes sólo lo
+   respetaban la barra lateral y el punto de grabar. Las transiciones duran
+   nada (siguen disparando sus eventos, de los que base-ui espera el final). */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton-shimmer {
+    animation: none !important;
+    background-image: none;
+  }
   [data-slot="sidebar-gap"],
   [data-slot="sidebar-container"] {
     transition: none;

@@ -96,7 +96,7 @@ export function ColorDot({
         <Popover.Positioner side="bottom" align="start" sideOffset={6} className="z-[60]">
           <Popover.Popup
             onClick={(e) => e.stopPropagation()}
-            className="rounded-lg border bg-popover p-2 shadow-md"
+            className="motion-pop rounded-lg border bg-popover p-2 shadow-md"
           >
             <ColorSwatches value={color} onChange={onChange} />
           </Popover.Popup>

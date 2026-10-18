@@ -200,7 +200,13 @@ export default function KanbanBoard<T extends KanbanItem>({
       {/* The overlay follows the cursor so the card doesn't visually jump into
           its old slot while dragging. */}
       <DragOverlay dropAnimation={null}>
-        {active ? <div className="w-72 rotate-2 opacity-90">{renderItem(active, true)}</div> : null}
+        {/* Levantada: un poco más grande, girada y con sombra, para que se lea
+            como algo que se tiene en la mano y no como una copia. */}
+        {active ? (
+          <div className="w-72 rotate-2 scale-[1.03] cursor-grabbing rounded-md opacity-95 shadow-2xl">
+            {renderItem(active, true)}
+          </div>
+        ) : null}
       </DragOverlay>
     </DndContext>
   );
@@ -297,7 +303,7 @@ function SortableCard({ id, children }: { id: string; children: ReactNode }) {
       }}
       // The lifted card keeps its slot as a placeholder; the overlay shows the
       // card itself following the pointer.
-      className={cn("cursor-grab active:cursor-grabbing", isDragging && "opacity-40")}
+      className={cn("motion-enter cursor-grab active:cursor-grabbing", isDragging && "opacity-40")}
       {...attributes}
       {...listeners}
     >

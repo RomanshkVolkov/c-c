@@ -1,3 +1,4 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import { Activity, KeyRound, Network, Pencil, RefreshCw, Rocket, Server, Trash2 } from "lucide-react";
@@ -154,7 +155,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">{t("common:admin.loading")}</p>
+              <RowsSkeleton label={t("common:admin.loading")} rows={3} />
             ) : servers.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
                 {t("common:admin.noServers")}
