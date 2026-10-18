@@ -218,6 +218,15 @@ func (r *OrganizationRepository) MemberIDs(orgID string) ([]string, error) {
 	return ids, err
 }
 
+// AdminIDs: los admins de una organización, para los avisos que piden actuar
+// sobre la infraestructura (un backup que falla).
+func (r *OrganizationRepository) AdminIDs(orgID string) ([]string, error) {
+	var ids []string
+	err := r.db.Raw(`SELECT user_id FROM org_memberships WHERE org_id = ? AND role = ?`, orgID, domain.OrgRoleAdmin).
+		Scan(&ids).Error
+	return ids, err
+}
+
 // UpsertMember adds or updates a membership. Returns ErrUserNotFound if the
 // target user does not exist.
 func (r *OrganizationRepository) UpsertMember(orgID, userID string, role domain.OrgRole) error {

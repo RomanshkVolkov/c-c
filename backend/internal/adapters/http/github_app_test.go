@@ -686,7 +686,7 @@ func TestAMigrationNeedsAnAgentThatMigrates(t *testing.T) {
 	if err != nil || job == nil {
 		t.Fatalf("el agente v4 no recogió nada: %v", err)
 	}
-	if got := job.Data.MigrateCommand; got != cmd {
+	if got := job.DeployData().MigrateCommand; got != cmd {
 		t.Errorf("el trabajo lleva %q, se esperaba el comando", got)
 	}
 }

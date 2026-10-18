@@ -97,6 +97,9 @@ func DBConnection() {
 		&domain.Deployable{},
 		&domain.Deployment{},
 		&domain.ImageBuild{},
+		&domain.BackupTarget{},
+		&domain.Backup{},
+		&domain.BackupRecipient{},
 		&domain.GitHubInstallation{},
 		&domain.GitHubRepo{},
 		&domain.RepoDoc{},
@@ -177,6 +180,10 @@ func DBConnection() {
 	// deploy.go: están ahí para que las pruebas monten los mismos.
 	if err := EnsureDeployIndexes(db); err != nil {
 		lg.Error("deploy indexes: " + err.Error())
+	}
+	// Un solo backup vivo por base. Ver backup.go.
+	if err := EnsureBackupIndexes(db); err != nil {
+		lg.Error("backup indexes: " + err.Error())
 	}
 
 	// La búsqueda de texto completo de la documentación. Ver search_index.go.

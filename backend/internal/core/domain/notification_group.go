@@ -30,6 +30,7 @@ const (
 	groupDeployable = "deployable"
 	groupTelemetry  = "telemetry"
 	groupAgent      = "agent"
+	groupBackup     = "backup"
 )
 
 // TelemetryGroup: los avisos del vigilante de un proyecto. Por proyecto y no
@@ -77,6 +78,9 @@ func ItemGroup(itemID string) string { return prefijo(groupItem, itemID) }
 // agruparlas por sala juntaría la daily con la retro. Confundir dos citas del
 // calendario es peor que no plegarlas.
 func MeetingGroup(meetingID string) string { return prefijo(groupMeeting, meetingID) }
+
+// BackupTargetGroup: los avisos de una base respaldada, juntos.
+func BackupTargetGroup(targetID string) string { return prefijo(groupBackup, targetID) }
 
 func prefijo(familia, id string) string {
 	if id == "" {

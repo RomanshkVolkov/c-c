@@ -46,7 +46,13 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 	if gh != nil {
 		deployH.WithRepoFiles(gh)
 	}
-	agentH := handler.NewAgentHandler(svc, deploySvc)
+	// Los backups de bases (#166). Sin BACKUPS_BUCKET el servicio queda
+	// apagado: las rutas contestan 503 y la app lo dice.
+	store := newBackupStore()
+	backupSvc := service.NewBackupService(repository.NewBackupRepository(db), repository.NewServerRepository(db), orgs, store, bus, inbox)
+	backupH := handler.NewBackupHandler(svc, backupSvc)
+	startBackupClockFn(backupSvc)
+	agentH := handler.NewAgentHandler(svc, deploySvc).WithBackups(backupSvc)
 
 	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)))
 
@@ -83,6 +89,20 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Patch("/{id}/deployables/{did}", deployH.Update)
 		r.Delete("/{id}/deployables/{did}", deployH.Delete)
 		r.Post("/{id}/deployables/{did}/deploy", deployH.Deploy)
+		// Backups de bases (#166).
+		r.Get("/{id}/backups/status", backupH.Status)
+		r.Get("/{id}/backups/targets", backupH.ListTargets)
+		r.Post("/{id}/backups/targets", backupH.CreateTarget)
+		r.Patch("/{id}/backups/targets/{tid}", backupH.UpdateTarget)
+		r.Delete("/{id}/backups/targets/{tid}", backupH.DeleteTarget)
+		r.Post("/{id}/backups/targets/{tid}/run", backupH.RunNow)
+		r.Post("/{id}/backups/targets/{tid}/test", backupH.TestNow)
+		r.Get("/{id}/backups/targets/{tid}/history", backupH.History)
+		r.Get("/{id}/backups/recipients", backupH.Recipients)
+		r.Post("/{id}/backups/recipients", backupH.AddRecipient)
+		r.Delete("/{id}/backups/recipients/{rid}", backupH.DeleteRecipient)
+		r.Get("/{id}/backups/runs/{bid}", backupH.Backup)
+		r.Post("/{id}/backups/runs/{bid}/download", backupH.Download)
 		r.Get("/{id}/deployables/{did}/deployments", deployH.Deployments)
 		r.Get("/{id}/deployables/{did}/deployments/{depId}", deployH.Deployment)
 		r.Post("/{id}/deployables/{did}/deployments/{depId}/rollback", deployH.Rollback)
@@ -106,6 +126,11 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Use(middleware.AgentTokenMiddleware(svc.AgentByToken))
 		r.Get("/jobs", agentH.Jobs)
 		r.Post("/heartbeat", agentH.Heartbeat)
+		r.Post("/backups/{bid}/log", agentH.BackupLog)
+		r.Post("/backups/{bid}/upload-url", agentH.BackupUploadURL)
+		r.Post("/backups/{bid}/download-url", agentH.BackupDownloadURL)
+		r.Post("/backups/{bid}/finish", agentH.BackupFinish)
+		r.Post("/restore-key", agentH.RestoreKey)
 		r.Post("/jobs/{jid}/log", agentH.JobLog)
 		r.Post("/jobs/{jid}/finish", agentH.JobFinish)
 	})

@@ -26,6 +26,14 @@ type AgentHandler struct {
 	// Cada cuánto se mira la cola mientras se sostiene la pregunta. Un segundo:
 	// lo que tarda un deploy en empezar desde que se pulsa, y nada que se note.
 	tick time.Duration
+	// Los backups de bases (#166): una segunda cola, después de los deploys.
+	backups *service.BackupService
+}
+
+// WithBackups: con él, la pregunta del agente también reparte backups.
+func (h *AgentHandler) WithBackups(b *service.BackupService) *AgentHandler {
+	h.backups = b
+	return h
 }
 
 func NewAgentHandler(servers *service.ServerService, deploys *service.DeployService) *AgentHandler {
@@ -128,6 +136,24 @@ func (h *AgentHandler) Jobs(w http.ResponseWriter, r *http.Request) {
 	for {
 		if h.deploys != nil {
 			job, err := h.deploys.Claim(server.ID)
+			if err != nil {
+				SendErrorResponse(w, http.StatusInternalServerError, "Failed to claim a job", err.Error())
+				return
+			}
+			if job != nil {
+				SendResult(w, http.StatusOK, job)
+				return
+			}
+		}
+		// Los deploys primero: un servicio caído espera menos que un backup.
+		// La versión, la que dice esta pregunta y no la guardada, que puede
+		// ser la del agente de antes si se acaba de actualizar.
+		if h.backups != nil {
+			srv := *server
+			if v, err := strconv.Atoi(r.Header.Get("X-Agent-Version")); err == nil {
+				srv.AgentVersion = v
+			}
+			job, err := h.backups.Claim(&srv)
 			if err != nil {
 				SendErrorResponse(w, http.StatusInternalServerError, "Failed to claim a job", err.Error())
 				return

@@ -171,10 +171,10 @@ func TestTheBuildJobCarriesNamesNotValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	job, err := f.deploys.Claim("srv-1")
-	if err != nil || job == nil || job.Data.Build == nil {
+	if err != nil || job == nil || job.DeployData().Build == nil {
 		t.Fatalf("sin build: %+v %v", job, err)
 	}
-	b := job.Data.Build
+	b := job.DeployData().Build
 	if b.Repo != "dwit/api" || b.Sha != shaNew || b.Dockerfile != "Dockerfile" || b.Context != "boat" ||
 		b.CloneToken != "ghs_prueba" || strings.Join(b.BuildArgs, ",") != "DATABASE_URL,NEXT_PUBLIC_STRIPE_KEY" {
 		t.Fatalf("el build: %+v", b)

@@ -105,6 +105,19 @@ var catalogo = map[string]map[Locale]string{
 		EN: "{{service}} deploy expired: the agent stopped responding · {{sha}}",
 		ES: "Caducó el deploy de {{service}}: el agente dejó de contestar · {{sha}}",
 	},
+	// Los backups de bases (#166): a los admins de la organización.
+	"notify.backup.failed": {
+		EN: "Backup of {{db}} failed · {{server}}",
+		ES: "Falló el backup de {{db}} · {{server}}",
+	},
+	"notify.backup.stale": {
+		EN: "{{db}} has had no backup for {{hours}} h · {{server}}",
+		ES: "{{db}} lleva {{hours}} h sin backup · {{server}}",
+	},
+	"notify.backup.restoreFailed": {
+		EN: "Restore test of {{db}} failed · {{server}}",
+		ES: "Falló la prueba de restauración de {{db}} · {{server}}",
+	},
 	"notify.telemetry.silent": {
 		EN: "{{device}} stopped sending",
 		ES: "{{device}} dejó de mandar",

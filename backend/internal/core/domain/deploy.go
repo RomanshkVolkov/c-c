@@ -287,10 +287,19 @@ type BuildSpec struct {
 }
 
 // AgentJob es la respuesta a la pregunta del agente cuando hay trabajo.
+// AgentJob: un trabajo para el agente. `Data` depende de `Kind`: un
+// DeployJob para "deploy", un BackupJob para "backup". El agente lo decodifica
+// según la clase (ver swarm-manage/cmd/main.go).
 type AgentJob struct {
-	ID   string    `json:"id"`
-	Kind string    `json:"kind"`
-	Data DeployJob `json:"data"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	Data any    `json:"data"`
+}
+
+// DeployData: el DeployJob de un trabajo de deploy (vacío si es de otra clase).
+func (j AgentJob) DeployData() DeployJob {
+	d, _ := j.Data.(DeployJob)
+	return d
 }
 
 type AgentLogRequest struct {

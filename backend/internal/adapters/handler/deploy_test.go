@@ -119,8 +119,8 @@ func TestRollbackGoesBackToWhatWasThereBefore(t *testing.T) {
 	job := runDeploy(t, svc, "srv-1", domain.AgentFinishRequest{
 		Status: "succeeded", PreviousImage: repoAPI + ":abc1234", FinalImage: repoAPI + ":viejo",
 	})
-	if job.Data.Image != repoAPI+":viejo" {
-		t.Errorf("el agente recibió %q", job.Data.Image)
+	if job.DeployData().Image != repoAPI+":viejo" {
+		t.Errorf("el agente recibió %q", job.DeployData().Image)
 	}
 
 	var original domain.Deployment
@@ -177,11 +177,11 @@ func TestAnAgentOnlyTouchesItsOwnServersDeploys(t *testing.T) {
 	if err != nil || job == nil {
 		t.Fatalf("srv-2 no recogió el suyo: %v", err)
 	}
-	if job.Data.ServiceName != "web_app" {
-		t.Fatalf("srv-2 recogió %q, que no es de su máquina", job.Data.ServiceName)
+	if job.DeployData().ServiceName != "web_app" {
+		t.Fatalf("srv-2 recogió %q, que no es de su máquina", job.DeployData().ServiceName)
 	}
 	if again, _ := svc.Claim("srv-2"); again != nil {
-		t.Errorf("srv-2 recogió también %q", again.Data.ServiceName)
+		t.Errorf("srv-2 recogió también %q", again.DeployData().ServiceName)
 	}
 
 	// El de srv-1, en curso, no se puede tocar desde srv-2.

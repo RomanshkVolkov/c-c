@@ -149,7 +149,10 @@ func TestTheAgentPollHandsOverAQueuedDeploy(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("con un deploy en cola, la pregunta → %d: %s", rec.Code, rec.Body.String())
 	}
-	var job domain.AgentJob
+	var job struct {
+		ID, Kind string
+		Data     domain.DeployJob
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &job); err != nil {
 		t.Fatal(err)
 	}
