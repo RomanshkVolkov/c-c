@@ -922,6 +922,14 @@
     "enabled": "Encendido",
     "retained": "Se guardan como mucho {{n}} backups a la vez.",
     "save": "Guardar",
-    "saved": "Guardado"
+    "saved": "Guardado",
+    "createInOp": "Crear llave en 1Password",
+    "createTitle": "Crear la llave de los backups en 1Password",
+    "createLead": "La app de escritorio genera una llave age nueva en memoria y la guarda directo en 1Password: la privada no toca el disco ni esta página. Aquí sólo se añade la pública.",
+    "vault": "Bóveda",
+    "itemTitle": "Nombre del ítem",
+    "create": "Crear",
+    "created": "Llave creada en {{item}} y añadida",
+    "opUnavailable": "No se llega a 1Password: instala la CLI op, inicia sesión y activa la integración con la app de escritorio."
   }
 }

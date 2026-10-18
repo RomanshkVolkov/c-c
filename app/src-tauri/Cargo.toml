@@ -28,6 +28,9 @@ crypto_box = "0.9"
 blake2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
+# La llave age de los backups (#166): X25519 en bech32, sin traer la librería age entera.
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+bech32 = "0.9.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"

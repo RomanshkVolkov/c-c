@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { get, post, confirmar } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), confirmar: vi.fn() }));
+const { get, post, confirmar, invoke } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), confirmar: vi.fn(), invoke: vi.fn() }));
+vi.mock("@/lib/platform", () => ({ isTauri: true }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@/lib/api", () => ({ api: { get, post, patch: vi.fn(), delete: vi.fn() } }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
 vi.mock("@/pages/servers/ServerLayout", () => ({
@@ -70,5 +72,42 @@ describe("la pestaña Backups", () => {
     fireEvent.click(descargar);
     await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/backups/runs/b1/download", {}, true));
     await waitFor(() => expect(open).toHaveBeenCalledWith("https://s3.test/x", "_blank", "noopener"));
+  });
+});
+
+const PUB = "age1uzcuhrh6yezjg96efqkks530nnrtmea9q89m87pawfqdckp8h9yqf9yvjy";
+
+/**
+ * Crear la llave en 1Password: la app la crea con la cuenta y la bóveda
+ * elegidas, y aquí sólo se registra la pública, con un nombre que dice dónde
+ * vive la privada.
+ * Mutantes: no pasar la cuenta (con dos cuentas, `op` elige por su cuenta);
+ * registrarla sin decir la bóveda.
+ */
+describe("crear la llave en 1Password", () => {
+  it("la crea en la bóveda elegida y registra sólo la pública", async () => {
+    invoke.mockImplementation((cmd: string) => {
+      if (cmd === "op_list_vaults") return Promise.resolve([{ account: "my.1password.com", email: "jose@x", vault: "Private" }]);
+      if (cmd === "create_backup_key") return Promise.resolve({ item: "op://Private/cac backups – llave age", publicKey: PUB });
+      return Promise.reject(new Error(cmd));
+    });
+    post.mockImplementation((_path: string, body: { label: string; publicKey: string }) =>
+      Promise.resolve(ok({ id: "r2", label: body.label, publicKey: body.publicKey })),
+    );
+    render(<ServerBackups />);
+    fireEvent.click(await screen.findByRole("button", { name: /(crear llave en 1password|create key in 1password)/i }));
+    const crear = await screen.findByRole("button", { name: /^(crear|create)$/i });
+    await waitFor(() => expect((crear as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(crear);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("create_backup_key", { account: "my.1password.com", vault: "Private", title: "cac backups – llave age" }),
+    );
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        "/api/v1/servers/srv-1/backups/recipients",
+        { label: "cac backups – llave age (1Password · Private)", publicKey: PUB },
+        true,
+      ),
+    );
   });
 });

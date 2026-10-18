@@ -922,6 +922,14 @@
     "enabled": "Enabled",
     "retained": "Up to {{n}} backups are kept at a time.",
     "save": "Save",
-    "saved": "Saved"
+    "saved": "Saved",
+    "createInOp": "Create key in 1Password",
+    "createTitle": "Create the backup key in 1Password",
+    "createLead": "The desktop app generates a new age key in memory and saves it straight into 1Password: the private half never touches the disk or this page. Only the public half is added here.",
+    "vault": "Vault",
+    "itemTitle": "Item name",
+    "create": "Create",
+    "created": "Key created in {{item}} and added",
+    "opUnavailable": "1Password is not reachable: install the op CLI, sign in, and turn on the desktop app integration."
   }
 }

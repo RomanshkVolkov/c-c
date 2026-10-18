@@ -1946,6 +1946,7 @@ pub fn run() {
             export_notes,
             op_item_create,
             op_list_vaults,
+            secrets::create_backup_key,
             secrets::rotate_service_secrets,
             secrets::capture_service_env,
             secrets::check_op_refs,

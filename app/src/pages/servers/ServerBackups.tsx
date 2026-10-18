@@ -15,6 +15,7 @@ import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { formatBytes } from "@/lib/utils";
+import { isTauri } from "@/lib/platform";
 import { useServerContext } from "@/pages/servers/ServerLayout";
 import { useBackupsStore } from "@/store/backups.store";
 import type { Backup, BackupStatus, BackupTarget, BackupTargetPayload } from "@/types/backups";
@@ -164,6 +165,7 @@ function Recipients({ serverId, onError }: { serverId: string; onError: (fn: () 
   const recipients = useBackupsStore((s) => s.recipients[serverId]);
   const [label, setLabel] = useState("");
   const [key, setKey] = useState("");
+  const [creating, setCreating] = useState(false);
   const valid = isAgePublicKey(key) && label.trim() !== "";
 
   return (
@@ -221,7 +223,111 @@ function Recipients({ serverId, onError }: { serverId: string; onError: (fn: () 
       </div>
       {key.trim() !== "" && !isAgePublicKey(key) && <p className="text-xs text-destructive">{t("common:backups.keyInvalid")}</p>}
       <p className="text-xs text-muted-foreground">{t("common:backups.keyHelp")}</p>
+      {isTauri && (
+        <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
+          <KeyRound className="size-3.5" /> {t("common:backups.createInOp")}
+        </Button>
+      )}
+      {creating && <CreateKeyDialog serverId={serverId} onClose={() => setCreating(false)} onError={onError} />}
     </section>
+  );
+}
+
+interface OpVault {
+  /** La URL de la cuenta: lo que pide `op --account`. */
+  account: string;
+  email: string;
+  vault: string;
+}
+
+/**
+ * Crear la llave de los backups directamente en 1Password (#166). La genera
+ * la app de escritorio en memoria y la guarda con `op`: la privada no pasa ni
+ * por el disco ni por esta página. Aquí sólo vuelve la pública, que se
+ * registra con un nombre que dice dónde vive la privada.
+ */
+function CreateKeyDialog({
+  serverId,
+  onClose,
+  onError,
+}: {
+  serverId: string;
+  onClose: () => void;
+  onError: (fn: () => Promise<unknown>) => Promise<void>;
+}) {
+  const { t } = useT();
+  const [vaults, setVaults] = useState<OpVault[] | null>(null);
+  const [place, setPlace] = useState("");
+  const [title, setTitle] = useState("cac backups – llave age");
+  const [busy, setBusy] = useState(false);
+  const keyOf = (v: OpVault) => `${v.account}|${v.vault}`;
+
+  useEffect(() => {
+    import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<OpVault[]>("op_list_vaults"))
+      .then((v) => {
+        setVaults(v);
+        if (v.length) setPlace(keyOf(v[0]));
+      })
+      .catch(() => setVaults([]));
+  }, []);
+
+  const chosen = vaults?.find((v) => keyOf(v) === place);
+
+  const create = () =>
+    onError(async () => {
+      if (!chosen) return;
+      setBusy(true);
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const r = await invoke<{ item: string; publicKey: string }>("create_backup_key", {
+          account: chosen.account,
+          vault: chosen.vault,
+          title: title.trim(),
+        });
+        await useBackupsStore.getState().addRecipient(serverId, `${title.trim()} (1Password · ${chosen.vault})`, r.publicKey);
+        toast.success(t("common:backups.created", { item: r.item }));
+        onClose();
+      } finally {
+        setBusy(false);
+      }
+    });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("common:backups.createTitle")}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{t("common:backups.createLead")}</p>
+        {vaults !== null && vaults.length === 0 ? (
+          <p className="text-sm text-destructive">{t("common:backups.opUnavailable")}</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>{t("common:backups.vault")}</Label>
+              <Picker
+                value={place}
+                onChange={setPlace}
+                options={(vaults ?? []).map((v) => ({ value: keyOf(v), label: `${v.vault} · ${v.email}` }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="bk-item">{t("common:backups.itemTitle")}</Label>
+              <Input id="bk-item" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            {t("common:action.cancel")}
+          </Button>
+          <Button disabled={!chosen || !title.trim() || title.includes("/") || busy} onClick={() => void create()}>
+            {t("common:backups.create")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

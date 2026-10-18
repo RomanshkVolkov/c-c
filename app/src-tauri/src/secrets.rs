@@ -461,9 +461,135 @@ pub fn capture_service_env(target: SshTarget, service: String, vault: String, ti
     })
 }
 
+// ─── La llave age de los backups (#166) ───────────────────────────────────────
+
+/// Una llave age nueva: `(privada, pública)`. Es una X25519 en bech32, el
+/// formato de age: la privada `AGE-SECRET-KEY-1…` (en mayúsculas) y la pública
+/// `age1…`. Se genera en memoria y no se escribe en ningún sitio: va directa a
+/// 1Password por la entrada estándar de `op`.
+pub fn new_age_keypair() -> (String, String) {
+    use bech32::ToBase32;
+    use rand::RngCore;
+    let mut raw = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut raw);
+    let secret = x25519_dalek::StaticSecret::from(raw);
+    let public = x25519_dalek::PublicKey::from(&secret);
+    let identity = bech32::encode("age-secret-key-", secret.to_bytes().to_base32(), bech32::Variant::Bech32)
+        .expect("bech32 de 32 bytes")
+        .to_uppercase();
+    let recipient = bech32::encode("age", public.as_bytes().to_base32(), bech32::Variant::Bech32).expect("bech32 de 32 bytes");
+    (identity, recipient)
+}
+
+/// El ítem de 1Password de una llave de backups: la privada en un campo
+/// oculto, la pública a la vista (no es secreta) y una nota con cómo se usa.
+pub fn backup_key_template(title: &str, identity: &str, recipient: &str) -> String {
+    let note = format!(
+        "Llave age de los backups de cac. La privada es lo único que abre los backups cifrados para {recipient}.\n\n\
+         Abrir uno: age -d -i <(op read \"op://<bóveda>/{title}/private key\") fichero.age > backup"
+    );
+    serde_json::json!({
+        "title": title,
+        "category": "SECURE_NOTE",
+        "fields": [
+            { "id": "private_key", "label": "private key", "type": "CONCEALED", "value": identity },
+            { "id": "public_key", "label": "public key", "type": "STRING", "value": recipient },
+            { "id": "notesPlain", "label": "notesPlain", "type": "STRING", "purpose": "NOTES", "value": note }
+        ]
+    })
+    .to_string()
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupKey {
+    /// `op://bóveda/ítem`.
+    pub item: String,
+    pub public_key: String,
+}
+
+/// Crea una llave de backups directamente en 1Password y devuelve sólo la
+/// pública, que la página registra en cac. La privada no pasa por el disco,
+/// ni por la página, ni por la red: de la memoria de este proceso a `op`.
+/// Un ítem con ese nombre que ya exista no se toca.
+#[tauri::command]
+pub fn create_backup_key(account: String, vault: String, title: String) -> Result<BackupKey, String> {
+    let (vault, title) = (vault.trim().to_string(), title.trim().to_string());
+    if vault.is_empty() || title.is_empty() || title.contains('/') || vault.contains('/') {
+        return Err("the vault and the item need a name, without /".into());
+    }
+    // Con varias cuentas de 1Password (la personal y la del trabajo), sin
+    // `--account` `op` elige una por su cuenta y la bóveda puede no estar ahí.
+    let with_account = |args: &[&str]| -> Vec<String> {
+        let mut v: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        if !account.trim().is_empty() {
+            v.push("--account".into());
+            v.push(account.trim().to_string());
+        }
+        v
+    };
+    let exists = std::process::Command::new("op")
+        .args(with_account(&["item", "get", &title, "--vault", &vault, "--format", "json"]))
+        .output()
+        .map_err(|e| e.to_string())?;
+    if exists.status.success() {
+        return Err(format!("1Password already has an item called «{title}» in {vault}; pick another name"));
+    }
+    let (identity, recipient) = new_age_keypair();
+    use std::io::Write;
+    let mut child = std::process::Command::new("op")
+        .args(with_account(&["item", "create", "--vault", &vault, "--format", "json", "-"]))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    child
+        .stdin
+        .take()
+        .ok_or("op has no stdin")?
+        .write_all(backup_key_template(&title, &identity, &recipient).as_bytes())
+        .map_err(|e| e.to_string())?;
+    let done = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !done.status.success() {
+        return Err(String::from_utf8_lossy(&done.stderr).trim().to_string());
+    }
+    Ok(BackupKey { item: format!("op://{vault}/{title}"), public_key: recipient })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La llave tiene el formato de age: la privada en mayúsculas con su
+    /// prefijo, la pública `age1` y 58 caracteres, y cada vez una distinta. La
+    /// compatibilidad real con age se comprobó contra la librería de Go
+    /// (`filippo.io/age`) al escribirlo, con `CAC_AGE_CROSSCHECK`.
+    /// Mutantes: la privada en minúsculas (age no la lee); la misma llave dos
+    /// veces.
+    #[test]
+    fn a_backup_key_has_the_age_format() {
+        let (id, rc) = new_age_keypair();
+        assert!(id.starts_with("AGE-SECRET-KEY-1") && id == id.to_uppercase(), "{id}");
+        assert!(rc.starts_with("age1") && rc.len() == 62 && rc == rc.to_lowercase(), "{rc}");
+        let (id2, rc2) = new_age_keypair();
+        assert!(id != id2 && rc != rc2);
+        if let Ok(path) = std::env::var("CAC_AGE_CROSSCHECK") {
+            std::fs::write(path, format!("{id}\n{rc}\n")).unwrap();
+        }
+    }
+
+    /// En 1Password la privada va en un campo oculto y la pública a la vista.
+    /// Mutante: la privada como texto visible.
+    #[test]
+    fn the_private_key_is_concealed_in_1password() {
+        let t: serde_json::Value = serde_json::from_str(&backup_key_template("cac backups", "AGE-SECRET-KEY-1X", "age1y")).unwrap();
+        let fields = t["fields"].as_array().unwrap();
+        let private = fields.iter().find(|f| f["value"] == "AGE-SECRET-KEY-1X").unwrap();
+        assert_eq!(private["type"], "CONCEALED");
+        let public = fields.iter().find(|f| f["value"] == "age1y").unwrap();
+        assert_eq!(public["type"], "STRING");
+    }
 
     fn entries() -> Vec<(String, String)> {
         vec![
