@@ -90,17 +90,24 @@ describe("pulsar una lista leyendo documentación", () => {
     expect(screen.getByText("Pendientes").closest(".group")!.classList.contains("bg-accent")).toBe(false);
   });
 
-  it("fuera de la documentación, va a «Mi trabajo» como siempre", () => {
+  /**
+   * Fuera de la documentación abre el tablero de la lista, y cierra el
+   * documento que quedara abierto de antes: si no, `/tasks` pintaría ese
+   * documento en vez del tablero de la lista que se pulsó.
+   */
+  it("fuera de la documentación, abre su tablero y no un documento de antes", () => {
     montar("/my-work");
     fireEvent.click(screen.getByText("Pendientes"));
-    expect(useMyWorkStore.getState().scope).toMatchObject({ kind: "list", id: "li-1" });
-    expect(ruta).toBe("/my-work");
+    expect(ruta).toBe("/tasks");
+    expect(useTasksStore.getState().activeListId).toBe("li-1");
+    expect(useTasksStore.getState().activeDoc).toBeNull();
   });
 
   it("un documento de otra org no cuenta como estar leyendo", () => {
     useTasksStore.setState({ activeDoc: { kind: "list", id: "li-0", name: "Otra", orgId: "org-2" } } as never);
     montar("/tasks");
     fireEvent.click(screen.getByText("Pendientes"));
-    expect(ruta).toBe("/my-work");
+    expect(useTasksStore.getState().activeDoc).toBeNull();
+    expect(useTasksStore.getState().activeListId).toBe("li-1");
   });
 });

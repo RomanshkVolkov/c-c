@@ -49,7 +49,6 @@
     "moveDown": "Move down",
     "sortAZ": "Sort A–Z",
     "duplicate": "Duplicate",
-    "openBoard": "Open the board",
     "deleteSpace": "Delete space",
     "deleteFolder": "Delete folder",
     "deleteList": "Delete list",
@@ -272,7 +271,24 @@
       "calendar": "Calendar",
       "docs": "Docs"
     },
-    "addTask": "Add task"
+    "addTask": "Add task",
+    "filter": {
+      "search": "Search by title or #number",
+      "anyone": "Any assignee",
+      "nobody": "Unassigned",
+      "anyPriority": "Any priority",
+      "anyTag": "Any tag",
+      "clear": "Clear filters",
+      "shown": "{{shown}} of {{total}}",
+      "noMatch": "No task matches the filter.",
+      "priority": {
+        "urgent": "Urgent",
+        "high": "High",
+        "normal": "Medium",
+        "low": "Low",
+        "none": "No priority"
+      }
+    }
   },
   "docs": {
     "overview": "Overview",

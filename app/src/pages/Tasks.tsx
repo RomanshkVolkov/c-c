@@ -15,12 +15,13 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import KanbanBoard, { type KanbanColumn } from "@/components/kanban/KanbanBoard";
 import DocTabs from "@/components/docs/DocTabs";
 import ViewSwitch, { type ListView } from "@/components/tasks/ViewSwitch";
 import ListToolbar from "@/components/tasks/ListToolbar";
+import TaskFilters from "@/components/tasks/TaskFilters";
+import { EMPTY_FILTER, matchesFilter, type TaskFilter } from "@/lib/task-filter";
 import PinnedLine from "@/components/docs/PinnedLine";
 import CopyId from "@/components/CopyId";
 import ItemCalendar from "@/components/ItemCalendar";
@@ -34,7 +35,6 @@ import { useReportsStore } from "@/store/reports.store";
 import { faltanSubtareas, normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { isDocOwnerKind, priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
-import Picker from "@/components/ui/picker";
 
 export default function Tasks() {
   const fetchTags = useTasksStore((s) => s.fetchTags);
@@ -138,37 +138,6 @@ export default function Tasks() {
 }
 
 
-/**
- * A filter over the report taxonomy, shown only when the cards carry one.
- *
- * Work raised inside cac has no category or area — nobody classifies it that
- * way — so on an ordinary list these render nothing rather than two empty
- * dropdowns that never do anything.
- */
-function TaxonomyPicker({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (v: string) => void;
-}) {
-  if (options.length === 0) return null;
-  return (
-    <Picker
-      aria-label={label}
-      value={value}
-      onChange={onChange}
-      options={[{ value: "", label }, ...options.map((o) => ({ value: o, label: o }))]}
-      size="sm"
-      className="text-xs capitalize"
-    />
-  );
-}
-
 /** The colour of the column a card sits in, so the calendar reads like the board. */
 function dotForStatus(
   statuses: { id: string; color: string }[],
@@ -191,13 +160,16 @@ function Board({
   setView: (v: Exclude<ListView, "docs">) => void;
 }) {
   const { t } = useT();
-  // The report taxonomy, as a filter over the cards already on screen. Client
-  // work carries it and internal work doesn't, so the controls only appear when
-  // there is something to filter by — an always-visible pair of empty selects
-  // on a plain board would be furniture.
-  const [category, setCategory] = useState("");
-  const [area, setArea] = useState("");
   const board = useTasksStore((s) => s.board);
+  // El filtro es de la lista en la que se puso: al cambiar de lista vuelve a
+  // vacío, o una búsqueda olvidada dejaría la lista nueva en blanco sin decir
+  // por qué. Se guarda con su id y no con un efecto que lo borre, para que no
+  // haya ni un render de la lista nueva filtrada por lo de la anterior.
+  const [filterOf, setFilterOf] = useState<{ listId: string; filter: TaskFilter }>({
+    listId: "",
+    filter: EMPTY_FILTER,
+  });
+  const filter = board && filterOf.listId === board.list.id ? filterOf.filter : EMPTY_FILTER;
 
   // La máquina de estados del servidor, para no ofrecer destinos imposibles.
   const transitions = useReportsStore((s) => s.transitions);
@@ -309,36 +281,34 @@ function Board({
     ),
   }));
 
-  const categories = [...new Set(board.tasks.map((t) => t.category).filter(Boolean))] as string[];
-  const areas = [...new Set(board.tasks.map((t) => t.area).filter(Boolean))] as string[];
-  const visible = board.tasks.filter(
-    (t) => (!category || t.category === category) && (!area || t.area === area),
-  );
+  const visible = board.tasks.filter((c) => matchesFilter(c, filter));
   const items = visible.map((t) => ({ ...t, columnId: t.statusId }));
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* Dos filas: el nombre con lo que lo identifica, y debajo las vistas
-          con sus filtros. En una sola, en una ventana normal, el nombre era lo
-          que cedía y quedaba en «t…». */}
+      {/* La misma cabecera que la documentación de la lista (`DocTabs`):
+          icono, nombre, id y los botones a la derecha, y debajo las cuatro
+          pestañas. Pasar de Tablero a Documentación no mueve nada de sitio; la
+          cuenta de tareas bajó a la fila de los filtros, que es donde dice
+          cuántas se ven. En una sola fila con las pestañas, en una ventana
+          normal, el nombre era lo que cedía y quedaba en «t…». */}
       <header className="flex h-12 shrink-0 items-center gap-2 px-4">
+        <ListChecks className="size-4 shrink-0 text-muted-foreground" />
         <h1 className="min-w-0 truncate text-sm font-medium">{board.list.name}</h1>
         {/* create_task takes this listId. */}
         <CopyId id={board.list.id} label="list" />
-        <Badge variant="secondary" className="shrink-0 text-xs">
-          {t("common:count.tasks", { count: board.tasks.length })}
-        </Badge>
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          className="ml-auto shrink-0"
-          title={t("work:board.refresh")}
-          aria-label={t("work:board.refresh")}
-          disabled={loading}
-          onClick={() => refreshBoard()}
-        >
-          <RefreshCw className={cn("size-3", loading && "animate-spin")} />
-        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            title={t("work:board.refresh")}
+            aria-label={t("work:board.refresh")}
+            disabled={loading}
+            onClick={() => refreshBoard()}
+          >
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+          </Button>
+        </div>
       </header>
       <ListToolbar
         views={
@@ -349,15 +319,22 @@ function Board({
             }
           />
         }
-      >
-        <TaxonomyPicker label={t("work:board.anyKind")} value={category} options={categories} onChange={setCategory} />
-        <TaxonomyPicker label={t("work:board.anyArea")} value={area} options={areas} onChange={setArea} />
-      </ListToolbar>
+      />
+      <TaskFilters
+        cards={board.tasks}
+        shown={visible.length}
+        value={filter}
+        onChange={(f) => setFilterOf({ listId: board.list.id, filter: f })}
+      />
 
       <PinnedLine listId={board.list.id} />
 
       <div className="min-h-0 flex-1">
-        {view === "board" ? (
+        {/* Con el filtro dejándolo todo fuera, dicho una vez en vez de un
+            tablero de columnas vacías que parece una lista sin trabajo. */}
+        {visible.length === 0 && board.tasks.length > 0 ? (
+          <p className="p-6 text-center text-sm text-muted-foreground">{t("work:board.filter.noMatch")}</p>
+        ) : view === "board" ? (
           <KanbanBoard
             columns={columns}
             items={items}

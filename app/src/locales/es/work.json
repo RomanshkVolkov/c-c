@@ -49,7 +49,6 @@
     "moveDown": "Bajar",
     "sortAZ": "Ordenar A–Z",
     "duplicate": "Duplicar",
-    "openBoard": "Abrir el tablero",
     "deleteSpace": "Borrar el espacio",
     "deleteFolder": "Borrar la carpeta",
     "deleteList": "Borrar la lista",
@@ -272,7 +271,24 @@
       "calendar": "Calendario",
       "docs": "Documentación"
     },
-    "addTask": "Añadir tarea"
+    "addTask": "Añadir tarea",
+    "filter": {
+      "search": "Buscar por título o #folio",
+      "anyone": "Cualquier responsable",
+      "nobody": "Sin asignar",
+      "anyPriority": "Cualquier prioridad",
+      "anyTag": "Cualquier etiqueta",
+      "clear": "Quitar filtros",
+      "shown": "{{shown}} de {{total}}",
+      "noMatch": "Ninguna tarea coincide con el filtro.",
+      "priority": {
+        "urgent": "Urgente",
+        "high": "Alta",
+        "normal": "Media",
+        "low": "Baja",
+        "none": "Sin prioridad"
+      }
+    }
   },
   "docs": {
     "overview": "Resumen",
