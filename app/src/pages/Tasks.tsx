@@ -1,3 +1,5 @@
+import PriorityChip from "@/components/tasks/PriorityChip";
+import { cuando, dueClass } from "@/components/tasks/TaskCardMini";
 import { fecha } from "@/lib/fechas";
 import { enterOrg } from "@/lib/ir-en-org";
 import { dueDay } from "@/lib/month";
@@ -11,7 +13,6 @@ import {
   MessageSquare,
   Paperclip,
   FileText,
-  Flag,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,8 +35,9 @@ import { PrChip } from "@/components/TaskGitPanel";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useReportsStore } from "@/store/reports.store";
 import { faltanSubtareas, normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
-import { isDocOwnerKind, priorityMeta, type ItemVisibility, type TaskCard } from "@/types/task";
+import { isDocOwnerKind, type ItemVisibility, type TaskCard } from "@/types/task";
 import { cn } from "@/lib/utils";
+import { statusTone } from "@/lib/status-color";
 
 export default function Tasks() {
   const fetchTags = useTasksStore((s) => s.fetchTags);
@@ -140,15 +142,8 @@ export default function Tasks() {
 
 
 /** The colour of the column a card sits in, so the calendar reads like the board. */
-function dotForStatus(
-  statuses: { id: string; color: string }[],
-  statusId: string,
-): string {
-  const found = statuses.find((s) => s.id === statusId);
-  // A bare class name can't carry an arbitrary hex, and the column colours are
-  // user-chosen, so this maps to the two states the month view actually needs
-  // to distinguish at a glance.
-  return found ? "bg-primary" : "bg-muted-foreground/40";
+function dotForStatus(statuses: { id: string; status: string }[], statusId: string): string {
+  return statusTone(statuses.find((s) => s.id === statusId)?.status).dot;
 }
 
 // ─── Board ────────────────────────────────────────────────────────────────────
@@ -246,7 +241,7 @@ function Board({
   const columns: KanbanColumn[] = board.statuses.map((s) => ({
     id: s.id,
     title: s.name,
-    color: s.color,
+    tone: statusTone(s.status),
     action: (
       <button
         className="flex w-full items-center gap-1 rounded px-1 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -412,9 +407,11 @@ function ListView({
         return (
           <section key={status.id} className="mb-5">
             <div className="mb-1 flex items-center gap-2">
-              <span className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
+              <span className={cn("size-2 rounded-full", statusTone(status.status).dot)} />
               <h3 className="text-xs font-semibold uppercase tracking-wide">{status.name}</h3>
-              <span className="text-xs text-muted-foreground">{rows.length}</span>
+              <span className={cn("rounded-full px-1.5 text-xs font-medium tabular-nums", statusTone(status.status).chip)}>
+                {rows.length}
+              </span>
             </div>
             {rows.length === 0 ? (
               <p className="px-1 py-2 text-xs text-muted-foreground">{t("work:board.empty")}</p>
@@ -439,11 +436,7 @@ function ListView({
                         {g.name}
                       </span>
                     ))}
-                    {t.priority !== "none" && (
-                      <span className={cn("shrink-0 text-xs", priorityMeta(t.priority).className)}>
-                        {priorityMeta(t.priority).label}
-                      </span>
-                    )}
+                    <PriorityChip priority={t.priority} />
                     {t.dueAt && (
                       <span className="shrink-0 text-xs text-muted-foreground">
                         {fecha(dueDay(t.dueAt))}
@@ -488,12 +481,12 @@ function TaskCardView({
   onOpen: () => void;
 }) {
   const { t } = useT();
-  const priority = priorityMeta(card.priority);
+  const due = cuando(card.dueAt);
   return (
     <div
       onClick={onOpen}
       className={cn(
-        "rounded-md border bg-card p-2.5 shadow-sm transition-colors hover:border-primary/50",
+        "rounded-md border bg-raised p-2.5 shadow-sm transition-colors hover:border-primary/50",
         dragging && "shadow-lg",
       )}
     >
@@ -543,12 +536,8 @@ function TaskCardView({
             {card.subtaskDone}/{card.subtaskCount}
           </span>
         )}
-        {card.priority !== "none" && (
-          <span className={cn("flex items-center gap-0.5", priority.className)}>
-            <Flag className="size-3" />
-            {priority.label}
-          </span>
-        )}
+        <PriorityChip priority={card.priority} />
+        {due.texto && <span className={cn("shrink-0", dueClass(due))}>{due.texto}</span>}
         <span className="ml-auto">#{card.seq}</span>
         {card.assignees.length > 0 && (
           <span className="flex items-center gap-0.5">

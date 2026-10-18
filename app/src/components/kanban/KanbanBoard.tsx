@@ -1,3 +1,4 @@
+import type { StatusTone } from "@/lib/status-color";
 import { useT } from "@/lib/i18n";
 import { useMemo, useState, type ReactNode } from "react";
 import {
@@ -36,7 +37,8 @@ import { cn } from "@/lib/utils";
 export interface KanbanColumn {
   id: string;
   title: string;
-  color?: string;
+  /** El color de su estado (`statusTone`): punto, cuenta y filo de arriba. */
+  tone?: StatusTone;
   /** Rendered at the column header's right edge (e.g. a count or menu). */
   accessory?: ReactNode;
   /**
@@ -230,21 +232,27 @@ function Column<T extends KanbanItem>({
   return (
     <section
       className={cn(
-        "flex w-72 shrink-0 flex-col rounded-lg border bg-muted/20 transition-colors",
+        // Hundida bajo las tarjetas, que van levantadas (`bg-raised`): con el
+        // mismo gris, columna y tarjeta no se separaban. El filo de arriba en
+        // el color de su estado es lo que distingue una columna de otra.
+        "flex w-72 shrink-0 flex-col rounded-lg border bg-sunken transition-colors",
+        column.tone && cn("border-t-2", column.tone.edge),
         bloqueada && "border-destructive/40",
       )}
     >
       <header className="flex items-center gap-2 border-b px-3 py-2">
-        {column.color && (
-          <span
-            className="size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: column.color }}
-          />
-        )}
+        {column.tone && <span className={cn("size-2 shrink-0 rounded-full", column.tone.dot)} />}
         <h3 className="truncate text-xs font-semibold uppercase tracking-wide">
           {column.title}
         </h3>
-        <span className="text-xs text-muted-foreground">{items.length}</span>
+        <span
+          className={cn(
+            "rounded-full px-1.5 text-xs font-medium tabular-nums",
+            column.tone ? column.tone.chip : "text-muted-foreground",
+          )}
+        >
+          {items.length}
+        </span>
         <span className="ml-auto flex items-center">{column.accessory}</span>
       </header>
 

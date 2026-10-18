@@ -76,7 +76,7 @@ export default function TaskFilters({
           onChange={(priority) => set({ priority })}
           options={[
             { value: "", label: t("work:board.filter.anyPriority") },
-            ...opts.priorities.map((p) => ({ value: p, label: t(`work:board.filter.priority.${p}`) })),
+            ...opts.priorities.map((p) => ({ value: p, label: t(`work:taskPriority.${p}`) })),
           ]}
           size="sm"
           className="text-xs"

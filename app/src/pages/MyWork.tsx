@@ -1,3 +1,4 @@
+import PriorityChip from "@/components/tasks/PriorityChip";
 import i18next from "i18next";
 
 import { useT, type MessageKey } from "@/lib/i18n";
@@ -13,7 +14,7 @@ import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ItemCalendar from "@/components/ItemCalendar";
 import PinnedLine from "@/components/docs/PinnedLine";
 import NewTaskRow from "@/components/tasks/NewTaskRow";
-import TaskCardMini, { cuando } from "@/components/tasks/TaskCardMini";
+import TaskCardMini, { cuando, dueClass } from "@/components/tasks/TaskCardMini";
 import { useMyWorkStore, type WorkLens } from "@/store/mywork.store";
 import type { TaskView } from "@/types/task";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -23,6 +24,7 @@ import { priorityMeta } from "@/types/task";
 import type { OpenTask } from "@/types/task";
 import { normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { cn } from "@/lib/utils";
+import { statusTone } from "@/lib/status-color";
 import { dueCalendarItems } from "@/components/tasks/due-calendar";
 
 /**
@@ -72,11 +74,11 @@ const VIEWS = [
  * hecha: un reporte se puede cerrar sin arreglarlo, y por la integración
  * server-to-server llegan así de verdad.
  */
-const STATUS_COLUMNS: { status: ReportStatus; dot: string }[] = [
-  { status: "open", dot: "bg-muted-foreground" },
-  { status: "in_progress", dot: "bg-primary" },
-  { status: "done", dot: "bg-success" },
-  { status: "closed", dot: "bg-muted-foreground/60" },
+const STATUS_COLUMNS: { status: ReportStatus }[] = [
+  { status: "open" },
+  { status: "in_progress" },
+  { status: "done" },
+  { status: "closed" },
 ];
 
 /** Terminadas y cerradas sólo se piden cuando pides «todos los estados». */
@@ -397,6 +399,9 @@ export default function MyWork() {
                 return {
                   id: col.status,
                   title: t(STATUS_LABEL_KEYS[col.status]),
+                  // Hasta el 18-oct-2026 cada columna tenía su punto escrito
+                  // aquí y nadie lo leía: las cuatro salían iguales.
+                  tone: statusTone(col.status),
                   // El guion en vez del cero, y el porqué escrito abajo: «0»
                   // afirmaría que no hay ninguna, y lo que pasa es que no se
                   // preguntó.
@@ -448,14 +453,12 @@ export default function MyWork() {
                             been missing a value the server grew before, and
                             reading a field off the resulting undefined took a
                             whole screen down. */}
-                        <span className={cn("shrink-0 text-xs", priorityMeta(t.priority).className)}>
-                          {priorityMeta(t.priority).label}
-                        </span>
+                        <PriorityChip priority={t.priority} />
                         {t.dueAt && (
                           <span
                             className={cn(
                               "w-20 shrink-0 text-right text-xs",
-                              cuando(t.dueAt).vencida ? "text-destructive" : "text-muted-foreground",
+                              dueClass(cuando(t.dueAt)),
                             )}
                           >
                             {cuando(t.dueAt).texto}

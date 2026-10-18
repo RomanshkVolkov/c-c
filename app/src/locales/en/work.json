@@ -280,14 +280,7 @@
       "anyTag": "Any tag",
       "clear": "Clear filters",
       "shown": "{{shown}} of {{total}}",
-      "noMatch": "No task matches the filter.",
-      "priority": {
-        "urgent": "Urgent",
-        "high": "High",
-        "normal": "Medium",
-        "low": "Low",
-        "none": "No priority"
-      }
+      "noMatch": "No task matches the filter."
     }
   },
   "docs": {
@@ -485,5 +478,17 @@
     },
     "never": "Not synced yet",
     "changedBy": "Changed by {{who}} {{when}}"
+  },
+  "taskPriority": {
+    "urgent": "Urgent",
+    "high": "High",
+    "normal": "Medium",
+    "low": "Low",
+    "none": "No priority"
+  },
+  "due": {
+    "today": "today",
+    "yesterday": "yesterday",
+    "tomorrow": "tomorrow"
   }
 }

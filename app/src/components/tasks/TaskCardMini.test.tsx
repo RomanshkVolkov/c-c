@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * visible without reading.
  */
 
-const { cuando } = await import("@/components/tasks/TaskCardMini");
+const { cuando, dueClass } = await import("@/components/tasks/TaskCardMini");
 
 /**
  * Un vencimiento tal y como la app lo guarda: **el día a medianoche UTC**.
@@ -38,6 +38,16 @@ describe("el vencimiento en palabras", () => {
   it("mañana todavía no", () => {
     expect(cuando(dias(1)).vencida).toBe(false);
     expect(cuando(dias(1)).texto).toBe("tomorrow");
+  });
+
+  /** Mañana va en ámbar: no vence, pero es la siguiente que lo hará. */
+  it("mañana es pronto, en ámbar; hoy y antes, en rojo; lo demás, apagado", () => {
+    expect(cuando(dias(1)).pronto).toBe(true);
+    expect(cuando(dias(0)).pronto).toBe(false);
+    expect(cuando(dias(2)).pronto).toBe(false);
+    expect(dueClass(cuando(dias(1)))).toContain("text-warning");
+    expect(dueClass(cuando(dias(-2)))).toContain("text-error");
+    expect(dueClass(cuando(dias(5)))).toBe("text-muted-foreground");
   });
 
   it("sin fecha no inventa una", () => {

@@ -77,12 +77,15 @@ const { onMove, puedeSoltar } = vi.hoisted(() => ({
   // a dnd-kit, y lo que importa es la decisión.
   puedeSoltar: { fn: null as null | ((t: OpenTask, c: string) => boolean) },
 }));
+const { columns } = vi.hoisted(() => ({ columns: { value: [] as { id: string; tone?: { dot: string } }[] } }));
 vi.mock("@/components/kanban/KanbanBoard", () => ({
   default: (props: {
     onMove: (m: { itemId: string; toColumnId: string }) => void;
     puedeSoltar?: (t: OpenTask, c: string) => boolean;
+    columns: { id: string; tone?: { dot: string } }[];
   }) => {
     onMove.fn = props.onMove;
+    columns.value = props.columns;
     puedeSoltar.fn = props.puedeSoltar ?? null;
     return null;
   },
@@ -123,6 +126,23 @@ beforeEach(() => {
   statusesOf.mockImplementation((listId: string) => Promise.resolve(columnasDe(listId)));
 });
 afterEach(cleanup);
+
+/**
+ * Cada columna, con el color de su estado. Hasta el 18-oct-2026 el color
+ * estaba escrito en `STATUS_COLUMNS` y no se le pasaba al tablero: las cuatro
+ * columnas salían iguales.
+ */
+describe("las columnas de Mi trabajo", () => {
+  it("llevan el color de su estado", () => {
+    montar([tarea("t1", "pending", "l-1")]);
+    expect(columns.value.map((c) => [c.id, c.tone?.dot])).toEqual([
+      ["open", "bg-status-open"],
+      ["in_progress", "bg-status-progress"],
+      ["done", "bg-status-done"],
+      ["closed", "bg-status-closed"],
+    ]);
+  });
+});
 
 describe("arrastrar en Mi trabajo", () => {
   // Con «in_progress» y no «done» a propósito: desde «open», «done» ya no es un

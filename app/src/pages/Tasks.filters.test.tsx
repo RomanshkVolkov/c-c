@@ -107,6 +107,13 @@ describe("buscar en una lista", () => {
     expect(screen.getByText("Portada")).toBeTruthy();
   });
 
+  /** Las columnas del tablero de una lista, en el color de su estado. */
+  it("en el tablero, cada columna lleva el color de su estado", () => {
+    useTasksStore.setState({ boardView: "board" } as never);
+    screenOf();
+    expect(screen.getByText("Open").closest("section")!.className).toContain("border-t-status-open");
+  });
+
   it("la cabecera es la de la documentación: nombre e id, sin la cuenta", () => {
     screenOf();
     expect(screen.getByRole("heading", { name: "Apps" })).toBeTruthy();

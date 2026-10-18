@@ -1,3 +1,4 @@
+import PriorityChip from "@/components/tasks/PriorityChip";
 import { nombreDe } from "@/lib/nombres";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
@@ -54,10 +55,11 @@ import { useTasksStore } from "@/store/tasks.store";
 import { usePeopleStore } from "@/store/people.store";
 import { mentionsAllowed } from "@/components/markdown/mention-scope";
 import { useAuthStore } from "@/store/auth.store";
-import { PRIORITIES, priorityMeta } from "@/types/task";
+import { PRIORITIES } from "@/types/task";
 import type { TaskStatus } from "@/types/task";
 import type { TaskComment } from "@/types/task";
 import { cn } from "@/lib/utils";
+import { statusTone } from "@/lib/status-color";
 import { useOrgsStore } from "@/store/orgs.store";
 
 /**
@@ -965,10 +967,7 @@ function Content() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className="rounded px-2 py-0.5 text-xs font-medium" style={{
-                    backgroundColor: `${detail.status.color}22`,
-                    color: detail.status.color,
-                  }}>
+                  <button className={cn("rounded px-2 py-0.5 text-xs font-medium", statusTone(detail.status.status).chip)}>
                     {detail.status.name}
                   </button>
                 }
@@ -995,7 +994,7 @@ function Content() {
                         moveTask(task.id, s.id, "", "").catch((e) => toast.error(String(e)));
                       }}
                     >
-                      <span className="size-2 rounded-full" style={{ backgroundColor: s.color }} />
+                      <span className={cn("size-2 rounded-full", statusTone(s.status).dot)} />
                       {s.name}
                       {s.id === task.statusId && <Check className="ml-auto size-3.5" />}
                     </DropdownMenuItem>
@@ -1006,14 +1005,14 @@ function Content() {
           </div>
 
           <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Flag className="size-3.5" /> Priority
+            <Flag className="size-3.5" /> {t("work:board.priority")}
           </span>
           <div>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className={cn("text-xs", priorityMeta(task.priority).className)}>
-                    {priorityMeta(task.priority).label}
+                  <button className="rounded-full hover:opacity-80">
+                    <PriorityChip priority={task.priority} showNone />
                   </button>
                 }
               />
@@ -1024,8 +1023,7 @@ function Content() {
                       key={p}
                       onClick={() => updateTask(task.id, { priority: p }).catch((e) => toast.error(String(e)))}
                     >
-                      <Flag className={cn("size-3.5", priorityMeta(p).className)} />
-                      {priorityMeta(p).label}
+                      <PriorityChip priority={p} showNone />
                       {p === task.priority && <Check className="ml-auto size-3.5" />}
                     </DropdownMenuItem>
                   ))}

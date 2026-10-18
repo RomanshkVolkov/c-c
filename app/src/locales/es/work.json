@@ -280,14 +280,7 @@
       "anyTag": "Cualquier etiqueta",
       "clear": "Quitar filtros",
       "shown": "{{shown}} de {{total}}",
-      "noMatch": "Ninguna tarea coincide con el filtro.",
-      "priority": {
-        "urgent": "Urgente",
-        "high": "Alta",
-        "normal": "Media",
-        "low": "Baja",
-        "none": "Sin prioridad"
-      }
+      "noMatch": "Ninguna tarea coincide con el filtro."
     }
   },
   "docs": {
@@ -485,5 +478,17 @@
     },
     "never": "Sin sincronizar todavía",
     "changedBy": "Cambiado por {{who}} {{when}}"
+  },
+  "taskPriority": {
+    "urgent": "Urgente",
+    "high": "Alta",
+    "normal": "Media",
+    "low": "Baja",
+    "none": "Sin prioridad"
+  },
+  "due": {
+    "today": "hoy",
+    "yesterday": "ayer",
+    "tomorrow": "mañana"
   }
 }
