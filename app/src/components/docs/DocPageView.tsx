@@ -223,7 +223,7 @@ export default function DocPageView({
                       key={key}
                       type="button"
                       onClick={() => void usarPlantilla(t(`work:pageTemplates.${key}.body` as MessageKey))}
-                      className="rounded-md border p-3 text-left hover:bg-accent"
+                      className="motion-press rounded-md border p-3 text-left hover:bg-accent"
                     >
                       <span className="flex items-center gap-2 text-sm font-medium">
                         <Icon className="size-4 text-muted-foreground" />

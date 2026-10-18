@@ -63,7 +63,7 @@ export function ReplyingBar({
         type="button"
         onClick={onCancel}
         aria-label={t("chat:cancelReply")}
-        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="motion-press shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <X className="size-3" />
       </button>

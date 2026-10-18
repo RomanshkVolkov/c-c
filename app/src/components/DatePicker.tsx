@@ -61,7 +61,7 @@ export default function DatePicker({
         render={
           <button
             className={cn(
-              "flex items-center gap-1.5 rounded border px-2 py-1 text-left text-sm",
+              "motion-press flex items-center gap-1.5 rounded border px-2 py-1 text-left text-sm",
               !elegido && "text-muted-foreground",
               className,
             )}
@@ -76,7 +76,7 @@ export default function DatePicker({
       <DropdownMenuContent align="start" className="w-64 p-2">
         <div className="mb-1 flex items-center justify-between">
           <button
-            className="rounded px-2 py-0.5 text-sm hover:bg-accent"
+            className="motion-press rounded px-2 py-0.5 text-sm hover:bg-accent"
             onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}
             aria-label={t("common:last.previousMonth")}
           >
@@ -86,7 +86,7 @@ export default function DatePicker({
             {new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(cursor)}
           </span>
           <button
-            className="rounded px-2 py-0.5 text-sm hover:bg-accent"
+            className="motion-press rounded px-2 py-0.5 text-sm hover:bg-accent"
             onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}
             aria-label={t("common:last.nextMonth")}
           >
@@ -116,7 +116,7 @@ export default function DatePicker({
                   setAbierto(false);
                 }}
                 className={cn(
-                  "rounded py-1 text-xs tabular-nums hover:bg-accent",
+                  "motion-press rounded py-1 text-xs tabular-nums hover:bg-accent",
                   deOtroMes && "text-muted-foreground/40",
                   isSameDay(d, hoy) && "font-semibold text-primary",
                   esElegido && "bg-primary text-primary-foreground hover:bg-primary",

@@ -111,7 +111,7 @@ export default function CallSummaryCard({
             <button
               type="button"
               onClick={onOpenRecording}
-              className="flex w-fit items-center gap-1.5 rounded border px-2 py-1 text-xs hover:bg-accent"
+              className="motion-press flex w-fit items-center gap-1.5 rounded border px-2 py-1 text-xs hover:bg-accent"
             >
               <Video className="size-3.5" />
               {t("chat:callWatchRecording")}
@@ -121,7 +121,7 @@ export default function CallSummaryCard({
             <button
               type="button"
               onClick={() => setViewing(true)}
-              className="flex w-fit items-center gap-1.5 rounded border px-2 py-1 text-xs hover:bg-accent"
+              className="motion-press flex w-fit items-center gap-1.5 rounded border px-2 py-1 text-xs hover:bg-accent"
             >
               <MessageSquare className="size-3.5" />
               {t("chat:viewCallChat", { count: call.messages })}

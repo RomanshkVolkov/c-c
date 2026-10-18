@@ -47,7 +47,7 @@ export function Reactions({
           disabled={readOnly}
           onClick={() => void react(r.emoji, !r.mine)}
           className={cn(
-            "flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums transition-colors",
+            "motion-press flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums transition-colors",
             r.mine
               ? "border-primary/50 bg-primary/10 text-foreground"
               : "border-border bg-muted/40 text-muted-foreground hover:bg-muted",

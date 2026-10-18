@@ -45,7 +45,7 @@ export default function CopyId({
       onClick={copy}
       title={`Copy ${label} id — ${id}`}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5",
+        "motion-press inline-flex shrink-0 items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5",
         "font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         className,
       )}

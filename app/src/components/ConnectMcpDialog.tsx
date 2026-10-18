@@ -1,7 +1,8 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { fecha } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Check, Plus, Trash2, Pencil, Loader2, TriangleAlert } from "lucide-react";
+import { Copy, Check, Plus, Trash2, Pencil, TriangleAlert } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -231,9 +232,7 @@ export default function ConnectMcpDialog({
               Active tokens ({tokens.length})
             </Label>
             {loading && tokens.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                <Loader2 className="inline size-3 animate-spin" /> Loading…
-              </p>
+              <RowsSkeleton label={t("common:servers.loading")} rows={2} />
             ) : tokens.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("common:admin.noTokens")}</p>
             ) : (

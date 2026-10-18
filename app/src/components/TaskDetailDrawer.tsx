@@ -1,3 +1,5 @@
+import i18next from "@/lib/i18n";
+import { DocSkeleton } from "@/components/ui/skeletons";
 import { withViewTransition } from "@/lib/view-transition";
 import { ColorDot, paletteFor } from "@/components/ui/color-swatches";
 import TagChip from "@/components/tasks/TagChip";
@@ -124,9 +126,7 @@ export default function TaskDetailDrawer() {
         className="motion-open fixed inset-0 z-50 flex flex-col bg-background"
       >
         {loading && !detail ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            <Loader2 className="mr-2 size-4 animate-spin" /> Loading task…
-          </div>
+          <DocSkeleton label={i18next.t("common:servers.loading")} />
         ) : !detail ? (
           <CouldNotOpen id={openTaskId} reason={detailError} onClose={closeTask} />
         ) : (
@@ -643,7 +643,7 @@ function Content() {
                       <button
                         onClick={() => src && setZoom({ src, alt: a.fileName })}
                         title={a.fileName}
-                        className="block cursor-zoom-in overflow-hidden rounded-md border"
+                        className="motion-press block cursor-zoom-in overflow-hidden rounded-md border"
                       >
                         <img
                           src={src}
@@ -664,7 +664,7 @@ function Content() {
                         </span>
                       )}
                       <button
-                        className="absolute right-1 top-1 rounded bg-background/80 p-1 text-muted-foreground opacity-0 transition-opacity group-hover/img:opacity-100 hover:text-destructive"
+                        className="motion-press absolute right-1 top-1 rounded bg-background/80 p-1 text-muted-foreground opacity-0 transition-opacity group-hover/img:opacity-100 hover:text-destructive"
                         title={t("work:task.removeAttachment")}
                         onClick={() => void quitar(a)}
                       >
@@ -854,7 +854,7 @@ function Content() {
                         moveTask(st.id, target, "", "").catch((e) => toast.error(String(e)));
                       }}
                       className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded border",
+                        "motion-press flex size-4 shrink-0 items-center justify-center rounded border",
                         done && "border-success bg-success/20",
                       )}
                     >
@@ -932,7 +932,7 @@ function Content() {
                   disabled={sending || !comment.trim()}
                   onClick={() => setRegistrando(true)}
                   title={t("work:decisions.record")}
-                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  className="motion-press flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                 >
                   <Gavel className="size-3" />
                   {t("work:decisions.record")}
@@ -941,7 +941,7 @@ function Content() {
                   <button
                     type="button"
                     className={cn(
-                      "flex items-center gap-1 rounded px-2 py-1 text-xs",
+                      "motion-press flex items-center gap-1 rounded px-2 py-1 text-xs",
                       commentInternal
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:text-foreground",
@@ -980,7 +980,7 @@ function Content() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className={cn("rounded px-2 py-0.5 text-xs font-medium", statusTone(detail.status.status).chip)}>
+                  <button className={cn("motion-press rounded px-2 py-0.5 text-xs font-medium", statusTone(detail.status.status).chip)}>
                     {detail.status.name}
                   </button>
                 }
@@ -1024,7 +1024,7 @@ function Content() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className="rounded-full hover:opacity-80">
+                  <button className="motion-press rounded-full hover:opacity-80">
                     <PriorityChip priority={task.priority} showNone />
                   </button>
                 }
@@ -1067,7 +1067,7 @@ function Content() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <button className="rounded border border-dashed px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground">
+                  <button className="motion-press rounded border border-dashed px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground">
                     + tag
                   </button>
                 }

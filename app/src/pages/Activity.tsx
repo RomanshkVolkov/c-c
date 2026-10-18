@@ -236,7 +236,7 @@ function RunRow({
               <button
                 key={r.id}
                 type="button"
-                className="inline-flex items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground"
+                className="motion-press inline-flex items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground"
                 title={t("activity:openRun")}
                 onClick={() => void openExternal(r.htmlUrl)}
               >

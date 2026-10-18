@@ -112,7 +112,7 @@ export default function PageRow({
           type="button"
           title={t("work:docs.newSubpage")}
           aria-label={t("work:docs.newSubpage")}
-          className="hidden size-5 shrink-0 place-items-center rounded hover:bg-background group-focus-within:grid group-hover:grid"
+          className="motion-press hidden size-5 shrink-0 place-items-center rounded hover:bg-background group-focus-within:grid group-hover:grid"
           onClick={() => onNew(page.id)}
         >
           <Plus className="size-3" />
@@ -125,7 +125,7 @@ export default function PageRow({
               <button
                 type="button"
                 aria-label={t("work:docs.pageMenu", { title })}
-                className="hidden size-5 shrink-0 place-items-center rounded hover:bg-background group-focus-within:grid group-hover:grid data-[popup-open]:grid"
+                className="motion-press hidden size-5 shrink-0 place-items-center rounded hover:bg-background group-focus-within:grid group-hover:grid data-[popup-open]:grid"
               >
                 <MoreHorizontal className="size-3" />
               </button>

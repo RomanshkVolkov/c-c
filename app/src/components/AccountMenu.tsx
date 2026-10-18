@@ -276,7 +276,7 @@ export default function AccountMenu({
           aria-expanded={open}
           aria-label={t("nav:rail.account")}
           title={`${nombreDe(session)} · ${role}`}
-          className="relative grid size-9 place-items-center rounded-lg hover:bg-sidebar-accent"
+          className="motion-press relative grid size-9 place-items-center rounded-lg hover:bg-sidebar-accent"
         >
           {initials}
           {/* El punto del flujo en vivo, pegado al avatar: con el sidebar

@@ -1,6 +1,7 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { Users as UsersIcon, Plus, Trash2, Pencil, ShieldCheck, Loader2 } from "lucide-react";
+import { Users as UsersIcon, Plus, Trash2, Pencil, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -96,7 +97,7 @@ export default function Users() {
               {loading && users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
-                    <Loader2 className="inline size-4 animate-spin" /> {t("common:admin.loading")}
+                    <RowsSkeleton label={t("common:admin.loading")} rows={4} />
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (

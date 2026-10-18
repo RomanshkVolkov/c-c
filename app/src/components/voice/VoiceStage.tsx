@@ -251,7 +251,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
           <button
             type="button"
             onClick={() => setPorEnlace(true)}
-            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+            className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
             <UserPlus className="size-[15px]" /> {t("calls:inviteByLink")}
           </button>
@@ -260,7 +260,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
           <button
             type="button"
             onClick={() => void copiarEnlace()}
-            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+            className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
             <Link2 className="size-[15px]" /> {t("calls:copyLink")}
           </button>
@@ -271,7 +271,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
           <button
             type="button"
             onClick={() => setChat((v) => !v)}
-            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+            className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
             <MessageSquare className="size-[15px]" /> {chat ? t("common:last.hideChat") : t("common:last.chat")}
           </button>
@@ -283,7 +283,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
             type="button"
             onClick={cerrarEscenario}
             title={t("common:last.backToChannel")}
-            className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+            className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
             <Minimize2 className="size-[15px]" /> Minimize
           </button>
@@ -316,7 +316,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
                 {pantalla === yo && (
                   <button
                     onClick={() => void alternarCompartir()}
-                    className="absolute bottom-3 right-3 rounded-full border border-destructive/50 bg-background/80 px-3 py-1 text-xs font-semibold text-destructive"
+                    className="motion-press absolute bottom-3 right-3 rounded-full border border-destructive/50 bg-background/80 px-3 py-1 text-xs font-semibold text-destructive"
                   >
                     {t("common:last.stopSharing")}
                   </button>
@@ -333,7 +333,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
                     type="button"
                     onClick={() => setCarasAMano(true)}
                     title={t("common:last.showParticipants")}
-                    className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-background/40 p-1 backdrop-blur-sm transition-opacity hover:opacity-100"
+                    className="motion-press absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-background/40 p-1 backdrop-blur-sm transition-opacity hover:opacity-100"
                   >
                     {dentro.map((p) => {
                       const habla = p.identity === yo ? hablandoYo : hablando.includes(p.identity);
@@ -450,7 +450,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
             type="button"
             onClick={limpiarError}
             aria-label={t("common:last.dismiss")}
-            className="ml-1 shrink-0 rounded p-0.5 hover:bg-destructive/20"
+            className="motion-press ml-1 shrink-0 rounded p-0.5 hover:bg-destructive/20"
           >
             <X className="size-3.5" />
           </button>
@@ -469,14 +469,14 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
                 <button
                   type="button"
                   onClick={() => void decidir(g.id, false)}
-                  className="flex h-7 items-center gap-1 rounded-md border px-2 text-xs text-muted-foreground hover:text-destructive"
+                  className="motion-press flex h-7 items-center gap-1 rounded-md border px-2 text-xs text-muted-foreground hover:text-destructive"
                 >
                   <X className="size-3.5" /> {t("calls:reject")}
                 </button>
                 <button
                   type="button"
                   onClick={() => void decidir(g.id, true)}
-                  className="flex h-7 items-center gap-1 rounded-md bg-success px-2 text-xs font-semibold text-background"
+                  className="motion-press flex h-7 items-center gap-1 rounded-md bg-success px-2 text-xs font-semibold text-background"
                 >
                   <Check className="size-3.5" /> {t("calls:admit")}
                 </button>

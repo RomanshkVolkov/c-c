@@ -1,6 +1,7 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { Mail, Check, X, Loader2 } from "lucide-react";
+import { Mail, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -69,9 +70,7 @@ export default function Invitations() {
         </div>
 
         {loading && pending.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            <Loader2 className="inline size-4 animate-spin" /> Loading…
-          </p>
+          <RowsSkeleton label={t("common:servers.loading")} rows={3} />
         ) : pending.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("common:misc.noPendingInvites")}</p>
         ) : (

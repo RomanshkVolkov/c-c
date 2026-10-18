@@ -1,5 +1,6 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useEffect } from "react";
-import { Loader2, RotateCcw, Trash2 } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -57,9 +58,7 @@ export default function DocPageTrash({
         </DialogHeader>
         <div className="max-h-80 space-y-0.5 overflow-auto">
           {loading && items.length === 0 && (
-            <p className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> {t("common:servers.loading")}
-            </p>
+            <RowsSkeleton label={t("common:servers.loading")} rows={2} className="space-y-2 px-1 py-2" />
           )}
           {!loading && items.length === 0 && (
             <p className="px-1 py-2 text-xs text-muted-foreground">{t("work:docs.trashEmpty")}</p>

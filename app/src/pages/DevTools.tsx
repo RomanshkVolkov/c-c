@@ -51,7 +51,7 @@ export default function DevTools() {
             onClick={() => setOpen((v) => !v)}
             title={open ? "Collapse" : "Expand"}
             aria-label={open ? "Collapse the tool rail" : "Expand the tool rail"}
-            className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="motion-press ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             {open ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
           </button>

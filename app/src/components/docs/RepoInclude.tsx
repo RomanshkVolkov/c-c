@@ -39,7 +39,7 @@ export default function RepoInclude({ href, children }: { href: string; children
           type="button"
           aria-expanded={open}
           aria-label={t(open ? "work:tree.collapse" : "work:tree.expand", { name: doc.title })}
-          className="grid size-5 place-items-center rounded text-muted-foreground hover:text-foreground"
+          className="motion-press grid size-5 place-items-center rounded text-muted-foreground hover:text-foreground"
           onClick={() => setOpen((o) => !o)}
         >
           <DisclosureChevron open={open} className="size-3.5" />

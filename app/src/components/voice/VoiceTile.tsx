@@ -78,7 +78,7 @@ export default function VoiceTile({
           onClick={onRemove}
           title={t("calls:removeGuest", { name: nombre })}
           aria-label={t("calls:removeGuest", { name: nombre })}
-          className="absolute right-3 top-3 flex rounded-full bg-background/70 p-1.5 text-muted-foreground hover:text-destructive"
+          className="motion-press absolute right-3 top-3 flex rounded-full bg-background/70 p-1.5 text-muted-foreground hover:text-destructive"
         >
           <UserX className="size-[15px]" />
         </button>

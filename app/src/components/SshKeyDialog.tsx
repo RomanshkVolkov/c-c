@@ -137,7 +137,7 @@ export default function SshKeyDialog({
                   title={a.socket}
                   onClick={() => load(a.socket)}
                   className={cn(
-                    "rounded-md border px-2 py-1 text-xs",
+                    "motion-press rounded-md border px-2 py-1 text-xs",
                     agent === a.socket ? "border-primary bg-accent" : "hover:bg-accent",
                     a.status === "refused" && "opacity-60",
                   )}

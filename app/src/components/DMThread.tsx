@@ -1,3 +1,4 @@
+import { MessagesSkeleton } from "@/components/ui/skeletons";
 import { nombreDe } from "@/lib/nombres";
 import { useAnclajeDeScroll } from "@/hooks/use-anclaje-de-scroll";
 import { horaCorta } from "@/lib/fechas";
@@ -122,9 +123,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
           </div>
         )}
         {loading && messages.length === 0 ? (
-          <div className="flex justify-center pt-6">
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          </div>
+          <MessagesSkeleton label={t("common:servers.loading")} />
         ) : messages.length === 0 ? (
           <p className="pt-6 text-center text-xs text-muted-foreground">
             {t("common:misc.dmEmpty")}
@@ -156,7 +155,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
       {hayNuevos && (
         <button
           onClick={alFinal}
-          className="motion-pop-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 [--pop-origin:bottom_center]
+          className="motion-press motion-pop-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 [--pop-origin:bottom_center]
                      rounded-full border bg-primary px-3 py-1 text-xs font-medium
                      text-primary-foreground shadow-lg"
         >

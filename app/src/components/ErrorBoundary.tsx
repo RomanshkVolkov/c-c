@@ -112,13 +112,13 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
           </p>
           <div className="flex gap-2 pt-1">
             <button
-              className="rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground"
+              className="motion-press rounded bg-primary px-3 py-1.5 text-sm text-primary-foreground"
               onClick={() => window.location.reload()}
             >
               {t("common:crash.reload")}
             </button>
             <button
-              className="rounded border px-3 py-1.5 text-sm"
+              className="motion-press rounded border px-3 py-1.5 text-sm"
               onClick={() => this.setState({ error: null, filed: "no" })}
             >
               {t("common:crash.carryOn")}

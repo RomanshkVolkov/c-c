@@ -1,7 +1,8 @@
+import { MessagesSkeleton } from "@/components/ui/skeletons";
 import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
-import { CornerUpLeft, Loader2 } from "lucide-react";
+import { CornerUpLeft } from "lucide-react";
 
 import { iniciales } from "@/lib/desde";
 import { useChatStore, type ChatMessage } from "@/store/chat.store";
@@ -87,9 +88,7 @@ export default function VoiceChat({ spaceId, spaceName }: { spaceId: string; spa
           apareciera scroll donde no tocaba en cuanto el chat crecía. */}
       <div data-thread className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {loading && messages.length === 0 ? (
-          <p className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" /> {t("chat:loading")}
-          </p>
+          <MessagesSkeleton label={t("chat:loading")} />
         ) : messages.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">
             {t("chat:emptyChannel", { name: spaceName })}
@@ -120,7 +119,7 @@ export default function VoiceChat({ spaceId, spaceName }: { spaceId: string; spa
                     setReplyingTo(m);
                     inputRef.current?.focus();
                   }}
-                  className="absolute right-0 top-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                  className="motion-press absolute right-0 top-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
                 >
                   <CornerUpLeft className="size-3.5" />
                 </button>

@@ -129,7 +129,7 @@ export default function PdfPreview({
         {pages > 0 && (
           <span className="flex shrink-0 items-center gap-1 text-xs text-white/70">
             <button
-              className="rounded p-0.5 hover:bg-white/20 disabled:opacity-30"
+              className="motion-press rounded p-0.5 hover:bg-white/20 disabled:opacity-30"
               disabled={current <= 1}
               onClick={() => scrollToPage(current - 1)}
               aria-label={t("common:last.previousPage")}
@@ -138,7 +138,7 @@ export default function PdfPreview({
             </button>
             {current} / {pages}
             <button
-              className="rounded p-0.5 hover:bg-white/20 disabled:opacity-30"
+              className="motion-press rounded p-0.5 hover:bg-white/20 disabled:opacity-30"
               disabled={current >= pages}
               onClick={() => scrollToPage(current + 1)}
               aria-label={t("common:last.nextPage")}
@@ -184,7 +184,9 @@ export default function PdfPreview({
           </p>
         ) : pages === 0 ? (
           <p className="mt-16 flex items-center justify-center gap-2 text-sm text-white/80">
-            <Loader2 className="size-4 animate-spin" /> Loading…
+            {/* El aspa y no un hueco con brillo: sobre el fondo negro del
+                visor, un gris que brilla se lee como algo roto. */}
+            <Loader2 className="size-4 animate-spin" /> {t("common:servers.loading")}
           </p>
         ) : null}
       </div>

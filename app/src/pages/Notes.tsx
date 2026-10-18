@@ -1,3 +1,5 @@
+import i18next from "@/lib/i18n";
+import { DocSkeleton } from "@/components/ui/skeletons";
 import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { isTauri } from "@/lib/platform";
 import { fechaYHora } from "@/lib/fechas";
@@ -727,8 +729,8 @@ function NoteEditorPane({ id }: { id: string }) {
 
   if (loading && !note) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" /> Loading…
+      <div className="min-h-0 flex-1">
+        <DocSkeleton label={i18next.t("common:servers.loading")} />
       </div>
     );
   }

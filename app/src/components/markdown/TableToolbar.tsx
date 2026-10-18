@@ -46,7 +46,7 @@ export default function TableToolbar({ editor }: { editor: Editor }) {
         onClick();
       }}
       className={cn(
-        "rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground",
+        "motion-press rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground",
         destructive && "hover:text-destructive",
       )}
     >

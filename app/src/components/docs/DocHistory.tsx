@@ -1,5 +1,6 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useMemo, useState } from "react";
-import { History, Loader2, RotateCcw } from "lucide-react";
+import { History, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -106,9 +107,7 @@ export function VersionMenu({
         />
         <DropdownMenuContent align="end" className="max-h-80 w-72 overflow-auto p-1">
           {cargando && (
-            <p className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> {t("common:servers.loading")}
-            </p>
+            <RowsSkeleton label={t("common:servers.loading")} rows={3} className="space-y-2 px-2 py-3" />
           )}
           {!cargando && versiones?.length === 0 && (
             <p className="px-2 py-3 text-xs text-muted-foreground">{t("work:docs.noHistory")}</p>

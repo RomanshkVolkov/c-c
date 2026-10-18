@@ -256,13 +256,13 @@ export default function MyWork() {
           </span>
           <button
             onClick={() => setCreating(true)}
-            className="ml-auto rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
+            className="motion-press ml-auto rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
           >
             {t("work:myWork.newTask")}
           </button>
           <button
             onClick={() => setIncludeClosed(!includeClosed)}
-            className="flex items-center gap-1.5 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="motion-press flex items-center gap-1.5 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             title={includeClosed ? t("work:myWork.hideFinished") : t("work:myWork.showFinished")}
           >
             {includeClosed ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
@@ -273,7 +273,7 @@ export default function MyWork() {
           <div className="mt-1 flex items-center gap-1.5">
             <button
               onClick={() => setScope(null)}
-              className="flex items-center gap-1 self-start rounded-full border bg-accent/40 px-2 py-0.5 text-xs hover:bg-accent"
+              className="motion-press flex items-center gap-1 self-start rounded-full border bg-accent/40 px-2 py-0.5 text-xs hover:bg-accent"
               title={t("work:myWork.showEverything")}
             >
               {/* Says out loud that you are seeing part of it. A filtered list with
@@ -345,7 +345,7 @@ export default function MyWork() {
                     navigate("/tasks");
                   }}
                   title={t("work:board.view.docs")}
-                  className="rounded px-1.5 py-1 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  className="motion-press rounded px-1.5 py-1 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                 >
                   <FileText className="size-3.5" />
                 </button>

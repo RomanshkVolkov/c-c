@@ -59,7 +59,7 @@ export default function TemplatePicker({ onWritten }: { onWritten: () => void })
             key={key}
             disabled={ocupado}
             onClick={() => void usar(t(`work:docTemplates.${key}.body` as MessageKey))}
-            className="rounded-md border p-3 text-left hover:bg-accent disabled:opacity-60"
+            className="motion-press rounded-md border p-3 text-left hover:bg-accent disabled:opacity-60"
           >
             <span className="flex items-center gap-2 text-sm font-medium">
               <Icon className="size-4 text-muted-foreground" />

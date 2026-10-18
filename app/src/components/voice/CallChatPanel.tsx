@@ -71,7 +71,7 @@ export default function CallChatPanel({
           type="button"
           onClick={onClose}
           aria-label={t("common:last.hideChat")}
-          className="ml-auto grid size-6 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="motion-press ml-auto grid size-6 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <X className="size-[15px]" />
         </button>

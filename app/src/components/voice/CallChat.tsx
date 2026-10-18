@@ -1,5 +1,6 @@
+import { MessagesSkeleton } from "@/components/ui/skeletons";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
@@ -81,9 +82,7 @@ export default function CallChat({ sessionId, guest }: { sessionId?: string | nu
     <>
       <div data-thread className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {loading && messages.length === 0 ? (
-          <p className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" /> {t("chat:loading")}
-          </p>
+          <MessagesSkeleton label={t("chat:loading")} />
         ) : messages.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">{t("chat:callChatEmpty")}</p>
         ) : (
@@ -123,7 +122,7 @@ export default function CallChat({ sessionId, guest }: { sessionId?: string | nu
                     aria-label={t("chat:withdraw")}
                     title={t("chat:withdraw")}
                     onClick={() => void withdraw(m.id).catch((e) => toast.error(String(e)))}
-                    className="absolute right-0 top-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                    className="motion-press absolute right-0 top-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-destructive focus:opacity-100 group-hover:opacity-100"
                   >
                     <Trash2 className="size-3.5" />
                   </button>

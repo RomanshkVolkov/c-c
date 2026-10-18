@@ -318,7 +318,7 @@ function MeetingForm({
                 )
               }
               className={cn(
-                "rounded border px-2 py-1 text-xs",
+                "motion-press rounded border px-2 py-1 text-xs",
                 days.includes(d.n)
                   ? "border-primary bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent",
@@ -558,7 +558,7 @@ function MeetingCard({
                     type="button"
                     onClick={() => togglePerson(x.userId)}
                     className={cn(
-                      "rounded border px-2 py-1 text-xs",
+                      "motion-press rounded border px-2 py-1 text-xs",
                       included
                         ? "border-primary bg-primary/10 text-foreground"
                         : "text-muted-foreground line-through hover:bg-accent",

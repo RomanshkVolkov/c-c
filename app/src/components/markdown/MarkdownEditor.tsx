@@ -1,3 +1,4 @@
+import { DocSkeleton } from "@/components/ui/skeletons";
 import { useT } from "@/lib/i18n";
 import i18next from "i18next";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -661,8 +662,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
 
   if (!editor) {
     return (
-      <div className="flex items-center justify-center rounded-md border p-4 text-xs text-muted-foreground" style={{ minHeight }}>
-        <Loader2 className="mr-2 size-3 animate-spin" /> Loading editor…
+      <div className="rounded-md border p-4" style={{ minHeight }}>
+        <DocSkeleton label={t("common:servers.loading")} />
       </div>
     );
   }
@@ -759,7 +760,7 @@ function Toolbar({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground",
+        "motion-press rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground",
         active && "bg-accent text-foreground",
       )}
     >

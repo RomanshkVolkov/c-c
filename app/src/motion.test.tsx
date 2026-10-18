@@ -194,6 +194,57 @@ describe("las pantallas", () => {
   });
 });
 
+describe("el remate", () => {
+  const files = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return files(path);
+      return path.endsWith(".tsx") && !path.includes(".test.") && !path.includes("components/ui/") ? [path] : [];
+    });
+  const app = files(join(process.cwd(), "src"));
+  const rel = (f: string) => f.slice(f.indexOf("src/"));
+
+  /**
+   * Un botón pequeño (redondeado, que no es una fila) responde al pulsarlo con
+   * `motion-press`. Las filas anchas (`w-full`, `flex-1`) no se encogen, como
+   * en iOS. El mutante que mata: un botón nuevo sin la clase.
+   */
+  it("todo botón pequeño se hunde al pulsarlo", () => {
+    const missing: string[] = [];
+    for (const f of app) {
+      const src = readFileSync(f, "utf8");
+      let at = src.indexOf("<button");
+      while (at >= 0) {
+        const cls = src.indexOf("className=", at);
+        const next = src.indexOf("<", at + 1);
+        if (cls >= 0 && (next < 0 || cls < next)) {
+          const m = /^className=(?:"([^"]*)"|\{cn\(\s*"([^"]*)")/.exec(src.slice(cls));
+          const c = m ? (m[1] ?? m[2]) : null;
+          if (c && c.includes("rounded") && !c.includes("w-full") && !c.includes("flex-1") && !c.includes("motion-press")) {
+            missing.push(`${rel(f)}: ${c.slice(0, 40)}`);
+          }
+        }
+        at = src.indexOf("<button", at + 1);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  /**
+   * Una zona entera que carga enseña su forma (`skeletons.tsx`), no un aspa con
+   * «Cargando…». La excepción, el visor de PDF: sobre su fondo negro un gris
+   * que brilla se lee como algo roto.
+   */
+  it("ninguna zona carga con un aspa y un texto", () => {
+    const spinners = app.filter(
+      (f) =>
+        !f.endsWith("PdfPreview.tsx") &&
+        /<Loader2[^>]*\/>\s*(Loading|\{t\("[a-z]+:[a-zA-Z.]*[lL]oading)/.test(readFileSync(f, "utf8")),
+    );
+    expect(spinners.map(rel)).toEqual([]);
+  });
+});
+
 describe("menos movimiento", () => {
   /**
    * Quien lo pide en el sistema no recibe animaciones en ningún sitio, no

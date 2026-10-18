@@ -138,7 +138,7 @@ export default function K8sHub({ server }: { server: Server }) {
                       <button
                         key={`${r.namespace}/${r.name}/${host}`}
                         onClick={() => open(r.links[i] ?? `https://${host}`)}
-                        className="group flex items-center gap-2 rounded-lg border p-3 text-left text-sm hover:border-primary hover:bg-accent/40"
+                        className="motion-press group flex items-center gap-2 rounded-lg border p-3 text-left text-sm hover:border-primary hover:bg-accent/40"
                       >
                         <Globe className="size-4 shrink-0 text-muted-foreground" />
                         <div className="min-w-0 flex-1">

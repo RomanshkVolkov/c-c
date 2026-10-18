@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { RowsSkeleton } from "@/components/ui/skeletons";
 
 import { useT } from "@/lib/i18n";
 
@@ -25,9 +25,7 @@ export function TabState({
   }
   if (loading) {
     return (
-      <div className="flex justify-center p-6">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </div>
+      <RowsSkeleton label={t("common:servers.loading")} rows={4} className="space-y-2 p-4" />
     );
   }
   return <p className="p-6 text-center text-sm text-muted-foreground">{empty}</p>;

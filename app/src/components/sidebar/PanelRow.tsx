@@ -83,7 +83,7 @@ export default function PanelRow({
           type="button"
           aria-expanded={expandable.open}
           aria-label={expandable.open ? expandable.collapseLabel : expandable.expandLabel}
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
+          className="motion-press grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
           onClick={expandable.onToggle}
         >
           <DisclosureChevron open={expandable.open} className="size-3.5" />

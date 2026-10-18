@@ -65,7 +65,7 @@ export default function MoreSheet({ open, onOpenChange }: { open: boolean; onOpe
                 type="button"
                 onClick={() => navigate(item.path)}
                 className={cn(
-                  "flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-center text-xs",
+                  "motion-press flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-center text-xs",
                   pathname.startsWith(item.path) ? "bg-accent font-medium text-accent-foreground" : "hover:bg-accent/60",
                 )}
               >

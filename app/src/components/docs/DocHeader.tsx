@@ -134,7 +134,7 @@ export default function DocHeader({ doc }: { doc: Doc }) {
           render={
             <button
               className={cn(
-                "flex items-center gap-1.5 rounded-full border px-2 py-0.5",
+                "motion-press flex items-center gap-1.5 rounded-full border px-2 py-0.5",
                 doc.maintainerId ? "text-foreground" : "border-dashed text-muted-foreground",
               )}
             >

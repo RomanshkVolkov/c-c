@@ -235,7 +235,7 @@ export default function ChannelView({
             <button
               onClick={() => setInvitados(true)}
               title={t("calls:dialogTitle")}
-              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="motion-press flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <UserPlus className="size-3.5" /> {t("calls:inviteButton")}
             </button>
@@ -258,7 +258,7 @@ export default function ChannelView({
               : t("chat:notFollowingTitle")
           }
           className={cn(
-            "ml-auto flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
+            "motion-press ml-auto flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs",
             sigo
               ? "border-primary/40 text-primary"
               : "text-muted-foreground hover:text-foreground",
@@ -379,7 +379,7 @@ export default function ChannelView({
       {hayNuevos && (
         <button
           onClick={alFinal}
-          className="motion-pop-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 [--pop-origin:bottom_center]
+          className="motion-press motion-pop-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 [--pop-origin:bottom_center]
                      rounded-full border bg-primary px-3 py-1 text-xs font-medium
                      text-primary-foreground shadow-lg"
         >

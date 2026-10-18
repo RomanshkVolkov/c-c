@@ -193,7 +193,7 @@ function RailButton({
             aria-keyshortcuts={shortcut ? `Meta+${shortcut} Control+${shortcut}` : undefined}
             onClick={onClick}
             className={cn(
-              "relative grid size-9 place-items-center rounded-lg transition-colors",
+              "motion-press relative grid size-9 place-items-center rounded-lg transition-colors",
               active
                 ? "bg-sidebar-accent text-sidebar-primary before:absolute before:-left-1.5 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-sidebar-primary"
                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",

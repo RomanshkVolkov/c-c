@@ -1,5 +1,6 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import { useMemo, useState } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import Picker from "@/components/ui/picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,9 +89,7 @@ export default function Timeline() {
       {broken > 0 && <p className="text-xs text-warning">{t("diagnostics:timeline.undecryptable")}</p>}
 
       {loading && batches.length === 0 ? (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> {t("diagnostics:loading")}
-        </p>
+        <RowsSkeleton label={t("diagnostics:loading")} rows={4} />
       ) : visible.length === 0 && !error ? (
         <p className="text-xs text-muted-foreground">{t("diagnostics:timeline.empty")}</p>
       ) : (

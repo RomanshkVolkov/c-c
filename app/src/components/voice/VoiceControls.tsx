@@ -62,7 +62,7 @@ function Round({
       aria-pressed={active ?? false}
       title={label}
       className={cn(
-        "grid size-11.5 place-items-center rounded-full border transition-colors",
+        "motion-press grid size-11.5 place-items-center rounded-full border transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "disabled:cursor-not-allowed disabled:opacity-40",
         active
@@ -198,7 +198,7 @@ export default function VoiceControls({
         aria-label={t("common:voice.leave")}
         title={t("common:voice.leave")}
         className={cn(
-          "flex h-11.5 items-center gap-2 rounded-full bg-destructive px-5 text-sm font-bold text-background",
+          "motion-press flex h-11.5 items-center gap-2 rounded-full bg-destructive px-5 text-sm font-bold text-background",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >

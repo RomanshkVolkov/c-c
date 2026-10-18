@@ -31,7 +31,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
         <button
           onClick={abrirEscenario}
           title={t("common:last.backToCall")}
-          className="flex h-8 items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-3.5 text-[13px] font-semibold text-success"
+          className="motion-press flex h-8 items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-3.5 text-[13px] font-semibold text-success"
         >
           <span className="size-1.5 rounded-full bg-success" /> Back to call
         </button>
@@ -43,7 +43,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
           title={mic ? t("common:last.mute") : t("common:last.unmute")}
           aria-pressed={!mic}
           className={cn(
-            "grid size-8 place-items-center rounded-lg border bg-card hover:bg-accent",
+            "motion-press grid size-8 place-items-center rounded-lg border bg-card hover:bg-accent",
             !mic && "border-destructive/40 text-destructive",
           )}
         >
@@ -67,7 +67,7 @@ export default function VoiceBar({ spaceId }: { spaceId: string }) {
       disabled={estado === "entrando"}
       title={fallo ?? t("common:last.joinVoiceChannel")}
       className={cn(
-        "flex h-8 shrink-0 items-center gap-2 rounded-lg border pl-2 pr-3 text-[13px] font-semibold",
+        "motion-press flex h-8 shrink-0 items-center gap-2 rounded-lg border pl-2 pr-3 text-[13px] font-semibold",
         fallo
           ? "border-destructive/40 text-destructive"
           : dentro.length > 0

@@ -195,7 +195,7 @@ export default function NotificationsPanel({
               key={pestana.key}
               onClick={() => setTab(pestana.key)}
               className={cn(
-                "rounded-md px-2.5 py-1 text-xs",
+                "motion-press rounded-md px-2.5 py-1 text-xs",
                 tab === pestana.key
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -314,7 +314,7 @@ function GroupRow({
           aria-label={t(abierto ? "notifications:collapse" : "notifications:expand", {
             name: s.title,
           })}
-          className="mt-2 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
+          className="motion-press mt-2 grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-foreground"
         >
           <DisclosureChevron open={abierto} className="size-3.5" />
         </button>

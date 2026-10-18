@@ -77,7 +77,7 @@ export function InviteButton({ abierto, onToggle }: { abierto: boolean; onToggle
       onClick={onToggle}
       aria-expanded={abierto}
       title="Call someone into this room"
-      className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
+      className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
     >
       <UserPlus className="size-[15px]" /> Invite
     </button>

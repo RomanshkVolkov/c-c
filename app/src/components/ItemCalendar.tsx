@@ -236,7 +236,7 @@ export default function ItemCalendar({
               {hidden > 0 && (
                 <button
                   onClick={() => setSelected(k === selected ? null : k)}
-                  className="rounded px-1 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="motion-press rounded px-1 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
                   +{hidden} more
                 </button>

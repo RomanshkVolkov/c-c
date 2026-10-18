@@ -1,3 +1,4 @@
+import { RowsSkeleton } from "@/components/ui/skeletons";
 import TabIndicator from "@/components/ui/tab-indicator";
 import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { fechaConAno } from "@/lib/fechas";
@@ -13,7 +14,7 @@ import OrgSpaces from "@/components/org/OrgSpaces";
 import OrgInvitations from "@/components/org/OrgInvitations";
 import OrgGeneral from "@/components/org/OrgGeneral";
 import OrgSwitcher from "@/components/OrgSwitcher";
-import { Trash2, Loader2, Search } from "lucide-react";
+import { Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -316,7 +317,7 @@ export default function OrganizationSettings() {
                   {loading && members.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={3} className="text-center text-sm text-muted-foreground py-6">
-                        <Loader2 className="inline size-4 animate-spin" /> Loading…
+                        <RowsSkeleton label={t("common:servers.loading")} rows={3} />
                       </TableCell>
                     </TableRow>
                   ) : (

@@ -97,7 +97,7 @@ export default function TerminalPanel() {
               <button
                 aria-label={`Close ${s.label}`}
                 onClick={() => cerrar(s.key)}
-                className="mr-1 rounded p-0.5 opacity-0 hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100"
+                className="motion-press mr-1 rounded p-0.5 opacity-0 hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100"
               >
                 <X className="size-3" />
               </button>
@@ -107,14 +107,14 @@ export default function TerminalPanel() {
         <button
           onClick={() => setMaximizado(!maximizado)}
           title={maximizado ? t("common:last.restore") : t("common:last.maximize")}
-          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="motion-press shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           {maximizado ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
         </button>
         <button
           onClick={cerrarTodas}
           title={t("common:last.closeEverySession")}
-          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="motion-press shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <X className="size-3.5" />
         </button>

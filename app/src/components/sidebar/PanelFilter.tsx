@@ -38,7 +38,7 @@ export default function PanelFilter({
           type="button"
           aria-label={t("nav:panel.clearFilter")}
           onClick={() => onChange("")}
-          className="absolute right-4 top-1/2 grid size-4 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-foreground"
+          className="motion-press absolute right-4 top-1/2 grid size-4 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-foreground"
         >
           <X className="size-3" />
         </button>

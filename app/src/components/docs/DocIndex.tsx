@@ -121,7 +121,7 @@ export default function DocIndex() {
         <button
           onClick={() => setSoloViejos((v) => !v)}
           className={cn(
-            "rounded px-2 py-1 text-xs",
+            "motion-press rounded px-2 py-1 text-xs",
             soloViejos ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -201,7 +201,7 @@ export default function DocIndex() {
                 <button
                   key={r.id}
                   onClick={() => void openDoc("list", r.id, r.name).catch(() => {})}
-                  className="flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                  className="motion-press flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <Plus className="size-3" />
                   {r.path} › {r.name}

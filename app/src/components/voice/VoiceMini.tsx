@@ -77,7 +77,7 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
         onClick={volver}
         title={`Voice connected · ${nombre ?? "back to the call"}${otraOrg ? ` · ${otraOrg}` : ""}`}
         aria-label={t("common:servers.backToCall")}
-        className="mx-auto my-1 grid size-8 place-items-center rounded-lg border border-success/35 bg-success/[.07]"
+        className="motion-press mx-auto my-1 grid size-8 place-items-center rounded-lg border border-success/35 bg-success/[.07]"
       >
         <span className="size-2 rounded-full bg-success" />
       </button>
@@ -125,7 +125,7 @@ export default function VoiceMini({ compacto }: { compacto?: boolean }) {
           onClick={() => void salir()}
           title={t("common:servers.disconnect")}
           aria-label={t("common:servers.disconnect")}
-          className="grid h-7 w-8.5 place-items-center rounded-md border border-destructive/40 bg-destructive/10 text-destructive"
+          className="motion-press grid h-7 w-8.5 place-items-center rounded-md border border-destructive/40 bg-destructive/10 text-destructive"
         >
           <PhoneOff className="size-3.5" />
         </button>

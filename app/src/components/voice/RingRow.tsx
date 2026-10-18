@@ -66,14 +66,14 @@ export default function RingRow() {
           <>
             <button
               onClick={() => void timbrar(llamando.identity, llamando.name)}
-              className="flex h-8 items-center gap-1.5 rounded-md border bg-card px-3 text-xs hover:bg-accent"
+              className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-3 text-xs hover:bg-accent"
             >
               <RotateCcw className="size-3.5" /> Ring again
             </button>
             <button
               onClick={() => void cancelar()}
               aria-label="Dismiss"
-              className="grid size-8 place-items-center rounded-md border bg-card text-muted-foreground hover:bg-accent"
+              className="motion-press grid size-8 place-items-center rounded-md border bg-card text-muted-foreground hover:bg-accent"
             >
               <X className="size-3.5" />
             </button>
@@ -81,7 +81,7 @@ export default function RingRow() {
         ) : (
           <button
             onClick={() => void cancelar()}
-            className="flex h-8 items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive"
+            className="motion-press flex h-8 items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive"
           >
             <PhoneOff className="size-3.5" /> Cancel
           </button>

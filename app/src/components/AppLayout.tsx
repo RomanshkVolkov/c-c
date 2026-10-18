@@ -180,7 +180,7 @@ export default function AppLayout() {
             title={t("common:last.notifications")}
             aria-label={t("common:last.notifications")}
             onClick={() => setPanelOpen(true)}
-            className="relative ml-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="motion-press relative ml-2 shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Bell className="size-4" />
             {unread > 0 && (
