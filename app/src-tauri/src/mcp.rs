@@ -1459,6 +1459,24 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "list_backups",
+            "description": "The databases of a server that cac backs up, with their schedule (every N hours from a time, in a time zone), retention, when the next backup runs, the last good one and the last restore test. Read-only: starting a backup or a restore test stays a person's decision in the app.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "serverId": { "type": "string" } },
+                "required": ["serverId"]
+            }
+        },
+        {
+            "name": "get_backup_history",
+            "description": "The latest backups and restore tests of one database (from list_backups): status, size, retention class, until when it is kept, and the error if it failed. Backups are encrypted; nothing here opens them.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "serverId": { "type": "string" }, "targetId": { "type": "string" }, "limit": { "type": "integer" } },
+                "required": ["serverId", "targetId"]
+            }
+        },
+        {
             "name": "get_deploy_config",
             "description": "Everything about how one service deploys, in one call: its configuration, its secrets BY NAME with where each value lives in 1Password (opRef) and whether it is used at runtime, at build time or both, and the build args its Dockerfile declares (to cross them with the secrets). Never returns a secret value.",
             "inputSchema": {
@@ -2557,6 +2575,24 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             let server = arg_str(args, "serverId").ok_or("serverId is required")?;
             let data = api_get(cfg, &format!("/api/v1/servers/{}/deployables", urlencode(&server)))?;
             Ok(json!({ "deployables": data }))
+        }
+
+        "list_backups" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let status = api_get(cfg, &format!("/api/v1/servers/{}/backups/status", urlencode(&server)))?;
+            let targets = api_get(cfg, &format!("/api/v1/servers/{}/backups/targets", urlencode(&server)))?;
+            Ok(json!({ "status": status, "databases": targets }))
+        }
+
+        "get_backup_history" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let target = arg_str(args, "targetId").ok_or("targetId is required")?;
+            let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20).clamp(1, 200);
+            let data = api_get(cfg, &format!(
+                "/api/v1/servers/{}/backups/targets/{}/history?limit={limit}",
+                urlencode(&server), urlencode(&target)
+            ))?;
+            Ok(json!({ "backups": data }))
         }
 
         "get_deploy_config" => {
@@ -4772,6 +4808,21 @@ mod tests {
             assert!(tool(&defs, name)["description"].as_str().unwrap().contains("deploys:manage"), "{name}");
         }
         assert!(tool(&defs, "update_deploy_config")["inputSchema"]["properties"].get("migrateCommand").is_none());
+    }
+
+    /// Los backups en el MCP son de sólo lectura: ninguna herramienta lanza
+    /// uno ni descarga. Mutante: añadir un `run_backup` o un `download`.
+    #[test]
+    fn backup_tools_only_read() {
+        let defs = tool_defs();
+        for name in ["list_backups", "get_backup_history"] {
+            assert!(!tool(&defs, name).is_null(), "falta {name}");
+        }
+        let names: Vec<String> = defs.as_array().unwrap().iter()
+            .filter_map(|t| t["name"].as_str().map(str::to_string))
+            .filter(|n| n.contains("backup"))
+            .collect();
+        assert_eq!(names, ["list_backups", "get_backup_history"]);
     }
 
     /// `notify_me` existe, pide su permiso y **no** ofrece a quién: el
