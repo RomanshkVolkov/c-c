@@ -164,8 +164,10 @@ describe("las pestañas de una lista", () => {
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(40);
     vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockReturnValue(72);
     const { container } = render(<ViewSwitch value="list" onChange={() => {}} />);
-    const bar = container.querySelector("span.bg-primary") as HTMLElement;
-    expect(bar.style.left).toBe("72px");
+    const bar = container.querySelector('[data-slot="tab-indicator"]') as HTMLElement;
+    // Con `translate`, que lo mueve el compositor; no con `left`.
+    expect(bar.style.translate).toBe("72px 0");
+    expect(bar.style.left).toBe("");
     expect(bar.style.width).toBe("40px");
     expect(screen.getByRole("button", { name: "List" }).className).toContain("border-transparent");
     vi.restoreAllMocks();

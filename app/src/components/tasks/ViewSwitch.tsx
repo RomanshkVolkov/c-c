@@ -1,6 +1,7 @@
 import { useT, type MessageKey } from "@/lib/i18n";
-import { useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
+import TabIndicator from "@/components/ui/tab-indicator";
 import type { TaskView } from "@/types/task";
 
 /**
@@ -37,16 +38,11 @@ export default function ViewSwitch({
   onChange: (v: ListView) => void;
 }) {
   const { t } = useT();
-  // El subrayado es uno solo y se desliza a la pestaña nueva, en vez de
-  // apagarse en una y encenderse en otra: se ve de dónde viene y a dónde va.
-  // Se mide al pintar; si no se puede (sin layout, como en las pruebas), no
-  // se pinta y queda el color del texto.
-  const box = useRef<HTMLDivElement>(null);
-  const [bar, setBar] = useState<{ left: number; width: number } | null>(null);
-  useLayoutEffect(() => {
-    const el = box.current?.querySelector<HTMLElement>('[aria-current="page"]');
-    setBar(el && el.offsetWidth > 0 ? { left: el.offsetLeft, width: el.offsetWidth } : null);
-  }, [value]);
+  // El subrayado es uno solo y se desliza con muelle a la pestaña nueva, en
+  // vez de apagarse en una y encenderse en otra: se ve de dónde viene y a
+  // dónde va. Sin poder medir (sin layout, como en las pruebas) no se pinta y
+  // queda la raya de cada pestaña.
+  const { ref: box, rect: bar, first } = useSlidingIndicator<HTMLDivElement>(value);
   return (
     <div ref={box} className="relative flex h-full items-stretch gap-4">
       {(["board", "list", "calendar", "docs"] as const).map((v) => (
@@ -66,13 +62,7 @@ export default function ViewSwitch({
           </button>
         </div>
       ))}
-      {bar && (
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -bottom-px h-0.5 rounded-full bg-primary transition-[left,width] duration-300 ease-(--ease-out-expo)"
-          style={{ left: bar.left, width: bar.width }}
-        />
-      )}
+      <TabIndicator rect={bar} first={first} />
     </div>
   );
 }

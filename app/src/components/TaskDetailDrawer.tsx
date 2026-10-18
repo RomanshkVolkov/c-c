@@ -1,3 +1,4 @@
+import { withViewTransition } from "@/lib/view-transition";
 import { ColorDot, paletteFor } from "@/components/ui/color-swatches";
 import TagChip from "@/components/tasks/TagChip";
 import PriorityChip from "@/components/tasks/PriorityChip";
@@ -93,7 +94,7 @@ export default function TaskDetailDrawer() {
       const escribiendo =
         el instanceof HTMLElement &&
         (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-      if (e.key === "Escape" && !escribiendo) closeTask();
+      if (e.key === "Escape" && !escribiendo) withViewTransition(closeTask);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -115,7 +116,13 @@ export default function TaskDetailDrawer() {
           beside it to click away to. */}
       {/* Crece desde la tarjeta que se pulsó, como una app que se abre
           desde el Dock (ver `motion-origin.ts` y `.motion-open` en index.css). */}
-      <aside ref={originRef("viewport")} className="motion-open fixed inset-0 z-50 flex flex-col bg-background">
+      {/* Y sale encogiéndose: `viewTransitionName` es lo que fotografía
+          `withViewTransition` al cerrar (ver `::view-transition-old(task-detail)`). */}
+      <aside
+        ref={originRef("viewport")}
+        style={{ viewTransitionName: "task-detail" }}
+        className="motion-open fixed inset-0 z-50 flex flex-col bg-background"
+      >
         {loading && !detail ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 size-4 animate-spin" /> Loading task…
@@ -515,7 +522,7 @@ function Content() {
         )}
         {/* The id the MCP tools take, so it can be handed to an agent. */}
         <CopyId id={task.id} label="task" />
-        <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={closeTask} aria-label={t("work:task.close")}>
+        <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={() => withViewTransition(closeTask)} aria-label={t("work:task.close")}>
           <X className="size-4" />
         </Button>
       </header>

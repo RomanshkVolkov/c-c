@@ -703,6 +703,40 @@
   }
 }
 
+/* Lo que aparece al desplegarse (los hijos de un espacio en el árbol, una
+   sección que se abre, un compositor en línea): baja un poco y aparece. Sin
+   animar la altura, que recalcularía el layout de todo lo de debajo en cada
+   fotograma; lo de debajo salta a su sitio y lo nuevo llega suave. */
+.motion-reveal {
+  transition:
+    opacity 180ms ease-out,
+    translate 320ms var(--ease-spring);
+  @starting-style {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+/* Lo que se cierra con una View Transition (`withViewTransition`): la foto
+   de lo que había se encoge y se va. El resto de la página no se funde: sin
+   esto el navegador cruzaría la página entera, que se ve como un parpadeo. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-old(task-detail) {
+  animation: vt-shrink-out 200ms var(--ease-in-quick) both;
+}
+::view-transition-new(task-detail) {
+  animation: none;
+}
+@keyframes vt-shrink-out {
+  to {
+    opacity: 0;
+    scale: 0.94;
+  }
+}
+
 /* Con la ventana oculta (minimizada, en otra pestaña o escritorio) no se
    anima nada: un brillo de carga o un punto que late siguen gastando
    procesador aunque nadie los vea. `main.tsx` pone la clase. */
