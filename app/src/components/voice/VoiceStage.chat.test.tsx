@@ -216,4 +216,21 @@ describe("las caras al compartir", () => {
     r.rerender(<VoiceStage spaceName="pixel" />);
     expect(tira()).toBeTruthy();
   });
+
+  /**
+   * En una ventana estrecha el chat cubre la llamada y sube desde abajo: al
+   * lado del vídeo lo dejaba en una tira de 40 px (18-oct-2026).
+   */
+  it("en una ventana estrecha, cubre la llamada", () => {
+    const wide = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 480 });
+    try {
+      sala();
+      fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+      const panel = screen.getByRole("tablist").closest("aside")!.parentElement!;
+      expect(panel.className).toContain("absolute inset-0");
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: wide });
+    }
+  });
 });

@@ -71,15 +71,18 @@ export default function InvitePicker({ onClose, closing }: { onClose: () => void
 
 /** El botón que lo abre, para que la cabecera no tenga que saber nada más. */
 export function InviteButton({ abierto, onToggle }: { abierto: boolean; onToggle: () => void }) {
+  const { t } = useT();
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-expanded={abierto}
-      title="Call someone into this room"
+      aria-label={t("calls:invite")}
+      title={t("calls:invite")}
       className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
     >
-      <UserPlus className="size-[15px]" /> Invite
+      {/* En una ventana estrecha, sólo el icono: el rótulo se partía. */}
+      <UserPlus className="size-[15px]" /> <span className="hidden md:inline">{t("calls:invite")}</span>
     </button>
   );
 }

@@ -55,7 +55,9 @@
     "reportNothingWrong": "Nothing looks wrong here. You can send it anyway if something is off.",
     "pickScreenTitle": "Which screen do you share?",
     "pickScreenLead": "You have more than one. Pick the one the others will see.",
-    "screenN": "Screen {{n}}"
+    "screenN": "Screen {{n}}",
+    "more": "More options",
+    "leaveShort": "Leave"
   },
   "count": {
     "members_one": "{{count}} member",

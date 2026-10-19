@@ -8,6 +8,7 @@ import {
   MicOff,
   Circle,
   MonitorUp,
+  MoreHorizontal,
   PhoneOff,
   Square,
   SlidersHorizontal,
@@ -18,6 +19,8 @@ import { useState } from "react";
 
 import VoiceReportDialog from "@/components/voice/VoiceReportDialog";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 /**
  * Los mandos de la llamada.
@@ -113,6 +116,84 @@ export default function VoiceControls({
 }) {
   const { t } = useT();
   const [reportando, setReportando] = useState(false);
+  const mobile = useIsMobile();
+
+  // En el teléfono no caben ocho botones redondos: se cortaban por los dos
+  // lados y el de colgar se salía (jose, 18-oct-2026). Quedan los de siempre
+  // —micrófono, cámara, audio— y lo demás en «⋯», como en FaceTime. Colgar,
+  // rojo y redondo, sin texto.
+  if (mobile) {
+    const more = [
+      onShare && {
+        icon: MonitorUp,
+        label: sharing ? t("common:voice.stopSharing") : t("common:voice.share"),
+        onClick: onShare,
+      },
+      onSettings && { icon: SlidersHorizontal, label: t("common:voice.settings"), onClick: onSettings },
+      onRecord && {
+        icon: recording ? Square : Circle,
+        label: recording ? t("recordings:stop") : t("recordings:record"),
+        onClick: onRecord,
+        disabled: recordingInFlight,
+      },
+      canReport && { icon: LifeBuoy, label: t("common:voice.reportAudio"), onClick: () => setReportando(true) },
+    ].filter(Boolean) as { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean }[];
+    return (
+      <div className="flex h-21 shrink-0 items-center justify-center gap-3 border-t bg-sidebar pb-[env(safe-area-inset-bottom)]">
+        <Round
+          icon={mic ? Mic : MicOff}
+          label={mic ? t("common:voice.mute") : t("common:voice.unmute")}
+          active={!mic}
+          onClick={onMic}
+        />
+        <Round
+          icon={cam ? Video : VideoOff}
+          label={cam ? t("common:voice.cameraOff") : t("common:voice.cameraOn")}
+          tone="primary"
+          active={cam}
+          onClick={onCam}
+          disabled={!onCam}
+        />
+        <Round
+          icon={deafened ? HeadphoneOff : Headphones}
+          label={deafened ? t("common:voice.undeafen") : t("common:voice.deafen")}
+          active={deafened}
+          onClick={onDeafen}
+        />
+        {more.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={t("common:voice.more")}
+              title={t("common:voice.more")}
+              className={cn(
+                "motion-press grid size-11.5 place-items-center rounded-full border bg-card text-foreground",
+                (sharing || recording) && "border-primary bg-primary/15 text-primary",
+              )}
+            >
+              <MoreHorizontal className="size-5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="center" className="w-56">
+              {more.map((m) => (
+                <DropdownMenuItem key={m.label} onClick={m.onClick} disabled={m.disabled}>
+                  <m.icon className="size-4" /> {m.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {canReport && <VoiceReportDialog open={reportando} onOpenChange={setReportando} />}
+        <button
+          type="button"
+          onClick={onLeave}
+          aria-label={t("common:voice.leave")}
+          title={t("common:voice.leave")}
+          className="motion-press grid size-11.5 place-items-center rounded-full bg-destructive text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <PhoneOff className="size-5" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-21 shrink-0 items-center justify-center gap-2.5 border-t bg-sidebar">
@@ -202,7 +283,7 @@ export default function VoiceControls({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >
-        <PhoneOff className="size-5" /> Leave
+        <PhoneOff className="size-5" /> {t("common:voice.leaveShort")}
       </button>
     </div>
   );

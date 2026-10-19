@@ -62,5 +62,13 @@
   "movedTogether_other": "The call moved: {{count}} people from the channel are coming with you.",
   "followedMove": "The call moved to “{{title}}”, with people from outside.",
   "callingYouTo": "Calling you to {{title}}",
-  "copyFailed": "Couldn't copy the link: copy it from the list."
+  "copyFailed": "Couldn't copy the link: copy it from the list.",
+  "connecting": "connecting…",
+  "nobodyYet": "nobody else yet",
+  "inVoice_one": "{{count}} in voice",
+  "inVoice_other": "{{count}} in voice",
+  "minimize": "Minimize",
+  "joiningRoom": "Joining {{room}}…",
+  "invite": "Invite",
+  "you": "You"
 }

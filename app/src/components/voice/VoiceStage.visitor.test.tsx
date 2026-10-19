@@ -78,7 +78,7 @@ describe("la pantalla de una reunión, vista por un invitado", () => {
     expect(screen.queryByText("Dora")).toBeNull();
     expect(screen.queryByRole("button", { name: /Let in/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Chat$/ })).toBeNull();
-    expect(screen.queryByTitle("Call someone into this room")).toBeNull();
+    expect(screen.queryByTitle("Invite")).toBeNull();
     expect(screen.queryByRole("button", { name: /^(Record|Stop recording)$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Remove .* from the call/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Copy guest link/ })).toBeNull();
@@ -101,7 +101,7 @@ describe("la pantalla de una reunión, vista por un miembro", () => {
     expect(screen.getByRole("button", { name: /^(Record|Stop recording)$/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Chat$/ })).toBeTruthy();
     // Y el timbre: desde una reunión se puede llamar a un compañero a ella.
-    expect(screen.getByTitle("Call someone into this room")).toBeTruthy();
+    expect(screen.getByTitle("Invite")).toBeTruthy();
   });
 
   // La insignia sale de la identidad (`guest:`), nunca del nombre: el nombre

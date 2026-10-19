@@ -62,5 +62,13 @@
   "movedTogether_other": "La llamada se mudó: {{count}} personas del canal vienen contigo.",
   "followedMove": "La llamada se pasó a «{{title}}», con gente de fuera.",
   "callingYouTo": "Te llama a {{title}}",
-  "copyFailed": "No se pudo copiar el enlace: cópialo de la lista."
+  "copyFailed": "No se pudo copiar el enlace: cópialo de la lista.",
+  "connecting": "conectando…",
+  "nobodyYet": "nadie más todavía",
+  "inVoice_one": "{{count}} en la llamada",
+  "inVoice_other": "{{count}} en la llamada",
+  "minimize": "Minimizar",
+  "joiningRoom": "Entrando a {{room}}…",
+  "invite": "Invitar",
+  "you": "Tú"
 }

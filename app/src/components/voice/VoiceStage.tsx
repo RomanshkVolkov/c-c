@@ -1,7 +1,8 @@
+import { useIsMobile } from "@/hooks/use-mobile";
 import { usePresence } from "@/lib/use-presence";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
-import { AlertCircle, Check, Link2, Loader2, MessageSquare, Minimize2, UserPlus, Volume2, X } from "lucide-react";
+import { AlertCircle, Check, Link2, Loader2, MessageSquare, Minimize2, Volume2, X } from "lucide-react";
 import GuestInviteDialog from "@/components/voice/GuestInviteDialog";
 import { iniciales } from "@/lib/desde";
 import CallChatPanel from "@/components/voice/CallChatPanel";
@@ -79,6 +80,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   const pantalla = compartiendo ? yo : pantallaAjena;
   const [invitando, setInvitando] = useState(false);
   const [ajustes, setAjustes] = useState(false);
+  const mobile = useIsMobile();
   const invite = usePresence(invitando);
   const devices = usePresence(ajustes);
   const [chat, setChat] = useState(false);
@@ -215,21 +217,21 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   const carasFuera = !!pantalla && !carasAMano;
 
   // Tú cuentas como presente aunque el motor sólo reporte a los demás.
-  const dentro = [...(yo ? [{ identity: yo, name: "You" }] : []), ...gente];
+  const dentro = [...(yo ? [{ identity: yo, name: t("calls:you") }] : []), ...gente];
   const solo = dentro.length === 1;
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
       <ScreenPicker />
-      <header className="flex h-13 shrink-0 items-center gap-3 border-b px-4">
+      <header className="flex h-13 shrink-0 items-center gap-2 border-b px-3 md:gap-3 md:px-4">
         <Volume2 className="size-4 shrink-0 text-success" />
         <span className="truncate text-sm font-semibold">{nombreSala}</span>
-        <span className="shrink-0 text-[13px] text-muted-foreground">
+        <span className="min-w-0 truncate text-[13px] text-muted-foreground">
           {estado === "entrando"
-            ? "connecting…"
+            ? t("calls:connecting")
             : solo
-              ? "nobody else yet"
-              : `${dentro.length} in voice`}
+              ? t("calls:nobodyYet")
+              : t("calls:inVoice", { count: dentro.length })}
           {/* El ida y vuelta medido por WebRTC, no una estimación nuestra. Sólo
               cuando se sabe: mientras se establece la conexión no hay par
               nominado, y un «0 ms» ahí se lee como una llamada perfecta justo
@@ -254,18 +256,24 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
           <button
             type="button"
             onClick={() => setPorEnlace(true)}
+            aria-label={t("calls:inviteByLink")}
+            title={t("calls:inviteByLink")}
             className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
-            <UserPlus className="size-[15px]" /> {t("calls:inviteByLink")}
+            {/* El enlace, y no la persona con «+»: ése es «Invitar», al lado,
+                y con el mismo icono no se sabía cuál era cuál. */}
+            <Link2 className="size-[15px]" /> <span className="hidden md:inline">{t("calls:inviteByLink")}</span>
           </button>
         )}
         {meetId && !visitor && (
           <button
             type="button"
             onClick={() => void copiarEnlace()}
+            aria-label={t("calls:copyLink")}
+            title={t("calls:copyLink")}
             className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
-            <Link2 className="size-[15px]" /> {t("calls:copyLink")}
+            <Link2 className="size-[15px]" /> <span className="hidden md:inline">{t("calls:copyLink")}</span>
           </button>
         )}
         {/* La etiqueta dice lo que va a hacer, no en qué estado está: es el
@@ -274,9 +282,12 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
           <button
             type="button"
             onClick={() => setChat((v) => !v)}
+            aria-label={chat ? t("common:last.hideChat") : t("common:last.chat")}
+            title={chat ? t("common:last.hideChat") : t("common:last.chat")}
             className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
-            <MessageSquare className="size-[15px]" /> {chat ? t("common:last.hideChat") : t("common:last.chat")}
+            <MessageSquare className="size-[15px]" />{" "}
+            <span className="hidden md:inline">{chat ? t("common:last.hideChat") : t("common:last.chat")}</span>
           </button>
         )}
         {/* Minimizar es volver a cac con la llamada abierta; quien entró con un
@@ -286,17 +297,18 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
             type="button"
             onClick={cerrarEscenario}
             title={t("common:last.backToChannel")}
+            aria-label={t("calls:minimize")}
             className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
           >
-            <Minimize2 className="size-[15px]" /> Minimize
+            <Minimize2 className="size-[15px]" /> <span className="hidden md:inline">{t("calls:minimize")}</span>
           </button>
         )}
       </header>
 
-      <div className="min-h-0 flex-1 p-5">
+      <div className="relative min-h-0 flex-1 p-3 md:p-5">
         {estado === "entrando" ? (
           <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Joining {nombreSala}…
+            <Loader2 className="size-4 animate-spin" /> {t("calls:joiningRoom", { room: nombreSala })}
           </div>
         ) : (
           <div className="flex size-full gap-3.5">
@@ -364,7 +376,10 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
                 "min-h-0 gap-3.5",
                 pantalla
                   ? "flex w-50 shrink-0 flex-col overflow-y-auto"
-                  : "grid flex-1 auto-rows-fr grid-cols-2",
+                  // Solo, ocupas la pantalla; con más gente, de dos en dos, y
+                  // en una ventana estrecha uno debajo de otro: a dos columnas
+                  // cada recuadro quedaba de media pantalla y muy alto.
+                  : cn("grid flex-1 auto-rows-fr", dentro.length > 1 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"),
                 // Al final y no antes: `cn` es tailwind-merge, y `hidden`,
                 // `flex` y `grid` son la misma familia — gana la última. Puesto
                 // arriba se descartaba en silencio y la columna seguía a la
@@ -414,6 +429,9 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
               </div>
             </div>
             {chat && hasChat && (
+              // En una ventana estrecha cubre la llamada y sube desde abajo:
+              // al lado del vídeo lo dejaba en una tira de 40 px.
+              <div className={cn(mobile && "motion-rise-in absolute inset-0 z-20 flex p-2 [&>aside]:w-full")}>
               <CallChatPanel
                 sessionId={callSessionId}
                 guest={guestChat}
@@ -421,6 +439,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
                 spaceName={spaceName || nombreSala}
                 onClose={() => setChat(false)}
               />
+              </div>
             )}
           </div>
         )}
