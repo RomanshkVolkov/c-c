@@ -105,6 +105,9 @@ describe("los secrets de un servicio", () => {
       // Cada uno dice dónde se usa: la rotación cuelga del servicio sólo los
       // que no son sólo del build.
       refs: refs.map((r) => ({ ...r, usage: "runtime" })),
+      // Dónde está montado cada Environment de 1Password en esta máquina:
+      // aquí, ninguno.
+      envFiles: {},
     });
     expect(api.post).toHaveBeenCalledWith(
       "/api/v1/servers/srv-1/deployables/dp-1/secret-rotations",
@@ -292,3 +295,57 @@ describe("los secrets de un servicio", () => {
     expect(labelToName("2fa-code")).toBe("_2FA_CODE");
   });
 });
+
+/**
+ * Los secrets desde un Environment de 1Password (`op-env://`): se importan del
+ * `.env` que 1Password monta en esta máquina (sólo los nombres), se dice
+ * cuando uno no está montado aquí, y al rotar Rust recibe dónde está cada uno.
+ */
+describe("desde un Environment de 1Password", () => {
+  afterEach(() => localStorage.clear());
+
+  it("importar trae una fila por variable y recuerda dónde está montado", async () => {
+    backend("deploy");
+    invoke.mockImplementation(async (cmd: string) =>
+      cmd === "env_file_names" ? ["DATABASE_URL", "MAIL_HOST", "NEXT_PUBLIC_APP_URL"] : [],
+    );
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    fireEvent.change(screen.getByLabelText("1Password Environment"), { target: { value: "RRHH prod" } });
+    fireEvent.change(screen.getAllByLabelText("Where its .env is mounted")[0], { target: { value: "~/rrhh-prod.env" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Import$/ }));
+    await waitFor(() => expect(screen.getByDisplayValue("op-env://RRHH prod/MAIL_HOST")).toBeTruthy());
+    expect(invoke).toHaveBeenCalledWith("env_file_names", { path: "~/rrhh-prod.env" });
+    // DATABASE_URL ya estaba: no se pisa.
+    expect(screen.queryByDisplayValue("op-env://RRHH prod/DATABASE_URL")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("cac-op-env-mounts")!)).toEqual({ "RRHH prod": "~/rrhh-prod.env" });
+    // Una referencia op-env:// es válida: ninguna fila sale marcada.
+    expect(document.querySelector('[aria-invalid="true"]')).toBeNull();
+  });
+
+  it("uno que no está montado aquí lo dice; al montarlo, rotar recibe dónde", async () => {
+    backend("deploy");
+    api.get.mockImplementation(async (url: string) => {
+      if (url.endsWith("/deployables")) return { success: true, data: [deployable("deploy")] };
+      if (url.endsWith("/secret-refs")) return { success: true, data: [{ name: "DATABASE_URL", opRef: "op-env://RRHH prod/DATABASE_URL" }] };
+      return { success: true, data: [] };
+    });
+    invoke.mockResolvedValue({ items: [], updated: false });
+    pintar();
+    await waitFor(() => expect(screen.getByText(/isn't mounted on this machine/)).toBeTruthy());
+    const status = screen.getByRole("status");
+    fireEvent.change(status.querySelector("input")!, { target: { value: "/home/x/prod.env" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save path" }));
+    expect(screen.queryByText(/isn't mounted on this machine/)).toBeNull();
+
+    await waitFor(() => expect(botonRotar().disabled).toBe(false));
+    fireEvent.click(botonRotar());
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "rotate_service_secrets",
+        expect.objectContaining({ envFiles: { "RRHH prod": "/home/x/prod.env" } }),
+      ),
+    );
+  });
+});
+

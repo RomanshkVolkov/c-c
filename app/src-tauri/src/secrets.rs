@@ -236,19 +236,30 @@ struct RotationProgress {
 /// forma de escribir la referencia) se lee como antes. Y va contando por dónde
 /// va: sin eso, el botón se quedaba quieto el rato y no se sabía si hacía algo.
 #[tauri::command]
-pub fn rotate_service_secrets(app: tauri::AppHandle, target: SshTarget, service: String, refs: Vec<SecretRef>) -> Result<RotationResult, String> {
+pub fn rotate_service_secrets(
+    app: tauri::AppHandle,
+    target: SshTarget,
+    service: String,
+    refs: Vec<SecretRef>,
+    // De cada Environment de 1Password, dónde está montado en esta máquina
+    // (para las referencias `op-env://`, ver `op_env`).
+    env_files: Option<std::collections::HashMap<String, String>>,
+) -> Result<RotationResult, String> {
     use tauri::Emitter;
     let total = refs.len();
     let progress = |step: &'static str, done: usize| {
         let _ = app.emit("secrets://rotation", RotationProgress { step, done, total });
     };
     for r in &refs {
-        if !r.op_ref.starts_with("op://") {
-            return Err(format!("{}: `{}` is not op://", r.name, r.op_ref));
+        if !r.op_ref.starts_with("op://") && crate::op_env::env_ref(&r.op_ref).is_none() {
+            return Err(format!("{}: `{}` is not op:// nor op-env://", r.name, r.op_ref));
         }
     }
     progress("read", 0);
-    let mut values: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    // Primero lo de los Environments, del `.env` montado; luego los ítems.
+    let env_files = env_files.unwrap_or_default();
+    let env_refs: Vec<&str> = refs.iter().map(|r| r.op_ref.as_str()).filter(|r| r.starts_with("op-env://")).collect();
+    let mut values: std::collections::HashMap<String, String> = crate::op_env::resolve(&env_refs, &env_files)?;
     let mut items: Vec<String> = refs.iter().filter_map(|r| item_of(&r.op_ref)).collect();
     items.sort();
     items.dedup();
@@ -302,9 +313,18 @@ pub struct RefCheck {
 
 /// «Probar»: lee cada referencia y descarta el valor. Dice si existe, nada más.
 #[tauri::command]
-pub fn check_op_refs(refs: Vec<String>) -> Vec<RefCheck> {
+pub fn check_op_refs(refs: Vec<String>, env_files: Option<std::collections::HashMap<String, String>>) -> Vec<RefCheck> {
+    let env_files = env_files.unwrap_or_default();
     refs.into_iter()
-        .map(|r| match crate::op_read(&r) {
+        .map(|r| {
+            let read = if r.starts_with("op-env://") {
+                crate::op_env::resolve(&[r.as_str()], &env_files).map(|_| ())
+            } else {
+                crate::op_read(&r).map(|_| ())
+            };
+            (r, read)
+        })
+        .map(|(r, read)| match read {
             Ok(_) => RefCheck { op_ref: r, ok: true, error: String::new() },
             Err(e) => RefCheck { op_ref: r, ok: false, error: e },
         })

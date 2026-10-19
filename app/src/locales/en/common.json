@@ -851,7 +851,15 @@
     "problemRepeated": "{{name}} is repeated",
     "problemRef": "{{name}}: its reference is empty or isn't op://vault/item/field",
     "progressRead": "Reading 1Password ({{done}}/{{total}})…",
-    "progressUpload": "Taking them to the server and restarting {{service}}…"
+    "progressUpload": "Taking them to the server and restarting {{service}}…",
+    "envName": "1Password Environment",
+    "envPath": "Where its .env is mounted",
+    "envImport": "Import",
+    "envImported_one": "{{count}} variable from “{{env}}”",
+    "envImported_other": "{{count}} variables from “{{env}}”",
+    "envFailed": "Couldn't read the Environment",
+    "envNotMounted": "“{{env}}” isn't mounted on this machine: without its .env it can't be checked or rotated.",
+    "envMount": "Save path"
   },
   "backups": {
     "title": "Backups",

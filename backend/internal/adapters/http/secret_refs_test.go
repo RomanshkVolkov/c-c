@@ -189,3 +189,21 @@ func TestARotationIsRecordedOnlyWhenCacDeploys(t *testing.T) {
 }
 
 var _ = service.ErrRotationNeedsDeploy
+
+// Una variable de un Environment de 1Password (`op-env://`) se guarda como
+// referencia igual que un ítem; con un valor pegado detrás, no. Mutante: el
+// servicio validando sólo `op://`.
+func TestAnEnvironmentRefIsARefToo(t *testing.T) {
+	f, cleanup := secretsSetup(t, "deploy")
+	defer cleanup()
+	rec := f.call(t, http.MethodPut, "/secret-refs",
+		`{"refs":[{"name":"DATABASE_URL","opRef":"op-env://RRHH prod/DATABASE_URL"}]}`, domain.OrgRoleAdmin, "org-1")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("una referencia op-env:// → %d, se esperaba 200", rec.Code)
+	}
+	rec = f.call(t, http.MethodPut, "/secret-refs",
+		`{"refs":[{"name":"DATABASE_URL","opRef":"op-env://RRHH prod/DATABASE_URL=postgres://s3cr3t"}]}`, domain.OrgRoleAdmin, "org-1")
+	if rec.Code == http.StatusOK {
+		t.Errorf("una op-env:// con un valor pegado se aceptó")
+	}
+}

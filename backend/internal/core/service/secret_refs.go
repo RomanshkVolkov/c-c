@@ -37,7 +37,7 @@ func (s *SecretRefService) Replace(d *domain.Deployable, req domain.PutSecretRef
 		if !domain.SecretNamePattern.MatchString(r.Name) {
 			return nil, ErrBadSecretName
 		}
-		if !domain.OpRefPattern.MatchString(r.OpRef) {
+		if !domain.ValidSecretRef(r.OpRef) {
 			return nil, ErrBadOpRef
 		}
 		if !domain.ValidSecretUsage(r.Usage) {

@@ -7,6 +7,7 @@
 mod agent_install;
 mod ansible;
 mod secrets;
+mod op_env;
 mod api_client;
 mod crypto_tools;
 mod dropped;
@@ -1993,6 +1994,7 @@ pub fn run() {
             secrets::rotate_service_secrets,
             secrets::capture_service_env,
             secrets::check_op_refs,
+            op_env::env_file_names,
             secrets::op_item_fields,
             ansible::ansible_tools,
             ansible::ansible_manifest,

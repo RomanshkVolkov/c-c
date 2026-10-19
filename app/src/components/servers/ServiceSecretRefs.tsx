@@ -1,3 +1,4 @@
+import { ENV_REF, envImportRows, envsIn, loadMounts, saveMount } from "@/lib/op-env";
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
@@ -58,6 +59,8 @@ export function labelToName(label: string): string {
 
 const NAME = /^[A-Z_][A-Z0-9_]{0,39}$/;
 const OP_REF = /^op:\/\/[^/]+\/[^/]+\/.+$/;
+/** Una referencia válida: un ítem (`op://`) o un Environment (`op-env://`). */
+const isRef = (r: string) => OP_REF.test(r) || ENV_REF.test(r);
 
 /**
  * Los secrets de un servicio, por referencia a 1Password.
@@ -87,6 +90,11 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
   const [rotations, setRotations] = useState<Rotation[]>([]);
   const [checks, setChecks] = useState<Record<string, string | true>>({});
   const [item, setItem] = useState("");
+  // Los Environments de 1Password: cuál importar y dónde está montado en esta
+  // máquina (ver `lib/op-env`).
+  const [mounts, setMounts] = useState<Record<string, string>>(() => loadMounts());
+  const [envName, setEnvName] = useState("");
+  const [envPath, setEnvPath] = useState("");
   const [busy, setBusy] = useState<"save" | "check" | "import" | "rotate" | "args" | "capture" | null>(null);
   // Dónde guardar lo que ya corre (la primera vez): la bóveda de lo que ya hay
   // o la de siempre, y un ítem con el repo y el entorno.
@@ -141,7 +149,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
   // Qué le pasa a cada fila, para marcarla y decirlo: un aviso general sin
   // decir cuál obligaba a revisar treinta filas a ojo.
   const badName = (r: SecretRef) => !NAME.test(r.name.trim());
-  const badRef = (r: SecretRef) => !OP_REF.test(r.opRef.trim());
+  const badRef = (r: SecretRef) => !isRef(r.opRef.trim());
   const repeatedName = (r: SecretRef) => names.filter((n) => n === r.name.trim()).length > 1;
   const invalid = rows.some((r) => badName(r) || badRef(r));
   const repeated = new Set(names).size !== names.length;
@@ -176,7 +184,10 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
   const check = async () => {
     setBusy("check");
     try {
-      const out = await invoke<{ opRef: string; ok: boolean; error: string }[]>("check_op_refs", { refs: rows.map((r) => r.opRef.trim()) });
+      const out = await invoke<{ opRef: string; ok: boolean; error: string }[]>("check_op_refs", {
+        refs: rows.map((r) => r.opRef.trim()),
+        envFiles: mounts,
+      });
       setChecks(Object.fromEntries(out.map((c) => [c.opRef, c.ok ? true : c.error])));
     } finally {
       setBusy(null);
@@ -256,6 +267,28 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
     }
   };
 
+  // Un Environment de 1Password, del `.env` que 1Password monta en esta
+  // máquina: sólo los nombres de sus variables, que pasan a ser filas.
+  const importEnv = async () => {
+    const env = envName.trim();
+    const path = envPath.trim();
+    setBusy("import");
+    try {
+      const names = await invoke<string[]>("env_file_names", { path });
+      setMounts(saveMount(env, path));
+      const more = envImportRows(env, names, new Set(rows.map((r) => r.name.trim())));
+      setRows([...rows, ...more]);
+      toast.success(t("common:secrets.envImported", { count: more.length, env }));
+    } catch (e) {
+      toast.error(t("common:secrets.envFailed"), { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
+  // Los Environments que usan los secrets y no están montados en esta máquina:
+  // sin la ruta, ni probar ni rotar pueden leerlos.
+  const unmounted = envsIn(rows.map((r) => r.opRef)).filter((e) => !mounts[e]);
+
   const rotate = async () => {
     const ok = await confirm({
       title: t("common:secrets.rotateTitle", { service: service.name }),
@@ -277,6 +310,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
         target: { serverId: server.id, host: server.host, sshPort: server.sshPort, sshUser: server.sshUser },
         service: service.name,
         refs: saved,
+        envFiles: mounts,
       });
       setResult(out);
       await api
@@ -382,6 +416,10 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
           );
         })}
 
+        {unmounted.map((env) => (
+          <MountRow key={env} env={env} onMount={(path) => setMounts(saveMount(env, path))} />
+        ))}
+
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setRows([...rows, { name: "", opRef: "", usage: "runtime" }])}>
@@ -397,6 +435,36 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
             <Button variant="outline" size="sm" disabled={!item.trim().startsWith("op://") || busy !== null} onClick={() => void importItem()}>
               <Download className="mr-1 size-3.5" /> {t("common:secrets.import")}
             </Button>
+            {/* Las variables de un Environment de 1Password, del `.env` que
+                1Password monta en esta máquina (en su app: el Environment →
+                Destinos → «Fichero .env local»). */}
+            <div className="flex w-full flex-wrap items-center gap-2">
+              <Input
+                aria-label={t("common:secrets.envName")}
+                className="h-8 w-40 text-xs"
+                placeholder={t("common:secrets.envName")}
+                value={envName}
+                onChange={(e) => {
+                  setEnvName(e.target.value);
+                  if (!envPath && mounts[e.target.value.trim()]) setEnvPath(mounts[e.target.value.trim()]);
+                }}
+              />
+              <Input
+                aria-label={t("common:secrets.envPath")}
+                className="h-8 min-w-48 flex-1 font-mono text-xs"
+                placeholder="~/.config/1password/rrhh-prod.env"
+                value={envPath}
+                onChange={(e) => setEnvPath(e.target.value)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!envName.trim() || !envPath.trim() || busy !== null}
+                onClick={() => void importEnv()}
+              >
+                <Download className="mr-1 size-3.5" /> {t("common:secrets.envImport")}
+              </Button>
+            </div>
             {deployable.buildOnHost && (
               <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => void readBuildArgs()}>
                 {busy === "args" ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <FileSearch className="mr-1 size-3.5" />}
@@ -510,5 +578,30 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Un Environment que usan los secrets y no está montado en esta máquina: se
+ * dice, y se pone aquí mismo dónde está su `.env`. Sin eso, probar y rotar no
+ * pueden leerlo.
+ */
+function MountRow({ env, onMount }: { env: string; onMount: (path: string) => void }) {
+  const { t } = useT();
+  const [path, setPath] = useState("");
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">
+      <span className="text-warning">{t("common:secrets.envNotMounted", { env })}</span>
+      <Input
+        aria-label={t("common:secrets.envPath")}
+        className="h-7 min-w-48 flex-1 font-mono text-xs"
+        placeholder="~/.config/1password/rrhh-prod.env"
+        value={path}
+        onChange={(e) => setPath(e.target.value)}
+      />
+      <Button size="xs" variant="outline" disabled={!path.trim()} onClick={() => onMount(path.trim())}>
+        {t("common:secrets.envMount")}
+      </Button>
+    </div>
   );
 }

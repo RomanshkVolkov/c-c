@@ -60,6 +60,19 @@ var SecretNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,39}$`)
 // OpRefPattern: `op://bóveda/ítem/campo` (con sección opcional).
 var OpRefPattern = regexp.MustCompile(`^op://[^/]+/[^/]+/.+$`)
 
+// EnvRefPattern: `op-env://<Environment>/<VARIABLE>`, una variable de un
+// Environment de 1Password. No son ítems: no tienen dirección `op://` y el
+// `op` no los lee, así que la app los lee del `.env` que 1Password monta en
+// la máquina de quien rota (ver `secrets.rs`). El Environment va por su
+// nombre: es lo que la app sabe dónde está montado.
+var EnvRefPattern = regexp.MustCompile(`^op-env://[^/]+/[A-Za-z_][A-Za-z0-9_]{0,63}$`)
+
+// ValidSecretRef: una referencia a un ítem (`op://`) o a la variable de un
+// Environment (`op-env://`). Ninguna de las dos lleva un valor.
+func ValidSecretRef(ref string) bool {
+	return OpRefPattern.MatchString(ref) || EnvRefPattern.MatchString(ref)
+}
+
 // DockerSecretPattern: lo que deja la rotación (`cac_<NOMBRE>_<hmac16>`).
 var DockerSecretPattern = regexp.MustCompile(`^cac_[A-Z_][A-Z0-9_]{0,39}_[0-9a-f]{16}$`)
 

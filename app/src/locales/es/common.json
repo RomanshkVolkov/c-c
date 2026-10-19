@@ -851,7 +851,15 @@
     "problemRepeated": "{{name}} está repetido",
     "problemRef": "{{name}}: su referencia está vacía o no es op://bóveda/ítem/campo",
     "progressRead": "Leyendo de 1Password ({{done}}/{{total}})…",
-    "progressUpload": "Llevándolos al servidor y reiniciando {{service}}…"
+    "progressUpload": "Llevándolos al servidor y reiniciando {{service}}…",
+    "envName": "Environment de 1Password",
+    "envPath": "Dónde está montado su .env",
+    "envImport": "Importar",
+    "envImported_one": "{{count}} variable de «{{env}}»",
+    "envImported_other": "{{count}} variables de «{{env}}»",
+    "envFailed": "No se pudo leer el Environment",
+    "envNotMounted": "«{{env}}» no está montado en esta máquina: sin su .env no se puede probar ni rotar.",
+    "envMount": "Guardar ruta"
   },
   "backups": {
     "title": "Backups",
