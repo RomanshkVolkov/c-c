@@ -48,7 +48,9 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	InitCollectionRoutes(db, r)
 	// Después del hub, y no antes: añadir a alguien a una organización tiene que
 	// poder avisarle **a él**, y para eso el servicio necesita voz.
-	InitOrganizationRoutes(db, r, hub)
+	accounts := NewAccountHandlerFor(db, hub, MailerFromEnv())
+	mountPublicAccountRoutes(r, accounts)
+	InitOrganizationRoutes(db, r, hub, accounts)
 	// Los servidores también: un deploy cuenta por el hub por dónde va.
 	// La GitHub App la comparten servidores (sigue cada deploy en GitHub) y sus
 	// propias rutas (webhooks y la pestaña de la org).

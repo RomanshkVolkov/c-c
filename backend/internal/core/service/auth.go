@@ -64,17 +64,28 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 		return nil, errors.New("invalid credentials")
 	}
 
+	// Una cuenta pendiente no entra: su usuario es provisional y su contraseña
+	// no la sabe nadie, pero que no entre no puede depender de eso.
+	if user.SetupPending {
+		return nil, errors.New("invalid credentials")
+	}
+
 	match, err := repository.CompareHash(req.Password, user.Password)
 	if err != nil || !match {
 		return nil, errors.New("invalid credentials")
 	}
+	return s.SessionFor(user, req.Client == "web")
+}
 
+// SessionFor abre una sesión para alguien que ya demostró quién es: con su
+// contraseña (Login) o con un enlace del correo (bienvenida, restablecer).
+func (s *AuthService) SessionFor(user *domain.User, web bool) (*domain.AuthResponse, error) {
 	orgs, err := s.repo.OrgClaimsForUser(user.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	tokens, err := repository.GenerateTokensFor(user.ID, user.Username, user.IsSuperadmin, orgs, req.Client == "web")
+	tokens, err := repository.GenerateTokensFor(user.ID, user.Username, user.IsSuperadmin, orgs, web)
 	if err != nil {
 		return nil, err
 	}
@@ -97,8 +108,21 @@ func (s *AuthService) Login(req domain.LoginRequest) (*domain.AuthResponse, erro
 			Email:              user.Email,
 			Superadmin:         user.IsSuperadmin,
 			MustChangePassword: user.MustChangePassword,
+			Locale:             user.Locale,
 		},
 	}, nil
+}
+
+// RevokeSessions cierra todas las sesiones de alguien y sus streams: lo que
+// hace cambiar la contraseña, y también restablecerla por correo.
+func (s *AuthService) RevokeSessions(userID string) error {
+	if err := s.repo.RevokeAllRefresh(userID, s.now()); err != nil {
+		return err
+	}
+	if s.hub != nil {
+		s.hub.Publish(events.Event{Type: SessionRevokedEvent, UserID: userID})
+	}
+	return nil
 }
 
 // Me returns a fresh session from the DB (not the token) so late-changing flags

@@ -160,4 +160,65 @@ var catalogo = map[string]map[Locale]string{
 		EN: "That list belongs to another organization",
 		ES: "Esa lista es de otra organización",
 	},
+
+	// ── Correos ──────────────────────────────────────────────────────────────
+	// Un correo se escribe una vez, como un aviso: la bienvenida en el idioma
+	// del admin que da de alta (la persona todavía no eligió el suyo),
+	// restablecer en el de quien lo pide.
+	"email.welcome.subject": {
+		EN: "{{inviter}} created your cac account in {{org}}",
+		ES: "{{inviter}} te creó una cuenta de cac en {{org}}",
+	},
+	"email.welcome.greeting": {
+		EN: "Hi {{name}},",
+		ES: "Hola, {{name}}:",
+	},
+	"email.welcome.body": {
+		EN: "{{inviter}} created an account for you in {{org}}. Choose your username and password to get started.",
+		ES: "{{inviter}} te creó una cuenta en {{org}}. Elige tu usuario y tu contraseña para empezar.",
+	},
+	"email.welcome.button": {
+		EN: "Finish signing up",
+		ES: "Terminar el registro",
+	},
+	"email.welcome.expires": {
+		EN: "The link is valid for 7 days and works once.",
+		ES: "El enlace vale 7 días y funciona una sola vez.",
+	},
+	"email.invited.subject": {
+		EN: "{{inviter}} invited you to {{org}} on cac",
+		ES: "{{inviter}} te invitó a {{org}} en cac",
+	},
+	"email.invited.body": {
+		EN: "{{inviter}} invited you to join {{org}}. Open cac to accept or decline.",
+		ES: "{{inviter}} te invitó a unirte a {{org}}. Abre cac para aceptar o rechazar.",
+	},
+	"email.invited.button": {
+		EN: "Open cac",
+		ES: "Abrir cac",
+	},
+	"email.reset.subject": {
+		EN: "Reset your cac password",
+		ES: "Restablece tu contraseña de cac",
+	},
+	"email.reset.body": {
+		EN: "Someone asked to reset the password of {{username}}. If it was you, choose a new one.",
+		ES: "Alguien pidió restablecer la contraseña de {{username}}. Si fuiste tú, elige una nueva.",
+	},
+	"email.reset.button": {
+		EN: "Choose a new password",
+		ES: "Elegir una contraseña nueva",
+	},
+	"email.reset.expires": {
+		EN: "The link is valid for 1 hour and works once. If it wasn't you, ignore this email: your password stays the same.",
+		ES: "El enlace vale 1 hora y funciona una sola vez. Si no fuiste tú, ignora este correo: tu contraseña no cambia.",
+	},
+	"email.link.fallback": {
+		EN: "If the button doesn't work, paste this link into your browser:",
+		ES: "Si el botón no funciona, pega este enlace en tu navegador:",
+	},
+	"email.footer": {
+		EN: "You're getting this email because of your account on cac.",
+		ES: "Te llega este correo por tu cuenta de cac.",
+	},
 }

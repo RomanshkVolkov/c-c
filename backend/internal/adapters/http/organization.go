@@ -10,7 +10,9 @@ import (
 	"gorm.io/gorm"
 )
 
-func InitOrganizationRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
+// accounts: el alta por correo (ver account.go). Sus rutas de admin cuelgan de
+// la organización, así que se montan aquí.
+func InitOrganizationRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, accounts *handler.AccountHandler) {
 	repo := repository.NewOrganizationRepository(db)
 	svc := service.NewOrganizationService(repo).WithHub(hub)
 	h := handler.NewOrganizationHandler(svc)
@@ -34,6 +36,9 @@ func InitOrganizationRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub) {
 		r.Post("/{id}/invitations", inv.Create)
 		r.Post("/{id}/invitations/{invitationId}/resend", inv.Renew)
 		r.Delete("/{id}/invitations/{invitationId}", inv.Revoke)
+		// Dar de alta por correo: la cuenta nueva, o la invitación si ya existe.
+		r.Post("/{id}/accounts", accounts.Create)
+		r.Post("/{id}/accounts/{userId}/resend", accounts.Resend)
 	})
 
 	// Invitations (invitee side).

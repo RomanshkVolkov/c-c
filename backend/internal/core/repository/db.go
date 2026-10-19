@@ -80,6 +80,7 @@ func DBConnection() {
 		&domain.Organization{},
 		&domain.OrgMembership{},
 		&domain.OrgInvitation{},
+		&domain.AccountLink{},
 		&domain.Server{},
 		&domain.Collection{},
 		&domain.CollectionNode{},
@@ -180,6 +181,10 @@ func DBConnection() {
 	// deploy.go: están ahí para que las pruebas monten los mismos.
 	if err := EnsureDeployIndexes(db); err != nil {
 		lg.Error("deploy indexes: " + err.Error())
+	}
+	// Un correo, una cuenta. Ver account.go.
+	if err := EnsureUserIndexes(db); err != nil {
+		lg.Error("user indexes: " + err.Error())
 	}
 	// Un solo backup vivo por base. Ver backup.go.
 	if err := EnsureBackupIndexes(db); err != nil {

@@ -39,9 +39,13 @@ access».
 Nunca a la pantalla: de `terraform output` a `gh secret set` por stdin.
 
 ```sh
-gh secret set EMAIL_REGION            --body "$(terraform output -raw region)"
-gh secret set EMAIL_FROM              --body "$(terraform output -raw from_address)"
-gh secret set EMAIL_CONFIGURATION_SET --body "$(terraform output -raw configuration_set)"
-gh secret set EMAIL_ACCESS_KEY_ID     --body "$(terraform output -raw access_key_id)"
+gh variable set EMAIL_REGION            --body "$(terraform output -raw region)"
+gh variable set EMAIL_FROM              --body "$(terraform output -raw from_address)"
+gh variable set EMAIL_CONFIGURATION_SET --body "$(terraform output -raw configuration_set)"
+terraform output -raw access_key_id     | gh secret set EMAIL_ACCESS_KEY_ID
 terraform output -raw secret_access_key | gh secret set EMAIL_SECRET_ACCESS_KEY
 ```
+
+`backend.yml` las mete en `cac-secret`. Sin `EMAIL_REGION` o `EMAIL_FROM` el
+correo queda apagado: el alta le da el enlace al admin y restablecer contesta
+`email-off`.

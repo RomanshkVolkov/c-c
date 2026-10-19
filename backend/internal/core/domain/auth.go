@@ -27,6 +27,10 @@ type User struct {
 	// superadmin provisions or resets the password (so admins don't retain
 	// knowledge of a working password), cleared when the user sets their own.
 	MustChangePassword bool `gorm:"default:false" json:"mustChangePassword"`
+	// SetupPending: la cuenta la dio de alta un admin y la persona todavía no
+	// abrió el enlace de bienvenida. Su usuario es provisional y su contraseña
+	// no la sabe nadie; no entra hasta elegir los suyos. Ver AccountLink.
+	SetupPending bool `gorm:"not null;default:false" json:"setupPending"`
 	// Locale is which language this person reads cac in: "en", "es", or empty
 	// for "whatever their machine says".
 	//
