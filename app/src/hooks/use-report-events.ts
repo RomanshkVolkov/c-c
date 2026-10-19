@@ -18,7 +18,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useCalls, type CallKnock } from "@/store/calls.store";
 import { useDeploymentsStore, type DeployLogEvent } from "@/store/deployments.store";
 import { useActivityStore } from "@/store/activity.store";
-import type { Deployment } from "@/types/deploy";
+import type { Deployment, ImageBuild } from "@/types/deploy";
 import type { WorkflowRun } from "@/types/activity";
 import { useReportsStore } from "@/store/reports.store";
 import { useTasksStore } from "@/store/tasks.store";
@@ -386,6 +386,10 @@ export function useReportEvents() {
           break;
         case "deploy:log":
           useDeploymentsStore.getState().onLog(parse(data) as unknown as DeployLogEvent);
+          break;
+        // Un commit nuevo apuntado: la lista de qué desplegar se refresca.
+        case "deploy:build":
+          useDeploymentsStore.getState().onBuild(parse(data) as unknown as ImageBuild);
           break;
         // Los backups de bases (#166): el historial y el log en vivo de la
         // pestaña Backups. El aviso de un fallo ya lo escribió el servidor.
@@ -911,6 +915,7 @@ export function useReportEvents() {
         "call:knock",
         "deploy:status",
         "deploy:log",
+        "deploy:build",
         "ci:run",
         "telemetry:alert",
         "agent:notice",

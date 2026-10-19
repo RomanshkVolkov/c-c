@@ -400,6 +400,10 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 	if err != nil {
 		return nil, err
 	}
+	// Hay un commit nuevo que desplegar: la app refresca la lista que tenga en
+	// pantalla. Sin esto se quedaba con la de cuando se abrió, y lo de arriba
+	// —«lo último», ya elegido— era lo que ya corría (jose, 19-oct-2026).
+	s.publish(d.OrgID, "deploy:build", build)
 	out := &domain.DeployNoticeResponse{Build: build, Deploy: "recorded"}
 	if d.OnCINotify != "deploy" {
 		return out, nil

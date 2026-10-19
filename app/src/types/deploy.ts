@@ -94,7 +94,8 @@ export interface ImageBuild {
   ref: string;
   actor: string;
   runUrl: string;
-  source: "ci" | "github";
+  // `host`: lo construyó el servidor tras un push (`domain.BuildSourceHost`).
+  source: "ci" | "github" | "host";
 }
 
 /** La llave del CI recién acuñada: la única vez que se ve entera. */

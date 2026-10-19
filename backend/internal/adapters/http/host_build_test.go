@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/guz-studio/cac/backend/internal/core/events"
+
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
@@ -389,5 +391,39 @@ func TestAShortShaIsWidenedToBuild(t *testing.T) {
 	}
 	if rec := f.as(t, "POST", path, `{"sha":"fffffff"}`, member); rec.Code != 400 || !strings.Contains(rec.Body.String(), "build-needs-full-sha") {
 		t.Fatalf("un sha que no existe → %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Un commit apuntado (aquí, un push en modo `record`) se anuncia a la org,
+// para que la lista de commits que haya en pantalla no se quede vieja. Un
+// push de otra rama no se apunta, y tampoco se anuncia. Mutantes: no
+// publicar; publicar antes de mirar la rama.
+func TestARecordedCommitIsAnnounced(t *testing.T) {
+	f := hostBuildSetup(t, "record")
+	hub := events.NewHub()
+	svc := service.NewDeployService(repository.NewDeployRepository(f.db), repository.NewServerRepository(f.db), hub)
+	oye, cerrar := hub.Subscribe("u-1", []string{"org-1"})
+	defer cerrar()
+
+	if _, err := svc.Notice(f.d, domain.DeployNotice{Sha: shaOld, Ref: "refs/heads/staging"}, domain.BuildSourceHost); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case e := <-oye:
+		t.Fatalf("un push de otra rama se anunció: %s", e.Type)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if _, err := svc.Notice(f.d, domain.DeployNotice{Sha: shaNew, Ref: "refs/heads/main"}, domain.BuildSourceHost); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case e := <-oye:
+		b, _ := e.Data.(*domain.ImageBuild)
+		if e.Type != "deploy:build" || b == nil || b.DeployableID != f.d.ID || b.Sha != shaNew {
+			t.Fatalf("el anuncio: %s %+v", e.Type, e.Data)
+		}
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("un commit apuntado no se anunció")
 	}
 }

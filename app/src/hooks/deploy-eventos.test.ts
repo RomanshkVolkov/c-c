@@ -20,4 +20,8 @@ describe("los eventos de un deploy", () => {
   it("y las líneas, al log", () => {
     expect(fuente()).toMatch(/case "deploy:log":\s*useDeploymentsStore\.getState\(\)\.onLog\(/);
   });
+  it("un commit nuevo, a la lista de qué desplegar, y se escucha", () => {
+    expect(fuente()).toMatch(/case "deploy:build":\s*useDeploymentsStore\.getState\(\)\.onBuild\(/);
+    expect(fuente()).toMatch(/"deploy:log",\s*"deploy:build",/);
+  });
 });

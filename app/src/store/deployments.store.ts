@@ -26,6 +26,8 @@ interface DeploymentsState {
   builds: Record<string, ImageBuild[]>;
   /** Los últimos commits de la rama de cada servicio, por id del servicio. */
   commits: Record<string, RepoCommit[]>;
+  /** Sube cada vez que llega un commit nuevo de un servicio: su lista ya no vale. */
+  commitsStale: Record<string, number>;
 
   loadDeployables: (serverId: string) => Promise<void>;
   createDeployable: (serverId: string, p: CreateDeployablePayload) => Promise<Deployable>;
@@ -60,6 +62,8 @@ interface DeploymentsState {
   /** Lo que llega por el stream. Públicos para probarlos sin él. */
   onStatus: (d: Deployment) => void;
   onLog: (e: DeployLogEvent) => void;
+  /** Un commit nuevo apuntado (`deploy:build`): a las versiones, y la lista de commits a refrescar. */
+  onBuild: (b: ImageBuild) => void;
 }
 
 const base = (serverId: string) => `/api/v1/servers/${serverId}/deployables`;
@@ -120,6 +124,7 @@ export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
   logs: {},
   builds: {},
   commits: {},
+  commitsStale: {},
 
   loadDeployables: async (serverId) => {
     const data = must(await api.get<APIResponse<Deployable[]>>(`${base(serverId)}`, true));
@@ -199,6 +204,17 @@ export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
       // sustituir la fila le quitaría el autor al avanzar.
       const next = i >= 0 ? list.map((x, j) => (j === i ? { ...x, ...d } : x)) : [d, ...list];
       return { history: { ...s.history, [d.deployableId]: next } };
+    }),
+
+  onBuild: (b) =>
+    set((s) => {
+      if (!b?.id || !b.deployableId) return s;
+      const list = s.builds[b.deployableId];
+      return {
+        // Sólo si ya se cargaron: si no, se cargarán enteras al abrirlas.
+        builds: list && !list.some((x) => x.id === b.id) ? { ...s.builds, [b.deployableId]: [b, ...list] } : s.builds,
+        commitsStale: { ...s.commitsStale, [b.deployableId]: (s.commitsStale[b.deployableId] ?? 0) + 1 },
+      };
     }),
 
   onLog: ({ deploymentId, lines }) =>

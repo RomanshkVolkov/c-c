@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 /**
  * El diálogo de desplegar un servicio.
@@ -65,7 +65,7 @@ const deployable = {
 
 const build = (sha: string) => ({
   id: `b-${sha}`, createdAt: "2026-09-30T10:00:00Z", deployableId: "dp-1", sha, image: `ghcr.io/dwit-mexico/api:${sha}`,
-  ref: "refs/heads/main", actor: "ana", runUrl: "", source: "ci",
+  ref: "refs/heads/main", actor: "ana", runUrl: "", source: "ci" as const,
 });
 
 const fila = (over: Record<string, unknown> = {}) => ({
@@ -91,7 +91,7 @@ const pintar = (s: Server = server()) =>
 const botonDesplegar = () => screen.getByRole("button", { name: /^(desplegar|deploy|desplegando…|deploying…)$/i }) as HTMLButtonElement;
 
 beforeEach(() => {
-  useDeploymentsStore.setState({ deployables: {}, history: {}, logs: {}, builds: {}, commits: {} });
+  useDeploymentsStore.setState({ deployables: {}, history: {}, logs: {}, builds: {}, commits: {}, commitsStale: {} });
   get.mockReset();
   post.mockReset();
   patch.mockReset();
@@ -443,13 +443,51 @@ describe("qué commit se despliega", () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "def5678".padEnd(40, "0") }, true),
     );
-    // Uno con imagen publicada, con el tag con el que se publicó.
+    // Uno con imagen publicada, con el tag con el que se publicó. Es el que
+    // corre, así que antes se confirma.
     post.mockClear();
+    confirmar.mockResolvedValue(true);
     fireEvent.click(opciones[1]);
     fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) abc1234/i }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "abc1234" }, true),
     );
+  });
+
+  // La lista de una pantalla abierta desde antes de un merge tenía arriba lo
+  // que ya corría, ya elegido, y se desplegó eso (19-oct-2026). Mutantes: no
+  // refrescar al llegar un commit; el botón sin refrescar; desplegar lo que
+  // corre sin preguntar; desplegarlo aunque se diga que no.
+  it("un commit nuevo refresca la lista y queda elegido; y también el botón", async () => {
+    respuestas([conRepo], [], [], lista);
+    render(<DeployDialog server={server()} service={corriendo} open full onOpenChange={() => {}} />);
+    await screen.findAllByRole("option");
+    respuestas([conRepo], [], [], { success: true, data: [c("9999999", "el merge"), ...lista.data] });
+    act(() => useDeploymentsStore.getState().onBuild(build("9999999")));
+    await waitFor(() => expect(screen.getAllByRole("option")[0].textContent).toMatch(/el merge/));
+    expect(screen.getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
+    expect(elegir().getByText(/^2 (sin desplegar|not deployed)$/i)).toBeTruthy();
+
+    respuestas([conRepo], [], [], { success: true, data: [c("7777777", "otro push"), c("9999999", "el merge"), ...lista.data] });
+    fireEvent.click(screen.getByRole("button", { name: /(actualizar la lista|refresh the list)/i }));
+    await waitFor(() => expect(screen.getAllByRole("option")[0].textContent).toMatch(/otro push/));
+  });
+
+  it("desplegar lo que ya corre se pregunta, y si no, no se manda", async () => {
+    respuestas([conRepo], [], [], lista);
+    post.mockResolvedValue({ success: true, data: fila({ status: "succeeded" }) });
+    render(
+      <DeployDialog server={server()} service={{ ...service, image: "ghcr.io/dwit-mexico/api:def5678" }} open full onOpenChange={() => {}} />,
+    );
+    await screen.findAllByRole("option");
+    confirmar.mockResolvedValue(false);
+    fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) def5678/i }));
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(post).not.toHaveBeenCalled();
+
+    confirmar.mockResolvedValue(true);
+    fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) def5678/i }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
   });
 
   it("construyendo en el servidor se despliega el commit entero, aunque haya imagen", async () => {
@@ -458,6 +496,8 @@ describe("qué commit se despliega", () => {
     render(<DeployDialog server={server()} service={corriendo} open full onOpenChange={() => {}} />);
     const opciones = await screen.findAllByRole("option");
     expect(opciones[1].textContent).not.toMatch(/(imagen publicada|image published)/i);
+    // Es el que corre: se pregunta, y se dice que sí.
+    confirmar.mockResolvedValue(true);
     fireEvent.click(opciones[1]);
     fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) abc1234/i }));
     await waitFor(() =>
