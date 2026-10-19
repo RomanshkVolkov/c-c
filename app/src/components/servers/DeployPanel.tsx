@@ -1,11 +1,11 @@
 import { useFollowLog } from "@/hooks/use-follow-log";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Rocket, Settings2, Undo2, Workflow } from "lucide-react";
+import { Settings2, Undo2, Workflow } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { desde } from "@/lib/desde";
-import { AGENT_VERSION_DEPLOYS, guessEnvironment, isSha, usesShortSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
+import { AGENT_VERSION_DEPLOYS, guessEnvironment, usesShortSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -73,7 +73,6 @@ export default function DeployPanel({
   const logs = useDeploymentsStore((s) => s.logs);
   const { loadDeployables, loadHistory, loadLog, createDeployable, deploy, rollback } = useDeploymentsStore.getState();
 
-  const [sha, setSha] = useState("");
   const [busy, setBusy] = useState(false);
   const [viendo, setViendo] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -132,7 +131,6 @@ export default function DeployPanel({
   const desplegar = (commit: string) =>
     conError(async () => {
       const d = await deploy(server.id, deployable!.id, commit);
-      setSha("");
       setViendo(d.id);
       toast.info(t("common:deploy.queued"));
     });
@@ -213,26 +211,14 @@ export default function DeployPanel({
           </div>
         ) : (
           <div className="space-y-4">
-            <CommitPicker deployable={deployable} selected={sha} onSelect={setSha} />
-            <div className="flex items-end gap-2">
-              <div className="flex-1 space-y-1.5">
-                <Label htmlFor="dep-sha">{t("common:deploy.sha")}</Label>
-                <Input
-                  id="dep-sha"
-                  className="font-mono"
-                  value={sha}
-                  placeholder={t("common:deploy.shaHint")}
-                  onChange={(e) => setSha(e.target.value.trim().toLowerCase())}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-              </div>
-              <Button onClick={() => void desplegar(sha.trim())} disabled={busy || vivo || sinAgente || !isSha(sha)}>
-                {vivo ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Rocket className="mr-1 size-4" />}
-                {vivo ? t("common:deploy.deploying") : t("common:deploy.deploy")}
-              </Button>
-            </div>
+            <CommitPicker
+              serverId={server.id}
+              deployable={deployable}
+              currentImage={deployable.currentImage || service.image}
+              disabled={busy || vivo || sinAgente}
+              deploying={vivo}
+              onDeploy={(commit) => void desplegar(commit)}
+            />
 
             <div className="space-y-1">
               <p className="text-sm font-medium">{t("common:deploy.history")}</p>

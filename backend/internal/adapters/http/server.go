@@ -44,7 +44,7 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 	deployH := handler.NewDeployHandler(svc, deploySvc).
 		WithSecrets(service.NewSecretRefService(repository.NewSecretRefRepository(db)))
 	if gh != nil {
-		deployH.WithRepoFiles(gh)
+		deployH.WithRepos(gh)
 	}
 	// Los backups de bases (#166). Sin BACKUPS_BUCKET el servicio queda
 	// apagado: las rutas contestan 503 y la app lo dice.
@@ -109,6 +109,7 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Post("/{id}/deployables/{did}/ci-key", deployH.CIKey)
 		r.Get("/{id}/deployables/{did}/builds", deployH.Builds)
 		r.Get("/{id}/deployables/{did}/build-args", deployH.BuildArgs)
+		r.Get("/{id}/deployables/{did}/commits", deployH.Commits)
 		r.Get("/{id}/deployables/{did}/secret-refs", deployH.SecretRefs)
 		r.Put("/{id}/deployables/{did}/secret-refs", deployH.PutSecretRefs)
 		r.Get("/{id}/deployables/{did}/secret-rotations", deployH.SecretRotations)

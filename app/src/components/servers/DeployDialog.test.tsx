@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 /**
  * El diálogo de desplegar un servicio.
@@ -12,8 +12,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  * 3. Con un deploy en cola o en curso, no se puede pedir otro.
  * 4. Sin el agente con identidad no se despliega, y se dice por qué.
  * 5. Volver atrás sólo se ofrece en un deploy que salió bien y tenía algo antes.
- * 7. Con el PAT de la app, la llave del CI va sola a los secrets del repo, y
- *    lo que se despliega se elige de los últimos commits del repo.
+ * 7. Con el PAT de la app, la llave del CI va sola a los secrets del repo.
+ * 8. Lo que se despliega se elige de los commits de la rama del servicio, que
+ *    da el backend (sin PAT): el más nuevo ya elegido, y marcado el que corre.
  * 6. El aviso del CI: la llave se enseña una vez y no se queda en el store,
  *    acuñar otra (que tumba la de ahora) se confirma, y pasar a que cac
  *    despliegue cada aviso también, porque es lo que cambia quién despliega.
@@ -26,10 +27,9 @@ const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 // El Rust de GitHub de la app, simulado: sin PAT por defecto.
-function tauri({ pat = false, commits = [] as unknown[], pushFails = false } = {}) {
+function tauri({ pat = false, pushFails = false } = {}) {
   invoke.mockImplementation(async (cmd: string) => {
     if (cmd === "github_token_configured") return pat;
-    if (cmd === "list_github_commits") return commits;
     if (cmd === "set_github_secret") {
       if (pushFails) throw new Error("GitHub API 403");
       return null;
@@ -75,9 +75,10 @@ const fila = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function respuestas(deployables: unknown[], history: unknown[], builds: unknown[] = []) {
+function respuestas(deployables: unknown[], history: unknown[], builds: unknown[] = [], commits: unknown = { success: true, data: [] }) {
   get.mockImplementation(async (url: string) => {
     if (url.endsWith("/deployables")) return { success: true, data: deployables };
+    if (url.endsWith("/commits")) return commits;
     if (url.endsWith("/builds")) return { success: true, data: builds };
     if (url.endsWith("/deployments")) return { success: true, data: history };
     return { success: true, data: { log: "" } };
@@ -90,7 +91,7 @@ const pintar = (s: Server = server()) =>
 const botonDesplegar = () => screen.getByRole("button", { name: /^(desplegar|deploy|desplegando…|deploying…)$/i }) as HTMLButtonElement;
 
 beforeEach(() => {
-  useDeploymentsStore.setState({ deployables: {}, history: {}, logs: {}, builds: {} });
+  useDeploymentsStore.setState({ deployables: {}, history: {}, logs: {}, builds: {}, commits: {} });
   get.mockReset();
   post.mockReset();
   patch.mockReset();
@@ -358,32 +359,6 @@ describe("sin ir a GitHub", () => {
     await waitFor(() => expect(screen.getByTestId("ci-key").textContent).toBe(KEY));
   });
 
-  it("lo que se despliega se elige de los commits; uno con imagen se despliega con el tag publicado", async () => {
-    tauri({
-      pat: true,
-      commits: [
-        { sha: "def5678def5678def5678def5678def5678def56", message: "sin imagen", author: "ana", date: "2026-10-01T10:00:00Z" },
-        { sha: "abc1234abc1234abc1234abc1234abc1234abc12", message: "fix: login", author: "ana", date: "2026-10-01T09:00:00Z" },
-      ],
-    });
-    respuestas([deployable], [], [build("abc1234")]);
-    post.mockResolvedValue({ success: true, data: fila({ status: "queued" }) });
-    pintar();
-    const opciones = await screen.findAllByRole("option");
-    expect(invoke).toHaveBeenCalledWith("list_github_commits", { serverId: "PATK_global_usage", owner: "dwit-mexico", repo: "api" });
-    expect(opciones[1].textContent).toMatch(/(imagen publicada|image published)/i);
-    expect(opciones[0].textContent).not.toMatch(/(imagen publicada|image published)/i);
-
-    fireEvent.click(opciones[1]);
-    fireEvent.click(botonDesplegar());
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "abc1234" }, true),
-    );
-
-    fireEvent.click(opciones[0]);
-    expect((screen.getByLabelText(/^(commit)$/i) as HTMLInputElement).value).toBe("def5678def5678def5678def5678def5678def56");
-  });
-
   it("si el servicio corre con un tag corto, el paso del workflow manda el sha corto", async () => {
     respuestas([deployable], []);
     post.mockResolvedValue({ success: true, data: { key: KEY, preview: "dk_012345…" } });
@@ -434,12 +409,85 @@ describe("sin ir a GitHub", () => {
     await screen.findByLabelText(/^(migraciones|migrations)$/i);
     expect(screen.queryByText(/(no sabe correr migraciones|can't run migrations)/i)).toBeNull();
   });
+});
 
-  it("sin PAT no hay lista, y queda el campo", async () => {
+// Hasta la v1.12.0 la lista la pedía la app con el token de GitHub de la
+// máquina y de la rama por defecto: sin token no salía, y un servicio de `dev`
+// enseñaba `main`. Mutantes: no elegir el más nuevo; no marcar el que corre;
+// desplegar el sha entero teniendo tag publicado; desplegar el tag
+// construyendo en el servidor; esconder el porqué cuando no hay lista.
+describe("qué commit se despliega", () => {
+  const c = (sha: string, message: string) => ({ sha: sha.padEnd(40, "0"), message, author: "ana", date: "2026-10-01T10:00:00Z" });
+  const lista = { success: true, data: [c("def5678", "lo nuevo"), c("abc1234", "fix: login"), c("1111111", "lo viejo")] };
+  const conRepo = { ...deployable, repoFullName: "dwit-mexico/api", branch: "dev" };
+  const corriendo = { ...service, image: "ghcr.io/dwit-mexico/api:abc1234" };
+  const elegir = () => within(screen.getByRole("group", { name: /(commits para desplegar|commits to deploy)/i }));
+
+  it("salen los de la rama del backend, con el más nuevo elegido y marcado el que corre", async () => {
+    respuestas([conRepo], [], [build("abc1234")], lista);
+    // Terminado: con uno en cola el botón pasa a «Desplegando…» y no se pide otro.
+    post.mockResolvedValue({ success: true, data: fila({ status: "succeeded" }) });
+    render(<DeployDialog server={server()} service={corriendo} open full onOpenChange={() => {}} />);
+    const opciones = await screen.findAllByRole("option");
+    expect(get).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/commits", true);
+    expect(invoke).not.toHaveBeenCalledWith("list_github_commits", expect.anything());
+    expect(elegir().getByText(/(commits de dev|commits on dev)/i)).toBeTruthy();
+    expect(elegir().getByText(/^1 (sin desplegar|not deployed)$/i)).toBeTruthy();
+    expect(opciones[0].getAttribute("aria-selected")).toBe("true");
+    expect(opciones[1].textContent).toMatch(/(en el servidor|on the server)/i);
+    expect(opciones[0].textContent).not.toMatch(/(en el servidor|on the server)/i);
+    expect(opciones[1].textContent).toMatch(/(imagen publicada|image published)/i);
+
+    // Lo último es un clic: sin imagen publicada, con su sha entero.
+    fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) def5678/i }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "def5678".padEnd(40, "0") }, true),
+    );
+    // Uno con imagen publicada, con el tag con el que se publicó.
+    post.mockClear();
+    fireEvent.click(opciones[1]);
+    fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) abc1234/i }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "abc1234" }, true),
+    );
+  });
+
+  it("construyendo en el servidor se despliega el commit entero, aunque haya imagen", async () => {
+    respuestas([{ ...conRepo, buildOnHost: true }], [], [build("abc1234")], lista);
+    post.mockResolvedValue({ success: true, data: fila({ status: "queued" }) });
+    render(<DeployDialog server={server()} service={corriendo} open full onOpenChange={() => {}} />);
+    const opciones = await screen.findAllByRole("option");
+    expect(opciones[1].textContent).not.toMatch(/(imagen publicada|image published)/i);
+    fireEvent.click(opciones[1]);
+    fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) abc1234/i }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "abc1234".padEnd(40, "0") }, true),
+    );
+  });
+
+  it("otro commit se escribe a mano, detrás de «Otro commit…»", async () => {
+    respuestas([conRepo], [], [], lista);
+    pintar();
+    await screen.findAllByRole("option");
+    expect(screen.queryByLabelText(/^(commit)$/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /(otro commit|another commit)/i }));
+    fireEvent.change(screen.getByLabelText(/^(commit)$/i), { target: { value: "9999999" } });
+    expect(botonDesplegar().disabled).toBe(false);
+  });
+
+  it("sin lista queda el campo, y dice por qué", async () => {
+    respuestas([conRepo], [], [], { success: false, error: "github-off" });
+    pintar();
+    // El porqué, en tu idioma («GitHub App» también sale en el aviso del CI).
+    expect(await screen.findByText(/(no se pudieron traer los commits|couldn't fetch the commits).*github app/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^(commit)$/i)).toBeTruthy();
+    cleanup();
+    get.mockClear();
+    useDeploymentsStore.setState({ deployables: {}, commits: {} });
+
     respuestas([deployable], []);
     pintar();
-    await waitFor(() => expect(botonDesplegar()).toBeTruthy());
-    expect(screen.queryAllByRole("option")).toHaveLength(0);
-    expect(invoke).not.toHaveBeenCalledWith("list_github_commits", expect.anything());
+    expect(await screen.findByText(/(para elegir de sus commits|to pick from its commits)/i)).toBeTruthy();
+    expect(get).not.toHaveBeenCalledWith(expect.stringContaining("/commits"), true);
   });
 });

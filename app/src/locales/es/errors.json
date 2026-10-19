@@ -199,5 +199,6 @@
   "backup-without-object": "El agente dijo que salió bien pero no subió nada.",
   "backup-target-gone": "La base se quitó mientras su backup esperaba en cola.",
   "bad-rotate-command": "El comando para rotar tiene que ser una sola línea.",
-  "rotate-needs-a-person": "El comando para rotar corre en el servidor y recibe los secrets: se cambia desde la app, no con un token."
+  "rotate-needs-a-person": "El comando para rotar corre en el servidor y recibe los secrets: se cambia desde la app, no con un token.",
+  "deploy-needs-repo": "Ese servicio no tiene repo de GitHub."
 }

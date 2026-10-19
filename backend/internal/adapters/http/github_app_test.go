@@ -108,6 +108,17 @@ func (g *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"name":"pages-build-deployment","path":"dynamic/pages/pages-build-deployment","state":"active"}]}`)
 	case strings.HasPrefix(r.URL.Path, "/repos/dwit/api/compare/"):
 		io.WriteString(w, `{"commits":[{"commit":{"message":"fix: el login cac#12"}},{"commit":{"message":"chore"}}]}`)
+	case r.URL.Path == "/repos/dwit/api/commits":
+		// Los de cada rama; sin `sha`, los de la por defecto (main).
+		switch r.URL.Query().Get("sha") {
+		case "", "main":
+			fmt.Fprintf(w, `[{"sha":%q,"commit":{"message":"fix: el login\n\ncon cuerpo","author":{"name":"Ana G","date":"2026-10-19T10:00:00Z"}},"author":{"login":"ana"}},
+				{"sha":%q,"commit":{"message":"primero","author":{"name":"Sin Cuenta","date":"2026-10-18T10:00:00Z"}},"author":null}]`, shaNew, shaOld)
+		case "dev":
+			fmt.Fprintf(w, `[{"sha":%q,"commit":{"message":"en dev","author":{"name":"Ana G","date":"2026-10-19T11:00:00Z"}},"author":{"login":"ana"}}]`, shaOld)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
 	case strings.HasPrefix(r.URL.Path, "/repos/dwit/api/commits/"):
 		// Como GitHub: un sha corto se resuelve al entero que empieza así.
 		asked := strings.TrimPrefix(r.URL.Path, "/repos/dwit/api/commits/")

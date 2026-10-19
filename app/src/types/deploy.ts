@@ -75,6 +75,15 @@ export interface CreateDeployablePayload {
   shortTags: boolean;
 }
 
+/** Un commit de la rama del servicio, para elegir qué desplegar. Ver `service.RepoCommit`. */
+export interface RepoCommit {
+  sha: string;
+  /** Sólo su primera línea. */
+  message: string;
+  author: string;
+  date: string;
+}
+
 /** Una imagen que el CI dijo haber publicado. Ver `domain.ImageBuild`. */
 export interface ImageBuild {
   id: string;

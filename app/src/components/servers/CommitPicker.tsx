@@ -1,102 +1,173 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { Loader2 } from "lucide-react";
+import { Loader2, Rocket } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { desde } from "@/lib/desde";
-import { GITHUB_PAT_KEY, repoOfDeployable } from "@/lib/github-repo";
+import { isSha, runsCommit } from "@/lib/deploy";
+import { phraseFor } from "@/lib/server-errors";
+import { cn } from "@/lib/utils";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Deployable } from "@/types/deploy";
-
-/** Un commit como lo devuelve `list_github_commits`. */
-export interface CommitSummary {
-  sha: string;
-  message: string;
-  author: string;
-  date: string;
-}
 
 const NADA: never[] = [];
 
 /**
- * Elegir qué desplegar de una lista, en vez de ir a GitHub a copiar un sha.
+ * Qué desplegar: los últimos commits de la rama del servicio, con el más
+ * nuevo ya elegido, y un botón. Desplegar lo último es un clic.
  *
- * Son los últimos commits de la rama por defecto del repo, con el PAT de la
- * app. Los que ya tienen imagen publicada (porque el CI avisó) se marcan, y al
- * elegir uno de ellos se despliega el sha **con el que se publicó** —corto o
- * entero—, que es el tag que existe.
+ * La lista la da el backend con la GitHub App. Hasta la v1.12.0 la pedía la
+ * app con el token de GitHub de esta máquina y de la rama **por defecto**: sin
+ * token no salía nada, y un servicio de `dev` enseñaba los commits de `main`.
  *
- * Sin PAT o sin repo no hay lista, y queda el campo de escribir un sha.
+ * Se marca el commit que corre en el servidor y cuántos hay por encima sin
+ * desplegar. Sin build en el servidor, uno que ya tiene imagen publicada (el
+ * CI avisó) se despliega con el tag **con el que se publicó** —corto o
+ * entero—, que es el que existe.
+ *
+ * Escribir un sha queda para lo raro, detrás de «Otro commit…»; y a la vista
+ * cuando no hay lista, diciendo por qué.
  */
 export default function CommitPicker({
+  serverId,
   deployable,
-  selected,
-  onSelect,
+  currentImage,
+  disabled,
+  deploying,
+  onDeploy,
 }: {
+  serverId: string;
   deployable: Deployable;
-  selected: string;
-  onSelect: (sha: string) => void;
+  /** La imagen que corre ahora, para marcar su commit. */
+  currentImage: string;
+  disabled: boolean;
+  /** Hay un deploy en cola o en curso. */
+  deploying: boolean;
+  onDeploy: (sha: string) => void;
 }) {
   const { t } = useT();
   const builds = useDeploymentsStore((s) => s.builds[deployable.id] ?? NADA);
-  const [commits, setCommits] = useState<CommitSummary[] | null>(null);
+  const commits = useDeploymentsStore((s) => s.commits[deployable.id]);
+  const hasRepo = deployable.repoFullName !== "";
   const [loading, setLoading] = useState(false);
-  const target = repoOfDeployable(deployable);
+  const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [manual, setManual] = useState(false);
+  const [sha, setSha] = useState("");
 
   useEffect(() => {
+    if (!hasRepo) return;
     let alive = true;
-    const [owner, repo] = target.split("/");
-    if (!owner || !repo) {
-      setCommits(null);
-      return;
-    }
     setLoading(true);
-    (async () => {
-      try {
-        if (!(await invoke<boolean>("github_token_configured", { serverId: GITHUB_PAT_KEY }))) {
-          if (alive) setCommits(null);
-          return;
-        }
-        const list = await invoke<CommitSummary[]>("list_github_commits", { serverId: GITHUB_PAT_KEY, owner, repo });
-        if (alive) setCommits(list);
-      } catch {
-        if (alive) setCommits(null);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
+    setError(null);
+    useDeploymentsStore
+      .getState()
+      .loadCommits(serverId, deployable.id)
+      .catch((e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [target]);
+    // La rama y el repo cambian la lista.
+  }, [serverId, deployable.id, deployable.branch, deployable.repoFullName, hasRepo]);
 
+  const list = hasRepo && !error ? (commits ?? NADA) : NADA;
   // El tag con el que se publicó cada commit, si se publicó.
-  const published = (sha: string) => builds.find((b) => sha.startsWith(b.sha))?.sha;
+  const published = (commit: string) => builds.find((b) => commit.startsWith(b.sha))?.sha;
+  const valueOf = (commit: string) => (deployable.buildOnHost ? commit : (published(commit) ?? commit));
+  const running = list.findIndex((c) => runsCommit(currentImage, c.sha));
+  const chosen = picked ?? list[0]?.sha ?? null;
 
-  if (loading) return <Loader2 className="size-4 animate-spin text-muted-foreground" />;
-  if (!commits || commits.length === 0) return null;
+  const deployButton = (label: string, value: string, enabled: boolean) => (
+    <Button className="shrink-0" onClick={() => onDeploy(value)} disabled={disabled || !enabled}>
+      {deploying ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Rocket className="mr-1 size-4" />}
+      {deploying ? t("common:deploy.deploying") : label}
+    </Button>
+  );
+
+  const field = (
+    <div className="flex items-end gap-2">
+      <div className="flex-1 space-y-1.5">
+        <Label htmlFor="dep-sha">{t("common:deploy.sha")}</Label>
+        <Input
+          id="dep-sha"
+          className="font-mono"
+          value={sha}
+          placeholder={t("common:deploy.shaHint")}
+          onChange={(e) => setSha(e.target.value.trim().toLowerCase())}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </div>
+      {deployButton(t("common:deploy.deploy"), sha.trim(), isSha(sha))}
+    </div>
+  );
+
+  if (loading && !commits) {
+    return (
+      <div className="space-y-1.5" aria-busy>
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
+
+  if (list.length === 0) {
+    return (
+      <div className="space-y-2">
+        {!hasRepo ? (
+          <p className="text-xs text-muted-foreground">{t("common:deploy.commitsNeedRepo")}</p>
+        ) : error ? (
+          <p className="text-xs text-muted-foreground">
+            {t("common:deploy.commitsFailed", { reason: phraseFor(error, error) })}
+          </p>
+        ) : null}
+        {field}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-1">
-      <p className="text-sm font-medium">{t("common:deploy.commits", { repo: target })}</p>
+    <div role="group" aria-label={t("common:deploy.commitsLabel")} className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-medium">
+          {t("common:deploy.commits", { branch: deployable.branch || t("common:deploy.defaultBranch") })}
+          {running > 0 && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {t("common:deploy.behind", { count: running })}
+            </span>
+          )}
+        </p>
+        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setManual((m) => !m)}>
+          {t("common:deploy.otherCommit")}
+        </Button>
+      </div>
       <ul role="listbox" aria-label={t("common:deploy.commitsLabel")} className="max-h-56 divide-y overflow-y-auto rounded-md border">
-        {commits.map((c) => {
-          const tag = published(c.sha);
-          const value = tag ?? c.sha;
+        {list.map((c, i) => {
+          const tag = !deployable.buildOnHost && published(c.sha);
+          const selected = chosen === c.sha;
           return (
             <li
               key={c.sha}
               role="option"
-              aria-selected={selected === value}
+              aria-selected={selected}
               tabIndex={0}
-              onClick={() => onSelect(value)}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelect(value)}
-              className={`flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent/40 ${
-                selected === value ? "bg-accent/60" : ""
-              }`}
+              onClick={() => setPicked(c.sha)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setPicked(c.sha)}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent/40",
+                selected && "bg-accent/60",
+                // Lo que ya corre y lo de antes, en segundo plano.
+                running >= 0 && i > running && "text-muted-foreground",
+              )}
             >
               <span className="font-mono text-xs">{c.sha.slice(0, 7)}</span>
               <span className="min-w-0 flex-1 truncate">{c.message}</span>
+              {i === running && <Badge variant="outline">{t("common:deploy.running")}</Badge>}
               {tag && <Badge variant="secondary">{t("common:deploy.imagePublished")}</Badge>}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {[c.author, c.date ? desde(c.date) : ""].filter(Boolean).join(" · ")}
@@ -105,6 +176,12 @@ export default function CommitPicker({
           );
         })}
       </ul>
+      {chosen && (
+        <div className="flex justify-end">
+          {deployButton(t("common:deploy.deployCommit", { sha: chosen.slice(0, 7) }), valueOf(chosen), true)}
+        </div>
+      )}
+      {manual && field}
     </div>
   );
 }

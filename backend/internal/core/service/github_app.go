@@ -593,6 +593,72 @@ func (s *GitHubService) RepoWorkflows(orgID, repoFullName string) ([]RepoWorkflo
 	return list, nil
 }
 
+// RepoCommit: un commit para elegir qué desplegar. `Message` es sólo su
+// primera línea.
+type RepoCommit struct {
+	Sha     string `json:"sha"`
+	Message string `json:"message"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+}
+
+// RepoCommits: los últimos commits de una rama (vacía = la por defecto) de un
+// repo de la org. Con la App y no con un token de quien mira: así la lista
+// sale igual en cualquier máquina, tenga o no un token de GitHub guardado.
+func (s *GitHubService) RepoCommits(orgID, repoFullName, branch string) ([]RepoCommit, error) {
+	if !s.CanRead() {
+		return nil, ErrGitHubOff
+	}
+	repo, err := s.repo.FindRepoByName(orgID, repoFullName)
+	if err != nil {
+		return nil, ErrRepoNotInOrg
+	}
+	path := "/repos/" + repo.FullName + "/commits?per_page=20"
+	if branch != "" {
+		path += "&sha=" + url.QueryEscape(branch)
+	}
+	var raw []struct {
+		SHA    string `json:"sha"`
+		Commit struct {
+			Message string `json:"message"`
+			Author  struct {
+				Name string `json:"name"`
+				Date string `json:"date"`
+			} `json:"author"`
+		} `json:"commit"`
+		Author *struct {
+			Login string `json:"login"`
+		} `json:"author"`
+	}
+	if err := s.asInstallation(repo.InstallationID, http.MethodGet, path, nil, &raw); err != nil {
+		return nil, err
+	}
+	list := make([]RepoCommit, 0, len(raw))
+	for _, c := range raw {
+		// El usuario de GitHub si lo hay; si no, el nombre que puso git.
+		author := c.Commit.Author.Name
+		if c.Author != nil && c.Author.Login != "" {
+			author = c.Author.Login
+		}
+		list = append(list, RepoCommit{Sha: c.SHA, Message: firstLine(c.Commit.Message), Author: author, Date: c.Commit.Author.Date})
+	}
+	return list, nil
+}
+
+// FullSha: el sha entero del commit que empieza por `sha`, en un repo de la
+// org. Construir en el servidor necesita el entero, y quien despliega escribe
+// el corto.
+func (s *GitHubService) FullSha(orgID, repoFullName, sha string) (string, error) {
+	if !s.CanRead() {
+		return "", ErrGitHubOff
+	}
+	repo, err := s.repo.FindRepoByName(orgID, repoFullName)
+	if err != nil {
+		return "", ErrRepoNotInOrg
+	}
+	return s.fullSha(repo, sha)
+}
+
 // RepoFile: un fichero de texto de un repo de la org, en una rama (vacía = la
 // por defecto). Con `Contents: read`, el permiso que la App ya tiene. Para
 // leer el Dockerfile de un servicio y proponer sus build args.

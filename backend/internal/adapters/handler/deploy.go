@@ -19,7 +19,7 @@ type DeployHandler struct {
 	svc     *service.DeployService
 	limiter *ingestLimiter
 	secrets *service.SecretRefService
-	files   RepoFiles
+	repos   Repos
 }
 
 func NewDeployHandler(servers *service.ServerService, svc *service.DeployService) *DeployHandler {
@@ -101,14 +101,18 @@ func (h *DeployHandler) RecordRotation(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.SecretRotation]{Success: true, Data: out})
 }
 
-// RepoFiles lee un fichero de un repo de la org (lo pone la GitHub App).
-type RepoFiles interface {
+// Repos lee de un repo de la org (lo pone la GitHub App).
+type Repos interface {
 	RepoFile(orgID, repoFullName, ref, path string) (string, error)
+	RepoCommits(orgID, repoFullName, branch string) ([]service.RepoCommit, error)
+	FullSha(orgID, repoFullName, sha string) (string, error)
 }
 
-// WithRepoFiles: sin esto, no se pueden leer los build args del Dockerfile.
-func (h *DeployHandler) WithRepoFiles(f RepoFiles) *DeployHandler {
-	h.files = f
+// WithRepos: sin esto, no se leen los build args del Dockerfile ni los
+// commits que se pueden desplegar, y construir en el servidor pide el sha
+// entero.
+func (h *DeployHandler) WithRepos(f Repos) *DeployHandler {
+	h.repos = f
 	return h
 }
 
@@ -124,16 +128,45 @@ func (h *DeployHandler) BuildArgs(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "The service has no repository", "build-needs-repo")
 		return
 	}
-	if h.files == nil {
+	if h.repos == nil {
 		SendErrorResponse(w, http.StatusServiceUnavailable, "GitHub is not configured", "github-off")
 		return
 	}
-	text, err := h.files.RepoFile(d.OrgID, d.RepoFullName, d.Branch, service.DockerfilePath(d))
+	text, err := h.repos.RepoFile(d.OrgID, d.RepoFullName, d.Branch, service.DockerfilePath(d))
 	switch {
 	case err == nil:
 		SendResult(w, http.StatusOK, domain.APIResponse[[]string]{Success: true, Data: domain.DockerfileArgs(text)})
 	case errors.Is(err, service.ErrRepoFileNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "The Dockerfile is not in that branch of the repository", "dockerfile-not-found")
+	case errors.Is(err, service.ErrRepoNotInOrg):
+		SendErrorResponse(w, http.StatusNotFound, "That repository is not connected to this organization", "repo-not-in-org")
+	case errors.Is(err, service.ErrGitHubOff):
+		SendErrorResponse(w, http.StatusServiceUnavailable, "GitHub is not configured", "github-off")
+	default:
+		SendErrorResponse(w, http.StatusBadGateway, "GitHub did not answer", "github-unreachable")
+	}
+}
+
+// Commits: `GET …/deployables/{did}/commits`, los últimos commits de la rama
+// que despliega el servicio (vacía = la por defecto del repo), para elegir qué
+// desplegar en vez de copiar un sha de GitHub.
+func (h *DeployHandler) Commits(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.deployable(w, r, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	if d.RepoFullName == "" {
+		SendErrorResponse(w, http.StatusBadRequest, "The service has no repository", "deploy-needs-repo")
+		return
+	}
+	if h.repos == nil {
+		SendErrorResponse(w, http.StatusServiceUnavailable, "GitHub is not configured", "github-off")
+		return
+	}
+	list, err := h.repos.RepoCommits(d.OrgID, d.RepoFullName, d.Branch)
+	switch {
+	case err == nil:
+		SendResult(w, http.StatusOK, domain.APIResponse[[]service.RepoCommit]{Success: true, Data: list})
 	case errors.Is(err, service.ErrRepoNotInOrg):
 		SendErrorResponse(w, http.StatusNotFound, "That repository is not connected to this organization", "repo-not-in-org")
 	case errors.Is(err, service.ErrGitHubOff):
@@ -257,8 +290,17 @@ func (h *DeployHandler) Deploy(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
+	// Construir en el servidor es de un commit entero, pero el que se ve y se
+	// copia es el corto: se le pregunta a GitHub cuál es. Si no contesta, el
+	// servicio rechaza el corto con su propio error.
+	sha := req.Sha
+	if d.BuildOnHost && len(sha) < 40 && domain.ValidSha(sha) && d.RepoFullName != "" && h.repos != nil {
+		if full, err := h.repos.FullSha(d.OrgID, d.RepoFullName, sha); err == nil {
+			sha = full
+		}
+	}
 	user, _ := currentUser(r)
-	dep, _, err := h.svc.RequestDeploy(d, domain.DeployByUser, user.UserID, req.Sha, "")
+	dep, _, err := h.svc.RequestDeploy(d, domain.DeployByUser, user.UserID, sha, "")
 	if err != nil {
 		deployError(w, err)
 		return

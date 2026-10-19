@@ -334,3 +334,60 @@ func TestTheDockerfileArgsAreRead(t *testing.T) {
 		t.Fatalf("con carpeta → %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// Los commits que se pueden desplegar son los de la rama del servicio, y los
+// da la App: no hace falta un token de GitHub en la máquina de quien mira.
+// Mutantes: no pasar la rama (salen los de la por defecto); quedarse con el
+// nombre de git habiendo usuario de GitHub; el mensaje entero.
+func TestTheCommitsAreTheServiceBranchOnes(t *testing.T) {
+	f := hostBuildSetup(t, "record")
+	member := domain.OrgMembershipClaim{OrgID: "org-1", Role: domain.OrgRoleMember}
+	path := "/api/v1/servers/srv-1/deployables/" + f.d.ID + "/commits"
+	rec := f.as(t, "GET", path, "", member)
+	var out domain.APIResponse[[]service.RepoCommit]
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 200 || len(out.Data) != 2 {
+		t.Fatalf("commits de main → %d %s", rec.Code, rec.Body.String())
+	}
+	if c := out.Data[0]; c.Sha != shaNew || c.Message != "fix: el login" || c.Author != "ana" || c.Date != "2026-10-19T10:00:00Z" {
+		t.Fatalf("primer commit: %+v", c)
+	}
+	if c := out.Data[1]; c.Author != "Sin Cuenta" {
+		t.Fatalf("sin usuario de GitHub, el nombre de git: %+v", c)
+	}
+
+	dev := "dev"
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{
+		Name: "api", RepoFullName: "dwit/api", OnCINotify: "record", Branch: &dev,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec = f.as(t, "GET", path, "", member)
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 200 || len(out.Data) != 1 || out.Data[0].Message != "en dev" {
+		t.Fatalf("commits de dev → %d %s", rec.Code, rec.Body.String())
+	}
+
+	other := domain.OrgMembershipClaim{OrgID: "org-2", Role: domain.OrgRoleMember}
+	if rec := f.as(t, "GET", path, "", other); rec.Code == 200 {
+		t.Fatalf("otra org ve los commits → %d", rec.Code)
+	}
+}
+
+// Construir en el servidor necesita el sha entero, pero quien despliega
+// escribe el corto: el handler se lo pregunta a GitHub. Uno que no existe se
+// sigue rechazando. Mutante: no resolverlo (vuelve el 400 de siempre).
+func TestAShortShaIsWidenedToBuild(t *testing.T) {
+	f := hostBuildSetup(t, "record")
+	member := domain.OrgMembershipClaim{OrgID: "org-1", Role: domain.OrgRoleMember}
+	path := "/api/v1/servers/srv-1/deployables/" + f.d.ID + "/deploy"
+	rec := f.as(t, "POST", path, `{"sha":"`+shaNew[:7]+`"}`, member)
+	var out domain.APIResponse[domain.Deployment]
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 202 || out.Data.BuildSha != shaNew {
+		t.Fatalf("sha corto → %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := f.as(t, "POST", path, `{"sha":"fffffff"}`, member); rec.Code != 400 || !strings.Contains(rec.Body.String(), "build-needs-full-sha") {
+		t.Fatalf("un sha que no existe → %d %s", rec.Code, rec.Body.String())
+	}
+}

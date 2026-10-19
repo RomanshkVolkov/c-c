@@ -199,5 +199,6 @@
   "backup-without-object": "The agent reported success but nothing was uploaded.",
   "backup-target-gone": "The database was removed while its backup was queued.",
   "bad-rotate-command": "The rotation command has to be a single line.",
-  "rotate-needs-a-person": "The rotation command runs on the server and receives the secrets: change it in the app, not with a token."
+  "rotate-needs-a-person": "The rotation command runs on the server and receives the secrets: change it in the app, not with a token.",
+  "deploy-needs-repo": "That service has no GitHub repo."
 }

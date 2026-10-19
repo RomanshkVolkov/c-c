@@ -64,6 +64,15 @@ export function shortRef(image: string): string {
   return colon > slash ? sinDigest.slice(colon + 1) : "latest";
 }
 
+/**
+ * Si la imagen que corre es la de ese commit: su tag es el sha, corto o
+ * entero. Una imagen con otro tag (`latest`, `v1.2`) no es de ningún commit.
+ */
+export function runsCommit(image: string, sha: string): boolean {
+  const tag = shortRef(image);
+  return isSha(tag) && sha.startsWith(tag);
+}
+
 /** Un sha de git, corto o entero. El backend lo vuelve a comprobar. */
 export function isSha(s: string): boolean {
   return /^[0-9a-f]{7,40}$/.test(s);
