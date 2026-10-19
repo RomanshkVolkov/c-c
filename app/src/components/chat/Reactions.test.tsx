@@ -56,3 +56,20 @@ describe("las reacciones de un mensaje", () => {
     await waitFor(() => expect(error).toHaveBeenCalled());
   });
 });
+
+/**
+ * El menú para elegir reacción es una fila de ocho, con su propio ancho. El
+ * menú base toma el del botón que lo abre (un icono de 20 px), y con eso los
+ * emojis quedaban apilados en una columna estrecha encima del mensaje
+ * (18-oct-2026). El mutante que mata: quitar `w-auto`.
+ */
+describe("el menú para reaccionar", () => {
+  it("no toma el ancho del botón que lo abre", async () => {
+    const { ReactionPicker } = await import("./Reactions");
+    render(<ReactionPicker onReact={vi.fn(async () => {})} />);
+    fireEvent.click(screen.getByRole("button", { name: "React" }));
+    const menu = await screen.findByRole("menu");
+    expect(menu.className).toContain("w-auto");
+    expect(menu.className).not.toContain("w-(--anchor-width)");
+  });
+});

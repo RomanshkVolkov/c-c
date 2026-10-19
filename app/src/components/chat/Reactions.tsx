@@ -89,7 +89,11 @@ export function ReactionPicker({
       >
         <SmilePlus className="size-3.5" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="flex min-w-0 gap-0.5 p-1">
+      {/* `w-auto`: el menú base toma el ancho del botón que lo abre, y este
+          botón es un icono de 20 px; con `min-w-0` (para que la fila de emojis
+          no se estire) el menú quedaba de 20 px y los ocho se apilaban en una
+          columna que tapaba el mensaje. */}
+      <DropdownMenuContent align="start" className="flex w-auto min-w-0 gap-0.5 p-1">
         {REACTION_EMOJIS.map((e) => (
           <DropdownMenuItem
             key={e}
