@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { EXIT_MS, usePresence } from "@/lib/use-presence";
+import { EXIT_MS, useExitThen, usePresence } from "@/lib/use-presence";
 import { removeWithExit } from "@/lib/dom-exit";
 
 /**
@@ -62,6 +62,41 @@ describe("algo que se cierra", () => {
     const { rerender } = render(<Box open />);
     rerender(<Box open={false} />);
     expect(box()).toBeNull();
+  });
+});
+
+function Viewer({ onClose }: { onClose: () => void }) {
+  const exit = useExitThen(onClose);
+  return (
+    <button data-testid="viewer" data-closing={exit.leaving || undefined} onClick={exit.leave}>
+      cerrar
+    </button>
+  );
+}
+
+/**
+ * Lo que se cierra desde dentro (el detalle de una tarea, los visores): la
+ * salida primero y el cierre al acabar. Sustituye a las View Transitions, que
+ * tumbaban el proceso de WebKitGTK.
+ */
+describe("cerrar con salida desde dentro", () => {
+  it("sale, y al acabar cierra una sola vez", () => {
+    const onClose = vi.fn();
+    render(<Viewer onClose={onClose} />);
+    act(() => screen.getByTestId("viewer").click());
+    act(() => screen.getByTestId("viewer").click());
+    expect(screen.getByTestId("viewer").hasAttribute("data-closing")).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(EXIT_MS));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("con movimiento reducido, cierra en el acto", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList);
+    const onClose = vi.fn();
+    render(<Viewer onClose={onClose} />);
+    act(() => screen.getByTestId("viewer").click());
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

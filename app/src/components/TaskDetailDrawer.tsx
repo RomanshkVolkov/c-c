@@ -1,13 +1,13 @@
 import i18next from "@/lib/i18n";
 import { DocSkeleton } from "@/components/ui/skeletons";
-import { withViewTransition } from "@/lib/view-transition";
+import { useExitThen } from "@/lib/use-presence";
 import { ColorDot, paletteFor } from "@/components/ui/color-swatches";
 import TagChip from "@/components/tasks/TagChip";
 import PriorityChip from "@/components/tasks/PriorityChip";
 import { nombreDe } from "@/lib/nombres";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   X,
   Loader2,
@@ -76,6 +76,12 @@ import { useOrgsStore } from "@/store/orgs.store";
  * rich editor, and silently persisting every keystroke would fight the board's
  * refresh cycle and make an accidental paste permanent.
  */
+/**
+ * Cerrar con salida, para lo que está dentro del detalle (el botón de la
+ * cabecera vive en otro componente). Sin proveedor, se cierra en el acto.
+ */
+const TaskExit = createContext<(() => void) | null>(null);
+
 export default function TaskDetailDrawer() {
   const openTaskId = useTasksStore((s) => s.openTaskId);
   const detail = useTasksStore((s) => s.detail);
@@ -83,6 +89,17 @@ export default function TaskDetailDrawer() {
   const loading = useTasksStore((s) => s.loadingDetail);
   const closeTask = useTasksStore((s) => s.closeTask);
   const orgId = useOrgsStore((s) => s.currentOrgId);
+  // Cerrar desde dentro hace primero la salida (`data-closing`) y luego
+  // cierra. Cierra la tarea que se estaba cerrando: si en ese rato se abrió
+  // otra, ésa se queda.
+  const closing = useRef<string | null>(null);
+  const exit = useExitThen(() => {
+    if (useTasksStore.getState().openTaskId === closing.current) closeTask();
+  });
+  const leave = useCallback(() => {
+    closing.current = useTasksStore.getState().openTaskId;
+    exit.leave();
+  }, [exit]);
 
   // Escape closes it. It used to be the click-away layer that did that job
   // implicitly; full screen leaves nothing beside it to click, so the keyboard
@@ -96,11 +113,11 @@ export default function TaskDetailDrawer() {
       const escribiendo =
         el instanceof HTMLElement &&
         (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-      if (e.key === "Escape" && !escribiendo) withViewTransition(closeTask);
+      if (e.key === "Escape" && !escribiendo) leave();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openTaskId, closeTask]);
+  }, [openTaskId, leave]);
 
   if (!openTaskId) return null;
   // Una tarea de otra org no se pinta en ésta. El cajón está montado en toda
@@ -118,11 +135,11 @@ export default function TaskDetailDrawer() {
           beside it to click away to. */}
       {/* Crece desde la tarjeta que se pulsó, como una app que se abre
           desde el Dock (ver `motion-origin.ts` y `.motion-open` en index.css). */}
-      {/* Y sale encogiéndose: `viewTransitionName` es lo que fotografía
-          `withViewTransition` al cerrar (ver `::view-transition-old(task-detail)`). */}
+      {/* Y sale encogiéndose hacia el centro al cerrarse (`useExitThen`). */}
+      <TaskExit.Provider value={leave}>
       <aside
         ref={originRef("viewport")}
-        style={{ viewTransitionName: "task-detail" }}
+        data-closing={exit.leaving || undefined}
         className="motion-open fixed inset-0 z-50 flex flex-col bg-background"
       >
         {loading && !detail ? (
@@ -133,6 +150,7 @@ export default function TaskDetailDrawer() {
           <Content />
         )}
       </aside>
+      </TaskExit.Provider>
     </>
   );
 }
@@ -291,6 +309,7 @@ function Content() {
   const { t } = useT();
   const detail = useTasksStore((s) => s.detail)!;
   const closeTask = useTasksStore((s) => s.closeTask);
+  const leave = useContext(TaskExit) ?? closeTask;
   const updateTask = useTasksStore((s) => s.updateTask);
   const refreshOpenTask = useTasksStore((s) => s.refreshOpenTask);
   const deleteTask = useTasksStore((s) => s.deleteTask);
@@ -522,7 +541,7 @@ function Content() {
         )}
         {/* The id the MCP tools take, so it can be handed to an agent. */}
         <CopyId id={task.id} label="task" />
-        <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={() => withViewTransition(closeTask)} aria-label={t("work:task.close")}>
+        <Button size="icon-xs" variant="ghost" className="ml-auto" onClick={leave} aria-label={t("work:task.close")}>
           <X className="size-4" />
         </Button>
       </header>

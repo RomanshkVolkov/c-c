@@ -245,6 +245,29 @@ describe("el remate", () => {
   });
 });
 
+describe("lo que tumba a WebKitGTK", () => {
+  /**
+   * Nada de View Transitions: el WebKitGTK 2.54 de escritorio dice tenerlas
+   * (`document.startViewTransition` existe), pero el proceso de la página
+   * aborta al usarlas (SIGABRT en WebKitWebProcess al cerrar una tarea,
+   * 18-oct-2026) y la app entera se recarga. Las salidas van con
+   * `usePresence` / `useExitThen`.
+   */
+  it("nadie llama a startViewTransition", () => {
+    const files = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const path = join(dir, name);
+        if (statSync(path).isDirectory()) return files(path);
+        return /\.(ts|tsx)$/.test(path) && !path.includes(".test.") ? [path] : [];
+      });
+    const users = files(join(process.cwd(), "src")).filter((f) =>
+      readFileSync(f, "utf8").includes("startViewTransition"),
+    );
+    expect(users.map((f) => f.slice(f.indexOf("src/")))).toEqual([]);
+    expect(css).not.toContain("::view-transition");
+  });
+});
+
 describe("menos movimiento", () => {
   /**
    * Quien lo pide en el sistema no recibe animaciones en ningún sitio, no

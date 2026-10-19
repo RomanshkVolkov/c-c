@@ -46,3 +46,30 @@ export function usePresence(open: boolean, exitMs: number = EXIT_MS) {
     closing: !open && mounted,
   };
 }
+
+/**
+ * Para lo que se cierra desde dentro y cuyo dueño lo quita en el acto (el
+ * detalle de una tarea, los visores): primero la salida (`leaving`, para
+ * `data-closing`) y, al acabar, `close` de verdad.
+ *
+ * Sustituye a las View Transitions que hacían esto: el WebKitGTK 2.54 de
+ * escritorio dice tenerlas, pero el proceso de la página aborta al usarlas
+ * (SIGABRT en WebKitWebProcess al cerrar una tarea, 18-oct-2026), y la app
+ * entera se recargaba.
+ */
+export function useExitThen(close: () => void, exitMs: number = EXIT_MS) {
+  const [leaving, setLeaving] = useState(false);
+  const leave = () => {
+    if (leaving) return;
+    if (reducedMotion() || exitMs <= 0) {
+      close();
+      return;
+    }
+    setLeaving(true);
+    setTimeout(() => {
+      setLeaving(false);
+      close();
+    }, exitMs);
+  };
+  return { leaving, leave };
+}

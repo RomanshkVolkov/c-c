@@ -824,27 +824,19 @@
   }
 }
 
-/* Lo que se cierra con una View Transition (`withViewTransition`): la foto
-   de lo que había se encoge y se va. El resto de la página no se funde: sin
-   esto el navegador cruzaría la página entera, que se ve como un parpadeo. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
+/* La salida de lo que ocupa la ventana (el detalle de una tarea, los
+   visores): se encoge hacia el centro y se va (`useExitThen`). Era una View
+   Transition, pero el WebKitGTK de escritorio aborta el proceso de la página
+   al usarla. */
+.motion-open[data-closing] {
+  opacity: 0;
+  scale: 0.94;
+  pointer-events: none;
+  transition:
+    opacity 140ms var(--ease-in-quick),
+    scale 160ms var(--ease-in-quick);
 }
-::view-transition-old(task-detail),
-::view-transition-old(viewer) {
-  animation: vt-shrink-out 200ms var(--ease-in-quick) both;
-}
-::view-transition-new(task-detail),
-::view-transition-new(viewer) {
-  animation: none;
-}
-@keyframes vt-shrink-out {
-  to {
-    opacity: 0;
-    scale: 0.94;
-  }
-}
+
 
 /* Con la ventana oculta (minimizada, en otra pestaña o escritorio) no se
    anima nada: un brillo de carga o un punto que late siguen gastando
