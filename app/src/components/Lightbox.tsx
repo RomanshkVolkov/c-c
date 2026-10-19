@@ -1,3 +1,4 @@
+import { withViewTransition } from "@/lib/view-transition";
 import { originRef } from "@/lib/motion-origin";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -26,7 +27,7 @@ export default function Lightbox({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
-      onClose();
+      withViewTransition(onClose);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -35,7 +36,9 @@ export default function Lightbox({
   return createPortal(
     <div
       role="presentation"
-      onClick={onClose}
+      // Sale encogiéndose (`viewTransitionName`, ver `withViewTransition`).
+      onClick={() => withViewTransition(onClose)}
+      style={{ viewTransitionName: "viewer" }}
       // Crece desde la miniatura que se pulsó (ver `motion-origin.ts`).
       ref={originRef("viewport")}
       className="motion-open fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"

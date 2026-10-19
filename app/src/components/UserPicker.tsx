@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -78,6 +79,8 @@ export default function UserPicker({
     setResults([]);
   };
 
+  const list = usePresence(open && results.length > 0);
+
   return (
     <div className="relative">
       <div className="relative">
@@ -105,8 +108,8 @@ export default function UserPicker({
           </button>
         ) : null}
       </div>
-      {open && results.length > 0 && (
-        <ul className="motion-pop-in absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
+      {list.present && (
+        <ul data-closing={list.closing || undefined} className="motion-pop-in absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
           {results.map((u) => (
             <li key={u.id}>
               <button

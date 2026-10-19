@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import TabIndicator from "@/components/ui/tab-indicator";
 import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { isWebBuild } from "@/lib/platform";
@@ -77,6 +78,7 @@ export default function AccountMenu({
   onNotificationPrefs: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const menu = usePresence(open);
   const box = useRef<HTMLDivElement>(null);
   const session = useAuthStore((s) => s.session);
   const superadmin = useAuthStore((s) => !!s.session?.superadmin);
@@ -153,8 +155,9 @@ export default function AccountMenu({
 
   return (
     <div ref={box} className="relative">
-      {open && (
+      {menu.present && (
         <div
+          data-closing={menu.closing || undefined}
           className={cn(
             "motion-pop-in absolute z-50 rounded-md border bg-popover p-1 shadow-lg",
             // Desde la fila, hacia arriba; desde el avatar del riel, hacia la

@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { usePresence } from "@/lib/use-presence";
+import { useEffect, useRef } from "react";
 import { AlertCircle, Download, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUpdaterStore } from "@/store/updater.store";
@@ -24,18 +25,24 @@ export default function UpdateChecker() {
     return () => clearInterval(interval);
   }, [checkForUpdate]);
 
-  if (!available) return null;
-  if (dismissedVersion === available.version && !downloading) return null;
+  const visible = !!available && !(dismissedVersion === available.version && !downloading);
+  // Mientras se va (`usePresence`) ya no hay versión que enseñar: se pinta la
+  // última que hubo, o el aviso se iría vacío.
+  const last = useRef(available);
+  if (available) last.current = available;
+  const notice = usePresence(visible);
+  const shown = available ?? last.current;
+  if (!notice.present || !shown) return null;
 
   const pct = total ? Math.min(100, (downloaded / total) * 100) : null;
 
   return (
-    <div className="motion-rise-in fixed bottom-4 right-4 z-50 max-w-sm bg-card border rounded-lg shadow-lg p-4 space-y-2">
+    <div data-closing={notice.closing || undefined} className="motion-rise-in fixed bottom-4 right-4 z-50 max-w-sm bg-card border rounded-lg shadow-lg p-4 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <Download className="h-4 w-4 text-primary shrink-0" />
           <span className="text-sm font-medium">
-            v{available.version} available
+            v{shown.version} available
           </span>
         </div>
         <Button
@@ -49,9 +56,9 @@ export default function UpdateChecker() {
         </Button>
       </div>
 
-      {available.body && (
+      {shown.body && (
         <p className="text-xs text-muted-foreground line-clamp-3">
-          {available.body}
+          {shown.body}
         </p>
       )}
 

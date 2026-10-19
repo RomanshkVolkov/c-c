@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { AlertCircle, Check, Link2, Loader2, MessageSquare, Minimize2, UserPlus, Volume2, X } from "lucide-react";
@@ -78,6 +79,8 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
   const pantalla = compartiendo ? yo : pantallaAjena;
   const [invitando, setInvitando] = useState(false);
   const [ajustes, setAjustes] = useState(false);
+  const invite = usePresence(invitando);
+  const devices = usePresence(ajustes);
   const [chat, setChat] = useState(false);
   const spaceId = useVoice((s) => s.spaceId);
   const meetId = useVoice((s) => s.meetId);
@@ -423,11 +426,11 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
         )}
       </div>
 
-      {invitando && <InvitePicker onClose={() => setInvitando(false)} />}
+      {invite.present && <InvitePicker closing={invite.closing} onClose={() => setInvitando(false)} />}
       {spaceId && orgId && (
         <GuestInviteDialog open={porEnlace} onOpenChange={setPorEnlace} orgId={orgId} spaceId={spaceId} fromCall />
       )}
-      {ajustes && <DeviceSettings />}
+      {devices.present && <DeviceSettings closing={devices.closing} />}
 
       {/* Lo que el motor no pudo hacer, **junto a los mandos** y no en un
           aviso flotante: el error de encender la cámara pertenece al botón de

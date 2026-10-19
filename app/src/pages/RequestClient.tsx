@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import TabIndicator from "@/components/ui/tab-indicator";
 import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { useEffect, useState } from "react";
@@ -1265,6 +1266,8 @@ function ShareDialog({
     }
   };
 
+  const suggestionsBox = usePresence(showSuggestions && suggestions.length > 0);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -1300,8 +1303,8 @@ function ShareDialog({
                   }}
                   className="font-mono text-sm"
                 />
-                {showSuggestions && suggestions.length > 0 && (
-                  <div className="motion-pop-in absolute top-full mt-1 left-0 right-0 bg-popover border rounded-md shadow-md z-20 max-h-40 overflow-auto">
+                {suggestionsBox.present && (
+                  <div data-closing={suggestionsBox.closing || undefined} className="motion-pop-in absolute top-full mt-1 left-0 right-0 bg-popover border rounded-md shadow-md z-20 max-h-40 overflow-auto">
                     {suggestions.map((u) => (
                       <button
                         key={u.id}

@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RotateCw } from "lucide-react";
@@ -31,11 +32,13 @@ export default function StaleBinaryNotice() {
     return () => window.removeEventListener("focus", check);
   }, []);
 
-  if (!stale) return null;
+  const notice = usePresence(stale);
+  if (!notice.present) return null;
 
   return (
     <div
       role="alert"
+      data-closing={notice.closing || undefined}
       className="motion-rise-in fixed bottom-4 left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-center gap-3 rounded-lg border border-warning/50 bg-card p-3 text-sm shadow-lg"
     >
       <p className="min-w-0 flex-1">{t("common:stale.body")}</p>

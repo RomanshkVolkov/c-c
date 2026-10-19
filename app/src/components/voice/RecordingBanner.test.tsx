@@ -2,13 +2,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 
 import RecordingBanner from "@/components/voice/RecordingBanner";
+import { EXIT_MS } from "@/lib/use-presence";
 import { useVoice } from "@/store/voice.store";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+/**
+ * Al irse, primero sale (`data-closing`) y después ya no está: entre una cosa
+ * y otra pasan `EXIT_MS` (ver `usePresence`).
+ */
+function expectGone() {
+  const leaving = screen.queryByRole("status");
+  if (leaving) expect(leaving.hasAttribute("data-closing")).toBe(true);
+  act(() => vi.advanceTimersByTime(EXIT_MS));
+  expect(screen.queryByRole("status")).toBeNull();
+}
 
 const salir = vi.fn();
 
 beforeEach(() => {
+  vi.useFakeTimers();
   salir.mockClear();
   useVoice.setState({ recording: null, salir });
 });
@@ -50,7 +66,7 @@ describe("el aviso al que entra tarde", () => {
     render(<RecordingBanner />);
     recording();
     act(() => screen.getByText("Got it").click());
-    expect(screen.queryByRole("status")).toBeNull();
+    expectGone();
   });
 
   /**
@@ -64,7 +80,7 @@ describe("el aviso al que entra tarde", () => {
     render(<RecordingBanner />);
     recording("rec-1");
     act(() => screen.getByText("Got it").click());
-    expect(screen.queryByRole("status")).toBeNull();
+    expectGone();
 
     // La misma no vuelve a molestar.
     act(() => {
@@ -84,6 +100,6 @@ describe("el aviso al que entra tarde", () => {
     act(() => {
       useVoice.setState({ recording: null });
     });
-    expect(screen.queryByRole("status")).toBeNull();
+    expectGone();
   });
 });

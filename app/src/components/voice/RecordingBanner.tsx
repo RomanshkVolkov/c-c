@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -37,11 +38,13 @@ export default function RecordingBanner() {
     }
   }, [recording]);
 
-  if (!recording || dismissed) return null;
+  const banner = usePresence(!!recording && !dismissed);
+  if (!banner.present) return null;
 
   return (
     <div
       role="status"
+      data-closing={banner.closing || undefined}
       className="motion-reveal flex shrink-0 flex-wrap items-center gap-2 border-b border-destructive/30
                  bg-destructive/10 px-4 py-2 text-sm"
     >

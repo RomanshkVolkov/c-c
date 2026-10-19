@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import DisclosureChevron from "@/components/ui/disclosure-chevron";
 import { useT, type MessageKey } from "@/lib/i18n";
 import { goInOrg } from "@/lib/ir-en-org";
@@ -129,7 +130,8 @@ export default function NotificationsPanel({
     };
   }, [items, tab]);
 
-  if (!open) return null;
+  const panel = usePresence(open);
+  if (!panel.present) return null;
 
   const openOne = (n: InboxItem) => {
     void markRead([n.id]);
@@ -160,9 +162,13 @@ export default function NotificationsPanel({
     <div className="fixed inset-0 z-50">
       {/* El fondo se oscurece y cierra al pulsarlo: sin él, un panel flotante
           sobre una pantalla viva no se sabe si está abierto o pegado. */}
-      <div className="motion-fade-in absolute inset-0 bg-black/35" onClick={() => onOpenChange(false)} />
+      <div
+        data-closing={panel.closing || undefined}
+        className="motion-fade-in absolute inset-0 bg-black/35"
+        onClick={() => onOpenChange(false)}
+      />
       {/* Nace de la campana, arriba a la derecha. */}
-      <div className="motion-pop-in absolute right-3 top-11 flex [--pop-origin:top_right] max-h-[calc(100%-3.5rem)] w-[min(392px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
+      <div data-closing={panel.closing || undefined} className="motion-pop-in absolute right-3 top-11 flex [--pop-origin:top_right] max-h-[calc(100%-3.5rem)] w-[min(392px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
         <div className="flex items-center gap-2.5 border-b px-3.5 py-2.5">
           <span className="font-semibold">{t("notifications:title")}</span>
           {unread > 0 && (

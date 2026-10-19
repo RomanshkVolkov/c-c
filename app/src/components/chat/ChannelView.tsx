@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import TabIndicator from "@/components/ui/tab-indicator";
 import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { MessagesSkeleton } from "@/components/ui/skeletons";
@@ -173,6 +174,7 @@ export default function ChannelView({
       fetchOlder().catch((e) => toast.error(String(e)));
     },
   });
+  const pill = usePresence(hayNuevos);
 
   const send = async () => {
     const body = draft.trim();
@@ -376,9 +378,10 @@ export default function ChannelView({
           donde estás en cada mensaje, o se acumulan sin que lo sepas. Flota
           sobre la bySpace para no empujar el contenido y mover lo que estás
           leyendo, que sería el mismo fallo por otro camino. */}
-      {hayNuevos && (
+      {pill.present && (
         <button
           onClick={alFinal}
+          data-closing={pill.closing || undefined}
           className="motion-press motion-pop-in absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 [--pop-origin:bottom_center]
                      rounded-full border bg-primary px-3 py-1 text-xs font-medium
                      text-primary-foreground shadow-lg"

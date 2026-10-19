@@ -1,3 +1,4 @@
+import { usePresence } from "@/lib/use-presence";
 import { useEffect, useMemo, useState } from "react";
 import { Github } from "lucide-react";
 
@@ -51,6 +52,10 @@ export default function RepoField({
   // GitHub no distingue mayúsculas: `dwit-mexico/web-boaty` es el mismo repo.
   const known = !q || repos.some((r) => r.toLowerCase() === q);
 
+  const list = usePresence(
+    open && repos.length > 0 && matches.length > 0 && !(matches.length === 1 && matches[0].toLowerCase() === q),
+  );
+
   return (
     <div className="relative">
       <Input
@@ -70,8 +75,8 @@ export default function RepoField({
         // cerraría antes de recibirlo.
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
-      {open && repos.length > 0 && matches.length > 0 && !(matches.length === 1 && matches[0].toLowerCase() === q) && (
-        <ul role="listbox" className="motion-pop-in absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+      {list.present && (
+        <ul role="listbox" data-closing={list.closing || undefined} className="motion-pop-in absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
           {matches.map((r) => (
             <li key={r}>
               <button

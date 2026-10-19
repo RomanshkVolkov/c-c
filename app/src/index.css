@@ -776,6 +776,40 @@
   }
 }
 
+/* Las salidas de lo que entra al montarse: mientras `usePresence` lo
+   mantiene montado, `data-closing` lo lleva al estado del que partió, más
+   deprisa y sin muelle. Duran como mucho `EXIT_MS` (160 ms). Sin clics
+   mientras se va: lo que se cierra ya no está. */
+.motion-pop-in[data-closing] {
+  opacity: 0;
+  scale: 0.95;
+  pointer-events: none;
+  transition:
+    opacity 120ms var(--ease-in-quick),
+    scale 140ms var(--ease-in-quick);
+}
+.motion-fade-in[data-closing] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease-in;
+}
+.motion-rise-in[data-closing] {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity 140ms var(--ease-in-quick),
+    transform 150ms var(--ease-in-quick);
+}
+.motion-reveal[data-closing] {
+  opacity: 0;
+  translate: 0 -4px;
+  pointer-events: none;
+  transition:
+    opacity 120ms var(--ease-in-quick),
+    translate 140ms var(--ease-in-quick);
+}
+
 /* Lo que aparece al desplegarse (los hijos de un espacio en el árbol, una
    sección que se abre, un compositor en línea): baja un poco y aparece. Sin
    animar la altura, que recalcularía el layout de todo lo de debajo en cada
@@ -797,10 +831,12 @@
 ::view-transition-new(root) {
   animation: none;
 }
-::view-transition-old(task-detail) {
+::view-transition-old(task-detail),
+::view-transition-old(viewer) {
   animation: vt-shrink-out 200ms var(--ease-in-quick) both;
 }
-::view-transition-new(task-detail) {
+::view-transition-new(task-detail),
+::view-transition-new(viewer) {
   animation: none;
 }
 @keyframes vt-shrink-out {

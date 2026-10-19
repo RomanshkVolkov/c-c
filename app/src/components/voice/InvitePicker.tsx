@@ -17,7 +17,7 @@ import { useVoice } from "@/store/voice.store";
  * Los que ya están dentro no aparecen. Llamar a quien te está oyendo es un
  * pitido gratis para los dos.
  */
-export default function InvitePicker({ onClose }: { onClose: () => void }) {
+export default function InvitePicker({ onClose, closing }: { onClose: () => void; closing?: boolean }) {
   const { t } = useT();
   const orgId = useOrgsStore((s) => s.currentOrgId);
   // Se lee `byOrg` y no `current()` porque un selector que devuelve un array
@@ -38,7 +38,7 @@ export default function InvitePicker({ onClose }: { onClose: () => void }) {
   const fuera = (equipo ?? []).filter((p) => !aqui.has(p.id));
 
   return (
-    <div className="motion-pop-in absolute right-4 top-14 z-50 w-64 [--pop-origin:top_right] rounded-lg border bg-popover p-1 shadow-lg">
+    <div data-closing={closing || undefined} className="motion-pop-in absolute right-4 top-14 z-50 w-64 [--pop-origin:top_right] rounded-lg border bg-popover p-1 shadow-lg">
       {fuera.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-muted-foreground">
           {t("common:misc.everyoneHere")}

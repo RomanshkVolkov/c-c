@@ -1,3 +1,4 @@
+import { removeWithExit } from "@/lib/dom-exit";
 import { Extension, type Editor, type Range } from "@tiptap/core";
 import Suggestion from "@tiptap/suggestion";
 import { PluginKey } from "@tiptap/pm/state";
@@ -187,7 +188,8 @@ class Popup {
   }
 
   destroy() {
-    this.el.remove();
+    // Con su salida, no de golpe (ver `removeWithExit`).
+    removeWithExit(this.el);
   }
 }
 
