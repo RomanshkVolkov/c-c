@@ -43,8 +43,11 @@ function Round({
   disabled,
   spinning,
   iconClassName,
+  toggles,
 }: {
   icon: LucideIcon;
+  /** El panel que abre (ver `useDismiss`): pulsarlo no cuenta como «fuera». */
+  toggles?: string;
   label: string;
   /** Para rellenar un icono de trazo. Ver el botón de grabar. */
   iconClassName?: string;
@@ -60,6 +63,7 @@ function Round({
     <button
       type="button"
       onClick={onClick}
+      data-toggles={toggles}
       disabled={disabled}
       aria-label={label}
       aria-pressed={active ?? false}
@@ -233,7 +237,7 @@ export default function VoiceControls({
         />
       )}
       {onSettings && (
-        <Round icon={SlidersHorizontal} label={t("common:voice.settings")} onClick={onSettings} />
+        <Round icon={SlidersHorizontal} label={t("common:voice.settings")} onClick={onSettings} toggles="device-settings" />
       )}
       {/* Grabar, por el mismo criterio que compartir pantalla: **no se pinta
           hasta que haga algo**. Si el servidor no tiene grabación montada, un

@@ -449,7 +449,7 @@ export default function VoiceStage({ spaceName = "" }: { spaceName?: string }) {
       {spaceId && orgId && (
         <GuestInviteDialog open={porEnlace} onOpenChange={setPorEnlace} orgId={orgId} spaceId={spaceId} fromCall />
       )}
-      {devices.present && <DeviceSettings closing={devices.closing} />}
+      {devices.present && <DeviceSettings closing={devices.closing} onClose={() => setAjustes(false)} />}
 
       {/* Lo que el motor no pudo hacer, **junto a los mandos** y no en un
           aviso flotante: el error de encender la cámara pertenece al botón de

@@ -1,3 +1,4 @@
+import { useDismiss } from "@/hooks/use-dismiss";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { engine } from "@/lib/voice-engine";
@@ -26,8 +27,13 @@ interface Dispositivo {
   current: boolean;
 }
 
-export default function DeviceSettings({ closing }: { closing?: boolean } = {}) {
+export default function DeviceSettings({
+  closing,
+  onClose,
+}: { closing?: boolean; onClose?: () => void } = {}) {
   const { t } = useT();
+  // Se cierra pulsando fuera o con Escape, no sólo con su botón.
+  const panel = useDismiss<HTMLDivElement>(!closing, () => onClose?.(), "device-settings");
   const [lista, setLista] = useState<{ mics: Dispositivo[]; cams: Dispositivo[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cambiando, setCambiando] = useState<string | null>(null);
@@ -59,7 +65,7 @@ export default function DeviceSettings({ closing }: { closing?: boolean } = {}) 
   };
 
   return (
-    <div data-closing={closing || undefined} className="motion-pop-in absolute bottom-24 left-1/2 z-50 w-72 [--pop-origin:bottom_center] -translate-x-1/2 rounded-lg border bg-popover p-1 shadow-lg">
+    <div ref={panel} data-closing={closing || undefined} className="motion-pop-in absolute bottom-24 left-1/2 z-50 w-72 [--pop-origin:bottom_center] -translate-x-1/2 rounded-lg border bg-popover p-1 shadow-lg">
       {error && (
         <p className="px-3 py-2 text-xs text-destructive">{error}</p>
       )}

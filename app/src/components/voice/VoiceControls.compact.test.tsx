@@ -53,3 +53,17 @@ describe("los mandos en una ventana estrecha", () => {
     expect(props.onLeave).toHaveBeenCalled();
   });
 });
+
+/**
+ * El botón de ajustes es el que abre su panel: va marcado para que pulsarlo no
+ * cuente como «fuera» (`useDismiss`) y el panel no se cierre y reabra a la vez.
+ */
+describe("el botón de ajustes", () => {
+  it("es el que abre el panel, no algo de fuera", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+    render(<VoiceControls {...props} />);
+    expect(screen.getByRole("button", { name: "Audio and video settings" }).getAttribute("data-toggles")).toBe(
+      "device-settings",
+    );
+  });
+});

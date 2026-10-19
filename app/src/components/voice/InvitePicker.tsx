@@ -1,3 +1,4 @@
+import { useDismiss } from "@/hooks/use-dismiss";
 import { nombreDe } from "@/lib/nombres";
 import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
@@ -19,6 +20,8 @@ import { useVoice } from "@/store/voice.store";
  */
 export default function InvitePicker({ onClose, closing }: { onClose: () => void; closing?: boolean }) {
   const { t } = useT();
+  // Se cierra pulsando fuera o con Escape, no sólo con su botón.
+  const panel = useDismiss<HTMLDivElement>(!closing, onClose, "invite-picker");
   const orgId = useOrgsStore((s) => s.currentOrgId);
   // Se lee `byOrg` y no `current()` porque un selector que devuelve un array
   // nuevo cada vez repinta para siempre — ver el comentario de `NOBODY` en
@@ -38,7 +41,7 @@ export default function InvitePicker({ onClose, closing }: { onClose: () => void
   const fuera = (equipo ?? []).filter((p) => !aqui.has(p.id));
 
   return (
-    <div data-closing={closing || undefined} className="motion-pop-in absolute right-4 top-14 z-50 w-64 [--pop-origin:top_right] rounded-lg border bg-popover p-1 shadow-lg">
+    <div ref={panel} data-closing={closing || undefined} className="motion-pop-in absolute right-4 top-14 z-50 w-64 [--pop-origin:top_right] rounded-lg border bg-popover p-1 shadow-lg">
       {fuera.length === 0 ? (
         <p className="px-3 py-4 text-center text-xs text-muted-foreground">
           {t("common:misc.everyoneHere")}
@@ -77,6 +80,7 @@ export function InviteButton({ abierto, onToggle }: { abierto: boolean; onToggle
       type="button"
       onClick={onToggle}
       aria-expanded={abierto}
+      data-toggles="invite-picker"
       aria-label={t("calls:invite")}
       title={t("calls:invite")}
       className="motion-press flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[13px] hover:bg-accent"
