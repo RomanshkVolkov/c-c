@@ -18,7 +18,7 @@ variable "domain" {
 
 variable "mail_from_subdomain" {
   type        = string
-  default     = "correo"
+  default     = "mail"
   description = "Subdominio del rebote (MAIL FROM). Lleva su propio MX y SPF hacia SES; el dominio raíz se queda con los de Zoho."
 }
 
