@@ -408,3 +408,29 @@ func TestAMigrationCommandNeedsAPerson(t *testing.T) {
 		t.Errorf("mandar el mismo comando que ya tiene → %d, se esperaba 200", code)
 	}
 }
+
+// El comando de rotar también corre en el servidor (y recibe los secrets): con
+// un token no se cambia; en la app, sí. Mutante: no mirar `ViaToken`.
+func TestARotateCommandNeedsAPerson(t *testing.T) {
+	db, _, d, cleanup := deploySetup(t)
+	defer cleanup()
+	servers := service.NewServerService(repository.NewServerRepository(db))
+	h := NewDeployHandler(servers, service.NewDeployService(repository.NewDeployRepository(db), repository.NewServerRepository(db), nil))
+
+	update := func(body string, viaToken bool) int {
+		c := claims("u-ana", "org-1", domain.OrgRoleAdmin)
+		c.ViaToken = viaToken
+		r := serverReq(http.MethodPatch, "srv-1", "", body, c)
+		chiContext(r).URLParams.Add("did", d.ID)
+		rec := httptest.NewRecorder()
+		h.Update(rec, r)
+		return rec.Code
+	}
+	evil := `{"name":"web","onCINotify":"record","rotateCommand":"tee /tmp/secrets"}`
+	if code := update(evil, true); code != http.StatusForbidden {
+		t.Errorf("un token cambiando el comando de rotar → %d, se esperaba 403", code)
+	}
+	if code := update(evil, false); code != http.StatusOK {
+		t.Errorf("una persona en la app cambiándolo → %d, se esperaba 200", code)
+	}
+}

@@ -48,6 +48,14 @@ type Deployable struct {
 	// lo mismo que el servicio (redes, secrets). Si falla, el servicio no se
 	// toca. Vacío = sin migraciones.
 	MigrateCommand string `gorm:"type:varchar(500)" json:"migrateCommand"`
+	// RotateCommand: el comando del servidor que recibe los secrets por stdin
+	// (`CLAVE=valor` por línea) y los pone en el servicio, en vez de que cac
+	// los cuelgue a su manera. Es el contrato de `rotate-secrets` de los
+	// servidores de RRHH: quien despliega (su CI) usa los secrets que deja ese
+	// comando, así que rotar con él no lo pisa el siguiente deploy. Con él se
+	// puede rotar también un servicio que despliega su CI. Vacío = la rotación
+	// de siempre de cac.
+	RotateCommand string `gorm:"type:varchar(300)" json:"rotateCommand"`
 	// Qué hacer cuando el CI avise de una imagen nueva (R3): `record` la apunta
 	// y nada más —el CI sigue desplegando él—; `deploy` la despliega.
 	OnCINotify string `gorm:"type:varchar(20);not null;default:'record'" json:"onCINotify"`
@@ -238,6 +246,7 @@ type UpdateDeployableRequest struct {
 	// Puntero por lo mismo: una app anterior no lo manda.
 	ShortTags      *bool   `json:"shortTags,omitempty"`
 	MigrateCommand *string `json:"migrateCommand,omitempty" validate:"omitempty,max=500"`
+	RotateCommand  *string `json:"rotateCommand,omitempty"  validate:"omitempty,max=300"`
 	// El build en el servidor, con punteros por lo mismo.
 	Branch       *string `json:"branch,omitempty"       validate:"omitempty,max=200"`
 	BuildOnHost  *bool   `json:"buildOnHost,omitempty"`

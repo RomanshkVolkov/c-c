@@ -75,6 +75,7 @@ func (r *DeployRepository) UpdateDeployable(d *domain.Deployable) error {
 		"build_workflow":  d.BuildWorkflow,
 		"short_tags":      d.ShortTags,
 		"migrate_command": d.MigrateCommand,
+		"rotate_command":  d.RotateCommand,
 		"branch":          d.Branch,
 		"build_on_host":   d.BuildOnHost,
 		"dockerfile":      d.Dockerfile,

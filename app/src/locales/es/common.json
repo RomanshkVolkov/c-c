@@ -859,7 +859,10 @@
     "envImported_other": "{{count}} variables de «{{env}}»",
     "envFailed": "No se pudo leer el Environment",
     "envNotMounted": "«{{env}}» no está montado en esta máquina: sin su .env no se puede probar ni rotar.",
-    "envMount": "Guardar ruta"
+    "envMount": "Guardar ruta",
+    "rotateCommand": "Comando para rotar en el servidor",
+    "rotateCommandSave": "Guardar comando",
+    "rotateCommandLead": "Opcional. Si el servidor tiene su propio comando para cambiar los secrets (recibe CLAVE=valor por stdin, como rotate-secrets), cac se los pasa a él en vez de ponerlos a su manera. Con él se puede rotar aunque el despliegue lo haga el CI."
   },
   "backups": {
     "title": "Backups",

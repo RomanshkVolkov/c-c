@@ -19,6 +19,13 @@ export interface Deployable {
   shortTags?: boolean;
   /** Lo que corre antes de cada deploy, con la imagen nueva. Vacío = nada. */
   migrateCommand?: string;
+  /**
+   * El comando del servidor que recibe los secrets por stdin (`CLAVE=valor`
+   * por línea), p. ej. `sudo -n /usr/local/bin/rotate-secrets dev`. Con él,
+   * rotar usa ese comando en vez de la rotación propia de cac, y se puede
+   * rotar aunque el despliegue lo haga el CI. Vacío = la de cac.
+   */
+  rotateCommand?: string;
   /** Qué hace cac cuando el CI avisa: apuntarlo, o además desplegarlo. */
   onCINotify: CINotifyMode;
   /** La rama que despliega este servicio; vacía = cualquiera. Vale para el CI y para el build. */

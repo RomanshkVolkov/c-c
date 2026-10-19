@@ -38,6 +38,7 @@ interface DeploymentsState {
   /** El repo de GitHub y el workflow que publica la imagen. */
   /** Lo que corre antes de cada deploy; "" lo quita. */
   setMigrateCommand: (serverId: string, d: Deployable, command: string) => Promise<void>;
+  setRotateCommand: (serverId: string, d: Deployable, command: string) => Promise<void>;
   /** La rama del servicio y el build en el servidor. */
   setBuild: (
     serverId: string,
@@ -72,7 +73,7 @@ async function patchDeployable(
   patch: Partial<
     Pick<
       Deployable,
-      "onCINotify" | "repoFullName" | "buildWorkflow" | "shortTags" | "migrateCommand" | "branch" | "buildOnHost" | "dockerfile" | "buildContext"
+      "onCINotify" | "repoFullName" | "buildWorkflow" | "shortTags" | "migrateCommand" | "rotateCommand" | "branch" | "buildOnHost" | "dockerfile" | "buildContext"
     >
   >,
 ) {
@@ -84,6 +85,7 @@ async function patchDeployable(
     buildWorkflow: d.buildWorkflow ?? "",
     shortTags: d.shortTags ?? false,
     migrateCommand: d.migrateCommand ?? "",
+    rotateCommand: d.rotateCommand ?? "",
     branch: d.branch ?? "",
     buildOnHost: d.buildOnHost ?? false,
     dockerfile: d.dockerfile ?? "",
@@ -169,6 +171,7 @@ export const useDeploymentsStore = create<DeploymentsState>((set, get) => ({
   setCINotify: (serverId, d, mode) => patchDeployable(set, serverId, d, { onCINotify: mode }),
 
   setMigrateCommand: (serverId, d, migrateCommand) => patchDeployable(set, serverId, d, { migrateCommand }),
+  setRotateCommand: (serverId, d, rotateCommand) => patchDeployable(set, serverId, d, { rotateCommand }),
 
   setBuild: (serverId, d, b) => patchDeployable(set, serverId, d, b),
 

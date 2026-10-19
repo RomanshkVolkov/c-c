@@ -153,6 +153,54 @@ pub struct RotationResult {
     pub updated: bool,
 }
 
+/// Lo que se le pasa por stdin al comando de rotar del servidor (ver
+/// `Deployable.RotateCommand`): `CLAVE=valor`, uno por línea, que es el
+/// contrato de `rotate-secrets`. Lo que es sólo del build no va: ese comando
+/// pone los secrets del servicio en marcha. Un valor con un salto de línea no
+/// cabe en ese formato y se rechaza, nombrando la clave y nunca el valor.
+pub fn rotate_command_input(entries: &[(String, String)], build_only: &std::collections::HashSet<String>) -> Result<String, String> {
+    let mut s = String::new();
+    for (name, value) in entries {
+        if build_only.contains(name) {
+            continue;
+        }
+        if value.contains('\n') || value.contains('\r') {
+            return Err(format!("{name}: el valor tiene un salto de línea y el comando del servidor lee uno por línea"));
+        }
+        s.push_str(name);
+        s.push('=');
+        s.push_str(value);
+        s.push('\n');
+    }
+    Ok(s)
+}
+
+/// Lee lo que imprime `rotate-secrets`: al final, `  CLAVE -> secret` por cada
+/// uno vigente, y antes `creado <secret>` por los que son nuevos y
+/// `actualizando …` si reinició el servicio. Como con la rotación propia, una
+/// línea con otra forma se ignora: nunca se devuelve texto libre.
+pub fn parse_rotate_command_output(out: &str) -> RotationResult {
+    let created: std::collections::HashSet<&str> = out
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("creado "))
+        .map(str::trim)
+        .collect();
+    let updated = out.lines().any(|l| l.trim_start().starts_with("actualizando "));
+    let items = out
+        .lines()
+        .filter_map(|l| {
+            let (name, secret) = l.trim().split_once(" -> ")?;
+            let (name, secret) = (name.trim(), secret.trim());
+            (valid_key(name) && !secret.is_empty() && secret.len() <= 80 && !secret.contains(char::is_whitespace)).then(|| RotatedSecret {
+                name: name.to_string(),
+                secret: secret.to_string(),
+                changed: created.contains(secret),
+            })
+        })
+        .collect();
+    RotationResult { items, updated }
+}
+
 /// Lee lo que imprime el guion. Una línea que no tiene la forma esperada se
 /// ignora: nunca se devuelve texto libre del servidor.
 pub fn parse_rotation_output(out: &str) -> RotationResult {
@@ -244,6 +292,10 @@ pub fn rotate_service_secrets(
     // De cada Environment de 1Password, dónde está montado en esta máquina
     // (para las referencias `op-env://`, ver `op_env`).
     env_files: Option<std::collections::HashMap<String, String>>,
+    // El comando del servidor que recibe los secrets (ver
+    // `Deployable.RotateCommand`). Con él, los valores van a ese comando por
+    // stdin y no se usa la rotación propia de cac.
+    command: Option<String>,
 ) -> Result<RotationResult, String> {
     use tauri::Emitter;
     let total = refs.len();
@@ -288,6 +340,21 @@ pub fn rotate_service_secrets(
         .filter(|r| r.usage.as_deref() == Some("build"))
         .map(|r| r.name.clone())
         .collect();
+    if let Some(cmd) = command.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        if cmd.contains(['\n', '\r', '\0']) {
+            return Err("el comando de rotar tiene que ser una línea".into());
+        }
+        let input = rotate_command_input(&entries, &build_only)?;
+        drop(entries);
+        let staged = match stored_ssh_key(&target.server_id).ok().flatten().filter(|k| !k.trim().is_empty()) {
+            Some(k) => Some(stage_public_key(&k)?),
+            None => None,
+        };
+        let identity = staged.as_ref().map(|s| s.path.to_string_lossy().into_owned());
+        let out = ssh_run_input(&target.host, target.ssh_port, &target.ssh_user, cmd, identity.as_deref(), Some(&input))?;
+        drop(input);
+        return Ok(parse_rotate_command_output(&out.stdout));
+    }
     let script = rotation_script_with(&service, &entries, &build_only)?;
     drop(entries);
 
@@ -579,6 +646,37 @@ pub fn create_backup_key(account: String, vault: String, title: String) -> Resul
 
 #[cfg(test)]
 mod tests {
+
+    // El contrato de `rotate-secrets`: CLAVE=valor por línea, sin lo que es
+    // sólo del build, y un valor de dos líneas se rechaza nombrando la clave.
+    #[test]
+    fn el_comando_del_servidor_recibe_clave_valor_por_linea() {
+        let entries = vec![
+            ("DATABASE_URL".to_string(), "postgres://u:p@h/db?a=1".to_string()),
+            ("NEXT_PUBLIC_APP_URL".to_string(), "https://x".to_string()),
+            ("MAIL_PORT".to_string(), "587".to_string()),
+        ];
+        let build: std::collections::HashSet<String> = ["NEXT_PUBLIC_APP_URL".to_string()].into();
+        assert_eq!(
+            rotate_command_input(&entries, &build).unwrap(),
+            "DATABASE_URL=postgres://u:p@h/db?a=1\nMAIL_PORT=587\n"
+        );
+        let malo = vec![("CERT".to_string(), "linea1\nlinea2".to_string())];
+        let err = rotate_command_input(&malo, &Default::default()).unwrap_err();
+        assert!(err.contains("CERT") && !err.contains("linea1"), "{err}");
+    }
+
+    #[test]
+    fn lee_lo_que_dice_rotate_secrets() {
+        let out = "creado rrhh_dev_MAIL_HOST_714685581a79d177\nactualizando web-rrhh-dev_app: MAIL_HOST\n--- dev ---\n  DATABASE_URL -> rrhh_dev_DATABASE_URL_ef0e0191d6a566b3\n  MAIL_HOST -> rrhh_dev_MAIL_HOST_714685581a79d177\nalgo raro -> con espacios\n";
+        let r = parse_rotate_command_output(out);
+        assert!(r.updated);
+        assert_eq!(r.items.len(), 2);
+        assert_eq!(r.items[0], RotatedSecret { name: "DATABASE_URL".into(), secret: "rrhh_dev_DATABASE_URL_ef0e0191d6a566b3".into(), changed: false });
+        assert!(r.items[1].changed);
+        let quieto = parse_rotate_command_output("sin cambios: el servicio ya apunta a estos valores\n--- dev ---\n  MAIL_HOST -> rrhh_dev_MAIL_HOST_714685581a79d177\n");
+        assert!(!quieto.updated && !quieto.items[0].changed);
+    }
     use super::*;
 
     /// La llave tiene el formato de age: la privada en mayúsculas con su

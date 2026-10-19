@@ -19,6 +19,7 @@ var (
 	ErrBadRepoName         = errors.New("bad-repo-name")
 	ErrBadWorkflow         = errors.New("bad-workflow")
 	ErrBadMigrateCommand   = errors.New("bad-migrate-command")
+	ErrBadRotateCommand    = errors.New("bad-rotate-command")
 	ErrAgentCannotMigrate  = errors.New("agent-cannot-migrate")
 	ErrBadSha              = errors.New("bad-sha")
 	ErrNothingToRollBackTo = errors.New("nothing-to-roll-back-to")
@@ -231,6 +232,14 @@ func (s *DeployService) UpdateDeployable(d *domain.Deployable, req domain.Update
 			return nil, ErrBadMigrateCommand
 		}
 		d.MigrateCommand = cmd
+	}
+	if req.RotateCommand != nil {
+		cmd := strings.TrimSpace(*req.RotateCommand)
+		// Una línea, por lo mismo que el de migraciones.
+		if strings.ContainsAny(cmd, "\n\r\x00") {
+			return nil, ErrBadRotateCommand
+		}
+		d.RotateCommand = cmd
 	}
 	if err := s.repo.UpdateDeployable(d); err != nil {
 		return nil, err

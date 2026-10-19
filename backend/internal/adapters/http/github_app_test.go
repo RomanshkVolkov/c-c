@@ -709,3 +709,21 @@ func TestTheMigrateCommandIsOneLineAndSurvivesOldApps(t *testing.T) {
 		t.Errorf("el comando guardado es %q", stored.MigrateCommand)
 	}
 }
+
+// El de rotar es una línea, y una app que no lo manda no lo borra.
+func TestTheRotateCommandIsOneLineAndSurvivesOldApps(t *testing.T) {
+	f, cleanup := appSetup(t, "record")
+	defer cleanup()
+	two := "sudo -n /usr/local/bin/rotate-secrets dev\ntee /tmp/x"
+	if _, err := f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", OnCINotify: "record", RotateCommand: &two}); !errors.Is(err, service.ErrBadRotateCommand) {
+		t.Errorf("un comando de dos líneas → %v", err)
+	}
+	one := "  sudo -n /usr/local/bin/rotate-secrets dev  "
+	f.d, _ = f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", OnCINotify: "record", RotateCommand: &one})
+	f.deploys.UpdateDeployable(f.d, domain.UpdateDeployableRequest{Name: "api", OnCINotify: "deploy"})
+	var stored domain.Deployable
+	f.db.First(&stored, "id = ?", f.d.ID)
+	if stored.RotateCommand != "sudo -n /usr/local/bin/rotate-secrets dev" {
+		t.Errorf("el comando guardado es %q", stored.RotateCommand)
+	}
+}

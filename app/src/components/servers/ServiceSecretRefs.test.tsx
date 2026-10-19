@@ -108,6 +108,8 @@ describe("los secrets de un servicio", () => {
       // Dónde está montado cada Environment de 1Password en esta máquina:
       // aquí, ninguno.
       envFiles: {},
+      // Sin comando del servidor: la rotación propia de cac.
+      command: null,
     });
     expect(api.post).toHaveBeenCalledWith(
       "/api/v1/servers/srv-1/deployables/dp-1/secret-rotations",
@@ -346,6 +348,40 @@ describe("desde un Environment de 1Password", () => {
         expect.objectContaining({ envFiles: { "RRHH prod": "/home/x/prod.env" } }),
       ),
     );
+  });
+});
+
+/**
+ * Con un comando del servidor que recibe los secrets (RRHH: `rotate-secrets`),
+ * se rota aunque el despliegue lo haga el CI, y los valores van a ese comando.
+ * Sin él, un servicio que despliega su CI no se rota desde aquí.
+ */
+describe("con el comando del servidor para rotar", () => {
+  it("se rota aunque despliegue el CI, y Rust recibe el comando", async () => {
+    backend("record");
+    api.get.mockImplementation(async (url: string) => {
+      if (url.endsWith("/deployables"))
+        return { success: true, data: [{ ...deployable("record"), rotateCommand: "sudo -n /usr/local/bin/rotate-secrets dev" }] };
+      if (url.endsWith("/secret-refs")) return { success: true, data: refs };
+      return { success: true, data: [] };
+    });
+    invoke.mockResolvedValue({ items: [], updated: false });
+    pintar();
+    await waitFor(() => expect(botonRotar().disabled).toBe(false));
+    fireEvent.click(botonRotar());
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "rotate_service_secrets",
+        expect.objectContaining({ command: "sudo -n /usr/local/bin/rotate-secrets dev" }),
+      ),
+    );
+  });
+
+  it("sin él, con el CI desplegando, no se rota desde aquí", async () => {
+    backend("record");
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    expect(botonRotar().disabled).toBe(true);
   });
 });
 

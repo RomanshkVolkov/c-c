@@ -216,6 +216,14 @@ func (h *DeployHandler) Update(w http.ResponseWriter, r *http.Request) {
 			"migrate-needs-a-person")
 		return
 	}
+	// El de rotar también corre en el servidor, y además recibe los secrets.
+	if user, ok := currentUser(r); ok && user.ViaToken && req.RotateCommand != nil &&
+		*req.RotateCommand != d.RotateCommand {
+		SendErrorResponse(w, http.StatusForbidden,
+			"The rotation command runs on the server; change it in the app, not with a token",
+			"rotate-needs-a-person")
+		return
+	}
 	out, err := h.svc.UpdateDeployable(d, req)
 	if err != nil {
 		deployError(w, err)
@@ -389,6 +397,8 @@ func deployError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusBadRequest, "That is not a cac secret name", "bad-docker-secret-name")
 	case errors.Is(err, service.ErrRotationNeedsDeploy):
 		SendErrorResponse(w, http.StatusConflict, "Secrets go through cac only when cac deploys this service", "rotation-needs-deploy")
+	case errors.Is(err, service.ErrBadRotateCommand):
+		SendErrorResponse(w, http.StatusBadRequest, "The rotation command has to be one line", "bad-rotate-command")
 	case errors.Is(err, service.ErrBadMigrateCommand):
 		SendErrorResponse(w, http.StatusBadRequest, "The migration command has to be one line", "bad-migrate-command")
 	case errors.Is(err, service.ErrAgentCannotMigrate):

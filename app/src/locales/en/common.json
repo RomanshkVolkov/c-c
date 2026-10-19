@@ -859,7 +859,10 @@
     "envImported_other": "{{count}} variables from “{{env}}”",
     "envFailed": "Couldn't read the Environment",
     "envNotMounted": "“{{env}}” isn't mounted on this machine: without its .env it can't be checked or rotated.",
-    "envMount": "Save path"
+    "envMount": "Save path",
+    "rotateCommand": "Rotation command on the server",
+    "rotateCommandSave": "Save command",
+    "rotateCommandLead": "Optional. If the server has its own command to change the secrets (it reads KEY=value on stdin, like rotate-secrets), cac hands them to it instead of setting them its own way. With it you can rotate even when the CI deploys."
   },
   "backups": {
     "title": "Backups",

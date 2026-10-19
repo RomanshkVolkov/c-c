@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import Picker from "@/components/ui/picker";
 import type { APIResponse } from "@/types/auth";
+import type { Deployable } from "@/types/deploy";
 import type { Server } from "@/types/server";
 import type { SwarmService } from "@/types/swarm";
 
@@ -163,6 +164,10 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
     })
     .filter((p, i, all): p is string => !!p && all.indexOf(p) === i);
   const deploysFromCac = deployable.onCINotify === "deploy";
+  // Con un comando del servidor que recibe los secrets, se rota aunque el
+  // despliegue lo haga el CI: quien guarda los secrets es el servidor, y su
+  // CI despliega con los que ese comando deja (ver `rotateCommand`).
+  const canRotateHere = deploysFromCac || !!deployable.rotateCommand?.trim();
 
   const save = async () => {
     setBusy("save");
@@ -311,6 +316,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
         service: service.name,
         refs: saved,
         envFiles: mounts,
+        command: deployable.rotateCommand?.trim() || null,
       });
       setResult(out);
       await api
@@ -415,6 +421,8 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
             </div>
           );
         })}
+
+        {canEdit && <RotateCommandField server={server} deployable={deployable} />}
 
         {unmounted.map((env) => (
           <MountRow key={env} env={env} onMount={(path) => setMounts(saveMount(env, path))} />
@@ -532,7 +540,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
             <Button
               variant="outline"
               size="sm"
-              disabled={!deploysFromCac || dirty || saved.length === 0 || busy !== null}
+              disabled={!canRotateHere || dirty || saved.length === 0 || busy !== null}
               onClick={() => void rotate()}
             >
               {busy === "rotate" ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <RotateCw className="mr-1 size-3.5" />}
@@ -547,8 +555,8 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
             </span>
           )}
         </div>
-        {!deploysFromCac && <p className="text-xs text-muted-foreground">{t("common:secrets.needsDeploy")}</p>}
-        {dirty && deploysFromCac && <p className="text-xs text-muted-foreground">{t("common:secrets.saveFirst")}</p>}
+        {!canRotateHere && <p className="text-xs text-muted-foreground">{t("common:secrets.needsDeploy")}</p>}
+        {dirty && canRotateHere && <p className="text-xs text-muted-foreground">{t("common:secrets.saveFirst")}</p>}
 
         {result && (
           <ul className="rounded-md border p-2 font-mono text-xs">
@@ -602,6 +610,49 @@ function MountRow({ env, onMount }: { env: string; onMount: (path: string) => vo
       <Button size="xs" variant="outline" disabled={!path.trim()} onClick={() => onMount(path.trim())}>
         {t("common:secrets.envMount")}
       </Button>
+    </div>
+  );
+}
+
+/**
+ * El comando del servidor que recibe los secrets por stdin, si el servidor
+ * tiene uno (en RRHH, `rotate-secrets <entorno>`). Es una línea y corre en el
+ * servidor: sólo se cambia desde la app, no con un token.
+ */
+function RotateCommandField({ server, deployable }: { server: Server; deployable: Deployable }) {
+  const { t } = useT();
+  const [cmd, setCmd] = useState(deployable.rotateCommand ?? "");
+  const [busy, setBusy] = useState(false);
+  const dirty = cmd.trim() !== (deployable.rotateCommand ?? "");
+  const oneLine = !/[\r\n]/.test(cmd);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await useDeploymentsStore.getState().setRotateCommand(server.id, deployable, cmd.trim());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-1">
+      <label htmlFor="secrets-rotate-command" className="text-sm font-medium">
+        {t("common:secrets.rotateCommand")}
+      </label>
+      <div className="flex gap-2">
+        <Input
+          id="secrets-rotate-command"
+          className="h-8 font-mono text-xs"
+          placeholder="sudo -n /usr/local/bin/rotate-secrets dev"
+          value={cmd}
+          onChange={(e) => setCmd(e.target.value)}
+        />
+        <Button variant="outline" size="sm" disabled={!dirty || !oneLine || busy} onClick={() => void save()}>
+          {t("common:secrets.rotateCommandSave")}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("common:secrets.rotateCommandLead")}</p>
     </div>
   );
 }

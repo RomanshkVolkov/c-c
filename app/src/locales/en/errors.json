@@ -197,5 +197,7 @@
   "not-a-backup-job": "Wrong kind of job for this call.",
   "backup-expired": "The agent stopped responding in the middle of the backup.",
   "backup-without-object": "The agent reported success but nothing was uploaded.",
-  "backup-target-gone": "The database was removed while its backup was queued."
+  "backup-target-gone": "The database was removed while its backup was queued.",
+  "bad-rotate-command": "The rotation command has to be a single line.",
+  "rotate-needs-a-person": "The rotation command runs on the server and receives the secrets: change it in the app, not with a token."
 }
