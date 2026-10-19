@@ -546,7 +546,7 @@ function CompactMonth({
       <Sheet open={sheet !== null} onOpenChange={(o) => !o && setSheet(null)}>
         <SheetContent
           side="bottom"
-          className="max-h-[75dvh] gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] data-[side=bottom]:max-h-[75dvh]"
         >
           <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
           <SheetHeader className="p-0">
@@ -561,7 +561,7 @@ function CompactMonth({
               {t(countKey, { count: sheet === "undated" ? undated.length : items.length })}
             </SheetDescription>
           </SheetHeader>
-          <div className="-mx-1 space-y-1.5 overflow-y-auto px-1">
+          <div className="-mx-1 min-h-0 flex-1 space-y-1.5 overflow-y-auto px-1">
             {(sheet === "undated" ? undated : items).length === 0 ? (
               <p className="py-4 text-center text-sm text-muted-foreground">{t("common:calendar.nothingThatDay")}</p>
             ) : (

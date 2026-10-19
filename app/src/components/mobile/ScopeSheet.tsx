@@ -64,7 +64,7 @@ export default function ScopeSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="h-[75dvh] gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        className="gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] data-[side=bottom]:h-[75dvh]"
       >
         <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
         <SheetHeader className="p-0">

@@ -165,7 +165,7 @@ export default function TaskFilters({
           </Button>
         )}
         <Sheet open={sheet} onOpenChange={setSheet}>
-          <SheetContent side="bottom" className="max-h-[85dvh] gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <SheetContent side="bottom" className="gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] data-[side=bottom]:max-h-[85dvh]">
             <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
             <SheetHeader className="p-0">
               <SheetTitle>{t("work:board.filter.title")}</SheetTitle>
@@ -173,7 +173,7 @@ export default function TaskFilters({
                 {t("work:board.filter.shown", { shown, total: cards.length })}
               </SheetDescription>
             </SheetHeader>
-            <div className="flex flex-col gap-2 [&>*]:w-full">{pickers}</div>
+            <div className="flex min-h-0 flex-col gap-2 overflow-y-auto [&>*]:w-full">{pickers}</div>
             {filtering && (
               <Button variant="ghost" onClick={() => onChange({ ...EMPTY_FILTER, query: value.query })}>
                 <X className="size-3.5" /> {t("work:board.filter.clear")}
