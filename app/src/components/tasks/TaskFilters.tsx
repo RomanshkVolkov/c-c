@@ -1,4 +1,8 @@
-import { Search, X } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
+import { useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import Picker from "@/components/ui/picker";
@@ -35,9 +39,19 @@ export default function TaskFilters({
   const set = (patch: Partial<TaskFilter>) => onChange({ ...value, ...patch });
   const filtering = isFiltering(value);
 
-  return (
-    <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto overflow-y-hidden border-b px-4">
-      <label className="relative flex w-56 shrink-0 items-center">
+  // En el teléfono, sin deslizar de lado: el buscador a todo el ancho y los
+  // demás filtros en una hoja que sube desde abajo, uno debajo de otro, como
+  // en iOS. Una fila que se desliza con el dedo era lo que había, y en una
+  // pantalla estrecha se ve como algo cortado (jose, 18-oct-2026).
+  const mobile = useIsMobile();
+  const wide = !mobile;
+  const [sheet, setSheet] = useState(false);
+  const active = (["assignee", "priority", "tag", "category", "area"] as const).filter((k) => value[k] !== "").length;
+  const hasPickers =
+    opts.assignees.length + opts.priorities.length + opts.tags.length + opts.categories.length + opts.areas.length > 0;
+
+  const searchBox = (
+      <label className={cn("relative flex items-center", wide ? "w-56 shrink-0" : "min-w-0 flex-1")}>
         <Search aria-hidden className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
         <input
           type="search"
@@ -56,7 +70,11 @@ export default function TaskFilters({
           className="h-7 w-full rounded-md border border-input bg-transparent pr-2 pl-7 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring dark:bg-input/30"
         />
       </label>
+  );
 
+  /** Los desplegables; en la hoja, a todo el ancho. */
+  const pickers = (
+    <>
       {opts.assignees.length > 0 && (
         <Picker
           aria-label={t("work:board.filter.anyone")}
@@ -68,7 +86,7 @@ export default function TaskFilters({
             ...opts.assignees.map((a) => ({ value: a.id, label: a.name })),
           ]}
           size="sm"
-          className="text-xs"
+          className="shrink-0 text-xs"
         />
       )}
       {opts.priorities.length > 0 && (
@@ -81,7 +99,7 @@ export default function TaskFilters({
             ...opts.priorities.map((p) => ({ value: p, label: t(`work:taskPriority.${p}`) })),
           ]}
           size="sm"
-          className="text-xs"
+          className="shrink-0 text-xs"
         />
       )}
       {opts.tags.length > 0 && (
@@ -94,7 +112,7 @@ export default function TaskFilters({
             ...opts.tags.map((g) => ({ value: g.id, label: g.name })),
           ]}
           size="sm"
-          className="text-xs"
+          className="shrink-0 text-xs"
         />
       )}
       {/* La clasificación de los reportes: sólo la traen las tarjetas que
@@ -109,7 +127,7 @@ export default function TaskFilters({
             ...opts.categories.map((o) => ({ value: o, label: o })),
           ]}
           size="sm"
-          className="text-xs capitalize"
+          className="shrink-0 text-xs capitalize"
         />
       )}
       {opts.areas.length > 0 && (
@@ -122,10 +140,55 @@ export default function TaskFilters({
             ...opts.areas.map((o) => ({ value: o, label: o })),
           ]}
           size="sm"
-          className="text-xs capitalize"
+          className="shrink-0 text-xs capitalize"
         />
       )}
+    </>
+  );
 
+  if (mobile) {
+    return (
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
+        {searchBox}
+        {hasPickers && (
+          <Button
+            size="sm"
+            variant={active ? "secondary" : "outline"}
+            className="shrink-0"
+            onClick={() => setSheet(true)}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            {t("work:board.filter.title")}
+            {active > 0 && (
+              <span className="rounded-full bg-primary px-1.5 text-[10px] leading-4 text-primary-foreground">{active}</span>
+            )}
+          </Button>
+        )}
+        <Sheet open={sheet} onOpenChange={setSheet}>
+          <SheetContent side="bottom" className="max-h-[85dvh] gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
+            <SheetHeader className="p-0">
+              <SheetTitle>{t("work:board.filter.title")}</SheetTitle>
+              <SheetDescription>
+                {t("work:board.filter.shown", { shown, total: cards.length })}
+              </SheetDescription>
+            </SheetHeader>
+            <div className="flex flex-col gap-2 [&>*]:w-full">{pickers}</div>
+            {filtering && (
+              <Button variant="ghost" onClick={() => onChange({ ...EMPTY_FILTER, query: value.query })}>
+                <X className="size-3.5" /> {t("work:board.filter.clear")}
+              </Button>
+            )}
+          </SheetContent>
+        </Sheet>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto overflow-y-hidden border-b px-4">
+      {searchBox}
+      {pickers}
       {filtering && (
         <Button size="xs" variant="ghost" className="shrink-0" onClick={() => onChange(EMPTY_FILTER)}>
           <X className="size-3" /> {t("work:board.filter.clear")}

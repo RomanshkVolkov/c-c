@@ -654,7 +654,11 @@
     "undated_one": "{{count}} with no date",
     "undated_other": "{{count}} with no date",
     "undatedDrag_one": "{{count}} with no date — drag it onto a day to schedule it",
-    "undatedDrag_other": "{{count}} with no date — drag one onto a day to schedule it"
+    "undatedDrag_other": "{{count}} with no date — drag one onto a day to schedule it",
+    "today": "Today",
+    "more": "+{{count}} more",
+    "nothingThatDay": "Nothing this day",
+    "upcoming": "Coming up"
   },
   "deploy": {
     "title": "Deploy {{name}}",

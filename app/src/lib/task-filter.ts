@@ -52,7 +52,7 @@ export const EMPTY_FILTER: TaskFilter = { query: "", assignee: "", priority: "",
 export const NOBODY = "-";
 
 /** Sin acentos y en minúsculas: «revision» encuentra «Revisión». */
-const fold = (s: string) =>
+export const fold = (s: string) =>
   s
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")

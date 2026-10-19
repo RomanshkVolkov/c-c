@@ -88,7 +88,13 @@
     "nothing": "Nothing",
     "visible_one": "{{count}} visible",
     "visible_other": "{{count}} visible",
-    "newTask": "New task"
+    "newTask": "New task",
+    "lensPicker": "Which tasks",
+    "scopePicker": "Where",
+    "everywhere": "All my work",
+    "wholeSpace": "Whole space",
+    "scopeSearch": "Find a space or a list",
+    "scopeNone": "No space or list by that name"
   },
   "task": {
     "edited": "edited",
@@ -282,7 +288,8 @@
       "anyTag": "Any tag",
       "clear": "Clear filters",
       "shown": "{{shown}} of {{total}}",
-      "noMatch": "No task matches the filter."
+      "noMatch": "No task matches the filter.",
+      "title": "Filters"
     }
   },
   "docs": {

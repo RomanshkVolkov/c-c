@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import PriorityChip from "@/components/tasks/PriorityChip";
+import PriorityChip, { priorityDot } from "@/components/tasks/PriorityChip";
 import { applyLocale } from "@/lib/i18n";
 
 afterEach(() => {
@@ -38,5 +38,18 @@ describe("el chip de prioridad", () => {
   it("una que no conoce se enseña por su nombre", () => {
     render(<PriorityChip priority="critica" />);
     expect(screen.getByText("critica")).toBeTruthy();
+  });
+});
+
+/**
+ * El punto del calendario es un fondo: con el color de texto que daba
+ * `PRIORITY_META` no se pintaba nada (los puntos de «Mi trabajo» eran
+ * invisibles). El mutante que mata: volver a la clase de texto.
+ */
+describe("el punto de una prioridad", () => {
+  it("es un fondo de su color", () => {
+    expect(priorityDot("urgent")).toBe("bg-error");
+    expect(priorityDot("medium")).toBe("bg-info");
+    expect(priorityDot("rara")).toBe("bg-muted-foreground");
   });
 });

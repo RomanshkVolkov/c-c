@@ -1,3 +1,8 @@
+import ScopeSheet from "@/components/mobile/ScopeSheet";
+import { findScope, scopeGroups, scopeValue } from "@/lib/scope-options";
+import { useIsMobile } from "@/hooks/use-mobile";
+import Picker from "@/components/ui/picker";
+import { priorityDot } from "@/components/tasks/PriorityChip";
 import TabIndicator from "@/components/ui/tab-indicator";
 import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import TaskFilters from "@/components/tasks/TaskFilters";
@@ -9,7 +14,7 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { STATUS_LABEL_KEYS } from "@/types/report";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertCircle, CalendarDays, Eye, EyeOff, FileText, KanbanSquare, List, X } from "lucide-react";
+import { AlertCircle, CalendarDays, ChevronDown, Eye, EyeOff, FileText, Folder, KanbanSquare, List, Plus, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import CopyId from "@/components/CopyId";
@@ -24,7 +29,6 @@ import type { TaskView } from "@/types/task";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useNavigate } from "react-router-dom";
 import { useTasksStore } from "@/store/tasks.store";
-import { priorityMeta } from "@/types/task";
 import type { OpenTask } from "@/types/task";
 import { normalizeStatus, puedeIr, type ReportStatus } from "@/types/report";
 import { cn } from "@/lib/utils";
@@ -199,6 +203,23 @@ export default function MyWork() {
   // no vuelve a pedir nada (ver `ensureLoaded`).
   const ensureLoaded = useMyWorkStore((s) => s.ensureLoaded);
   const lensBar = useSlidingIndicator<HTMLDivElement>(lens);
+  const mobile = useIsMobile();
+  // El árbol lo pide la barra lateral, que en el teléfono no se monta.
+  const spaces = useTasksStore((s) => s.tree);
+  const fetchTree = useTasksStore((s) => s.fetchTree);
+  useEffect(() => {
+    if (mobile && spaces.length === 0) void Promise.resolve(fetchTree()).catch(() => {});
+  }, [mobile, spaces.length, fetchTree]);
+  const scopeOptions = useMemo(() => scopeGroups(spaces, t("work:myWork.wholeSpace")), [spaces, t]);
+  const [scopeSheet, setScopeSheet] = useState(false);
+  // Lo que dice el botón: la lista con su ruta, el espacio, o «todo».
+  const scopeLabel = (() => {
+    if (!scope) return t("work:myWork.everywhere");
+    const g = scopeOptions.find((x) => x.options.some((o) => o.value === scopeValue(scope)));
+    const o = findScope(scopeOptions, scopeValue(scope));
+    if (!g || !o) return scope.name;
+    return o.kind === "space" ? g.label : `${g.label} › ${o.label}`;
+  })();
   const viewBar = useSlidingIndicator<HTMLSpanElement>(view);
   useEffect(() => {
     ensureLoaded(orgId).catch(() => {});
@@ -254,22 +275,32 @@ export default function MyWork() {
           <span className="text-xs text-muted-foreground">
             {loading ? "…" : t("work:myWork.visible", { count: shown.length })}
           </span>
+          {/* En el teléfono, sólo el icono: el rótulo empujaba al resto y las
+              pestañas de debajo se partían en dos líneas. */}
           <button
             onClick={() => setCreating(true)}
-            className="motion-press ml-auto rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
+            aria-label={t("work:myWork.newTask")}
+            title={t("work:myWork.newTask")}
+            className="motion-press ml-auto flex items-center gap-1 self-center rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
           >
-            {t("work:myWork.newTask")}
+            <Plus className="size-3.5 md:hidden" />
+            <span className="hidden md:inline">{t("work:myWork.newTask")}</span>
           </button>
           <button
             onClick={() => setIncludeClosed(!includeClosed)}
-            className="motion-press flex items-center gap-1.5 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="motion-press flex items-center gap-1.5 self-center rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             title={includeClosed ? t("work:myWork.hideFinished") : t("work:myWork.showFinished")}
+            aria-label={includeClosed ? t("work:myWork.allStates") : t("work:myWork.openOnly")}
           >
             {includeClosed ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-            {includeClosed ? t("work:myWork.allStates") : t("work:myWork.openOnly")}
+            <span className="hidden sm:inline">
+              {includeClosed ? t("work:myWork.allStates") : t("work:myWork.openOnly")}
+            </span>
           </button>
         </div>
-        {scope && (
+        {/* En escritorio, el chip, que se pone desde el árbol. En el teléfono,
+            dónde se mira va en la fila de abajo (ver «Dónde»). */}
+        {!mobile && scope && (
           <div className="mt-1 flex items-center gap-1.5">
             <button
               onClick={() => setScope(null)}
@@ -291,6 +322,47 @@ export default function MyWork() {
         <nav className="-mb-px flex items-center gap-4 pt-2 text-sm">
           {/* Cada grupo con su indicador, que se desliza al elegir otra: la raya
               bajo la lente, la pastilla bajo la vista. */}
+          {/* En el teléfono, las lentes en un selector con la que está puesta
+              («Todo ▾»): las cinco pestañas no caben, se partían en «Asignado /
+              a mí» y empujaban fuera los iconos de vista; y deslizar una barra
+              de lado no es como se hace en una pantalla así (jose, 18-oct-2026). */}
+          {/* En el teléfono, una sola fila: dónde («📁 Boaty › Tasks ▾»), qué
+              (la lente, «Todo ▾») y las vistas. En tres filas con aire entre
+              ellas, la cabecera se veía vacía (jose, 18-oct-2026). Sin cajas:
+              se leen como rótulos, no como campos de un formulario. */}
+          {mobile ? (
+            <div className="mb-1.5 flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+              <button
+                type="button"
+                onClick={() => setScopeSheet(true)}
+                aria-label={t("work:myWork.scopePicker")}
+                className="motion-press flex min-w-0 items-center gap-1"
+              >
+                <Folder aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{scopeLabel}</span>
+                <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              </button>
+              <ScopeSheet
+                open={scopeSheet}
+                onOpenChange={setScopeSheet}
+                groups={scopeOptions}
+                value={scopeValue(scope)}
+                onPick={(v) => {
+                  const o = findScope(scopeOptions, v);
+                  setScope(o ? { kind: o.kind, id: o.id, name: o.name } : null);
+                }}
+              />
+              <span aria-hidden className="text-muted-foreground">·</span>
+              <Picker
+                aria-label={t("work:myWork.lensPicker")}
+                value={lens}
+                onChange={(v) => setLens(v as typeof lens)}
+                options={LENSES.map((l) => ({ value: l.key, label: t(l.labelKey) }))}
+                size="sm"
+                className="shrink-0 text-sm font-medium h-auto! border-0 bg-transparent! px-0 shadow-none dark:bg-transparent! dark:hover:bg-transparent!"
+              />
+            </div>
+          ) : (
           <div ref={lensBar.ref} className="relative flex items-center gap-4">
             {LENSES.map((l) => (
               <button
@@ -309,7 +381,8 @@ export default function MyWork() {
             ))}
             <TabIndicator rect={lensBar.rect} first={lensBar.first} />
           </div>
-          <span className="ml-auto flex items-center gap-0.5 pb-1.5">
+          )}
+          <span className="ml-auto flex shrink-0 items-center gap-0.5 pb-1.5">
             <span ref={viewBar.ref} className="relative flex items-center gap-0.5">
               <TabIndicator rect={viewBar.rect} first={viewBar.first} variant="pill" />
               {VIEWS.map((v) => (
@@ -417,7 +490,7 @@ export default function MyWork() {
                 .map((t) => ({
                   id: t.id,
                   title: t.title,
-                  dotClass: priorityMeta(t.priority).className,
+                  dotClass: priorityDot(t.priority),
                   label: `#${t.seq}`,
                 }))}
               // Arrastrar una a un día le pone el vencimiento. Es la única forma

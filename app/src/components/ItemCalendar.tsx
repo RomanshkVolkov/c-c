@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 
-import { fecha, mesYAno } from "@/lib/fechas";
+import { diaYMes, fecha, mesYAno } from "@/lib/fechas";
 import {
   dayKey,
   toISODate,
@@ -22,6 +22,9 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
 /**
  * A month of work, by the day it arrived.
@@ -73,6 +76,9 @@ function localDayOf(item: CalendarItem): Date | null {
  */
 const MAX_PER_DAY = 3;
 
+/** Cuántas de las próximas se enseñan bajo el mes en el teléfono. */
+const UPCOMING = 6;
+
 export default function ItemCalendar({
   items,
   undated = [],
@@ -119,6 +125,8 @@ export default function ItemCalendar({
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
   const [selected, setSelected] = useState<string | null>(null);
+  // El día que se mira en el teléfono: hoy, de entrada.
+  const [picked, setPicked] = useState(() => dayKey(new Date()));
   const [dragging, setDragging] = useState<string | null>(null);
   // Los mismos sensores que el tablero: puntero **y teclado**. El arrastre HTML5
   // nativo no tiene lo segundo, y esta es la única forma de poner una fecha sin
@@ -149,23 +157,56 @@ export default function ItemCalendar({
   const monthLabel = mesYAno(cursor);
   const today = dayKey(new Date());
   const selectedItems = selected ? (byDay.get(selected) ?? []) : [];
+  // En el teléfono, otro calendario: el mes de escritorio no cabe (cada día
+  // queda de 60 px y una tarea se lee «#14 p…»).
+  const compact = useIsMobile();
+
+  const header = (
+    <div className="flex items-center justify-between">
+      <span className="font-medium capitalize">{monthLabel}</span>
+      <div className="flex gap-1">
+        <Button size="icon-sm" variant="outline" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const n = new Date();
+            setCursor(new Date(n.getFullYear(), n.getMonth(), 1));
+            setPicked(dayKey(n));
+          }}
+        >
+          {t("common:calendar.today")}
+        </Button>
+        <Button size="icon-sm" variant="outline" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <CompactMonth
+        header={header}
+        items={items}
+        cells={cells}
+        cursor={cursor}
+        today={today}
+        byDay={byDay}
+        picked={picked}
+        onPick={setPicked}
+        undated={undated}
+        onOpen={onOpen}
+        countKey={countKey}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="font-medium capitalize">{monthLabel}</span>
-        <div className="flex gap-1">
-          <Button size="icon-sm" variant="outline" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setCursor(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); })}>
-            Today
-          </Button>
-          <Button size="icon-sm" variant="outline" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      {header}
 
       <DndContext
         sensors={sensors}
@@ -238,7 +279,7 @@ export default function ItemCalendar({
                   onClick={() => setSelected(k === selected ? null : k)}
                   className="motion-press rounded px-1 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
-                  +{hidden} more
+                  {t("common:calendar.more", { count: hidden })}
                 </button>
               )}
             </DayCell>
@@ -359,5 +400,187 @@ function UndatedChip({
         <span className="truncate">{item.title}</span>
       </button>
     </span>
+  );
+}
+
+/**
+ * El calendario del teléfono, como el de iOS: el mes compacto con un punto
+ * por cosa en cada día. Tocar un día sube una hoja con lo de ese día, con los
+ * títulos enteros: así no hay que bajar a buscarlo y el mes no se mueve (jose,
+ * 18-oct-2026). Lo que no tiene fecha, detrás de una fila que abre la suya. Sin
+ * arrastrar: en una pantalla táctil arrastrar compite con deslizar, y la fecha
+ * se pone desde la tarea.
+ */
+function CompactMonth({
+  header,
+  items: all,
+  cells,
+  cursor,
+  today,
+  byDay,
+  picked,
+  onPick,
+  undated,
+  onOpen,
+  countKey,
+}: {
+  header: React.ReactNode;
+  items: CalendarItem[];
+  cells: Date[];
+  cursor: Date;
+  today: string;
+  byDay: Map<string, CalendarItem[]>;
+  picked: string;
+  onPick: (k: string) => void;
+  undated: CalendarEntry[];
+  onOpen: (id: string) => void;
+  countKey: MessageKey;
+}) {
+  const { t } = useT();
+  const [sheet, setSheet] = useState<"day" | "undated" | null>(null);
+  const items = byDay.get(picked) ?? [];
+  const pickedDate = cells.find((d) => dayKey(d) === picked) ?? null;
+
+  // Lo que viene, desde hoy: debajo del mes había un hueco, y es lo primero
+  // que se quiere saber al abrir un calendario (jose, 18-oct-2026).
+  const upcoming = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return all
+      .map((r) => ({ r, d: localDayOf(r) }))
+      .filter((x): x is { r: CalendarItem; d: Date } => !!x.d && x.d.getTime() >= start)
+      .sort((a, b) => a.d.getTime() - b.d.getTime())
+      .slice(0, UPCOMING);
+  }, [all]);
+
+  // Abrir una tarea cierra la hoja: lo que se pidió ya está en pantalla.
+  const open = (id: string) => {
+    setSheet(null);
+    onOpen(id);
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {header}
+      <div className="grid grid-cols-7 text-center">
+        {weekdayInitials().map((w) => (
+          <div key={w} className="pb-1 text-[11px] font-medium text-muted-foreground">
+            {w}
+          </div>
+        ))}
+        {cells.map((d) => {
+          const k = dayKey(d);
+          const dayItems = byDay.get(k) ?? [];
+          const inMonth = d.getMonth() === cursor.getMonth();
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => {
+                onPick(k);
+                setSheet("day");
+              }}
+              data-day={k}
+              aria-pressed={k === picked}
+              aria-label={`${fecha(d)} · ${t(countKey, { count: dayItems.length })}`}
+              className={cn(
+                "motion-press flex h-11 flex-col items-center justify-center gap-1 rounded-lg",
+                !inMonth && "opacity-35",
+                k === picked && "bg-accent",
+              )}
+            >
+              <span
+                className={cn(
+                  "grid size-6 place-items-center rounded-full text-sm",
+                  k === today ? "bg-primary font-semibold text-primary-foreground" : k === picked && "font-semibold",
+                )}
+              >
+                {d.getDate()}
+              </span>
+              {/* Un punto por cosa, hasta tres: dice si hay algo y de qué color
+                  sin tener que leer nada. */}
+              <span className="flex h-1 gap-0.5">
+                {dayItems.slice(0, 3).map((r) => (
+                  <span key={r.id} className={cn("size-1 rounded-full", r.dotClass)} />
+                ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {upcoming.length > 0 && (
+        <section className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">{t("common:calendar.upcoming")}</p>
+          {upcoming.map(({ r, d }) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => onOpen(r.id)}
+              className="flex w-full items-start gap-2.5 rounded-lg border bg-raised p-2.5 text-left text-sm"
+            >
+              <span className="w-12 shrink-0 text-xs text-muted-foreground tabular-nums">
+                {dayKey(d) === today ? t("common:calendar.today") : diaYMes(d)}
+              </span>
+              <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", r.dotClass)} />
+              <span className="line-clamp-2 min-w-0 flex-1">
+                {r.label && <span className="mr-1 font-mono text-xs text-muted-foreground">{r.label}</span>}
+                {r.title}
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
+
+      {undated.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setSheet("undated")}
+          className="flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm text-muted-foreground"
+        >
+          {t("common:calendar.undated", { count: undated.length })}
+          <ChevronRight className="size-4" />
+        </button>
+      )}
+
+      <Sheet open={sheet !== null} onOpenChange={(o) => !o && setSheet(null)}>
+        <SheetContent
+          side="bottom"
+          className="max-h-[75dvh] gap-3 rounded-t-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        >
+          <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
+          <SheetHeader className="p-0">
+            <SheetTitle className="capitalize">
+              {sheet === "undated"
+                ? t("common:calendar.undated", { count: undated.length })
+                : pickedDate
+                  ? fecha(pickedDate)
+                  : picked}
+            </SheetTitle>
+            <SheetDescription>
+              {t(countKey, { count: sheet === "undated" ? undated.length : items.length })}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="-mx-1 space-y-1.5 overflow-y-auto px-1">
+            {(sheet === "undated" ? undated : items).length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">{t("common:calendar.nothingThatDay")}</p>
+            ) : (
+              (sheet === "undated" ? undated : items).map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => open(r.id)}
+                  className="flex w-full items-start gap-2 rounded-lg border bg-raised p-2.5 text-left text-sm"
+                >
+                  <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", r.dotClass)} />
+                  {r.label && <span className="mt-0.5 shrink-0 font-mono text-xs text-muted-foreground">{r.label}</span>}
+                  <span className="line-clamp-2">{r.title}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
   );
 }

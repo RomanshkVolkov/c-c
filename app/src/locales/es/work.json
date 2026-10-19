@@ -88,7 +88,13 @@
     "nothing": "Nada",
     "visible_one": "{{count}} visible",
     "visible_other": "{{count}} visibles",
-    "newTask": "Tarea nueva"
+    "newTask": "Tarea nueva",
+    "lensPicker": "Qué tareas",
+    "scopePicker": "Dónde",
+    "everywhere": "Todo mi trabajo",
+    "wholeSpace": "Todo el espacio",
+    "scopeSearch": "Buscar un espacio o una lista",
+    "scopeNone": "Ningún espacio ni lista se llama así"
   },
   "task": {
     "edited": "editado",
@@ -282,7 +288,8 @@
       "anyTag": "Cualquier etiqueta",
       "clear": "Quitar filtros",
       "shown": "{{shown}} de {{total}}",
-      "noMatch": "Ninguna tarea coincide con el filtro."
+      "noMatch": "Ninguna tarea coincide con el filtro.",
+      "title": "Filtros"
     }
   },
   "docs": {

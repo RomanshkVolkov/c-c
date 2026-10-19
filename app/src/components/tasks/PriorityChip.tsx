@@ -30,6 +30,16 @@ const DOTS = {
 
 type Known = keyof typeof TONES;
 
+/**
+ * El punto de color de una prioridad, para pintarla sin el chip (el
+ * calendario). Una clase de fondo: el calendario la usa en un punto, y la de
+ * texto de `PRIORITY_META` ahí no pinta nada.
+ */
+export function priorityDot(p: string | undefined): string {
+  const k = canonicalPriority(p);
+  return k ? DOTS[k] : "bg-muted-foreground";
+}
+
 /** `medium` es como se guarda la `normal` de la API (ver CLAUDE.md). */
 export function canonicalPriority(p: string | undefined): Known | null {
   const v = !p ? "none" : p === "medium" ? "normal" : p;

@@ -654,7 +654,11 @@
     "undated_one": "{{count}} sin fecha",
     "undated_other": "{{count}} sin fecha",
     "undatedDrag_one": "{{count}} sin fecha — arrástrala a un día para ponérsela",
-    "undatedDrag_other": "{{count}} sin fecha — arrastra una a un día para ponérsela"
+    "undatedDrag_other": "{{count}} sin fecha — arrastra una a un día para ponérsela",
+    "today": "Hoy",
+    "more": "+{{count}} más",
+    "nothingThatDay": "Nada este día",
+    "upcoming": "Próximos"
   },
   "deploy": {
     "title": "Desplegar {{name}}",

@@ -1,6 +1,7 @@
+import { priorityDot } from "@/components/tasks/PriorityChip";
 import type { CalendarItem } from "@/components/ItemCalendar";
 import { toISODate, dueDay } from "@/lib/month";
-import { priorityMeta, type OpenTask } from "@/types/task";
+import type { OpenTask } from "@/types/task";
 
 type Dated = Pick<OpenTask, "id" | "seq" | "title" | "priority" | "dueAt">;
 
@@ -23,7 +24,7 @@ export function dueCalendarItems(tasks: Dated[]): CalendarItem[] {
       id: t.id,
       title: t.title,
       day: toISODate(due),
-      dotClass: priorityMeta(t.priority).className,
+      dotClass: priorityDot(t.priority),
       label: `#${t.seq}`,
     }];
   });

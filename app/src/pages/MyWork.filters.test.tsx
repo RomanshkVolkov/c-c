@@ -97,3 +97,71 @@ describe("buscar en Mi trabajo", () => {
     expect(screen.getByText("Otra lista")).toBeTruthy();
   });
 });
+
+/**
+ * En el teléfono nada se desliza de lado (jose, 18-oct-2026): las lentes van
+ * en un selector con la que está puesta, y los filtros en una hoja que sube
+ * desde abajo. En escritorio, las pestañas y la fila de siempre.
+ */
+describe("la cabecera en el teléfono", () => {
+  const wide = window.innerWidth;
+  afterEach(() => Object.defineProperty(window, "innerWidth", { configurable: true, value: wide }));
+  const phone = () => Object.defineProperty(window, "innerWidth", { configurable: true, value: 400 });
+
+  it("las lentes, en un selector y no en pestañas", () => {
+    phone();
+    mount();
+    expect(screen.getByRole("combobox", { name: "Which tasks" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Assigned to me" })).toBeNull();
+  });
+
+  it("los filtros, detrás de un botón que abre la hoja", async () => {
+    phone();
+    mount();
+    expect(screen.queryByRole("combobox", { name: "Any assignee" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Filters/ }));
+    expect(await screen.findByRole("combobox", { name: "Any assignee" })).toBeTruthy();
+  });
+
+  it("y nada se desliza de lado", () => {
+    phone();
+    const { container } = mount();
+    expect(container.querySelector(".overflow-x-auto")).toBeNull();
+  });
+
+  /**
+   * Dónde se mira, en la cabecera: en el teléfono no hay árbol al lado. El
+   * mutante que mata: dejar el chip, que sólo se puede quitar.
+   */
+  it("dónde se mira se elige en la cabecera", async () => {
+    phone();
+    useTasksStore.setState({
+      tree: [
+        {
+          id: "sp-1", orgId: "org-1", name: "Boaty", color: "", folders: [], people: [],
+          lists: [
+            { id: "l-1", name: "tasks", taskCount: 2, openCount: 2 },
+            { id: "l-2", name: "otra", taskCount: 1, openCount: 1 },
+          ],
+        },
+      ],
+    } as never);
+    mount();
+    const where = screen.getByRole("button", { name: "Where" });
+    expect(where.textContent).toContain("Boaty › tasks");
+    fireEvent.click(where);
+    // Con buscador: escribir deja sólo lo que coincide.
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Find a space or a list" }), {
+      target: { value: "otr" },
+    });
+    expect(screen.queryByRole("button", { name: "tasks" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "otra" }));
+    expect(useMyWorkStore.getState().scope).toMatchObject({ kind: "list", id: "l-2", name: "otra" });
+  });
+
+  it("en escritorio, las pestañas de siempre", () => {
+    mount();
+    expect(screen.getByRole("button", { name: "Assigned to me" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New task" }).querySelector("span")!.className).toContain("hidden md:inline");
+  });
+});
