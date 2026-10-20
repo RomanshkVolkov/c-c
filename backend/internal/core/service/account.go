@@ -99,7 +99,7 @@ func (s *AccountService) CreateForOrg(ctx context.Context, orgID, inviterID, lan
 		}
 		l := emailLocale(existing.Locale, lang)
 		args["name"] = displayName(existing)
-		sent := s.send(ctx, renderEmail(l, existing.Email, mailInvited, args, s.publicURL+"/app/"))
+		sent := s.send(ctx, renderEmail(l, s.publicURL, existing.Email, mailInvited, args, s.publicURL+"/app/"))
 		return &domain.CreateAccountResponse{Status: domain.AccountInvited, UserID: existing.ID, EmailSent: sent}, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -155,7 +155,7 @@ func (s *AccountService) sendWelcome(ctx context.Context, u *domain.User, org *d
 	link := s.publicURL + "/app/welcome#" + token
 	args := map[string]string{"inviter": displayName(inviter), "org": org.Name, "name": displayName(u)}
 	// En el idioma del admin: la persona todavía no eligió el suyo.
-	sent := s.send(ctx, renderEmail(emailLocale(inviter.Locale, lang), u.Email, mailWelcome, args, link))
+	sent := s.send(ctx, renderEmail(emailLocale(inviter.Locale, lang), s.publicURL, u.Email, mailWelcome, args, link))
 	out := &domain.CreateAccountResponse{Status: domain.AccountCreated, UserID: u.ID, EmailSent: sent}
 	// Si el correo no salió, el admin se lo pasa a mano. Sólo entonces: el
 	// enlace pone la contraseña de otra persona, y quien lo tiene puede entrar
@@ -249,7 +249,7 @@ func (s *AccountService) ForgotPassword(ctx context.Context, login, lang string)
 	if err != nil {
 		return err
 	}
-	e := renderEmail(emailLocale(u.Locale, lang), u.Email, mailReset,
+	e := renderEmail(emailLocale(u.Locale, lang), s.publicURL, u.Email, mailReset,
 		map[string]string{"username": u.Username, "name": displayName(u)},
 		s.publicURL+"/app/reset-password#"+token)
 	if s.async {
