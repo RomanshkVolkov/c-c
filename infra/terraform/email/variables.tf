@@ -24,7 +24,7 @@ variable "mail_from_subdomain" {
 
 variable "from_address" {
   type        = string
-  default     = "no-responder@guz-studio.dev"
+  default     = "no-reply@guz-studio.dev"
   description = "La única dirección desde la que las llaves de cac pueden enviar."
 }
 
