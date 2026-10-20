@@ -31,7 +31,9 @@
     "deploy": "deploy",
     "telemetry": "telemetry",
     "agent": "agent",
-    "backup": "backup"
+    "backup": "backup",
+    "post": "feedback",
+    "postComment": "comment"
   },
   "prefs": {
     "title": "What reaches you",

@@ -35,6 +35,7 @@ import { useCallChat } from "@/store/call-chat.store";
 import { useMeetingsStore, type ReunionEntrante } from "@/store/meetings.store";
 import { useMyWorkStore } from "@/store/mywork.store";
 import { useRepoDocs } from "@/store/repo-docs.store";
+import { usePostsStore } from "@/store/posts.store";
 
 type Payload = {
   reportId?: string;
@@ -158,6 +159,10 @@ const DEJAN_FILA = new Set([
   "meeting:reminder",
   // Un agente que te avisa (#153): llega ya escrito en tu campana.
   "agent:notice",
+  // El muro (#189): un feedback nuevo deja fila en la campana del equipo de
+  // cac, y un comentario en la del autor y de quienes comentaron.
+  "post:new",
+  "post:comment",
 ]);
 
 /**
@@ -518,6 +523,14 @@ export function useReportEvents() {
         // fila en la campana. Sólo se relee lo que está abierto. Tampoco se
         // descarta el eco propio: mis otras pantallas también tienen que
         // verlo, y en esta la cuenta optimista ya coincide con lo que vuelve.
+        // El muro (#189): sólo traen ids; el store vuelve a pedir lo que hay en
+        // pantalla, y el servidor decide qué se ve.
+        case "post:new":
+        case "post:comment":
+        case "post:reaction":
+        case "post:deleted":
+          void usePostsStore.getState().onEvent(event, parse(data) as { postId?: string });
+          break;
         case "chat:reaction": {
           const p = parse(data) as Payload & { spaceId?: string };
           if (p.spaceId) void useChatStore.getState().onReaction(p.spaceId);
@@ -916,6 +929,10 @@ export function useReportEvents() {
         "deploy:status",
         "deploy:log",
         "deploy:build",
+        "post:new",
+        "post:comment",
+        "post:reaction",
+        "post:deleted",
         "ci:run",
         "telemetry:alert",
         "agent:notice",

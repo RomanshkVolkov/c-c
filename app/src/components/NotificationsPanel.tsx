@@ -4,7 +4,7 @@ import { useT, type MessageKey } from "@/lib/i18n";
 import { goInOrg } from "@/lib/ir-en-org";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Archive, AtSign, BellRing, Bot, CalendarClock, CheckSquare, Hash, Info, MessageSquare, Rocket, Settings, UserPlus, Workflow, Zap } from "lucide-react";
+import { Activity, Archive, AtSign, BellRing, Bot, CalendarClock, CheckSquare, Hash, Info, Megaphone, MessageSquare, Rocket, Settings, UserPlus, Workflow, Zap } from "lucide-react";
 import { groupInbox, summarize, type NotificationGroup } from "@/lib/notification-groups";
 import { useInboxStore, type GroupTally, type InboxItem } from "@/store/inbox.store";
 import { desde } from "@/lib/desde";
@@ -48,6 +48,10 @@ const KINDS: Record<string, { group: Tab; tagKey?: MessageKey; icon: typeof AtSi
   "chat:mention": { group: "talk", tagKey: "notifications:kind.mention", icon: AtSign, color: "text-primary" },
   "dm:message": { group: "talk", tagKey: "notifications:kind.direct", icon: MessageSquare, color: "text-primary" },
   "chat:message": { group: "talk", tagKey: "notifications:kind.channel", icon: Hash, color: "text-muted-foreground" },
+  // El muro (#189): feedback nuevo de una org (para el equipo de cac) y un
+  // comentario en una publicación tuya o que comentaste.
+  "post:feedback": { group: "talk", tagKey: "notifications:kind.post", icon: Megaphone, color: "text-primary" },
+  "post:comment": { group: "talk", tagKey: "notifications:kind.postComment", icon: Megaphone, color: "text-muted-foreground" },
   "task:comment": { group: "tasks", tagKey: "notifications:kind.comment", icon: CheckSquare, color: "text-foreground" },
   "task:assigned": { group: "tasks", tagKey: "notifications:kind.assigned", icon: UserPlus, color: "text-primary" },
   "task:status": { group: "tasks", tagKey: "notifications:kind.status", icon: CheckSquare, color: "text-muted-foreground" },

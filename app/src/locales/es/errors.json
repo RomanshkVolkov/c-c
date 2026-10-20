@@ -209,5 +209,9 @@
   "invitation-exists": "Ya tiene una invitación pendiente a esta organización.",
   "account-not-pending": "Esa cuenta ya terminó su registro.",
   "email-off": "Este servidor de cac no tiene el correo configurado.",
-  "account-failed": "No se pudo completar. Prueba otra vez en un momento."
+  "account-failed": "No se pudo completar. Prueba otra vez en un momento.",
+  "post-not-found": "Esa publicación ya no existe o no la puedes ver.",
+  "post-forbidden": "No puedes hacer eso con esta publicación.",
+  "post-failed": "No se pudo completar. Prueba otra vez.",
+  "post-bad-cursor": "No se pudo cargar más del muro. Recárgalo."
 }

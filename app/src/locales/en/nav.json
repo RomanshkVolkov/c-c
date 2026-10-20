@@ -9,7 +9,8 @@
     "diagnostics": "Diagnostics",
     "users": "Users",
     "docs": "All docs",
-    "activity": "Activity"
+    "activity": "Activity",
+    "feedback": "Feedback"
   },
   "devTools": {
     "image": "Image",

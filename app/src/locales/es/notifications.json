@@ -31,7 +31,9 @@
     "deploy": "deploy",
     "telemetry": "telemetría",
     "agent": "agente",
-    "backup": "backup"
+    "backup": "backup",
+    "post": "feedback",
+    "postComment": "comentario"
   },
   "prefs": {
     "title": "Qué te llega",

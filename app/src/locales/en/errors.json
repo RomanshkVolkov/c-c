@@ -209,5 +209,9 @@
   "invitation-exists": "They already have a pending invitation to this organization.",
   "account-not-pending": "That account already finished signing up.",
   "email-off": "This cac server doesn't have email set up.",
-  "account-failed": "Couldn't complete it. Try again in a moment."
+  "account-failed": "Couldn't complete it. Try again in a moment.",
+  "post-not-found": "That post no longer exists or you can't see it.",
+  "post-forbidden": "You can't do that with this post.",
+  "post-failed": "Couldn't complete it. Try again.",
+  "post-bad-cursor": "Couldn't load more of the wall. Reload it."
 }

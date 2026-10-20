@@ -1,0 +1,51 @@
+import type { Reaction } from "@/lib/reactions";
+
+/** El muro (backend: `domain/post.go`). */
+export type PostKind = "announcement" | "feedback";
+/** `platform`: su org y el equipo de cac. `everyone`: todas las orgs. */
+export type PostAudience = "platform" | "everyone";
+
+export interface Post {
+  id: string;
+  kind: PostKind;
+  audience: PostAudience;
+  orgId?: string;
+  orgName?: string;
+  authorId: string;
+  authorName: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  comments: number;
+  reactions: Reaction[];
+  /** Publicado después de la última vez que abriste el muro. */
+  unseen: boolean;
+  canDelete: boolean;
+}
+
+export interface PostComment {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  canDelete: boolean;
+}
+
+export interface PostDetail extends Post {
+  commentList: PostComment[];
+}
+
+export interface PostPage {
+  posts: Post[];
+  nextCursor?: string;
+}
+
+export interface CreatePostPayload {
+  kind: PostKind;
+  orgId?: string;
+  audience?: PostAudience;
+  title?: string;
+  body: string;
+}

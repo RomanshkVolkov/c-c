@@ -5,6 +5,7 @@ import { leaveWeb } from "@/lib/leave-web";
 import { useAuthStore } from "@/store/auth.store";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useInvitationsStore } from "@/store/invitations.store";
+import { usePostsStore } from "@/store/posts.store";
 import type { APIResponse, AuthResponse } from "@/types/auth";
 
 /**
@@ -49,6 +50,7 @@ export function useAuth() {
     clearAuth();
     useOrgsStore.getState().reset();
     useInvitationsStore.getState().reset();
+    usePostsStore.getState().reset();
   };
 
   return { session, login, logout, isAuthenticated };

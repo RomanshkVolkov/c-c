@@ -9,6 +9,7 @@ import {
   KeyRound,
   LayoutDashboard,
   MessagesSquare,
+  Megaphone,
   NotebookPen,
   Send,
   Server,
@@ -45,6 +46,8 @@ export const NAV_ITEMS: {
   { labelKey: "nav:item.notes", path: "/notes", icon: NotebookPen, guest: false },
   { labelKey: "nav:item.channels", path: "/chat", icon: Hash, guest: false },
   { labelKey: "nav:item.directMessages", path: "/dm", icon: MessagesSquare, guest: false },
+  // El muro de feedback y comunicados: lo que las orgs y la plataforma se dicen.
+  { labelKey: "nav:item.feedback", path: "/feedback", icon: Megaphone, guest: false },
   // The dashboard is the servers screen; named for what it holds rather than
   // for the layout it happens to use.
   { labelKey: "nav:item.servers", path: "/dashboard", icon: Server, guest: false },
@@ -136,7 +139,7 @@ export const MODULES: NavModule[] = [
   // `work`), y conserva su propia barra en `/notes` hasta la siguiente tanda.
   { key: "work", icon: Briefcase, labelKey: "nav:module.work", routes: ["/my-work", "/overview", "/tasks", "/notes"], home: "/my-work", guest: false },
   { key: "docs", icon: BookOpen, labelKey: "nav:module.docs", routes: ["/docs"], home: "/docs", guest: false },
-  { key: "comms", icon: MessagesSquare, labelKey: "nav:module.comms", routes: ["/chat", "/dm", "/call"], home: "/chat", guest: false },
+  { key: "comms", icon: MessagesSquare, labelKey: "nav:module.comms", routes: ["/chat", "/dm", "/call", "/feedback"], home: "/chat", guest: false },
   {
     key: "platform",
     icon: Server,

@@ -17,6 +17,7 @@ import Notes from "@/pages/Notes";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import MyWork from "@/pages/MyWork";
 import Channels from "@/pages/Channels";
+import Feedback from "@/pages/Feedback";
 import DirectMessages from "@/pages/DirectMessages";
 import AppLayout from "@/components/AppLayout";
 import MeetCall from "@/pages/MeetCall";
@@ -109,6 +110,7 @@ export default function App() {
           <Route path="/my-work" element={<MyWork />} />
           <Route path="/chat" element={<Channels />} />
           <Route path="/dm" element={<DirectMessages />} />
+          <Route path="/feedback" element={<Feedback />} />
           {/* Una reunión con invitados: su sala no es la de ningún canal. */}
           <Route path="/call/:inviteId" element={<MeetCall />} />
           <Route path="/notes" element={<Notes />} />
