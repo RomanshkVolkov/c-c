@@ -1117,6 +1117,6 @@
     "cancel": "Cancelar",
     "saving": "Guardando…",
     "audienceOrg": "Solo {{org}}",
-    "audienceOrgHint": "Los de {{org}} y el equipo de cac"
+    "audienceOrgHint": "Los miembros de {{org}}"
   }
 }
