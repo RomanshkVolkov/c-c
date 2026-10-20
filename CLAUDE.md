@@ -133,6 +133,14 @@ hipótesis.
 → Guardianes: `app/src/lib/dropped.test.ts` (lleva el HTML real que entregó
 WebKitGTK) y `dropped::tests` en `app/src-tauri/src/dropped.rs`.
 
+**Pegar con el portapapeles sin dueño tumba WebKitGTK 2.54.** Si nadie contesta
+(vacío, la app que copió ya se cerró, CopyQ cambiando de dueño), GTK responde a
+la petición de formatos con un puntero nulo y `-1`, y `WebKit::Clipboard::formats`
+lee la dirección 0: SIGSEGV de la ventana entera, antes de que la página vea el
+`paste`. Se ataja en GTK (`paste_guard.rs`): al pulsar pegar se pregunta por los
+formatos con la llamada síncrona y, si no hay, se descarta la tecla.
+→ Guardián: `paste_guard::tests` (las teclas de pegar y la decisión de bloquear).
+
 **Un esquema propio es otro origen.** `cacmedia://` y `cacvideo://` los sirve
 Rust, y para el webview son **otro origen**: un `<img>` carga igual, pero un
 `fetch` sin `Access-Control-Allow-Origin` falla con «estado 0». pdf.js descarga

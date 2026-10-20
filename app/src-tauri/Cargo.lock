@@ -128,6 +128,7 @@ dependencies = [
  "crypto_box",
  "cuid2",
  "futures-util",
+ "gtk",
  "hex",
  "hmac",
  "image",

@@ -8,6 +8,7 @@ mod agent_install;
 mod ansible;
 mod secrets;
 mod op_env;
+mod paste_guard;
 mod api_client;
 mod crypto_tools;
 mod dropped;
@@ -1851,6 +1852,9 @@ pub fn run() {
                         // queda en negro y la página no puede ni enterarse:
                         // se apunta y se recarga desde aquí
                         // (ver `webview_crash.rs`).
+                        // Pegar con el portapapeles sin dueño tumba WebKit
+                        // 2.54 (ver `paste_guard.rs`).
+                        paste_guard::install(&inner);
                         inner.connect_web_process_terminated(|wv, reason| {
                             let url = wv.uri().map(|u| u.to_string()).unwrap_or_default();
                             if webview_crash::on_terminated(

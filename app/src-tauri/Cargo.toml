@@ -98,6 +98,9 @@ nokhwa = { version = "0.10.11", features = ["input-native"] }
 # vive `set_enable_webrtc`.
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "2.0", features = ["v2_38"] }
+# Para el guardián del pegado (ver `paste_guard.rs`): la misma versión que ya
+# trae Tauri, así que no añade nada al binario.
+gtk = "0.18"
 # Los avisos del sistema con nombre y logo (ver `notify.rs`). El plugin de
 # notificaciones no deja poner el nombre, y en la AppImage el binario se llama
 # `app`: el aviso salía como «app» y sin icono. La misma versión que ya trae
