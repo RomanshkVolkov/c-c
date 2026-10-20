@@ -27,8 +27,11 @@ type wireEvent struct {
 	// another pod as an ordinary org-wide broadcast — which is exactly the leak
 	// the field exists to prevent, and it would only show up with more than one
 	// replica.
-	UserID string          `json:"userId,omitempty"`
-	Data   json.RawMessage `json:"data"`
+	UserID string `json:"userId,omitempty"`
+	// Broadcast también: sin él, un comunicado llegaría a los demás pods como
+	// un evento sin org, y ahí sólo lo verían los superadmins.
+	Broadcast bool            `json:"broadcast,omitempty"`
+	Data      json.RawMessage `json:"data"`
 }
 
 type bus struct {
@@ -111,7 +114,7 @@ func encodeEvent(e Event) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(wireEvent{Type: e.Type, OrgID: e.OrgID, UserID: e.UserID, Data: data})
+	return json.Marshal(wireEvent{Type: e.Type, OrgID: e.OrgID, UserID: e.UserID, Broadcast: e.Broadcast, Data: data})
 }
 
 func decodeEvent(payload []byte) (Event, error) {
@@ -121,7 +124,7 @@ func decodeEvent(payload []byte) (Event, error) {
 	}
 	var data any
 	_ = json.Unmarshal(w.Data, &data)
-	return Event{Type: w.Type, OrgID: w.OrgID, UserID: w.UserID, Data: data}, nil
+	return Event{Type: w.Type, OrgID: w.OrgID, UserID: w.UserID, Broadcast: w.Broadcast, Data: data}, nil
 }
 
 func (b *bus) publish(e Event) error {

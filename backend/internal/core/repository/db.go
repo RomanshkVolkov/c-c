@@ -81,6 +81,10 @@ func DBConnection() {
 		&domain.OrgMembership{},
 		&domain.OrgInvitation{},
 		&domain.AccountLink{},
+		&domain.Post{},
+		&domain.PostComment{},
+		&domain.PostAttachment{},
+		&domain.PostRead{},
 		&domain.Server{},
 		&domain.Collection{},
 		&domain.CollectionNode{},
@@ -181,6 +185,11 @@ func DBConnection() {
 	// deploy.go: están ahí para que las pruebas monten los mismos.
 	if err := EnsureDeployIndexes(db); err != nil {
 		lg.Error("deploy indexes: " + err.Error())
+	}
+	// El muro se lee siempre por clase, audiencia y org, de lo más nuevo atrás.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_posts_wall
+		ON posts (kind, audience, org_id, created_at DESC)`).Error; err != nil {
+		lg.Error("post indexes: " + err.Error())
 	}
 	// Un correo, una cuenta. Ver account.go.
 	if err := EnsureUserIndexes(db); err != nil {

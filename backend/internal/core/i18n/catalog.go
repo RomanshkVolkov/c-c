@@ -221,4 +221,14 @@ var catalogo = map[string]map[Locale]string{
 		EN: "You're getting this email because of your account on cac.",
 		ES: "Te llega este correo por tu cuenta de cac.",
 	},
+
+	// ── El muro ──────────────────────────────────────────────────────────────
+	"notify.post.feedback": {
+		EN: "New feedback from {{org}}",
+		ES: "Feedback nuevo de {{org}}",
+	},
+	"notify.post.comment": {
+		EN: "{{who}} commented on a post",
+		ES: "{{who}} comentó una publicación",
+	},
 }

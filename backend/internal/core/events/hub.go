@@ -29,7 +29,12 @@ type Event struct {
 	// participants', so when this is set it *narrows* delivery rather than
 	// widening it, and that includes cutting the superadmin out. See deliver().
 	UserID string `json:"-"`
-	Data   any    `json:"data"`
+	// Broadcast: para todo el que escucha, sea de la org que sea. Lo que es de
+	// todas las organizaciones —un comunicado de la plataforma, una publicación
+	// del muro «para todos»— no tiene una OrgID que filtrar, y con OrgID vacía
+	// sólo le llegaría a los superadmins. UserID sigue mandando sobre esto.
+	Broadcast bool `json:"-"`
+	Data      any  `json:"data"`
 }
 
 type subscriber struct {
@@ -113,7 +118,7 @@ func (h *Hub) deliver(e Event) {
 			if s.userID != e.UserID {
 				continue
 			}
-		} else if !s.all && !s.orgs[e.OrgID] {
+		} else if !e.Broadcast && !s.all && !s.orgs[e.OrgID] {
 			continue
 		}
 		select {

@@ -12,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/guz-studio/cac/backend/internal/adapters/imageservice"
+	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
@@ -346,7 +348,13 @@ func (h *taskHandler) RawChatAttachment(w http.ResponseWriter, r *http.Request) 
 // 30 MB. Lo comparten los adjuntos de canal y de directos. Si algo falla ya ha
 // contestado, y devuelve false.
 func (h *taskHandler) readUpload(w http.ResponseWriter, r *http.Request) ([]byte, *multipart.FileHeader, bool) {
-	if h.images == nil || !h.images.Enabled() {
+	return readUploadWith(h.images, w, r)
+}
+
+// readUploadWith: readUpload sin el handler de tareas, para quien sube por su
+// cuenta (el muro).
+func readUploadWith(images *imageservice.Client, w http.ResponseWriter, r *http.Request) ([]byte, *multipart.FileHeader, bool) {
+	if images == nil || !images.Enabled() {
 		SendErrorResponse(w, http.StatusServiceUnavailable, "Attachments unavailable", "image-service-not-configured")
 		return nil, nil, false
 	}
@@ -381,11 +389,16 @@ func (h *taskHandler) readUpload(w http.ResponseWriter, r *http.Request) ([]byte
 // streamStored manda los bytes de un adjunto guardado. Quien llama ya decidió
 // que puede verlo.
 func (h *taskHandler) streamStored(w http.ResponseWriter, r *http.Request, path, contentType, fileName string) {
-	if h.store == nil || !h.store.Enabled() {
+	streamStoredWith(h.store, w, r, path, contentType, fileName)
+}
+
+// streamStoredWith: streamStored sin el handler de tareas.
+func streamStoredWith(store *mediastore.Store, w http.ResponseWriter, r *http.Request, path, contentType, fileName string) {
+	if store == nil || !store.Enabled() {
 		SendErrorResponse(w, http.StatusServiceUnavailable, "Attachment storage unavailable", "store-disabled")
 		return
 	}
-	obj, err := h.store.Get(r.Context(), path)
+	obj, err := store.Get(r.Context(), path)
 	if err != nil {
 		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return

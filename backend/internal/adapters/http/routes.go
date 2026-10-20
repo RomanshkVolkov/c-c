@@ -63,6 +63,8 @@ func InitRoutes(db *gorm.DB) *chi.Mux {
 	// Las llamadas guardadas, antes que quien da entradas a las salas.
 	calls := InitCallSessionRoutes(db, r, hub)
 	InitTaskRoutes(db, r, hub, calls)
+	// El muro de feedback y comunicados. Usa el Broadcast del hub.
+	InitPostRoutes(db, r, hub)
 	// La campana al teléfono (W2): Web Push con las llaves VAPID del entorno.
 	// Sin ellas el servicio queda apagado y la web no ofrece suscribirse.
 	push := service.NewPushService(repository.NewPushRepository(db),

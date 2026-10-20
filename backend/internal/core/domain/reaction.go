@@ -24,6 +24,9 @@ const (
 	ReactionDM      ReactionTarget = "dm"
 	// ReactionCall: un mensaje del chat de una llamada (domain/call_message.go).
 	ReactionCall ReactionTarget = "call"
+	// ReactionPost: una publicación del muro (domain/post.go). Quién puede
+	// verla lo decide el muro, nunca esta tabla.
+	ReactionPost ReactionTarget = "post"
 )
 
 // ReactionEmojis es el juego cerrado que se acepta, en el orden del selector.
