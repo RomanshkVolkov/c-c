@@ -134,7 +134,11 @@ export default function PostModal() {
               <Badge variant="secondary">{t("common:feedback.announcement")}</Badge>
             ) : (
               <Badge variant="outline">
-                {post.audience === "everyone" ? t("common:feedback.audienceEveryone") : t("common:feedback.audiencePlatform")}
+                {post.audience === "everyone"
+                  ? t("common:feedback.audienceEveryone")
+                  : post.orgName
+                    ? t("common:feedback.audienceOrg", { org: post.orgName })
+                    : t("common:feedback.audiencePlatform")}
               </Badge>
             )}
             {post.canPin && (
@@ -216,7 +220,11 @@ export default function PostModal() {
                         (editing.audience === a ? "border-primary bg-primary/10" : "hover:bg-muted")
                       }
                     >
-                      {a === "everyone" ? t("common:feedback.audienceEveryone") : t("common:feedback.audiencePlatform")}
+                      {a === "everyone"
+                        ? t("common:feedback.audienceEveryone")
+                        : post.orgName
+                          ? t("common:feedback.audienceOrg", { org: post.orgName })
+                          : t("common:feedback.audiencePlatform")}
                     </button>
                   ))}
                 </div>

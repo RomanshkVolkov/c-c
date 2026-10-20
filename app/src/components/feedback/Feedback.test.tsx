@@ -101,6 +101,8 @@ describe("el muro", () => {
     montar();
     fireEvent.click(await screen.findByRole("button", { name: /^Post$/ }));
     expect(screen.queryByText("Post as an announcement")).toBeNull();
+    // La audiencia nombra la org («Solo Uno»), no «Solo cac».
+    expect(screen.getByRole("radio", { name: /Only Uno/ })).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/Share your idea/), { target: { value: "que el muro tenga encuestas" } });
     fireEvent.click(screen.getByRole("radio", { name: /Everyone/ }));
     fireEvent.click(last(screen.getAllByRole("button", { name: /^Post$/ })));

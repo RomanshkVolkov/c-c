@@ -28,12 +28,15 @@ export default function PostComposer({
   open,
   onOpenChange,
   orgId,
+  orgName,
   canFeedback,
   canAnnounce,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   orgId: string | null;
+  /** Para decir «Solo Dwit México» y no «Solo cac», que desde la org que opera cac se lee raro. */
+  orgName?: string;
   canFeedback: boolean;
   canAnnounce: boolean;
 }) {
@@ -141,7 +144,9 @@ export default function PostComposer({
             <div className="space-y-1.5">
               <Label>{t("common:feedback.audience")}</Label>
               <div role="radiogroup" aria-label={t("common:feedback.audience")} className="flex gap-2">
-                {option("platform", t("common:feedback.audiencePlatform"), t("common:feedback.audiencePlatformHint"))}
+                {orgName
+                  ? option("platform", t("common:feedback.audienceOrg", { org: orgName }), t("common:feedback.audienceOrgHint", { org: orgName }))
+                  : option("platform", t("common:feedback.audiencePlatform"), t("common:feedback.audiencePlatformHint"))}
                 {option("everyone", t("common:feedback.audienceEveryone"), t("common:feedback.audienceEveryoneHint"))}
               </div>
             </div>

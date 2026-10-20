@@ -1115,6 +1115,8 @@
     "edited": "edited",
     "save": "Save",
     "cancel": "Cancel",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "audienceOrg": "Only {{org}}",
+    "audienceOrgHint": "{{org}} and the cac team"
   }
 }

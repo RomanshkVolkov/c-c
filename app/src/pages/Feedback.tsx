@@ -97,6 +97,7 @@ export default function Feedback() {
           open={composing}
           onOpenChange={setComposing}
           orgId={org?.id ?? null}
+          orgName={org?.name}
           canFeedback={canFeedback}
           canAnnounce={superadmin}
         />

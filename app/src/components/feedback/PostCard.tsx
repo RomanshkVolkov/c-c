@@ -49,7 +49,11 @@ export default function PostCard({ post, onOpen }: { post: Post; onOpen: () => v
             <Badge variant="secondary">{t("common:feedback.announcement")}</Badge>
           ) : (
             <Badge variant="outline">
-              {post.audience === "everyone" ? t("common:feedback.audienceEveryone") : t("common:feedback.audiencePlatform")}
+              {post.audience === "everyone"
+                ? t("common:feedback.audienceEveryone")
+                : post.orgName
+                  ? t("common:feedback.audienceOrg", { org: post.orgName })
+                  : t("common:feedback.audiencePlatform")}
             </Badge>
           )}
         </header>
