@@ -21,6 +21,12 @@ export interface Post {
   /** Publicado después de la última vez que abriste el muro. */
   unseen: boolean;
   canDelete: boolean;
+  /** Sólo su autor la edita. */
+  canEdit: boolean;
+  /** Sólo un superadmin fija. */
+  canPin: boolean;
+  pinned: boolean;
+  editedAt?: string;
 }
 
 export interface PostComment {
@@ -31,6 +37,7 @@ export interface PostComment {
   body: string;
   createdAt: string;
   canDelete: boolean;
+  reactions: Reaction[];
 }
 
 export interface PostDetail extends Post {
@@ -40,6 +47,12 @@ export interface PostDetail extends Post {
 export interface PostPage {
   posts: Post[];
   nextCursor?: string;
+}
+
+export interface UpdatePostPayload {
+  title?: string;
+  body?: string;
+  audience?: PostAudience;
 }
 
 export interface CreatePostPayload {

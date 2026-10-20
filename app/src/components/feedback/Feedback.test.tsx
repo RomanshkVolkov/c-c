@@ -14,9 +14,11 @@ import { MemoryRouter } from "react-router-dom";
  *    preguntando.
  * 4. `?post=<id>` (el enlace de un aviso) abre esa publicación.
  */
-const { get, post, del, confirm } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn(), confirm: vi.fn() }));
+const { get, post, del, patch, confirm } = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), del: vi.fn(), patch: vi.fn(), confirm: vi.fn(),
+}));
 vi.mock("@/lib/api", () => ({
-  api: { get, post, delete: del, postForm: vi.fn() },
+  api: { get, post, delete: del, patch, postForm: vi.fn() },
   codigoDe: (e: unknown) => (e as { code?: string })?.code ?? "",
 }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirm }));
@@ -46,7 +48,7 @@ const { useOrgsStore } = await import("@/store/orgs.store");
 const card = (id: string, over: Record<string, unknown> = {}) => ({
   id, kind: "feedback", audience: "platform", orgId: "org-1", orgName: "Uno", authorId: "u-x", authorName: "Ana",
   title: `t-${id}`, body: "cuerpo", createdAt: "2026-10-19T10:00:00Z", comments: 0, reactions: [],
-  unseen: false, canDelete: false, ...over,
+  unseen: false, canDelete: false, canEdit: false, canPin: false, pinned: false, ...over,
 });
 
 function setup({ role = "member", superadmin = false, orgId = "org-1" as string | null } = {}) {
@@ -175,5 +177,64 @@ describe("el muro", () => {
     expect(await screen.findByLabelText("Write a comment…")).toBeTruthy();
     expect(get).toHaveBeenCalledWith("/api/v1/posts/z", true);
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  });
+});
+
+describe("editar, fijar y reaccionar a un comentario", () => {
+  const conComentario = (over: Record<string, unknown> = {}) => ({
+    ...card("b", over),
+    commentList: [{ id: "c1", postId: "b", authorId: "u-y", authorName: "Bea", body: "de acuerdo", createdAt: "2026-10-19T11:00:00Z",
+      canDelete: false, reactions: [{ emoji: "👍", count: 1, mine: false, names: ["Ana"] }] }],
+  });
+
+  it("su autor la edita: título, texto y audiencia", async () => {
+    setup();
+    get.mockImplementation(async (url: string) =>
+      url === "/api/v1/posts/b" ? { success: true, data: conComentario({ canEdit: true }) } : { success: true, data: { posts: [card("b")] } },
+    );
+    patch.mockResolvedValue({ success: true, data: conComentario({ canEdit: true, title: "nuevo", editedAt: "2026-10-19T12:00:00Z" }) });
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: "t-b" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Title (optional)"), { target: { value: "nuevo" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Everyone" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith("/api/v1/posts/b", { title: "nuevo", body: "cuerpo", audience: "everyone" }, true),
+    );
+    expect((await screen.findAllByText(/edited/)).length).toBeGreaterThan(0);
+  });
+
+  it("sin poder editar ni fijar, no se ofrece", async () => {
+    setup();
+    get.mockImplementation(async (url: string) =>
+      url === "/api/v1/posts/b" ? { success: true, data: conComentario() } : { success: true, data: { posts: [card("b")] } },
+    );
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: "t-b" }));
+    await screen.findByText("de acuerdo");
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pin to top" })).toBeNull();
+  });
+
+  it("un superadmin la fija, y se reacciona a un comentario", async () => {
+    setup({ superadmin: true });
+    get.mockImplementation(async (url: string) =>
+      url === "/api/v1/posts/b" ? { success: true, data: conComentario({ canPin: true }) } : { success: true, data: { posts: [card("b")] } },
+    );
+    post.mockImplementation(async (url: string, body: { pinned?: boolean }) =>
+      url.endsWith("/pin") ? { success: true, data: conComentario({ canPin: true, pinned: !!body.pinned }) } : { success: true },
+    );
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: "t-b" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pin to top" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/posts/b/pin", { pinned: true }, true));
+    fireEvent.click(await screen.findByRole("button", { name: "Unpin" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/posts/b/pin", { pinned: false }, true));
+
+    fireEvent.click(screen.getByRole("button", { name: /👍/ }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/posts/b/comments/c1/reactions", { emoji: "👍", on: true }, true),
+    );
   });
 });

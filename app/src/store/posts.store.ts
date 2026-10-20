@@ -5,7 +5,7 @@ import { nombreDe } from "@/lib/nombres";
 import { applyReaction } from "@/lib/reactions";
 import { useAuthStore } from "@/store/auth.store";
 import type { APIResponse } from "@/types/auth";
-import type { CreatePostPayload, Post, PostDetail, PostPage } from "@/types/post";
+import type { CreatePostPayload, Post, PostDetail, PostPage, UpdatePostPayload } from "@/types/post";
 
 /**
  * El muro de feedback y comunicados (backend: `domain/post.go`).
@@ -33,6 +33,9 @@ interface PostsState {
   closePost: () => void;
   create: (p: CreatePostPayload) => Promise<PostDetail>;
   remove: (id: string) => Promise<void>;
+  update: (id: string, p: UpdatePostPayload) => Promise<void>;
+  pin: (id: string, pinned: boolean) => Promise<void>;
+  reactComment: (postId: string, commentId: string, emoji: string, on: boolean) => Promise<void>;
   comment: (id: string, body: string) => Promise<void>;
   removeComment: (postId: string, commentId: string) => Promise<void>;
   react: (id: string, emoji: string, on: boolean) => Promise<void>;
@@ -100,6 +103,47 @@ export const usePostsStore = create<PostsState>((set, get) => ({
   remove: async (id) => {
     must(await api.delete<APIResponse<unknown>>(`/api/v1/posts/${id}`));
     set((s) => ({ posts: s.posts.filter((p) => p.id !== id), open: s.open?.id === id ? null : s.open }));
+  },
+
+  update: async (id, p) => {
+    const detail = must(await api.patch<APIResponse<PostDetail>>(`/api/v1/posts/${id}`, p, true));
+    set((s) => ({
+      open: s.open?.id === id ? detail : s.open,
+      posts: s.posts.map((x) => (x.id === id ? { ...x, ...detail } : x)),
+    }));
+  },
+
+  pin: async (id, pinned) => {
+    const detail = must(await api.post<APIResponse<PostDetail>>(`/api/v1/posts/${id}/pin`, { pinned }, true));
+    set((s) => ({ open: s.open?.id === id ? detail : s.open }));
+    // Fijar mueve la publicación de sitio: el orden lo da el servidor.
+    await get().load();
+  },
+
+  // Optimista, como la de la publicación, pero sólo en el modal: es el único
+  // sitio donde se ven los comentarios.
+  reactComment: async (postId, commentId, emoji, on) => {
+    const prev = get().open?.commentList.find((c) => c.id === commentId)?.reactions;
+    const yo = useAuthStore.getState().session;
+    const me = yo ? nombreDe(yo) : "";
+    const put = (fn: (r: PostDetail["commentList"][number]["reactions"]) => typeof prev) =>
+      set((s) =>
+        s.open?.id !== postId
+          ? s
+          : {
+              open: {
+                ...s.open,
+                commentList: s.open.commentList.map((c) => (c.id === commentId ? { ...c, reactions: fn(c.reactions) ?? [] } : c)),
+              },
+            },
+      );
+    put((r) => applyReaction(r, emoji, on, me));
+    try {
+      await api.post(`/api/v1/posts/${postId}/comments/${commentId}/reactions`, { emoji, on }, true);
+    } catch (e) {
+      put(() => prev);
+      throw e;
+    }
   },
 
   comment: async (id, body) => {

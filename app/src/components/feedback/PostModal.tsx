@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Megaphone, Trash2 } from "lucide-react";
+import { Megaphone, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ReactionPicker, Reactions } from "@/components/chat/Reactions";
@@ -10,24 +10,35 @@ import MarkdownEditor, { type MarkdownEditorHandle } from "@/components/markdown
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { codigoDe } from "@/lib/api";
 import { desde, iniciales } from "@/lib/desde";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { usePeopleStore } from "@/store/people.store";
 import { usePostsStore } from "@/store/posts.store";
+import type { PostAudience } from "@/types/post";
 
 /**
  * Una publicación abierta: entera, con sus reacciones y sus comentarios, como
  * al abrir una en un muro. Comentar usa el mismo editor que el chat (pegar o
- * arrastrar imágenes, `@` para mencionar).
+ * arrastrar imágenes, `@` para mencionar), y cada comentario lleva sus
+ * reacciones.
+ *
+ * Quien la escribió la edita aquí mismo (título, texto y, en un feedback,
+ * para quién); un superadmin la fija arriba del muro. Moderar es borrar: el
+ * admin de la org no reescribe lo que dijo otra persona.
  */
 export default function PostModal() {
   const { t } = useT();
   const confirm = useConfirm();
   const post = usePostsStore((s) => s.open);
-  const { closePost, react, comment, remove, removeComment, upload } = usePostsStore.getState();
+  const { closePost, react, comment, remove, removeComment, upload, update, pin, reactComment } = usePostsStore.getState();
   const [draft, setDraft] = useState("");
+  // Editando: una copia de lo que se puede cambiar. Nula, leyendo.
+  const [editing, setEditing] = useState<{ title: string; body: string; audience: PostAudience } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const bodyEditor = useRef<MarkdownEditorHandle>(null);
   const [sending, setSending] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
   const people = useCallback(() => usePeopleStore.getState().current(), []);
@@ -48,6 +59,23 @@ export default function PostModal() {
       failed(e);
     } finally {
       setSending(false);
+    }
+  };
+
+  const save = async () => {
+    if (!editing || !editing.body.trim() || saving) return;
+    setSaving(true);
+    try {
+      await update(post.id, {
+        title: editing.title.trim(),
+        body: editing.body,
+        ...(announcement ? {} : { audience: editing.audience }),
+      });
+      setEditing(null);
+    } catch (e) {
+      failed(e);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -97,7 +125,9 @@ export default function PostModal() {
             <div className="min-w-0 flex-1">
               <DialogTitle className="truncate">{post.title || post.authorName}</DialogTitle>
               <DialogDescription className="truncate">
-                {[post.authorName, post.orgName, desde(post.createdAt)].filter(Boolean).join(" · ")}
+                {[post.authorName, post.orgName, desde(post.createdAt), post.editedAt ? t("common:feedback.edited") : ""]
+                  .filter(Boolean)
+                  .join(" · ")}
               </DialogDescription>
             </div>
             {announcement ? (
@@ -106,6 +136,29 @@ export default function PostModal() {
               <Badge variant="outline">
                 {post.audience === "everyone" ? t("common:feedback.audienceEveryone") : t("common:feedback.audiencePlatform")}
               </Badge>
+            )}
+            {post.canPin && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={post.pinned ? t("common:feedback.unpin") : t("common:feedback.pin")}
+                title={post.pinned ? t("common:feedback.unpin") : t("common:feedback.pin")}
+                aria-pressed={post.pinned}
+                onClick={() => void pin(post.id, !post.pinned).catch(failed)}
+              >
+                {post.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+              </Button>
+            )}
+            {post.canEdit && !editing && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("common:feedback.edit")}
+                title={t("common:feedback.edit")}
+                onClick={() => setEditing({ title: post.title, body: post.body, audience: post.audience })}
+              >
+                <Pencil className="size-4" />
+              </Button>
             )}
             {post.canDelete && (
               <Button
@@ -122,9 +175,66 @@ export default function PostModal() {
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-          <div className="text-sm">
-            <Markdown>{post.body}</Markdown>
-          </div>
+          {editing ? (
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void save();
+              }}
+            >
+              <Input
+                aria-label={t("common:feedback.titlePlaceholder")}
+                placeholder={t("common:feedback.titlePlaceholder")}
+                value={editing.title}
+                maxLength={140}
+                onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+              />
+              <FileDropZone className="rounded-md border" onFiles={(fs) => bodyEditor.current?.insertFiles(fs)}>
+                <MarkdownEditor
+                  ref={bodyEditor}
+                  value={editing.body}
+                  onChange={(body) => setEditing({ ...editing, body })}
+                  onUpload={onUpload}
+                  people={people}
+                  minHeight="8rem"
+                  maxHeight="50vh"
+                  placeholder={t("common:feedback.bodyPlaceholder")}
+                />
+              </FileDropZone>
+              {!announcement && (
+                <div role="radiogroup" aria-label={t("common:feedback.audience")} className="flex gap-2">
+                  {(["platform", "everyone"] as const).map((a) => (
+                    <button
+                      key={a}
+                      type="button"
+                      role="radio"
+                      aria-checked={editing.audience === a}
+                      onClick={() => setEditing({ ...editing, audience: a })}
+                      className={
+                        "flex-1 rounded-lg border px-3 py-1.5 text-sm transition-colors " +
+                        (editing.audience === a ? "border-primary bg-primary/10" : "hover:bg-muted")
+                      }
+                    >
+                      {a === "everyone" ? t("common:feedback.audienceEveryone") : t("common:feedback.audiencePlatform")}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
+                  {t("common:feedback.cancel")}
+                </Button>
+                <Button type="submit" disabled={!editing.body.trim() || saving}>
+                  {saving ? t("common:feedback.saving") : t("common:feedback.save")}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="text-sm">
+              <Markdown>{post.body}</Markdown>
+            </div>
+          )}
           <Reactions reactions={post.reactions} onReact={(emoji, on) => react(post.id, emoji, on)} />
           {/* Sin ninguna, `Reactions` no pinta nada: el selector va solo,
               para poder poner la primera. */}
@@ -163,6 +273,15 @@ export default function PostModal() {
                     <div className="text-sm">
                       <Markdown>{c.body}</Markdown>
                     </div>
+                    {c.reactions.length > 0 ? (
+                      <Reactions reactions={c.reactions} onReact={(emoji, on) => reactComment(post.id, c.id, emoji, on)} />
+                    ) : (
+                      <ReactionPicker
+                        reactions={[]}
+                        onReact={(emoji, on) => reactComment(post.id, c.id, emoji, on).catch(failed)}
+                        className="mt-1 h-6 rounded-full px-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      />
+                    )}
                   </div>
                 </div>
               ))

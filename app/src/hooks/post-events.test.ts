@@ -13,10 +13,10 @@ const fuente = () => readFileSync(join(process.cwd(), "src/hooks/use-report-even
 describe("los eventos del muro", () => {
   it("van al store del muro", () => {
     expect(fuente()).toMatch(
-      /case "post:new":\s*case "post:comment":\s*case "post:reaction":\s*case "post:deleted":\s*void usePostsStore\.getState\(\)\.onEvent\(/,
+      /case "post:new":\s*case "post:updated":\s*case "post:comment":\s*case "post:reaction":\s*case "post:deleted":\s*void usePostsStore\.getState\(\)\.onEvent\(/,
     );
   });
   it("y se escuchan en la web", () => {
-    expect(fuente()).toMatch(/"post:new",\s*"post:comment",\s*"post:reaction",\s*"post:deleted",/);
+    expect(fuente()).toMatch(/"post:new",\s*"post:updated",\s*"post:comment",\s*"post:reaction",\s*"post:deleted",/);
   });
 });

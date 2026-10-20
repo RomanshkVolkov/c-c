@@ -526,6 +526,7 @@ export function useReportEvents() {
         // El muro (#189): sólo traen ids; el store vuelve a pedir lo que hay en
         // pantalla, y el servidor decide qué se ve.
         case "post:new":
+        case "post:updated":
         case "post:comment":
         case "post:reaction":
         case "post:deleted":
@@ -930,6 +931,7 @@ export function useReportEvents() {
         "deploy:log",
         "deploy:build",
         "post:new",
+        "post:updated",
         "post:comment",
         "post:reaction",
         "post:deleted",

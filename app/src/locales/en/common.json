@@ -1107,6 +1107,14 @@
     "deleteCommentTitle": "Delete this comment?",
     "deleted": "Post deleted",
     "failed": "Couldn't complete it. Try again.",
-    "readOnlyHint": "As a viewer you can react and comment, but not post."
+    "readOnlyHint": "As a viewer you can react and comment, but not post.",
+    "pin": "Pin to top",
+    "unpin": "Unpin",
+    "pinned": "Pinned",
+    "edit": "Edit",
+    "edited": "edited",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saving": "Saving…"
   }
 }

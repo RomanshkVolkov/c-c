@@ -1107,6 +1107,14 @@
     "deleteCommentTitle": "¿Borrar este comentario?",
     "deleted": "Publicación borrada",
     "failed": "No se pudo completar. Prueba otra vez.",
-    "readOnlyHint": "Como viewer puedes reaccionar y comentar, pero no publicar."
+    "readOnlyHint": "Como viewer puedes reaccionar y comentar, pero no publicar.",
+    "pin": "Fijar arriba",
+    "unpin": "Soltar",
+    "pinned": "Fijada",
+    "edit": "Editar",
+    "edited": "editada",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "saving": "Guardando…"
   }
 }

@@ -1,4 +1,4 @@
-import { Megaphone, MessageSquare } from "lucide-react";
+import { Megaphone, MessageSquare, Pin } from "lucide-react";
 
 import Markdown from "@/components/markdown/Markdown";
 import { Reactions } from "@/components/chat/Reactions";
@@ -36,9 +36,14 @@ export default function PostCard({ post, onOpen }: { post: Post; onOpen: () => v
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">{post.authorName}</span>
             <span className="block truncate text-xs text-muted-foreground">
-              {[post.orgName, desde(post.createdAt)].filter(Boolean).join(" · ")}
+              {[post.orgName, desde(post.createdAt), post.editedAt ? t("common:feedback.edited") : ""].filter(Boolean).join(" · ")}
             </span>
           </span>
+          {post.pinned && (
+            <span className="text-primary" title={t("common:feedback.pinned")} aria-label={t("common:feedback.pinned")} role="img">
+              <Pin className="size-3.5" />
+            </span>
+          )}
           {post.unseen && <Badge>{t("common:feedback.new")}</Badge>}
           {announcement ? (
             <Badge variant="secondary">{t("common:feedback.announcement")}</Badge>
