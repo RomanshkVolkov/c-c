@@ -39,7 +39,7 @@ sandbox) — debe llegar el aviso de un rebote:
 
 ```sh
 aws sesv2 send-email --region us-east-1 --configuration-set-name cac \
-  --from-email-address no-responder@guz-studio.dev \
+  --from-email-address no-reply@guz-studio.dev \
   --destination ToAddresses=bounce@simulator.amazonses.com \
   --content 'Simple={Subject={Data=prueba},Body={Text={Data=prueba}}}'
 ```
