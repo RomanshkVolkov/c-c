@@ -46,6 +46,10 @@ interface PostsState {
   upload: (file: File) => Promise<{ url: string; fileName: string }>;
   /** Un `post:*` del stream. */
   onEvent: (type: string, data: { postId?: string }) => Promise<void>;
+  /** Vuelve a pedir una publicación que está en pantalla; si ya no se puede ver, la quita. */
+  refreshOne: (id: string) => Promise<void>;
+  /** La primera página, por encima de lo ya cargado. */
+  mergeFirstPage: () => Promise<void>;
   reset: () => void;
 }
 
@@ -132,8 +136,8 @@ export const usePostsStore = create<PostsState>((set, get) => ({
   // sitio donde se ven los comentarios.
   reactComment: async (postId, commentId, emoji, on) => {
     const prev = get().open?.commentList.find((c) => c.id === commentId)?.reactions;
-    const yo = useAuthStore.getState().session;
-    const me = yo ? nombreDe(yo) : "";
+    const session = useAuthStore.getState().session;
+    const me = session ? nombreDe(session) : "";
     const put = (fn: (r: PostDetail["commentList"][number]["reactions"]) => typeof prev) =>
       set((s) =>
         s.open?.id !== postId
@@ -179,8 +183,8 @@ export const usePostsStore = create<PostsState>((set, get) => ({
   react: async (id, emoji, on) => {
     const prevList = get().posts.find((p) => p.id === id)?.reactions;
     const prevOpen = get().open?.id === id ? get().open?.reactions : undefined;
-    const yo = useAuthStore.getState().session;
-    const me = yo ? nombreDe(yo) : "";
+    const session = useAuthStore.getState().session;
+    const me = session ? nombreDe(session) : "";
     set((s) => ({
       posts: s.posts.map((p) => (p.id === id ? { ...p, reactions: applyReaction(p.reactions, emoji, on, me) } : p)),
       open: s.open?.id === id ? { ...s.open, reactions: applyReaction(s.open.reactions, emoji, on, me) } : s.open,
@@ -210,19 +214,49 @@ export const usePostsStore = create<PostsState>((set, get) => ({
     return { url: res.data.url, fileName: res.data.fileName };
   },
 
+  // Nada de recargar el muro entero por un evento: se perderían las páginas
+  // de «Cargar más», y con una reacción a algo «para todos» cada cliente
+  // conectado pediría la primera página. Sólo se pide lo que hay en pantalla.
   onEvent: async (type, data) => {
-    const { loaded, open, viewing } = get();
-    if (type === "post:deleted" && data.postId) {
-      set((s) => ({
-        posts: s.posts.filter((p) => p.id !== data.postId),
-        open: s.open?.id === data.postId ? null : s.open,
-      }));
+    const id = data.postId;
+    if (!id) return;
+    if (type === "post:deleted") {
+      set((s) => ({ posts: s.posts.filter((p) => p.id !== id), open: s.open?.id === id ? null : s.open }));
       return;
     }
-    if (loaded) await get().load().catch(() => {});
-    // Algo nuevo fuera del muro enciende el punto; con el muro delante, no.
-    if (type === "post:new" && !viewing) set({ hasNew: true });
-    if (open && data.postId === open.id) await get().openPost(open.id).catch(() => {});
+    if (type === "post:new") {
+      // Un evento «para todos» llega también a quien no puede verlo (por
+      // ejemplo, sin organización): sólo cuenta si la publicación se abre.
+      const seen = await api.get<APIResponse<PostDetail>>(`/api/v1/posts/${id}`, true).then(must).catch(() => null);
+      if (!seen) return;
+      if (get().viewing) await get().mergeFirstPage().catch(() => {});
+      else if (seen.authorId !== useAuthStore.getState().session?.id) set({ hasNew: true });
+      return;
+    }
+    const { posts, open } = get();
+    if (posts.some((p) => p.id === id) || open?.id === id) await get().refreshOne(id);
+  },
+
+  refreshOne: async (id) => {
+    const detail = await api.get<APIResponse<PostDetail>>(`/api/v1/posts/${id}`, true).then(must).catch(() => null);
+    set((s) => {
+      if (!detail) return { posts: s.posts.filter((p) => p.id !== id), open: s.open?.id === id ? null : s.open };
+      const { commentList: _comments, ...card } = detail;
+      return {
+        posts: s.posts.map((p) => (p.id === id ? { ...p, ...card } : p)),
+        open: s.open?.id === id ? detail : s.open,
+      };
+    });
+  },
+
+  // Lo nuevo arriba sin perder lo que ya se había cargado debajo.
+  mergeFirstPage: async () => {
+    const page = must(await api.get<APIResponse<PostPage>>("/api/v1/posts", true));
+    set((s) => {
+      const fresh = new Set(page.posts.map((p) => p.id));
+      const rest = s.posts.filter((p) => !fresh.has(p.id));
+      return { posts: [...page.posts, ...rest], nextCursor: rest.length ? s.nextCursor : (page.nextCursor ?? null) };
+    });
   },
 
   reset: () => set(initial),

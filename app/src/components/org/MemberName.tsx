@@ -1,5 +1,6 @@
 import Initials from "@/components/ui/initials";
 import { useT } from "@/lib/i18n";
+import { inicialesDe, nombreDe } from "@/lib/nombres";
 import type { OrgMember } from "@/types/organization";
 
 /**
@@ -30,9 +31,9 @@ export default function MemberName({ member: m }: { member: OrgMember }) {
   }
   return (
     <span className="flex items-center gap-2">
-      <Initials colorKey={m.username} text={m.username.slice(0, 2)} className="size-6 text-[10px]" />
+      <Initials colorKey={m.username} text={inicialesDe(m)} className="size-6 text-[10px]" />
       <span className="min-w-0">
-        <span className="block truncate">{m.username}</span>
+        <span className="block truncate">{nombreDe(m)}</span>
         <span className="block truncate font-mono text-[11px] text-muted-foreground">@{m.username}</span>
       </span>
     </span>

@@ -79,7 +79,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reconoce_las_formas_de_pegar() {
+    fn recognizes_every_way_to_paste() {
         assert!(is_paste_key(0x076, true, false), "Ctrl+V");
         assert!(is_paste_key(0x056, true, true), "Ctrl+Shift+V");
         assert!(is_paste_key(0xff63, false, true), "Shift+Insert");
@@ -91,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn sin_formatos_no_se_pega() {
+    fn no_formats_means_no_paste() {
         assert!(should_block(None), "la petición falló: es el caso que tumba WebKit");
         assert!(should_block(Some(0)));
         assert!(!should_block(Some(3)));

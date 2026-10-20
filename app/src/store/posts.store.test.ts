@@ -44,8 +44,17 @@ describe("el muro", () => {
     expect(usePostsStore.getState().open?.reactions.map((r) => r.emoji)).toEqual(["🎉"]);
   });
 
+  // Responde según la ruta: el detalle de cada publicación y la primera página.
+  const routes = (details: Record<string, unknown>, page: unknown[] = []) =>
+    get.mockImplementation(async (url: string) => {
+      if (url === "/api/v1/posts") return { success: true, data: { posts: page } };
+      const id = url.split("/").pop()!;
+      if (id in details) return { success: true, data: details[id] };
+      throw new Error("post-not-found");
+    });
+
   it("lo nuevo enciende el punto fuera del muro, no delante; abrirlo lo apaga", async () => {
-    get.mockResolvedValue({ success: true, data: { posts: [p("a", { unseen: true })] } });
+    routes({ b: { ...p("b"), commentList: [] }, c: { ...p("c"), commentList: [] } }, [p("a", { unseen: true })]);
     await usePostsStore.getState().load();
     expect(usePostsStore.getState().hasNew).toBe(true);
 
@@ -61,6 +70,40 @@ describe("el muro", () => {
     await usePostsStore.getState().markSeen();
     expect(usePostsStore.getState().hasNew).toBe(false);
     expect(post).toHaveBeenCalledWith("/api/v1/posts/seen", {}, true);
+  });
+
+  // Roturas que detecta: encender el punto sin preguntar si se puede ver, o
+  // por lo que acaba de publicar uno mismo.
+  it("el punto no se enciende por lo que no se puede ver ni por lo propio", async () => {
+    routes({ mine: { ...p("mine", { authorId: "u-me" }), commentList: [] } });
+    await usePostsStore.getState().onEvent("post:new", { postId: "ajena" });
+    expect(usePostsStore.getState().hasNew).toBe(false);
+    await usePostsStore.getState().onEvent("post:new", { postId: "mine" });
+    expect(usePostsStore.getState().hasNew).toBe(false);
+  });
+
+  // Rotura que detecta: recargar el muro entero con lo nuevo y perder las
+  // páginas de «Cargar más».
+  it("lo nuevo con el muro delante entra arriba sin perder lo cargado debajo", async () => {
+    usePostsStore.setState({ posts: [p("a"), p("old1"), p("old2")] as never, nextCursor: "cur", viewing: true });
+    routes({ n: { ...p("n"), commentList: [] } }, [p("n"), p("a")]);
+    await usePostsStore.getState().onEvent("post:new", { postId: "n" });
+    expect(usePostsStore.getState().posts.map((x) => x.id)).toEqual(["n", "a", "old1", "old2"]);
+    expect(usePostsStore.getState().nextCursor).toBe("cur");
+  });
+
+  // Roturas que detectan: pedir el muro entero por un comentario, o pedir el
+  // detalle de algo que no está en pantalla.
+  it("un comentario o reacción sólo refresca la publicación que se ve", async () => {
+    usePostsStore.setState({ posts: [p("a"), p("old")] as never, nextCursor: "cur" });
+    routes({ a: { ...p("a", { comments: 3 }), commentList: [] } });
+    await usePostsStore.getState().onEvent("post:comment", { postId: "a" });
+    expect(usePostsStore.getState().posts.map((x) => [x.id, x.comments])).toEqual([["a", 3], ["old", 0]]);
+    expect(usePostsStore.getState().nextCursor).toBe("cur");
+    expect(get).toHaveBeenCalledTimes(1);
+
+    await usePostsStore.getState().onEvent("post:reaction", { postId: "fuera" });
+    expect(get).toHaveBeenCalledTimes(1);
   });
 
   it("una publicación borrada desaparece y cierra su modal", async () => {

@@ -423,7 +423,7 @@ describe("qué commit se despliega", () => {
   const corriendo = { ...service, image: "ghcr.io/dwit-mexico/api:abc1234" };
   const elegir = () => within(screen.getByRole("group", { name: /(commits para desplegar|commits to deploy)/i }));
 
-  it("salen los de la rama del backend, con el más nuevo elegido y marcado el que corre", async () => {
+  it("salen los de la rama del backend, con el más nuevo desplegable elegido y marcado el que corre", async () => {
     respuestas([conRepo], [], [build("abc1234")], lista);
     // Terminado: con uno en cola el botón pasa a «Desplegando…» y no se pide otro.
     post.mockResolvedValue({ success: true, data: fila({ status: "succeeded" }) });
@@ -433,12 +433,17 @@ describe("qué commit se despliega", () => {
     expect(invoke).not.toHaveBeenCalledWith("list_github_commits", expect.anything());
     expect(elegir().getByText(/(commits de dev|commits on dev)/i)).toBeTruthy();
     expect(elegir().getByText(/^1 (sin desplegar|not deployed)$/i)).toBeTruthy();
-    expect(opciones[0].getAttribute("aria-selected")).toBe("true");
+    // La imagen la publica el CI: por defecto, el más nuevo que ya la tiene
+    // (abc1234). El de arriba (def5678) aún no tiene imagen: desplegarlo
+    // pediría un tag que no existe, así que no va elegido.
+    expect(opciones[1].getAttribute("aria-selected")).toBe("true");
+    expect(opciones[0].getAttribute("aria-selected")).toBe("false");
     expect(opciones[1].textContent).toMatch(/(en el servidor|on the server)/i);
     expect(opciones[0].textContent).not.toMatch(/(en el servidor|on the server)/i);
     expect(opciones[1].textContent).toMatch(/(imagen publicada|image published)/i);
 
-    // Lo último es un clic: sin imagen publicada, con su sha entero.
+    // Uno sin imagen, si se elige a mano, va con su sha entero.
+    fireEvent.click(opciones[0]);
     fireEvent.click(elegir().getByRole("button", { name: /(desplegar|deploy) def5678/i }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/deployables/dp-1/deploy", { sha: "def5678".padEnd(40, "0") }, true),
@@ -473,8 +478,23 @@ describe("qué commit se despliega", () => {
     await waitFor(() => expect(screen.getAllByRole("option")[0].textContent).toMatch(/otro push/));
   });
 
+  // Rotura que detecta: el botón sigue apuntando a un commit que ya no está
+  // en la lista (cambió la rama o se refrescó) y desplegaría ese.
+  it("lo elegido a mano se suelta si deja de estar en la lista", async () => {
+    respuestas([conRepo], [], [build("abc1234")], lista);
+    render(<DeployDialog server={server()} service={corriendo} open full onOpenChange={() => {}} />);
+    const opciones = await screen.findAllByRole("option");
+    fireEvent.click(opciones[0]);
+    expect(elegir().getByRole("button", { name: /(desplegar|deploy) def5678/i })).toBeTruthy();
+    respuestas([conRepo], [], [build("abc1234")], { success: true, data: [c("7777777", "otra rama"), c("abc1234", "fix: login")] });
+    act(() => useDeploymentsStore.getState().onBuild(build("7777777")));
+    await waitFor(() => expect(screen.getAllByRole("option")[0].textContent).toMatch(/otra rama/));
+    expect(elegir().queryByRole("button", { name: /(desplegar|deploy) def5678/i })).toBeNull();
+    expect(elegir().getByRole("button", { name: /(desplegar|deploy) (abc1234|7777777)/i })).toBeTruthy();
+  });
+
   it("desplegar lo que ya corre se pregunta, y si no, no se manda", async () => {
-    respuestas([conRepo], [], [], lista);
+    respuestas([conRepo], [], [build("def5678")], lista);
     post.mockResolvedValue({ success: true, data: fila({ status: "succeeded" }) });
     render(
       <DeployDialog server={server()} service={{ ...service, image: "ghcr.io/dwit-mexico/api:def5678" }} open full onOpenChange={() => {}} />,

@@ -18,8 +18,10 @@ describe("el nombre de un miembro", () => {
     expect(document.body.textContent).not.toMatch(/pending-0a1b/);
   });
 
-  it("con el registro hecho: su usuario", () => {
+  // Rotura que detecta: enseñar el usuario como nombre (salía dos veces).
+  it("con el registro hecho: su nombre, y el usuario debajo", () => {
     render(<MemberName member={{ userId: "u", username: "caro.g", name: "Caro", role: "member" }} />);
+    expect(screen.getByText("Caro")).toBeTruthy();
     expect(screen.getByText("@caro.g")).toBeTruthy();
     expect(screen.queryByText("Pending")).toBeNull();
   });

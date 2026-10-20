@@ -88,7 +88,15 @@ export default function CommitPicker({
   const published = (commit: string) => builds.find((b) => commit.startsWith(b.sha))?.sha;
   const valueOf = (commit: string) => (deployable.buildOnHost ? commit : (published(commit) ?? commit));
   const running = list.findIndex((c) => runsCommit(currentImage, c.sha));
-  const chosen = picked ?? list[0]?.sha ?? null;
+  // Lo elegido a mano, mientras siga en la lista: al cambiar de rama o
+  // refrescar, un commit que ya no está no puede seguir siendo el del botón.
+  const stillThere = picked !== null && list.some((c) => c.sha === picked);
+  // Por defecto, lo más nuevo que se puede desplegar: construyendo en el
+  // servidor, cualquiera; si la imagen la publica el CI, el primero que ya la
+  // tiene — el más nuevo puede estar todavía construyéndose, y desplegarlo
+  // pediría un tag que no existe.
+  const firstDeployable = deployable.buildOnHost ? list[0] : list.find((c) => published(c.sha));
+  const chosen = stillThere ? picked : (firstDeployable?.sha ?? null);
 
   const deploy = async (value: string) => {
     if (runsCommit(currentImage, value)) {
