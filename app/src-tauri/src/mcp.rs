@@ -1997,6 +1997,68 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "list_posts",
+            "description": "The organizations' feedback wall: posts (announcements from the platform first, then the newest), 20 at a time, each with author, organization, audience, body, reaction counts and number of comments. Only what the token's owner can see. Pass nextCursor back as `cursor` for the next page.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "cursor": { "type": "string", "description": "nextCursor from a previous call." }
+                }
+            }
+        },
+        {
+            "name": "get_post",
+            "description": "One post of the feedback wall with all its comments (and their reactions).",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "create_post",
+            "description": "Post on the feedback wall, in the name of the token's owner and marked as written by an agent. `feedback` is published right away for an organization (`orgId`, where the owner is admin or member) to `platform` (that organization and the cac team) or `everyone` (every organization). An `announcement` reaches EVERY organization, so it is NOT published: it is saved as a DRAFT only its owner sees, and they get a notification to review, edit and publish it themselves in the app — use it to help write announcements. Only a superadmin's token can draft one. Markdown body; images must be uploaded first. Needs `posts:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["feedback", "announcement"] },
+                    "orgId": { "type": "string", "description": "For feedback: the organization it speaks for." },
+                    "audience": { "type": "string", "enum": ["platform", "everyone"], "description": "For feedback. Defaults to platform." },
+                    "title": { "type": "string", "description": "Optional, max 140." },
+                    "body": { "type": "string", "description": "Markdown." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["kind", "body"]
+            }
+        },
+        {
+            "name": "comment_post",
+            "description": "Comment on a post of the feedback wall (one the token's owner can see). Append-only. The post's author and earlier commenters are notified. Needs `posts:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "The post." },
+                    "body": { "type": "string", "description": "Markdown." },
+                    "dryRun": { "type": "boolean", "description": "Validate without writing." }
+                },
+                "required": ["id", "body"]
+            }
+        },
+        {
+            "name": "react_post",
+            "description": "Put (or take away, with on=false) an emoji reaction on a post of the feedback wall, or on one of its comments. Accepted emoji: 👍 ❤️ 😂 🎉 👀 ✅ 🙏 🔥. Needs `posts:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "The post." },
+                    "commentId": { "type": "string", "description": "Optional: react to this comment of the post instead." },
+                    "emoji": { "type": "string" },
+                    "on": { "type": "boolean", "description": "Defaults to true." }
+                },
+                "required": ["id", "emoji"]
+            }
+        },
+        {
             "name": "request_doc_review",
             "description": "Ask a person to review a doc after you changed it — you can't sign a review yourself, and that's on purpose: a signed review says a PERSON checked it's still true. The doc's maintainer and the superadmins get a notification, and the doc shows \"review requested\" next to its freshness until someone signs. Asking again replaces the pending request instead of piling up. Needs a token with the `docs:write` scope.",
             "inputSchema": {
@@ -3293,6 +3355,55 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 }
             }
             api_post(cfg, "/api/v1/notifications/self", body)
+        }
+
+        "list_posts" => {
+            let path = match arg_str(args, "cursor") {
+                Some(c) => format!("/api/v1/posts?cursor={}", urlencode(&c)),
+                None => "/api/v1/posts".to_string(),
+            };
+            api_get(cfg, &path)
+        }
+
+        "get_post" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            api_get(cfg, &format!("/api/v1/posts/{}", urlencode(&id)))
+        }
+
+        "create_post" => {
+            let kind = arg_str(args, "kind").ok_or("kind is required")?;
+            let body_md = arg_str(args, "body").ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "posts:write", api_get(cfg, "/api/v1/posts"));
+            }
+            let mut body = json!({ "kind": kind, "body": body_md });
+            for key in ["orgId", "audience", "title"] {
+                if let Some(v) = arg_str(args, key) {
+                    body[key] = json!(v);
+                }
+            }
+            api_post(cfg, "/api/v1/posts", body)
+        }
+
+        "comment_post" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let body_md = arg_str(args, "body").ok_or("body is required")?;
+            if arg_bool(args, "dryRun") {
+                let target = api_get(cfg, &format!("/api/v1/posts/{}", urlencode(&id)));
+                return dry_run(cfg, "posts:write", target);
+            }
+            api_post(cfg, &format!("/api/v1/posts/{}/comments", urlencode(&id)), json!({ "body": body_md }))
+        }
+
+        "react_post" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let emoji = arg_str(args, "emoji").ok_or("emoji is required")?;
+            let on = args.get("on").and_then(Value::as_bool).unwrap_or(true);
+            let path = match arg_str(args, "commentId") {
+                Some(c) => format!("/api/v1/posts/{}/comments/{}/reactions", urlencode(&id), urlencode(&c)),
+                None => format!("/api/v1/posts/{}/reactions", urlencode(&id)),
+            };
+            api_post(cfg, &path, json!({ "emoji": emoji, "on": on }))
         }
 
         "request_doc_review" => {
@@ -4823,6 +4934,22 @@ mod tests {
             .filter(|n| n.contains("backup"))
             .collect();
         assert_eq!(names, ["list_backups", "get_backup_history"]);
+    }
+
+    /// El muro: el agente publica, comenta y reacciona, y un comunicado se
+    /// redacta como borrador; no hay herramienta para publicar un borrador,
+    /// editar, borrar ni fijar — eso lo hace una persona. Mutantes: añadir una
+    /// de esas herramientas; describir el comunicado como publicado.
+    #[test]
+    fn the_wall_tools_only_add() {
+        let defs = tool_defs();
+        let names: Vec<String> = defs.as_array().unwrap().iter()
+            .filter_map(|t| t["name"].as_str().map(str::to_string))
+            .filter(|n| n.contains("post") && !n.contains("report"))
+            .collect();
+        assert_eq!(names, ["list_posts", "get_post", "create_post", "comment_post", "react_post"]);
+        let create = tool(&defs, "create_post")["description"].as_str().unwrap().to_string();
+        assert!(create.contains("DRAFT") && create.contains("posts:write"), "{create}");
     }
 
     /// `notify_me` existe, pide su permiso y **no** ofrece a quién: el

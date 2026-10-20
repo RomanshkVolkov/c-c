@@ -33,7 +33,8 @@
     "agent": "agente",
     "backup": "backup",
     "post": "feedback",
-    "postComment": "comentario"
+    "postComment": "comentario",
+    "postDraft": "borrador"
   },
   "prefs": {
     "title": "Qué te llega",

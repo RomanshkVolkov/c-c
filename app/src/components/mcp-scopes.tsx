@@ -91,6 +91,11 @@ export const SCOPES: ScopeOption[] = [
     labelKey: "common:scopes.notifyMe",
     detailKey: "scopes.notifyMeDetail",
   },
+  {
+    id: "posts:write",
+    labelKey: "common:scopes.postsWrite",
+    detailKey: "scopes.postsWriteDetail",
+  },
 ];
 
 export function ScopeChecklist({

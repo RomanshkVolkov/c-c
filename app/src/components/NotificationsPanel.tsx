@@ -52,6 +52,8 @@ const KINDS: Record<string, { group: Tab; tagKey?: MessageKey; icon: typeof AtSi
   // comentario en una publicación tuya o que comentaste.
   "post:feedback": { group: "talk", tagKey: "notifications:kind.post", icon: Megaphone, color: "text-primary" },
   "post:comment": { group: "talk", tagKey: "notifications:kind.postComment", icon: Megaphone, color: "text-muted-foreground" },
+  // Un agente te redactó un comunicado: es trabajo que te espera (revisarlo).
+  "post:draft": { group: "tasks", tagKey: "notifications:kind.postDraft", icon: Megaphone, color: "text-primary" },
   "task:comment": { group: "tasks", tagKey: "notifications:kind.comment", icon: CheckSquare, color: "text-foreground" },
   "task:assigned": { group: "tasks", tagKey: "notifications:kind.assigned", icon: UserPlus, color: "text-primary" },
   "task:status": { group: "tasks", tagKey: "notifications:kind.status", icon: CheckSquare, color: "text-muted-foreground" },

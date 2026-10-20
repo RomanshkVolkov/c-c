@@ -33,7 +33,9 @@ export default function PostModal() {
   const { t } = useT();
   const confirm = useConfirm();
   const post = usePostsStore((s) => s.open);
-  const { closePost, react, comment, remove, removeComment, upload, update, pin, reactComment } = usePostsStore.getState();
+  const { closePost, react, comment, remove, removeComment, upload, update, pin, reactComment, publish } =
+    usePostsStore.getState();
+  const [publishing, setPublishing] = useState(false);
   const [draft, setDraft] = useState("");
   // Editando: una copia de lo que se puede cambiar. Nula, leyendo.
   const [editing, setEditing] = useState<{ title: string; body: string; audience: PostAudience } | null>(null);
@@ -125,7 +127,13 @@ export default function PostModal() {
             <div className="min-w-0 flex-1">
               <DialogTitle className="truncate">{post.title || post.authorName}</DialogTitle>
               <DialogDescription className="truncate">
-                {[post.authorName, post.orgName, desde(post.createdAt), post.editedAt ? t("common:feedback.edited") : ""]
+                {[
+                  post.authorName,
+                  post.orgName,
+                  desde(post.createdAt),
+                  post.via === "mcp" ? t("common:feedback.viaAgent") : "",
+                  post.editedAt ? t("common:feedback.edited") : "",
+                ]
                   .filter(Boolean)
                   .join(" · ")}
               </DialogDescription>
@@ -177,6 +185,27 @@ export default function PostModal() {
             )}
           </div>
         </DialogHeader>
+
+        {/* Un borrador que redactó un agente: lo revisa y lo publica su autor,
+            en persona (el backend no deja publicarlo con un token). */}
+        {post.canPublish && !editing && (
+          <div className="flex items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
+            <p className="min-w-0 flex-1 text-sm">{t("common:feedback.publishDraftHint")}</p>
+            <Button
+              size="sm"
+              disabled={publishing}
+              onClick={() => {
+                setPublishing(true);
+                void publish(post.id)
+                  .then(() => toast.success(t("common:feedback.published")))
+                  .catch(failed)
+                  .finally(() => setPublishing(false));
+              }}
+            >
+              {t("common:feedback.publishDraft")}
+            </Button>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {editing ? (
@@ -267,6 +296,7 @@ export default function PostModal() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="font-semibold text-foreground">{c.authorName}</span>
                       {desde(c.createdAt)}
+                      {c.via === "mcp" && <span>· {t("common:feedback.viaAgent")}</span>}
                       {c.canDelete && (
                         <button
                           type="button"

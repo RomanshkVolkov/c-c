@@ -33,7 +33,8 @@
     "agent": "agent",
     "backup": "backup",
     "post": "feedback",
-    "postComment": "comment"
+    "postComment": "comment",
+    "postDraft": "draft"
   },
   "prefs": {
     "title": "What reaches you",

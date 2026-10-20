@@ -35,6 +35,8 @@ interface PostsState {
   remove: (id: string) => Promise<void>;
   update: (id: string, p: UpdatePostPayload) => Promise<void>;
   pin: (id: string, pinned: boolean) => Promise<void>;
+  /** Saca un borrador: deja de serlo y sale como nuevo para todos. */
+  publish: (id: string) => Promise<void>;
   reactComment: (postId: string, commentId: string, emoji: string, on: boolean) => Promise<void>;
   comment: (id: string, body: string) => Promise<void>;
   removeComment: (postId: string, commentId: string) => Promise<void>;
@@ -111,6 +113,12 @@ export const usePostsStore = create<PostsState>((set, get) => ({
       open: s.open?.id === id ? detail : s.open,
       posts: s.posts.map((x) => (x.id === id ? { ...x, ...detail } : x)),
     }));
+  },
+
+  publish: async (id) => {
+    const detail = must(await api.post<APIResponse<PostDetail>>(`/api/v1/posts/${id}/publish`, {}, true));
+    set((s) => ({ open: s.open?.id === id ? detail : s.open }));
+    await get().load();
   },
 
   pin: async (id, pinned) => {

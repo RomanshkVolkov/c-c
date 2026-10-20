@@ -553,7 +553,9 @@
     "deploysManage": "Configurar despliegues",
     "deploysManageDetail": "Dejar listo cómo despliega un servicio —repo, rama, build en el servidor, Dockerfile y sus secrets <1>por nombre</1>— y registrar uno nuevo. <1>Nunca</1> despliega, vuelve atrás, borra ni cambia el comando de migraciones, y ningún valor de un secret pasa por aquí.",
     "notifyMe": "Avisarme",
-    "notifyMeDetail": "Que un agente que trabaja con este token <1>te</1> avise —«paré: hay una decisión»— en la campana, en el teléfono y con un aviso del sistema. Sólo a ti: no hay forma de mandárselo a nadie más."
+    "notifyMeDetail": "Que un agente que trabaja con este token <1>te</1> avise —«paré: hay una decisión»— en la campana, en el teléfono y con un aviso del sistema. Sólo a ti: no hay forma de mandárselo a nadie más.",
+    "postsWrite": "Publicar en Feedback",
+    "postsWriteDetail": "Que un agente publique feedback, comente y reaccione en el muro, a tu nombre y marcado <1>vía agente</1>. Un comunicado no lo publica: lo deja como borrador para que tú lo revises y lo publiques."
   },
   "last": {
     "webviewRecovered": "La página se cerró inesperadamente y se volvió a cargar. Ya quedó reportado.",
@@ -1117,6 +1119,11 @@
     "cancel": "Cancelar",
     "saving": "Guardando…",
     "audienceOrg": "Solo {{org}}",
-    "audienceOrgHint": "Los miembros de {{org}}"
+    "audienceOrgHint": "Los miembros de {{org}}",
+    "draft": "Borrador",
+    "viaAgent": "vía agente",
+    "publishDraft": "Publicar",
+    "publishDraftHint": "Lo redactó un agente; revísalo y publícalo cuando esté listo.",
+    "published": "Publicado"
   }
 }

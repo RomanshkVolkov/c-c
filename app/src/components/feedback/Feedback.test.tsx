@@ -240,3 +240,38 @@ describe("editar, fijar y reaccionar a un comentario", () => {
     );
   });
 });
+
+// Lo que redacta un agente se ve como tal, y el borrador lo publica su autor
+// desde el modal. Rotura que esto detecta: ofrecer «Publicar» sin poder, no
+// marcar lo del agente, publicar por otra ruta.
+describe("lo que hace un agente", () => {
+  it("se marca «vía agente», y el borrador se publica desde el modal sólo si se puede", async () => {
+    setup({ superadmin: true });
+    const draft = card("d", { kind: "announcement", draft: true, via: "mcp", canPublish: true });
+    get.mockImplementation(async (url: string) =>
+      url === "/api/v1/posts/d" ? { success: true, data: { ...draft, commentList: [] } } : { success: true, data: { posts: [draft] } },
+    );
+    post.mockImplementation(async (url: string) =>
+      url.endsWith("/publish") ? { success: true, data: { ...draft, draft: false, canPublish: false, commentList: [] } } : { success: true },
+    );
+    montar();
+    expect(await screen.findByText("Draft")).toBeTruthy();
+    expect(screen.getAllByText(/via agent/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "t-d" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/posts/d/publish", {}, true));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Publish" })).toBeNull());
+  });
+
+  it("sin poder publicar, no se ofrece", async () => {
+    setup({ superadmin: true });
+    const draft = card("d", { kind: "announcement", draft: true, canPublish: false });
+    get.mockImplementation(async (url: string) =>
+      url === "/api/v1/posts/d" ? { success: true, data: { ...draft, commentList: [] } } : { success: true, data: { posts: [draft] } },
+    );
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: "t-d" }));
+    await screen.findByLabelText("Write a comment…");
+    expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+  });
+});

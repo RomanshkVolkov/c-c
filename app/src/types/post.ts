@@ -27,6 +27,12 @@ export interface Post {
   canPin: boolean;
   pinned: boolean;
   editedAt?: string;
+  /** `mcp`: la publicó un agente con el token de su autor. */
+  via?: string;
+  /** Redactado y sin publicar: sólo lo ve su autor. */
+  draft: boolean;
+  /** Es un borrador tuyo y lo puedes publicar. */
+  canPublish: boolean;
 }
 
 export interface PostComment {
@@ -38,6 +44,7 @@ export interface PostComment {
   createdAt: string;
   canDelete: boolean;
   reactions: Reaction[];
+  via?: string;
 }
 
 export interface PostDetail extends Post {

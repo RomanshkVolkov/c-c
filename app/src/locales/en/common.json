@@ -553,7 +553,9 @@
     "deploysManage": "Configure deploys",
     "deploysManageDetail": "Set up how a service deploys — repo, branch, server builds, Dockerfile and its secrets <1>by name</1> — and register new ones. <1>Never</1> deploys, rolls back, deletes or changes the migration command; no secret value goes through it.",
     "notifyMe": "Notify me",
-    "notifyMeDetail": "Let an agent working with this token notify <1>you</1> — “I stopped: there is a decision to make” — in the bell, on your phone and as a desktop notice. Only ever you: there is no way to send it to anyone else."
+    "notifyMeDetail": "Let an agent working with this token notify <1>you</1> — “I stopped: there is a decision to make” — in the bell, on your phone and as a desktop notice. Only ever you: there is no way to send it to anyone else.",
+    "postsWrite": "Post on Feedback",
+    "postsWriteDetail": "Let an agent post feedback, comment and react on the wall, in your name and marked <1>via agent</1>. It does not publish announcements: it leaves them as a draft for you to review and publish."
   },
   "last": {
     "webviewRecovered": "The page closed unexpectedly and was reloaded. It has been reported.",
@@ -1117,6 +1119,11 @@
     "cancel": "Cancel",
     "saving": "Saving…",
     "audienceOrg": "Only {{org}}",
-    "audienceOrgHint": "Members of {{org}}"
+    "audienceOrgHint": "Members of {{org}}",
+    "draft": "Draft",
+    "viaAgent": "via agent",
+    "publishDraft": "Publish",
+    "publishDraftHint": "An agent wrote it; review it and publish it when it's ready.",
+    "published": "Published"
   }
 }
