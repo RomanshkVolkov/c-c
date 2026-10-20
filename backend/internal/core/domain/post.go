@@ -37,6 +37,13 @@ type Post struct {
 	EditedAt *time.Time `json:"editedAt,omitempty"`
 	// PinnedAt: fijada arriba del muro por un superadmin, y desde cuándo.
 	PinnedAt *time.Time `gorm:"index" json:"pinnedAt,omitempty"`
+	// Via: por dónde entró (ver via.go). `mcp` la publicó un agente con el
+	// token de su autor, y la tarjeta lo dice.
+	Via string `gorm:"type:varchar(10)" json:"via,omitempty"`
+	// Draft: redactado pero sin publicar. Lo ve sólo su autor. Es como queda un
+	// comunicado que redacta un agente: lo revisa y lo publica una persona
+	// (`PostService.Publish`), porque llega a todas las organizaciones.
+	Draft bool `gorm:"not null;default:false;index" json:"draft"`
 }
 
 type PostComment struct {
@@ -44,6 +51,7 @@ type PostComment struct {
 	PostID   string `gorm:"type:varchar(36);index;not null" json:"postId"`
 	AuthorID string `gorm:"type:varchar(36);not null" json:"authorId"`
 	Body     string `gorm:"type:text;not null" json:"body"`
+	Via      string `gorm:"type:varchar(10)" json:"via,omitempty"`
 }
 
 // PostAttachment es una imagen de una publicación o de un comentario.
@@ -124,6 +132,11 @@ type PostResponse struct {
 	CanPin    bool       `json:"canPin"`
 	Pinned    bool       `json:"pinned"`
 	EditedAt  *time.Time `json:"editedAt,omitempty"`
+	Via       string     `json:"via,omitempty"`
+	Draft     bool       `json:"draft"`
+	// CanPublish: es un borrador tuyo y lo puedes publicar (una persona, no
+	// un token).
+	CanPublish bool `json:"canPublish"`
 }
 
 type PostCommentResponse struct {
@@ -134,6 +147,7 @@ type PostCommentResponse struct {
 	Body       string    `json:"body"`
 	CreatedAt  time.Time `json:"createdAt"`
 	CanDelete  bool      `json:"canDelete"`
+	Via        string    `json:"via,omitempty"`
 	// Reactions: las de este comentario (destino `post_comment`).
 	Reactions []ReactionSummary `json:"reactions" gorm:"-"`
 }

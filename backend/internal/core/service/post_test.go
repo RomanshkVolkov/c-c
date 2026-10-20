@@ -131,7 +131,7 @@ func (f *wallFixture) as(name string) *domain.ClaimsJWT { return f.people[name].
 
 func (f *wallFixture) post(t *testing.T, who string, req domain.CreatePostRequest) string {
 	t.Helper()
-	out, err := f.svc.Create(f.as(who), req)
+	out, err := f.svc.Create(f.as(who), "", req)
 	if err != nil {
 		t.Fatalf("%s no pudo publicar: %v", who, err)
 	}
@@ -191,7 +191,7 @@ func TestWhoSeesWhatOnTheWall(t *testing.T) {
 			t.Errorf("%s: abrir «para todos» → %v (debería verla: %v)", who, err, seesAll)
 		}
 		_, errGet := f.svc.Get(f.as(who), plat)
-		_, errComment := f.svc.Comment(f.as(who), plat, domain.CreatePostCommentRequest{Body: "hola"})
+		_, errComment := f.svc.Comment(f.as(who), "", plat, domain.CreatePostCommentRequest{Body: "hola"})
 		errReact := f.svc.React(f.as(who), plat, domain.ReactionRequest{Emoji: "👍", On: true})
 		_, errImg := f.svc.Attachment(f.as(who), img.ID)
 		for what, err := range map[string]error{"abrirlo": errGet, "comentarlo": errComment, "reaccionar": errReact, "su imagen": errImg} {
@@ -226,7 +226,7 @@ func TestWhoCanPublish(t *testing.T) {
 		{"root", domain.CreatePostRequest{Kind: domain.PostAnnouncement, Body: "x"}, true},
 	}
 	for _, c := range cases {
-		out, err := f.svc.Create(f.as(c.who), c.req)
+		out, err := f.svc.Create(f.as(c.who), "", c.req)
 		if c.ok && err != nil {
 			t.Errorf("%s (%s) no pudo publicar: %v", c.who, c.req.Kind, err)
 		}
@@ -256,7 +256,7 @@ func TestWhoCanDeleteAndWhatGoesWithIt(t *testing.T) {
 	}
 	for _, who := range []string{"bea", "ana", "root"} {
 		id := mk()
-		if _, err := f.svc.Comment(f.as("vic"), id, domain.CreatePostCommentRequest{Body: "c"}); err != nil {
+		if _, err := f.svc.Comment(f.as("vic"), "", id, domain.CreatePostCommentRequest{Body: "c"}); err != nil {
 			t.Fatal(err)
 		}
 		if err := f.svc.React(f.as("vic"), id, domain.ReactionRequest{Emoji: "🎉", On: true}); err != nil {
@@ -274,12 +274,12 @@ func TestWhoCanDeleteAndWhatGoesWithIt(t *testing.T) {
 	}
 	// Un comentario lo borra su autor; el de otro, sólo quien modera.
 	id = mk()
-	out, _ := f.svc.Comment(f.as("vic"), id, domain.CreatePostCommentRequest{Body: "de vic"})
+	out, _ := f.svc.Comment(f.as("vic"), "", id, domain.CreatePostCommentRequest{Body: "de vic"})
 	cid := out.CommentList[0].ID
 	if err := f.svc.DeleteComment(f.as("bea"), id, cid); err != nil {
 		t.Fatalf("la autora de la publicación no pudo borrar un comentario: %v", err)
 	}
-	out, _ = f.svc.Comment(f.as("ana"), id, domain.CreatePostCommentRequest{Body: "de ana"})
+	out, _ = f.svc.Comment(f.as("ana"), "", id, domain.CreatePostCommentRequest{Body: "de ana"})
 	if err := f.svc.DeleteComment(f.as("vic"), id, out.CommentList[0].ID); !errors.Is(err, ErrPostForbidden) {
 		t.Fatalf("un viewer borró el comentario de otra → %v", err)
 	}
@@ -295,7 +295,7 @@ func TestWhoHearsAboutWhat(t *testing.T) {
 	if got := f.bell.to("post:feedback"); strings.Join(got, ",") != "u-root" {
 		t.Fatalf("el feedback nuevo avisó a %v", got)
 	}
-	if _, err := f.svc.Comment(f.as("ana"), id, domain.CreatePostCommentRequest{Body: "primero"}); err != nil {
+	if _, err := f.svc.Comment(f.as("ana"), "", id, domain.CreatePostCommentRequest{Body: "primero"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.bell.to("post:comment"); strings.Join(got, ",") != "u-bea" {
@@ -303,7 +303,7 @@ func TestWhoHearsAboutWhat(t *testing.T) {
 	}
 	// La autora contesta: le llega a ana (que comentó), no a ella misma.
 	f.bell.got = nil
-	if _, err := f.svc.Comment(f.as("bea"), id, domain.CreatePostCommentRequest{Body: "gracias"}); err != nil {
+	if _, err := f.svc.Comment(f.as("bea"), "", id, domain.CreatePostCommentRequest{Body: "gracias"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.bell.to("post:comment"); strings.Join(got, ",") != "u-ana" {
@@ -312,7 +312,7 @@ func TestWhoHearsAboutWhat(t *testing.T) {
 	f.bell.got = nil
 	// Ana se va de la org: ya no ve la publicación, y no se le avisa.
 	f.db.Exec(`DELETE FROM org_memberships WHERE user_id = 'u-ana'`)
-	if _, err := f.svc.Comment(f.as("vic"), id, domain.CreatePostCommentRequest{Body: "segundo"}); err != nil {
+	if _, err := f.svc.Comment(f.as("vic"), "", id, domain.CreatePostCommentRequest{Body: "segundo"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.bell.to("post:comment"); strings.Join(got, ",") != "u-bea" {
@@ -477,7 +477,7 @@ func TestCommentReactionsFollowThePost(t *testing.T) {
 	f := wallSetup(t)
 	id := f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Body: "x"})
 	other := f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Body: "y"})
-	out, _ := f.svc.Comment(f.as("ana"), id, domain.CreatePostCommentRequest{Body: "c"})
+	out, _ := f.svc.Comment(f.as("ana"), "", id, domain.CreatePostCommentRequest{Body: "c"})
 	cid := out.CommentList[0].ID
 	thumbs := domain.ReactionRequest{Emoji: "👍", On: true}
 	if err := f.svc.ReactComment(f.as("vic"), id, cid, thumbs); err != nil {
@@ -504,7 +504,7 @@ func TestCommentReactionsFollowThePost(t *testing.T) {
 	if count() != 0 {
 		t.Fatal("al borrar el comentario quedaron sus reacciones")
 	}
-	out, _ = f.svc.Comment(f.as("ana"), id, domain.CreatePostCommentRequest{Body: "otra"})
+	out, _ = f.svc.Comment(f.as("ana"), "", id, domain.CreatePostCommentRequest{Body: "otra"})
 	cid = out.CommentList[0].ID
 	_ = f.svc.ReactComment(f.as("vic"), id, cid, thumbs)
 	if err := f.svc.Delete(f.as("bea"), id); err != nil {
@@ -522,18 +522,78 @@ func TestCommentReactionsFollowThePost(t *testing.T) {
 func TestTheCursorKeyIsTheWallOrder(t *testing.T) {
 	f := wallSetup(t)
 	now := time.Now()
-	for _, c := range []struct {
-		kind   string
-		pinned bool
-	}{{domain.PostFeedback, false}, {domain.PostAnnouncement, false}, {domain.PostFeedback, true}, {domain.PostAnnouncement, true}} {
-		p := domain.Post{Kind: c.kind}
-		if c.pinned {
-			p.PinnedAt = &now
+	for _, kind := range []string{domain.PostFeedback, domain.PostAnnouncement} {
+		for _, pinned := range []bool{false, true} {
+			for _, draft := range []bool{false, true} {
+				p := domain.Post{Kind: kind, Draft: draft}
+				if pinned {
+					p.PinnedAt = &now
+				}
+				var sqlLead int
+				f.db.Raw(`SELECT `+repository.WallLeadSQL+` FROM (SELECT ?::text AS kind, ?::timestamptz AS pinned_at, ?::boolean AS draft) p`,
+					kind, p.PinnedAt, draft).Scan(&sqlLead)
+				if got := repository.WallLead(&p); got != sqlLead {
+					t.Errorf("%s fijado=%v borrador=%v: el cursor dice %d y el orden %d", kind, pinned, draft, got, sqlLead)
+				}
+			}
 		}
-		var sqlLead int
-		f.db.Raw(`SELECT `+repository.WallLeadSQL+` FROM (SELECT ?::text AS kind, ?::timestamptz AS pinned_at) p`, c.kind, p.PinnedAt).Scan(&sqlLead)
-		if got := repository.WallLead(&p); got != sqlLead {
-			t.Errorf("%s fijado=%v: el cursor dice %d y el orden %d", c.kind, c.pinned, got, sqlLead)
+	}
+}
+
+// Con un token (el MCP): el feedback se publica y queda marcado como de un
+// agente. Un comunicado no se publica: queda como **borrador** que sólo ve su
+// dueño, se le avisa, y lo publica él en persona — con el token no se puede.
+// Un token que no es de superadmin, ni eso. Mutantes: publicar el comunicado
+// del token; dejar ver el borrador a otros (en canSee y en el SQL del muro);
+// dejar publicarlo con el token; no guardar la marca.
+func TestAnAgentDraftsAnnouncementsAndAPersonPublishesThem(t *testing.T) {
+	f := wallSetup(t)
+	agent := *f.as("bea")
+	agent.ViaToken = true
+	out, err := f.svc.Create(&agent, domain.ViaMCP, domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Body: "x"})
+	if err != nil || out.Via != domain.ViaMCP || out.Draft {
+		t.Fatalf("el feedback del agente: %v %+v", err, out)
+	}
+	c, err := f.svc.Comment(&agent, domain.ViaMCP, out.ID, domain.CreatePostCommentRequest{Body: "y"})
+	if err != nil || c.CommentList[0].Via != domain.ViaMCP {
+		t.Fatalf("el comentario del agente: %v %+v", err, c)
+	}
+	if _, err := f.svc.Create(&agent, domain.ViaMCP, domain.CreatePostRequest{Kind: domain.PostAnnouncement, Body: "x"}); !errors.Is(err, ErrPostForbidden) {
+		t.Fatalf("un comunicado con el token de quien no es superadmin → %v", err)
+	}
+
+	root := *f.as("root")
+	root.ViaToken = true
+	draft, err := f.svc.Create(&root, domain.ViaMCP, domain.CreatePostRequest{Kind: domain.PostAnnouncement, Title: "borrador", Body: "x"})
+	if err != nil || !draft.Draft || draft.CanPublish {
+		t.Fatalf("el comunicado del agente: %v %+v", err, draft)
+	}
+	if got := f.bell.to("post:draft"); strings.Join(got, ",") != "u-root" {
+		t.Fatalf("el aviso del borrador fue a %v", got)
+	}
+	for _, who := range []string{"ana", "dani", "solo"} {
+		page, _ := f.svc.List(f.as(who), "")
+		for _, p := range page.Posts {
+			if p.ID == draft.ID {
+				t.Fatalf("%s ve el borrador en el muro", who)
+			}
 		}
+		if _, err := f.svc.Get(f.as(who), draft.ID); !errors.Is(err, repository.ErrPostNotFound) {
+			t.Fatalf("%s abre el borrador → %v", who, err)
+		}
+	}
+	if _, err := f.svc.Publish(&root, draft.ID); !errors.Is(err, ErrPostForbidden) {
+		t.Fatalf("publicarlo con el token → %v", err)
+	}
+	person := f.as("root")
+	if got, _ := f.svc.Get(person, draft.ID); !got.CanPublish {
+		t.Fatal("en persona no se ofrece publicarlo")
+	}
+	published, err := f.svc.Publish(person, draft.ID)
+	if err != nil || published.Draft {
+		t.Fatalf("publicarlo en persona: %v %+v", err, published)
+	}
+	if _, err := f.svc.Get(f.as("dani"), draft.ID); err != nil {
+		t.Fatalf("publicado, otra org no lo ve: %v", err)
 	}
 }

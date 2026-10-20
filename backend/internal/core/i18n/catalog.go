@@ -227,6 +227,10 @@ var catalogo = map[string]map[Locale]string{
 		EN: "New feedback from {{org}}",
 		ES: "Feedback nuevo de {{org}}",
 	},
+	"notify.post.draft": {
+		EN: "Draft announcement ready to review",
+		ES: "Borrador de comunicado listo para revisar",
+	},
 	"notify.post.comment": {
 		EN: "{{who}} commented on a post",
 		ES: "{{who}} comentó una publicación",

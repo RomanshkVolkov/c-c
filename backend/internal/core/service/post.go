@@ -54,6 +54,10 @@ func (s *PostService) WithNotifier(n Notifier) *PostService {
 //   - «para todos», cualquiera que sea de alguna organización;
 //   - «sólo para cac», los de su organización y los superadmins.
 func canSee(p *domain.Post, c *domain.ClaimsJWT) bool {
+	// Un borrador, sólo su autor — también delante de un superadmin.
+	if p.Draft {
+		return p.AuthorID == c.UserID
+	}
 	if c.Superadmin || p.Kind == domain.PostAnnouncement {
 		return true
 	}
@@ -100,7 +104,7 @@ func (s *PostService) List(c *domain.ClaimsJWT, cursor string) (*domain.PostPage
 	for _, o := range c.Orgs {
 		orgs = append(orgs, o.OrgID)
 	}
-	rows, err := s.repo.List(orgs, c.Superadmin, after, postPageSize)
+	rows, err := s.repo.List(c.UserID, orgs, c.Superadmin, after, postPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +130,7 @@ func parsePostCursor(raw string) (*repository.PostCursor, error) {
 	}
 	lead, err1 := strconv.Atoi(parts[0])
 	ns, err2 := strconv.ParseInt(parts[1], 10, 64)
-	if err1 != nil || err2 != nil || lead < 0 || lead > 3 {
+	if err1 != nil || err2 != nil || lead < 0 || lead > 7 {
 		return nil, ErrPostBadCursor
 	}
 	return &repository.PostCursor{Lead: lead, At: time.Unix(0, ns), ID: parts[2]}, nil
@@ -149,12 +153,15 @@ func (s *PostService) responses(rows []repository.PostRow, c *domain.ClaimsJWT) 
 			AuthorID: r.AuthorID, AuthorName: r.AuthorName, Title: r.Title, Body: r.Body,
 			CreatedAt: r.CreatedAt, Comments: r.Comments, Reactions: reactions[r.ID],
 			// Lo tuyo nunca es nuevo para ti.
-			Unseen:    r.AuthorID != c.UserID && r.CreatedAt.After(seen),
-			CanDelete: canDelete(&r.Post, c),
-			CanEdit:   canEdit(&r.Post, c),
-			CanPin:    c.Superadmin,
-			Pinned:    r.PinnedAt != nil,
-			EditedAt:  r.EditedAt,
+			Unseen:     r.AuthorID != c.UserID && r.CreatedAt.After(seen),
+			CanDelete:  canDelete(&r.Post, c),
+			CanEdit:    canEdit(&r.Post, c),
+			CanPin:     c.Superadmin,
+			Pinned:     r.PinnedAt != nil,
+			EditedAt:   r.EditedAt,
+			Via:        r.Via,
+			Draft:      r.Draft,
+			CanPublish: r.Draft && r.AuthorID == c.UserID && !c.ViaToken,
 		}
 		if out[i].Reactions == nil {
 			out[i].Reactions = []domain.ReactionSummary{}
@@ -200,14 +207,21 @@ func (s *PostService) Get(c *domain.ClaimsJWT, id string) (*domain.PostDetailRes
 
 // Create publica. Un comunicado, sólo un superadmin, y es de todos; un
 // feedback, un admin o un miembro de la organización en cuyo nombre se publica.
-func (s *PostService) Create(c *domain.ClaimsJWT, req domain.CreatePostRequest) (*domain.PostDetailResponse, error) {
-	p := &domain.Post{AuthorID: c.UserID, Kind: req.Kind, Title: strings.TrimSpace(req.Title), Body: req.Body}
+//
+// `via` es por dónde llegó (domain.ViaFrom): lo que publica un agente lo dice.
+func (s *PostService) Create(c *domain.ClaimsJWT, via string, req domain.CreatePostRequest) (*domain.PostDetailResponse, error) {
+	p := &domain.Post{AuthorID: c.UserID, Kind: req.Kind, Title: strings.TrimSpace(req.Title), Body: req.Body, Via: via}
 	p.ID = uuid.NewString()
 	switch req.Kind {
 	case domain.PostAnnouncement:
+		// Un comunicado llega a todas las organizaciones: lo publica una
+		// persona. Un agente con el token de un superadmin lo **redacta**: queda
+		// como borrador, se le avisa a su dueño y lo publica él desde la app
+		// (Publish), como firmar la revisión de un doc (#84).
 		if !c.Superadmin {
 			return nil, ErrPostForbidden
 		}
+		p.Draft = c.ViaToken
 		p.Audience = domain.AudienceEveryone
 	default:
 		role, member := c.RoleInOrg(req.OrgID)
@@ -223,11 +237,52 @@ func (s *PostService) Create(c *domain.ClaimsJWT, req domain.CreatePostRequest) 
 	if err := s.repo.Create(p, citedAttachments(p.Body)); err != nil {
 		return nil, err
 	}
+	if p.Draft {
+		s.notifyDraft(p)
+		return s.Get(c, p.ID)
+	}
 	s.publish(p, "post:new", map[string]string{"postId": p.ID, "actorId": c.UserID})
 	if p.Kind == domain.PostFeedback {
 		s.notifyFeedback(p)
 	}
 	return s.Get(c, p.ID)
+}
+
+// notifyDraft: a su dueño, que es quien lo revisa y lo publica. Y su muro se
+// entera en vivo: el evento va sólo a esa persona, nadie más sabe que existe.
+func (s *PostService) notifyDraft(p *domain.Post) {
+	if s.hub != nil {
+		s.hub.Publish(events.Event{Type: "post:new", UserID: p.AuthorID, Data: map[string]string{"postId": p.ID}})
+	}
+	if s.inbox == nil {
+		return
+	}
+	s.inbox.Notify(domain.Aviso{
+		UserID: p.AuthorID, Kind: "post:draft", TitleKey: "notify.post.draft",
+		Body: postExcerpt(p), Link: "/feedback?post=" + p.ID, Via: p.Via,
+		Group: domain.PostGroup(p.ID),
+	})
+}
+
+// Publish saca un borrador. Sólo su autor y en persona: con un token contesta
+// post-forbidden, que es justo lo que el borrador existe para impedir.
+func (s *PostService) Publish(c *domain.ClaimsJWT, id string) (*domain.PostDetailResponse, error) {
+	row, err := s.visible(id, c)
+	if err != nil {
+		return nil, err
+	}
+	if !row.Draft || row.AuthorID != c.UserID || c.ViaToken {
+		return nil, ErrPostForbidden
+	}
+	if row.Kind == domain.PostAnnouncement && !c.Superadmin {
+		return nil, ErrPostForbidden
+	}
+	if err := s.repo.Publish(id, s.now()); err != nil {
+		return nil, err
+	}
+	row.Draft = false
+	s.publish(&row.Post, "post:new", map[string]string{"postId": id, "actorId": c.UserID})
+	return s.Get(c, id)
 }
 
 // notifyFeedback: el feedback nuevo es para el equipo de cac.
@@ -330,13 +385,13 @@ func (s *PostService) Delete(c *domain.ClaimsJWT, id string) error {
 }
 
 // Comment: comentar es para quien ve la publicación, también un viewer.
-func (s *PostService) Comment(c *domain.ClaimsJWT, id string, req domain.CreatePostCommentRequest) (*domain.PostDetailResponse, error) {
+func (s *PostService) Comment(c *domain.ClaimsJWT, via, id string, req domain.CreatePostCommentRequest) (*domain.PostDetailResponse, error) {
 	row, err := s.visible(id, c)
 	if err != nil {
 		return nil, err
 	}
 	before, _ := s.repo.CommenterIDs(id)
-	cm := &domain.PostComment{PostID: id, AuthorID: c.UserID, Body: req.Body}
+	cm := &domain.PostComment{PostID: id, AuthorID: c.UserID, Body: req.Body, Via: via}
 	cm.ID = uuid.NewString()
 	if err := s.repo.AddComment(cm, citedAttachments(req.Body)); err != nil {
 		return nil, err

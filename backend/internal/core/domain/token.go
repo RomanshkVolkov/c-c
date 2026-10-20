@@ -128,6 +128,11 @@ const (
 	// sistema (jose, 14-oct-2026). Sólo a esa persona: el destinatario no es
 	// un parámetro, así que un token no sirve para mandarle avisos a nadie más.
 	ScopeNotifyMe = "notify:me"
+	// ScopePostsWrite: publicar feedback en el muro, comentar y reaccionar —
+	// sólo añadir (20-oct-2026). **No** alcanza un comunicado, que llega a
+	// todas las organizaciones y lo publica una persona (el servicio contesta
+	// `post-forbidden` a un token, con `ViaToken`), ni editar, borrar o fijar.
+	ScopePostsWrite = "posts:write"
 )
 
 func ValidScope(s string) bool {
@@ -136,7 +141,7 @@ func ValidScope(s string) bool {
 		ScopeNotesWrite, ScopeNotesManage,
 		ScopeReportsWrite, ScopeReportsManage,
 		ScopeDocsWrite, ScopeDocsManage,
-		ScopeCollectionsWrite, ScopeDeploysManage, ScopeNotifyMe:
+		ScopeCollectionsWrite, ScopeDeploysManage, ScopeNotifyMe, ScopePostsWrite:
 		return true
 	default:
 		return false

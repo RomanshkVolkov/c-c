@@ -33,11 +33,11 @@ const postSelect = `p.*,
 	COALESCE((SELECT name FROM organizations WHERE id = p.org_id), '') AS org_name,
 	(SELECT count(*) FROM post_comments c WHERE c.post_id = p.id) AS comments`
 
-// WallLeadSQL ordena delante lo fijado y después los comunicados: 3 un comunicado
-// fijado, 2 un feedback fijado, 1 un comunicado, 0 lo demás. La paginación
-// sigue la misma clave (lead, fecha, id), así que la segunda página empieza
-// justo donde acabó la primera aunque mezcle las clases.
-const WallLeadSQL = `((CASE WHEN p.pinned_at IS NOT NULL THEN 2 ELSE 0 END) + (CASE WHEN p.kind = 'announcement' THEN 1 ELSE 0 END))`
+// WallLeadSQL ordena delante tus borradores (4), luego lo fijado (2) y después
+// los comunicados (1), sumados: un comunicado fijado es 3. La paginación sigue
+// la misma clave (lead, fecha, id), así que la segunda página empieza justo
+// donde acabó la primera aunque mezcle las clases.
+const WallLeadSQL = `((CASE WHEN p.draft THEN 4 ELSE 0 END) + (CASE WHEN p.pinned_at IS NOT NULL THEN 2 ELSE 0 END) + (CASE WHEN p.kind = 'announcement' THEN 1 ELSE 0 END))`
 
 // PostCursor: dónde acabó la página anterior.
 type PostCursor struct {
@@ -49,6 +49,9 @@ type PostCursor struct {
 // WallLead: la misma clave que WallLeadSQL, calculada en Go para el cursor.
 func WallLead(p *domain.Post) int {
 	lead := 0
+	if p.Draft {
+		lead += 4
+	}
 	if p.PinnedAt != nil {
 		lead += 2
 	}
@@ -60,7 +63,9 @@ func WallLead(p *domain.Post) int {
 
 // List: lo que ve alguien, comunicados primero y después lo más nuevo. `all`
 // es el superadmin; `orgs`, las organizaciones de quien mira.
-func (r *PostRepository) List(orgs []string, all bool, after *PostCursor, limit int) ([]PostRow, error) {
+//
+// Un borrador sólo lo ve su autor, también delante de un superadmin.
+func (r *PostRepository) List(viewerID string, orgs []string, all bool, after *PostCursor, limit int) ([]PostRow, error) {
 	q := r.db.Table("posts p").Select(postSelect)
 	if !all {
 		// La regla de canSee (service/post.go), en SQL.
@@ -72,6 +77,7 @@ func (r *PostRepository) List(orgs []string, all bool, after *PostCursor, limit 
 			q = r.db.Table("posts p").Select(postSelect).Where("p.kind = ?", domain.PostAnnouncement)
 		}
 	}
+	q = q.Where("NOT p.draft OR p.author_id = ?", viewerID)
 	if after != nil {
 		q = q.Where("("+WallLeadSQL+", p.created_at, p.id) < (?, ?, ?)", after.Lead, after.At, after.ID)
 	}
@@ -127,7 +133,7 @@ func claimAttachments(tx *gorm.DB, postID, authorID string, ids []string) error 
 func (r *PostRepository) Comments(postID string) ([]domain.PostCommentResponse, error) {
 	var out []domain.PostCommentResponse
 	err := r.db.Table("post_comments c").
-		Select(`c.id, c.post_id, c.author_id, c.body, c.created_at,
+		Select(`c.id, c.post_id, c.author_id, c.body, c.created_at, c.via,
 			COALESCE((SELECT `+nombreVisible+` FROM users WHERE id = c.author_id), '') AS author_name`).
 		Where("c.post_id = ?", postID).Order("c.created_at, c.id").Scan(&out).Error
 	return out, err
@@ -142,6 +148,13 @@ func (r *PostRepository) Update(id, authorID string, fields map[string]any, atta
 		}
 		return claimAttachments(tx, id, authorID, attachmentIDs)
 	})
+}
+
+// Publish saca un borrador: deja de serlo y su fecha es la de ahora, para que
+// salga como nuevo y no enterrado en la fecha en que se redactó.
+func (r *PostRepository) Publish(id string, at time.Time) error {
+	return r.db.Model(&domain.Post{}).Where("id = ? AND draft", id).
+		Updates(map[string]any{"draft": false, "created_at": at}).Error
 }
 
 // SetPinned fija (con la hora) o suelta una publicación.

@@ -80,6 +80,13 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPut, "/api/v1/servers/s1/deployables/d1/secret-refs", domain.ScopeDeploysManage},
 		// Avisarse a uno mismo (#153). La ruta no lleva destinatario.
 		{http.MethodPost, "/api/v1/notifications/self", domain.ScopeNotifyMe},
+		// El muro (#189): publicar, subir la imagen que se cita, comentar y
+		// reaccionar. Todo añade.
+		{http.MethodPost, "/api/v1/posts", domain.ScopePostsWrite},
+		{http.MethodPost, "/api/v1/posts/attachments", domain.ScopePostsWrite},
+		{http.MethodPost, "/api/v1/posts/p1/comments", domain.ScopePostsWrite},
+		{http.MethodPost, "/api/v1/posts/p1/reactions", domain.ScopePostsWrite},
+		{http.MethodPost, "/api/v1/posts/p1/comments/c1/reactions", domain.ScopePostsWrite},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -155,6 +162,14 @@ func TestUnlistedEndpointsAreUnreachable(t *testing.T) {
 		req(http.MethodDelete, "/api/v1/notes/trash"),
 		req(http.MethodDelete, "/api/v1/notes/trash/abc"),
 		req(http.MethodPost, "/api/v1/notes/trash/abc/restore"),
+		// Del muro, con token sólo se añade: publicar un borrador (que es lo
+		// que un borrador existe para dejarle a una persona), editar, fijar y
+		// borrar, no.
+		req(http.MethodPost, "/api/v1/posts/p1/publish"),
+		req(http.MethodPatch, "/api/v1/posts/p1"),
+		req(http.MethodPost, "/api/v1/posts/p1/pin"),
+		req(http.MethodDelete, "/api/v1/posts/p1"),
+		req(http.MethodDelete, "/api/v1/posts/p1/comments/c1"),
 	}
 	for _, r := range unreachable {
 		if _, ok := patScopeFor(r); ok {

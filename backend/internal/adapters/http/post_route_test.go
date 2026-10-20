@@ -23,6 +23,7 @@ func (stubPosts) Upload(w http.ResponseWriter, r *http.Request)        { ok(w, r
 func (stubPosts) Raw(w http.ResponseWriter, r *http.Request)           { ok(w, r) }
 func (stubPosts) Update(w http.ResponseWriter, r *http.Request)        { ok(w, r) }
 func (stubPosts) Pin(w http.ResponseWriter, r *http.Request)           { ok(w, r) }
+func (stubPosts) Publish(w http.ResponseWriter, r *http.Request)       { ok(w, r) }
 func (stubPosts) ReactComment(w http.ResponseWriter, r *http.Request)  { ok(w, r) }
 
 // Del muro, sólo los bytes de una imagen entran sin JWT (los pide un <img>, con

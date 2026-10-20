@@ -56,7 +56,7 @@ func (h *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	out, err := h.svc.Create(c, req)
+	out, err := h.svc.Create(c, domain.ViaFrom(r.Context()), req)
 	if err != nil {
 		postError(w, err)
 		return
@@ -72,6 +72,16 @@ func (h *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.svc.Update(c, chi.URLParam(r, "id"), req)
+	if err != nil {
+		postError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.PostDetailResponse]{Success: true, Data: out})
+}
+
+func (h *PostHandler) Publish(w http.ResponseWriter, r *http.Request) {
+	c, _ := currentUser(r)
+	out, err := h.svc.Publish(c, chi.URLParam(r, "id"))
 	if err != nil {
 		postError(w, err)
 		return
@@ -124,7 +134,7 @@ func (h *PostHandler) Comment(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	out, err := h.svc.Comment(c, chi.URLParam(r, "id"), req)
+	out, err := h.svc.Comment(c, domain.ViaFrom(r.Context()), chi.URLParam(r, "id"), req)
 	if err != nil {
 		postError(w, err)
 		return

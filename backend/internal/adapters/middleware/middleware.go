@@ -315,6 +315,14 @@ var patWritable = []struct {
 	// ready to run. Sharing one is not here on purpose: that reaches other
 	// people, and it should take a person to decide.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/collections/?$`), domain.ScopeCollectionsWrite},
+	// El muro (#189): publicar feedback, comentar, reaccionar y subir la imagen
+	// que se cita. Todo añade. Un comunicado lo rechaza el servicio a un token
+	// aunque llegue aquí; editar, borrar y fijar no están.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/posts/?$`), domain.ScopePostsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/posts/attachments/?$`), domain.ScopePostsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/posts/[^/]+/comments/?$`), domain.ScopePostsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/posts/[^/]+/reactions/?$`), domain.ScopePostsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/posts/[^/]+/comments/[^/]+/reactions/?$`), domain.ScopePostsWrite},
 	// Avisarse a uno mismo: la ruta no admite otro destinatario (#153).
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notifications/self$`), domain.ScopeNotifyMe},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`), domain.ScopeReportsWrite},
