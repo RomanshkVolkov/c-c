@@ -131,7 +131,7 @@ func accountSetup(t *testing.T, mail Mailer) *accountFixture {
 		db.Exec(`INSERT INTO users (id, username, email, name, password, locale, created_at, updated_at) VALUES
 			(?,'ana','ana@x.io','Ana',?,'es',?,?), (?,'bea','bea@x.io','Bea','x','',?,?)`,
 			anaID, ana, now, now, beaID, now, now),
-		db.Exec(`INSERT INTO organizations (id, name, slug, created_at, updated_at) VALUES ('org-1','Uno','uno',?,?)`, now, now),
+		db.Exec(`INSERT INTO organizations (id, name, slug, created_at, updated_at) VALUES ('org-1','Uno','uno',?,?), ('org-2','Dos','dos',?,?)`, now, now, now, now),
 		db.Exec(`INSERT INTO org_memberships (org_id, user_id, role, created_at) VALUES ('org-1',?,'admin',?)`, anaID, now),
 	} {
 		if q.Error != nil {
@@ -376,5 +376,35 @@ func TestWithoutEmailThereIsNoReset(t *testing.T) {
 	f := accountSetup(t, nil)
 	if err := f.svc.ForgotPassword(context.Background(), "ana", ""); !errors.Is(err, ErrMailOff) {
 		t.Fatalf("sin correo → %v", err)
+	}
+}
+
+// Alguien que otra org dio de alta y no terminó el registro no se invita
+// (no podría entrar a aceptar): pasa a ser miembro también y le llega la
+// bienvenida otra vez, con un enlace nuevo que anula el anterior. Rotura que
+// detecta: tratar la cuenta pendiente como una cuenta hecha.
+func TestAPendingAccountIsWelcomedAgainNotInvited(t *testing.T) {
+	f := accountSetup(t, &buzon{})
+	first := f.create(t, "caro@x.io")
+	oldToken := tokenOf(t, f.mail.last(t), "/app/welcome")
+	out, err := f.svc.CreateForOrg(context.Background(), "org-2", beaID, "",
+		domain.CreateAccountRequest{Name: "Caro", Email: "CARO@x.io", Role: domain.OrgRoleViewer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != domain.AccountCreated || out.UserID != first.UserID || !out.EmailSent {
+		t.Fatalf("la respuesta: %+v", out)
+	}
+	var invites, members int64
+	f.db.Model(&domain.OrgInvitation{}).Where("invited_user_id = ?", first.UserID).Count(&invites)
+	f.db.Model(&domain.OrgMembership{}).Where("user_id = ?", first.UserID).Count(&members)
+	if invites != 0 || members != 2 {
+		t.Fatalf("invitaciones %d (0), membresías %d (2)", invites, members)
+	}
+	if _, err := f.svc.InspectLink(oldToken); !errors.Is(err, repository.ErrLinkInvalid) {
+		t.Fatalf("el enlace de la primera bienvenida sigue valiendo: %v", err)
+	}
+	if _, err := f.svc.InspectLink(tokenOf(t, f.mail.last(t), "/app/welcome")); err != nil {
+		t.Fatalf("el nuevo no vale: %v", err)
 	}
 }

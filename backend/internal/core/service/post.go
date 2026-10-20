@@ -241,27 +241,27 @@ func (s *PostService) Create(c *domain.ClaimsJWT, via string, req domain.CreateP
 		s.notifyDraft(p)
 		return s.Get(c, p.ID)
 	}
-	s.publish(p, "post:new", map[string]string{"postId": p.ID, "actorId": c.UserID})
+	// La fila de la campana antes que el evento: el evento es lo que hace que
+	// la app vuelva a leer la campana, y leída antes no traería la fila.
 	if p.Kind == domain.PostFeedback {
 		s.notifyFeedback(p)
 	}
+	s.publish(p, "post:new", map[string]string{"postId": p.ID, "actorId": c.UserID})
 	return s.Get(c, p.ID)
 }
 
 // notifyDraft: a su dueño, que es quien lo revisa y lo publica. Y su muro se
 // entera en vivo: el evento va sólo a esa persona, nadie más sabe que existe.
 func (s *PostService) notifyDraft(p *domain.Post) {
-	if s.hub != nil {
-		s.hub.Publish(events.Event{Type: "post:new", UserID: p.AuthorID, Data: map[string]string{"postId": p.ID}})
+	if s.inbox != nil {
+		s.inbox.Notify(domain.Aviso{
+			UserID: p.AuthorID, Kind: "post:draft", TitleKey: "notify.post.draft",
+			Body: postExcerpt(p), Link: "/feedback?post=" + p.ID, Via: p.Via,
+			Group: domain.PostGroup(p.ID),
+		})
 	}
-	if s.inbox == nil {
-		return
-	}
-	s.inbox.Notify(domain.Aviso{
-		UserID: p.AuthorID, Kind: "post:draft", TitleKey: "notify.post.draft",
-		Body: postExcerpt(p), Link: "/feedback?post=" + p.ID, Via: p.Via,
-		Group: domain.PostGroup(p.ID),
-	})
+	// Después de la fila, y sólo a su autor (publish lo sabe por Draft).
+	s.publish(p, "post:new", map[string]string{"postId": p.ID})
 }
 
 // Publish saca un borrador. Sólo su autor y en persona: con un token contesta
@@ -396,8 +396,8 @@ func (s *PostService) Comment(c *domain.ClaimsJWT, via, id string, req domain.Cr
 	if err := s.repo.AddComment(cm, citedAttachments(req.Body)); err != nil {
 		return nil, err
 	}
-	s.publish(&row.Post, "post:comment", map[string]string{"postId": id, "actorId": c.UserID})
 	s.notifyComment(row, cm, before)
+	s.publish(&row.Post, "post:comment", map[string]string{"postId": id, "actorId": c.UserID})
 	return s.Get(c, id)
 }
 
@@ -521,6 +521,12 @@ func (s *PostService) Attachment(c *domain.ClaimsJWT, id string) (*domain.PostAt
 // el stream nunca trae algo que no pueda ver.
 func (s *PostService) publish(p *domain.Post, kind string, data map[string]string) {
 	if s.hub == nil {
+		return
+	}
+	// Un borrador sólo existe para su autor: nadie más tiene que enterarse ni
+	// de que hay un id.
+	if p.Draft {
+		s.hub.Publish(events.Event{Type: kind, UserID: p.AuthorID, Data: data})
 		return
 	}
 	if p.Kind == domain.PostAnnouncement || p.Audience == domain.AudienceEveryone {

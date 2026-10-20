@@ -103,6 +103,12 @@ func (r *AccountRepository) CreatePendingMember(u *domain.User, orgID string, ro
 	})
 }
 
+// AddMember hace miembro a alguien de una organización si aún no lo es.
+func (r *AccountRepository) AddMember(orgID, userID string, role domain.OrgRole) error {
+	return r.db.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&domain.OrgMembership{OrgID: orgID, UserID: userID, Role: role}).Error
+}
+
 // CreateLink guarda un enlace nuevo y da por usados los anteriores de la misma
 // persona y el mismo propósito: el último correo es el único que vale.
 func (r *AccountRepository) CreateLink(l *domain.AccountLink, now time.Time) error {

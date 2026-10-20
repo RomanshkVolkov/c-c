@@ -93,6 +93,16 @@ func (s *AccountService) CreateForOrg(ctx context.Context, orgID, inviterID, lan
 	args := map[string]string{"inviter": displayName(inviter), "org": org.Name}
 
 	existing, err := s.accounts.FindByEmail(email)
+	if err == nil && existing.SetupPending {
+		// Ya dada de alta por otra org y sin terminar el registro: invitarla no
+		// sirve —no puede entrar a aceptar, ni pedir un enlace para entrar—.
+		// Se la hace miembro también de esta org y se le manda la bienvenida
+		// otra vez (el enlace anterior deja de valer: es la misma persona).
+		if err := s.accounts.AddMember(orgID, existing.ID, req.Role); err != nil {
+			return nil, err
+		}
+		return s.sendWelcome(ctx, existing, org, inviter, lang)
+	}
 	if err == nil {
 		if err := s.invites.Create(orgID, existing.ID, inviterID, req.Role); err != nil {
 			return nil, err
@@ -241,21 +251,27 @@ func (s *AccountService) ForgotPassword(ctx context.Context, login, lang string)
 	if s.mail == nil {
 		return ErrMailOff
 	}
-	u, err := s.accounts.FindByLogin(login)
-	if err != nil || u.SetupPending || u.Email == "" {
-		return nil
+	// Todo aparte, también buscar la cuenta y crear el enlace: si sólo el
+	// correo saliera aparte, una cuenta que existe tardaría lo que tardan esas
+	// escrituras, y medir la respuesta diría qué cuentas hay.
+	work := func(ctx context.Context) {
+		u, err := s.accounts.FindByLogin(login)
+		if err != nil || u.SetupPending || u.Email == "" {
+			return
+		}
+		token, err := s.newLink(u.ID, domain.LinkReset, "", u.ID, resetTTL)
+		if err != nil {
+			lg.Error("forgot password: " + err.Error())
+			return
+		}
+		s.send(ctx, renderEmail(emailLocale(u.Locale, lang), s.publicURL, u.Email, mailReset,
+			map[string]string{"username": u.Username, "name": displayName(u)},
+			s.publicURL+"/app/reset-password#"+token))
 	}
-	token, err := s.newLink(u.ID, domain.LinkReset, "", u.ID, resetTTL)
-	if err != nil {
-		return err
-	}
-	e := renderEmail(emailLocale(u.Locale, lang), s.publicURL, u.Email, mailReset,
-		map[string]string{"username": u.Username, "name": displayName(u)},
-		s.publicURL+"/app/reset-password#"+token)
 	if s.async {
-		go s.send(context.WithoutCancel(ctx), e)
+		go work(context.WithoutCancel(ctx))
 	} else {
-		s.send(ctx, e)
+		work(ctx)
 	}
 	return nil
 }

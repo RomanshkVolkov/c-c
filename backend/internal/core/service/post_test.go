@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
+	"github.com/guz-studio/cac/backend/internal/core/events"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -595,5 +596,64 @@ func TestAnAgentDraftsAnnouncementsAndAPersonPublishesThem(t *testing.T) {
 	}
 	if _, err := f.svc.Get(f.as("dani"), draft.ID); err != nil {
 		t.Fatalf("publicado, otra org no lo ve: %v", err)
+	}
+}
+
+// avisosConHub: la campana que mira, al escribir cada fila, si el evento ya
+// salió. Así se ve el orden: la fila tiene que estar antes que el evento,
+// porque el evento es lo que hace releer la campana.
+type avisosConHub struct {
+	avisosEspia
+	ch    <-chan events.Event
+	tarde bool
+}
+
+func (a *avisosConHub) Notify(n domain.Aviso) {
+	if len(a.ch) > 0 {
+		a.tarde = true
+	}
+	a.avisosEspia.Notify(n)
+}
+
+// El evento de lo nuevo sale después de escribir la campana, y lo de un
+// borrador no se anuncia más que a su autor. Roturas que detecta: anunciar
+// antes de escribir la fila; anunciar el borrador a todos.
+func TestTheBellIsWrittenBeforeTheEventAndDraftsStayPrivate(t *testing.T) {
+	f := wallSetup(t)
+	hub := events.NewHub()
+	rootCh, offRoot := hub.SubscribeAll("u-root")
+	defer offRoot()
+	anaCh, offAna := hub.SubscribeAll("u-ana")
+	defer offAna()
+	bell := &avisosConHub{ch: rootCh}
+	f.svc.hub = hub
+	f.svc.inbox = bell
+
+	f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Body: "x"})
+	if len(bell.to("post:feedback")) == 0 || bell.tarde {
+		t.Fatalf("la campana se escribió después del evento (o no se escribió): %+v", bell.got)
+	}
+	for len(anaCh) > 0 {
+		<-anaCh
+	}
+	for len(rootCh) > 0 {
+		<-rootCh
+	}
+
+	token := *f.as("root")
+	token.ViaToken = true
+	draft, err := f.svc.Create(&token, domain.ViaMCP, domain.CreatePostRequest{Kind: domain.PostAnnouncement, Body: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Comment(f.as("root"), "", draft.ID, domain.CreatePostCommentRequest{Body: "nota"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if len(anaCh) != 0 {
+		t.Fatalf("otra persona recibió %d eventos de un borrador", len(anaCh))
+	}
+	if len(rootCh) == 0 {
+		t.Fatal("el autor no recibió los eventos de su borrador")
 	}
 }
