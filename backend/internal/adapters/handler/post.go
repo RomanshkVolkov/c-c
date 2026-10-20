@@ -64,6 +64,50 @@ func (h *PostHandler) Create(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.PostDetailResponse]{Success: true, Data: out})
 }
 
+func (h *PostHandler) Update(w http.ResponseWriter, r *http.Request) {
+	c, _ := currentUser(r)
+	req, err := ValidateRequest[domain.UpdatePostRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.svc.Update(c, chi.URLParam(r, "id"), req)
+	if err != nil {
+		postError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.PostDetailResponse]{Success: true, Data: out})
+}
+
+func (h *PostHandler) Pin(w http.ResponseWriter, r *http.Request) {
+	c, _ := currentUser(r)
+	req, err := ValidateRequest[domain.PinPostRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.svc.Pin(c, chi.URLParam(r, "id"), req.Pinned)
+	if err != nil {
+		postError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.PostDetailResponse]{Success: true, Data: out})
+}
+
+func (h *PostHandler) ReactComment(w http.ResponseWriter, r *http.Request) {
+	c, _ := currentUser(r)
+	req, err := ValidateRequest[domain.ReactionRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	if err := h.svc.ReactComment(c, chi.URLParam(r, "id"), chi.URLParam(r, "commentId"), req); err != nil {
+		postError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true})
+}
+
 func (h *PostHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	c, _ := currentUser(r)
 	if err := h.svc.Delete(c, chi.URLParam(r, "id")); err != nil {

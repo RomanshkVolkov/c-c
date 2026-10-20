@@ -33,16 +33,29 @@ const postSelect = `p.*,
 	COALESCE((SELECT name FROM organizations WHERE id = p.org_id), '') AS org_name,
 	(SELECT count(*) FROM post_comments c WHERE c.post_id = p.id) AS comments`
 
-// isAnnouncement ordena los comunicados delante. La paginación sigue la misma
-// clave (comunicado, fecha, id), así que la segunda página empieza justo donde
-// acabó la primera aunque mezcle las dos clases.
-const isAnnouncement = `(CASE WHEN p.kind = 'announcement' THEN 1 ELSE 0 END)`
+// WallLeadSQL ordena delante lo fijado y después los comunicados: 3 un comunicado
+// fijado, 2 un feedback fijado, 1 un comunicado, 0 lo demás. La paginación
+// sigue la misma clave (lead, fecha, id), así que la segunda página empieza
+// justo donde acabó la primera aunque mezcle las clases.
+const WallLeadSQL = `((CASE WHEN p.pinned_at IS NOT NULL THEN 2 ELSE 0 END) + (CASE WHEN p.kind = 'announcement' THEN 1 ELSE 0 END))`
 
 // PostCursor: dónde acabó la página anterior.
 type PostCursor struct {
-	Announcement int
-	At           time.Time
-	ID           string
+	Lead int
+	At   time.Time
+	ID   string
+}
+
+// WallLead: la misma clave que WallLeadSQL, calculada en Go para el cursor.
+func WallLead(p *domain.Post) int {
+	lead := 0
+	if p.PinnedAt != nil {
+		lead += 2
+	}
+	if p.Kind == domain.PostAnnouncement {
+		lead++
+	}
+	return lead
 }
 
 // List: lo que ve alguien, comunicados primero y después lo más nuevo. `all`
@@ -60,10 +73,10 @@ func (r *PostRepository) List(orgs []string, all bool, after *PostCursor, limit 
 		}
 	}
 	if after != nil {
-		q = q.Where("("+isAnnouncement+", p.created_at, p.id) < (?, ?, ?)", after.Announcement, after.At, after.ID)
+		q = q.Where("("+WallLeadSQL+", p.created_at, p.id) < (?, ?, ?)", after.Lead, after.At, after.ID)
 	}
 	var rows []PostRow
-	err := q.Order(isAnnouncement + " DESC, p.created_at DESC, p.id DESC").Limit(limit).Scan(&rows).Error
+	err := q.Order(WallLeadSQL + " DESC, p.created_at DESC, p.id DESC").Limit(limit).Scan(&rows).Error
 	return rows, err
 }
 
@@ -120,6 +133,22 @@ func (r *PostRepository) Comments(postID string) ([]domain.PostCommentResponse, 
 	return out, err
 }
 
+// Update aplica lo que cambió su autor y engancha las imágenes nuevas que
+// cite el cuerpo.
+func (r *PostRepository) Update(id, authorID string, fields map[string]any, attachmentIDs []string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&domain.Post{}).Where("id = ?", id).Updates(fields).Error; err != nil {
+			return err
+		}
+		return claimAttachments(tx, id, authorID, attachmentIDs)
+	})
+}
+
+// SetPinned fija (con la hora) o suelta una publicación.
+func (r *PostRepository) SetPinned(id string, at *time.Time) error {
+	return r.db.Model(&domain.Post{}).Where("id = ?", id).Update("pinned_at", at).Error
+}
+
 func (r *PostRepository) FindComment(postID, commentID string) (*domain.PostComment, error) {
 	var c domain.PostComment
 	err := r.db.Where("id = ? AND post_id = ?", commentID, postID).Take(&c).Error
@@ -129,8 +158,15 @@ func (r *PostRepository) FindComment(postID, commentID string) (*domain.PostComm
 	return &c, err
 }
 
+// DeleteComment se lleva también sus reacciones.
 func (r *PostRepository) DeleteComment(id string) error {
-	return r.db.Delete(&domain.PostComment{}, "id = ?", id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("target = ? AND message_id = ?", domain.ReactionPostComment, id).
+			Delete(&domain.ChatReaction{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&domain.PostComment{}, "id = ?", id).Error
+	})
 }
 
 // CommenterIDs: quienes ya comentaron, para avisarles del siguiente.
@@ -146,6 +182,8 @@ func (r *PostRepository) CommenterIDs(postID string) ([]string, error) {
 func (r *PostRepository) Delete(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for _, q := range []*gorm.DB{
+			tx.Where("target = ? AND message_id IN (SELECT id FROM post_comments WHERE post_id = ?)",
+				domain.ReactionPostComment, id).Delete(&domain.ChatReaction{}),
 			tx.Where("post_id = ?", id).Delete(&domain.PostComment{}),
 			tx.Where("target = ? AND message_id = ?", domain.ReactionPost, id).Delete(&domain.ChatReaction{}),
 			tx.Where("post_id = ?", id).Delete(&domain.PostAttachment{}),

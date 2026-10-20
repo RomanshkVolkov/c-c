@@ -73,6 +73,12 @@ func canDelete(p *domain.Post, c *domain.ClaimsJWT) bool {
 	return member && p.OrgID != "" && role == domain.OrgRoleAdmin
 }
 
+// canEdit: sólo quien la escribió. Moderar es borrar, no reescribir lo que
+// dijo otra persona.
+func canEdit(p *domain.Post, c *domain.ClaimsJWT) bool {
+	return p.AuthorID == c.UserID
+}
+
 func (s *PostService) visible(id string, c *domain.ClaimsJWT) (*repository.PostRow, error) {
 	row, err := s.repo.Find(id)
 	if err != nil {
@@ -105,11 +111,7 @@ func (s *PostService) List(c *domain.ClaimsJWT, cursor string) (*domain.PostPage
 	page := &domain.PostPage{Posts: out}
 	if len(rows) == postPageSize {
 		last := rows[len(rows)-1]
-		ann := 0
-		if last.Kind == domain.PostAnnouncement {
-			ann = 1
-		}
-		page.NextCursor = fmt.Sprintf("%d|%d|%s", ann, last.CreatedAt.UnixNano(), last.ID)
+		page.NextCursor = fmt.Sprintf("%d|%d|%s", repository.WallLead(&last.Post), last.CreatedAt.UnixNano(), last.ID)
 	}
 	return page, nil
 }
@@ -122,12 +124,12 @@ func parsePostCursor(raw string) (*repository.PostCursor, error) {
 	if len(parts) != 3 {
 		return nil, ErrPostBadCursor
 	}
-	ann, err1 := strconv.Atoi(parts[0])
+	lead, err1 := strconv.Atoi(parts[0])
 	ns, err2 := strconv.ParseInt(parts[1], 10, 64)
-	if err1 != nil || err2 != nil || (ann != 0 && ann != 1) {
+	if err1 != nil || err2 != nil || lead < 0 || lead > 3 {
 		return nil, ErrPostBadCursor
 	}
-	return &repository.PostCursor{Announcement: ann, At: time.Unix(0, ns), ID: parts[2]}, nil
+	return &repository.PostCursor{Lead: lead, At: time.Unix(0, ns), ID: parts[2]}, nil
 }
 
 func (s *PostService) responses(rows []repository.PostRow, c *domain.ClaimsJWT) ([]domain.PostResponse, error) {
@@ -149,6 +151,10 @@ func (s *PostService) responses(rows []repository.PostRow, c *domain.ClaimsJWT) 
 			// Lo tuyo nunca es nuevo para ti.
 			Unseen:    r.AuthorID != c.UserID && r.CreatedAt.After(seen),
 			CanDelete: canDelete(&r.Post, c),
+			CanEdit:   canEdit(&r.Post, c),
+			CanPin:    c.Superadmin,
+			Pinned:    r.PinnedAt != nil,
+			EditedAt:  r.EditedAt,
 		}
 		if out[i].Reactions == nil {
 			out[i].Reactions = []domain.ReactionSummary{}
@@ -171,8 +177,20 @@ func (s *PostService) Get(c *domain.ClaimsJWT, id string) (*domain.PostDetailRes
 	if err != nil {
 		return nil, err
 	}
+	commentIDs := make([]string, len(comments))
+	for i := range comments {
+		commentIDs[i] = comments[i].ID
+	}
+	commentReactions, err := s.reactions.Summaries(domain.ReactionPostComment, commentIDs, c.UserID)
+	if err != nil {
+		return nil, err
+	}
 	for i := range comments {
 		comments[i].CanDelete = comments[i].AuthorID == c.UserID || canDelete(&row.Post, c)
+		comments[i].Reactions = commentReactions[comments[i].ID]
+		if comments[i].Reactions == nil {
+			comments[i].Reactions = []domain.ReactionSummary{}
+		}
 	}
 	if comments == nil {
 		comments = []domain.PostCommentResponse{}
@@ -233,6 +251,67 @@ func (s *PostService) notifyFeedback(p *domain.Post) {
 			Group: domain.PostGroup(p.ID), Label: row.OrgName,
 		})
 	}
+}
+
+// Update: su autor cambia el título, el texto o, en un feedback, la audiencia.
+// Queda marcada como editada.
+func (s *PostService) Update(c *domain.ClaimsJWT, id string, req domain.UpdatePostRequest) (*domain.PostDetailResponse, error) {
+	row, err := s.visible(id, c)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit(&row.Post, c) {
+		return nil, ErrPostForbidden
+	}
+	now := s.now()
+	fields := map[string]any{"edited_at": now}
+	body := row.Body
+	if req.Title != nil {
+		fields["title"] = strings.TrimSpace(*req.Title)
+	}
+	if req.Body != nil {
+		fields["body"] = *req.Body
+		body = *req.Body
+	}
+	if req.Audience != nil && row.Kind == domain.PostFeedback {
+		fields["audience"] = *req.Audience
+	}
+	if err := s.repo.Update(id, c.UserID, fields, citedAttachments(body)); err != nil {
+		return nil, err
+	}
+	// A quien la veía antes y a quien la ve ahora: cambiar la audiencia mueve
+	// quién la tiene en pantalla.
+	updated := row.Post
+	if a, ok := fields["audience"].(string); ok {
+		updated.Audience = a
+	}
+	s.publish(&row.Post, "post:updated", map[string]string{"postId": id, "actorId": c.UserID})
+	if updated.Audience != row.Audience {
+		s.publish(&updated, "post:updated", map[string]string{"postId": id, "actorId": c.UserID})
+	}
+	return s.Get(c, id)
+}
+
+// Pin: sólo un superadmin fija, porque lo fijado va arriba del muro de todos
+// los que lo ven.
+func (s *PostService) Pin(c *domain.ClaimsJWT, id string, pinned bool) (*domain.PostDetailResponse, error) {
+	if !c.Superadmin {
+		return nil, ErrPostForbidden
+	}
+	row, err := s.visible(id, c)
+	if err != nil {
+		return nil, err
+	}
+	var at *time.Time
+	if pinned {
+		now := s.now()
+		at = &now
+	}
+	if err := s.repo.SetPinned(id, at); err != nil {
+		return nil, err
+	}
+	s.publish(&row.Post, "post:updated", map[string]string{"postId": id, "actorId": c.UserID})
+	return s.Get(c, id)
 }
 
 func (s *PostService) Delete(c *domain.ClaimsJWT, id string) error {
@@ -326,6 +405,26 @@ func (s *PostService) React(c *domain.ClaimsJWT, id string, req domain.ReactionR
 		return err
 	}
 	s.publish(&row.Post, "post:reaction", map[string]string{"postId": id, "actorId": c.UserID})
+	return nil
+}
+
+// ReactComment: reaccionar a un comentario es para quien ve la publicación,
+// y el comentario tiene que ser de ella.
+func (s *PostService) ReactComment(c *domain.ClaimsJWT, postID, commentID string, req domain.ReactionRequest) error {
+	if !domain.ValidReaction(req.Emoji) {
+		return ErrBadReaction
+	}
+	row, err := s.visible(postID, c)
+	if err != nil {
+		return err
+	}
+	if _, err := s.repo.FindComment(postID, commentID); err != nil {
+		return err
+	}
+	if err := s.reactions.Set(domain.ReactionPostComment, commentID, c.UserID, req.Emoji, req.On); err != nil {
+		return err
+	}
+	s.publish(&row.Post, "post:reaction", map[string]string{"postId": postID, "commentId": commentID, "actorId": c.UserID})
 	return nil
 }
 

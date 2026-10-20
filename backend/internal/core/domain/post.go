@@ -33,6 +33,10 @@ type Post struct {
 	Audience string `gorm:"type:varchar(20);not null" json:"audience"`
 	Title    string `gorm:"type:varchar(140)" json:"title"`
 	Body     string `gorm:"type:text;not null" json:"body"`
+	// EditedAt: la última vez que su autor la cambió. Nil si nunca.
+	EditedAt *time.Time `json:"editedAt,omitempty"`
+	// PinnedAt: fijada arriba del muro por un superadmin, y desde cuándo.
+	PinnedAt *time.Time `gorm:"index" json:"pinnedAt,omitempty"`
 }
 
 type PostComment struct {
@@ -84,6 +88,18 @@ type CreatePostRequest struct {
 	Body     string `json:"body" validate:"required,min=1,max=20000"`
 }
 
+// UpdatePostRequest: lo que puede cambiar quien la escribió. Nil es «igual».
+// La audiencia sólo en un feedback: un comunicado es siempre de todos.
+type UpdatePostRequest struct {
+	Title    *string `json:"title" validate:"omitempty,max=140"`
+	Body     *string `json:"body" validate:"omitempty,min=1,max=20000"`
+	Audience *string `json:"audience" validate:"omitempty,oneof=platform everyone"`
+}
+
+type PinPostRequest struct {
+	Pinned bool `json:"pinned"`
+}
+
 type CreatePostCommentRequest struct {
 	Body string `json:"body" validate:"required,min=1,max=8000"`
 }
@@ -102,8 +118,12 @@ type PostResponse struct {
 	Comments   int               `json:"comments"`
 	Reactions  []ReactionSummary `json:"reactions"`
 	// Unseen: publicado después de la última vez que quien mira abrió el muro.
-	Unseen    bool `json:"unseen"`
-	CanDelete bool `json:"canDelete"`
+	Unseen    bool       `json:"unseen"`
+	CanDelete bool       `json:"canDelete"`
+	CanEdit   bool       `json:"canEdit"`
+	CanPin    bool       `json:"canPin"`
+	Pinned    bool       `json:"pinned"`
+	EditedAt  *time.Time `json:"editedAt,omitempty"`
 }
 
 type PostCommentResponse struct {
@@ -114,6 +134,8 @@ type PostCommentResponse struct {
 	Body       string    `json:"body"`
 	CreatedAt  time.Time `json:"createdAt"`
 	CanDelete  bool      `json:"canDelete"`
+	// Reactions: las de este comentario (destino `post_comment`).
+	Reactions []ReactionSummary `json:"reactions" gorm:"-"`
 }
 
 type PostDetailResponse struct {

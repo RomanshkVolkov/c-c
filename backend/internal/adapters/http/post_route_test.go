@@ -21,6 +21,9 @@ func (stubPosts) React(w http.ResponseWriter, r *http.Request)         { ok(w, r
 func (stubPosts) Seen(w http.ResponseWriter, r *http.Request)          { ok(w, r) }
 func (stubPosts) Upload(w http.ResponseWriter, r *http.Request)        { ok(w, r) }
 func (stubPosts) Raw(w http.ResponseWriter, r *http.Request)           { ok(w, r) }
+func (stubPosts) Update(w http.ResponseWriter, r *http.Request)        { ok(w, r) }
+func (stubPosts) Pin(w http.ResponseWriter, r *http.Request)           { ok(w, r) }
+func (stubPosts) ReactComment(w http.ResponseWriter, r *http.Request)  { ok(w, r) }
 
 // Del muro, sólo los bytes de una imagen entran sin JWT (los pide un <img>, con
 // su propio `?token=` que mira el handler); todo lo demás, 401. Recorre el

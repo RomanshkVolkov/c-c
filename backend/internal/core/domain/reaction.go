@@ -27,6 +27,9 @@ const (
 	// ReactionPost: una publicación del muro (domain/post.go). Quién puede
 	// verla lo decide el muro, nunca esta tabla.
 	ReactionPost ReactionTarget = "post"
+	// ReactionPostComment: un comentario de una publicación del muro. Quién
+	// puede, lo decide la publicación.
+	ReactionPostComment ReactionTarget = "post_comment"
 )
 
 // ReactionEmojis es el juego cerrado que se acepta, en el orden del selector.

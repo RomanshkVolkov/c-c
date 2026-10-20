@@ -377,15 +377,23 @@ func TestTheWallPagesWithoutGapsOrRepeats(t *testing.T) {
 	// El comunicado, el más viejo: va primero igual, y es justo el caso en que
 	// paginar sólo por fecha lo vuelve a traer en la segunda página.
 	f.post(t, "root", domain.CreatePostRequest{Kind: domain.PostAnnouncement, Title: "anuncio", Body: "x"})
+	var oldest string
 	for i := 0; i < 22; i++ {
-		f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Title: fmt.Sprint("fb", i), Body: "x"})
+		id := f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Title: fmt.Sprint("fb", i), Body: "x"})
+		if i == 0 {
+			oldest = id
+		}
+	}
+	// Y el feedback más viejo, fijado: va delante incluso del comunicado.
+	if _, err := f.svc.Pin(f.as("root"), oldest, true); err != nil {
+		t.Fatal(err)
 	}
 	first, err := f.svc.List(f.as("bea"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Posts) != 20 || first.Posts[0].Title != "anuncio" || first.NextCursor == "" {
-		t.Fatalf("primera página: %d, primero %q, cursor %q", len(first.Posts), first.Posts[0].Title, first.NextCursor)
+	if len(first.Posts) != 20 || first.Posts[0].Title != "fb0" || !first.Posts[0].Pinned || first.Posts[1].Title != "anuncio" || first.NextCursor == "" {
+		t.Fatalf("primera página: %d, primeros %q y %q, cursor %q", len(first.Posts), first.Posts[0].Title, first.Posts[1].Title, first.NextCursor)
 	}
 	second, err := f.svc.List(f.as("bea"), first.NextCursor)
 	if err != nil {
@@ -400,5 +408,132 @@ func TestTheWallPagesWithoutGapsOrRepeats(t *testing.T) {
 	}
 	if len(seen) != 23 || second.NextCursor != "" {
 		t.Fatalf("entre las dos páginas salieron %d de 23 (cursor final %q)", len(seen), second.NextCursor)
+	}
+}
+
+// Editar es de quien la escribió: ni el admin de su org ni un superadmin
+// reescriben lo que dijo otra persona (moderar es borrar). Cambiar la
+// audiencia cambia quién la ve, y un comunicado sigue siendo de todos.
+// Mutantes: dejar editar al admin; no marcarla como editada; dejar que un
+// comunicado deje de ser de todos.
+func TestOnlyTheAuthorEditsAPost(t *testing.T) {
+	f := wallSetup(t)
+	id := f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Title: "antes", Body: "x"})
+	title, everyone := "después", domain.AudienceEveryone
+	for _, who := range []string{"ana", "root"} {
+		if _, err := f.svc.Update(f.as(who), id, domain.UpdatePostRequest{Title: &title}); !errors.Is(err, ErrPostForbidden) {
+			t.Fatalf("%s editó la publicación de otra → %v", who, err)
+		}
+	}
+	if _, err := f.svc.Get(f.as("dani"), id); !errors.Is(err, repository.ErrPostNotFound) {
+		t.Fatalf("antes de cambiarla, otra org la ve → %v", err)
+	}
+	out, err := f.svc.Update(f.as("bea"), id, domain.UpdatePostRequest{Title: &title, Audience: &everyone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Title != "después" || out.EditedAt == nil || out.Audience != everyone || !out.CanEdit {
+		t.Fatalf("después de editar: %+v", out.PostResponse)
+	}
+	if _, err := f.svc.Get(f.as("dani"), id); err != nil {
+		t.Fatalf("pasada a «para todos», otra org no la ve: %v", err)
+	}
+	if got, _ := f.svc.Get(f.as("ana"), id); got.CanEdit {
+		t.Fatal("al admin se le ofrece editar lo de otra persona")
+	}
+
+	ann := f.post(t, "root", domain.CreatePostRequest{Kind: domain.PostAnnouncement, Body: "x"})
+	platform := domain.AudiencePlatform
+	out, err = f.svc.Update(f.as("root"), ann, domain.UpdatePostRequest{Audience: &platform})
+	if err != nil || out.Audience != domain.AudienceEveryone {
+		t.Fatalf("un comunicado dejó de ser de todos: %v %+v", err, out)
+	}
+}
+
+// Fijar es sólo de un superadmin, y se puede soltar. Mutante: dejar fijar a
+// cualquiera.
+func TestOnlyASuperadminPins(t *testing.T) {
+	f := wallSetup(t)
+	id := f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Audience: domain.AudienceEveryone, Body: "x"})
+	for _, who := range []string{"bea", "ana"} {
+		if _, err := f.svc.Pin(f.as(who), id, true); !errors.Is(err, ErrPostForbidden) {
+			t.Fatalf("%s fijó → %v", who, err)
+		}
+	}
+	out, err := f.svc.Pin(f.as("root"), id, true)
+	if err != nil || !out.Pinned {
+		t.Fatalf("el superadmin no pudo fijar: %v", err)
+	}
+	if out, _ := f.svc.Pin(f.as("root"), id, false); out.Pinned {
+		t.Fatal("no se soltó")
+	}
+}
+
+// Las reacciones de un comentario siguen a la publicación: quien no la ve no
+// reacciona, un comentario de otra publicación no vale, y borrar el
+// comentario o la publicación se las lleva. Mutantes: no mirar la
+// publicación; no mirar que el comentario sea de ella; dejarlas al borrar.
+func TestCommentReactionsFollowThePost(t *testing.T) {
+	f := wallSetup(t)
+	id := f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Body: "x"})
+	other := f.post(t, "bea", domain.CreatePostRequest{Kind: domain.PostFeedback, OrgID: "org-1", Body: "y"})
+	out, _ := f.svc.Comment(f.as("ana"), id, domain.CreatePostCommentRequest{Body: "c"})
+	cid := out.CommentList[0].ID
+	thumbs := domain.ReactionRequest{Emoji: "👍", On: true}
+	if err := f.svc.ReactComment(f.as("vic"), id, cid, thumbs); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.svc.Get(f.as("vic"), id)
+	if r := got.CommentList[0].Reactions; len(r) != 1 || r[0].Count != 1 || !r[0].Mine {
+		t.Fatalf("las reacciones del comentario: %+v", r)
+	}
+	if err := f.svc.ReactComment(f.as("dani"), id, cid, thumbs); !errors.Is(err, repository.ErrPostNotFound) {
+		t.Fatalf("otra org reaccionó a un comentario de «solo cac» → %v", err)
+	}
+	if err := f.svc.ReactComment(f.as("vic"), other, cid, thumbs); !errors.Is(err, repository.ErrPostNotFound) {
+		t.Fatalf("un comentario de otra publicación valió → %v", err)
+	}
+	count := func() int64 {
+		var n int64
+		f.db.Model(&domain.ChatReaction{}).Where("target = ? AND message_id = ?", domain.ReactionPostComment, cid).Count(&n)
+		return n
+	}
+	if err := f.svc.DeleteComment(f.as("ana"), id, cid); err != nil {
+		t.Fatal(err)
+	}
+	if count() != 0 {
+		t.Fatal("al borrar el comentario quedaron sus reacciones")
+	}
+	out, _ = f.svc.Comment(f.as("ana"), id, domain.CreatePostCommentRequest{Body: "otra"})
+	cid = out.CommentList[0].ID
+	_ = f.svc.ReactComment(f.as("vic"), id, cid, thumbs)
+	if err := f.svc.Delete(f.as("bea"), id); err != nil {
+		t.Fatal(err)
+	}
+	if count() != 0 {
+		t.Fatal("al borrar la publicación quedaron las reacciones de sus comentarios")
+	}
+}
+
+// La clave del cursor (Go) tiene que ser la misma que ordena el muro (SQL):
+// si no, la segunda página empieza en otro sitio en cuanto lo fijado llega al
+// borde de una página. Se compara contra lo que devuelve la base para cada
+// combinación. Mutante: que el cursor olvide lo fijado.
+func TestTheCursorKeyIsTheWallOrder(t *testing.T) {
+	f := wallSetup(t)
+	now := time.Now()
+	for _, c := range []struct {
+		kind   string
+		pinned bool
+	}{{domain.PostFeedback, false}, {domain.PostAnnouncement, false}, {domain.PostFeedback, true}, {domain.PostAnnouncement, true}} {
+		p := domain.Post{Kind: c.kind}
+		if c.pinned {
+			p.PinnedAt = &now
+		}
+		var sqlLead int
+		f.db.Raw(`SELECT `+repository.WallLeadSQL+` FROM (SELECT ?::text AS kind, ?::timestamptz AS pinned_at) p`, c.kind, p.PinnedAt).Scan(&sqlLead)
+		if got := repository.WallLead(&p); got != sqlLead {
+			t.Errorf("%s fijado=%v: el cursor dice %d y el orden %d", c.kind, c.pinned, got, sqlLead)
+		}
 	}
 }
