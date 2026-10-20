@@ -200,5 +200,14 @@
   "backup-target-gone": "The database was removed while its backup was queued.",
   "bad-rotate-command": "The rotation command has to be a single line.",
   "rotate-needs-a-person": "The rotation command runs on the server and receives the secrets: change it in the app, not with a token.",
-  "deploy-needs-repo": "That service has no GitHub repo."
+  "deploy-needs-repo": "That service has no GitHub repo.",
+  "link-invalid": "This link no longer works: it may have been used already or expired.",
+  "username-taken": "That username is taken. Choose another one.",
+  "bad-username": "That username isn't valid: lowercase letters, numbers, dot, dash or underscore, 3 to 40.",
+  "email-taken": "That email already has an account.",
+  "already-member": "Already a member of this organization.",
+  "invitation-exists": "They already have a pending invitation to this organization.",
+  "account-not-pending": "That account already finished signing up.",
+  "email-off": "This cac server doesn't have email set up.",
+  "account-failed": "Couldn't complete it. Try again in a moment."
 }

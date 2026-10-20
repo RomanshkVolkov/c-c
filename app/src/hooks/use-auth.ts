@@ -7,8 +7,20 @@ import { useOrgsStore } from "@/store/orgs.store";
 import { useInvitationsStore } from "@/store/invitations.store";
 import type { APIResponse, AuthResponse } from "@/types/auth";
 
+/**
+ * Abre la sesión con lo que devolvió el servidor: el login, y también el
+ * enlace del correo (terminar el registro, restablecer la contraseña).
+ */
+export function startSession(data: AuthResponse): AuthResponse {
+  const { session, accessToken, refreshToken } = data;
+  useAuthStore.getState().setAuth(session, accessToken, refreshToken);
+  // Entrar en la aplicación es enterarse de en qué idioma la lees.
+  adoptServerLocale(session);
+  return data;
+}
+
 export function useAuth() {
-  const { session, setAuth, clearAuth, isAuthenticated } = useAuthStore();
+  const { session, clearAuth, isAuthenticated } = useAuthStore();
 
   const login = async (username: string, password: string) => {
     const res = await api.post<APIResponse<AuthResponse>>("/api/v1/auth/login", {
@@ -22,12 +34,7 @@ export function useAuth() {
     if (!res.success || !res.data) {
       throw new Error(res.error ?? "Login failed");
     }
-
-    const { session, accessToken, refreshToken } = res.data;
-    setAuth(session, accessToken, refreshToken);
-    // Entrar en la aplicación es enterarse de en qué idioma la lees.
-    adoptServerLocale(session);
-    return res.data;
+    return startSession(res.data);
   };
 
   const logout = () => {

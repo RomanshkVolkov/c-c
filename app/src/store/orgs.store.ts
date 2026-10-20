@@ -10,6 +10,8 @@ import type {
   AddMemberPayload,
   Invitation,
   CreateInvitationPayload,
+  CreateAccountPayload,
+  CreateAccountResponse,
 } from "@/types/organization";
 
 interface OrgsState {
@@ -53,6 +55,10 @@ interface OrgsState {
   createInvitation: (orgId: string, payload: CreateInvitationPayload) => Promise<void>;
   revokeInvitation: (orgId: string, invitationId: string) => Promise<void>;
   resendInvitation: (orgId: string, invitationId: string) => Promise<void>;
+  /** Dar de alta por correo: la cuenta nueva, o la invitación si ya existe. */
+  createAccount: (orgId: string, payload: CreateAccountPayload) => Promise<CreateAccountResponse>;
+  /** Otro enlace de bienvenida para quien no terminó el registro. */
+  resendAccountLink: (orgId: string, userId: string) => Promise<CreateAccountResponse>;
 }
 
 export const useOrgsStore = create<OrgsState>()(
@@ -208,6 +214,26 @@ export const useOrgsStore = create<OrgsState>()(
           true,
         );
         if (!res.success) throw new Error(res.error ?? "Failed to resend invitation");
+      },
+
+      createAccount: async (orgId, payload) => {
+        const res = await api.post<APIResponse<CreateAccountResponse>>(
+          `/api/v1/organizations/${orgId}/accounts`,
+          payload,
+          true,
+        );
+        if (!res.success || !res.data) throw new Error(res.error ?? "account-failed");
+        return res.data;
+      },
+
+      resendAccountLink: async (orgId, userId) => {
+        const res = await api.post<APIResponse<CreateAccountResponse>>(
+          `/api/v1/organizations/${orgId}/accounts/${userId}/resend`,
+          {},
+          true,
+        );
+        if (!res.success || !res.data) throw new Error(res.error ?? "account-failed");
+        return res.data;
       },
 
       revokeInvitation: async (orgId, invitationId) => {

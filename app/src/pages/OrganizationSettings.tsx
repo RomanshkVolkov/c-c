@@ -6,15 +6,15 @@ import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useState } from "react";
 import { useTasksStore } from "@/store/tasks.store";
 import { cn } from "@/lib/utils";
-import Initials from "@/components/ui/initials";
 import OrgIntegrations from "@/components/org/OrgIntegrations";
 import OrgGitHub from "@/components/org/OrgGitHub";
 import OrgMeetings from "@/components/org/OrgMeetings";
 import OrgSpaces from "@/components/org/OrgSpaces";
 import OrgInvitations from "@/components/org/OrgInvitations";
+import MemberName from "@/components/org/MemberName";
 import OrgGeneral from "@/components/org/OrgGeneral";
 import OrgSwitcher from "@/components/OrgSwitcher";
-import { Trash2, Search } from "lucide-react";
+import { Trash2, Search, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,9 @@ import {
 } from "@/components/ui/table";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { desde } from "@/lib/desde";
+import { codigoDe } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
+import { phraseFor } from "@/lib/server-errors";
 import { useOrgsStore } from "@/store/orgs.store";
 import { useAuthStore } from "@/store/auth.store";
 import type { OrgMember, OrgRole, Invitation } from "@/types/organization";
@@ -70,6 +73,29 @@ export default function OrganizationSettings() {
   const confirm = useConfirm();
 
   const listMembers = useOrgsStore((s) => s.listMembers);
+  const resendAccountLink = useOrgsStore((s) => s.resendAccountLink);
+
+  // Otro enlace para quien no terminó el registro. Si el correo no sale, el
+  // enlace se ofrece para copiarlo, igual que al dar de alta.
+  const resendLink = async (m: OrgMember) => {
+    if (!current) return;
+    try {
+      const out = await resendAccountLink(current.id, m.userId);
+      if (out.emailSent) {
+        toast.success(t("common:account.resent"));
+      } else if (out.link) {
+        const link = out.link;
+        toast.info(t("common:account.linkTitle"), {
+          description: t("common:account.linkLead", { name: m.name || m.email || "" }),
+          duration: 30000,
+          action: { label: t("common:account.copyLink"), onClick: () => void copyText(link) },
+        });
+      }
+    } catch (e) {
+      const code = codigoDe(e) || (e instanceof Error ? e.message : "");
+      toast.error(phraseFor(code, t("errors:account-failed")));
+    }
+  };
   const addMember = useOrgsStore((s) => s.addMember);
   const updateMemberRole = useOrgsStore((s) => s.updateMemberRole);
   const removeMember = useOrgsStore((s) => s.removeMember);
@@ -324,15 +350,7 @@ export default function OrganizationSettings() {
                     visibles.map((m) => (
                       <TableRow key={m.userId}>
                         <TableCell className="font-medium">
-                          <span className="flex items-center gap-2">
-                            <Initials colorKey={m.username} text={m.username.slice(0, 2)} className="size-6 text-[10px]" />
-                            <span className="min-w-0">
-                              <span className="block truncate">{m.username}</span>
-                              <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                                @{m.username}
-                              </span>
-                            </span>
-                          </span>
+                          <MemberName member={m} />
                         </TableCell>
                         <TableCell className="truncate text-xs text-muted-foreground">
                           {m.email || "—"}
@@ -370,6 +388,17 @@ export default function OrganizationSettings() {
                               <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
                                 you
                               </span>
+                            )}
+                            {canManage && m.setupPending && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void resendLink(m)}
+                                title={t("common:account.resend")}
+                                aria-label={t("common:account.resend")}
+                              >
+                                <RotateCw className="size-3" />
+                              </Button>
                             )}
                             {canManage && (
                               <Button

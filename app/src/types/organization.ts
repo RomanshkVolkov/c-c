@@ -36,6 +36,8 @@ export interface OrgMember {
   role: OrgRole;
   /** Absent means the account has done nothing since this began being kept. */
   lastSeenAt?: string | null;
+  /** Dada de alta por correo y sin terminar el registro: se le puede reenviar el enlace. */
+  setupPending?: boolean;
 }
 
 export interface CreateOrganizationPayload {
@@ -73,4 +75,20 @@ export interface CreateInvitationPayload {
 const RANK: Record<OrgRole, number> = { admin: 3, member: 2, viewer: 1 };
 export function roleAtLeast(have: OrgRole, min: OrgRole): boolean {
   return RANK[have] >= RANK[min];
+}
+
+/** Dar de alta por correo (ver `backend/internal/core/domain/account.go`). */
+export interface CreateAccountPayload {
+  name: string;
+  email: string;
+  role: OrgRole;
+}
+
+export interface CreateAccountResponse {
+  /** `created`: cuenta nueva; `invited`: el correo ya tenía cuenta. */
+  status: "created" | "invited";
+  userId: string;
+  emailSent: boolean;
+  /** Sólo si el correo no salió: el enlace para pasarlo a mano. */
+  link?: string;
 }

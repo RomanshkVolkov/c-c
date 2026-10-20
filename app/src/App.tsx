@@ -54,6 +54,9 @@ const DevTools = WEB ? NotOnWeb : lazy(() => import("@/pages/DevTools"));
 // La puerta del invitado sólo existe en la web: es a donde lleva el enlace, y
 // quien lo abre no tiene la app.
 const JoinCall = WEB ? lazy(() => import("@/pages/JoinCall")) : NotOnWeb;
+// Y a donde lleva el enlace del correo (alta y restablecer la contraseña):
+// también sólo la web, que es lo que abre un enlace.
+const AccountLink = WEB ? lazy(() => import("@/pages/AccountLink")) : NotOnWeb;
 
 // Sends unknown paths to the right landing: the overview for signed-in users,
 // the on-device tools for returning guests, otherwise the login screen.
@@ -85,6 +88,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         {/* Fuera de `ProtectedRoute`: quien entra por aquí no tiene cuenta. */}
         {isWebBuild && <Route path="/join" element={<JoinCall />} />}
+        {isWebBuild && <Route path="/welcome" element={<AccountLink mode="welcome" />} />}
+        {isWebBuild && <Route path="/reset-password" element={<AccountLink mode="reset" />} />}
         <Route
           element={
             <ProtectedRoute>

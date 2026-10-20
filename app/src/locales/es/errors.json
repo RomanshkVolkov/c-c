@@ -200,5 +200,14 @@
   "backup-target-gone": "La base se quitó mientras su backup esperaba en cola.",
   "bad-rotate-command": "El comando para rotar tiene que ser una sola línea.",
   "rotate-needs-a-person": "El comando para rotar corre en el servidor y recibe los secrets: se cambia desde la app, no con un token.",
-  "deploy-needs-repo": "Ese servicio no tiene repo de GitHub."
+  "deploy-needs-repo": "Ese servicio no tiene repo de GitHub.",
+  "link-invalid": "Este enlace ya no vale: puede que ya se usara o que caducara.",
+  "username-taken": "Ese usuario ya está ocupado. Elige otro.",
+  "bad-username": "Ese usuario no vale: en minúsculas, letras, números, punto, guion o guion bajo, de 3 a 40.",
+  "email-taken": "Ese correo ya tiene una cuenta.",
+  "already-member": "Ya es miembro de esta organización.",
+  "invitation-exists": "Ya tiene una invitación pendiente a esta organización.",
+  "account-not-pending": "Esa cuenta ya terminó su registro.",
+  "email-off": "Este servidor de cac no tiene el correo configurado.",
+  "account-failed": "No se pudo completar. Prueba otra vez en un momento."
 }

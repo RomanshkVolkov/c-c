@@ -7,6 +7,9 @@ import { z } from "zod";
 import { useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
+import { publicAccount } from "@/lib/account-links";
+import { codigoDe } from "@/lib/api";
+import { phraseFor } from "@/lib/server-errors";
 import { useAuthStore } from "@/store/auth.store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,8 +47,25 @@ export default function Login() {
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
+
+  // «Olvidé mi contraseña»: la misma tarjeta, con un solo campo. La respuesta
+  // es la misma exista o no la cuenta (el servidor no lo dice), así que lo que
+  // se enseña después tampoco.
+  const [forgot, setForgot] = useState<null | { login: string; sent: boolean; busy: boolean; error: string | null }>(null);
+  const askLink = async () => {
+    if (!forgot || !forgot.login.trim() || forgot.busy) return;
+    setForgot({ ...forgot, busy: true, error: null });
+    try {
+      await publicAccount.forgot(forgot.login);
+      setForgot({ ...forgot, busy: false, sent: true, error: null });
+    } catch (err) {
+      const code = codigoDe(err) || (err instanceof Error ? err.message : "");
+      setForgot({ ...forgot, busy: false, error: phraseFor(code, t("errors:account-failed")) });
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
     setError(null);
@@ -75,6 +95,51 @@ export default function Login() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {forgot ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void askLink();
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-1">
+                <p className="font-medium">{t("common:account.forgotTitle")}</p>
+                <p className="text-sm text-muted-foreground">{t("common:account.forgotLead")}</p>
+              </div>
+              {forgot.sent ? (
+                <p role="status" className="rounded-md bg-muted px-3 py-2 text-sm">
+                  {t("common:account.forgotSent")}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-login">{t("common:account.forgotLogin")}</Label>
+                  <Input
+                    id="forgot-login"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={forgot.login}
+                    onChange={(e) => setForgot({ ...forgot, login: e.target.value })}
+                  />
+                </div>
+              )}
+              {forgot.error && (
+                <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {forgot.error}
+                </p>
+              )}
+              {!forgot.sent && (
+                <Button type="submit" className="w-full" disabled={!forgot.login.trim() || forgot.busy}>
+                  {t("common:account.forgotSend")}
+                </Button>
+              )}
+              <Button type="button" variant="ghost" className="w-full" onClick={() => setForgot(null)}>
+                {t("common:account.backToSignIn")}
+              </Button>
+            </form>
+          ) : (<>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">{t("common:misc.username")}</Label>
@@ -106,6 +171,13 @@ export default function Login() {
                   {t(errors.password.message as MessageKey)}
                 </p>
               )}
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                onClick={() => setForgot({ login: getValues("username") ?? "", sent: false, busy: false, error: null })}
+              >
+                {t("common:account.forgot")}
+              </button>
             </div>
 
             {error && (
@@ -138,6 +210,7 @@ export default function Login() {
           <p className="mt-2 text-center text-xs text-muted-foreground">
             Guest access is limited to the on-device tools (Image Tool, Crypto Tools).
           </p>
+          </>)}
           </>)}
         </CardContent>
       </Card>

@@ -183,6 +183,9 @@ type MemberResponse struct {
 	// account has not been used since this started being recorded, which the
 	// screen says as "never" rather than inventing a date.
 	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
+	// SetupPending: la dio de alta un admin y todavía no abrió el enlace del
+	// correo. La tabla lo marca y ofrece reenviarlo. Ver domain/account.go.
+	SetupPending bool `json:"setupPending,omitempty"`
 }
 
 type CreateInvitationRequest struct {

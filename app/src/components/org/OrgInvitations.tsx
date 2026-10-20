@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import UserPicker from "@/components/UserPicker";
+import OrgCreateAccount from "@/components/org/OrgCreateAccount";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOrgsStore } from "@/store/orgs.store";
 import { desde, faltan, vencio, iniciales } from "@/lib/desde";
@@ -140,6 +141,17 @@ export default function OrgInvitations({
 
   return (
     <div className="space-y-4">
+      {canManage && (
+        <OrgCreateAccount
+          orgId={orgId}
+          orgName={orgName}
+          defaultRole={defaultRole}
+          onDone={() => {
+            onAdded();
+            listOrgInvitations(orgId).then((i) => setInvites(() => i)).catch(() => {});
+          }}
+        />
+      )}
       {canManage && (
         <section className="space-y-3 rounded-xl border bg-card p-4">
           <Label className="text-sm font-medium">{t("org:inviteSomeone")}</Label>
