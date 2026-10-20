@@ -67,3 +67,19 @@ spec:
       backendRefs:
         - name: cac-web
           port: 80
+    # La raíz del dominio lleva a la web. Sin esto caía en la ruta del backend
+    # (su `PathPrefix /`) y contestaba 404: quien escribe sólo el dominio —un
+    # revisor de AWS, por ejemplo— veía un error. Exact gana a ese prefijo, así
+    # que no toca nada más del backend. Temporal (302): si un día la raíz sirve
+    # otra cosa, ningún navegador se queda con la redirección guardada.
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /app/
+            statusCode: 302
