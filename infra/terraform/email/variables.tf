@@ -27,3 +27,9 @@ variable "from_address" {
   default     = "no-responder@guz-studio.dev"
   description = "La única dirección desde la que las llaves de cac pueden enviar."
 }
+
+variable "alerts_email" {
+  type        = string
+  default     = "jose@guz-studio.dev"
+  description = "A quién le llega cada rebote, queja o rechazo de los correos de cac (notifications.tf)."
+}

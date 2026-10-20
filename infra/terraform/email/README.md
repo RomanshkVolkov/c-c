@@ -27,6 +27,23 @@ aws sesv2 get-email-identity --email-identity guz-studio.dev \
   --query '{dkim:DkimAttributes.Status,mailFrom:MailFromAttributes.MailFromDomainStatus}'
 ```
 
+## Avisos de lo que sale mal
+
+Cada rebote, queja, rechazo, fallo de plantilla o retraso de los correos de cac
+va al tema SNS `cac-ses-events`, y de ahí a `alerts_email` (ver
+`notifications.tf`). La suscripción se confirma **una vez** con el enlace que
+manda AWS; hasta entonces no llega nada.
+
+Para probarlo sin molestar a nadie, el simulador de SES (funciona también en el
+sandbox) — debe llegar el aviso de un rebote:
+
+```sh
+aws sesv2 send-email --region us-east-1 --configuration-set-name cac \
+  --from-email-address no-responder@guz-studio.dev \
+  --destination ToAddresses=bounce@simulator.amazonses.com \
+  --content 'Simple={Subject={Data=prueba},Body={Text={Data=prueba}}}'
+```
+
 ## Salir del sandbox
 
 Una cuenta nueva de SES sólo envía a direcciones verificadas, y 200 al día.
