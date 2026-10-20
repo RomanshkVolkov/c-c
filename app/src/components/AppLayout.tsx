@@ -20,6 +20,7 @@ import ConnectionBanner from "@/components/ConnectionBanner";
 import MobileTabBar from "@/components/mobile/MobileTabBar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isWebBuild } from "@/lib/platform";
+import { viaMediaScheme } from "@/lib/media";
 import { useOpenedFromPush } from "@/hooks/use-opened-from-push";
 import { useMediaTicket } from "@/lib/url-ticket";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -81,8 +82,9 @@ export default function AppLayout() {
   useWebviewCrash(authed);
 
   // El pase de adjuntos de la web (ver lib/url-ticket.ts). En el escritorio no
-  // hace falta: sus adjuntos van con cabecera.
-  const mediaReady = useMediaTicket(isWebBuild && authed);
+  // hace falta —sus adjuntos van con cabecera—, salvo en `bun tauri dev`, que
+  // los carga como la web (ver viaMediaScheme).
+  const mediaReady = useMediaTicket(!viaMediaScheme() && authed);
 
   // ⌘K anywhere, and Escape closes it because the dialog handles that itself.
   const [paletteOpen, setPaletteOpen] = useState(false);

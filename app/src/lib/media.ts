@@ -4,6 +4,24 @@ import { currentMediaTicket } from "@/lib/url-ticket";
 
 const inTauri = isTauri;
 
+/**
+ * Si la app de escritorio carga los adjuntos por su esquema propio.
+ *
+ * Siempre, salvo cuando la sirve el servidor de desarrollo de Vite: ahí la
+ * página es `http://localhost:1420`, y WebKitGTK no deja cargar `cacmedia://`
+ * desde un origen http («Unsafe attempt to load URL … Domains, protocols and
+ * ports must match»). La petición ni llegaba a Rust, y en `bun tauri dev`
+ * ninguna imagen subida se veía (20-oct-2026). En desarrollo va como la web:
+ * del backend, con el pase de adjuntos en la URL.
+ *
+ * Por el modo de Vite y no por el protocolo de la página: la app instalada en
+ * Windows también se sirve por http (`http://tauri.localhost`), y ahí el
+ * esquema sí carga.
+ */
+export function viaMediaScheme(tauri: boolean = inTauri, mode: string = import.meta.env.MODE): boolean {
+  return tauri && mode !== "development";
+}
+
 /** Must match media::SCHEME in the Rust core. */
 const MEDIA_SCHEME = "cacmedia";
 
@@ -72,7 +90,7 @@ export function mediaSrc(src: string | undefined): string | undefined {
   // In the app the bytes come through our own URI scheme, whose handler adds the
   // Authorization header in Rust — an <img> can't, which is why the token used
   // to ride the query string and end up in the server's access log.
-  if (inTauri) return convertFileSrc(path, MEDIA_SCHEME);
+  if (viaMediaScheme()) return convertFileSrc(path, MEDIA_SCHEME);
 
   // En el navegador no hay esquema propio: la credencial va en la URL, y por eso
   // es un pase de adjuntos y no el token de acceso (ver lib/url-ticket.ts). Un
