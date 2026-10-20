@@ -60,7 +60,9 @@
     "telemetry": "Device telemetry",
     "telemetryHint": "A device stops sending while it should, or its state breaks one of the project's error rules. Once when it starts and once when it ends.",
     "backups": "Database backups",
-    "backupsHint": "A backup failed, a database went too long without one, or a restore test did not pass. Separate from CI: this one matters more."
+    "backupsHint": "A backup failed, a database went too long without one, or a restore test did not pass. Separate from CI: this one matters more.",
+    "sound": "Notification sound",
+    "soundHint": "A short tone when a notification arrives: a drop for messages and two notes for everything else. Silent while you are in a call or deafened. This device only."
   },
   "wrote": "{{who}} wrote",
   "push": {

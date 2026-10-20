@@ -11,6 +11,8 @@ import { useInboxStore, type InboxPrefs } from "@/store/inbox.store";
 import { useNotificationsStore, type Delivery } from "@/store/notifications.store";
 import { ChevronRight, Eye, MonitorSmartphone, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { playTone } from "@/lib/notify-sound";
+import { useAudioPrefs } from "@/store/audio-prefs.store";
 
 /**
  * What you want to be told about.
@@ -122,6 +124,39 @@ function RegistroDeEntrega() {
   );
 }
 
+/**
+ * Si los avisos suenan en este equipo. Fuera de `OPTIONS` porque no va al
+ * servidor (`useAudioPrefs`). Al encenderlo suena, para que se oiga qué se
+ * acaba de encender.
+ */
+function SoundSwitch() {
+  const { t } = useT();
+  const on = useAudioPrefs((s) => s.notifySound);
+  const set = useAudioPrefs((s) => s.setNotifySound);
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={() => {
+        set(!on);
+        if (!on) playTone("twoNotes");
+      }}
+      className="flex w-full items-start gap-3 rounded px-2 py-2 text-left hover:bg-accent"
+    >
+      <span
+        aria-hidden
+        className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors ${on ? "bg-primary" : "bg-muted"}`}
+      >
+        <span className={`size-3 rounded-full bg-background transition-transform ${on ? "translate-x-3" : ""}`} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm">{t("notifications:prefs.sound")}</span>
+        <span className="block text-xs text-muted-foreground">{t("notifications:prefs.soundHint")}</span>
+      </span>
+    </button>
+  );
+}
+
 /** Cómo se llama cada desenlace, y con qué cara se dibuja. */
 const DELIVERY: Record<Delivery, { label: string; icon: typeof Eye; className: string }> = {
   os: { label: "sent to the system", icon: MonitorSmartphone, className: "text-muted-foreground" },
@@ -209,6 +244,7 @@ export default function NotificationPrefsDialog({
               </span>
             </button>
           ))}
+          <SoundSwitch />
         </div>
 
         <p className="rounded border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">

@@ -63,3 +63,11 @@ describe("la puerta del foco", () => {
     expect(s).toMatch(/dm\.conversationId === p\.conversationId/);
   });
 });
+
+describe("el sonido del aviso", () => {
+  // Sobre el fuente, por lo mismo que arriba. Rotura que detecta: quitar el
+  // tono, o sonar antes de saber que el aviso salió (o cuando falló).
+  it("suena cuando el aviso llega al sistema, no antes", () => {
+    expect(fuente()).toMatch(/await showDesktopNotification\(\{ title, body \}\);\s*playNotifySound\(kind\);/);
+  });
+});

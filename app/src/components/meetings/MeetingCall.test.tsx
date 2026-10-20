@@ -38,7 +38,7 @@ vi.mock("@/store/voice.store", () => ({
   ),
 }));
 vi.mock("@/components/voice/ringtone", () => ({
-  tonoEntrante: () => {
+  meetingTone: () => {
     tono();
     return { parar };
   },

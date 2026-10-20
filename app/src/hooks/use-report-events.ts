@@ -1,4 +1,5 @@
 import { showDesktopNotification } from "@/lib/desktop-notify";
+import { playNotifySound } from "@/lib/notify-sound";
 import { pushActiveHere } from "@/lib/push";
 import { isTauri, isWebBuild } from "@/lib/platform";
 import { useEffect } from "react";
@@ -290,6 +291,7 @@ export function useReportEvents() {
         }
         try {
           await showDesktopNotification({ title, body });
+          playNotifySound(kind);
           log({ kind, title, body, delivery: "os", reportId });
         } catch (e) {
           log({

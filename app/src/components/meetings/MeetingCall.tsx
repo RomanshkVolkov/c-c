@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { CalendarClock, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { tonoEntrante } from "@/components/voice/ringtone";
+import { meetingTone } from "@/components/voice/ringtone";
 import { dualTime } from "@/lib/meeting-time";
 import { useMeetingsStore } from "@/store/meetings.store";
 import { useVoice } from "@/store/voice.store";
@@ -36,7 +36,7 @@ export default function MeetingCall() {
   const suena = !!entrante && !sordo;
   useEffect(() => {
     if (!suena) return;
-    const tono = tonoEntrante();
+    const tono = meetingTone();
     return () => tono.parar();
   }, [suena]);
 

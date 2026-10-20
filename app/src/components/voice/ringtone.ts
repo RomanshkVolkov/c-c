@@ -99,3 +99,30 @@ export function tonoEntrante(): Tono {
     },
   };
 }
+
+/**
+ * El tono de «empieza la reunión»: Do–Mi–Sol, cada 2,4 s.
+ *
+ * Distinto del de una llamada a propósito: con el mismo, quien oye sonar no
+ * sabe si alguien espera al otro lado o es la daily. Lo eligió jose
+ * oyéndolos (20-oct-2026). Tres notas que suben, en vez de las dos de la
+ * llamada.
+ */
+export function meetingTone(): Tono {
+  const ctx = ctxNuevo();
+  if (!ctx) return { parar: () => {} };
+  const cycle = 2.4;
+  let t = ctx.currentTime + 0.05;
+  const ring = () => {
+    [523, 659, 784].forEach((hz, i) => pitido(ctx, [hz], t + i * 0.11, 0.4, 0.04));
+    t += cycle;
+  };
+  const timer = setInterval(ring, cycle * 1000);
+  ring();
+  return {
+    parar: () => {
+      clearInterval(timer);
+      void ctx.close();
+    },
+  };
+}

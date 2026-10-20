@@ -60,7 +60,9 @@
     "telemetry": "Telemetría de dispositivos",
     "telemetryHint": "Un dispositivo deja de mandar cuando debería, o su estado incumple una regla de error del proyecto. Una vez al empezar y otra al terminar.",
     "backups": "Backups de bases",
-    "backupsHint": "Falló un backup, una base lleva demasiado sin uno, o no pasó una prueba de restauración. Aparte del CI: esto pesa más."
+    "backupsHint": "Falló un backup, una base lleva demasiado sin uno, o no pasó una prueba de restauración. Aparte del CI: esto pesa más.",
+    "sound": "Sonido en los avisos",
+    "soundHint": "Un tono corto cuando llega un aviso: una gota para los mensajes y dos notas para lo demás. No suena si estás en una llamada o te has puesto sordo. Sólo en este equipo."
   },
   "wrote": "{{who}} escribió",
   "push": {
