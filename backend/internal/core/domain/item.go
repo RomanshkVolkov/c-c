@@ -355,6 +355,20 @@ func SyntheticStatusID(listID string, status ReportStatus) string {
 	return listID + "/" + string(status)
 }
 
+// MoveStatusID: la columna a la que se mueve una tarea de `listID`.
+//
+// `requested` es un id de columna (`lista/in_progress`, el que da el tablero)
+// o un estado a secas (`in_progress`): entonces es la columna de ese estado en
+// la lista **de la propia tarea**. Así un agente mueve una tarea sin pedir el
+// tablero entero para copiar un id, y un estado a secas no puede llevársela a
+// otra lista. Un id con otra lista se queda como está: el handler lo rechaza.
+func MoveStatusID(listID, requested string) string {
+	if lastIndexByte(requested, '/') >= 0 {
+		return requested
+	}
+	return SyntheticStatusID(listID, ReportStatus(requested).Canonical())
+}
+
 // SplitSyntheticStatusID reads a state back out of a synthetic id.
 //
 // Also accepts a bare state name, because a client that learns the new

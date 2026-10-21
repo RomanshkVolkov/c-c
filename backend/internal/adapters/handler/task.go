@@ -1009,6 +1009,8 @@ func (h *taskHandler) MoveTask(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
+	// Un estado a secas es la columna de ese estado en esta lista.
+	req.StatusID = domain.MoveStatusID(t.ListID, req.StatusID)
 	// The destination column must belong to the same list — otherwise a move
 	// could smuggle a task into another list (or org) entirely.
 	st, err := h.svc.FindStatus(req.StatusID)
