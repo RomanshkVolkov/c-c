@@ -213,5 +213,7 @@
   "post-not-found": "That post no longer exists or you can't see it.",
   "post-forbidden": "You can't do that with this post.",
   "post-failed": "Couldn't complete it. Try again.",
-  "post-bad-cursor": "Couldn't load more of the wall. Reload it."
+  "post-bad-cursor": "Couldn't load more of the wall. Reload it.",
+  "context-repo-not-linked": "This repository is not linked to a space in your organizations. Link it from the space (GitHub).",
+  "context-missing-target": "Missing the space or the repository."
 }

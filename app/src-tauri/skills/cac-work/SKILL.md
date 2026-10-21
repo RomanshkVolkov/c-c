@@ -13,46 +13,57 @@ sin que nadie te lo tenga que recordar.
 Todo va por el MCP de cac (`mcp__cac__*`). Si no está conectado, dilo una vez
 y sigue con el trabajo: no es motivo para parar.
 
-## 1 · Dónde vive este repo en cac
+## 1 · Antes de tocar nada: el mapa
 
-Cada repo lo dice en su `CLAUDE.md`, en una sección así:
+Llama a **`get_context` sin argumentos**. Lee el `git remote` de la carpeta
+donde trabajas, encuentra el espacio al que está atado ese repo de GitHub y
+devuelve, en una sola llamada y sin cuerpos:
 
-```markdown
-## Tareas en cac
+- el árbol de carpetas y listas, con su ruta. Una lista con `projectId` es de
+  un cliente;
+- de cada nodo con documento: los títulos de sus pestañas (overview, runbook,
+  decisions, links), su tamaño, sus subpáginas y sus últimas decisiones;
+- los `.md` de los repos atados al espacio;
+- las tareas que ya están en curso, para no duplicar una;
+- `truncated`, si algo se recortó por tamaño: entonces hay más de lo que ves.
 
-- **App** → `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` (lo de `app/`)
-- **Backend** → `91abe433-4d90-4519-93ff-616109ce40c9` (lo de `backend/`)
-```
+Con eso, **lee sólo lo que toca**:
+- una sección de una pestaña: `get_doc` con `kind`, `ownerId` (el id del
+  nodo), `tab` y `section` (el texto del título);
+- una subpágina: `get_doc_page`;
+- un `.md` del repo: `get_repo_doc`.
 
-- **Si está:** usa esa lista. Si hay varias, elige por lo que vas a tocar.
-- **Si no está:**
-  1. Llama a `list_task_spaces` y busca el espacio y la lista que se parezcan
-     al repo.
-  2. **Pregúntale al usuario cuál es**, enseñándole las candidatas.
-  3. Con su respuesta, añade la sección al `CLAUDE.md` del repo y díselo, para
-     que la siguiente sesión no tenga que preguntar.
-- **No inventes una lista ni crees espacios** sin que te lo pidan.
-
-`list_task_spaces` también da el espacio y la carpeta de los que cuelga la
-lista. Ahí está la documentación.
-
-## 2 · Antes de tocar nada: leer
-
-Lee lo que el equipo ya sabe, **por trozos**:
-
-- **El documento.** `get_doc` sin `tab` devuelve el índice: los títulos de sus
-  cuatro pestañas (overview, runbook, decisions, links) y los títulos del
-  registro de decisiones. Después lee sólo las secciones que tienen que ver
-  (`tab` + `section`). Empieza por el de la lista; si está vacío, sube a su
-  carpeta y a su espacio.
-- **Lo que hay sobre el tema.** `search` con dos o tres palabras de lo que vas
-  a hacer encuentra tareas, notas y docs. Una tarea cerrada con el mismo
-  problema suele ser la mitad del trabajo.
-- **La documentación del propio repo.** `list_repo_docs` lista los README y los
-  `docs/` que cac sincroniza desde GitHub, para cuando no los tengas en local.
+Para lo que no esté en el mapa, usa `search` con dos o tres palabras. Cada
+acierto de un doc trae `section`, la sección donde cae: lee esa y no el
+documento. Si no encuentra nada, prueba otra formulación, también en el otro
+idioma («desplegar» / «deploy», «soltar» / «release»): la búsqueda es por
+palabras, no por significado.
 
 Si algo de lo que lees contradice el código, gana el código, y lo apuntas
 (ver el paso 4).
+
+## 2 · Si el repo no está atado a un espacio
+
+`get_context` lo dice (`context-repo-not-linked`). Entonces:
+
+1. Mira si el `CLAUDE.md` del repo nombra su lista en una sección
+   «Tareas en cac»:
+
+   ```markdown
+   ## Tareas en cac
+
+   - **App** → `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` (lo de `app/`)
+   ```
+
+2. Si no, llama a `list_task_spaces` y **pregúntale al usuario cuál es**,
+   enseñándole las candidatas. Con su respuesta, añade esa sección al
+   `CLAUDE.md` del repo.
+3. Sugiérele que ate el repo al espacio en cac (en los ajustes del espacio,
+   GitHub): a partir de ahí, `get_context` lo encuentra solo, para todo el
+   equipo.
+
+**No inventes una lista ni crees espacios** sin que te lo pidan. Si hay varias
+listas en el espacio, elige por lo que vas a tocar, y si dudas, pregunta.
 
 ## 3 · La tarea: una, no dos
 

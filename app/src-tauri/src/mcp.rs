@@ -1555,6 +1555,18 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "get_context",
+            "description": "START HERE when you begin work in a repository. One call returns what the team knows about its project, without any bodies: the space's tree (folders and lists, with `path`; a list with `projectId` belongs to a client), for each node with a document the headings of its tabs (overview, runbook, decisions, links; up to level 3, with their size in `chars`), its subpages and its latest decisions, the markdown files of the repos linked to the space, and the tasks already in progress (so you don't duplicate one). `truncated` names anything cut for size.\n\nWith no arguments it reads the git remote of the folder you are working in and finds the space that GitHub repo is linked to. Then read only the sections you need: get_doc with kind, ownerId (the node's id), tab and section (a heading's text); get_doc_page for a subpage; get_repo_doc for a repo file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spaceId": { "type": "string", "description": "Optional. The space, when you already know it." },
+                    "repo": { "type": "string", "description": "Optional. owner/name of a GitHub repository, instead of reading the git remote." },
+                    "path": { "type": "string", "description": "Optional. The folder whose git remote to read. Defaults to the folder this server was started in, which is the project Claude Code opened." }
+                }
+            }
+        },
+        {
             "name": "list_task_spaces",
             "description": "The task navigator: spaces, folders and lists with their task counts. Use it to resolve a list name to the listId that get_board takes.",
             "inputSchema": { "type": "object", "properties": {} }
@@ -1576,7 +1588,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "search",
-            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link), and a `snippet` with the matching words between ** where it is safe to show: a doc, a task's description (never a comment: it may be internal), a note. Each doc hit also carries its `ownerKind`/`ownerId`, and either the `tab` of the node's home or the `pageId` of a subpage, with `where` as the page's path. Open a hit with get_task, get_note, get_doc (tab) or get_doc_page (pageId).\n\nEverything is full-text: words match by prefix and without accents, and titles rank first. Tasks match by title, description and comments; notes by title and body; docs by the home tabs and every page. Channel messages and direct messages are not searchable from here.",
+            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link), and a `snippet` with the matching words between ** where it is safe to show: a doc, a task's description (never a comment: it may be internal), a note. Each doc hit also carries its `ownerKind`/`ownerId`, and either the `tab` of the node's home or the `pageId` of a subpage, with `where` as the page's path, and `section`: the heading the match falls under. Read just that: get_doc with tab + section, get_doc_page or get_repo_doc with section — not the whole document. Open the other hits with get_task or get_note.\n\nEverything is full-text: words match by prefix and without accents, and titles rank first. Tasks match by title, description and comments; notes by title and body; docs by the home tabs and every page. Channel messages and direct messages are not searchable from here.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -3448,6 +3460,25 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             Ok(json!({ "pages": build_page_tree(&flat, &kind, &id) }))
         }
 
+        "get_context" => {
+            let target = if let Some(space) = arg_str(args, "spaceId") {
+                format!("spaceId={}", urlencode(&space))
+            } else {
+                let repo = match arg_str(args, "repo") {
+                    Some(r) => r,
+                    None => {
+                        let dir = arg_str(args, "path").unwrap_or_else(|| ".".into());
+                        let url = git_remote(&dir)?;
+                        github_repo_from_remote(&url).ok_or_else(|| {
+                            format!("The git remote of {dir} ({url}) is not a GitHub repository. Pass spaceId.")
+                        })?
+                    }
+                };
+                format!("repo={}", urlencode(&repo))
+            };
+            api_get(cfg, &format!("/api/v1/context?{target}"))
+        }
+
         "list_repo_docs" => {
             let space = arg_str(args, "spaceId").ok_or("spaceId is required")?;
             let groups = api_get(cfg, &format!("/api/v1/repo-docs?spaceId={}", urlencode(&space)))?;
@@ -4170,6 +4201,50 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
 /// with no token configured at all.
 const LOCAL_TOOLS: &[&str] = &["compress_image", "install_skill"];
 
+/// La URL del remote `origin` del repo en `dir` (o del primero que haya).
+fn git_remote(dir: &str) -> Result<String, String> {
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    if let Some(url) = run(&["remote", "get-url", "origin"]) {
+        return Ok(url);
+    }
+    let first = run(&["remote"]).and_then(|r| r.lines().next().map(str::to_string));
+    first
+        .and_then(|name| run(&["remote", "get-url", &name]))
+        .ok_or_else(|| format!("{dir} is not a git repository with a remote. Pass spaceId or repo."))
+}
+
+/// `owner/name` de un remote de GitHub, en cualquiera de sus formas:
+/// `git@github.com:o/n.git`, `https://github.com/o/n`, `ssh://git@github.com/o/n.git`,
+/// con usuario o token delante del host. `None` si no es de GitHub.
+fn github_repo_from_remote(url: &str) -> Option<String> {
+    let u = url.trim();
+    let rest = if let Some(i) = u.find("github.com:") {
+        &u[i + "github.com:".len()..]
+    } else if let Some(i) = u.find("github.com/") {
+        &u[i + "github.com/".len()..]
+    } else {
+        return None;
+    };
+    let rest = rest.trim_end_matches('/');
+    let rest = rest.strip_suffix(".git").unwrap_or(rest);
+    let mut parts = rest.split('/');
+    let (owner, name) = (parts.next()?, parts.next()?);
+    if owner.is_empty() || name.is_empty() || parts.next().is_some() {
+        return None;
+    }
+    Some(format!("{owner}/{name}"))
+}
+
 /// La skill de trabajar con cac (leer el contexto, registrar la tarea, dejar
 /// escrito lo decidido), dentro del binario.
 ///
@@ -4225,13 +4300,14 @@ fn skill_state(dir: &std::path::Path) -> SkillState {
 fn instructions(state: Option<SkillState>) -> String {
     let mut s = String::from(
         "cac is this team's shared memory: what one session learns is lost when it ends, and what is written in cac \
-         is what the next session, or any teammate, can read. When you start work in a repository: find its cac list \
-         (its CLAUDE.md names it under \"Tareas en cac\"; if it does not, ask the user which list and add that \
-         section), read what the team already knows (get_doc outline of that list, folder or space, then only the \
-         relevant sections; search for related tasks and notes), and find or create the task and move it to in \
-         progress. Record findings as task comments and decisions with record_decision. Before you tell the user you \
-         are done, update the task: its column must say honestly how the work stands, with a short closing comment \
-         (what was done, commits or PR, what is left).",
+         is what the next session, or any teammate, can read. When you start work in a repository, call get_context \
+         first (no arguments: it finds the project from the folder's git remote). It returns the index of what the team \
+         knows (the tree, the headings of each document, decisions, repo docs, tasks in progress) without bodies; then \
+         read only the sections you need with get_doc (tab + section), and use search for anything else. If the repo \
+         is not linked to a space, the repository's CLAUDE.md may name its list under \"Tareas en cac\"; otherwise ask \
+         the user. Find or create the task and move it to in progress. Record findings as task comments and decisions \
+         with record_decision. Before you tell the user you are done, update the task: its column must say honestly \
+         how the work stands, with a short closing comment (what was done, commits or PR, what is left).",
     );
     match state {
         Some(SkillState::Missing) => s.push_str(
@@ -5064,6 +5140,52 @@ mod tests {
     /// redacta como borrador; no hay herramienta para publicar un borrador,
     /// editar, borrar ni fijar — eso lo hace una persona. Mutantes: añadir una
     /// de esas herramientas; describir el comunicado como publicado.
+    /// Roturas que detecta: no reconocer una de las formas del remote (ssh,
+    /// https, con `.git`, con usuario delante), o tomar por GitHub lo que no lo es.
+    #[test]
+    fn a_github_remote_in_any_form_is_owner_and_name() {
+        for url in [
+            "git@github.com:guz-studio/cac.git",
+            "https://github.com/guz-studio/cac",
+            "https://github.com/guz-studio/cac.git",
+            "https://github.com/guz-studio/cac/",
+            "ssh://git@github.com/guz-studio/cac.git",
+            "https://x-access-token:abc@github.com/guz-studio/cac.git",
+        ] {
+            assert_eq!(github_repo_from_remote(url).as_deref(), Some("guz-studio/cac"), "{url}");
+        }
+        assert_eq!(github_repo_from_remote("git@gitlab.com:guz/cac.git"), None);
+        assert_eq!(github_repo_from_remote("https://github.com/guz-studio"), None);
+        assert_eq!(github_repo_from_remote("https://github.com/a/b/tree/main"), None);
+    }
+
+    /// Rotura que detecta: no leer el remote de la carpeta (el agente tendría
+    /// que preguntar en qué espacio está). Usa este mismo repo.
+    #[test]
+    fn the_remote_of_this_checkout_is_read() {
+        let here = env!("CARGO_MANIFEST_DIR");
+        let url = git_remote(here).expect("este checkout tiene remote");
+        assert!(github_repo_from_remote(&url).is_some(), "{url}");
+        assert!(git_remote("/").is_err());
+    }
+
+    /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un
+    /// fork, `aaa` saldría antes por orden alfabético).
+    #[test]
+    fn origin_wins_over_other_remotes() {
+        let d = std::env::temp_dir().join(format!("cac-remote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let git = |args: &[&str]| {
+            assert!(std::process::Command::new("git").arg("-C").arg(&d).args(args).output().unwrap().status.success());
+        };
+        git(&["init", "-q"]);
+        git(&["remote", "add", "aaa", "git@gitlab.com:otro/fork.git"]);
+        git(&["remote", "add", "origin", "git@github.com:guz-studio/cac.git"]);
+        assert_eq!(git_remote(d.to_str().unwrap()).unwrap(), "git@github.com:guz-studio/cac.git");
+        let _ = std::fs::remove_dir_all(d);
+    }
+
     /// Una carpeta de skills desechable por prueba.
     fn skills_tmp(tag: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("cac-skill-{tag}-{}", std::process::id()));
@@ -5112,7 +5234,7 @@ mod tests {
         for st in [None, Some(SkillState::Missing), Some(SkillState::Outdated), Some(SkillState::Current)] {
             let text = instructions(st);
             assert!(text.contains("update the task"), "{text}");
-            assert!(text.contains("get_doc"), "{text}");
+            assert!(text.contains("call get_context"), "{text}");
         }
         assert!(instructions(Some(SkillState::Missing)).contains("call install_skill"));
         assert!(instructions(Some(SkillState::Missing)).contains("Do not install it without asking"));
