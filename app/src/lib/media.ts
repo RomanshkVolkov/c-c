@@ -112,8 +112,8 @@ export async function openAttachment(url: string, fileName: string): Promise<voi
   const path = attachmentPath(url);
   if (!path) {
     // An external link someone pasted: hand it to the browser as-is.
-    const { openUrl } = await import("@tauri-apps/plugin-opener");
-    await openUrl(url);
+    const { openExternal } = await import("@/lib/platform");
+    await openExternal(url);
     return;
   }
   if (!inTauri) {

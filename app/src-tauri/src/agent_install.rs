@@ -377,12 +377,12 @@ mod tests {
     #[test]
     fn el_guion_es_sh_valido() {
         use std::io::Write;
-        use std::process::{Command, Stdio};
+        use std::process::Stdio;
         let mut i = install();
         i.agent_token = "cac_agent_con-guion_y_barra".into();
         for reg in [None, Some(registry_auth_json("ghp_con'comilla"))] {
             let script = install_script(&i, reg.as_deref()).unwrap();
-            let mut sh = Command::new("sh")
+            let mut sh = crate::host::command("sh")
                 .arg("-n")
                 .stdin(Stdio::piped())
                 .stderr(Stdio::piped())

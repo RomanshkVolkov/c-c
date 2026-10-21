@@ -32,7 +32,7 @@ pub fn relaunch_plan(env: &[(String, String)]) -> Option<(PathBuf, Vec<String>, 
     if appimage.is_empty() {
         return None;
     }
-    let (remove, path) = crate::ansible::appimage_cleanup(env);
+    let (remove, path) = crate::host::appimage_cleanup(env);
     Some((PathBuf::from(appimage), remove, path))
 }
 

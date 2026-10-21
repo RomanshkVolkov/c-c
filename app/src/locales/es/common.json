@@ -652,7 +652,8 @@
     "noiseSuppression": "Supresión de ruido",
     "noiseSuppressionHint": "Quita el ventilador y el teclado. Apágala para música o un instrumento.",
     "mermaidError": "El diagrama tiene un error:",
-    "mermaidDiagram": "Diagrama"
+    "mermaidDiagram": "Diagrama",
+    "openLinkFailed": "No se pudo abrir el enlace"
   },
   "calendar": {
     "undated_one": "{{count}} sin fecha",

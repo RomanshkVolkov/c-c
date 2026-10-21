@@ -5,6 +5,7 @@
 #![recursion_limit = "256"]
 
 mod agent_install;
+mod host;
 mod ansible;
 mod secrets;
 mod op_env;
@@ -145,9 +146,8 @@ fn exe_link_says_deleted(link: Option<&std::path::Path>) -> bool {
 }
 
 fn op_read(reference: &str) -> Result<String, String> {
-    use std::process::Command;
 
-    let output = Command::new("op")
+    let output = crate::host::command("op")
         .args(["read", "--no-newline", reference])
         .output()
         .map_err(|e| match e.kind() {
@@ -224,9 +224,8 @@ fn session_log(line: String) {
 
 #[tauri::command]
 fn op_list_vaults() -> Vec<OpVault> {
-    use std::process::Command;
 
-    let accounts = match Command::new("op")
+    let accounts = match crate::host::command("op")
         .args(["account", "list", "--format", "json"])
         .output()
     {
@@ -253,7 +252,7 @@ fn op_list_vaults() -> Vec<OpVault> {
         if url.is_empty() {
             continue;
         }
-        let vaults = match Command::new("op")
+        let vaults = match crate::host::command("op")
             .args(["vault", "list", "--account", &url, "--format", "json"])
             .output()
         {
@@ -299,7 +298,6 @@ fn op_item_create(
     fields: Vec<(String, String)>,
 ) -> Result<Vec<(String, String)>, String> {
     use std::io::Write as _;
-    use std::process::Command;
 
     if fields.is_empty() {
         return Err("Nothing to save".into());
@@ -330,7 +328,7 @@ fn op_item_create(
     // Start from the real category template so the item looks native in the app.
     // --account on every call: with more than one account signed in, letting op
     // pick means the item can land somewhere the user never chose.
-    let tpl_out = Command::new("op")
+    let tpl_out = crate::host::command("op")
         .args([
             "item",
             "template",
@@ -374,7 +372,7 @@ fn op_item_create(
     write_template().map_err(|e| format!("Could not stage the template: {e}"))?;
 
     // The category lives in the template; passing --category too is an error.
-    let out = Command::new("op")
+    let out = crate::host::command("op")
         .args([
             "item",
             "create",
@@ -573,7 +571,7 @@ pub(crate) fn resolve_agent_socket() -> Option<String> {
 
 fn probe_agent(socket: &str) -> AgentProbe {
     let exists = std::path::Path::new(socket).exists() || socket.starts_with(r"\\.\pipe\");
-    let Ok(out) = std::process::Command::new("ssh-add")
+    let Ok(out) = crate::host::command("ssh-add")
         .arg("-l")
         .env("SSH_AUTH_SOCK", socket)
         .output()
@@ -634,9 +632,8 @@ pub struct SshKeyItem {
 }
 
 fn run_ssh_add(flag: &str, socket: Option<&str>) -> Result<String, String> {
-    use std::process::Command;
 
-    let mut cmd = Command::new("ssh-add");
+    let mut cmd = crate::host::command("ssh-add");
     cmd.arg(flag);
     // Explicit socket: the inherited environment can't be trusted in a
     // desktop-launched app (see agent discovery above).
@@ -888,10 +885,10 @@ pub(crate) fn ssh_run_input(
     input: Option<&str>,
 ) -> Result<SshOutput, String> {
     use std::io::Write;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     let args = ssh_base_args(host, port, user, remote_cmd, identity);
-    let mut cmd = Command::new("ssh");
+    let mut cmd = crate::host::command("ssh");
     cmd.args(&args);
     // Same reason as ssh-add: without this the desktop-launched app has no agent
     // and every connection fails with "Permission denied (publickey)".
@@ -1409,12 +1406,10 @@ fn set_session(
 /// keeps the token out of any URL, which is the point of the exercise.
 #[tauri::command]
 async fn open_attachment(
-    app: tauri::AppHandle,
     state: tauri::State<'_, media::Session>,
     path: String,
     file_name: String,
 ) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
 
     let token = state.token.lock().ok().and_then(|t| t.as_ref().cloned());
     let base = state.base_url.lock().ok().and_then(|b| b.as_ref().cloned());
@@ -1447,9 +1442,9 @@ async fn open_attachment(
     ));
     std::fs::write(&target, &bytes).map_err(|e| format!("Could not write the file: {e}"))?;
 
-    app.opener()
-        .open_path(target.to_string_lossy().to_string(), None::<&str>)
-        .map_err(|e| format!("Could not open it: {e}"))
+    // Con el entorno limpio de la imagen: el del plugin lanza `xdg-open` con
+    // el de la app y, con un bash del sistema más nuevo, muere (ver host.rs).
+    crate::host::open_path(&target).map_err(|e| format!("Could not open it: {e}"))
 }
 
 /// Guarda un adjunto (hoy, una grabación) en la carpeta de Descargas y
@@ -1871,6 +1866,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             relaunch::relaunch_app,
+            host::open_url,
             agent_install::install_swarm_manage_agent,
             set_github_token,
             delete_github_token,

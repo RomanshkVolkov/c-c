@@ -179,6 +179,7 @@ pub fn pty_open(
         .map(|s| s.path.to_string_lossy().into_owned());
 
     let mut cmd = CommandBuilder::new("ssh");
+    crate::host::clean_pty(&mut cmd);
     for a in ssh_args(&host, ssh_port, &ssh_user, identity.as_deref()) {
         cmd.arg(a);
     }

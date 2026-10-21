@@ -141,6 +141,18 @@ lee la dirección 0: SIGSEGV de la ventana entera, antes de que la página vea e
 formatos con la llamada síncrona y, si no hay, se descarta la tecla.
 → Guardián: `paste_guard::tests` (las teclas de pegar y la decisión de bloquear).
 
+**Lo que la app lanza del sistema hereda la AppImage.** Dentro de la AppImage,
+`LD_LIBRARY_PATH` y otra veintena de variables apuntan a las bibliotecas de la
+imagen (Ubuntu 22.04). Un programa del sistema que las herede carga esas en vez
+de las suyas, y tras un `pacman -Syu` el `bash` nuevo muere con la `readline`
+vieja (`undefined symbol: rl_trim_arg_from_keyseq`). Así se murió el relanzado
+tras actualizar, el Python de Ansible y, el 21-oct-2026, **todo enlace
+externo**: el plugin `opener` lanza `xdg-open`, que es un script de shell. Todo
+lanzamiento pasa por `host.rs` (`host::command`, `host::open_url`,
+`host::open_path`), nunca por `Command::new("…")` ni por el plugin.
+→ Guardián: `host::tests::every_system_program_is_launched_through_here` (y
+`app/src/lib/platform.test.ts` para los enlaces).
+
 **Un esquema propio es otro origen.** `cacmedia://` y `cacvideo://` los sirve
 Rust, y para el webview son **otro origen**: un `<img>` carga igual, pero un
 `fetch` sin `Access-Control-Allow-Origin` falla con «estado 0». pdf.js descarga

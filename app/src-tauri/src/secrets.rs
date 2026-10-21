@@ -317,7 +317,7 @@ pub fn rotate_service_secrets(
     items.dedup();
     for item in &items {
         let Some((vault, name)) = item.trim_start_matches("op://").split_once('/') else { continue };
-        let out = std::process::Command::new("op").args(["item", "get", name, "--vault", vault, "--format", "json"]).output();
+        let out = crate::host::command("op").args(["item", "get", name, "--vault", vault, "--format", "json"]).output();
         if let Some(o) = out.ok().filter(|o| o.status.success()) {
             let wanted: Vec<&str> = refs.iter().map(|r| r.op_ref.as_str()).filter(|r| r.starts_with(item.as_str())).collect();
             values.extend(values_from_item(&String::from_utf8_lossy(&o.stdout), &wanted));
@@ -431,7 +431,7 @@ pub fn op_item_fields(item: String) -> Result<Vec<ItemField>, String> {
     if vault.is_empty() || name.is_empty() || name.contains('/') {
         return Err("an item is op://vault/item".into());
     }
-    let out = std::process::Command::new("op")
+    let out = crate::host::command("op")
         .args(["item", "get", name, "--vault", vault, "--format", "json"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -503,7 +503,7 @@ pub fn capture_service_env(target: SshTarget, service: String, vault: String, ti
     if vault.is_empty() || title.is_empty() || title.contains('/') || vault.contains('/') {
         return Err("the vault and the item need a name, without /".into());
     }
-    let exists = std::process::Command::new("op")
+    let exists = crate::host::command("op")
         .args(["item", "get", &title, "--vault", &vault, "--format", "json"])
         .output()
         .map_err(|e| e.to_string())?;
@@ -524,7 +524,7 @@ pub fn capture_service_env(target: SshTarget, service: String, vault: String, ti
     }
 
     use std::io::Write;
-    let mut child = std::process::Command::new("op")
+    let mut child = crate::host::command("op")
         .args(["item", "create", "--vault", &vault, "--format", "json", "-"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
@@ -615,7 +615,7 @@ pub fn create_backup_key(account: String, vault: String, title: String) -> Resul
         }
         v
     };
-    let exists = std::process::Command::new("op")
+    let exists = crate::host::command("op")
         .args(with_account(&["item", "get", &title, "--vault", &vault, "--format", "json"]))
         .output()
         .map_err(|e| e.to_string())?;
@@ -624,7 +624,7 @@ pub fn create_backup_key(account: String, vault: String, title: String) -> Resul
     }
     let (identity, recipient) = new_age_keypair();
     use std::io::Write;
-    let mut child = std::process::Command::new("op")
+    let mut child = crate::host::command("op")
         .args(with_account(&["item", "create", "--vault", &vault, "--format", "json", "-"]))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
@@ -792,7 +792,7 @@ mod tests {
     #[test]
     fn the_script_runs_against_a_fake_docker() {
         use std::os::unix::fs::PermissionsExt;
-        if std::process::Command::new("python3").arg("-V").output().is_err() {
+        if crate::host::command("python3").arg("-V").output().is_err() {
             return;
         }
         let dir = std::env::temp_dir().join(format!("cac-secrets-test-{}", uuid::Uuid::new_v4()));
@@ -814,7 +814,7 @@ mod tests {
         std::fs::set_permissions(dir.join("bin/docker"), std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let script = rotation_script("web-rrhh-prod_app", &[("DATABASE_URL".into(), "postgres://s3cr3t".into())]).unwrap();
-        let out = std::process::Command::new("bash")
+        let out = crate::host::command("bash")
             .arg("-s")
             .env("PATH", format!("{}:{}", dir.join("bin").display(), std::env::var("PATH").unwrap()))
             .env("HOME", &dir)

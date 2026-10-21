@@ -4273,7 +4273,7 @@ fn move_target(args: &Value) -> Result<Option<String>, String> {
 /// La URL del remote `origin` del repo en `dir` (o del primero que haya).
 fn git_remote(dir: &str) -> Result<String, String> {
     let run = |args: &[&str]| {
-        std::process::Command::new("git")
+        crate::host::command("git")
             .arg("-C")
             .arg(dir)
             .args(args)

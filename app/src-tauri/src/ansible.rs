@@ -341,45 +341,14 @@ pub fn build_env(
     env
 }
 
-/// Lo que la AppImage mete en el entorno de la app y no puede llegar a
-/// Ansible: dentro de una AppImage, la app lleva `PYTHONHOME`, `PYTHONPATH`,
-/// `LD_LIBRARY_PATH`, `PERLLIB`… apuntando a la imagen montada (`$APPDIR`). El
-/// Python del venv los hereda, busca su biblioteca estándar dentro de la
-/// imagen y muere antes de empezar («Failed to import encodings module»).
-///
-/// Devuelve qué variables quitar y el PATH limpio de carpetas de la imagen.
-/// Fuera de una AppImage (sin `APPDIR`) no toca nada.
-pub fn appimage_cleanup(env: &[(String, String)]) -> (Vec<String>, Option<String>) {
-    let Some(appdir) = env.iter().find(|(k, _)| k == "APPDIR").map(|(_, v)| v.trim_end_matches('/').to_string()) else {
-        return (vec![], None);
-    };
-    if appdir.is_empty() {
-        return (vec![], None);
-    }
-    let mut remove: Vec<String> = env
-        .iter()
-        .filter(|(k, v)| k != "PATH" && v.contains(&appdir))
-        .map(|(k, _)| k.clone())
-        .collect();
-    for k in ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "PYTHONDONTWRITEBYTECODE"] {
-        if env.iter().any(|(x, _)| x == k) && !remove.iter().any(|r| r == k) {
-            remove.push(k.to_string());
-        }
-    }
-    let path = env.iter().find(|(k, _)| k == "PATH").map(|(_, v)| {
-        v.split(':').filter(|p| !p.is_empty() && !p.starts_with(&appdir)).collect::<Vec<_>>().join(":")
-    });
-    (remove, path)
-}
+/// Lo que la AppImage mete en el entorno y no puede llegar a Ansible: el
+/// Python del venv heredaría `PYTHONHOME` y `PYTHONPATH` de la imagen y moriría
+/// antes de empezar («Failed to import encodings module»). La limpieza vive en
+/// `host.rs`, que la usa para todo lo que la app lanza.
+pub use crate::host::appimage_cleanup;
 
-/// Aplica `appimage_cleanup` al proceso que se va a lanzar, con el entorno de
-/// esta app.
 fn without_appimage(cmd: &mut Command) {
-    let env: Vec<(String, String)> = std::env::vars().collect();
-    let (remove, _) = appimage_cleanup(&env);
-    for k in remove {
-        cmd.env_remove(k);
-    }
+    crate::host::clean(cmd);
 }
 
 /// Las variables, ya resueltas, como las lee `-e @fichero` (JSON vale).
@@ -730,7 +699,7 @@ pub fn ansible_cancel(run_id: String) -> Result<(), String> {
 fn kill_group(pid: u32) {
     #[cfg(unix)]
     {
-        let _ = Command::new("kill")
+        let _ = crate::host::command("kill")
             .args(["-TERM", &format!("-{pid}")])
             .status();
     }

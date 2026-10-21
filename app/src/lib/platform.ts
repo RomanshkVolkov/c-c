@@ -1,4 +1,6 @@
-import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "@tauri-apps/api/core";
+import i18next from "i18next";
+import { toast } from "sonner";
 
 /**
  * Dónde corre esta interfaz: dentro de la app de escritorio (Tauri) o en un
@@ -30,14 +32,25 @@ export const isWebBuild: boolean = import.meta.env.VITE_TARGET === "web";
  * Abrir un enlace fuera de la app: el navegador del sistema en escritorio, una
  * pestaña nueva en web.
  *
- * El plugin de Tauri sin Tauri rechaza la promesa y el clic no hace nada, que
- * es el fallo que tenían cinco botones al probar la interfaz en un navegador.
- * `noopener` para que la página abierta no pueda tocar la nuestra.
+ * En escritorio va por `open_url` (`src-tauri/src/host.rs`) y no por el plugin
+ * de Tauri: el plugin lanza `xdg-open` con el entorno de la AppImage, y tras
+ * actualizar el sistema ese `bash` ya no arranca con las bibliotecas de la
+ * imagen. Ningún enlace abría y nada lo decía (21-oct-2026). Por eso, además,
+ * si no se puede abrir se avisa aquí: cinco de los botones que llaman a esto
+ * descartan el error, y un clic que no hace nada no se distingue de un botón
+ * roto. La promesa se rechaza igual, por si quien llama quiere hacer algo más.
+ *
+ * `noopener` en web para que la página abierta no pueda tocar la nuestra.
  */
 export async function openExternal(url: string): Promise<void> {
-  if (isTauri) {
-    await tauriOpenUrl(url);
+  if (!isTauri) {
+    window.open(url, "_blank", "noopener,noreferrer");
     return;
   }
-  window.open(url, "_blank", "noopener,noreferrer");
+  try {
+    await invoke("open_url", { url });
+  } catch (e) {
+    toast.error(i18next.t("common:last.openLinkFailed"), { description: String(e) });
+    throw e;
+  }
 }

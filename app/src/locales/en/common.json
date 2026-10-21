@@ -652,7 +652,8 @@
     "noiseSuppression": "Noise suppression",
     "noiseSuppressionHint": "Removes fans and typing. Turn it off for music or an instrument.",
     "mermaidError": "The diagram has an error:",
-    "mermaidDiagram": "Diagram"
+    "mermaidDiagram": "Diagram",
+    "openLinkFailed": "Couldn't open the link"
   },
   "calendar": {
     "undated_one": "{{count}} with no date",
