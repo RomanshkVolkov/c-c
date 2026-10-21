@@ -1,0 +1,43 @@
+name: rust platforms
+
+# `cargo check` del lado Rust de la app en macOS y Windows, a mano y antes de
+# una release.
+#
+# El CI de la app (`app.yml`) corre en Linux, y el código que sólo compila en
+# macOS o Windows (`#[cfg(not(target_os = "linux"))]`) no lo ve nadie hasta
+# `app-release.yml`. Si ahí no compila, la versión ya está publicada y se queda
+# sin instaladores: ese número está gastado. Esto lo comprueba antes, sin
+# publicar nada. Se lanza a mano (`gh workflow run rust-platforms.yml`) cuando
+# un cambio toca código por plataforma, como `host.rs` (21-oct-2026).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./app/src-tauri -> target"
+
+      # `tauri-build` exige que exista `frontendDist`; para comprobar que el
+      # Rust compila basta con la carpeta, no hace falta construir la página.
+      - name: Placeholder frontend
+        shell: bash
+        run: mkdir -p app/dist && echo '<!doctype html>' > app/dist/index.html
+
+      - name: cargo check
+        working-directory: app/src-tauri
+        run: cargo check --locked
