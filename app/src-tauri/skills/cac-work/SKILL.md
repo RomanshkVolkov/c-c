@@ -74,8 +74,10 @@ listas en el espacio, elige por lo que vas a tocar, y si dudas, pregunta.
      correos con mayúsculas», no «Revisar login»);
    - con el porqué en la descripción, en dos o tres líneas;
    - con un `idempotencyKey`, por si reintentas.
-3. **Muévela a la columna de «en curso».** `get_board` da el `statusId` de cada
-   columna, y `update_task` la mueve.
+   Si el trabajo tiene pasos, pásalos en `subtasks`: se crean en la misma
+   llamada como su checklist.
+3. **Muévela a «en curso»** con `update_task` y `status: "in_progress"`. No
+   hace falta pedir el tablero.
 
 **Una lista con `projectId` es de un cliente.** Lo que crees ahí lo ve ese
 cliente y gasta un número de su folio para siempre. Usa
@@ -86,8 +88,9 @@ Por el camino:
 - **Lo que descubras** va con `add_task_comment`: un fallo de base, un dato
   medido, un callejón sin salida. Los comentarios sólo se añaden; no pisan
   nada de nadie.
-- **Una lista de pendientes son subtareas** (`create_task` con `parentId`), no
-  texto en un comentario: así se ve qué está hecho.
+- **Una lista de pendientes son subtareas** (`subtasks` al crear, o
+  `create_task` con `parentId` después), no texto en un comentario: así se ve
+  qué está hecho. Cada una se marca con `update_task` y `status: "done"`.
 - **Lo que no es tuyo** (una prueba roja que ya estaba, una deuda de otra
   parte) va como comentario en la tarea a la que le toca, o como tarea nueva
   si no la tiene.
@@ -112,12 +115,13 @@ Por el camino:
 Antes de decirle al usuario que terminaste, **actualiza la tarea**. Es el paso
 que más se olvida, y por eso existe esta skill.
 
-| Cómo quedó | Columna |
+| Cómo quedó | `status` |
 |---|---|
-| Hecho, pero sin commitear o sin probar | en curso |
-| Commiteado y en verde, pero falta desplegar o soltar | en revisión, si existe; si no, en curso |
-| Desplegado, soltado o entregado | hecho |
-| Parado por una decisión del usuario o por algo de fuera | bloqueada, si existe; si no, en curso con un comentario que diga qué falta |
+| Hecho, pero sin commitear o sin probar | `in_progress` |
+| Commiteado y en verde, pero falta desplegar o soltar | `in_progress`, con un comentario que lo diga |
+| Desplegado, soltado o entregado | `done` |
+| Parado por una decisión del usuario o por algo de fuera | `in_progress`, con un comentario que diga qué falta |
+| Descartado | `closed`, con el porqué |
 
 Y deja un comentario de cierre corto:
 - qué se hizo;
@@ -134,4 +138,4 @@ línea.
 - No reescribir la descripción ni el documento de otra persona: comenta.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
 
-<!-- cac-work v1 -->
+<!-- cac-work v2 -->

@@ -1610,13 +1610,14 @@ fn tool_defs() -> Value {
         },
         {
             "name": "create_task",
-            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.\n\nIf the list belongs to a client's channel (list_task_spaces shows a projectId on it), anything created there is VISIBLE TO THAT CLIENT by default: it lands on their board, takes a number from their folio sequence — permanently, even if withdrawn later — and fires their webhook. Pass visibility:\"internal\" to keep it to the team.\n\nA checklist inside a task is its SUBTASKS: create each line with parentId, and tick it off with update_task + statusId. Don't keep pending items as text in comments — nobody can tell which ones are done.",
+            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.\n\nIf the list belongs to a client's channel (list_task_spaces shows a projectId on it), anything created there is VISIBLE TO THAT CLIENT by default: it lands on their board, takes a number from their folio sequence — permanently, even if withdrawn later — and fires their webhook. Pass visibility:\"internal\" to keep it to the team.\n\nA checklist inside a task is its SUBTASKS: pass them as `subtasks` in this same call (or create each line later with parentId), and tick each off with update_task + status: done. Don't keep pending items as text in comments — nobody can tell which ones are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "listId": { "type": "string", "description": "Target list (from list_task_spaces)." },
                     "title": { "type": "string" },
-                    "parentId": {
+"subtasks": { "type": "array", "items": { "type": "string" }, "description": "Optional. The task's checklist, created in the same call as subtasks (titles, up to 30). Retrying with the same idempotencyKey finishes it without duplicates." },
+                                        "parentId": {
                         "type": "string",
                         "description": "Optional. Makes this a subtask of that task. Two rules that surprise people: the parent must be in the SAME list — a subtask elsewhere would be unreachable from its parent's board — and a subtask of a client-visible item stays internal, so it never spends one of their folio numbers on a checklist line."
                     },
@@ -1657,7 +1658,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "update_task",
-            "description": "Change an existing task: title, markdown description, priority, tags, assignees, due date, or which column it sits in (statusId, from get_board). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
+            "description": "Change an existing task: title, markdown description, priority, tags, assignees, due date, or which column it sits in (status by name: open, in_progress, done, closed). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1678,7 +1679,8 @@ fn tool_defs() -> Value {
                         "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. To remove a due date, send clearDueAt: true instead."
                     },
                     "clearDueAt": { "type": "boolean", "description": "Remove the task's due date." },
-                    "statusId": { "type": "string", "description": "Move the task to this column. get_board returns a statusId per column. This is also how a subtask is ticked off: move it to a done column of its parent's list." },
+                    "status": { "type": "string", "enum": ["open", "in_progress", "done", "closed"], "description": "Move the task to the column of this state in its own list — no get_board needed. This is also how a subtask is ticked off (done)." },
+                    "statusId": { "type": "string", "description": "Alternative to status: the exact column id from get_board." },
                     "visibility": {
                         "type": "string",
                         "enum": ["public", "internal"],
@@ -2855,9 +2857,33 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     json!({ "tagIds": ids }),
                 )?;
             }
+            // La checklist en la misma llamada: antes eran N+1 llamadas, una
+            // por línea. Cada subtarea lleva su clave derivada de la del padre,
+            // así que reintentar entera no duplica ni el padre ni las líneas.
+            let mut created_subtasks = vec![];
+            if let (Some(titles), Some(parent)) = (subtask_titles(args)?, data.get("id").and_then(|v| v.as_str())) {
+                let key = arg_str(args, "idempotencyKey");
+                for (i, title) in titles.iter().enumerate() {
+                    let mut sub = json!({ "title": title, "parentId": parent });
+                    if let Some(k) = &key {
+                        sub["idempotencyKey"] = json!(subtask_key(k, i));
+                    }
+                    match api_post(cfg, &format!("/api/v1/task-lists/{list_id}/tasks"), sub) {
+                        Ok(d) => created_subtasks.push(json!({ "id": d.get("id"), "seq": d.get("seq"), "title": d.get("title") })),
+                        Err(e) => {
+                            return Err(format!(
+                                "The task {parent} was created, and {} of its {} subtasks; subtask \"{title}\" failed: {e}. Retry with the same idempotencyKey to finish without duplicates.",
+                                created_subtasks.len(),
+                                titles.len()
+                            ))
+                        }
+                    }
+                }
+            }
             // Echo back what was created, including the sequence number, so the
             // caller can refer to the task without another round trip.
             Ok(json!({
+                "subtasks": created_subtasks,
                 "id": data.get("id"),
                 "seq": data.get("seq"),
                 "title": data.get("title"),
@@ -2901,10 +2927,10 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             }
             // Moving a card is its own endpoint: the server derives the ordering
             // rank from the neighbours, so a status change can't be a field patch.
-            let status_id = arg_str(args, "statusId");
+            let status_id = move_target(args)?;
             if body.as_object().map(|o| o.is_empty()).unwrap_or(true) && status_id.is_none() {
                 return Err(
-                    "Nothing to change: send at least one of title, description, priority, visibility, tags, assignees, dueAt or statusId"
+                    "Nothing to change: send at least one of title, description, priority, visibility, tags, assignees, dueAt, status or statusId"
                         .into(),
                 );
             }
@@ -4201,6 +4227,49 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
 /// with no token configured at all.
 const LOCAL_TOOLS: &[&str] = &["compress_image", "install_skill"];
 
+/// Las líneas de la checklist de `create_task` (`subtasks`), o `None`. Un
+/// título vacío o más de 30 líneas es un error antes de crear nada.
+fn subtask_titles(args: &Value) -> Result<Option<Vec<String>>, String> {
+    let Some(v) = args.get("subtasks") else {
+        return Ok(None);
+    };
+    let arr = v.as_array().ok_or("subtasks must be a list of titles")?;
+    if arr.len() > 30 {
+        return Err("At most 30 subtasks at once".into());
+    }
+    let mut out = vec![];
+    for x in arr {
+        let t = x.as_str().map(str::trim).unwrap_or("");
+        if t.is_empty() {
+            return Err("Every subtask needs a title".into());
+        }
+        out.push(t.to_string());
+    }
+    Ok(if out.is_empty() { None } else { Some(out) })
+}
+
+/// La clave de idempotencia de la subtarea `i`, derivada de la del padre.
+fn subtask_key(parent_key: &str, i: usize) -> String {
+    format!("{parent_key}/sub-{i}")
+}
+
+/// La columna a la que mover en `update_task`: `statusId` (del tablero) o
+/// `status` por nombre, que el backend resuelve en la lista de la tarea
+/// (`domain.MoveStatusID`). Los dos a la vez es un error: no se sabe cuál vale.
+fn move_target(args: &Value) -> Result<Option<String>, String> {
+    let id = arg_str(args, "statusId");
+    let named = arg_str(args, "status");
+    match (id, named) {
+        (Some(_), Some(_)) => Err("Send status or statusId, not both".into()),
+        (Some(id), None) => Ok(Some(id)),
+        (None, Some(n)) => match n.as_str() {
+            "open" | "in_progress" | "done" | "closed" => Ok(Some(n)),
+            other => Err(format!("Unknown status \"{other}\": use open, in_progress, done or closed")),
+        },
+        (None, None) => Ok(None),
+    }
+}
+
 /// La URL del remote `origin` del repo en `dir` (o del primero que haya).
 fn git_remote(dir: &str) -> Result<String, String> {
     let run = |args: &[&str]| {
@@ -5184,6 +5253,132 @@ mod tests {
         git(&["remote", "add", "origin", "git@github.com:guz-studio/cac.git"]);
         assert_eq!(git_remote(d.to_str().unwrap()).unwrap(), "git@github.com:guz-studio/cac.git");
         let _ = std::fs::remove_dir_all(d);
+    }
+
+    /// Roturas que detecta: aceptar un estado que el backend no conoce (el
+    /// error llegaría como un 400 opaco), aceptar status y statusId a la vez,
+    /// o perder el statusId de siempre.
+    #[test]
+    fn a_task_moves_by_state_name_or_by_column_id() {
+        for st in ["open", "in_progress", "done", "closed"] {
+            assert_eq!(move_target(&json!({ "status": st })).unwrap().as_deref(), Some(st));
+        }
+        assert!(move_target(&json!({ "status": "resolved_ish" })).is_err());
+        assert!(move_target(&json!({ "status": "done", "statusId": "L/resolved" })).is_err());
+        assert_eq!(move_target(&json!({ "statusId": "L/resolved" })).unwrap().as_deref(), Some("L/resolved"));
+        assert_eq!(move_target(&json!({})).unwrap(), None);
+        // Lo que anuncia la herramienta es lo que acepta.
+        let defs = tool_defs();
+        let ut = defs.as_array().unwrap().iter().find(|t| t["name"] == "update_task").unwrap();
+        assert_eq!(ut["inputSchema"]["properties"]["status"]["enum"], json!(["open", "in_progress", "done", "closed"]));
+    }
+
+    /// Roturas que detecta: crear líneas vacías, pasar de 30, o que la clave
+    /// de una subtarea no dependa de su posición (al reintentar, la segunda
+    /// línea devolvería la primera).
+    #[test]
+    fn a_checklist_is_created_with_its_task() {
+        assert_eq!(subtask_titles(&json!({})).unwrap(), None);
+        assert_eq!(subtask_titles(&json!({ "subtasks": [] })).unwrap(), None);
+        assert_eq!(
+            subtask_titles(&json!({ "subtasks": [" Backend ", "App"] })).unwrap(),
+            Some(vec!["Backend".to_string(), "App".to_string()])
+        );
+        assert!(subtask_titles(&json!({ "subtasks": ["ok", "  "] })).is_err());
+        assert!(subtask_titles(&json!({ "subtasks": "una" })).is_err());
+        assert!(subtask_titles(&json!({ "subtasks": vec!["x"; 31] })).is_err());
+        assert_ne!(subtask_key("k", 0), subtask_key("k", 1));
+        assert_ne!(subtask_key("k", 0), "k");
+        let defs = tool_defs();
+        let ct = defs.as_array().unwrap().iter().find(|t| t["name"] == "create_task").unwrap();
+        assert_eq!(ct["inputSchema"]["properties"]["subtasks"]["type"], json!("array"));
+    }
+
+    /// Un cac falso: contesta a cada petición con `answer(método, ruta, cuerpo)`
+    /// dentro del sobre `{success, data}` y apunta lo que le pidieron. Cierra
+    /// cada conexión, así que cada petición llega por separado.
+    fn fake_cac(
+        answer: impl Fn(&str, &str, &Value) -> Value + Send + 'static,
+    ) -> (Cfg, std::sync::Arc<std::sync::Mutex<Vec<(String, String, Value)>>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let log = seen.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let mut parts = line.split_whitespace();
+                let (method, path) = (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string());
+                let mut len = 0;
+                loop {
+                    let mut h = String::new();
+                    reader.read_line(&mut h).unwrap();
+                    if h.trim().is_empty() {
+                        break;
+                    }
+                    if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut buf = vec![0; len];
+                reader.read_exact(&mut buf).unwrap();
+                let body: Value = serde_json::from_slice(&buf).unwrap_or(Value::Null);
+                let data = answer(&method, &path, &body);
+                log.lock().unwrap().push((method, path, body));
+                let out = json!({ "success": true, "data": data }).to_string();
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                    out.len()
+                );
+            }
+        });
+        (Cfg { base, token: "cac_pat_test".into() }, seen)
+    }
+
+    /// De punta a punta contra un cac falso. Rotura que detecta: que
+    /// `update_task` no lea `status` (se quedaba en el `statusId` de siempre y
+    /// el agente volvía a pedir el tablero).
+    #[test]
+    fn update_task_moves_by_state_name() {
+        let (cfg, seen) = fake_cac(|_, _, _| json!({ "task": { "id": "t1" }, "status": { "name": "Done", "kind": "done" } }));
+        let out = call_tool(&cfg, "update_task", &json!({ "id": "t1", "status": "done" })).unwrap();
+        assert_eq!(out["task"]["column"], "Done");
+        let seen = seen.lock().unwrap();
+        let mv = seen.iter().find(|(m, p, _)| m == "POST" && p == "/api/v1/tasks/t1/move").expect("no movió la tarea");
+        assert_eq!(mv.2["statusId"], "done");
+    }
+
+    /// De punta a punta contra un cac falso. Roturas que detecta: no crear las
+    /// líneas, colgarlas sueltas (sin `parentId`) o con la misma clave.
+    #[test]
+    fn create_task_creates_its_checklist_in_the_same_call() {
+        let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = n.clone();
+        let (cfg, seen) = fake_cac(move |_, _, body| {
+            let i = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            json!({ "id": format!("t{i}"), "seq": 10 + i, "title": body["title"], "parentId": body.get("parentId") })
+        });
+        let out = call_tool(
+            &cfg,
+            "create_task",
+            &json!({ "listId": "L", "title": "Padre", "idempotencyKey": "k", "subtasks": ["Backend", "App"] }),
+        )
+        .unwrap();
+        assert_eq!(out["id"], "t0");
+        assert_eq!(out["subtasks"].as_array().unwrap().len(), 2);
+        let seen = seen.lock().unwrap();
+        let posts: Vec<&Value> = seen.iter().filter(|(m, p, _)| m == "POST" && p == "/api/v1/task-lists/L/tasks").map(|x| &x.2).collect();
+        assert_eq!(posts.len(), 3, "{seen:?}");
+        assert_eq!(posts[1]["parentId"], "t0");
+        assert_eq!(posts[2]["parentId"], "t0");
+        assert_eq!(posts[2]["title"], "App");
+        assert_ne!(posts[1]["idempotencyKey"], posts[2]["idempotencyKey"]);
+        assert_ne!(posts[1]["idempotencyKey"], posts[0]["idempotencyKey"]);
     }
 
     /// Una carpeta de skills desechable por prueba.
