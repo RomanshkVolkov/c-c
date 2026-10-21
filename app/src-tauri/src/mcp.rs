@@ -1820,6 +1820,16 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "install_skill",
+            "description": "Install (or update) the cac-work skill for Claude Code on this machine: how to find a repository's place in cac, read its docs before starting, register the work as a task, record decisions and keep it all up to date. Writes one fixed file, skills/cac-work/SKILL.md in the Claude Code config folder, with the text shipped inside this cac app — nothing is downloaded. ASK THE USER FIRST; call it only when they agreed. It takes effect in the next session. Needs no scope; it never touches cac.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "dryRun": { "type": "boolean", "description": "Report where it would write without writing." }
+                }
+            }
+        },
+        {
             "name": "list_devices",
             "description": "Devices sending passive telemetry (mobile apps): each with its name (label), who uses it (subject — an id such as an employee number, never an email), project, app version, last seen, last heartbeat, error/warning counts and the project's health alerts that its latest state breaks. `query` searches name, subject and device id. Use to find a device to investigate.",
             "inputSchema": {
@@ -4130,7 +4140,8 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
             json!({
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "cac", "version": env!("CARGO_PKG_VERSION") }
+                "serverInfo": { "name": "cac", "version": env!("CARGO_PKG_VERSION") },
+                "instructions": instructions(skills_dir().as_deref().map(skill_state))
             }),
         )),
         "ping" => Some(ok(id, json!({}))),
@@ -4157,10 +4168,123 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
 
 /// Tools that run entirely on this machine and never call cac, so they work
 /// with no token configured at all.
-const LOCAL_TOOLS: &[&str] = &["compress_image"];
+const LOCAL_TOOLS: &[&str] = &["compress_image", "install_skill"];
+
+/// La skill de trabajar con cac (leer el contexto, registrar la tarea, dejar
+/// escrito lo decidido), dentro del binario.
+///
+/// Viaja con el MCP para que quien conecta cac a Claude Code la tenga sin
+/// buscarla: el MCP ya está en cada máquina del equipo, la skill no. jose tenía
+/// que recordarle a cada sesión que registrara y actualizara sus tareas
+/// (21-oct-2026); las instrucciones de abajo lo dicen siempre, y la skill dice
+/// cómo.
+const WORK_SKILL: &str = include_str!("../skills/cac-work/SKILL.md");
+const WORK_SKILL_NAME: &str = "cac-work";
+
+/// La versión de una copia de la skill, de su marca final `<!-- cac-work vN -->`.
+/// Se sube a mano al cambiar la skill: es lo que hace que se ofrezca actualizar.
+fn skill_version(text: &str) -> Option<u32> {
+    let tail = text.rsplit("<!-- cac-work v").next()?;
+    if tail.len() == text.len() {
+        return None;
+    }
+    tail.split_whitespace().next()?.parse().ok()
+}
+
+#[derive(Debug, PartialEq)]
+enum SkillState {
+    Missing,
+    Outdated,
+    Current,
+}
+
+/// Dónde busca Claude Code las skills de la persona: `CLAUDE_CONFIG_DIR` si
+/// está puesta (el MCP la hereda de Claude Code), y si no `~/.claude`.
+fn skills_dir() -> Option<std::path::PathBuf> {
+    let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".claude")))?;
+    Some(base.join("skills"))
+}
+
+fn skill_state(dir: &std::path::Path) -> SkillState {
+    let Ok(text) = std::fs::read_to_string(dir.join(WORK_SKILL_NAME).join("SKILL.md")) else {
+        return SkillState::Missing;
+    };
+    // Una copia sin marca o más vieja se ofrece actualizar; una más nueva (de
+    // una app más reciente en otra parte) se deja como está.
+    match (skill_version(&text), skill_version(WORK_SKILL)) {
+        (Some(have), Some(ship)) if have >= ship => SkillState::Current,
+        _ => SkillState::Outdated,
+    }
+}
+
+/// Lo que el MCP le dice al agente al conectarse. Claude Code lo pone en el
+/// contexto de toda la sesión, así que llega aunque nadie cargue la skill: es
+/// el recordatorio que antes tenía que hacer jose a mano.
+fn instructions(state: Option<SkillState>) -> String {
+    let mut s = String::from(
+        "cac is this team's shared memory: what one session learns is lost when it ends, and what is written in cac \
+         is what the next session, or any teammate, can read. When you start work in a repository: find its cac list \
+         (its CLAUDE.md names it under \"Tareas en cac\"; if it does not, ask the user which list and add that \
+         section), read what the team already knows (get_doc outline of that list, folder or space, then only the \
+         relevant sections; search for related tasks and notes), and find or create the task and move it to in \
+         progress. Record findings as task comments and decisions with record_decision. Before you tell the user you \
+         are done, update the task: its column must say honestly how the work stands, with a short closing comment \
+         (what was done, commits or PR, what is left).",
+    );
+    match state {
+        Some(SkillState::Missing) => s.push_str(
+            "\n\nThe cac-work skill, which explains all this step by step, is not installed on this machine. At a natural \
+             pause early in the session, suggest installing it to the user in one sentence; if they agree, call \
+             install_skill. Do not install it without asking, and do not bring it up again if they decline.",
+        ),
+        Some(SkillState::Outdated) => s.push_str(
+            "\n\nThe installed cac-work skill is older than the one this cac app ships. At a natural pause, offer the \
+             user to update it in one sentence; if they agree, call install_skill.",
+        ),
+        _ => {}
+    }
+    s
+}
+
+/// Escribe la skill en `dir`. No pisa una copia más nueva.
+fn install_skill(dir: &std::path::Path, dry_run: bool) -> Result<Value, String> {
+    let path = dir.join(WORK_SKILL_NAME).join("SKILL.md");
+    let before = std::fs::read_to_string(&path).ok();
+    let had = before.as_deref().and_then(skill_version);
+    let ship = skill_version(WORK_SKILL);
+    if let (Some(h), Some(v)) = (had, ship) {
+        if h > v {
+            return Err(format!(
+                "{} already has v{h}, newer than the v{v} this app ships; left as it is.",
+                path.display()
+            ));
+        }
+    }
+    let result = json!({
+        "path": path.display().to_string(),
+        "version": ship,
+        "replaced": before.is_some(),
+        "previousVersion": had,
+    });
+    if dry_run {
+        return Ok(json!({ "wouldWrite": result, "dryRun": true }));
+    }
+    std::fs::create_dir_all(path.parent().unwrap_or(dir))
+        .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+    std::fs::write(&path, WORK_SKILL).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+    Ok(result)
+}
 
 fn call_local_tool(name: &str, args: &Value) -> Result<Value, String> {
     match name {
+        // Escribe un fichero fijo y conocido, con el texto que va dentro del
+        // binario: ni la ruta ni el contenido los elige quien llama.
+        "install_skill" => {
+            let dir = skills_dir().ok_or("Could not find the Claude Code config folder (no HOME).")?;
+            install_skill(&dir, arg_bool(args, "dryRun"))
+        }
         // The only tool here that is not an HTTP call. The MCP server *is* the
         // app binary, so the compressor the image page uses is already linked
         // in — there is no endpoint to add and nothing leaves the machine.
@@ -4940,6 +5064,100 @@ mod tests {
     /// redacta como borrador; no hay herramienta para publicar un borrador,
     /// editar, borrar ni fijar — eso lo hace una persona. Mutantes: añadir una
     /// de esas herramientas; describir el comunicado como publicado.
+    /// Una carpeta de skills desechable por prueba.
+    fn skills_tmp(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("cac-skill-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    fn write_installed(dir: &std::path::Path, text: &str) {
+        std::fs::create_dir_all(dir.join(WORK_SKILL_NAME)).unwrap();
+        std::fs::write(dir.join(WORK_SKILL_NAME).join("SKILL.md"), text).unwrap();
+    }
+
+    /// Roturas que detecta: quitar la marca de versión de la skill (nunca se
+    /// ofrecería actualizar), o leerla mal.
+    #[test]
+    fn the_shipped_skill_carries_its_version() {
+        assert!(skill_version(WORK_SKILL).is_some(), "la skill necesita su <!-- cac-work vN -->");
+        assert_eq!(skill_version("x\n<!-- cac-work v7 -->\n"), Some(7));
+        assert_eq!(skill_version("sin marca"), None);
+        assert!(WORK_SKILL.starts_with("---\nname: cac-work\n"), "el nombre de la skill es el de su carpeta");
+    }
+
+    /// Roturas que detecta: dar por buena una copia vieja o sin marca, u
+    /// ofrecer "actualizar" una más nueva.
+    #[test]
+    fn the_installed_skill_is_missing_outdated_or_current() {
+        let ship = skill_version(WORK_SKILL).unwrap();
+        let d = skills_tmp("state");
+        assert_eq!(skill_state(&d), SkillState::Missing);
+        write_installed(&d, "una copia a mano");
+        assert_eq!(skill_state(&d), SkillState::Outdated);
+        write_installed(&d, &format!("<!-- cac-work v{} -->", ship.saturating_sub(1)));
+        assert_eq!(skill_state(&d), if ship == 0 { SkillState::Current } else { SkillState::Outdated });
+        write_installed(&d, WORK_SKILL);
+        assert_eq!(skill_state(&d), SkillState::Current);
+        write_installed(&d, &format!("<!-- cac-work v{} -->", ship + 1));
+        assert_eq!(skill_state(&d), SkillState::Current);
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    /// Roturas que detecta: no recordar siempre lo de la tarea (era el
+    /// recordatorio que hacía jose a mano), sugerir instalar lo ya instalado,
+    /// o no sugerirlo cuando falta.
+    #[test]
+    fn the_instructions_always_remind_and_only_suggest_when_needed() {
+        for st in [None, Some(SkillState::Missing), Some(SkillState::Outdated), Some(SkillState::Current)] {
+            let text = instructions(st);
+            assert!(text.contains("update the task"), "{text}");
+            assert!(text.contains("get_doc"), "{text}");
+        }
+        assert!(instructions(Some(SkillState::Missing)).contains("call install_skill"));
+        assert!(instructions(Some(SkillState::Missing)).contains("Do not install it without asking"));
+        assert!(instructions(Some(SkillState::Outdated)).contains("call install_skill"));
+        assert!(!instructions(Some(SkillState::Current)).contains("install_skill"));
+        assert!(!instructions(None).contains("install_skill"));
+    }
+
+    /// Roturas que detecta: no escribirla, escribir otra cosa, pisar una copia
+    /// más nueva, o escribir en un dryRun.
+    #[test]
+    fn install_skill_writes_the_shipped_text_and_never_downgrades() {
+        let d = skills_tmp("install");
+        let dry = install_skill(&d, true).unwrap();
+        assert_eq!(dry["dryRun"], json!(true));
+        assert!(!d.exists(), "un dryRun no escribe");
+
+        let out = install_skill(&d, false).unwrap();
+        assert_eq!(out["replaced"], json!(false));
+        let path = d.join(WORK_SKILL_NAME).join("SKILL.md");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), WORK_SKILL);
+
+        write_installed(&d, "vieja");
+        assert_eq!(install_skill(&d, false).unwrap()["replaced"], json!(true));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), WORK_SKILL);
+
+        let newer = format!("<!-- cac-work v{} -->", skill_version(WORK_SKILL).unwrap() + 1);
+        write_installed(&d, &newer);
+        assert!(install_skill(&d, false).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), newer);
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    /// Rotura que detecta: que instalar la skill pida token (está para quien
+    /// aún no ha configurado nada) o que no se anuncie.
+    #[test]
+    fn install_skill_is_local_and_listed() {
+        assert!(LOCAL_TOOLS.contains(&"install_skill"));
+        let defs = tool_defs();
+        let def = defs.as_array().unwrap().iter().find(|t| t["name"] == "install_skill").expect("anunciada");
+        assert!(def["description"].as_str().unwrap().contains("ASK THE USER FIRST"));
+        let init = handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" }), &Err("sin token".into())).unwrap();
+        assert!(init["result"]["instructions"].as_str().unwrap().contains("update the task"));
+    }
+
     #[test]
     fn the_wall_tools_only_add() {
         let defs = tool_defs();

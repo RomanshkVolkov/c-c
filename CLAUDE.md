@@ -235,6 +235,14 @@ release sale con la feature **terminada**, juntando, no por tanda. Hasta la
 v1.6.105 todo salió como parche.
 → Guardián: `app/src/lib/next-version.test.ts`.
 
+## Tareas en cac
+
+El trabajo de este repo se registra en la organización «Command and control»
+(la skill `cac-work` explica cómo; el MCP de cac ofrece instalarla):
+
+- **App** → `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` (lo de `app/`)
+- **Backend** → `91abe433-4d90-4519-93ff-616109ce40c9` (lo de `backend/`, `infra/` y `swarm-manage/`)
+
 ## Convenciones
 
 - **El código se escribe en inglés y se comenta en castellano.** Ficheros,
