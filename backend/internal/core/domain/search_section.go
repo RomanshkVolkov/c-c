@@ -23,12 +23,18 @@ import (
 // Cada sección es lo que hay bajo su título **hasta el siguiente título de
 // cualquier nivel**, así que gana la más concreta. Gana la que contiene más
 // palabras distintas de la consulta; a igualdad, la primera. Las palabras se
-// comparan como en la búsqueda: por prefijo, sin mayúsculas y sin acentos
-// (`SearchTSQuery`, `cac_simple`).
+// comparan como en la búsqueda (`SearchTSQuery`, `cac_simple`): por prefijo
+// salvo las cortas, sin mayúsculas y sin acentos.
 func SearchSection(body, query string) string {
-	terms := foldWords(query)
+	terms := searchTerms(query)
 	if len(terms) == 0 {
 		return ""
+	}
+	for i := range terms {
+		// Sin acentos, como compara `foldWords` el texto.
+		if f := foldWords(terms[i].word); len(f) > 0 {
+			terms[i].word = f[0]
+		}
 	}
 	best, bestScore := "", 0
 	heading, seen := "", map[string]bool{}
@@ -44,8 +50,8 @@ func SearchSection(body, query string) string {
 		}
 		for _, w := range foldWords(line) {
 			for _, term := range terms {
-				if strings.HasPrefix(w, term) {
-					seen[term] = true
+				if w == term.word || (term.prefix && strings.HasPrefix(w, term.word)) {
+					seen[term.word] = true
 				}
 			}
 		}

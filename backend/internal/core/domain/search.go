@@ -98,16 +98,46 @@ type SearchResults struct {
 // encuentra `pocna-jobs`, «desplieg» encuentra «despliegues» — y porque el
 // índice no lematiza (`cac_simple`), así que los plurales los cubre esto.
 //
+// **Salvo las palabras de una o dos letras**, que cuentan sólo enteras: por
+// prefijo, «de» encontraba «después» y «desprogramó», y en «puerta de
+// verificación» la mitad de los aciertos salían por eso (21-oct-2026). La
+// última palabra sí va por prefijo aunque sea corta, porque en la paleta es la
+// que se está escribiendo: «puerta d» tiene que seguir encontrando algo.
+//
 // Sólo letras y dígitos sobreviven. Los operadores de `to_tsquery` (`&`, `|`,
 // `!`, `:`, `(`, comillas) harían que Postgres rechazara la consulta con un
 // error, y una búsqueda que revienta porque alguien pegó un `!=` es peor que
 // una que lo ignora. Pura, para poder probarla sin base.
 func SearchTSQuery(q string) string {
-	var terms []string
+	terms := searchTerms(q)
+	out := make([]string, len(terms))
+	for i, t := range terms {
+		out[i] = t.word
+		if t.prefix {
+			out[i] += ":*"
+		}
+	}
+	return strings.Join(out, " & ")
+}
+
+// searchTerm: una palabra de la consulta, y si se busca por prefijo.
+type searchTerm struct {
+	word   string
+	prefix bool
+}
+
+// ShortSearchWord: hasta cuántas letras una palabra cuenta sólo entera.
+const ShortSearchWord = 2
+
+// searchTerms: las palabras de una consulta (como mucho ocho), con la regla
+// de `SearchTSQuery`. La comparte `SearchSection`, para que la sección de un
+// acierto se elija con las mismas palabras que lo encontraron.
+func searchTerms(q string) []searchTerm {
+	var words []string
 	var cur []rune
 	flush := func() {
 		if len(cur) > 0 {
-			terms = append(terms, string(cur)+":*")
+			words = append(words, string(cur))
 			cur = cur[:0]
 		}
 	}
@@ -119,10 +149,15 @@ func SearchTSQuery(q string) string {
 		flush()
 	}
 	flush()
-	if len(terms) > 8 {
-		terms = terms[:8]
+	if len(words) > 8 {
+		words = words[:8]
 	}
-	return strings.Join(terms, " & ")
+	out := make([]searchTerm, len(words))
+	for i, w := range words {
+		last := i == len(words)-1
+		out[i] = searchTerm{word: w, prefix: last || len([]rune(w)) > ShortSearchWord}
+	}
+	return out
 }
 
 // SearchMiss: una búsqueda de un agente que no encontró nada.

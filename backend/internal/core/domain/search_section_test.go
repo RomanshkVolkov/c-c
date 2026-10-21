@@ -31,6 +31,15 @@ func TestSearchSectionPointsAtTheSectionNotTheTab(t *testing.T) {
 	}
 }
 
+// Rotura que detecta: elegir la sección con las palabras cortas por prefijo
+// («de» casaría con «Despliega» y empataría «Uno», que va antes).
+func TestASectionIsChosenWithTheSameWordsAsTheSearch(t *testing.T) {
+	doc := "## Uno\n\nDespliega la base.\n\n## Dos\n\nLa base de datos.\n"
+	if got := SearchSection(doc, "de base"); got != "Dos" {
+		t.Errorf("got %q", got)
+	}
+}
+
 // Rotura que detecta: que el bloque de código cuente como título («Correo de
 // prueba» no existe para el MCP, que no lo reconoce).
 func TestACodeCommentIsNotAHeading(t *testing.T) {

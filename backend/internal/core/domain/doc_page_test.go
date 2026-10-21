@@ -19,6 +19,25 @@ func TestSearchQueryPrefixesEveryTerm(t *testing.T) {
 	}
 }
 
+// Una palabra de una o dos letras cuenta sólo entera, salvo la última, que en
+// la paleta se está escribiendo. Roturas que detecta: volver al prefijo para
+// todas («de» encuentra «después»); quitárselo también a la última («puerta d»
+// deja de encontrar); contar bytes y no letras («él» tiene dos letras y
+// cuatro bytes, y quedaría por prefijo).
+func TestAShortWordOnlyMatchesWhole(t *testing.T) {
+	for q, want := range map[string]string{
+		"puerta de verificación": "puerta:* & de & verificación:*",
+		"puerta d":               "puerta:* & d:*",
+		"ci":                     "ci:*",
+		"él dijo":                "él & dijo:*",
+		"ñu ok ya":               "ñu & ok & ya:*",
+	} {
+		if got := SearchTSQuery(q); got != want {
+			t.Errorf("SearchTSQuery(%q) = %q, quería %q", q, got, want)
+		}
+	}
+}
+
 // Lo que no es letra ni dígito no llega a Postgres: un operador suelto de
 // `to_tsquery` haría que la consulta reventara.
 func TestSearchQueryStripsOperators(t *testing.T) {
@@ -28,7 +47,7 @@ func TestSearchQueryStripsOperators(t *testing.T) {
 			t.Fatalf("pasó el operador %q: %q", op, got)
 		}
 	}
-	if got != "a:* & b:* & c:*" {
+	if got != "a & b & c:*" {
 		t.Fatalf("SearchTSQuery = %q", got)
 	}
 	if SearchTSQuery(" !& ") != "" {
