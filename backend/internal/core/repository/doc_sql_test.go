@@ -33,14 +33,14 @@ func docSQLDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	admin, err := gorm.Open(postgres.Open(dsn(GetEnv("DB_NAME", "cac"))), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
-		t.Skipf("no database reachable: %v", err)
+		t.Fatalf("DB_HOST is set but the database does not answer (a skipped test is not a green one): %v", err)
 	}
 	// Una base desechable, como el resto de pruebas de este paquete: sin esto,
 	// apuntar `DB_HOST` a algo real le deja dentro las filas de la prueba.
 	const name = "cac_test_doc_sql"
 	admin.Exec("DROP DATABASE IF EXISTS " + name)
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("cannot create a throwaway database: %v", err)
+		t.Fatalf("DB_HOST is set but a throwaway database cannot be created: %v", err)
 	}
 	adminSQL, _ := admin.DB()
 

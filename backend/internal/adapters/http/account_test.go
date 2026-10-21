@@ -43,11 +43,11 @@ func accountHTTPSetup(t *testing.T) *accountHTTP {
 	}
 	admin, err := gorm.Open(postgres.Open(dsn(repository.GetEnv("DB_NAME", "cac"))), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
-		t.Skipf("no database reachable: %v", err)
+		t.Fatalf("DB_HOST is set but the database does not answer (a skipped test is not a green one): %v", err)
 	}
 	name := fmt.Sprintf("cac_test_account_http_%d", time.Now().UnixNano())
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("cannot create a throwaway database: %v", err)
+		t.Fatalf("DB_HOST is set but a throwaway database cannot be created: %v", err)
 	}
 	db, err := gorm.Open(postgres.Open(dsn(name)), &gorm.Config{Logger: logger.Discard})
 	if err != nil {

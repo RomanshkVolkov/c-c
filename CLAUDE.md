@@ -188,9 +188,13 @@ actualizador no se entera, así que nadie se la come, pero esa versión ya está
 gastada: se arregla y sale la siguiente.
 
 Y ojo con el verde de `go test` **en local**: las pruebas que necesitan Postgres
-se **saltan** sin base (`t.Skip("no database configured")` cuando no hay
-`DB_HOST`), y son treinta ficheros. Sin `DB_HOST` puesto, un verde no significa
-que se hayan corrido todas — en CI ya no puede pasar, en tu máquina sí.
+se **saltan** sin `DB_HOST` (`t.Skip("no database configured")`), y son casi
+sesenta ficheros. Sin `DB_HOST` puesto, un verde no significa que se hayan
+corrido todas — en CI ya no puede pasar, en tu máquina sí. **Con `DB_HOST`
+puesto, una base que no contesta falla, no se salta**: hasta el 21-oct-2026 se
+saltaba en silencio, y con la base de pruebas apagada diez horas un verde no
+había corrido ninguna.
+→ Guardián: `repository.TestADatabaseThatDoesNotAnswerFailsInsteadOfSkipping`.
 
 ## El agente de cada servidor tiene identidad (desde su v2)
 
