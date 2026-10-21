@@ -2,6 +2,7 @@ package domain
 
 import (
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -47,6 +48,9 @@ type SearchHit struct {
 	OwnerID   string `json:"ownerId,omitempty"`
 	Tab       string `json:"tab,omitempty"`
 	PageID    string `json:"pageId,omitempty"`
+	// Section: el título bajo el que cae lo buscado (`SearchSection`), para
+	// leer sólo esa sección con `get_doc(tab, section)` o `get_doc_page`.
+	Section string `json:"section,omitempty"`
 }
 
 type SearchKind string
@@ -119,4 +123,28 @@ func SearchTSQuery(q string) string {
 		terms = terms[:8]
 	}
 	return strings.Join(terms, " & ")
+}
+
+// SearchMiss: una búsqueda de un agente que no encontró nada.
+//
+// Para decidir con datos si hace falta búsqueda semántica (embeddings): la de
+// texto completo no sabe que «cómo despliego» y «soltar una release» hablan de
+// lo mismo, pero no sabemos cuánto falla de verdad. Esto lo cuenta. Sólo las del
+// MCP: una persona que no encuentra algo reformula en el momento; un agente
+// suele rendirse y leer documentos enteros, que es lo que se quiere evitar.
+// Se guarda la consulta tal cual (la escribió alguien del equipo con su token)
+// y se poda a los 90 días.
+type SearchMiss struct {
+	ID        string    `gorm:"type:varchar(36);primaryKey" json:"id"`
+	UserID    string    `gorm:"type:varchar(36);index;not null" json:"userId"`
+	OrgID     string    `gorm:"type:varchar(36);index" json:"orgId"`
+	Query     string    `gorm:"type:varchar(200);not null" json:"query"`
+	CreatedAt time.Time `gorm:"index" json:"createdAt"`
+}
+
+// NothingForAnAgent: si no hubo acierto en lo que el MCP enseña (tareas, notas
+// y docs). Personas, mensajes y directos no le llegan al agente, así que un
+// acierto ahí no le sirvió de nada.
+func (r SearchResults) NothingForAnAgent() bool {
+	return len(r.Tasks) == 0 && len(r.Notes) == 0 && len(r.Docs) == 0
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -12,7 +13,15 @@ type SearchHandler interface {
 	Search(w http.ResponseWriter, r *http.Request)
 }
 
-type searchHandler struct{ svc *service.SearchService }
+// searcher: lo que el handler usa de service.SearchService. Interfaz para que
+// la prueba de las búsquedas fallidas no necesite todas las tablas que busca.
+type searcher interface {
+	Search(query, orgID, userID string, limit int) (domain.SearchResults, error)
+	SearchOrgs(query string, orgIDs []string, userID string, limit int) (domain.SearchResults, error)
+	RecordMiss(userID, orgID, query string) error
+}
+
+type searchHandler struct{ svc searcher }
 
 func NewSearchHandler(svc *service.SearchService) SearchHandler {
 	return &searchHandler{svc: svc}
@@ -52,7 +61,16 @@ func (h *searchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusInternalServerError, "Search failed", err.Error())
 		return
 	}
+	if agentFoundNothing(r.Context(), res) {
+		_ = h.svc.RecordMiss(user.UserID, orgID, r.URL.Query().Get("q"))
+	}
 	SendResult(w, http.StatusOK, domain.APIResponse[domain.SearchResults]{Success: true, Data: res})
+}
+
+// agentFoundNothing: si es una búsqueda del MCP que no le dio nada al agente
+// (ver domain.SearchMiss). Las de la app no se guardan.
+func agentFoundNothing(ctx context.Context, res domain.SearchResults) bool {
+	return domain.ViaFrom(ctx) == domain.ViaMCP && res.NothingForAnAgent()
 }
 
 // MemberOrgs: las organizaciones de las que el token es miembro, según sus

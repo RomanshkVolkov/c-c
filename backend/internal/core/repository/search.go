@@ -2,6 +2,9 @@ package repository
 
 import (
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -207,7 +210,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 		return out, nil
 	}
 	type row struct {
-		Src, OwnerKind, OwnerID, Tab, PageID, PageTitle, Name, Snippet string
+		Src, OwnerKind, OwnerID, Tab, PageID, PageTitle, Name, Snippet, Body string
 	}
 	// Los .md de los repos atados (docs as code), sólo los que el repo sigue
 	// enseñando; el «dónde» va en `tab`: repo/ruta. Sólo si la tabla tiene su
@@ -243,7 +246,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 			LIMIT ?
 		)
 		SELECT b.src, b.owner_kind, b.owner_id, b.tab, b.page_id, b.page_title,
-		       COALESCE(sp.name, f.name, l.name, '') AS name,
+		       COALESCE(sp.name, f.name, l.name, '') AS name, coalesce(b.body, '') AS body,
 		       ts_headline('cac_simple', coalesce(b.body, ''), q.q,
 		         'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "') AS snippet
 		FROM best b CROSS JOIN q
@@ -260,6 +263,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 			out = append(out, domain.SearchHit{
 				Kind: domain.SearchRepoDoc, ID: x.PageID, Title: x.PageTitle, Where: x.Tab,
 				Snippet: x.Snippet, Link: "/docs?repoDoc=" + x.PageID,
+				Section: domain.SearchSection(x.Body, query),
 			})
 			continue
 		}
@@ -267,6 +271,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 		hit := domain.SearchHit{
 			Kind: domain.SearchDoc, ID: x.OwnerID, Snippet: x.Snippet,
 			OwnerKind: x.OwnerKind, OwnerID: x.OwnerID,
+			Section: domain.SearchSection(x.Body, query),
 		}
 		if x.Src == "page" {
 			hit.ID, hit.PageID, hit.Title = x.PageID, x.PageID, x.PageTitle
@@ -423,4 +428,20 @@ func (r *SearchRepository) hasSearchColumn(table string) bool {
 	r.db.Raw(`SELECT EXISTS (SELECT 1 FROM information_schema.columns
 		WHERE table_name = ? AND column_name = 'search')`, table).Scan(&ok)
 	return ok
+}
+
+// RecordMiss guarda una búsqueda de agente sin aciertos (ver domain.SearchMiss)
+// y poda las de más de 90 días. Best effort: si falla, la búsqueda ya contestó.
+func (r *SearchRepository) RecordMiss(userID, orgID, query string) error {
+	// Por caracteres: cortar por bytes puede partir una «ó» y Postgres
+	// rechaza el UTF-8 roto. La columna también cuenta caracteres.
+	if r := []rune(query); len(r) > 200 {
+		query = string(r[:200])
+	}
+	if err := r.db.Create(&domain.SearchMiss{
+		ID: uuid.NewString(), UserID: userID, OrgID: orgID, Query: query,
+	}).Error; err != nil {
+		return err
+	}
+	return r.db.Where("created_at < ?", time.Now().AddDate(0, 0, -90)).Delete(&domain.SearchMiss{}).Error
 }

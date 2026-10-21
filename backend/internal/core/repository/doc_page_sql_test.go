@@ -418,3 +418,41 @@ func TestDocSearchFindsRepoDocs(t *testing.T) {
 		t.Fatalf("el del repo: %+v", repo[0])
 	}
 }
+
+// Un acierto dice en qué sección cae, para leer sólo esa. Rotura que detecta:
+// no pasarle el cuerpo a `SearchSection` (el acierto llega sin sección).
+func TestADocHitNamesItsSection(t *testing.T) {
+	f := newPagesFixture(t, "o1")
+	f.page(t, "o1", "Runbook", "## Despliegue\n\nCon el CI.\n\n## Correo\n\nAmazon SES en us-east-1.\n", nil)
+	hits, err := NewSearchRepository(f.db).Docs("ses", "o1", 10)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("aciertos: %+v %v", hits, err)
+	}
+	if hits[0].Section != "Correo" {
+		t.Fatalf("sección: %q", hits[0].Section)
+	}
+}
+
+// Una búsqueda fallida se guarda y lo de más de 90 días se poda. Roturas que
+// detecta: no guardarla, guardar la consulta entera sin cortar, no podar, o
+// podar lo reciente.
+func TestASearchMissIsKeptForNinetyDays(t *testing.T) {
+	f := newPagesFixture(t, "o1")
+	if err := f.db.AutoMigrate(&domain.SearchMiss{}); err != nil {
+		t.Fatal(err)
+	}
+	s := NewSearchRepository(f.db)
+	vieja := domain.SearchMiss{ID: "old", UserID: "u", Query: "vieja", CreatedAt: time.Now().AddDate(0, 0, -91)}
+	reciente := domain.SearchMiss{ID: "new", UserID: "u", Query: "reciente", CreatedAt: time.Now().AddDate(0, 0, -89)}
+	f.db.Create(&vieja)
+	f.db.Create(&reciente)
+	// 199 letras y una «ó» justo en el corte: por bytes saldría UTF-8 roto.
+	if err := s.RecordMiss("u", "o1", "cómo despliego "+strings.Repeat("x", 184)+"óóó"); err != nil {
+		t.Fatal(err)
+	}
+	var left []domain.SearchMiss
+	f.db.Order("created_at").Find(&left)
+	if len(left) != 2 || left[0].ID != "new" || !strings.HasPrefix(left[1].Query, "cómo despliego") || len([]rune(left[1].Query)) != 200 {
+		t.Fatalf("quedan: %+v", left)
+	}
+}

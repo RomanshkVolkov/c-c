@@ -201,6 +201,12 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.Cal
 	// DMService.Attachment).
 	r.Get("/api/v1/dm/{id}/attachments/{attachmentId}/raw", h.RawDMAttachment)
 
+	// El mapa de contexto de un espacio para un agente: árbol, índices de su
+	// documentación, decisiones, docs del repo y lo que está en curso, sin
+	// cuerpos. Ver domain/context.go.
+	ctxH := handler.NewContextHandler(service.NewContextService(db))
+	r.With(middleware.AuthMiddleware).Get("/api/v1/context", ctxH.Get)
+
 	// Docs: one markdown overview per space/folder/list, sharing the task
 	// module's image-service client and media store.
 	docH := handler.NewDocHandler(docSvc, images, store)

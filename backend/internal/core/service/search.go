@@ -109,3 +109,12 @@ func (s *SearchService) SearchOrgs(query string, orgIDs []string, userID string,
 	}
 	return out, nil
 }
+
+// RecordMiss: ver domain.SearchMiss. Una consulta demasiado corta para buscar
+// no cuenta: no buscó, así que tampoco falló.
+func (s *SearchService) RecordMiss(userID, orgID, query string) error {
+	if domain.SearchTSQuery(query) == "" || len([]rune(strings.TrimSpace(query))) < 2 {
+		return nil
+	}
+	return s.repo.RecordMiss(userID, orgID, strings.TrimSpace(query))
+}

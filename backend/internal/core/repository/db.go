@@ -85,6 +85,7 @@ func DBConnection() {
 		&domain.PostComment{},
 		&domain.PostAttachment{},
 		&domain.PostRead{},
+		&domain.SearchMiss{},
 		&domain.Server{},
 		&domain.Collection{},
 		&domain.CollectionNode{},
