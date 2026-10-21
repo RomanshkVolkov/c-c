@@ -395,7 +395,7 @@ func TestDocSearchFindsRepoDocs(t *testing.T) {
 	mk(&domain.GitHubRepo{InstallationID: 5, RepoID: 300, FullName: "dwit/oculto", OrgID: "o1", SpaceID: "sp"})
 	f.db.Model(&domain.GitHubRepo{}).Where("repo_id = 300").Update("show_docs", false)
 	mk(&domain.GitHubRepo{InstallationID: 6, RepoID: 400, FullName: "otra/x", OrgID: "o2", SpaceID: "sp2", ShowDocs: true})
-	mk(&domain.RepoDoc{OrgID: "o1", RepoID: 200, Path: "docs/deploy.md", Title: "Desplegar Nereus", BlobSha: "a", Body: "kubectl"})
+	mk(&domain.RepoDoc{OrgID: "o1", RepoID: 200, Path: "docs/deploy.md", Title: "Desplegar Nereus", BlobSha: "a", Body: "Cómo se despliega **Nereus** con kubectl"})
 	mk(&domain.RepoDoc{OrgID: "o1", RepoID: 300, Path: "README.md", Title: "Nereus oculto", BlobSha: "b"})
 	mk(&domain.RepoDoc{OrgID: "o2", RepoID: 400, Path: "README.md", Title: "Nereus ajeno", BlobSha: "c"})
 	f.page(t, "o1", "Nereus", "El back office.", nil)
@@ -416,6 +416,11 @@ func TestDocSearchFindsRepoDocs(t *testing.T) {
 	if repo[0].Title != "Desplegar Nereus" || repo[0].Where != "dwit/web/docs/deploy.md" ||
 		repo[0].Link != "/docs?repoDoc="+repo[0].ID {
 		t.Fatalf("el del repo: %+v", repo[0])
+	}
+	// Su fragmento pasa por `CleanSnippet` como los demás: sólo lo encontrado
+	// en negrita, sin la del documento ni las marcas crudas.
+	if sn := repo[0].Snippet; !strings.Contains(sn, "**Nereus**") || strings.Count(sn, "**") != 2 || strings.Contains(sn, "⟦") {
+		t.Fatalf("fragmento del repo: %q", sn)
 	}
 }
 
@@ -454,5 +459,21 @@ func TestASearchMissIsKeptForNinetyDays(t *testing.T) {
 	f.db.Order("created_at").Find(&left)
 	if len(left) != 2 || left[0].ID != "new" || !strings.HasPrefix(left[1].Query, "cómo despliego") || len([]rune(left[1].Query)) != 200 {
 		t.Fatalf("quedan: %+v", left)
+	}
+}
+
+// El fragmento sólo marca lo encontrado. Roturas que detecta: volver a
+// `StartSel=**` (se cruza con la negrita del documento), o no pasar el
+// fragmento por `CleanSnippet` (llegan las marcas crudas ⟦ ⟧).
+func TestASnippetDoesNotMixTheDocsBoldWithTheMatch(t *testing.T) {
+	f := newPagesFixture(t, "o1")
+	f.page(t, "o1", "Pagos", "| **Cancelados** | **407 de 412** | la flota de agentes |", nil)
+	hits, err := NewSearchRepository(f.db).Docs("flota", "o1", 10)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("aciertos: %+v %v", hits, err)
+	}
+	s := hits[0].Snippet
+	if !strings.Contains(s, "**flota**") || strings.Contains(s, "**407") || strings.Contains(s, "⟦") || strings.Count(s, "**") != 2 {
+		t.Fatalf("fragmento: %q", s)
 	}
 }

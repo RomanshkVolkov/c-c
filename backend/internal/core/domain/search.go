@@ -183,3 +183,22 @@ type SearchMiss struct {
 func (r SearchResults) NothingForAnAgent() bool {
 	return len(r.Tasks) == 0 && len(r.Notes) == 0 && len(r.Docs) == 0
 }
+
+// Las marcas con las que Postgres señala lo encontrado en un fragmento
+// (`ts_headline` con StartSel/StopSel). Unas que no salen en un documento: con
+// `**`, la marca se mezclaba con la negrita que ya traía el markdown y el
+// fragmento llegaba roto («**407 **de** 412**», 21-oct-2026).
+const (
+	HighlightStart = "⟦"
+	HighlightStop  = "⟧"
+)
+
+// CleanSnippet: el fragmento con lo encontrado entre `**` y nada más en
+// negrita. Quita la negrita `**` que traía el documento, que en un fragmento
+// de una línea no dice nada, y sólo entonces pone la marca. `__` se deja: en un
+// fragmento de código es parte de un nombre (`__init__`), no negrita.
+func CleanSnippet(s string) string {
+	s = strings.ReplaceAll(s, "**", "")
+	s = strings.ReplaceAll(s, HighlightStart, "**")
+	return strings.ReplaceAll(s, HighlightStop, "**")
+}

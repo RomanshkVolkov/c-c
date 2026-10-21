@@ -64,7 +64,7 @@ func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.Searc
 		SELECT t.id, t.title, l.name AS list_name,
 		       CASE WHEN to_tsvector('cac_simple', coalesce(t.description, '')) @@ q.q
 		            THEN ts_headline('cac_simple', t.description, q.q,
-		              'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
+		              'StartSel=⟦, StopSel=⟧, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
 		            ELSE '' END AS snippet
 		FROM best b JOIN items t ON t.id = b.id JOIN task_lists l ON l.id = t.list_id CROSS JOIN q
 		ORDER BY b.in_title DESC, b.score DESC, b.updated_at DESC`,
@@ -74,7 +74,7 @@ func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.Searc
 	}
 	for _, x := range rows {
 		out = append(out, domain.SearchHit{
-			Kind: domain.SearchTask, ID: x.ID, Title: x.Title, Snippet: x.Snippet,
+			Kind: domain.SearchTask, ID: x.ID, Title: x.Title, Snippet: domain.CleanSnippet(x.Snippet),
 			Where: x.ListName, Link: "/tasks?task=" + x.ID,
 		})
 	}
@@ -155,7 +155,7 @@ func (r *SearchRepository) Notes(query, ownerID string, limit int) ([]domain.Sea
 		SELECT b.id, b.title,
 		       CASE WHEN to_tsvector('cac_simple', coalesce(b.body, '')) @@ q.q
 		            THEN ts_headline('cac_simple', b.body, q.q,
-		              'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
+		              'StartSel=⟦, StopSel=⟧, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
 		            ELSE '' END AS snippet
 		FROM best b CROSS JOIN q
 		ORDER BY b.score DESC, b.updated_at DESC`,
@@ -165,7 +165,7 @@ func (r *SearchRepository) Notes(query, ownerID string, limit int) ([]domain.Sea
 	}
 	for _, x := range rows {
 		out = append(out, domain.SearchHit{
-			Kind: domain.SearchNote, ID: x.ID, Title: x.Title, Snippet: x.Snippet, Link: "/notes/" + x.ID,
+			Kind: domain.SearchNote, ID: x.ID, Title: x.Title, Snippet: domain.CleanSnippet(x.Snippet), Link: "/notes/" + x.ID,
 		})
 	}
 	return out, nil
@@ -248,7 +248,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 		SELECT b.src, b.owner_kind, b.owner_id, b.tab, b.page_id, b.page_title,
 		       COALESCE(sp.name, f.name, l.name, '') AS name, coalesce(b.body, '') AS body,
 		       ts_headline('cac_simple', coalesce(b.body, ''), q.q,
-		         'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "') AS snippet
+		         'StartSel=⟦, StopSel=⟧, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "') AS snippet
 		FROM best b CROSS JOIN q
 		LEFT JOIN task_spaces sp ON b.owner_kind = 'space' AND sp.id = b.owner_id
 		LEFT JOIN task_folders f ON b.owner_kind = 'folder' AND f.id = b.owner_id
@@ -262,14 +262,14 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 		if x.Src == "repo" {
 			out = append(out, domain.SearchHit{
 				Kind: domain.SearchRepoDoc, ID: x.PageID, Title: x.PageTitle, Where: x.Tab,
-				Snippet: x.Snippet, Link: "/docs?repoDoc=" + x.PageID,
+				Snippet: domain.CleanSnippet(x.Snippet), Link: "/docs?repoDoc=" + x.PageID,
 				Section: domain.SearchSection(x.Body, query),
 			})
 			continue
 		}
 		link := "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID
 		hit := domain.SearchHit{
-			Kind: domain.SearchDoc, ID: x.OwnerID, Snippet: x.Snippet,
+			Kind: domain.SearchDoc, ID: x.OwnerID, Snippet: domain.CleanSnippet(x.Snippet),
 			OwnerKind: x.OwnerKind, OwnerID: x.OwnerID,
 			Section: domain.SearchSection(x.Body, query),
 		}

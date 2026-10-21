@@ -38,6 +38,16 @@ func TestAShortWordOnlyMatchesWhole(t *testing.T) {
 	}
 }
 
+// Roturas que detecta: dejar la negrita del documento (los `**` se cruzan con
+// la marca), no poner la marca, o comerse los `_` de un identificador.
+func TestASnippetOnlyBoldsWhatWasFound(t *testing.T) {
+	in := "| **Cancelados** (Q2) | **407 ⟦de⟧ 412** | la flota ⟦de⟧ agentes, `pocna_jobs` y `__init__`"
+	want := "| Cancelados (Q2) | 407 **de** 412 | la flota **de** agentes, `pocna_jobs` y `__init__`"
+	if got := CleanSnippet(in); got != want {
+		t.Fatalf("CleanSnippet:\n got %q\nwant %q", got, want)
+	}
+}
+
 // Lo que no es letra ni dígito no llega a Postgres: un operador suelto de
 // `to_tsquery` haría que la consulta reventara.
 func TestSearchQueryStripsOperators(t *testing.T) {
