@@ -2,7 +2,6 @@ package repository
 
 import (
 	"errors"
-	"log"
 	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
@@ -74,11 +73,6 @@ func (r *AuthRepository) ClaimRefresh(claims *domain.ClaimsRefresh, now time.Tim
 		case now.Sub(*s.RotatedAt) <= domain.RefreshReuseGrace:
 			return nil
 		default:
-			// Quién presentó qué (#175): sólo ids recortados, que solos no
-			// sirven de credencial. Es lo que dice si la copia vieja venía de
-			// otra ventana, de otra instancia o del arranque tras actualizar.
-			log.Printf("auth: refresh reuse user=%s token=%.8s family=%.8s rotated %s ago",
-				claims.UserID, claims.TokenID, s.FamilyID, now.Sub(*s.RotatedAt).Round(time.Second))
 			if err := tx.Model(&domain.RefreshSession{}).
 				Where("family_id = ? AND revoked_at IS NULL", s.FamilyID).
 				Update("revoked_at", now).Error; err != nil {
