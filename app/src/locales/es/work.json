@@ -59,7 +59,11 @@
     "deleteListTitle": "¿Borrar la lista «{{name}}»?",
     "delete": "Borrar",
     "openDocs": "Documentación",
-    "openBoard": "Abrir el tablero"
+    "openBoard": "Abrir el tablero",
+    "spaceKey": "Clave: {{key}}",
+    "spaceKeyTitle": "Clave del espacio",
+    "spaceKeyHint": "Así se nombran sus tareas en un commit o una rama: {{key}}-12. En minúsculas y con guiones. La clave anterior se sigue aceptando, así que los commits que ya la citan no dejan de enlazar.",
+    "spaceKeySaved": "La clave ahora es {{key}}"
   },
   "myWork": {
     "title": "Mi trabajo",

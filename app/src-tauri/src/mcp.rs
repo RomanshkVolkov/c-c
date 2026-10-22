@@ -1601,7 +1601,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task, with its `ref` — how to name it in a commit message or PR so cac links it by itself (`cac#12`, or a client's folio like `acme-7`): its markdown description, status, priority, tags, assignees, attachments, the comment thread, its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its markdown description, status, priority, tags, assignees, attachments, the comment thread, its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -2884,16 +2884,14 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     }
                 }
             }
-            // La referencia para los commits. Una tarea de cliente se nombra por
-            // su folio, que lleva el slug del proyecto, y sólo lo da el detalle.
-            let reference = if data.get("projectId").and_then(|v| v.as_str()).is_some_and(|p| !p.is_empty()) {
-                data.get("id")
-                    .and_then(|v| v.as_str())
-                    .and_then(|id| api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(id))).ok())
-                    .and_then(|d| task_ref(&d))
-            } else {
-                task_ref(&json!({ "task": data }))
-            };
+            // La referencia para los commits la da el detalle: el folio o la
+            // clave del espacio, que la respuesta de crear no trae.
+            let reference = data
+                .get("id")
+                .and_then(|v| v.as_str())
+                .and_then(|id| api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(id))).ok())
+                .and_then(|d| task_ref(&d))
+                .or_else(|| task_ref(&json!({ "task": data })));
             // Echo back what was created, including the sequence number, so the
             // caller can refer to the task without another round trip.
             Ok(json!({
@@ -4243,10 +4241,16 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
 const LOCAL_TOOLS: &[&str] = &["compress_image", "install_skill"];
 
 /// Cómo se nombra una tarea en un commit o una PR para que cac la enlace sola
-/// (`domain/task_refs.go`): el folio si es de un cliente (`acme-7`), y si no
-/// `cac#<número>`, que es el número del espacio. `d` es el detalle de la tarea
+/// (`domain/task_refs.go`): el folio si es de un cliente (`acme-7`), y si no la
+/// clave de su espacio y su número (`proteus-12`). `cac#<número>` sólo si el
+/// backend no da ninguna de las dos. `d` es el detalle de la tarea
 /// (`{ task, folio }`) o algo con `task.seq`.
 fn task_ref(d: &Value) -> Option<String> {
+    // La que da el backend: el folio, o la clave del espacio y el número
+    // (`proteus-12`, cac#203). Lo de abajo es para un backend de antes.
+    if let Some(r) = d.get("ref").and_then(|v| v.as_str()).filter(|r| !r.is_empty()) {
+        return Some(r.to_string());
+    }
     if let Some(f) = d.get("folio").and_then(|v| v.as_str()).filter(|f| !f.is_empty()) {
         return Some(f.to_string());
     }
@@ -4404,7 +4408,9 @@ fn instructions(state: Option<SkillState>) -> String {
          the user. Then bring the board up to date: tasks left in progress by earlier sessions whose work has since been \
          published (released, deployed) are moved to done with a comment saying how you checked; what depends on a \
          person, ask. Find or create your task and move it to in progress (update_task status: in_progress), and end every \
-         commit message with its ref, e.g. (cac#12), so cac links the commit to it. Record \
+         commit message with its ref, e.g. (proteus-12), so cac links the commit to it (in a repository \
+         cac is not connected to, such as a client's own GitHub organization, leave the commit clean and note the \
+         repo and sha in the task instead). Record \
          findings as task comments and decisions with record_decision. Before you tell the user you are done, update \
          the task honestly: done means published, not committed; committed but not yet released stays in progress \
          with a comment saying where it ships, so the next session knows what to check.",
@@ -5328,6 +5334,8 @@ mod tests {
     /// enlaza: la suya es el folio), o inventar una referencia sin número.
     #[test]
     fn a_task_is_named_by_its_folio_or_its_space_number() {
+        // Lo que da el backend manda (cac#203).
+        assert_eq!(task_ref(&json!({ "task": { "seq": 12 }, "ref": "proteus-12" })).as_deref(), Some("proteus-12"));
         assert_eq!(task_ref(&json!({ "task": { "seq": 200 } })).as_deref(), Some("cac#200"));
         assert_eq!(task_ref(&json!({ "task": { "seq": 89 }, "folio": "portento-89" })).as_deref(), Some("portento-89"));
         assert_eq!(task_ref(&json!({ "task": { "seq": 89 }, "folio": "" })).as_deref(), Some("cac#89"));
@@ -5433,7 +5441,7 @@ mod tests {
         .unwrap();
         assert_eq!(out["id"], "t0");
         assert_eq!(out["subtasks"].as_array().unwrap().len(), 2);
-        assert_eq!(out["ref"], "cac#10", "la referencia para los commits");
+        assert_eq!(out["ref"], "cac#10", "sin clave del backend, el número");
         let seen = seen.lock().unwrap();
         let posts: Vec<&Value> = seen.iter().filter(|(m, p, _)| m == "POST" && p == "/api/v1/task-lists/L/tasks").map(|x| &x.2).collect();
         assert_eq!(posts.len(), 3, "{seen:?}");

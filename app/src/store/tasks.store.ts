@@ -97,6 +97,8 @@ interface TasksState {
    */
   abrirSalaGeneral: (orgId: string) => Promise<void>;
   renameSpace: (id: string, name: string) => Promise<void>;
+  /** Cambia la clave del espacio; la anterior se sigue aceptando (cac#203). */
+  setSpaceKey: (id: string, name: string, key: string) => Promise<void>;
   /** El nombre va porque el servidor lo pide; el color es lo que cambia. */
   setSpaceColor: (id: string, name: string, color: string) => Promise<void>;
   deleteSpace: (id: string) => Promise<void>;
@@ -449,6 +451,10 @@ export const useTasksStore = create<TasksState>()(
       },
       renameSpace: async (id, name) => {
         await api.patch<APIResponse<unknown>>(`/api/v1/task-spaces/${id}`, { name }, true);
+        await get().fetchTree();
+      },
+      setSpaceKey: async (id, name, key) => {
+        await api.patch<APIResponse<unknown>>(`/api/v1/task-spaces/${id}`, { name, key }, true);
         await get().fetchTree();
       },
       setSpaceColor: async (id, name, color) => {

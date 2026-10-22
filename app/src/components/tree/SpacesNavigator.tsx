@@ -40,6 +40,7 @@ import {
   Trash2,
   FileText,
   ArrowUp,
+  Hash,
   ArrowDown,
   AlertCircle,
 } from "lucide-react";
@@ -57,6 +58,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import ChannelDialog from "@/components/ChannelDialog";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { usePrompt } from "@/components/PromptDialog";
 import { useTasksStore, type DropWhere, type TreeNodeRef } from "@/store/tasks.store";
 import { useMyWorkStore } from "@/store/mywork.store";
 import { useOrgsStore } from "@/store/orgs.store";
@@ -445,8 +447,23 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
   const activeDoc = useTasksStore((s) => s.activeDoc);
   const docIndex = useTasksStore((s) => s.docIndex);
   const confirm = useConfirm();
-  const { createFolder, createList, renameSpace, setSpaceColor, deleteSpace, moveSpace, sortChildren } =
+  const { createFolder, createList, renameSpace, setSpaceColor, setSpaceKey, deleteSpace, moveSpace, sortChildren } =
     useTasksStore.getState();
+  const prompt = usePrompt();
+  const changeKey = async () => {
+    const next = await prompt({
+      title: t("work:tree.spaceKeyTitle"),
+      description: t("work:tree.spaceKeyHint", { key: space.key ?? "" }),
+      defaultValue: space.key ?? "",
+    });
+    if (!next || next === space.key) return;
+    try {
+      await setSpaceKey(space.id, space.name, next);
+      toast.success(t("work:tree.spaceKeySaved", { key: next }));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
   const [channelOpen, setChannelOpen] = useState(false);
   const [adding, setAdding] = useState<null | "folder" | "list">(null);
   const [renaming, setRenaming] = useState(false);
@@ -549,6 +566,12 @@ function SpaceNode({ space }: { space: ReturnType<typeof useTasksStore.getState>
               <DropdownMenuItem onClick={() => setChannelOpen(true)}>
                 <Eye className="size-4" /> {t("work:tree.channel")}{space.projectId ? "" : "…"}
               </DropdownMenuItem>
+              {/* La clave nombra sus tareas en commits y ramas (cac#203). */}
+              {space.key && (
+                <DropdownMenuItem onClick={() => void changeKey()}>
+                  <Hash className="size-4" /> {t("work:tree.spaceKey", { key: space.key })}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => moveSpace(space.id, "up").catch((e) => toast.error(String(e)))}>
                 <ArrowUp className="size-4" /> {t("work:tree.moveUp")}
               </DropdownMenuItem>

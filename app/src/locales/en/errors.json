@@ -215,5 +215,7 @@
   "post-failed": "Couldn't complete it. Try again.",
   "post-bad-cursor": "Couldn't load more of the wall. Reload it.",
   "context-repo-not-linked": "This repository is not linked to a space in your organizations. Link it from the space (GitHub).",
-  "context-missing-target": "Missing the space or the repository."
+  "context-missing-target": "Missing the space or the repository.",
+  "space-key-invalid": "A key is lowercase with hyphens, and every part starts with a letter.",
+  "space-key-taken": "Another space or a client project in this organization already uses that key."
 }

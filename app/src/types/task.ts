@@ -95,6 +95,8 @@ export interface SpacePerson {
 
 export interface SpaceTree {
   id: string;
+  /** Cómo se nombran sus tareas fuera: `<key>-<número>` (cac#203). */
+  key?: string;
   orgId: string;
   name: string;
   color: string;
@@ -335,6 +337,12 @@ export interface TaskDetail {
   subtasks: TaskCard[];
   parent?: TaskCard | null;
   /** "portento-89" — only for a client's ticket; internal cards number per space. */
+  /**
+   * Cómo se nombra esta tarea en un commit, una rama o una PR para que cac la
+   * enlace sola: la clave de su espacio y su número (`proteus-12`), o el folio
+   * si es de un cliente. Lo da el backend (cac#203).
+   */
+  ref?: string;
   folio?: string;
   projectSlug?: string;
   /** Decrypted breadcrumbs, when the report carried them and they aren't purged. */

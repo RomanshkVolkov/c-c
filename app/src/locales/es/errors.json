@@ -215,5 +215,7 @@
   "post-failed": "No se pudo completar. Prueba otra vez.",
   "post-bad-cursor": "No se pudo cargar más del muro. Recárgalo.",
   "context-repo-not-linked": "Este repositorio no está atado a ningún espacio de tus organizaciones. Átalo desde el espacio (GitHub).",
-  "context-missing-target": "Falta el espacio o el repositorio."
+  "context-missing-target": "Falta el espacio o el repositorio.",
+  "space-key-invalid": "La clave va en minúsculas y con guiones, y cada parte empieza por una letra.",
+  "space-key-taken": "Otro espacio o un proyecto de cliente de esta organización ya usa esa clave."
 }

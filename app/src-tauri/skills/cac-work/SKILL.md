@@ -78,7 +78,8 @@ el tablero, con `get_board`):
 2. Si lo que faltaba ya pasó, ciérrala con `status: "done"` y un comentario que
    diga cómo lo comprobaste.
    - **Para comprobar si un commit ya se publicó:** el `git` de `get_task` trae
-     los commits que nombran la tarea (ver «Cada commit nombra su tarea»).
+     los commits que nombran la tarea (ver «Cada commit nombra su tarea»). En un
+     repo no conectado, el sha está en un comentario de la tarea.
      - **La app:** sale en una release, así que `git tag --contains <sha>` dice
        si ya está en una versión publicada.
      - **El backend o la web:** se despliegan con el push, así que un commit en
@@ -87,9 +88,10 @@ el tablero, con `get_board`):
 3. Lo que dependa de una persona («probarlo en una llamada», «revisar en
    local»), no lo cierres por tu cuenta: díselo al usuario, en una línea por
    tarea.
-4. Si una tarea dice **«Espera a cac#N»** (ver el paso 4), mira con `get_task`
-   si cac#N ya está hecha. Si lo está, deja en la que esperaba un comentario
-   «Desbloqueada: cac#N ya está» y díselo al usuario. Ésa puede seguir.
+4. Si una tarea dice **«Espera a <ref>»** (ver el paso 4), mira con `get_task`
+   o `search` si esa tarea ya está hecha. Si lo está, deja en la que esperaba
+   un comentario «Desbloqueada: <ref> ya está» y díselo al usuario. Ésa puede
+   seguir.
 
 Es lo primero, y es rápido: unas pocas llamadas. Si no se hace, el tablero
 miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
@@ -97,7 +99,7 @@ miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
 ## 4 · La tarea: una, no dos
 
 1. **Busca si ya existe**, con `search` o `get_board`. Si el usuario nombró una
-   tarea (`cac#12`, un enlace), es esa.
+   tarea (`proteus-12`, un enlace), es esa.
 2. **Si no existe, créala** con `create_task`:
    - con un título que diga el resultado, no la actividad («El login acepta
      correos con mayúsculas», no «Revisar login»);
@@ -115,24 +117,31 @@ cliente y gasta un número de su folio para siempre. Usa
 Por el camino:
 
 - **Cada commit nombra su tarea.** `create_task` y `get_task` dan su `ref`:
-  `cac#200` si es interna, o su folio (`acme-7`) si es de un cliente. Ponla
-  al final del mensaje, entre paréntesis:
+  la clave de su espacio y su número (`proteus-12`), o el folio (`acme-7`)
+  si es de un cliente. Ponla al final del mensaje, entre paréntesis:
 
   ```
-  fix(login): acepta correos con mayúsculas (cac#200)
+  fix(login): acepta correos con mayúsculas (proteus-12)
   ```
 
-  En una rama vale el mismo número, con guion: `cac-200-login`.
+  En una rama, lo mismo con guiones: `proteus-12-login`.
 
-  cac enlaza solo el commit o la PR en el panel «Desarrollo» de la tarea. Es lo
-  que usa el paso 3 para saber si el trabajo ya se publicó. `cac#N` es el
-  número del espacio, así que sólo enlaza desde un repo atado a ese espacio. Si
-  el PR no nombra la tarea, enlázalo a mano con `link_pull_request`.
+  - **Siempre en minúsculas.** `PROTEUS-12` es la clave de Jira, que numera por
+    su lado, y cac no la toma.
+  - **Qué se gana:** cac enlaza solo el commit o la PR en el panel «Desarrollo»
+    de la tarea, desde cualquier repo de la organización conectado a cac. Es lo
+    que usa el paso 3 para saber si el trabajo ya se publicó.
+  - **Si el PR no nombra la tarea,** enlázalo a mano con `link_pull_request`.
+  - **En un repo que no está conectado a cac** (el de un cliente en su propia
+    organización de GitHub: `get_context` no lo encuentra), el commit no lleva
+    referencia: cac no lo vería, y el historial es del cliente. En su lugar,
+    apunta en la tarea el repo y el sha: «`TCO-Org/nereus` `a1b2c3d`: …».
+  - `cac#12`, la forma de antes, se sigue entendiendo, pero ya no se escribe.
 - **Si tu tarea no puede seguir hasta que se haga otra,** déjalo escrito con un
   comentario que empiece así, con su referencia:
 
   ```
-  Espera a cac#185: necesita que el tag de la imagen lleve el servicio.
+  Espera a command-and-control-185: necesita que el tag de la imagen lleve el servicio.
   ```
 
   Una línea por cada tarea de la que dependa. Así la siguiente sesión sabe qué
@@ -179,7 +188,7 @@ que su trabajo sale.
 | Commiteado y en verde, pero falta desplegar o soltar | `in_progress`, con un comentario que diga **en qué sale** («en la próxima release de la app»), para que la siguiente sesión sepa qué comprobar (paso 3) |
 | Desplegado, soltado o entregado | `done` |
 | Parado por una decisión del usuario o por algo de fuera | `in_progress`, con un comentario que diga qué falta |
-| Parado porque espera a otra tarea | `in_progress`, con «Espera a cac#N: …» |
+| Parado porque espera a otra tarea | `in_progress`, con «Espera a <ref>: …» |
 | Descartado | `closed`, con el porqué |
 
 Y deja un comentario de cierre corto:
@@ -197,4 +206,4 @@ línea.
 - No reescribir la descripción ni el documento de otra persona: comenta.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
 
-<!-- cac-work v5 -->
+<!-- cac-work v6 -->

@@ -522,14 +522,15 @@ function Content() {
               </button>
             </>
           )}
-          {/* The number reads best beside the space it belongs to. When this
-              is a client's ticket the same chip copies the whole folio —
-              "portento-97" — which is what gets quoted in a message or handed
-              to an agent, and what the MCP tools resolve. */}
-          {!detail.folio && ` · #${task.seq}`}
+          {/* La referencia —«proteus-12», o el folio de un cliente,
+              «portento-97»— es lo que se pega en un commit, en un mensaje o a
+              un agente, y lo que cac y el MCP resuelven (cac#203). Se enseña
+              entera y se copia de un clic. Sin ella (un backend de antes),
+              el número a secas. */}
+          {!detail.ref && !detail.folio && ` · #${task.seq}`}
         </span>
-        {detail.folio && (
-          <CopyId id={detail.folio} label="folio" display={`#${task.seq}`} />
+        {(detail.ref || detail.folio) && (
+          <CopyId id={detail.ref || detail.folio!} label="ref" display={detail.ref || `#${task.seq}`} />
         )}
         {/* Whether a client is reading this, said plainly and next to the title.
             Someone about to type a frank note needs to know before they type it,

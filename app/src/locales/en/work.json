@@ -59,7 +59,11 @@
     "deleteListTitle": "Delete list \"{{name}}\"?",
     "delete": "Delete",
     "openDocs": "Docs",
-    "openBoard": "Open the board"
+    "openBoard": "Open the board",
+    "spaceKey": "Key: {{key}}",
+    "spaceKeyTitle": "Space key",
+    "spaceKeyHint": "How its tasks are named in a commit or a branch: {{key}}-12. Lowercase with hyphens. The previous key is still accepted, so commits that already cite it keep linking.",
+    "spaceKeySaved": "The key is now {{key}}"
   },
   "myWork": {
     "title": "My work",
