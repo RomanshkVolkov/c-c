@@ -555,7 +555,9 @@
     "notifyMe": "Avisarme",
     "notifyMeDetail": "Que un agente que trabaja con este token <1>te</1> avise —«paré: hay una decisión»— en la campana, en el teléfono y con un aviso del sistema. Sólo a ti: no hay forma de mandárselo a nadie más.",
     "postsWrite": "Publicar en Feedback",
-    "postsWriteDetail": "Que un agente publique feedback, comente y reaccione en el muro, a tu nombre y marcado <1>vía agente</1>. Un comunicado no lo publica: lo deja como borrador para que tú lo revises y lo publiques."
+    "postsWriteDetail": "Que un agente publique feedback, comente y reaccione en el muro, a tu nombre y marcado <1>vía agente</1>. Un comunicado no lo publica: lo deja como borrador para que tú lo revises y lo publiques.",
+    "chatWrite": "Escribir en canales y directos",
+    "chatWriteDetail": "Que un agente escriba en un canal o te escriba por ti a una persona, a tu nombre y marcado <1>vía agente</1>. Sólo añadir: no edita ni retira mensajes."
   },
   "last": {
     "webviewRecovered": "La página se cerró inesperadamente y se volvió a cargar. Ya quedó reportado.",

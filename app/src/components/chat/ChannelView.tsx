@@ -9,7 +9,8 @@ import i18next from "i18next";
 import { useT } from "@/lib/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Bell, BellOff, ChevronDown, CornerUpLeft, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, UserPlus, Volume2, X } from "lucide-react";
+import { sameVoice } from "@/lib/same-voice";
+import { ArrowLeft, Bell, BellOff, Bot, ChevronDown, CornerUpLeft, Film, Image, Link2, Loader2, MessageSquare, Pencil, Plus, Search, Send, Trash2, UserPlus, Volume2, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -366,7 +367,7 @@ export default function ChannelView({
                   composer.current?.focus();
                 }}
                 // Consecutive lines from one person read as one turn of speech.
-                grouped={i > 0 && messages[i - 1].authorUserId === m.authorUserId}
+                grouped={sameVoice(messages[i - 1], m)}
               />
             ))}
           </div>
@@ -539,6 +540,14 @@ function Message({
           ) : (
             <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
               {mine ? "You" : m.authorName || "unknown"}
+            </span>
+          )}
+          {/* Lo escribió un agente con el token de esta persona: el nombre es
+              el suyo, pero no lo tecleó ella. Ver `sameVoice`. */}
+          {m.via === "mcp" && (
+            <span className="flex items-center gap-1" data-testid="via-agent">
+              <Bot className="size-3" />
+              {t("common:feedback.viaAgent")}
             </span>
           )}
           <span>

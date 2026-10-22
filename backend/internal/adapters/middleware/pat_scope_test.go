@@ -87,12 +87,36 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/posts/p1/comments", domain.ScopePostsWrite},
 		{http.MethodPost, "/api/v1/posts/p1/reactions", domain.ScopePostsWrite},
 		{http.MethodPost, "/api/v1/posts/p1/comments/c1/reactions", domain.ScopePostsWrite},
+		// Canales y directos (22-oct-2026): escribir y abrir el directo.
+		{http.MethodPost, "/api/v1/task-spaces/s1/chat", domain.ScopeChatWrite},
+		{http.MethodPost, "/api/v1/dm/open", domain.ScopeChatWrite},
+		{http.MethodPost, "/api/v1/dm/c1/messages", domain.ScopeChatWrite},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
 		if !ok || got != c.want {
 			t.Errorf("%s %s → (%q, %v), want %q", c.method, c.path, got, ok, c.want)
 		}
+	}
+}
+
+// Escribir en el chat no es editar ni retirar lo dicho, ni reaccionar ni
+// mover la marca de leído de nadie (22-oct-2026).
+func TestChatWriteOnlyAdds(t *testing.T) {
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPatch, "/api/v1/task-spaces/s1/chat/m1"},
+		{http.MethodDelete, "/api/v1/task-spaces/s1/chat/m1"},
+		{http.MethodPost, "/api/v1/task-spaces/s1/chat/m1/reactions"},
+		{http.MethodPatch, "/api/v1/dm/c1/messages/m1"},
+		{http.MethodDelete, "/api/v1/dm/c1/messages/m1"},
+		{http.MethodPost, "/api/v1/dm/c1/read"},
+	} {
+		if scope, ok := patScopeFor(req(c.method, c.path)); ok && scope == domain.ScopeChatWrite {
+			t.Errorf("%s %s no puede abrirse con chat:write", c.method, c.path)
+		}
+	}
+	if !domain.ValidScope(domain.ScopeChatWrite) {
+		t.Fatal("chat:write tiene que poder pedirse al crear un token")
 	}
 }
 

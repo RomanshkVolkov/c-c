@@ -57,7 +57,7 @@ func (r *ChatRepository) List(spaceID, query string, before time.Time, limit int
 	q := r.db.Table("chat_messages m").
 		Select(`m.id, m.space_id, m.author_user_id,
 			COALESCE(u.username,'') AS author_name,
-			m.kind, m.body, m.created_at, m.updated_at,
+			m.kind, m.via, m.body, m.created_at, m.updated_at,
 			m.reply_to_id, COALESCE(ru.username,'') AS reply_author,
 			COALESCE(LEFT(r.body, 400),'') AS reply_body, (r.id IS NULL OR r.deleted_at IS NOT NULL) AS reply_withdrawn`).
 		Joins("LEFT JOIN users u ON u.id = m.author_user_id").

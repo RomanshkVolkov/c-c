@@ -68,6 +68,9 @@ type ChatMessage struct {
 	// signed by that person, which reads correctly as long as the prose does.
 	// That is what makes this deployable before the app that understands it.
 	Kind ChatKind `gorm:"type:varchar(12);not null;default:'user'" json:"kind"`
+	// Via: por dónde entró (ver via.go). `mcp` lo escribió un agente con el
+	// token de AuthorUserID; la app lo enseña «vía agente» (22-oct-2026).
+	Via string `gorm:"type:varchar(10);not null;default:''" json:"via,omitempty"`
 	// ReplyToID: el mensaje del mismo canal al que éste contesta. Ver
 	// domain/reply.go.
 	ReplyToID *string `gorm:"type:varchar(36)" json:"replyToId,omitempty"`
@@ -144,6 +147,7 @@ type ChatMessageResponse struct {
 	AuthorUserID string    `json:"authorUserId"`
 	AuthorName   string    `json:"authorName"`
 	Kind         ChatKind  `json:"kind"`
+	Via          string    `json:"via,omitempty"`
 	Body         string    `json:"body"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`

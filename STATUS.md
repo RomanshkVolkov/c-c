@@ -13,6 +13,15 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**22-oct, en `main`, esperando release: un agente escribe en canales y
+directos** (MCP #221). Permiso nuevo `chat:write` (escribir en un canal, abrir
+un directo y escribir en él; ni editar ni retirar). Cada mensaje de un agente
+queda con `via: mcp` y la app lo enseña «vía agente», también cuando sigue a
+uno de la misma persona (`lib/same-voice.ts`: antes se agrupaba y perdía la
+cabecera). MCP: `send_message` (a un canal por nombre o id, o a una persona por
+usuario) y `read_messages` (lo último, sin abrir nada). Skill v14. Para usarlo
+hay que dar `chat:write` al token del MCP.
+
 **22-oct, en `main`, esperando la próxima release de la app: los agentes y
 cac como memoria** (MCP #205, con quince subtareas; el plan ordenado en la
 tarea). Primera tanda: `get_context` sin argumentos **nunca funcionó desde la

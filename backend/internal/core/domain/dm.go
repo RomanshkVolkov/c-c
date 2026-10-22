@@ -83,6 +83,9 @@ type DMMessage struct {
 	OrgID        string `gorm:"type:varchar(36);index;not null" json:"orgId"`
 	AuthorUserID string `gorm:"type:varchar(36);index;not null" json:"authorUserId"`
 	Body         string `gorm:"type:text;not null"              json:"body"`
+	// Via: por dónde entró (ver via.go). `mcp` lo escribió un agente con el
+	// token de AuthorUserID; la app lo enseña «vía agente» (22-oct-2026).
+	Via string `gorm:"type:varchar(10);not null;default:''" json:"via,omitempty"`
 	// ReplyToID: el mensaje de la misma conversación al que éste contesta. Ver
 	// domain/reply.go.
 	ReplyToID *string `gorm:"type:varchar(36)" json:"replyToId,omitempty"`
@@ -125,6 +128,7 @@ type DMMessageResponse struct {
 	ConversationID string    `json:"conversationId"`
 	AuthorUserID   string    `json:"authorUserId"`
 	AuthorName     string    `json:"authorName"`
+	Via            string    `json:"via,omitempty"`
 	Body           string    `json:"body"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`

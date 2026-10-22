@@ -6,7 +6,8 @@ import { horaCorta } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ArrowLeft, CornerUpLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
+import { sameVoice } from "@/lib/same-voice";
+import { Bot, ChevronDown, ArrowLeft, CornerUpLeft, Loader2, Pencil, Send, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -137,7 +138,7 @@ export default function DMThread({ onBack }: { onBack: () => void }) {
                 key={m.id}
                 m={m}
                 conversationId={conversationId}
-                grouped={i > 0 && messages[i - 1].authorUserId === m.authorUserId}
+                grouped={sameVoice(messages[i - 1], m)}
                 readUpTo={other?.otherReadAt}
                 onReply={() => {
                   setReplyingTo(m);
@@ -211,6 +212,7 @@ function DMLine({
     id: string;
     authorUserId: string;
     authorName: string;
+    via?: string;
     body: string;
     createdAt: string;
     updatedAt: string;
@@ -271,6 +273,12 @@ function DMLine({
           <span className={cn("font-medium", mine ? "text-primary" : "text-foreground")}>
             {mine ? "You" : m.authorName || "unknown"}
           </span>
+          {m.via === "mcp" && (
+            <span className="flex items-center gap-1" data-testid="via-agent">
+              <Bot className="size-3" />
+              {t("common:feedback.viaAgent")}
+            </span>
+          )}
           <span>
             {horaCorta(m.createdAt)}
           </span>

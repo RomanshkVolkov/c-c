@@ -318,8 +318,15 @@ var ErrReplyElsewhere = errors.New("the message you reply to is not in this thre
 // contestar a un id de otro canal —de otra org— enseñaría aquí un trozo de
 // su texto. Un mensaje retirado tampoco: retirar es dejar de enseñarlo.
 func (s *ChatService) Reply(spaceID, orgID, userID, body, replyToID string) (*domain.ChatMessage, error) {
+	return s.ReplyVia(domain.ViaApp, spaceID, orgID, userID, body, replyToID)
+}
+
+// ReplyVia es Reply diciendo por dónde entró (ver domain/via.go): un agente
+// escribe con el token de la persona, y la línea lo dice.
+func (s *ChatService) ReplyVia(via, spaceID, orgID, userID, body, replyToID string) (*domain.ChatMessage, error) {
+	via = domain.NormalizeVia(via)
 	if replyToID == "" {
-		return s.write(domain.ChatKindUser, spaceID, orgID, userID, body, "", nil, "")
+		return s.write(domain.ChatKindUser, spaceID, orgID, userID, body, "", nil, "", via)
 	}
 	target, err := s.repo.Find(replyToID)
 	if err != nil || target.SpaceID != spaceID {
@@ -331,7 +338,7 @@ func (s *ChatService) Reply(spaceID, orgID, userID, body, replyToID string) (*do
 	if target.Kind == domain.ChatKindSystem {
 		repliedTo = ""
 	}
-	return s.write(domain.ChatKindUser, spaceID, orgID, userID, body, "", &target.ID, repliedTo)
+	return s.write(domain.ChatKindUser, spaceID, orgID, userID, body, "", &target.ID, repliedTo, via)
 }
 
 // PostSystem writes a line that nobody typed.
@@ -351,16 +358,16 @@ func (s *ChatService) Reply(spaceID, orgID, userID, body, replyToID string) (*do
 // signs the line with, and — because they caused it — who is not notified
 // about it.
 func (s *ChatService) PostSystem(spaceID, orgID, actorID, body, notice string) (*domain.ChatMessage, error) {
-	return s.write(domain.ChatKindSystem, spaceID, orgID, actorID, body, notice, nil, "")
+	return s.write(domain.ChatKindSystem, spaceID, orgID, actorID, body, notice, nil, "", domain.ViaApp)
 }
 
 func (s *ChatService) write(
 	kind domain.ChatKind, spaceID, orgID, actorID, body, notice string,
-	replyToID *string, repliedTo string,
+	replyToID *string, repliedTo string, via string,
 ) (*domain.ChatMessage, error) {
 	m := &domain.ChatMessage{
 		SpaceID: spaceID, OrgID: orgID, AuthorUserID: actorID, Body: body, Kind: kind,
-		ReplyToID: replyToID,
+		ReplyToID: replyToID, Via: via,
 	}
 	m.ID = uuid.NewString()
 	if err := s.repo.Create(m); err != nil {

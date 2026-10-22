@@ -197,6 +197,19 @@ Por el camino:
   parte) va como comentario en la tarea a la que le toca, o como tarea nueva
   si no la tiene.
 
+**Hablar con alguien** (un compañero, el canal del proyecto, otro agente):
+`send_message`, a un canal o a una persona por su usuario, y `read_messages`
+para leer la respuesta. Sale a nombre de quien te dio el token, marcado «vía
+agente», y avisa a quien lo lee (`@usuario` le avisa a esa persona). Por eso:
+
+- manda lo que el usuario te pidió mandar; si las palabras son tuyas,
+  enséñaselas antes y espera el sí;
+- no es sitio para lo que va en la tarea: el hallazgo va en
+  `add_task_comment`, y el mensaje lo enlaza por su referencia
+  (`command-and-control-12`) si hace falta;
+- para «paré, necesito una decisión tuya», `notify_me` le llega sólo a tu
+  usuario; un mensaje es para otras personas.
+
 ## 5 · Cada commit nombra su tarea
 
 Así cac enlaza solo el commit con su tarea. `create_task` y `get_task` dan su
@@ -306,4 +319,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v13 -->
+<!-- cac-work v14 -->

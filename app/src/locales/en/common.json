@@ -555,7 +555,9 @@
     "notifyMe": "Notify me",
     "notifyMeDetail": "Let an agent working with this token notify <1>you</1> — “I stopped: there is a decision to make” — in the bell, on your phone and as a desktop notice. Only ever you: there is no way to send it to anyone else.",
     "postsWrite": "Post on Feedback",
-    "postsWriteDetail": "Let an agent post feedback, comment and react on the wall, in your name and marked <1>via agent</1>. It does not publish announcements: it leaves them as a draft for you to review and publish."
+    "postsWriteDetail": "Let an agent post feedback, comment and react on the wall, in your name and marked <1>via agent</1>. It does not publish announcements: it leaves them as a draft for you to review and publish.",
+    "chatWrite": "Write in channels and direct messages",
+    "chatWriteDetail": "Lets an agent write in a channel or message a person for you, in your name and marked <1>via agent</1>. Adding only: it cannot edit or withdraw messages."
   },
   "last": {
     "webviewRecovered": "The page closed unexpectedly and was reloaded. It has been reported.",

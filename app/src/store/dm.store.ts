@@ -21,6 +21,8 @@ export interface DMMessage {
   conversationId: string;
   authorUserId: string;
   authorName: string;
+  /** `mcp`: lo escribió un agente con el token de esa persona. */
+  via?: string;
   body: string;
   createdAt: string;
   updatedAt: string;

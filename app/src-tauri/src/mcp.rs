@@ -2156,6 +2156,34 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "send_message",
+            "description": "Write in a channel (a space's chat) or in a direct message to a person. It goes out under the token owner's name and is shown to everyone as written by an agent. People read this, and it notifies them (mentions with @username notify that person): send what the user asked you to send, and when you wrote the words yourself, show them the text and get a yes first. Not for task findings (add_task_comment) or facts for the next session (remember). Needs `chat:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel": { "type": "string", "description": "The space whose chat to write in: its id, or its name as list_task_spaces shows it. Give this or `person`." },
+                    "person": { "type": "string", "description": "The username of the person to message directly (opens the conversation if there is none). Give this or `channel`." },
+                    "orgId": { "type": "string", "description": "Optional, for `person`: the organization of the conversation, when you share more than one with them." },
+                    "text": { "type": "string", "description": "Markdown, up to 8000 characters." },
+                    "replyToId": { "type": "string", "description": "Optional. A message id from read_messages, in the same channel or conversation, to answer it with a quote." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["text"]
+            }
+        },
+        {
+            "name": "read_messages",
+            "description": "The latest messages of a channel or of your direct conversation with a person, oldest first: who wrote each, when, whether an agent wrote it (`viaAgent`), what it answers, and its id (for replyToId). Use it to read a reply to something you sent, or what was said before writing. Read-only.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel": { "type": "string", "description": "The space: its id, or its name. Give this or `person`." },
+                    "person": { "type": "string", "description": "The username of the other person in a direct conversation." },
+                    "limit": { "type": "integer", "description": "How many, 1–50. Default 20." }
+                }
+            }
+        },
+        {
             "name": "get_decision",
             "description": "One entry of a decision log, with its body (the why), who decided it and when, the task it came out of, the node it belongs to, and which decision it supersedes or was superseded by. Ids come from get_context, get_doc (tab: decisions) and search hits of kind `decision`.",
             "inputSchema": {
@@ -3008,6 +3036,38 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             let line = format!("- {} · {}", today_utc(), strip_leading_date(&text.trim().replace('\n', " ")));
             api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{}/append", urlencode(&page)), json!({ "text": line }))?;
             Ok(json!({ "remembered": true, "pageId": page, "line": line, "link": page_link(&kind, &id, &page) }))
+        }
+
+        "send_message" => {
+            let text = arg_str(args, "text").ok_or("text is required")?;
+            let target = chat_target(cfg, args)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "chat:write", Ok(json!({})));
+            }
+            let mut body = json!({ "body": text });
+            if let Some(r) = arg_str(args, "replyToId") {
+                body["replyToId"] = json!(r);
+            }
+            let (path, where_) = match &target {
+                ChatTarget::Channel { id, name } => (format!("/api/v1/task-spaces/{}/chat", urlencode(id)), format!("#{name}")),
+                ChatTarget::Person { username, user_id, org_id } => {
+                    let c = api_post(cfg, "/api/v1/dm/open", json!({ "orgId": org_id, "userId": user_id }))?;
+                    let cid = c.get("id").and_then(|v| v.as_str()).ok_or("cac did not say which conversation it opened")?.to_string();
+                    (format!("/api/v1/dm/{}/messages", urlencode(&cid)), format!("@{username}"))
+                }
+            };
+            let m = api_post(cfg, &path, body)?;
+            Ok(json!({ "sent": true, "to": where_, "id": m.get("id"), "viaAgent": m.get("via").and_then(|v| v.as_str()) == Some("mcp") }))
+        }
+
+        "read_messages" => {
+            let limit = arg_i64(args, "limit").unwrap_or(20).clamp(1, 50);
+            let (path, where_) = match chat_read_target(cfg, args)? {
+                Some((p, w)) => (p, w),
+                None => return Ok(json!({ "messages": [], "note": "There is no conversation with that person yet." })),
+            };
+            let data = api_get(cfg, &format!("{path}?limit={limit}"))?;
+            Ok(json!({ "where": where_, "messages": message_lines(&data) }))
         }
 
         "get_decision" => {
@@ -4609,6 +4669,150 @@ fn hoist_handoff(d: &mut Value) {
     d["handoff"] = json!({ "text": text, "at": at, "by": by });
 }
 
+/// A quién va un mensaje: un canal (el chat de un espacio) o una persona.
+enum ChatTarget {
+    Channel { id: String, name: String },
+    Person { username: String, user_id: String, org_id: String },
+}
+
+/// Un id de cac (uuid con guiones), para no buscar por nombre lo que ya es un id.
+fn is_uuid(s: &str) -> bool {
+    let s = s.trim();
+    s.len() == 36 && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-') && s.matches('-').count() == 4
+}
+
+/// El espacio de un canal, por id o por nombre (único).
+fn resolve_channel(tree: &Value, wanted: &str) -> Result<(String, String), String> {
+    let spaces: Vec<(String, String)> = tree
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|sp| Some((sp.get("id")?.as_str()?.to_string(), sp.get("name")?.as_str()?.to_string())))
+        .collect();
+    if is_uuid(wanted) {
+        return spaces
+            .into_iter()
+            .find(|(id, _)| id == wanted.trim())
+            .ok_or_else(|| format!("No space with id {wanted} in your organizations."));
+    }
+    let hits: Vec<_> = spaces.iter().filter(|(_, n)| n.eq_ignore_ascii_case(wanted.trim())).collect();
+    match hits.len() {
+        1 => Ok(hits[0].clone()),
+        0 => Err(format!(
+            "No channel is called \"{wanted}\". Channels: {}",
+            spaces.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", ")
+        )),
+        n => Err(format!("{n} spaces are called \"{wanted}\": pass the id (list_task_spaces).")),
+    }
+}
+
+/// Las organizaciones del token, sacadas del navegador (cada espacio dice la suya).
+fn org_ids(tree: &Value) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for sp in tree.as_array().into_iter().flatten() {
+        if let Some(o) = sp.get("orgId").and_then(|v| v.as_str()) {
+            if !out.iter().any(|x| x == o) {
+                out.push(o.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// En qué organización está `username` con quien escribe: la dada, o la única
+/// que comparten. Si son varias, se dice cuáles: un directo es de una org, y
+/// escoger por la persona la pondría en un contexto que no eligió.
+fn resolve_person(orgs: &[(String, Vec<(String, String)>)], username: &str, org: Option<&str>) -> Result<(String, String), String> {
+    let u = username.trim().trim_start_matches('@');
+    let found: Vec<(String, String)> = orgs
+        .iter()
+        .filter(|(o, _)| org.map(|x| x == o).unwrap_or(true))
+        .filter_map(|(o, members)| members.iter().find(|(n, _)| n.eq_ignore_ascii_case(u)).map(|(_, id)| (o.clone(), id.clone())))
+        .collect();
+    match found.len() {
+        1 => Ok((found[0].1.clone(), found[0].0.clone())),
+        0 => Err(format!("Nobody called {u} in {}.", if org.is_some() { "that organization" } else { "your organizations" })),
+        _ => Err(format!(
+            "{u} is in several of your organizations ({}): pass orgId.",
+            found.iter().map(|(o, _)| o.as_str()).collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
+fn chat_target(cfg: &Cfg, args: &Value) -> Result<ChatTarget, String> {
+    let tree = api_get(cfg, "/api/v1/task-spaces/")?;
+    match (arg_str(args, "channel"), arg_str(args, "person")) {
+        (Some(ch), None) => {
+            let (id, name) = resolve_channel(&tree, &ch)?;
+            Ok(ChatTarget::Channel { id, name })
+        }
+        (None, Some(p)) => {
+            let orgs: Vec<(String, Vec<(String, String)>)> = org_ids(&tree)
+                .into_iter()
+                .map(|o| {
+                    let m = api_get(cfg, &format!("/api/v1/organizations/{}/members", urlencode(&o))).unwrap_or(Value::Null);
+                    (o, member_pairs(&m))
+                })
+                .collect();
+            let (user_id, org_id) = resolve_person(&orgs, &p, arg_str(args, "orgId").as_deref())?;
+            Ok(ChatTarget::Person { username: p.trim().trim_start_matches('@').to_string(), user_id, org_id })
+        }
+        _ => Err("Pass exactly one of channel or person.".into()),
+    }
+}
+
+/// Dónde leer, sin abrir nada: un directo se busca en tus conversaciones (abrir
+/// uno es escribir). `None` si con esa persona no hay conversación.
+fn chat_read_target(cfg: &Cfg, args: &Value) -> Result<Option<(String, String)>, String> {
+    match (arg_str(args, "channel"), arg_str(args, "person")) {
+        (Some(ch), None) => {
+            let tree = api_get(cfg, "/api/v1/task-spaces/")?;
+            let (id, name) = resolve_channel(&tree, &ch)?;
+            Ok(Some((format!("/api/v1/task-spaces/{}/chat", urlencode(&id)), format!("#{name}"))))
+        }
+        (None, Some(p)) => {
+            let u = p.trim().trim_start_matches('@').to_string();
+            let convs = api_get(cfg, "/api/v1/dm")?;
+            let c = convs.as_array().into_iter().flatten().find(|c| {
+                c.get("username").and_then(|v| v.as_str()).map(|n| n.eq_ignore_ascii_case(&u)).unwrap_or(false)
+            });
+            Ok(c.and_then(|c| c.get("conversationId")).and_then(|v| v.as_str())
+                .map(|id| (format!("/api/v1/dm/{}/messages", urlencode(id)), format!("@{u}"))))
+        }
+        _ => Err("Pass exactly one of channel or person.".into()),
+    }
+}
+
+/// Los mensajes como los lee un agente: lo más viejo primero, con autor,
+/// fecha, si lo escribió un agente y a qué contestan. El texto, recortado.
+fn message_lines(data: &Value) -> Vec<Value> {
+    let mut out: Vec<Value> = data
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|m| {
+            let body = m.get("body").and_then(|b| b.as_str()).unwrap_or("");
+            let mut text: String = body.chars().take(2000).collect();
+            if body.chars().count() > 2000 {
+                text.push('…');
+            }
+            let mut e = json!({
+                "id": m.get("id"), "author": m.get("authorName"), "at": m.get("createdAt"), "text": text,
+                "viaAgent": m.get("via").and_then(|v| v.as_str()) == Some("mcp"),
+            });
+            if m.get("kind").and_then(|k| k.as_str()) == Some("system") {
+                e["system"] = json!(true);
+            }
+            if let Some(r) = m.get("replyTo").filter(|r| !r.is_null()) {
+                e["replyTo"] = json!({ "id": r.get("id"), "author": r.get("authorName") });
+            }
+            e
+        })
+        .collect();
+    out.sort_by(|a, b| a["at"].as_str().unwrap_or("").cmp(b["at"].as_str().unwrap_or("")));
+    out
+}
+
 /// La página «Notas de agentes» de un nodo: lo que un agente descubre y no es
 /// decisión ni runbook (decidido el 22-oct-2026). Una por nodo, colgando de la
 /// portada; se crea la primera vez.
@@ -4946,7 +5150,9 @@ fn instructions(state: Option<SkillState>) -> String {
          a repository cac is not connected to, such as a client's own GitHub organization, leave the commit clean \
          and note the repo and sha in the task instead. Record findings as task comments and decisions with \
          record_decision (a decision that changes supersedes the old one; it is not rewritten); a fact useful to \
-         whoever comes next, whatever their task, goes with remember.\n\
+         whoever comes next, whatever their task, goes with remember. To talk to people (a channel, a teammate, \
+         another agent) use send_message, which goes out in the user's name marked as an agent's: send what they \
+         asked to send, and show them words you wrote yourself before sending.\n\
          4. CLOSE HONESTLY. Before you tell the user you are done, write the task's handoff (update_task handoff: \
          what is done, the next step, how to check it shipped) and update the task: done means published, not \
          committed; committed but not yet released stays in progress with a comment saying where it ships, so the \
@@ -6098,6 +6304,64 @@ mod tests {
         let _ = std::fs::remove_file(d);
     }
 
+    /// Roturas que detecta: escribir en un canal por un nombre que no es el
+    /// suyo; escoger una org cuando la persona está en varias; mandar un
+    /// directo sin abrir la conversación; leer un directo abriendo uno (abrir
+    /// es escribir); o perder la marca de agente o el orden al leer.
+    #[test]
+    fn messages_go_to_a_channel_or_a_person_and_come_back_marked() {
+        let tree = json!([
+            { "id": "7a1aa6b7-0792-4ef4-8192-21b4a163dbdb", "name": "Proteus", "orgId": "o-dwit" },
+            { "id": "e8bd6d46-a9ab-494e-ac29-de84d80a55f4", "name": "Command and control", "orgId": "o-gs" }
+        ]);
+        assert_eq!(resolve_channel(&tree, "proteus").unwrap().0, "7a1aa6b7-0792-4ef4-8192-21b4a163dbdb");
+        assert_eq!(resolve_channel(&tree, "e8bd6d46-a9ab-494e-ac29-de84d80a55f4").unwrap().1, "Command and control");
+        assert!(resolve_channel(&tree, "Nada").unwrap_err().contains("Proteus"), "dice cuáles hay");
+        assert_eq!(org_ids(&tree), vec!["o-dwit", "o-gs"]);
+
+        let orgs = vec![
+            ("o-dwit".to_string(), vec![("diego".to_string(), "u-d".to_string()), ("jose".to_string(), "u-j".to_string())]),
+            ("o-gs".to_string(), vec![("jose".to_string(), "u-j".to_string())]),
+        ];
+        assert_eq!(resolve_person(&orgs, "@Diego", None).unwrap(), ("u-d".into(), "o-dwit".into()));
+        assert!(resolve_person(&orgs, "jose", None).unwrap_err().contains("pass orgId"), "en dos orgs no se escoge");
+        assert_eq!(resolve_person(&orgs, "jose", Some("o-gs")).unwrap(), ("u-j".into(), "o-gs".into()));
+        assert!(resolve_person(&orgs, "nadie", None).is_err());
+
+        // Un directo: se abre la conversación y se escribe en ella.
+        let (cfg, log) = fake_cac(|m, p, _| match (m, p) {
+            ("GET", "/api/v1/task-spaces/") => json!([{ "id": "7a1aa6b7-0792-4ef4-8192-21b4a163dbdb", "name": "Proteus", "orgId": "o-dwit" }]),
+            ("GET", _) if p.ends_with("/members") => json!([{ "username": "diego", "userId": "u-d" }]),
+            ("POST", "/api/v1/dm/open") => json!({ "id": "conv-1" }),
+            _ => json!({ "id": "m-1", "via": "mcp" }),
+        });
+        let out = call_tool(&cfg, "send_message", &json!({ "person": "diego", "text": "PR listo" })).unwrap();
+        assert_eq!((out["to"].as_str(), out["viaAgent"].as_bool()), (Some("@diego"), Some(true)));
+        let calls: Vec<(String, String, Value)> = log.lock().unwrap().clone();
+        let open = calls.iter().find(|(_, p, _)| p == "/api/v1/dm/open").expect("abre la conversación");
+        assert_eq!((open.2["orgId"].as_str(), open.2["userId"].as_str()), (Some("o-dwit"), Some("u-d")));
+        assert!(calls.iter().any(|(m, p, b)| m == "POST" && p == "/api/v1/dm/conv-1/messages" && b["body"] == "PR listo"));
+
+        // Leer un directo no abre nada; sin conversación, lo dice.
+        let (cfg, log) = fake_cac(|_, p, _| {
+            if p == "/api/v1/dm" {
+                json!([{ "conversationId": "conv-1", "username": "diego" }])
+            } else {
+                json!([
+                    { "id": "m2", "authorName": "diego", "createdAt": "2026-10-22T10:00:00Z", "body": "gracias", "via": "" },
+                    { "id": "m1", "authorName": "jose", "createdAt": "2026-10-22T09:00:00Z", "body": "PR listo", "via": "mcp" }
+                ])
+            }
+        });
+        let out = call_tool(&cfg, "read_messages", &json!({ "person": "diego" })).unwrap();
+        let ms = out["messages"].as_array().unwrap();
+        assert_eq!((ms[0]["id"].as_str(), ms[0]["viaAgent"].as_bool()), (Some("m1"), Some(true)), "lo más viejo primero, marcado");
+        assert_eq!(ms[1]["viaAgent"], false);
+        assert!(log.lock().unwrap().iter().all(|(m, _, _)| m == "GET"), "leer no escribe");
+        let out = call_tool(&cfg, "read_messages", &json!({ "person": "nadie" })).unwrap();
+        assert_eq!(out["messages"].as_array().unwrap().len(), 0);
+    }
+
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un
     /// fork, `aaa` saldría antes por orden alfabético).
     #[test]
@@ -6302,6 +6566,7 @@ mod tests {
             ("supersedes the old one", "`supersedes`"),
             ("goes with remember", "`remember`"),
             ("the weekly pass", "cac-consolidar"),
+            ("use send_message", "`send_message`"),
             ("bring the board up to date", "## 3 · Poner el tablero al día"),
             ("claim it", "`claim: true`"),
             ("goes in blockedBy", "`blockedBy`"),

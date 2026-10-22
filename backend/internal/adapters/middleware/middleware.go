@@ -325,6 +325,11 @@ var patWritable = []struct {
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/posts/[^/]+/comments/[^/]+/reactions/?$`), domain.ScopePostsWrite},
 	// Avisarse a uno mismo: la ruta no admite otro destinatario (#153).
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/notifications/self$`), domain.ScopeNotifyMe},
+	// Escribir en un canal o en un directo, y abrir el directo. Todo añade:
+	// editar, retirar y reaccionar no están. Ver ScopeChatWrite.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/task-spaces/[^/]+/chat/?$`), domain.ScopeChatWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/dm/open/?$`), domain.ScopeChatWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/dm/[^/]+/messages/?$`), domain.ScopeChatWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/comments/?$`), domain.ScopeReportsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/reports/[^/]+/images/?$`), domain.ScopeReportsWrite},
 	// Changes what already exists.

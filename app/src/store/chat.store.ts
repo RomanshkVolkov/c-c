@@ -33,6 +33,8 @@ export interface ChatMessage {
   spaceId: string;
   authorUserId: string;
   authorName: string;
+  /** `mcp`: lo escribió un agente con el token de esa persona. */
+  via?: string;
   /**
    * Quién habla: una persona, o cac.
    *

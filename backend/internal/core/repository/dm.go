@@ -97,7 +97,7 @@ func (r *DMRepository) List(conversationID string, before time.Time, limit int) 
 	q := r.db.Table("dm_messages m").
 		Select(`m.id, m.conversation_id, m.author_user_id,
 			COALESCE(u.username,'') AS author_name,
-			m.body, m.created_at, m.updated_at,
+			m.via, m.body, m.created_at, m.updated_at,
 			m.reply_to_id, COALESCE(ru.username,'') AS reply_author,
 			COALESCE(LEFT(r.body, 400),'') AS reply_body, (r.id IS NULL OR r.deleted_at IS NOT NULL) AS reply_withdrawn`).
 		Joins("LEFT JOIN users u ON u.id = m.author_user_id").

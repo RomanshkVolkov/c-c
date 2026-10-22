@@ -133,6 +133,12 @@ const (
 	// todas las organizaciones y lo publica una persona (el servicio contesta
 	// `post-forbidden` a un token, con `ViaToken`), ni editar, borrar o fijar.
 	ScopePostsWrite = "posts:write"
+	// ScopeChatWrite: escribir en un canal, abrir un directo y escribir en él
+	// (22-oct-2026, jose: «para la comunicación agéntica y personal»). Sólo
+	// añadir: ni editar ni retirar, que pisan lo que ya se dijo. Cada mensaje
+	// queda marcado `via: mcp` y la app lo enseña «vía agente»: el token **es**
+	// la persona, y quien lo lee tiene que saber que no lo tecleó ella.
+	ScopeChatWrite = "chat:write"
 )
 
 func ValidScope(s string) bool {
@@ -141,7 +147,7 @@ func ValidScope(s string) bool {
 		ScopeNotesWrite, ScopeNotesManage,
 		ScopeReportsWrite, ScopeReportsManage,
 		ScopeDocsWrite, ScopeDocsManage,
-		ScopeCollectionsWrite, ScopeDeploysManage, ScopeNotifyMe, ScopePostsWrite:
+		ScopeCollectionsWrite, ScopeDeploysManage, ScopeNotifyMe, ScopePostsWrite, ScopeChatWrite:
 		return true
 	default:
 		return false

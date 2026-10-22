@@ -101,7 +101,7 @@ func (h *taskHandler) PostDM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	m, err := h.dms.Reply(id, user.UserID, req.Body, req.ReplyToID)
+	m, err := h.dms.ReplyVia(domain.ViaFrom(r.Context()), id, user.UserID, req.Body, req.ReplyToID)
 	if mapDMError(w, err) {
 		return
 	}

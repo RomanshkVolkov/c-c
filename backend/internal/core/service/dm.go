@@ -195,12 +195,18 @@ func (s *DMService) Post(conversationID, userID, body string) (*domain.DMMessage
 //
 // No avisa aparte: en un directo el otro ya recibe el aviso del mensaje.
 func (s *DMService) Reply(conversationID, userID, body, replyToID string) (*domain.DMMessage, error) {
+	return s.ReplyVia(domain.ViaApp, conversationID, userID, body, replyToID)
+}
+
+// ReplyVia es Reply diciendo por dónde entró (ver domain/via.go).
+func (s *DMService) ReplyVia(via, conversationID, userID, body, replyToID string) (*domain.DMMessage, error) {
 	c, err := s.mine(conversationID, userID)
 	if err != nil {
 		return nil, err
 	}
 	m := &domain.DMMessage{
 		ConversationID: c.ID, OrgID: c.OrgID, AuthorUserID: userID, Body: body,
+		Via: domain.NormalizeVia(via),
 	}
 	if replyToID != "" {
 		target, err := s.repo.Find(replyToID)
