@@ -87,6 +87,9 @@ el tablero, con `get_board`):
 3. Lo que dependa de una persona («probarlo en una llamada», «revisar en
    local»), no lo cierres por tu cuenta: díselo al usuario, en una línea por
    tarea.
+4. Si una tarea dice **«Espera a cac#N»** (ver el paso 4), mira con `get_task`
+   si cac#N ya está hecha. Si lo está, deja en la que esperaba un comentario
+   «Desbloqueada: cac#N ya está» y díselo al usuario. Ésa puede seguir.
 
 Es lo primero, y es rápido: unas pocas llamadas. Si no se hace, el tablero
 miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
@@ -125,6 +128,17 @@ Por el camino:
   que usa el paso 3 para saber si el trabajo ya se publicó. `cac#N` es el
   número del espacio, así que sólo enlaza desde un repo atado a ese espacio. Si
   el PR no nombra la tarea, enlázalo a mano con `link_pull_request`.
+- **Si tu tarea no puede seguir hasta que se haga otra,** déjalo escrito con un
+  comentario que empiece así, con su referencia:
+
+  ```
+  Espera a cac#185: necesita que el tag de la imagen lleve el servicio.
+  ```
+
+  Una línea por cada tarea de la que dependa. Así la siguiente sesión sabe qué
+  está parado por qué, y lo comprueba al poner el tablero al día (paso 3). Si
+  es una espera de algo de fuera (AWS, una llamada, una release), no lleva
+  referencia: basta con decir qué falta.
 - **Lo que descubras** va con `add_task_comment`: un fallo de base, un dato
   medido, un callejón sin salida. Los comentarios sólo se añaden; no pisan
   nada de nadie.
@@ -165,6 +179,7 @@ que su trabajo sale.
 | Commiteado y en verde, pero falta desplegar o soltar | `in_progress`, con un comentario que diga **en qué sale** («en la próxima release de la app»), para que la siguiente sesión sepa qué comprobar (paso 3) |
 | Desplegado, soltado o entregado | `done` |
 | Parado por una decisión del usuario o por algo de fuera | `in_progress`, con un comentario que diga qué falta |
+| Parado porque espera a otra tarea | `in_progress`, con «Espera a cac#N: …» |
 | Descartado | `closed`, con el porqué |
 
 Y deja un comentario de cierre corto:
@@ -182,4 +197,4 @@ línea.
 - No reescribir la descripción ni el documento de otra persona: comenta.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
 
-<!-- cac-work v4 -->
+<!-- cac-work v5 -->
