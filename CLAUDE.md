@@ -260,6 +260,10 @@ El trabajo de este repo se registra en la organización «Command and control»
 - **Backend** → `91abe433-4d90-4519-93ff-616109ce40c9` (lo de `backend/`, `infra/` y `swarm-manage/`)
 - **MCP** → `72fcff15-338a-4707-a52d-08af6191e10d` (el servidor MCP y la skill `cac-work`)
 
+Las tareas del espacio se nombran `command-and-control-<número>`, en minúsculas:
+así van al final de cada commit para que cac los enlace solos (`get_task` da
+la `ref` lista). `cac#N` se sigue entendiendo, pero ya no se escribe.
+
 ## Convenciones
 
 - **El código se escribe en inglés y se comenta en castellano.** Ficheros,
