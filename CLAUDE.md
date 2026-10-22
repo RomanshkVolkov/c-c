@@ -258,6 +258,7 @@ El trabajo de este repo se registra en la organización «Command and control»
 
 - **App** → `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` (lo de `app/`)
 - **Backend** → `91abe433-4d90-4519-93ff-616109ce40c9` (lo de `backend/`, `infra/` y `swarm-manage/`)
+- **MCP** → `72fcff15-338a-4707-a52d-08af6191e10d` (el servidor MCP y la skill `cac-work`)
 
 ## Convenciones
 
