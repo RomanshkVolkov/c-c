@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -137,7 +138,7 @@ func contextFixture(t *testing.T) *gorm.DB {
 		r.ID = fmt.Sprintf("gh-%d", r.RepoID)
 		mustCreate(t, db, &r)
 	}
-	rd := &domain.RepoDoc{OrgID: "org-1", RepoID: 1, Path: "README.md", Title: "cac", BlobSha: "x"}
+	rd := &domain.RepoDoc{OrgID: "org-1", RepoID: 1, Path: "README.md", Title: "cac", BlobSha: "x", Body: "# cac\n\nhola"}
 	rd.ID = "rd-1"
 	mustCreate(t, db, rd)
 	// Del repo conectado pero sin espacio: no es de este espacio.
@@ -223,6 +224,9 @@ func TestTheContextMapIsTheSpaceWithoutBodies(t *testing.T) {
 	if len(m.RepoDocs) != 1 || m.RepoDocs[0].Repo != "guz-studio/cac" || m.RepoDocs[0].Path != "README.md" {
 		t.Fatalf("docs del repo: %+v", m.RepoDocs)
 	}
+	if m.RepoDocs[0].Chars != len("# cac\n\nhola") {
+		t.Fatalf("sin tamaño el agente no sabe si leer el .md entero: %+v", m.RepoDocs[0])
+	}
 	if len(m.InProgress) != 1 || m.InProgress[0].Title != "En curso" || m.InProgress[0].Seq != 7 {
 		t.Fatalf("en curso: %+v", m.InProgress)
 	}
@@ -297,5 +301,96 @@ func TestWhatTheMapLeavesOutItSays(t *testing.T) {
 	}
 	if strings.Join(m.Truncated, ",") != "decisions" {
 		t.Fatalf("no dice qué recortó: %v", m.Truncated)
+	}
+}
+
+// El mapa se recorta y dice qué cambió desde una fecha (22-oct-2026). Un
+// espacio grande son ~16 KB, y lo que se recortaba no tenía forma de pedirse;
+// y la segunda sesión de una feature quiere saber qué pasó desde la primera,
+// no releerlo todo.
+//
+// Roturas que detecta: `only` que no recorta (vuelve el mapa entero); `node`
+// que no filtra; `since` que no filtra por fecha, o que deja fuera una de las
+// cuatro cosas (tareas, decisiones, docs, .md); tareas cambiadas sin estado o
+// sin referencia; pedir `since` sin «changes» en `only` y recibirlo igual.
+func TestTheMapCanBeTrimmedAndSaysWhatChangedSince(t *testing.T) {
+	s := NewContextService(contextFixture(t))
+
+	// Sólo lo que está en curso: ni documentos ni .md.
+	m, err := s.MapWith("org-1", "sp-1", nil, domain.ContextOptions{Only: []string{"inProgress"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range m.Nodes {
+		if n.Doc != nil {
+			t.Fatalf("only=inProgress trajo el documento de %s", n.Path)
+		}
+	}
+	if len(m.RepoDocs) != 0 || len(m.InProgress) != 1 || m.Changes != nil {
+		t.Fatalf("only=inProgress: repoDocs %d, inProgress %d, changes %v", len(m.RepoDocs), len(m.InProgress), m.Changes)
+	}
+
+	// Sólo el documento de un nodo.
+	m, err = s.MapWith("org-1", "sp-1", nil, domain.ContextOptions{Node: "sp-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range m.Nodes {
+		if n.Doc != nil {
+			t.Fatalf("node=sp-1 (sin documento) trajo el de %s", n.Path)
+		}
+	}
+
+	// Lo que cambió desde hace un minuto: todo lo de la fixture que es de este
+	// espacio y está vivo.
+	hace := time.Now().Add(-time.Minute)
+	m, err = s.MapWith("org-1", "sp-1", nil, domain.ContextOptions{Since: &hace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Changes == nil {
+		t.Fatal("con since tiene que venir changes")
+	}
+	var titles []string
+	for _, x := range m.Changes.Tasks {
+		titles = append(titles, x.Title+"="+x.Status+"@"+x.Ref)
+	}
+	slices.Sort(titles)
+	if got := strings.Join(titles, "|"); got != "En curso=in_progress@cc-7|Pendiente=pending@cc-8" {
+		t.Fatalf("tareas cambiadas (sin subtareas ni las de otra org, con estado y ref): %s", got)
+	}
+	if len(m.Changes.Decisions) != 3 || m.Changes.Decisions[0].Title != "Más nueva" || m.Changes.Decisions[0].Path != "cac › Producto › App" {
+		t.Fatalf("decisiones cambiadas, con su nodo: %+v", m.Changes.Decisions)
+	}
+	var docs []string
+	for _, d := range m.Changes.Docs {
+		docs = append(docs, string(d.Tab)+d.PageTitle+"@"+d.Path)
+	}
+	slices.Sort(docs)
+	if got := strings.Join(docs, "|"); got != "Arquitectura@cac › Producto › App|overview@cac › Producto › App|runbook@cac › Producto › App" {
+		t.Fatalf("docs editados (pestañas con texto y páginas vivas): %s", got)
+	}
+	if len(m.Changes.RepoDocs) != 1 || m.Changes.RepoDocs[0].Path != "README.md" {
+		t.Fatalf(".md cambiados: %+v", m.Changes.RepoDocs)
+	}
+
+	// Desde dentro de tres horas (la fixture tiene decisiones fechadas una y
+	// dos horas en el futuro): nada, pero se dice.
+	luego := time.Now().Add(3 * time.Hour)
+	m, err = s.MapWith("org-1", "sp-1", nil, domain.ContextOptions{Since: &luego})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Changes == nil || len(m.Changes.Tasks)+len(m.Changes.Decisions)+len(m.Changes.Docs)+len(m.Changes.RepoDocs) != 0 {
+		t.Fatalf("desde el futuro no ha cambiado nada: %+v", m.Changes)
+	}
+
+	// `since` sin pedir «changes» en `only`: no viene.
+	m, err = s.MapWith("org-1", "sp-1", nil, domain.ContextOptions{Since: &hace, Only: []string{"tree"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Changes != nil {
+		t.Fatal("only=tree con since trajo changes")
 	}
 }

@@ -219,5 +219,7 @@
   "space-key-invalid": "La clave va en minúsculas y con guiones, y cada parte empieza por una letra.",
   "space-key-taken": "Otro espacio o un proyecto de cliente de esta organización ya usa esa clave.",
   "decision-supersedes-not-here": "La decisión que ésta sustituye no está en este documento.",
-  "decision-already-superseded": "Esa decisión ya fue sustituida: nombra a la que la sustituyó."
+  "decision-already-superseded": "Esa decisión ya fue sustituida: nombra a la que la sustituyó.",
+  "context-bad-options": "Las opciones del mapa no valen: since es una fecha RFC 3339 y only acepta tree, docs, repoDocs, inProgress o changes.",
+  "bad-task-ref": "Una referencia es la clave del espacio y el número (proteus-12) o el folio de un cliente (acme-7); cac#12 es un número sin espacio."
 }

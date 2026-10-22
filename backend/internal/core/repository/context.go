@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"sort"
 	"time"
 
 	"gorm.io/gorm"
@@ -96,38 +97,106 @@ func (r *ContextRepository) Decisions(docIDs []string) ([]ContextDecisionRow, er
 // los lista `RepoDocsForSpace`. Uno más del límite, para saber si se recortó.
 func (r *ContextRepository) RepoDocs(orgID, spaceID string, limit int) ([]domain.ContextRepoDoc, error) {
 	var rows []domain.ContextRepoDoc
-	err := r.db.Table("repo_docs rd").
-		Select("rd.id, gr.full_name AS repo, rd.path, rd.title").
+	err := r.repoDocs(orgID, spaceID).Order("gr.full_name, rd.path").Limit(limit + 1).Scan(&rows).Error
+	return rows, err
+}
+
+func (r *ContextRepository) repoDocs(orgID, spaceID string) *gorm.DB {
+	return r.db.Table("repo_docs rd").
+		Select("rd.id, gr.full_name AS repo, rd.path, rd.title, length(rd.body) AS chars, rd.updated_at").
 		Joins("JOIN git_hub_repos gr ON gr.repo_id = rd.repo_id AND gr.org_id = rd.org_id").
-		Where("rd.org_id = ? AND gr.space_id = ? AND gr.show_docs", orgID, spaceID).
-		Order("gr.full_name, rd.path").Limit(limit + 1).Scan(&rows).Error
+		Where("rd.org_id = ? AND gr.space_id = ? AND gr.show_docs", orgID, spaceID)
+}
+
+// ChangedRepoDocs: los .md del espacio que cambiaron desde `since`.
+func (r *ContextRepository) ChangedRepoDocs(orgID, spaceID string, since time.Time) ([]domain.ContextRepoDoc, error) {
+	rows := []domain.ContextRepoDoc{}
+	err := r.repoDocs(orgID, spaceID).Where("rd.updated_at > ?", since).Order("rd.updated_at DESC").Scan(&rows).Error
 	return rows, err
 }
 
 // InProgress: las tareas en «en curso» de cualquier lista del espacio, sin
 // subtareas ni archivadas, lo más reciente primero. Uno más del límite.
 func (r *ContextRepository) InProgress(spaceID string, limit int) ([]domain.ContextTask, error) {
-	// Una fila propia: GORM no sabe leer en un struct con un `[]string`
-	// (los responsables), que se rellenan después.
+	return r.tasks(r.db.Where("space_id = ? AND status = ?", spaceID, domain.ReportInProgress).Limit(limit+1), false)
+}
+
+// ChangedTasks: las tareas del espacio tocadas desde `since` (estado, texto,
+// handoff…), con su estado, lo más reciente primero.
+func (r *ContextRepository) ChangedTasks(spaceID string, since time.Time, limit int) ([]domain.ContextTask, error) {
+	return r.tasks(r.db.Where("space_id = ? AND updated_at > ?", spaceID, since).Limit(limit+1), true)
+}
+
+// tasks: lo que InProgress y ChangedTasks tienen en común: sin subtareas ni
+// archivadas, lo más reciente primero. Una fila propia: GORM no sabe leer en
+// un struct con un `[]string` (los responsables), que se rellenan después.
+func (r *ContextRepository) tasks(q *gorm.DB, withStatus bool) ([]domain.ContextTask, error) {
 	type row struct {
-		ID, Title, ListID, ProjectID, Handoff, HandoffByID string
-		Seq                                                int
-		UpdatedAt                                          time.Time
-		HandoffAt                                          *time.Time
+		ID, Title, ListID, ProjectID, Handoff, HandoffByID, Status string
+		Seq                                                        int
+		UpdatedAt                                                  time.Time
+		HandoffAt                                                  *time.Time
 	}
 	var rows []row
-	err := r.db.Table("items").Select("id, seq, title, list_id, project_id, updated_at, handoff, handoff_at, handoff_by_id").
-		Where("space_id = ? AND status = ? AND parent_id IS NULL AND archived_at IS NULL AND deleted_at IS NULL",
-			spaceID, domain.ReportInProgress).
-		Order("updated_at DESC").Limit(limit + 1).Scan(&rows).Error
+	err := q.Table("items").
+		Select("id, seq, title, list_id, project_id, status, updated_at, handoff, handoff_at, handoff_by_id").
+		Where("parent_id IS NULL AND archived_at IS NULL AND deleted_at IS NULL").
+		Order("updated_at DESC").Scan(&rows).Error
 	out := make([]domain.ContextTask, len(rows))
 	for i, x := range rows {
 		out[i] = domain.ContextTask{
 			ID: x.ID, Seq: x.Seq, Title: x.Title, ListID: x.ListID, ProjectID: x.ProjectID, UpdatedAt: x.UpdatedAt,
 			Handoff: x.Handoff, HandoffAt: x.HandoffAt, HandoffByID: x.HandoffByID,
 		}
+		if withStatus {
+			out[i].Status = x.Status
+		}
 	}
 	return out, err
+}
+
+// ChangedDecisions: las apuntadas desde `since`, también las que sustituyen
+// a otra: apuntar una es un cambio.
+func (r *ContextRepository) ChangedDecisions(docIDs []string, since time.Time) ([]ContextDecisionRow, error) {
+	rows := []ContextDecisionRow{}
+	if len(docIDs) == 0 {
+		return rows, nil
+	}
+	err := r.db.Table("decisions d").Select("d.doc_id, d.id, d.title, d.tag, d.decided_at").
+		Where("d.doc_id IN ? AND d.decided_at > ?", docIDs, since).
+		Order("d.decided_at DESC").Scan(&rows).Error
+	return rows, err
+}
+
+// ContextChangedDocRow: una pestaña (Key) o una página (PageID) editada.
+type ContextChangedDocRow struct {
+	DocID     string
+	Key       domain.DocTabKey
+	PageID    string
+	PageTitle string
+	UpdatedAt time.Time
+}
+
+// ChangedDocs: pestañas con texto y páginas vivas editadas desde `since`.
+func (r *ContextRepository) ChangedDocs(docIDs []string, since time.Time) ([]ContextChangedDocRow, error) {
+	rows := []ContextChangedDocRow{}
+	if len(docIDs) == 0 {
+		return rows, nil
+	}
+	var tabs []ContextChangedDocRow
+	if err := r.db.Table("doc_tabs").Select("doc_id, key, updated_at").
+		Where("doc_id IN ? AND body <> '' AND updated_at > ?", docIDs, since).Scan(&tabs).Error; err != nil {
+		return rows, err
+	}
+	var pages []ContextChangedDocRow
+	if err := r.db.Table("doc_pages").Select("doc_id, id AS page_id, title AS page_title, updated_at").
+		Where("doc_id IN ? AND deleted_at IS NULL AND updated_at > ?", docIDs, since).Scan(&pages).Error; err != nil {
+		return rows, err
+	}
+	rows = append(rows, tabs...)
+	rows = append(rows, pages...)
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].UpdatedAt.After(rows[j].UpdatedAt) })
+	return rows, nil
 }
 
 // AssigneesOf: los usuarios (por `username`, que es como se nombran en el MCP)

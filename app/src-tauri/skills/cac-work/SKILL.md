@@ -34,8 +34,10 @@ pregunta, y sólo en las listas que vas a tocar.
 - dos o tres palabras: sustantivos del dominio y nombres de cosas (`egress`,
   `RLS`, `PROTEUS-89`), sin artículos ni verbos conjugados. Todas las palabras
   tienen que estar en el texto, y «el» o «cómo» también cuentan;
-- cada acierto de un doc trae `section`, la sección donde cae: lee **esa**,
-  con `get_doc` (`tab` + `section`), `get_doc_page` o `get_repo_doc`, no el
+- con `expand: true`, la búsqueda trae ya el texto de la sección de los tres
+  primeros aciertos de docs: una pregunta en una llamada. Sin `expand`, cada
+  acierto de un doc trae `section`, la sección donde cae: lee **esa**, con
+  `get_doc` (`tab` + `section`), `get_doc_page` o `get_repo_doc`, no el
   documento;
 - con cero aciertos, quita una palabra antes de probar en el otro idioma
   («desplegar» / «deploy», «soltar» / «release»): la búsqueda es por palabras,
@@ -67,9 +69,20 @@ Con eso, **lee sólo lo que toca**, y primero esto, si existe:
 
 Lo demás, por su título en el mapa:
 - una sección de una pestaña: `get_doc` con `kind`, `ownerId` (el id del
-  nodo), `tab` y `section` (el texto del título);
+  nodo, o su ruta tal como la enseña el mapa: «Proteus › Plataforma»), `tab` y
+  `section` (el texto del título);
 - una subpágina: `get_doc_page`;
-- un `.md` del repo: `get_repo_doc`.
+- un `.md` del repo: `get_repo_doc` (el mapa dice su tamaño en `chars`).
+
+Las tareas se piden por su referencia (`get_task` con `proteus-12`), no hace
+falta copiar el id. Y si el mapa recortó algo (`truncated`), o el espacio es
+grande, pídelo por partes: `get_context` con `only` (`["docs"]`,
+`["inProgress"]`…) y `node` (sólo el documento de ese nodo).
+
+**Si vuelves a un trabajo empezado**, pide `get_context` con `since` (la fecha
+de tu última sesión, o del último commit): `changes` dice qué tareas se
+movieron, qué decisiones se apuntaron y qué docs y `.md` cambiaron desde
+entonces, sin releer el mapa entero.
 
 Si algo de lo que lees contradice el código, gana el código, y lo apuntas
 (ver el paso 6).
@@ -272,4 +285,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v9 -->
+<!-- cac-work v10 -->

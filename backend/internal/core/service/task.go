@@ -535,6 +535,11 @@ func (s *TaskService) announceToChannel(task *domain.Task, channel string) {
 
 func (s *TaskService) FindTask(id string) (*domain.Task, error) { return s.repo.FindTask(id) }
 
+// FindTaskByRef: ver TaskRepository.FindByRef.
+func (s *TaskService) FindTaskByRef(orgIDs []string, ref domain.TaskRef) (*domain.Task, error) {
+	return s.repo.FindByRef(orgIDs, ref)
+}
+
 // actorID es quien edita: hace falta para no avisarle de que se ha asignado
 // algo a sí mismo, que es la mitad de las asignaciones que existen.
 func (s *TaskService) UpdateTask(ctx context.Context, id, actorID string, req domain.UpdateTaskRequest) error {

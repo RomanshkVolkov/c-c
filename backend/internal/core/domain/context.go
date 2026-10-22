@@ -15,6 +15,81 @@ import "time"
 // en GitHub (`GitHubRepo.SpaceID`), que es lo que sabe un agente: el remote de
 // la carpeta donde trabaja.
 
+// ContextOptions: cómo recortar el mapa. Todo opcional; sin nada, el mapa
+// entero. Están para que un agente pida lo que le falta y no todo otra vez:
+// un espacio grande son ~16 KB (Proteus, 22-oct-2026), y lo que se recortó
+// por tamaño no tenía forma de pedirse.
+type ContextOptions struct {
+	// Since: sólo lo que cambió desde entonces, en `Changes`. Es lo que la
+	// segunda sesión de una feature quiere saber.
+	Since *time.Time
+	// Only: qué partes devolver (ver ContextSections). Vacío = todas. El árbol
+	// va siempre: es lo que da sentido a los ids.
+	Only []string
+	// Node: sólo el documento de ese nodo (espacio, carpeta o lista).
+	Node string
+}
+
+// ContextSections: lo que `Only` puede nombrar.
+var ContextSections = []string{"tree", "docs", "repoDocs", "inProgress", "changes"}
+
+// Wants dice si una parte va en la respuesta.
+func (o ContextOptions) Wants(section string) bool {
+	if len(o.Only) == 0 {
+		return true
+	}
+	for _, s := range o.Only {
+		if s == section {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidContextSection: si `Only` puede nombrarla.
+func ValidContextSection(s string) bool {
+	for _, x := range ContextSections {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// ContextChanges: lo que cambió en el espacio desde `Since`. Todo sin cuerpos,
+// como el resto del mapa: dice qué mirar, no qué dice.
+type ContextChanges struct {
+	Since time.Time `json:"since"`
+	// Tasks: las tareas tocadas (estado, texto, handoff…), lo más reciente
+	// primero, con su estado.
+	Tasks     []ContextTask            `json:"tasks"`
+	Decisions []ContextChangedDecision `json:"decisions"`
+	Docs      []ContextChangedDoc      `json:"docs"`
+	RepoDocs  []ContextRepoDoc         `json:"repoDocs"`
+}
+
+// ContextChangedDecision: una decisión apuntada desde `Since`, con el nodo.
+type ContextChangedDecision struct {
+	ID        string       `json:"id"`
+	Title     string       `json:"title"`
+	Tag       string       `json:"tag,omitempty"`
+	DecidedAt time.Time    `json:"decidedAt"`
+	OwnerKind DocOwnerKind `json:"ownerKind"`
+	OwnerID   string       `json:"ownerId"`
+	Path      string       `json:"path"`
+}
+
+// ContextChangedDoc: una pestaña o una página editada desde `Since`.
+type ContextChangedDoc struct {
+	OwnerKind DocOwnerKind `json:"ownerKind"`
+	OwnerID   string       `json:"ownerId"`
+	Path      string       `json:"path"`
+	Tab       DocTabKey    `json:"tab,omitempty"`
+	PageID    string       `json:"pageId,omitempty"`
+	PageTitle string       `json:"pageTitle,omitempty"`
+	UpdatedAt time.Time    `json:"updatedAt"`
+}
+
 // ContextMap es la respuesta entera.
 type ContextMap struct {
 	Space ContextSpace `json:"space"`
@@ -27,7 +102,10 @@ type ContextMap struct {
 	// InProgress: lo que está en la columna «en curso» de cualquier lista del
 	// espacio, lo más reciente primero. Para no duplicar una tarea que ya existe.
 	InProgress []ContextTask `json:"inProgress"`
+	// Changes: sólo con `since`. Lo que cambió desde entonces.
+	Changes *ContextChanges `json:"changes,omitempty"`
 	// Truncated dice qué se recortó por tamaño, para no confundirlo con «no hay».
+	// Lo recortado se pide con `only` y `node`.
 	Truncated []string `json:"truncated,omitempty"`
 }
 
@@ -97,16 +175,22 @@ type ContextRepoDoc struct {
 	Repo  string `json:"repo"`
 	Path  string `json:"path"`
 	Title string `json:"title"`
+	// Chars: el tamaño, como lo tienen las pestañas, para saber si leerlo
+	// entero o por sección.
+	Chars     int        `json:"chars,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
 type ContextTask struct {
 	ID  string `json:"id"`
 	Seq int    `json:"seq"`
 	// Ref: cómo se nombra en un commit (`proteus-12`, o el folio de un cliente).
-	Ref       string    `json:"ref,omitempty"`
-	Title     string    `json:"title"`
-	ListID    string    `json:"listId"`
-	ProjectID string    `json:"-"`
+	Ref       string `json:"ref,omitempty"`
+	Title     string `json:"title"`
+	ListID    string `json:"listId"`
+	ProjectID string `json:"-"`
+	// Status: sólo en `Changes` (en `InProgress` va implícito).
+	Status    string    `json:"status,omitempty"`
 	Assignees []string  `json:"assignees,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	// Handoff: el «dónde quedó» de la tarea (Item.Handoff), con quién lo

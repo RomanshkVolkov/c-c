@@ -28,10 +28,14 @@ cajón antes que la descripción, en `get_task` arriba del hilo y en el
 (`GET /api/v1/docs/decisions/{id}`, `get_decision`, `get_doc tab: decisions`
 da el registro), **se buscan** (columna `search` en `decisions`, aciertos de
 kind `decision`) y una nueva puede **sustituir** a otra (`supersedes`: la vieja
-queda tachada; el mapa y la búsqueda enseñan sólo las vigentes); skill **v9**.
-Quedan: `search expand` y pedir por `ref`/ruta, `since`, filtros del mapa; y lo
-que espera decisión de jose (hooks, `claim`, Proteus, `remember`, consolidar,
-espejos).
+queda tachada; el mapa y la búsqueda enseñan sólo las vigentes). **Tercera
+tanda:** `search` con `expand` (el texto de la sección de los tres primeros
+aciertos, una pregunta en una llamada); `get_task` por referencia
+(`proteus-12`, `GET /api/v1/tasks/by-ref/{ref}`); `get_doc` por ruta
+(«Proteus › Plataforma»); `get_context` con `since` (`changes`: tareas,
+decisiones, docs y `.md` desde una fecha), `only` y `node`, y `chars` en cada
+`.md`; skill **v10**. Quedan las que esperan decisión de jose (hooks, `claim`,
+Proteus, `remember`, consolidar, espejos).
 
 **15-oct, v1.6.101: responder, mudar la llamada y el eco** (App #156, #157,
 #158). Responder a un mensaje con su cita, en canales, directos y el chat de

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -46,9 +47,14 @@ func (s *ContextService) ResolveRepo(fullName string, orgIDs []string) (spaceID,
 	return "", "", ErrContextRepoNotLinked
 }
 
-// Map junta el mapa de un espacio de `orgID`. `repo` va en la respuesta si el
-// espacio se resolvió por él.
+// Map junta el mapa entero de un espacio de `orgID`. `repo` va en la respuesta
+// si el espacio se resolvió por él.
 func (s *ContextService) Map(orgID, spaceID string, repo *domain.ContextRepo) (domain.ContextMap, error) {
+	return s.MapWith(orgID, spaceID, repo, domain.ContextOptions{})
+}
+
+// MapWith: el mapa recortado como pidan las opciones (ver ContextOptions).
+func (s *ContextService) MapWith(orgID, spaceID string, repo *domain.ContextRepo, opts domain.ContextOptions) (domain.ContextMap, error) {
 	out := domain.ContextMap{Repo: repo, Nodes: []domain.ContextNode{}, RepoDocs: []domain.ContextRepoDoc{}, InProgress: []domain.ContextTask{}}
 	trees, err := s.tasks.Tree([]string{orgID}, false, orgID)
 	if err != nil {
@@ -88,42 +94,79 @@ func (s *ContextService) Map(orgID, spaceID string, repo *domain.ContextRepo) (d
 	}
 	addFolders(tree.Name, tree.Folders)
 
-	if err := s.attachDocs(orgID, &out); err != nil {
-		return out, err
+	// Los documentos de los nodos (los ids hacen falta también para los
+	// cambios, así que se buscan una vez).
+	ids := make([]string, len(out.Nodes))
+	for i, n := range out.Nodes {
+		ids[i] = n.ID
 	}
-
-	repoDocs, err := s.repo.RepoDocs(orgID, spaceID, domain.ContextMaxRepoDocs)
+	docs, err := s.repo.Docs(orgID, ids)
 	if err != nil {
 		return out, err
 	}
-	if len(repoDocs) > domain.ContextMaxRepoDocs {
-		repoDocs = repoDocs[:domain.ContextMaxRepoDocs]
-		out.Truncated = append(out.Truncated, "repoDocs")
+	if opts.Wants("docs") {
+		if err := s.attachDocs(orgID, &out, docs, opts.Node); err != nil {
+			return out, err
+		}
 	}
-	out.RepoDocs = append(out.RepoDocs, repoDocs...)
 
-	tasks, err := s.repo.InProgress(spaceID, domain.ContextMaxInProgress)
-	if err != nil {
-		return out, err
+	if opts.Wants("repoDocs") {
+		repoDocs, err := s.repo.RepoDocs(orgID, spaceID, domain.ContextMaxRepoDocs)
+		if err != nil {
+			return out, err
+		}
+		if len(repoDocs) > domain.ContextMaxRepoDocs {
+			repoDocs = repoDocs[:domain.ContextMaxRepoDocs]
+			out.Truncated = append(out.Truncated, "repoDocs")
+		}
+		out.RepoDocs = append(out.RepoDocs, repoDocs...)
 	}
-	if len(tasks) > domain.ContextMaxInProgress {
-		tasks = tasks[:domain.ContextMaxInProgress]
-		out.Truncated = append(out.Truncated, "inProgress")
+
+	if opts.Wants("inProgress") {
+		tasks, err := s.repo.InProgress(spaceID, domain.ContextMaxInProgress)
+		if err != nil {
+			return out, err
+		}
+		if len(tasks) > domain.ContextMaxInProgress {
+			tasks = tasks[:domain.ContextMaxInProgress]
+			out.Truncated = append(out.Truncated, "inProgress")
+		}
+		if err := s.decorateTasks(tree.Key, tasks); err != nil {
+			return out, err
+		}
+		out.InProgress = append(out.InProgress, tasks...)
 	}
+
+	if opts.Since != nil && opts.Wants("changes") {
+		changes, err := s.changes(orgID, spaceID, tree.Key, *opts.Since, out.Nodes, docs)
+		if err != nil {
+			return out, err
+		}
+		if len(changes.Tasks) > domain.ContextMaxInProgress {
+			changes.Tasks = changes.Tasks[:domain.ContextMaxInProgress]
+			out.Truncated = append(out.Truncated, "changes.tasks")
+		}
+		out.Changes = &changes
+	}
+	return out, nil
+}
+
+// decorateTasks pone a cada tarea lo que no sale de su fila: la referencia
+// (el folio si es de un cliente; si no, la clave del espacio y el número),
+// quién la lleva y quién escribió su «dónde quedó».
+func (s *ContextService) decorateTasks(spaceKey string, tasks []domain.ContextTask) error {
 	ids := make([]string, len(tasks))
 	for i := range tasks {
 		ids[i] = tasks[i].ID
 	}
 	assignees, err := s.repo.AssigneesOf(ids)
 	if err != nil {
-		return out, err
+		return err
 	}
 	for i := range tasks {
 		t := &tasks[i]
-		// La referencia, como la da el detalle: el folio si es de un cliente,
-		// y si no la clave del espacio y el número.
 		if t.ProjectID == "" {
-			t.Ref = domain.SpaceTaskRef(tree.Key, t.Seq)
+			t.Ref = domain.SpaceTaskRef(spaceKey, t.Seq)
 		} else if slug := s.tasks.ProjectSlug(t.ProjectID); slug != "" {
 			t.Ref = domain.Folio(slug, t.Seq)
 		}
@@ -132,19 +175,75 @@ func (s *ContextService) Map(orgID, spaceID string, repo *domain.ContextRepo) (d
 			t.HandoffBy = s.repo.DisplayName(t.HandoffByID)
 		}
 	}
-	out.InProgress = append(out.InProgress, tasks...)
+	return nil
+}
+
+// changes: lo que cambió desde `since`. Cada cosa con su nodo y su ruta, para
+// saber qué mirar sin abrir nada.
+func (s *ContextService) changes(orgID, spaceID, spaceKey string, since time.Time, nodes []domain.ContextNode, docs []repository.ContextDocRow) (domain.ContextChanges, error) {
+	out := domain.ContextChanges{Since: since, Tasks: []domain.ContextTask{}, Decisions: []domain.ContextChangedDecision{},
+		Docs: []domain.ContextChangedDoc{}, RepoDocs: []domain.ContextRepoDoc{}}
+	tasks, err := s.repo.ChangedTasks(spaceID, since, domain.ContextMaxInProgress)
+	if err != nil {
+		return out, err
+	}
+	if err := s.decorateTasks(spaceKey, tasks); err != nil {
+		return out, err
+	}
+	out.Tasks = append(out.Tasks, tasks...)
+
+	path := map[string]domain.ContextNode{}
+	for _, n := range nodes {
+		path[n.ID] = n
+	}
+	docIDs := make([]string, len(docs))
+	owner := map[string]domain.ContextNode{} // doc → nodo
+	for i, d := range docs {
+		docIDs[i] = d.ID
+		owner[d.ID] = path[d.OwnerID]
+	}
+	decisions, err := s.repo.ChangedDecisions(docIDs, since)
+	if err != nil {
+		return out, err
+	}
+	for _, x := range decisions {
+		n := owner[x.DocID]
+		out.Decisions = append(out.Decisions, domain.ContextChangedDecision{
+			ID: x.ID, Title: x.Title, Tag: x.Tag, DecidedAt: x.DecidedAt, OwnerKind: n.Kind, OwnerID: n.ID, Path: n.Path,
+		})
+	}
+	edited, err := s.repo.ChangedDocs(docIDs, since)
+	if err != nil {
+		return out, err
+	}
+	for _, x := range edited {
+		n := owner[x.DocID]
+		out.Docs = append(out.Docs, domain.ContextChangedDoc{
+			OwnerKind: n.Kind, OwnerID: n.ID, Path: n.Path, Tab: x.Key, PageID: x.PageID, PageTitle: x.PageTitle, UpdatedAt: x.UpdatedAt,
+		})
+	}
+	repoDocs, err := s.repo.ChangedRepoDocs(orgID, spaceID, since)
+	if err != nil {
+		return out, err
+	}
+	out.RepoDocs = append(out.RepoDocs, repoDocs...)
 	return out, nil
 }
 
 // attachDocs pone a cada nodo el índice de su documento, si lo tiene escrito.
-func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap) error {
-	ids := make([]string, len(out.Nodes))
-	for i, n := range out.Nodes {
-		ids[i] = n.ID
+// Con `node`, sólo a ése.
+func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap, docs []repository.ContextDocRow, node string) error {
+	if node != "" {
+		var only []repository.ContextDocRow
+		for _, d := range docs {
+			if d.OwnerID == node {
+				only = append(only, d)
+			}
+		}
+		docs = only
 	}
-	docs, err := s.repo.Docs(orgID, ids)
-	if err != nil || len(docs) == 0 {
-		return err
+	if len(docs) == 0 {
+		return nil
 	}
 	marks, err := s.docs.HasDoc(orgID)
 	if err != nil {

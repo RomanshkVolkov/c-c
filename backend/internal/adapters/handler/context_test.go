@@ -36,7 +36,7 @@ func (f *fakeContext) ResolveRepo(name string, orgIDs []string) (string, string,
 	return "", "", service.ErrContextRepoNotLinked
 }
 
-func (f *fakeContext) Map(orgID, spaceID string, repo *domain.ContextRepo) (domain.ContextMap, error) {
+func (f *fakeContext) MapWith(orgID, spaceID string, repo *domain.ContextRepo, _ domain.ContextOptions) (domain.ContextMap, error) {
 	f.mapped = orgID + "/" + spaceID
 	return domain.ContextMap{}, nil
 }

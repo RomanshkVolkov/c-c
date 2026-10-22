@@ -176,6 +176,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.Cal
 		r.Use(middleware.AuthMiddleware)
 		// Across every list, unlike the board. The dashboard's pending list.
 		r.Get("/", h.ListOpen)
+		// Por su referencia (`proteus-12`). Antes que `/{id}`: el tramo fijo gana.
+		r.Get("/by-ref/{ref}", h.GetTaskByRef)
 		r.Get("/{id}", h.GetTask)
 		// Lo de GitHub enlazado a la tarea, para que el panel se refresque solo
 		// con el evento `task:git` sin volver a pedir el detalle entero.

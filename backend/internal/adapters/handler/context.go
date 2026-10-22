@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/service"
@@ -14,10 +15,37 @@ import (
 type contextSource interface {
 	FindSpace(id string) (*domain.TaskSpace, error)
 	ResolveRepo(fullName string, orgIDs []string) (spaceID, orgID string, err error)
-	Map(orgID, spaceID string, repo *domain.ContextRepo) (domain.ContextMap, error)
+	MapWith(orgID, spaceID string, repo *domain.ContextRepo, opts domain.ContextOptions) (domain.ContextMap, error)
 }
 
 type ContextHandler struct{ svc contextSource }
+
+// contextOptions lee `since` (RFC 3339), `only` (lista separada por comas, de
+// domain.ContextSections) y `node`. Una opción mal escrita es un 400 que dice
+// qué se acepta: callarse y devolver el mapa entero haría creer que el recorte
+// funcionó.
+func contextOptions(r *http.Request) (domain.ContextOptions, error) {
+	var opts domain.ContextOptions
+	q := r.URL.Query()
+	if s := strings.TrimSpace(q.Get("since")); s != "" {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return opts, errors.New("since must be an RFC 3339 instant, e.g. 2026-10-22T08:00:00Z")
+		}
+		opts.Since = &t
+	}
+	if only := strings.TrimSpace(q.Get("only")); only != "" {
+		for _, part := range strings.Split(only, ",") {
+			part = strings.TrimSpace(part)
+			if !domain.ValidContextSection(part) {
+				return opts, errors.New("only accepts " + strings.Join(domain.ContextSections, ", "))
+			}
+			opts.Only = append(opts.Only, part)
+		}
+	}
+	opts.Node = strings.TrimSpace(q.Get("node"))
+	return opts, nil
+}
 
 func NewContextHandler(svc *service.ContextService) *ContextHandler {
 	return &ContextHandler{svc: svc}
@@ -39,6 +67,11 @@ func (h *ContextHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	spaceID := strings.TrimSpace(r.URL.Query().Get("spaceId"))
 	repoName := strings.TrimSpace(r.URL.Query().Get("repo"))
+	opts, err := contextOptions(r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, err.Error(), "context-bad-options")
+		return
+	}
 	var orgID string
 	var repo *domain.ContextRepo
 	switch {
@@ -71,7 +104,7 @@ func (h *ContextHandler) Get(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Pass spaceId or repo", "context-missing-target")
 		return
 	}
-	m, err := h.svc.Map(orgID, spaceID, repo)
+	m, err := h.svc.MapWith(orgID, spaceID, repo, opts)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Context failed", err.Error())
 		return

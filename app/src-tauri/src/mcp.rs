@@ -463,13 +463,105 @@ fn dry_run(cfg: &Cfg, scope: &str, target: Result<Value, String>) -> Result<Valu
 /// El `kind` se comprueba contra los tres que existen en vez de interpolarlo: un
 /// valor inventado saldría de aquí metido en una URL, y lo que contesta el
 /// servidor a una ruta que no existe no le dice a nadie qué escribió mal.
-fn doc_target(args: &Value) -> Result<(String, String), String> {
-    let kind = arg_str(args, "kind").ok_or("kind is required (space, folder or list)")?;
-    if !matches!(kind.as_str(), "space" | "folder" | "list") {
-        return Err(format!("unknown kind `{kind}`: use space, folder or list"));
-    }
+fn doc_target(cfg: &Cfg, args: &Value) -> Result<(String, String), String> {
     let id = arg_str(args, "ownerId").ok_or("ownerId is required")?;
-    Ok((kind, urlencode(&id)))
+    let kind = arg_str(args, "kind");
+    if let Some(k) = &kind {
+        if !matches!(k.as_str(), "space" | "folder" | "list") {
+            return Err(format!("unknown kind `{k}`: use space, folder or list"));
+        }
+    }
+    // Un id es opaco: con `kind` y sin separadores ni espacios se manda tal
+    // cual. Una ruta, o un nombre sin `kind`, se resuelve en el navegador.
+    let plain = !id.contains(['›', '/', '>']) && !id.contains(char::is_whitespace);
+    if let (Some(kind), true) = (&kind, plain) {
+        return Ok((kind.clone(), urlencode(&id)));
+    }
+    // Por su ruta («Proteus › Plataforma») o su nombre, si es único: es lo
+    // que dice la gente y lo que enseña el mapa (22-oct-2026).
+    let tree = api_get(cfg, "/api/v1/task-spaces/")?;
+    let (k, resolved) = resolve_node(&tree, &id, kind.as_deref())?;
+    Ok((k, urlencode(&resolved)))
+}
+
+/// Una referencia de tarea como se escribe fuera: `proteus-12`, `acme-7`, o
+/// `cac#12` (que el backend rechaza diciendo por qué). Lo demás es un id.
+fn looks_like_task_ref(s: &str) -> bool {
+    let s = s.trim();
+    if let Some(n) = s.strip_prefix("cac#") {
+        return !n.is_empty() && n.chars().all(|c| c.is_ascii_digit());
+    }
+    let Some((slug, n)) = s.rsplit_once('-') else { return false };
+    !slug.is_empty()
+        && slug.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false)
+        && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && !n.is_empty()
+        && n.chars().all(|c| c.is_ascii_digit())
+}
+
+/// Los nodos del navegador, planos: (kind, id, ruta «Espacio › Carpeta › Lista»).
+fn flatten_tree(tree: &Value) -> Vec<(String, String, String)> {
+    let mut out = vec![];
+    let name = |v: &Value| v.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+    let id = |v: &Value| v.get("id").and_then(|n| n.as_str()).unwrap_or("").to_string();
+    fn lists(out: &mut Vec<(String, String, String)>, path: &str, v: &Value) {
+        for l in v.get("lists").and_then(|a| a.as_array()).into_iter().flatten() {
+            let n = l.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            out.push(("list".into(), l.get("id").and_then(|n| n.as_str()).unwrap_or("").into(), format!("{path} › {n}")));
+        }
+    }
+    fn folders(out: &mut Vec<(String, String, String)>, path: &str, v: &Value) {
+        for f in v.get("folders").and_then(|a| a.as_array()).into_iter().flatten() {
+            let n = f.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let p = format!("{path} › {n}");
+            out.push(("folder".into(), f.get("id").and_then(|n| n.as_str()).unwrap_or("").into(), p.clone()));
+            lists(out, &p, f);
+            folders(out, &p, f);
+        }
+    }
+    for sp in tree.as_array().into_iter().flatten() {
+        let p = name(sp);
+        out.push(("space".into(), id(sp), p.clone()));
+        lists(&mut out, &p, sp);
+        folders(&mut out, &p, sp);
+    }
+    out
+}
+
+/// Normaliza una ruta para compararla: separadores «›», «/», «>», sin
+/// mayúsculas ni espacios de más.
+fn norm_path(s: &str) -> String {
+    s.split(['›', '/', '>'])
+        .map(|p| p.trim().to_lowercase())
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join(" › ")
+}
+
+/// El nodo que nombra `wanted`: por la ruta entera, o por el último tramo
+/// (el nombre) si sólo uno lo tiene. Con `kind`, sólo de esa clase. Si hay
+/// varios, dice cuáles, con sus rutas, para que el agente elija.
+fn resolve_node(tree: &Value, wanted: &str, kind: Option<&str>) -> Result<(String, String), String> {
+    let all = flatten_tree(tree);
+    let w = norm_path(wanted);
+    let of_kind = |k: &str| kind.map(|x| x == k).unwrap_or(true);
+    let exact: Vec<_> = all.iter().filter(|(k, _, p)| of_kind(k) && norm_path(p) == w).collect();
+    if exact.len() == 1 {
+        return Ok((exact[0].0.clone(), exact[0].1.clone()));
+    }
+    let by_name: Vec<_> = all
+        .iter()
+        .filter(|(k, _, p)| of_kind(k) && norm_path(p).rsplit(" › ").next() == Some(w.as_str()))
+        .collect();
+    match by_name.len() {
+        1 => Ok((by_name[0].0.clone(), by_name[0].1.clone())),
+        0 => Err(format!("No space, folder or list is called \"{wanted}\". Pass its id, or its path as the map shows it (Space › Folder › List).")),
+        _ => Err(format!(
+            "\"{wanted}\" names {} nodes; pass the whole path: {}",
+            by_name.len(),
+            by_name.iter().map(|(k, _, p)| format!("{p} ({k})")).collect::<Vec<_>>().join(" | ")
+        )),
+    }
 }
 
 /// Igual con la sección: son cuatro y fijas.
@@ -668,6 +760,68 @@ fn search_query(args: &Value) -> Result<String, String> {
 /// El servidor también busca mensajes de canal, directos y personas, pero el
 /// MCP no tiene ninguna herramienta de chat. Sacarlos por aquí le abriría a un
 /// agente —con quién hablaste de qué— algo que nadie ha decidido darle.
+/// Cuántos aciertos de docs se leen con `expand`, y cuánto de cada uno. Tres
+/// y 1500 letras: lo que cabe sin que una búsqueda se coma el contexto.
+const EXPAND_HITS: usize = 3;
+const EXPAND_CHARS: usize = 1500;
+
+/// Pone a los primeros aciertos de docs el texto de su sección: la pestaña,
+/// la página, el .md o la decisión, según el acierto. Un fallo en uno no tumba
+/// la búsqueda: se dice en ese acierto y se sigue.
+fn expand_doc_hits(cfg: &Cfg, out: &mut Value) {
+    let Some(hits) = out.get_mut("docs").and_then(|d| d.as_array_mut()) else {
+        return;
+    };
+    for hit in hits.iter_mut().take(EXPAND_HITS) {
+        match read_hit_text(cfg, hit) {
+            Ok(text) => {
+                let total = text.chars().count();
+                let mut cut: String = text.chars().take(EXPAND_CHARS).collect();
+                if total > EXPAND_CHARS {
+                    cut.push('…');
+                    hit["textTruncated"] = json!(true);
+                }
+                hit["text"] = json!(cut);
+            }
+            Err(e) => hit["expandError"] = json!(e),
+        }
+    }
+}
+
+fn read_hit_text(cfg: &Cfg, hit: &Value) -> Result<String, String> {
+    let s = |k: &str| hit.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let kind = s("kind");
+    match kind.as_str() {
+        "decision" => {
+            let d = api_get(cfg, &format!("/api/v1/docs/decisions/{}", urlencode(&s("id"))))?;
+            Ok(d.get("decision").and_then(|d| d.get("body")).and_then(|b| b.as_str()).unwrap_or("").to_string())
+        }
+        "repoDoc" => {
+            let d = api_get(cfg, &format!("/api/v1/repo-docs/{}", urlencode(&s("id"))))?;
+            let section = s("section");
+            let v = repo_doc_view(&d, if section.is_empty() { None } else { Some(section.as_str()) }, true)?;
+            Ok(v.get("text").or(v.get("body")).and_then(|t| t.as_str()).unwrap_or("").to_string())
+        }
+        "doc" => {
+            let (kind, owner, section) = (s("ownerKind"), s("ownerId"), s("section"));
+            let page = s("pageId");
+            let body = if !page.is_empty() {
+                let view = api_get(cfg, &format!("/api/v1/docs/{kind}/{}/pages/{}", urlencode(&owner), urlencode(&page)))?;
+                page_body(&view).to_string()
+            } else {
+                let data = api_get(cfg, &format!("/api/v1/docs/{kind}/{}", urlencode(&owner)))?;
+                doc_tab_of(&data, &s("tab")).map(|t| tab_body(t).to_string()).unwrap_or_default()
+            };
+            if section.is_empty() {
+                return Ok(body);
+            }
+            let sec = find_section(&body, &section)?;
+            Ok(body[sec.start..sec.end].to_string())
+        }
+        other => Err(format!("a {other} hit has no text to expand")),
+    }
+}
+
 fn search_results(data: &Value) -> Value {
     json!({
         "tasks": data.get("tasks"),
@@ -920,8 +1074,8 @@ fn doc_outline(doc: &Value) -> Value {
 // caracteres con cinco aplicaciones dentro.
 
 /// Una página, validada antes de meterla en una ruta.
-fn page_target(args: &Value) -> Result<(String, String, String), String> {
-    let (kind, id) = doc_target(args)?;
+fn page_target(cfg: &Cfg, args: &Value) -> Result<(String, String, String), String> {
+    let (kind, id) = doc_target(cfg, args)?;
     let page = arg_str(args, "pageId").ok_or("pageId is required: use list_doc_pages")?;
     Ok((kind, id, urlencode(&page)))
 }
@@ -1568,7 +1722,10 @@ fn tool_defs() -> Value {
                 "properties": {
                     "spaceId": { "type": "string", "description": "Optional. The space, when you already know it." },
                     "repo": { "type": "string", "description": "Optional. owner/name of a GitHub repository, instead of reading the git remote." },
-                    "path": { "type": "string", "description": "Optional. The folder whose git remote to read. Defaults to the folder Claude Code opened (inside the AppImage, the folder it was launched from)." }
+                    "path": { "type": "string", "description": "Optional. The folder whose git remote to read. Defaults to the folder Claude Code opened (inside the AppImage, the folder it was launched from)." },
+                    "since": { "type": "string", "description": "Optional. An RFC 3339 instant (2026-10-22T08:00:00Z): adds `changes`, what moved since then — tasks touched (with status, ref and handoff), decisions recorded, tabs and pages edited, repo files updated. What the next session of a piece of work wants to know." },
+                    "only": { "type": "array", "items": { "type": "string", "enum": ["tree", "docs", "repoDocs", "inProgress", "changes"] }, "description": "Optional. Which parts to return; the tree always comes. Use it to ask again for what `truncated` cut, or to keep a big space's map small." },
+                    "node": { "type": "string", "description": "Optional. Only this node's document (space, folder or list id)." }
                 }
             }
         },
@@ -1600,7 +1757,8 @@ fn tool_defs() -> Value {
                 "properties": {
                     "query": { "type": "string", "description": "At least 2 characters." },
                     "orgId": { "type": "string", "description": "Optional. Without it, the organizations you are a member of are searched and the hits merged; with it, only that one." },
-                    "limit": { "type": "integer", "description": "Hits per kind, 1–20. Default 8." }
+                    "limit": { "type": "integer", "description": "Hits per kind, 1–20. Default 8." },
+                    "expand": { "type": "boolean", "description": "Also read the matching section of the first three doc hits (`text`, up to 1500 characters each): a question answered in one call instead of search + get_doc. A hit that could not be read says why in `expandError`." }
                 },
                 "required": ["query"]
             }
@@ -1610,7 +1768,7 @@ fn tool_defs() -> Value {
             "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
-                "properties": { "id": { "type": "string" } },
+                "properties": { "id": { "type": "string", "description": "The task id, or its ref as people write it: `proteus-12` (space key and number) or a client's folio `acme-7`. `cac#12` does not resolve: a number without its space." } },
                 "required": ["id"]
             }
         },
@@ -1938,7 +2096,7 @@ fn tool_defs() -> Value {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"] },
-                    "ownerId": { "type": "string", "description": "The id of the space, folder or list. Use list_task_spaces to find it." },
+                    "ownerId": { "type": "string", "description": "The id of the space, folder or list, or its path as the map shows it (\"Proteus › Plataforma\"); a bare name resolves too when only one node has it, if you omit `kind`." },
                     "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"], "description": "Optional. Read only this tab." },
                     "section": { "type": "string", "description": "Optional, with tab. A heading's text, with or without the #s, e.g. \"Correo\" or \"## Correo\"." },
                     "full": { "type": "boolean", "description": "Optional. The whole document at once, as it used to come. Large; prefer the outline." }
@@ -2800,7 +2958,15 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
 
         "get_task" => {
             let id = arg_str(args, "id").ok_or("id is required")?;
-            let mut d = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))?;
+            // Por su id, o por como se nombra fuera (`proteus-12`, `acme-7`):
+            // es lo que la gente escribe y lo que llevan los commits, y un id
+            // de 36 letras es lo que más fácil se copia mal (22-oct-2026).
+            let path = if looks_like_task_ref(&id) {
+                format!("/api/v1/tasks/by-ref/{}", urlencode(id.trim()))
+            } else {
+                format!("/api/v1/tasks/{}", urlencode(&id))
+            };
+            let mut d = api_get(cfg, &path)?;
             if let Some(r) = task_ref(&d) {
                 d["ref"] = json!(r);
             }
@@ -2822,7 +2988,11 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             // por su cuenta podría ensancharla sin que nadie se enterara (#119).
             let q = search_query(args)?;
             let data = api_get(cfg, &format!("/api/v1/search/{q}"))?;
-            Ok(search_results(&data))
+            let mut out = search_results(&data);
+            if arg_bool(args, "expand") {
+                expand_doc_hits(cfg, &mut out);
+            }
+            Ok(out)
         }
 
         "create_task" => {
@@ -3319,7 +3489,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "get_doc" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             let data = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}"))?;
             // `full` es la salida de emergencia: el documento tal cual, como
             // antes. Por defecto, el índice; con `tab`, esa pestaña; y con
@@ -3371,7 +3541,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "append_doc_tab" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             let tab = doc_tab(args)?;
             let text = arg_str(args, "text").ok_or("text is required")?;
             let path = format!("/api/v1/docs/{kind}/{id}/tabs/{tab}/append");
@@ -3387,7 +3557,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "record_decision" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             let title = arg_str(args, "title").ok_or("title is required")?;
             if arg_bool(args, "dryRun") {
                 return dry_run(
@@ -3402,7 +3572,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "write_doc_tab" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             let tab = doc_tab(args)?;
             let text = arg_str(args, "body").ok_or("body is required")?;
             if arg_bool(args, "dryRun") {
@@ -3421,7 +3591,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "write_doc_section" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             let tab = doc_tab(args)?;
             let wanted =
                 arg_str(args, "section").ok_or("section is required: the heading to rewrite")?;
@@ -3505,7 +3675,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "request_doc_review" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             if arg_bool(args, "dryRun") {
                 return dry_run(
                     cfg,
@@ -3531,7 +3701,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "list_doc_pages" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             let flat = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages"))?;
             Ok(json!({ "pages": build_page_tree(&flat, &kind, &id) }))
         }
@@ -3552,7 +3722,16 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 };
                 format!("repo={}", urlencode(&repo))
             };
-            api_get(cfg, &format!("/api/v1/context?{target}"))
+            let mut parts = vec![target];
+            push_q(&mut parts, "since", arg_str(args, "since"));
+            push_q(&mut parts, "node", arg_str(args, "node"));
+            if let Some(only) = args.get("only").and_then(|v| v.as_array()) {
+                let names: Vec<String> = only.iter().filter_map(|v| v.as_str()).map(str::to_string).collect();
+                if !names.is_empty() {
+                    parts.push(format!("only={}", urlencode(&names.join(","))));
+                }
+            }
+            api_get(cfg, &format!("/api/v1/context?{}", parts.join("&")))
         }
 
         "list_repo_docs" => {
@@ -3568,7 +3747,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "get_doc_page" => {
-            let (kind, id, page) = page_target(args)?;
+            let (kind, id, page) = page_target(cfg, args)?;
             let view = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}"))?;
             let body = page_body(&view);
             if let Some(wanted) = arg_str(args, "section") {
@@ -3589,7 +3768,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "create_doc_page" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             let title = arg_str(args, "title").ok_or("title is required")?;
             if arg_bool(args, "dryRun") {
                 return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
@@ -3605,7 +3784,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "append_doc_page" => {
-            let (kind, id, page) = page_target(args)?;
+            let (kind, id, page) = page_target(cfg, args)?;
             let text = arg_str(args, "text").ok_or("text is required")?;
             if arg_bool(args, "dryRun") {
                 return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
@@ -3615,7 +3794,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "write_doc_page" => {
-            let (kind, id, page) = page_target(args)?;
+            let (kind, id, page) = page_target(cfg, args)?;
             if arg_bool(args, "dryRun") {
                 return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
             }
@@ -3639,7 +3818,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "write_doc_page_section" => {
-            let (kind, id, page) = page_target(args)?;
+            let (kind, id, page) = page_target(cfg, args)?;
             let wanted = arg_str(args, "section").ok_or("section is required: the heading to rewrite")?;
             let expected = arg_str(args, "sectionHash").ok_or("sectionHash is required: read it with get_doc_page first")?;
             let content = args.get("body").and_then(|v| v.as_str()).ok_or("body is required")?;
@@ -3650,7 +3829,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "move_doc_page" => {
-            let (kind, id, page) = page_target(args)?;
+            let (kind, id, page) = page_target(cfg, args)?;
             if arg_bool(args, "dryRun") {
                 return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
             }
@@ -3669,7 +3848,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "delete_doc_page" => {
-            let (kind, id, page) = page_target(args)?;
+            let (kind, id, page) = page_target(cfg, args)?;
             if arg_bool(args, "dryRun") {
                 return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
             }
@@ -3682,7 +3861,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
         }
 
         "update_doc" => {
-            let (kind, id) = doc_target(args)?;
+            let (kind, id) = doc_target(cfg, args)?;
             if arg_bool(args, "dryRun") {
                 return dry_run(
                     cfg,
@@ -5525,6 +5704,82 @@ mod tests {
         call_tool(&cfg, "record_decision", &json!({ "kind": "space", "ownerId": "s1", "title": "Las releases se juntan", "supersedes": "d1" })).unwrap();
         let posted = log.lock().unwrap().iter().find(|(m, _, _)| m == "POST").map(|(_, _, b)| b.clone()).unwrap();
         assert_eq!(posted["supersedes"], "d1");
+    }
+
+    /// Roturas que detecta: mandar una referencia por la ruta del id (404 del
+    /// backend), o tomar un uuid por una referencia.
+    #[test]
+    fn a_task_is_fetched_by_its_ref_or_by_its_id() {
+        let (cfg, log) = fake_cac(|_, _, _| json!({ "task": { "id": "t1", "seq": 12 }, "ref": "proteus-12", "comments": [] }));
+        call_tool(&cfg, "get_task", &json!({ "id": "proteus-12" })).unwrap();
+        call_tool(&cfg, "get_task", &json!({ "id": "7a1aa6b7-0792-4ef4-8192-21b4a163dbdb" })).unwrap();
+        let paths: Vec<String> = log.lock().unwrap().iter().map(|(_, p, _)| p.clone()).collect();
+        assert_eq!(paths, vec!["/api/v1/tasks/by-ref/proteus-12", "/api/v1/tasks/7a1aa6b7-0792-4ef4-8192-21b4a163dbdb"]);
+    }
+
+    /// Roturas que detecta: no resolver una ruta; resolver un nombre repetido
+    /// a cualquiera en vez de decir cuáles hay; ignorar `kind` al resolver; o
+    /// dejar de aceptar el id de siempre.
+    #[test]
+    fn a_doc_is_addressed_by_path_or_unique_name() {
+        let tree = json!([
+            { "id": "sp-p", "name": "Proteus", "lists": [{ "id": "l-plat", "name": "Plataforma" }],
+              "folders": [{ "id": "f-apps", "name": "Apps", "lists": [{ "id": "l-tasks-a", "name": "tasks" }], "folders": [] }] },
+            { "id": "sp-c", "name": "Command and control", "lists": [],
+              "folders": [{ "id": "f-app", "name": "App", "lists": [{ "id": "l-tasks-c", "name": "tasks" }], "folders": [] }] }
+        ]);
+        assert_eq!(resolve_node(&tree, "Proteus › Plataforma", None).unwrap(), ("list".into(), "l-plat".into()));
+        assert_eq!(resolve_node(&tree, "proteus / plataforma", Some("list")).unwrap(), ("list".into(), "l-plat".into()));
+        assert_eq!(resolve_node(&tree, "Plataforma", None).unwrap(), ("list".into(), "l-plat".into()));
+        assert_eq!(resolve_node(&tree, "App", Some("folder")).unwrap(), ("folder".into(), "f-app".into()));
+        let err = resolve_node(&tree, "tasks", None).unwrap_err();
+        assert!(err.contains("Proteus › Apps › tasks") && err.contains("Command and control › App › tasks"), "{err}");
+        assert!(resolve_node(&tree, "Plataforma", Some("folder")).is_err(), "con kind, sólo de esa clase");
+        assert!(resolve_node(&tree, "Nada", None).is_err());
+        assert!(looks_like_task_ref("proteus-12") && looks_like_task_ref("command-and-control-203") && looks_like_task_ref("cac#12"));
+        assert!(!looks_like_task_ref("7a1aa6b7-0792-4ef4-8192-21b4a163dbdb") && !looks_like_task_ref("t1") && !looks_like_task_ref("PROTEUS-12"));
+    }
+
+    /// Roturas que detecta: no leer la sección con `expand`; leer más de tres
+    /// aciertos o más de 1500 letras sin decirlo; leer sin que lo pidan; o que
+    /// un acierto ilegible tumbe la búsqueda entera.
+    #[test]
+    fn search_can_expand_the_matching_sections() {
+        let long = "x".repeat(EXPAND_CHARS + 10);
+        let (cfg, log) = fake_cac(move |_, p, _| {
+            if p.starts_with("/api/v1/search/") {
+                json!({ "tasks": [], "notes": [], "docs": [
+                    { "kind": "doc", "id": "o1", "ownerKind": "space", "ownerId": "o1", "tab": "runbook", "section": "Soltar" },
+                    { "kind": "decision", "id": "d1" },
+                    { "kind": "doc", "id": "o1", "ownerKind": "space", "ownerId": "o1", "tab": "runbook", "section": "No existe" },
+                    { "kind": "doc", "id": "o1", "ownerKind": "space", "ownerId": "o1", "tab": "runbook", "section": "Soltar" }
+                ] })
+            } else if p == "/api/v1/docs/decisions/d1" {
+                json!({ "decision": { "body": long } })
+            } else {
+                json!({ "tabs": [{ "key": "runbook", "body": "## Soltar\n\nCon /soltar.\n\n## Otra\n\nno" }] })
+            }
+        });
+        let out = call_tool(&cfg, "search", &json!({ "query": "soltar release" })).unwrap();
+        assert!(out["docs"][0].get("text").is_none(), "sin expand no se lee nada");
+        assert_eq!(log.lock().unwrap().len(), 1);
+
+        let out = call_tool(&cfg, "search", &json!({ "query": "soltar release", "expand": true })).unwrap();
+        let docs = out["docs"].as_array().unwrap();
+        assert_eq!(docs[0]["text"], "## Soltar\n\nCon /soltar.\n\n");
+        assert_eq!(docs[1]["textTruncated"], true);
+        assert_eq!(docs[1]["text"].as_str().unwrap().chars().count(), EXPAND_CHARS + 1);
+        assert!(docs[2]["expandError"].as_str().unwrap().contains("No existe"), "{}", docs[2]);
+        assert!(docs[3].get("text").is_none(), "el cuarto no se lee");
+    }
+
+    /// Roturas que detecta: no mandar `since`, `only` o `node` al backend.
+    #[test]
+    fn get_context_passes_since_only_and_node() {
+        let (cfg, log) = fake_cac(|_, _, _| json!({ "nodes": [] }));
+        call_tool(&cfg, "get_context", &json!({ "spaceId": "s1", "since": "2026-10-22T08:00:00Z", "only": ["tree", "changes"], "node": "n1" })).unwrap();
+        let path = log.lock().unwrap()[0].1.clone();
+        assert!(path.contains("spaceId=s1") && path.contains("since=2026-10-22T08%3A00%3A00Z") && path.contains("only=tree%2Cchanges") && path.contains("node=n1"), "{path}");
     }
 
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un

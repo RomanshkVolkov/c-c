@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -83,6 +84,7 @@ type TaskHandler interface {
 	DeleteStatus(w http.ResponseWriter, r *http.Request)
 	CreateTask(w http.ResponseWriter, r *http.Request)
 	GetTask(w http.ResponseWriter, r *http.Request)
+	GetTaskByRef(w http.ResponseWriter, r *http.Request)
 	TaskGit(w http.ResponseWriter, r *http.Request)
 	UpdateTask(w http.ResponseWriter, r *http.Request)
 	MoveTask(w http.ResponseWriter, r *http.Request)
@@ -967,6 +969,35 @@ func (h *taskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	// tarea con dos prioridades según dónde se mirara (#83).
 	t.Priority = t.Priority.TaskWire()
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.Task]{Success: true, Data: t})
+}
+
+// GetTaskByRef: una tarea por como se nombra fuera (`proteus-12`, el folio
+// `acme-7`), entre las organizaciones de las que el token es miembro. `cac#12`
+// no vale: es un número sin espacio.
+func (h *taskHandler) GetTaskByRef(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	raw := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "ref")))
+	refs := domain.ExtractTaskRefs(raw, false)
+	if len(refs) == 0 || refs[0].Slug == "" {
+		SendErrorResponse(w, http.StatusBadRequest,
+			"A task ref is its space key and number (proteus-12) or a client's folio (acme-7); cac#12 names a number without its space", "bad-task-ref")
+		return
+	}
+	t, err := h.svc.FindTaskByRef(MemberOrgs(user), refs[0])
+	if err != nil {
+		SendErrorResponse(w, http.StatusNotFound, "No task is named "+raw+" in your organizations", "not-found")
+		return
+	}
+	detail, err := h.svc.Detail(t.ID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load task", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.TaskDetail]{Success: true, Data: detail})
 }
 
 func (h *taskHandler) GetTask(w http.ResponseWriter, r *http.Request) {

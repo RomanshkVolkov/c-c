@@ -1388,6 +1388,39 @@ func (r *TaskRepository) Watchers(itemID string) ([]string, error) {
 	return out, err
 }
 
+// FindByRef: la tarea que nombra una referencia (`proteus-12`, `acme-7`),
+// buscada en las organizaciones dadas. Un folio es del proyecto con ese slug;
+// si no, la clave de un espacio y su número. Es lo que la gente escribe y lo
+// que llevan los commits; un agente no debería tener que copiar un uuid para
+// abrir una tarea (22-oct-2026). Sin slug (`cac#12`) no se puede resolver:
+// un número solo es de un espacio que aquí no se sabe.
+func (r *TaskRepository) FindByRef(orgIDs []string, ref domain.TaskRef) (*domain.Item, error) {
+	if ref.Slug == "" || ref.Seq <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	for _, orgID := range orgIDs {
+		var it domain.Item
+		err := r.db.Joins("JOIN report_projects p ON p.id = items.project_id").
+			Where("items.org_id = ? AND items.seq = ? AND p.slug = ?", orgID, ref.Seq, ref.Slug).
+			First(&it).Error
+		if err == nil {
+			return &it, nil
+		}
+		if ref.Folded {
+			continue
+		}
+		sp, kerr := findSpaceByKey(r.db, orgID, ref.Slug)
+		if kerr != nil {
+			continue
+		}
+		if err := r.db.Where("org_id = ? AND space_id = ? AND project_id = '' AND seq = ?", orgID, sp.ID, ref.Seq).
+			First(&it).Error; err == nil {
+			return &it, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 // DisplayName: cómo se llama una persona, para firmar lo que ven los demás (el
 // nombre de la voz). Por `nombreVisible`; vacío si no existe.
 func (r *TaskRepository) DisplayName(userID string) string {

@@ -219,5 +219,7 @@
   "space-key-invalid": "A key is lowercase with hyphens, and every part starts with a letter.",
   "space-key-taken": "Another space or a client project in this organization already uses that key.",
   "decision-supersedes-not-here": "The decision this one supersedes is not in this document.",
-  "decision-already-superseded": "That decision was already superseded: name the one that replaced it."
+  "decision-already-superseded": "That decision was already superseded: name the one that replaced it.",
+  "context-bad-options": "The map options are not valid: since is an RFC 3339 instant and only accepts tree, docs, repoDocs, inProgress or changes.",
+  "bad-task-ref": "A task ref is its space key and number (proteus-12) or a client's folio (acme-7); cac#12 is a number without its space."
 }
