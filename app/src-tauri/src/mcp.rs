@@ -4400,7 +4400,9 @@ fn skill_state(dir: &std::path::Path) -> SkillState {
 fn instructions(state: Option<SkillState>) -> String {
     let mut s = String::from(
         "cac is this team's shared memory: what one session learns is lost when it ends, and what is written in cac \
-         is what the next session, or any teammate, can read. When you start work in a repository, call get_context \
+         is what the next session, or any teammate, can read. Scale it to the work: a question or a review without \
+         changes needs no task; a one-commit fix needs the task, its ref in the commit and the closing update; a \
+         feature needs all of it. When you start work in a repository, call get_context \
          first (no arguments: it finds the project from the folder's git remote). It returns the index of what the team \
          knows (the tree, the headings of each document, decisions, repo docs, tasks in progress) without bodies; then \
          read only the sections you need with get_doc (tab + section), and use search for anything else. If the repo \
@@ -5450,6 +5452,30 @@ mod tests {
         assert_eq!(posts[2]["title"], "App");
         assert_ne!(posts[1]["idempotencyKey"], posts[2]["idempotencyKey"]);
         assert_ne!(posts[1]["idempotencyKey"], posts[0]["idempotencyKey"]);
+    }
+
+    /// Las instrucciones del MCP y la skill dicen lo mismo. Las dos se
+    /// cambiaron a la par cuatro veces sin nada que lo comprobara, y un
+    /// agente sin la skill instalada sólo tiene las instrucciones. Cada par es
+    /// una regla: cómo la dicen las instrucciones (en inglés) y la skill (en
+    /// castellano). Rotura que detecta: quitar una regla de uno de los dos.
+    #[test]
+    fn the_instructions_and_the_skill_say_the_same_rules() {
+        let instr = instructions(None);
+        for (en, es) in [
+            ("Scale it to the work", "## Cuánto, según el trabajo"),
+            ("call get_context", "Llama a **`get_context` sin argumentos**"),
+            ("bring the board up to date", "## 3 · Poner el tablero al día"),
+            ("move it to in progress", "`status: \"in_progress\"`"),
+            ("commit message with its ref", "## 5 · Cada commit nombra su tarea"),
+            ("a client's own GitHub organization", "**En un repo que no está conectado a cac**"),
+            ("decisions with record_decision", "`record_decision`"),
+            ("done means published", "**`done` quiere decir publicado**"),
+            ("where it ships", "**en qué sale**"),
+        ] {
+            assert!(instr.contains(en), "las instrucciones ya no dicen «{en}»");
+            assert!(WORK_SKILL.contains(es), "la skill ya no dice «{es}»");
+        }
     }
 
     /// Una carpeta de skills desechable por prueba.

@@ -13,6 +13,20 @@ sin que nadie te lo tenga que recordar.
 Todo va por el MCP de cac (`mcp__cac__*`). Si no está conectado, dilo una vez
 y sigue con el trabajo: no es motivo para parar.
 
+## Cuánto, según el trabajo
+
+No todo lleva lo mismo. Una skill que pesa más que el trabajo se acaba
+apagando.
+
+| Qué te piden | Qué haces |
+|---|---|
+| Una pregunta, una explicación, revisar algo sin cambiarlo | Lee lo que te sirva (el mapa, una sección). **Sin tarea.** Si descubres algo que vale la pena guardar, coméntalo en la tarea a la que le toca. |
+| Un arreglo pequeño, un commit | La tarea (busca si ya existe), la referencia en el commit (paso 5) y el cierre (paso 7). Sin subtareas, sin decisiones, sin tocar el runbook salvo que cambie algo de él. |
+| Una feature, una investigación larga, varios commits | Todo: el mapa, el tablero al día, la tarea con sus subtareas, las decisiones y el runbook. |
+
+Poner el tablero al día (paso 3) es para cuando vas a trabajar, no para una
+pregunta, y sólo en las listas que vas a tocar.
+
 ## 1 · Antes de tocar nada: el mapa
 
 Llama a **`get_context` sin argumentos**. Lee el `git remote` de la carpeta
@@ -40,7 +54,7 @@ idioma («desplegar» / «deploy», «soltar» / «release»): la búsqueda es p
 palabras, no por significado.
 
 Si algo de lo que lees contradice el código, gana el código, y lo apuntas
-(ver el paso 5).
+(ver el paso 6).
 
 ## 2 · Si el repo no está atado a un espacio
 
@@ -116,27 +130,6 @@ cliente y gasta un número de su folio para siempre. Usa
 
 Por el camino:
 
-- **Cada commit nombra su tarea.** `create_task` y `get_task` dan su `ref`:
-  la clave de su espacio y su número (`proteus-12`), o el folio (`acme-7`)
-  si es de un cliente. Ponla al final del mensaje, entre paréntesis:
-
-  ```
-  fix(login): acepta correos con mayúsculas (proteus-12)
-  ```
-
-  En una rama, lo mismo con guiones: `proteus-12-login`.
-
-  - **Siempre en minúsculas.** `PROTEUS-12` es la clave de Jira, que numera por
-    su lado, y cac no la toma.
-  - **Qué se gana:** cac enlaza solo el commit o la PR en el panel «Desarrollo»
-    de la tarea, desde cualquier repo de la organización conectado a cac. Es lo
-    que usa el paso 3 para saber si el trabajo ya se publicó.
-  - **Si el PR no nombra la tarea,** enlázalo a mano con `link_pull_request`.
-  - **En un repo que no está conectado a cac** (el de un cliente en su propia
-    organización de GitHub: `get_context` no lo encuentra), el commit no lleva
-    referencia: cac no lo vería, y el historial es del cliente. En su lugar,
-    apunta en la tarea el repo y el sha: «`TCO-Org/nereus` `a1b2c3d`: …».
-  - `cac#12`, la forma de antes, se sigue entendiendo, pero ya no se escribe.
 - **Si tu tarea no puede seguir hasta que se haga otra,** déjalo escrito con un
   comentario que empiece así, con su referencia:
 
@@ -158,7 +151,31 @@ Por el camino:
   parte) va como comentario en la tarea a la que le toca, o como tarea nueva
   si no la tiene.
 
-## 5 · Lo que se decide y lo que cambia: escribirlo
+## 5 · Cada commit nombra su tarea
+
+Así cac enlaza solo el commit con su tarea. `create_task` y `get_task` dan su
+`ref`: la clave de su espacio y su número (`proteus-12`), o el folio (`acme-7`)
+si es de un cliente. Ponla al final del mensaje, entre paréntesis:
+
+```
+fix(login): acepta correos con mayúsculas (proteus-12)
+```
+
+En una rama, lo mismo con guiones: `proteus-12-login`.
+
+- **Siempre en minúsculas.** `PROTEUS-12` es la clave de Jira, que numera por
+  su lado, y cac no la toma.
+- **Qué se gana:** cac enlaza solo el commit o la PR en el panel «Desarrollo»
+  de la tarea, desde cualquier repo de la organización conectado a cac. Es lo
+  que usa el paso 3 para saber si el trabajo ya se publicó.
+- **Si el PR no nombra la tarea,** enlázalo a mano con `link_pull_request`.
+- **En un repo que no está conectado a cac** (el de un cliente en su propia
+  organización de GitHub: `get_context` no lo encuentra), el commit no lleva
+  referencia: cac no lo vería, y el historial es del cliente. En su lugar,
+  apunta en la tarea el repo y el sha: «`TCO-Org/nereus` `a1b2c3d`: …».
+- `cac#12`, la forma de antes, se sigue entendiendo, pero ya no se escribe.
+
+## 6 · Lo que se decide y lo que cambia: escribirlo
 
 - **Una decisión** (elegir una librería o un proveedor, un cambio de diseño,
   algo que se descarta y por qué) va con `record_decision`, con
@@ -173,7 +190,7 @@ Por el camino:
 - **El overview** sólo se toca si cambió de qué va el proyecto. No lo
   reescribas por estilo.
 
-## 6 · Al terminar: el estado honesto
+## 7 · Al terminar: el estado honesto
 
 Antes de decirle al usuario que terminaste, **actualiza la tarea**. Es el paso
 que más se olvida, y por eso existe esta skill.
@@ -199,11 +216,18 @@ Y deja un comentario de cierre corto:
 Si cambias de rumbo a mitad de camino, dilo también en la tarea: basta con una
 línea.
 
-## 7 · Lo que no se hace
+## 8 · Lo que no se hace
 
 - No cerrar una tarea que no está terminada para que «quede limpio».
 - No crear una tarea por cada mensaje: una por trabajo, con subtareas si crece.
 - No reescribir la descripción ni el documento de otra persona: comenta.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
 
-<!-- cac-work v6 -->
+---
+
+_Escrita por Claude (Anthropic) con jose (guz-studio), del 20 al 22 de octubre
+de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
+detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
+decisiones del espacio Command and control por qué está._
+
+<!-- cac-work v7 -->
