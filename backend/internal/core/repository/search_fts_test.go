@@ -205,3 +205,53 @@ func TestANoteSnippetKeepsWhatIsBetweenAngleBrackets(t *testing.T) {
 		t.Fatalf("fragmento: %q", hits[0].Snippet)
 	}
 }
+
+// Una clave de Jira o una referencia de cac se encuentran (22-oct-2026). Un
+// agente preguntó por PROTEUS-125 y recibió una página de documentación: la
+// tarea que la nombraba no salía, y sí un doc que decía «Proteus» y «125».
+//
+// Roturas que detecta: partir la referencia; buscarla por prefijo (saldría
+// PROTEUS-1250); no poner primero la tarea cuya referencia de cac se escribe
+// tal cual; ponerla también cuando viene en mayúsculas (eso es Jira).
+func TestAJiraKeyAndACacRefFindTheirTask(t *testing.T) {
+	db := searchFTSDB(t)
+	if err := db.AutoMigrate(&domain.SpaceKeyAlias{}, &domain.ReportProject{}); err != nil {
+		t.Fatal(err)
+	}
+	sp := &domain.TaskSpace{OrgID: "org-1", Name: "Proteus", Key: "proteus", Rank: "0.5"}
+	sp.ID = "s"
+	if err := db.Create(sp).Error; err != nil {
+		t.Fatal(err)
+	}
+	ftsTask(t, db, "t-125", "org-1", "Crossfire queda publicado", "**Referencias:** Jira [PROTEUS-125](https://x/browse/PROTEUS-125)")
+	ftsTask(t, db, "t-1250", "org-1", "Otra", "Jira PROTEUS-1250")
+	ftsTask(t, db, "t-vistas", "org-1", "Proteus tiene 125 vistas", "y nada más")
+	if err := db.Model(&domain.Item{}).Where("id = ?", "t-vistas").Updates(map[string]any{"space_id": "s", "seq": 34}).Error; err != nil {
+		t.Fatal(err)
+	}
+	r := NewSearchRepository(db)
+
+	hits, err := r.Tasks("PROTEUS-125", "org-1", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hitIDs(hits); len(got) != 1 || got[0] != "t-125" {
+		t.Fatalf("PROTEUS-125 tenía que encontrar sólo la tarea que la nombra: %v", got)
+	}
+
+	// `proteus-34` en minúsculas es la tarea 34 del espacio, primera, aunque
+	// su texto no lo diga.
+	hits, err = r.Tasks("proteus-34", "org-1", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hitIDs(hits); len(got) == 0 || got[0] != "t-vistas" {
+		t.Fatalf("la referencia de cac va directa a su tarea: %v", got)
+	}
+	hits, _ = r.Tasks("PROTEUS-34", "org-1", 8)
+	for _, id := range hitIDs(hits) {
+		if id == "t-vistas" {
+			t.Fatal("en mayúsculas es Jira: no es la tarea 34 de cac")
+		}
+	}
+}

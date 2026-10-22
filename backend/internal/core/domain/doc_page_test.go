@@ -10,6 +10,30 @@ import (
 // Los mutantes que mata: quitar el `:*` (entonces «pocna» no encuentra
 // `pocna-jobs` ni «desplieg» encuentra «despliegues») y unir con `|` (cualquier
 // palabra bastaría, y buscar dos daría más resultados que buscar una).
+// Una referencia va entera y sin prefijo; lo que no lo es se parte por el
+// guion como siempre (22-oct-2026). Roturas que detecta: partirla (no casa
+// con la tarea y sí con «Proteus … 125 vistas»); ponerle prefijo
+// (`proteus-125` encontraría `proteus-1250`); tomar por referencia algo que
+// no termina en número (`pocna-jobs`) o que empieza por número.
+func TestARefIsSearchedWhole(t *testing.T) {
+	for q, want := range map[string]string{
+		"PROTEUS-125":                 "proteus-125",
+		"¿está la tarea proteus-125?": "está:* & la & tarea:* & proteus-125",
+		"command-and-control-221":     "command-and-control-221",
+		"tds-69 y nada más":           "tds-69 & y & nada:* & más:*",
+		"pocna-jobs":                  "pocna:* & jobs:*",
+		"2026-10-22":                  "2026:* & 10 & 22:*",
+		"-125":                        "125:*",
+	} {
+		if got := SearchTSQuery(q); got != want {
+			t.Errorf("SearchTSQuery(%q) = %q, want %q", q, got, want)
+		}
+	}
+	if sec := SearchSection("# Uno\n\nnada\n\n## Entrega\n\nJira [PROTEUS-125](x)\n", "PROTEUS-125"); sec != "Entrega" {
+		t.Errorf("la sección de una referencia: %q", sec)
+	}
+}
+
 func TestSearchQueryPrefixesEveryTerm(t *testing.T) {
 	if got := SearchTSQuery("Pocna jobs"); got != "pocna:* & jobs:*" {
 		t.Fatalf("SearchTSQuery = %q", got)

@@ -39,6 +39,13 @@ func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.Searc
 	if tsq == "" {
 		return out, nil
 	}
+	// Una referencia de cac escrita tal cual (`proteus-34`, el folio `acme-7`)
+	// es esa tarea, la primera, aunque su texto no la nombre: es su nombre.
+	// En mayúsculas no: `PROTEUS-34` es Jira, y eso lo busca el texto.
+	direct := r.taskByRef(query, orgID)
+	if direct != nil {
+		out = append(out, *direct)
+	}
 	type row struct {
 		ID, Title, ListName, Snippet string
 	}
@@ -73,12 +80,35 @@ func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.Searc
 		return r.tasksLike(query, orgID, limit)
 	}
 	for _, x := range rows {
+		if direct != nil && x.ID == direct.ID {
+			continue
+		}
 		out = append(out, domain.SearchHit{
 			Kind: domain.SearchTask, ID: x.ID, Title: x.Title, Snippet: domain.CleanSnippet(x.Snippet),
 			Where: x.ListName, Link: "/tasks?task=" + x.ID,
 		})
 	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
 	return out, nil
+}
+
+// taskByRef: la tarea que nombra la consulta, si la consulta es sólo una
+// referencia de cac en minúsculas. `nil` si no lo es o no existe.
+func (r *SearchRepository) taskByRef(query, orgID string) *domain.SearchHit {
+	q := strings.TrimSpace(query)
+	refs := domain.ExtractTaskRefs(q, false)
+	if len(refs) != 1 || refs[0].Slug == "" || domain.SpaceTaskRef(refs[0].Slug, refs[0].Seq) != q {
+		return nil
+	}
+	it, err := (&TaskRepository{db: r.db}).FindByRef([]string{orgID}, refs[0])
+	if err != nil || it == nil || it.ArchivedAt != nil {
+		return nil
+	}
+	var list string
+	r.db.Table("task_lists").Select("name").Where("id = ?", it.ListID).Scan(&list)
+	return &domain.SearchHit{Kind: domain.SearchTask, ID: it.ID, Title: it.Title, Where: list, Link: "/tasks?task=" + it.ID}
 }
 
 // tasksLike es la búsqueda de antes, por `LIKE`, para una base sin el índice

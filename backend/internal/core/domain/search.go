@@ -112,6 +112,15 @@ type SearchResults struct {
 // `!`, `:`, `(`, comillas) harían que Postgres rechazara la consulta con un
 // error, y una búsqueda que revienta porque alguien pegó un `!=` es peor que
 // una que lo ignora. Pura, para poder probarla sin base.
+//
+// **Una referencia (`proteus-125`, `tds-69`, `command-and-control-221`) va
+// entera y sin prefijo.** Postgres guarda «PROTEUS-125» como `proteus` y
+// `-125` —lee el guion como un signo—, así que partirla en `proteus` y `125`
+// no casaba nunca con la tarea que la nombra, y sí con cualquier documento que
+// dijera «Proteus» en un sitio y «125 vistas» en otro. Un agente que preguntó
+// por una tarea de Jira recibió una página de documentación (22-oct-2026).
+// Entera, `to_tsquery` la convierte en la frase exacta: ni `proteus-1250` ni
+// «125 vistas».
 func SearchTSQuery(q string) string {
 	terms := searchTerms(q)
 	out := make([]string, len(terms))
@@ -124,10 +133,38 @@ func SearchTSQuery(q string) string {
 	return strings.Join(out, " & ")
 }
 
-// searchTerm: una palabra de la consulta, y si se busca por prefijo.
+// searchTerm: una palabra de la consulta, y si se busca por prefijo. `ref`:
+// es una referencia `clave-número`, que va entera (ver SearchTSQuery).
 type searchTerm struct {
 	word   string
 	prefix bool
+	ref    bool
+}
+
+// isRefWord: `letras…-número`, en minúsculas, con tramos separados por guion,
+// el primero empezando por letra y el último sólo dígitos. Es la forma de una
+// clave de Jira y de una referencia de cac.
+func isRefWord(w string) bool {
+	parts := strings.Split(w, "-")
+	if len(parts) < 2 || parts[0] == "" || parts[0][0] < 'a' || parts[0][0] > 'z' {
+		return false
+	}
+	for i, p := range parts {
+		if p == "" {
+			return false
+		}
+		for j := 0; j < len(p); j++ {
+			c := p[j]
+			digit := c >= '0' && c <= '9'
+			if i == len(parts)-1 && !digit {
+				return false
+			}
+			if !digit && (c < 'a' || c > 'z') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // ShortSearchWord: hasta cuántas letras una palabra cuenta sólo entera.
@@ -145,21 +182,44 @@ func searchTerms(q string) []searchTerm {
 			cur = cur[:0]
 		}
 	}
+	// El guion se queda dentro de la palabra para poder reconocer una
+	// referencia; si no lo es, se vuelve a partir por él, como siempre.
 	for _, r := range strings.ToLower(q) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || (r == '-' && len(cur) > 0) {
 			cur = append(cur, r)
 			continue
 		}
 		flush()
 	}
 	flush()
-	if len(words) > 8 {
-		words = words[:8]
+	type word struct {
+		text string
+		ref  bool
 	}
-	out := make([]searchTerm, len(words))
-	for i, w := range words {
-		last := i == len(words)-1
-		out[i] = searchTerm{word: w, prefix: last || len([]rune(w)) > ShortSearchWord}
+	var split []word
+	for _, w := range words {
+		w = strings.Trim(w, "-")
+		if isRefWord(w) {
+			split = append(split, word{w, true})
+			continue
+		}
+		for _, p := range strings.Split(w, "-") {
+			if p != "" {
+				split = append(split, word{p, false})
+			}
+		}
+	}
+	if len(split) > 8 {
+		split = split[:8]
+	}
+	out := make([]searchTerm, len(split))
+	for i, w := range split {
+		if w.ref {
+			out[i] = searchTerm{word: w.text, ref: true}
+			continue
+		}
+		last := i == len(split)-1
+		out[i] = searchTerm{word: w.text, prefix: last || len([]rune(w.text)) > ShortSearchWord}
 	}
 	return out
 }

@@ -31,7 +31,11 @@ func SearchSection(body, query string) string {
 		return ""
 	}
 	for i := range terms {
-		// Sin acentos, como compara `foldWords` el texto.
+		// Sin acentos, como compara `foldWords` el texto. Una referencia no:
+		// lleva guiones, y se busca tal cual en la línea.
+		if terms[i].ref {
+			continue
+		}
 		if f := foldWords(terms[i].word); len(f) > 0 {
 			terms[i].word = f[0]
 		}
@@ -48,8 +52,17 @@ func SearchSection(body, query string) string {
 			closeSection()
 			heading, seen = text, map[string]bool{}
 		}
+		lower := strings.ToLower(line)
+		for _, term := range terms {
+			if term.ref && strings.Contains(lower, term.word) {
+				seen[term.word] = true
+			}
+		}
 		for _, w := range foldWords(line) {
 			for _, term := range terms {
+				if term.ref {
+					continue
+				}
 				if w == term.word || (term.prefix && strings.HasPrefix(w, term.word)) {
 					seen[term.word] = true
 				}
