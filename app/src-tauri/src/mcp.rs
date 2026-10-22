@@ -2139,6 +2139,20 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "remember",
+            "description": "Write down one fact for whoever works on this space next: a measured number, a trick that worked, a dead end, a command. It goes as one dated line into the space's \"Notas de agentes\" page (created the first time), which search covers like any page. Not for decisions (record_decision), not for how things are done (the runbook), not for what belongs in a task's thread (add_task_comment). Needs `docs:write`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": ["space", "folder", "list"], "description": "Optional; space when omitted." },
+                    "ownerId": { "type": "string", "description": "The node's id, or its path as the map shows it." },
+                    "text": { "type": "string", "description": "One line, markdown, as it should read in a year: what, where, and the number or the command." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["ownerId", "text"]
+            }
+        },
+        {
             "name": "get_decision",
             "description": "One entry of a decision log, with its body (the why), who decided it and when, the task it came out of, the node it belongs to, and which decision it supersedes or was superseded by. Ids come from get_context, get_doc (tab: decisions) and search hits of kind `decision`.",
             "inputSchema": {
@@ -2973,6 +2987,24 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             drop_mirrored_commit_notes(&mut d);
             hoist_handoff(&mut d);
             Ok(d)
+        }
+
+        "remember" => {
+            let text = arg_str(args, "text").ok_or("text is required")?;
+            let mut with_kind = args.clone();
+            let owner = arg_str(args, "ownerId").unwrap_or_default();
+            let by_path = owner.contains(['›', '/', '>']) || owner.contains(char::is_whitespace);
+            if arg_str(args, "kind").is_none() && !by_path {
+                with_kind["kind"] = json!("space");
+            }
+            let (kind, id) = doc_target(cfg, &with_kind)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
+            }
+            let page = agent_notes_page(cfg, &kind, &id)?;
+            let line = format!("- {} · {}", today_utc(), text.trim().replace('\n', " "));
+            api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{}/append", urlencode(&page)), json!({ "text": line }))?;
+            Ok(json!({ "remembered": true, "pageId": page, "line": line, "link": page_link(&kind, &id, &page) }))
         }
 
         "get_decision" => {
@@ -4498,6 +4530,47 @@ fn hoist_handoff(d: &mut Value) {
     d["handoff"] = json!({ "text": text, "at": at, "by": by });
 }
 
+/// La página «Notas de agentes» de un nodo: lo que un agente descubre y no es
+/// decisión ni runbook (decidido el 22-oct-2026). Una por nodo, colgando de la
+/// portada; se crea la primera vez.
+const AGENT_NOTES_TITLE: &str = "Notas de agentes";
+
+fn agent_notes_page(cfg: &Cfg, kind: &str, id: &str) -> Result<String, String> {
+    let flat = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages"))?;
+    let found = flat.as_array().into_iter().flatten().find(|p| {
+        p.get("title").and_then(|t| t.as_str()) == Some(AGENT_NOTES_TITLE)
+            && p.get("parentId").and_then(|v| v.as_str()).map(|v| v.is_empty()).unwrap_or(true)
+    });
+    if let Some(p) = found.and_then(|p| p.get("id")).and_then(|v| v.as_str()) {
+        return Ok(p.to_string());
+    }
+    let created = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages"), json!({
+        "title": AGENT_NOTES_TITLE,
+        "body": "Lo que los agentes descubren al trabajar aquí y no es una decisión ni cambia cómo se hace algo: un dato medido, un truco, un callejón sin salida. Una línea por nota, con su fecha. Lo que resulte ser una trampa sube a «Trampas que ya han mordido».\n",
+    }))?;
+    created.get("id").and_then(|v| v.as_str()).map(str::to_string).ok_or("cac did not say the id of the page it created".into())
+}
+
+/// La fecha de hoy, `AAAA-MM-DD` en UTC, sin más dependencias: días desde la
+/// época a fecha civil (el algoritmo de Howard Hinnant).
+fn today_utc() -> String {
+    civil_date(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64)
+}
+
+fn civil_date(secs: i64) -> String {
+    let z = secs.div_euclid(86_400) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
 /// Una decisión, como la lee un agente: el cuerpo, quién, cuándo, de dónde
 /// salió y a quién sustituye o quién la sustituyó.
 fn decision_view(data: &Value) -> Value {
@@ -4741,7 +4814,8 @@ fn instructions(state: Option<SkillState>) -> String {
          in_progress). End every commit message with its ref, e.g. (proteus-12), so cac links the commit to it; in \
          a repository cac is not connected to, such as a client's own GitHub organization, leave the commit clean \
          and note the repo and sha in the task instead. Record findings as task comments and decisions with \
-         record_decision (a decision that changes supersedes the old one; it is not rewritten).\n\
+         record_decision (a decision that changes supersedes the old one; it is not rewritten); a fact useful to \
+         whoever comes next, whatever their task, goes with remember.\n\
          4. CLOSE HONESTLY. Before you tell the user you are done, write the task's handoff (update_task handoff: \
          what is done, the next step, how to check it shipped) and update the task: done means published, not \
          committed; committed but not yet released stays in progress with a comment saying where it ships, so the \
@@ -5782,6 +5856,51 @@ mod tests {
         assert!(path.contains("spaceId=s1") && path.contains("since=2026-10-22T08%3A00%3A00Z") && path.contains("only=tree%2Cchanges") && path.contains("node=n1"), "{path}");
     }
 
+    /// Roturas que detecta: crear la página cada vez (dos «Notas de agentes»);
+    /// no crearla cuando falta; escribir sin fecha; colgar la nota de una
+    /// página que se llama igual pero está anidada; o calcular mal la fecha.
+    #[test]
+    fn remember_appends_a_dated_line_to_the_agent_notes_page_creating_it_once() {
+        let (cfg, log) = fake_cac(|m, p, _| {
+            if p.ends_with("/pages") && m == "GET" {
+                json!([{ "id": "p-nested", "title": "Notas de agentes", "parentId": "p-other" }])
+            } else if p.ends_with("/pages") && m == "POST" {
+                json!({ "id": "p-new", "title": "Notas de agentes" })
+            } else {
+                json!({ "ok": true })
+            }
+        });
+        let out = call_tool(&cfg, "remember", &json!({ "ownerId": "s1", "text": "El egress muerto contesta 408 al parar.\n" })).unwrap();
+        assert_eq!(out["pageId"], "p-new");
+        let line = out["line"].as_str().unwrap();
+        assert!(line.starts_with("- 20") && line.ends_with(" · El egress muerto contesta 408 al parar."), "{line}");
+        let calls: Vec<(String, String)> = log.lock().unwrap().iter().map(|(m, p, _)| (m.clone(), p.clone())).collect();
+        assert_eq!(calls, vec![
+            ("GET".into(), "/api/v1/docs/space/s1/pages".into()),
+            ("POST".into(), "/api/v1/docs/space/s1/pages".into()),
+            ("POST".into(), "/api/v1/docs/space/s1/pages/p-new/append".into()),
+        ]);
+
+        // Con la página ya creada, se reutiliza.
+        let (cfg, log) = fake_cac(|m, p, _| {
+            if p.ends_with("/pages") && m == "GET" {
+                json!([{ "id": "p-notes", "title": "Notas de agentes" }])
+            } else {
+                json!({ "ok": true })
+            }
+        });
+        let out = call_tool(&cfg, "remember", &json!({ "kind": "space", "ownerId": "s1", "text": "x" })).unwrap();
+        assert_eq!(out["pageId"], "p-notes");
+        assert!(log.lock().unwrap().iter().all(|(m, p, _)| !(m == "POST" && p.ends_with("/pages"))), "no se crea otra");
+
+        // La fecha: el día de la época, un bisiesto, un cambio de año y hoy.
+        assert_eq!(today_utc().len(), 10);
+        assert_eq!(civil_date(0), "1970-01-01");
+        assert_eq!(civil_date(951_782_400), "2000-02-29");
+        assert_eq!(civil_date(1_767_225_599), "2025-12-31");
+        assert_eq!(civil_date(1_792_627_200), "2026-10-22");
+    }
+
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un
     /// fork, `aaa` saldría antes por orden alfabético).
     #[test]
@@ -5977,6 +6096,7 @@ mod tests {
             ("write the task's handoff", "## 7 · Al terminar: el handoff y el estado honesto"),
             ("read with get_decision", "`get_decision`"),
             ("supersedes the old one", "`supersedes`"),
+            ("goes with remember", "`remember`"),
             ("bring the board up to date", "## 3 · Poner el tablero al día"),
             ("move it to in progress", "`status: \"in_progress\"`"),
             ("commit message with its ref", "## 5 · Cada commit nombra su tarea"),

@@ -121,7 +121,8 @@ func contextFixture(t *testing.T) *gorm.DB {
 		}
 		mustCreate(t, db, d)
 	}
-	viva := &domain.DocPage{DocID: "doc-app", OrgID: "org-1", Title: "Arquitectura", Rank: "0.5"}
+	// Con el mismo texto que el README atado: es un espejo, y el mapa lo dice.
+	viva := &domain.DocPage{DocID: "doc-app", OrgID: "org-1", Title: "Arquitectura", Rank: "0.5", Body: "# cac\n\nhola"}
 	viva.ID = "page-1"
 	mustCreate(t, db, viva)
 	papelera := &domain.DocPage{DocID: "doc-app", OrgID: "org-1", Title: "Borrada", Rank: "0.6"}
@@ -217,6 +218,9 @@ func TestTheContextMapIsTheSpaceWithoutBodies(t *testing.T) {
 	}
 	if len(app.Doc.Pages) != 1 || app.Doc.Pages[0].Title != "Arquitectura" {
 		t.Fatalf("páginas: %+v", app.Doc.Pages)
+	}
+	if app.Doc.Pages[0].MirrorOf != "rd-1" {
+		t.Fatalf("una página con el mismo texto que un .md atado es un espejo, y el mapa tiene que decirlo: %+v", app.Doc.Pages[0])
 	}
 	if m.Nodes[0].Doc != nil || m.Nodes[1].Doc != nil {
 		t.Fatal("un nodo sin documento trae uno")

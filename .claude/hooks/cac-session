@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""SessionStart: lo pequeño del mapa de cac, en el contexto desde el primer
+mensaje y sin ninguna llamada del agente: el espacio y lo que está en curso con
+su «dónde quedó». Lo que imprime entra en el contexto de Claude.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cac_hooks import api, cac_config, read_input, repo_of  # noqa: E402
+
+MAX_TASKS = 12
+
+
+def summary(data, repo):
+    sp = data.get("space") or {}
+    head = f"cac · {sp.get('name', '?')}" + (f" ({sp.get('key')})" if sp.get("key") else "")
+    head += f" · {sp.get('orgName', '')} · repo {repo}"
+    tasks = data.get("inProgress") or []
+    lines = [head]
+    if not tasks:
+        lines.append("En curso: nada.")
+    else:
+        lines.append(f"En curso ({len(tasks)}):")
+        for t in tasks[:MAX_TASKS]:
+            who = ", ".join(t.get("assignees") or []) or "sin responsable"
+            line = f"- {t.get('ref') or '#' + str(t.get('seq'))} {t.get('title', '')} — {who}"
+            if t.get("handoff"):
+                first = t["handoff"].strip().splitlines()[0]
+                when = (t.get("handoffAt") or "")[:10]
+                line += f" · dónde quedó: {first} ({t.get('handoffBy', '')}, {when})"
+            lines.append(line)
+        if len(tasks) > MAX_TASKS:
+            lines.append(f"… y {len(tasks) - MAX_TASKS} más (get_context).")
+    lines.append(
+        "Para el mapa entero: get_context sin argumentos. Para una pregunta: search con expand. "
+        "Antes de parar: el handoff de tu tarea (update_task handoff)."
+    )
+    return "\n".join(lines)
+
+
+def main():
+    inp = read_input()
+    root, repo = repo_of(inp.get("cwd") or os.getcwd())
+    if not repo:
+        return
+    cfg = cac_config()
+    if not cfg:
+        return
+    data = api(cfg, "/api/v1/context?repo=" + repo.replace("/", "%2F") + "&only=tree,inProgress")
+    if not data:
+        return
+    print(summary(data, repo))
+
+
+if __name__ == "__main__":
+    main()

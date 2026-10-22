@@ -50,7 +50,8 @@ func searchFTSDB(t *testing.T) *gorm.DB {
 	// Y lo que la consulta de docs pisa aunque aquí no se escriba: espacios,
 	// carpetas, pestañas y páginas, porque hace LEFT JOIN y UNION con ellas.
 	if err := db.AutoMigrate(&domain.TaskList{}, &domain.Item{}, &domain.ItemComment{}, &domain.Note{},
-		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.Doc{}, &domain.DocTab{}, &domain.DocPage{}, &domain.Decision{}); err != nil {
+		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.Doc{}, &domain.DocTab{}, &domain.DocPage{}, &domain.Decision{},
+		&domain.RepoDoc{}, &domain.GitHubRepo{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := EnsureSearchIndexes(db); err != nil {

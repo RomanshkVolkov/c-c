@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "startup", "hooks": [{ "type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-session\"", "timeout": 15 }] },
+      { "matcher": "resume", "hooks": [{ "type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-session\"", "timeout": 15 }] },
+      { "matcher": "clear", "hooks": [{ "type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-session\"", "timeout": 15 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel)/.claude/hooks/cac-handoff\"", "timeout": 20 }] }
+    ]
+  }
+}

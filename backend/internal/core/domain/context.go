@@ -158,6 +158,10 @@ type ContextPage struct {
 	ID       string  `json:"id"`
 	Title    string  `json:"title"`
 	ParentID *string `json:"parentId,omitempty"`
+	// MirrorOf: la página es una copia de ese `.md` del repo (mismo texto).
+	// Manda el repo (decidido con jose el 22-oct-2026): se lee el `.md`, y la
+	// búsqueda no la enseña, para no devolver cada cosa dos veces.
+	MirrorOf string `json:"mirrorOf,omitempty"`
 }
 
 // ContextDecision: una decisión **vigente**. Las sustituidas (ver

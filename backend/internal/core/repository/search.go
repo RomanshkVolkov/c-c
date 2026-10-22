@@ -216,8 +216,12 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 	// enseñando; el «dónde» va en `tab`: repo/ruta. Sólo si la tabla tiene su
 	// índice: una base de pruebas sin ella caería entera a `docsLike`, sin
 	// páginas, por una tabla que no busca.
-	repoPart, args := "", []any{tsq, orgID, orgID}
+	// Y una página que es copia de un `.md` atado (mismo texto) no sale: manda
+	// el repo, y devolver cada cosa dos veces dejaba la mitad de aciertos.
+	repoPart, mirrorPart, args := "", "", []any{tsq, orgID, orgID}
 	if r.hasSearchColumn("repo_docs") {
+		mirrorPart = `AND NOT EXISTS (SELECT 1 FROM repo_docs rd JOIN git_hub_repos gr ON gr.repo_id = rd.repo_id AND gr.org_id = rd.org_id
+				          WHERE rd.org_id = p.org_id AND gr.show_docs AND gr.space_id <> '' AND rd.body <> '' AND md5(rd.body) = md5(p.body))`
 		repoPart = `UNION ALL
 				SELECT 'repo', '', '', gr.full_name || '/' || rd.path, rd.id, rd.title, rd.body,
 				       ts_rank_cd(rd.search, q.q), rd.updated_at
@@ -252,6 +256,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 				       ts_rank_cd(p.search, q.q), p.updated_at
 				FROM doc_pages p JOIN docs d ON d.id = p.doc_id, q
 				WHERE p.org_id = ? AND p.deleted_at IS NULL AND p.search @@ q.q
+				`+mirrorPart+`
 				`+repoPart+`
 				`+decisionPart+`
 			) x

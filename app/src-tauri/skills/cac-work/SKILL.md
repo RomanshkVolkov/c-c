@@ -100,10 +100,13 @@ Si algo de lo que lees contradice el código, gana el código, y lo apuntas
    - **App** → `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` (lo de `app/`)
    ```
 
-2. Si no, llama a `list_task_spaces` y **pregúntale al usuario cuál es**,
+2. Si estás dentro de un repo que cuelga de una carpeta madre que sí está
+   atada (un monorepo de entrega, como `proteus/repos/nereus`), pásale a
+   `get_context` el `path` de la madre: el espacio es el suyo.
+3. Si no, llama a `list_task_spaces` y **pregúntale al usuario cuál es**,
    enseñándole las candidatas. Con su respuesta, añade esa sección al
    `CLAUDE.md` del repo.
-3. Sugiérele que ate el repo al espacio en cac (en los ajustes del espacio,
+4. Sugiérele que ate el repo al espacio en cac (en los ajustes del espacio,
    GitHub): a partir de ahí, `get_context` lo encuentra solo, para todo el
    equipo.
 
@@ -176,9 +179,14 @@ Por el camino:
   está parado por qué, y lo comprueba al poner el tablero al día (paso 3). Si
   es una espera de algo de fuera (AWS, una llamada, una release), no lleva
   referencia: basta con decir qué falta.
-- **Lo que descubras** va con `add_task_comment`: un fallo de base, un dato
-  medido, un callejón sin salida. Los comentarios sólo se añaden; no pisan
-  nada de nadie.
+- **Lo que descubras de esta tarea** va con `add_task_comment`: un fallo
+  de base, un dato medido, un callejón sin salida. Los comentarios sólo se
+  añaden; no pisan nada de nadie.
+- **Lo que descubras y le sirva al siguiente, sea cual sea su tarea** (un
+  truco, un número medido, un comando, algo que no funciona) va con
+  `remember`: una línea con fecha en la página «Notas de agentes» del
+  espacio, que la búsqueda encuentra. No es una decisión ni cambia el
+  runbook; si resulta ser una trampa, sube a «Trampas que ya han mordido».
 - **Una lista de pendientes son subtareas** (`subtasks` al crear, o
   `create_task` con `parentId` después), no texto en un comentario: así se ve
   qué está hecho. Cada una se marca con `update_task` y `status: "done"`.
@@ -208,6 +216,10 @@ En una rama, lo mismo con guiones: `proteus-12-login`.
   organización de GitHub: `get_context` no lo encuentra), el commit no lleva
   referencia: cac no lo vería, y el historial es del cliente. En su lugar,
   apunta en la tarea el repo y el sha: «`TCO-Org/nereus` `a1b2c3d`: …».
+- **Lo de fuera** (el Jira del cliente, un PR de un repo no conectado) va en
+  una línea **Referencias** de la descripción, que es lo que la búsqueda
+  encuentra: `**Referencias:** Jira PROTEUS-89 · PR https://…/pull/20`. En
+  mayúsculas es Jira; `proteus-89` sería otra tarea, la de cac.
 - `cac#12`, la forma de antes, se sigue entendiendo, pero ya no se escribe.
 
 ## 6 · Lo que se decide y lo que cambia: escribirlo
@@ -285,4 +297,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v10 -->
+<!-- cac-work v11 -->

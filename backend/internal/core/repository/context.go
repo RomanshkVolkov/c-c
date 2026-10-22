@@ -57,17 +57,23 @@ type ContextPageRow struct {
 	ID       string
 	Title    string
 	ParentID *string
+	MirrorOf string
 }
 
-// Pages: las páginas fuera de la papelera, en el orden del árbol.
-func (r *ContextRepository) Pages(docIDs []string) ([]ContextPageRow, error) {
+// Pages: las páginas fuera de la papelera, en el orden del árbol, y de cada
+// una si es copia de un `.md` atado al espacio (mismo texto): manda el repo.
+func (r *ContextRepository) Pages(docIDs []string, orgID, spaceID string) ([]ContextPageRow, error) {
 	var rows []ContextPageRow
 	if len(docIDs) == 0 {
 		return rows, nil
 	}
-	err := r.db.Table("doc_pages").Select("doc_id, id, title, parent_id").
-		Where("doc_id IN ? AND deleted_at IS NULL", docIDs).
-		Order("rank ASC, created_at ASC").Scan(&rows).Error
+	err := r.db.Table("doc_pages p").
+		Select(`p.doc_id, p.id, p.title, p.parent_id,
+			COALESCE((SELECT rd.id FROM repo_docs rd JOIN git_hub_repos gr ON gr.repo_id = rd.repo_id AND gr.org_id = rd.org_id
+			          WHERE rd.org_id = ? AND gr.space_id = ? AND gr.show_docs AND rd.body <> '' AND md5(rd.body) = md5(p.body)
+			          LIMIT 1), '') AS mirror_of`, orgID, spaceID).
+		Where("p.doc_id IN ? AND p.deleted_at IS NULL", docIDs).
+		Order("p.rank ASC, p.created_at ASC").Scan(&rows).Error
 	return rows, err
 }
 

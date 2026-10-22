@@ -34,8 +34,17 @@ aciertos, una pregunta en una llamada); `get_task` por referencia
 (`proteus-12`, `GET /api/v1/tasks/by-ref/{ref}`); `get_doc` por ruta
 («Proteus › Plataforma»); `get_context` con `since` (`changes`: tareas,
 decisiones, docs y `.md` desde una fecha), `only` y `node`, y `chars` en cada
-`.md`; skill **v10**. Quedan las que esperan decisión de jose (hooks, `claim`,
-Proteus, `remember`, consolidar, espejos).
+`.md`; skill **v10**. **Cuarta tanda** (con las decisiones de jose del
+22-oct): **hooks de cac en el repo** (`.claude/hooks/cac-session` mete en el
+contexto el espacio y lo en curso con su «dónde quedó» al arrancar;
+`cac-handoff` no deja parar sin el handoff de la tarea que nombran los commits
+de la sesión; el `settings.json` va en la raíz, `app/` y `backend/`; pruebas
+en `hooks_test.py`); **`remember`** (una línea con fecha en la página «Notas de
+agentes» del espacio); **espejos**: una página idéntica a un `.md` atado se
+marca `mirrorOf` en el mapa y no sale en la búsqueda (manda el repo); skill
+**v11**; `CLAUDE.md` para Proteus en un PR de pocna-handover. Quedan `claim`/
+`blockedBy` (#212) y el pase de consolidación (#215), que jose aún no ha
+decidido.
 
 **15-oct, v1.6.101: responder, mudar la llamada y el eco** (App #156, #157,
 #158). Responder a un mensaje con su cita, en canales, directos y el chat de

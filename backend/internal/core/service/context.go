@@ -259,7 +259,7 @@ func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap, docs [
 	if err != nil {
 		return err
 	}
-	pages, err := s.repo.Pages(docIDs)
+	pages, err := s.repo.Pages(docIDs, orgID, out.Space.ID)
 	if err != nil {
 		return err
 	}
@@ -297,7 +297,7 @@ func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap, docs [
 			truncatedPages = true
 			continue
 		}
-		d.Pages = append(d.Pages, domain.ContextPage{ID: p.ID, Title: p.Title, ParentID: p.ParentID})
+		d.Pages = append(d.Pages, domain.ContextPage{ID: p.ID, Title: p.Title, ParentID: p.ParentID, MirrorOf: p.MirrorOf})
 	}
 	for _, x := range decisions {
 		d := get(x.DocID)

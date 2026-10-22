@@ -235,7 +235,15 @@ Entera, antes de dar algo por hecho. Desde la raíz del repo:
 (cd app           && bun run test)                                # eslint + vitest
 (cd app/src-tauri && cargo check)                                 # el lado Rust
 (cd backend       && go build ./... && go vet ./... && go test ./...)
+python3 .claude/hooks/hooks_test.py                                 # los hooks de cac
 ```
+
+**Los hooks de cac** (`.claude/hooks/`) corren en cada sesión de Claude Code:
+al arrancar meten en el contexto el espacio y lo que está en curso con su
+«dónde quedó», y al parar no dejan irse sin escribir el handoff de la tarea
+que nombran los commits de la sesión. El mismo `settings.json` está en la
+raíz, en `app/` y en `backend/` porque Claude Code sólo lee el de la carpeta
+donde se abre; los scripts buscan la raíz con git.
 
 ## Soltar una release
 

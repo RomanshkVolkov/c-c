@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Stop: si en esta sesión hubo commits que nombran una tarea y la tarea no
+tiene un «dónde quedó» posterior al último de ellos, Claude no para: escribe
+el handoff primero. Una vez (`stop_hook_active` corta el bucle).
+"""
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cac_hooks import api, cac_config, git, read_input, repo_of  # noqa: E402
+
+REF = re.compile(r"\(([a-z][a-z0-9-]*-\d+)\)\s*$")
+WINDOW = "12 hours ago"
+MAX_REFS = 3
+
+
+def recent_refs(root):
+    """(sha, cuándo, asunto) del commit más reciente de cada referencia."""
+    log = git(root, "log", f"--since={WINDOW}", "--format=%h%x1f%cI%x1f%s")
+    seen = {}
+    for line in log.splitlines():
+        parts = line.split("\x1f")
+        if len(parts) != 3:
+            continue
+        sha, when, subject = parts
+        m = REF.search(subject)
+        if m and m.group(1) not in seen:
+            seen[m.group(1)] = (sha, when, subject)
+        if len(seen) >= MAX_REFS:
+            break
+    return seen
+
+
+DONE = {"resolved", "closed", "done"}
+
+
+def pending(cfg, refs):
+    """Las referencias cuya tarea sigue abierta y no tiene un handoff posterior
+    al commit. Una tarea hecha o cerrada no lo necesita: la primera vez que el
+    hook corrió de verdad pidió handoff a dos ya publicadas (22-oct-2026)."""
+    out = []
+    for ref, (sha, when, subject) in refs.items():
+        detail = api(cfg, "/api/v1/tasks/by-ref/" + ref)
+        if not detail:
+            continue
+        task = detail.get("task") or {}
+        if task.get("status") in DONE:
+            continue
+        handoff_at = task.get("handoffAt") or ""
+        if not handoff_at or handoff_at < when:
+            out.append((ref, sha, subject))
+    return out
+
+
+def main():
+    inp = read_input()
+    if inp.get("stop_hook_active"):
+        return
+    root, repo = repo_of(inp.get("cwd") or os.getcwd())
+    if not root:
+        return
+    refs = recent_refs(root)
+    if not refs:
+        return
+    cfg = cac_config()
+    if not cfg:
+        return
+    missing = pending(cfg, refs)
+    if not missing:
+        return
+    what = "; ".join(f"{ref} (último commit {sha}: {subject[:60]})" for ref, sha, subject in missing)
+    print(json.dumps({
+        "decision": "block",
+        "reason": "Antes de parar, escribe el «dónde quedó» de " + what
+        + " con update_task y handoff: qué está hecho, el siguiente paso y cómo comprobar si ya salió. "
+        "Es lo que la siguiente sesión lee sin abrir la tarea.",
+    }, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
