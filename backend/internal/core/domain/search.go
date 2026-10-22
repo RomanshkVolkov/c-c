@@ -271,6 +271,9 @@ const SnippetLT = "\uE000"
 // fragmento de código es parte de un nombre (`__init__`), no negrita.
 func CleanSnippet(s string) string {
 	s = strings.ReplaceAll(s, "**", "")
+	// Dos resaltados pegados son una sola palabra: Postgres marca «PROTEUS» y
+	// «-125» por separado, y salía `**PROTEUS****-125**` (22-oct-2026).
+	s = strings.ReplaceAll(s, HighlightStop+HighlightStart, "")
 	s = strings.ReplaceAll(s, HighlightStart, "**")
 	s = strings.ReplaceAll(s, SnippetLT, "<")
 	return strings.ReplaceAll(s, HighlightStop, "**")

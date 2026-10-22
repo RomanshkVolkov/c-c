@@ -128,3 +128,12 @@ func TestTheBodyCapCountsCharacters(t *testing.T) {
 		t.Fatal("un texto por encima del tope se acepta")
 	}
 }
+
+// Rotura que detecta: dejar partido en dos el resaltado de una referencia, que
+// en markdown sale como `**PROTEUS****-125**`.
+func TestAHighlightedRefIsOneBoldRun(t *testing.T) {
+	in := "plan de " + HighlightStart + "PROTEUS" + HighlightStop + HighlightStart + "-125" + HighlightStop + " y " + HighlightStart + "otra" + HighlightStop
+	if got, want := CleanSnippet(in), "plan de **PROTEUS-125** y **otra**"; got != want {
+		t.Fatalf("CleanSnippet = %q, want %q", got, want)
+	}
+}
