@@ -20,18 +20,30 @@ apagando.
 
 | Qué te piden | Qué haces |
 |---|---|
-| Una pregunta, una explicación, revisar algo sin cambiarlo | Lee lo que te sirva (el mapa, una sección). **Sin tarea.** Si descubres algo que vale la pena guardar, coméntalo en la tarea a la que le toca. |
+| Una pregunta, una explicación, revisar algo sin cambiarlo | **`search` primero** y la sección del acierto (paso 1). El mapa, sólo si no encuentra. **Sin tarea.** Si descubres algo que vale la pena guardar, coméntalo en la tarea a la que le toca. |
 | Un arreglo pequeño, un commit | La tarea (busca si ya existe), la referencia en el commit (paso 5) y el cierre (paso 7). Sin subtareas, sin decisiones, sin tocar el runbook salvo que cambie algo de él. |
 | Una feature, una investigación larga, varios commits | Todo: el mapa, el tablero al día, la tarea con sus subtareas, las decisiones y el runbook. |
 
 Poner el tablero al día (paso 3) es para cuando vas a trabajar, no para una
 pregunta, y sólo en las listas que vas a tocar.
 
-## 1 · Antes de tocar nada: el mapa
+## 1 · Antes de tocar nada: buscar, y luego el mapa
 
-Llama a **`get_context` sin argumentos**. Lee el `git remote` de la carpeta
-donde trabajas, encuentra el espacio al que está atado ese repo de GitHub y
-devuelve, en una sola llamada y sin cuerpos:
+**Para una pregunta, `search` primero.** Es una llamada, y casi siempre basta:
+
+- dos o tres palabras: sustantivos del dominio y nombres de cosas (`egress`,
+  `RLS`, `PROTEUS-89`), sin artículos ni verbos conjugados. Todas las palabras
+  tienen que estar en el texto, y «el» o «cómo» también cuentan;
+- cada acierto de un doc trae `section`, la sección donde cae: lee **esa**,
+  con `get_doc` (`tab` + `section`), `get_doc_page` o `get_repo_doc`, no el
+  documento;
+- con cero aciertos, quita una palabra antes de probar en el otro idioma
+  («desplegar» / «deploy», «soltar» / «release»): la búsqueda es por palabras,
+  no por significado.
+
+**Para trabajar, el mapa.** Llama a **`get_context` sin argumentos**. Lee el
+`git remote` de la carpeta donde trabajas, encuentra el espacio al que está
+atado ese repo de GitHub y devuelve, en una sola llamada y sin cuerpos:
 
 - el árbol de carpetas y listas, con su ruta. Una lista con `projectId` es de
   un cliente;
@@ -41,17 +53,21 @@ devuelve, en una sola llamada y sin cuerpos:
 - las tareas que ya están en curso, para no duplicar una;
 - `truncated`, si algo se recortó por tamaño: entonces hay más de lo que ves.
 
-Con eso, **lee sólo lo que toca**:
+Si contesta que `.` no es un repo, pásale `path` con la carpeta del repo: pasa
+con una app vieja.
+
+Con eso, **lee sólo lo que toca**, y primero esto, si existe:
+
+- «**Trampas que ya han mordido**», en el overview del nodo que vas a tocar
+  (la carpeta o la lista; si no la tiene, el espacio). Es lo que ya rompió a
+  alguien, y lo que más cuesta descubrir solo;
+- «**Antes de dar algo por hecho**», en el runbook: cómo se verifica aquí.
+
+Lo demás, por su título en el mapa:
 - una sección de una pestaña: `get_doc` con `kind`, `ownerId` (el id del
   nodo), `tab` y `section` (el texto del título);
 - una subpágina: `get_doc_page`;
 - un `.md` del repo: `get_repo_doc`.
-
-Para lo que no esté en el mapa, usa `search` con dos o tres palabras. Cada
-acierto de un doc trae `section`, la sección donde cae: lee esa y no el
-documento. Si no encuentra nada, prueba otra formulación, también en el otro
-idioma («desplegar» / «deploy», «soltar» / «release»): la búsqueda es por
-palabras, no por significado.
 
 Si algo de lo que lees contradice el código, gana el código, y lo apuntas
 (ver el paso 6).
@@ -88,7 +104,8 @@ el tablero, con `get_board`):
 
 1. Lee el último comentario de cada una con `get_task`. Ahí debería decir qué
    falta: «sale en la próxima release», «espera a AWS», «falta probarlo en una
-   llamada».
+   llamada». (Los avisos de commit de GitHub no salen en el hilo: los mismos
+   commits van en `git`.)
 2. Si lo que faltaba ya pasó, ciérrala con `status: "done"` y un comentario que
    diga cómo lo comprobaste.
    - **Para comprobar si un commit ya se publicó:** el `git` de `get_task` trae
@@ -118,7 +135,9 @@ miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
    - con un título que diga el resultado, no la actividad («El login acepta
      correos con mayúsculas», no «Revisar login»);
    - con el porqué en la descripción, en dos o tres líneas;
-   - con un `idempotencyKey`, por si reintentas.
+   - con un `idempotencyKey` que diga de qué va, `<repo>:<rama o tema>`
+     (`c-c:login-mayusculas`), por si reintentas: uno inventado al azar no
+     protege de nada.
    Si el trabajo tiene pasos, pásalos en `subtasks`: se crean en la misma
    llamada como su checklist.
 3. **Muévela a «en curso»** con `update_task` y `status: "in_progress"`. No
@@ -187,6 +206,9 @@ En una rama, lo mismo con guiones: `proteus-12-login`.
   comando, una trampa que mordió), actualiza esa sección con
   `write_doc_section`, pasando el `sectionHash` que leíste. Para algo nuevo, usa
   `append_doc_tab`. Si el token no tiene permiso, dile al usuario qué cambiar.
+- **Una trampa que te mordió** a ti y le morderá al siguiente va a «Trampas
+  que ya han mordido» del overview del nodo, en tres o cuatro líneas: qué
+  pasó, por qué, y qué prueba lo guarda si la hay.
 - **El overview** sólo se toca si cambió de qué va el proyecto. No lo
   reescribas por estilo.
 
@@ -203,6 +225,7 @@ que su trabajo sale.
 |---|---|
 | Hecho, pero sin commitear o sin probar | `in_progress` |
 | Commiteado y en verde, pero falta desplegar o soltar | `in_progress`, con un comentario que diga **en qué sale** («en la próxima release de la app»), para que la siguiente sesión sepa qué comprobar (paso 3) |
+| En un PR abierto que revisa otra persona (también en un repo de fuera) | `in_progress`, con «PR #N abierto, revisa <quién>» y el enlace |
 | Desplegado, soltado o entregado | `done` |
 | Parado por una decisión del usuario o por algo de fuera | `in_progress`, con un comentario que diga qué falta |
 | Parado porque espera a otra tarea | `in_progress`, con «Espera a <ref>: …» |
@@ -230,4 +253,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v7 -->
+<!-- cac-work v8 -->

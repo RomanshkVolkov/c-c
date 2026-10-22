@@ -13,6 +13,18 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**22-oct, en `main`, esperando la próxima release de la app: los agentes y
+cac como memoria** (MCP #205, con quince subtareas; el plan ordenado en la
+tarea). Primera tanda: `get_context` sin argumentos **nunca funcionó desde la
+AppImage** (el AppRun hace `cd $APPDIR/usr`; ahora usa `OWD`), los avisos de
+commit de GitHub salen del hilo de `get_task` (van en `git.commits`), las
+instrucciones del MCP en cuatro frases, y la skill `cac-work` **v8**: para una
+pregunta `search` primero, cómo buscar, y leer «Trampas que ya han mordido» y
+«Antes de dar algo por hecho» antes que nada. Quedan por tanda: el `handoff`
+de la tarea y las decisiones legibles y buscables; `search expand` y pedir por
+`ref`; y lo que espera decisión de jose (hooks, `claim`, Proteus, `remember`,
+consolidar, espejos).
+
 **15-oct, v1.6.101: responder, mudar la llamada y el eco** (App #156, #157,
 #158). Responder a un mensaje con su cita, en canales, directos y el chat de
 la llamada; la cita se lee al pintar, no se copia (`domain/reply.go`). Invitar

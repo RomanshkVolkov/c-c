@@ -1562,7 +1562,7 @@ fn tool_defs() -> Value {
                 "properties": {
                     "spaceId": { "type": "string", "description": "Optional. The space, when you already know it." },
                     "repo": { "type": "string", "description": "Optional. owner/name of a GitHub repository, instead of reading the git remote." },
-                    "path": { "type": "string", "description": "Optional. The folder whose git remote to read. Defaults to the folder this server was started in, which is the project Claude Code opened." }
+                    "path": { "type": "string", "description": "Optional. The folder whose git remote to read. Defaults to the folder Claude Code opened (inside the AppImage, the folder it was launched from)." }
                 }
             }
         },
@@ -1601,7 +1601,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its markdown description, status, priority, tags, assignees, attachments, the comment thread, its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -2787,6 +2787,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             if let Some(r) = task_ref(&d) {
                 d["ref"] = json!(r);
             }
+            drop_mirrored_commit_notes(&mut d);
             Ok(d)
         }
 
@@ -3506,7 +3507,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 let repo = match arg_str(args, "repo") {
                     Some(r) => r,
                     None => {
-                        let dir = arg_str(args, "path").unwrap_or_else(|| ".".into());
+                        let dir = context_dir(args, std::env::var("OWD").ok());
                         let url = git_remote(&dir)?;
                         github_repo_from_remote(&url).ok_or_else(|| {
                             format!("The git remote of {dir} ({url}) is not a GitHub repository. Pass spaceId.")
@@ -4245,6 +4246,30 @@ const LOCAL_TOOLS: &[&str] = &["compress_image", "install_skill"];
 /// clave de su espacio y su número (`proteus-12`). `cac#<número>` sólo si el
 /// backend no da ninguna de las dos. `d` es el detalle de la tarea
 /// (`{ task, folio }`) o algo con `task.seq`.
+/// Un commit enlazado llega dos veces: en `git.commits` y como comentario del
+/// sistema (`source: "gh"`) que la app pinta en el hilo. Para un agente es el
+/// mismo dato con más texto —en una tarea con cuatro commits era el 40 % de la
+/// respuesta—, y peor: el «último comentario» que la skill manda leer para
+/// saber qué falta era un aviso de GitHub, no el cierre de una persona
+/// (22-oct-2026). Se quitan del hilo y se dice cuántos.
+fn drop_mirrored_commit_notes(d: &mut Value) {
+    let Some(comments) = d.get_mut("comments").and_then(|c| c.as_array_mut()) else {
+        return;
+    };
+    let before = comments.len();
+    comments.retain(|c| {
+        !(c.get("kind").and_then(|k| k.as_str()) == Some("system")
+            && c.get("source").and_then(|s| s.as_str()) == Some("gh"))
+    });
+    let dropped = before - comments.len();
+    if dropped > 0 {
+        d["commitNotesOmitted"] = json!({
+            "count": dropped,
+            "note": "GitHub's own commit notes are left out of the thread; those commits are in `git.commits`.",
+        });
+    }
+}
+
 fn task_ref(d: &Value) -> Option<String> {
     // La que da el backend: el folio, o la clave del espacio y el número
     // (`proteus-12`, cac#203). Lo de abajo es para un backend de antes.
@@ -4302,6 +4327,18 @@ fn move_target(args: &Value) -> Result<Option<String>, String> {
 }
 
 /// La URL del remote `origin` del repo en `dir` (o del primero que haya).
+/// La carpeta cuyo remote lee `get_context` cuando no le dan `path`. Dentro de
+/// una AppImage el proceso **no está en el proyecto**: el AppRun de linuxdeploy
+/// hace `cd $APPDIR/usr` antes de arrancar (lo mismo que mordió a los diálogos
+/// de ficheros, ver `lib.rs`), así que `.` era el montaje y «llama a
+/// `get_context` sin argumentos» fallaba en toda sesión de Linux desde que
+/// existe (22-oct-2026). La carpeta original la deja el runtime en `OWD`.
+fn context_dir(args: &Value, owd: Option<String>) -> String {
+    arg_str(args, "path")
+        .or(owd.filter(|d| !d.is_empty()))
+        .unwrap_or_else(|| ".".into())
+}
+
 fn git_remote(dir: &str) -> Result<String, String> {
     let run = |args: &[&str]| {
         crate::host::command("git")
@@ -4402,20 +4439,26 @@ fn instructions(state: Option<SkillState>) -> String {
         "cac is this team's shared memory: what one session learns is lost when it ends, and what is written in cac \
          is what the next session, or any teammate, can read. Scale it to the work: a question or a review without \
          changes needs no task; a one-commit fix needs the task, its ref in the commit and the closing update; a \
-         feature needs all of it. When you start work in a repository, call get_context \
-         first (no arguments: it finds the project from the folder's git remote). It returns the index of what the team \
-         knows (the tree, the headings of each document, decisions, repo docs, tasks in progress) without bodies; then \
-         read only the sections you need with get_doc (tab + section), and use search for anything else. If the repo \
-         is not linked to a space, the repository's CLAUDE.md may name its list under \"Tareas en cac\"; otherwise ask \
-         the user. Then bring the board up to date: tasks left in progress by earlier sessions whose work has since been \
-         published (released, deployed) are moved to done with a comment saying how you checked; what depends on a \
-         person, ask. Find or create your task and move it to in progress (update_task status: in_progress), and end every \
-         commit message with its ref, e.g. (proteus-12), so cac links the commit to it (in a repository \
-         cac is not connected to, such as a client's own GitHub organization, leave the commit clean and note the \
-         repo and sha in the task instead). Record \
-         findings as task comments and decisions with record_decision. Before you tell the user you are done, update \
-         the task honestly: done means published, not committed; committed but not yet released stays in progress \
-         with a comment saying where it ships, so the next session knows what to check.",
+         feature needs all of it.\n\
+         1. READ FIRST. For a question, search first (two or three nouns, no articles: every word must match) and read \
+         only the `section` of the hit with get_doc, get_doc_page or get_repo_doc. To work in a repository, call \
+         get_context first (no arguments: it finds the project from the folder's git remote); it returns the index of \
+         what the team knows (the tree, the headings of each document, decisions, repo docs, tasks in progress) \
+         without bodies. Then read the section \"Trampas que ya han mordido\" of the node you will touch and \"Antes \
+         de dar algo por hecho\" of the runbook, when they exist, and anything else only as you need it. If the repo \
+         is not linked to a space, the repository's CLAUDE.md may name its list under \"Tareas en cac\"; otherwise \
+         ask the user.\n\
+         2. THE BOARD. Before working, bring the board up to date, only in the lists you will touch: tasks left in \
+         progress by earlier sessions whose work has since been published (released, deployed) are moved to done \
+         with a comment saying how you checked; what depends on a person, ask.\n\
+         3. THE TASK AND ITS COMMITS. Find or create your task and move it to in progress (update_task status: \
+         in_progress). End every commit message with its ref, e.g. (proteus-12), so cac links the commit to it; in \
+         a repository cac is not connected to, such as a client's own GitHub organization, leave the commit clean \
+         and note the repo and sha in the task instead. Record findings as task comments and decisions with \
+         record_decision.\n\
+         4. CLOSE HONESTLY. Before you tell the user you are done, update the task: done means published, not \
+         committed; committed but not yet released stays in progress with a comment saying where it ships, so the \
+         next session knows what to check.",
     );
     match state {
         Some(SkillState::Missing) => s.push_str(
@@ -5277,6 +5320,43 @@ mod tests {
         assert!(git_remote("/").is_err());
     }
 
+    /// Roturas que detecta: volver a leer `.` dentro de la AppImage (el
+    /// montaje, no el proyecto: así falló «sin argumentos» en toda sesión de
+    /// Linux hasta el 22-oct-2026), o dejar que `OWD` pise un `path` explícito.
+    #[test]
+    fn the_folder_claude_code_opened_wins_over_the_appimage_mount() {
+        assert_eq!(context_dir(&json!({}), Some("/home/x/repo".into())), "/home/x/repo");
+        assert_eq!(context_dir(&json!({ "path": "/otro" }), Some("/home/x/repo".into())), "/otro");
+        assert_eq!(context_dir(&json!({}), Some(String::new())), ".");
+        assert_eq!(context_dir(&json!({}), None), ".");
+    }
+
+    /// Roturas que detecta: devolver los avisos de commit de GitHub en el hilo
+    /// (el «último comentario» volvería a ser uno del sistema), quitar un
+    /// comentario de una persona, o callarse cuántos se quitaron.
+    #[test]
+    fn github_commit_notes_leave_the_thread_but_people_stay() {
+        let (cfg, _) = fake_cac(|_, _, _| {
+            json!({
+                "task": { "id": "t1", "seq": 203 },
+                "comments": [
+                    { "id": "c1", "kind": "user", "body": "Commiteado, sale en la próxima release" },
+                    { "id": "c2", "kind": "system", "source": "gh", "body": "`abc` fix: …" },
+                    { "id": "c3", "kind": "system", "source": "app", "body": "moved to in progress" }
+                ],
+                "git": { "commits": [{ "key": "abc" }] }
+            })
+        });
+        let got = call_tool(&cfg, "get_task", &json!({ "id": "t1" })).unwrap();
+        let ids: Vec<&str> = got["comments"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, vec!["c1", "c3"]);
+        assert_eq!(got["commitNotesOmitted"]["count"], 1);
+        // Sin avisos no hay nota: no se inventa un campo para decir «cero».
+        let (cfg, _) = fake_cac(|_, _, _| json!({ "task": { "seq": 1 }, "comments": [{ "id": "c1", "kind": "user" }] }));
+        let got = call_tool(&cfg, "get_task", &json!({ "id": "t1" })).unwrap();
+        assert!(got.get("commitNotesOmitted").is_none());
+    }
+
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un
     /// fork, `aaa` saldría antes por orden alfabético).
     #[test]
@@ -5464,7 +5544,10 @@ mod tests {
         let instr = instructions(None);
         for (en, es) in [
             ("Scale it to the work", "## Cuánto, según el trabajo"),
+            ("search first", "**`search` primero**"),
             ("call get_context", "Llama a **`get_context` sin argumentos**"),
+            ("Trampas que ya han mordido", "Trampas que ya han mordido"),
+            ("only in the lists you will touch", "sólo en las listas que vas a tocar"),
             ("bring the board up to date", "## 3 · Poner el tablero al día"),
             ("move it to in progress", "`status: \"in_progress\"`"),
             ("commit message with its ref", "## 5 · Cada commit nombra su tarea"),
