@@ -2149,7 +2149,7 @@ fn tool_defs() -> Value {
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"], "description": "Optional; space when omitted." },
                     "ownerId": { "type": "string", "description": "The node's id, or its path as the map shows it." },
-                    "text": { "type": "string", "description": "One line, markdown, as it should read in a year: what, where, and the number or the command." },
+                    "text": { "type": "string", "description": "One line, markdown, as it should read in a year: what, where, and the number or the command. Do not write the date: it is added." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["ownerId", "text"]
@@ -3005,7 +3005,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
             }
             let page = agent_notes_page(cfg, &kind, &id)?;
-            let line = format!("- {} · {}", today_utc(), text.trim().replace('\n', " "));
+            let line = format!("- {} · {}", today_utc(), strip_leading_date(&text.trim().replace('\n', " ")));
             api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{}/append", urlencode(&page)), json!({ "text": line }))?;
             Ok(json!({ "remembered": true, "pageId": page, "line": line, "link": page_link(&kind, &id, &page) }))
         }
@@ -4458,6 +4458,52 @@ fn err(id: Value, code: i64, message: String) -> Value {
 
 /// Tool results are returned as MCP content blocks; `isError` lets the model see
 /// and recover from a failure instead of the transport dying.
+/// La huella del fichero del que arrancó este servidor: la AppImage (`APPIMAGE`)
+/// o el ejecutable. Se toma al arrancar y se compara en cada llamada.
+///
+/// Por qué: el MCP lo lanza Claude Code al abrir la sesión y vive con ella. Al
+/// actualizar la app se reemplaza el fichero, pero el proceso sigue siendo el
+/// viejo, con las herramientas viejas, hasta reconectar `/mcp`. El 22-oct-2026
+/// una sesión no encontraba `claim` ni `handoff` con la v1.19.0 ya instalada.
+/// La app no puede reiniciarlo (no es suyo); lo que sí puede es decirlo.
+static STARTED_FROM: std::sync::OnceLock<Option<(std::path::PathBuf, std::time::SystemTime, u64)>> = std::sync::OnceLock::new();
+
+fn binary_fingerprint(path: &std::path::Path) -> Option<(std::time::SystemTime, u64)> {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.modified().ok()?, m.len()))
+}
+
+fn binary_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("APPIMAGE").map(std::path::PathBuf::from).or_else(|| std::env::current_exe().ok())
+}
+
+fn remember_start() {
+    STARTED_FROM.get_or_init(|| {
+        let p = binary_path()?;
+        let (t, len) = binary_fingerprint(&p)?;
+        Some((p, t, len))
+    });
+}
+
+/// El aviso, si el fichero de disco ya no es el que arrancó.
+fn stale_binary_note() -> Option<String> {
+    let (path, t, len) = STARTED_FROM.get()?.as_ref()?;
+    stale_note_for(path, *t, *len)
+}
+
+fn stale_note_for(path: &std::path::Path, t: std::time::SystemTime, len: u64) -> Option<String> {
+    let (now_t, now_len) = binary_fingerprint(path)?;
+    if now_t == t && now_len == len {
+        return None;
+    }
+    Some(
+        "NOTE: cac was updated on this machine after this session started; this MCP server is still the old \
+         binary, so tools and their parameters may be missing or out of date. Tell the user, in one sentence, \
+         to reconnect it (/mcp → cac → reconnect) or open a new session."
+            .into(),
+    )
+}
+
 fn tool_result(value: Result<Value, String>) -> Value {
     match value {
         Ok(v) => json!({
@@ -4505,7 +4551,13 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
                     Err(e) => Err(e.clone()),
                 }
             };
-            Some(ok(id, tool_result(res)))
+            let mut out = tool_result(res);
+            if let Some(note) = stale_binary_note() {
+                if let Some(c) = out.get_mut("content").and_then(|c| c.as_array_mut()) {
+                    c.push(json!({ "type": "text", "text": note }));
+                }
+            }
+            Some(ok(id, out))
         }
         other => Some(err(id, -32601, format!("method not found: {other}"))),
     }
@@ -4576,6 +4628,23 @@ fn agent_notes_page(cfg: &Cfg, kind: &str, id: &str) -> Result<String, String> {
         "body": "Lo que los agentes descubren al trabajar aquí y no es una decisión ni cambia cómo se hace algo: un dato medido, un truco, un callejón sin salida. Una línea por nota, con su fecha. Lo que resulte ser una trampa sube a «Trampas que ya han mordido».\n",
     }))?;
     created.get("id").and_then(|v| v.as_str()).map(str::to_string).ok_or("cac did not say the id of the page it created".into())
+}
+
+/// La nota sin una fecha delante: la pone `remember`, y un agente que también
+/// la escribía dejaba «2026-10-22 · 2026-10-22» (visto en la primera nota
+/// real, 22-oct-2026).
+fn strip_leading_date(text: &str) -> &str {
+    let b = text.as_bytes();
+    let is_date = b.len() >= 10
+        && b[..4].iter().all(u8::is_ascii_digit)
+        && b[4] == b'-'
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[7] == b'-'
+        && b[8..10].iter().all(u8::is_ascii_digit);
+    if !is_date {
+        return text;
+    }
+    text[10..].trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '·' | '-' | '—' | ':' | ','))
 }
 
 /// La fecha de hoy, `AAAA-MM-DD` en UTC, sin más dependencias: días desde la
@@ -5010,6 +5079,7 @@ fn call_local_tool(name: &str, args: &Value) -> Result<Value, String> {
 
 /// Runs the stdio loop until EOF. Never writes anything but JSON-RPC to stdout.
 pub fn serve() {
+    remember_start();
     let cfg = cfg();
     if let Err(e) = &cfg {
         eprintln!("[cac-mcp] {e}");
@@ -6000,6 +6070,32 @@ mod tests {
         assert_eq!(out["conflict"], "task-claimed-by-other");
         assert_eq!(out["assignees"], json!(["ana"]));
         assert_eq!(out["handoff"], "Falta la release");
+    }
+
+    /// Roturas que detecta: repetir la fecha que el agente ya escribió, o
+    /// comerse texto que no es una fecha.
+    #[test]
+    fn remember_does_not_repeat_the_date() {
+        assert_eq!(strip_leading_date("2026-10-22 · El egress muere"), "El egress muere");
+        assert_eq!(strip_leading_date("2026-10-22: El egress muere"), "El egress muere");
+        assert_eq!(strip_leading_date("El egress muere"), "El egress muere");
+        assert_eq!(strip_leading_date("2026 fue el año"), "2026 fue el año");
+        assert_eq!(strip_leading_date("1234-56-7x algo"), "1234-56-7x algo");
+        assert_eq!(strip_leading_date("2026-10x22 algo"), "2026-10x22 algo");
+    }
+
+    /// Roturas que detecta: no avisar cuando el fichero cambió debajo de la
+    /// sesión, avisar sin que cambie, o que el aviso no diga cómo arreglarlo.
+    #[test]
+    fn an_updated_binary_under_a_running_session_is_said() {
+        let d = std::env::temp_dir().join(format!("cac-stale-{}", std::process::id()));
+        std::fs::write(&d, b"v1").unwrap();
+        let (t, len) = binary_fingerprint(&d).unwrap();
+        assert!(stale_note_for(&d, t, len).is_none(), "sin cambio no hay aviso");
+        std::fs::write(&d, b"v1.19.0").unwrap();
+        let note = stale_note_for(&d, t, len).expect("cambió el fichero");
+        assert!(note.contains("/mcp") && note.contains("reconnect"), "{note}");
+        let _ = std::fs::remove_file(d);
     }
 
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un

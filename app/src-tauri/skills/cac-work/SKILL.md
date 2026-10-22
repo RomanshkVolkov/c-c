@@ -11,7 +11,10 @@ del equipo. Por eso, en cada trabajo, **primero se lee y al final se escribe**,
 sin que nadie te lo tenga que recordar.
 
 Todo va por el MCP de cac (`mcp__cac__*`). Si no está conectado, dilo una vez
-y sigue con el trabajo: no es motivo para parar.
+y sigue con el trabajo: no es motivo para parar. Si una herramienta de esta
+skill no existe o no acepta un parámetro que aquí se nombra, la sesión tiene
+un MCP de una versión anterior: pídele al usuario reconectarlo (`/mcp`) o abrir
+una sesión nueva.
 
 ## Cuánto, según el trabajo
 
@@ -185,7 +188,7 @@ Por el camino:
 - **Lo que descubras y le sirva al siguiente, sea cual sea su tarea** (un
   truco, un número medido, un comando, algo que no funciona) va con
   `remember`: una línea con fecha en la página «Notas de agentes» del
-  espacio, que la búsqueda encuentra. No es una decisión ni cambia el
+  espacio, que la búsqueda encuentra (la fecha la pone cac: no la escribas). No es una decisión ni cambia el
   runbook; si resulta ser una trampa, sube a «Trampas que ya han mordido».
 - **Una lista de pendientes son subtareas** (`subtasks` al crear, o
   `create_task` con `parentId` después), no texto en un comentario: así se ve
@@ -303,4 +306,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v12 -->
+<!-- cac-work v13 -->
