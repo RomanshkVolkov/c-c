@@ -477,3 +477,18 @@ func TestASnippetDoesNotMixTheDocsBoldWithTheMatch(t *testing.T) {
 		t.Fatalf("fragmento: %q", s)
 	}
 }
+
+// Lo que va entre `<` y `>` sale en el fragmento. Rotura que detecta: pasarle
+// el cuerpo a `ts_headline` tal cual (toma `<número>` por una etiqueta HTML y
+// la quita) o no devolver el carácter a `<`.
+func TestASnippetKeepsWhatIsBetweenAngleBrackets(t *testing.T) {
+	f := newPagesFixture(t, "o1")
+	f.page(t, "o1", "Tareas", "Las tareas se nombran `clave-<número>` en cada commit.", nil)
+	hits, err := NewSearchRepository(f.db).Docs("nombran", "o1", 10)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("aciertos: %+v %v", hits, err)
+	}
+	if s := hits[0].Snippet; !strings.Contains(s, "`clave-<número>`") || strings.Contains(s, domain.SnippetLT) {
+		t.Fatalf("fragmento: %q", s)
+	}
+}

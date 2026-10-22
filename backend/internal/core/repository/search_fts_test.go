@@ -170,3 +170,34 @@ func TestNoteSearchIsFullText(t *testing.T) {
 		t.Fatalf("fragmento de la nota: %q", hits[1].Snippet)
 	}
 }
+
+// Lo que va entre `<` y `>` sale también en el fragmento de una tarea. Rotura
+// que detecta: pasarle la descripción a `ts_headline` sin proteger el `<`.
+func TestATaskSnippetKeepsWhatIsBetweenAngleBrackets(t *testing.T) {
+	db := searchFTSDB(t)
+	ftsTask(t, db, "t", "org-1", "Ramas", "La rama se llama <clave>-12-login, en minúsculas.")
+	hits, err := NewSearchRepository(db).Tasks("rama", "org-1", 10)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("aciertos: %+v %v", hits, err)
+	}
+	if !strings.Contains(hits[0].Snippet, "<clave>-12-login") {
+		t.Fatalf("fragmento: %q", hits[0].Snippet)
+	}
+}
+
+// Y en el de una nota. Rotura que detecta: no proteger el `<` del cuerpo.
+func TestANoteSnippetKeepsWhatIsBetweenAngleBrackets(t *testing.T) {
+	db := searchFTSDB(t)
+	x := &domain.Note{OwnerID: "u1", Title: "Apuntes", Body: "El tag queda <sha>-<servicio> al construir en el servidor."}
+	x.ID = "n"
+	if err := db.Create(x).Error; err != nil {
+		t.Fatal(err)
+	}
+	hits, err := NewSearchRepository(db).Notes("construir", "u1", 10)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("aciertos: %+v %v", hits, err)
+	}
+	if !strings.Contains(hits[0].Snippet, "<sha>-<servicio>") {
+		t.Fatalf("fragmento: %q", hits[0].Snippet)
+	}
+}

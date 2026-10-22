@@ -63,7 +63,7 @@ func (r *SearchRepository) Tasks(query, orgID string, limit int) ([]domain.Searc
 		)
 		SELECT t.id, t.title, l.name AS list_name,
 		       CASE WHEN to_tsvector('cac_simple', coalesce(t.description, '')) @@ q.q
-		            THEN ts_headline('cac_simple', t.description, q.q,
+		            THEN ts_headline('cac_simple', replace(t.description, '<', chr(57344)), q.q,
 		              'StartSel=⟦, StopSel=⟧, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
 		            ELSE '' END AS snippet
 		FROM best b JOIN items t ON t.id = b.id JOIN task_lists l ON l.id = t.list_id CROSS JOIN q
@@ -154,7 +154,7 @@ func (r *SearchRepository) Notes(query, ownerID string, limit int) ([]domain.Sea
 		)
 		SELECT b.id, b.title,
 		       CASE WHEN to_tsvector('cac_simple', coalesce(b.body, '')) @@ q.q
-		            THEN ts_headline('cac_simple', b.body, q.q,
+		            THEN ts_headline('cac_simple', replace(b.body, '<', chr(57344)), q.q,
 		              'StartSel=⟦, StopSel=⟧, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "')
 		            ELSE '' END AS snippet
 		FROM best b CROSS JOIN q
@@ -247,7 +247,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 		)
 		SELECT b.src, b.owner_kind, b.owner_id, b.tab, b.page_id, b.page_title,
 		       COALESCE(sp.name, f.name, l.name, '') AS name, coalesce(b.body, '') AS body,
-		       ts_headline('cac_simple', coalesce(b.body, ''), q.q,
+		       ts_headline('cac_simple', replace(coalesce(b.body, ''), '<', chr(57344)), q.q,
 		         'StartSel=⟦, StopSel=⟧, MaxFragments=2, MaxWords=14, MinWords=6, FragmentDelimiter=" … "') AS snippet
 		FROM best b CROSS JOIN q
 		LEFT JOIN task_spaces sp ON b.owner_kind = 'space' AND sp.id = b.owner_id

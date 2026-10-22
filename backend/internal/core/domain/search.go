@@ -193,6 +193,14 @@ const (
 	HighlightStop  = "⟧"
 )
 
+// SnippetLT: lo que va en lugar de `<` mientras Postgres arma el fragmento. El
+// analizador de texto toma `<número>` por una etiqueta HTML y `ts_headline` la
+// quita: en un `.md`, «`clave-<número>`» salía «`clave- `» (22-oct-2026). Un
+// carácter de uso privado de Unicode, que no aparece en un texto, y
+// `CleanSnippet` lo devuelve a `<`. Lo pone `replace(…, '<', chr(57344))` en
+// `repository/search.go`.
+const SnippetLT = "\uE000"
+
 // CleanSnippet: el fragmento con lo encontrado entre `**` y nada más en
 // negrita. Quita la negrita `**` que traía el documento, que en un fragmento
 // de una línea no dice nada, y sólo entonces pone la marca. `__` se deja: en un
@@ -200,5 +208,6 @@ const (
 func CleanSnippet(s string) string {
 	s = strings.ReplaceAll(s, "**", "")
 	s = strings.ReplaceAll(s, HighlightStart, "**")
+	s = strings.ReplaceAll(s, SnippetLT, "<")
 	return strings.ReplaceAll(s, HighlightStop, "**")
 }
