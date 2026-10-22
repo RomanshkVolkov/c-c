@@ -205,6 +205,38 @@ func (r *ContextRepository) ChangedDocs(docIDs []string, since time.Time) ([]Con
 	return rows, nil
 }
 
+// OpenBlockersOf: de cada tarea, las tareas **abiertas** de las que depende.
+func (r *ContextRepository) OpenBlockersOf(itemIDs []string) (map[string][]BlockerRow, error) {
+	out := map[string][]BlockerRow{}
+	if len(itemIDs) == 0 {
+		return out, nil
+	}
+	type row struct {
+		BlockerRow
+		ItemID string
+	}
+	var rows []row
+	err := r.db.Table("item_blocks b").
+		Select("b.item_id, i.id, i.title, i.space_id, i.project_id, i.seq, i.status").
+		Joins("JOIN items i ON i.id = b.blocked_by_id AND i.deleted_at IS NULL").
+		Where("b.item_id IN ? AND i.status IN ?", itemIDs, []domain.ReportStatus{domain.ReportPending, domain.ReportInProgress}).
+		Scan(&rows).Error
+	for _, x := range rows {
+		out[x.ItemID] = append(out[x.ItemID], x.BlockerRow)
+	}
+	return out, err
+}
+
+// Ready: lo abierto («pendiente») del espacio que no espera a ninguna tarea
+// abierta: por dónde se puede empezar. Lo más reciente primero. Uno más del
+// límite.
+func (r *ContextRepository) Ready(spaceID string, limit int) ([]domain.ContextTask, error) {
+	return r.tasks(r.db.Where("space_id = ? AND status = ?", spaceID, domain.ReportPending).
+		Where(`NOT EXISTS (SELECT 1 FROM item_blocks b JOIN items x ON x.id = b.blocked_by_id
+			WHERE b.item_id = items.id AND x.deleted_at IS NULL AND x.status IN ('pending', 'in_progress'))`).
+		Limit(limit+1), true)
+}
+
 // AssigneesOf: los usuarios (por `username`, que es como se nombran en el MCP)
 // responsables de cada tarea, en una consulta para todas.
 func (r *ContextRepository) AssigneesOf(itemIDs []string) (map[string][]string, error) {

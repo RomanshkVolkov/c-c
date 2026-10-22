@@ -251,7 +251,9 @@ func myWorkDB(t *testing.T) (*gorm.DB, func()) {
 	}
 	if err := db.AutoMigrate(
 		&domain.Organization{}, &domain.TaskSpace{}, &domain.TaskList{},
-		&domain.Item{}, &domain.ItemAssignee{}, &domain.ItemWatcher{}, &domain.User{},
+		&domain.Item{}, &domain.ItemAssignee{}, &domain.ItemBlock{}, &domain.ItemWatcher{}, &domain.User{},
+		// Lo que lee el detalle de una tarea (ClaimTask lo comprueba con Detail).
+		&domain.TaskTag{}, &domain.TaskTagLink{}, &domain.ItemComment{}, &domain.ItemAttachment{}, &domain.TaskGitLink{}, &domain.ReportProject{},
 	); err != nil {
 		t.Fatal(err)
 	}

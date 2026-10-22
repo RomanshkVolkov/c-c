@@ -31,7 +31,7 @@ type ContextOptions struct {
 }
 
 // ContextSections: lo que `Only` puede nombrar.
-var ContextSections = []string{"tree", "docs", "repoDocs", "inProgress", "changes"}
+var ContextSections = []string{"tree", "docs", "repoDocs", "inProgress", "changes", "ready"}
 
 // Wants dice si una parte va en la respuesta.
 func (o ContextOptions) Wants(section string) bool {
@@ -104,6 +104,9 @@ type ContextMap struct {
 	InProgress []ContextTask `json:"inProgress"`
 	// Changes: sólo con `since`. Lo que cambió desde entonces.
 	Changes *ContextChanges `json:"changes,omitempty"`
+	// Ready: sólo si `only` lo nombra. Lo abierto que no espera a ninguna
+	// tarea abierta: por dónde se puede empezar.
+	Ready []ContextTask `json:"ready,omitempty"`
 	// Truncated dice qué se recortó por tamaño, para no confundirlo con «no hay».
 	// Lo recortado se pide con `only` y `node`.
 	Truncated []string `json:"truncated,omitempty"`
@@ -194,7 +197,9 @@ type ContextTask struct {
 	ListID    string `json:"listId"`
 	ProjectID string `json:"-"`
 	// Status: sólo en `Changes` (en `InProgress` va implícito).
-	Status    string    `json:"status,omitempty"`
+	Status string `json:"status,omitempty"`
+	// BlockedBy: las referencias de las tareas **abiertas** de las que depende.
+	BlockedBy []string  `json:"blockedBy,omitempty"`
 	Assignees []string  `json:"assignees,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	// Handoff: el «dónde quedó» de la tarea (Item.Handoff), con quién lo

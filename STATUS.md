@@ -42,9 +42,18 @@ de la sesión; el `settings.json` va en la raíz, `app/` y `backend/`; pruebas
 en `hooks_test.py`); **`remember`** (una línea con fecha en la página «Notas de
 agentes» del espacio); **espejos**: una página idéntica a un `.md` atado se
 marca `mirrorOf` en el mapa y no sale en la búsqueda (manda el repo); skill
-**v11**; `CLAUDE.md` para Proteus en un PR de pocna-handover. Quedan `claim`/
-`blockedBy` (#212) y el pase de consolidación (#215), que jose aún no ha
-decidido.
+**v11**; `CLAUDE.md` para Proteus en un PR de pocna-handover (#27). **Quinta
+tanda** (jose dijo sí a las dos): **reclamar** una tarea (`POST
+/api/v1/tasks/{id}/claim`, `update_task claim: true`: responsable sin quitar a
+nadie y en curso de una vez; si es de otro, la respuesta lo dice con quién y
+su handoff), `ifStatus` en editar y mover (409 `task-status-changed`),
+**dependencias** (`item_blocks`, `blockedBy` por ref o id, en el detalle con
+si siguen abiertas, en el cajón, en el mapa, y `get_context only: ["ready"]`
+= lo pendiente que no espera a nada abierto); y la skill **`cac-consolidar`**
+(el pase semanal, manual: propone qué sube a Trampas, qué decisión falta, qué
+quedó viejo y qué notas ya cumplieron; `install_skill` la instala junto a
+`cac-work`); skill `cac-work` **v12**. Con esto el plan del 22-oct queda
+entero menos #219 (versiones), que espera a que duela.
 
 **15-oct, v1.6.101: responder, mudar la llamada y el eco** (App #156, #157,
 #158). Responder a un mensaje con su cita, en canales, directos y el chat de

@@ -1724,7 +1724,7 @@ fn tool_defs() -> Value {
                     "repo": { "type": "string", "description": "Optional. owner/name of a GitHub repository, instead of reading the git remote." },
                     "path": { "type": "string", "description": "Optional. The folder whose git remote to read. Defaults to the folder Claude Code opened (inside the AppImage, the folder it was launched from)." },
                     "since": { "type": "string", "description": "Optional. An RFC 3339 instant (2026-10-22T08:00:00Z): adds `changes`, what moved since then — tasks touched (with status, ref and handoff), decisions recorded, tabs and pages edited, repo files updated. What the next session of a piece of work wants to know." },
-                    "only": { "type": "array", "items": { "type": "string", "enum": ["tree", "docs", "repoDocs", "inProgress", "changes"] }, "description": "Optional. Which parts to return; the tree always comes. Use it to ask again for what `truncated` cut, or to keep a big space's map small." },
+                    "only": { "type": "array", "items": { "type": "string", "enum": ["tree", "docs", "repoDocs", "inProgress", "changes", "ready"] }, "description": "Optional. Which parts to return; the tree always comes. Use it to ask again for what `truncated` cut, or to keep a big space's map small. `ready` (only when named) lists the open tasks that wait for no open task: where to start." },
                     "node": { "type": "string", "description": "Optional. Only this node's document (space, folder or list id)." }
                 }
             }
@@ -1765,7 +1765,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), what it waits for (`blockedBy`, each with whether it is still open), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string", "description": "The task id, or its ref as people write it: `proteus-12` (space key and number) or a client's folio `acme-7`. `cac#12` does not resolve: a number without its space." } },
@@ -1822,7 +1822,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "update_task",
-            "description": "Change an existing task: title, markdown description, priority, tags, assignees, due date, its `handoff` (where it was left), or which column it sits in (status by name: open, in_progress, done, closed). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
+            "description": "Change an existing task: title, markdown description, priority, tags, assignees, due date, its `handoff` (where it was left), what it waits for (`blockedBy`), or which column it sits in (status by name: open, in_progress, done, closed). To take a task, pass `claim: true`: you become an assignee (nobody is removed) and it moves to in progress in one step; if it is already in progress with someone else the answer says so (`claimed: false`, with who and their handoff) and you comment instead of taking it. `ifStatus` makes any change conditional on the task still being in that state. Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1844,6 +1844,9 @@ fn tool_defs() -> Value {
                     },
                     "clearDueAt": { "type": "boolean", "description": "Remove the task's due date." },
                     "handoff": { "type": "string", "description": "Where the work was left, for whoever picks it up next: what is done, the next step, and how to check whether it shipped. Three lines, markdown. It REPLACES the previous handoff and is stamped with your name and the time; write it before you stop, and every time the state changes. An empty string clears it. Findings and discussion go in comments; this is the summary." },
+                    "claim": { "type": "boolean", "description": "Take the task: you become an assignee (the current ones stay) and it moves to in progress, atomically. Refused with `claimed: false` when it is already in progress with someone else." },
+                    "ifStatus": { "type": "string", "enum": ["pending", "in_progress", "resolved", "closed"], "description": "Only if the task is still in this state; otherwise nothing changes and the answer carries `conflict` with the real state and handoff. Use it when you read the task a while ago." },
+                    "blockedBy": { "type": "array", "items": { "type": "string" }, "description": "The tasks this one waits for, by ref (`proteus-12`) or id. Replaces the list; an empty list clears it. get_context then shows it in `blockedBy` and leaves the task out of `ready` while any of them is open." },
                     "status": { "type": "string", "enum": ["open", "in_progress", "done", "closed"], "description": "Move the task to the column of this state in its own list — no get_board needed. This is also how a subtask is ticked off (done)." },
                     "statusId": { "type": "string", "description": "Alternative to status: the exact column id from get_board." },
                     "visibility": {
@@ -2000,7 +2003,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "install_skill",
-            "description": "Install (or update) the cac-work skill for Claude Code on this machine: how to find a repository's place in cac, read its docs before starting, register the work as a task, record decisions and keep it all up to date. Writes one fixed file, skills/cac-work/SKILL.md in the Claude Code config folder, with the text shipped inside this cac app — nothing is downloaded. ASK THE USER FIRST; call it only when they agreed. It takes effect in the next session. Needs no scope; it never touches cac.",
+            "description": "Install (or update) the cac skills for Claude Code on this machine: cac-work (how to find a repository's place in cac, read its docs before starting, register the work as a task, record decisions and keep it all up to date) and cac-consolidar (the weekly pass that proposes what to promote, record or retire). Writes two fixed files, skills/cac-work/SKILL.md and skills/cac-consolidar/SKILL.md in the Claude Code config folder, with the text shipped inside this cac app — nothing is downloaded. ASK THE USER FIRST; call it only when they agreed. It takes effect in the next session. Needs no scope; it never touches cac.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -3143,7 +3146,26 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 let target = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)));
                 return dry_run(cfg, "tasks:manage", target);
             }
+            // Reclamar va antes que nada: es una operación del servidor (responsable
+            // + en curso, de una vez), y si la tarea ya es de otro no se toca nada.
+            let mut claimed = false;
+            if arg_bool(args, "claim") {
+                let mut claim = json!({});
+                if let Some(st) = arg_str(args, "ifStatus") {
+                    claim["ifStatus"] = json!(st);
+                }
+                match api_post(cfg, &format!("/api/v1/tasks/{}/claim", urlencode(&id)), claim) {
+                    Ok(_) => claimed = true,
+                    Err(e) => return task_conflict(cfg, &id, &e, "claimed").ok_or(e).map(Ok)?,
+                }
+            }
             let mut body = json!({});
+            if let Some(st) = arg_str(args, "ifStatus") {
+                body["ifStatus"] = json!(st);
+            }
+            if let Some(b) = args.get("blockedBy").and_then(|v| v.as_array()) {
+                body["blockedBy"] = json!(b);
+            }
             // visibility rides with the rest, but it is the one key here that
             // changes who can read the item rather than what it says.
             for key in ["title", "description", "priority", "visibility"] {
@@ -3173,29 +3195,34 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             // Moving a card is its own endpoint: the server derives the ordering
             // rank from the neighbours, so a status change can't be a field patch.
             let status_id = move_target(args)?;
-            if body.as_object().map(|o| o.is_empty()).unwrap_or(true) && status_id.is_none() {
+            // `ifStatus` solo no es un cambio: acompaña a otro.
+            let only_guard = body.as_object().map(|o| o.keys().all(|k| k == "ifStatus")).unwrap_or(true);
+            if only_guard && status_id.is_none() && !claimed {
                 return Err(
-                    "Nothing to change: send at least one of title, description, priority, visibility, tags, assignees, dueAt, status or statusId"
+                    "Nothing to change: send at least one of title, description, priority, visibility, tags, assignees, dueAt, handoff, blockedBy, claim, status or statusId"
                         .into(),
                 );
             }
 
             let mut changed: Vec<&str> = vec![];
-            if !body.as_object().map(|o| o.is_empty()).unwrap_or(true) {
-                api_patch(
-                    cfg,
-                    &format!("/api/v1/tasks/{}", urlencode(&id)),
-                    body.clone(),
-                )?;
-                changed.extend(body.as_object().unwrap().keys().map(|k| k.as_str()));
+            if claimed {
+                changed.push("claim");
+            }
+            if !only_guard {
+                if let Err(e) = api_patch(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)), body.clone()) {
+                    return task_conflict(cfg, &id, &e, "updated").ok_or(e).map(Ok)?;
+                }
+                changed.extend(body.as_object().unwrap().keys().filter(|k| *k != "ifStatus").map(|k| k.as_str()));
             }
             if let Some(status) = status_id {
                 // Empty neighbours = drop it at the top of the target column.
-                api_post(
-                    cfg,
-                    &format!("/api/v1/tasks/{}/move", urlencode(&id)),
-                    json!({ "statusId": status, "afterId": "", "beforeId": "" }),
-                )?;
+                let mut mv = json!({ "statusId": status, "afterId": "", "beforeId": "" });
+                if let Some(st) = arg_str(args, "ifStatus") {
+                    mv["ifStatus"] = json!(st);
+                }
+                if let Err(e) = api_post(cfg, &format!("/api/v1/tasks/{}/move", urlencode(&id)), mv) {
+                    return task_conflict(cfg, &id, &e, "moved").ok_or(e).map(Ok)?;
+                }
                 changed.push("statusId");
             }
             let after = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))?;
@@ -4670,6 +4697,35 @@ fn subtask_key(parent_key: &str, i: usize) -> String {
 /// La columna a la que mover en `update_task`: `statusId` (del tablero) o
 /// `status` por nombre, que el backend resuelve en la lista de la tarea
 /// (`domain.MoveStatusID`). Los dos a la vez es un error: no se sabe cuál vale.
+/// Un 409 al reclamar, editar o mover con condición no es un error para el
+/// agente: es la respuesta «la tarea ya no está como creías», con el estado
+/// real, quién la lleva y su «dónde quedó», para comentar en vez de pisar
+/// (22-oct-2026). Cualquier otro fallo sigue siendo un error.
+fn task_conflict(cfg: &Cfg, id: &str, err: &str, verb: &str) -> Option<Value> {
+    let code = if err.contains("task-claimed-by-other") {
+        "task-claimed-by-other"
+    } else if err.contains("task-status-changed") {
+        "task-status-changed"
+    } else {
+        return None;
+    };
+    let d = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(id))).ok()?;
+    let who: Vec<Value> = d.get("assignees").and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|u| u.get("username").cloned()).collect()).unwrap_or_default();
+    Some(json!({
+        verb: false,
+        "conflict": code,
+        "why": if code == "task-claimed-by-other" {
+            "The task is already in progress with someone else: comment on it instead of taking it."
+        } else {
+            "The task is no longer in the state you expected: read it again before changing it."
+        },
+        "status": d.get("task").and_then(|t| t.get("status")),
+        "assignees": who,
+        "handoff": d.get("task").and_then(|t| t.get("handoff")),
+        "handoffBy": d.get("handoffBy"),
+    }))
+}
+
 fn move_target(args: &Value) -> Result<Option<String>, String> {
     let id = arg_str(args, "statusId");
     let named = arg_str(args, "status");
@@ -4750,6 +4806,11 @@ fn github_repo_from_remote(url: &str) -> Option<String> {
 /// cómo.
 const WORK_SKILL: &str = include_str!("../skills/cac-work/SKILL.md");
 const WORK_SKILL_NAME: &str = "cac-work";
+/// La segunda skill que viaja con la app: el pase de consolidación, manual
+/// (decidido con jose el 22-oct-2026). Se instala junto a `cac-work`, sin
+/// versión que comparar: la última que trae la app.
+const CONSOLIDATE_SKILL: &str = include_str!("../skills/cac-consolidar/SKILL.md");
+const CONSOLIDATE_SKILL_NAME: &str = "cac-consolidar";
 
 /// La versión de una copia de la skill, de su marca final `<!-- cac-work vN -->`.
 /// Se sube a mano al cambiar la skill: es lo que hace que se ofrezca actualizar.
@@ -4810,8 +4871,9 @@ fn instructions(state: Option<SkillState>) -> String {
          progress carries its handoff (where the last session left it) in get_context, so read that, not the thread; \
          tasks left in progress by earlier sessions whose work has since been published (released, deployed) are \
          moved to done with a comment saying how you checked; what depends on a person, ask.\n\
-         3. THE TASK AND ITS COMMITS. Find or create your task and move it to in progress (update_task status: \
-         in_progress). End every commit message with its ref, e.g. (proteus-12), so cac links the commit to it; in \
+         3. THE TASK AND ITS COMMITS. Find or create your task and claim it (update_task claim: true: you become an \
+         assignee and it moves to in progress in one step; if it is already in progress with someone else, comment \
+         instead of taking it). What it waits for goes in blockedBy, not in a comment. End every commit message with its ref, e.g. (proteus-12), so cac links the commit to it; in \
          a repository cac is not connected to, such as a client's own GitHub organization, leave the commit clean \
          and note the repo and sha in the task instead. Record findings as task comments and decisions with \
          record_decision (a decision that changes supersedes the old one; it is not rewritten); a fact useful to \
@@ -4819,7 +4881,8 @@ fn instructions(state: Option<SkillState>) -> String {
          4. CLOSE HONESTLY. Before you tell the user you are done, write the task's handoff (update_task handoff: \
          what is done, the next step, how to check it shipped) and update the task: done means published, not \
          committed; committed but not yet released stays in progress with a comment saying where it ships, so the \
-         next session knows what to check.",
+         next session knows what to check. Once a week, or when asked to consolidate, the cac-consolidar skill (the \
+         weekly pass) proposes what to promote to the pitfalls, which decision is missing and what went stale.",
     );
     match state {
         Some(SkillState::Missing) => s.push_str(
@@ -4862,6 +4925,12 @@ fn install_skill(dir: &std::path::Path, dry_run: bool) -> Result<Value, String> 
     std::fs::create_dir_all(path.parent().unwrap_or(dir))
         .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
     std::fs::write(&path, WORK_SKILL).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+    let second = dir.join(CONSOLIDATE_SKILL_NAME).join("SKILL.md");
+    std::fs::create_dir_all(second.parent().unwrap_or(dir))
+        .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+    std::fs::write(&second, CONSOLIDATE_SKILL).map_err(|e| format!("Could not write {}: {e}", second.display()))?;
+    let mut result = result;
+    result["also"] = json!(second.display().to_string());
     Ok(result)
 }
 
@@ -5901,6 +5970,38 @@ mod tests {
         assert_eq!(civil_date(1_792_627_200), "2026-10-22");
     }
 
+    /// Roturas que detecta: reclamar por la ruta de editar (no es atómico);
+    /// perder `ifStatus` en el PATCH o en el movimiento; tirar `blockedBy`; o
+    /// devolver un 409 como error en vez de decir quién la lleva.
+    #[test]
+    fn claiming_is_one_call_and_a_conflict_says_who_has_it() {
+        let (cfg, log) = fake_cac(|_, _, _| json!({ "task": { "id": "t1", "seq": 5, "status": "in_progress" }, "assignees": [{ "username": "ana" }], "comments": [] }));
+        call_tool(&cfg, "update_task", &json!({ "id": "t1", "claim": true, "ifStatus": "pending", "blockedBy": ["proteus-12"], "status": "in_progress" })).unwrap();
+        let calls: Vec<(String, String, Value)> = log.lock().unwrap().clone();
+        assert_eq!(calls[0].0, "POST");
+        assert_eq!(calls[0].1, "/api/v1/tasks/t1/claim");
+        assert_eq!(calls[0].2["ifStatus"], "pending");
+        let patch = calls.iter().find(|(m, _, _)| m == "PATCH").expect("el PATCH con blockedBy");
+        assert_eq!(patch.2["blockedBy"], json!(["proteus-12"]));
+        assert_eq!(patch.2["ifStatus"], "pending");
+        let mv = calls.iter().find(|(_, p, _)| p.ends_with("/move")).expect("el movimiento");
+        assert_eq!(mv.2["ifStatus"], "pending");
+
+        // Ya en curso con otra persona: no es un error, es la respuesta.
+        let (cfg, _) = fake_cac(|m, p, _| {
+            if m == "POST" && p.ends_with("/claim") {
+                json!({ "__status": 409, "error": "task-claimed-by-other" })
+            } else {
+                json!({ "task": { "id": "t1", "status": "in_progress", "handoff": "Falta la release" }, "handoffBy": "Ana", "assignees": [{ "username": "ana" }], "comments": [] })
+            }
+        });
+        let out = call_tool(&cfg, "update_task", &json!({ "id": "t1", "claim": true })).unwrap();
+        assert_eq!(out["claimed"], false);
+        assert_eq!(out["conflict"], "task-claimed-by-other");
+        assert_eq!(out["assignees"], json!(["ana"]));
+        assert_eq!(out["handoff"], "Falta la release");
+    }
+
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un
     /// fork, `aaa` saldría antes por orden alfabético).
     #[test]
@@ -6025,10 +6126,17 @@ mod tests {
                 let body: Value = serde_json::from_slice(&buf).unwrap_or(Value::Null);
                 let data = answer(&method, &path, &body);
                 log.lock().unwrap().push((method, path, body));
-                let out = json!({ "success": true, "data": data }).to_string();
+                // Una respuesta con `__status` es un error de cac con ese código,
+                // tal como lo escribe el backend: `error` con la etiqueta.
+                let status = data.get("__status").and_then(|s| s.as_u64()).unwrap_or(200);
+                let out = if status == 200 {
+                    json!({ "success": true, "data": data }).to_string()
+                } else {
+                    json!({ "success": false, "error": data.get("error"), "message": data.get("message") }).to_string()
+                };
                 let _ = write!(
                     stream,
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
                     out.len()
                 );
             }
@@ -6097,8 +6205,10 @@ mod tests {
             ("read with get_decision", "`get_decision`"),
             ("supersedes the old one", "`supersedes`"),
             ("goes with remember", "`remember`"),
+            ("the weekly pass", "cac-consolidar"),
             ("bring the board up to date", "## 3 · Poner el tablero al día"),
-            ("move it to in progress", "`status: \"in_progress\"`"),
+            ("claim it", "`claim: true`"),
+            ("goes in blockedBy", "`blockedBy`"),
             ("commit message with its ref", "## 5 · Cada commit nombra su tarea"),
             ("a client's own GitHub organization", "**En un repo que no está conectado a cac**"),
             ("decisions with record_decision", "`record_decision`"),
@@ -6186,6 +6296,9 @@ mod tests {
         assert_eq!(out["replaced"], json!(false));
         let path = d.join(WORK_SKILL_NAME).join("SKILL.md");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), WORK_SKILL);
+        // Y la de consolidar, a su lado.
+        assert_eq!(std::fs::read_to_string(d.join(CONSOLIDATE_SKILL_NAME).join("SKILL.md")).unwrap(), CONSOLIDATE_SKILL);
+        assert!(CONSOLIDATE_SKILL.starts_with("---\nname: cac-consolidar\n"));
 
         write_installed(&d, "vieja");
         assert_eq!(install_skill(&d, false).unwrap()["replaced"], json!(true));

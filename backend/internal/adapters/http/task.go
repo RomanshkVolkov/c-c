@@ -185,6 +185,7 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.Cal
 		r.Patch("/{id}", h.UpdateTask)
 		r.Delete("/{id}", h.DeleteTask)
 		r.Post("/{id}/move", h.MoveTask)
+		r.Post("/{id}/claim", h.ClaimTask)
 		r.Post("/{id}/watch", h.Watch)
 		r.Delete("/{id}/watch", h.Unwatch)
 		r.Post("/{id}/comments", h.AddComment)

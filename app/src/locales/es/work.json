@@ -200,7 +200,9 @@
     "handoffHint": "Qué está hecho, el siguiente paso y cómo comprobar si ya salió. Se reemplaza entero.",
     "noHandoff": "Nadie ha dejado escrito dónde quedó.",
     "handoffBy": "{{who}}, {{when}}",
-    "writeHandoff": "Escribir dónde quedó"
+    "writeHandoff": "Escribir dónde quedó",
+    "blockedBy": "Espera a",
+    "blockerDone": "hecha"
   },
   "notes": {
     "title": "Notas",

@@ -123,6 +123,7 @@ func DBConnection() {
 		&domain.TaskTag{},
 		&domain.TaskTagLink{},
 		&domain.ItemAssignee{},
+		&domain.ItemBlock{},
 		&domain.ItemWatcher{},
 		&domain.Notification{},
 		&domain.NotificationPrefs{},

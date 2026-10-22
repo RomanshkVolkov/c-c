@@ -85,6 +85,7 @@ type TaskHandler interface {
 	CreateTask(w http.ResponseWriter, r *http.Request)
 	GetTask(w http.ResponseWriter, r *http.Request)
 	GetTaskByRef(w http.ResponseWriter, r *http.Request)
+	ClaimTask(w http.ResponseWriter, r *http.Request)
 	TaskGit(w http.ResponseWriter, r *http.Request)
 	UpdateTask(w http.ResponseWriter, r *http.Request)
 	MoveTask(w http.ResponseWriter, r *http.Request)
@@ -160,6 +161,16 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 		SendErrorResponse(w, http.StatusConflict,
 			"Another space or a client project in this organization already uses that key", err.Error())
 		return true
+	case errors.Is(err, service.ErrTaskStatusChanged):
+		SendErrorResponse(w, http.StatusConflict,
+			"The task is no longer in the state you expected; read it again before changing it.", "task-status-changed")
+	case errors.Is(err, service.ErrTaskClaimedByOther):
+		SendErrorResponse(w, http.StatusConflict,
+			"The task is already in progress with someone else; comment instead of taking it.", "task-claimed-by-other")
+	case errors.Is(err, service.ErrBlockerNotFound):
+		SendErrorResponse(w, http.StatusBadRequest, err.Error(), "blocker-not-found")
+	case errors.Is(err, service.ErrBlockerIsSelf):
+		SendErrorResponse(w, http.StatusBadRequest, "A task cannot wait for itself.", "blocker-is-self")
 	case errors.Is(err, service.ErrGeneralSpaceProtected):
 		SendErrorResponse(w, http.StatusConflict,
 			"The general room is the organization's channel, not a place for tasks: "+
@@ -995,6 +1006,33 @@ func (h *taskHandler) GetTaskByRef(w http.ResponseWriter, r *http.Request) {
 	detail, err := h.svc.Detail(t.ID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to load task", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.TaskDetail]{Success: true, Data: detail})
+}
+
+// ClaimTask: reclamar la tarea (responsable + en curso, de una vez). Ver
+// TaskService.ClaimTask. Body opcional: `{"ifStatus": "pending"}`.
+func (h *taskHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
+	t, ok := h.resolveTask(w, r, chi.URLParam(r, "id"), true)
+	if !ok {
+		return
+	}
+	var req struct {
+		IfStatus string `json:"ifStatus"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	actor, _ := currentUser(r)
+	if err := h.svc.ClaimTask(r.Context(), t.ID, actor.UserID, req.IfStatus); err != nil {
+		if mapTaskError(w, err) {
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to claim task", err.Error())
+		return
+	}
+	detail, err := h.svc.Detail(t.ID)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to reload task", err.Error())
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[*domain.TaskDetail]{Success: true, Data: detail})

@@ -137,6 +137,23 @@ func (s *ContextService) MapWith(orgID, spaceID string, repo *domain.ContextRepo
 		out.InProgress = append(out.InProgress, tasks...)
 	}
 
+	// `ready` sólo si se pide por nombre: es lo abierto entero, y el mapa por
+	// defecto no lo lleva para no crecer con cada tarea pendiente.
+	if slices.Contains(opts.Only, "ready") {
+		ready, err := s.repo.Ready(spaceID, domain.ContextMaxInProgress)
+		if err != nil {
+			return out, err
+		}
+		if len(ready) > domain.ContextMaxInProgress {
+			ready = ready[:domain.ContextMaxInProgress]
+			out.Truncated = append(out.Truncated, "ready")
+		}
+		if err := s.decorateTasks(tree.Key, ready); err != nil {
+			return out, err
+		}
+		out.Ready = ready
+	}
+
 	if opts.Since != nil && opts.Wants("changes") {
 		changes, err := s.changes(orgID, spaceID, tree.Key, *opts.Since, out.Nodes, docs)
 		if err != nil {
@@ -163,6 +180,27 @@ func (s *ContextService) decorateTasks(spaceKey string, tasks []domain.ContextTa
 	if err != nil {
 		return err
 	}
+	blockers, err := s.repo.OpenBlockersOf(ids)
+	if err != nil {
+		return err
+	}
+	keys := map[string]string{} // espacio → clave, para las dependencias de otro espacio
+	ref := func(spaceID, projectID string, seq int) string {
+		if projectID != "" {
+			if slug := s.tasks.ProjectSlug(projectID); slug != "" {
+				return domain.Folio(slug, seq)
+			}
+			return ""
+		}
+		k, ok := keys[spaceID]
+		if !ok {
+			if sp, err := s.tasks.FindSpace(spaceID); err == nil && sp != nil {
+				k = sp.Key
+			}
+			keys[spaceID] = k
+		}
+		return domain.SpaceTaskRef(k, seq)
+	}
 	for i := range tasks {
 		t := &tasks[i]
 		if t.ProjectID == "" {
@@ -173,6 +211,11 @@ func (s *ContextService) decorateTasks(spaceKey string, tasks []domain.ContextTa
 		t.Assignees = assignees[t.ID]
 		if t.HandoffByID != "" {
 			t.HandoffBy = s.repo.DisplayName(t.HandoffByID)
+		}
+		for _, b := range blockers[t.ID] {
+			if r := ref(b.SpaceID, b.ProjectID, b.Seq); r != "" {
+				t.BlockedBy = append(t.BlockedBy, r)
+			}
 		}
 	}
 	return nil

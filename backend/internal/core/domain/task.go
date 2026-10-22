@@ -202,6 +202,28 @@ type ItemAssignee struct {
 
 func (ItemAssignee) TableName() string { return "item_assignees" }
 
+// ItemBlock: `ItemID` no puede seguir hasta que `BlockedByID` esté hecha.
+//
+// Hasta el 22-oct-2026 esto era texto en un comentario («Espera a proteus-12»)
+// que cada sesión tenía que ir a comprobar a mano. Como fila, el mapa dice qué
+// está listo para empezar (`ready`) y qué está parado por qué.
+type ItemBlock struct {
+	ItemID      string `gorm:"type:varchar(36);primaryKey" json:"itemId"`
+	BlockedByID string `gorm:"type:varchar(36);primaryKey;index" json:"blockedById"`
+}
+
+func (ItemBlock) TableName() string { return "item_blocks" }
+
+// TaskBlocker: una tarea de la que depende otra, como la enseña el detalle.
+type TaskBlocker struct {
+	ID     string       `json:"id"`
+	Ref    string       `json:"ref,omitempty"`
+	Title  string       `json:"title"`
+	Status ReportStatus `json:"status"`
+	// Open: sigue sin hacer, así que sigue bloqueando.
+	Open bool `json:"open"`
+}
+
 // TaskComment is an internal ItemComment: nobody outside cac ever reads one.
 type TaskComment = ItemComment
 
@@ -843,6 +865,12 @@ type UpdateTaskRequest struct {
 	// Handoff reemplaza el «dónde quedó» (ver Item.Handoff). Vacío lo quita.
 	// Con tope: es un resumen para leer de un vistazo, no otro hilo.
 	Handoff *string `json:"handoff" validate:"omitempty,max=2000"`
+	// IfStatus: sólo si la tarea sigue en ese estado; si no, 409 con el estado
+	// real. Para que dos agentes no se pisen sin enterarse (22-oct-2026).
+	IfStatus *string `json:"ifStatus" validate:"omitempty,oneof=pending in_progress resolved closed"`
+	// BlockedBy: las tareas de las que depende, por id o por referencia
+	// (`proteus-12`); reemplaza la lista. Vacío la quita. Ver ItemBlock.
+	BlockedBy *[]string `json:"blockedBy"`
 	// Nil leaves membership alone; an empty slice clears it.
 	TagIDs      *[]string `json:"tagIds"`
 	AssigneeIDs *[]string `json:"assigneeIds"`
@@ -869,6 +897,8 @@ type UpdateTaskRequest struct {
 // derives the rank, so clients never compute ordering.
 type MoveTaskRequest struct {
 	StatusID string `json:"statusId" validate:"required"`
+	// IfStatus: como en UpdateTaskRequest: mover sólo desde ese estado.
+	IfStatus string `json:"ifStatus" validate:"omitempty,oneof=pending in_progress resolved closed"`
 	AfterID  string `json:"afterId"`  // task it should follow (empty = top)
 	BeforeID string `json:"beforeId"` // task it should precede (empty = bottom)
 }
@@ -1162,6 +1192,8 @@ type TaskDetail struct {
 	// HandoffBy: quién escribió el «dónde quedó» (Item.Handoff), con su nombre
 	// visible; la fecha va en la propia tarea.
 	HandoffBy string `json:"handoffBy,omitempty"`
+	// BlockedBy: de qué tareas depende, y si siguen abiertas. Ver ItemBlock.
+	BlockedBy []TaskBlocker `json:"blockedBy"`
 	// Telemetry is the decrypted breadcrumbs blob, when the report carried one
 	// and it hasn't been purged. The report facade has always returned this; the
 	// board could not show what led up to a bug without it.

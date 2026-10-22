@@ -200,7 +200,9 @@
     "handoffHint": "What is done, the next step and how to check it shipped. It replaces the previous one.",
     "noHandoff": "Nobody has written down where this was left.",
     "handoffBy": "{{who}}, {{when}}",
-    "writeHandoff": "Write where it was left"
+    "writeHandoff": "Write where it was left",
+    "blockedBy": "Waits for",
+    "blockerDone": "done"
   },
   "notes": {
     "title": "Notes",

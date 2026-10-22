@@ -138,10 +138,11 @@ el tablero, con `get_board`):
 3. Lo que dependa de una persona («probarlo en una llamada», «revisar en
    local»), no lo cierres por tu cuenta: díselo al usuario, en una línea por
    tarea.
-4. Si una tarea dice **«Espera a <ref>»** (ver el paso 4), mira con `get_task`
-   o `search` si esa tarea ya está hecha. Si lo está, deja en la que esperaba
-   un comentario «Desbloqueada: <ref> ya está» y díselo al usuario. Ésa puede
-   seguir.
+4. Lo que espera a otra tarea lo dice el mapa (`blockedBy`, sólo las que
+   siguen abiertas). Una tarea sin nada en `blockedBy` puede seguir; y
+   `get_context` con `only: ["ready"]` da lo pendiente por lo que se puede
+   empezar. (Un comentario viejo «Espera a <ref>» es de antes del campo: si lo
+   ves, pásalo a `blockedBy`.)
 
 Es lo primero, y es rápido: unas pocas llamadas. Si no se hace, el tablero
 miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
@@ -159,8 +160,12 @@ miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
      protege de nada.
    Si el trabajo tiene pasos, pásalos en `subtasks`: se crean en la misma
    llamada como su checklist.
-3. **Muévela a «en curso»** con `update_task` y `status: "in_progress"`. No
-   hace falta pedir el tablero.
+3. **Reclámala** con `update_task` y `claim: true`: te pone de responsable
+   (sin quitar a nadie) y la mueve a en curso de una vez. Si ya está en curso
+   con otra persona, la respuesta lo dice (`claimed: false`, con quién y su
+   «dónde quedó»): no es tuya, comenta en ella en vez de tomarla. Para mover
+   sin reclamar, `status: "in_progress"`; y si leíste la tarea hace rato,
+   `ifStatus` con el estado que viste, para no pisar a nadie.
 
 **Una lista con `projectId` es de un cliente.** Lo que crees ahí lo ve ese
 cliente y gasta un número de su folio para siempre. Usa
@@ -168,17 +173,12 @@ cliente y gasta un número de su folio para siempre. Usa
 
 Por el camino:
 
-- **Si tu tarea no puede seguir hasta que se haga otra,** déjalo escrito con un
-  comentario que empiece así, con su referencia:
-
-  ```
-  Espera a command-and-control-185: necesita que el tag de la imagen lleve el servicio.
-  ```
-
-  Una línea por cada tarea de la que dependa. Así la siguiente sesión sabe qué
-  está parado por qué, y lo comprueba al poner el tablero al día (paso 3). Si
-  es una espera de algo de fuera (AWS, una llamada, una release), no lleva
-  referencia: basta con decir qué falta.
+- **Si tu tarea no puede seguir hasta que se haga otra,** díselo a cac:
+  `update_task` con `blockedBy: ["command-and-control-185"]` (referencias o
+  ids; la lista entera cada vez). El mapa enseña a qué espera cada tarea y
+  deja fuera de `ready` las que esperan a algo abierto; el detalle dice si
+  cada dependencia sigue abierta. Si es una espera de algo de fuera (AWS, una
+  llamada, una release), eso va en el `handoff`: basta con decir qué falta.
 - **Lo que descubras de esta tarea** va con `add_task_comment`: un fallo
   de base, un dato medido, un callejón sin salida. Los comentarios sólo se
   añaden; no pisan nada de nadie.
@@ -272,7 +272,7 @@ que su trabajo sale.
 | En un PR abierto que revisa otra persona (también en un repo de fuera) | `in_progress`, con «PR #N abierto, revisa <quién>» y el enlace |
 | Desplegado, soltado o entregado | `done` |
 | Parado por una decisión del usuario o por algo de fuera | `in_progress`, con un comentario que diga qué falta |
-| Parado porque espera a otra tarea | `in_progress`, con «Espera a <ref>: …» |
+| Parado porque espera a otra tarea | `in_progress`, con la tarea en `blockedBy` y el porqué en el handoff |
 | Descartado | `closed`, con el porqué |
 
 Y deja un comentario de cierre corto:
@@ -289,6 +289,12 @@ línea.
 - No crear una tarea por cada mensaje: una por trabajo, con subtareas si crece.
 - No reescribir la descripción ni el documento de otra persona: comenta.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
+- No tomar una tarea que otro lleva: si `claim` dice que es de otro, se
+  comenta y se sigue con otra cosa.
+
+Una vez por semana, o cuando digan «consolida», la skill `cac-consolidar`
+pasa por lo que entró y propone qué sube a Trampas, qué decisión falta y qué
+quedó viejo.
 
 ---
 
@@ -297,4 +303,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v11 -->
+<!-- cac-work v12 -->

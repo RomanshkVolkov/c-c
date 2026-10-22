@@ -1421,6 +1421,55 @@ func (r *TaskRepository) FindByRef(orgIDs []string, ref domain.TaskRef) (*domain
 	return nil, gorm.ErrRecordNotFound
 }
 
+// AddAssignee pone a alguien como responsable sin quitar a los que ya están
+// (reclamar una tarea no se la quita a su dueño). Si no había ninguno, queda
+// como principal.
+func (r *TaskRepository) AddAssignee(taskID, userID string) error {
+	var n int64
+	r.db.Model(&domain.ItemAssignee{}).Where("item_id = ?", taskID).Count(&n)
+	var ya int64
+	r.db.Model(&domain.ItemAssignee{}).Where("item_id = ? AND user_id = ?", taskID, userID).Count(&ya)
+	if ya > 0 {
+		return nil
+	}
+	return r.db.Create(&domain.ItemAssignee{ItemID: taskID, UserID: userID, Primary: n == 0}).Error
+}
+
+// SetBlockers reemplaza las tareas de las que depende `taskID`.
+func (r *TaskRepository) SetBlockers(taskID string, blockerIDs []string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("item_id = ?", taskID).Delete(&domain.ItemBlock{}).Error; err != nil {
+			return err
+		}
+		if len(blockerIDs) == 0 {
+			return nil
+		}
+		rows := make([]domain.ItemBlock, len(blockerIDs))
+		for i, id := range blockerIDs {
+			rows[i] = domain.ItemBlock{ItemID: taskID, BlockedByID: id}
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
+// BlockerRow: una tarea de la que depende otra, con lo que hace falta para
+// nombrarla (la referencia la pone el servicio).
+type BlockerRow struct {
+	ID, Title, SpaceID, ProjectID string
+	Seq                           int
+	Status                        domain.ReportStatus
+}
+
+// BlockersOf: de qué depende una tarea, vivas y en el orden en que se apuntaron.
+func (r *TaskRepository) BlockersOf(taskID string) ([]BlockerRow, error) {
+	rows := []BlockerRow{}
+	err := r.db.Table("item_blocks b").
+		Select("i.id, i.title, i.space_id, i.project_id, i.seq, i.status").
+		Joins("JOIN items i ON i.id = b.blocked_by_id AND i.deleted_at IS NULL").
+		Where("b.item_id = ?", taskID).Scan(&rows).Error
+	return rows, err
+}
+
 // DisplayName: cómo se llama una persona, para firmar lo que ven los demás (el
 // nombre de la voz). Por `nombreVisible`; vacío si no existe.
 func (r *TaskRepository) DisplayName(userID string) string {

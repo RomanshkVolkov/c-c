@@ -53,7 +53,7 @@ func contextDB(t *testing.T) *gorm.DB {
 		}
 	})
 	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.TaskSpace{}, &domain.TaskFolder{},
-		&domain.TaskList{}, &domain.Item{}, &domain.ItemAssignee{}, &domain.Doc{}, &domain.DocTab{}, &domain.DocPage{},
+		&domain.TaskList{}, &domain.Item{}, &domain.ItemAssignee{}, &domain.ItemBlock{}, &domain.Doc{}, &domain.DocTab{}, &domain.DocPage{},
 		&domain.Decision{}, &domain.GitHubRepo{}, &domain.RepoDoc{}); err != nil {
 		t.Fatal(err)
 	}
@@ -152,14 +152,17 @@ func contextFixture(t *testing.T) *gorm.DB {
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 7, Title: "En curso", Status: domain.ReportInProgress,
 			Handoff: "Falta la release", HandoffByID: "u-ana"},
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 8, Title: "Pendiente", Status: domain.ReportPending},
+		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 10, Title: "Libre", Status: domain.ReportPending},
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 9, Title: "Subtarea", Status: domain.ReportInProgress, ParentID: &parent},
 		{OrgID: "org-2", SpaceID: "sp-2", ListID: "l-otra", Seq: 1, Title: "De otra org", Status: domain.ReportInProgress},
 	} {
 		it := it
-		it.ID = map[string]string{"En curso": "it-curso", "Pendiente": "it-pend", "Subtarea": "it-sub", "De otra org": "it-otra"}[it.Title]
+		it.ID = map[string]string{"En curso": "it-curso", "Pendiente": "it-pend", "Libre": "it-libre", "Subtarea": "it-sub", "De otra org": "it-otra"}[it.Title]
 		mustCreate(t, db, &it)
 	}
 	mustCreate(t, db, &domain.ItemAssignee{ItemID: "it-curso", UserID: "u-ana", Primary: true})
+	// «Pendiente» espera a «En curso», que sigue abierta: no está lista.
+	mustCreate(t, db, &domain.ItemBlock{ItemID: "it-pend", BlockedByID: "it-curso"})
 	return db
 }
 
@@ -360,9 +363,15 @@ func TestTheMapCanBeTrimmedAndSaysWhatChangedSince(t *testing.T) {
 		titles = append(titles, x.Title+"="+x.Status+"@"+x.Ref)
 	}
 	slices.Sort(titles)
-	if got := strings.Join(titles, "|"); got != "En curso=in_progress@cc-7|Pendiente=pending@cc-8" {
+	if got := strings.Join(titles, "|"); got != "En curso=in_progress@cc-7|Libre=pending@cc-10|Pendiente=pending@cc-8" {
 		t.Fatalf("tareas cambiadas (sin subtareas ni las de otra org, con estado y ref): %s", got)
 	}
+	for _, x := range m.Changes.Tasks {
+		if x.Title == "Pendiente" && strings.Join(x.BlockedBy, ",") != "cc-7" {
+			t.Fatalf("una tarea que espera a otra abierta lo dice, con su referencia: %+v", x)
+		}
+	}
+
 	if len(m.Changes.Decisions) != 3 || m.Changes.Decisions[0].Title != "Más nueva" || m.Changes.Decisions[0].Path != "cac › Producto › App" {
 		t.Fatalf("decisiones cambiadas, con su nodo: %+v", m.Changes.Decisions)
 	}
@@ -396,5 +405,18 @@ func TestTheMapCanBeTrimmedAndSaysWhatChangedSince(t *testing.T) {
 	}
 	if m.Changes != nil {
 		t.Fatal("only=tree con since trajo changes")
+	}
+
+	// Lo listo para empezar: lo pendiente que no espera a nada abierto, y sólo
+	// si se pide por nombre.
+	m, err = s.MapWith("org-1", "sp-1", nil, domain.ContextOptions{Only: []string{"ready"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Ready) != 1 || m.Ready[0].Title != "Libre" || m.Ready[0].Ref != "cc-10" {
+		t.Fatalf("ready: %+v", m.Ready)
+	}
+	if m, _ := s.MapWith("org-1", "sp-1", nil, domain.ContextOptions{}); m.Ready != nil {
+		t.Fatal("ready no va en el mapa por defecto")
 	}
 }

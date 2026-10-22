@@ -26,6 +26,15 @@ var (
 	// ErrSubtasksOpen: la organización pide terminar las subtareas antes de dar
 	// por hecha la tarea que las contiene.
 	ErrSubtasksOpen = errors.New("this task still has open subtasks")
+	// ErrTaskStatusChanged: se pidió «sólo si sigue en X» y ya no está en X.
+	// Dos agentes a la vez: el segundo no pisa al primero sin enterarse.
+	ErrTaskStatusChanged = errors.New("the task is no longer in that state")
+	// ErrTaskClaimedByOther: ya está en curso con otro responsable.
+	ErrTaskClaimedByOther = errors.New("the task is already in progress with someone else")
+	// ErrBlockerNotFound / ErrBlockerIsSelf: una dependencia que no existe en
+	// esta organización, o la propia tarea.
+	ErrBlockerNotFound = errors.New("that task does not exist in this organization")
+	ErrBlockerIsSelf   = errors.New("a task cannot wait for itself")
 )
 
 type TaskService struct {
@@ -552,6 +561,28 @@ func (s *TaskService) UpdateTask(ctx context.Context, id, actorID string, req do
 		}
 	}
 
+	if req.IfStatus != nil {
+		t, err := s.repo.FindTask(id)
+		if err != nil {
+			return err
+		}
+		if string(t.Status) != *req.IfStatus {
+			return ErrTaskStatusChanged
+		}
+	}
+	if req.BlockedBy != nil {
+		t, err := s.repo.FindTask(id)
+		if err != nil {
+			return err
+		}
+		ids, err := s.resolveBlockers(t, *req.BlockedBy)
+		if err != nil {
+			return err
+		}
+		if err := s.repo.SetBlockers(id, ids); err != nil {
+			return err
+		}
+	}
 	fields := map[string]any{}
 	if req.Title != nil {
 		fields["title"] = *req.Title
@@ -646,6 +677,90 @@ func (s *TaskService) UpdateTask(ctx context.Context, id, actorID string, req do
 	return nil
 }
 
+// ClaimTask: reclamar una tarea en una sola operación: quien reclama queda
+// como responsable (sin quitar a nadie: reclamar no transfiere la
+// responsabilidad) y la tarea pasa a en curso. Si ya está en curso con otro
+// responsable, no: es de otro, y se dice (ErrTaskClaimedByOther). Con
+// `ifStatus`, sólo desde ese estado. Dos agentes a la vez en el mismo espacio
+// (22-oct-2026): el segundo se entera, en vez de pisar al primero.
+func (s *TaskService) ClaimTask(ctx context.Context, id, actorID, ifStatus string) error {
+	task, err := s.repo.FindTask(id)
+	if err != nil {
+		return err
+	}
+	if ifStatus != "" && string(task.Status) != ifStatus {
+		return ErrTaskStatusChanged
+	}
+	owners, err := s.repo.AssigneesOf(id)
+	if err != nil {
+		return err
+	}
+	mine := false
+	for _, o := range owners {
+		if o.ID == actorID {
+			mine = true
+		}
+	}
+	if task.Status == domain.ReportInProgress && len(owners) > 0 && !mine {
+		return ErrTaskClaimedByOther
+	}
+	if !mine {
+		if err := s.repo.AddAssignee(id, actorID); err != nil {
+			return err
+		}
+	}
+	if task.Status != domain.ReportInProgress {
+		return s.MoveTask(ctx, id, actorID, domain.MoveTaskRequest{
+			StatusID: domain.SyntheticStatusID(task.ListID, domain.ReportInProgress),
+		})
+	}
+	s.publish("task:update", task.OrgID, task.ListID, task.ID)
+	return nil
+}
+
+// resolveBlockers: las tareas de las que depende `t`, por id o por referencia,
+// todas de su organización y ninguna ella misma.
+func (s *TaskService) resolveBlockers(t *domain.Task, wanted []string) ([]string, error) {
+	out := make([]string, 0, len(wanted))
+	for _, w := range wanted {
+		w = strings.TrimSpace(w)
+		if w == "" {
+			continue
+		}
+		var found *domain.Task
+		if b, err := s.repo.FindTask(w); err == nil && b.OrgID == t.OrgID {
+			found = b
+		} else if refs := domain.ExtractTaskRefs(strings.ToLower(w), false); len(refs) == 1 {
+			if b, err := s.repo.FindByRef([]string{t.OrgID}, refs[0]); err == nil {
+				found = b
+			}
+		}
+		if found == nil {
+			return nil, fmt.Errorf("%w: %s", ErrBlockerNotFound, w)
+		}
+		if found.ID == t.ID {
+			return nil, ErrBlockerIsSelf
+		}
+		out = append(out, found.ID)
+	}
+	return out, nil
+}
+
+// blockerRef: cómo se nombra una tarea de la que otra depende: el folio si es
+// de un cliente, y si no la clave de su espacio y su número.
+func (s *TaskService) blockerRef(b repository.BlockerRow) string {
+	if b.ProjectID != "" {
+		if slug := s.repo.ProjectSlug(b.ProjectID); slug != "" {
+			return domain.Folio(slug, b.Seq)
+		}
+		return ""
+	}
+	if sp, err := s.repo.FindSpace(b.SpaceID); err == nil && sp != nil {
+		return domain.SpaceTaskRef(sp.Key, b.Seq)
+	}
+	return ""
+}
+
 // MoveTask places a task between two neighbours, stamping completed_at when it
 // lands in (or leaves) a "done" column so reporting doesn't depend on names.
 // MoveTask takes the person doing it, not just the card.
@@ -661,6 +776,9 @@ func (s *TaskService) MoveTask(ctx context.Context, id, userID string, req domai
 	task, err := s.repo.FindTask(id)
 	if err != nil {
 		return err
+	}
+	if req.IfStatus != "" && string(task.Status) != req.IfStatus {
+		return ErrTaskStatusChanged
 	}
 	// La máquina que corresponde a **esta ficha**, no la del cliente para todas.
 	//
@@ -825,6 +943,15 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	}
 	if t.HandoffByID != "" {
 		detail.HandoffBy = s.repo.DisplayName(t.HandoffByID)
+	}
+	detail.BlockedBy = []domain.TaskBlocker{}
+	if blockers, err := s.repo.BlockersOf(id); err == nil {
+		for _, b := range blockers {
+			detail.BlockedBy = append(detail.BlockedBy, domain.TaskBlocker{
+				ID: b.ID, Ref: s.blockerRef(b), Title: b.Title, Status: b.Status,
+				Open: b.Status == domain.ReportPending || b.Status == domain.ReportInProgress,
+			})
+		}
 	}
 	// Lo de GitHub, si lo hay. Un fallo aquí no tumba el detalle: el panel se
 	// queda vacío y la tarea se abre igual.

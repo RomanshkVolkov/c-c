@@ -25,6 +25,7 @@ import {
   Info,
   Gavel,
   Github,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fileCrash, rutaActual, signature, type Fichado } from "@/lib/file-crash";
@@ -1169,6 +1170,31 @@ function Content() {
               />
             </div>
           </div>
+
+          {/* De qué depende. Sólo se enseña; se pone desde el MCP o la API
+              (`blockedBy`). Una dependencia hecha sigue listada, tachada: dice
+              que ya no para nada, que es lo que se quiere saber. */}
+          {(detail.blockedBy?.length ?? 0) > 0 && (
+            <>
+              <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Link2 className="size-3.5" /> {t("work:task.blockedBy")}
+              </span>
+              <div className="flex flex-wrap items-center gap-1" data-testid="blocked-by">
+                {detail.blockedBy!.map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => void openTask(b.id).catch(() => {})}
+                    className={"rounded border px-1.5 py-0.5 text-xs" + (b.open ? "" : " line-through opacity-60")}
+                    data-open={b.open ? "true" : "false"}
+                    title={b.title}
+                  >
+                    {b.ref || b.title}
+                    {!b.open && ` · ${t("work:task.blockerDone")}`}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           <span className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Calendar className="size-3.5" /> {t("work:task.due")}

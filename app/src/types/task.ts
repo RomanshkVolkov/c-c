@@ -333,6 +333,14 @@ export interface Task {
   handoffById?: string;
 }
 
+export interface TaskBlocker {
+  id: string;
+  ref?: string;
+  title: string;
+  status: string;
+  open: boolean;
+}
+
 export interface TaskDetail {
   task: Task;
   listName: string;
@@ -353,6 +361,8 @@ export interface TaskDetail {
   ref?: string;
   /** Quién escribió el «dónde quedó» de la tarea, con su nombre visible. */
   handoffBy?: string;
+  /** De qué tareas depende, y si siguen abiertas (`open`). */
+  blockedBy?: TaskBlocker[];
   folio?: string;
   projectSlug?: string;
   /** Decrypted breadcrumbs, when the report carried them and they aren't purged. */
@@ -374,6 +384,8 @@ export interface UpdateTaskPayload {
   clearDueAt?: boolean;
   /** Reemplaza el «dónde quedó». Vacío lo quita. */
   handoff?: string;
+  /** Las tareas de las que depende, por id o referencia; la lista entera. */
+  blockedBy?: string[];
   tagIds?: string[];
   assigneeIds?: string[];
   archived?: boolean;
