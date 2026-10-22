@@ -40,7 +40,7 @@ idioma («desplegar» / «deploy», «soltar» / «release»): la búsqueda es p
 palabras, no por significado.
 
 Si algo de lo que lees contradice el código, gana el código, y lo apuntas
-(ver el paso 4).
+(ver el paso 5).
 
 ## 2 · Si el repo no está atado a un espacio
 
@@ -65,7 +65,33 @@ Si algo de lo que lees contradice el código, gana el código, y lo apuntas
 **No inventes una lista ni crees espacios** sin que te lo pidan. Si hay varias
 listas en el espacio, elige por lo que vas a tocar, y si dudas, pregunta.
 
-## 3 · La tarea: una, no dos
+## 3 · Poner el tablero al día antes de empezar
+
+Una tarea que se commiteó en otra sesión se queda «en curso» aunque su trabajo
+ya se haya publicado: esa sesión terminó antes de que saliera, y nadie la
+mueve. Así que, al llegar, revisa lo que `get_context` da en `inProgress` (o
+el tablero, con `get_board`):
+
+1. Lee el último comentario de cada una con `get_task`. Ahí debería decir qué
+   falta: «sale en la próxima release», «espera a AWS», «falta probarlo en una
+   llamada».
+2. Si lo que faltaba ya pasó, ciérrala con `status: "done"` y un comentario que
+   diga cómo lo comprobaste.
+   - **Para comprobar si un commit ya se publicó:** el `git` de `get_task` trae
+     sus commits.
+     - **La app:** sale en una release, así que `git tag --contains <sha>` dice
+       si ya está en una versión publicada.
+     - **El backend o la web:** se despliegan con el push, así que un commit en
+       `main` con el CI en verde ya está publicado.
+   - Si no puedes comprobarlo, no la cierres: pregúntale al usuario.
+3. Lo que dependa de una persona («probarlo en una llamada», «revisar en
+   local»), no lo cierres por tu cuenta: díselo al usuario, en una línea por
+   tarea.
+
+Es lo primero, y es rápido: unas pocas llamadas. Si no se hace, el tablero
+miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
+
+## 4 · La tarea: una, no dos
 
 1. **Busca si ya existe**, con `search` o `get_board`. Si el usuario nombró una
    tarea (`cac#12`, un enlace), es esa.
@@ -95,7 +121,7 @@ Por el camino:
   parte) va como comentario en la tarea a la que le toca, o como tarea nueva
   si no la tiene.
 
-## 4 · Lo que se decide y lo que cambia: escribirlo
+## 5 · Lo que se decide y lo que cambia: escribirlo
 
 - **Una decisión** (elegir una librería o un proveedor, un cambio de diseño,
   algo que se descarta y por qué) va con `record_decision`, con
@@ -110,15 +136,19 @@ Por el camino:
 - **El overview** sólo se toca si cambió de qué va el proyecto. No lo
   reescribas por estilo.
 
-## 5 · Al terminar: el estado honesto
+## 6 · Al terminar: el estado honesto
 
 Antes de decirle al usuario que terminaste, **actualiza la tarea**. Es el paso
 que más se olvida, y por eso existe esta skill.
 
+**`done` quiere decir publicado**, no commiteado: lo que el usuario ya tiene en
+las manos. Una tarea empieza en `in_progress` (paso 4) y no pasa a `done` hasta
+que su trabajo sale.
+
 | Cómo quedó | `status` |
 |---|---|
 | Hecho, pero sin commitear o sin probar | `in_progress` |
-| Commiteado y en verde, pero falta desplegar o soltar | `in_progress`, con un comentario que lo diga |
+| Commiteado y en verde, pero falta desplegar o soltar | `in_progress`, con un comentario que diga **en qué sale** («en la próxima release de la app»), para que la siguiente sesión sepa qué comprobar (paso 3) |
 | Desplegado, soltado o entregado | `done` |
 | Parado por una decisión del usuario o por algo de fuera | `in_progress`, con un comentario que diga qué falta |
 | Descartado | `closed`, con el porqué |
@@ -131,11 +161,11 @@ Y deja un comentario de cierre corto:
 Si cambias de rumbo a mitad de camino, dilo también en la tarea: basta con una
 línea.
 
-## 6 · Lo que no se hace
+## 7 · Lo que no se hace
 
 - No cerrar una tarea que no está terminada para que «quede limpio».
 - No crear una tarea por cada mensaje: una por trabajo, con subtareas si crece.
 - No reescribir la descripción ni el documento de otra persona: comenta.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
 
-<!-- cac-work v2 -->
+<!-- cac-work v3 -->

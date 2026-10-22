@@ -4374,9 +4374,12 @@ fn instructions(state: Option<SkillState>) -> String {
          knows (the tree, the headings of each document, decisions, repo docs, tasks in progress) without bodies; then \
          read only the sections you need with get_doc (tab + section), and use search for anything else. If the repo \
          is not linked to a space, the repository's CLAUDE.md may name its list under \"Tareas en cac\"; otherwise ask \
-         the user. Find or create the task and move it to in progress. Record findings as task comments and decisions \
-         with record_decision. Before you tell the user you are done, update the task: its column must say honestly \
-         how the work stands, with a short closing comment (what was done, commits or PR, what is left).",
+         the user. Then bring the board up to date: tasks left in progress by earlier sessions whose work has since been \
+         published (released, deployed) are moved to done with a comment saying how you checked; what depends on a \
+         person, ask. Find or create your task and move it to in progress (update_task status: in_progress). Record \
+         findings as task comments and decisions with record_decision. Before you tell the user you are done, update \
+         the task honestly: done means published, not committed; committed but not yet released stays in progress \
+         with a comment saying where it ships, so the next session knows what to check.",
     );
     match state {
         Some(SkillState::Missing) => s.push_str(
@@ -5430,6 +5433,11 @@ mod tests {
             let text = instructions(st);
             assert!(text.contains("update the task"), "{text}");
             assert!(text.contains("call get_context"), "{text}");
+            // Rotura que detecta: dejar el tablero como lo encontró (las
+            // tareas de otras sesiones se quedaban «en curso» ya publicadas) o
+            // dar por hecho lo commiteado.
+            assert!(text.contains("bring the board up to date"), "{text}");
+            assert!(text.contains("done means published"), "{text}");
         }
         assert!(instructions(Some(SkillState::Missing)).contains("call install_skill"));
         assert!(instructions(Some(SkillState::Missing)).contains("Do not install it without asking"));
