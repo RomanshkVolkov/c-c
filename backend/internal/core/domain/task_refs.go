@@ -17,6 +17,11 @@ import (
 type TaskRef struct {
 	Slug string
 	Seq  int
+	// Folded: el slug venía con mayúsculas y se pasó a minúsculas (sólo en
+	// ramas). Un folio de cliente vale igual, pero la clave de un espacio no:
+	// `PROTEUS-205` es la clave de Jira, que numera por su lado, y
+	// `proteus-205` sería otra tarea de cac (ver `SpaceKey`).
+	Folded bool
 }
 
 // MaxTaskRefs acota cuántas tareas puede nombrar un solo texto. Un mensaje con
@@ -93,8 +98,9 @@ func ExtractBranchRefs(branch string, bare bool) []TaskRef {
 		seen[r] = true
 		out = append(out, r)
 	}
-	for _, seg := range strings.Split(strings.ToLower(branch), "/") {
-		seg = strings.ReplaceAll(seg, "_", "-")
+	for _, orig := range strings.Split(branch, "/") {
+		seg := strings.ReplaceAll(strings.ToLower(orig), "_", "-")
+		folded := seg != strings.ReplaceAll(orig, "_", "-")
 		for _, m := range branchCac.FindAllStringSubmatch(seg, -1) {
 			n, _ := strconv.Atoi(m[1])
 			add(TaskRef{Seq: n})
@@ -110,7 +116,7 @@ func ExtractBranchRefs(branch string, bare bool) []TaskRef {
 				continue // ya contado como número del espacio
 			}
 			n, _ := strconv.Atoi(m[2])
-			add(TaskRef{Slug: m[1], Seq: n})
+			add(TaskRef{Slug: m[1], Seq: n, Folded: folded})
 		}
 	}
 	return out

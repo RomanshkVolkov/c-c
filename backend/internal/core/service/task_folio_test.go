@@ -48,6 +48,10 @@ func TestOnlyAClientsTicketGetsAFolio(t *testing.T) {
 	if detail.ProjectSlug != "cliente" {
 		t.Errorf("the channel it belongs to should travel with it: %q", detail.ProjectSlug)
 	}
+	// Su referencia para un commit es el folio (cac#203).
+	if detail.Ref != want {
+		t.Errorf("a client's ticket is referenced by its folio: got %q, want %q", detail.Ref, want)
+	}
 
 	// Raised in the same list but kept internal: no channel, so it numbers per
 	// space and there is no folio to give it.
@@ -66,5 +70,47 @@ func TestOnlyAClientsTicketGetsAFolio(t *testing.T) {
 	}
 	if internal.ProjectSlug != "" {
 		t.Errorf("nor claim their channel: got %q", internal.ProjectSlug)
+	}
+	// Una interna se nombra por la clave de su espacio (cac#203). Rotura que
+	// detecta: darle el folio del cliente, o ninguna referencia.
+	if err := db.Model(&domain.TaskSpace{}).Where("id = ?", list.SpaceID).Update("key", "cliente-int").Error; err != nil {
+		t.Fatal(err)
+	}
+	internal, _ = svc.Detail(mine.ID)
+	if want := domain.SpaceTaskRef("cliente-int", mine.Seq); internal.Ref != want {
+		t.Errorf("an internal card is referenced by its space key: got %q, want %q", internal.Ref, want)
+	}
+}
+
+// Cambiar la clave de un espacio por el PATCH (cac#203). Roturas que detecta:
+// ignorar `key`; o renombrar el espacio aunque la clave no valga, dejando un
+// cambio a medias.
+func TestRenamingASpaceCanChangeItsKey(t *testing.T) {
+	db, cleanup := visibilityDB(t)
+	defer cleanup()
+	if err := db.AutoMigrate(&domain.SpaceKeyAlias{}); err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.NewTaskRepository(db)
+	svc := NewTaskService(repo, repository.NewReportRepository(db), repository.NewOrganizationRepository(db), nil)
+	list, err := repo.FindList("list-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := "Mala Clave"
+	if err := svc.RenameSpace(list.SpaceID, domain.RenameRequest{Name: "Nuevo nombre", Key: &bad}); err == nil {
+		t.Fatal("aceptó una clave mal formada")
+	}
+	sp, _ := repo.FindSpace(list.SpaceID)
+	if sp.Name == "Nuevo nombre" {
+		t.Error("renombró aunque la clave no valía")
+	}
+	good := "pocna"
+	if err := svc.RenameSpace(list.SpaceID, domain.RenameRequest{Name: "Nuevo nombre", Key: &good}); err != nil {
+		t.Fatal(err)
+	}
+	sp, _ = repo.FindSpace(list.SpaceID)
+	if sp.Key != "pocna" || sp.Name != "Nuevo nombre" {
+		t.Errorf("espacio: %q %q", sp.Name, sp.Key)
 	}
 }

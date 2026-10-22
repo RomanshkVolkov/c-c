@@ -53,6 +53,7 @@ func (r *TaskRepository) nextRank(table, where string, args ...any) string {
 
 func (r *TaskRepository) CreateSpace(s *domain.TaskSpace) error {
 	s.Rank = r.nextRank("task_spaces", "org_id = ?", s.OrgID)
+	assignSpaceKey(r.db, s)
 	return r.db.Create(s).Error
 }
 
@@ -278,7 +279,7 @@ func (r *TaskRepository) Tree(orgIDs []string, superadmin bool, orgID string) ([
 	out := make([]domain.SpaceTree, 0, len(spaces))
 	for _, s := range spaces {
 		tree := domain.SpaceTree{
-			ID: s.ID, OrgID: s.OrgID, Name: s.Name, Color: s.Color, ProjectID: spaceProject[s.ID],
+			ID: s.ID, Key: s.Key, OrgID: s.OrgID, Name: s.Name, Color: s.Color, ProjectID: spaceProject[s.ID],
 			Kind:    s.Kind,
 			Folders: []domain.FolderTree{}, Lists: []domain.ListSummary{},
 			People: peopleBy[s.ID],

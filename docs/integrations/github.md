@@ -74,7 +74,8 @@ En el mensaje de un commit, o en el título o el cuerpo de una PR:
 
 | Escrito | Nombra |
 |---|---|
-| `cac#12` | la tarea 12 del espacio enlazado. Siempre. |
+| `proteus-12` | la tarea interna 12 del espacio con la clave `proteus`, desde cualquier repo de la org. **La forma de nombrar una tarea** (cac#203). |
+| `cac#12` | la tarea 12 del espacio enlazado. La forma de antes: se sigue entendiendo. |
 | `#12` | lo mismo, sólo si el repo tiene «#12 a secas» encendido. En GitHub `#12` es el issue o la PR 12 del propio repo, por eso viene apagado. |
 | `acme-7` | el folio 7 del proyecto `acme`, como lo ve el cliente. |
 
@@ -84,13 +85,25 @@ mensaje:
 
 | Rama | Nombra |
 |---|---|
+| `proteus-12-login`, `feature/proteus-12` | la tarea interna 12 del espacio `proteus` |
+| `feature/PROTEUS-12` | **nada en cac**: en mayúsculas es la clave de Jira, que numera por su lado |
 | `cac-12-login`, `feature/CAC-12`, `fix_cac-12` | la tarea 12 del espacio enlazado |
 | `feature/acme-7-fix` | el folio 7 de `acme` |
 | `feature-beta-api-7` | el folio 7 de `feature-beta-api`, `beta-api` o `api`: el primero que exista |
 | `12-login` | la tarea 12, sólo con «#12 a secas» (es lo que genera «Create branch» desde un issue) |
 | `cac12`, `v1.2`, `main` | nada |
 
-Sin distinguir mayúsculas. `cac` como slug está reservado al número del espacio.
+Sin distinguir mayúsculas, salvo la clave de un espacio, que sólo cuenta en
+minúsculas. `cac` como slug está reservado al número del espacio.
+
+**La clave de un espacio** sale de su nombre al crearlo: minúsculas, sin
+acentos, kebab-case, y cada trozo empieza por letra («Dwit México» →
+`dwit-mexico`). Es única en la org, también frente a los slugs de los proyectos
+de cliente; si choca, lleva una letra detrás (`proteus-b`). No cambia al
+renombrar el espacio. Se cambia a mano en el menú del espacio, y la anterior se
+sigue aceptando. `get_task` y el detalle de la tarea en la app dan la
+referencia lista (`ref`). Un proyecto de cliente no puede tener de slug la
+clave de un espacio de su org, ni al revés.
 
 Sólo se busca dentro de la org del repo, y el número, sólo en su espacio. Una
 referencia que no resuelve se descarta sin más. Como mucho diez tareas por

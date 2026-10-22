@@ -171,6 +171,12 @@ func (s *TaskService) EnsureGeneralSpace(orgID string) (*domain.TaskSpace, error
 }
 
 func (s *TaskService) RenameSpace(id string, req domain.RenameRequest) error {
+	// La clave primero: si no vale o ya está tomada, no se cambia nada.
+	if req.Key != nil {
+		if err := s.repo.ChangeSpaceKey(id, strings.TrimSpace(*req.Key)); err != nil {
+			return err
+		}
+	}
 	return s.repo.UpdateSpace(id, req.Name, req.Color)
 }
 
@@ -809,10 +815,14 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	// ProjectID rather than on the fields being non-empty: an internal task must
 	// never be handed a folio, because a folio names a number in a client's
 	// sequence and this one has none.
+	if t.ProjectID == "" && space != nil {
+		detail.Ref = domain.SpaceTaskRef(space.Key, t.Seq)
+	}
 	if t.ProjectID != "" {
 		if slug := s.repo.ProjectSlug(t.ProjectID); slug != "" {
 			detail.ProjectSlug = slug
 			detail.Folio = domain.Folio(slug, t.Seq)
+			detail.Ref = detail.Folio
 		}
 		// Best-effort, exactly as the report facade does it: a purged blob or a
 		// missing key means no timeline, not a failed request. Losing the

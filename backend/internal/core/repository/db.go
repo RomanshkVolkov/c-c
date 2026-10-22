@@ -86,6 +86,7 @@ func DBConnection() {
 		&domain.PostAttachment{},
 		&domain.PostRead{},
 		&domain.SearchMiss{},
+		&domain.SpaceKeyAlias{},
 		&domain.Server{},
 		&domain.Collection{},
 		&domain.CollectionNode{},
@@ -250,6 +251,7 @@ func DBConnection() {
 	seedBaseOrg(db)
 	promoteSuperadmin(db)
 	backfillAttachmentRefs(db)
+	backfillSpaceKeys(db)
 	backfillIngestedItems(db)
 	migrateItems(db)
 	canonicalizeItemPriorities(db)

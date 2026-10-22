@@ -32,8 +32,10 @@ type ContextMap struct {
 }
 
 type ContextSpace struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Key: cómo se nombran sus tareas en un commit o una rama: `<key>-<número>`.
+	Key     string `json:"key,omitempty"`
 	OrgID   string `json:"orgId"`
 	OrgName string `json:"orgName,omitempty"`
 }

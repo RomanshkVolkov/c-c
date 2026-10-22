@@ -150,6 +150,14 @@ func mapTaskError(w http.ResponseWriter, err error) bool {
 	// 409 y no 403: quien pide tiene permiso de sobra —suele ser el admin— y la
 	// petición está bien formada. Lo que se le niega es dejar la sala general en
 	// un estado que no es el suyo.
+	case errors.Is(err, repository.ErrSpaceKeyInvalid):
+		SendErrorResponse(w, http.StatusBadRequest,
+			"A space key is lowercase kebab-case, every part starting with a letter", err.Error())
+		return true
+	case errors.Is(err, repository.ErrSpaceKeyTaken):
+		SendErrorResponse(w, http.StatusConflict,
+			"Another space or a client project in this organization already uses that key", err.Error())
+		return true
 	case errors.Is(err, service.ErrGeneralSpaceProtected):
 		SendErrorResponse(w, http.StatusConflict,
 			"The general room is the organization's channel, not a place for tasks: "+
@@ -481,6 +489,9 @@ func (h *taskHandler) UpdateSpace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.RenameSpace(sp.ID, req); err != nil {
+		if mapTaskError(w, err) {
+			return
+		}
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to update space", err.Error())
 		return
 	}

@@ -32,6 +32,21 @@ type TaskSpace struct {
 	// que en GORM es el terreno minado de siempre: omite el zero-value al
 	// insertar y guarda lo contrario de lo que pediste.
 	Kind string `gorm:"type:varchar(20);index" json:"kind,omitempty"`
+	// Key: cómo se nombran fuera sus tareas, `<key>-<número>` (ver
+	// space_key.go). Única en la org; vacía en la sala general, que no tiene
+	// tareas.
+	Key string `gorm:"type:varchar(60);index" json:"key,omitempty"`
+}
+
+// SpaceKeyAlias: una clave que tuvo un espacio antes de cambiársela a mano.
+// Se sigue aceptando en commits y ramas, para que lo que ya la citaba no deje
+// de enlazar.
+type SpaceKeyAlias struct {
+	ID        string    `gorm:"type:varchar(36);primaryKey" json:"id"`
+	OrgID     string    `gorm:"type:varchar(36);index;not null" json:"orgId"`
+	SpaceID   string    `gorm:"type:varchar(36);index;not null" json:"spaceId"`
+	Key       string    `gorm:"type:varchar(60);not null" json:"key"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // SpaceKindGeneral: la sala de toda la organización.
@@ -725,6 +740,9 @@ type RenameRequest struct {
 	// and empty mean different things: leaving it out renames without touching
 	// the binding, sending "" clears it.
 	ProjectID *string `json:"projectId" validate:"omitempty,max=36"`
+	// Key cambia la clave de un espacio (ver space_key.go): la vieja se sigue
+	// aceptando. Sólo en espacios; ausente = no se toca.
+	Key *string `json:"key" validate:"omitempty,max=60"`
 }
 
 type CreateFolderRequest struct {
@@ -888,7 +906,9 @@ type EnsureGeneralSpaceRequest struct {
 
 // SpaceTree is the whole left-hand navigator in one round-trip.
 type SpaceTree struct {
-	ID        string `json:"id"`
+	ID string `json:"id"`
+	// Key: la clave del espacio, la que nombra sus tareas (`proteus-12`).
+	Key       string `json:"key,omitempty"`
 	OrgID     string `json:"orgId"`
 	Name      string `json:"name"`
 	Color     string `json:"color"`
@@ -1118,6 +1138,10 @@ type TaskDetail struct {
 	// channel to name. Derived, not stored: see Folio().
 	Folio       string `json:"folio,omitempty"`
 	ProjectSlug string `json:"projectSlug,omitempty"`
+	// Ref: cómo se nombra esta tarea en un commit, una rama o una PR para que
+	// cac la enlace sola. El folio si es de un cliente; si no, la clave de su
+	// espacio y su número (`proteus-12`). Ver space_key.go.
+	Ref string `json:"ref,omitempty"`
 	// Telemetry is the decrypted breadcrumbs blob, when the report carried one
 	// and it hasn't been purged. The report facade has always returned this; the
 	// board could not show what led up to a bug without it.

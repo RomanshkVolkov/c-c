@@ -63,7 +63,7 @@ func (s *ContextService) Map(orgID, spaceID string, repo *domain.ContextRepo) (d
 	if tree == nil {
 		return out, gorm.ErrRecordNotFound
 	}
-	out.Space = domain.ContextSpace{ID: tree.ID, Name: tree.Name, OrgID: orgID, OrgName: s.repo.OrgName(orgID)}
+	out.Space = domain.ContextSpace{ID: tree.ID, Name: tree.Name, Key: tree.Key, OrgID: orgID, OrgName: s.repo.OrgName(orgID)}
 
 	// El árbol, en el orden del navegador: el espacio, sus listas sueltas, y
 	// cada carpeta con lo suyo.

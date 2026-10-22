@@ -168,7 +168,22 @@ func (r *GitHubRepository) FindRefTarget(orgID, spaceID string, ref domain.TaskR
 		q = q.Joins("JOIN report_projects p ON p.id = items.project_id").
 			Where("p.slug = ?", ref.Slug)
 	}
-	if err := q.First(&it).Error; err != nil {
+	err := q.First(&it).Error
+	if err == nil {
+		return &it, nil
+	}
+	// Si no es el folio de un cliente, puede ser la clave de un espacio de la
+	// org (`proteus-12`): la tarea interna 12 de ese espacio, sea cual sea el
+	// repo. Nunca si venía en mayúsculas: `PROTEUS-205` es de Jira (cac#203).
+	if ref.Slug == "" || ref.Folded {
+		return nil, err
+	}
+	sp, kerr := findSpaceByKey(r.db, orgID, ref.Slug)
+	if kerr != nil {
+		return nil, err
+	}
+	if err := r.db.Where("org_id = ? AND space_id = ? AND project_id = '' AND seq = ?", orgID, sp.ID, ref.Seq).
+		First(&it).Error; err != nil {
 		return nil, err
 	}
 	return &it, nil

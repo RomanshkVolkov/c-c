@@ -30,6 +30,11 @@ func (r *ReportProjectRepository) Create(p *domain.ReportProject) error {
 	if count > 0 {
 		return ErrReportProjectSlugTaken
 	}
+	// Tampoco la clave de un espacio de la misma org: `acme-7` no diría si es
+	// el folio del cliente o la tarea 7 del espacio (cac#203).
+	if r.db.Migrator().HasTable(&domain.TaskSpace{}) && spaceKeyTaken(r.db, p.OrgID, p.Slug, "") {
+		return ErrReportProjectSlugTaken
+	}
 	return r.db.Create(p).Error
 }
 
