@@ -63,6 +63,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { PRIORITIES } from "@/types/task";
 import type { TaskStatus } from "@/types/task";
 import type { TaskComment } from "@/types/task";
+import type { Task } from "@/types/task";
 import { cn } from "@/lib/utils";
 import { originRef } from "@/lib/motion-origin";
 import { statusTone } from "@/lib/status-color";
@@ -588,6 +589,7 @@ function Content() {
             }
           }}
         >
+          <HandoffSection task={task} handoffBy={detail.handoffBy} />
           <section className="space-y-2">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1301,5 +1303,75 @@ function CouldNotOpen({
         Close
       </Button>
     </div>
+  );
+}
+
+/**
+ * El «dónde quedó» de la tarea, antes que la descripción.
+ *
+ * Tres líneas que se reemplazan, no un comentario más: qué está hecho, el
+ * siguiente paso y cómo comprobar si ya salió. Quien retoma la tarea —una
+ * persona o un agente por `get_context`— lo lee antes que el hilo, donde se
+ * perdía entre los avisos de commit (22-oct-2026). Con quién y cuándo, para
+ * saber de cuándo es.
+ */
+function HandoffSection({ task, handoffBy }: { task: Task; handoffBy?: string }) {
+  const { t } = useT();
+  const updateTask = useTasksStore((s) => s.updateTask);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(task.handoff ?? "");
+  useEffect(() => setDraft(task.handoff ?? ""), [task.id, task.handoff]);
+
+  const save = () =>
+    updateTask(task.id, { handoff: draft.trim() })
+      .then(() => setEditing(false))
+      .catch((e) => toast.error(String(e)));
+
+  return (
+    <section className="space-y-2" data-testid="handoff">
+      <div className="flex items-center gap-2">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("work:task.handoff")}</h3>
+        {!editing && (
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditing(true)}>
+            {task.handoff ? t("work:task.edit") : t("work:task.writeHandoff")}
+          </Button>
+        )}
+        {task.handoff && handoffBy && task.handoffAt && (
+          <span className="text-xs text-muted-foreground">
+            {t("work:task.handoffBy", { who: handoffBy, when: fechaYHora(task.handoffAt) })}
+          </span>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            className="min-h-[6rem] w-full rounded-md border bg-background p-2 text-sm"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={t("work:task.handoffHint")}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={save}>
+              {t("work:task.save")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setDraft(task.handoff ?? "");
+                setEditing(false);
+              }}
+            >
+              {t("work:task.cancel")}
+            </Button>
+          </div>
+        </div>
+      ) : task.handoff ? (
+        <Markdown>{task.handoff}</Markdown>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("work:task.noHandoff")}</p>
+      )}
+    </section>
   );
 }

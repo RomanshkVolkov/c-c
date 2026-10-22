@@ -110,6 +110,28 @@ func (s *ContextService) Map(orgID, spaceID string, repo *domain.ContextRepo) (d
 		tasks = tasks[:domain.ContextMaxInProgress]
 		out.Truncated = append(out.Truncated, "inProgress")
 	}
+	ids := make([]string, len(tasks))
+	for i := range tasks {
+		ids[i] = tasks[i].ID
+	}
+	assignees, err := s.repo.AssigneesOf(ids)
+	if err != nil {
+		return out, err
+	}
+	for i := range tasks {
+		t := &tasks[i]
+		// La referencia, como la da el detalle: el folio si es de un cliente,
+		// y si no la clave del espacio y el número.
+		if t.ProjectID == "" {
+			t.Ref = domain.SpaceTaskRef(tree.Key, t.Seq)
+		} else if slug := s.tasks.ProjectSlug(t.ProjectID); slug != "" {
+			t.Ref = domain.Folio(slug, t.Seq)
+		}
+		t.Assignees = assignees[t.ID]
+		if t.HandoffByID != "" {
+			t.HandoffBy = s.repo.DisplayName(t.HandoffByID)
+		}
+	}
 	out.InProgress = append(out.InProgress, tasks...)
 	return out, nil
 }
@@ -184,7 +206,7 @@ func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap) error 
 			truncatedDecisions = true
 			continue
 		}
-		d.Decisions = append(d.Decisions, domain.ContextDecision{Title: x.Title, Tag: x.Tag, DecidedAt: x.DecidedAt})
+		d.Decisions = append(d.Decisions, domain.ContextDecision{ID: x.ID, Title: x.Title, Tag: x.Tag, DecidedAt: x.DecidedAt})
 	}
 	if truncatedPages {
 		out.Truncated = append(out.Truncated, "pages")

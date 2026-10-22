@@ -158,6 +158,20 @@ var ErrDecisionUnaddressed = errors.New("a decision needs somewhere to come back
 // otra organización.
 var ErrDecisionOriginNotHere = errors.New("that task is not in this organization")
 
+// ErrDecisionSupersedesNotHere: la decisión que dice sustituir no existe o es
+// de otro documento. ErrDecisionAlreadySuperseded: ya la sustituyó otra; la
+// nueva tiene que nombrar a ésa, que es la vigente.
+var (
+	ErrDecisionSupersedesNotHere = errors.New("that decision is not in this document")
+	ErrDecisionAlreadySuperseded = errors.New("that decision was already superseded")
+)
+
+// Decision: una entrada del registro, con su cuerpo y a quién sustituye o quién
+// la sustituyó. Hasta el 22-oct-2026 no había forma de leer una suelta.
+func (s *DocService) Decision(id string) (*domain.Decision, error) {
+	return s.repo.DecisionByID(id)
+}
+
 // Decisions: el registro de un documento.
 func (s *DocService) Decisions(docID string) ([]domain.Decision, error) {
 	return s.repo.Decisions(docID)
@@ -209,8 +223,22 @@ func (s *DocService) AddDecision(
 	if err != nil {
 		return nil, err
 	}
+	// A quién sustituye, si lo dice: una del mismo documento y que siga vigente.
+	// El registro no se borra, así que un «sustituye a» que apunte a otro
+	// documento o a una ya sustituida se quedaría mintiendo para siempre.
+	supersedes := strings.TrimSpace(req.Supersedes)
+	if supersedes != "" {
+		old, err := s.repo.DecisionByID(supersedes)
+		if err != nil || old == nil || old.DocID != doc.ID {
+			return nil, ErrDecisionSupersedesNotHere
+		}
+		if old.SupersededByID != "" {
+			return nil, ErrDecisionAlreadySuperseded
+		}
+	}
 	d := &domain.Decision{
-		DocID: doc.ID, Title: strings.TrimSpace(req.Title), Body: req.Body,
+		SupersedesID: supersedes,
+		DocID:        doc.ID, Title: strings.TrimSpace(req.Title), Body: req.Body,
 		Tag: strings.TrimSpace(req.Tag), AuthorID: autor, Via: via,
 		Origin:          domain.DecisionOrigin(req.Origin),
 		OriginTaskID:    req.OriginTaskID,

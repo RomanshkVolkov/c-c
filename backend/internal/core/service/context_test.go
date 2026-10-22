@@ -52,8 +52,8 @@ func contextDB(t *testing.T) *gorm.DB {
 		}
 	})
 	if err := db.AutoMigrate(&domain.Organization{}, &domain.User{}, &domain.TaskSpace{}, &domain.TaskFolder{},
-		&domain.TaskList{}, &domain.Item{}, &domain.Doc{}, &domain.DocTab{}, &domain.DocPage{}, &domain.Decision{},
-		&domain.GitHubRepo{}, &domain.RepoDoc{}); err != nil {
+		&domain.TaskList{}, &domain.Item{}, &domain.ItemAssignee{}, &domain.Doc{}, &domain.DocTab{}, &domain.DocPage{},
+		&domain.Decision{}, &domain.GitHubRepo{}, &domain.RepoDoc{}); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -75,9 +75,12 @@ func contextFixture(t *testing.T) *gorm.DB {
 	org.ID = "org-1"
 	mustCreate(t, db, org)
 	proj := "proj-1"
-	sp := &domain.TaskSpace{OrgID: "org-1", Name: "cac", Rank: "0.5"}
+	sp := &domain.TaskSpace{OrgID: "org-1", Name: "cac", Key: "cc", Rank: "0.5"}
 	sp.ID = "sp-1"
 	mustCreate(t, db, sp)
+	ana := &domain.User{Username: "ana"}
+	ana.ID = "u-ana"
+	mustCreate(t, db, ana)
 	otro := &domain.TaskSpace{OrgID: "org-2", Name: "otro", Rank: "0.5"}
 	otro.ID = "sp-2"
 	mustCreate(t, db, otro)
@@ -108,9 +111,13 @@ func contextFixture(t *testing.T) *gorm.DB {
 		tab.ID = "tab-" + string(key)
 		mustCreate(t, db, tab)
 	}
-	for i, title := range []string{"Vieja", "Nueva"} {
+	for i, title := range []string{"Vieja", "Nueva", "Más nueva"} {
 		d := &domain.Decision{DocID: "doc-app", Title: title, Origin: "doc", DecidedAt: time.Now().Add(time.Duration(i) * time.Hour)}
 		d.ID = fmt.Sprintf("dec-%d", i)
+		if title == "Más nueva" {
+			// Deja sin efecto a «Nueva»: el mapa enseña lo que vale hoy.
+			d.SupersedesID = "dec-1"
+		}
 		mustCreate(t, db, d)
 	}
 	viva := &domain.DocPage{DocID: "doc-app", OrgID: "org-1", Title: "Arquitectura", Rank: "0.5"}
@@ -140,7 +147,8 @@ func contextFixture(t *testing.T) *gorm.DB {
 
 	parent := "it-curso"
 	for _, it := range []domain.Item{
-		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 7, Title: "En curso", Status: domain.ReportInProgress},
+		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 7, Title: "En curso", Status: domain.ReportInProgress,
+			Handoff: "Falta la release", HandoffByID: "u-ana"},
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 8, Title: "Pendiente", Status: domain.ReportPending},
 		{OrgID: "org-1", SpaceID: "sp-1", ListID: "l-app", Seq: 9, Title: "Subtarea", Status: domain.ReportInProgress, ParentID: &parent},
 		{OrgID: "org-2", SpaceID: "sp-2", ListID: "l-otra", Seq: 1, Title: "De otra org", Status: domain.ReportInProgress},
@@ -149,6 +157,7 @@ func contextFixture(t *testing.T) *gorm.DB {
 		it.ID = map[string]string{"En curso": "it-curso", "Pendiente": "it-pend", "Subtarea": "it-sub", "De otra org": "it-otra"}[it.Title]
 		mustCreate(t, db, &it)
 	}
+	mustCreate(t, db, &domain.ItemAssignee{ItemID: "it-curso", UserID: "u-ana", Primary: true})
 	return db
 }
 
@@ -157,7 +166,10 @@ func contextFixture(t *testing.T) *gorm.DB {
 // tomar el `#` de un bloque de código por un título; pasar del nivel 3; sacar
 // pestañas vacías; desordenar las pestañas; las decisiones viejas primero;
 // enseñar páginas de la papelera; docs de repo de otro espacio; subtareas o
-// tareas de otra organización entre lo que está en curso.
+// tareas de otra organización entre lo que está en curso; una decisión
+// sustituida como vigente; lo que está en curso sin su referencia, sin quién
+// lo lleva o sin su «dónde quedó» (22-oct-2026: cada una obligaba a abrir la
+// tarea).
 func TestTheContextMapIsTheSpaceWithoutBodies(t *testing.T) {
 	s := NewContextService(contextFixture(t))
 	m, err := s.Map("org-1", "sp-1", nil)
@@ -196,8 +208,11 @@ func TestTheContextMapIsTheSpaceWithoutBodies(t *testing.T) {
 	if app.Doc.Tabs[1].Chars == 0 {
 		t.Fatal("sin tamaño, el agente no sabe si leerla entera")
 	}
-	if len(app.Doc.Decisions) != 2 || app.Doc.Decisions[0].Title != "Nueva" {
-		t.Fatalf("decisiones: %+v", app.Doc.Decisions)
+	if len(app.Doc.Decisions) != 2 || app.Doc.Decisions[0].Title != "Más nueva" || app.Doc.Decisions[1].Title != "Vieja" {
+		t.Fatalf("decisiones (sólo las vigentes, la más reciente primero): %+v", app.Doc.Decisions)
+	}
+	if app.Doc.Decisions[0].ID != "dec-2" {
+		t.Fatalf("una decisión sin id no se puede leer: %+v", app.Doc.Decisions[0])
 	}
 	if len(app.Doc.Pages) != 1 || app.Doc.Pages[0].Title != "Arquitectura" {
 		t.Fatalf("páginas: %+v", app.Doc.Pages)
@@ -210,6 +225,19 @@ func TestTheContextMapIsTheSpaceWithoutBodies(t *testing.T) {
 	}
 	if len(m.InProgress) != 1 || m.InProgress[0].Title != "En curso" || m.InProgress[0].Seq != 7 {
 		t.Fatalf("en curso: %+v", m.InProgress)
+	}
+	curso := m.InProgress[0]
+	if curso.Ref != "cc-7" {
+		t.Fatalf("sin referencia no se sabe cómo nombrarla en un commit: %+v", curso)
+	}
+	if len(curso.Assignees) != 1 || curso.Assignees[0] != "ana" {
+		t.Fatalf("sin responsable no se sabe de quién es: %+v", curso)
+	}
+	if curso.Handoff != "Falta la release" || curso.HandoffBy != "ana" {
+		t.Fatalf("el «dónde quedó» tiene que venir con quién lo escribió: %+v", curso)
+	}
+	if curso.UpdatedAt.IsZero() {
+		t.Fatalf("sin fecha no se sabe si está vivo: %+v", curso)
 	}
 	if len(m.Truncated) != 0 {
 		t.Fatalf("recortó sin pasarse: %v", m.Truncated)
@@ -262,7 +290,9 @@ func TestWhatTheMapLeavesOutItSays(t *testing.T) {
 			app = &m.Nodes[i]
 		}
 	}
-	if len(app.Doc.Decisions) != domain.ContextMaxDecisions || app.Doc.Decisions[0].Title != "Nueva" {
+	// La primera es la vigente más reciente de la fixture («Más nueva»); «Nueva»
+	// ya no cuenta, que la sustituyó ésa.
+	if len(app.Doc.Decisions) != domain.ContextMaxDecisions || app.Doc.Decisions[0].Title != "Más nueva" {
 		t.Fatalf("decisiones: %d, primera %q", len(app.Doc.Decisions), app.Doc.Decisions[0].Title)
 	}
 	if strings.Join(m.Truncated, ",") != "decisions" {

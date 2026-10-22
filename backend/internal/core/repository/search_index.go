@@ -86,6 +86,13 @@ func EnsureSearchIndexes(db *gorm.DB) error {
 				 setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'B')) STORED`,
 			`CREATE INDEX IF NOT EXISTS idx_repo_docs_search ON repo_docs USING GIN (search)`,
 		}},
+		{"decisions", []string{
+			// Como una página: lo que se decidió pesa más que el porqué.
+			`ALTER TABLE decisions ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS
+				(setweight(to_tsvector('cac_simple'::regconfig, coalesce(title, '')), 'A') ||
+				 setweight(to_tsvector('cac_simple'::regconfig, coalesce(body, '')), 'B')) STORED`,
+			`CREATE INDEX IF NOT EXISTS idx_decisions_search ON decisions USING GIN (search)`,
+		}},
 		{"items", []string{
 			// Una tarea, como una página: el título pesa más que la descripción.
 			`ALTER TABLE items ADD COLUMN IF NOT EXISTS search tsvector GENERATED ALWAYS AS

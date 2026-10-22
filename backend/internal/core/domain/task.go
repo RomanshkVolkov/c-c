@@ -577,6 +577,17 @@ type Decision struct {
 	// de un año tiene que poder distinguir lo que tecleó una persona de lo que
 	// transcribió un agente, y para entonces el aviso hace mucho que se leyó.
 	Via string `gorm:"type:varchar(20)" json:"via,omitempty"`
+
+	// SupersedesID: la decisión que ésta deja sin efecto.
+	//
+	// Una decisión que cambia **no se edita ni se borra**: se apunta la nueva
+	// diciendo a cuál sustituye, y la vieja queda marcada, con su fecha y su
+	// porqué, que es lo que alguien querrá leer para entender por qué cambió.
+	// Como en un grafo temporal: el hecho no se borra, se invalida. El mapa de
+	// contexto y la búsqueda enseñan sólo las vigentes; el registro, todas.
+	SupersedesID string `gorm:"type:varchar(36);index" json:"supersedesId,omitempty"`
+	// SupersededByID se resuelve al leer: la decisión que dejó a ésta sin efecto.
+	SupersededByID string `gorm:"-" json:"supersededById,omitempty"`
 }
 
 // DecisionRequest es una decisión tal como la manda quien la toma.
@@ -597,6 +608,9 @@ type DecisionRequest struct {
 	// cuando la lea. Se acepta el nombre o el usuario de un miembro de la
 	// organización; el servidor lo resuelve.
 	DecidedBy string `json:"decidedBy" validate:"omitempty,max=120"`
+	// Supersedes: el id de la decisión del mismo documento que ésta sustituye.
+	// Ver `Decision.SupersedesID`.
+	Supersedes string `json:"supersedes" validate:"omitempty,max=36"`
 }
 
 // DocPatchSignsAReview dice si este cambio incluye firmar una revisión.
@@ -826,6 +840,9 @@ type UpdateTaskRequest struct {
 	// volvía a salir. Un campo explícito se lee mejor que distinguir en el JSON
 	// «ausente» de «null», que `*time.Time` no sabe hacer.
 	ClearDueAt bool `json:"clearDueAt"`
+	// Handoff reemplaza el «dónde quedó» (ver Item.Handoff). Vacío lo quita.
+	// Con tope: es un resumen para leer de un vistazo, no otro hilo.
+	Handoff *string `json:"handoff" validate:"omitempty,max=2000"`
 	// Nil leaves membership alone; an empty slice clears it.
 	TagIDs      *[]string `json:"tagIds"`
 	AssigneeIDs *[]string `json:"assigneeIds"`
@@ -1142,6 +1159,9 @@ type TaskDetail struct {
 	// cac la enlace sola. El folio si es de un cliente; si no, la clave de su
 	// espacio y su número (`proteus-12`). Ver space_key.go.
 	Ref string `json:"ref,omitempty"`
+	// HandoffBy: quién escribió el «dónde quedó» (Item.Handoff), con su nombre
+	// visible; la fecha va en la propia tarea.
+	HandoffBy string `json:"handoffBy,omitempty"`
 	// Telemetry is the decrypted breadcrumbs blob, when the report carried one
 	// and it hasn't been purged. The report facade has always returned this; the
 	// board could not show what led up to a bug without it.

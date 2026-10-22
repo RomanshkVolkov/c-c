@@ -195,7 +195,12 @@
       "errLink": "No se pudo enlazar la PR",
       "prUrl": "URL de la PR",
       "viaManual": "Enlazada a mano"
-    }
+    },
+    "handoff": "Dónde quedó",
+    "handoffHint": "Qué está hecho, el siguiente paso y cómo comprobar si ya salió. Se reemplaza entero.",
+    "noHandoff": "Nadie ha dejado escrito dónde quedó.",
+    "handoffBy": "{{who}}, {{when}}",
+    "writeHandoff": "Escribir dónde quedó"
   },
   "notes": {
     "title": "Notas",
@@ -444,7 +449,9 @@
     "badge": "DECISIÓN",
     "open": "Ver la entrada",
     "saved": "Registrada",
-    "viaAgent": "transcrita por un agente"
+    "viaAgent": "transcrita por un agente",
+    "supersededBy": "Ya no vale: la sustituye «{{what}}»",
+    "supersedes": "Sustituye a «{{what}}»"
   },
   "docIndex": {
     "title": "Toda la documentación",

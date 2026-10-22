@@ -214,7 +214,17 @@ type Item struct {
 	// semantics: stamped on reaching a finished state and **kept** when the item
 	// is reopened. Reports never cleared it — the date something was first
 	// resolved is a fact, not a reflection of where the card sits now.
-	ResolvedAt  *time.Time `json:"resolvedAt,omitempty"`
+	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
+	// ── Dónde quedó ──
+	// Tres líneas que se **reemplazan**, no un comentario más: qué está hecho,
+	// el siguiente paso y cómo comprobar si ya salió. Es lo que la siguiente
+	// sesión —de un agente o de una persona— necesita leer antes que el hilo,
+	// y hasta el 22-oct-2026 vivía en la memoria local de cada agente, donde
+	// nadie más lo leía; en el hilo se perdía entre los avisos de commit. Con
+	// fecha y autor, para saber de cuándo es y a quién preguntar.
+	Handoff     string     `gorm:"type:text"        json:"handoff,omitempty"`
+	HandoffAt   *time.Time `json:"handoffAt,omitempty"`
+	HandoffByID string     `gorm:"type:varchar(36)" json:"handoffById,omitempty"`
 	CreatedByID string     `gorm:"type:varchar(36)" json:"createdById,omitempty"`
 	// ArchivedAt hides an item from the internal board without deleting it. The
 	// report-facing API ignores it: a tenant watching its own report must not see

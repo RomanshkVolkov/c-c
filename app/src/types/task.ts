@@ -323,6 +323,14 @@ export interface Task {
   area?: string;
   /** "user" for something a person filed, "system" for an automatic report. */
   origin?: string;
+  /**
+   * Dónde quedó: qué está hecho, el siguiente paso y cómo comprobar si ya
+   * salió. Se reemplaza entero, con fecha y autor (`handoffBy` en el detalle).
+   * Es lo que lee quien retoma la tarea antes que el hilo.
+   */
+  handoff?: string;
+  handoffAt?: string | null;
+  handoffById?: string;
 }
 
 export interface TaskDetail {
@@ -343,6 +351,8 @@ export interface TaskDetail {
    * si es de un cliente. Lo da el backend (cac#203).
    */
   ref?: string;
+  /** Quién escribió el «dónde quedó» de la tarea, con su nombre visible. */
+  handoffBy?: string;
   folio?: string;
   projectSlug?: string;
   /** Decrypted breadcrumbs, when the report carried them and they aren't purged. */
@@ -362,6 +372,8 @@ export interface UpdateTaskPayload {
    * como «no tocar». Ver `dueDatePatch` en `lib/month.ts`.
    */
   clearDueAt?: boolean;
+  /** Reemplaza el «dónde quedó». Vacío lo quita. */
+  handoff?: string;
   tagIds?: string[];
   assigneeIds?: string[];
   archived?: boolean;
@@ -593,6 +605,9 @@ export interface Decision {
    * agente.
    */
   via?: string;
+  /** A cuál deja sin efecto, y cuál la dejó sin efecto a ésta (resuelto al leer). */
+  supersedesId?: string;
+  supersededById?: string;
 }
 
 export interface DocResponse {

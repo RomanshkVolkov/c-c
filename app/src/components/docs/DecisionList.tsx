@@ -47,6 +47,8 @@ function Procedencia({ d }: { d: Decision }) {
 
 export default function DecisionList({ decisions }: { decisions: Decision[] }) {
   const { t } = useT();
+  // Para decir «la sustituye X» con el título y no con un id.
+  const titleOf = (id?: string) => decisions.find((d) => d.id === id)?.title || id || "";
 
   if (decisions.length === 0) {
     return (
@@ -63,7 +65,11 @@ export default function DecisionList({ decisions }: { decisions: Decision[] }) {
   return (
     <div className="mx-auto max-w-[68ch] space-y-2">
       {decisions.map((d) => (
-        <article key={d.id} className="rounded-[11px] border p-3">
+        <article
+          key={d.id}
+          className={"rounded-[11px] border p-3" + (d.supersededById ? " opacity-70" : "")}
+          data-superseded={d.supersededById ? "true" : undefined}
+        >
           <header className="flex items-center gap-2 text-xs text-muted-foreground">
             <time className="tabular-nums">{fecha(d.decidedAt)}</time>
             <span>{d.authorName}</span>
@@ -82,7 +88,16 @@ export default function DecisionList({ decisions }: { decisions: Decision[] }) {
               <span className="ml-auto rounded-full bg-muted px-2 py-0.5">{d.tag}</span>
             )}
           </header>
-          <h3 className="mt-1 text-[15px] font-semibold">{d.title}</h3>
+          <h3 className={"mt-1 text-[15px] font-semibold" + (d.supersededById ? " line-through" : "")}>{d.title}</h3>
+          {/* Una decisión que cambió no se borra: queda tachada y dice cuál
+              la sustituyó, que es lo que alguien querrá leer para entender por
+              qué cambió. La nueva dice a cuál deja sin efecto. */}
+          {d.supersededById && (
+            <p className="mt-1 text-xs text-muted-foreground">{t("work:decisions.supersededBy", { what: titleOf(d.supersededById) })}</p>
+          )}
+          {d.supersedesId && !d.supersededById && (
+            <p className="mt-1 text-xs text-muted-foreground">{t("work:decisions.supersedes", { what: titleOf(d.supersedesId) })}</p>
+          )}
           {d.body && <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{d.body}</p>}
           <footer className="mt-2 border-t pt-2">
             <Procedencia d={d} />

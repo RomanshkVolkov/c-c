@@ -893,7 +893,13 @@ fn doc_outline(doc: &Value) -> Value {
         .and_then(|d| d.as_array())
         .map(|a| {
             a.iter()
-                .map(|d| json!({ "id": d.get("id"), "title": d.get("title"), "tag": d.get("tag"), "decidedAt": d.get("decidedAt") }))
+                .map(|d| {
+                    let mut e = json!({ "id": d.get("id"), "title": d.get("title"), "tag": d.get("tag"), "decidedAt": d.get("decidedAt") });
+                    if let Some(by) = d.get("supersededById").and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                        e["supersededById"] = json!(by);
+                    }
+                    e
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -1239,7 +1245,7 @@ fn write_section(
 /// puede mentir.
 fn decision_body(title: &str, args: &Value) -> Value {
     let mut body = json!({ "title": title, "origin": "doc" });
-    for key in ["body", "tag", "decidedBy"] {
+    for key in ["body", "tag", "decidedBy", "supersedes"] {
         if let Some(x) = arg_str(args, key) {
             body[key] = json!(x);
         }
@@ -1556,7 +1562,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_context",
-            "description": "START HERE when you begin work in a repository. One call returns what the team knows about its project, without any bodies: the space's tree (folders and lists, with `path`; a list with `projectId` belongs to a client), for each node with a document the headings of its tabs (overview, runbook, decisions, links; up to level 3, with their size in `chars`), its subpages and its latest decisions, the markdown files of the repos linked to the space, and the tasks already in progress (so you don't duplicate one). `truncated` names anything cut for size.\n\nWith no arguments it reads the git remote of the folder you are working in and finds the space that GitHub repo is linked to. Then read only the sections you need: get_doc with kind, ownerId (the node's id), tab and section (a heading's text); get_doc_page for a subpage; get_repo_doc for a repo file.",
+            "description": "START HERE when you begin work in a repository. One call returns what the team knows about its project, without any bodies: the space's tree (folders and lists, with `path`; a list with `projectId` belongs to a client), for each node with a document the headings of its tabs (overview, runbook, decisions, links; up to level 3, with their size in `chars`), its subpages and its decisions still in force (id and title; the body with get_decision), the markdown files of the repos linked to the space, and the tasks already in progress — each with its `ref`, who is on it (`assignees`) and its `handoff`: where it was left, by whom and when, so you don't open every task to find out. `truncated` names anything cut for size.\n\nWith no arguments it reads the git remote of the folder you are working in and finds the space that GitHub repo is linked to. Then read only the sections you need: get_doc with kind, ownerId (the node's id), tab and section (a heading's text); get_doc_page for a subpage; get_repo_doc for a repo file.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1588,7 +1594,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "search",
-            "description": "Find tasks, notes and docs by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link), and a `snippet` with the matching words between ** where it is safe to show: a doc, a task's description (never a comment: it may be internal), a note. Each doc hit also carries its `ownerKind`/`ownerId`, and either the `tab` of the node's home or the `pageId` of a subpage, with `where` as the page's path, and `section`: the heading the match falls under. Read just that: get_doc with tab + section, get_doc_page or get_repo_doc with section — not the whole document. Open the other hits with get_task or get_note.\n\nEverything is full-text: words match by prefix and without accents, and titles rank first. Tasks match by title, description and comments; notes by title and body; docs by the home tabs and every page. Channel messages and direct messages are not searchable from here.",
+            "description": "Find tasks, notes, docs and decisions by text, instead of pulling whole boards. Returns what matched and where (kind, id, title, where, link), and a `snippet` with the matching words between ** where it is safe to show: a doc, a task's description (never a comment: it may be internal), a note. Each doc hit also carries its `ownerKind`/`ownerId`, and either the `tab` of the node's home or the `pageId` of a subpage, with `where` as the page's path, and `section`: the heading the match falls under. Read just that: get_doc with tab + section, get_doc_page or get_repo_doc with section — not the whole document. A hit of kind `decision` is an entry of a decision log still in force: read it with get_decision. Open the other hits with get_task or get_note.\n\nEverything is full-text: words match by prefix and without accents, and titles rank first. Tasks match by title, description and comments; notes by title and body; docs by the home tabs and every page. Channel messages and direct messages are not searchable from here.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1601,7 +1607,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -1658,7 +1664,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "update_task",
-            "description": "Change an existing task: title, markdown description, priority, tags, assignees, due date, or which column it sits in (status by name: open, in_progress, done, closed). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
+            "description": "Change an existing task: title, markdown description, priority, tags, assignees, due date, its `handoff` (where it was left), or which column it sits in (status by name: open, in_progress, done, closed). Needs a token with the `tasks:manage` scope — separate from creating, because this overwrites work someone else may have written. Only the fields you send are touched.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1679,6 +1685,7 @@ fn tool_defs() -> Value {
                         "description": "Due DATE as YYYY-MM-DD — a day, not a time. Sent as that day at midnight UTC, which is how the app stores it; don't pass a local timestamp. To remove a due date, send clearDueAt: true instead."
                     },
                     "clearDueAt": { "type": "boolean", "description": "Remove the task's due date." },
+                    "handoff": { "type": "string", "description": "Where the work was left, for whoever picks it up next: what is done, the next step, and how to check whether it shipped. Three lines, markdown. It REPLACES the previous handoff and is stamped with your name and the time; write it before you stop, and every time the state changes. An empty string clears it. Findings and discussion go in comments; this is the summary." },
                     "status": { "type": "string", "enum": ["open", "in_progress", "done", "closed"], "description": "Move the task to the column of this state in its own list — no get_board needed. This is also how a subtask is ticked off (done)." },
                     "statusId": { "type": "string", "description": "Alternative to status: the exact column id from get_board." },
                     "visibility": {
@@ -1926,7 +1933,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_doc",
-            "description": "One node's documentation HOME (its four tabs), a piece at a time — a whole doc runs to tens of thousands of characters. Below the home hangs a tree of subpages: if the outline has a `pages` field, list them with list_doc_pages and read one with get_doc_page.\n\nWithout `tab`: the OUTLINE — who maintains it, when it was reviewed, and for each of its four tabs (overview, runbook, decisions, links; the name is in `key`) its size, `bodyHash`, and its headings, each with a `sectionHash`. Plus the decision log's titles. No bodies.\nWith `tab`: that tab's full markdown.\nWith `tab` + `section`: just that heading and what's under it, down to the next heading of the same or a higher level.\n\nRewrite one heading with write_doc_section and its sectionHash; replace a whole tab with write_doc_tab and its bodyHash.",
+            "description": "One node's documentation HOME (its four tabs), a piece at a time — a whole doc runs to tens of thousands of characters. Below the home hangs a tree of subpages: if the outline has a `pages` field, list them with list_doc_pages and read one with get_doc_page.\n\nWithout `tab`: the OUTLINE — who maintains it, when it was reviewed, and for each of its four tabs (overview, runbook, decisions, links; the name is in `key`) its size, `bodyHash`, and its headings, each with a `sectionHash`. Plus the decision log's titles. No bodies.\nWith `tab`: that tab's full markdown. `tab: decisions` is the DECISION LOG (newest first, each with id, title, who, when, a summary and whether it was superseded), not a markdown tab: read one entry's body with get_decision.\nWith `tab` + `section`: just that heading and what's under it, down to the next heading of the same or a higher level.\n\nRewrite one heading with write_doc_section and its sectionHash; replace a whole tab with write_doc_tab and its bodyHash.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1956,7 +1963,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "record_decision",
-            "description": "Add an entry to a project's decision log: what was decided, why, and who decided it. Taken outside cac — a client's email, a call — it comes from the document. Taken while working a task, pass originTaskId and the entry links back to that task. The log is append-only: entries cannot be edited or deleted afterwards, so write it as it should read in a year. Needs a token with the `docs:write` scope.",
+            "description": "Add an entry to a project's decision log: what was decided, why, and who decided it. Taken outside cac — a client's email, a call — it comes from the document. Taken while working a task, pass originTaskId and the entry links back to that task. The log is append-only: entries cannot be edited or deleted afterwards, so write it as it should read in a year. When a decision CHANGES, do not write it as if the old one never existed: pass `supersedes` with the old entry's id, and the old one stays in the log marked as superseded while the map and search show only the new one. Needs a token with the `docs:write` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1967,9 +1974,19 @@ fn tool_defs() -> Value {
                     "tag": { "type": "string", "description": "Optional: architecture, vendor, scope…" },
                     "decidedBy": { "type": "string", "description": "The name or username of the person in this organization who made the call, when it wasn't you. Signing it with the token's owner would say they decided it, which is what whoever reads it will believe." },
                     "originTaskId": { "type": "string", "description": "Optional. The task this decision came out of; the entry links back to it. It must be a real task in the same organization, or the entry is refused — the log can't be edited, so a link to nothing would stay forever. One task per decision." },
+                    "supersedes": { "type": "string", "description": "Optional. The id of the decision of this same document that this one replaces (from get_context, get_doc tab: decisions, or a search hit). It must still be in force: a decision already superseded names the one that replaced it instead." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "title"]
+            }
+        },
+        {
+            "name": "get_decision",
+            "description": "One entry of a decision log, with its body (the why), who decided it and when, the task it came out of, the node it belongs to, and which decision it supersedes or was superseded by. Ids come from get_context, get_doc (tab: decisions) and search hits of kind `decision`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "id": { "type": "string" } },
+                "required": ["id"]
             }
         },
         {
@@ -2788,7 +2805,14 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 d["ref"] = json!(r);
             }
             drop_mirrored_commit_notes(&mut d);
+            hoist_handoff(&mut d);
             Ok(d)
+        }
+
+        "get_decision" => {
+            let id = arg_str(args, "id").ok_or("id is required")?;
+            let d = api_get(cfg, &format!("/api/v1/docs/decisions/{}", urlencode(&id)))?;
+            Ok(decision_view(&d))
         }
 
         "search" => {
@@ -2924,6 +2948,11 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 if let Some(v) = arg_str(args, key) {
                     body[key] = json!(v);
                 }
+            }
+            // El handoff vacío es una orden («quítalo»), no un campo sin
+            // rellenar, así que no pasa por `arg_str`, que tira lo vacío.
+            if let Some(h) = args.get("handoff").and_then(|v| v.as_str()) {
+                body["handoff"] = json!(h);
             }
             // Etiquetas y responsables se resuelven contra la organización de la
             // tarea, que sólo se sabe preguntando por ella.
@@ -3313,6 +3342,13 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 format!("No tab \"{tab}\": use overview, runbook, decisions or links")
             })?;
             let body = tab_body(t);
+            // La pestaña «decisions» de casi todos los documentos está vacía:
+            // el registro de decisiones no es markdown, es `decisions` en la
+            // respuesta, y pedir la pestaña devolvía «0 caracteres» con ocho
+            // decisiones al lado que no se podían leer (22-oct-2026).
+            if tab == "decisions" && body.trim().is_empty() {
+                return Ok(decision_log(&data));
+            }
             match arg_str(args, "section") {
                 None => Ok(json!({
                     "tab": tab,
@@ -4270,6 +4306,76 @@ fn drop_mirrored_commit_notes(d: &mut Value) {
     }
 }
 
+/// El «dónde quedó» de la tarea, arriba del todo y con quién y cuándo: es lo
+/// primero que tiene que leer quien la retoma, y dentro de `task` quedaba
+/// entre treinta campos.
+fn hoist_handoff(d: &mut Value) {
+    let Some(text) = d.get("task").and_then(|t| t.get("handoff")).and_then(|h| h.as_str()).filter(|h| !h.trim().is_empty()) else {
+        return;
+    };
+    let text = text.to_string();
+    let at = d.get("task").and_then(|t| t.get("handoffAt")).cloned();
+    let by = d.get("handoffBy").cloned();
+    d["handoff"] = json!({ "text": text, "at": at, "by": by });
+}
+
+/// Una decisión, como la lee un agente: el cuerpo, quién, cuándo, de dónde
+/// salió y a quién sustituye o quién la sustituyó.
+fn decision_view(data: &Value) -> Value {
+    let d = data.get("decision").cloned().unwrap_or(Value::Null);
+    let mut out = json!({
+        "id": d.get("id"), "title": d.get("title"), "body": d.get("body"), "tag": d.get("tag"),
+        "decidedAt": d.get("decidedAt"), "decidedBy": d.get("authorName"), "via": d.get("via"),
+        "origin": d.get("origin"), "originTaskId": d.get("originTaskId"), "originTitle": d.get("originTitle"),
+        "ownerKind": data.get("ownerKind"), "ownerId": data.get("ownerId"),
+    });
+    for key in ["supersedesId", "supersededById"] {
+        if let Some(v) = d.get(key).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+            out[key] = json!(v);
+        }
+    }
+    if out.get("supersededById").is_some() {
+        out["note"] = json!("Superseded: this decision no longer applies; read the one in supersededById.");
+    }
+    out
+}
+
+/// El registro de decisiones de un documento, para `get_doc tab: decisions`:
+/// lo más reciente primero, cada una con su resumen y si ya no vale.
+fn decision_log(doc: &Value) -> Value {
+    let entries: Vec<Value> = doc
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|d| {
+                    let body = d.get("body").and_then(|b| b.as_str()).unwrap_or("");
+                    let mut summary: String = body.chars().take(200).collect();
+                    if body.chars().count() > 200 {
+                        summary.push('…');
+                    }
+                    let mut e = json!({
+                        "id": d.get("id"), "title": d.get("title"), "tag": d.get("tag"),
+                        "decidedAt": d.get("decidedAt"), "decidedBy": d.get("authorName"),
+                        "originTaskId": d.get("originTaskId"), "summary": summary,
+                    });
+                    for key in ["supersedesId", "supersededById"] {
+                        if let Some(v) = d.get(key).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                            e[key] = json!(v);
+                        }
+                    }
+                    e
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    json!({
+        "tab": "decisions",
+        "decisions": entries,
+        "note": "The decision log, newest first. An entry with supersededById no longer applies. Read one's full body with get_decision(id).",
+    })
+}
+
 fn task_ref(d: &Value) -> Option<String> {
     // La que da el backend: el folio, o la clave del espacio y el número
     // (`proteus-12`, cac#203). Lo de abajo es para un backend de antes.
@@ -4445,18 +4551,20 @@ fn instructions(state: Option<SkillState>) -> String {
          get_context first (no arguments: it finds the project from the folder's git remote); it returns the index of \
          what the team knows (the tree, the headings of each document, decisions, repo docs, tasks in progress) \
          without bodies. Then read the section \"Trampas que ya han mordido\" of the node you will touch and \"Antes \
-         de dar algo por hecho\" of the runbook, when they exist, and anything else only as you need it. If the repo \
-         is not linked to a space, the repository's CLAUDE.md may name its list under \"Tareas en cac\"; otherwise \
-         ask the user.\n\
-         2. THE BOARD. Before working, bring the board up to date, only in the lists you will touch: tasks left in \
-         progress by earlier sessions whose work has since been published (released, deployed) are moved to done \
-         with a comment saying how you checked; what depends on a person, ask.\n\
+         de dar algo por hecho\" of the runbook, when they exist, and anything else only as you need it; a decision's \
+         body is read with get_decision. If the repo is not linked to a space, the repository's CLAUDE.md may name \
+         its list under \"Tareas en cac\"; otherwise ask the user.\n\
+         2. THE BOARD. Before working, bring the board up to date, only in the lists you will touch: each task in \
+         progress carries its handoff (where the last session left it) in get_context, so read that, not the thread; \
+         tasks left in progress by earlier sessions whose work has since been published (released, deployed) are \
+         moved to done with a comment saying how you checked; what depends on a person, ask.\n\
          3. THE TASK AND ITS COMMITS. Find or create your task and move it to in progress (update_task status: \
          in_progress). End every commit message with its ref, e.g. (proteus-12), so cac links the commit to it; in \
          a repository cac is not connected to, such as a client's own GitHub organization, leave the commit clean \
          and note the repo and sha in the task instead. Record findings as task comments and decisions with \
-         record_decision.\n\
-         4. CLOSE HONESTLY. Before you tell the user you are done, update the task: done means published, not \
+         record_decision (a decision that changes supersedes the old one; it is not rewritten).\n\
+         4. CLOSE HONESTLY. Before you tell the user you are done, write the task's handoff (update_task handoff: \
+         what is done, the next step, how to check it shipped) and update the task: done means published, not \
          committed; committed but not yet released stays in progress with a comment saying where it ships, so the \
          next session knows what to check.",
     );
@@ -5357,6 +5465,68 @@ mod tests {
         assert!(got.get("commitNotesOmitted").is_none());
     }
 
+    /// Roturas que detecta: no mandar el handoff; tirar el vacío (es la orden
+    /// de quitarlo, no un campo sin rellenar); o no izarlo en `get_task`, que
+    /// es donde quien retoma la tarea tiene que verlo antes que el hilo.
+    #[test]
+    fn a_handoff_travels_whole_and_comes_back_on_top() {
+        let (cfg, log) = fake_cac(|m, p, _| {
+            if m == "GET" && p == "/api/v1/tasks/t1" {
+                json!({ "task": { "id": "t1", "seq": 5, "handoff": "Falta la release", "handoffAt": "2026-10-22T08:00:00Z" },
+                        "handoffBy": "jose", "comments": [] })
+            } else {
+                json!({ "task": { "id": "t1", "seq": 5 } })
+            }
+        });
+        call_tool(&cfg, "update_task", &json!({ "id": "t1", "handoff": "Falta la release" })).unwrap();
+        call_tool(&cfg, "update_task", &json!({ "id": "t1", "handoff": "" })).unwrap();
+        let patches: Vec<Value> = log.lock().unwrap().iter().filter(|(m, _, _)| m == "PATCH").map(|(_, _, b)| b.clone()).collect();
+        assert_eq!(patches.len(), 2, "{patches:?}");
+        assert_eq!(patches[0]["handoff"], "Falta la release");
+        assert_eq!(patches[1]["handoff"], "", "el vacío es «quítalo», y se manda");
+        let got = call_tool(&cfg, "get_task", &json!({ "id": "t1" })).unwrap();
+        assert_eq!(got["handoff"]["text"], "Falta la release");
+        assert_eq!(got["handoff"]["by"], "jose");
+        assert_eq!(got["handoff"]["at"], "2026-10-22T08:00:00Z");
+    }
+
+    /// Roturas que detecta: que la pestaña «decisions» siga contestando un
+    /// markdown vacío con el registro al lado; que el registro no diga cuál
+    /// ya no vale; que `get_decision` no traiga el cuerpo o a quién
+    /// sustituye; o que `record_decision` tire `supersedes`.
+    #[test]
+    fn decisions_can_be_listed_read_and_superseded() {
+        let (cfg, log) = fake_cac(|m, p, _| {
+            if p == "/api/v1/docs/decisions/d2" {
+                json!({ "decision": { "id": "d2", "title": "Las releases se juntan", "body": "Una por arreglo gastaba números", "authorName": "jose", "supersedesId": "d1" }, "ownerKind": "space", "ownerId": "s1" })
+            } else if m == "POST" {
+                json!({ "decisions": [{ "id": "d3", "title": "x", "createdAt": "2026-10-22T09:00:00Z" }] })
+            } else {
+                json!({ "doc": { "id": "doc1" }, "tabs": [{ "key": "decisions", "body": "" }],
+                        "decisions": [
+                            { "id": "d2", "title": "Las releases se juntan", "body": "Una por arreglo gastaba números", "authorName": "jose", "supersedesId": "d1" },
+                            { "id": "d1", "title": "Una release por arreglo", "body": "Así sale antes", "supersededById": "d2" }
+                        ] })
+            }
+        });
+        let log_view = call_tool(&cfg, "get_doc", &json!({ "kind": "space", "ownerId": "s1", "tab": "decisions" })).unwrap();
+        let entries = log_view["decisions"].as_array().unwrap();
+        assert_eq!(entries.len(), 2, "{log_view}");
+        assert_eq!(entries[0]["summary"], "Una por arreglo gastaba números");
+        assert_eq!(entries[1]["supersededById"], "d2", "la vieja tiene que decir que ya no vale");
+        assert!(entries[0].get("supersededById").is_none());
+
+        let one = call_tool(&cfg, "get_decision", &json!({ "id": "d2" })).unwrap();
+        assert_eq!(one["body"], "Una por arreglo gastaba números");
+        assert_eq!(one["decidedBy"], "jose");
+        assert_eq!(one["supersedesId"], "d1");
+        assert_eq!(one["ownerId"], "s1");
+
+        call_tool(&cfg, "record_decision", &json!({ "kind": "space", "ownerId": "s1", "title": "Las releases se juntan", "supersedes": "d1" })).unwrap();
+        let posted = log.lock().unwrap().iter().find(|(m, _, _)| m == "POST").map(|(_, _, b)| b.clone()).unwrap();
+        assert_eq!(posted["supersedes"], "d1");
+    }
+
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un
     /// fork, `aaa` saldría antes por orden alfabético).
     #[test]
@@ -5548,6 +5718,10 @@ mod tests {
             ("call get_context", "Llama a **`get_context` sin argumentos**"),
             ("Trampas que ya han mordido", "Trampas que ya han mordido"),
             ("only in the lists you will touch", "sólo en las listas que vas a tocar"),
+            ("carries its handoff", "su `handoff`"),
+            ("write the task's handoff", "## 7 · Al terminar: el handoff y el estado honesto"),
+            ("read with get_decision", "`get_decision`"),
+            ("supersedes the old one", "`supersedes`"),
             ("bring the board up to date", "## 3 · Poner el tablero al día"),
             ("move it to in progress", "`status: \"in_progress\"`"),
             ("commit message with its ref", "## 5 · Cada commit nombra su tarea"),

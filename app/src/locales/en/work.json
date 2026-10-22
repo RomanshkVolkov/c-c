@@ -195,7 +195,12 @@
       "errLink": "Couldn't link the PR",
       "prUrl": "PR URL",
       "viaManual": "Linked by hand"
-    }
+    },
+    "handoff": "Where it was left",
+    "handoffHint": "What is done, the next step and how to check it shipped. It replaces the previous one.",
+    "noHandoff": "Nobody has written down where this was left.",
+    "handoffBy": "{{who}}, {{when}}",
+    "writeHandoff": "Write where it was left"
   },
   "notes": {
     "title": "Notes",
@@ -444,7 +449,9 @@
     "badge": "DECISION",
     "open": "See the entry",
     "saved": "Recorded",
-    "viaAgent": "transcribed by an agent"
+    "viaAgent": "transcribed by an agent",
+    "supersededBy": "No longer applies: superseded by “{{what}}”",
+    "supersedes": "Supersedes “{{what}}”"
   },
   "docIndex": {
     "title": "All docs",

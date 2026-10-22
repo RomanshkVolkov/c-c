@@ -217,5 +217,7 @@
   "context-repo-not-linked": "Este repositorio no está atado a ningún espacio de tus organizaciones. Átalo desde el espacio (GitHub).",
   "context-missing-target": "Falta el espacio o el repositorio.",
   "space-key-invalid": "La clave va en minúsculas y con guiones, y cada parte empieza por una letra.",
-  "space-key-taken": "Otro espacio o un proyecto de cliente de esta organización ya usa esa clave."
+  "space-key-taken": "Otro espacio o un proyecto de cliente de esta organización ya usa esa clave.",
+  "decision-supersedes-not-here": "La decisión que ésta sustituye no está en este documento.",
+  "decision-already-superseded": "Esa decisión ya fue sustituida: nombra a la que la sustituyó."
 }

@@ -217,5 +217,7 @@
   "context-repo-not-linked": "This repository is not linked to a space in your organizations. Link it from the space (GitHub).",
   "context-missing-target": "Missing the space or the repository.",
   "space-key-invalid": "A key is lowercase with hyphens, and every part starts with a letter.",
-  "space-key-taken": "Another space or a client project in this organization already uses that key."
+  "space-key-taken": "Another space or a client project in this organization already uses that key.",
+  "decision-supersedes-not-here": "The decision this one supersedes is not in this document.",
+  "decision-already-superseded": "That decision was already superseded: name the one that replaced it."
 }

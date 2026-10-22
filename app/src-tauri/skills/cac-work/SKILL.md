@@ -48,9 +48,11 @@ atado ese repo de GitHub y devuelve, en una sola llamada y sin cuerpos:
 - el árbol de carpetas y listas, con su ruta. Una lista con `projectId` es de
   un cliente;
 - de cada nodo con documento: los títulos de sus pestañas (overview, runbook,
-  decisions, links), su tamaño, sus subpáginas y sus últimas decisiones;
+  decisions, links), su tamaño, sus subpáginas y sus decisiones vigentes (el
+  cuerpo de una, con `get_decision`);
 - los `.md` de los repos atados al espacio;
-- las tareas que ya están en curso, para no duplicar una;
+- las tareas que ya están en curso, cada una con su `ref`, quién la lleva y
+  su `handoff`: dónde la dejó la última sesión;
 - `truncated`, si algo se recortó por tamaño: entonces hay más de lo que ves.
 
 Si contesta que `.` no es un repo, pásale `path` con la carpeta del repo: pasa
@@ -102,10 +104,11 @@ ya se haya publicado: esa sesión terminó antes de que saliera, y nadie la
 mueve. Así que, al llegar, revisa lo que `get_context` da en `inProgress` (o
 el tablero, con `get_board`):
 
-1. Lee el último comentario de cada una con `get_task`. Ahí debería decir qué
-   falta: «sale en la próxima release», «espera a AWS», «falta probarlo en una
-   llamada». (Los avisos de commit de GitHub no salen en el hilo: los mismos
-   commits van en `git`.)
+1. Lee su `handoff` en el mapa: dice qué falta («sale en la próxima
+   release», «espera a AWS», «falta probarlo en una llamada»). Sólo si no lo
+   tiene, abre la tarea con `get_task` y lee el último comentario de una
+   persona o un agente (los avisos de commit de GitHub no salen en el hilo:
+   los mismos commits van en `git`).
 2. Si lo que faltaba ya pasó, ciérrala con `status: "done"` y un comentario que
    diga cómo lo comprobaste.
    - **Para comprobar si un commit ya se publicó:** el `git` de `get_task` trae
@@ -201,7 +204,11 @@ En una rama, lo mismo con guiones: `proteus-12-login`.
   `originTaskId` de la tarea:
   - `decidedBy` es quien la tomó; si fue el usuario, su nombre;
   - el registro no se puede editar, así que escríbelo como debe leerse dentro
-    de un año, con el porqué.
+    de un año, con el porqué;
+  - **si cambia una que ya estaba**, no la reescribas ni la escribas como si
+    la vieja no existiera: pásale `supersedes` con el id de la vieja. Queda
+    marcada, con su fecha y su porqué, y el mapa y la búsqueda enseñan sólo la
+    nueva.
 - **Si cambió algo del runbook** (cómo se despliega, una variable nueva, un
   comando, una trampa que mordió), actualiza esa sección con
   `write_doc_section`, pasando el `sectionHash` que leíste. Para algo nuevo, usa
@@ -212,10 +219,22 @@ En una rama, lo mismo con guiones: `proteus-12-login`.
 - **El overview** sólo se toca si cambió de qué va el proyecto. No lo
   reescribas por estilo.
 
-## 7 · Al terminar: el estado honesto
+## 7 · Al terminar: el handoff y el estado honesto
 
-Antes de decirle al usuario que terminaste, **actualiza la tarea**. Es el paso
-que más se olvida, y por eso existe esta skill.
+Antes de decirle al usuario que terminaste, **escribe el handoff y actualiza
+la tarea**. Es el paso que más se olvida, y por eso existe esta skill.
+
+**El handoff** (`update_task` con `handoff`) son tres líneas que se reemplazan,
+no un comentario más: qué está hecho, cuál es el siguiente paso, y cómo
+comprobar si ya salió. Es lo que la siguiente sesión lee en el mapa sin abrir
+la tarea, y lo que una persona lee arriba del hilo. Lleva tu nombre y la hora.
+Escríbelo también si paras a medias o cambias de rumbo:
+
+```
+Hecho: backend desplegado (1a26f17); la app en fa58344, sin release.
+Siguiente: cortar la release y comprobar el chip de ref en el detalle.
+Comprobar: `git tag --contains fa58344`.
+```
 
 **`done` quiere decir publicado**, no commiteado: lo que el usuario ya tiene en
 las manos. Una tarea empieza en `in_progress` (paso 4) y no pasa a `done` hasta
@@ -253,4 +272,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v8 -->
+<!-- cac-work v9 -->

@@ -24,6 +24,7 @@ type DocHandler interface {
 	Patch(w http.ResponseWriter, r *http.Request)
 	Versions(w http.ResponseWriter, r *http.Request)
 	AddDecision(w http.ResponseWriter, r *http.Request)
+	GetDecision(w http.ResponseWriter, r *http.Request)
 	RequestReview(w http.ResponseWriter, r *http.Request)
 	AppendTab(w http.ResponseWriter, r *http.Request)
 	Restore(w http.ResponseWriter, r *http.Request)
@@ -247,6 +248,45 @@ func (h *docHandler) RequestReview(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddDecision apunta una decisión en el registro de un documento.
+// decisionResponse: una entrada del registro y el nodo del que es, para que
+// quien la lee por su id sepa de qué documento sale.
+type decisionResponse struct {
+	Decision  *domain.Decision    `json:"decision"`
+	OwnerKind domain.DocOwnerKind `json:"ownerKind"`
+	OwnerID   string              `json:"ownerId"`
+	OrgID     string              `json:"orgId"`
+}
+
+// GetDecision: una decisión suelta, con su cuerpo. Hasta el 22-oct-2026 no
+// había forma de leer una: el MCP recortaba el registro a títulos y la
+// búsqueda no las indexaba, así que lo que `record_decision` escribía «para
+// leerse dentro de un año» no lo leía nadie. Quien no es de su organización
+// recibe 404, como con el documento.
+func (h *docHandler) GetDecision(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	d, err := h.svc.Decision(chi.URLParam(r, "id"))
+	if err != nil || d == nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	doc, err := h.svc.FindByID(d.DocID)
+	if err != nil || doc == nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	if _, member := user.RoleInOrg(doc.OrgID); !member && !user.Superadmin {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[decisionResponse]{Success: true, Data: decisionResponse{
+		Decision: d, OwnerKind: doc.OwnerKind, OwnerID: doc.OwnerID, OrgID: doc.OrgID,
+	}})
+}
+
 func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
 	kind, id, orgID, ok := h.resolveOwner(w, r)
 	if !ok {
@@ -268,6 +308,16 @@ func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, service.ErrDecisionOriginNotHere) {
 			SendErrorResponse(w, http.StatusBadRequest,
 				"That task does not exist in this organization", "decision-origin-not-here")
+			return
+		}
+		if errors.Is(err, service.ErrDecisionSupersedesNotHere) {
+			SendErrorResponse(w, http.StatusBadRequest,
+				"The decision to supersede is not in this document", "decision-supersedes-not-here")
+			return
+		}
+		if errors.Is(err, service.ErrDecisionAlreadySuperseded) {
+			SendErrorResponse(w, http.StatusBadRequest,
+				"That decision was already superseded; name the one that replaced it", "decision-already-superseded")
 			return
 		}
 		var noEsta *service.ErrNoSuchColleague

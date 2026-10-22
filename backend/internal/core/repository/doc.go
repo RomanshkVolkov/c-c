@@ -581,21 +581,54 @@ func (r *DocRepository) Decisions(docID string) ([]domain.Decision, error) {
 		Order("decided_at DESC").Find(&out).Error; err != nil {
 		return nil, err
 	}
+	by := r.supersededBy(docID)
 	for i := range out {
-		out[i].AuthorName = r.AuthorName(out[i].AuthorID)
-		switch out[i].Origin {
-		case domain.DecisionFromTask:
-			r.db.Model(&domain.Task{}).Select("title").
-				Where("id = ?", out[i].OriginTaskID).Scan(&out[i].OriginTitle)
-		case domain.DecisionFromMessage:
-			// Un canal **es** un espacio: el chat cuelga del espacio y no tiene
-			// tabla propia (ver `ChatMessage.SpaceID`). El nombre que se pinta en
-			// «en #Portento» es el del espacio.
-			r.db.Model(&domain.TaskSpace{}).Select("name").
-				Where("id = ?", out[i].OriginChannelID).Scan(&out[i].OriginTitle)
-		}
+		r.resolveDecision(&out[i])
+		out[i].SupersededByID = by[out[i].ID]
 	}
 	return out, nil
+}
+
+// DecisionByID: una entrada suelta, resuelta como las del registro.
+func (r *DocRepository) DecisionByID(id string) (*domain.Decision, error) {
+	var d domain.Decision
+	if err := r.db.Where("id = ?", id).First(&d).Error; err != nil {
+		return nil, err
+	}
+	r.resolveDecision(&d)
+	d.SupersededByID = r.supersededBy(d.DocID)[d.ID]
+	return &d, nil
+}
+
+// resolveDecision pone los nombres que se pintan: quién la tomó y de dónde
+// salió.
+func (r *DocRepository) resolveDecision(d *domain.Decision) {
+	d.AuthorName = r.AuthorName(d.AuthorID)
+	switch d.Origin {
+	case domain.DecisionFromTask:
+		r.db.Model(&domain.Task{}).Select("title").
+			Where("id = ?", d.OriginTaskID).Scan(&d.OriginTitle)
+	case domain.DecisionFromMessage:
+		// Un canal **es** un espacio: el chat cuelga del espacio y no tiene
+		// tabla propia (ver `ChatMessage.SpaceID`). El nombre que se pinta en
+		// «en #Portento» es el del espacio.
+		r.db.Model(&domain.TaskSpace{}).Select("name").
+			Where("id = ?", d.OriginChannelID).Scan(&d.OriginTitle)
+	}
+}
+
+// supersededBy: de cada decisión de un documento que fue sustituida, cuál la
+// sustituyó. Una consulta para todo el registro, no una por entrada.
+func (r *DocRepository) supersededBy(docID string) map[string]string {
+	type row struct{ ID, SupersedesID string }
+	var rows []row
+	r.db.Table("decisions").Select("id, supersedes_id").
+		Where("doc_id = ? AND supersedes_id <> ''", docID).Scan(&rows)
+	out := map[string]string{}
+	for _, x := range rows {
+		out[x.SupersedesID] = x.ID
+	}
+	return out
 }
 
 // DocForList resuelve el documento de la lista a la que pertenece una tarea.

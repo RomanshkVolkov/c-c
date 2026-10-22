@@ -562,6 +562,18 @@ func (s *TaskService) UpdateTask(ctx context.Context, id, actorID string, req do
 		// sólo reconocía uno de los dos (#83).
 		fields["priority"] = domain.ItemPriority(*req.Priority).Canonical()
 	}
+	if req.Handoff != nil {
+		// Se reemplaza entero, con fecha y autor: un «dónde quedó» viejo con
+		// fecha vieja ya dice algo; sin fecha diría lo mismo que uno de hoy.
+		text := strings.TrimSpace(*req.Handoff)
+		fields["handoff"] = text
+		if text == "" {
+			fields["handoff_at"], fields["handoff_by_id"] = nil, ""
+		} else {
+			now := time.Now()
+			fields["handoff_at"], fields["handoff_by_id"] = &now, actorID
+		}
+	}
 	if req.StartAt != nil {
 		fields["start_at"] = req.StartAt
 	}
@@ -805,6 +817,9 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 		Status:    status,
 		Tags:      tags, Assignees: assignees, Comments: comments, Attachments: attachments,
 		Subtasks: subtasks,
+	}
+	if t.HandoffByID != "" {
+		detail.HandoffBy = s.repo.DisplayName(t.HandoffByID)
 	}
 	// Lo de GitHub, si lo hay. Un fallo aquí no tumba el detalle: el panel se
 	// queda vacío y la tarea se abre igual.

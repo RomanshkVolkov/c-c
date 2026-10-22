@@ -82,7 +82,11 @@ type ContextPage struct {
 	ParentID *string `json:"parentId,omitempty"`
 }
 
+// ContextDecision: una decisión **vigente**. Las sustituidas (ver
+// `Decision.SupersedesID`) no salen: el mapa dice lo que vale hoy; el registro
+// entero, con su historia, se lee con el documento.
 type ContextDecision struct {
+	ID        string    `json:"id"`
 	Title     string    `json:"title"`
 	Tag       string    `json:"tag,omitempty"`
 	DecidedAt time.Time `json:"decidedAt"`
@@ -96,10 +100,23 @@ type ContextRepoDoc struct {
 }
 
 type ContextTask struct {
-	ID     string `json:"id"`
-	Seq    int    `json:"seq"`
-	Title  string `json:"title"`
-	ListID string `json:"listId"`
+	ID  string `json:"id"`
+	Seq int    `json:"seq"`
+	// Ref: cómo se nombra en un commit (`proteus-12`, o el folio de un cliente).
+	Ref       string    `json:"ref,omitempty"`
+	Title     string    `json:"title"`
+	ListID    string    `json:"listId"`
+	ProjectID string    `json:"-"`
+	Assignees []string  `json:"assignees,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	// Handoff: el «dónde quedó» de la tarea (Item.Handoff), con quién lo
+	// escribió y cuándo. Con esto, al poner el tablero al día no hace falta
+	// abrir cada tarea: hasta el 22-oct-2026 eran cuatro `get_task` de varios
+	// miles de caracteres para encontrar una línea.
+	Handoff     string     `json:"handoff,omitempty"`
+	HandoffAt   *time.Time `json:"handoffAt,omitempty"`
+	HandoffByID string     `json:"-"`
+	HandoffBy   string     `json:"handoffBy,omitempty"`
 }
 
 // Límites del mapa: lo que pasa de aquí se recorta y se dice en `Truncated`.

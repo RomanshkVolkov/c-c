@@ -65,6 +65,10 @@ const (
 	// SearchRepoDoc: un .md de un repo atado a un espacio (docs as code). Va
 	// con los docs: es documentación de la org, con su misma valla.
 	SearchRepoDoc SearchKind = "repoDoc"
+	// SearchDecision: una entrada vigente del registro de decisiones de un
+	// documento. Va con los docs: es documentación, y hasta el 22-oct-2026 lo
+	// que se apuntaba «para leerse dentro de un año» no lo encontraba nadie.
+	SearchDecision SearchKind = "decision"
 )
 
 // SearchResults keeps the sources apart all the way to the client.

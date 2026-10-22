@@ -225,6 +225,18 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 				WHERE rd.org_id = ? AND gr.show_docs AND gr.space_id <> '' AND rd.search @@ q.q`
 		args = append(args, orgID)
 	}
+	// Las decisiones vigentes del registro de cada documento; el «dónde» es el
+	// nodo. Una sustituida no sale: lo que se busca es lo que vale hoy.
+	decisionPart := ""
+	if r.hasSearchColumn("decisions") {
+		decisionPart = `UNION ALL
+				SELECT 'decision', d.owner_kind, d.owner_id, '', dec.id, dec.title, dec.body,
+				       ts_rank_cd(dec.search, q.q), dec.decided_at
+				FROM decisions dec JOIN docs d ON d.id = dec.doc_id, q
+				WHERE d.org_id = ? AND dec.search @@ q.q
+				  AND NOT EXISTS (SELECT 1 FROM decisions n WHERE n.supersedes_id = dec.id)`
+		args = append(args, orgID)
+	}
 	args = append(args, limit)
 	var rows []row
 	err := r.db.Raw(`
@@ -241,6 +253,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 				FROM doc_pages p JOIN docs d ON d.id = p.doc_id, q
 				WHERE p.org_id = ? AND p.deleted_at IS NULL AND p.search @@ q.q
 				`+repoPart+`
+				`+decisionPart+`
 			) x
 			ORDER BY score DESC, updated_at DESC
 			LIMIT ?
@@ -268,6 +281,14 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 			continue
 		}
 		link := "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID
+		if x.Src == "decision" {
+			out = append(out, domain.SearchHit{
+				Kind: domain.SearchDecision, ID: x.PageID, Title: x.PageTitle,
+				Where: x.Name + " › decisiones", Snippet: domain.CleanSnippet(x.Snippet),
+				OwnerKind: x.OwnerKind, OwnerID: x.OwnerID, Link: link + "&tab=decisions",
+			})
+			continue
+		}
 		hit := domain.SearchHit{
 			Kind: domain.SearchDoc, ID: x.OwnerID, Snippet: domain.CleanSnippet(x.Snippet),
 			OwnerKind: x.OwnerKind, OwnerID: x.OwnerID,
