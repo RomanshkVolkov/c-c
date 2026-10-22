@@ -66,12 +66,15 @@ func TestAPushToTheServiceBranchBuildsAndDeploys(t *testing.T) {
 	f.hook(t, "push", "p-2", pushTo("refs/heads/main", shaNew))
 	deps := f.deploymentsOf(t)
 	if len(deps) != 1 || deps[0].BuildSha != shaNew || deps[0].RequestedBy != domain.DeployByGitHub ||
-		deps[0].Image != "ghcr.io/dwit/api:"+shaNew {
+		// Con el nombre del servicio detrás del sha: un build en el servidor
+		// no puede compartir tag con el del CI ni con otro servicio (cac#185).
+		deps[0].Image != "ghcr.io/dwit/api:"+shaNew+"-beta_app" {
 		t.Fatalf("deploys: %+v", deps)
 	}
 	var b domain.ImageBuild
 	f.db.First(&b, "deployable_id = ?", f.d.ID)
-	if b.Source != domain.BuildSourceHost || b.Ref != "refs/heads/main" || b.Actor != "ana" {
+	if b.Source != domain.BuildSourceHost || b.Ref != "refs/heads/main" || b.Actor != "ana" ||
+		b.Image != "ghcr.io/dwit/api:"+shaNew+"-beta_app" {
 		t.Fatalf("la versión: %+v", b)
 	}
 	// El mismo push otra vez (GitHub reentrega) no es otro deploy.

@@ -281,7 +281,7 @@ func (s *DeployService) requestDeployFor(d *domain.Deployable, by, userID, sha, 
 		}
 		buildSha = sha
 	}
-	return s.enqueue(d, by, userID, d.ImageRepo+":"+d.Tag(sha), "", idemKey, runID, buildSha)
+	return s.enqueue(d, by, userID, d.CommitImage(sha), "", idemKey, runID, buildSha)
 }
 
 // Rollback vuelve a lo que había antes de un deployment. Lo de antes lo leyó
@@ -392,7 +392,7 @@ func (s *DeployService) Notice(d *domain.Deployable, n domain.DeployNotice, sour
 	fullSha := n.Sha
 	n.Sha = d.Tag(n.Sha)
 	b := &domain.ImageBuild{
-		OrgID: d.OrgID, DeployableID: d.ID, Sha: n.Sha, Image: d.ImageRepo + ":" + n.Sha,
+		OrgID: d.OrgID, DeployableID: d.ID, Sha: n.Sha, Image: d.CommitImage(n.Sha),
 		Ref: n.Ref, Actor: n.Actor, RunURL: n.RunURL, Source: source,
 	}
 	b.ID = uuid.NewString()

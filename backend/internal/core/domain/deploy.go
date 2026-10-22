@@ -334,6 +334,50 @@ func (d *Deployable) Tag(sha string) string {
 	return sha
 }
 
+// CommitImage: la imagen de un commit para este servicio, `repo:tag`.
+//
+// Si el servicio construye en el servidor, el tag lleva detrás el nombre del
+// servicio: `f01b62f-rrhh-prod_app`. Con el sha a secas chocaban dos cosas
+// (cac#185, 21-oct-2026):
+//   - **el registro:** si el CI del repo también publica `repo:sha`, Swarm la
+//     baja al arrancar cada contenedor y pisa la construida aquí, que lleva los
+//     build args de este servicio y no los del CI;
+//   - **el propio servidor:** dev y prod del mismo repo, o una web y un worker
+//     con otro Dockerfile, construyen el mismo commit y se quitan el tag uno a
+//     otro, así que al reiniciarse uno arranca con la imagen del otro.
+//
+// Un tag que ningún CI publica no se puede bajar, y Swarm usa la local: es
+// como ya funcionan los repos sin CI. El nombre del servicio es único en un
+// swarm, así que en un servidor no lo comparte nadie. El repo no cambia, así
+// que volver a la versión anterior sigue pasando `ImageRef`.
+func (d *Deployable) CommitImage(sha string) string {
+	tag := d.Tag(sha)
+	if d.BuildOnHost {
+		if suffix := hostTagSuffix(d.ServiceName, 127-len(tag)); suffix != "" {
+			tag += "-" + suffix
+		}
+	}
+	return d.ImageRepo + ":" + tag
+}
+
+// hostTagSuffix: el nombre del servicio en lo que admite un tag
+// (`[A-Za-z0-9_.-]`), en minúsculas y como mucho `max` caracteres.
+func hostTagSuffix(service string, max int) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(service) {
+		if b.Len() >= max {
+			break
+		}
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '.', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	return strings.Trim(b.String(), "-.")
+}
+
 // buildPathPattern: una ruta dentro del repo, sin salirse (`..`) ni empezar
 // por `/`. Es lo que va en el contexto remoto del build.
 var buildPathPattern = regexp.MustCompile(`^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,299}$`)

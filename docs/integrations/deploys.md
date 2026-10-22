@@ -147,6 +147,12 @@ en el repo.
 - **El log** del deploy lleva el final de la salida del build, que es donde está
   el error, y un «sigue construyendo» cada minuto. Un deploy con build tiene 45
   minutos antes de darse por perdido; el build en sí, 40.
+- **El nombre de la imagen:** `imageRepo:<sha>-<servicio>`, por ejemplo
+  `ghcr.io/dwit/rrhh:f01b62f-rrhh-prod_app`. El nombre del servicio va detrás
+  para que la imagen no comparta tag con la que publique el CI del mismo repo,
+  que Swarm bajaría y pisaría la construida aquí con otros build args, ni con
+  la de otro servicio del mismo servidor, como dev y prod del mismo commit
+  (cac#185).
 - **Un solo nodo:** una imagen construida en el host sólo existe en ese nodo.
   En un swarm de varios nodos el agente lo rechaza; para eso hará falta un
   registro.

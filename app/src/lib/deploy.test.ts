@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { guessEnvironment, isSha, repoFromImage, shortRef, shortServiceName, ciNoticeStep, usesShortSha } from "./deploy";
+import { guessEnvironment, isSha, repoFromImage, runsCommit, shortRef, shortServiceName, ciNoticeStep, usesShortSha } from "./deploy";
 
 describe("lo que se deduce de un servicio", () => {
   it("el repositorio, sin tag ni digest, y sin confundir un puerto con un tag", () => {
@@ -24,6 +24,19 @@ describe("lo que se deduce de un servicio", () => {
     expect(shortRef("ghcr.io/a/b:abc1234@sha256:ab12")).toBe("abc1234");
     expect(shortRef("registry:5000/a/b")).toBe("latest");
     expect(shortRef("")).toBe("—");
+  });
+
+  // cac#185. Roturas que detecta: no reconocer una imagen construida en el
+  // servidor (lleva el servicio detrás del sha) y dejar de marcar cuál corre;
+  // o tomar por commit un tag que no lo es.
+  it("qué commit corre, también si se construyó en el servidor", () => {
+    const sha = "f01b62f0123456789abcdef0123456789abcdef0";
+    expect(runsCommit("ghcr.io/dwit/rrhh:f01b62f", sha)).toBe(true);
+    expect(runsCommit("ghcr.io/dwit/rrhh:f01b62f-rrhh-prod_app", sha)).toBe(true);
+    expect(runsCommit(`ghcr.io/dwit/rrhh:${sha}-rrhh-prod_app@sha256:${"a".repeat(64)}`, sha)).toBe(true);
+    expect(runsCommit("ghcr.io/dwit/rrhh:abc1234-rrhh-prod_app", sha)).toBe(false);
+    expect(runsCommit("ghcr.io/dwit/rrhh:latest", sha)).toBe(false);
+    expect(runsCommit("ghcr.io/dwit/rrhh:v1-2", sha)).toBe(false);
   });
 
   it("un sha es un sha", () => {

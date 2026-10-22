@@ -65,12 +65,17 @@ export function shortRef(image: string): string {
 }
 
 /**
- * Si la imagen que corre es la de ese commit: su tag es el sha, corto o
- * entero. Una imagen con otro tag (`latest`, `v1.2`) no es de ningún commit.
+ * Si la imagen que corre es la de ese commit: su tag empieza por el sha, corto
+ * o entero. Una imagen con otro tag (`latest`, `v1.2`) no es de ningún commit.
+ *
+ * «Empieza»: lo que se construye en el servidor lleva detrás el nombre del
+ * servicio (`f01b62f-rrhh-prod_app`), para no compartir tag con el CI ni con
+ * otro servicio (`Deployable.CommitImage` en el backend, cac#185). Un sha no
+ * tiene guiones, así que lo de antes del primero es el commit.
  */
 export function runsCommit(image: string, sha: string): boolean {
-  const tag = shortRef(image);
-  return isSha(tag) && sha.startsWith(tag);
+  const head = shortRef(image).split("-")[0];
+  return isSha(head) && sha.startsWith(head);
 }
 
 /** Un sha de git, corto o entero. El backend lo vuelve a comprobar. */
