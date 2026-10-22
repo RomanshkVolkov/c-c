@@ -1601,7 +1601,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task: its markdown description, status, priority, tags, assignees, attachments, the comment thread, its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task, with its `ref` — how to name it in a commit message or PR so cac links it by itself (`cac#12`, or a client's folio like `acme-7`): its markdown description, status, priority, tags, assignees, attachments, the comment thread, its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
@@ -2783,7 +2783,11 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
 
         "get_task" => {
             let id = arg_str(args, "id").ok_or("id is required")?;
-            api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))
+            let mut d = api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(&id)))?;
+            if let Some(r) = task_ref(&d) {
+                d["ref"] = json!(r);
+            }
+            Ok(d)
         }
 
         "search" => {
@@ -2880,9 +2884,20 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     }
                 }
             }
+            // La referencia para los commits. Una tarea de cliente se nombra por
+            // su folio, que lleva el slug del proyecto, y sólo lo da el detalle.
+            let reference = if data.get("projectId").and_then(|v| v.as_str()).is_some_and(|p| !p.is_empty()) {
+                data.get("id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|id| api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(id))).ok())
+                    .and_then(|d| task_ref(&d))
+            } else {
+                task_ref(&json!({ "task": data }))
+            };
             // Echo back what was created, including the sequence number, so the
             // caller can refer to the task without another round trip.
             Ok(json!({
+                "ref": reference,
                 "subtasks": created_subtasks,
                 "id": data.get("id"),
                 "seq": data.get("seq"),
@@ -4227,6 +4242,18 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
 /// with no token configured at all.
 const LOCAL_TOOLS: &[&str] = &["compress_image", "install_skill"];
 
+/// Cómo se nombra una tarea en un commit o una PR para que cac la enlace sola
+/// (`domain/task_refs.go`): el folio si es de un cliente (`acme-7`), y si no
+/// `cac#<número>`, que es el número del espacio. `d` es el detalle de la tarea
+/// (`{ task, folio }`) o algo con `task.seq`.
+fn task_ref(d: &Value) -> Option<String> {
+    if let Some(f) = d.get("folio").and_then(|v| v.as_str()).filter(|f| !f.is_empty()) {
+        return Some(f.to_string());
+    }
+    let seq = d.get("task").and_then(|t| t.get("seq")).and_then(|v| v.as_i64()).filter(|n| *n > 0)?;
+    Some(format!("cac#{seq}"))
+}
+
 /// Las líneas de la checklist de `create_task` (`subtasks`), o `None`. Un
 /// título vacío o más de 30 líneas es un error antes de crear nada.
 fn subtask_titles(args: &Value) -> Result<Option<Vec<String>>, String> {
@@ -4376,7 +4403,8 @@ fn instructions(state: Option<SkillState>) -> String {
          is not linked to a space, the repository's CLAUDE.md may name its list under \"Tareas en cac\"; otherwise ask \
          the user. Then bring the board up to date: tasks left in progress by earlier sessions whose work has since been \
          published (released, deployed) are moved to done with a comment saying how you checked; what depends on a \
-         person, ask. Find or create your task and move it to in progress (update_task status: in_progress). Record \
+         person, ask. Find or create your task and move it to in progress (update_task status: in_progress), and end every \
+         commit message with its ref, e.g. (cac#12), so cac links the commit to it. Record \
          findings as task comments and decisions with record_decision. Before you tell the user you are done, update \
          the task honestly: done means published, not committed; committed but not yet released stays in progress \
          with a comment saying where it ships, so the next session knows what to check.",
@@ -5276,6 +5304,37 @@ mod tests {
         assert_eq!(ut["inputSchema"]["properties"]["status"]["enum"], json!(["open", "in_progress", "done", "closed"]));
     }
 
+    /// De punta a punta: una tarea creada en la lista de un cliente se nombra
+    /// por su folio, que sólo da el detalle. Rotura que detecta: devolver
+    /// `cac#N` para una tarea de cliente (el commit no se enlazaría), o que
+    /// `get_task` no la dé.
+    #[test]
+    fn a_client_task_is_created_with_its_folio_as_ref() {
+        let (cfg, _) = fake_cac(|m, p, _| {
+            if m == "GET" && p == "/api/v1/tasks/t9" {
+                json!({ "task": { "id": "t9", "seq": 89 }, "folio": "portento-89" })
+            } else {
+                json!({ "id": "t9", "seq": 89, "title": "x", "projectId": "proj-1" })
+            }
+        });
+        let out = call_tool(&cfg, "create_task", &json!({ "listId": "L", "title": "x" })).unwrap();
+        assert_eq!(out["ref"], "portento-89");
+        // Y al leerla, la misma referencia.
+        let got = call_tool(&cfg, "get_task", &json!({ "id": "t9" })).unwrap();
+        assert_eq!(got["ref"], "portento-89");
+    }
+
+    /// Roturas que detecta: nombrar por su número una tarea de cliente (no
+    /// enlaza: la suya es el folio), o inventar una referencia sin número.
+    #[test]
+    fn a_task_is_named_by_its_folio_or_its_space_number() {
+        assert_eq!(task_ref(&json!({ "task": { "seq": 200 } })).as_deref(), Some("cac#200"));
+        assert_eq!(task_ref(&json!({ "task": { "seq": 89 }, "folio": "portento-89" })).as_deref(), Some("portento-89"));
+        assert_eq!(task_ref(&json!({ "task": { "seq": 89 }, "folio": "" })).as_deref(), Some("cac#89"));
+        assert_eq!(task_ref(&json!({ "task": {} })), None);
+        assert_eq!(task_ref(&json!({ "task": { "seq": 0 } })), None);
+    }
+
     /// Roturas que detecta: crear líneas vacías, pasar de 30, o que la clave
     /// de una subtarea no dependa de su posición (al reintentar, la segunda
     /// línea devolvería la primera).
@@ -5374,6 +5433,7 @@ mod tests {
         .unwrap();
         assert_eq!(out["id"], "t0");
         assert_eq!(out["subtasks"].as_array().unwrap().len(), 2);
+        assert_eq!(out["ref"], "cac#10", "la referencia para los commits");
         let seen = seen.lock().unwrap();
         let posts: Vec<&Value> = seen.iter().filter(|(m, p, _)| m == "POST" && p == "/api/v1/task-lists/L/tasks").map(|x| &x.2).collect();
         assert_eq!(posts.len(), 3, "{seen:?}");
@@ -5438,6 +5498,7 @@ mod tests {
             // dar por hecho lo commiteado.
             assert!(text.contains("bring the board up to date"), "{text}");
             assert!(text.contains("done means published"), "{text}");
+            assert!(text.contains("commit message with its ref"), "{text}");
         }
         assert!(instructions(Some(SkillState::Missing)).contains("call install_skill"));
         assert!(instructions(Some(SkillState::Missing)).contains("Do not install it without asking"));

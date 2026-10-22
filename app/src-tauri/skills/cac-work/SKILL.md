@@ -78,7 +78,7 @@ el tablero, con `get_board`):
 2. Si lo que faltaba ya pasó, ciérrala con `status: "done"` y un comentario que
    diga cómo lo comprobaste.
    - **Para comprobar si un commit ya se publicó:** el `git` de `get_task` trae
-     sus commits.
+     los commits que nombran la tarea (ver «Cada commit nombra su tarea»).
      - **La app:** sale en una release, así que `git tag --contains <sha>` dice
        si ya está en una versión publicada.
      - **El backend o la web:** se despliegan con el push, así que un commit en
@@ -111,6 +111,20 @@ cliente y gasta un número de su folio para siempre. Usa
 
 Por el camino:
 
+- **Cada commit nombra su tarea.** `create_task` y `get_task` dan su `ref`:
+  `cac#200` si es interna, o su folio (`acme-7`) si es de un cliente. Ponla
+  al final del mensaje, entre paréntesis:
+
+  ```
+  fix(login): acepta correos con mayúsculas (cac#200)
+  ```
+
+  En una rama vale el mismo número, con guion: `cac-200-login`.
+
+  cac enlaza solo el commit o la PR en el panel «Desarrollo» de la tarea. Es lo
+  que usa el paso 3 para saber si el trabajo ya se publicó. `cac#N` es el
+  número del espacio, así que sólo enlaza desde un repo atado a ese espacio. Si
+  el PR no nombra la tarea, enlázalo a mano con `link_pull_request`.
 - **Lo que descubras** va con `add_task_comment`: un fallo de base, un dato
   medido, un callejón sin salida. Los comentarios sólo se añaden; no pisan
   nada de nadie.
@@ -168,4 +182,4 @@ línea.
 - No reescribir la descripción ni el documento de otra persona: comenta.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
 
-<!-- cac-work v3 -->
+<!-- cac-work v4 -->
