@@ -77,8 +77,9 @@ Lo demás, por su título en el mapa:
 - una subpágina: `get_doc_page`;
 - un `.md` del repo: `get_repo_doc` (el mapa dice su tamaño en `chars`).
 
-Las tareas se piden por su referencia (`get_task` con `proteus-12`), no hace
-falta copiar el id. Y si el mapa recortó algo (`truncated`), o el espacio es
+Las tareas se piden y se escriben por su referencia (`get_task`,
+`update_task`, `add_task_comment`… con `proteus-12`): no hace falta copiar el
+id. Y si el mapa recortó algo (`truncated`), o el espacio es
 grande, pídelo por partes: `get_context` con `only` (`["docs"]`,
 `["inProgress"]`…) y `node` (sólo el documento de ese nodo).
 
@@ -319,4 +320,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v14 -->
+<!-- cac-work v15 -->

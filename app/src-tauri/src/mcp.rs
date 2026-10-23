@@ -1826,7 +1826,7 @@ fn tool_defs() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string", "description": "Task id (from get_board or get_task)." },
+                    "id": { "type": "string", "description": "The task: its id, or its ref (proteus-12)." },
                     "title": { "type": "string" },
                     "description": { "type": "string", "description": "Markdown. Replaces the current body — read it with get_task first if you mean to add to it." },
                     "priority": { "type": "string", "enum": ["none", "low", "normal", "high", "urgent"] },
@@ -2645,7 +2645,41 @@ fn merge_secret_refs(current: &[Value], set: &[Value], remove: &[String], replac
     Ok(out)
 }
 
+/// Qué campo de cada herramienta es el id de una tarea, y por tanto puede
+/// llegar como referencia (`proteus-12`).
+fn task_id_fields(tool: &str) -> &'static [&'static str] {
+    match tool {
+        "update_task" | "add_task_comment" | "edit_task_comment" | "delete_task_comment"
+        | "add_task_attachment" | "link_pull_request" => &["id"],
+        "create_task" => &["parentId"],
+        "record_decision" => &["originTaskId"],
+        _ => &[],
+    }
+}
+
+/// Cambia por su id cada referencia (`proteus-12`, el folio `acme-7`) de los
+/// campos que piden el id de una tarea. `get_task` ya las aceptaba y el resto
+/// contestaba 404 con la misma referencia: se leía por referencia y se
+/// escribía por id, dos pasos y un error que no decía por qué (23-oct-2026,
+/// command-and-control-223). Un id se deja como está.
+fn resolve_task_refs(cfg: &Cfg, tool: &str, args: &Value) -> Result<Value, String> {
+    let mut out = args.clone();
+    for field in task_id_fields(tool) {
+        let Some(raw) = arg_str(args, field) else { continue };
+        if !looks_like_task_ref(&raw) {
+            continue;
+        }
+        let d = api_get(cfg, &format!("/api/v1/tasks/by-ref/{}", urlencode(raw.trim())))?;
+        let id = d.get("task").and_then(|t| t.get("id")).and_then(|v| v.as_str())
+            .ok_or_else(|| format!("cac did not say which task {raw} is"))?;
+        out[*field] = json!(id);
+    }
+    Ok(out)
+}
+
 fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
+    let resolved = resolve_task_refs(cfg, name, args)?;
+    let args = &resolved;
     match name {
         "list_projects" => {
             let data = api_get(cfg, "/api/v1/report-projects/")?;
@@ -6360,6 +6394,33 @@ mod tests {
         assert!(log.lock().unwrap().iter().all(|(m, _, _)| m == "GET"), "leer no escribe");
         let out = call_tool(&cfg, "read_messages", &json!({ "person": "nadie" })).unwrap();
         assert_eq!(out["messages"].as_array().unwrap().len(), 0);
+    }
+
+    /// Roturas que detecta: no resolver la referencia en las herramientas que
+    /// escriben (404 con lo que `get_task` sí acepta); resolverla en un campo
+    /// que no es de tarea; o tocar un id que ya lo es.
+    #[test]
+    fn writing_to_a_task_takes_its_ref_too() {
+        let (cfg, log) = fake_cac(|m, p, _| {
+            if m == "GET" && p == "/api/v1/tasks/by-ref/command-and-control-93" {
+                json!({ "task": { "id": "t-93", "seq": 93 } })
+            } else {
+                json!({ "id": "c1", "task": { "id": "t-93", "seq": 93 } })
+            }
+        });
+        call_tool(&cfg, "add_task_comment", &json!({ "id": "command-and-control-93", "body": "hecho" })).unwrap();
+        call_tool(&cfg, "update_task", &json!({ "id": "command-and-control-93", "status": "done" })).unwrap();
+        call_tool(&cfg, "create_task", &json!({ "listId": "L", "title": "x", "parentId": "command-and-control-93" })).unwrap();
+        call_tool(&cfg, "add_task_comment", &json!({ "id": "7a1aa6b7-0792-4ef4-8192-21b4a163dbdb", "body": "y" })).unwrap();
+        call_tool(&cfg, "record_decision", &json!({ "kind": "list", "ownerId": "L", "title": "x", "originTaskId": "command-and-control-93" })).unwrap();
+        let calls: Vec<(String, String, Value)> = log.lock().unwrap().clone();
+        assert!(calls.iter().any(|(m, p, _)| m == "POST" && p == "/api/v1/tasks/t-93/comments"), "{calls:?}");
+        assert!(calls.iter().any(|(m, p, _)| m == "POST" && p == "/api/v1/tasks/t-93/move"), "{calls:?}");
+        assert!(calls.iter().any(|(m, _, b)| m == "POST" && b["parentId"] == "t-93"), "parentId también");
+        assert!(calls.iter().any(|(m, p, b)| m == "POST" && p.ends_with("/decisions") && b["originTaskId"] == "t-93"), "originTaskId también");
+        assert!(calls.iter().any(|(_, p, _)| p == "/api/v1/tasks/7a1aa6b7-0792-4ef4-8192-21b4a163dbdb/comments"), "un id se deja");
+        assert!(!calls.iter().any(|(_, p, _)| p.contains("command-and-control-93") && !p.contains("by-ref")), "la referencia no llega cruda a otra ruta");
+        assert!(task_id_fields("create_task_space").is_empty());
     }
 
     /// Rotura que detecta: tomar el primer remote en vez de `origin` (con un
