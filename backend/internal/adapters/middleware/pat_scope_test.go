@@ -35,6 +35,8 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPatch, "/api/v1/task-lists/abc", domain.ScopeTasksManage},
 		{http.MethodPatch, "/api/v1/task-spaces/abc", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/tasks/abc/move", domain.ScopeTasksManage},
+		// Reclamar: se pide desde el MCP (update_task claim) con un token.
+		{http.MethodPost, "/api/v1/tasks/abc/claim", domain.ScopeTasksManage},
 		{http.MethodPost, "/api/v1/notes/", domain.ScopeNotesWrite},
 		// Append-only, like creating the page it hangs off.
 		{http.MethodPost, "/api/v1/notes/abc/attachments", domain.ScopeNotesWrite},

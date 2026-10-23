@@ -347,6 +347,9 @@ var patWritable = []struct {
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/task-spaces/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/tasks/[^/]+$`), domain.ScopeTasksManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/move/?$`), domain.ScopeTasksManage},
+	// Reclamar mueve la tarea y añade responsable: cambia, no añade. Faltó al
+	// estrenar la ruta (#212) y `update_task claim` contestaba endpoint-not-scoped.
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/tasks/[^/]+/claim/?$`), domain.ScopeTasksManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/notes/[^/]+$`), domain.ScopeNotesManage},
 	// Reemplazar una sección entera, y poner dueño o línea fijada.
 	//
