@@ -13,6 +13,17 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**23-oct, v1.21.0: el build en el servidor ve las redes del servicio**
+(agente v12, Backend #224). El constructor `cac-build` se une a las redes
+*attachable* del servicio mientras construye y corre con `--network host`,
+así que un `RUN` llega a `boaty-postgres:5432` por dentro. Se separa al
+acabar, bien o mal, y avisa en el log de las redes que no son *attachable*.
+Medido en local: el buildx de `docker:27.5-cli` ya da el entitlement
+`network.host`, y sin `--network host` el `RUN` no resuelve. La cola por
+servidor ya existía (`ClaimNext` + un trabajo a la vez). Falta: «Update agent»
+en boaty y un build de «web boaty staging». De paso: `claim` con un token
+personal daba `endpoint-not-scoped` (arreglado, #212).
+
 **22-oct, en `main`, esperando release: un agente escribe en canales y
 directos** (MCP #221). Permiso nuevo `chat:write` (escribir en un canal, abrir
 un directo y escribir en él; ni editar ni retirar). Cada mensaje de un agente
