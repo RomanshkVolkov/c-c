@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -181,5 +182,79 @@ func TestTheBuildScriptCapsTheBuilder(t *testing.T) {
 		if out, err := exec.Command("sh", "-n", "-c", sc).CombinedOutput(); err != nil {
 			t.Errorf("el guion no es shell válida: %v %s\n%s", err, out, sc)
 		}
+	}
+}
+
+// Las redes del servicio que ve su build: las attachable, una vez cada una;
+// las demás, para decirlo; la de entrada, nunca.
+// Roturas que atrapa: unirse a una que no es attachable (Docker lo rechaza y
+// el build sigue sin red); repetir la que viene en la tarea y arriba; colar
+// `ingress`.
+func TestTheBuildOnlyJoinsNetworksItCan(t *testing.T) {
+	use, skipped := BuildNetworks([]NetworkInfo{
+		{ID: "b2", Name: "boaty_internal", Attachable: true},
+		{ID: "a1", Name: "boaty_default"},
+		{ID: "b2", Name: "boaty_internal", Attachable: true},
+		{ID: "i0", Name: "ingress", Attachable: true, Ingress: true},
+		{ID: "c3", Name: "shared_db", Attachable: true},
+	})
+	if got := fmt.Sprint(use); got != "[{b2 boaty_internal} {c3 shared_db}]" {
+		t.Errorf("se une a %s", got)
+	}
+	if got := fmt.Sprint(skipped); got != "[boaty_default]" {
+		t.Errorf("dice que no ve %s", got)
+	}
+}
+
+// Con redes, el constructor se une a cada una antes del build, el build corre
+// en la red del constructor, y al salir —también si falla— se separa. Sin
+// redes, o sin constructor propio, el guion es el de antes. Y es shell válida.
+// Roturas que atrapa: construir sin `--network host` (el RUN no resuelve el
+// nombre: medido); no separarlo al fallar (el build de un proyecto se queda
+// en la red de otro); pasarle `--network` al prune; aceptar un nombre de red
+// con shell.
+func TestTheBuildScriptJoinsAndLeavesTheNetworks(t *testing.T) {
+	r := req()
+	r.MemoryMB = 4096
+	r.Networks = []BuildNetwork{{ID: "b2b2b2", Name: "boaty_internal"}}
+	s, err := BuildScript(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`docker network connect b2b2b2 "$C"`,
+		`trap 'for n in $NETS; do docker network disconnect "$n" "$C"`,
+		`NET="--network host --allow network.host"`,
+		"docker buildx build $BUILDER $NET --progress=plain",
+		"docker buildx prune $BUILDER --force",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("al guion le falta %q:\n%s", want, s)
+		}
+	}
+	if strings.Index(s, "trap ") > strings.Index(s, "docker network connect") {
+		t.Errorf("se une antes de saber cómo separarse:\n%s", s)
+	}
+	if out, err := exec.Command("sh", "-n", "-c", s).CombinedOutput(); err != nil {
+		t.Fatalf("no es shell válida: %v %s\n%s", err, out, s)
+	}
+
+	for name, mod := range map[string]func(*BuildRequest){
+		"sin redes":              func(r *BuildRequest) { r.Networks = nil },
+		"sin constructor propio": func(r *BuildRequest) { r.MemoryMB = 0 },
+	} {
+		r := req()
+		r.MemoryMB = 4096
+		r.Networks = []BuildNetwork{{ID: "b2b2b2", Name: "boaty_internal"}}
+		mod(&r)
+		s, _ := BuildScript(r)
+		if strings.Contains(s, "network") {
+			t.Errorf("%s, el guion toca redes:\n%s", name, s)
+		}
+	}
+
+	r.Networks = []BuildNetwork{{ID: "b2b2b2", Name: "x'; rm -rf / #"}}
+	if _, err := BuildScript(r); err == nil {
+		t.Error("se aceptó un nombre de red con shell")
 	}
 }

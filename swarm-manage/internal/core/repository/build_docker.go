@@ -57,6 +57,53 @@ type BuildRequest struct {
 	// BuildSwapMB). La suya, dentro de su cgroup: la de la máquina sólo la
 	// toca a través de él.
 	SwapMB int
+	// Networks: las redes del servicio a las que se une el constructor
+	// mientras construye (ver BuildNetworks). Sólo con constructor propio.
+	Networks []BuildNetwork
+}
+
+// BuildNetwork: una red de Swarm a la que se une el constructor. El id para
+// Docker, el nombre para el log.
+type BuildNetwork struct {
+	ID, Name string
+}
+
+// NetworkInfo: lo que importa de una red para decidir si el build puede
+// unirse a ella.
+type NetworkInfo struct {
+	ID, Name   string
+	Attachable bool
+	Ingress    bool
+}
+
+// BuildNetworks: a cuáles de las redes de un servicio se une su build, y las
+// que no se puede (por nombre, para decirlo).
+//
+// Un build en el servidor llegaba a la base de su vecina por la red de fuera
+// (boaty, 23-oct-2026): el `RUN` de un `next build` que lee la base sólo veía
+// la red del constructor. Ahora el constructor se une, mientras construye, a
+// las mismas redes que el servicio, así que `boaty-postgres:5432` resuelve
+// igual que en marcha. Para cualquier servicio, sin configurar nada.
+//
+// Un contenedor suelto, como el de BuildKit, sólo puede unirse a una red de
+// Swarm si la red es `attachable`; las demás las une Swarm a sus tareas y no
+// hay forma de pedírselo desde fuera. La de entrada (`ingress`) nunca.
+func BuildNetworks(nets []NetworkInfo) (use []BuildNetwork, notAttachable []string) {
+	seen := map[string]bool{}
+	for _, n := range nets {
+		if seen[n.ID] || n.Ingress {
+			continue
+		}
+		seen[n.ID] = true
+		if !n.Attachable {
+			notAttachable = append(notAttachable, n.Name)
+			continue
+		}
+		use = append(use, BuildNetwork{ID: n.ID, Name: n.Name})
+	}
+	sort.Slice(use, func(i, j int) bool { return use[i].Name < use[j].Name })
+	sort.Strings(notAttachable)
+	return use, notAttachable
 }
 
 // BuilderImage: el BuildKit del constructor propio, fijado como BuildImage.
@@ -172,6 +219,8 @@ var (
 	buildArgPattern  = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,39}$`)
 	buildPathPattern = regexp.MustCompile(`^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,299}$`)
 	buildImagePat    = regexp.MustCompile(`^[a-z0-9][a-z0-9._/:-]{0,399}$`)
+	buildNetIDPat    = regexp.MustCompile(`^[a-z0-9]{1,64}$`)
+	buildNetNamePat  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 )
 
 func validBuildPath(p string) bool {
@@ -207,6 +256,11 @@ func (b BuildRequest) Validate() error {
 	for _, a := range b.BuildArgs {
 		if !buildArgPattern.MatchString(a) {
 			return fmt.Errorf("%q no es un nombre de build arg", a)
+		}
+	}
+	for _, n := range b.Networks {
+		if !buildNetIDPat.MatchString(n.ID) || !buildNetNamePat.MatchString(n.Name) {
+			return fmt.Errorf("%q (%q) no tiene forma de red de Docker", n.Name, n.ID)
 		}
 	}
 	return nil
@@ -256,7 +310,12 @@ fi
 `, BuilderName, BuilderImage, b.MemoryMB, b.MemoryMB+b.SwapMB, builderCPUShares, b.MemoryMB, b.MemoryMB+b.SwapMB, b.MemoryMB, b.SwapMB)
 		builder = " $BUILDER"
 	}
-	s.WriteString("docker buildx build" + builder + " --progress=plain")
+	network := ""
+	if builder != "" && len(b.Networks) > 0 {
+		writeNetworks(&s, b.Networks)
+		network = " $NET"
+	}
+	s.WriteString("docker buildx build" + builder + network + " --progress=plain")
 	fmt.Fprintf(&s, " --secret id=GIT_AUTH_TOKEN,src=/run/secrets/%s", BuildTokenFile)
 	for _, a := range b.BuildArgs {
 		// Como build arg (lo que lee un `ARG` de hoy) y como secret de
@@ -275,6 +334,44 @@ fi
 		s.WriteString(`[ -n "$BUILDER" ] && docker buildx stop "$B" >/dev/null 2>&1 || true` + "\n")
 	}
 	return s.String(), nil
+}
+
+// writeNetworks: une el constructor a las redes del servicio antes del build y
+// lo separa al salir, salga como salga (`trap … EXIT`, que corre también
+// cuando `set -e` corta): el build de un proyecto no se queda en la red de
+// otro. Separar con el constructor ya parado funciona.
+//
+// Medido con buildx de BuildImage y BuildKit de BuilderImage (23-oct-2026):
+//   - tras `network connect`, el BuildKit pregunta al DNS de Docker
+//     (127.0.0.11), que es el que conoce los nombres de los servicios;
+//   - un `RUN` corre en una red suya y no lo ve: hace falta
+//     `--network host`, que es la del contenedor de BuildKit;
+//   - ese buildx ya crea el constructor con
+//     `--allow-insecure-entitlement=network.host`, así que `cac-build` no se
+//     recrea ni pierde su caché;
+//   - unirlo a una red en la que ya está falla: si pasa (un build anterior
+//     que murió antes de separarlo), se comprueba que está y sigue.
+func writeNetworks(s *strings.Builder, nets []BuildNetwork) {
+	s.WriteString(`NET=""
+NETS=""
+if [ -n "$BUILDER" ]; then
+  C="buildx_buildkit_${B}0"
+  trap 'for n in $NETS; do docker network disconnect "$n" "$C" >/dev/null 2>&1 || true; done' EXIT
+`)
+	for _, n := range nets {
+		fmt.Fprintf(s, `  if docker network connect %s "$C" >/dev/null 2>&1 || docker inspect -f '{{json .NetworkSettings.Networks}}' "$C" 2>/dev/null | grep -q '"%s"'; then
+    NETS="$NETS %s"
+    echo "cac: el build ve la red %s"
+  else
+    echo "cac: no se pudo unir el build a la red %s; construye sin ella"
+  fi
+`, n.ID, n.Name, n.ID, n.Name, n.Name)
+	}
+	s.WriteString(`  [ -n "$NETS" ] && NET="--network host --allow network.host"
+else
+  echo "cac: sin constructor propio, el build no ve las redes del servicio"
+fi
+`)
 }
 
 // BuildSecret: un Docker secret que se monta en el job, con el nombre del
@@ -338,6 +435,39 @@ func (c *DockerClient) FindServiceSecret(ctx context.Context, service, key strin
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].CreatedAt > list[j].CreatedAt })
 	return list[0].ID, list[0].Spec.Name, nil
+}
+
+// ServiceNetworks: las redes de un servicio, de su spec. Las de un spec viejo
+// pueden venir arriba en vez de en la tarea, como en MigrationSpec.
+func (c *DockerClient) ServiceNetworks(ctx context.Context, serviceID string) ([]NetworkInfo, error) {
+	type attachment struct {
+		Target string `json:"Target"`
+	}
+	var svc struct {
+		Spec struct {
+			TaskTemplate struct {
+				Networks []attachment `json:"Networks"`
+			} `json:"TaskTemplate"`
+			Networks []attachment `json:"Networks"`
+		} `json:"Spec"`
+	}
+	if err := c.get(ctx, "/services/"+url.PathEscape(serviceID), &svc); err != nil {
+		return nil, err
+	}
+	out := []NetworkInfo{}
+	for _, a := range append(svc.Spec.TaskTemplate.Networks, svc.Spec.Networks...) {
+		var n struct {
+			ID         string `json:"Id"`
+			Name       string `json:"Name"`
+			Attachable bool   `json:"Attachable"`
+			Ingress    bool   `json:"Ingress"`
+		}
+		if err := c.get(ctx, "/networks/"+url.PathEscape(a.Target), &n); err != nil {
+			return nil, err
+		}
+		out = append(out, NetworkInfo{ID: n.ID, Name: n.Name, Attachable: n.Attachable, Ingress: n.Ingress})
+	}
+	return out, nil
 }
 
 // CreateSecret crea un Docker secret y devuelve su id.

@@ -81,6 +81,8 @@ type DeployDocker interface {
 	CreateSecret(ctx context.Context, name string, data []byte, labels map[string]string) (string, error)
 	RemoveSecret(ctx context.Context, id string) error
 	CreateJob(ctx context.Context, spec map[string]any) (string, error)
+	// Las redes del servicio, para que su build las vea (v12).
+	ServiceNetworks(ctx context.Context, serviceID string) ([]repository.NetworkInfo, error)
 }
 
 // DeployReporter: a quién se le cuenta cómo va.
@@ -400,6 +402,20 @@ func (d *Deployer) build(ctx context.Context, svc *repository.ServiceState, job 
 			req.SwapMB = repository.BuildSwapMB(d.swapFree())
 			log("memoria libre ahora: %d MB; tope del build: %d MB, más %d MB de swap propia", avail>>20, mb, req.SwapMB)
 		}
+	}
+	// Las redes del servicio, para que un `RUN` llegue a sus vecinos (la base)
+	// por dentro. No poder leerlas no tumba el build: puede no necesitarlas.
+	if nets, err := d.Docker.ServiceNetworks(ctx, svc.ID); err != nil {
+		log("no se pudieron leer las redes de %s (%v); el build no las ve", svc.Name, err)
+	} else {
+		use, skipped := repository.BuildNetworks(nets)
+		for _, n := range skipped {
+			log("la red %s no es attachable y el build no la ve; si la necesita (para llegar a la base, por ejemplo), ponle `attachable: true` en el stack", n)
+		}
+		if len(use) > 0 && req.MemoryMB == 0 {
+			log("sin saber la memoria de la máquina se construye sin constructor propio, y así el build no ve las redes del servicio")
+		}
+		req.Networks = use
 	}
 	script, err := repository.BuildScript(req)
 	if err != nil {

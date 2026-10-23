@@ -52,6 +52,17 @@ type fakeDocker struct {
 
 	// La memoria de la máquina; 0, que no se sabe.
 	memory int64
+
+	// Las redes del servicio (v12), y si leerlas falla.
+	networks   []repository.NetworkInfo
+	networkErr error
+}
+
+func (f *fakeDocker) ServiceNetworks(_ context.Context, id string) ([]repository.NetworkInfo, error) {
+	if id != f.svc.ID {
+		return nil, errors.New("no es el servicio que se despliega: " + id)
+	}
+	return f.networks, f.networkErr
 }
 
 func (f *fakeDocker) HostMemory(context.Context) (int64, error) {
@@ -500,6 +511,44 @@ func TestABuildWithoutFreeMemoryDoesNotStart(t *testing.T) {
 	}
 	if d.jobSpec != nil || len(d.secretsMade) != 0 || d.updatedTo != "" {
 		t.Fatalf("empezó igual: job %v, secrets %v, actualizado a %q", d.jobSpec != nil, d.secretsMade, d.updatedTo)
+	}
+}
+
+// El build se une a las redes attachable del servicio que despliega, y de las
+// que no lo son dice cómo arreglarlo. No poder leerlas no tumba el deploy.
+// Roturas que atrapa: no pasarle las redes al guion; preguntar por otro
+// servicio; callar las que no son attachable; fallar el deploy si Docker no
+// contesta por las redes.
+func TestTheBuildJoinsTheNetworksOfItsService(t *testing.T) {
+	d, r := buildDocker(), &fakeReport{}
+	d.memory = 8 << 30
+	d.networks = []repository.NetworkInfo{
+		{ID: "n1internal", Name: "api_internal", Attachable: true},
+		{ID: "n2default", Name: "api_default"},
+	}
+	dep := deployer(d, r)
+	dep.MemAvailable = func() int64 { return 7 << 30 }
+	dep.Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "succeeded" {
+		t.Fatalf("acabó %+v\n%s", r.finish, strings.Join(r.lines, "\n"))
+	}
+	cs := d.jobSpec["TaskTemplate"].(map[string]any)["ContainerSpec"].(map[string]any)
+	script := cs["Command"].([]string)[2]
+	if !strings.Contains(script, "docker network connect n1internal") || strings.Contains(script, "n2default") {
+		t.Errorf("el guion no se une sólo a la red attachable:\n%s", script)
+	}
+	if all := strings.Join(r.lines, "\n"); !strings.Contains(all, "api_default no es attachable") || !strings.Contains(all, "attachable: true") {
+		t.Errorf("no dice qué red no ve ni cómo arreglarlo:\n%s", all)
+	}
+
+	d, r = buildDocker(), &fakeReport{}
+	d.memory = 8 << 30
+	d.networkErr = errors.New("docker no contesta")
+	dep = deployer(d, r)
+	dep.MemAvailable = func() int64 { return 7 << 30 }
+	dep.Run(context.Background(), "d-1", buildJob())
+	if r.finish == nil || r.finish.Status != "succeeded" {
+		t.Fatalf("sin poder leer las redes, acabó %+v", r.finish)
 	}
 }
 
