@@ -979,7 +979,7 @@
         "example": "SQL Server"
       },
       "service": {
-        "text": "El servicio de Swarm donde corre la base. El agente entra a su contenedor para hacer el backup ahí dentro.",
+        "text": "El servicio de Swarm donde corre la base, o un contenedor fuera de Swarm (levantado con docker run) por su nombre exacto. El agente entra a su contenedor para hacer el backup ahí dentro.",
         "example": "sqlserver-prod_sqlserver-vps--db"
       },
       "database": {
@@ -987,7 +987,7 @@
         "example": "boaty"
       },
       "credentialEnv": {
-        "text": "El nombre de la variable de entorno del contenedor que guarda la credencial. El agente la usa dentro del contenedor y cac nunca ve su valor. En SQL Server es la contraseña del usuario sa; en PostgreSQL, el usuario de la base.",
+        "text": "El nombre de la variable de entorno del contenedor que guarda la credencial. El agente la usa dentro del contenedor y cac nunca ve su valor. En SQL Server es la contraseña del usuario sa; en PostgreSQL, el usuario de la base, o la contraseña si pones un usuario (también *_FILE).",
         "example": "MSSQL_SA_PASSWORD"
       },
       "every": {
@@ -1020,6 +1020,10 @@
       },
       "enabled": {
         "text": "Apagada, la base deja de respaldarse pero conserva su configuración y los backups que ya tiene."
+      },
+      "username": {
+        "text": "Sólo PostgreSQL. El usuario con el que entra el backup, tal cual. Con él, la variable de la credencial es la contraseña: directa (POSTGRES_PASSWORD) o en un fichero (POSTGRES_PASSWORD_FILE). Hace falta el agente v13.",
+        "example": "postgres"
       }
     },
     "databaseHint": "El nombre de la base dentro de SQL Server o PostgreSQL, no el del servicio.",
@@ -1033,7 +1037,12 @@
       "months_other": "cualquier mes de los últimos {{count}}"
     },
     "testTitle": "¿Probar la restauración ahora?",
-    "testBody": "Restaura una copia completa de {{db}} en el mismo servidor y la revisa entera. Mientras tanto y unos minutos después, la base puede ir más lenta para quien use la web. La prueba automática ya se hace de madrugada; a mano, mejor fuera de horas de uso."
+    "testBody": "Restaura una copia completa de {{db}} en el mismo servidor y la revisa entera. Mientras tanto y unos minutos después, la base puede ir más lenta para quien use la web. La prueba automática ya se hace de madrugada; a mano, mejor fuera de horas de uso.",
+    "byContainer": "Un contenedor fuera de Swarm…",
+    "containerName": "Nombre del contenedor",
+    "username": "Usuario (opcional)",
+    "usernameHint": "Déjalo vacío para entrar con el usuario de la variable. Con usuario, la variable es la contraseña.",
+    "credentialEnvPasswordHint": "La variable con la contraseña. Si acaba en _FILE, es la ruta de un fichero dentro del contenedor y se lee ahí."
   },
   "colors": {
     "pick": "Elegir color",

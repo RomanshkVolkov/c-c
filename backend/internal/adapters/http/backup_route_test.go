@@ -390,3 +390,75 @@ func TestTheClockReservationsHaveOneWinner(t *testing.T) {
 		t.Error("el aviso se apuntó dos veces")
 	}
 }
+
+// Un Postgres fuera de Swarm (`docker run`, como boaty-postgres) con el
+// usuario fijo y la contraseña en un `*_FILE`: el destino lo acepta por el
+// nombre del contenedor y el trabajo le lleva el usuario al agente. Con un
+// agente anterior a la v13 se rechaza, porque tomaría la variable de la
+// contraseña por la del usuario y fallaría cada backup.
+// Roturas que atrapa: no mirar la versión del agente; no copiar el usuario
+// al destino o al trabajo; aceptar un usuario en SQL Server.
+func TestAPostgresContainerWithAPasswordFileIsBackedUp(t *testing.T) {
+	db := backupDB(t)
+	fake := &fakeBackupStore{}
+	prevStore, prevClock := newBackupStore, startBackupClockFn
+	newBackupStore = func() service.BackupStore { return fake }
+	startBackupClockFn = func(*service.BackupService) {}
+	defer func() { newBackupStore, startBackupClockFn = prevStore, prevClock }()
+
+	r := chi.NewRouter()
+	InitServerRoutes(db, r, events.NewHub())
+	servers := service.NewServerService(repository.NewServerRepository(db))
+	tok, _ := servers.MintAgentToken("srv-1")
+	pair, err := repository.GenerateTokens("u-admin", "admin", false, []domain.OrgMembershipClaim{{OrgID: "org-1", Role: domain.OrgRoleAdmin}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	do := func(token, method, path, body string, version ...string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		if len(version) > 0 {
+			req.Header.Set("X-Agent-Version", version[0])
+		}
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	base := "/api/v1/servers/srv-1/backups"
+	if rec := do(pair.AccessToken, "POST", base+"/recipients", `{"label":"jose","publicKey":"`+joseKey+`"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("la llave → %d %s", rec.Code, rec.Body.String())
+	}
+	target := func(engine, user string) string {
+		return `{"serviceName":"boaty-postgres","engine":"` + engine + `","database":"boaty","credentialEnv":"POSTGRES_PASSWORD_FILE","username":"` + user + `",
+			"everyHours":24,"anchorTime":"02:00","timezone":"America/Mexico_City","keepDays":7,"keepWeekly":4,"keepMonthly":6,"restoreTestEveryDays":7}`
+	}
+	poll := "/agent/v1/jobs?wait=0"
+
+	do(tok.Token, "GET", poll, "", "12")
+	if rec := do(pair.AccessToken, "POST", base+"/targets", target("postgres", "postgres")); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "backup-agent-too-old") {
+		t.Fatalf("con el agente v12 → %d %s", rec.Code, rec.Body.String())
+	}
+	do(tok.Token, "GET", poll, "", "13")
+	if rec := do(pair.AccessToken, "POST", base+"/targets", target("mssql", "sa")); rec.Code != http.StatusBadRequest {
+		t.Fatalf("un usuario en SQL Server → %d %s", rec.Code, rec.Body.String())
+	}
+	rec := do(pair.AccessToken, "POST", base+"/targets", target("postgres", "postgres"))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("con el agente v13 → %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct{ Data domain.BackupTarget }
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.Data.Username != "postgres" {
+		t.Fatalf("el destino sin usuario: %+v", created.Data)
+	}
+	if rec := do(pair.AccessToken, "POST", base+"/targets/"+created.Data.ID+"/run", ""); rec.Code != http.StatusAccepted {
+		t.Fatalf("backup ahora → %d %s", rec.Code, rec.Body.String())
+	}
+	rec = do(tok.Token, "GET", poll, "", "13")
+	var job struct{ Data domain.BackupJob }
+	json.Unmarshal(rec.Body.Bytes(), &job)
+	if job.Data.ServiceName != "boaty-postgres" || job.Data.Username != "postgres" || job.Data.CredentialEnv != "POSTGRES_PASSWORD_FILE" {
+		t.Fatalf("el trabajo: %+v", job.Data)
+	}
+}

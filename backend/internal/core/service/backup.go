@@ -26,6 +26,9 @@ var (
 	ErrBadRecipient    = errors.New("invalid-age-public-key")
 	ErrNothingToTest   = errors.New("no-backup-to-test")
 	ErrNotABackupJob   = errors.New("not-a-backup-job")
+	// ErrAgentTooOldForUsername: un usuario fijo con un agente que no lo
+	// entiende rompería cada backup (ver domain.AgentVersionBackupUsername).
+	ErrAgentTooOldForUsername = errors.New("backup-agent-too-old")
 )
 
 // BackupStore: lo que el servicio necesita de S3. Una interfaz para probarlo
@@ -82,6 +85,7 @@ func (s *BackupService) ListTargets(serverID string) ([]domain.BackupTarget, err
 // applyRequest copia el formulario a la base y la pone en hora.
 func (s *BackupService) applyRequest(t *domain.BackupTarget, req domain.BackupTargetRequest) error {
 	t.ServiceName, t.Engine, t.Database, t.CredentialEnv = req.ServiceName, req.Engine, req.Database, req.CredentialEnv
+	t.Username = req.Username
 	t.EveryHours, t.AnchorTime, t.Timezone = req.EveryHours, req.AnchorTime, req.Timezone
 	t.KeepDays, t.KeepWeekly, t.KeepMonthly = req.KeepDays, req.KeepWeekly, req.KeepMonthly
 	t.RestoreTestEveryDays = req.RestoreTestEveryDays
@@ -110,6 +114,9 @@ func (s *BackupService) applyRequest(t *domain.BackupTarget, req domain.BackupTa
 // CreateTarget: sin al menos una llave de la organización no se programa nada.
 // Un backup que nadie puede abrir sólo ocupa sitio.
 func (s *BackupService) CreateTarget(server *domain.ServerResponse, req domain.BackupTargetRequest) (*domain.BackupTarget, error) {
+	if req.Username != "" && server.AgentVersion < domain.AgentVersionBackupUsername {
+		return nil, ErrAgentTooOldForUsername
+	}
 	keys, err := s.repo.OrgRecipients(server.OrgID)
 	if err != nil {
 		return nil, err
@@ -127,8 +134,11 @@ func (s *BackupService) CreateTarget(server *domain.ServerResponse, req domain.B
 	return t, nil
 }
 
-func (s *BackupService) UpdateTarget(serverID, id string, req domain.BackupTargetRequest) (*domain.BackupTarget, error) {
-	t, err := s.repo.FindTarget(serverID, id)
+func (s *BackupService) UpdateTarget(server *domain.ServerResponse, id string, req domain.BackupTargetRequest) (*domain.BackupTarget, error) {
+	if req.Username != "" && server.AgentVersion < domain.AgentVersionBackupUsername {
+		return nil, ErrAgentTooOldForUsername
+	}
+	t, err := s.repo.FindTarget(server.ID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +271,7 @@ func (s *BackupService) Claim(server *domain.Server) (*domain.AgentJob, error) {
 	}
 	job := domain.BackupJob{
 		BackupID: b.ID, Kind: b.Kind, ServiceName: t.ServiceName, Engine: t.Engine,
-		Database: t.Database, CredentialEnv: t.CredentialEnv,
+		Database: t.Database, CredentialEnv: t.CredentialEnv, Username: t.Username,
 	}
 	org := 0
 	for _, k := range keys {

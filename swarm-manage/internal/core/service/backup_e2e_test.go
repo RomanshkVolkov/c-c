@@ -93,7 +93,12 @@ func waitFor(t *testing.T, what string, try func() bool) {
 	t.Fatalf("%s no arrancó", what)
 }
 
-func roundTrip(t *testing.T, id, engine, env string) {
+func roundTrip(t *testing.T, id, engine, env string, opts ...func(*BackupJob)) {
+	t.Helper()
+	roundTripWith(t, realContainer{repository.NewDockerClient(), id}, engine, env, opts...)
+}
+
+func roundTripWith(t *testing.T, docker BackupDocker, engine, env string, opts ...func(*BackupJob)) {
 	t.Helper()
 	jose, _ := age.GenerateX25519Identity()
 	server, _ := age.GenerateX25519Identity()
@@ -102,12 +107,14 @@ func roundTrip(t *testing.T, id, engine, env string) {
 	defer srv.Close()
 	backend := &e2eBackend{s3: srv.URL}
 	backend.put = &Presigned{Method: "PUT", URL: srv.URL + "/obj"}
-	docker := realContainer{repository.NewDockerClient(), id}
 	r := NewBackupRunner(docker, backend, server)
 	r.TempDir = t.TempDir()
 
 	job := BackupJob{BackupID: "b-e2e-1", Kind: "scheduled", ServiceName: "db", Engine: engine, Database: "boaty",
 		CredentialEnv: env, Recipients: []string{jose.Recipient().String(), server.Recipient().String()}}
+	for _, o := range opts {
+		o(&job)
+	}
 	r.Run(context.Background(), mustJSON(t, job))
 	if backend.status != "succeeded" {
 		t.Fatalf("backup %s: %s\n%s", backend.status, backend.errMsg, strings.Join(backend.lines, "\n"))
@@ -119,6 +126,9 @@ func roundTrip(t *testing.T, id, engine, env string) {
 	t.Logf("log del backup:\n%s", strings.Join(backend.lines, "\n"))
 	backend.status, backend.lines = "", nil
 	test := BackupJob{BackupID: "b-e2e-2", Kind: "restore_test", ServiceName: "db", Engine: engine, Database: "boaty", CredentialEnv: env}
+	for _, o := range opts {
+		o(&test)
+	}
 	r.Run(context.Background(), mustJSON(t, test))
 	if backend.status != "succeeded" {
 		t.Fatalf("prueba de restauración %s: %s\n%s", backend.status, backend.errMsg, strings.Join(backend.lines, "\n"))
@@ -147,6 +157,41 @@ func TestPostgresBackupAndRestoreForReal(t *testing.T) {
 	if out := dockerExec(t, id, "psql", "-U", "app", "-d", "postgres", "-tAc", "SELECT count(*) FROM pg_database WHERE datname LIKE 'cac_restore_test_%'"); strings.TrimSpace(out) != "0" {
 		t.Errorf("quedó la base temporal: %s", out)
 	}
+}
+
+// Como boaty-postgres (23-oct-2026): un contenedor suelto, no de Swarm,
+// buscado por su nombre; el usuario `postgres` tal cual; la contraseña en un
+// fichero (`POSTGRES_PASSWORD_FILE`). El socket local también pide contraseña
+// (`--auth-local`), así que sin leer el fichero no entra nadie.
+// Roturas que atrapa: no leer el `_FILE`; usar la variable como usuario
+// teniendo `Username`; no buscar el contenedor por nombre.
+func TestAPostgresContainerWithAPasswordFileForReal(t *testing.T) {
+	if os.Getenv("CAC_DOCKER_IT") != "1" {
+		t.Skip("CAC_DOCKER_IT no está puesto")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/pg", []byte("s3cr3t-del-fichero"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	name := "cac-it-boaty-postgres"
+	exec.Command("docker", "rm", "-f", name).Run()
+	id := startContainer(t, "--name", name, "-v", dir+"/pg:/run/secrets/pg:ro",
+		"-e", "POSTGRES_PASSWORD_FILE=/run/secrets/pg", "-e", "POSTGRES_DB=boaty",
+		"-e", "POSTGRES_INITDB_ARGS=--auth-local=scram-sha-256 --auth-host=scram-sha-256", "postgres:17-alpine")
+	asPostgres := func(args ...string) *exec.Cmd {
+		return exec.Command("docker", append([]string{"exec", "-e", "PGPASSWORD=s3cr3t-del-fichero", id, "psql", "-U", "postgres"}, args...)...)
+	}
+	waitFor(t, "postgres", func() bool { return asPostgres("-d", "boaty", "-c", "select 1").Run() == nil })
+	if exec.Command("docker", "exec", id, "psql", "-U", "postgres", "-d", "boaty", "-c", "select 1").Run() == nil {
+		t.Fatal("el socket entra sin contraseña: la prueba no probaría el fichero")
+	}
+	if out, err := asPostgres("-d", "boaty", "-c",
+		"CREATE TABLE trips (id serial primary key, name text); INSERT INTO trips (name) SELECT 'viaje ' || g FROM generate_series(1,500) g;").CombinedOutput(); err != nil {
+		t.Fatalf("datos: %v %s", err, out)
+	}
+	roundTripWith(t, repository.NewDockerClient(), "postgres", "POSTGRES_PASSWORD_FILE", func(j *BackupJob) {
+		j.ServiceName, j.Username = name, "postgres"
+	})
 }
 
 func TestMSSQLBackupAndRestoreForReal(t *testing.T) {

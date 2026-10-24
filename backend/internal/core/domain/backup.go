@@ -41,13 +41,20 @@ const (
 	BackupStaleAfter = 60 * time.Minute
 	// AgentVersionBackups: la primera versión del agente que sabe hacerlos.
 	AgentVersionBackups = 9
+	// AgentVersionBackupUsername: la primera que entiende `Username` (y lee la
+	// contraseña de un `*_FILE`). Una anterior ignoraría el campo y tomaría la
+	// variable de la contraseña por la del usuario.
+	AgentVersionBackupUsername = 13
 )
 
 type BackupTarget struct {
 	BaseModel
 	OrgID    string `gorm:"type:varchar(36);not null;index" json:"orgId"`
 	ServerID string `gorm:"type:varchar(36);not null;index" json:"serverId"`
-	// ServiceName: el servicio de Swarm de la base (`sqlserver-prod_db`).
+	// ServiceName: el servicio de Swarm de la base (`sqlserver-prod_db`) o,
+	// si no hay servicio con ese nombre, un contenedor suelto por su nombre
+	// exacto (`boaty-postgres`, levantado con `docker run`). Lo resuelve el
+	// agente (v13): primero el servicio, luego el contenedor.
 	ServiceName string `gorm:"type:varchar(200);not null" json:"serviceName"`
 	Engine      string `gorm:"type:varchar(20);not null" json:"engine"`
 	Database    string `gorm:"type:varchar(128);not null" json:"database"`
@@ -55,6 +62,12 @@ type BackupTarget struct {
 	// la credencial (`MSSQL_SA_PASSWORD`, `POSTGRES_USER`). Nunca su valor:
 	// el agente la lee dentro del contenedor y no sale de ahí.
 	CredentialEnv string `gorm:"type:varchar(64);not null" json:"credentialEnv"`
+	// Username: en Postgres, el usuario tal cual (`postgres`). Con él,
+	// CredentialEnv es la **contraseña**, y si acaba en `_FILE` es la ruta de
+	// un fichero dentro del contenedor que la lleva (`POSTGRES_PASSWORD_FILE`,
+	// como en la imagen oficial). Vacío, como hasta la v12 del agente:
+	// CredentialEnv es la variable con el usuario y se entra por el socket.
+	Username string `gorm:"type:varchar(63);not null;default:''" json:"username"`
 
 	// El horario: cada `EveryHours` horas a partir de `AnchorTime` (HH:MM) en
 	// `Timezone`. Ver NextBackupRun.
@@ -125,6 +138,7 @@ var (
 	backupDatabasePattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
 	backupEnvPattern      = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
 	backupServicePattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$`)
+	backupUserPattern     = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,62}$`)
 	anchorPattern         = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 	// Una llave pública age X25519: `age1` y 58 caracteres de bech32.
 	agePublicKeyPattern = regexp.MustCompile(`^age1[02-9ac-hj-np-z]{58}$`)
@@ -145,7 +159,7 @@ func (t *BackupTarget) Validate() error {
 	case t.Engine != BackupEngineMSSQL && t.Engine != BackupEnginePostgres:
 		return fmt.Errorf("engine %q: only mssql or postgres", t.Engine)
 	case !backupServicePattern.MatchString(t.ServiceName):
-		return fmt.Errorf("%q is not a Swarm service name", t.ServiceName)
+		return fmt.Errorf("%q is not a Swarm service or container name", t.ServiceName)
 	case !backupDatabasePattern.MatchString(t.Database):
 		return fmt.Errorf("%q is not a valid database name", t.Database)
 	case strings.HasPrefix(t.Database, RestoreTestPrefix):
@@ -153,6 +167,10 @@ func (t *BackupTarget) Validate() error {
 		return fmt.Errorf("a database cannot be named %q*: that prefix is reserved for restore tests", RestoreTestPrefix)
 	case !backupEnvPattern.MatchString(t.CredentialEnv):
 		return fmt.Errorf("%q is not an environment variable name", t.CredentialEnv)
+	case t.Username != "" && t.Engine != BackupEnginePostgres:
+		return fmt.Errorf("a username only applies to postgres")
+	case t.Username != "" && !backupUserPattern.MatchString(t.Username):
+		return fmt.Errorf("%q is not a postgres user name", t.Username)
 	case !validEveryHours(t.EveryHours):
 		return fmt.Errorf("every %d hours is not allowed: pick 1, 2, 3, 4, 6, 8, 12, 24, 48, 72 or 168", t.EveryHours)
 	case !anchorPattern.MatchString(t.AnchorTime):
@@ -333,6 +351,7 @@ type BackupJob struct {
 	Engine        string   `json:"engine"`
 	Database      string   `json:"database"`
 	CredentialEnv string   `json:"credentialEnv"`
+	Username      string   `json:"username,omitempty"`
 	Recipients    []string `json:"recipients"`
 	// En una prueba de restauración: el backup a restaurar.
 	SourceBackupID string `json:"sourceBackupId,omitempty"`
@@ -365,6 +384,7 @@ type BackupTargetRequest struct {
 	Engine               string `json:"engine"               validate:"required,oneof=mssql postgres"`
 	Database             string `json:"database"             validate:"required,max=128"`
 	CredentialEnv        string `json:"credentialEnv"        validate:"required,max=64"`
+	Username             string `json:"username"             validate:"max=63"`
 	EveryHours           int    `json:"everyHours"           validate:"required"`
 	AnchorTime           string `json:"anchorTime"           validate:"required,len=5"`
 	Timezone             string `json:"timezone"             validate:"required,max=64"`

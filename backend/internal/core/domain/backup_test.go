@@ -136,6 +136,9 @@ func TestABackupTargetIsValidated(t *testing.T) {
 		"motor desconocido":    func(t *BackupTarget) { t.Engine = "oracle" },
 		"cero días":            func(t *BackupTarget) { t.KeepDays = 0 },
 		"servicio con espacio": func(t *BackupTarget) { t.ServiceName = "a b" },
+		"usuario con shell": func(t *BackupTarget) {
+			t.Engine, t.CredentialEnv, t.Username = BackupEnginePostgres, "POSTGRES_PASSWORD_FILE", "x;id"
+		},
 	} {
 		tg := target()
 		mod(&tg)

@@ -979,7 +979,7 @@
         "example": "SQL Server"
       },
       "service": {
-        "text": "The Swarm service the database runs in. The agent goes into its container to make the backup there.",
+        "text": "The Swarm service the database runs in, or a container outside Swarm (started with docker run) by its exact name. The agent goes into its container to make the backup there.",
         "example": "sqlserver-prod_sqlserver-vps--db"
       },
       "database": {
@@ -987,7 +987,7 @@
         "example": "boaty"
       },
       "credentialEnv": {
-        "text": "The name of the container's environment variable that holds the credential. The agent uses it inside the container and cac never sees its value. In SQL Server it is the sa password; in PostgreSQL, the database user.",
+        "text": "The name of the container's environment variable holding the credential. The agent uses it inside the container and cac never sees its value. On SQL Server it is the sa password; on PostgreSQL, the database user, or the password if you set a user (also *_FILE).",
         "example": "MSSQL_SA_PASSWORD"
       },
       "every": {
@@ -1020,6 +1020,10 @@
       },
       "enabled": {
         "text": "Turned off, the database stops being backed up but keeps its settings and the backups it already has."
+      },
+      "username": {
+        "text": "PostgreSQL only. The user the backup logs in as, as is. With it, the credential variable is the password: plain (POSTGRES_PASSWORD) or in a file (POSTGRES_PASSWORD_FILE). Needs agent v13.",
+        "example": "postgres"
       }
     },
     "databaseHint": "The database's name inside SQL Server or PostgreSQL, not the service's.",
@@ -1033,7 +1037,12 @@
       "months_other": "any month in the last {{count}}"
     },
     "testTitle": "Test the restore now?",
-    "testBody": "It restores a full copy of {{db}} on the same server and checks all of it. Meanwhile and for a few minutes after, the database can be slower for the website's users. The automatic test already runs at night; by hand, better outside busy hours."
+    "testBody": "It restores a full copy of {{db}} on the same server and checks all of it. Meanwhile and for a few minutes after, the database can be slower for the website's users. The automatic test already runs at night; by hand, better outside busy hours.",
+    "byContainer": "A container outside Swarm…",
+    "containerName": "Container name",
+    "username": "User (optional)",
+    "usernameHint": "Leave it empty to log in as the user in the variable. With a user, the variable is the password.",
+    "credentialEnvPasswordHint": "The variable with the password. If it ends in _FILE, it is the path of a file inside the container and it is read there."
   },
   "colors": {
     "pick": "Pick a color",

@@ -225,5 +225,6 @@
   "task-status-changed": "The task is no longer in the state you expected: read it again before changing it.",
   "task-claimed-by-other": "The task is already in progress with someone else: comment on it instead of taking it.",
   "blocker-not-found": "That task does not exist in this organization, so this one cannot wait for it.",
-  "blocker-is-self": "A task cannot wait for itself."
+  "blocker-is-self": "A task cannot wait for itself.",
+  "backup-agent-too-old": "To log in with a fixed user, update the server's agent (v13 or later)."
 }

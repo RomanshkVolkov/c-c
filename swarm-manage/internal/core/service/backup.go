@@ -43,6 +43,7 @@ type BackupJob struct {
 	Engine         string   `json:"engine"`
 	Database       string   `json:"database"`
 	CredentialEnv  string   `json:"credentialEnv"`
+	Username       string   `json:"username,omitempty"`
 	Recipients     []string `json:"recipients"`
 	SourceBackupID string   `json:"sourceBackupId,omitempty"`
 	SourceSha256   string   `json:"sourceSha256,omitempty"`
@@ -60,6 +61,7 @@ var (
 	backupDBPattern      = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
 	backupEnvPattern     = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
 	backupServicePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$`)
+	backupUserPattern    = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,62}$`)
 )
 
 // RestoreTestPrefix: el agente sólo borra bases con este nombre.
@@ -84,6 +86,8 @@ func (j BackupJob) Validate() error {
 		return fmt.Errorf("%q is not a database name", j.Database)
 	case !backupEnvPattern.MatchString(j.CredentialEnv):
 		return fmt.Errorf("%q is not an environment variable name", j.CredentialEnv)
+	case j.Username != "" && (j.Engine != "postgres" || !backupUserPattern.MatchString(j.Username)):
+		return fmt.Errorf("%q is not a postgres user name", j.Username)
 	case j.Kind != "restore_test" && len(j.Recipients) == 0:
 		return errors.New("nobody to encrypt for")
 	}
@@ -269,7 +273,7 @@ func (r *BackupRunner) databaseSize(ctx context.Context, container string, job B
 		res, err = r.Docker.Exec(ctx, container, []string{"sh", "-c", sqlcmd(job.CredentialEnv) + ` -h -1 -W -Q "$Q"`}, []string{"Q=" + q}, &out)
 	case "postgres":
 		res, err = r.Docker.Exec(ctx, container, []string{"sh", "-c",
-			`psql -U "$` + job.CredentialEnv + `" -d postgres -tAc "SELECT pg_database_size('$DB')"`}, []string{"DB=" + job.Database}, &out)
+			pgLogin(job) + `psql -U ` + pgUser(job) + ` -d postgres -tAc "SELECT pg_database_size('$DB')"`}, []string{"DB=" + job.Database}, &out)
 	}
 	if err != nil {
 		return 0, err
@@ -343,13 +347,49 @@ func MSSQLBackupScript(database string) string {
 		"RESTORE VERIFYONLY FROM DISK = N'$(F)' WITH CHECKSUM;\n"
 }
 
+// pgUser: con quién entra Postgres. Sin `Username`, el de la variable
+// (`POSTGRES_USER`), como hasta la v12; con él, ese tal cual (ya validado).
+func pgUser(job BackupJob) string {
+	if job.Username != "" {
+		return job.Username
+	}
+	return `"$` + job.CredentialEnv + `"`
+}
+
+// pgLogin: con `Username`, la variable es la contraseña y va a `PGPASSWORD`
+// dentro del contenedor, sin salir de él. Si acaba en `_FILE` es la ruta de un
+// fichero que la lleva, como `POSTGRES_PASSWORD_FILE` de la imagen oficial
+// (boaty-postgres, 23-oct-2026). Sin `Username`, nada: se entra por el
+// socket, donde la imagen oficial confía en el usuario local.
+func pgLogin(job BackupJob) string {
+	if job.Username == "" {
+		return ""
+	}
+	if strings.HasSuffix(job.CredentialEnv, "_FILE") {
+		return `PGPASSWORD="$(cat "$` + job.CredentialEnv + `")"; export PGPASSWORD; `
+	}
+	return `PGPASSWORD="$` + job.CredentialEnv + `"; export PGPASSWORD; `
+}
+
+// pgWho: para el log, quién entra y de dónde sale la contraseña. Nombres,
+// nunca valores.
+func pgWho(job BackupJob) string {
+	if job.Username == "" {
+		return "con el usuario de $" + job.CredentialEnv
+	}
+	if strings.HasSuffix(job.CredentialEnv, "_FILE") {
+		return "como " + job.Username + ", con la contraseña del fichero de $" + job.CredentialEnv
+	}
+	return "como " + job.Username + ", con la contraseña de $" + job.CredentialEnv
+}
+
 // dumpPostgres: `pg_dump` en formato custom, en streaming hasta el cifrado.
 func (r *BackupRunner) dumpPostgres(ctx context.Context, container string, job BackupJob, enc io.Writer, log func(string, ...any)) error {
-	log("pg_dump -Fc --no-owner de %s, con el usuario de $%s, en streaming hasta el cifrado", job.Database, job.CredentialEnv)
+	log("pg_dump -Fc --no-owner de %s, %s, en streaming hasta el cifrado", job.Database, pgWho(job))
 	start := time.Now()
 	counted := &countingWriter{w: enc}
 	res, err := r.Docker.Exec(ctx, container, []string{"sh", "-c",
-		`pg_dump -Fc --no-owner -U "$` + job.CredentialEnv + `" -d "$DB"`}, []string{"DB=" + job.Database}, counted)
+		pgLogin(job) + `pg_dump -Fc --no-owner -U ` + pgUser(job) + ` -d "$DB"`}, []string{"DB=" + job.Database}, counted)
 	if err != nil {
 		return err
 	}
@@ -700,10 +740,10 @@ func (r *BackupRunner) restorePostgres(ctx context.Context, container string, jo
 	if err := guardDrop(name); err != nil {
 		return none, err
 	}
-	user := `"$` + job.CredentialEnv + `"`
+	user, login := pgUser(job), pgLogin(job)
 	dump := "/tmp/" + name + ".dump"
 	psql := func(db, sql string, out io.Writer) (repository.ExecResult, error) {
-		return r.Docker.Exec(ctx, container, []string{"sh", "-c", `psql -U ` + user + ` -d "$D" -v ON_ERROR_STOP=1 -tA -F "|" -c "$Q"`},
+		return r.Docker.Exec(ctx, container, []string{"sh", "-c", login + `psql -U ` + user + ` -d "$D" -v ON_ERROR_STOP=1 -tA -F "|" -c "$Q"`},
 			[]string{"D=" + db, "Q=" + sql}, out)
 	}
 	defer func() {
@@ -723,7 +763,7 @@ func (r *BackupRunner) restorePostgres(ctx context.Context, container string, jo
 	}
 	log("copiado al contenedor: %s (%s)", dump, mb(size))
 	start := time.Now()
-	res, err := r.Docker.Exec(ctx, container, []string{"sh", "-c", `pg_restore --no-owner -U ` + user + ` -d "$D" "$F"`},
+	res, err := r.Docker.Exec(ctx, container, []string{"sh", "-c", login + `pg_restore --no-owner -U ` + user + ` -d "$D" "$F"`},
 		[]string{"D=" + name, "F=" + dump}, nil)
 	if err != nil {
 		return none, err

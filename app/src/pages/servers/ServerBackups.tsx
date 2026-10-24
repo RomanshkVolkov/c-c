@@ -505,8 +505,11 @@ function FieldLabel({ field, htmlFor }: { field: HelpField; htmlFor?: string }) 
 }
 
 type HelpField = { key: HelpKey; label: LabelKey };
-type HelpKey = "engine" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery";
-type LabelKey = "engineLabel" | "service" | "database" | "credentialEnv" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery";
+type HelpKey = "engine" | "service" | "database" | "credentialEnv" | "username" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery";
+type LabelKey = "engineLabel" | "service" | "database" | "credentialEnv" | "username" | "every" | "at" | "timezone" | "keepDays" | "keepWeekly" | "keepMonthly" | "restoreEvery";
+// La opción del selector de servicio que pide escribir un contenedor.
+const CONTAINER = "\u0000container";
+
 const F = (key: HelpKey, label: LabelKey = key as LabelKey): HelpField => ({ key, label });
 
 function TargetDialog({
@@ -530,7 +533,10 @@ function TargetDialog({
   const num = (k: "keepDays" | "keepWeekly" | "keepMonthly" | "restoreTestEveryDays") => (
     <Input type="number" min={0} value={p[k]} onChange={(e) => set(k, Number(e.target.value))} />
   );
-  const ready = p.serviceName && p.database.trim() && p.credentialEnv.trim();
+  const ready = p.serviceName.trim() && p.database.trim() && p.credentialEnv.trim();
+  // Un contenedor fuera de Swarm (`docker run`, como boaty-postgres) no sale
+  // en la lista de servicios: se escribe su nombre y el agente lo busca.
+  const [byName, setByName] = useState(() => !!initial.serviceName && !services.includes(initial.serviceName));
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -542,10 +548,12 @@ function TargetDialog({
           <div className="space-y-1">
             <FieldLabel field={F("engine", "engineLabel")} />
             <Picker
+              aria-label={t("common:backups.engineLabel")}
               value={p.engine}
               onChange={(v) => {
                 set("engine", v as BackupTargetPayload["engine"]);
                 set("credentialEnv", v === "mssql" ? "MSSQL_SA_PASSWORD" : "POSTGRES_USER");
+                set("username", "");
               }}
               options={[
                 { value: "mssql", label: t("common:backups.engine.mssql") },
@@ -555,7 +563,24 @@ function TargetDialog({
           </div>
           <div className="space-y-1">
             <FieldLabel field={F("service")} />
-            <Picker value={p.serviceName} onChange={(v) => set("serviceName", v)} options={services.map((s) => ({ value: s, label: s }))} />
+            <Picker
+              aria-label={t("common:backups.service")}
+              value={byName ? CONTAINER : p.serviceName}
+              onChange={(v) => {
+                setByName(v === CONTAINER);
+                set("serviceName", v === CONTAINER ? "" : v);
+              }}
+              options={[...services.map((s) => ({ value: s, label: s })), { value: CONTAINER, label: t("common:backups.byContainer") }]}
+            />
+            {byName && (
+              <Input
+                aria-label={t("common:backups.containerName")}
+                className="font-mono"
+                value={p.serviceName}
+                onChange={(e) => set("serviceName", e.target.value.trim())}
+                placeholder="boaty-postgres"
+              />
+            )}
           </div>
           <div className="space-y-1">
             <FieldLabel field={F("database")} htmlFor="bk-db" />
@@ -565,8 +590,30 @@ function TargetDialog({
           <div className="space-y-1">
             <FieldLabel field={F("credentialEnv")} htmlFor="bk-env" />
             <Input id="bk-env" className="font-mono" value={p.credentialEnv} onChange={(e) => set("credentialEnv", e.target.value)} />
-            <p className="text-xs text-muted-foreground">{t("common:backups.credentialEnvHint")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t(p.username ? "common:backups.credentialEnvPasswordHint" : "common:backups.credentialEnvHint")}
+            </p>
           </div>
+          {p.engine === "postgres" && (
+            <div className="space-y-1">
+              <FieldLabel field={F("username")} htmlFor="bk-user" />
+              <Input
+                id="bk-user"
+                className="font-mono"
+                value={p.username}
+                onChange={(e) => {
+                  const u = e.target.value.trim();
+                  set("username", u);
+                  // Con usuario, la variable pasa a ser la contraseña: se
+                  // propone la de la imagen oficial, en fichero.
+                  if (u && p.credentialEnv === "POSTGRES_USER") set("credentialEnv", "POSTGRES_PASSWORD_FILE");
+                  if (!u && p.credentialEnv === "POSTGRES_PASSWORD_FILE") set("credentialEnv", "POSTGRES_USER");
+                }}
+                placeholder="postgres"
+              />
+              <p className="text-xs text-muted-foreground">{t("common:backups.usernameHint")}</p>
+            </div>
+          )}
           <div className="space-y-1">
             <FieldLabel field={F("every")} />
             <Picker

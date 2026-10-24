@@ -23,7 +23,7 @@ export const AGENT_VERSION_BUILDS = 6;
  * misma que la imagen de `agent_install.rs`; lo vigila `deploy.test.ts`). Es
  * a la que llega un servidor al pulsar «Update agent».
  */
-export const AGENT_VERSION_LATEST = 12;
+export const AGENT_VERSION_LATEST = 13;
 
 /** El agente nuevo ya habló: de qué versión venía y en cuál está. */
 export type AgentUpdateOutcome = { from: number; to: number };

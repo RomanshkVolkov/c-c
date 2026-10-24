@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -35,8 +36,11 @@ func (c *DockerClient) ContainerForService(ctx context.Context, service string) 
 			} `json:"ContainerStatus"`
 		} `json:"Status"`
 	}
+	// Sin servicio con ese nombre, Docker puede contestar con un error en vez
+	// de una lista vacía (o el nodo no es de un swarm): no es motivo para no
+	// buscar el contenedor suelto.
 	if err := c.get(ctx, "/tasks?filters="+url.QueryEscape(string(f)), &tasks); err != nil {
-		return "", err
+		tasks = nil
 	}
 	for _, t := range tasks {
 		if t.Status.State == "running" && t.Status.ContainerStatus.ContainerID != "" {
@@ -48,7 +52,34 @@ func (c *DockerClient) ContainerForService(ctx context.Context, service string) 
 			}
 		}
 	}
-	return "", fmt.Errorf("the service %s has no running container on this node", service)
+	// Sin servicio de Swarm con ese nombre: un contenedor suelto con ese nombre
+	// exacto (`docker run --name boaty-postgres`, 23-oct-2026).
+	if id := c.runningContainerNamed(ctx, service); id != "" {
+		return id, nil
+	}
+	return "", fmt.Errorf("no Swarm service or running container named %s on this node", service)
+}
+
+// runningContainerNamed: el id del contenedor en marcha con ese nombre exacto,
+// o "". El filtro de Docker por nombre es una expresión regular y casa por
+// trozos: se ancla y se escapa, y se comprueba el nombre otra vez.
+func (c *DockerClient) runningContainerNamed(ctx context.Context, name string) string {
+	f, _ := json.Marshal(map[string][]string{"name": {"^/" + regexp.QuoteMeta(name) + "$"}, "status": {"running"}})
+	var list []struct {
+		ID    string   `json:"Id"`
+		Names []string `json:"Names"`
+	}
+	if err := c.get(ctx, "/containers/json?filters="+url.QueryEscape(string(f)), &list); err != nil {
+		return ""
+	}
+	for _, ct := range list {
+		for _, n := range ct.Names {
+			if n == "/"+name {
+				return ct.ID
+			}
+		}
+	}
+	return ""
 }
 
 // ExecResult: cómo acabó una orden dentro de un contenedor.

@@ -13,6 +13,8 @@ export interface BackupTarget {
   engine: BackupEngine;
   database: string;
   credentialEnv: string;
+  /** Postgres: el usuario tal cual; con él, `credentialEnv` es la contraseña (o su `*_FILE`). */
+  username: string;
   everyHours: number;
   anchorTime: string;
   timezone: string;

@@ -33,6 +33,8 @@ func backupError(w http.ResponseWriter, err error) {
 		SendErrorResponse(w, http.StatusConflict, "A backup of this database is already running", err.Error())
 	case errors.Is(err, repository.ErrBackupNotRunning):
 		SendErrorResponse(w, http.StatusConflict, "That backup is not running here", err.Error())
+	case errors.Is(err, service.ErrAgentTooOldForUsername):
+		SendErrorResponse(w, http.StatusConflict, "Update the server's agent to use a fixed username", err.Error())
 	case errors.Is(err, service.ErrNoRecipient):
 		SendErrorResponse(w, http.StatusConflict, "Add the organization's age public key first", err.Error())
 	case errors.Is(err, service.ErrBadRecipient):
@@ -111,7 +113,7 @@ func (h *BackupHandler) UpdateTarget(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	t, err := h.svc.UpdateTarget(server.ID, chi.URLParam(r, "tid"), req)
+	t, err := h.svc.UpdateTarget(server, chi.URLParam(r, "tid"), req)
 	if err != nil {
 		backupError(w, err)
 		return

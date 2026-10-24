@@ -225,5 +225,6 @@
   "task-status-changed": "La tarea ya no está en el estado que esperabas: vuelve a leerla antes de cambiarla.",
   "task-claimed-by-other": "La tarea ya está en curso con otra persona: comenta en ella en vez de tomarla.",
   "blocker-not-found": "Esa tarea no existe en esta organización, así que no se puede esperar a ella.",
-  "blocker-is-self": "Una tarea no puede esperarse a sí misma."
+  "blocker-is-self": "Una tarea no puede esperarse a sí misma.",
+  "backup-agent-too-old": "Para entrar con un usuario fijo, actualiza el agente del servidor (v13 o más)."
 }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { pick } from "@/test-pick";
 
 const { get, post, confirmar, invoke } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), confirmar: vi.fn(), invoke: vi.fn() }));
 vi.mock("@/lib/platform", () => ({ isTauri: true }));
@@ -130,13 +131,42 @@ describe("la ayuda del formulario", () => {
   it("todos los campos tienen su ayuda en los dos idiomas", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const keys = ["engine", "service", "database", "credentialEnv", "every", "at", "timezone", "keepDays", "keepWeekly", "keepMonthly", "restoreEvery", "enabled"];
+    const keys = ["engine", "service", "database", "credentialEnv", "username", "every", "at", "timezone", "keepDays", "keepWeekly", "keepMonthly", "restoreEvery", "enabled"];
     for (const lang of ["en", "es"]) {
       const help = JSON.parse(readFileSync(join(process.cwd(), "src/locales", lang, "common.json"), "utf-8")).backups.help;
       for (const k of keys) {
         expect(help[k]?.text, `${lang}: ${k}`).toBeTruthy();
       }
     }
+  });
+});
+
+/**
+ * Un Postgres fuera de Swarm, como boaty-postgres (23-oct-2026): no sale entre
+ * los servicios, así que se escribe su nombre; con usuario, la variable pasa a
+ * ser la contraseña y se propone la de fichero de la imagen oficial.
+ * Roturas que atrapa: no ofrecer el contenedor por nombre; no mandar el
+ * usuario; no proponer POSTGRES_PASSWORD_FILE al poner usuario.
+ */
+describe("un contenedor fuera de Swarm", () => {
+  it("se respalda por su nombre, con usuario y la contraseña en un fichero", async () => {
+    post.mockResolvedValue(ok({ ...target, id: "t2" }));
+    render(<ServerBackups />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(añadir base|add database)$/i }));
+    await pick(await screen.findByRole("combobox", { name: /^(motor|engine)$/i }), /postgres/i);
+    await pick(screen.getByRole("combobox", { name: /^(servicio|service)$/i }), /(fuera de swarm|outside swarm)/i);
+    fireEvent.change(screen.getByLabelText(/^(nombre del contenedor|container name)$/i), { target: { value: "boaty-postgres" } });
+    fireEvent.change(screen.getByLabelText(/^(usuario|user)/i), { target: { value: "postgres" } });
+    expect((screen.getByLabelText(/^(variable de la credencial|credential variable)/i) as HTMLInputElement).value).toBe("POSTGRES_PASSWORD_FILE");
+    fireEvent.change(screen.getByLabelText(/^(base|database)$/i), { target: { value: "boaty" } });
+    fireEvent.click(screen.getByRole("button", { name: /^(guardar|save)$/i }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        "/api/v1/servers/srv-1/backups/targets",
+        expect.objectContaining({ serviceName: "boaty-postgres", engine: "postgres", username: "postgres", credentialEnv: "POSTGRES_PASSWORD_FILE" }),
+        true,
+      ),
+    );
   });
 });
 
