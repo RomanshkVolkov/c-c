@@ -1,11 +1,11 @@
 import { useFollowLog } from "@/hooks/use-follow-log";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Settings2, Undo2, Workflow } from "lucide-react";
+import { ArrowLeft, Settings2, Undo2, Workflow } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { desde } from "@/lib/desde";
-import { AGENT_VERSION_DEPLOYS, guessEnvironment, usesShortSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
+import { AGENT_VERSION_DEPLOYS, LIST_PREVIEW, guessEnvironment, usesShortSha, repoFromImage, shortRef, shortServiceName } from "@/lib/deploy";
 import { useDeploymentsStore } from "@/store/deployments.store";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +75,7 @@ export default function DeployPanel({
 
   const [busy, setBusy] = useState(false);
   const [viendo, setViendo] = useState<string | null>(null);
+  const [todo, setTodo] = useState(false);
   const [form, setForm] = useState({
     name: shortServiceName(service.name, service.stack),
     environment: guessEnvironment(service.stack),
@@ -89,9 +90,12 @@ export default function DeployPanel({
     if (active && deployable) void loadHistory(server.id, deployable.id).catch(() => {});
   }, [active, server.id, deployable, loadHistory]);
 
-  // El último deploy se enseña solo: es el que se acaba de pedir, o el que
-  // está en marcha, y su log es lo que uno quiere ver.
-  const abierto = viendo ?? history[0]?.id ?? null;
+  // El log de un deploy ocupa el sitio del historial, con un «atrás», y sólo
+  // cuando se pide o cuando se acaba de desplegar. Hasta la v1.21.0 se abría
+  // solo, debajo, en una caja con su propio scroll entre otras dos (commits e
+  // historial), y la rueda se quedaba atrapada en cada una (jose, 23-oct-2026).
+  const abierto = viendo;
+  const shown = history.find((d) => d.id === abierto);
   useEffect(() => {
     if (active && deployable && abierto && logs[abierto] === undefined) {
       void loadLog(server.id, deployable.id, abierto).catch(() => {});
@@ -220,50 +224,78 @@ export default function DeployPanel({
               onDeploy={(commit) => void desplegar(commit)}
             />
 
-            <div className="space-y-1">
-              <p className="text-sm font-medium">{t("common:deploy.history")}</p>
-              {history.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t("common:deploy.empty")}</p>
-              ) : (
-                <ul className="max-h-48 divide-y overflow-y-auto rounded-md border">
-                  {history.map((d) => (
-                    <li key={d.id} className={`flex items-center gap-2 px-2 py-1.5 text-sm ${d.id === abierto ? "bg-accent/40" : ""}`}>
-                      <Badge variant={VARIANTE[d.status]}>{t(`common:deploy.status.${d.status}`)}</Badge>
-                      <span className="font-mono text-xs">{shortRef(d.finalImage || d.image)}</span>
+            {abierto ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setViendo(null)}>
+                    <ArrowLeft className="mr-1 size-3.5" />
+                    {t("common:deploy.backToHistory")}
+                  </Button>
+                  {shown && (
+                    <>
+                      <Badge variant={VARIANTE[shown.status]}>{t(`common:deploy.status.${shown.status}`)}</Badge>
+                      <span className="font-mono text-xs">{shortRef(shown.finalImage || shown.image)}</span>
                       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                        {quien(d)} · {desde(d.createdAt)}
-                        {/* Un código del backend se traduce; un texto del agente pasa tal cual. */}
-                        {d.error ? ` · ${phraseFor(d.error, d.error)}` : ""}
+                        {quien(shown)} · {desde(shown.createdAt)}
                       </span>
-                      <Button variant="ghost" size="sm" onClick={() => setViendo(d.id)}>
-                        {t("common:deploy.viewLog")}
+                    </>
+                  )}
+                </div>
+                {shown?.error && <p className="text-xs text-destructive">{phraseFor(shown.error, shown.error)}</p>}
+                {/* La única caja con scroll a la vista: alta, para leer el log
+                    sin andar esquivándola. */}
+                <pre
+                  ref={follow.ref}
+                  onScroll={follow.onScroll}
+                  aria-label={t("common:deploy.viewLog")}
+                  className="max-h-[70vh] overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap"
+                >
+                  {logs[abierto] ?? "…"}
+                </pre>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{t("common:deploy.history")}</p>
+                {history.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t("common:deploy.empty")}</p>
+                ) : (
+                  <>
+                    <ul aria-label={t("common:deploy.history")} className="divide-y rounded-md border">
+                      {(todo ? history : history.slice(0, LIST_PREVIEW)).map((d) => (
+                        <li key={d.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                          <Badge variant={VARIANTE[d.status]}>{t(`common:deploy.status.${d.status}`)}</Badge>
+                          <span className="font-mono text-xs">{shortRef(d.finalImage || d.image)}</span>
+                          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                            {quien(d)} · {desde(d.createdAt)}
+                            {/* Un código del backend se traduce; un texto del agente pasa tal cual. */}
+                            {d.error ? ` · ${phraseFor(d.error, d.error)}` : ""}
+                          </span>
+                          <Button variant="ghost" size="sm" onClick={() => setViendo(d.id)}>
+                            {t("common:deploy.viewLog")}
+                          </Button>
+                          {d.status === "succeeded" && d.previousImage && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={busy || vivo || sinAgente}
+                              title={t("common:deploy.rollback")}
+                              aria-label={t("common:deploy.rollback")}
+                              onClick={() => void volver(d)}
+                            >
+                              <Undo2 className="size-3.5" />
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    {history.length > LIST_PREVIEW && (
+                      <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setTodo((v) => !v)}>
+                        {todo ? t("common:deploy.showLess") : t("common:deploy.showMore", { count: history.length - LIST_PREVIEW })}
                       </Button>
-                      {d.status === "succeeded" && d.previousImage && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy || vivo || sinAgente}
-                          title={t("common:deploy.rollback")}
-                          aria-label={t("common:deploy.rollback")}
-                          onClick={() => void volver(d)}
-                        >
-                          <Undo2 className="size-3.5" />
-                        </Button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {abierto && (
-              <pre
-                ref={follow.ref}
-                onScroll={follow.onScroll}
-                className="max-h-64 overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap"
-              >
-                {logs[abierto] ?? "…"}
-              </pre>
+                    )}
+                  </>
+                )}
+              </div>
             )}
 
             {/* La configuración, en el orden en que se piensa: de dónde sale la

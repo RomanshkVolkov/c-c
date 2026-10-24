@@ -3,6 +3,12 @@
  * prellenar su registro, y cómo se enseña una imagen.
  */
 
+/**
+ * Cuántas filas enseñan las listas de un despliegue (commits, historial) antes
+ * de «Ver N más». Sin caja con scroll propio: la lista crece con la página.
+ */
+export const LIST_PREVIEW = 5;
+
 /** La primera versión del agente que despliega (`domain.AgentVersionDeploys`). */
 export const AGENT_VERSION_DEPLOYS = 3;
 

@@ -551,3 +551,61 @@ describe("qué commit se despliega", () => {
     expect(get).not.toHaveBeenCalledWith(expect.stringContaining("/commits"), true);
   });
 });
+
+// Hasta la v1.21.0 el log se abría solo debajo del historial, en una caja con
+// scroll propio entre otras dos (commits e historial), y la rueda se quedaba
+// atrapada en cada una. Ahora el log ocupa el sitio del historial, con un
+// «atrás», y las listas enseñan cinco filas y «Ver N más» sin scroll propio.
+// Roturas que atrapa: abrir el log solo al entrar; abrirlo debajo dejando el
+// historial; no poder volver; enseñar todas las filas de golpe; no ofrecer
+// las que faltan.
+describe("el historial y su log", () => {
+  const filas = Array.from({ length: 7 }, (_, i) =>
+    fila({ id: `d-${i}`, image: `ghcr.io/dwit-mexico/api:aaaa00${i}`, finalImage: `ghcr.io/dwit-mexico/api:aaaa00${i}` }),
+  );
+  const historial = () => screen.queryByRole("list", { name: /^(historial|history)$/i });
+
+  it("el log se abre en el sitio del historial, con un atrás, y sólo si se pide", async () => {
+    respuestas([deployable], filas);
+    get.mockImplementation(async (url: string) => {
+      if (url.endsWith("/deployables")) return { success: true, data: [deployable] };
+      if (url.endsWith("/deployments")) return { success: true, data: filas };
+      if (url.endsWith("/deployments/d-2")) return { success: true, data: { ...filas[2], log: "#5 RUN bun run build\nERROR: falló" } };
+      return { success: true, data: [] };
+    });
+    pintar();
+    await waitFor(() => expect(historial()).toBeTruthy());
+    expect(screen.queryByLabelText(/^log$/i)).toBeNull();
+
+    fireEvent.click(within(historial()!).getAllByRole("button", { name: /^log$/i })[2]);
+    await waitFor(() => expect(screen.getByLabelText(/^log$/i).textContent).toContain("ERROR: falló"));
+    expect(historial()).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^(historial|history)$/i }));
+    expect(historial()).toBeTruthy();
+    expect(screen.queryByLabelText(/^log$/i)).toBeNull();
+  });
+
+  it("enseña cinco y el resto con «Ver más», sin caja con scroll propio", async () => {
+    respuestas([deployable], filas);
+    pintar();
+    await waitFor(() => expect(historial()).toBeTruthy());
+    expect(within(historial()!).getAllByRole("listitem")).toHaveLength(5);
+    expect(historial()!.className).not.toMatch(/overflow|max-h/);
+    fireEvent.click(screen.getByRole("button", { name: /^(ver 2 más|show 2 more)$/i }));
+    expect(within(historial()!).getAllByRole("listitem")).toHaveLength(7);
+  });
+
+  it("los commits también: cinco y el resto con «Ver más»", async () => {
+    const c = (i: number) => ({ sha: `${i}`.repeat(7).padEnd(40, "0"), message: `commit ${i}`, author: "ana", date: "2026-10-01T10:00:00Z" });
+    respuestas([{ ...deployable, repoFullName: "dwit-mexico/api", branch: "dev" }], [], [], {
+      success: true, data: [1, 2, 3, 4, 5, 6, 7, 8].map(c),
+    });
+    pintar();
+    const lista = await screen.findByRole("listbox");
+    expect(within(lista).getAllByRole("option")).toHaveLength(5);
+    expect(lista.className).not.toMatch(/overflow|max-h/);
+    fireEvent.click(screen.getByRole("button", { name: /^(ver 3 más|show 3 more)$/i }));
+    expect(within(lista).getAllByRole("option")).toHaveLength(8);
+  });
+});

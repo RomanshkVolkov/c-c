@@ -3,7 +3,7 @@ import { Loader2, RefreshCw, Rocket } from "lucide-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useT } from "@/lib/i18n";
 import { desde } from "@/lib/desde";
-import { isSha, runsCommit } from "@/lib/deploy";
+import { LIST_PREVIEW, isSha, runsCommit } from "@/lib/deploy";
 import { phraseFor } from "@/lib/server-errors";
 import { cn } from "@/lib/utils";
 import { useDeploymentsStore } from "@/store/deployments.store";
@@ -65,6 +65,7 @@ export default function CommitPicker({
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [manual, setManual] = useState(false);
+  const [all, setAll] = useState(false);
   const [sha, setSha] = useState("");
 
   useEffect(() => {
@@ -187,8 +188,8 @@ export default function CommitPicker({
           </Button>
         </div>
       </div>
-      <ul role="listbox" aria-label={t("common:deploy.commitsLabel")} className="max-h-56 divide-y overflow-y-auto rounded-md border">
-        {list.map((c, i) => {
+      <ul role="listbox" aria-label={t("common:deploy.commitsLabel")} className="divide-y rounded-md border">
+        {(all ? list : list.slice(0, LIST_PREVIEW)).map((c, i) => {
           const tag = !deployable.buildOnHost && published(c.sha);
           const selected = chosen === c.sha;
           return (
@@ -217,6 +218,11 @@ export default function CommitPicker({
           );
         })}
       </ul>
+      {list.length > LIST_PREVIEW && (
+        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setAll((v) => !v)}>
+          {all ? t("common:deploy.showLess") : t("common:deploy.showMore", { count: list.length - LIST_PREVIEW })}
+        </Button>
+      )}
       {chosen && (
         <div className="flex justify-end">
           {deployButton(t("common:deploy.deployCommit", { sha: chosen.slice(0, 7) }), valueOf(chosen), true)}
