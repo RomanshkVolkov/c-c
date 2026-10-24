@@ -1646,6 +1646,34 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "list_deployments",
+            "description": "The latest deploys of one service (from list_deployables), newest first: status (queued, running, succeeded, failed, rolled_back), when, the image, the commit it built and the error if it failed. Read-only. Read one with get_deployment.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "deployableId": { "type": "string" },
+                    "limit": { "type": "integer", "description": "How many, 1–50. Default 10." }
+                },
+                "required": ["serverId", "deployableId"]
+            }
+        },
+        {
+            "name": "get_deployment",
+            "description": "One deploy with its log: the last lines, plus every error line even if it falls before them (a failed build prints its cause a hundred lines up), and what the agent on the server said (lines starting `cac:`). Without deploymentId, the latest. Credentials in URLs are masked. Read-only: deploying or rolling back stays a person's decision in the app.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "deployableId": { "type": "string" },
+                    "deploymentId": { "type": "string", "description": "From list_deployments. Default: the latest." },
+                    "tail": { "type": "integer", "description": "Last lines of the log, 1–2000. Default 120." },
+                    "grep": { "type": "string", "description": "Only the lines containing this text (case-insensitive), instead of the tail." }
+                },
+                "required": ["serverId", "deployableId"]
+            }
+        },
+        {
             "name": "create_deployable",
             "description": "Register a service of the server as deployable by cac. Needs the `deploys:manage` scope (and an org admin behind the token). It does not deploy anything.",
             "inputSchema": {
@@ -2560,6 +2588,54 @@ fn find_deployable(cfg: &Cfg, server: &str, id: &str) -> Result<Value, String> {
         .ok_or_else(|| format!("No deployable {id} on server {server}: use list_deployables"))
 }
 
+/// Tapa la contraseña de una URL (`://usuario:clave@host`) en una línea del
+/// log de un deploy. Un build que imprime su `DATABASE_URL` no debe llevarla
+/// hasta la conversación de un agente.
+fn mask_url_credentials(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(i) = rest.find("://") {
+        let (head, tail) = rest.split_at(i + 3);
+        out.push_str(head);
+        let end = tail.find(|c: char| c == '/' || c.is_whitespace() || c == '"' || c == '\'').unwrap_or(tail.len());
+        let authority = &tail[..end];
+        match authority.rfind('@') {
+            Some(at) if authority[..at].contains(':') => {
+                out.push_str("***:***");
+                out.push_str(&authority[at..]);
+            }
+            _ => out.push_str(authority),
+        }
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Lo que un agente necesita del log de un deploy, sin el log entero (un
+/// build de Next pasa de mil líneas): la cola, o lo que case con `grep`; las
+/// líneas de error, que en un build que falla salen muy por encima de la
+/// cola; y lo que dijo el agente del servidor (`cac:`), que va al principio.
+/// Hasta el 23-oct-2026 no había herramienta para leerlo, y un agente de
+/// boaty no podía saber por qué no terminaba su deploy.
+fn deploy_log_view(log: &str, tail: usize, grep: Option<&str>) -> Value {
+    let lines: Vec<String> = log.lines().map(mask_url_credentials).collect();
+    let total = lines.len();
+    let picked: Vec<&String> = match grep {
+        Some(g) => {
+            let g = g.to_lowercase();
+            lines.iter().filter(|l| l.to_lowercase().contains(&g)).collect()
+        }
+        None => lines.iter().skip(total.saturating_sub(tail)).collect(),
+    };
+    let errors: Vec<&String> = lines.iter()
+        .filter(|l| l.contains("ERROR") || l.to_lowercase().contains("error:") || l.starts_with('✗'))
+        .take(40)
+        .collect();
+    let agent: Vec<&String> = lines.iter().filter(|l| l.trim_start().starts_with("cac:")).take(40).collect();
+    json!({ "totalLines": total, "lines": picked, "errors": errors, "agent": agent })
+}
+
 /// El cuerpo del PATCH de un servicio: lo que se pide, sobre lo que ya tiene.
 ///
 /// La ruta pide la fila entera —`name`, `environment`, `repoFullName` y
@@ -2948,6 +3024,39 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 Err(e) => json!({ "unavailable": e }),
             };
             Ok(json!({ "deployable": current, "secretRefs": refs, "buildArgs": build_args }))
+        }
+
+        "list_deployments" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let id = arg_str(args, "deployableId").ok_or("deployableId is required")?;
+            let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10).clamp(1, 50) as usize;
+            let data = api_get(cfg, &format!("/api/v1/servers/{}/deployables/{}/deployments", urlencode(&server), urlencode(&id)))?;
+            let items: Vec<Value> = data.as_array().cloned().unwrap_or_default().into_iter().take(limit).collect();
+            Ok(json!({ "deployments": items }))
+        }
+
+        "get_deployment" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let id = arg_str(args, "deployableId").ok_or("deployableId is required")?;
+            let base = format!("/api/v1/servers/{}/deployables/{}/deployments", urlencode(&server), urlencode(&id));
+            let dep_id = match arg_str(args, "deploymentId") {
+                Some(d) => d,
+                None => api_get(cfg, &base)?
+                    .as_array()
+                    .and_then(|a| a.first())
+                    .and_then(|d| d.get("id"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .ok_or("This service has no deploys yet")?,
+            };
+            let mut dep = api_get(cfg, &format!("{base}/{}", urlencode(&dep_id)))?;
+            let tail = args.get("tail").and_then(|v| v.as_i64()).unwrap_or(120).clamp(1, 2000) as usize;
+            let log = dep.get("log").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if let Some(obj) = dep.as_object_mut() {
+                obj.remove("log");
+            }
+            let view = deploy_log_view(&log, tail, arg_str(args, "grep").as_deref());
+            Ok(json!({ "deployment": dep, "log": view }))
         }
 
         "create_deployable" => {
@@ -6010,6 +6119,38 @@ mod tests {
             assert!(tool(&defs, name)["description"].as_str().unwrap().contains("deploys:manage"), "{name}");
         }
         assert!(tool(&defs, "update_deploy_config")["inputSchema"]["properties"].get("migrateCommand").is_none());
+    }
+
+    /// Leer un deploy: la cola, los errores aunque queden arriba, lo que dijo
+    /// el agente, y ninguna contraseña de una URL. Roturas que atrapa: dar
+    /// sólo la cola (el error de un build fallido queda fuera); no tapar la
+    /// clave; tapar también una URL sin credenciales; `grep` que distingue
+    /// mayúsculas.
+    #[test]
+    fn a_deploy_log_shows_its_cause_and_no_password() {
+        let mut log = String::from("servicio web, ahora con img:1\n  cac: el build ve la red boaty_internal\n");
+        log.push_str("  #17 error: the URL must start with the protocol `postgresql://`\n");
+        log.push_str("  url postgresql://boaty:s3cr3t@boaty-postgres:5432/boaty?schema=public\n");
+        for i in 0..300 {
+            log.push_str(&format!("  #18 paso {i}\n"));
+        }
+        log.push_str("✗ el build falló");
+        let v = deploy_log_view(&log, 5, None);
+        assert_eq!(v["totalLines"], 305);
+        assert_eq!(v["lines"].as_array().unwrap().len(), 5);
+        let errors = v["errors"].to_string();
+        assert!(errors.contains("must start with the protocol"), "{errors}");
+        assert!(errors.contains("✗ el build falló"), "{errors}");
+        assert!(v["agent"].to_string().contains("boaty_internal"));
+        let grep = deploy_log_view(&log, 5, Some("BOATY-POSTGRES"));
+        let hit = grep["lines"][0].as_str().unwrap();
+        assert_eq!(hit, "  url postgresql://***:***@boaty-postgres:5432/boaty?schema=public");
+        assert!(!grep.to_string().contains("s3cr3t"));
+        assert_eq!(mask_url_credentials("https://github.com/a/b.git#abc"), "https://github.com/a/b.git#abc");
+        assert_eq!(mask_url_credentials("git@github.com:a/b"), "git@github.com:a/b");
+        // Un usuario sin clave no es un secreto, y taparlo esconde a qué se conecta.
+        assert_eq!(mask_url_credentials("ssh://git@github.com/a/b"), "ssh://git@github.com/a/b");
+        assert!(!tool(&tool_defs(), "get_deployment").is_null() && !tool(&tool_defs(), "list_deployments").is_null());
     }
 
     /// Los backups en el MCP son de sólo lectura: ninguna herramienta lanza
