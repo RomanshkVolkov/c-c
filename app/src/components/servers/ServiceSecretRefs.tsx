@@ -90,6 +90,7 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
   const [rows, setRows] = useState<SecretRef[]>([]);
   const [rotations, setRotations] = useState<Rotation[]>([]);
   const [checks, setChecks] = useState<Record<string, string | true>>({});
+  const [checked, setChecked] = useState<{ done: number; total: number } | null>(null);
   const [item, setItem] = useState("");
   // Los Environments de 1Password: cuál importar y dónde está montado en esta
   // máquina (ver `lib/op-env`).
@@ -186,18 +187,43 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
     }
   };
 
+  // De una en una, para que cada fila diga lo suyo en cuanto lo sabe y el
+  // botón cuente por dónde va: con veintitantas, todas a la vez eran medio
+  // minuto de ventana trabada sin nada que mirar (jose, 23-oct-2026).
   const check = async () => {
     setBusy("check");
+    const refs = [...new Set(rows.map((r) => r.opRef.trim()).filter(Boolean))];
+    setChecks({});
+    setChecked({ done: 0, total: refs.length });
     try {
-      const out = await invoke<{ opRef: string; ok: boolean; error: string }[]>("check_op_refs", {
-        refs: rows.map((r) => r.opRef.trim()),
-        envFiles: mounts,
-      });
-      setChecks(Object.fromEntries(out.map((c) => [c.opRef, c.ok ? true : c.error])));
+      for (const [i, ref] of refs.entries()) {
+        let verdict: string | true;
+        try {
+          const [c] = await invoke<{ opRef: string; ok: boolean; error: string }[]>("check_op_refs", {
+            refs: [ref],
+            envFiles: mounts,
+          });
+          verdict = c?.ok ? true : c?.error || t("common:secrets.doesNotResolve");
+        } catch (e) {
+          verdict = e instanceof Error ? e.message : String(e);
+        }
+        setChecks((prev) => ({ ...prev, [ref]: verdict }));
+        setChecked({ done: i + 1, total: refs.length });
+      }
     } finally {
       setBusy(null);
     }
   };
+
+  // El porqué de cada ✗, escrito: en un `title` no lo veía nadie (en WebKitGTK
+  // apenas sale). Agrupado, porque casi siempre es uno para todas (1Password
+  // bloqueado, la app actualizada con la ventana abierta).
+  const byReason = new Map<string, string[]>();
+  for (const r of rows) {
+    const c = checks[r.opRef.trim()];
+    if (typeof c === "string") byReason.set(c, [...(byReason.get(c) ?? []), r.name]);
+  }
+  const failures = [...byReason.entries()];
 
   // Los `ARG` del Dockerfile del servicio (en su rama), cruzados con la
   // lista: uno que ya está como secret de la app pasa a «los dos»; uno que
@@ -533,7 +559,9 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
           )}
           <Button variant="outline" size="sm" disabled={rows.length === 0 || busy !== null} onClick={() => void check()}>
             {busy === "check" && <Loader2 className="mr-1 size-3.5 animate-spin" />}
-            {t("common:secrets.check")}
+            {busy === "check" && checked
+              ? t("common:secrets.checking", { done: checked.done, total: checked.total })
+              : t("common:secrets.check")}
           </Button>
           <span className="flex-1" />
           {canRotate && (
@@ -555,6 +583,17 @@ export default function ServiceSecretRefs({ server, service }: { server: Server;
             </span>
           )}
         </div>
+        {failures.length > 0 && (
+          <div role="alert" className="space-y-1 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs">
+            {failures.map(([reason, names]) => (
+              <p key={reason}>
+                <span className="font-medium">{t("common:secrets.unreadable", { count: names.length })}</span>{" "}
+                <span className="break-words">{reason}</span>
+                <span className="block text-muted-foreground">{names.join(", ")}</span>
+              </p>
+            ))}
+          </div>
+        )}
         {!canRotateHere && <p className="text-xs text-muted-foreground">{t("common:secrets.needsDeploy")}</p>}
         {dirty && canRotateHere && <p className="text-xs text-muted-foreground">{t("common:secrets.saveFirst")}</p>}
 

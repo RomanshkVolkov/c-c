@@ -208,7 +208,7 @@ struct OpVault {
 /// the caller hides the feature instead of showing a scary message next to
 /// secrets the user still needs to copy.
 #[tauri::command]
-fn op_list_vaults() -> Vec<OpVault> {
+async fn op_list_vaults() -> Vec<OpVault> {
 
     let accounts = match crate::host::command("op")
         .args(["account", "list", "--format", "json"])
@@ -276,7 +276,7 @@ fn op_list_vaults() -> Vec<OpVault> {
 /// and are readable by other processes. (Assignment statements and a template
 /// on stdin were both tried; stdin silently discards the values.)
 #[tauri::command]
-fn op_item_create(
+async fn op_item_create(
     title: String,
     account: String,
     vault: String,

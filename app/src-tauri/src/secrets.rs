@@ -284,7 +284,7 @@ struct RotationProgress {
 /// forma de escribir la referencia) se lee como antes. Y va contando por dónde
 /// va: sin eso, el botón se quedaba quieto el rato y no se sabía si hacía algo.
 #[tauri::command]
-pub fn rotate_service_secrets(
+pub async fn rotate_service_secrets(
     app: tauri::AppHandle,
     target: SshTarget,
     service: String,
@@ -380,7 +380,7 @@ pub struct RefCheck {
 
 /// «Probar»: lee cada referencia y descarta el valor. Dice si existe, nada más.
 #[tauri::command]
-pub fn check_op_refs(refs: Vec<String>, env_files: Option<std::collections::HashMap<String, String>>) -> Vec<RefCheck> {
+pub async fn check_op_refs(refs: Vec<String>, env_files: Option<std::collections::HashMap<String, String>>) -> Vec<RefCheck> {
     let env_files = env_files.unwrap_or_default();
     refs.into_iter()
         .map(|r| {
@@ -424,7 +424,7 @@ pub fn item_fields(json: &str) -> Result<Vec<ItemField>, String> {
 
 /// `op://bóveda/ítem` → los campos de ese ítem, sin valores.
 #[tauri::command]
-pub fn op_item_fields(item: String) -> Result<Vec<ItemField>, String> {
+pub async fn op_item_fields(item: String) -> Result<Vec<ItemField>, String> {
     let rest = item.strip_prefix("op://").ok_or("an item is op://vault/item")?;
     let (vault, name) = rest.split_once('/').ok_or("an item is op://vault/item")?;
     let name = name.trim_end_matches('/');
@@ -498,7 +498,7 @@ pub struct CaptureResult {
 /// 1Password. Un ítem con ese nombre que ya exista no se toca: dos con el
 /// mismo nombre harían ambiguas las referencias.
 #[tauri::command]
-pub fn capture_service_env(target: SshTarget, service: String, vault: String, title: String) -> Result<CaptureResult, String> {
+pub async fn capture_service_env(target: SshTarget, service: String, vault: String, title: String) -> Result<CaptureResult, String> {
     let (vault, title) = (vault.trim().to_string(), title.trim().to_string());
     if vault.is_empty() || title.is_empty() || title.contains('/') || vault.contains('/') {
         return Err("the vault and the item need a name, without /".into());
@@ -646,6 +646,22 @@ pub fn create_backup_key(account: String, vault: String, title: String) -> Resul
 
 #[cfg(test)]
 mod tests {
+    /// Lo que espera a 1Password o a un servidor no corre en el hilo de la
+    /// ventana. Tauri corre ahí los comandos síncronos, y «Comprobar» —un `op
+    /// read` por secret, más de veinte— dejaba la app trabada sin pintar nada
+    /// hasta acabar (jose, 23-oct-2026). Roturas que atrapa: volver a hacer
+    /// síncrono cualquiera de estos.
+    #[test]
+    fn what_waits_for_1password_or_a_server_does_not_freeze_the_window() {
+        let src = [include_str!("secrets.rs"), include_str!("lib.rs")].concat();
+        for name in ["op_list_vaults", "op_item_create", "rotate_service_secrets", "check_op_refs", "op_item_fields", "capture_service_env"] {
+            assert!(
+                src.contains(&format!("async fn {name}(")),
+                "{name} es síncrono: Tauri lo corre en el hilo de la ventana y la traba mientras espera"
+            );
+        }
+    }
+
 
     // El contrato de `rotate-secrets`: CLAVE=valor por línea, sin lo que es
     // sólo del build, y un valor de dos líneas se rechaza nombrando la clave.

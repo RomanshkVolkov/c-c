@@ -291,6 +291,31 @@ describe("los secrets de un servicio", () => {
     expect(screen.queryByRole("button", { name: /(rotar en el servidor|rotate on the server)/i })).toBeNull();
   });
 
+  // «Probar» trababa la ventana medio minuto sin pintar nada, y el porqué de
+  // cada ✗ iba en un `title` que en WebKitGTK no salía (jose, 23-oct-2026).
+  // Roturas que atrapa: no decir el motivo en la pantalla; repetirlo por cada
+  // fila en vez de agruparlo; leer todas de una vez sin contar por dónde va.
+  it("probar dice por dónde va y escribe por qué no se pudo leer", async () => {
+    backend("deploy");
+    let release: () => void = () => {};
+    invoke.mockImplementation(async (cmd: string, args: { refs: string[] }) => {
+      if (cmd !== "check_op_refs") return null;
+      const ref = args.refs[0];
+      if (ref.endsWith("AUTH_SECRET")) await new Promise<void>((r) => (release = r));
+      return [{ opRef: ref, ok: false, error: "1Password refused the connection." }];
+    });
+    pintar();
+    await waitFor(() => expect(screen.getAllByDisplayValue(/^op:\/\//)).toHaveLength(2));
+    fireEvent.click(screen.getByRole("button", { name: /^(probar|check)$/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /(comprobando 0\/2|checking 0\/2)/i })).toBeTruthy());
+    await act(async () => release());
+    const alerta = await screen.findByRole("alert");
+    expect(alerta.textContent).toMatch(/(no se pudieron leer 2|couldn't read 2)/i);
+    expect(alerta.textContent?.match(/1Password refused the connection\./g)).toHaveLength(1);
+    expect(alerta.textContent).toContain("AUTH_SECRET, DATABASE_URL");
+    expect(invoke.mock.calls.filter(([c]) => c === "check_op_refs").every(([, a]) => (a as { refs: string[] }).refs.length === 1)).toBe(true);
+  });
+
   it("una etiqueta se vuelve un nombre de secret", () => {
     expect(labelToName("mail host")).toBe("MAIL_HOST");
     expect(labelToName("DATABASE_URL")).toBe("DATABASE_URL");
