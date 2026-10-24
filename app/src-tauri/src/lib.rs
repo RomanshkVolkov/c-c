@@ -13,6 +13,7 @@ mod paste_guard;
 mod api_client;
 mod crypto_tools;
 mod dropped;
+mod download;
 mod http_client;
 mod image;
 mod notify;
@@ -1891,6 +1892,7 @@ pub fn run() {
             sse_connect,
             sse_disconnect,
             save_file,
+            download::download_to_file,
             notify::desktop_notify,
             export_notes,
             op_item_create,

@@ -1042,7 +1042,10 @@
     "containerName": "Container name",
     "username": "User (optional)",
     "usernameHint": "Leave it empty to log in as the user in the variable. With a user, the variable is the password.",
-    "credentialEnvPasswordHint": "The variable with the password. If it ends in _FILE, it is the path of a file inside the container and it is read there."
+    "credentialEnvPasswordHint": "The variable with the password. If it ends in _FILE, it is the path of a file inside the container and it is read there.",
+    "downloading": "Downloading {{done}}…",
+    "downloadingOf": "Downloading {{percent}}% ({{done}} of {{total}})",
+    "downloaded": "Saved to {{path}}"
   },
   "colors": {
     "pick": "Pick a color",

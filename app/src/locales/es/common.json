@@ -1042,7 +1042,10 @@
     "containerName": "Nombre del contenedor",
     "username": "Usuario (opcional)",
     "usernameHint": "Déjalo vacío para entrar con el usuario de la variable. Con usuario, la variable es la contraseña.",
-    "credentialEnvPasswordHint": "La variable con la contraseña. Si acaba en _FILE, es la ruta de un fichero dentro del contenedor y se lee ahí."
+    "credentialEnvPasswordHint": "La variable con la contraseña. Si acaba en _FILE, es la ruta de un fichero dentro del contenedor y se lee ahí.",
+    "downloading": "Bajando {{done}}…",
+    "downloadingOf": "Bajando {{percent}} % ({{done}} de {{total}})",
+    "downloaded": "Guardado en {{path}}"
   },
   "colors": {
     "pick": "Elegir color",

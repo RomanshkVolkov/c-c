@@ -1,7 +1,7 @@
 import { useFollowLog } from "@/hooks/use-follow-log";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, Download, FlaskConical, KeyRound, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Archive, Download, FlaskConical, KeyRound, Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,8 @@ import { useT } from "@/lib/i18n";
 import { phraseFor } from "@/lib/server-errors";
 import { formatBytes } from "@/lib/utils";
 import { isTauri } from "@/lib/platform";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useServerContext } from "@/pages/servers/ServerLayout";
 import { useBackupsStore } from "@/store/backups.store";
 import type { Backup, BackupStatus, BackupTarget, BackupTargetPayload } from "@/types/backups";
@@ -351,6 +353,8 @@ function TargetCard({
   const history = useBackupsStore((s) => s.history[target.id]) ?? EMPTY_HISTORY;
   const logs = useBackupsStore((s) => s.logs);
   const [open, setOpen] = useState<string | null>(null);
+  // Lo que se está bajando, por backup: cuánto va y cuánto es.
+  const [downloading, setDownloading] = useState<Record<string, { done: number; total: number | null }>>({});
   const follow = useFollowLog<HTMLPreElement>(open ? logs[open] : null);
   const live = history.some((b) => b.status === "queued" || b.status === "running");
 
@@ -371,7 +375,28 @@ function TargetCard({
     if (!ok) return;
     await onError(async () => {
       const url = await useBackupsStore.getState().downloadUrl(serverId, b.id);
-      window.open(url, "_blank", "noopener");
+      if (!isTauri) {
+        window.open(url, "_blank", "noopener");
+        return;
+      }
+      // En el escritorio, `window.open` no hacía nada: el webview no abre
+      // ventanas nuevas. Lo baja Rust, preguntando dónde, y cuenta por dónde va
+      // (jose, 24-oct-2026).
+      const stop = await listen<{ id: string; done: number; total: number | null }>("download://progress", (e) => {
+        if (e.payload.id === b.id) setDownloading((d) => ({ ...d, [b.id]: { done: e.payload.done, total: e.payload.total } }));
+      });
+      try {
+        const stamp = b.createdAt.slice(0, 16).replace(/[:T]/g, "-");
+        const saved = await invoke<string | null>("download_to_file", {
+          id: b.id,
+          url,
+          fileName: `${target.database}-${stamp}.age`,
+        });
+        if (saved) toast.success(t("common:backups.downloaded", { path: saved }));
+      } finally {
+        stop();
+        setDownloading(({ [b.id]: _, ...rest }) => rest);
+      }
     });
   };
 
@@ -451,7 +476,19 @@ function TargetCard({
                 <Button size="sm" variant="ghost" onClick={() => setOpen(open === b.id ? null : b.id)}>
                   {t("common:backups.log")}
                 </Button>
-                {b.status === "succeeded" && b.kind !== "restore_test" && !b.purgedAt && (
+                {downloading[b.id] && (
+                  <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    {downloading[b.id].total
+                      ? t("common:backups.downloadingOf", {
+                          percent: Math.floor((downloading[b.id].done / downloading[b.id].total!) * 100),
+                          done: formatBytes(downloading[b.id].done),
+                          total: formatBytes(downloading[b.id].total!),
+                        })
+                      : t("common:backups.downloading", { done: formatBytes(downloading[b.id].done) })}
+                  </span>
+                )}
+                {b.status === "succeeded" && b.kind !== "restore_test" && !b.purgedAt && !downloading[b.id] && (
                   <Button size="sm" variant="ghost" aria-label={t("common:backups.download")} onClick={() => void download(b)}>
                     <Download className="size-3.5" />
                   </Button>

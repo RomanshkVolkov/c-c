@@ -1,12 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { pick } from "@/test-pick";
 
 const { get, post, confirmar, invoke } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), confirmar: vi.fn(), invoke: vi.fn() }));
 vi.mock("@/lib/platform", () => ({ isTauri: true }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+// El progreso de una descarga, que manda Rust: la prueba lo dispara a mano.
+const { progress } = vi.hoisted(() => ({ progress: { emit: (_p: unknown) => {} } }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: async (_name: string, cb: (e: { payload: unknown }) => void) => {
+    progress.emit = (p) => cb({ payload: p });
+    return () => {};
+  },
+}));
 vi.mock("@/lib/api", () => ({ api: { get, post, patch: vi.fn(), delete: vi.fn() } }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
+vi.mock("sonner", () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/pages/servers/ServerLayout", () => ({
   useServerContext: () => ({
     server: { id: "srv-1" },
@@ -68,11 +77,28 @@ describe("la pestaña Backups", () => {
     await waitFor(() => expect(confirmar).toHaveBeenCalled());
     expect(post).not.toHaveBeenCalledWith(expect.stringContaining("/download"), expect.anything(), true);
 
+    // En el escritorio lo baja Rust, preguntando dónde, y la fila cuenta por
+    // dónde va. Hasta la v1.23.0 hacía `window.open`, que en el webview del
+    // escritorio no hace nada (jose, 24-oct-2026). Roturas que atrapa: volver a
+    // `window.open`; no enseñar el progreso; no decir dónde quedó.
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    let finish: (path: string | null) => void = () => {};
+    invoke.mockImplementation((cmd: string) =>
+      cmd === "download_to_file" ? new Promise((r) => (finish = r)) : Promise.resolve(null),
+    );
     confirmar.mockResolvedValue(true);
     fireEvent.click(descargar);
     await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/servers/srv-1/backups/runs/b1/download", {}, true));
-    await waitFor(() => expect(open).toHaveBeenCalledWith("https://s3.test/x", "_blank", "noopener"));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("download_to_file", { id: "b1", url: "https://s3.test/x", fileName: "boaty-2026-10-18-03-30.age" }),
+    );
+    expect(open).not.toHaveBeenCalled();
+    act(() => progress.emit({ id: "b1", done: 30308352, total: 60616704 }));
+    expect((await screen.findByRole("status")).textContent).toMatch(/50 ?%/);
+    await act(async () => finish("/home/jose/Descargas/boaty-2026-10-18-03-30.age"));
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    const { toast } = await import("sonner");
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("/home/jose/Descargas/boaty-2026-10-18-03-30.age"));
   });
 });
 
