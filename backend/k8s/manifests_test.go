@@ -70,16 +70,22 @@ func asInt(v any) int {
 	return n
 }
 
-// turnConfig: el bloque `turn` de la configuración de LiveKit, que va como
-// texto dentro del ConfigMap.
-func turnConfig(t *testing.T, ds []doc) doc {
+// livekitConfig: la configuración de LiveKit, que va como texto dentro del
+// ConfigMap.
+func livekitConfig(t *testing.T, ds []doc) doc {
 	t.Helper()
 	raw, _ := m(find(t, ds, "ConfigMap", "livekit-config"), "data", "livekit.yaml").(string)
 	var conf doc
 	if err := yaml.Unmarshal([]byte(raw), &conf); err != nil {
 		t.Fatal(err)
 	}
-	turn, _ := conf["turn"].(doc)
+	return conf
+}
+
+// turnConfig: el bloque `turn` de la configuración de LiveKit.
+func turnConfig(t *testing.T, ds []doc) doc {
+	t.Helper()
+	turn, _ := livekitConfig(t, ds)["turn"].(doc)
 	if turn == nil {
 		t.Fatal("la configuración de LiveKit no tiene bloque turn")
 	}
@@ -129,6 +135,24 @@ func TestTheRelayRangeStaysOutOfTheNodePorts(t *testing.T) {
 	}
 	if from <= 32767 && to >= 30000 {
 		t.Fatalf("el relé %d-%d se pisa con los NodePorts 30000-32767", from, to)
+	}
+}
+
+// LiveKit no abre media por TCP. Con `hostNetwork` cada puerto que abre queda
+// en la IP pública, y el respaldo por TCP ya lo hace TURN por el 443. El 0 tiene
+// que estar escrito: si falta la clave, LiveKit abre el 7881 por defecto, así
+// que borrar la línea también lo reabre.
+func TestLiveKitOpensNoTCPMediaPort(t *testing.T) {
+	lk := docs(t, "5-livekit.yaml")
+	rtc, _ := livekitConfig(t, lk)["rtc"].(doc)
+	if port, set := rtc["tcp_port"]; !set || asInt(port) != 0 {
+		t.Fatalf("rtc.tcp_port = %v (escrito: %v): LiveKit abriría media por TCP en la IP pública", port, set)
+	}
+	containers := m(find(t, lk, "Deployment", "livekit"), "spec", "template", "spec", "containers").([]any)
+	for _, p := range m(containers[0], "ports").([]any) {
+		if asInt(p.(doc)["containerPort"]) == 7881 {
+			t.Fatal("el Deployment sigue declarando el 7881")
+		}
 	}
 }
 

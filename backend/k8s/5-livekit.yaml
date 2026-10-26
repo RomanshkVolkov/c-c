@@ -7,9 +7,17 @@
 # quedaría negociando para siempre. Con la red del host, lo que anuncia es lo
 # que hay.
 #
-# `use_external_ip: true` cierra el círculo: el VPS está detrás del NAT de AWS,
-# así que la IP de su interfaz no es la pública. LiveKit la descubre por STUN al
-# arrancar y anuncia esa.
+# Y no se puede quitar por seguridad: el relé TURN anuncia como dirección la IP
+# del nodo (`RelayAddress: NodeIP`, `pkg/service/turn.go` de v1.13.5) y el SFU
+# le manda el media ahí; desde un pod, eso cae en el host, donde no escucha
+# nadie. El chart oficial de LiveKit también trae `hostNetwork` por defecto.
+#
+# El precio es que **todo puerto que LiveKit abra queda en la IP pública**. Por
+# eso no abre ninguno que no haga falta (ver `tcp_port`), y los que sólo usa
+# Envoy (7880, 5349) y el rango del relé se cierran en el firewall del host.
+#
+# `use_external_ip: true`: LiveKit descubre por STUN al arrancar la IP pública
+# y anuncia esa.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,14 +28,18 @@ data:
     port: 7880
     log_level: info
     rtc:
-      # Un solo puerto UDP muxeado en vez de un rango: es un agujero que abrir
-      # en el security group en vez de diez mil, y para el tamaño de equipo que
-      # esto sirve no hay diferencia de rendimiento.
+      # Un solo puerto UDP muxeado en vez de un rango: es un puerto público en
+      # vez de diez mil, y para el tamaño de equipo que esto sirve no hay
+      # diferencia de rendimiento.
       udp_port: 7882
-      # Respaldo para redes que bloquean UDP. Peor latencia, pero conecta.
-      tcp_port: 7881
+      # Sin media por TCP, y el 0 tiene que estar escrito: sin la línea,
+      # LiveKit abre el 7881 por defecto en la IP pública. Era el respaldo
+      # para redes que bloquean UDP, y desde el 8-oct-2026 lo cubre TURN por
+      # el 443, que además pasa los firewalls que sólo dejan salir HTTPS
+      # (26-oct-2026, command-and-control-228).
+      tcp_port: 0
       use_external_ip: true
-    # TURN: el relé para quien no alcanza los 7881/7882 (W3, 8-oct-2026).
+    # TURN: el relé para quien no alcanza el 7882 (W3, 8-oct-2026).
     #
     # Un invitado llega desde redes que no controlamos, y una red corporativa o
     # de hotel suele dejar salir **sólo el 443**. La señalización ya va por el
@@ -61,9 +73,14 @@ data:
     # Redis es el bus por el que el SFU y Egress se hablan (psrpc). Sin esto no
     # hay grabación, y con esto LiveKit entra en modo distribuido: si el bus
     # cae, **sigue sirviendo las salas que ya tiene pero no crea nuevas**. Ése
-    # es el precio de grabar, y es un pod propio —no el Valkey de `data`— para
-    # que la voz no dependa del bus de eventos de cac ni de una contraseña
-    # copiada a mano entre namespaces.
+    # es el precio de grabar.
+    #
+    # Es un pod propio y no el Valkey de `data` porque este bus es el plano de
+    # control de LiveKit (sus RPC no se autentican aparte), y aquél tiene una
+    # sola contraseña para varios proyectos y deja entrar a todo `default`:
+    # quien comprometiera cualquiera de ellos le hablaría al SFU. Pasarlo allí
+    # sólo tendría sentido con un usuario ACL propio, limitado a sus claves y
+    # canales (decidido el 26-oct-2026).
     #
     # Quitar estas dos líneas apaga la grabación y nada más.
     redis:
@@ -151,8 +168,6 @@ spec:
           ports:
             - name: signal
               containerPort: 7880
-            - name: rtc-tcp
-              containerPort: 7881
             - name: rtc-udp
               containerPort: 7882
               protocol: UDP

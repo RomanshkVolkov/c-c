@@ -142,7 +142,7 @@ es legítima y la pantalla puede decirlo con esas palabras.
 |---|---|---|---|
 | 7880 | TCP, vía Gateway | Señalización (WebSocket), por `rtc.guz-studio.dev` | ✓ |
 | 7882 | **UDP**, directo al host | El media | ✓ verificado con tráfico real |
-| 7881 | TCP, directo al host | Respaldo para redes que bloquean UDP | escucha |
+| ~~7881~~ | TCP | Era el respaldo para redes que bloquean UDP | **cerrado** (`tcp_port: 0`, 26-oct-2026): lo cubre TURN por el 443 |
 
 **El media no pasa por Envoy**, y por eso el Gateway no aparece en esta tabla
 más que para la señalización. Con `hostNetwork`, LiveKit escucha directamente en
@@ -160,8 +160,8 @@ aquí sin repetirla.
 
 Los invitados llegan desde redes que no controlamos. Una red corporativa o de
 hotel suele dejar salir **sólo el 443**. La señalización ya iba por ahí, a
-través del Gateway; el media no, porque usa los puertos 7881 y 7882 directos al
-host. Desde esas redes, la sala se abría y se quedaba en «conectando» para
+través del Gateway; el media no, porque usaba los puertos 7881 y 7882 directos
+al host. Desde esas redes, la sala se abría y se quedaba en «conectando» para
 siempre. Lo resuelve TURN: un relé al que el navegador habla por TLS en el 443,
 que para el firewall es HTTPS normal.
 
@@ -193,6 +193,29 @@ Cuatro decisiones, cada una con su motivo:
 Comprobado en el VPS: ufw no bloquea nada, y por eso el 5349 queda también
 abierto a internet en TCP plano. No es un agujero, porque TURN exige las
 credenciales que LiveKit da a cada participante.
+
+### 6 ter · Lo que LiveKit deja en la IP pública, y por qué no se quita `hostNetwork` (26-oct-2026)
+
+Con `hostNetwork`, todo puerto que LiveKit abre escucha en 154.53.49.30. Se
+estudió sacarlo a la red de pods y **no se puede**: el relé TURN anuncia como
+dirección la IP del nodo (`RelayAddress: NodeIP` en `pkg/service/turn.go` de
+v1.13.5) y el SFU le manda el media ahí; desde un pod, eso cae en el host y se
+pierde. El chart oficial de LiveKit trae `hostNetwork` por defecto.
+
+| Puerto | ¿Público? |
+|---|---|
+| 7882/UDP, 3478/UDP | Sí: sin ellos no hay media |
+| 7881/TCP | Cerrado en la config (`tcp_port: 0`) |
+| 7880/TCP, 5349/TCP | Sólo los usa Envoy, que llega por la IP del nodo desde `10.0.0.0/24`: se cierran en ufw con esa excepción |
+| 50000-50199/UDP | Sólo el SFU, en local: ufw |
+
+Lo de ufw va con la pasada de firewall del VPS (command-and-control-228).
+
+El bus (`livekit-redis`) se queda propio y no pasa al Valkey de `data`: es el
+plano de control de LiveKit, y aquél comparte una contraseña entre proyectos y
+deja entrar a todo `default`.
+
+→ Guardián: `TestLiveKitOpensNoTCPMediaPort` en `backend/k8s/manifests_test.go`.
 
 **El Gateway y el certificado no viven en ningún repo** y los usan otros
 proyectos. Se tocan con `infra/k8s/turn-setup.sh`, que aplica JSON patches que
