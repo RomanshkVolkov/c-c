@@ -190,9 +190,9 @@ Cuatro decisiones, cada una con su motivo:
   defecto, 30000-40000, se pisaba con ellos, y el propio Gateway tiene NodePorts
   ahí.
 
-Comprobado en el VPS: ufw no bloquea nada, y por eso el 5349 queda también
-abierto a internet en TCP plano. No es un agujero, porque TURN exige las
-credenciales que LiveKit da a cada participante.
+Hasta el 26-oct-2026 ufw estaba **inactivo** y el 5349 quedaba abierto a
+internet en TCP plano (con credenciales, pero abierto). Ahora lo cierra ufw:
+ver §6 ter.
 
 ### 6 ter · Lo que LiveKit deja en la IP pública, y por qué no se quita `hostNetwork` (26-oct-2026)
 
@@ -206,10 +206,19 @@ pierde. El chart oficial de LiveKit trae `hostNetwork` por defecto.
 |---|---|
 | 7882/UDP, 3478/UDP | Sí: sin ellos no hay media |
 | 7881/TCP | Cerrado en la config (`tcp_port: 0`) |
-| 7880/TCP, 5349/TCP | Sólo los usa Envoy, que llega por la IP del nodo desde `10.0.0.0/24`: se cierran en ufw con esa excepción |
-| 50000-50199/UDP | Sólo el SFU, en local: ufw |
+| 7880/TCP, 5349/TCP | Cerrados en ufw salvo para `10.0.0.0/8` (la pool de Cilium) |
+| 50000-50199/UDP | Cerrados en ufw salvo para `10.0.0.0/8` |
 
-Lo de ufw va con la pasada de firewall del VPS (command-and-control-228).
+Envoy, Egress y el transcriptor llegan a LiveKit **con su IP de pod** (medido
+con `ss` en el 7880: `10.0.0.28`, `10.0.0.44`), por eso la excepción es la pool
+de Cilium y no la IP del nodo. El kubelet y el SFU entran por loopback, que ufw
+siempre deja pasar.
+
+ufw se encendió el 26-oct-2026 sólo con estas reglas y `default allow` (entrada,
+salida y **routed**: sin el último, encender ufw pone FORWARD en DROP y corta a
+los pods). Lo demás del VPS sigue sin firewall y es una revisión aparte. Si algo
+de la voz deja de conectar desde dentro del clúster, `sudo ufw status` es lo
+primero que mirar; `sudo ufw disable` lo deshace entero.
 
 El bus (`livekit-redis`) se queda propio y no pasa al Valkey de `data`: es el
 plano de control de LiveKit, y aquél comparte una contraseña entre proyectos y
