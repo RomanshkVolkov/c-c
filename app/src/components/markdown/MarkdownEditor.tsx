@@ -696,12 +696,22 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
 
   // Adopt external changes (e.g. the drawer switched to another task) without
   // clobbering what the user is typing.
+  //
+  // En una microtarea, fuera del efecto: el contenido nuevo puede traer nodos
+  // con vista de React (un diagrama), y tiptap los monta con `flushSync`, que
+  // React no puede cumplir en mitad de un efecto («flushSync was called from
+  // inside a lifecycle method»): el diagrama salía un render más tarde. Pasaba
+  // al cambiar de nota, no al montar.
   useEffect(() => {
     if (!editor) return;
-    const current = getMarkdown(editor);
-    if (value !== current) {
-      editor.commands.setContent(value, { emitUpdate: false });
-    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled || editor.isDestroyed) return;
+      if (value !== getMarkdown(editor)) editor.commands.setContent(value, { emitUpdate: false });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [value, editor]);
 
   // Por suscripción: leído en el render, se quedaba con el valor de cuando se

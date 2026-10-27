@@ -83,6 +83,28 @@ describe("un bloque mermaid en el editor", () => {
     await waitFor(() => expect(container.querySelectorAll('[data-mermaid="diagram"]')).toHaveLength(1));
   });
 
+  it("al cambiar de nota a una con diagrama, React no se queja de un flushSync", async () => {
+    // El contenido nuevo llega por `setContent`; hecho dentro del efecto,
+    // tiptap montaba la vista del diagrama con un `flushSync` que React no
+    // puede cumplir ahí («flushSync was called from inside a lifecycle
+    // method»). Al montar no pasaba: sólo al llegar el contenido después.
+    const errors = vi.spyOn(console, "error");
+    const { container, rerender } = render(
+      <PromptProvider>
+        <MarkdownEditor value="" onChange={() => {}} />
+      </PromptProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    rerender(
+      <PromptProvider>
+        <MarkdownEditor value={MD} onChange={() => {}} />
+      </PromptProvider>,
+    );
+    await waitFor(() => expect(container.querySelector('[data-mermaid="diagram"]')).not.toBeNull());
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes("flushSync"))).toEqual([]);
+    errors.mockRestore();
+  });
+
   it("el markdown guardado no cambia", async () => {
     const onChange = vi.fn();
     const { container } = mount(MD, onChange);
