@@ -88,7 +88,7 @@ function CodeBlockView({ node, editor, getPos }: ReactNodeViewProps) {
           <button
             type="button"
             onClick={enter}
-            className="absolute right-2 top-2 flex items-center gap-1 rounded border bg-background/90 px-1.5 py-0.5
+            className="motion-press absolute right-2 top-2 flex items-center gap-1 rounded border bg-background/90 px-1.5 py-0.5
                        text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground
                        focus-visible:opacity-100 group-hover/mermaid:opacity-100"
           >
