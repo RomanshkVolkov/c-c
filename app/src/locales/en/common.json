@@ -158,7 +158,13 @@
     "errClipboardBody": "Try the attach button, or save it to a file and drop it in.",
     "writeInMarkdown": "Write in markdown…",
     "cannotAttachThat": "That can't be attached: only images, PDFs, documents, audio, video, zip or csv.",
-    "dropToAttach": "Drop to attach"
+    "dropToAttach": "Drop to attach",
+    "editDiagram": "Edit the code",
+    "openLink": "Open",
+    "removeLink": "Remove",
+    "sectionTitle": "Section title",
+    "fold": "Fold the section",
+    "unfold": "Unfold the section"
   },
   "palette": {
     "newTask": "New task",

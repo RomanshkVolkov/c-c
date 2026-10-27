@@ -158,7 +158,13 @@
     "errClipboardBody": "Prueba con el botón de adjuntar, o guárdala en un fichero y suéltalo aquí.",
     "writeInMarkdown": "Escribe en markdown…",
     "cannotAttachThat": "Eso no se puede adjuntar: sólo imágenes, PDF, documentos, audio, vídeo, zip o csv.",
-    "dropToAttach": "Suelta para adjuntar"
+    "dropToAttach": "Suelta para adjuntar",
+    "editDiagram": "Editar el código",
+    "openLink": "Abrir",
+    "removeLink": "Quitar",
+    "sectionTitle": "Título de la sección",
+    "fold": "Plegar la sección",
+    "unfold": "Desplegar la sección"
   },
   "palette": {
     "newTask": "Tarea nueva",

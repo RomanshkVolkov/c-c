@@ -249,6 +249,7 @@
     "close": "Close",
     "writePlaceholder": "Write… (⌘K to link another page)",
     "linkedFrom": "Linked from",
+    "subpages": "Subpages",
     "searchNotes": "Search by title or content…",
     "noMatches": "No matches.",
     "typeToSearch": "Type to search, or enter a new title to create a page."

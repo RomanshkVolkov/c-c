@@ -37,6 +37,7 @@ import { looksLikeStrippedImage, readClipboardImage } from "@/lib/clipboard";
 import { acceptFileDrag, carriesFiles, readDropped, takeTransfer } from "@/lib/dropped";
 import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
+import { DiagramCodeBlock } from "./code-block";
 import TableToolbar from "./TableToolbar";
 import { EnviarConEnter } from "@/components/markdown/send-on-enter";
 import { SlashMenu } from "./slash-menu";
@@ -295,7 +296,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         // StarterKit ships Link; configuring ours below without disabling it
         // registered the extension twice ("Duplicate extension names found").
         link: false,
+        // El nuestro, que dibuja los ```mermaid (ver ./code-block.tsx).
+        codeBlock: false,
       }),
+      DiagramCodeBlock,
       Link.configure({ openOnClick: false, autolink: true }),
       // Un PDF adjunto, con su tarjeta (primera página) debajo del enlace.
       PdfCards.configure({

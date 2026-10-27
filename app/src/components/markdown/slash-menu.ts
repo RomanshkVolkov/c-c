@@ -84,6 +84,18 @@ const COMMANDS: Command[] = [
     run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run(),
   },
   {
+    title: "Diagram (Mermaid)",
+    hint: "```mermaid",
+    keywords: ["mermaid", "diagrama", "flowchart", "chart", "graph"],
+    run: (e, r) =>
+      e.chain().focus().deleteRange(r)
+        .insertContent({
+          type: "codeBlock",
+          attrs: { language: "mermaid" },
+          content: [{ type: "text", text: "flowchart TD\n  A --> B" }],
+        }).run(),
+  },
+  {
     title: "Table",
     hint: "3×3",
     keywords: ["grid", "rows", "columns"],

@@ -249,6 +249,7 @@
     "close": "Cerrar",
     "writePlaceholder": "Escribe… (⌘K para enlazar otra página)",
     "linkedFrom": "Enlazada desde",
+    "subpages": "Subpáginas",
     "searchNotes": "Busca por título o contenido…",
     "noMatches": "Nada coincide.",
     "typeToSearch": "Escribe para buscar, o pon un título nuevo para crear una página."
