@@ -13,6 +13,19 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**27-oct, v1.24.0: las notas se escriben como en Notion** (App #238). Los
+```` ```mermaid ```` se dibujan dentro del editor (`code-block.tsx`; antes sólo
+en el modo lectura, que las notas no tienen). `/page` crea una subpágina de la
+nota abierta, deja un bloque de página (`page-block.ts`, el título se pone al
+día al abrir: `lib/page-titles.ts`) y entra con el título seleccionado; las
+hijas sin enlazar salen en «Subpáginas». **Un clic abre un enlace en todos los
+editores** (antes Ctrl+clic), y una burbuja al pasar el ratón lo edita o lo
+quita (`link-bubble.tsx`). Plegar por encabezado desde el asa
+(`heading-fold.ts`, sólo vista), chevron grande en los colapsables y el bloque
+arrastrado atenuado (`drag-source.ts`). Trampa encontrada: tiptap **enfoca el
+editor al montarlo salvo con `autofocus: false` explícito**; el `undefined` por
+defecto le robaba el foco al título.
+
 **23-oct, v1.21.0: el build en el servidor ve las redes del servicio**
 (agente v12, Backend #224). El constructor `cac-build` se une a las redes
 *attachable* del servicio mientras construye y corre con `--network host`,
