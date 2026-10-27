@@ -5,7 +5,7 @@ import { isTauri } from "@/lib/platform";
 import { fechaYHora } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Download,
   FileText,
@@ -57,6 +57,7 @@ import { usePrompt } from "@/components/PromptDialog";
 import { useNotesStore, type DropWhere } from "@/store/notes.store";
 import type { NoteTreeItem } from "@/types/note";
 import { cn } from "@/lib/utils";
+import { syncPageTitles } from "@/lib/page-titles";
 import DropZone from "@/components/dnd/DropZone";
 
 /**
@@ -649,8 +650,11 @@ function NoteEditorPane({ id }: { id: string }) {
   const renameNote = useNotesStore((s) => s.renameNote);
   const upload = useNotesStore((s) => s.uploadAttachment);
   const createNote = useNotesStore((s) => s.createNote);
+  const tree = useNotesStore((s) => s.tree);
   const editorRef = useRef<MarkdownEditorHandle>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
   const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+  const location = useLocation();
 
   const note = detail?.note;
   const [title, setTitle] = useState(note?.title ?? "");
@@ -706,6 +710,53 @@ function NoteEditorPane({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Los bloques de página dicen el título de hoy (ver `syncPageTitles`). Una
+  // vez por nota abierta, y sólo con el árbol ya cargado: sin él no se sabe
+  // ningún título y no habría nada que comparar.
+  const titlesSyncedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!note || note.id !== id || tree.length === 0 || titlesSyncedFor.current === id) return;
+    titlesSyncedFor.current = id;
+    const byId = new Map(tree.map((n) => [n.id, n.title]));
+    const synced = syncPageTitles(bodyRef.current, (nid) => byId.get(nid));
+    if (synced !== bodyRef.current) scheduleSave(synced);
+  }, [note, id, tree]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recién creada con `/page`: el título, seleccionado, para escribirlo ya.
+  const focusTitle = (location.state as { focusTitle?: boolean } | null)?.focusTitle;
+  useEffect(() => {
+    if (!focusTitle || note?.id !== id) return;
+    titleRef.current?.focus();
+    titleRef.current?.select();
+    navigate(location.pathname, { replace: true, state: null });
+  }, [focusTitle, note?.id, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // `/page`: una subpágina de ésta, con su bloque donde se escribió, y se
+  // entra en ella. El cuerpo con el bloque se guarda al salir (el vaciado del
+  // autoguardado de abajo, al cambiar de nota).
+  const createSubpage = async () => {
+    const n = await createNote(id, t("work:notes.untitled"));
+    if (!n) {
+      toast.error(t("work:notes.errCreatePage"));
+      return null;
+    }
+    return {
+      title: n.title,
+      href: `/notes/${n.id}`,
+      open: () => navigate(`/notes/${n.id}`, { state: { focusTitle: true } }),
+    };
+  };
+
+  // Las hijas que el cuerpo no enlaza (creadas desde el árbol): al pie, para
+  // que una página enseñe todo lo que cuelga de ella.
+  const unlinkedChildren = useMemo(
+    () =>
+      tree
+        .filter((n) => n.parentId === id && !body.includes(n.id))
+        .sort((a, b) => a.position - b.position),
+    [tree, id, body],
+  );
+
   // Un clic en un enlace a otra nota la abre (ver `onLinkClick` en
   // MarkdownEditor); lo demás lo decide el editor.
   const openInternalLink = (href: string) => {
@@ -748,6 +799,7 @@ function NoteEditorPane({ id }: { id: string }) {
     <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <Input
+          ref={titleRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => {
@@ -787,11 +839,33 @@ function NoteEditorPane({ id }: { id: string }) {
             onChange={scheduleSave}
             onUpload={upload}
             onLinkClick={openInternalLink}
+            onCreatePage={createSubpage}
             collapsible
             blockTools
             minHeight="24rem"
             placeholder={t("work:notes.writePlaceholder")}
           />
+          {unlinkedChildren.length > 0 && (
+            <section className="mt-8 space-y-1 border-t pt-4">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t("work:notes.subpages")}
+              </h2>
+              <ul>
+                {unlinkedChildren.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className="motion-press -mx-1 flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-sm font-medium hover:bg-accent"
+                      onClick={() => navigate(`/notes/${c.id}`)}
+                    >
+                      <FileText className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{c.title || t("work:notes.untitled")}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {/* Optional chaining and not a bare read: this comes from a cache
               that outlives the build that wrote it, and a whole screen going
               down over an absent list is out of proportion to the problem. */}

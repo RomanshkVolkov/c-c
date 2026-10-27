@@ -249,6 +249,7 @@
     "close": "Cerrar",
     "writePlaceholder": "Escribe… (⌘K para enlazar otra página)",
     "linkedFrom": "Enlazada desde",
+    "errCreatePage": "No se pudo crear la página",
     "subpages": "Subpáginas",
     "searchNotes": "Busca por título o contenido…",
     "noMatches": "Nada coincide.",

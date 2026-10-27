@@ -249,6 +249,7 @@
     "close": "Close",
     "writePlaceholder": "Write… (⌘K to link another page)",
     "linkedFrom": "Linked from",
+    "errCreatePage": "Couldn't create the page",
     "subpages": "Subpages",
     "searchNotes": "Search by title or content…",
     "noMatches": "No matches.",

@@ -408,6 +408,21 @@
   .prose-editor a:hover { @apply decoration-primary; }
 
   .md-body p, .prose-editor p { @apply my-2 first:mt-0 last:mb-0; }
+
+  /* Bloque de página: un enlace a otra página, solo en su línea (lo que deja
+     `/page`). Una fila con icono, como en Notion, en vez de un enlace
+     subrayado; ver `page-block.ts`. El icono es `file-text` de lucide, de
+     máscara para que tome el color del texto. */
+  .md-body p.page-block, .prose-editor p.page-block { @apply my-1 -mx-1; }
+  .md-body p.page-block > a, .prose-editor p.page-block > a {
+    @apply inline-flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 font-medium
+           text-foreground no-underline hover:bg-accent;
+  }
+  .md-body p.page-block > a::before, .prose-editor p.page-block > a::before {
+    content: "";
+    @apply size-4 shrink-0 bg-muted-foreground;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
   .md-body :where(ul, ol), .prose-editor :where(ul, ol) { @apply my-2 pl-5; }
   .md-body ul, .prose-editor ul { @apply list-disc; }
   .md-body ol, .prose-editor ol { @apply list-decimal; }

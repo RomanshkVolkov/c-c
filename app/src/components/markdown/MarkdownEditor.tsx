@@ -41,7 +41,8 @@ import { DiagramCodeBlock } from "./code-block";
 import TableToolbar from "./TableToolbar";
 import LinkBubble from "./link-bubble";
 import { EnviarConEnter } from "@/components/markdown/send-on-enter";
-import { SlashMenu } from "./slash-menu";
+import { SlashMenu, type CreatedPage } from "./slash-menu";
+import { PageBlock } from "./page-block";
 import { CardMenu, type CardRef } from "./card-menu";
 import { PageMenu, type DocLinkRef } from "@/components/markdown/page-menu";
 import { MentionMenu, type PersonRef } from "./mention-menu";
@@ -190,6 +191,12 @@ export interface MarkdownEditorProps {
    * relativo se queda donde está (seguirlo recargaría la app).
    */
   onLinkClick?: (href: string) => boolean | void;
+  /**
+   * Ofrece `/page`: crea una subpágina de la que se edita y deja su enlace como
+   * bloque de página (ver `slash-menu.ts`). Sólo con `blockTools`. Se lee al
+   * construir el editor, como las demás opciones.
+   */
+  onCreatePage?: () => Promise<CreatedPage | null>;
 }
 
 export interface MarkdownEditorHandle {
@@ -244,6 +251,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     maxHeight,
     autoFocus,
     onLinkClick,
+    onCreatePage,
     onSubmit,
   },
   ref,
@@ -265,6 +273,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   const sweepLocalImagesRef = useRef<(() => void) | null>(null);
   const onLinkClickRef = useRef(onLinkClick);
   onLinkClickRef.current = onLinkClick;
+  const onCreatePageRef = useRef(onCreatePage);
+  onCreatePageRef.current = onCreatePage;
   const confirm = useOptionalConfirm();
   const confirmRef = useRef(confirm);
   confirmRef.current = confirm;
@@ -333,7 +343,14 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       ...tableExtensions,
       ...(collapsible ? collapsibleExtensions : []),
       ...(onSubmit ? [EnviarConEnter.configure({ onSubmit: () => onSubmitRef.current?.() })] : []),
-      ...(blockTools ? [SlashMenu] : []),
+      ...(blockTools
+        ? [
+            SlashMenu.configure(
+              onCreatePage ? { createPage: () => onCreatePageRef.current?.() ?? Promise.resolve(null) } : {},
+            ),
+          ]
+        : []),
+      PageBlock,
       ...(cards ? [CardMenu.configure({ cards })] : []),
       ...(people ? [MentionMenu.configure({ people })] : []),
       ...(docLinks ? [PageMenu.configure({ links: docLinks })] : []),

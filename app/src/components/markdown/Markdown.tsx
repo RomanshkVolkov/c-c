@@ -2,6 +2,7 @@ import { slugify } from "@/lib/headings";
 import { useT } from "@/lib/i18n";
 import { useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import { isPageHref } from "./page-block";
 import MermaidDiagram from "@/components/markdown/MermaidDiagram";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -82,6 +83,13 @@ export function loneLink(node: unknown): string | null {
   if (kids.length !== 1 || kids[0].tagName !== "a") return null;
   const href = kids[0].properties?.href;
   return typeof href === "string" && matchRepoBlobUrl(href) ? href : null;
+}
+
+/** Si un párrafo no es más que un enlace a otra página de la app. */
+export function lonePageLink(node: unknown): boolean {
+  const p = node as { children?: { type: string; tagName?: string; value?: string; properties?: { href?: unknown } }[] } | undefined;
+  const kids = (p?.children ?? []).filter((c) => !(c.type === "text" && !c.value?.trim()));
+  return kids.length === 1 && kids[0].tagName === "a" && isPageHref(kids[0].properties?.href);
 }
 
 export default function Markdown({
@@ -193,16 +201,15 @@ export default function Markdown({
           },
           // Capped at max-h-80 so a screenshot doesn't push the rest of the
           // comment off the screen; clicking it lifts that cap.
-          ...(includes
-            ? {
-                p: ({ children, node, ...rest }) => {
-                  const href = loneLink(node);
-                  if (href) return <RepoInclude href={href}>{children}</RepoInclude>;
-                  // Con lo que traiga (un `<p align="center">` de un README).
-                  return <p {...rest}>{children}</p>;
-                },
-              }
-            : {}),
+          p: ({ children, node, ...rest }) => {
+            const href = includes ? loneLink(node) : null;
+            if (href) return <RepoInclude href={href}>{children}</RepoInclude>;
+            // Un enlace a otra página, solo en su línea: bloque de página, como
+            // en el editor (ver `page-block.ts`).
+            if (lonePageLink(node)) return <p {...rest} className="page-block">{children}</p>;
+            // Con lo que traiga (un `<p align="center">` de un README).
+            return <p {...rest}>{children}</p>;
+          },
           img: ({ src, alt, width, height }) => (
             <Imagen
               src={mediaSrc(typeof src === "string" ? (imageSrc ? (imageSrc(src) ?? undefined) : src) : undefined)}

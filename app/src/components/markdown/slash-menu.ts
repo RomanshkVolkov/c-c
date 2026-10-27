@@ -24,6 +24,22 @@ export const SLASH_MENU_KEY = new PluginKey("slashMenu");
  * extension that isn't a component.
  */
 
+/** Una subpágina recién creada, para dejar su enlace donde se pidió. */
+export interface CreatedPage {
+  title: string;
+  href: string;
+  /** Lo que hace quien la creó una vez el enlace está puesto: entrar en ella. */
+  open?: () => void;
+}
+
+export interface SlashMenuOptions {
+  /**
+   * Crea una subpágina de la que se está editando (`/page`). Sin ella, el
+   * comando no se ofrece: sólo las notas tienen dónde colgar una página.
+   */
+  createPage?: () => Promise<CreatedPage | null>;
+}
+
 interface Command {
   title: string;
   hint: string;
@@ -31,10 +47,51 @@ interface Command {
   keywords?: string[];
   /** Skip the command when the editor's schema has no node for it. */
   needs?: string;
-  run: (editor: Editor, range: Range) => void;
+  /** Skip the command when the host didn't pass this option. */
+  needsOption?: keyof SlashMenuOptions;
+  run: (editor: Editor, range: Range, options: SlashMenuOptions) => void;
+}
+
+/**
+ * `/page`: crea la subpágina y deja su enlace **solo en su párrafo**, que es lo
+ * que se pinta como bloque de página (ver `page-block.ts`). Si el `/page` se
+ * escribió en una línea vacía, el bloque ocupa esa línea; si había texto,
+ * va en la siguiente.
+ *
+ * La posición se toma antes de esperar a la creación y se vuelve a mirar al
+ * llegar: si mientras tanto ya no cae en un bloque de texto, el enlace va al
+ * final del documento en vez de en mitad de otra cosa.
+ */
+function insertPage(editor: Editor, range: Range, options: SlashMenuOptions) {
+  if (!options.createPage) return;
+  editor.chain().focus().deleteRange(range).run();
+  const at = editor.state.selection.from;
+  void options.createPage().then((page) => {
+    if (!page || editor.isDestroyed) return;
+    const block = {
+      type: "paragraph",
+      content: [{ type: "text", text: page.title, marks: [{ type: "link", attrs: { href: page.href } }] }],
+    };
+    const doc = editor.state.doc;
+    const $at = doc.resolve(Math.min(at, doc.content.size));
+    const parent = $at.parent;
+    let target: number | { from: number; to: number } = doc.content.size;
+    if (parent.isTextblock && $at.depth > 0) {
+      target = parent.content.size === 0 ? { from: $at.before(), to: $at.after() } : $at.after();
+    }
+    editor.chain().insertContentAt(target, block).run();
+    page.open?.();
+  });
 }
 
 const COMMANDS: Command[] = [
+  {
+    title: "Page",
+    hint: "/notes",
+    keywords: ["page", "pagina", "subpage", "subpagina"],
+    needsOption: "createPage",
+    run: insertPage,
+  },
   {
     title: "Heading 1",
     hint: "#",
@@ -113,10 +170,12 @@ const COMMANDS: Command[] = [
   },
 ];
 
-function matching(editor: Editor, query: string): Command[] {
-  const q = query.toLowerCase().trim();
+export function matching(editor: Editor, query: string, options: SlashMenuOptions = {}): Command[] {
+  // Sin acentos: quien escribe «/pági» busca «pagina».
+  const q = query.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
   return COMMANDS.filter((c) => {
     if (c.needs && !editor.schema.nodes[c.needs]) return false;
+    if (c.needsOption && !options[c.needsOption]) return false;
     if (!q) return true;
     return (
       c.title.toLowerCase().includes(q) ||
@@ -205,8 +264,12 @@ class Popup {
   }
 }
 
-export const SlashMenu = Extension.create({
+export const SlashMenu = Extension.create<SlashMenuOptions>({
   name: "slashMenu",
+
+  addOptions() {
+    return { createPage: undefined };
+  },
 
   addProseMirrorPlugins() {
     return [
@@ -223,8 +286,8 @@ export const SlashMenu = Extension.create({
         // A code block is where someone actually types paths and regexes.
         allow: ({ state, range }) =>
           !state.doc.resolve(range.from).parent.type.spec.code,
-        items: ({ query }) => matching(this.editor, query),
-        command: ({ editor, range, props }) => props.run(editor, range),
+        items: ({ query }) => matching(this.editor, query, this.options),
+        command: ({ editor, range, props }) => props.run(editor, range, this.options),
         render: () => {
           let popup: Popup | null = null;
           // Rebound on every update: the plugin hands out a fresh `command`
