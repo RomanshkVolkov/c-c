@@ -177,6 +177,7 @@ export default function DocPageView({
                   collapsible
                   blockTools
                   docLinks={docLinks}
+                  onLinkClick={onInternalLink}
                   minHeight="24rem"
                   placeholder={t("work:docs.pagePlaceholder")}
                   autoFocus

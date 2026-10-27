@@ -706,11 +706,13 @@ function NoteEditorPane({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Ctrl/Cmd+click on a link inside the editor — see MarkdownEditor's
-  // onLinkClick doc: a plain click keeps editing the link's text.
+  // Un clic en un enlace a otra nota la abre (ver `onLinkClick` en
+  // MarkdownEditor); lo demás lo decide el editor.
   const openInternalLink = (href: string) => {
     const path = href.match(/^\/notes\/([^/?#]+)/)?.[1];
-    if (path) navigate(`/notes/${path}`);
+    if (!path) return false;
+    navigate(`/notes/${path}`);
+    return true;
   };
 
   // Cmd/Ctrl+K opens the link picker, scoped to this pane so it doesn't

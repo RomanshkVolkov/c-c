@@ -403,6 +403,8 @@
   .md-body a, .prose-editor a {
     @apply text-primary underline decoration-primary/40;
   }
+  /* Un clic abre el enlace (como en Notion), así que tiene que parecerlo. */
+  .prose-editor a { @apply cursor-pointer; }
   .prose-editor a:hover { @apply decoration-primary; }
 
   .md-body p, .prose-editor p { @apply my-2 first:mt-0 last:mb-0; }

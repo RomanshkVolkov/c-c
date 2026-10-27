@@ -154,22 +154,25 @@ export function isPdfAttachment(href: string | undefined, label: string): boolea
   return pdf.test(label.trim()) || pdf.test(href);
 }
 
-export type LinkClick = "preview-pdf" | "open-file" | "follow" | "edit";
+export type LinkClick = "preview-pdf" | "open-file" | "follow";
 
 /**
- * Qué hace un clic en un enlace dentro del editor.
+ * Qué hace un clic en un enlace dentro del editor: **abrirlo**, como en Notion.
  *
- * - Un **adjunto** se abre con un clic normal (su texto es el nombre del
- *   fichero y casi nunca se edita): un PDF en el visor de la app, lo demás con
- *   el programa del sistema.
- * - Cualquier otro enlace, sólo con Ctrl/⌘: un clic normal pone el cursor, que
- *   es lo que se hace mil veces al editar el texto de un enlace (como Notion y
- *   Obsidian).
+ * - Un **adjunto**: un PDF en el visor de la app, lo demás con el programa del
+ *   sistema.
+ * - Cualquier otro enlace se sigue (una página dentro de la app, uno de fuera
+ *   en el navegador).
+ *
+ * Hasta el 27-oct-2026 un clic normal ponía el cursor y había que abrir con
+ * Ctrl/⌘ (como Obsidian). jose no lo encontraba: el enlace no parecía un
+ * enlace. Ahora el texto de un enlace se edita desde la burbuja que sale al
+ * pasar por encima (`LinkBubble`), o llegando con el teclado.
  *
  * Y en ningún caso navega la ventana: eso lo hace quien llama, siempre.
  */
-export function linkClickAction(href: string, label: string, modifier: boolean): LinkClick {
+export function linkClickAction(href: string, label: string): LinkClick {
   if (attachmentPath(href)) return isPdfAttachment(href, label) ? "preview-pdf" : "open-file";
-  return modifier ? "follow" : "edit";
+  return "follow";
 }
 

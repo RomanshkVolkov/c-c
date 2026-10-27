@@ -39,6 +39,7 @@ import { collapsibleExtensions } from "./details";
 import { tableExtensions } from "./table";
 import { DiagramCodeBlock } from "./code-block";
 import TableToolbar from "./TableToolbar";
+import LinkBubble from "./link-bubble";
 import { EnviarConEnter } from "@/components/markdown/send-on-enter";
 import { SlashMenu } from "./slash-menu";
 import { CardMenu, type CardRef } from "./card-menu";
@@ -183,13 +184,12 @@ export interface MarkdownEditorProps {
   onSubmit?: () => void;
   autoFocus?: boolean;
   /**
-   * Ctrl/Cmd+click on a link inside the editor calls this instead of the
-   * default (do nothing while editing). Notes uses it to navigate to another
-   * page without leaving edit mode; other callers can ignore it. Plain clicks
-   * still place the cursor, same as always — a modifier key is what makes this
-   * "open" rather than "edit near".
+   * Un clic en un enlace (que no sea un adjunto) pasa primero por aquí: las
+   * notas y los docs navegan dentro de la app a una de sus páginas. Devolver
+   * `true` es «ya está»; si no, un enlace de fuera va al navegador y uno
+   * relativo se queda donde está (seguirlo recargaría la app).
    */
-  onLinkClick?: (href: string) => void;
+  onLinkClick?: (href: string) => boolean | void;
 }
 
 export interface MarkdownEditorHandle {
@@ -377,37 +377,19 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           return false;
         },
       },
-      // Plain click still just places the cursor — needed constantly while
-      // editing a link's text. Only a held modifier "opens" it, mirroring how
-      // Notion and Obsidian both do this in an editable page.
+      // Un clic abre el enlace, como en Notion (ver `linkClickAction`); su
+      // texto se edita desde la burbuja (`LinkBubble`). Con Mayúsculas el clic
+      // sigue siendo de editar: es como se alarga una selección.
       //
-      // Salvo un **adjunto**, que se abre con un clic: su texto es el nombre
-      // del fichero y casi nunca se edita. Un PDF va al visor de la app, y lo
-      // demás al programa del sistema. Y un enlace nunca navega la ventana: el
-      // de un adjunto es una ruta relativa (`/api/…/raw`), y seguirlo recargaba
-      // la app entera y la dejaba en el resumen (jose, 6-oct-2026).
+      // Y un enlace nunca navega la ventana: el de un adjunto es una ruta
+      // relativa (`/api/…/raw`), y seguirlo recargaba la app entera y la dejaba
+      // en el resumen (jose, 6-oct-2026).
       handleClick: (_view, _pos, event) => {
         const anchor = (event.target as HTMLElement)?.closest("a");
         const href = anchor?.getAttribute("href");
-        if (!href) return false;
+        if (!href || event.shiftKey) return false;
         event.preventDefault();
-        const label = anchor?.textContent?.trim() || "file";
-        const action = linkClickAction(href, label, event.metaKey || event.ctrlKey);
-        if (action === "preview-pdf") {
-          setPdf({ url: href, fileName: label });
-          return true;
-        }
-        if (action === "open-file") {
-          void openAttachment(href, label).catch(() => {});
-          return true;
-        }
-        if (action === "edit") return false;
-        if (onLinkClickRef.current) {
-          onLinkClickRef.current(href);
-          return true;
-        }
-        // No handler: open it anyway (an external link goes to the browser).
-        void openAttachment(href, label).catch(() => {});
+        openLinkRef.current(href, anchor?.textContent?.trim() || "file");
         return true;
       },
     },
@@ -418,6 +400,27 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   });
 
   editorRef.current = editor ?? null;
+
+  // Abrir un enlace, desde un clic o desde la burbuja. Por ref porque
+  // `handleClick` se instala una vez, con el editor.
+  const openLink = (href: string, label: string) => {
+    const action = linkClickAction(href, label || "file");
+    if (action === "preview-pdf") {
+      setPdf({ url: href, fileName: label || "file" });
+      return;
+    }
+    if (action === "open-file") {
+      void openAttachment(href, label || "file").catch(() => {});
+      return;
+    }
+    if (onLinkClickRef.current?.(href) === true) return;
+    // Uno relativo es de la app y nadie lo ha reclamado: seguirlo recargaría.
+    if (href.startsWith("/")) return;
+    void openAttachment(href, label).catch(() => {});
+  };
+  const openLinkRef = useRef(openLink);
+  openLinkRef.current = openLink;
+  const prompt = usePrompt();
 
   useImperativeHandle(
     ref,
@@ -721,6 +724,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           </DragHandle>
         )}
         <EditorContent editor={editor} />
+        <LinkBubble editor={editor} onOpen={openLink} onEdit={() => void promptForLink(editor, prompt, t)} />
         {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
         {editor.isEmpty && (
           <p className="pointer-events-none -mt-[1.6rem] text-sm text-muted-foreground/60">
@@ -733,6 +737,33 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
 });
 
 export default MarkdownEditor;
+
+/**
+ * Pide la URL del enlace de la selección (o de uno nuevo) y la aplica. Lo usan
+ * el botón de la barra y «Editar» de la burbuja.
+ */
+async function promptForLink(
+  editor: Editor,
+  prompt: ReturnType<typeof usePrompt>,
+  t: ReturnType<typeof useT>["t"],
+) {
+  const prev = editor.getAttributes("link").href as string | undefined;
+  // allowEmpty: clearing the field is how you remove an existing link,
+  // which has to stay distinguishable from cancelling (null).
+  const url = await prompt({
+    title: prev ? t("common:editor.editLink") : t("common:editor.addLink"),
+    label: "URL",
+    defaultValue: prev ?? "https://",
+    allowEmpty: true,
+    confirmText: t("common:editor.apply"),
+  });
+  if (url === null) return;
+  if (url.trim() === "") {
+    editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    return;
+  }
+  editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+}
 
 function Toolbar({
   editor,
@@ -811,24 +842,7 @@ function Toolbar({
         />
       )}
       <Btn icon={Link2} label={t("common:editor.link")} active={editor.isActive("link")}
-        onClick={async () => {
-          const prev = editor.getAttributes("link").href as string | undefined;
-          // allowEmpty: clearing the field is how you remove an existing link,
-          // which has to stay distinguishable from cancelling (null).
-          const url = await prompt({
-            title: prev ? t("common:editor.editLink") : t("common:editor.addLink"),
-            label: "URL",
-            defaultValue: prev ?? "https://",
-            allowEmpty: true,
-            confirmText: t("common:editor.apply"),
-          });
-          if (url === null) return;
-          if (url.trim() === "") {
-            editor.chain().focus().unsetLink().run();
-            return;
-          }
-          editor.chain().focus().setLink({ href: url }).run();
-        }} />
+        onClick={() => void promptForLink(editor, prompt, t)} />
       {onPickFile && (
         <>
           <span className="mx-1 h-4 w-px bg-border" />
