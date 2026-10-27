@@ -13,6 +13,10 @@ import { useT } from "@/lib/i18n";
  * ratón por encima, y también cuando el cursor llega a un enlace con el
  * teclado, que es como se edita sin ratón.
  *
+ * La del teclado sale sólo si se ha llegado con el teclado: el cursor se queda
+ * en un enlace por mil razones (al cargar, al volver a una nota), y una
+ * burbuja que aparece sola, lejos del ratón, parece un fallo.
+ *
  * Por un portal al `body`, con posición fija: dentro del editor la recortaría
  * cualquier contenedor con scroll.
  */
@@ -34,6 +38,7 @@ interface Hovered {
 export default function LinkBubble({ editor, onOpen, onEdit }: LinkBubbleProps) {
   const { t } = useT();
   const [hovered, setHovered] = useState<Hovered | null>(null);
+  const [byKeyboard, setByKeyboard] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sólo tocan refs y estado: estables, para que el efecto de abajo no se
@@ -59,11 +64,21 @@ export default function LinkBubble({ editor, onOpen, onEdit }: LinkBubbleProps) 
     const out = (e: MouseEvent) => {
       if ((e.target as HTMLElement)?.closest?.("a")) hideSoon();
     };
+    const key = (e: KeyboardEvent) => {
+      if (/^(Arrow|Home$|End$|Page)/.test(e.key)) setByKeyboard(true);
+    };
+    const pointer = () => setByKeyboard(false);
     dom.addEventListener("mouseover", over);
     dom.addEventListener("mouseout", out);
+    dom.addEventListener("keydown", key);
+    dom.addEventListener("mousedown", pointer);
+    dom.addEventListener("blur", pointer);
     return () => {
       dom.removeEventListener("mouseover", over);
       dom.removeEventListener("mouseout", out);
+      dom.removeEventListener("keydown", key);
+      dom.removeEventListener("mousedown", pointer);
+      dom.removeEventListener("blur", pointer);
       keep();
     };
   }, [editor, keep, hideSoon]);
@@ -86,7 +101,7 @@ export default function LinkBubble({ editor, onOpen, onEdit }: LinkBubbleProps) 
   if (hovered && hovered.anchor.isConnected) {
     const r = hovered.anchor.getBoundingClientRect();
     target = { href: hovered.href, label: hovered.anchor.textContent?.trim() ?? "", rect: r };
-  } else if (caret?.href) {
+  } else if (byKeyboard && caret?.href) {
     let rect = { left: 0, top: 0, bottom: 0 };
     try {
       rect = editor.view.coordsAtPos(caret.from);

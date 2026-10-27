@@ -2,7 +2,7 @@ import { DocSkeleton } from "@/components/ui/skeletons";
 import { useT } from "@/lib/i18n";
 import i18next from "i18next";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import DragHandle from "@tiptap/extension-drag-handle-react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -43,6 +43,8 @@ import LinkBubble from "./link-bubble";
 import { EnviarConEnter } from "@/components/markdown/send-on-enter";
 import { SlashMenu, type CreatedPage } from "./slash-menu";
 import { PageBlock } from "./page-block";
+import { DragSource } from "./drag-source";
+import { HeadingFold, canFold, isHeadingFolded, toggleHeadingFold } from "./heading-fold";
 import { CardMenu, type CardRef } from "./card-menu";
 import { PageMenu, type DocLinkRef } from "@/components/markdown/page-menu";
 import { MentionMenu, type PersonRef } from "./mention-menu";
@@ -294,6 +296,13 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       window.removeEventListener("dragend", off, true);
     };
   }, [fileOver]);
+  // El bloque bajo el asa de arrastrar (si es un encabezado, el asa ofrece
+  // plegarlo), y si se está arrastrando: mientras, el bloque de origen se
+  // atenúa (antes no se notaba si se estaba arrastrando algo). El de origen
+  // lo marca ProseMirror: al empezar, el asa lo selecciona como nodo
+  // (`ProseMirror-selectednode`); ver el CSS de `[data-dragging]`.
+  const [handleAt, setHandleAt] = useState<{ pos: number; heading: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
   // El PDF adjunto que se está viendo, en el visor de la app.
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
 
@@ -308,6 +317,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         link: false,
         // El nuestro, que dibuja los ```mermaid (ver ./code-block.tsx).
         codeBlock: false,
+        // Dónde cae un bloque al arrastrarlo: una raya del color de la app,
+        // gruesa. La de por defecto (negra, 1 px) no se veía en el tema oscuro.
+        dropcursor: { color: "var(--primary)", width: 3, class: "drop-cursor" },
       }),
       DiagramCodeBlock,
       Link.configure({ openOnClick: false, autolink: true }),
@@ -351,6 +363,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
           ]
         : []),
       PageBlock,
+      ...(blockTools ? [HeadingFold, DragSource] : []),
       ...(cards ? [CardMenu.configure({ cards })] : []),
       ...(people ? [MentionMenu.configure({ people })] : []),
       ...(docLinks ? [PageMenu.configure({ links: docLinks })] : []),
@@ -460,7 +473,14 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
         })();
       },
       focus: () => {
-        editorRef.current?.commands.focus("end");
+        const ed = editorRef.current;
+        if (!ed) return;
+        // Ya, no en el siguiente frame (que es lo que hace `focus` de tiptap
+        // con un editor sin foco): pasar del título al cuerpo con Enter perdía
+        // las primeras letras, que caían todavía en el título.
+        ed.commands.setTextSelection(ed.state.doc.content.size);
+        ed.view.focus();
+        ed.commands.scrollIntoView();
       },
     }),
     [],
@@ -684,6 +704,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
     }
   }, [value, editor]);
 
+  // Por suscripción: leído en el render, se quedaba con el valor de cuando se
+  // pintó, y un contenido que llega por `setContent` (sin evento de cambio)
+  // dejaba el «Escribe…» encima del texto. Se veía al volver a una nota.
+  const isEmpty = useEditorState({ editor, selector: ({ editor: ed }) => ed?.isEmpty ?? true });
+
   if (!editor) {
     return (
       <div className="rounded-md border p-4" style={{ minHeight }}>
@@ -695,8 +720,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
   const canTakeFiles = !!(onUpload || onFiles);
   return (
     <div
-      className={cn("rounded-md border bg-background transition-shadow", fileOver && "ring-2 ring-primary", className)}
+      className={cn(
+        "rounded-md border bg-background transition-shadow",
+        fileOver && "ring-2 ring-primary",
+        dragging && "cursor-grabbing",
+        className,
+      )}
       data-file-over={fileOver ? "" : undefined}
+      data-dragging={dragging ? "" : undefined}
+      style={{ "--summary-placeholder": JSON.stringify(t("common:editor.sectionTitle")) } as React.CSSProperties}
       onDragEnter={(e) => {
         if (canTakeFiles && carriesFiles(e.dataTransfer)) setFileOver(true);
       }}
@@ -729,21 +761,40 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
       >
         <TableToolbar editor={editor} />
         {blockTools && (
-          <DragHandle editor={editor}>
-            <div
-              className="flex size-5 cursor-grab items-center justify-center rounded
-                         text-muted-foreground/60 hover:bg-accent hover:text-foreground
-                         active:cursor-grabbing"
-              title={t("common:editor.dragBlock")}
-            >
-              <GripVertical className="size-3.5" />
+          <DragHandle
+            editor={editor}
+            onNodeChange={({ node, pos }) =>
+              setHandleAt(node ? { pos, heading: node.type.name === "heading" } : null)
+            }
+            onElementDragStart={() => setDragging(true)}
+            onElementDragEnd={() => setDragging(false)}
+          >
+            <div className="flex items-center">
+              {/* El hueco de la flechita está siempre, con o sin ella: el asa
+                  se coloca midiendo su ancho, y si creciera al llegar a un
+                  encabezado, los puntos de arrastrar acababan encima del texto. */}
+              <div className="size-6">
+                {handleAt?.heading && canFold(editor.state.doc, handleAt.pos) && (
+                  <FoldToggle editor={editor} pos={handleAt.pos} />
+                )}
+              </div>
+              <div
+                className={cn(
+                  "flex size-6 cursor-grab items-center justify-center rounded text-muted-foreground/60",
+                  "hover:bg-accent hover:text-foreground active:cursor-grabbing",
+                  dragging && "cursor-grabbing bg-accent text-foreground",
+                )}
+                title={t("common:editor.dragBlock")}
+              >
+                <GripVertical className="size-4" />
+              </div>
             </div>
           </DragHandle>
         )}
         <EditorContent editor={editor} />
         <LinkBubble editor={editor} onOpen={openLink} onEdit={() => void promptForLink(editor, prompt, t)} />
         {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
-        {editor.isEmpty && (
+        {isEmpty && (
           <p className="pointer-events-none -mt-[1.6rem] text-sm text-muted-foreground/60">
             {placeholder ?? t("common:editor.writeInMarkdown")}
           </p>
@@ -754,6 +805,28 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(fun
 });
 
 export default MarkdownEditor;
+
+/** La flechita del asa que pliega la sección de un encabezado. */
+function FoldToggle({ editor, pos }: { editor: Editor; pos: number }) {
+  const { t } = useT();
+  const folded = useEditorState({ editor, selector: ({ editor: ed }) => (ed ? isHeadingFolded(ed.state, pos) : false) });
+  const label = folded ? t("common:editor.unfold") : t("common:editor.fold");
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-expanded={!folded}
+      title={label}
+      draggable={false}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => toggleHeadingFold(editor, pos)}
+      className="motion-press flex size-6 items-center justify-center rounded text-muted-foreground
+                 hover:bg-accent hover:text-foreground"
+    >
+      <ChevronRight className={cn("size-4 transition-transform", !folded && "rotate-90")} />
+    </button>
+  );
+}
 
 /**
  * Pide la URL del enlace de la selección (o de uno nuevo) y la aplica. Lo usan

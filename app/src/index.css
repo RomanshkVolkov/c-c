@@ -481,23 +481,53 @@
     @apply cursor-pointer font-medium marker:text-muted-foreground;
   }
   .prose-editor [data-type="details"] {
-    @apply grid grid-cols-[1rem_1fr] gap-x-1;
+    @apply grid grid-cols-[1.5rem_1fr] gap-x-1.5 border-border/50 py-1.5 pl-1.5;
   }
-  /* The toggle the node view inserts as the wrapper's first child. */
+  /* El botón que pone la vista de nodo como primer hijo. Era un «▸» de 16 px
+     que casi no se veía ni se acertaba (jose, 27-oct-2026): ahora un chevron
+     de lucide, en 24 px, alineado con la línea del título. El icono va de
+     máscara para que tome el color del texto. */
   .prose-editor [data-type="details"] > button {
-    @apply mt-0.5 flex size-4 items-center justify-center rounded text-muted-foreground
-           transition-transform hover:bg-accent hover:text-foreground;
+    @apply flex size-6 cursor-pointer items-center justify-center rounded text-muted-foreground
+           hover:bg-accent hover:text-foreground;
   }
   .prose-editor [data-type="details"] > button::before {
-    content: "▸";
+    content: "";
+    @apply size-4 bg-current transition-transform duration-150;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
   }
-  .prose-editor [data-type="details"].is-open > button {
+  .prose-editor [data-type="details"].is-open > button::before {
     @apply rotate-90;
   }
   .prose-editor [data-type="details"] > div { @apply min-w-0; }
   .prose-editor [data-type="details"] summary {
-    @apply font-medium;
+    @apply min-h-6 list-none font-medium leading-6;
   }
+  /* El marcador nativo del `<summary>` salía como un punto junto al chevron. */
+  .prose-editor [data-type="details"] summary::-webkit-details-marker { display: none; }
+  .prose-editor [data-type="details"] summary::marker { content: ""; }
+  /* Un título vacío dice qué va ahí (el texto lo pone el editor en
+     `--summary-placeholder`, desde el catálogo). */
+  .prose-editor [data-type="details"] summary:has(> br:only-child)::before,
+  .prose-editor [data-type="details"] summary:empty::before {
+    content: var(--summary-placeholder, "");
+    @apply pointer-events-none float-left h-0 font-normal text-muted-foreground/60;
+  }
+
+  /* Plegar por encabezado (ver heading-fold.ts): lo de debajo se oculta, y el
+     encabezado plegado avisa de que esconde algo. */
+  .prose-editor .is-folded-away { display: none; }
+  .prose-editor .is-folded::after {
+    content: "…";
+    @apply ml-2 rounded bg-muted px-1.5 text-sm font-normal text-muted-foreground;
+  }
+
+  /* Arrastrar un bloque: el de origen atenuado y con borde, y una raya gruesa
+     donde va a caer (ver el `dropcursor` del editor). */
+  [data-dragging] .prose-editor :is(.ProseMirror-selectednode, .ProseMirror-selectednoderange) {
+    @apply rounded opacity-40 outline-dashed outline-1 outline-offset-2 outline-primary/60;
+  }
+  .drop-cursor { @apply rounded-full; }
   .prose-editor [data-type="detailsContent"] { @apply mt-1; }
 
   /* ProseMirror needs an explicit caret colour when the host sets none. */

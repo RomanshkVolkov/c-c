@@ -111,6 +111,25 @@ describe("un enlace en el editor", () => {
     expect(md).toBe("Ver ejemplo aquí");
   });
 
+  it("con el cursor en un enlace, la burbuja sale sólo si se llegó con el teclado", async () => {
+    mount("Ver [ejemplo](https://ejemplo.com) aquí");
+    const a = await link();
+    const dom = document.querySelector(".ProseMirror") as HTMLElement & { editor: Editor };
+    const editor = dom.editor;
+    // Puesto por el programa (al cargar, al volver a la nota): nada.
+    act(() => {
+      editor.chain().focus().setTextSelection(editor.view.posAtDOM(a, 0) + 2).run();
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(document.querySelector("[data-link-bubble]")).toBeNull();
+    // Con las flechas: sí.
+    act(() => {
+      dom.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      editor.commands.setTextSelection(editor.view.posAtDOM(a, 0) + 3);
+    });
+    await waitFor(() => expect(document.querySelector("[data-link-bubble]")).not.toBeNull());
+  });
+
   it("«Editar» de la burbuja cambia la URL del enlace entero", async () => {
     const onChange = vi.fn();
     mount("Ver [ejemplo](https://ejemplo.com) aquí", { onChange });

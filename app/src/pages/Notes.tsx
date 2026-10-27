@@ -724,12 +724,14 @@ function NoteEditorPane({ id }: { id: string }) {
 
   // Recién creada con `/page`: el título, seleccionado, para escribirlo ya.
   const focusTitle = (location.state as { focusTitle?: boolean } | null)?.focusTitle;
+  // Espera a que el campo ya diga el título de ésta: seleccionar antes, y que
+  // luego cambie el valor, dejaba el cursor al final sin nada seleccionado.
   useEffect(() => {
-    if (!focusTitle || note?.id !== id) return;
+    if (!focusTitle || note?.id !== id || title !== note.title) return;
     titleRef.current?.focus();
     titleRef.current?.select();
     navigate(location.pathname, { replace: true, state: null });
-  }, [focusTitle, note?.id, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusTitle, note?.id, id, title]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // `/page`: una subpágina de ésta, con su bloque donde se escribió, y se
   // entra en ella. El cuerpo con el bloque se guarda al salir (el vaciado del
@@ -805,6 +807,14 @@ function NoteEditorPane({ id }: { id: string }) {
           onBlur={() => {
             if (title !== note.title) renameNote(id, title || t("work:notes.untitled")).catch((e) => toast.error(String(e)));
           }}
+          // Enter pasa al cuerpo, como en Notion: es lo que se hace al acabar
+          // de titular una página recién creada con `/page`. El blur guarda.
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              editorRef.current?.focus();
+            }
+          }}
           placeholder={t("work:notes.untitled")}
           className="h-8 border-none px-1 text-sm font-medium shadow-none focus-visible:ring-0"
         />
@@ -840,6 +850,9 @@ function NoteEditorPane({ id }: { id: string }) {
             onUpload={upload}
             onLinkClick={openInternalLink}
             onCreatePage={createSubpage}
+            // tiptap enfoca el editor al montarlo salvo con un `false`
+            // explícito, y se monta después de que el título tenga el foco.
+            autoFocus={focusTitle ? false : undefined}
             collapsible
             blockTools
             minHeight="24rem"

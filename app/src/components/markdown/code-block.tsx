@@ -7,6 +7,7 @@ import {
   useEditorState,
   type ReactNodeViewProps,
 } from "@tiptap/react";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { Code2 } from "lucide-react";
 
 import { useT } from "@/lib/i18n";
@@ -34,15 +35,14 @@ import MermaidDiagram from "./MermaidDiagram";
 /** Lo que tarda el diagrama en seguir al código mientras se escribe. */
 const REDRAW_DELAY_MS = 300;
 
-function CodeBlockView({ node, editor, getPos }: ReactNodeViewProps) {
+function MermaidBlockView({ node, editor, getPos }: ReactNodeViewProps) {
   const { t } = useT();
-  const isMermaid = node.attrs.language === "mermaid";
   // Si el cursor está dentro de este bloque. Por suscripción y no leído en el
   // render: una vista de nodo no se repinta cuando sólo cambia la selección.
   const editing = useEditorState({
     editor,
     selector: ({ editor: ed }) => {
-      if (!isMermaid || !ed) return false;
+      if (!ed) return false;
       const pos = typeof getPos === "function" ? getPos() : undefined;
       if (typeof pos !== "number") return false;
       const { from, to } = ed.state.selection;
@@ -59,14 +59,6 @@ function CodeBlockView({ node, editor, getPos }: ReactNodeViewProps) {
     const timer = setTimeout(() => setDrawn(source), REDRAW_DELAY_MS);
     return () => clearTimeout(timer);
   }, [source, drawn]);
-
-  if (!isMermaid) {
-    return (
-      <NodeViewWrapper as="pre">
-        <NodeViewContent<"code"> as="code" />
-      </NodeViewWrapper>
-    );
-  }
 
   // Vacío no hay nada que dibujar: el código, para poder escribirlo.
   const showCode = editing || !source.trim();
@@ -106,8 +98,37 @@ function CodeBlockView({ node, editor, getPos }: ReactNodeViewProps) {
   );
 }
 
+const isMermaid = (node: PMNode) => node.attrs.language === "mermaid";
+
+/**
+ * React sólo para los mermaid. Un bloque de código corriente es un `<pre>` de
+ * siempre: montarle a cada uno un árbol de React costaba en una nota larga y
+ * llenaba la consola de avisos de `flushSync` al cargarla. Cada vista se rehace
+ * si el lenguaje cambia de bando (escribir «mermaid» en uno que no lo era).
+ */
 export const DiagramCodeBlock = CodeBlock.extend({
   addNodeView() {
-    return ReactNodeViewRenderer(CodeBlockView);
+    const mermaid = ReactNodeViewRenderer(MermaidBlockView, {
+      update: ({ newNode, updateProps }) => {
+        if (!isMermaid(newNode)) return false;
+        updateProps();
+        return true;
+      },
+    });
+    return (props) => {
+      if (isMermaid(props.node)) return mermaid(props);
+      const dom = document.createElement("pre");
+      const code = document.createElement("code");
+      const language = props.node.attrs.language as string | null;
+      if (language) code.className = `language-${language}`;
+      dom.appendChild(code);
+      return {
+        dom,
+        contentDOM: code,
+        // Otro lenguaje, otra vista: el `class` del `<code>` y, si pasa a
+        // mermaid, la de React.
+        update: (node: PMNode) => node.type === props.node.type && node.attrs.language === language,
+      };
+    };
   },
 });
