@@ -15,6 +15,18 @@ import type {
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+// La última versión del cuerpo que se conoce de cada nota, venga de abrirla o
+// de guardarla. `saveBody` la toma de aquí y no de `detail`: al salir de una
+// nota con un guardado pendiente, el vaciado llega cuando `detail` ya es la
+// siguiente (o null mientras carga), y mandar la base vacía hacía que el
+// servidor viera un conflicto con la propia edición y colgara una copia
+// «(conflicting edit)». Con `/page` pasaba siempre: se escribe el bloque y se
+// entra en la hija en el mismo gesto.
+const knownHashes = new Map<string, string>();
+// Los guardados de una misma nota salen de uno en uno: uno que saliera antes
+// de que volviera el anterior llevaría la base de antes y chocaría con él.
+const savesInFlight = new Map<string, Promise<unknown>>();
+
 /** Where a dragged page lands relative to the row it was dropped on. */
 export type DropWhere = "before" | "after" | "inside";
 
@@ -144,7 +156,10 @@ export const useNotesStore = create<NotesState>()(
         try {
           const res = await api.get<APIResponse<NoteDetail>>(`/api/v1/notes/${id}`);
           if (get().activeId !== id) return; // switched away mid-flight
-          if (res.success && res.data) set({ detail: res.data });
+          if (res.success && res.data) {
+            knownHashes.set(id, res.data.note.bodyHash ?? "");
+            set({ detail: res.data });
+          }
         } catch (e) {
           // Network failure with nothing cached: surface it instead of a blank
           // pane pretending the note doesn't exist.
@@ -202,6 +217,7 @@ export const useNotesStore = create<NotesState>()(
         });
         if (!res.success || !res.data) throw new Error(res.error ?? "Save failed");
         const { note, conflict } = res.data;
+        knownHashes.set(id, note.bodyHash ?? "");
         set((s) => ({
           detail: s.detail && s.detail.note.id === id ? { ...s.detail, note } : s.detail,
           savedAt: s.activeId === id ? Date.now() : s.savedAt,
@@ -220,23 +236,32 @@ export const useNotesStore = create<NotesState>()(
         }
       },
 
-      saveBody: async (id, body) => {
-        const cached = get().detail;
-        const baseHash = cached?.note.id === id ? (cached.note.bodyHash ?? "") : "";
-        try {
-          await get().commitBody(id, body, baseHash);
-        } catch (e) {
-          // Transport failure only — a real error (validation, 500, a genuine
-          // conflict) is a normal 200 response here, not a thrown exception, so
-          // it always reaches the caller instead of silently queuing.
-          if (msg(e) === "network-error") {
-            set((s) => ({
-              pendingWrites: { ...s.pendingWrites, [id]: { body, baseHash, queuedAt: Date.now() } },
-            }));
-            return;
+      saveBody: (id, body) => {
+        const send = async () => {
+          const cached = get().detail;
+          const baseHash =
+            knownHashes.get(id) ?? (cached?.note.id === id ? (cached.note.bodyHash ?? "") : "");
+          try {
+            await get().commitBody(id, body, baseHash);
+          } catch (e) {
+            // Transport failure only — a real error (validation, 500, a genuine
+            // conflict) is a normal 200 response here, not a thrown exception, so
+            // it always reaches the caller instead of silently queuing.
+            if (msg(e) === "network-error") {
+              set((s) => ({
+                pendingWrites: { ...s.pendingWrites, [id]: { body, baseHash, queuedAt: Date.now() } },
+              }));
+              return;
+            }
+            throw e;
           }
-          throw e;
-        }
+        };
+        const run = (savesInFlight.get(id) ?? Promise.resolve()).catch(() => {}).then(send);
+        savesInFlight.set(id, run);
+        run.catch(() => {}).finally(() => {
+          if (savesInFlight.get(id) === run) savesInFlight.delete(id);
+        });
+        return run;
       },
 
       drainPending: async () => {
