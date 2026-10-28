@@ -652,13 +652,17 @@ func (r *TaskRepository) ListOpen(orgIDs []string, superadmin bool, orgID string
 		Joins("JOIN task_spaces sp ON sp.id = l.space_id").
 		Where("t.archived_at IS NULL AND t.parent_id IS NULL AND t.deleted_at IS NULL")
 
+	// «De un cliente» es lo que el cliente ve, no lo que tiene canal: un ítem
+	// retirado (o creado interno en una lista con canal) conserva `project_id`
+	// para no gastar dos veces su folio, pero es trabajo nuestro. Mirando sólo el
+	// canal salía en «De clientes» y desaparecía de todo lo demás (boaty-27).
 	switch f.Origin {
 	case domain.OriginClients:
-		q = q.Where("t.project_id <> ''")
+		q = q.Where("t.project_id <> '' AND t.visibility <> ?", domain.VisibilityInternal)
 	case domain.OriginAny:
 		// no restriction
 	default:
-		q = q.Where("t.project_id = ''")
+		q = q.Where("(t.project_id = '' OR t.visibility = ?)", domain.VisibilityInternal)
 	}
 	if !f.IncludeClosed {
 		q = q.Where("t.status NOT IN ('resolved','closed')")

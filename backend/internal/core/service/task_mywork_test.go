@@ -147,6 +147,36 @@ func TestClientWorkIsItsOwnQuestion(t *testing.T) {
 	}
 }
 
+// Lo retirado (o lo que nació interno en una lista con canal) conserva el canal
+// para no gastar dos veces su folio, pero el cliente no lo ve: es nuestro. Hasta
+// el 28-oct-2026 «De clientes» miraba sólo el canal, y boaty-27 —una migración
+// interna— salía ahí y en ningún otro sitio de «Mi trabajo».
+func TestAnInternalItemOnAClientListIsOurWork(t *testing.T) {
+	db, cleanup := myWorkDB(t)
+	defer cleanup()
+	svc := myWorkSvc(db)
+
+	retirado := &domain.Item{
+		OrgID: "org-1", ListID: "list-1", Title: "Retirado",
+		CreatedByID: "u-otro", Status: domain.ReportPending, ProjectID: "proj-1",
+		Visibility: domain.VisibilityInternal,
+	}
+	retirado.ID = "it-retirado"
+	if err := db.Create(retirado).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	suyas, _ := svc.ListOpen([]string{"org-1"}, false, "org-1", 0,
+		domain.OpenTaskFilter{Origin: domain.OriginClients})
+	if idsDe(suyas)["it-retirado"] {
+		t.Error("an item the client cannot see is not client work")
+	}
+	nuestras, _ := svc.ListOpen([]string{"org-1"}, false, "org-1", 0, domain.OpenTaskFilter{})
+	if !idsDe(nuestras)["it-retirado"] {
+		t.Error("it is our own work, so it belongs in the team's list")
+	}
+}
+
 // A card says what you would otherwise open it to find out.
 //
 // Two grouped queries, not two per row: the list is up to two hundred cards and
