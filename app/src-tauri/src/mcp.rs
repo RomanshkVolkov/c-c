@@ -3407,7 +3407,18 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                         sub["idempotencyKey"] = json!(subtask_key(k, i));
                     }
                     match api_post(cfg, &format!("/api/v1/task-lists/{list_id}/tasks"), sub) {
-                        Ok(d) => created_subtasks.push(json!({ "id": d.get("id"), "seq": d.get("seq"), "title": d.get("title") })),
+                        Ok(d) => {
+                            // Su referencia, como la del padre: con el `seq`
+                            // solo, update_task no la encuentra (`110` es un
+                            // número sin espacio) y había que ir al id largo.
+                            let reference = d
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .and_then(|id| api_get(cfg, &format!("/api/v1/tasks/{}", urlencode(id))).ok())
+                                .and_then(|detail| task_ref(&detail))
+                                .or_else(|| task_ref(&json!({ "task": d })));
+                            created_subtasks.push(json!({ "ref": reference, "id": d.get("id"), "seq": d.get("seq"), "title": d.get("title") }))
+                        }
                         Err(e) => {
                             return Err(format!(
                                 "The task {parent} was created, and {} of its {} subtasks; subtask \"{title}\" failed: {e}. Retry with the same idempotencyKey to finish without duplicates.",
@@ -6865,7 +6876,13 @@ mod tests {
     fn create_task_creates_its_checklist_in_the_same_call() {
         let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counter = n.clone();
-        let (cfg, seen) = fake_cac(move |_, _, body| {
+        let (cfg, seen) = fake_cac(move |method, path, body| {
+            // El detalle de cada tarea creada lleva su referencia; las demás
+            // peticiones crean.
+            if method == "GET" {
+                let id = path.rsplit('/').next().unwrap_or("");
+                return if id == "t0" { Value::Null } else { json!({ "ref": format!("cc-{id}") }) };
+            }
             let i = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             json!({ "id": format!("t{i}"), "seq": 10 + i, "title": body["title"], "parentId": body.get("parentId") })
         });
@@ -6878,6 +6895,9 @@ mod tests {
         assert_eq!(out["id"], "t0");
         assert_eq!(out["subtasks"].as_array().unwrap().len(), 2);
         assert_eq!(out["ref"], "cac#10", "sin clave del backend, el número");
+        // Cada línea trae su referencia, para update_task sin el id largo.
+        assert_eq!(out["subtasks"][0]["ref"], "cc-t1");
+        assert_eq!(out["subtasks"][1]["ref"], "cc-t2");
         let seen = seen.lock().unwrap();
         let posts: Vec<&Value> = seen.iter().filter(|(m, p, _)| m == "POST" && p == "/api/v1/task-lists/L/tasks").map(|x| &x.2).collect();
         assert_eq!(posts.len(), 3, "{seen:?}");
