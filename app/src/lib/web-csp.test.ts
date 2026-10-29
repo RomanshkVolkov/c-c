@@ -41,6 +41,11 @@ describe("la CSP de la web", () => {
     expect(connect).toContain("https://rtc.guz-studio.dev");
   });
 
+  // La página de descargas pregunta a GitHub por la última release.
+  it("deja preguntar a GitHub por la última versión", () => {
+    expect(csp.get("connect-src")).toContain("https://api.github.com");
+  });
+
   // Y no deja hablar con cualquiera: un comodín aquí es una puerta para
   // sacar la sesión de la página.
   it("no abre connect-src a cualquiera", () => {

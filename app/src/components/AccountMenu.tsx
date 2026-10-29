@@ -226,6 +226,13 @@ export default function AccountMenu({
           <button className={item} onClick={() => { setOpen(false); onNotificationPrefs(); }}>
             <Bell className="size-3.5 shrink-0" /> {t("nav:account.notifications")}
           </button>
+          {/* En la web, el camino a la app de escritorio; en ella, el
+              actualizador de abajo hace este papel. */}
+          {isWebBuild && (
+            <button className={item} onClick={() => { setOpen(false); navigate("/download"); }}>
+              <Download className="size-3.5 shrink-0" /> {t("common:download.menu")}
+            </button>
+          )}
 
           <div className="my-1 h-px bg-border" />
 

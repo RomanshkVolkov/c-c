@@ -1,6 +1,6 @@
 import { isWebBuild } from "@/lib/platform";
 import { useT, type MessageKey } from "@/lib/i18n";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -190,6 +190,15 @@ export default function Login() {
               {isSubmitting ? t("common:misc.signingIn") : t("common:misc.signIn")}
             </Button>
           </form>
+
+          {isWebBuild && (
+            <Link
+              to="/download"
+              className="mt-4 block text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              {t("common:download.cta")}
+            </Link>
+          )}
 
           {/* Entrar como invitado es para las herramientas del propio equipo
               (imágenes, cripto), que en la versión web no existen. */}

@@ -1152,5 +1152,22 @@
     "publishDraft": "Publish",
     "publishDraftHint": "An agent wrote it; review it and publish it when it's ready.",
     "published": "Published"
+  },
+  "download": {
+    "lead": "cac is also a desktop app for Windows, macOS and Linux: everything the web has, plus servers, the team's tools and system notifications. It updates itself.",
+    "loading": "Looking up the latest version…",
+    "failed": "Couldn't look up the latest version.",
+    "allReleases": "All versions",
+    "forYou": "Download for {{what}}",
+    "others": "Other platforms",
+    "version": "Version {{version}}",
+    "backToApp": "Back to cac",
+    "menu": "Download the desktop app",
+    "cta": "Prefer the desktop app? Download it",
+    "windows": "Windows",
+    "mac": "macOS (Intel and Apple Silicon)",
+    "appimage": "Linux · AppImage",
+    "deb": "Linux · .deb (Debian, Ubuntu)",
+    "rpm": "Linux · .rpm (Fedora, openSUSE)"
   }
 }

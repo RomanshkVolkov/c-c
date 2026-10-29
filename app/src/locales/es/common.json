@@ -1152,5 +1152,22 @@
     "publishDraft": "Publicar",
     "publishDraftHint": "Lo redactó un agente; revísalo y publícalo cuando esté listo.",
     "published": "Publicado"
+  },
+  "download": {
+    "lead": "cac también es una app de escritorio para Windows, macOS y Linux: lo mismo que la web, más los servidores, las herramientas del equipo y los avisos del sistema. Se actualiza sola.",
+    "loading": "Buscando la última versión…",
+    "failed": "No se pudo consultar la última versión.",
+    "allReleases": "Todas las versiones",
+    "forYou": "Descargar para {{what}}",
+    "others": "Otras plataformas",
+    "version": "Versión {{version}}",
+    "backToApp": "Volver a cac",
+    "menu": "Descargar la app de escritorio",
+    "cta": "¿Prefieres la app de escritorio? Descárgala",
+    "windows": "Windows",
+    "mac": "macOS (Intel y Apple Silicon)",
+    "appimage": "Linux · AppImage",
+    "deb": "Linux · .deb (Debian, Ubuntu)",
+    "rpm": "Linux · .rpm (Fedora, openSUSE)"
   }
 }

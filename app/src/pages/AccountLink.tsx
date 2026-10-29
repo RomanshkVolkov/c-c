@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Brand } from "@/components/brand/Brand";
 import { Button } from "@/components/ui/button";
@@ -184,6 +184,17 @@ export default function AccountLink({ mode }: { mode: "welcome" | "reset" }) {
                     : t("common:account.saveAndEnter")}
               </Button>
             </form>
+          )}
+          {/* La invitación trae aquí: es el momento de decir que también hay
+              app de escritorio. Se abre aparte para no perder el enlace. */}
+          {welcome && !invalid && (
+            <Link
+              to="/download"
+              target="_blank"
+              className="mt-4 block text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              {t("common:download.cta")}
+            </Link>
           )}
         </CardContent>
       </Card>
