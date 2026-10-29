@@ -44,6 +44,8 @@ type DocPage struct {
 	// columna generada (ver `repository.EnsureSearchIndexes`), y si el struct
 	// la nombrara GORM intentaría escribirla y la inserción fallaría.
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deletedAt"`
+	// Sections: sus secciones vivas, con su id (ver `DocSection`).
+	Sections []DocSectionView `gorm:"-" json:"sections,omitempty"`
 }
 
 func (DocPage) TableName() string { return "doc_pages" }
@@ -174,6 +176,8 @@ type SaveDocPageRequest struct {
 	Title    *string `json:"title" validate:"omitempty,max=300"`
 	Body     *string `json:"body"`
 	BaseHash *string `json:"baseHash"`
+	// SectionRenames: ver `SaveDocRequest.SectionRenames`.
+	SectionRenames map[string]string `json:"sectionRenames" validate:"max=100"`
 }
 
 // MoveDocPageRequest: la nueva madre (nil = la portada) y junto a quién.

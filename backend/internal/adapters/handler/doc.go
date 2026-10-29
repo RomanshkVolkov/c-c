@@ -178,7 +178,7 @@ func (h *docHandler) SaveTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r)
-	doc, err := h.svc.SaveTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID, req.BaseHash)
+	doc, err := h.svc.SaveTabRenaming(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID, req.BaseHash, req.SectionRenames)
 	if errors.Is(err, service.ErrDocBodyTooLong) {
 		SendErrorResponse(w, http.StatusRequestEntityTooLarge, "This text is too long", "body-too-large")
 		return

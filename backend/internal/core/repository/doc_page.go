@@ -207,7 +207,13 @@ func (r *DocRepository) CreatePage(
 			return err
 		}
 		p.Rank = rk
-		return tx.Create(p).Error
+		if err := tx.Create(p).Error; err != nil {
+			return err
+		}
+		if p.Body != "" {
+			(&DocRepository{db: tx}).syncSections(pageOwner(p), p.Body, nil)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -235,22 +241,40 @@ func (r *DocRepository) FindPage(docID, pageID string) (*domain.DocPage, error) 
 // El texto anterior entra al historial antes de pisarlo, con la misma regla de
 // fusión que las pestañas.
 func (r *DocRepository) SavePage(p *domain.DocPage, title, body *string, userID string) error {
+	return r.SavePageRenaming(p, title, body, userID, nil)
+}
+
+// SavePageRenaming es `SavePage` con los renombres de sección que declara
+// quien guarda (ver `SaveTabRenaming`). El cuerpo y sus secciones, en una
+// transacción.
+func (r *DocRepository) SavePageRenaming(p *domain.DocPage, title, body *string, userID string, renames map[string]string) error {
 	fields := map[string]any{"updated_by": userID}
 	changed := false
 	if title != nil && strings.TrimSpace(*title) != p.Title {
 		fields["title"] = strings.TrimSpace(*title)
 		changed = true
 	}
-	if body != nil && *body != p.Body {
+	bodyChanged := body != nil && *body != p.Body
+	if bodyChanged {
 		fields["body"] = *body
 		fields["body_hash"] = HashBody(*body)
 		changed = true
-		r.guardarVersionPagina(p, userID)
 	}
 	if !changed {
 		return nil
 	}
-	return r.db.Model(&domain.DocPage{}).Where("id = ?", p.ID).Updates(fields).Error
+	return r.inTx(func(rt *DocRepository) error {
+		if bodyChanged {
+			rt.guardarVersionPagina(p, userID)
+		}
+		if err := rt.db.Model(&domain.DocPage{}).Where("id = ?", p.ID).Updates(fields).Error; err != nil {
+			return err
+		}
+		if bodyChanged {
+			rt.syncSections(pageOwner(p), *body, renames)
+		}
+		return nil
+	})
 }
 
 func (r *DocRepository) guardarVersionPagina(p *domain.DocPage, userID string) {
@@ -282,17 +306,23 @@ func (r *DocRepository) AppendPage(pageID, texto, userID string) error {
 	if strings.TrimSpace(texto) == "" {
 		return nil
 	}
-	if err := r.db.Model(&domain.DocPage{}).Where("id = ?", pageID).Updates(map[string]any{
-		"body":       gorm.Expr("CASE WHEN COALESCE(body, '') = '' THEN ? ELSE body || ? END", texto, "\n\n"+texto),
-		"updated_by": userID,
-	}).Error; err != nil {
-		return err
-	}
-	var quedo string
-	if err := r.db.Model(&domain.DocPage{}).Where("id = ?", pageID).Select("body").Scan(&quedo).Error; err != nil {
-		return err
-	}
-	return r.db.Model(&domain.DocPage{}).Where("id = ?", pageID).Update("body_hash", HashBody(quedo)).Error
+	return r.inTx(func(rt *DocRepository) error {
+		if err := rt.db.Model(&domain.DocPage{}).Where("id = ?", pageID).Updates(map[string]any{
+			"body":       gorm.Expr("CASE WHEN COALESCE(body, '') = '' THEN ? ELSE body || ? END", texto, "\n\n"+texto),
+			"updated_by": userID,
+		}).Error; err != nil {
+			return err
+		}
+		var p domain.DocPage
+		if err := rt.db.Where("id = ?", pageID).First(&p).Error; err != nil {
+			return err
+		}
+		if err := rt.db.Model(&domain.DocPage{}).Where("id = ?", pageID).Update("body_hash", HashBody(p.Body)).Error; err != nil {
+			return err
+		}
+		rt.syncSections(pageOwner(&p), p.Body, nil)
+		return nil
+	})
 }
 
 // MovePage cambia una página de sitio: otra madre, otro orden, o las dos.

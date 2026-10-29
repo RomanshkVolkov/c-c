@@ -467,6 +467,8 @@ type DocTab struct {
 	BodyHash      string `gorm:"type:varchar(64)" json:"bodyHash,omitempty"`
 	UpdatedBy     string `gorm:"type:varchar(36)" json:"updatedBy"`
 	UpdatedByName string `gorm:"-" json:"updatedByName,omitempty"`
+	// Sections: sus secciones vivas, con su id (ver `DocSection`).
+	Sections []DocSectionView `gorm:"-" json:"sections,omitempty"`
 }
 
 // DocSaveConflicts dice si un guardado llega tarde.
@@ -735,6 +737,10 @@ type SaveDocRequest struct {
 	// Section: sólo al añadir. El título de la sección a cuyo final va el
 	// texto; si no está, se crea. Vacío: al final de la pestaña.
 	Section string `json:"section" validate:"max=200"`
+	// SectionRenames: sólo al guardar. Los títulos que quien guarda renombró
+	// a sabiendas (id de sección → título nuevo), para que la sección
+	// conserve su id sin adivinarlo (ver domain.ReconcileSections).
+	SectionRenames map[string]string `json:"sectionRenames" validate:"max=100"`
 }
 
 // PatchDocRequest cambia lo que rodea al documento, no su texto.

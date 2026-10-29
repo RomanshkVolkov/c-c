@@ -5844,6 +5844,31 @@ mod tests {
             .all(|x| !x.heading.contains("comentario")));
     }
 
+    /// Los títulos que cuenta el MCP son los que cuenta el backend, que les da
+    /// identidad (`domain.SplitSections`): un id de sección que apunta a un
+    /// título que aquí no se ve no sirve de nada. El mismo fichero lo lee la
+    /// prueba gemela de Go, `TestSplitSectionsCountsTheHeadingsTheMCPCounts`.
+    #[test]
+    fn the_backend_and_the_mcp_count_the_same_headings() {
+        let fx: Value = serde_json::from_str(include_str!(
+            "../../../backend/internal/core/domain/testdata/headings.json"
+        ))
+        .unwrap();
+        for c in fx["cases"].as_array().unwrap() {
+            let got: Vec<(String, usize)> = sections(c["body"].as_str().unwrap())
+                .into_iter()
+                .map(|s| (s.heading, s.level))
+                .collect();
+            let want: Vec<(String, usize)> = c["headings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|h| (h[0].as_str().unwrap().to_string(), h[1].as_u64().unwrap() as usize))
+                .collect();
+            assert_eq!(got, want, "{}", c["name"]);
+        }
+    }
+
     #[test]
     fn a_hashtag_is_not_a_heading() {
         assert!(sections("#etiqueta suelta\n\ntexto\n").is_empty());

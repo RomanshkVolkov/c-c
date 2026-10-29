@@ -1,0 +1,35 @@
+{
+  "_comment": "Los títulos que tienen que contar igual el backend (domain.SplitSections) y el MCP (sections en app/src-tauri/src/mcp.rs). Si uno cambia sus reglas y el otro no, una de las dos pruebas se pone roja: un id de sección apuntaría a un título que el otro no ve.",
+  "cases": [
+    {
+      "name": "niveles y cierre",
+      "body": "# Runbook\n\nintro\n\n## Desplegar\n\npaso\n\n### Comprobar\n\ncurl\n\n## Volver atrás\n\nrollback\n",
+      "headings": [["Runbook", 1], ["Desplegar", 2], ["Comprobar", 3], ["Volver atrás", 2]]
+    },
+    {
+      "name": "un # en un bloque de código no es un título",
+      "body": "## Script\n\n```bash\n# comentario\nls\n```\n\n~~~\n## tampoco\n~~~\n\n## Después\n",
+      "headings": [["Script", 2], ["Después", 2]]
+    },
+    {
+      "name": "una valla de otro tipo no cierra",
+      "body": "~~~\n```\n# dentro\n~~~\n## Fuera\n",
+      "headings": [["Fuera", 2]]
+    },
+    {
+      "name": "sin espacio, con espacio delante o con siete # no es un título",
+      "body": "#pegado\n  ## sangrado\n####### siete\n###### seis\n",
+      "headings": [["seis", 6]]
+    },
+    {
+      "name": "los # del final se quitan y un título puede ir vacío",
+      "body": "## Correo ##\n\n# \n\n## **Con marcas**\n",
+      "headings": [["Correo", 2], ["", 1], ["**Con marcas**", 2]]
+    },
+    {
+      "name": "títulos repetidos se cuentan todos",
+      "body": "## Notas\na\n## Notas\nb\n",
+      "headings": [["Notas", 2], ["Notas", 2]]
+    }
+  ]
+}

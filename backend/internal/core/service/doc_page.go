@@ -71,7 +71,11 @@ func (s *DocService) GetPage(kind domain.DocOwnerKind, ownerID, pageID string) (
 	if err != nil {
 		return nil, err
 	}
-	// Las referencias son un extra: si fallan, la página se abre igual.
+	// Las referencias y las secciones son un extra: si fallan, la página se
+	// abre igual.
+	if secs, err := s.repo.PageSections(doc.ID, p.ID); err == nil {
+		p.Sections = secs
+	}
 	refs, _ := s.repo.PageBacklinks(doc.OrgID, p.ID)
 	if refs == nil {
 		refs = []domain.DocBacklink{}
@@ -101,7 +105,7 @@ func (s *DocService) SavePage(
 		}
 	}
 	antes := p.Body
-	if err := s.repo.SavePage(p, req.Title, req.Body, userID); err != nil {
+	if err := s.repo.SavePageRenaming(p, req.Title, req.Body, userID, req.SectionRenames); err != nil {
 		return nil, err
 	}
 	if req.Body != nil {

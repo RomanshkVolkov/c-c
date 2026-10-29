@@ -102,10 +102,13 @@ func (r *DocRepository) Tabs(docID string) ([]domain.DocTab, error) {
 		return nil, err
 	}
 	out := domain.ResolveDocTabs(docID, guardadas)
+	// Las secciones son un extra: si fallan, las pestañas se leen igual.
+	secs, _ := r.liveSections(docID)
 	for i := range out {
 		if out[i].UpdatedBy != "" {
 			out[i].UpdatedByName = r.AuthorName(out[i].UpdatedBy)
 		}
+		out[i].Sections = secs[string(out[i].Key)]
 	}
 	return out, nil
 }
@@ -119,36 +122,66 @@ func (r *DocRepository) SaveTab(
 	orgID string, kind domain.DocOwnerKind, ownerID string,
 	key domain.DocTabKey, body, userID string,
 ) (*domain.Doc, error) {
+	return r.SaveTabRenaming(orgID, kind, ownerID, key, body, userID, nil)
+}
+
+// SaveTabRenaming es `SaveTab` con los renombres que quien guarda declara
+// (id de sección → título nuevo), para que la reconciliación no los adivine.
+// Todo va en una transacción: el cuerpo y sus secciones no se separan.
+func (r *DocRepository) SaveTabRenaming(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, body, userID string, renames map[string]string,
+) (*domain.Doc, error) {
+	var out *domain.Doc
+	err := r.inTx(func(rt *DocRepository) error {
+		d, changed, err := rt.saveTab(orgID, kind, ownerID, key, body, userID)
+		if err != nil {
+			return err
+		}
+		out = d
+		if changed {
+			rt.syncSections(tabOwner(d, key), body, renames)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (r *DocRepository) saveTab(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, body, userID string,
+) (*domain.Doc, bool, error) {
 	doc, err := r.Find(kind, ownerID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if doc == nil {
 		doc = &domain.Doc{OrgID: orgID, OwnerKind: kind, OwnerID: ownerID, UpdatedBy: userID}
 		doc.ID = uuid.NewString()
 		if err := r.db.Create(doc).Error; err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
 	var existente domain.DocTab
-	err = r.db.Where("doc_id = ? AND key = ?", doc.ID, key).First(&existente).Error
+	err = r.db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("doc_id = ? AND key = ?", doc.ID, key).First(&existente).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: body, BodyHash: HashBody(body), UpdatedBy: userID}
 		t.ID = uuid.NewString()
 		if err := r.db.Create(t).Error; err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return doc, nil
+		return doc, true, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	// Nada que guardar si nada cambió. El autoguardado dispara por tiempo, no
 	// por cambio, así que sin esto cada latido escribiría una fila y correría la
 	// ventana del historial sobre un texto idéntico.
 	if existente.Body == body {
-		return doc, nil
+		return doc, false, nil
 	}
 	r.guardarVersion(doc.ID, key, existente.Body, userID)
 	// `Updates` con mapa y no con struct: con struct, un cuerpo vaciado a
@@ -156,9 +189,9 @@ func (r *DocRepository) SaveTab(
 	// dejaría de funcionar sin que nada se queje.
 	if err := r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
 		Updates(map[string]any{"body": body, "body_hash": HashBody(body), "updated_by": userID}).Error; err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return doc, nil
+	return doc, true, nil
 }
 
 // guardarVersion apunta el texto **anterior** antes de pisarlo.
@@ -250,9 +283,27 @@ func (r *DocRepository) AppendTab(
 	if strings.TrimSpace(texto) == "" {
 		return r.Find(kind, ownerID)
 	}
+	var out *domain.Doc
+	err := r.inTx(func(rt *DocRepository) error {
+		d, quedo, err := rt.appendTab(orgID, kind, ownerID, key, texto, userID)
+		if err != nil {
+			return err
+		}
+		out = d
+		rt.syncSections(tabOwner(d, key), quedo, nil)
+		return nil
+	})
+	return out, err
+}
+
+// appendTab devuelve también el cuerpo que quedó, que sólo se sabe después.
+func (r *DocRepository) appendTab(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, texto, userID string,
+) (*domain.Doc, string, error) {
 	doc, err := r.Patch(orgID, kind, ownerID, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var existente domain.DocTab
 	err = r.db.Where("doc_id = ? AND key = ?", doc.ID, key).First(&existente).Error
@@ -260,12 +311,12 @@ func (r *DocRepository) AppendTab(
 		t := &domain.DocTab{DocID: doc.ID, Key: key, Body: texto, BodyHash: HashBody(texto), UpdatedBy: userID}
 		t.ID = uuid.NewString()
 		if err := r.db.Create(t).Error; err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return doc, nil
+		return doc, texto, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// La concatenación en SQL, sobre la fila: es lo que hace que no haya lectura
 	// que pueda quedarse vieja. Dos líneas en blanco porque en markdown una sola
@@ -279,7 +330,7 @@ func (r *DocRepository) AppendTab(
 			"body":       gorm.Expr("COALESCE(body, '') || ?", "\n\n"+texto),
 			"updated_by": userID,
 		}).Error; err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// El hash, después y sobre lo que quedó: la concatenación la hizo la base
 	// —justamente para no leer antes— así que aquí todavía no se sabe el
@@ -288,11 +339,14 @@ func (r *DocRepository) AppendTab(
 	// conflicto se rechazaría o se aceptaría por razones inventadas.
 	var quedo string
 	if err := r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
-		Select("body").Scan(&quedo).Error; err == nil {
-		r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
-			Update("body_hash", HashBody(quedo))
+		Select("body").Scan(&quedo).Error; err != nil {
+		return nil, "", err
 	}
-	return doc, nil
+	if err := r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
+		Update("body_hash", HashBody(quedo)).Error; err != nil {
+		return nil, "", err
+	}
+	return doc, quedo, nil
 }
 
 // AppendTabSection añade `texto` al final de la sección `section` de una
@@ -321,15 +375,23 @@ func (r *DocRepository) AppendTabSection(
 			body := domain.AppendToSection("", section, texto)
 			nt := &domain.DocTab{DocID: doc.ID, Key: key, Body: body, BodyHash: HashBody(body), UpdatedBy: userID}
 			nt.ID = uuid.NewString()
-			return tx.Create(nt).Error
+			if err := tx.Create(nt).Error; err != nil {
+				return err
+			}
+			(&DocRepository{db: tx}).syncSections(tabOwner(doc, key), body, nil)
+			return nil
 		}
 		if err != nil {
 			return err
 		}
 		body := domain.AppendToSection(t.Body, section, texto)
-		return tx.Model(&domain.DocTab{}).Where("id = ?", t.ID).Updates(map[string]any{
+		if err := tx.Model(&domain.DocTab{}).Where("id = ?", t.ID).Updates(map[string]any{
 			"body": body, "body_hash": HashBody(body), "updated_by": userID,
-		}).Error
+		}).Error; err != nil {
+			return err
+		}
+		(&DocRepository{db: tx}).syncSections(tabOwner(doc, key), body, nil)
+		return nil
 	})
 	if err != nil {
 		return nil, err

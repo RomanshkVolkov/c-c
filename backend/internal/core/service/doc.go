@@ -77,6 +77,15 @@ func (s *DocService) SaveTab(
 	orgID string, kind domain.DocOwnerKind, ownerID string,
 	key domain.DocTabKey, body, userID string, baseHash *string,
 ) (*domain.Doc, error) {
+	return s.SaveTabRenaming(orgID, kind, ownerID, key, body, userID, baseHash, nil)
+}
+
+// SaveTabRenaming es `SaveTab` con los renombres de sección que declara quien
+// guarda (ver `SaveDocRequest.SectionRenames`).
+func (s *DocService) SaveTabRenaming(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, body, userID string, baseHash *string, renames map[string]string,
+) (*domain.Doc, error) {
 	if domain.DocBodyTooLong(body) {
 		return nil, ErrDocBodyTooLong
 	}
@@ -101,7 +110,7 @@ func (s *DocService) SaveTab(
 	if domain.DocSaveConflicts(hashActual, baseHash) {
 		return nil, ErrDocConflict
 	}
-	doc, err := s.repo.SaveTab(orgID, kind, ownerID, key, body, userID)
+	doc, err := s.repo.SaveTabRenaming(orgID, kind, ownerID, key, body, userID, renames)
 	if err != nil {
 		return nil, err
 	}
