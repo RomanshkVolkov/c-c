@@ -32,30 +32,14 @@ func NewIntegrationHandler(servers *service.ServerService, svc *service.Integrat
 // serverScope loads the server named in the URL, confirms it's a kubernetes hub,
 // and enforces a minimum org role (superadmin bypasses). Returns the server.
 func (h *integrationHandler) serverScope(w http.ResponseWriter, r *http.Request, min domain.OrgRole) (*domain.ServerResponse, bool) {
-	user, ok := currentUser(r)
+	// La pertenencia antes que el tipo: decirle «no es kubernetes» a quien no
+	// es de la org ya le confirma que el servidor existe, y de qué tipo es.
+	server, ok := scopeServer(w, r, h.servers, min)
 	if !ok {
-		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
-		return nil, false
-	}
-	server, err := h.servers.Find(chi.URLParam(r, "id"))
-	if err != nil {
-		SendErrorResponse(w, http.StatusNotFound, "Server not found", "not-found")
 		return nil, false
 	}
 	if server.Type != domain.ServerTypeKubernetes {
 		SendErrorResponse(w, http.StatusBadRequest, "Not a kubernetes server", "wrong-type")
-		return nil, false
-	}
-	role, member := user.RoleInOrg(server.OrgID)
-	if user.Superadmin {
-		role, member = domain.OrgRoleAdmin, true
-	}
-	if !member {
-		SendErrorResponse(w, http.StatusNotFound, "Server not found", "not-found") // anti-IDOR
-		return nil, false
-	}
-	if !roleMeets(role, min) {
-		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "insufficient-role")
 		return nil, false
 	}
 	return server, true

@@ -128,13 +128,14 @@ func (h *serverHandler) UpdateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	server, err := h.svc.Find(id)
-	if err != nil {
-		SendErrorResponse(w, http.StatusNotFound, "Server not found", err.Error())
+	// A quien no es de la org, 404 como en todas (scopeServer); el rol se
+	// mira después, con su propio error para quien sí es de ella.
+	server, ok := scopeServer(w, r, h.svc, domain.OrgRoleViewer)
+	if !ok {
 		return
 	}
-	role, member := user.RoleInOrg(server.OrgID)
-	if !user.Superadmin && (!member || !role.CanWrite()) {
+	role, _ := user.RoleInOrg(server.OrgID)
+	if !user.Superadmin && !role.CanWrite() {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-writer-in-org")
 		return
 	}
@@ -171,19 +172,8 @@ func (h *serverHandler) UpdateServer(w http.ResponseWriter, r *http.Request) {
 // la configuración de nada, sólo anota si contestó. Pedir rol de escritura
 // dejaría a un `viewer` mirando un «pending» eterno.
 func (h *serverHandler) ReportAgentStatus(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(r)
-	if !ok {
-		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
-		return
-	}
 	id := chi.URLParam(r, "id")
-	server, err := h.svc.Find(id)
-	if err != nil {
-		SendErrorResponse(w, http.StatusNotFound, "Server not found", err.Error())
-		return
-	}
-	if _, member := user.RoleInOrg(server.OrgID); !user.Superadmin && !member {
-		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "not-a-member")
+	if _, ok := scopeServer(w, r, h.svc, domain.OrgRoleViewer); !ok {
 		return
 	}
 	req, err := ValidateRequest[domain.ReportAgentStatusRequest](r)
@@ -206,14 +196,13 @@ func (h *serverHandler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 
-	server, err := h.svc.Find(id)
-	if err != nil {
-		SendErrorResponse(w, http.StatusNotFound, "Server not found", err.Error())
+	server, ok := scopeServer(w, r, h.svc, domain.OrgRoleViewer)
+	if !ok {
 		return
 	}
 	// Deletion is admin-only within the server's org.
-	role, member := user.RoleInOrg(server.OrgID)
-	if !user.Superadmin && (!member || role != domain.OrgRoleAdmin) {
+	role, _ := user.RoleInOrg(server.OrgID)
+	if !user.Superadmin && role != domain.OrgRoleAdmin {
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", "admin-required")
 		return
 	}
