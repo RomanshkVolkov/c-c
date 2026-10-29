@@ -4,10 +4,10 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
+	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
 )
 
@@ -83,16 +83,7 @@ func (h *imageProxyHandler) authorized(r *http.Request, reportID, imageID string
 	}
 
 	// Mode 2 — JWT (header or ?token=), then membership in the report's org.
-	token := q.Get("token")
-	if token == "" {
-		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			token = strings.TrimPrefix(h, "Bearer ")
-		}
-	}
-	if token == "" {
-		return false
-	}
-	claims, err := repository.ValidateAccessToken(token)
+	claims, err := proxyClaims(r)
 	if err != nil {
 		return false
 	}
@@ -102,4 +93,15 @@ func (h *imageProxyHandler) authorized(r *http.Request, reportID, imageID string
 	}
 	_, member := claims.RoleInOrg(orgID)
 	return member
+}
+
+// proxyClaims: quién pide una captura sin firma. El token de acceso vale en la
+// cabecera o en `?token=`; un token personal, sólo en la cabecera
+// (claimsFromHeaderOrTicket): en la URL acabaría en los logs, y ése no caduca
+// en media hora como un pase. `ValidateAccessToken` ya no lo entiende.
+func proxyClaims(r *http.Request) (*domain.ClaimsJWT, error) {
+	if q := r.URL.Query().Get("token"); q != "" {
+		return repository.ValidateAccessToken(q)
+	}
+	return claimsFromHeaderOrTicket(r, repository.URLScopeMedia)
 }

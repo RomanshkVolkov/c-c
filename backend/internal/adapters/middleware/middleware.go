@@ -124,7 +124,11 @@ var seenRecorder SeenRecorder
 func UseSeenRecorder(fn SeenRecorder) { seenRecorder = fn }
 
 // UsePATAuthenticator wires PAT support into AuthMiddleware.
-func UsePATAuthenticator(fn PATAuthenticator) { patAuth = fn }
+func UsePATAuthenticator(fn PATAuthenticator) {
+	patAuth = fn
+	// Las rutas de adjuntos viven fuera de este middleware y lo resuelven solas.
+	handler.UsePATAuthenticator(fn)
+}
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

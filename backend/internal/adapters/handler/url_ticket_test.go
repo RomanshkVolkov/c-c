@@ -102,3 +102,53 @@ func TestAskingForATicket(t *testing.T) {
 		t.Errorf("un token personal → %d, se esperaba 403", code)
 	}
 }
+
+// Un agente lee los adjuntos con su token personal, en la cabecera, como el
+// resto de la API. Hasta el 29-oct-2026 las rutas `raw` sólo entendían una
+// sesión o un pase, y a un agente le salía 404 en cada adjunto que `get_task`
+// le enseñaba (command-and-control-246).
+func TestAPersonalTokenReadsAttachmentsFromTheHeaderOnly(t *testing.T) {
+	t.Setenv("JWT_SECRET_ACCESS", "a-test")
+	UsePATAuthenticator(func(tok string) (*domain.ClaimsJWT, error) {
+		if tok != "cac_pat_bueno" {
+			return nil, errPATNotHere
+		}
+		c := *ticketOwner
+		return &c, nil
+	})
+	defer UsePATAuthenticator(nil)
+
+	cabecera := func(tok string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/tasks/t/attachments/a/raw", nil)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		return r
+	}
+	if !attachmentViewer(cabecera("cac_pat_bueno"), "org-1") {
+		t.Error("un token personal en la cabecera no abre un adjunto de su org")
+	}
+	if attachmentViewer(cabecera("cac_pat_bueno"), "org-2") {
+		t.Error("un token personal abre adjuntos de otra org")
+	}
+	if attachmentViewer(cabecera("cac_pat_falso"), "org-1") {
+		t.Error("un token personal que no existe abre un adjunto")
+	}
+	if attachmentViewer(conToken("cac_pat_bueno"), "org-1") {
+		t.Error("un token personal vale en la URL")
+	}
+	if c, err := claimsFromHeaderOrTicket(cabecera("cac_pat_bueno"), repository.URLScopeMedia); err != nil || !c.ViaToken {
+		t.Errorf("no queda marcado como token: %+v %v", c, err)
+	}
+	// El stream registra presencia, y un token es una máquina.
+	if _, err := claimsFromHeaderOrTicket(cabecera("cac_pat_bueno"), repository.URLScopeEvents); err == nil {
+		t.Error("un token personal abre el stream de eventos")
+	}
+
+	// Las capturas de un reporte, igual: en la cabecera sí, en la URL no.
+	if c, err := proxyClaims(cabecera("cac_pat_bueno")); err != nil || c.UserID != "u-ana" {
+		t.Errorf("una captura no se abre con el token en la cabecera: %v", err)
+	}
+	enURL := httptest.NewRequest(http.MethodGet, "/api/v1/reports/r/images/i?token=cac_pat_bueno", nil)
+	if _, err := proxyClaims(enURL); err == nil {
+		t.Error("un token personal abre una captura desde la URL")
+	}
+}

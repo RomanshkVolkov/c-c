@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -15,7 +16,11 @@ import (
 // acepta ahí, porque una URL acaba en los logs. Ver repository/url_ticket.go.
 func claimsFromHeaderOrTicket(r *http.Request, scope string) (*domain.ClaimsJWT, error) {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-		return repository.ValidateAccessToken(strings.TrimPrefix(h, "Bearer "))
+		tok := strings.TrimPrefix(h, "Bearer ")
+		if strings.HasPrefix(tok, repository.PATPrefix) {
+			return claimsFromPAT(tok, scope)
+		}
+		return repository.ValidateAccessToken(tok)
 	}
 	return repository.ValidateURLTicket(r.URL.Query().Get("token"), scope)
 }
@@ -45,4 +50,30 @@ func (h *authHandler) URLTicket(w http.ResponseWriter, r *http.Request) {
 	SendResult(w, http.StatusOK, domain.APIResponse[domain.URLTicketResponse]{
 		Success: true, Data: domain.URLTicketResponse{Ticket: tok, ExpiresAt: exp},
 	})
+}
+
+// patAuth resuelve un token personal. Lo pone middleware.UsePATAuthenticator,
+// que es donde se cablea para toda la API: así no hay dos sitios que olvidar.
+var patAuth func(token string) (*domain.ClaimsJWT, error)
+
+// UsePATAuthenticator: ver patAuth.
+func UsePATAuthenticator(fn func(token string) (*domain.ClaimsJWT, error)) { patAuth = fn }
+
+var errPATNotHere = errors.New("personal tokens cannot use this route")
+
+// claimsFromPAT: un token personal, en la cabecera, abre un adjunto. Las rutas
+// `raw` viven fuera de AuthMiddleware (un <img> no manda cabeceras), así que
+// sin esto un agente con su token recibía 404 por cada adjunto que `get_task`
+// le enseñaba (command-and-control-246). Sólo adjuntos: el stream de eventos
+// registra presencia, y un token es una máquina, no alguien que está.
+func claimsFromPAT(tok, scope string) (*domain.ClaimsJWT, error) {
+	if scope != repository.URLScopeMedia || patAuth == nil {
+		return nil, errPATNotHere
+	}
+	c, err := patAuth(tok)
+	if err != nil {
+		return nil, err
+	}
+	c.ViaToken = true
+	return c, nil
 }
