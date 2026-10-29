@@ -1,6 +1,6 @@
 import { slugify } from "@/lib/headings";
 import { useT } from "@/lib/i18n";
-import { useState } from "react";
+import { createElement, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { isPageHref } from "./page-block";
 import MermaidDiagram from "@/components/markdown/MermaidDiagram";
@@ -16,6 +16,8 @@ import PdfPreview from "@/components/PdfPreview";
 import PdfCard from "@/components/PdfCard";
 import RepoInclude from "@/components/docs/RepoInclude";
 import { matchRepoBlobUrl } from "@/lib/repo-links";
+import { sectionsByLine } from "@/lib/doc-sections";
+import type { DocSection } from "@/types/task";
 
 /**
  * Read-only markdown. Used wherever stored markdown is displayed (task
@@ -99,7 +101,16 @@ export default function Markdown({
   allowHtml = false,
   imageSrc,
   includes = false,
+  sections,
+  sectionMark,
 }: {
+  /**
+   * Las secciones del documento, con su id (ver `DocSection`). Con ellas,
+   * cada título lleva `data-section-id` —a donde salta un enlace a una
+   * sección— y, si se da `sectionMark`, lo que se pinta a su lado.
+   */
+  sections?: DocSection[];
+  sectionMark?: (s: DocSection) => ReactNode;
   /**
    * Reescribe el `src` de una imagen antes de pedirla: un .md del repo pide
    * las suyas relativas a su ruta (ver `repoImageSrc`).
@@ -125,6 +136,22 @@ export default function Markdown({
   onInternalLink?: (href: string) => boolean;
 }) {
   const { t } = useT();
+  const byLine = useMemo(() => sectionsByLine(children, sections), [children, sections]);
+  const heading = (level: number) =>
+    function Heading({ children, node }: { children?: ReactNode; node?: { position?: { start: { line: number } } } }) {
+      // Los títulos llevan ancla, con **la misma** función que usa el índice
+      // de un documento: si cada uno calculara su slug, el índice apuntaría a
+      // anclas que no existen. Inofensivo donde no se usa.
+      const id = slugify(String(children));
+      const line = node?.position?.start.line;
+      const sec = line ? byLine.get(line) : undefined;
+      return createElement(
+        `h${level}`,
+        { id, "data-section-id": sec?.id },
+        children,
+        sec && sectionMark ? sectionMark(sec) : null,
+      );
+    };
   const [zoomed, setZoomed] = useState<{ src: string; alt: string } | null>(null);
   const [pdf, setPdf] = useState<{ url: string; fileName: string } | null>(null);
 
@@ -140,16 +167,12 @@ export default function Markdown({
         // home.
         rehypePlugins={allowHtml ? [rehypeRaw, [rehypeSanitize, noteSchema]] : []}
         components={{
-          // Los encabezados llevan ancla, con **la misma** función que usa el
-          // índice de un documento: si cada uno calculara su slug, el índice
-          // apuntaría a anclas que no existen. Inofensivo donde no se usa —
-          // una tarea o una nota se quedan con un atributo de más.
-          h2: ({ children }) => (
-            <h2 id={slugify(String(children))}>{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 id={slugify(String(children))}>{children}</h3>
-          ),
+          h1: heading(1),
+          h2: heading(2),
+          h3: heading(3),
+          h4: heading(4),
+          h5: heading(5),
+          h6: heading(6),
           // Links must not navigate the webview away from the app; hand them to
           // the OS browser instead.
           a: ({ href, children }) => {

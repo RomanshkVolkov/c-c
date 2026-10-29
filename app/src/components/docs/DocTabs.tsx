@@ -17,6 +17,8 @@ import DocToc from "@/components/docs/DocToc";
 import { docLinks } from "@/components/docs/doc-links";
 import DocPagesSheet from "@/components/docs/DocPagesSheet";
 import DocPageView from "@/components/docs/DocPageView";
+import SectionDecisionsMark from "@/components/docs/SectionDecisionsMark";
+import { scrollToSection } from "@/lib/doc-sections";
 import Markdown from "@/components/markdown/Markdown";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import { Button } from "@/components/ui/button";
@@ -93,6 +95,15 @@ export default function DocTabs({
   const body = section?.body ?? "";
   const sectionHash = section?.bodyHash;
   const nothingWritten = !doc?.tabs?.some((x) => x.body);
+  const orgId = doc?.orgId ?? doc?.doc?.orgId;
+
+  // La sección a la que lleva un enlace: se salta a ella cuando ya está
+  // pintada, y sólo entonces se da por atendida.
+  const requestedSection = useDocPages((s) => s.requestedSection);
+  useEffect(() => {
+    if (!requestedSection || editing) return;
+    if (scrollToSection(document, requestedSection)) useDocPages.getState().takeRequestedSection();
+  }, [requestedSection, body, activeTab, editing]);
 
   /**
    * A qué sección pertenece el borrador, que **no** siempre es la activa.
@@ -344,7 +355,7 @@ export default function DocTabs({
                 // El registro no es markdown: cada entrada lleva fecha, autor y de
                 // dónde salió, y en un markdown suelto eso se escribe a mano, se
                 // escribe mal y se deja de escribir.
-                <DecisionList decisions={doc?.decisions ?? []} />
+                <DecisionList decisions={doc?.decisions ?? []} orgId={orgId} />
               ) : (
                 <div className="mx-auto flex w-full min-w-0 max-w-4xl xl:max-w-5xl xl:gap-8">
                   <div className="min-w-0 flex-1">
@@ -352,7 +363,13 @@ export default function DocTabs({
                       // Medida de línea corta y texto más grande: es un documento,
                       // no un panel. `prose-doc` lo fija en un solo sitio.
                       <div className="prose-doc">
-                        <Markdown allowHtml includes onInternalLink={(href) => openInternalRef(href)}>
+                        <Markdown
+                          allowHtml
+                          includes
+                          onInternalLink={(href) => openInternalRef(href)}
+                          sections={section?.sections}
+                          sectionMark={(s) => <SectionDecisionsMark section={s} />}
+                        >
                           {body}
                         </Markdown>
                       </div>
@@ -421,6 +438,7 @@ export default function DocTabs({
       <DecisionForm
         open={addingDecision}
         onOpenChange={setAddingDecision}
+        orgId={orgId}
         onSubmit={async (d) => {
           await addDecision(d);
           toast.success(t("work:decisions.saved"));

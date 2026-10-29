@@ -34,6 +34,7 @@
   "columns-are-fixed": "Las columnas de este tablero no se cambian.",
   "cycle": "Ese movimiento metería algo dentro de sí mismo.",
   "decision-no-origin": "Una decisión necesita algo a lo que volver.",
+  "decision-link-not-here": "Esa tarea o esa sección no están en esta organización, o ya no existen: la decisión no puede enlazarse a ellas.",
   "decision-origin-not-here": "Esa tarea no existe en esta organización, así que la decisión no puede apuntar a ella.",
   "deploy-in-flight": "Ya hay un deploy en cola o en curso para este servicio.",
   "deploy-needs-swarm": "Sólo los servidores Swarm despliegan desde cac.",

@@ -54,6 +54,7 @@ import TelemetryTimeline from "@/components/TelemetryTimeline";
 import { commentByline } from "@/lib/byline";
 import TaskGitPanel from "@/components/TaskGitPanel";
 import DecisionForm, { type DecisionDraft } from "@/components/docs/DecisionForm";
+import TaskDecisions from "@/components/tasks/TaskDecisions";
 import { describeAgent } from "@/lib/user-agent";
 import DatePicker from "@/components/DatePicker";
 import { toISODate, dueDay, dueDatePatch } from "@/lib/month";
@@ -506,6 +507,7 @@ function Content() {
         open={registrando}
         onOpenChange={setRegistrando}
         onSubmit={(d) => send(d)}
+        orgId={task.orgId}
       />
       {pdf && <PdfPreview {...pdf} onClose={() => setPdf(null)} />}
       {zoom && <Lightbox {...zoom} onClose={() => setZoom(null)} />}
@@ -816,6 +818,9 @@ function Content() {
             <TelemetryTimeline data={detail.telemetry} />
           </section>
         )}
+
+        {/* Las decisiones que se le aplican (#91). */}
+        <TaskDecisions decisions={detail.decisions ?? []} />
 
         {/* Subtasks — a breakdown of this task, sharing the list's columns.
             They stay out of the board's columns so the work isn't counted twice. */}

@@ -9,6 +9,8 @@ import { docLinks } from "@/components/docs/doc-links";
 import { useTrashPage } from "@/components/docs/use-trash-page";
 import SaveChip from "@/components/docs/SaveChip";
 import Markdown from "@/components/markdown/Markdown";
+import SectionDecisionsMark from "@/components/docs/SectionDecisionsMark";
+import { scrollToSection } from "@/lib/doc-sections";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import { Button } from "@/components/ui/button";
 import { useAutoguardado } from "@/hooks/use-autoguardado";
@@ -69,6 +71,13 @@ export default function DocPageView({
   /** De qué página y de qué versión salió el borrador. Ver `DocTabs`. */
   const paginaDelBorrador = useRef<string | undefined>(undefined);
   const hashDelBorrador = useRef<string | undefined>(undefined);
+
+  // La sección a la que lleva un enlace (ver DocTabs).
+  const requestedSection = useDocPages((s) => s.requestedSection);
+  useEffect(() => {
+    if (!requestedSection || editando) return;
+    if (scrollToSection(document, requestedSection)) useDocPages.getState().takeRequestedSection();
+  }, [requestedSection, page?.body, editando]);
 
   const { estado, adoptar } = useAutoguardado(
     borrador,
@@ -209,7 +218,13 @@ export default function DocPageView({
               </div>
             ) : page.body ? (
               <div className="prose-doc">
-                <Markdown allowHtml includes onInternalLink={onInternalLink}>
+                <Markdown
+                  allowHtml
+                  includes
+                  onInternalLink={onInternalLink}
+                  sections={page.sections}
+                  sectionMark={(s) => <SectionDecisionsMark section={s} />}
+                >
                   {page.body}
                 </Markdown>
               </div>

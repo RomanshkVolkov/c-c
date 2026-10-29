@@ -1,5 +1,6 @@
 import { Bot, CheckSquare, Gavel, Hash } from "lucide-react";
 
+import DecisionLinks from "@/components/docs/DecisionLinks";
 import { fecha } from "@/lib/fechas";
 import { useT } from "@/lib/i18n";
 import { useTasksStore } from "@/store/tasks.store";
@@ -45,7 +46,7 @@ function Procedencia({ d }: { d: Decision }) {
   return <span className="text-xs text-muted-foreground">{t("work:decisions.writtenHere")}</span>;
 }
 
-export default function DecisionList({ decisions }: { decisions: Decision[] }) {
+export default function DecisionList({ decisions, orgId }: { decisions: Decision[]; orgId?: string }) {
   const { t } = useT();
   // Para decir «la sustituye X» con el título y no con un id.
   const titleOf = (id?: string) => decisions.find((d) => d.id === id)?.title || id || "";
@@ -101,6 +102,8 @@ export default function DecisionList({ decisions }: { decisions: Decision[] }) {
           {d.body && <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{d.body}</p>}
           <footer className="mt-2 border-t pt-2">
             <Procedencia d={d} />
+            {/* A qué se aplica, además de de dónde salió (#91). */}
+            <DecisionLinks decision={d} orgId={orgId} />
           </footer>
         </article>
       ))}

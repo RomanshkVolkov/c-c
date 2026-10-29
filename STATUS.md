@@ -13,6 +13,20 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**29-oct, en `main`, esperando release: secciones con identidad y decisiones
+enlazadas** (MCP #91). Cada título de una pestaña o una página tiene un id en
+el servidor (`doc_sections`), reconciliado en **toda** escritura dentro de su
+transacción (`domain.ReconcileSections`: pista declarada, mismo título, texto
+parecido ≥0,6). Renombrar, mover o restaurar conserva el id; quitar una
+sección la marca con su último título. Una decisión se enlaza a varias tareas
+y secciones (`decision_links`, append-only: quitar marca, no borra); la
+sección dice qué decisiones la sostienen (`get_doc`, `get_context`, la marca
+junto al título en la app), y la tarea las suyas (cajón, `get_task`). MCP:
+`sectionId`, `renameTo`, `link_decision`; skill v17. El backend ya está
+desplegado. Trampa encontrada: casar títulos pintados con secciones **por
+orden de pintado** falla en el modo estricto de React (pinta dos veces); se
+casa por la línea del título (`sectionsByLine`).
+
 **27-oct, v1.24.0: las notas se escriben como en Notion** (App #238). Los
 ```` ```mermaid ```` se dibujan dentro del editor (`code-block.tsx`; antes sólo
 en el modo lectura, que las notas no tienen). `/page` crea una subpágina de la

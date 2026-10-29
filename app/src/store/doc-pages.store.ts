@@ -111,6 +111,13 @@ interface DocPagesState {
   requestedTab: DocTabKey | null;
   requestTab: (tab: string | undefined) => void;
   takeRequestedTab: () => DocTabKey | null;
+  /**
+   * La sección a la que lleva un enlace (`&section=`, su id): la pantalla que
+   * la pinte salta hasta ella y la consume (command-and-control-91).
+   */
+  requestedSection: string | null;
+  requestSection: (id: string | undefined) => void;
+  takeRequestedSection: () => string | null;
 }
 
 export const useDocPages = create<DocPagesState>()((set, get) => ({
@@ -132,6 +139,14 @@ export const useDocPages = create<DocPagesState>()((set, get) => ({
     const tab = get().requestedTab;
     if (tab) set({ requestedTab: null });
     return tab;
+  },
+
+  requestedSection: null,
+  requestSection: (id) => set({ requestedSection: id || null }),
+  takeRequestedSection: () => {
+    const id = get().requestedSection;
+    if (id) set({ requestedSection: null });
+    return id;
   },
 
   fetchTree: async (o) => {

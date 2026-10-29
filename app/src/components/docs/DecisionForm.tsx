@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import DecisionLinkPicker, { type PickedLink } from "@/components/docs/DecisionLinkPicker";
+import { CheckSquare, Hash, Link2 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 /**
@@ -33,31 +35,46 @@ export interface DecisionDraft {
   title: string;
   body: string;
   tag: string;
+  /** A qué se aplica, además de de dónde sale (ver `DecisionLink`). */
+  taskIds?: string[];
+  sectionIds?: string[];
 }
 
 export default function DecisionForm({
   open,
   onOpenChange,
   onSubmit,
+  orgId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSubmit: (d: DecisionDraft) => Promise<void>;
+  /** Con ella se ofrece enlazar tareas y secciones de la org al escribirla. */
+  orgId?: string;
 }) {
   const { t } = useT();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [tag, setTag] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  const [links, setLinks] = useState<PickedLink[]>([]);
+  const [picking, setPicking] = useState(false);
 
   const enviar = async () => {
     if (!title.trim()) return;
     setOcupado(true);
     try {
-      await onSubmit({ title: title.trim(), body: body.trim(), tag: tag.trim() });
+      const ids = (kind: PickedLink["kind"]) => links.filter((l) => l.kind === kind).map((l) => l.id);
+      const draft: DecisionDraft = { title: title.trim(), body: body.trim(), tag: tag.trim() };
+      if (links.length > 0) {
+        draft.taskIds = ids("task");
+        draft.sectionIds = ids("section");
+      }
+      await onSubmit(draft);
       setTitle("");
       setBody("");
       setTag("");
+      setLinks([]);
       onOpenChange(false);
     } catch (e) {
       toast.error(t("work:docs.errSave"), { description: String(e) });
@@ -102,6 +119,24 @@ export default function DecisionForm({
               placeholder={t("work:decisions.tagHint")}
             />
           </div>
+          {orgId && (
+            <div className="space-y-1">
+              <Label>{t("work:decisions.appliesTo")}</Label>
+              <div className="flex flex-wrap items-center gap-1" data-testid="draft-links">
+                {links.map((l) => (
+                  <span key={`${l.kind}:${l.id}`} className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs">
+                    {l.kind === "task" ? <CheckSquare className="size-3" /> : <Hash className="size-3" />}
+                    {l.label}
+                  </span>
+                ))}
+                <Button size="sm" variant="ghost" type="button" onClick={() => setPicking(true)}>
+                  <Link2 className="mr-1 size-3" /> {t("work:decisions.link")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("work:decisions.linkHint")}</p>
+              <DecisionLinkPicker open={picking} onOpenChange={setPicking} orgId={orgId} initial={links} onPick={setLinks} />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

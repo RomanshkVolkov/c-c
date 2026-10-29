@@ -363,6 +363,8 @@ export interface TaskDetail {
   handoffBy?: string;
   /** De qué tareas depende, y si siguen abiertas (`open`). */
   blockedBy?: TaskBlocker[];
+  /** Las decisiones que se le aplican, también las sustituidas. */
+  decisions?: DecisionRef[];
   folio?: string;
   projectSlug?: string;
   /** Decrypted breadcrumbs, when the report carried them and they aren't purged. */
@@ -513,6 +515,8 @@ export interface DocPage {
   updatedBy: string;
   updatedByName?: string;
   updatedAt: string;
+  /** Sus secciones vivas, con su id y sus decisiones. */
+  sections?: DocSection[];
 }
 
 /** Algo que enlaza a una página: otra página, una pestaña de portada o una tarea. */
@@ -562,6 +566,70 @@ export interface DocTab {
   updatedBy: string;
   updatedByName?: string;
   updatedAt: string;
+  /** Sus secciones vivas, con su id y sus decisiones. Ver `DocSection`. */
+  sections?: DocSection[];
+}
+
+/**
+ * Una decisión nombrada desde algo que la aplica: una sección o una tarea.
+ * `supersededById` dice que ya no vale (en una tarea sí sale: es su historia).
+ */
+export interface DecisionRef {
+  id: string;
+  title: string;
+  ownerKind?: DocOwnerKind;
+  ownerId?: string;
+  decidedAt: string;
+  supersededById?: string;
+}
+
+/**
+ * Una sección (un título) de una pestaña o una página, con identidad propia en
+ * el servidor: renombrarla o moverla no le cambia el id, así que una decisión
+ * enlazada a ella sigue enlazada (command-and-control-91).
+ */
+export interface DocSection {
+  id: string;
+  heading: string;
+  level: number;
+  /** Su puesto entre los títulos de la pestaña o la página. */
+  index: number;
+  /** Las decisiones vigentes que la sostienen: por qué dice lo que dice. */
+  decisions?: DecisionRef[];
+}
+
+/** A qué se aplica una decisión: una tarea o una sección de un documento. */
+export interface DecisionLink {
+  id: string;
+  kind: "task" | "section";
+  taskId?: string;
+  taskRef?: string;
+  taskTitle?: string;
+  taskStatus?: string;
+  sectionId?: string;
+  /** El título de ahora, o el último que tuvo si ya no está. */
+  heading?: string;
+  sectionRemoved?: boolean;
+  tab?: DocTabKey;
+  pageId?: string;
+  pageTitle?: string;
+  ownerKind?: DocOwnerKind;
+  ownerId?: string;
+  addedAt: string;
+  via?: string;
+}
+
+/** Una sección encontrada para enlazarla, con dónde vive. */
+export interface DocSectionHit {
+  id: string;
+  heading: string;
+  level: number;
+  tab?: DocTabKey;
+  pageId?: string;
+  pageTitle?: string;
+  ownerKind: DocOwnerKind;
+  ownerId: string;
+  ownerName: string;
 }
 
 /**
@@ -620,6 +688,8 @@ export interface Decision {
   /** A cuál deja sin efecto, y cuál la dejó sin efecto a ésta (resuelto al leer). */
   supersedesId?: string;
   supersededById?: string;
+  /** A qué se aplica, además de de dónde salió. Ausente con un backend de antes. */
+  links?: DecisionLink[];
 }
 
 export interface DocResponse {

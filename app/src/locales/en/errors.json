@@ -34,6 +34,7 @@
   "columns-are-fixed": "The columns of this board can't be changed.",
   "cycle": "That move would put something inside itself.",
   "decision-no-origin": "A decision needs something to link back to.",
+  "decision-link-not-here": "That task or section isn't in this organization, or no longer exists: the decision can't be linked to it.",
   "decision-origin-not-here": "That task doesn't exist in this organization, so the decision can't point back to it.",
   "deploy-in-flight": "There's already a deploy queued or running for this service.",
   "deploy-needs-swarm": "Only Swarm servers deploy from cac.",

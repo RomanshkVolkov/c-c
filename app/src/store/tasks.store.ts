@@ -41,6 +41,7 @@ import type {
   UpdateTaskPayload,
   TaskPriority,
   TaskStatus,
+  DocSectionHit,
 } from "@/types/task";
 import type { CreateReportProjectResult, ReportProject } from "@/types/report";
 
@@ -281,7 +282,13 @@ interface TasksState {
     },
   ) => Promise<void>;
   /** Apunta una decisión en el registro del documento abierto. */
-  addDecision: (d: { title: string; body: string; tag: string }) => Promise<void>;
+  addDecision: (d: { title: string; body: string; tag: string; taskIds?: string[]; sectionIds?: string[] }) => Promise<void>;
+  /** Enlaza una decisión a tareas o secciones (ver `DecisionLink`). */
+  linkDecision: (decisionId: string, links: { taskIds?: string[]; sectionIds?: string[] }) => Promise<void>;
+  /** Quita un enlace de una decisión: queda marcado, no se borra. */
+  unlinkDecision: (decisionId: string, linkId: string) => Promise<void>;
+  /** Secciones de la org por su título, para enlazarlas a una decisión. */
+  searchDocSections: (orgId: string, q: string) => Promise<DocSectionHit[]>;
   /** El historial de una sección, lo más reciente primero. */
   docVersions: (tab: DocTabKey) => Promise<DocVersion[]>;
   /** Devuelve una sección a un estado anterior. Restaurar también es un guardado. */
@@ -934,6 +941,28 @@ export const useTasksStore = create<TasksState>()(
           set({ doc: res.data });
         }
         await get().fetchDocIndex();
+      },
+
+      linkDecision: async (decisionId, links) => {
+        await api.post(`/api/v1/docs/decisions/${decisionId}/links`, {
+          taskIds: links.taskIds ?? [],
+          sectionIds: links.sectionIds ?? [],
+        });
+        const abierto = get().activeDoc;
+        if (abierto) await get().openDoc(abierto.kind, abierto.id, abierto.name);
+      },
+
+      unlinkDecision: async (decisionId, linkId) => {
+        await api.delete(`/api/v1/docs/decisions/${decisionId}/links/${linkId}`);
+        const abierto = get().activeDoc;
+        if (abierto) await get().openDoc(abierto.kind, abierto.id, abierto.name);
+      },
+
+      searchDocSections: async (orgId, q) => {
+        const res = await api.get<APIResponse<DocSectionHit[]>>(
+          `/api/v1/docs/sections?orgId=${encodeURIComponent(orgId)}&q=${encodeURIComponent(q)}`,
+        );
+        return res.success && res.data ? res.data : [];
       },
 
       docVersions: async (tab) => {

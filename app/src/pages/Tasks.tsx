@@ -90,8 +90,10 @@ export default function Tasks() {
     // Se leen antes de vaciar: después ya no están.
     const page = params.get("page");
     const tab = params.get("tab") ?? undefined;
+    const section = params.get("section") ?? undefined;
     setParams({}, { replace: true });
     if (!id || !isDocOwnerKind(kind)) return;
+    useDocPages.getState().requestSection(section);
     if (page) useDocPages.getState().openPage({ kind, id }, page).catch(() => {});
     else useDocPages.getState().requestTab(tab);
     // El nombre lo pone el documento al cargar; aquí todavía no se sabe, y
