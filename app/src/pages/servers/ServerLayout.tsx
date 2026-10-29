@@ -1,10 +1,12 @@
 import TabIndicator from "@/components/ui/tab-indicator";
 import { useSlidingIndicator } from "@/lib/use-sliding-indicator";
 import { RowsSkeleton } from "@/components/ui/skeletons";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, SquareTerminal } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { enterOrg } from "@/lib/ir-en-org";
+import { useOrgsStore } from "@/store/orgs.store";
 import { useServer } from "@/hooks/use-server";
 import { useSwarm } from "@/hooks/use-swarm";
 import { useTerminals } from "@/store/terminal.store";
@@ -43,12 +45,34 @@ export default function ServerLayout() {
   const { t } = useT();
   const navigate = useNavigate();
   const { server, loading, missing, refresh } = useServer(id);
+  const currentOrgId = useOrgsStore((s) => s.currentOrgId);
+  // El servidor que ya se puso en su org. Ver abajo.
+  const placed = useRef<string | null>(null);
 
   useEffect(() => {
     if (missing) navigate("/dashboard", { replace: true });
   }, [missing, navigate]);
 
-  if (loading || !server) {
+  // Un servidor se enseña sólo en su org (command-and-control-225). Cambiar de
+  // org con boaty abierto dejaba boaty entero en pantalla —servicios,
+  // despliegue, commits— con el panel lateral ya en la otra: fácil desplegar
+  // en el servidor equivocado. El backend no lo impide para un superadmin,
+  // que ve todos.
+  //
+  // Al llegar, el enlace manda: se entra en la org del servidor, como con
+  // `?task=`. Después, si la org cambia, se sale al panel.
+  const foreign = !!server && !!currentOrgId && server.orgId !== currentOrgId;
+  useEffect(() => {
+    if (!server || !currentOrgId) return;
+    if (placed.current !== server.id) {
+      placed.current = server.id;
+      if (!enterOrg(server.orgId)) navigate("/dashboard", { replace: true });
+      return;
+    }
+    if (server.orgId !== currentOrgId) navigate("/dashboard", { replace: true });
+  }, [server, currentOrgId, navigate]);
+
+  if (loading || !server || foreign) {
     return <RowsSkeleton label={t("common:servers.loading")} rows={5} className="space-y-2 p-6" />;
   }
   if (server.type === "kubernetes") return <K8sHub server={server} />;

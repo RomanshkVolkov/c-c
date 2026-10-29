@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * Un servidor se abre con su URL y nada más.
@@ -14,6 +14,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
  *    no un error.
  * 4. Un servidor que no es de tu org (404) devuelve al panel.
  * 5. Un kubernetes sigue yendo a su consola.
+ * 6. Un servidor sólo se enseña en su org: al llegar se entra en ella, y si
+ *    luego cambias de org, sale al panel (command-and-control-225).
  */
 
 const { api } = vi.hoisted(() => ({
@@ -33,12 +35,13 @@ vi.mock("@/pages/K8sHub", () => ({ default: () => <p>consola de kubernetes</p> }
 
 const { MemoryRouter, Route, Routes } = await import("react-router-dom");
 const { ConfirmProvider } = await import("@/components/ConfirmDialog");
-const { default: ServerLayout } = await import("./ServerLayout");
+const { default: ServerLayout, useServerContext } = await import("./ServerLayout");
 const { default: ServerOverview } = await import("./ServerOverview");
 const { default: ServerServices } = await import("./ServerServices");
 const { default: StackSecrets } = await import("@/pages/StackSecrets");
 const { default: ServiceDeploy } = await import("@/pages/servers/ServiceDeploy");
 const { useDeploymentsStore } = await import("@/store/deployments.store");
+const { useOrgsStore } = await import("@/store/orgs.store");
 
 const servidor = (over: Record<string, unknown> = {}) => ({
   id: "srv-1", orgId: "org-1", name: "tds", host: "10.0.0.1", sshPort: 22, sshUser: "root",
@@ -89,6 +92,7 @@ const montar = (url: string) =>
   );
 
 beforeEach(() => {
+  useOrgsStore.setState({ orgs: [], currentOrgId: null });
   useDeploymentsStore.setState({ deployables: {}, history: {}, logs: {}, builds: {} });
   api.post.mockResolvedValue({ success: true, data: {} });
   agente();
@@ -164,5 +168,73 @@ describe("un servidor se abre con su URL", () => {
     backend(servidor({ type: "kubernetes" }));
     montar("/servers/srv-1");
     await waitFor(() => expect(screen.getByText("consola de kubernetes")).toBeTruthy());
+  });
+
+  describe("en su org", () => {
+    const org = (id: string) => ({ id, name: id }) as never;
+    const enOrg = (current: string, mine = ["org-1", "org-2"]) =>
+      useOrgsStore.setState({ orgs: mine.map(org), currentOrgId: current });
+
+    // Lo que vio jose: boaty seguía en pantalla con el panel ya en la otra org.
+    // Mutante: no mirar la org al cambiar.
+    it("cambiar de org con el servidor abierto vuelve al panel", async () => {
+      enOrg("org-1");
+      backend(servidor());
+      montar("/servers/srv-1/services");
+      await waitFor(() => expect(screen.getByText("tds")).toBeTruthy());
+      act(() => useOrgsStore.getState().setCurrentOrg("org-2"));
+      await waitFor(() => expect(screen.getByText("panel de servidores")).toBeTruthy());
+      expect(screen.queryByText("tds")).toBeNull();
+    });
+
+    // Ni un pintado con el servidor de una org y la pantalla en otra, mientras
+    // el efecto saca al panel. Mutante: quitar `foreign` de la puerta del render.
+    it("ni un pintado del servidor en la otra org", async () => {
+      enOrg("org-1");
+      backend(servidor());
+      const mismatched: string[] = [];
+      function Spy() {
+        const { server } = useServerContext();
+        const current = useOrgsStore((st) => st.currentOrgId);
+        if (server.orgId !== current) mismatched.push(`${server.orgId} en ${current}`);
+        return <p>espía</p>;
+      }
+      render(
+        <MemoryRouter initialEntries={["/servers/srv-1"]}>
+          <ConfirmProvider>
+            <Routes>
+              <Route path="/dashboard" element={<p>panel de servidores</p>} />
+              <Route path="/servers/:id" element={<ServerLayout />}>
+                <Route index element={<Spy />} />
+              </Route>
+            </Routes>
+          </ConfirmProvider>
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(screen.getByText("espía")).toBeTruthy());
+      act(() => useOrgsStore.getState().setCurrentOrg("org-2"));
+      await waitFor(() => expect(screen.getByText("panel de servidores")).toBeTruthy());
+      expect(mismatched).toEqual([]);
+    });
+
+    // Un enlace (un aviso de backup, la actividad) lleva a su org, como `?task=`.
+    // Mutante: sacar al panel también al llegar.
+    it("llegar desde otra org entra en la del servidor", async () => {
+      enOrg("org-2");
+      backend(servidor());
+      montar("/servers/srv-1");
+      await waitFor(() => expect(screen.getByText("tds")).toBeTruthy());
+      expect(useOrgsStore.getState().currentOrgId).toBe("org-1");
+    });
+
+    // Un superadmin lo recibe del backend aunque no sea de esa org.
+    // Mutante: enseñarlo sin poder entrar en su org.
+    it("si no es de tus orgs, vuelve al panel aunque el backend lo dé", async () => {
+      enOrg("org-2", ["org-2"]);
+      backend(servidor());
+      montar("/servers/srv-1");
+      await waitFor(() => expect(screen.getByText("panel de servidores")).toBeTruthy());
+      expect(useOrgsStore.getState().currentOrgId).toBe("org-2");
+    });
   });
 });
