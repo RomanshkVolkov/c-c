@@ -73,7 +73,9 @@ Con eso, **lee sólo lo que toca**, y primero esto, si existe:
 Lo demás, por su título en el mapa:
 - una sección de una pestaña: `get_doc` con `kind`, `ownerId` (el id del
   nodo, o su ruta tal como la enseña el mapa: «Proteus › Plataforma»), `tab` y
-  `section` (el texto del título);
+  `section` (el texto del título, o su `sectionId`). Si trae `decisions`,
+  son **por qué** dice lo que dice: antes de cambiarla, léelas
+  (`get_decision`);
 - una subpágina: `get_doc_page`;
 - un `.md` del repo: `get_repo_doc` (el mapa dice su tamaño en `chars`).
 
@@ -250,13 +252,19 @@ En una rama, lo mismo con guiones: `proteus-12-login`.
   - `decidedBy` es quien la tomó; si fue el usuario, su nombre;
   - el registro no se puede editar, así que escríbelo como debe leerse dentro
     de un año, con el porqué;
+  - enlázala a lo que **aplica**: las otras tareas que toca (`tasks`) y la
+    sección del runbook u overview que la lleva a cabo (`sectionIds`, el
+    `sectionId` que da `get_doc`). Quien lea esa sección verá por qué está
+    así. Para añadir o quitar enlaces después, `link_decision`;
   - **si cambia una que ya estaba**, no la reescribas ni la escribas como si
     la vieja no existiera: pásale `supersedes` con el id de la vieja. Queda
     marcada, con su fecha y su porqué, y el mapa y la búsqueda enseñan sólo la
     nueva.
 - **Si cambió algo del runbook** (cómo se despliega, una variable nueva, un
   comando, una trampa que mordió), actualiza esa sección con
-  `write_doc_section`, pasando el `sectionHash` que leíste. Para algo nuevo, usa
+  `write_doc_section`, pasando el `sectionHash` que leíste. Para renombrarla,
+  `renameTo`: así conserva su id y las decisiones enlazadas. Un título
+  repetido se nombra por su `sectionId`. Para algo nuevo, usa
   `append_doc_tab`. Si el token no tiene permiso, dile al usuario qué cambiar.
 - **Una trampa que te mordió** a ti y le morderá al siguiente va a «Trampas
   que ya han mordido» del overview del nodo, en tres o cuatro líneas: qué
@@ -329,4 +337,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v16 -->
+<!-- cac-work v17 -->

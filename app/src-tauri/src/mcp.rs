@@ -1012,25 +1012,93 @@ fn section_hash(body: &str, s: &Section) -> String {
 }
 
 /// El índice de una pestaña: sus títulos, con el hash que pide
-/// `write_doc_section` para reescribir cada uno.
-fn tab_outline(body: &str) -> Value {
+/// `write_doc_section` para reescribir cada uno, y —cuando el servidor los
+/// da— el id de su sección y las decisiones vigentes que la sostienen
+/// (command-and-control-91).
+fn tab_outline(body: &str, server: Option<&Value>) -> Value {
     json!(sections(body)
         .iter()
-        .map(|s| json!({ "heading": s.heading, "level": s.level, "sectionHash": section_hash(body, s) }))
+        .enumerate()
+        .map(|(i, s)| {
+            let mut e = json!({ "heading": s.heading, "level": s.level, "sectionHash": section_hash(body, s) });
+            if let Some(srv) = server_section(server, i, &s.heading) {
+                e["sectionId"] = srv["id"].clone();
+                let ds = short_decisions(srv);
+                if !ds.is_empty() {
+                    e["decisions"] = json!(ds);
+                }
+            }
+            e
+        })
         .collect::<Vec<_>>())
 }
 
-/// Reemplaza lo que hay debajo del título de una sección. El título se queda.
+/// La sección que el servidor guarda para el título `index` de la pestaña, si
+/// casa: mismo puesto **y** mismo título, como `contextHeadings` del backend.
+/// Una sección atrasada sale sin id antes que con el de otra.
+fn server_section<'a>(server: Option<&'a Value>, index: usize, heading: &str) -> Option<&'a Value> {
+    let s = server?
+        .as_array()?
+        .iter()
+        .find(|s| s.get("index").and_then(|i| i.as_u64()) == Some(index as u64))?;
+    (s.get("heading").and_then(|h| h.as_str()) == Some(heading)).then_some(s)
+}
+
+/// Las decisiones de una sección del servidor, en corto: id y título.
+fn short_decisions(srv: &Value) -> Vec<Value> {
+    srv.get("decisions")
+        .and_then(|d| d.as_array())
+        .map(|a| a.iter().map(|d| json!({ "id": d.get("id"), "title": d.get("title") })).collect())
+        .unwrap_or_default()
+}
+
+/// La sección pedida, por su título o por su `sectionId`, y su puesto en la
+/// pestaña. Por id, un título repetido deja de ser un callejón: el id dice
+/// cuál. Si el servidor la tiene en otro sitio del que dice el texto, se
+/// pide releer en vez de adivinar.
+fn locate_section(body: &str, server: Option<&Value>, wanted: &str) -> Result<(usize, Section), String> {
+    let all = sections(body);
+    let by_id = server
+        .and_then(|s| s.as_array())
+        .and_then(|a| a.iter().find(|s| s.get("id").and_then(|i| i.as_str()) == Some(wanted.trim())));
+    if let Some(srv) = by_id {
+        let idx = srv.get("index").and_then(|i| i.as_u64()).unwrap_or(u64::MAX) as usize;
+        let heading = srv.get("heading").and_then(|h| h.as_str()).unwrap_or("");
+        return match all.get(idx) {
+            Some(s) if s.heading == heading => Ok((idx, s.clone())),
+            _ => Err("That section moved since cac last indexed it. Read the outline again with get_doc.".into()),
+        };
+    }
+    let sec = find_section(body, wanted)?;
+    let idx = all.iter().position(|s| s.start == sec.start).unwrap_or(0);
+    Ok((idx, sec))
+}
+
+/// Un título nuevo para una sección: una línea, sin los `#`.
+fn clean_heading(raw: &str) -> Result<String, String> {
+    let h = raw.trim().trim_start_matches('#').trim();
+    if h.is_empty() || h.contains('\n') {
+        return Err("renameTo must be one line of text: the new heading, without the #s".into());
+    }
+    Ok(h.to_string())
+}
+
+/// Reemplaza lo que hay debajo del título de una sección. El título se queda,
+/// salvo que se pase `heading`: entonces cambia esa línea, al mismo nivel.
 ///
 /// Con una línea en blanco debajo del título, como se escriben aquí, y otra
 /// antes de lo que sigue, para que el título siguiente no quede pegado al
 /// último párrafo y deje de leerse como título.
-fn splice_section(body: &str, s: &Section, content: &str) -> String {
+fn splice_section(body: &str, s: &Section, content: &str, heading: Option<&str>) -> String {
     let mut middle = format!("\n{}\n", content.trim_matches('\n'));
     if s.end < body.len() {
         middle.push('\n');
     }
-    format!("{}{}{}", &body[..s.content_start], middle, &body[s.end..])
+    let head = match heading {
+        Some(h) => format!("{}{} {}\n", &body[..s.start], "#".repeat(s.level), h),
+        None => body[..s.content_start].to_string(),
+    };
+    format!("{}{}{}", head, middle, &body[s.end..])
 }
 
 fn doc_tab_of<'a>(doc: &'a Value, key: &str) -> Option<&'a Value> {
@@ -1099,7 +1167,7 @@ fn doc_outline(doc: &Value) -> Value {
                         "key": t.get("key"),
                         "bodyHash": t.get("bodyHash"),
                         "chars": body.chars().count(),
-                        "sections": tab_outline(body),
+                        "sections": tab_outline(body, t.get("sections")),
                     })
                 })
                 .collect()
@@ -1125,7 +1193,7 @@ fn doc_outline(doc: &Value) -> Value {
         "tabs": tabs,
         "decisions": decisions,
         "attachments": doc.get("attachments").and_then(|a| a.as_array()).map(|a| a.len()).unwrap_or(0),
-        "note": "Read one section with get_doc + tab (and section, for one heading). Rewrite one heading with write_doc_section and its sectionHash.",
+        "note": "Read one section with get_doc + tab (and section, for one heading, by its text or its sectionId); a section's `decisions` are why it says what it says. Rewrite one heading with write_doc_section and its sectionHash.",
     })
 }
 
@@ -1256,7 +1324,7 @@ fn page_outline(view: &Value, kind: &str, owner: &str) -> Value {
         "breadcrumb": view.get("breadcrumb"),
         "bodyHash": page.get("bodyHash"),
         "chars": body.chars().count(),
-        "sections": tab_outline(body),
+        "sections": tab_outline(body, page.get("sections")),
         "children": view.get("children"),
         // Lo que enlaza aquí: antes de mover el contenido de una página, es lo
         // que dice qué enlaces hay que revisar.
@@ -1297,6 +1365,7 @@ fn short_page_conflict(result: &Value) -> Option<Value> {
 /// Reescribe lo que hay debajo de un título de una página. La misma lógica que
 /// `write_section` —el hash de la sección dice que lo leído sigue igual; el de la
 /// página, que nadie guardó en medio—, con las rutas de la página.
+#[allow(clippy::too_many_arguments)]
 fn write_page_section(
     cfg: &Cfg,
     kind: &str,
@@ -1305,35 +1374,27 @@ fn write_page_section(
     wanted: &str,
     expected: &str,
     content: &str,
+    rename_to: Option<&str>,
 ) -> Result<Value, String> {
     let path = format!("/api/v1/docs/{kind}/{id}/pages/{page}");
     for _ in 0..2 {
         let view = api_get(cfg, &path)?;
         let body = page_body(&view).to_string();
-        let (sec, new_body) = match plan_section_write(&body, "page", wanted, expected, content)? {
+        let server = view.get("page").and_then(|p| p.get("sections"));
+        let plan = match plan_section_write(&body, "page", server, wanted, expected, content, rename_to)? {
             Ok(plan) => plan,
             Err(conflict) => return Ok(conflict),
         };
-        let mut req = json!({ "body": new_body });
-        if let Some(h) = view
-            .get("page")
-            .and_then(|p| p.get("bodyHash"))
-            .and_then(|v| v.as_str())
-            .filter(|h| !h.is_empty())
-        {
-            req["baseHash"] = json!(h);
-        }
-        let out = api_put(cfg, &path, req)?;
+        let base = view.get("page").and_then(|p| p.get("bodyHash")).and_then(|v| v.as_str());
+        let out = api_put(cfg, &path, section_put(&plan, base, rename_to))?;
         if short_page_conflict(&out).is_some() {
             continue;
         }
         let nb = out.get("body").and_then(|b| b.as_str()).unwrap_or("");
-        return Ok(json!({
-            "pageId": out.get("id"),
-            "section": sec.heading,
-            "sectionHash": find_section(nb, wanted).ok().map(|s| section_hash(nb, &s)),
-            "bodyHash": out.get("bodyHash"),
-        }));
+        let mut res = section_written(nb, &plan);
+        res["pageId"] = out.get("id").cloned().unwrap_or(Value::Null);
+        res["bodyHash"] = out.get("bodyHash").cloned().unwrap_or(Value::Null);
+        return Ok(res);
     }
     Err("The page kept changing while writing this section. Read it again with get_doc_page and retry.".into())
 }
@@ -1363,6 +1424,7 @@ fn recorded_decision(doc: &Value) -> Value {
             "origin": d.get("origin"),
             "originTaskId": d.get("originTaskId"),
             "decidedAt": d.get("decidedAt"),
+            "links": decision_links(d),
         }),
         None => json!({ "recorded": true }),
     }
@@ -1377,11 +1439,13 @@ fn recorded_decision(doc: &Value) -> Value {
 fn plan_section_write(
     body: &str,
     tab: &str,
+    server: Option<&Value>,
     wanted: &str,
     expected: &str,
     content: &str,
-) -> Result<Result<(Section, String), Value>, String> {
-    let sec = find_section(body, wanted)?;
+    rename_to: Option<&str>,
+) -> Result<Result<SectionWrite, Value>, String> {
+    let (index, sec) = locate_section(body, server, wanted)?;
     let current = section_hash(body, &sec);
     if current != expected {
         return Ok(Err(json!({
@@ -1393,8 +1457,47 @@ fn plan_section_write(
             "text": &body[sec.start..sec.end],
         })));
     }
-    let new_body = splice_section(body, &sec, content);
-    Ok(Ok((sec, new_body)))
+    let new_body = splice_section(body, &sec, content, rename_to);
+    let id = server_section(server, index, &sec.heading)
+        .and_then(|s| s.get("id"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    Ok(Ok(SectionWrite { index, section: sec, body: new_body, id }))
+}
+
+/// Lo que hay que mandar al reescribir una sección.
+#[derive(Debug)]
+struct SectionWrite {
+    /// Su puesto en la pestaña: renombrarla no lo cambia, así que es como se
+    /// encuentra después para dar su hash nuevo.
+    index: usize,
+    section: Section,
+    body: String,
+    /// Su id en el servidor, si lo tiene: con él, un renombre se declara.
+    id: Option<String>,
+}
+
+/// El cuerpo del PUT de una sección: el texto, el hash de lo leído y, si se
+/// renombra, el renombre declarado para que la sección conserve su id.
+fn section_put(plan: &SectionWrite, base_hash: Option<&str>, rename_to: Option<&str>) -> Value {
+    let mut req = json!({ "body": plan.body });
+    if let Some(h) = base_hash.filter(|h| !h.is_empty()) {
+        req["baseHash"] = json!(h);
+    }
+    if let (Some(id), Some(h)) = (&plan.id, rename_to) {
+        req["sectionRenames"] = json!({ id.as_str(): h });
+    }
+    req
+}
+
+/// Lo que contesta una escritura de sección: su título, su id y su hash nuevo.
+fn section_written(nb: &str, plan: &SectionWrite) -> Value {
+    let after = sections(nb).into_iter().nth(plan.index);
+    json!({
+        "section": after.as_ref().map(|s| s.heading.clone()).unwrap_or_else(|| plan.section.heading.clone()),
+        "sectionId": plan.id,
+        "sectionHash": after.map(|s| section_hash(nb, &s)),
+    })
 }
 
 /// Reescribe lo que hay debajo de un título, con el hash propio de esa sección.
@@ -1405,6 +1508,7 @@ fn plan_section_write(
 /// tocó otra parte del runbook: la sección pedida sigue intacta, así que se
 /// vuelve a leer y se reintenta una vez sobre lo nuevo. Si lo que cambió es la
 /// sección, eso sí es un conflicto, y vuelve con su texto actual para fusionar.
+#[allow(clippy::too_many_arguments)]
 fn write_section(
     cfg: &Cfg,
     kind: &str,
@@ -1413,37 +1517,29 @@ fn write_section(
     wanted: &str,
     expected: &str,
     content: &str,
+    rename_to: Option<&str>,
 ) -> Result<Value, String> {
     let path = format!("/api/v1/docs/{kind}/{id}");
     for _ in 0..2 {
         let doc = api_get(cfg, &path)?;
         let t = doc_tab_of(&doc, tab).ok_or_else(|| format!("No tab \"{tab}\""))?;
         let body = tab_body(t).to_string();
-        let (sec, new_body) = match plan_section_write(&body, tab, wanted, expected, content)? {
+        let plan = match plan_section_write(&body, tab, t.get("sections"), wanted, expected, content, rename_to)? {
             Ok(plan) => plan,
             Err(conflict) => return Ok(conflict),
         };
-        let mut req = json!({ "body": new_body });
-        if let Some(h) = t
-            .get("bodyHash")
-            .and_then(|v| v.as_str())
-            .filter(|h| !h.is_empty())
-        {
-            req["baseHash"] = json!(h);
-        }
+        let req = section_put(&plan, t.get("bodyHash").and_then(|v| v.as_str()), rename_to);
         let out = api_put(cfg, &format!("{path}/tabs/{tab}"), req)?;
         if short_conflict(&out, tab).is_some() {
             continue;
         }
         let after = doc_tab_of(&out, tab);
         let nb = after.map(tab_body).unwrap_or("");
-        return Ok(json!({
-            "tab": tab,
-            "section": sec.heading,
-            "sectionHash": find_section(nb, wanted).ok().map(|s| section_hash(nb, &s)),
-            "bodyHash": after.and_then(|t| t.get("bodyHash")),
-            "updatedAt": after.and_then(|t| t.get("updatedAt")),
-        }));
+        let mut res = section_written(nb, &plan);
+        res["tab"] = json!(tab);
+        res["bodyHash"] = after.and_then(|t| t.get("bodyHash")).cloned().unwrap_or(Value::Null);
+        res["updatedAt"] = after.and_then(|t| t.get("updatedAt")).cloned().unwrap_or(Value::Null);
+        return Ok(res);
     }
     Err(
         "The tab kept changing while writing this section. Read it again with get_doc and retry."
@@ -1460,6 +1556,100 @@ fn write_section(
 /// no existía, en un registro del que no se borra nada. Ahora el backend exige
 /// que la tarea exista y sea de la misma organización (#91), y el enlace ya no
 /// puede mentir.
+/// Una lista de textos de un argumento (`["a", "b"]`); lo que no es texto se
+/// ignora.
+fn str_list(v: Option<&Value>) -> Vec<String> {
+    v.and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str()).map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+        .unwrap_or_default()
+}
+
+/// Tareas por su referencia (`proteus-12`, `acme-7`) o su id, como ids: lo
+/// mismo que `resolve_task_refs`, para una lista.
+fn resolve_task_list(cfg: &Cfg, v: Option<&Value>) -> Result<Vec<String>, String> {
+    str_list(v)
+        .into_iter()
+        .map(|raw| {
+            if !looks_like_task_ref(&raw) {
+                return Ok(raw);
+            }
+            let d = api_get(cfg, &format!("/api/v1/tasks/by-ref/{}", urlencode(&raw)))?;
+            d.get("task")
+                .and_then(|t| t.get("id"))
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .ok_or_else(|| format!("cac did not say which task {raw} is"))
+        })
+        .collect()
+}
+
+/// A una sección leída le añade su id y el porqué: las decisiones vigentes
+/// que la sostienen, con el resumen de las del mismo documento.
+fn with_section_why(out: &mut Value, srv: Option<&Value>, doc: &Value) {
+    let Some(srv) = srv else { return };
+    out["sectionId"] = srv["id"].clone();
+    let log = doc.get("decisions").and_then(|d| d.as_array());
+    let ds: Vec<Value> = srv
+        .get("decisions")
+        .and_then(|d| d.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|d| {
+                    let mut e = json!({ "id": d.get("id"), "title": d.get("title"), "decidedAt": d.get("decidedAt") });
+                    let body = log
+                        .and_then(|l| l.iter().find(|x| x.get("id") == d.get("id")))
+                        .and_then(|x| x.get("body"))
+                        .and_then(|b| b.as_str())
+                        .unwrap_or("");
+                    if !body.is_empty() {
+                        e["summary"] = json!(summary_of(body));
+                    }
+                    e
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if !ds.is_empty() {
+        out["decisions"] = json!(ds);
+        out["note"] = json!("`decisions` are why this section says what it says. Read one's full reasoning with get_decision(id).");
+    }
+}
+
+fn summary_of(body: &str) -> String {
+    let mut summary: String = body.chars().take(200).collect();
+    if body.chars().count() > 200 {
+        summary.push('…');
+    }
+    summary
+}
+
+/// Los enlaces de una decisión, en corto: a qué tareas y secciones se aplica.
+fn decision_links(d: &Value) -> Vec<Value> {
+    d.get("links")
+        .and_then(|l| l.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|l| {
+                    if l.get("kind").and_then(|k| k.as_str()) == Some("task") {
+                        json!({ "linkId": l.get("id"), "kind": "task", "taskId": l.get("taskId"), "ref": l.get("taskRef"), "title": l.get("taskTitle"), "status": l.get("taskStatus") })
+                    } else {
+                        let mut e = json!({ "linkId": l.get("id"), "kind": "section", "sectionId": l.get("sectionId"), "heading": l.get("heading"), "ownerKind": l.get("ownerKind"), "ownerId": l.get("ownerId") });
+                        for key in ["tab", "pageId", "pageTitle"] {
+                            if let Some(v) = l.get(key).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                                e[key] = json!(v);
+                            }
+                        }
+                        if l.get("sectionRemoved").and_then(|v| v.as_bool()) == Some(true) {
+                            e["removed"] = json!(true);
+                        }
+                        e
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn decision_body(title: &str, args: &Value) -> Value {
     let mut body = json!({ "title": title, "origin": "doc" });
     for key in ["body", "tag", "decidedBy", "supersedes"] {
@@ -1868,7 +2058,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_task",
-            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), what it waits for (`blockedBy`, each with whether it is still open), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
+            "description": "Full detail of one task, with its `ref` — how to name it in a commit message, branch or PR so cac links it by itself: its space key and number (`proteus-12`), or a client's folio (`acme-7`): its `handoff` (where the last session left it: read this before the thread), what it waits for (`blockedBy`, each with whether it is still open), the decisions that apply to it (`decisions`; one superseded says by which, read with get_decision), its markdown description, status, priority, tags, assignees, attachments, the comment thread (people and agents only: GitHub's commit notes are left out, they are the same commits as `git.commits`), its subtasks — which are its checklist — and `git`: the GitHub branches, pull requests (with state open/draft/merged/closed) and commits linked to it, by the task named in a commit/PR or by the branch name (cac-12-…, acme-7-…). get_board does not list subtasks; it only shows how many are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string", "description": "The task id, or its ref as people write it: `proteus-12` (space key and number) or a client's folio `acme-7`. `cac#12` does not resolve: a number without its space." } },
@@ -2197,14 +2387,14 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_doc",
-            "description": "One node's documentation HOME (its four tabs), a piece at a time — a whole doc runs to tens of thousands of characters. Below the home hangs a tree of subpages: if the outline has a `pages` field, list them with list_doc_pages and read one with get_doc_page.\n\nWithout `tab`: the OUTLINE — who maintains it, when it was reviewed, and for each of its four tabs (overview, runbook, decisions, links; the name is in `key`) its size, `bodyHash`, and its headings, each with a `sectionHash`. Plus the decision log's titles. No bodies.\nWith `tab`: that tab's full markdown. `tab: decisions` is the DECISION LOG (newest first, each with id, title, who, when, a summary and whether it was superseded), not a markdown tab: read one entry's body with get_decision.\nWith `tab` + `section`: just that heading and what's under it, down to the next heading of the same or a higher level.\n\nRewrite one heading with write_doc_section and its sectionHash; replace a whole tab with write_doc_tab and its bodyHash.",
+            "description": "One node's documentation HOME (its four tabs), a piece at a time — a whole doc runs to tens of thousands of characters. Below the home hangs a tree of subpages: if the outline has a `pages` field, list them with list_doc_pages and read one with get_doc_page.\n\nWithout `tab`: the OUTLINE — who maintains it, when it was reviewed, and for each of its four tabs (overview, runbook, decisions, links; the name is in `key`) its size, `bodyHash`, and its headings, each with a `sectionHash`, its `sectionId` and the `decisions` in force that apply to it. Plus the decision log's titles. No bodies.\nWith `tab`: that tab's full markdown. `tab: decisions` is the DECISION LOG (newest first, each with id, title, who, when, a summary and whether it was superseded), not a markdown tab: read one entry's body with get_decision.\nWith `tab` + `section`: just that heading and what's under it, down to the next heading of the same or a higher level — plus the decisions in force that apply to it, with a summary: WHY it says what it says.\n\nRewrite one heading with write_doc_section and its sectionHash; replace a whole tab with write_doc_tab and its bodyHash.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"] },
                     "ownerId": { "type": "string", "description": "The id of the space, folder or list, or its path as the map shows it (\"Proteus › Plataforma\"); a bare name resolves too when only one node has it, if you omit `kind`." },
                     "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"], "description": "Optional. Read only this tab." },
-                    "section": { "type": "string", "description": "Optional, with tab. A heading's text, with or without the #s, e.g. \"Correo\" or \"## Correo\"." },
+                    "section": { "type": "string", "description": "Optional, with tab. A heading's text, with or without the #s, e.g. \"Correo\" or \"## Correo\" — or its `sectionId` from the outline, which also tells apart two headings with the same text." },
                     "full": { "type": "boolean", "description": "Optional. The whole document at once, as it used to come. Large; prefer the outline." }
                 },
                 "required": ["kind", "ownerId"]
@@ -2228,7 +2418,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "record_decision",
-            "description": "Add an entry to a project's decision log: what was decided, why, and who decided it. Taken outside cac — a client's email, a call — it comes from the document. Taken while working a task, pass originTaskId and the entry links back to that task. The log is append-only: entries cannot be edited or deleted afterwards, so write it as it should read in a year. When a decision CHANGES, do not write it as if the old one never existed: pass `supersedes` with the old entry's id, and the old one stays in the log marked as superseded while the map and search show only the new one. Needs a token with the `docs:write` scope.",
+            "description": "Add an entry to a project's decision log: what was decided, why, and who decided it. Taken outside cac — a client's email, a call — it comes from the document. Taken while working a task, pass originTaskId and the entry links back to that task. Link it as well to what it APPLIES to: the other tasks it touches (`tasks`) and the section of the runbook or overview that carries it out (`sectionIds`, from get_doc) — a reader of that section then sees why it says what it says. More links later with link_decision. The log is append-only: entries cannot be edited or deleted afterwards, so write it as it should read in a year. When a decision CHANGES, do not write it as if the old one never existed: pass `supersedes` with the old entry's id, and the old one stays in the log marked as superseded while the map and search show only the new one. Needs a token with the `docs:write` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2238,7 +2428,9 @@ fn tool_defs() -> Value {
                     "body": { "type": "string", "description": "Why. The reasoning is what makes the entry worth keeping." },
                     "tag": { "type": "string", "description": "Optional: architecture, vendor, scope…" },
                     "decidedBy": { "type": "string", "description": "The name or username of the person in this organization who made the call, when it wasn't you. Signing it with the token's owner would say they decided it, which is what whoever reads it will believe." },
-                    "originTaskId": { "type": "string", "description": "Optional. The task this decision came out of; the entry links back to it. It must be a real task in the same organization, or the entry is refused — the log can't be edited, so a link to nothing would stay forever. One task per decision." },
+                    "originTaskId": { "type": "string", "description": "Optional. The task this decision came out of (a ref like proteus-12, or its id); the entry links back to it. It must be a real task in the same organization, or the entry is refused — the log can't be edited, so a link to nothing would stay forever." },
+                    "tasks": { "type": "array", "items": { "type": "string" }, "description": "Optional. Other tasks this decision applies to, by ref (proteus-12) or id. Each must be a live task of the same organization." },
+                    "sectionIds": { "type": "array", "items": { "type": "string" }, "description": "Optional. The sections (sectionId from get_doc or get_doc_page) that carry this decision out, typically a runbook section. Any node of the same organization." },
                     "supersedes": { "type": "string", "description": "Optional. The id of the decision that this one replaces (from get_context, get_doc tab: decisions, or a search hit). It may live in another node of the same organization: that is how a decision is moved to where people look for it — record it again on the right node, superseding the old one. It must still be in force: a decision already superseded names the one that replaced it instead." },
                     "dryRun": { "type": "boolean" }
                 },
@@ -2290,10 +2482,25 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_decision",
-            "description": "One entry of a decision log, with its body (the why), who decided it and when, the task it came out of, the node it belongs to, and which decision it supersedes or was superseded by. Ids come from get_context, get_doc (tab: decisions) and search hits of kind `decision`.",
+            "description": "One entry of a decision log, with its body (the why), who decided it and when, the task it came out of, the node it belongs to, which decision it supersedes or was superseded by, and its `links`: the tasks and doc sections it applies to (a section that was since removed says `removed` and keeps its last heading). Ids come from get_context, get_doc (tab: decisions, or a section's `decisions`), get_task and search hits of kind `decision`.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "id": { "type": "string" } },
+                "required": ["id"]
+            }
+        },
+        {
+            "name": "link_decision",
+            "description": "Say what an existing decision applies to, or no longer applies to: link it to tasks and to doc sections, or remove a link. A link already there is not repeated. Removing marks the link as removed (who and when) instead of deleting it — the log keeps its history. Answers with the decision and its links. Linking needs `docs:write`; removing, `docs:manage`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "The decision's id." },
+                    "tasks": { "type": "array", "items": { "type": "string" }, "description": "Tasks to link, by ref (proteus-12) or id, of the decision's organization." },
+                    "sectionIds": { "type": "array", "items": { "type": "string" }, "description": "Sections to link: their sectionId from get_doc or get_doc_page." },
+                    "unlink": { "type": "array", "items": { "type": "string" }, "description": "Links to remove: their linkId from get_decision." },
+                    "dryRun": { "type": "boolean" }
+                },
                 "required": ["id"]
             }
         },
@@ -2315,16 +2522,17 @@ fn tool_defs() -> Value {
         },
         {
             "name": "write_doc_section",
-            "description": "Rewrite what's under one heading of a tab, and nothing else. The heading line stays; `body` replaces everything below it down to the next heading of the same or a higher level. Read it first with get_doc (tab + section, or the outline) and pass its `sectionHash`: if the section changed since, nothing is written and you get its current text to merge. If only some OTHER part of the tab changed meanwhile, the write goes through anyway. A heading that appears twice is refused, since it doesn't say which one. Needs a token with the `docs:manage` scope.",
+            "description": "Rewrite what's under one heading of a tab, and nothing else. The heading line stays — unless you pass `renameTo`, which renames it and keeps its sectionId, so the decisions linked to it stay linked; `body` replaces everything below it down to the next heading of the same or a higher level. Read it first with get_doc (tab + section, or the outline) and pass its `sectionHash`: if the section changed since, nothing is written and you get its current text to merge. If only some OTHER part of the tab changed meanwhile, the write goes through anyway. A heading that appears twice is refused by its text; name it by its sectionId instead. Needs a token with the `docs:manage` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"] },
                     "ownerId": { "type": "string" },
                     "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"] },
-                    "section": { "type": "string", "description": "The heading's text, with or without the #s." },
+                    "section": { "type": "string", "description": "The heading's text, with or without the #s, or its sectionId from get_doc." },
                     "sectionHash": { "type": "string", "description": "From get_doc. Says the section is still what you read." },
                     "body": { "type": "string", "description": "Markdown for under the heading. Don't repeat the heading itself." },
+                    "renameTo": { "type": "string", "description": "Optional. A new heading for this section, one line without the #s. The section keeps its id and its linked decisions." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "tab", "section", "sectionHash", "body"]
@@ -2450,7 +2658,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_doc_page",
-            "description": "One subpage. Without `section`: its outline — title, breadcrumb, `bodyHash`, headings each with a `sectionHash`, and its children. With `section`: that heading and what's under it. With `full`: the whole body too.",
+            "description": "One subpage. Without `section`: its outline — title, breadcrumb, `bodyHash`, headings each with a `sectionHash`, its `sectionId` and the decisions that apply to it, and its children. With `section` (a heading's text or its sectionId): that heading and what's under it, with its decisions. With `full`: the whole body too.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2538,16 +2746,17 @@ fn tool_defs() -> Value {
         },
         {
             "name": "write_doc_page_section",
-            "description": "Rewrite what's under one heading of a page, keeping the heading. Needs the `sectionHash` from get_doc_page. Needs `docs:manage`.",
+            "description": "Rewrite what's under one heading of a page, keeping the heading (or renaming it with `renameTo`, which keeps its sectionId and linked decisions). Needs the `sectionHash` from get_doc_page. Needs `docs:manage`.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"] },
                     "ownerId": { "type": "string" },
                     "pageId": { "type": "string" },
-                    "section": { "type": "string" },
+                    "section": { "type": "string", "description": "The heading's text, or its sectionId." },
                     "sectionHash": { "type": "string" },
                     "body": { "type": "string" },
+                    "renameTo": { "type": "string", "description": "Optional. A new heading, one line without the #s." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "pageId", "section", "sectionHash", "body"]
@@ -3913,17 +4122,19 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     "bodyHash": t.get("bodyHash"),
                     "updatedAt": t.get("updatedAt"),
                     "body": body,
-                    "sections": tab_outline(body),
+                    "sections": tab_outline(body, t.get("sections")),
                 })),
                 Some(wanted) => {
-                    let sec = find_section(body, &wanted)?;
-                    Ok(json!({
+                    let (index, sec) = locate_section(body, t.get("sections"), &wanted)?;
+                    let mut out = json!({
                         "tab": tab,
                         "tabBodyHash": t.get("bodyHash"),
                         "section": sec.heading,
                         "sectionHash": section_hash(body, &sec),
                         "text": &body[sec.start..sec.end],
-                    }))
+                    });
+                    with_section_why(&mut out, server_section(t.get("sections"), index, &sec.heading), &data);
+                    Ok(out)
                 }
             }
         }
@@ -3958,9 +4169,40 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
                 );
             }
-            let body = decision_body(&title, args);
+            let mut body = decision_body(&title, args);
+            let tasks = resolve_task_list(cfg, args.get("tasks"))?;
+            if !tasks.is_empty() {
+                body["taskIds"] = json!(tasks);
+            }
+            let secs = str_list(args.get("sectionIds"));
+            if !secs.is_empty() {
+                body["sectionIds"] = json!(secs);
+            }
             let out = api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/decisions"), body)?;
             Ok(recorded_decision(&out))
+        }
+
+        "link_decision" => {
+            let id = arg_str(args, "id").ok_or("id is required: the decision's id")?;
+            let tasks = resolve_task_list(cfg, args.get("tasks"))?;
+            let secs = str_list(args.get("sectionIds"));
+            let unlink = str_list(args.get("unlink"));
+            if tasks.is_empty() && secs.is_empty() && unlink.is_empty() {
+                return Err("Nothing to do: pass tasks, sectionIds or unlink".into());
+            }
+            let path = format!("/api/v1/docs/decisions/{}", urlencode(&id));
+            if arg_bool(args, "dryRun") {
+                let scope = if unlink.is_empty() { "docs:write" } else { "docs:manage" };
+                return dry_run(cfg, scope, api_get(cfg, &path));
+            }
+            let mut last = None;
+            if !tasks.is_empty() || !secs.is_empty() {
+                last = Some(api_post(cfg, &format!("{path}/links"), json!({ "taskIds": tasks, "sectionIds": secs }))?);
+            }
+            for l in &unlink {
+                last = Some(api_delete(cfg, &format!("{path}/links/{}", urlencode(l)))?);
+            }
+            Ok(decision_view(&last.unwrap_or(Value::Null)))
         }
 
         "write_doc_tab" => {
@@ -4000,7 +4242,8 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
                 );
             }
-            write_section(cfg, &kind, &id, &tab, &wanted, &expected, content)
+            let rename = arg_str(args, "renameTo").map(|r| clean_heading(&r)).transpose()?;
+            write_section(cfg, &kind, &id, &tab, &wanted, &expected, content, rename.as_deref())
         }
 
         "notify_me" => {
@@ -4143,14 +4386,17 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             let view = api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}"))?;
             let body = page_body(&view);
             if let Some(wanted) = arg_str(args, "section") {
-                let sec = find_section(body, &wanted)?;
-                return Ok(json!({
+                let server = view.get("page").and_then(|p| p.get("sections"));
+                let (index, sec) = locate_section(body, server, &wanted)?;
+                let mut out = json!({
                     "pageId": view.get("page").and_then(|p| p.get("id")),
                     "pageBodyHash": view.get("page").and_then(|p| p.get("bodyHash")),
                     "section": sec.heading,
                     "sectionHash": section_hash(body, &sec),
                     "text": &body[sec.start..sec.end],
-                }));
+                });
+                with_section_why(&mut out, server_section(server, index, &sec.heading), &Value::Null);
+                return Ok(out);
             }
             let mut out = page_outline(&view, &kind, &id);
             if arg_bool(args, "full") {
@@ -4217,7 +4463,8 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             if arg_bool(args, "dryRun") {
                 return dry_run(cfg, "docs:manage", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{page}")));
             }
-            write_page_section(cfg, &kind, &id, &page, &wanted, &expected, content)
+            let rename = arg_str(args, "renameTo").map(|r| clean_heading(&r)).transpose()?;
+            write_page_section(cfg, &kind, &id, &page, &wanted, &expected, content, rename.as_deref())
         }
 
         "move_doc_page" => {
@@ -5202,6 +5449,7 @@ fn decision_view(data: &Value) -> Value {
             out[key] = json!(v);
         }
     }
+    out["links"] = json!(decision_links(&d));
     if out.get("supersededById").is_some() {
         out["note"] = json!("Superseded: this decision no longer applies; read the one in supersededById.");
     }
@@ -5218,15 +5466,15 @@ fn decision_log(doc: &Value) -> Value {
             a.iter()
                 .map(|d| {
                     let body = d.get("body").and_then(|b| b.as_str()).unwrap_or("");
-                    let mut summary: String = body.chars().take(200).collect();
-                    if body.chars().count() > 200 {
-                        summary.push('…');
-                    }
                     let mut e = json!({
                         "id": d.get("id"), "title": d.get("title"), "tag": d.get("tag"),
                         "decidedAt": d.get("decidedAt"), "decidedBy": d.get("authorName"),
-                        "originTaskId": d.get("originTaskId"), "summary": summary,
+                        "originTaskId": d.get("originTaskId"), "summary": summary_of(body),
                     });
+                    let links = decision_links(d);
+                    if !links.is_empty() {
+                        e["links"] = json!(links);
+                    }
                     for key in ["supersedesId", "supersededById"] {
                         if let Some(v) = d.get(key).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
                             e[key] = json!(v);
@@ -5905,7 +6153,7 @@ mod tests {
     #[test]
     fn splicing_a_section_keeps_everything_else() {
         let sec = find_section(RUNBOOK, "Despliegue").unwrap();
-        let out = splice_section(RUNBOOK, &sec, "Con Actions y un paso de prueba.");
+        let out = splice_section(RUNBOOK, &sec, "Con Actions y un paso de prueba.", None);
         assert!(
             out.ends_with("## Despliegue\n\nCon Actions y un paso de prueba.\n"),
             "{out}"
@@ -5918,7 +6166,7 @@ mod tests {
     #[test]
     fn splicing_leaves_the_next_heading_standing() {
         let sec = find_section(RUNBOOK, "Correo").unwrap();
-        let out = splice_section(RUNBOOK, &sec, "Ahora por SES.");
+        let out = splice_section(RUNBOOK, &sec, "Ahora por SES.", None);
         assert!(
             out.contains("## Correo\n\nAhora por SES.\n\n## Despliegue"),
             "{out}"
@@ -6003,14 +6251,15 @@ mod tests {
     fn a_section_that_changed_is_not_overwritten() {
         let leido = section_hash(RUNBOOK, &find_section(RUNBOOK, "Correo").unwrap());
 
-        let (_, nuevo) = plan_section_write(RUNBOOK, "runbook", "Correo", &leido, "Por SES.")
+        let nuevo = plan_section_write(RUNBOOK, "runbook", None, "Correo", &leido, "Por SES.", None)
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .body;
         assert!(nuevo.contains("Por SES.") && !nuevo.contains("Brevo"));
 
         // Alguien cambió la sección entre la lectura y la escritura.
         let ahora = RUNBOOK.replace("SMTP por Brevo.", "SMTP por Postmark.");
-        let conflicto = plan_section_write(&ahora, "runbook", "Correo", &leido, "Por SES.")
+        let conflicto = plan_section_write(&ahora, "runbook", None, "Correo", &leido, "Por SES.", None)
             .unwrap()
             .unwrap_err();
         assert_eq!(conflicto["conflict"], true);
@@ -6022,7 +6271,7 @@ mod tests {
         // Y si lo que cambió es OTRA sección, la suya sigue valiendo.
         let otra = RUNBOOK.replace("Con Actions.", "Con Actions y más.");
         assert!(
-            plan_section_write(&otra, "runbook", "Correo", &leido, "Por SES.")
+            plan_section_write(&otra, "runbook", None, "Correo", &leido, "Por SES.", None)
                 .unwrap()
                 .is_ok()
         );
@@ -6496,6 +6745,133 @@ mod tests {
         call_tool(&cfg, "record_decision", &json!({ "kind": "space", "ownerId": "s1", "title": "Las releases se juntan", "supersedes": "d1" })).unwrap();
         let posted = log.lock().unwrap().iter().find(|(m, _, _)| m == "POST").map(|(_, _, b)| b.clone()).unwrap();
         assert_eq!(posted["supersedes"], "d1");
+    }
+
+    // ── Secciones con id y decisiones enlazadas (command-and-control-91) ──
+
+    /// Lo que el servidor dice de las secciones del RUNBOOK de las pruebas;
+    /// «Puertos» está atrasada (otro título en su puesto).
+    fn server_sections() -> Value {
+        json!([
+            { "id": "s-runbook", "heading": "Runbook", "level": 1, "index": 0 },
+            { "id": "s-correo", "heading": "Correo", "level": 2, "index": 1,
+              "decisions": [{ "id": "d1", "title": "El correo sale por SES" }] },
+            { "id": "s-viejo", "heading": "Puertos de antes", "level": 3, "index": 2 },
+            { "id": "s-despliegue", "heading": "Despliegue", "level": 2, "index": 3 },
+        ])
+    }
+
+    /// Roturas que detecta: no poner el id, ponerlo sin mirar el título (la
+    /// atrasada se llevaría el de otra), o perder las decisiones.
+    #[test]
+    fn the_outline_names_each_section_and_why_it_is_so() {
+        let srv = server_sections();
+        let out = tab_outline(RUNBOOK, Some(&srv));
+        assert_eq!(out[1]["sectionId"], "s-correo");
+        assert_eq!(out[1]["decisions"][0]["id"], "d1");
+        assert!(out[2].get("sectionId").is_none(), "una sección atrasada se lleva un id: {out}");
+        assert!(out[3].get("decisions").is_none());
+        assert_eq!(out[3]["sectionId"], "s-despliegue");
+        // Sin servidor que diga nada, como antes.
+        assert!(tab_outline(RUNBOOK, None)[1].get("sectionId").is_none());
+    }
+
+    /// Roturas que detecta: no buscar por id, o tomar por buena una sección
+    /// que el servidor tiene en otro sitio.
+    #[test]
+    fn a_section_is_found_by_its_id_even_when_its_title_repeats() {
+        let body = "## Notas\n\na\n\n## Notas\n\nb\n";
+        let srv = json!([
+            { "id": "n1", "heading": "Notas", "index": 0 },
+            { "id": "n2", "heading": "Notas", "index": 1 },
+        ]);
+        assert!(locate_section(body, Some(&srv), "Notas").is_err(), "un título repetido no dice cuál");
+        let (i, sec) = locate_section(body, Some(&srv), "n2").unwrap();
+        assert_eq!(i, 1);
+        assert!(body[sec.start..sec.end].contains('b'));
+        let stale = json!([{ "id": "x", "heading": "Otra", "index": 0 }]);
+        assert!(locate_section(body, Some(&stale), "x").is_err(), "se adivinó una sección movida");
+    }
+
+    /// Roturas que detecta: renombrar sin declararlo (la sección perdería su
+    /// id y sus decisiones), cambiar el nivel, o aceptar un título de dos líneas.
+    #[test]
+    fn renaming_a_section_keeps_its_level_and_says_so() {
+        let srv = server_sections();
+        let leido = section_hash(RUNBOOK, &find_section(RUNBOOK, "Correo").unwrap());
+        let plan = plan_section_write(RUNBOOK, "runbook", Some(&srv), "s-correo", &leido, "Por SES.", Some("Correo saliente"))
+            .unwrap()
+            .unwrap();
+        assert!(plan.body.contains("\n## Correo saliente\n") && !plan.body.contains("## Correo\n"), "{}", plan.body);
+        let put = section_put(&plan, Some("h"), Some("Correo saliente"));
+        assert_eq!(put["sectionRenames"]["s-correo"], "Correo saliente");
+        assert_eq!(put["baseHash"], "h");
+        // Sin renombrar, no se declara nada.
+        assert!(section_put(&plan, Some("h"), None).get("sectionRenames").is_none());
+        // Y lo que contesta es la sección en su sitio, ya con su título nuevo.
+        let w = section_written(&plan.body, &plan);
+        assert_eq!(w["section"], "Correo saliente");
+        assert_eq!(w["sectionId"], "s-correo");
+
+        // Un ### sigue siendo ###.
+        let h3 = section_hash(RUNBOOK, &find_section(RUNBOOK, "Puertos").unwrap());
+        let p3 = plan_section_write(RUNBOOK, "runbook", None, "Puertos", &h3, "465.", Some("Puertos SMTP")).unwrap().unwrap();
+        assert!(p3.body.contains("\n### Puertos SMTP\n"), "{}", p3.body);
+
+        assert_eq!(clean_heading(" ## Nuevo ").unwrap(), "Nuevo");
+        assert!(clean_heading("dos\nlíneas").is_err());
+        assert!(clean_heading("  ").is_err());
+    }
+
+    /// De punta a punta: leer una sección trae su porqué; renombrarla por id
+    /// manda el renombre; y una decisión se apunta y se enlaza a tareas (por
+    /// su referencia) y secciones, y se le quita un enlace.
+    #[test]
+    fn decisions_are_linked_to_tasks_and_sections() {
+        let (cfg, log) = fake_cac(|m, p, _| {
+            if p.starts_with("/api/v1/tasks/by-ref/") {
+                json!({ "task": { "id": "t-uuid" } })
+            } else if p.starts_with("/api/v1/docs/decisions/d9") {
+                json!({ "decision": { "id": "d9", "title": "x", "links": [
+                    { "id": "l1", "kind": "task", "taskId": "t-uuid", "taskRef": "cc-12", "taskTitle": "T" },
+                    { "id": "l2", "kind": "section", "sectionId": "s-correo", "heading": "Correo", "sectionRemoved": true, "tab": "runbook", "ownerKind": "space", "ownerId": "s1" }
+                ] }, "ownerKind": "space", "ownerId": "s1" })
+            } else if m == "POST" {
+                json!({ "decisions": [{ "id": "d3", "title": "x", "createdAt": "2026-10-29T09:00:00Z",
+                                        "links": [{ "id": "l9", "kind": "task", "taskRef": "cc-12" }] }] })
+            } else {
+                json!({ "doc": { "id": "doc1" },
+                        "tabs": [{ "key": "runbook", "body": RUNBOOK, "bodyHash": "hb", "sections": server_sections() }],
+                        "decisions": [{ "id": "d1", "title": "El correo sale por SES", "body": "Brevo perdía correos" }] })
+            }
+        });
+        let read = call_tool(&cfg, "get_doc", &json!({ "kind": "space", "ownerId": "s1", "tab": "runbook", "section": "Correo" })).unwrap();
+        assert_eq!(read["sectionId"], "s-correo");
+        assert_eq!(read["decisions"][0]["summary"], "Brevo perdía correos", "{read}");
+
+        let leido = read["sectionHash"].as_str().unwrap().to_string();
+        call_tool(&cfg, "write_doc_section", &json!({ "kind": "space", "ownerId": "s1", "tab": "runbook",
+            "section": "s-correo", "sectionHash": leido, "body": "Por SES.", "renameTo": "Correo saliente" })).unwrap();
+        let put = log.lock().unwrap().iter().find(|(m, _, _)| m == "PUT").map(|(_, _, b)| b.clone()).unwrap();
+        assert_eq!(put["sectionRenames"]["s-correo"], "Correo saliente");
+        assert!(put["body"].as_str().unwrap().contains("## Correo saliente"));
+
+        let rec = call_tool(&cfg, "record_decision", &json!({ "kind": "space", "ownerId": "s1", "title": "x",
+            "tasks": ["command-and-control-12", "7a1aa6b7-0792-4ef4-8192-21b4a163dbdb"], "sectionIds": ["s-correo"] })).unwrap();
+        assert_eq!(rec["links"][0]["ref"], "cc-12");
+        let posted = log.lock().unwrap().iter().rev().find(|(m, _, _)| m == "POST").map(|(_, _, b)| b.clone()).unwrap();
+        assert_eq!(posted["taskIds"], json!(["t-uuid", "7a1aa6b7-0792-4ef4-8192-21b4a163dbdb"]));
+        assert_eq!(posted["sectionIds"], json!(["s-correo"]));
+
+        let linked = call_tool(&cfg, "link_decision", &json!({ "id": "d9", "tasks": ["command-and-control-12"], "unlink": ["l2"] })).unwrap();
+        let calls: Vec<(String, String)> = log.lock().unwrap().iter().map(|(m, p, _)| (m.clone(), p.clone())).collect();
+        assert!(calls.contains(&("POST".into(), "/api/v1/docs/decisions/d9/links".into())));
+        assert!(calls.contains(&("DELETE".into(), "/api/v1/docs/decisions/d9/links/l2".into())));
+        assert_eq!(linked["links"][0]["ref"], "cc-12");
+        assert_eq!(linked["links"][1]["removed"], true, "una sección quitada tiene que decirlo: {linked}");
+        assert_eq!(linked["links"][1]["tab"], "runbook");
+
+        assert!(call_tool(&cfg, "link_decision", &json!({ "id": "d9" })).is_err(), "sin nada que hacer");
     }
 
     /// Roturas que detecta: mandar una referencia por la ruta del id (404 del
