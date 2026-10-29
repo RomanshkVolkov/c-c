@@ -171,9 +171,11 @@ miente, y la siguiente sesión cree que hay trabajo pendiente donde no lo hay.
    sin reclamar, `status: "in_progress"`; y si leíste la tarea hace rato,
    `ifStatus` con el estado que viste, para no pisar a nadie.
 
-**Una lista con `projectId` es de un cliente.** Lo que crees ahí lo ve ese
-cliente y gasta un número de su folio para siempre. Usa
-`visibility: "internal"`, salvo que el usuario diga que es para el cliente.
+**Una lista con `projectId` es de un cliente.** Lo que crees ahí con tu token
+nace **interno**: lo ve el equipo, no el cliente. Publícalo sólo cuando el
+usuario lo pida (`visibility: "public"` al crear, o `update_task` con
+`visibility: "public"` después): entonces sale en su tablero, gasta un número
+de su folio para siempre y le avisa.
 
 Por el camino:
 
@@ -190,7 +192,8 @@ Por el camino:
   truco, un número medido, un comando, algo que no funciona) va con
   `remember`: una línea con fecha en la página «Notas de agentes» del
   espacio, que la búsqueda encuentra (la fecha la pone cac: no la escribas). No es una decisión ni cambia el
-  runbook; si resulta ser una trampa, sube a «Trampas que ya han mordido».
+  runbook. Si es una trampa, `remember` con `as: "trap"`: va directo a
+  «Trampas que ya han mordido» (ver el paso 6).
 - **Una lista de pendientes son subtareas** (`subtasks` al crear, o
   `create_task` con `parentId` después), no texto en un comentario: así se ve
   qué está hecho. Cada una se marca con `update_task` y `status: "done"`.
@@ -257,7 +260,13 @@ En una rama, lo mismo con guiones: `proteus-12-login`.
   `append_doc_tab`. Si el token no tiene permiso, dile al usuario qué cambiar.
 - **Una trampa que te mordió** a ti y le morderá al siguiente va a «Trampas
   que ya han mordido» del overview del nodo, en tres o cuatro líneas: qué
-  pasó, por qué, y qué prueba lo guarda si la hay.
+  pasó, por qué, y qué prueba lo guarda si la hay. Con `remember` y
+  `as: "trap"` cae en esa sección aunque el nodo no tenga overview todavía (se
+  crean los dos); `append_doc_tab` con `section` hace lo mismo con cualquier
+  sección.
+- **Una decisión que vive en el nodo equivocado** se lleva al bueno
+  apuntándola allí con `supersedes` y el id de la vieja: puede ser de otro
+  nodo de la organización.
 - **El overview** sólo se toca si cambió de qué va el proyecto. No lo
   reescribas por estilo.
 
@@ -320,4 +329,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v15 -->
+<!-- cac-work v16 -->

@@ -1877,7 +1877,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "create_task",
-            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.\n\nIf the list belongs to a client's channel (list_task_spaces shows a projectId on it), anything created there is VISIBLE TO THAT CLIENT by default: it lands on their board, takes a number from their folio sequence — permanently, even if withdrawn later — and fires their webhook. Pass visibility:\"internal\" to keep it to the team.\n\nA checklist inside a task is its SUBTASKS: pass them as `subtasks` in this same call (or create each line later with parentId), and tick each off with update_task + status: done. Don't keep pending items as text in comments — nobody can tell which ones are done.",
+            "description": "Create a task in a list. Use list_task_spaces first to resolve the list name to its listId. Needs a token with the `tasks:write` scope.\n\nIf the list belongs to a client's channel (list_task_spaces shows a projectId on it), what you create there stays INTERNAL by default: the team sees it, the client does not. Publish it only when the user asks: pass visibility:\"public\" here, or later update_task with visibility:\"public\". Publishing puts it on their board, takes a number from their folio sequence — permanently, even if withdrawn later — and fires their webhook.\n\nA checklist inside a task is its SUBTASKS: pass them as `subtasks` in this same call (or create each line later with parentId), and tick each off with update_task + status: done. Don't keep pending items as text in comments — nobody can tell which ones are done.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1913,7 +1913,7 @@ fn tool_defs() -> Value {
                     "visibility": {
                         "type": "string",
                         "enum": ["public", "internal"],
-                        "description": "Only meaningful in a list bound to a client's channel. \"public\" (the default) puts it on their board and spends one of their folio numbers; \"internal\" keeps it to the team. In an unbound list everything is internal and this is ignored."
+                        "description": "Only meaningful in a list bound to a client's channel. \"internal\" (the default for a token) keeps it to the team; \"public\" puts it on their board and spends one of their folio numbers — only when the user asks for it. In an unbound list everything is internal and this is ignored."
                     },
                     "dryRun": {
                         "type": "boolean",
@@ -2212,7 +2212,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "append_doc_tab",
-            "description": "Add text to the end of a tab without touching what is already there. It cannot delete anything, so it is safe while somebody has the document open — but it only adds: to correct something that's already written, use write_doc_section, or the old version stays next to the new one. Answers with the tab's new bodyHash, not the document. Needs a token with the `docs:write` scope.",
+            "description": "Add text to the end of a tab — or, with `section`, to the end of that section of it (created at the end if missing) — without touching what is already there. It cannot delete anything, so it is safe while somebody has the document open — but it only adds: to correct something that's already written, use write_doc_section, or the old version stays next to the new one. Answers with the tab's new bodyHash, not the document. Needs a token with the `docs:write` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2220,6 +2220,7 @@ fn tool_defs() -> Value {
                     "ownerId": { "type": "string" },
                     "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"] },
                     "text": { "type": "string", "description": "Markdown. Lands after a blank line, so it reads as a new paragraph or section." },
+                    "section": { "type": "string", "description": "Optional. The heading text of the section to add to, e.g. \"Trampas que ya han mordido\"; the text goes at the end of that section, before the next heading of its level. If the tab has no such section it is created at the end." },
                     "dryRun": { "type": "boolean", "description": "Validate the target and the token's permission without writing." }
                 },
                 "required": ["kind", "ownerId", "tab", "text"]
@@ -2238,7 +2239,7 @@ fn tool_defs() -> Value {
                     "tag": { "type": "string", "description": "Optional: architecture, vendor, scope…" },
                     "decidedBy": { "type": "string", "description": "The name or username of the person in this organization who made the call, when it wasn't you. Signing it with the token's owner would say they decided it, which is what whoever reads it will believe." },
                     "originTaskId": { "type": "string", "description": "Optional. The task this decision came out of; the entry links back to it. It must be a real task in the same organization, or the entry is refused — the log can't be edited, so a link to nothing would stay forever. One task per decision." },
-                    "supersedes": { "type": "string", "description": "Optional. The id of the decision of this same document that this one replaces (from get_context, get_doc tab: decisions, or a search hit). It must still be in force: a decision already superseded names the one that replaced it instead." },
+                    "supersedes": { "type": "string", "description": "Optional. The id of the decision that this one replaces (from get_context, get_doc tab: decisions, or a search hit). It may live in another node of the same organization: that is how a decision is moved to where people look for it — record it again on the right node, superseding the old one. It must still be in force: a decision already superseded names the one that replaced it instead." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "title"]
@@ -2246,13 +2247,14 @@ fn tool_defs() -> Value {
         },
         {
             "name": "remember",
-            "description": "Write down one fact for whoever works on this space next: a measured number, a trick that worked, a dead end, a command. It goes as one dated line into the space's \"Notas de agentes\" page (created the first time), which search covers like any page. Not for decisions (record_decision), not for how things are done (the runbook), not for what belongs in a task's thread (add_task_comment). Needs `docs:write`.",
+            "description": "Write down one fact for whoever works on this space next: a measured number, a trick that worked, a dead end, a command. It goes as one dated line into the space's \"Notas de agentes\" page (created the first time), which search covers like any page. With `as: \"trap\"` it goes instead to the section \"Trampas que ya han mordido\" of the node's overview (both created if missing): for something that already broke and will break the next one — what happened, why, and the test that guards it if there is one. Not for decisions (record_decision), not for how things are done (the runbook), not for what belongs in a task's thread (add_task_comment). Needs `docs:write`.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"], "description": "Optional; space when omitted." },
                     "ownerId": { "type": "string", "description": "The node's id, or its path as the map shows it." },
                     "text": { "type": "string", "description": "One line, markdown, as it should read in a year: what, where, and the number or the command. Do not write the date: it is added." },
+                    "as": { "type": "string", "enum": ["note", "trap"], "description": "Optional; note when omitted. trap: into \"Trampas que ya han mordido\" of the overview, instead of the agents' notes page." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["ownerId", "text"]
@@ -2297,15 +2299,15 @@ fn tool_defs() -> Value {
         },
         {
             "name": "write_doc_tab",
-            "description": "Replace a whole tab's markdown. To change one heading, use write_doc_section instead — rewriting 50 000 characters to fix a paragraph is how work gets lost. Pass the tab's `bodyHash` from get_doc; without a matching hash the save is refused, because somebody may have written into it since. On a refusal the result carries `conflict: true` and that tab's current text, so merge and send again. Answers with the new bodyHash, not the document. Needs a token with the `docs:manage` scope.",
+            "description": "Replace a whole tab's markdown. To change one heading, use write_doc_section instead — rewriting 50 000 characters to fix a paragraph is how work gets lost. Pass the tab's `bodyHash` from get_doc as `baseHash`; without a matching hash the save is refused, because somebody may have written into it since. On a refusal the result carries `conflict: true` and that tab's current text, so merge and send again. Answers with the new bodyHash, not the document. Needs a token with the `docs:manage` scope.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "kind": { "type": "string", "enum": ["space", "folder", "list"] },
                     "ownerId": { "type": "string" },
                     "tab": { "type": "string", "enum": ["overview", "runbook", "decisions", "links"] },
-                    "body": { "type": "string", "description": "Markdown. Replaces the section entirely." },
-                    "baseHash": { "type": "string", "description": "The `bodyHash` this section had when you read it. Omit only for a section that has never been saved." },
+                    "body": { "type": "string", "description": "Markdown. Replaces the whole tab." },
+                    "baseHash": { "type": "string", "description": "The tab's `bodyHash` as get_doc gave it when you read it. Omit only for a tab that has never been saved." },
                     "dryRun": { "type": "boolean" }
                 },
                 "required": ["kind", "ownerId", "tab", "body"]
@@ -3276,6 +3278,18 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
             if arg_bool(args, "dryRun") {
                 return dry_run(cfg, "docs:write", api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")));
             }
+            // Una trampa va a su sección del overview, donde la busca quien
+            // llega (get_context enseña sus títulos), y no a las notas, donde
+            // esperaba a que cac-consolidar la subiera (command-and-control-252).
+            if arg_str(args, "as").as_deref() == Some("trap") {
+                let line = format!("- {}", strip_leading_date(&text.trim().replace('\n', " ")));
+                api_post(
+                    cfg,
+                    &format!("/api/v1/docs/{kind}/{id}/tabs/overview/append"),
+                    json!({ "body": line, "section": TRAPS_SECTION }),
+                )?;
+                return Ok(json!({ "remembered": true, "as": "trap", "tab": "overview", "section": TRAPS_SECTION, "line": line }));
+            }
             let page = agent_notes_page(cfg, &kind, &id)?;
             let line = format!("- {} · {}", today_utc(), strip_leading_date(&text.trim().replace('\n', " ")));
             api_post(cfg, &format!("/api/v1/docs/{kind}/{id}/pages/{}/append", urlencode(&page)), json!({ "text": line }))?;
@@ -3926,7 +3940,11 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     api_get(cfg, &format!("/api/v1/docs/{kind}/{id}")),
                 );
             }
-            let out = api_post(cfg, &path, json!({ "body": text }))?;
+            let mut body = json!({ "body": text });
+            if let Some(sec) = arg_str(args, "section") {
+                body["section"] = json!(sec);
+            }
+            let out = api_post(cfg, &path, body)?;
             Ok(short_tab_write(&out, &tab))
         }
 
@@ -4916,6 +4934,10 @@ fn handle(req: &Value, cfg: &Result<Cfg, String>) -> Option<Value> {
         other => Some(err(id, -32601, format!("method not found: {other}"))),
     }
 }
+
+/// La sección del overview donde va lo que ya mordió a alguien. El nombre es
+/// el que buscan la skill cac-work y las instrucciones del MCP.
+const TRAPS_SECTION: &str = "Trampas que ya han mordido";
 
 /// Tools that run entirely on this machine and never call cac, so they work
 /// with no token configured at all.
@@ -6570,6 +6592,22 @@ mod tests {
         assert_eq!(civil_date(951_782_400), "2000-02-29");
         assert_eq!(civil_date(1_767_225_599), "2025-12-31");
         assert_eq!(civil_date(1_792_627_200), "2026-10-22");
+    }
+
+    /// Una trampa va a su sección del overview, no a las notas. Roturas que
+    /// detecta: ignorar `as` (acaba en «Notas de agentes»), mandarla al final
+    /// de la pestaña sin sección, o perder el texto.
+    #[test]
+    fn remember_a_trap_goes_to_its_section_of_the_overview() {
+        let (cfg, log) = fake_cac(|_, _, _| json!({ "ok": true }));
+        let out = call_tool(&cfg, "remember", &json!({ "ownerId": "s1", "as": "trap", "text": "El 404 de un adjunto era el token personal." })).unwrap();
+        assert_eq!(out["as"], "trap");
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 1, "{log:?}");
+        let (m, p, body) = &log[0];
+        assert_eq!((m.as_str(), p.as_str()), ("POST", "/api/v1/docs/space/s1/tabs/overview/append"));
+        assert_eq!(body["section"], "Trampas que ya han mordido");
+        assert_eq!(body["body"], "- El 404 de un adjunto era el token personal.");
     }
 
     /// Roturas que detecta: reclamar por la ruta de editar (no es atómico);
