@@ -269,3 +269,43 @@ func (r *ContextRepository) OrgName(orgID string) string {
 	r.db.Table("organizations").Select("name").Where("id = ?", orgID).Scan(&name)
 	return name
 }
+
+// ContextSection: una sección viva de una pestaña, para el mapa.
+type ContextSection struct {
+	ID, Heading string
+	Decisions   []string
+}
+
+// TabSections: las secciones vivas de las pestañas de unos documentos, por
+// "docID|pestaña" y su puesto, con sus decisiones vigentes.
+func (r *ContextRepository) TabSections(docIDs []string) (map[string]map[int]ContextSection, error) {
+	out := map[string]map[int]ContextSection{}
+	if len(docIDs) == 0 {
+		return out, nil
+	}
+	var rows []domain.DocSection
+	if err := r.db.Where("doc_id IN ? AND page_id IS NULL AND removed_at IS NULL", docIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(rows))
+	for i, s := range rows {
+		ids[i] = s.ID
+	}
+	decisions, err := NewDocRepository(r.db).SectionDecisions(ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range rows {
+		k := s.DocID + "|" + string(s.Tab)
+		if out[k] == nil {
+			out[k] = map[int]ContextSection{}
+		}
+		c := ContextSection{ID: s.ID, Heading: s.Heading}
+		for _, d := range decisions[s.ID] {
+			c.Decisions = append(c.Decisions, d.ID)
+		}
+		out[k][s.Ordinal] = c
+	}
+	return out, nil
+}

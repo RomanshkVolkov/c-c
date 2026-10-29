@@ -61,6 +61,9 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		// quien esté escribiendo, y el registro es append-only por diseño.
 		{http.MethodPost, "/api/v1/docs/list/abc/tabs/runbook/append", domain.ScopeDocsWrite},
 		{http.MethodPost, "/api/v1/docs/space/abc/decisions", domain.ScopeDocsWrite},
+		// Enlazar una decisión añade; quitar un enlace cambia lo que dice (#91).
+		{http.MethodPost, "/api/v1/docs/decisions/d1/links", domain.ScopeDocsWrite},
+		{http.MethodDelete, "/api/v1/docs/decisions/d1/links/l1", domain.ScopeDocsManage},
 		// Pedir una revisión sólo añade (#92): con `docs:write`, no `docs:manage`.
 		{http.MethodPost, "/api/v1/docs/list/abc/review-request", domain.ScopeDocsWrite},
 		// Páginas: crear y añadir sólo añaden; pisar, mover, papelera y

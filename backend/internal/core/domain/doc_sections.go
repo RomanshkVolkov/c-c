@@ -285,4 +285,6 @@ type DocSectionView struct {
 	Heading string `json:"heading"`
 	Level   int    `json:"level"`
 	Index   int    `json:"index"`
+	// Decisions: las vigentes que se aplican aquí. El porqué de la sección.
+	Decisions []DecisionRef `json:"decisions,omitempty"`
 }

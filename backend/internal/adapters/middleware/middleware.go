@@ -305,6 +305,8 @@ var patWritable = []struct {
 	// registro de decisiones es append-only por diseño.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/tabs/[^/]+/append/?$`), domain.ScopeDocsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/decisions/?$`), domain.ScopeDocsWrite},
+	// Enlazar una decisión a una tarea o una sección también sólo añade (#91).
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/decisions/[^/]+/links/?$`), domain.ScopeDocsWrite},
 	// Pedir una revisión, con el permiso de añadir y no con el de pisar: no toca
 	// el contenido ni afirma nada sobre él, sólo avisa de que hay algo que mirar.
 	// Firmarla sigue fuera del alcance de cualquier token (#84, #92).
@@ -379,6 +381,8 @@ var patWritable = []struct {
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/move/?$`), domain.ScopeDocsManage},
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+$`), domain.ScopeDocsManage},
+	// Quitar un enlace de una decisión cambia a qué dice aplicarse (#91).
+	{http.MethodDelete, regexp.MustCompile(`^/api/v1/docs/decisions/[^/]+/links/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/restore/?$`), domain.ScopeDocsManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/versions/[^/]+/restore/?$`), domain.ScopeDocsManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/reports/[^/]+$`), domain.ScopeReportsManage},

@@ -944,6 +944,12 @@ func (s *TaskService) Detail(id string) (*domain.TaskDetail, error) {
 	if t.HandoffByID != "" {
 		detail.HandoffBy = s.repo.DisplayName(t.HandoffByID)
 	}
+	// Las decisiones que se le aplican (#91). Como los bloqueos: si fallan,
+	// la tarea se abre igual.
+	detail.Decisions = []domain.DecisionRef{}
+	if ds, err := s.repo.Decisions(id); err == nil {
+		detail.Decisions = ds
+	}
 	detail.BlockedBy = []domain.TaskBlocker{}
 	if blockers, err := s.repo.BlockersOf(id); err == nil {
 		for _, b := range blockers {

@@ -220,6 +220,11 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.Cal
 		// `/{kind}/{ownerId}`: chi prefiere el tramo fijo, y «decisions» no es
 		// una clase de nodo.
 		r.Get("/decisions/{id}", docH.GetDecision)
+		// A qué se aplica una decisión: enlazar y quitar (#91), y buscar las
+		// secciones que se pueden enlazar.
+		r.Post("/decisions/{id}/links", docH.LinkDecision)
+		r.Delete("/decisions/{id}/links/{linkId}", docH.UnlinkDecision)
+		r.Get("/sections", docH.Sections) // ?orgId=&q=
 		r.Get("/{kind}/{ownerId}", docH.Get)
 		// El guardado entero se queda: una app de una versión anterior lo sigue
 		// usando, y escribe en la pestaña que le corresponde.

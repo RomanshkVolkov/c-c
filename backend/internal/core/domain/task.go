@@ -612,6 +612,9 @@ type Decision struct {
 	SupersedesID string `gorm:"type:varchar(36);index" json:"supersedesId,omitempty"`
 	// SupersededByID se resuelve al leer: la decisión que dejó a ésta sin efecto.
 	SupersededByID string `gorm:"-" json:"supersededById,omitempty"`
+	// Links: las tareas y secciones a las que se aplica, vivas, resueltas al
+	// leer. Ver `DecisionLink`.
+	Links []DecisionLinkView `gorm:"-" json:"links"`
 }
 
 // DecisionRequest es una decisión tal como la manda quien la toma.
@@ -635,6 +638,10 @@ type DecisionRequest struct {
 	// Supersedes: el id de la decisión del mismo documento que ésta sustituye.
 	// Ver `Decision.SupersedesID`.
 	Supersedes string `json:"supersedes" validate:"omitempty,max=36"`
+	// TaskIDs y SectionIDs: a qué se aplica, además del origen. Ver
+	// `DecisionLink`.
+	TaskIDs    []string `json:"taskIds"    validate:"max=50,dive,max=36"`
+	SectionIDs []string `json:"sectionIds" validate:"max=50,dive,max=36"`
 }
 
 // DocPatchSignsAReview dice si este cambio incluye firmar una revisión.
@@ -1204,6 +1211,9 @@ type TaskDetail struct {
 	HandoffBy string `json:"handoffBy,omitempty"`
 	// BlockedBy: de qué tareas depende, y si siguen abiertas. Ver ItemBlock.
 	BlockedBy []TaskBlocker `json:"blockedBy"`
+	// Decisions: las decisiones enlazadas a esta tarea, vigentes o no (una
+	// sustituida lo dice). Ver DecisionLink.
+	Decisions []DecisionRef `json:"decisions"`
 	// Telemetry is the decrypted breadcrumbs blob, when the report carried one
 	// and it hasn't been purged. The report facade has always returned this; the
 	// board could not show what led up to a bug without it.

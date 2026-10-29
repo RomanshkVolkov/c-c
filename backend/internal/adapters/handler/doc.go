@@ -13,6 +13,7 @@ import (
 	"github.com/guz-studio/cac/backend/internal/adapters/mediastore"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	lg "github.com/guz-studio/cac/backend/internal/core/logger"
+	"github.com/guz-studio/cac/backend/internal/core/repository"
 	"github.com/guz-studio/cac/backend/internal/core/service"
 )
 
@@ -25,6 +26,9 @@ type DocHandler interface {
 	Versions(w http.ResponseWriter, r *http.Request)
 	AddDecision(w http.ResponseWriter, r *http.Request)
 	GetDecision(w http.ResponseWriter, r *http.Request)
+	LinkDecision(w http.ResponseWriter, r *http.Request)
+	UnlinkDecision(w http.ResponseWriter, r *http.Request)
+	Sections(w http.ResponseWriter, r *http.Request)
 	RequestReview(w http.ResponseWriter, r *http.Request)
 	AppendTab(w http.ResponseWriter, r *http.Request)
 	Restore(w http.ResponseWriter, r *http.Request)
@@ -263,28 +267,117 @@ type decisionResponse struct {
 // leerse dentro de un año» no lo leía nadie. Quien no es de su organización
 // recibe 404, como con el documento.
 func (h *docHandler) GetDecision(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(r)
+	d, doc, ok := h.decisionHere(w, r)
 	if !ok {
-		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
-		return
-	}
-	d, err := h.svc.Decision(chi.URLParam(r, "id"))
-	if err != nil || d == nil {
-		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
-		return
-	}
-	doc, err := h.svc.FindByID(d.DocID)
-	if err != nil || doc == nil {
-		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
-		return
-	}
-	if _, member := user.RoleInOrg(doc.OrgID); !member && !user.Superadmin {
-		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[decisionResponse]{Success: true, Data: decisionResponse{
 		Decision: d, OwnerKind: doc.OwnerKind, OwnerID: doc.OwnerID, OrgID: doc.OrgID,
 	}})
+}
+
+// decisionHere: la decisión de la ruta, si quien llama es de su org. Si no,
+// 404, como con el documento.
+func (h *docHandler) decisionHere(w http.ResponseWriter, r *http.Request) (*domain.Decision, *domain.Doc, bool) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return nil, nil, false
+	}
+	d, err := h.svc.Decision(chi.URLParam(r, "id"))
+	if err != nil || d == nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return nil, nil, false
+	}
+	doc, err := h.svc.FindByID(d.DocID)
+	if err != nil || doc == nil {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return nil, nil, false
+	}
+	if _, member := user.RoleInOrg(doc.OrgID); !member && !user.Superadmin {
+		SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+		return nil, nil, false
+	}
+	return d, doc, true
+}
+
+// LinkDecision enlaza una decisión que ya existe a tareas o secciones de su
+// org (command-and-control-91). Contesta con la decisión, ya con sus enlaces.
+func (h *docHandler) LinkDecision(w http.ResponseWriter, r *http.Request) {
+	d, doc, ok := h.decisionHere(w, r)
+	if !ok {
+		return
+	}
+	req, err := ValidateRequest[domain.DecisionLinksRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	user, _ := currentUser(r)
+	if err := h.svc.LinkDecision(d.ID, doc.OrgID, user.UserID, domain.ViaFrom(r.Context()), req); err != nil {
+		if errors.Is(err, service.ErrDecisionLinkNotHere) {
+			SendErrorResponse(w, http.StatusBadRequest,
+				"A task or section to link is not in this organization", "decision-link-not-here")
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to link the decision", err.Error())
+		return
+	}
+	h.sendDecision(w, d.ID, doc)
+}
+
+// UnlinkDecision quita un enlace. No lo borra: lo marca (ver DecisionLink).
+func (h *docHandler) UnlinkDecision(w http.ResponseWriter, r *http.Request) {
+	d, doc, ok := h.decisionHere(w, r)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	if err := h.svc.UnlinkDecision(d.ID, chi.URLParam(r, "linkId"), user.UserID); err != nil {
+		if errors.Is(err, repository.ErrDecisionLinkNotFound) {
+			SendErrorResponse(w, http.StatusNotFound, "Not found", "not-found")
+			return
+		}
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to unlink the decision", err.Error())
+		return
+	}
+	h.sendDecision(w, d.ID, doc)
+}
+
+func (h *docHandler) sendDecision(w http.ResponseWriter, id string, doc *domain.Doc) {
+	d, err := h.svc.Decision(id)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to read the decision", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[decisionResponse]{Success: true, Data: decisionResponse{
+		Decision: d, OwnerKind: doc.OwnerKind, OwnerID: doc.OwnerID, OrgID: doc.OrgID,
+	}})
+}
+
+// Sections busca secciones de una org por su título, para enlazarlas a una
+// decisión (`?orgId=&q=`).
+func (h *docHandler) Sections(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	orgID := r.URL.Query().Get("orgId")
+	if orgID == "" {
+		SendErrorResponse(w, http.StatusBadRequest, "orgId is required", "no-org")
+		return
+	}
+	if _, member := user.RoleInOrg(orgID); !member && !user.Superadmin {
+		SendResult(w, http.StatusOK, domain.APIResponse[[]domain.DocSectionHit]{Success: true, Data: []domain.DocSectionHit{}})
+		return
+	}
+	hits, err := h.svc.SearchSections(orgID, r.URL.Query().Get("q"))
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to search sections", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.DocSectionHit]{Success: true, Data: hits})
 }
 
 func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
@@ -308,6 +401,11 @@ func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, service.ErrDecisionOriginNotHere) {
 			SendErrorResponse(w, http.StatusBadRequest,
 				"That task does not exist in this organization", "decision-origin-not-here")
+			return
+		}
+		if errors.Is(err, service.ErrDecisionLinkNotHere) {
+			SendErrorResponse(w, http.StatusBadRequest,
+				"A task or section to link is not in this organization", "decision-link-not-here")
 			return
 		}
 		if errors.Is(err, service.ErrDecisionSupersedesNotHere) {

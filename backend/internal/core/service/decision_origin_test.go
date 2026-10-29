@@ -45,9 +45,12 @@ func decisionDB(t *testing.T) (*gorm.DB, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.Doc{}, &domain.DocTab{}, &domain.Decision{}, &domain.Item{}); err != nil {
+	if err := db.AutoMigrate(&domain.Doc{}, &domain.DocTab{}, &domain.DocVersion{}, &domain.Decision{}, &domain.Item{},
+		&domain.DocPage{}, &domain.DocSection{}, &domain.DecisionLink{},
+		&domain.TaskSpace{}, &domain.TaskFolder{}, &domain.TaskList{}, &domain.ReportProject{}); err != nil {
 		t.Fatal(err)
 	}
+	repository.EnsureDecisionLinkIndexes(db)
 	for _, x := range []struct{ id, org string }{
 		{"task-aqui", "org-1"},
 		{"task-ajena", "org-2"},

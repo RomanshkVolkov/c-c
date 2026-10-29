@@ -1486,3 +1486,8 @@ func (r *TaskRepository) DisplayName(userID string) string {
 func (r *TaskRepository) GitLinks(itemID string) (*domain.TaskGitLinks, error) {
 	return GitLinksOf(r.db, itemID)
 }
+
+// Decisions: las decisiones enlazadas a una tarea (ver DocRepository.TaskDecisions).
+func (r *TaskRepository) Decisions(taskID string) ([]domain.DecisionRef, error) {
+	return NewDocRepository(r.db).TaskDecisions(taskID)
+}

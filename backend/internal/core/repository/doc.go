@@ -687,11 +687,25 @@ func (r *DocRepository) Decisions(docID string) ([]domain.Decision, error) {
 		return nil, err
 	}
 	by := r.supersededBy(docID)
+	ids := make([]string, len(out))
+	for i := range out {
+		ids[i] = out[i].ID
+	}
+	// Los enlaces son un extra: si fallan, el registro se lee igual.
+	links, _ := r.decisionLinks(ids)
 	for i := range out {
 		r.resolveDecision(&out[i])
 		out[i].SupersededByID = by[out[i].ID]
+		out[i].Links = orEmpty(links[out[i].ID])
 	}
 	return out, nil
+}
+
+func orEmpty(l []domain.DecisionLinkView) []domain.DecisionLinkView {
+	if l == nil {
+		return []domain.DecisionLinkView{}
+	}
+	return l
 }
 
 // DocOrgID: la org de un documento, o "" si no existe.
@@ -709,6 +723,8 @@ func (r *DocRepository) DecisionByID(id string) (*domain.Decision, error) {
 	}
 	r.resolveDecision(&d)
 	d.SupersededByID = r.supersededBy(d.DocID)[d.ID]
+	links, _ := r.decisionLinks([]string{d.ID})
+	d.Links = orEmpty(links[d.ID])
 	return &d, nil
 }
 

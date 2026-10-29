@@ -77,6 +77,11 @@ func SearchSection(body, query string) string {
 type MarkdownHeading struct {
 	Text  string `json:"text"`
 	Level int    `json:"level"`
+	// ID: el de su sección (ver DocSection), cuando se sabe. Decisions: los
+	// ids de las decisiones vigentes que se le aplican; el cuerpo, con
+	// `get_decision`.
+	ID        string   `json:"id,omitempty"`
+	Decisions []string `json:"decisions,omitempty"`
 }
 
 // MarkdownHeadings: los títulos de un markdown hasta el nivel `maxLevel`, con

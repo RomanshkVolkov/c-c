@@ -126,6 +126,9 @@ func (r *DocRepository) liveSections(docID string) (map[string][]domain.DocSecti
 		}
 		out[k] = append(out[k], domain.DocSectionView{ID: s.ID, Heading: s.Heading, Level: s.Level, Index: s.Ordinal})
 	}
+	for _, views := range out {
+		r.withSectionDecisions(views)
+	}
 	return out, nil
 }
 
@@ -206,5 +209,6 @@ func (r *DocRepository) PageSections(docID, pageID string) ([]domain.DocSectionV
 	for i, s := range rows {
 		out[i] = domain.DocSectionView{ID: s.ID, Heading: s.Heading, Level: s.Level, Index: s.Ordinal}
 	}
+	r.withSectionDecisions(out)
 	return out, nil
 }

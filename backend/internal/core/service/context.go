@@ -323,11 +323,14 @@ func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap, docs [
 	for i, k := range domain.DocTabKeys {
 		order[k] = i
 	}
+	// Las secciones con su id y sus decisiones son un extra: si fallan, el
+	// mapa sale con los títulos solos, como antes.
+	sections, _ := s.repo.TabSections(docIDs)
 	for _, t := range tabs {
 		d := get(t.DocID)
 		d.Tabs = append(d.Tabs, domain.ContextTab{
 			Key: t.Key, Chars: len([]rune(t.Body)),
-			Headings: domain.MarkdownHeadings(t.Body, domain.ContextMaxHeadingLevel),
+			Headings: contextHeadings(t.Body, sections[t.DocID+"|"+string(t.Key)]),
 		})
 	}
 	for _, d := range built {
@@ -374,4 +377,23 @@ func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap, docs [
 
 func (s *ContextService) FindSpace(id string) (*domain.TaskSpace, error) {
 	return s.tasks.FindSpace(id)
+}
+
+// contextHeadings: los títulos de una pestaña hasta el nivel del mapa, cada
+// uno con el id de su sección y sus decisiones. Se emparejan por su puesto en
+// la pestaña, y sólo si el título casa: una sección atrasada (ver
+// `DocRepository.syncSections`) sale sin id antes que con el de otra.
+func contextHeadings(body string, secs map[int]repository.ContextSection) []domain.MarkdownHeading {
+	out := []domain.MarkdownHeading{}
+	for _, p := range domain.SplitSections(body) {
+		if p.Level > domain.ContextMaxHeadingLevel {
+			continue
+		}
+		h := domain.MarkdownHeading{Text: p.Heading, Level: p.Level}
+		if s, ok := secs[p.Index]; ok && s.Heading == p.Heading {
+			h.ID, h.Decisions = s.ID, s.Decisions
+		}
+		out = append(out, h)
+	}
+	return out
 }

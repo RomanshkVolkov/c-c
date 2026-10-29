@@ -257,6 +257,14 @@ func (s *DocService) AddDecision(
 			return nil, ErrDecisionAlreadySuperseded
 		}
 	}
+	// A qué se aplica: el origen y lo que se nombre, todo de esta org y vivo.
+	taskIDs := append([]string{}, req.TaskIDs...)
+	if domain.DecisionOrigin(req.Origin) == domain.DecisionFromTask {
+		taskIDs = append([]string{req.OriginTaskID}, taskIDs...)
+	}
+	if err := s.linksAreHere(orgID, req.TaskIDs, req.SectionIDs); err != nil {
+		return nil, err
+	}
 	d := &domain.Decision{
 		SupersedesID: supersedes,
 		DocID:        doc.ID, Title: strings.TrimSpace(req.Title), Body: req.Body,
@@ -267,7 +275,58 @@ func (s *DocService) AddDecision(
 		OriginChannelID: req.OriginChannelID,
 		OriginCommentID: commentID,
 	}
-	return s.repo.AddDecision(d)
+	return s.repo.AddDecisionWithLinks(d, orgID, taskIDs, req.SectionIDs)
+}
+
+// ErrDecisionLinkNotHere: una tarea o una sección que se quiere enlazar no
+// existe, ya no está, o es de otra organización. El enlace se quedaría
+// mintiendo en un registro que no se borra.
+var ErrDecisionLinkNotHere = errors.New("that task or section is not in this organization")
+
+// linksAreHere comprueba que cada tarea y cada sección es de la org y sigue
+// viva. Los errores de la base se devuelven, no se toman por «no está».
+func (s *DocService) linksAreHere(orgID string, taskIDs, sectionIDs []string) error {
+	for _, id := range taskIDs {
+		org, err := s.repo.TaskOrgID(id)
+		if err != nil {
+			return err
+		}
+		if org == "" || org != orgID {
+			return ErrDecisionLinkNotHere
+		}
+	}
+	for _, id := range sectionIDs {
+		org, err := s.repo.SectionOrgID(id)
+		if err != nil {
+			return err
+		}
+		if org == "" || org != orgID {
+			return ErrDecisionLinkNotHere
+		}
+	}
+	return nil
+}
+
+// LinkDecision enlaza una decisión que ya existe a más tareas o secciones de
+// su org. `orgID` es la de la decisión, que comprueba quien llama.
+func (s *DocService) LinkDecision(decisionID, orgID, userID, via string, req domain.DecisionLinksRequest) error {
+	if len(req.TaskIDs) == 0 && len(req.SectionIDs) == 0 {
+		return nil
+	}
+	if err := s.linksAreHere(orgID, req.TaskIDs, req.SectionIDs); err != nil {
+		return err
+	}
+	return s.repo.LinkDecision(decisionID, orgID, req.TaskIDs, req.SectionIDs, userID, via)
+}
+
+// SearchSections: secciones de la org por su título, para enlazarlas.
+func (s *DocService) SearchSections(orgID, q string) ([]domain.DocSectionHit, error) {
+	return s.repo.SearchSections(orgID, strings.TrimSpace(q), 20)
+}
+
+// UnlinkDecision quita un enlace, marcándolo. Ver `DecisionLink`.
+func (s *DocService) UnlinkDecision(decisionID, linkID, userID string) error {
+	return s.repo.UnlinkDecision(decisionID, linkID, userID)
 }
 
 // DecisionFromTask apunta una decisión tomada dentro de una tarjeta.

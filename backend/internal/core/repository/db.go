@@ -163,7 +163,7 @@ func DBConnection() {
 		// Las llamadas, guardadas (ver domain/call_session.go).
 		&domain.CallSession{}, &domain.CallSessionParticipant{}, &domain.CallMessage{},
 		// Las páginas de documentación (ver domain/doc_page.go).
-		&domain.DocPage{}, &domain.DocPageVersion{}, &domain.DocSection{},
+		&domain.DocPage{}, &domain.DocPageVersion{}, &domain.DocSection{}, &domain.DecisionLink{},
 		// Lo que GitHub tiene enlazado a cada tarea (ver domain/github.go).
 		&domain.TaskGitLink{},
 	); err != nil {
@@ -258,6 +258,8 @@ func DBConnection() {
 	canonicalizeItemPriorities(db)
 	backfillDocTabs(db)
 	backfillDocSections(db)
+	EnsureDecisionLinkIndexes(db)
+	BackfillDecisionOriginLinks(db)
 	// Cada intento de un run, con su hora. Ver FixRunTimes.
 	if err := FixRunTimes(db); err != nil {
 		lg.Warn("activity: could not date run attempts: " + err.Error())
