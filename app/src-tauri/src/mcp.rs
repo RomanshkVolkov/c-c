@@ -81,6 +81,69 @@ fn api_get(cfg: &Cfg, path: &str) -> Result<Value, String> {
     })
 }
 
+/// La ruta de cac de un adjunto, o un error. `get_attachment` manda el token,
+/// así que sólo pide rutas de la API de este cac: una URL de otro sitio se
+/// llevaría el token con ella. Vale la ruta tal como la dan get_task o
+/// get_note (`/api/v1/…`) o la URL entera con la base de este cac.
+fn cac_path(base: &str, url: &str) -> Result<String, String> {
+    let url = url.trim();
+    let path = match url.strip_prefix(base) {
+        Some(rest) => rest,
+        None => url,
+    };
+    if !path.starts_with("/api/v1/") || path.contains("..") {
+        return Err(format!(
+            "{url} is not a cac attachment: pass the `url` exactly as get_task, get_note or get_report gave it (/api/v1/…)"
+        ));
+    }
+    Ok(path.to_string())
+}
+
+/// El nombre de `Content-Disposition` (`inline; filename="a.csv"`), como lo
+/// escribe `setFileHeaders` en el backend.
+fn filename_from_disposition(d: &str) -> Option<String> {
+    let rest = &d[d.find("filename=")? + "filename=".len()..];
+    let name = rest.split(';').next()?.trim().trim_matches('"');
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// GET de un fichero: los bytes, su tipo y su `Content-Disposition`.
+fn api_download(cfg: &Cfg, path: &str) -> Result<(Vec<u8>, String, Option<String>), String> {
+    let url = format!("{}{}", cfg.base, path);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let res = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", cfg.token))
+            .header(VIA_HEADER, VIA_MCP)
+            .send()
+            .await
+            .map_err(|e| format!("request failed: {e}"))?;
+        let status = res.status();
+        if !status.is_success() {
+            // El backend contesta 404 también a lo que no puedes ver: no
+            // confirma que exista algo de otra org.
+            return Err(format!(
+                "cac returned {status} for {path}: it does not exist, or this token's organizations cannot see it"
+            ));
+        }
+        let header = |k: reqwest::header::HeaderName| {
+            res.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_string)
+        };
+        let content_type = header(reqwest::header::CONTENT_TYPE).unwrap_or_default();
+        let disposition = header(reqwest::header::CONTENT_DISPOSITION);
+        let bytes = res.bytes().await.map_err(|e| format!("download failed: {e}"))?;
+        Ok((bytes.to_vec(), content_type, disposition))
+    })
+}
+
 fn api_post(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
     api_write(cfg, "POST", path, body)
 }
@@ -1605,6 +1668,18 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "get_attachment",
+            "description": "Download a file that cac shows you, to read it: an attachment of a task or a note (the `url` in get_task, get_note) or a screenshot of a report (get_report). It is saved on this machine and the answer gives its `path`: open it from there (an image is read as an image, a CSV or a spreadsheet as a file). Only cac's own paths (`/api/v1/…`) are fetched, with your token; any other address is refused, so the token never leaves for somewhere else.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": { "type": "string", "description": "The attachment's `url` exactly as cac gave it (`/api/v1/tasks/…/attachments/…/raw`)." },
+                    "dir": { "type": "string", "description": "Folder to save it in. Defaults to a `cac-attachments` folder in the system's temporary directory. A file already there is never overwritten: the new one is saved as `name (2).ext`." }
+                },
+                "required": ["url"]
+            }
+        },
+        {
             "name": "list_servers",
             "description": "The servers cac manages (Docker Swarm or Kubernetes), with their id, name, type and status. Use it to find the serverId the deploy tools take.",
             "inputSchema": { "type": "object", "properties": {} }
@@ -2814,6 +2889,32 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 })
                 .collect();
             Ok(json!({ "total": data.get("total"), "reports": rows }))
+        }
+
+        "get_attachment" => {
+            let url = arg_str(args, "url").ok_or("url is required")?;
+            let path = cac_path(&cfg.base, &url)?;
+            let (bytes, content_type, disposition) = api_download(cfg, &path)?;
+            let name = disposition
+                .as_deref()
+                .and_then(filename_from_disposition)
+                .unwrap_or_else(|| "attachment".to_string());
+            let dir = arg_str(args, "dir")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::temp_dir().join("cac-attachments"));
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+            // El nombre lo eligió quien subió el adjunto: que no salga de `dir`
+            // ni pise lo que ya hay. Los mismos dos que usa la app al bajar.
+            let out = crate::free_name(&dir, &crate::safe_file_name(&name));
+            std::fs::write(&out, &bytes)
+                .map_err(|e| format!("Could not write {}: {e}", out.display()))?;
+            Ok(json!({
+                "path": out.to_string_lossy(),
+                "fileName": name,
+                "contentType": content_type,
+                "bytes": bytes.len(),
+            }))
         }
 
         "get_report" => {
@@ -4536,6 +4637,45 @@ fn summarize_timeline(data: &Value, detail: &Value) -> Value {
         "events": other,
         "note": "Severity comes from the server (same as the app). Errors and warnings are verbatim; successful traffic is grouped by endpoint+status; device.state is the latest stored state, flattened. Raise `limit` or narrow with since/types/minSeverity."
     })
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+
+    // `get_attachment` manda el token: sólo a este cac. Una URL de otro sitio,
+    // o una ruta que no es de la API, se rechaza antes de pedir nada.
+    #[test]
+    fn the_token_only_goes_to_this_cac() {
+        let base = "https://cac.guz-studio.dev";
+        let raw = "/api/v1/tasks/t/attachments/a/raw";
+        assert_eq!(cac_path(base, raw).unwrap(), raw);
+        assert_eq!(cac_path(base, &format!("{base}{raw}")).unwrap(), raw);
+        for bad in [
+            "https://evil.example/api/v1/tasks/t/attachments/a/raw",
+            "https://cac.guz-studio.dev.evil.example/api/v1/x",
+            "//evil.example/api/v1/x",
+            "/login",
+            "/api/v1/../../etc/passwd",
+        ] {
+            assert!(cac_path(base, bad).is_err(), "{bad} pasó");
+        }
+    }
+
+    #[test]
+    fn the_name_is_the_one_the_server_gives() {
+        assert_eq!(filename_from_disposition("attachment; filename=\"Booking.csv\"").as_deref(), Some("Booking.csv"));
+        assert_eq!(filename_from_disposition("inline; filename=\"a b.png\"; x=1").as_deref(), Some("a b.png"));
+        assert_eq!(filename_from_disposition("inline"), None);
+        // Sin nombre se guarda como «attachment», no como un fichero sin nombre.
+        assert_eq!(filename_from_disposition("inline; filename=\"\""), None);
+    }
+
+    #[test]
+    fn get_attachment_is_offered() {
+        let defs = tool_defs();
+        assert!(defs.as_array().unwrap().iter().any(|t| t["name"] == "get_attachment"));
+    }
 }
 
 #[cfg(test)]
