@@ -61,6 +61,12 @@ migración de GORM hubiera reventado, el pod no estaría contestando.
 
 ## 4 · Cortar la release, con la versión siguiente
 
+**Antes de cortar, se pregunta a jose. Siempre.** Di qué versión sería y qué
+lleva, y espera el sí. Mientras se trabaja van saliendo cosas pequeñas, y una
+release cortada sin preguntar las deja fuera y obliga a otra de ~40 min (así
+salió la v1.25.0, el 29-oct-2026). Commit, push y el despliegue del backend no
+se preguntan; el corte, sí.
+
 **Cuándo:** con una feature (o un plan de tandas) **terminada**, juntando lo
 que haya, no por tanda. Una release son ~40 min de CI y obliga a todo el equipo
 a actualizar. Un arreglo urgente de algo roto en producción sí sale solo.
