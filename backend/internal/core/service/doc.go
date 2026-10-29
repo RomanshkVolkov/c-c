@@ -114,13 +114,20 @@ func (s *DocService) SaveTab(
 	return doc, nil
 }
 
-// AppendTab añade al final de una sección. Ver el repositorio para por qué no
-// es leer, concatenar y guardar.
+// AppendTab añade al final de una pestaña, o de una sección suya si se nombra
+// (`section`: una trampa va a «Trampas que ya han mordido», no al final). Ver
+// el repositorio para por qué no es leer, concatenar y guardar.
 func (s *DocService) AppendTab(
 	orgID string, kind domain.DocOwnerKind, ownerID string,
-	key domain.DocTabKey, texto, userID string,
+	key domain.DocTabKey, section, texto, userID string,
 ) (*domain.Doc, error) {
-	doc, err := s.repo.AppendTab(orgID, kind, ownerID, key, texto, userID)
+	var doc *domain.Doc
+	var err error
+	if strings.TrimSpace(section) != "" {
+		doc, err = s.repo.AppendTabSection(orgID, kind, ownerID, key, section, texto, userID)
+	} else {
+		doc, err = s.repo.AppendTab(orgID, kind, ownerID, key, texto, userID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -159,10 +166,10 @@ var ErrDecisionUnaddressed = errors.New("a decision needs somewhere to come back
 var ErrDecisionOriginNotHere = errors.New("that task is not in this organization")
 
 // ErrDecisionSupersedesNotHere: la decisión que dice sustituir no existe o es
-// de otro documento. ErrDecisionAlreadySuperseded: ya la sustituyó otra; la
+// de otra organización. ErrDecisionAlreadySuperseded: ya la sustituyó otra; la
 // nueva tiene que nombrar a ésa, que es la vigente.
 var (
-	ErrDecisionSupersedesNotHere = errors.New("that decision is not in this document")
+	ErrDecisionSupersedesNotHere = errors.New("that decision is not in this organization")
 	ErrDecisionAlreadySuperseded = errors.New("that decision was already superseded")
 )
 
@@ -223,13 +230,18 @@ func (s *DocService) AddDecision(
 	if err != nil {
 		return nil, err
 	}
-	// A quién sustituye, si lo dice: una del mismo documento y que siga vigente.
-	// El registro no se borra, así que un «sustituye a» que apunte a otro
-	// documento o a una ya sustituida se quedaría mintiendo para siempre.
+	// A quién sustituye, si lo dice: una de esta org y que siga vigente. El
+	// registro no se borra, así que un «sustituye a» que apunte a otra org o a
+	// una ya sustituida se quedaría mintiendo para siempre.
+	//
+	// Puede ser de **otro documento**: así se lleva una decisión al nodo donde
+	// se va a buscar. Hasta el 29-oct-2026 tenía que ser del mismo, y las
+	// decisiones de un tema repartidas entre una lista y su espacio no había
+	// forma de juntarlas (command-and-control-250).
 	supersedes := strings.TrimSpace(req.Supersedes)
 	if supersedes != "" {
 		old, err := s.repo.DecisionByID(supersedes)
-		if err != nil || old == nil || old.DocID != doc.ID {
+		if err != nil || old == nil || s.repo.DocOrgID(old.DocID) != orgID {
 			return nil, ErrDecisionSupersedesNotHere
 		}
 		if old.SupersededByID != "" {

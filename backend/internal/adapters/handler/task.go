@@ -956,13 +956,33 @@ func (h *taskHandler) DeleteStatus(w http.ResponseWriter, r *http.Request) {
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
+// createTaskRequest: lo que pide crear, con la visibilidad por defecto de
+// quien lo pide. Una persona en la app crea a la vista del cliente, como
+// siempre; un **token** (un agente) crea interno salvo que diga `public`.
+//
+// Hasta el 29-oct-2026 un agente también creaba público por defecto, y bastaba
+// con que una sesión olvidara `visibility: internal` para que su nota de
+// trabajo saliera en el tablero del cliente, con folio y webhook: así salieron
+// boaty-24 y boaty-26. Lo que hace un agente es casi siempre trabajo nuestro;
+// publicarlo es una decisión, y se pide (command-and-control-253).
+func createTaskRequest(r *http.Request) (domain.CreateTaskRequest, error) {
+	req, err := ValidateRequest[domain.CreateTaskRequest](r)
+	if err != nil {
+		return req, err
+	}
+	if c, ok := currentUser(r); ok && c.ViaToken && req.Visibility == "" {
+		req.Visibility = domain.VisibilityInternal
+	}
+	return req, nil
+}
+
 func (h *taskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	l, sp, ok := h.resolveList(w, r, chi.URLParam(r, "id"), true)
 	if !ok {
 		return
 	}
 	user, _ := currentUser(r)
-	req, err := ValidateRequest[domain.CreateTaskRequest](r)
+	req, err := createTaskRequest(r)
 	if err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return

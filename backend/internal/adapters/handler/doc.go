@@ -218,7 +218,7 @@ func (h *docHandler) AppendTab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := currentUser(r)
-	doc, err := h.svc.AppendTab(orgID, kind, id, domain.DocTabKey(key), req.Body, user.UserID)
+	doc, err := h.svc.AppendTab(orgID, kind, id, domain.DocTabKey(key), req.Section, req.Body, user.UserID)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to save the document", err.Error())
 		return
@@ -312,7 +312,7 @@ func (h *docHandler) AddDecision(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, service.ErrDecisionSupersedesNotHere) {
 			SendErrorResponse(w, http.StatusBadRequest,
-				"The decision to supersede is not in this document", "decision-supersedes-not-here")
+				"The decision to supersede is not in this organization", "decision-supersedes-not-here")
 			return
 		}
 		if errors.Is(err, service.ErrDecisionAlreadySuperseded) {

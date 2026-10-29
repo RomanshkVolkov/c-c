@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrDocOwnerNotFound = errors.New("doc owner not found")
@@ -290,6 +291,48 @@ func (r *DocRepository) AppendTab(
 		Select("body").Scan(&quedo).Error; err == nil {
 		r.db.Model(&domain.DocTab{}).Where("id = ?", existente.ID).
 			Update("body_hash", HashBody(quedo))
+	}
+	return doc, nil
+}
+
+// AppendTabSection añade `texto` al final de la sección `section` de una
+// pestaña (o la crea al final si no está). Ver domain.AppendToSection.
+//
+// Aquí sí hay que leer, porque el sitio depende de lo que haya; para que la
+// lectura no se quede vieja se hace con la fila bloqueada, en una transacción.
+// Quien tenga el documento abierto y guarde después lleva un `baseHash` que ya
+// no casa, y su editor lo trata como un conflicto, no como un borrado.
+func (r *DocRepository) AppendTabSection(
+	orgID string, kind domain.DocOwnerKind, ownerID string,
+	key domain.DocTabKey, section, texto, userID string,
+) (*domain.Doc, error) {
+	if strings.TrimSpace(texto) == "" {
+		return r.Find(kind, ownerID)
+	}
+	doc, err := r.Patch(orgID, kind, ownerID, nil)
+	if err != nil {
+		return nil, err
+	}
+	err = r.db.Transaction(func(tx *gorm.DB) error {
+		var t domain.DocTab
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("doc_id = ? AND key = ?", doc.ID, key).First(&t).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			body := domain.AppendToSection("", section, texto)
+			nt := &domain.DocTab{DocID: doc.ID, Key: key, Body: body, BodyHash: HashBody(body), UpdatedBy: userID}
+			nt.ID = uuid.NewString()
+			return tx.Create(nt).Error
+		}
+		if err != nil {
+			return err
+		}
+		body := domain.AppendToSection(t.Body, section, texto)
+		return tx.Model(&domain.DocTab{}).Where("id = ?", t.ID).Updates(map[string]any{
+			"body": body, "body_hash": HashBody(body), "updated_by": userID,
+		}).Error
+	})
+	if err != nil {
+		return nil, err
 	}
 	return doc, nil
 }
@@ -589,6 +632,13 @@ func (r *DocRepository) Decisions(docID string) ([]domain.Decision, error) {
 	return out, nil
 }
 
+// DocOrgID: la org de un documento, o "" si no existe.
+func (r *DocRepository) DocOrgID(docID string) string {
+	var org string
+	r.db.Model(&domain.Doc{}).Select("org_id").Where("id = ?", docID).Scan(&org)
+	return org
+}
+
 // DecisionByID: una entrada suelta, resuelta como las del registro.
 func (r *DocRepository) DecisionByID(id string) (*domain.Decision, error) {
 	var d domain.Decision
@@ -619,11 +669,16 @@ func (r *DocRepository) resolveDecision(d *domain.Decision) {
 
 // supersededBy: de cada decisión de un documento que fue sustituida, cuál la
 // sustituyó. Una consulta para todo el registro, no una por entrada.
+//
+// La que sustituye puede vivir en otro documento de la org (se lleva una
+// decisión al nodo donde se busca), así que se mira por la vieja, no por el
+// documento de la nueva.
 func (r *DocRepository) supersededBy(docID string) map[string]string {
 	type row struct{ ID, SupersedesID string }
 	var rows []row
-	r.db.Table("decisions").Select("id, supersedes_id").
-		Where("doc_id = ? AND supersedes_id <> ''", docID).Scan(&rows)
+	r.db.Table("decisions AS n").Select("n.id, n.supersedes_id").
+		Joins("JOIN decisions o ON o.id = n.supersedes_id").
+		Where("o.doc_id = ?", docID).Scan(&rows)
 	out := map[string]string{}
 	for _, x := range rows {
 		out[x.SupersedesID] = x.ID

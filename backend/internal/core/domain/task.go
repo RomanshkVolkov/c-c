@@ -732,6 +732,9 @@ type SaveDocRequest struct {
 	// BaseHash es el `bodyHash` que traía la sección al leerla. Ver
 	// `DocSaveConflicts`. Se ignora al añadir al final: ahí no hay nada que pisar.
 	BaseHash *string `json:"baseHash"`
+	// Section: sólo al añadir. El título de la sección a cuyo final va el
+	// texto; si no está, se crea. Vacío: al final de la pestaña.
+	Section string `json:"section" validate:"max=200"`
 }
 
 // PatchDocRequest cambia lo que rodea al documento, no su texto.
@@ -826,10 +829,11 @@ type CreateTaskRequest struct {
 	// from their numbering and fires their webhook — while "internal" keeps it to
 	// us.
 	//
-	// Absent means visible, deliberately. What the team is working on should be
-	// something the client can see; hiding a piece of it is the decision that has
-	// to be made on purpose. In a list with no channel this is ignored: there is
-	// nobody outside to show it to.
+	// Absent means visible, deliberately, for a person in the app: what the team
+	// is working on should be something the client can see. For a personal
+	// token (an agent) absent means internal — see handler.createTaskRequest.
+	// In a list with no channel this is ignored: there is nobody outside to
+	// show it to.
 	Visibility ItemVisibility `json:"visibility" validate:"omitempty,oneof=internal public"`
 	// Markdown body, so a task can be filed complete in one call (the MCP tool
 	// does exactly that).
