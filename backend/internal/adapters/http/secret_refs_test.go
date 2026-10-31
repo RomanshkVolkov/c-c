@@ -32,6 +32,12 @@ func TestNoSecretTypeCarriesAValue(t *testing.T) {
 	for _, v := range []any{
 		domain.DeployableSecretRef{}, domain.SecretRotation{}, domain.SecretRefInput{},
 		domain.PutSecretRefsRequest{}, domain.RecordRotationRequest{}, domain.SecretRotationResponse{},
+		// La config de un servidor y sus plantillas (31-oct-2026): los secretos
+		// van como `OpRefs`, nombre → referencia, igual que aquí.
+		domain.ServerTemplate{}, domain.ServerTemplateVersion{}, domain.ServerConfigVersion{},
+		domain.AppliedConfig{}, domain.ConfigOrigin{}, domain.PutServerConfigRequest{},
+		domain.CreateServerTemplateRequest{}, domain.PutServerTemplateRequest{},
+		domain.EffectiveConfig{}, domain.ServerConnection{},
 	} {
 		checkFields(t, reflect.TypeOf(v), forbidden)
 	}

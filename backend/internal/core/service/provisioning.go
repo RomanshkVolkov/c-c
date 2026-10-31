@@ -10,11 +10,19 @@ import (
 )
 
 type ProvisioningService struct {
-	repo *repository.ProvisioningRepository
+	repo    *repository.ProvisioningRepository
+	configs *ServerConfigService
 }
 
 func NewProvisioningService(repo *repository.ProvisioningRepository) *ProvisioningService {
 	return &ProvisioningService{repo: repo}
+}
+
+// WithConfigs: con la config de los servidores en cac, una ejecución que dice
+// con qué versión se lanza guarda la foto de lo aplicado.
+func (s *ProvisioningService) WithConfigs(c *ServerConfigService) *ProvisioningService {
+	s.configs = c
+	return s
 }
 
 func (s *ProvisioningService) Start(server *domain.ServerResponse, userID string, req domain.StartProvisioningRequest) (*domain.ProvisioningRun, error) {
@@ -31,6 +39,17 @@ func (s *ProvisioningService) Start(server *domain.ServerResponse, userID string
 		Status:    domain.ProvisioningRunning,
 	}
 	run.ID = uuid.NewString()
+	// La foto se saca aquí, del backend, y no de lo que diga la app: lo que
+	// queda es la versión guardada tal como estaba, no una copia que el
+	// cliente pudo haber retocado.
+	if req.ConfigSeq > 0 && s.configs != nil {
+		eff, err := s.configs.Effective(server, req.ConfigSeq)
+		if err != nil {
+			return nil, err
+		}
+		run.ConfigSeq, run.TemplateID, run.TemplateSeq = eff.ConfigSeq, eff.TemplateID, eff.TemplateSeq
+		run.Applied = &domain.AppliedConfig{Vars: eff.Vars, OpRefs: eff.OpRefs}
+	}
 	if err := s.repo.Create(run); err != nil {
 		return nil, err
 	}

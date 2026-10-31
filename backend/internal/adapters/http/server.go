@@ -54,7 +54,11 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 	startBackupClockFn(backupSvc)
 	agentH := handler.NewAgentHandler(svc, deploySvc).WithBackups(backupSvc)
 
-	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)))
+	// La config de cada servidor y las plantillas de la org viven en cac; el
+	// repo de Ansible sólo tiene los playbooks. Ver domain/server_config.go.
+	configSvc := service.NewServerConfigService(repository.NewServerConfigRepository(db), repository.NewServerRepository(db))
+	configH := handler.NewServerConfigHandler(svc, configSvc)
+	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)).WithConfigs(configSvc))
 
 	r.Route("/api/v1/servers", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
@@ -82,6 +86,11 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Get("/{id}/provisioning-runs", provH.List)
 		r.Post("/{id}/provisioning-runs", provH.Start)
 		r.Patch("/{id}/provisioning-runs/{rid}", provH.Finish)
+		// Su config versionada: lo que se le aplica, sin ningún valor secreto.
+		r.Get("/{id}/config", configH.Config)
+		r.Put("/{id}/config", configH.Save)
+		r.Get("/{id}/config/effective", configH.Effective)
+		r.Get("/{id}/config/versions/{seq}", configH.Version)
 		// Los servicios que cac sabe desplegar, y sus despliegues. Ver
 		// domain.Deployable.
 		r.Get("/{id}/deployables", deployH.List)
@@ -114,6 +123,15 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Put("/{id}/deployables/{did}/secret-refs", deployH.PutSecretRefs)
 		r.Get("/{id}/deployables/{did}/secret-rotations", deployH.SecretRotations)
 		r.Post("/{id}/deployables/{did}/secret-rotations", deployH.RecordRotation)
+	})
+
+	// Las plantillas de servidor de una org.
+	r.Route("/api/v1/organizations/{id}/server-templates", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/", configH.Templates)
+		r.Post("/", configH.CreateTemplate)
+		r.Get("/{tplId}", configH.Template)
+		r.Put("/{tplId}", configH.SaveTemplate)
 	})
 
 	// El aviso del CI de un servicio: su propia llave, fuera del JWT. Ver

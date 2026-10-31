@@ -11,10 +11,13 @@ import "time"
 // convierte «jose configuró el Traefik de tds algún día» en algo que el equipo
 // puede leer: qué, a qué máquina, quién, cuándo y cómo acabó.
 //
-// **Aquí no viaja ningún valor.** De las variables sólo se guardan los
-// nombres (`VarNames`); una contraseña de sudo o un secret resuelto de
-// 1Password no tienen campo en esta estructura, y eso es la garantía — no un
-// `if` que los descarte. Lo fija `TestProvisioningCarriesNoValues`.
+// **Aquí no viaja ningún valor de un secreto.** De las variables que mandó la
+// app sólo se guardan los nombres (`VarNames`). Lo aplicado (`Applied`) lo
+// copia el backend de la config del servidor al abrir la fila: variables que
+// ya pasaron `ValidateConfigVars` (ninguna es un secreto, ni por nombre ni por
+// forma) y los secretos **por referencia**. Una contraseña de sudo o un valor
+// leído de 1Password no tienen campo en esta estructura, y eso es la garantía
+// — no un `if` que los descarte. Lo fija `TestProvisioningCarriesNoValues`.
 type ProvisioningRun struct {
 	BaseModel
 	ServerID string `gorm:"type:varchar(36);index;not null" json:"serverId"`
@@ -43,6 +46,15 @@ type ProvisioningRun struct {
 	// Las últimas líneas de la salida, ya tachadas en la laptop. Acotadas aquí
 	// también: el backend no se fía de que el cliente las haya cortado.
 	LogTail string `gorm:"type:text" json:"logTail"`
+
+	// Con qué config se lanzó: su versión, la plantilla y la foto de lo que
+	// se aplicó, para leer después cómo se configuró la máquina aunque la
+	// config haya cambiado. 0 / vacío = una ejecución sin config en cac (las
+	// de antes, o un repo de Ansible con su propio inventario).
+	ConfigSeq   int            `json:"configSeq"`
+	TemplateID  string         `gorm:"type:varchar(36)" json:"templateId,omitempty"`
+	TemplateSeq int            `json:"templateSeq,omitempty"`
+	Applied     *AppliedConfig `gorm:"type:jsonb;serializer:json" json:"applied,omitempty"`
 }
 
 const (
@@ -68,6 +80,9 @@ type StartProvisioningRequest struct {
 	Playbook string   `json:"playbook" validate:"required,max=200"`
 	Target   string   `json:"target"   validate:"max=200"`
 	VarNames []string `json:"varNames" validate:"max=100,dive,max=120"`
+	// La versión de la config de cac con la que se lanza. Sin ella (0), una
+	// ejecución con su propio inventario: no se apunta config.
+	ConfigSeq int `json:"configSeq" validate:"min=0"`
 }
 
 // FinishProvisioningRequest la cierra con el resultado.

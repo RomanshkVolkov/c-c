@@ -41,12 +41,14 @@ func TestTheLogTailNeverSplitsACharacter(t *testing.T) {
 	}
 }
 
-// Una ejecución no lleva ningún valor, sólo nombres.
+// Una ejecución no lleva ningún valor de un secreto.
 //
 // La garantía es que los campos **no existen**, no un `if` que los descarte: el
-// día que alguien añada `Vars map[string]string` «para depurar», esto se cae.
-// Una contraseña de sudo o un secret resuelto de 1Password no pueden llegar a la
-// base porque no tienen dónde ponerse.
+// día que alguien añada `Vars map[string]string` «para depurar» a la fila,
+// esto se cae. Lo aplicado va aparte, en `Applied`, y su forma está clavada:
+// variables que ya pasaron `ValidateConfigVars` (ningún secreto, ni por nombre
+// ni por forma) y los secretos sólo como referencias de 1Password. Un campo
+// más ahí —un `Values`, un `Resolved`— también hace caer esto.
 func TestProvisioningCarriesNoValues(t *testing.T) {
 	prohibidos := []string{"value", "values", "secret", "secrets", "vars", "password", "token"}
 	for _, tipo := range []reflect.Type{
@@ -63,6 +65,21 @@ func TestProvisioningCarriesNoValues(t *testing.T) {
 					t.Errorf("%s.%s: una ejecución de provisioning no puede llevar valores", tipo.Name(), f.Name)
 				}
 			}
+		}
+	}
+
+	applied := reflect.TypeOf(domain.AppliedConfig{})
+	want := map[string]reflect.Type{
+		"Vars":   reflect.TypeOf(map[string]any{}),
+		"OpRefs": reflect.TypeOf(map[string]string{}),
+	}
+	if applied.NumField() != len(want) {
+		t.Errorf("AppliedConfig tiene %d campos; sólo puede tener Vars y OpRefs", applied.NumField())
+	}
+	for i := 0; i < applied.NumField(); i++ {
+		f := applied.Field(i)
+		if typ, ok := want[f.Name]; !ok || f.Type != typ {
+			t.Errorf("AppliedConfig.%s (%s): lo aplicado son variables y referencias, nada más", f.Name, f.Type)
 		}
 	}
 }

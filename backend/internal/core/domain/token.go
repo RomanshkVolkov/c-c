@@ -123,6 +123,14 @@ const (
 	// atrás, ni ningún valor de un secret: aquí sólo viajan nombres y
 	// referencias de 1Password.
 	ScopeDeploysManage = "deploys:manage"
+	// ScopeServersManage: guardar la config de un servidor y las plantillas
+	// de la org —qué playbooks lleva, sus variables y **dónde** está cada
+	// secreto en 1Password— para que un agente deje configurado un servidor
+	// (jose, 31-oct-2026). **No** alcanza aplicar nada: abrir una ejecución
+	// de un playbook sigue siendo de una persona, y ningún valor de un secreto
+	// viaja por aquí. Ni la conexión del servidor (host, usuario, puerto), que
+	// cambia a qué máquina se le habla.
+	ScopeServersManage = "servers:manage"
 	// ScopeNotifyMe: que un agente avise a la persona dueña del token —«paré
 	// porque hay una decisión»— por la campana, el teléfono y el aviso del
 	// sistema (jose, 14-oct-2026). Sólo a esa persona: el destinatario no es
@@ -147,7 +155,7 @@ func ValidScope(s string) bool {
 		ScopeNotesWrite, ScopeNotesManage,
 		ScopeReportsWrite, ScopeReportsManage,
 		ScopeDocsWrite, ScopeDocsManage,
-		ScopeCollectionsWrite, ScopeDeploysManage, ScopeNotifyMe, ScopePostsWrite, ScopeChatWrite:
+		ScopeCollectionsWrite, ScopeDeploysManage, ScopeServersManage, ScopeNotifyMe, ScopePostsWrite, ScopeChatWrite:
 		return true
 	default:
 		return false

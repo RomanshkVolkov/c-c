@@ -96,6 +96,10 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPost, "/api/v1/task-spaces/s1/chat", domain.ScopeChatWrite},
 		{http.MethodPost, "/api/v1/dm/open", domain.ScopeChatWrite},
 		{http.MethodPost, "/api/v1/dm/c1/messages", domain.ScopeChatWrite},
+		// La config de un servidor y las plantillas (31-oct-2026).
+		{http.MethodPut, "/api/v1/servers/s1/config", domain.ScopeServersManage},
+		{http.MethodPost, "/api/v1/organizations/o1/server-templates", domain.ScopeServersManage},
+		{http.MethodPut, "/api/v1/organizations/o1/server-templates/t1", domain.ScopeServersManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -272,6 +276,13 @@ func TestATokenConfiguresButNeverDeploys(t *testing.T) {
 		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/ci-key"},
 		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/secret-rotations"},
 		{http.MethodPatch, "/api/v1/servers/s1"},
+		// Y un servidor se configura, no se aprovisiona: abrir o cerrar una
+		// ejecución de un playbook es de una persona (31-oct-2026). Tampoco
+		// se borra una plantilla.
+		{http.MethodPost, "/api/v1/servers/s1/provisioning-runs"},
+		{http.MethodPatch, "/api/v1/servers/s1/provisioning-runs/r1"},
+		{http.MethodDelete, "/api/v1/organizations/o1/server-templates/t1"},
+		{http.MethodPost, "/api/v1/servers/s1/config"},
 	} {
 		if scope, ok := patScopeFor(req(c.method, c.path)); ok {
 			t.Errorf("%s %s se abrió a un token (%s)", c.method, c.path, scope)

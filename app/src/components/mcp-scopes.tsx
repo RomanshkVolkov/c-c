@@ -87,6 +87,11 @@ export const SCOPES: ScopeOption[] = [
     detailKey: "scopes.deploysManageDetail",
   },
   {
+    id: "servers:manage",
+    labelKey: "common:scopes.serversManage",
+    detailKey: "scopes.serversManageDetail",
+  },
+  {
     id: "notify:me",
     labelKey: "common:scopes.notifyMe",
     detailKey: "scopes.notifyMeDetail",

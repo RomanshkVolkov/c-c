@@ -407,6 +407,13 @@ var patWritable = []struct {
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/?$`), domain.ScopeDeploysManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/[^/]+$`), domain.ScopeDeploysManage},
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/[^/]+/secret-refs$`), domain.ScopeDeploysManage},
+	// Configurar un servidor: guardar una versión de su config y crear o
+	// guardar una plantilla. Todo añade una versión y no pisa ninguna. Abrir
+	// una ejecución (`provisioning-runs`), cambiar la conexión y borrar **no**
+	// están: un token configura, una persona aplica (ScopeServersManage).
+	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/config$`), domain.ScopeServersManage},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/?$`), domain.ScopeServersManage},
+	{http.MethodPut, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/[^/]+$`), domain.ScopeServersManage},
 }
 
 // patScopeFor reports the scope this request needs, and whether it's reachable
