@@ -5,3 +5,13 @@ public_ip: 13.140.235.112
 # *.gstd.guz-studio.dev apunta aquí.
 dns_zone: guz-studio.dev
 base_domain: gstd.guz-studio.dev
+
+# --- SSH (etapa 1, server-baseline) ------------------------------------------
+# Después de la etapa 1 sólo entra {{ ops_user }} por este puerto, con llave.
+ssh_port: 7337
+ansible_port: "{{ ssh_port }}"
+ansible_user: "{{ ops_user }}"
+# Llaves públicas (no son secretas) que entran como el usuario de operación.
+# jose: la de 1Password que su ~/.ssh/config usa para gstd (~/.ssh/rv).
+ops_authorized_keys:
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAG4Wh9fDdVU8FLj413vYgyqN3KQDmw1KD94+aoVuOe jose (1Password)"

@@ -1,17 +1,19 @@
 ---
 # Lo que vale para cualquier servidor. Lo de cada uno, en host_vars/<nombre>.yml.
 
-# --- Acceso ------------------------------------------------------------------
-# Usuario de operación que se crea si llega `deploy_public_key` (opcional).
+# --- Acceso (etapa 1) -------------------------------------------------------
+# Usuario de operación: entra por llave y hace sudo con contraseña. La
+# contraseña llega como variable extra (app: cac.playbooks.yml; terminal:
+# secrets.env vía `op run`), y es también la de become de todos los playbooks.
 ops_user: infra_devops
+ops_password: "{{ lookup('ansible.builtin.env', 'OPS_PASSWORD') }}"
+ansible_become_password: "{{ ops_password }}"
 
 # --- Firewall ----------------------------------------------------------------
-# ufw: entra sólo lo de la lista; sale todo. `routed allow` porque Docker y el
-# CNI enrutan por el host, y con `deny` los contenedores se quedan sin salida.
-# OJO: los puertos que publica Docker se saltan ufw (sus reglas van antes), así
-# que esto protege el host, no lo que expone un stack.
-firewall_enabled: true
-firewall_tcp_ports: [22, 80, 443]
+# La etapa 1 enciende ufw con sólo el SSH; la etapa 2 abre lo web. OJO: los
+# puertos que publica Docker se saltan ufw (sus reglas van antes), así que esto
+# protege el host, no lo que expone un stack.
+firewall_web_ports: [80, 443]
 
 # --- TLS ---------------------------------------------------------------------
 acme_email: jose@nuke-ai.com

@@ -4,6 +4,20 @@
   hosts: all
   gather_facts: false
   tasks:
+    # Antes de la etapa 1 el inventario apunta a un usuario que aún no existe:
+    # en ese caso se prueba como root por el 22.
+    - name: ¿Se entra como dice el inventario?
+      ansible.builtin.wait_for_connection:
+        timeout: 15
+      ignore_errors: true
+      register: probe
+
+    - name: Si no, root por el 22
+      ansible.builtin.set_fact:
+        ansible_user: root
+        ansible_port: 22
+      when: probe is failed
+
     - name: Ping
       ansible.builtin.ping:
 

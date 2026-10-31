@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# Va en 00- para ganarle a 50-cloud-init.conf: sshd se queda con el PRIMER
+# valor que lee de cada opción, y cloud-init deja PasswordAuthentication yes.
+Port {{ ssh_port }}
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+PermitEmptyPasswords no
+MaxAuthTries 4
+LoginGraceTime 30
+X11Forwarding no
+AllowUsers {{ ops_user }}

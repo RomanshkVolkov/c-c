@@ -2,6 +2,7 @@
 # Deshace k8s-site: kubeadm reset, paquetes fuera y la red limpia. DESTRUCTIVO.
 - name: Desmontar Kubernetes
   hosts: k8s_control_plane
+  become: true
   tasks:
     - name: ¿Hay kubeadm?
       ansible.builtin.stat:

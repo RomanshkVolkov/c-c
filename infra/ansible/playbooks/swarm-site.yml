@@ -1,9 +1,10 @@
 ---
 # Docker Swarm + Traefik con wildcard *.<base_domain>, y whoami como prueba.
-# Idempotente: se vuelve a correr al cambiar algo. Cada rol lleva su etiqueta
+# Etapa 2: antes, server-baseline (etapa 1). Idempotente: se vuelve a correr al cambiar algo. Cada rol lleva su etiqueta
 # (--tags docker,swarm) para aplicar sólo una parte.
 - name: Servidor Swarm con Traefik
   hosts: swarm
+  become: true
   roles:
     - {role: base, tags: [base]}
     - {role: docker, tags: [docker]}

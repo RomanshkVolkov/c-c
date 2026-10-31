@@ -880,7 +880,12 @@ playbooks:
         let manifest_refs: std::collections::HashSet<&str> = m
             .playbooks
             .iter()
-            .flat_map(|p| p.vars.iter().filter_map(|v| v.from.as_deref()))
+            .flat_map(|p| {
+                p.vars
+                    .iter()
+                    .filter_map(|v| v.from.as_deref())
+                    .chain(p.become_password_ref.as_deref())
+            })
             .collect();
         assert!(!manifest_refs.is_empty());
         assert_eq!(manifest_refs, env_refs);

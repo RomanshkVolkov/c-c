@@ -3,6 +3,7 @@
 # de verdad. No cambia nada.
 - name: Verificar el servidor Swarm
   hosts: swarm
+  become: true
   gather_facts: false
   tasks:
     - name: El nodo es manager y está Ready
@@ -31,6 +32,7 @@
       retries: 18
       delay: 10
       delegate_to: localhost
+      become: false
       vars:
         ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
@@ -42,6 +44,7 @@
       register: cert
       changed_when: false
       delegate_to: localhost
+      become: false
 
     - name: Resultado
       ansible.builtin.debug:

@@ -4,6 +4,7 @@
 # DESTRUCTIVO. Los registros DNS se quedan: sirven igual para el Gateway.
 - name: Desmontar Swarm y Docker
   hosts: swarm
+  become: true
   tasks:
     - name: ¿Está Docker?
       ansible.builtin.command: docker --version

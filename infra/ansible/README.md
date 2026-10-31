@@ -1,10 +1,15 @@
 # infra/ansible — lo que cac sabe aprovisionar
 
-Playbooks para dejar un servidor listo desde cero, en dos sabores:
+Playbooks para dejar un servidor listo desde cero, por etapas:
 
-- **Swarm + Traefik**: lo que cac ya sabe desplegar (agente `swarm-manage`).
-- **Kubernetes con kubeadm**, replicando pixel-vps: containerd, Cilium, MetalLB,
-  Envoy Gateway y cert-manager (CNPG con `install_cnpg: true`).
+1. **Configuración básica** (`server-baseline`): usuario de operación
+   (`infra_devops`) con sus llaves y sudo con contraseña; SSH sólo por llave,
+   sin root y en otro puerto (`ssh_port`); ufw con sólo ese puerto, y fail2ban.
+   Si el SSH nuevo no contesta después del cambio, se deshace solo.
+2. **Lo que corre encima**, uno de dos:
+   - **Swarm + Traefik**: lo que cac ya sabe desplegar (agente `swarm-manage`).
+   - **Kubernetes con kubeadm**, replicando pixel-vps: containerd, Cilium,
+     MetalLB, Envoy Gateway y cert-manager (CNPG con `install_cnpg: true`).
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
 Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. Se corren
@@ -15,7 +20,8 @@ que lee `cac.playbooks.yml`. El primer servidor es `gstd` (VPS de pruebas).
 
 ```sh
 make setup          # .venv con ansible-core y las collections (una vez)
-make test           # ping a todos
+make test           # ping a todos (antes o después de la etapa 1)
+make baseline       # etapa 1
 make swarm          # Swarm + Traefik + whoami
 make swarm-verify   # nodo, servicios y whoami por HTTPS con cert válido
 make swarm-down     # DESTRUCTIVO: quita los stacks, el Swarm y Docker
@@ -27,9 +33,10 @@ make k8s-down       # DESTRUCTIVO
 `LIMIT=gstd` limita los hosts. Para aplicar sólo una parte del Swarm:
 `.venv/bin/ansible-playbook playbooks/swarm-site.yml --tags docker,swarm`.
 
-Los que necesitan el token (`swarm`, `k8s`) lo leen con `op run` de
-`secrets.env`, que guarda **referencias** de 1Password, no valores. 1Password
-tiene que estar desbloqueado.
+Todo menos `test` hace sudo y lee la contraseña de `infra_devops` con
+`op run`; `swarm` y `k8s` leen además el token de Cloudflare. `secrets.env`
+guarda **referencias** de 1Password, no valores, y cada objetivo resuelve sólo
+las suyas. 1Password tiene que estar desbloqueado.
 
 ## Desde la app
 
@@ -46,18 +53,37 @@ lo comprueba `ansible::tests::the_infra_ansible_manifest_is_one_the_app_can_run`
 
 | Qué | Dónde |
 |---|---|
-| Alias SSH del servidor (`ansible_host` en `inventory/hosts.yml`) | `~/.ssh/config` de quien lo corre |
-| Token de Cloudflare con Zone → DNS → Edit y Zone → Zone → Read **sólo** sobre la zona | 1Password, `op://Private/cloudflare guz-studio.dev dns/credential` |
-| `deploy_public_key` (opcional): crea `infra_devops` con esa llave | variable extra |
+| Alias SSH del servidor (`ansible_host` en `inventory/hosts.yml`): de él sale la llave; el puerto y el usuario los pone el inventario | `~/.ssh/config` de quien lo corre |
+| Contraseña de sudo de `infra_devops` | 1Password, `op://Employee/gstd infra_devops/password` (generada por 1Password) |
+| Llaves públicas que entran como `infra_devops` | `ops_authorized_keys` en `host_vars/<nombre>.yml` |
+| Token de Cloudflare con Zone → DNS → Edit y Zone → Zone → Read **sólo** sobre la zona | 1Password, `op://Employee/cloudflare guz-studio.dev dns/credential` |
 
 ## Un servidor nuevo
 
 1. Su alias en `~/.ssh/config` y una entrada en `inventory/hosts.yml`, en el
    grupo `swarm` o `k8s_control_plane`.
-2. `inventory/host_vars/<nombre>.yml` con `public_ip`, `dns_zone` y `base_domain`.
-3. `make test`, y después el sabor que toque.
+2. `inventory/host_vars/<nombre>.yml` con `public_ip`, `dns_zone`,
+   `base_domain`, `ssh_port`, `ansible_port`/`ansible_user` (como gstd) y
+   `ops_authorized_keys`.
+3. Su contraseña de sudo en 1Password y su referencia en `secrets.env` y en
+   `cac.playbooks.yml` (hoy apuntan a la de gstd: el manifiesto nombra una
+   referencia por playbook, no por host).
+4. `make test`, `make baseline` (la primera vez entra como root por el 22) y
+   después la etapa 2 que toque.
+5. Cambia el alias: `Port` y `User` nuevos.
 
 ## Lo que hay que saber
+
+- **El SSH tiene `limit` en ufw**: más de seis conexiones en 30 s desde la
+  misma IP se rechazan («Connection refused») durante unos segundos. Ansible
+  reutiliza una conexión (ControlPersist), pero una ráfaga de `ssh` a mano lo
+  dispara. fail2ban es otra cosa: banea una hora tras cinco fallos de login.
+- **Ubuntu 24.04 arranca sshd por socket** (`ssh.socket`), que ignora un
+  `Port` nuevo hasta regenerarse. La etapa 1 lo apaga y deja el `ssh.service`
+  de siempre.
+- **La configuración de sshd va en `00-cac-hardening.conf`**: sshd se queda
+  con el primer valor que lee, y `50-cloud-init.conf` deja
+  `PasswordAuthentication yes`.
 
 - **Los puertos que publica Docker se saltan ufw**: sus reglas de iptables van
   antes. El firewall del rol `base` protege el host, no lo que expone un stack.

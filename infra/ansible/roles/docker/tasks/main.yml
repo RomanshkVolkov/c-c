@@ -25,7 +25,6 @@
     lock_timeout: 180
 
 - name: El usuario de operación entra al grupo docker
-  when: deploy_public_key | default('') | length > 0
   ansible.builtin.user:
     name: "{{ ops_user }}"
     groups: docker

@@ -1,0 +1,134 @@
+---
+# Etapa 1: la configuración básica del servidor (roles/baseline) y el cambio de
+# SSH: usuario de operación con llave, sin root, sin contraseña y en otro
+# puerto. Después va la etapa 2 (swarm-site o k8s-site).
+#
+# La primera vez el servidor sólo deja entrar a root por el 22, y el inventario
+# ya apunta al usuario y al puerto nuevos: si no hay manera de entrar como dice
+# el inventario, se entra como root por el 22. Las siguientes veces, como
+# cualquier otro playbook.
+#
+# Si el SSH nuevo no contesta después del cambio, se deshace por la conexión
+# que sigue abierta (las sesiones vivas no mueren al reiniciar sshd).
+- name: Configuración básica del servidor
+  hosts: all
+  gather_facts: false
+  become: true
+  pre_tasks:
+    - name: ¿Se entra como dice el inventario?
+      ansible.builtin.wait_for_connection:
+        timeout: 15
+      ignore_errors: true
+      register: probe
+
+    - name: Si no, la primera vez es root por el 22
+      ansible.builtin.set_fact:
+        ansible_user: root
+        ansible_port: 22
+      when: probe is failed
+
+    - name: Datos del servidor
+      ansible.builtin.setup:
+
+  roles:
+    - baseline
+
+  tasks:
+    - name: Cambiar SSH sin perder el servidor
+      block:
+        - name: Configuración de sshd
+          ansible.builtin.template:
+            src: ../roles/baseline/templates/sshd-hardening.conf.j2
+            dest: /etc/ssh/sshd_config.d/00-cac-hardening.conf
+            mode: "0644"
+          register: sshd_conf
+
+        - name: sshd la acepta
+          ansible.builtin.command: sshd -t
+          changed_when: false
+
+        # Ubuntu 24.04 arranca sshd por socket (ssh.socket), que lee el puerto
+        # al generarse y no al recargar. Se vuelve al sshd de siempre, que lee
+        # el Port de su configuración: un sitio menos donde mirar.
+        - name: sshd sin activación por socket, y reiniciado
+          ansible.builtin.shell:
+            cmd: >-
+              systemctl daemon-reload &&
+              { systemctl disable --now ssh.socket 2>/dev/null || true; } &&
+              rm -f /etc/systemd/system/ssh.service.d/00-socket.conf &&
+              systemctl enable ssh.service &&
+              systemctl restart ssh.service
+          when: sshd_conf is changed
+
+        - name: Escucha en el puerto nuevo
+          ansible.builtin.wait_for:
+            port: "{{ ssh_port }}"
+            timeout: 30
+
+        # Desde la máquina de quien lo corre, como entraría cualquiera.
+        # ControlPath=none: una conexión nueva, no la que ya está abierta.
+        - name: El usuario de operación entra por el puerto nuevo con su llave
+          ansible.builtin.command: >-
+            ssh -o BatchMode=yes -o ControlPath=none -o ConnectTimeout=10
+            -p {{ ssh_port }} -l {{ ops_user }} {{ ansible_host }} true
+          delegate_to: localhost
+          become: false
+          changed_when: false
+
+        - name: root ya no entra
+          ansible.builtin.command: >-
+            ssh -o BatchMode=yes -o ControlPath=none -o ConnectTimeout=10
+            -p {{ ssh_port }} -l root {{ ansible_host }} true
+          delegate_to: localhost
+          become: false
+          register: root_login
+          changed_when: false
+          failed_when: root_login.rc == 0
+
+        - name: Con contraseña no se ofrece ni la opción
+          ansible.builtin.command: >-
+            ssh -o BatchMode=yes -o ControlPath=none -o ConnectTimeout=10
+            -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive
+            -p {{ ssh_port }} -l {{ ops_user }} {{ ansible_host }} true
+          delegate_to: localhost
+          become: false
+          register: password_login
+          changed_when: false
+          failed_when: >-
+            password_login.rc == 0 or
+            'Permission denied (publickey)' not in password_login.stderr
+
+      rescue:
+        - name: Deshacer el cambio de SSH
+          ansible.builtin.file:
+            path: /etc/ssh/sshd_config.d/00-cac-hardening.conf
+            state: absent
+
+        - name: Reiniciar sshd con la configuración de antes
+          ansible.builtin.systemd_service:
+            name: ssh
+            state: restarted
+
+        - name: Parar aquí
+          ansible.builtin.fail:
+            msg: >-
+              El SSH nuevo no contestó como debía y se deshizo el cambio. El
+              servidor sigue entrando como antes. Mira la tarea que falló arriba.
+
+    # Como número: ansible_port llega como texto desde el inventario, y un
+    # «7337» que no casa con 7337 cerraría el puerto bueno.
+    - name: Cerrar el puerto viejo (sea allow o limit)
+      community.general.ufw:
+        rule: "{{ item.1 }}"
+        port: "{{ item.0 | string }}"
+        proto: tcp
+        delete: true
+      loop: >-
+        {{ ([22, ansible_port | default(22) | int] | unique | difference([ssh_port | int]))
+           | product(['allow', 'limit']) | list }}
+
+    - name: Recordatorio
+      ansible.builtin.debug:
+        msg: >-
+          Desde ahora se entra con `ssh -p {{ ssh_port }} {{ ops_user }}@{{ public_ip }}`.
+          Si tienes un alias en ~/.ssh/config, cámbiale Port y User.

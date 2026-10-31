@@ -4,6 +4,7 @@
 # Antes, si el servidor tenía Swarm: swarm-teardown.
 - name: Servidor Kubernetes (kubeadm)
   hosts: k8s_control_plane
+  become: true
   roles:
     - base
     - k8s_node
