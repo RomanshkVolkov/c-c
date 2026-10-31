@@ -13,6 +13,22 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**31-oct, en `main`: `infra/ansible`, lo que cac sabe aprovisionar**
+(command-and-control-260). Roles y playbooks para dejar un servidor como Swarm +
+Traefik (wildcard `*.<dominio>` por DNS en Cloudflare) o como Kubernetes con
+kubeadm igual que pixel-vps (Cilium, MetalLB, Envoy Gateway, cert-manager, a sus
+versiones), cada uno con verificar y desmontar; `cac.playbooks.yml` para la
+pestaña Provisioning y un `Makefile` con `op run` para la terminal. El primer
+servidor es **gstd** (VPS de pruebas): ya tiene ufw, Docker y Swarm, aplicados
+dos veces (la segunda, sin cambios). **Falta** el token de Cloudflare para
+Traefik, probar R7 desde la app (nunca se había corrido contra un servidor de
+verdad), y después la fase de Kubernetes. Una prueba de Rust guarda que el
+manifiesto se pueda correr y que sus referencias de 1Password sean las de
+`secrets.env`. Decidido: kubeadm, no k3s, para un Kubernetes nuevo. Y la skill
+**cac-work v18** (command-and-control-270): diseño escrito en cac antes de
+construir, un brief por subtarea para que otra sesión la ejecute, y evidencia
+corrida antes de decir «hecho».
+
 **29-oct, en `main`, esperando release: secciones con identidad y decisiones
 enlazadas** (MCP #91). Cada título de una pestaña o una página tiene un id en
 el servidor (`doc_sections`), reconciliado en **toda** escritura dentro de su
