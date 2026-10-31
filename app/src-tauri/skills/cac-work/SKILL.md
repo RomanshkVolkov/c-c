@@ -25,7 +25,7 @@ apagando.
 |---|---|
 | Una pregunta, una explicación, revisar algo sin cambiarlo | **`search` primero** y la sección del acierto (paso 1). El mapa, sólo si no encuentra. **Sin tarea.** Si descubres algo que vale la pena guardar, coméntalo en la tarea a la que le toca. |
 | Un arreglo pequeño, un commit | La tarea (busca si ya existe), la referencia en el commit (paso 5) y el cierre (paso 7). Sin subtareas, sin decisiones, sin tocar el runbook salvo que cambie algo de él. |
-| Una feature, una investigación larga, varios commits | Todo: el mapa, el tablero al día, la tarea con sus subtareas, las decisiones y el runbook. |
+| Una feature, una investigación larga, varios commits | Todo: el mapa, el tablero al día, **el diseño escrito antes de construir**, la tarea con sus subtareas (cada una con su brief), las decisiones y el runbook. |
 
 Poner el tablero al día (paso 3) es para cuando vas a trabajar, no para una
 pregunta, y sólo en las listas que vas a tocar.
@@ -199,9 +199,52 @@ Por el camino:
 - **Una lista de pendientes son subtareas** (`subtasks` al crear, o
   `create_task` con `parentId` después), no texto en un comentario: así se ve
   qué está hecho. Cada una se marca con `update_task` y `status: "done"`.
+  En una feature, cada subtarea lleva su **brief** (ver «Una feature» abajo).
 - **Lo que no es tuyo** (una prueba roja que ya estaba, una deuda de otra
   parte) va como comentario en la tarea a la que le toca, o como tarea nueva
   si no la tiene.
+
+### Una feature: primero el diseño, después los briefs
+
+Antes de escribir código de una feature, **el diseño se escribe y el usuario
+lo aprueba**. Leer y explorar sí se puede antes; construir, no.
+
+1. **Entender.** Lee lo que ya hay (paso 1) y no preguntes lo que el código o
+   cac ya contestan. Lo que falte, pregúntalo **de una en una**, diciendo qué
+   cambia según la respuesta. Devuelve lo entendido en un párrafo y pregunta
+   qué falta o qué está mal.
+2. **Enfoques.** Dos o tres maneras reales de hacerlo, con la que
+   recomiendas y por qué.
+3. **El diseño vive en cac**, no en un fichero suelto del repo: una subpágina
+   del nodo que toca (`create_doc_page`, «Diseño · <tema>») con la intención,
+   los objetivos, lo que **no** es objetivo, los enfoques y lo decidido. La
+   tarea la enlaza en su descripción, y cada decisión va además a
+   `record_decision` (paso 6). Para un cambio pequeño, basta con la
+   descripción de la tarea.
+4. **Los briefs.** Con el diseño aprobado, la feature se parte en subtareas
+   que se puedan hacer y comprobar solas, y cada una lleva en su descripción
+   un brief que entienda alguien **sin el contexto de esta sesión**:
+   - los ficheros que crea o toca;
+   - qué recibe de otras subtareas y qué deja para ellas (nombres y firmas);
+   - la prueba que la guarda y la rotura que tiene que atrapar (`/mutar`);
+   - el comando que demuestra que está hecha, y qué tiene que decir.
+
+### Planificar con un modelo, ejecutar con otro
+
+Una feature grande se reparte mejor si una sesión planifica (el modelo más
+capaz, con el diseño y los briefs) y otras ejecutan, una por subtarea (un
+modelo más barato, en otra sesión o como subagente con `Agent`). Lo que las
+une es cac, no la conversación:
+
+- quien ejecuta empieza con `get_task <ref de la subtarea>`: el brief es todo
+  su contexto, y lo que no esté ahí no lo sabe;
+- trabaja, muta su prueba, commitea con la ref, y deja handoff y comentario en
+  **su** subtarea;
+- quien planifica revisa cada subtarea al volver (`get_task`: handoff,
+  comentarios, `git`), con `/code-review` si hace falta, antes de dar paso a
+  la siguiente. Si el brief no bastó, se corrige el brief, no sólo el código.
+
+Las subtareas que tocan los mismos ficheros no se ejecutan a la vez.
 
 **Hablar con alguien** (un compañero, el canal del proyecto, otro agente):
 `send_message`, a un canal o a una persona por su usuario, y `read_messages`
@@ -295,6 +338,14 @@ Siguiente: cortar la release y comprobar el chip de ref en el detalle.
 Comprobar: `git tag --contains fa58344`.
 ```
 
+**Sin evidencia de esta sesión, no se dice que está hecho.** «Hecho» en el
+handoff, `done` o «ya funciona» al usuario llevan detrás un comando que
+corriste **ahora**, entero, y cuya salida leíste: las pruebas con su cuenta
+de fallos, el build con su código de salida, el síntoma original reprobado.
+Nombra el comando y lo que dijo («248 pruebas, 0 fallos»). Si no pudiste
+correrlo, dilo así: «sin probar: …». Lo que te cuenta un subagente se
+comprueba contra el diff antes de repetirlo.
+
 **`done` quiere decir publicado**, no commiteado: lo que el usuario ya tiene en
 las manos. Una tarea empieza en `in_progress` (paso 4) y no pasa a `done` hasta
 que su trabajo sale.
@@ -325,6 +376,10 @@ línea.
 - No pegar secretos, tokens ni datos de clientes en tareas, comentarios o docs.
 - No tomar una tarea que otro lleva: si `claim` dice que es de otro, se
   comenta y se sigue con otra cosa.
+- No encadenar hipótesis que el usuario tiene que probar a mano: ante algo
+  que no se entiende, primero se mide (un log temporal, un comando), después
+  se arregla.
+- No construir una feature sin el diseño aprobado.
 
 Una vez por semana, o cuando digan «consolida», la skill `cac-consolidar`
 pasa por lo que entró y propone qué sube a Trampas, qué decisión falta y qué
@@ -337,4 +392,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v17 -->
+<!-- cac-work v18 -->
