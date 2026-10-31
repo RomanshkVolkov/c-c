@@ -4,7 +4,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
-import { FolderOpen, Loader2, Play, Square } from "lucide-react";
+import { FolderOpen, ListOrdered, Loader2, Play, Square } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { desde } from "@/lib/desde";
@@ -19,7 +19,9 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import type { APIResponse } from "@/types/auth";
 import type { AnsibleEvent, AnsibleManifest, AnsibleTools, InventoryHost, ProvisioningRun } from "@/types/ansible";
+import type { EffectiveConfig, PlanGaps, StartedRun } from "@/types/server-config";
 import { useServerContext } from "./ServerLayout";
+import ServerConfigPanel, { stableJson } from "./ServerConfigPanel";
 import Picker from "@/components/ui/picker";
 
 const NADA: never[] = [];
@@ -81,6 +83,9 @@ export default function ServerProvision() {
   const [extra, setExtra] = useState("");
   const [becomePw, setBecomePw] = useState("");
   const [starting, setStarting] = useState(false);
+  const [effective, setEffective] = useState<EffectiveConfig | null>(null);
+  const [gaps, setGaps] = useState<PlanGaps | null>(null);
+  const [openRun, setOpenRun] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const converter = useMemo(() => new AnsiToHtml({ escapeXML: true }), []);
 
@@ -93,6 +98,19 @@ export default function ServerProvision() {
   useEffect(() => {
     void loadHistory(server.id).catch(() => {});
   }, [server.id, loadHistory]);
+
+  // La config del servidor en cac, ya combinada con su plantilla: con lo que
+  // corre un manifiesto v2.
+  const loadEffective = useCallback(async () => {
+    const res = await api.get<APIResponse<EffectiveConfig>>(`/api/v1/servers/${server.id}/config/effective`, true).catch(() => null);
+    // Un backend de antes de la config en cac no tiene la ruta: sin efectiva.
+    const d = res?.data;
+    setEffective(d && typeof d === "object" && !Array.isArray(d) && "connection" in d ? d : null);
+  }, [server.id]);
+
+  useEffect(() => {
+    void loadEffective();
+  }, [loadEffective]);
 
   const loadProject = useCallback(async (dir: string) => {
     setManifest(null);
@@ -124,13 +142,29 @@ export default function ServerProvision() {
   }, [lines.length]);
 
   const playbook = manifest?.playbooks.find((p) => p.id === prefs.playbookId) ?? manifest?.playbooks[0];
+  const v2 = manifest?.version === 2;
+
+  // Qué le falta a la config para este playbook. Lo calcula Rust, con la
+  // misma receta con la que correrá.
+  useEffect(() => {
+    setGaps(null);
+    if (!v2 || !playbook || !effective) return;
+    let alive = true;
+    invoke<PlanGaps>("ansible_plan_gaps", { projectDir: prefs.projectDir, playbookId: playbook.id, effective })
+      .then((g) => alive && setGaps(g))
+      .catch(() => alive && setGaps(null));
+    return () => {
+      alive = false;
+    };
+  }, [v2, playbook, effective, prefs.projectDir]);
   const groups = useMemo(() => [...new Set(hosts.flatMap((h) => h.groups))].sort(), [hosts]);
   const extraParsed = parseExtraVars(extra);
   const missing = (playbook?.vars ?? []).filter((v) => v.required && !v.from && !values[v.name]?.trim());
   const needsBecomePw = !!playbook?.become && !playbook.becomePasswordRef;
   const busy = !!inFlight || starting;
-  const canRun =
-    !!playbook && !!tools?.ansiblePlaybook && !busy && missing.length === 0 && extraParsed.bad.length === 0 && (!needsBecomePw || !!becomePw);
+  const canRun = v2
+    ? !!playbook && !!tools?.ansiblePlaybook && !busy && !!effective && !!gaps && gaps.vars.length === 0 && gaps.secrets.length === 0
+    : !!playbook && !!tools?.ansiblePlaybook && !busy && missing.length === 0 && extraParsed.bad.length === 0 && (!needsBecomePw || !!becomePw);
 
   const pickFolder = async () => {
     // Sin carpeta recordada, la de casa: sin `defaultPath`, GTK abre en el
@@ -140,8 +174,75 @@ export default function ServerProvision() {
     if (typeof dir === "string") setPrefs(server.id, { projectDir: dir, playbookId: "" });
   };
 
+  /**
+   * Una ejecución, de principio a fin: se abre en cac, se lanza en Rust, se va
+   * pintando la salida y se cierra en cac al acabar. Contesta en cuanto Rust
+   * la lanzó (o falló al lanzarla); `ended` dice cómo acabó.
+   *
+   * «En marcha» se apunta **antes** de lanzar: un playbook que falla en el
+   * acto avisa de que acabó antes de que Rust conteste, y apuntarlo después lo
+   * dejaba «aplicando» para siempre y borraba la salida que ya había llegado.
+   */
+  const execute = async (
+    startBody: Record<string, unknown>,
+    launch: (channel: Channel<AnsibleEvent>) => Promise<string>,
+  ): Promise<{ ended: Promise<"succeeded" | "failed" | "cancelled"> }> => {
+    const res = await api.post<APIResponse<ProvisioningRun>>(`/api/v1/servers/${server.id}/provisioning-runs`, startBody, true);
+    if (!res?.success || !res.data) throw new Error(res?.error ?? "provisioning-runs");
+    const backendRunId = res.data.id;
+    live.backendRunId = backendRunId;
+    start({ serverId: server.id, runId: "", backendRunId });
+
+    let settle: (s: "succeeded" | "failed" | "cancelled") => void = () => {};
+    const ended = new Promise<"succeeded" | "failed" | "cancelled">((r) => (settle = r));
+    const channel = new Channel<AnsibleEvent>();
+    let buffer: string[] = [];
+    const flush = () => {
+      if (buffer.length) push(buffer);
+      buffer = [];
+    };
+    const timer = setInterval(flush, 150);
+    channel.onmessage = (ev) => {
+      if (ev.event === "line") {
+        buffer.push(ev.data.text);
+        return;
+      }
+      clearInterval(timer);
+      flush();
+      live.backendRunId = null;
+      const all = useProvisionStore.getState().lines;
+      const status = finalStatus(ev.data.code, ev.data.cancelled);
+      finished();
+      void api
+        .patch(
+          `/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`,
+          { status, exitCode: ev.data.code, summary: playRecap(all), logTail: logTail(all) },
+          true,
+        )
+        .catch(() => {})
+        .finally(() => void loadHistory(server.id));
+      if (status === "succeeded") toast.success(t("common:provision.done"));
+      else if (status === "failed") toast.error(t("common:provision.failed", { code: ev.data.code ?? "?" }));
+      settle(status);
+    };
+
+    const runId = await launch(channel).catch(async (e) => {
+      clearInterval(timer);
+      live.backendRunId = null;
+      finished();
+      await api
+        .patch(`/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`, { status: "failed", summary: String(e), logTail: "" }, true)
+        .catch(() => {});
+      void loadHistory(server.id);
+      throw e;
+    });
+    attach(backendRunId, runId);
+    return { ended };
+  };
+
   const run = async () => {
     if (!playbook || !manifest) return;
+    if (v2) return runWithConfig([playbook.id]);
     const varNames = [...playbook.vars.map((v) => v.name), ...extraParsed.vars.map((v) => v.name)];
     const ok = await confirm({
       title: t("common:provision.confirmTitle", { playbook: playbook.name, server: server.name }),
@@ -156,78 +257,75 @@ export default function ServerProvision() {
 
     setStarting(true);
     try {
-      const res = await api.post<APIResponse<ProvisioningRun>>(
-        `/api/v1/servers/${server.id}/provisioning-runs`,
+      await execute(
         { kind: "playbook", project: prefs.projectDir.split("/").filter(Boolean).pop() ?? "", playbook: playbook.file, target: prefs.limit, varNames },
-        true,
+        (channel) =>
+          invoke<string>("ansible_run", {
+            spec: {
+              projectDir: prefs.projectDir,
+              venv: manifest.venv ?? null,
+              playbook: playbook.file,
+              inventory: manifest.inventory,
+              limit: prefs.limit || null,
+              vars: [
+                ...playbook.vars.map((v) => ({ name: v.name, from: v.from ?? null, value: v.from ? null : values[v.name] ?? null, secret: v.secret })),
+                ...extraParsed.vars.map((v) => ({ name: v.name, value: v.value, from: null, secret: false })),
+              ],
+              becomePassword: needsBecomePw ? becomePw : null,
+              becomePasswordRef: playbook.becomePasswordRef ?? null,
+            },
+            onEvent: channel,
+          }),
       );
-      if (!res?.success || !res.data) throw new Error(res?.error ?? "provisioning-runs");
-      const backendRunId = res.data.id;
-      // «En marcha» se apunta **antes** de lanzar: un playbook que falla en
-      // el acto avisa de que acabó antes de que `ansible_run` conteste, y
-      // apuntarlo después lo dejaba «aplicando» para siempre y borraba la
-      // salida que ya había llegado.
-      live.backendRunId = backendRunId;
-      start({ serverId: server.id, runId: "", backendRunId });
-
-      const channel = new Channel<AnsibleEvent>();
-      let buffer: string[] = [];
-      const flush = () => {
-        if (buffer.length) push(buffer);
-        buffer = [];
-      };
-      const timer = setInterval(flush, 150);
-      channel.onmessage = (ev) => {
-        if (ev.event === "line") {
-          buffer.push(ev.data.text);
-          return;
-        }
-        clearInterval(timer);
-        flush();
-        live.backendRunId = null;
-        const all = useProvisionStore.getState().lines;
-        const status = finalStatus(ev.data.code, ev.data.cancelled);
-        finished();
-        void api
-          .patch(
-            `/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`,
-            { status, exitCode: ev.data.code, summary: playRecap(all), logTail: logTail(all) },
-            true,
-          )
-          .catch(() => {})
-          .finally(() => void loadHistory(server.id));
-        if (status === "succeeded") toast.success(t("common:provision.done"));
-        else if (status === "failed") toast.error(t("common:provision.failed", { code: ev.data.code ?? "?" }));
-      };
-
-      const runId = await invoke<string>("ansible_run", {
-        spec: {
-          projectDir: prefs.projectDir,
-          venv: manifest.venv ?? null,
-          playbook: playbook.file,
-          inventory: manifest.inventory,
-          limit: prefs.limit || null,
-          vars: [
-            ...playbook.vars.map((v) => ({ name: v.name, from: v.from ?? null, value: v.from ? null : values[v.name] ?? null, secret: v.secret })),
-            ...extraParsed.vars.map((v) => ({ name: v.name, value: v.value, from: null, secret: false })),
-          ],
-          becomePassword: needsBecomePw ? becomePw : null,
-          becomePasswordRef: playbook.becomePasswordRef ?? null,
-        },
-        onEvent: channel,
-      }).catch(async (e) => {
-        clearInterval(timer);
-        live.backendRunId = null;
-        finished();
-        await api
-          .patch(`/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`, { status: "failed", summary: String(e), logTail: "" }, true)
-          .catch(() => {});
-        void loadHistory(server.id);
-        throw e;
-      });
-      attach(backendRunId, runId);
       // La contraseña de sudo no se queda en pantalla más de lo necesario.
       setBecomePw("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  /**
+   * Manifiesto v2: con la config de cac del servidor. Uno o la secuencia de su
+   * plantilla, en orden, una ejecución por playbook, y para en la primera que
+   * no acaba bien. Se confirma una vez, diciendo qué versión de la config se
+   * aplica.
+   */
+  const runWithConfig = async (ids: string[]) => {
+    if (!manifest || !effective || ids.length === 0) return;
+    const names = ids.map((id) => manifest.playbooks.find((p) => p.id === id)?.name ?? id);
+    const ok = await confirm({
+      title: t("common:provision.confirmTitle", { playbook: names.join(" → "), server: server.name }),
+      description: t("common:provision.confirmConfig", { seq: effective.configSeq, files: ids.join(" → ") }),
+      confirmText: t("common:provision.run"),
+    });
+    if (!ok) return;
+    setStarting(true);
+    try {
+      for (const id of ids) {
+        const pb = manifest.playbooks.find((p) => p.id === id);
+        if (!pb) throw new Error(id);
+        const varNames = [...new Set([...pb.vars.map((v) => v.name), ...Object.keys(effective.vars)])].sort();
+        const { ended } = await execute(
+          {
+            kind: "playbook",
+            project: prefs.projectDir.split("/").filter(Boolean).pop() ?? "",
+            playbook: pb.file,
+            target: effective.connection.name,
+            varNames,
+            configSeq: effective.configSeq,
+          },
+          (channel) =>
+            invoke<StartedRun>("ansible_run_with_config", {
+              projectDir: prefs.projectDir,
+              playbookId: id,
+              effective,
+              onEvent: channel,
+            }).then((r) => r.runId),
+        );
+        if ((await ended) !== "succeeded") break;
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -250,6 +348,7 @@ export default function ServerProvision() {
   return (
     <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <div className="space-y-4">
+        <ServerConfigPanel server={server} manifest={manifest} effective={effective} onChanged={() => void loadEffective()} />
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">{t("common:provision.project")}</CardTitle>
@@ -292,6 +391,22 @@ export default function ServerProvision() {
               />
               {playbook.description && <p className="text-xs text-muted-foreground">{playbook.description}</p>}
 
+              {v2 ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {effective && effective.configSeq > 0
+                      ? t("common:provision.withConfig", { seq: effective.configSeq, host: `${effective.connection.sshUser}@${effective.connection.host}:${effective.connection.sshPort}` })
+                      : t("common:provision.noConfig")}
+                  </p>
+                  {gaps && gaps.vars.length > 0 && (
+                    <p className="text-xs text-destructive">{t("common:provision.missingVars", { names: gaps.vars.join(", ") })}</p>
+                  )}
+                  {gaps && gaps.secrets.length > 0 && (
+                    <p className="text-xs text-destructive">{t("common:provision.missingSecrets", { names: gaps.secrets.join(", ") })}</p>
+                  )}
+                </div>
+              ) : (
+              <>
               <div className="space-y-1">
                 <Label htmlFor="prov-limit" className="text-xs">{t("common:provision.target")}</Label>
                 <Picker
@@ -350,12 +465,25 @@ export default function ServerProvision() {
                   <p className="text-xs text-destructive">{t("common:provision.badVars", { lines: extraParsed.bad.join(", ") })}</p>
                 )}
               </div>
+              </>
+              )}
 
               <div className="flex gap-2">
                 <Button className="flex-1" disabled={!canRun} onClick={() => void run()}>
                   {busy ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Play className="mr-1 size-4" />}
                   {busy ? t("common:provision.running") : t("common:provision.run")}
                 </Button>
+                {v2 && effective && effective.playbooks.length > 1 && (
+                  <Button
+                    variant="outline"
+                    disabled={!tools?.ansiblePlaybook || busy || effective.missing.length > 0}
+                    onClick={() => void runWithConfig(effective.playbooks)}
+                    title={effective.playbooks.join(" → ")}
+                  >
+                    <ListOrdered className="mr-1 size-4" />
+                    {t("common:provision.runTemplate")}
+                  </Button>
+                )}
                 {inFlight?.serverId === server.id && (
                   <Button variant="destructive" onClick={cancel}>
                     <Square className="mr-1 size-4" />
@@ -391,12 +519,23 @@ export default function ServerProvision() {
                     <Badge variant={VARIANTE[r.status] ?? "outline"}>{t(`common:provision.status.${r.status}`)}</Badge>
                     <span className="font-mono text-xs">{r.playbook}</span>
                     {r.target && <span className="text-xs text-muted-foreground">→ {r.target}</span>}
+                    {!!r.configSeq && (
+                      <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => setOpenRun(openRun === r.id ? null : r.id)}>
+                        {t("common:provision.configVersion", { seq: r.configSeq })}
+                      </button>
+                    )}
+                    {r.source === "cli" && <Badge variant="outline">{t("common:provision.fromTerminal")}</Badge>}
                     <span className="flex-1" />
                     <span className="text-xs text-muted-foreground">
                       {[r.startedByName, desde(r.startedAt)].filter(Boolean).join(" · ")}
                     </span>
                   </div>
                   {r.summary && <pre className="overflow-x-auto font-mono text-[11px] text-muted-foreground">{r.summary}</pre>}
+                  {openRun === r.id && r.applied && (
+                    <pre className="max-h-64 overflow-auto rounded bg-muted p-2 font-mono text-[11px]" aria-label={t("common:provision.applied")}>
+                      {stableJson(r.applied)}
+                    </pre>
+                  )}
                 </li>
               ))}
             </ul>
