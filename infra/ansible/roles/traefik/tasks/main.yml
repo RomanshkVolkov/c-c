@@ -1,0 +1,100 @@
+---
+# Traefik con un certificado wildcard *.{{ base_domain }} por reto DNS en
+# Cloudflare. El mismo patrón que tds (contabo/deploy-traefik-tds.yml), con el
+# dominio por variable.
+- name: Hay token de DNS
+  ansible.builtin.assert:
+    that: cloudflare_dns_token | default('') | length > 0
+    fail_msg: >-
+      Falta cloudflare_dns_token. Desde la app sale de cac.playbooks.yml; desde la
+      terminal, `make swarm` lo lee con `op run` de secrets.env.
+    quiet: true
+
+# El registro A del servidor y su wildcard: sin ellos no hay a quién emitirle.
+# Sin proxy de Cloudflare (nube gris): Traefik termina el TLS.
+- name: Registros DNS del servidor
+  community.general.cloudflare_dns:
+    zone: "{{ dns_zone }}"
+    record: "{{ item }}"
+    type: A
+    value: "{{ public_ip }}"
+    proxied: false
+    solo: true
+    api_token: "{{ cloudflare_dns_token }}"
+  loop:
+    - "{{ base_domain }}"
+    - "*.{{ base_domain }}"
+  delegate_to: localhost
+  become: false
+  vars:
+    # El Python del venv de quien lo corre, no el del servidor.
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  no_log: true
+
+# El token entra por stdin y la clave como ruta: ninguno llega a la línea de
+# comandos, que cualquier usuario ve con `ps`.
+- name: Versión del token
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import hashlib, hmac, sys
+        clave = open(sys.argv[1], "rb").read()
+        dato = b"traefik\0dns_api_token\0" + sys.stdin.buffer.read()
+        print(hmac.new(clave, dato, hashlib.sha256).hexdigest()[:16])
+      - "{{ secret_hmac_key_path }}"
+    stdin: "{{ cloudflare_dns_token }}"
+    stdin_add_newline: false
+  register: token_version
+  changed_when: false
+  no_log: true
+
+- name: Nombre del secret vigente
+  ansible.builtin.set_fact:
+    dns_token_secret: "dns_api_token_{{ token_version.stdout }}"
+
+- name: Secret con el token
+  community.docker.docker_secret:
+    name: "{{ dns_token_secret }}"
+    data: "{{ cloudflare_dns_token }}"
+    labels:
+      cac.dns_token: "true"
+    state: present
+  no_log: true
+
+- name: Definición del stack
+  ansible.builtin.template:
+    src: traefik.yml.j2
+    dest: /etc/cac/traefik.yml
+    mode: "0600"
+
+- name: Desplegar el stack
+  ansible.builtin.command: docker stack deploy --detach=true -c /etc/cac/traefik.yml traefik
+  register: traefik_deploy
+  changed_when: "'Updating' in traefik_deploy.stdout or 'Creating' in traefik_deploy.stdout"
+
+- name: Traefik en 1/1
+  ansible.builtin.command: docker service ls --filter name=traefik_traefik --format {% raw %}'{{.Replicas}}'{% endraw %}
+  register: replicas
+  until: replicas.stdout == "1/1"
+  retries: 24
+  delay: 5
+  changed_when: false
+
+# Docker se niega a borrar un secret en uso: un fallo es «todavía
+# referenciado» y nunca deja a Traefik sin token.
+- name: Versiones anteriores del token
+  ansible.builtin.shell:
+    cmd: >-
+      docker secret ls --filter label=cac.dns_token=true --format {% raw %}'{{.Name}}'{% endraw %}
+      | grep -vxF {{ dns_token_secret | quote }} || true
+  register: old_tokens
+  changed_when: false
+
+- name: Borrar versiones anteriores
+  ansible.builtin.command: docker secret rm {{ item }}
+  loop: "{{ old_tokens.stdout_lines }}"
+  register: removed
+  failed_when: false
+  changed_when: removed.rc == 0

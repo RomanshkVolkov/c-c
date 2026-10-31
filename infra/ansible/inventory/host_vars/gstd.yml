@@ -1,0 +1,7 @@
+---
+# gstd: VPS de pruebas (Contabo, Ubuntu 24.04, 12 vCPU, 47 GB, 387 GB).
+public_ip: 13.140.235.112
+# Zona de Cloudflare y el subdominio que es de este servidor: el wildcard
+# *.gstd.guz-studio.dev apunta aquí.
+dns_zone: guz-studio.dev
+base_domain: gstd.guz-studio.dev

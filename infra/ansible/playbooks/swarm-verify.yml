@@ -1,0 +1,50 @@
+---
+# Comprueba Swarm, Traefik y que whoami contesta por HTTPS con un certificado
+# de verdad. No cambia nada.
+- name: Verificar el servidor Swarm
+  hosts: swarm
+  gather_facts: false
+  tasks:
+    - name: El nodo es manager y está Ready
+      ansible.builtin.command: docker node ls --format {% raw %}'{{.Status}} {{.ManagerStatus}}'{% endraw %}
+      register: nodes
+      changed_when: false
+      failed_when: "'Ready Leader' not in nodes.stdout"
+
+    - name: Servicios en sus réplicas
+      ansible.builtin.command: docker service ls --format {% raw %}'{{.Name}} {{.Replicas}}'{% endraw %}
+      register: services
+      changed_when: false
+      failed_when: >-
+        'traefik_traefik 1/1' not in services.stdout or
+        'whoami_whoami 1/1' not in services.stdout
+
+    # Desde la máquina de quien lo corre: es lo que ve internet. La primera
+    # emisión tarda (el reto DNS espera 30 s), así que se reintenta.
+    - name: whoami contesta por HTTPS con certificado válido
+      ansible.builtin.uri:
+        url: "https://whoami.{{ base_domain }}/"
+        validate_certs: true
+        return_content: true
+      register: whoami
+      until: whoami.status == 200
+      retries: 18
+      delay: 10
+      delegate_to: localhost
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+    - name: Emisor y nombres del certificado
+      ansible.builtin.shell:
+        cmd: >-
+          echo | openssl s_client -connect {{ public_ip }}:443 -servername whoami.{{ base_domain }} 2>/dev/null
+          | openssl x509 -noout -issuer -ext subjectAltName
+      register: cert
+      changed_when: false
+      delegate_to: localhost
+
+    - name: Resultado
+      ansible.builtin.debug:
+        msg:
+          - "{{ services.stdout_lines }}"
+          - "{{ cert.stdout_lines }}"

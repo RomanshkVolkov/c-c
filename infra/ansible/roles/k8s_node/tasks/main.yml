@@ -1,0 +1,115 @@
+---
+# Lo que necesita cualquier nodo de kubeadm: kernel, containerd y los paquetes
+# de Kubernetes, fijados a las versiones de pixel-vps. Es también lo que haría
+# falta para sumar un worker a pixel-vps (después, `kubeadm join`).
+- name: Sin swap (kubelet no arranca con swap)
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Sin swap al arrancar
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+
+- name: Módulos del kernel
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: "overlay\nbr_netfilter\n"
+    mode: "0644"
+
+- name: Cargarlos ya
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: [overlay, br_netfilter]
+
+- name: Reenvío y puentes por iptables
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_file: /etc/sysctl.d/k8s.conf
+    reload: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+
+- name: Directorio de llaves de apt
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+# containerd sale del repo de Docker (containerd.io), como en pixel-vps.
+- name: Llave del repo de Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Repo de Docker
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    filename: docker
+    state: present
+
+- name: Llave del repo de Kubernetes {{ k8s_minor }}
+  ansible.builtin.shell:
+    cmd: >-
+      curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/Release.key
+      | gpg --dearmor -o /etc/apt/keyrings/kubernetes-{{ k8s_minor }}.gpg
+    creates: /etc/apt/keyrings/kubernetes-{{ k8s_minor }}.gpg
+
+- name: Repo de Kubernetes {{ k8s_minor }}
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-{{ k8s_minor }}.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/ /"
+    filename: kubernetes
+    state: present
+
+- name: Paquetes fijados
+  ansible.builtin.apt:
+    name:
+      - "containerd.io={{ containerd_version }}-*"
+      - "kubelet={{ k8s_version }}-*"
+      - "kubeadm={{ k8s_version }}-*"
+      - "kubectl={{ k8s_version }}-*"
+    state: present
+    update_cache: true
+    allow_downgrade: true
+    lock_timeout: 180
+
+- name: Que apt no los suba solo
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: [containerd.io, kubelet, kubeadm, kubectl]
+
+# El config.toml del paquete trae el CRI desactivado. Se regenera con los
+# valores por defecto y el cgroup de systemd, que es el que espera kubelet.
+- name: ¿containerd ya configurado para Kubernetes?
+  ansible.builtin.command: grep -q 'SystemdCgroup = true' /etc/containerd/config.toml
+  register: containerd_cfg
+  changed_when: false
+  failed_when: false
+
+- name: Configurar containerd
+  ansible.builtin.shell:
+    cmd: >-
+      containerd config default
+      | sed 's/SystemdCgroup = false/SystemdCgroup = true/'
+      > /etc/containerd/config.toml
+  when: containerd_cfg.rc != 0
+  notify: Reiniciar containerd
+
+- name: containerd activo
+  ansible.builtin.systemd_service:
+    name: containerd
+    state: started
+    enabled: true
+
+- name: kubelet al arrancar
+  ansible.builtin.systemd_service:
+    name: kubelet
+    enabled: true

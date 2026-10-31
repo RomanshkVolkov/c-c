@@ -1,0 +1,62 @@
+---
+# Deshace k8s-site: kubeadm reset, paquetes fuera y la red limpia. DESTRUCTIVO.
+- name: Desmontar Kubernetes
+  hosts: k8s_control_plane
+  tasks:
+    - name: ¿Hay kubeadm?
+      ansible.builtin.stat:
+        path: /usr/bin/kubeadm
+      register: kubeadm_bin
+
+    - name: kubeadm reset
+      ansible.builtin.command: kubeadm reset --force
+      when: kubeadm_bin.stat.exists
+      changed_when: true
+
+    - name: Quitar la retención de apt
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: install
+      loop: [containerd.io, kubelet, kubeadm, kubectl]
+      failed_when: false
+
+    - name: Desinstalar paquetes
+      ansible.builtin.apt:
+        name: [kubelet, kubeadm, kubectl, kubernetes-cni, cri-tools, containerd.io]
+        state: absent
+        purge: true
+        autoremove: true
+        lock_timeout: 180
+
+    - name: Borrar estado, CNI y lo que dejó cac
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes
+        - /var/lib/etcd
+        - /var/lib/kubelet
+        - /etc/cni
+        - /opt/cni
+        - /var/lib/cni
+        - /var/run/cilium
+        - /root/.kube
+        - /var/lib/containerd
+        - /etc/containerd
+        - /usr/local/bin/helm
+        - /etc/cac/kubeadm-config.yaml
+        - /etc/cac/cluster.yaml
+        - /etc/cac/whoami.yaml
+
+    # Cilium y kube-proxy dejan cadenas que kubeadm reset no borra.
+    - name: Vaciar iptables
+      ansible.builtin.shell:
+        cmd: >-
+          iptables-save | grep -vE 'KUBE|CILIUM|cali' | iptables-restore
+          && ip link delete cilium_host 2>/dev/null; ip link delete cilium_vxlan 2>/dev/null; true
+      changed_when: true
+
+    - name: Volver a cargar ufw
+      ansible.builtin.command: ufw reload
+      changed_when: false
+      failed_when: false

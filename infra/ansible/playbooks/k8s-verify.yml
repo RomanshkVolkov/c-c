@@ -1,0 +1,50 @@
+---
+# Comprueba nodo, red, Gateway, certificado y que whoami contesta por HTTPS.
+# No cambia nada.
+- name: Verificar el clúster
+  hosts: k8s_control_plane
+  gather_facts: false
+  tasks:
+    - name: Nodo Ready
+      ansible.builtin.command: kubectl wait --for=condition=Ready node --all --timeout=60s
+      changed_when: false
+
+    - name: Nada de sistema fuera de Running
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl get pods -A --no-headers
+          | grep -vE '\s(Running|Completed)\s' || true
+      register: bad_pods
+      changed_when: false
+      failed_when: bad_pods.stdout | length > 0
+
+    - name: Gateway programado con la IP pública
+      ansible.builtin.command: >-
+        kubectl -n default wait gateway/gateway-api --for=condition=Programmed --timeout=120s
+      changed_when: false
+
+    - name: Certificado emitido
+      ansible.builtin.command: >-
+        kubectl -n default wait certificate/wildcard --for=condition=Ready --timeout=300s
+      changed_when: false
+
+    - name: whoami contesta por HTTPS con certificado válido
+      ansible.builtin.uri:
+        url: "https://whoami.{{ base_domain }}/"
+        validate_certs: true
+      register: whoami
+      until: whoami.status == 200
+      retries: 12
+      delay: 10
+      delegate_to: localhost
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+    - name: Estado
+      ansible.builtin.command: kubectl get nodes,gateway,certificate,httproute -A -o wide
+      register: state
+      changed_when: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        var: state.stdout_lines

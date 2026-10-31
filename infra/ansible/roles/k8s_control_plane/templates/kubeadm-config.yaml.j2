@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ public_ip }}
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v{{ k8s_version }}
+clusterName: {{ inventory_hostname }}
+# Un nombre y no una IP, como pixel-vps (k8scp): así el día que haya más de un
+# control plane no hay que reemitir certificados.
+controlPlaneEndpoint: {{ inventory_hostname }}-cp:6443
+apiServer:
+  certSANs: [{{ public_ip }}, {{ inventory_hostname }}-cp, localhost, 127.0.0.1]
+networking:
+  podSubnet: {{ pod_cidr }}
+  serviceSubnet: {{ service_cidr }}
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd

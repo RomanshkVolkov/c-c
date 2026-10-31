@@ -1,0 +1,17 @@
+---
+# Probar conexión. No cambia nada.
+- name: Probar conexión
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping
+      ansible.builtin.ping:
+
+    - name: Quién soy y dónde
+      ansible.builtin.command: sh -c 'echo "$(whoami)@$(hostname) · $(. /etc/os-release && echo $PRETTY_NAME)"'
+      register: who
+      changed_when: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        msg: "{{ who.stdout }}"

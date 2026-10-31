@@ -852,6 +852,40 @@ playbooks:
         assert!(parse_manifest(dup).is_err());
     }
 
+    // Lo que cac sabe aprovisionar (infra/ansible) es un manifiesto que la
+    // pestaña Provisioning tiene que poder abrir: que se lea, que cada playbook
+    // y el inventario existan dentro de la carpeta, y que las referencias de
+    // 1Password sean las mismas que usa `make` (secrets.env). Si divergen, la
+    // terminal y la app aplicarían con secretos distintos.
+    #[test]
+    fn the_infra_ansible_manifest_is_one_the_app_can_run() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let text = std::fs::read_to_string(dir.join(MANIFEST_FILE)).unwrap();
+        let m = parse_manifest(&text).unwrap();
+
+        assert!(inside_project(&m.inventory), "{}", m.inventory);
+        assert!(dir.join(&m.inventory).is_file(), "{}", m.inventory);
+        assert!(m.playbooks.len() >= 7);
+        for p in &m.playbooks {
+            assert!(inside_project(&p.file), "{}", p.file);
+            assert!(dir.join(&p.file).is_file(), "{} no existe", p.file);
+        }
+
+        let env = std::fs::read_to_string(dir.join("secrets.env")).unwrap();
+        let env_refs: std::collections::HashSet<&str> = env
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .filter_map(|l| l.split_once('=').map(|(_, v)| v.trim()))
+            .collect();
+        let manifest_refs: std::collections::HashSet<&str> = m
+            .playbooks
+            .iter()
+            .flat_map(|p| p.vars.iter().filter_map(|v| v.from.as_deref()))
+            .collect();
+        assert!(!manifest_refs.is_empty());
+        assert_eq!(manifest_refs, env_refs);
+    }
+
     // `--list` trae las variables de cada host; de ahí sólo salen nombres.
     #[test]
     fn the_inventory_returns_names_not_variables() {

@@ -1,0 +1,11 @@
+---
+- name: Inicializar Swarm (no-op si ya está)
+  community.docker.docker_swarm:
+    state: present
+    advertise_addr: "{{ swarm_advertise_addr | default(public_ip) }}"
+
+- name: Red de Traefik (overlay, attachable para que un build la vea)
+  community.docker.docker_network:
+    name: "{{ traefik_network }}"
+    driver: overlay
+    attachable: true

@@ -1,0 +1,62 @@
+# Lo que la pestaña Provisioning de un servidor enseña (app/src-tauri/src/ansible.rs).
+# Corre en la máquina de quien lo lanza, con el .venv de esta carpeta (make setup).
+# Lo que viene de 1Password se lee al correr y se tacha de la salida; a cac sólo
+# llegan quién, contra qué, los NOMBRES de las variables y el PLAY RECAP.
+# Las referencias son las mismas que secrets.env: si cambias una, cambia la otra.
+version: 1
+venv: .venv
+inventory: inventory/hosts.yml
+playbooks:
+  - id: test
+    file: playbooks/test.yml
+    name: Probar conexión
+    description: Ping y quién soy en cada host. No cambia nada.
+    hosts: all
+
+  - id: swarm
+    file: playbooks/swarm-site.yml
+    name: Swarm + Traefik
+    description: >-
+      Firewall, Docker, Swarm, Traefik con wildcard *.<base_domain> por DNS en
+      Cloudflare, y whoami como prueba. Idempotente.
+    hosts: swarm
+    vars:
+      - name: cloudflare_dns_token
+        description: Token de Cloudflare con DNS Edit sobre la zona del servidor.
+        from: "op://Private/cloudflare guz-studio.dev dns/credential"
+
+  - id: swarm-verify
+    file: playbooks/swarm-verify.yml
+    name: Verificar Swarm
+    description: Nodo, servicios y whoami por HTTPS con certificado válido. No cambia nada.
+    hosts: swarm
+
+  - id: swarm-teardown
+    file: playbooks/swarm-teardown.yml
+    name: Desmontar Swarm
+    description: Quita los stacks, sale del Swarm y desinstala Docker. Destructivo.
+    hosts: swarm
+
+  - id: k8s
+    file: playbooks/k8s-site.yml
+    name: Kubernetes (kubeadm) como pixel-vps
+    description: >-
+      containerd, kubeadm, Cilium, MetalLB, Envoy Gateway, cert-manager con el
+      wildcard por DNS, y whoami por HTTPRoute. Antes, desmontar Swarm. Idempotente.
+    hosts: k8s_control_plane
+    vars:
+      - name: cloudflare_dns_token
+        description: Token de Cloudflare con DNS Edit sobre la zona del servidor.
+        from: "op://Private/cloudflare guz-studio.dev dns/credential"
+
+  - id: k8s-verify
+    file: playbooks/k8s-verify.yml
+    name: Verificar Kubernetes
+    description: Nodo, pods, Gateway, certificado y whoami por HTTPS. No cambia nada.
+    hosts: k8s_control_plane
+
+  - id: k8s-teardown
+    file: playbooks/k8s-teardown.yml
+    name: Desmontar Kubernetes
+    description: kubeadm reset, paquetes fuera y red limpia. Destructivo.
+    hosts: k8s_control_plane

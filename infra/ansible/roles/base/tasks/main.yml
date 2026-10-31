@@ -1,0 +1,68 @@
+---
+# Lo mínimo de cualquier servidor: paquetes al día, el usuario de operación (si
+# se le pasa llave) y el firewall del host.
+- name: Paquetes base
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, gnupg, python3-yaml, ufw, jq]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    lock_timeout: 180
+
+- name: Directorio de cac en el servidor
+  ansible.builtin.file:
+    path: /etc/cac
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# La clave de los nombres de secret por versión: se crea una vez y no sale de
+# aquí. `creates` la hace idempotente.
+- name: Clave del HMAC de versiones de secrets
+  ansible.builtin.shell:
+    cmd: umask 077 && head -c 32 /dev/urandom > {{ secret_hmac_key_path | quote }}
+    creates: "{{ secret_hmac_key_path }}"
+
+- name: Usuario de operación
+  when: deploy_public_key | default('') | length > 0
+  block:
+    - name: Crear el usuario
+      ansible.builtin.user:
+        name: "{{ ops_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Su llave
+      ansible.posix.authorized_key:
+        user: "{{ ops_user }}"
+        key: "{{ deploy_public_key }}"
+        exclusive: true
+
+# Primero la regla del SSH, después encender: al revés, el propio playbook se
+# corta la rama en la que está sentado.
+- name: Firewall
+  when: firewall_enabled | bool
+  block:
+    - name: Puertos TCP permitidos
+      community.general.ufw:
+        rule: allow
+        port: "{{ item | string }}"
+        proto: tcp
+      loop: "{{ firewall_tcp_ports }}"
+
+    - name: Lo enrutado pasa (contenedores y pods)
+      community.general.ufw:
+        direction: routed
+        default: allow
+
+    - name: Sale todo
+      community.general.ufw:
+        direction: outgoing
+        default: allow
+
+    - name: Entra sólo lo permitido, y encender
+      community.general.ufw:
+        direction: incoming
+        default: deny
+        state: enabled

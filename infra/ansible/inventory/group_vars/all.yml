@@ -1,0 +1,49 @@
+---
+# Lo que vale para cualquier servidor. Lo de cada uno, en host_vars/<nombre>.yml.
+
+# --- Acceso ------------------------------------------------------------------
+# Usuario de operación que se crea si llega `deploy_public_key` (opcional).
+ops_user: infra_devops
+
+# --- Firewall ----------------------------------------------------------------
+# ufw: entra sólo lo de la lista; sale todo. `routed allow` porque Docker y el
+# CNI enrutan por el host, y con `deny` los contenedores se quedan sin salida.
+# OJO: los puertos que publica Docker se saltan ufw (sus reglas van antes), así
+# que esto protege el host, no lo que expone un stack.
+firewall_enabled: true
+firewall_tcp_ports: [22, 80, 443]
+
+# --- TLS ---------------------------------------------------------------------
+acme_email: jose@nuke-ai.com
+acme_dns_provider: cloudflare
+# Token de Cloudflare con Zone→DNS→Edit y Zone→Zone→Read sólo sobre la zona.
+# Llega como variable extra: desde la app (cac.playbooks.yml, op://) o desde la
+# terminal (secrets.env vía `op run`). Nunca en el repo.
+cloudflare_dns_token: "{{ lookup('ansible.builtin.env', 'CLOUDFLARE_DNS_TOKEN') }}"
+
+# Clave con la que se nombran los secrets por versión (HMAC del valor): un
+# token nuevo crea un secret nuevo y el servicio se redespliega con él; el
+# mismo token no cambia nada. Vive sólo en el servidor.
+secret_hmac_key_path: /etc/cac/secret-hmac.key
+
+# --- Swarm -------------------------------------------------------------------
+traefik_image: traefik:v3.6
+traefik_network: traefik_proxy
+whoami_image: traefik/whoami:v1.11
+
+# --- Kubernetes (versiones de pixel-vps, leídas el 31-oct-2026) ---------------
+# Se fijan iguales a producción para poder ensayar aquí sus upgrades.
+k8s_version: "1.35.0"
+k8s_minor: "1.35"
+containerd_version: "2.2.1"
+cilium_version: "1.18.6"
+metallb_version: "0.14.8"
+envoy_gateway_version: "v1.6.2"
+cert_manager_version: "v1.14.0"
+cnpg_version: "0.27.0"        # chart de CNPG 1.28.0
+helm_version: "v3.19.0"
+# pixel-vps usa el pool por defecto de Cilium (10.0.0.0/8), que se solapa con
+# la red de Services (10.96.0.0/12). Aquí no: pods en 10.244.0.0/16.
+pod_cidr: 10.244.0.0/16
+service_cidr: 10.96.0.0/12
+install_cnpg: false

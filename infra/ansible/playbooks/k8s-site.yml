@@ -1,0 +1,11 @@
+---
+# Kubernetes de un nodo con kubeadm, replicando pixel-vps: containerd, Cilium,
+# MetalLB, Envoy Gateway y cert-manager, y whoami como prueba. Idempotente.
+# Antes, si el servidor tenía Swarm: swarm-teardown.
+- name: Servidor Kubernetes (kubeadm)
+  hosts: k8s_control_plane
+  roles:
+    - base
+    - k8s_node
+    - k8s_control_plane
+    - k8s_addons

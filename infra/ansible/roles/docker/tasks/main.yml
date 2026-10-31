@@ -1,0 +1,32 @@
+---
+- name: ¿Está Docker?
+  ansible.builtin.command: docker --version
+  register: docker_check
+  changed_when: false
+  failed_when: false
+
+# El instalador oficial no tiene módulo; `creates` lo hace idempotente.
+- name: Instalar Docker Engine (script oficial)
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://get.docker.com | sh
+    creates: /usr/bin/docker
+  when: docker_check.rc != 0
+
+- name: Docker activo y al arrancar
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: SDK de Docker para Python (lo usan los módulos community.docker)
+  ansible.builtin.apt:
+    name: [python3-docker, python3-jsondiff]
+    state: present
+    lock_timeout: 180
+
+- name: El usuario de operación entra al grupo docker
+  when: deploy_public_key | default('') | length > 0
+  ansible.builtin.user:
+    name: "{{ ops_user }}"
+    groups: docker
+    append: true

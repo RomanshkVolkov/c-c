@@ -1,0 +1,63 @@
+---
+# kubeadm init de un control plane de un nodo, más helm. Sin abrir el 6443 a
+# internet: se opera con kubectl en el servidor (por ssh), como pixel-vps.
+- name: El nombre del control plane resuelve a este nodo
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ public_ip }} {{ inventory_hostname }}-cp"
+    regexp: '\s{{ inventory_hostname }}-cp$'
+
+- name: Configuración de kubeadm
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2
+    dest: /etc/cac/kubeadm-config.yaml
+    mode: "0600"
+
+- name: ¿Ya hay clúster?
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: admin_conf
+
+# Sin kube-proxy fuera: Cilium corre con kube-proxy, como en pixel-vps.
+- name: kubeadm init
+  ansible.builtin.command: kubeadm init --config /etc/cac/kubeadm-config.yaml
+  when: not admin_conf.stat.exists
+  changed_when: true
+
+- name: kubectl de root lee el admin.conf
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: "0700"
+
+- name: Copiar el admin.conf
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    remote_src: true
+    mode: "0600"
+
+# Un solo nodo: el control plane también corre cargas.
+- name: Quitar el taint del control plane
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- 2>&1
+      | grep -q 'untainted' && echo changed || true
+  register: untaint
+  changed_when: "'changed' in untaint.stdout"
+
+- name: ¿Está helm {{ helm_version }}?
+  ansible.builtin.shell:
+    cmd: helm version --short 2>/dev/null | grep -q '^{{ helm_version }}'
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Instalar helm {{ helm_version }}
+  ansible.builtin.unarchive:
+    src: https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts: [--strip-components=1, linux-amd64/helm]
+    mode: "0755"
+  when: helm_check.rc != 0

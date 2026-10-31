@@ -1,0 +1,13 @@
+---
+# La prueba de humo: un servicio detrás de Traefik en whoami.{{ base_domain }},
+# que es el que pide el wildcard la primera vez.
+- name: Definición del stack
+  ansible.builtin.template:
+    src: whoami.yml.j2
+    dest: /etc/cac/whoami.yml
+    mode: "0600"
+
+- name: Desplegar whoami
+  ansible.builtin.command: docker stack deploy --detach=true -c /etc/cac/whoami.yml whoami
+  register: whoami_deploy
+  changed_when: "'Updating' in whoami_deploy.stdout or 'Creating' in whoami_deploy.stdout"

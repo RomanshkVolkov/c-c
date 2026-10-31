@@ -1,0 +1,114 @@
+---
+# Las piezas de pixel-vps encima del clúster: Cilium (red), MetalLB (la IP
+# pública para Services), Envoy Gateway (entrada) y cert-manager (TLS). CNPG,
+# detrás de install_cnpg. Todo con helm y kubectl en el servidor.
+- name: Repos de helm
+  kubernetes.core.helm_repository:
+    name: "{{ item.name }}"
+    repo_url: "{{ item.url }}"
+  loop:
+    - {name: cilium, url: "https://helm.cilium.io"}
+    - {name: metallb, url: "https://metallb.github.io/metallb"}
+    - {name: jetstack, url: "https://charts.jetstack.io"}
+    - {name: cnpg, url: "https://cloudnative-pg.github.io/charts"}
+
+# VXLAN y con kube-proxy, como pixel-vps; el pool de pods es pod_cidr (ver
+# group_vars: aquí no se solapa con la red de Services).
+- name: Cilium {{ cilium_version }}
+  kubernetes.core.helm:
+    name: cilium
+    chart_ref: cilium/cilium
+    chart_version: "{{ cilium_version }}"
+    release_namespace: kube-system
+    wait: true
+    wait_timeout: 10m
+    values:
+      kubeProxyReplacement: false
+      routingMode: tunnel
+      tunnelProtocol: vxlan
+      ipam:
+        mode: cluster-pool
+        operator:
+          clusterPoolIPv4PodCIDRList: ["{{ pod_cidr }}"]
+      operator:
+        replicas: 1
+
+- name: El nodo Ready (con red)
+  ansible.builtin.command: kubectl wait --for=condition=Ready node --all --timeout=300s
+  changed_when: false
+
+- name: MetalLB {{ metallb_version }}
+  kubernetes.core.helm:
+    name: metallb
+    chart_ref: metallb/metallb
+    chart_version: "{{ metallb_version }}"
+    release_namespace: metallb-system
+    create_namespace: true
+    wait: true
+
+- name: Envoy Gateway {{ envoy_gateway_version }}
+  kubernetes.core.helm:
+    name: envoy-gateway
+    chart_ref: oci://docker.io/envoyproxy/gateway-helm
+    chart_version: "{{ envoy_gateway_version }}"
+    release_namespace: envoy-gateway-system
+    create_namespace: true
+    wait: true
+    wait_timeout: 10m
+
+- name: cert-manager {{ cert_manager_version }}
+  kubernetes.core.helm:
+    name: cert-manager
+    chart_ref: jetstack/cert-manager
+    chart_version: "{{ cert_manager_version }}"
+    release_namespace: cert-manager
+    create_namespace: true
+    wait: true
+    values:
+      installCRDs: true
+
+- name: CloudNativePG
+  when: install_cnpg | bool
+  kubernetes.core.helm:
+    name: cnpg
+    chart_ref: cnpg/cloudnative-pg
+    chart_version: "{{ cnpg_version }}"
+    release_namespace: cnpg-system
+    create_namespace: true
+    wait: true
+
+# El token de Cloudflare entra por stdin y del lado del servidor: ni en la
+# línea de comandos ni en la anotación last-applied (por --server-side).
+- name: Secret con el token de DNS para cert-manager
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl -n cert-manager create secret generic cloudflare-dns-token
+      --from-file=api-token=/dev/stdin --dry-run=client -o yaml
+      | kubectl apply --server-side --force-conflicts -f -
+    stdin: "{{ cloudflare_dns_token }}"
+    stdin_add_newline: false
+  register: dns_secret
+  changed_when: "'serverside-applied' in dns_secret.stdout and 'unchanged' not in dns_secret.stdout"
+  no_log: true
+
+- name: Manifiestos del clúster
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/cac/{{ item }}"
+    mode: "0600"
+  loop: [cluster.yaml, whoami.yaml]
+
+# Los CRD de MetalLB y cert-manager tienen webhooks que tardan en contestar
+# después de que el chart dice «listo»: se reintenta.
+- name: Aplicar pool, Gateway, emisor y certificado
+  ansible.builtin.command: kubectl apply --server-side -f /etc/cac/cluster.yaml
+  register: cluster_apply
+  until: cluster_apply.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: "'serverside-applied' in cluster_apply.stdout"
+
+- name: Aplicar whoami
+  ansible.builtin.command: kubectl apply --server-side -f /etc/cac/whoami.yaml
+  register: whoami_apply
+  changed_when: "'serverside-applied' in whoami_apply.stdout"

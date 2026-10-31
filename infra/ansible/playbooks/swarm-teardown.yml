@@ -1,0 +1,73 @@
+---
+# Deshace swarm-site: quita los stacks, sale del Swarm y desinstala Docker,
+# para dejar el servidor listo para Kubernetes (que trae su propio containerd).
+# DESTRUCTIVO. Los registros DNS se quedan: sirven igual para el Gateway.
+- name: Desmontar Swarm y Docker
+  hosts: swarm
+  tasks:
+    - name: ¿Está Docker?
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Desmontar lo de Docker
+      when: docker_check.rc == 0
+      block:
+        - name: Quitar los stacks
+          ansible.builtin.shell:
+            cmd: docker stack ls --format {% raw %}'{{.Name}}'{% endraw %} | xargs -r -n1 docker stack rm
+          changed_when: true
+
+        - name: Esperar a que no quede ningún contenedor
+          ansible.builtin.command: docker ps -q
+          register: running
+          until: running.stdout == ""
+          retries: 24
+          delay: 5
+          changed_when: false
+
+        - name: Salir del Swarm (borra secrets y redes overlay)
+          community.docker.docker_swarm:
+            state: absent
+            force: true
+
+        - name: Parar Docker
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop: [docker.socket, docker, containerd]
+
+    - name: Desinstalar Docker y su containerd
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - docker-ce-rootless-extras
+          - docker-buildx-plugin
+          - docker-compose-plugin
+          - containerd.io
+          - python3-docker
+        state: absent
+        purge: true
+        autoremove: true
+        lock_timeout: 180
+
+    - name: Borrar sus datos y lo que dejó cac
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/docker
+        - /var/lib/containerd
+        - /etc/docker
+        - /etc/cac/traefik.yml
+        - /etc/cac/whoami.yml
+
+    - name: 80 y 443 libres
+      ansible.builtin.shell:
+        cmd: ss -Htln '( sport = :80 or sport = :443 )'
+      register: ports
+      changed_when: false
+      failed_when: ports.stdout | length > 0
