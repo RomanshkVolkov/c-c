@@ -13,6 +13,17 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**31-oct (tarde), en `main`: la config de un servidor vive en cac**
+(command-and-control-272). Plantillas de servidor (una secuencia de playbooks
+de `infra/ansible` + variables + los nombres de los secretos que exige) y una
+config versionada por servidor, con sus secretos **sólo** como referencias de
+1Password; cada ejecución guarda la versión y la foto de lo aplicado. Se edita
+igual en la pestaña Provisioning y por MCP (`servers:manage`), que configura
+pero no aplica. `infra/ansible` ya no lleva inventario ni referencias
+(manifiesto v2); la app y la nueva `cac provision run|plan` generan el
+inventario de un host con la config de cac. Backend **desplegado**; la app,
+**sin release**. Falta registrar gstd en cac y crear su plantilla y config.
+
 **31-oct, en `main`: `infra/ansible`, lo que cac sabe aprovisionar**
 (command-and-control-260). Roles y playbooks para dejar un servidor como Swarm +
 Traefik (wildcard `*.<dominio>` por DNS en Cloudflare) o como Kubernetes con
