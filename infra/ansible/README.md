@@ -12,65 +12,64 @@ Playbooks para dejar un servidor listo desde cero, por etapas:
      MetalLB, Envoy Gateway y cert-manager (CNPG con `install_cnpg: true`).
 
 Los dos emiten un certificado wildcard `*.<base_domain>` por reto DNS en
-Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo. Se corren
-desde la terminal o desde la pestaña **Provisioning** del servidor en la app,
-que lee `cac.playbooks.yml`. El primer servidor es `gstd` (VPS de pruebas).
+Cloudflare, y dejan un `whoami.<base_domain>` como prueba de humo.
+
+## El repo tiene el cómo; cac, el qué
+
+Aquí sólo hay playbooks, roles y, en `cac.playbooks.yml`, lo que pide cada
+playbook (sus variables, con defaults, y el **nombre** de cada secreto). La
+config de cada servidor vive en cac, versionada: su plantilla (una secuencia
+de estos playbooks, `[baseline, swarm]`), sus variables (`base_domain`,
+`ssh_port`, `ops_authorized_keys`…) y **dónde** está cada secreto en
+1Password (`OPS_PASSWORD → op://…`). No hay inventario ni referencias en el
+repo: se genera un inventario de un solo host en cada ejecución. Ver
+[docs/integrations/provisioning.md](../../docs/integrations/provisioning.md).
+
+## Desde la app
+
+Servidores → el servidor → **Provisioning**: su config (plantilla, variables,
+secretos por referencia, versiones) y, con esta carpeta elegida, el botón de
+cada playbook. La app usa el `.venv` de aquí (corre `make setup` antes), lee
+los secretos de 1Password en Rust, los pasa en un fichero `0600` y los tacha de
+la salida. A cac le llegan la versión de la config, lo aplicado (variables y
+referencias) y el PLAY RECAP; nunca un valor.
 
 ## Desde la terminal
 
 ```sh
-make setup          # .venv con ansible-core y las collections (una vez)
-make test           # ping a todos (antes o después de la etapa 1)
-make baseline       # etapa 1
-make swarm          # Swarm + Traefik + whoami
-make swarm-verify   # nodo, servicios y whoami por HTTPS con cert válido
-make swarm-down     # DESTRUCTIVO: quita los stacks, el Swarm y Docker
-make k8s            # Kubernetes (después de swarm-down)
-make k8s-verify
-make k8s-down       # DESTRUCTIVO
+make setup                        # .venv con ansible-core y las collections (una vez)
+make plan SERVER=gstd P=swarm     # qué se correría, y qué le falta a la config en cac
+make test SERVER=gstd             # ping (antes o después de la etapa 1)
+make baseline SERVER=gstd         # etapa 1
+make swarm SERVER=gstd            # Swarm + Traefik + whoami
+make swarm-verify SERVER=gstd     # nodo, servicios y whoami por HTTPS con cert válido
+make swarm-down SERVER=gstd       # DESTRUCTIVO: quita los stacks, el Swarm y Docker
+make k8s SERVER=gstd              # Kubernetes (después de swarm-down)
+make k8s-verify SERVER=gstd
+make k8s-down SERVER=gstd         # DESTRUCTIVO
 ```
 
-`LIMIT=gstd` limita los hosts. Para aplicar sólo una parte del Swarm:
-`.venv/bin/ansible-playbook playbooks/swarm-site.yml --tags docker,swarm`.
-
-Todo menos `test` hace sudo y lee la contraseña de `infra_devops` con
-`op run`; `swarm` y `k8s` leen además el token de Cloudflare. `secrets.env`
-guarda **referencias** de 1Password, no valores, y cada objetivo resuelve sólo
-las suyas. 1Password tiene que estar desbloqueado.
-
-## Desde la app
-
-Servidores → el servidor → **Provisioning** → carpeta: esta (`infra/ansible`).
-La app usa el `.venv` de aquí (corre `make setup` antes), lee de 1Password lo
-que el manifiesto marca con `from: op://…`, lo pasa en un fichero `0600` y lo
-tacha de la salida. A cac sólo le llegan nombres y el PLAY RECAP.
-
-`secrets.env` y `cac.playbooks.yml` tienen que nombrar las mismas referencias:
-lo comprueba `ansible::tests::the_infra_ansible_manifest_is_one_the_app_can_run`
-(`app/src-tauri/src/ansible.rs`), junto con que cada playbook exista.
-
-## Lo que pide de fuera
-
-| Qué | Dónde |
-|---|---|
-| Alias SSH del servidor (`ansible_host` en `inventory/hosts.yml`): de él sale la llave; el puerto y el usuario los pone el inventario | `~/.ssh/config` de quien lo corre |
-| Contraseña de sudo de `infra_devops` | 1Password, `op://Employee/gstd infra_devops/password` (generada por 1Password) |
-| Llaves públicas que entran como `infra_devops` | `ops_authorized_keys` en `host_vars/<nombre>.yml` |
-| Token de Cloudflare con Zone → DNS → Edit y Zone → Zone → Read **sólo** sobre la zona | 1Password, `op://Employee/cloudflare guz-studio.dev dns/credential` |
+Todo pasa por `cac provision` (el binario de la app; `CAC=/ruta/al/AppImage`
+si no está en el PATH): la misma receta que el botón. Necesita `CAC_TOKEN`, un
+token personal con **`servers:manage`**, y 1Password desbloqueado. Un agente en
+la terminal de una persona puede correrlo; por MCP sólo se configura.
 
 ## Un servidor nuevo
 
-1. Su alias en `~/.ssh/config` y una entrada en `inventory/hosts.yml`, en el
-   grupo `swarm` o `k8s_control_plane`.
-2. `inventory/host_vars/<nombre>.yml` con `public_ip`, `dns_zone`,
-   `base_domain`, `ssh_port`, `ansible_port`/`ansible_user` (como gstd) y
-   `ops_authorized_keys`.
-3. Su contraseña de sudo en 1Password y su referencia en `secrets.env` y en
-   `cac.playbooks.yml` (hoy apuntan a la de gstd: el manifiesto nombra una
-   referencia por playbook, no por host).
-4. `make test`, `make baseline` (la primera vez entra como root por el 22) y
-   después la etapa 2 que toque.
-5. Cambia el alias: `Port` y `User` nuevos.
+1. Registrarlo en cac (Servidores → nuevo) con su IP, `root` y el 22.
+2. Su config: «basado en» otro servidor o en una plantilla, y lo propio
+   (`base_domain`, `ssh_port`, `ops_authorized_keys`, `public_ip`). Su
+   contraseña de sudo, generada en 1Password, como `OPS_PASSWORD`: no se copia
+   al basarse en otro (`perServer`).
+3. `make plan SERVER=<nombre> P=baseline` y, si no falta nada, `make baseline`
+   (la primera vez entra como root por el 22).
+4. En cac, cambiar el puerto y el usuario del servidor a `ssh_port` /
+   `infra_devops`. Después, la etapa 2.
+
+**La huella SSH.** El inventario generado usa la IP del servidor y Ansible
+comprueba su huella: la primera vez, `ssh-keyscan -p <puerto> <IP> >>
+~/.ssh/known_hosts` (lo corre quien aplica), o pon `ansible_host` en la config
+con un alias de tu `~/.ssh/config`.
 
 ## Lo que hay que saber
 
@@ -91,10 +90,11 @@ lo comprueba `ansible::tests::the_infra_ansible_manifest_is_one_the_app_can_run`
   80/443 y su propio containerd. Se pasa de uno a otro con el teardown.
 - **El 6443 no se abre**: el clúster se opera con `kubectl` en el servidor, por
   SSH, como pixel-vps.
-- **Versiones de Kubernetes y addons = las de pixel-vps** (`group_vars/all.yml`),
+- **Versiones de Kubernetes y addons = las de pixel-vps** (los defaults de
+  `k8s` en `cac.playbooks.yml`, que pasan a su plantilla),
   para ensayar aquí sus upgrades antes que en producción. Diferencia a
   propósito: el pool de pods es `10.244.0.0/16`; el de pixel-vps (`10.0.0.0/8`,
   el de Cilium por defecto) se solapa con la red de Services.
 - **Los secrets de Swarm llevan su versión en el nombre** (HMAC del valor con
   una clave que sólo vive en el servidor, `/etc/cac/secret-hmac.key`): rotar el
-  token es cambiarlo en 1Password y volver a correr `make swarm`.
+  token es cambiarlo en 1Password y volver a correr `make swarm SERVER=…`.

@@ -49,7 +49,7 @@ func (h *ProvisioningHandler) Start(w http.ResponseWriter, r *http.Request) {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
 		return
 	}
-	run, err := h.svc.Start(server, user.UserID, req)
+	run, err := h.svc.Start(server, user.UserID, user.ViaToken, req)
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to start run", err.Error())
 		return

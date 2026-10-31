@@ -10,6 +10,11 @@ fn main() {
         app_lib::serve_mcp();
         return;
     }
+    // `cac provision run|plan …`: aplicar un playbook con la config de cac
+    // desde una terminal (ver provision_cli.rs). También antes de la GUI.
+    if std::env::args().nth(1).as_deref() == Some("provision") {
+        std::process::exit(app_lib::run_provision_cli(std::env::args().collect()));
+    }
 
     // WebKitGTK's DMABUF renderer fails to allocate an EGL display on hybrid
     // Intel+NVIDIA setups (EGL_BAD_ALLOC), aborting the process on launch.

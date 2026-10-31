@@ -100,6 +100,9 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		{http.MethodPut, "/api/v1/servers/s1/config", domain.ScopeServersManage},
 		{http.MethodPost, "/api/v1/organizations/o1/server-templates", domain.ScopeServersManage},
 		{http.MethodPut, "/api/v1/organizations/o1/server-templates/t1", domain.ScopeServersManage},
+		// Registrar lo que `cac provision` aplica desde una terminal.
+		{http.MethodPost, "/api/v1/servers/s1/provisioning-runs", domain.ScopeServersManage},
+		{http.MethodPatch, "/api/v1/servers/s1/provisioning-runs/r1", domain.ScopeServersManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -276,11 +279,8 @@ func TestATokenConfiguresButNeverDeploys(t *testing.T) {
 		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/ci-key"},
 		{http.MethodPost, "/api/v1/servers/s1/deployables/d1/secret-rotations"},
 		{http.MethodPatch, "/api/v1/servers/s1"},
-		// Y un servidor se configura, no se aprovisiona: abrir o cerrar una
-		// ejecución de un playbook es de una persona (31-oct-2026). Tampoco
-		// se borra una plantilla.
-		{http.MethodPost, "/api/v1/servers/s1/provisioning-runs"},
-		{http.MethodPatch, "/api/v1/servers/s1/provisioning-runs/r1"},
+		// Ni se borra una plantilla, ni se cambia cómo se entra a un servidor
+		// por la ruta de su config (31-oct-2026).
 		{http.MethodDelete, "/api/v1/organizations/o1/server-templates/t1"},
 		{http.MethodPost, "/api/v1/servers/s1/config"},
 	} {

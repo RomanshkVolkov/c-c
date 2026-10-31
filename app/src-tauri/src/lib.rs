@@ -18,6 +18,7 @@ mod http_client;
 mod image;
 mod notify;
 mod mcp;
+mod provision_cli;
 mod media;
 mod notes_export;
 mod pty;
@@ -31,6 +32,13 @@ mod webview_crash;
 /// Entry point for `cac --mcp` (stdio MCP server; see `mcp.rs`).
 pub fn serve_mcp() {
     mcp::serve();
+}
+
+/// Entry point for `cac provision …`: aplica un playbook de `infra/ansible`
+/// con la config de cac de un servidor, desde una terminal (ver
+/// `provision_cli.rs`). Devuelve el código de salida.
+pub fn run_provision_cli(args: Vec<String>) -> i32 {
+    provision_cli::main(args)
 }
 
 /// Absolute path of the running executable, so the "Connect Claude Code" modal
@@ -1907,6 +1915,8 @@ pub fn run() {
             ansible::ansible_manifest,
             ansible::ansible_inventory,
             ansible::ansible_run,
+            ansible::ansible_run_with_config,
+            ansible::ansible_plan_gaps,
             ansible::ansible_cancel,
             pty::pty_open,
             pty::pty_write,

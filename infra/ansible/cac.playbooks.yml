@@ -1,36 +1,59 @@
-# Lo que la pestaña Provisioning de un servidor enseña (app/src-tauri/src/ansible.rs).
-# Corre en la máquina de quien lo lanza, con el .venv de esta carpeta (make setup).
-# Lo que viene de 1Password se lee al correr y se tacha de la salida; a cac sólo
-# llegan quién, contra qué, los NOMBRES de las variables y el PLAY RECAP.
-# Las referencias son las mismas que secrets.env: si cambias una, cambia la otra.
+# Lo que cac sabe aprovisionar: el CÓMO. El QUÉ de cada servidor (su dominio,
+# su puerto SSH, sus llaves, las versiones, y DÓNDE está cada secreto en
+# 1Password) vive en cac, en la config versionada del servidor y en su
+# plantilla. Ver docs/integrations/provisioning.md.
 #
-# Por etapas: la 1 (server-baseline) deja el servidor con usuario de operación,
-# SSH sólo por llave en otro puerto y firewall; la 2 es Swarm o Kubernetes.
-version: 1
+# Versión 2: sin inventario ni referencias. La app (o `cac provision` en la
+# terminal) genera un inventario de un solo host con la conexión del servidor y
+# sus variables, y lee los secretos de 1Password con las referencias de su
+# config. Aquí cada playbook sólo declara qué variables pide:
+#   - `default`: el valor con el que nace una plantilla. Nunca en un secreto.
+#   - `required`: sin él, la app no deja correr.
+#   - `secret` + `from: NOMBRE`: el valor sale del secreto NOMBRE de la config
+#     del servidor (una referencia de 1Password) y se tacha de la salida. Una
+#     referencia aquí es un error: son de cada servidor, no del repo.
+#   - `become_password_from: NOMBRE`: la contraseña de sudo, igual.
+#
+# Por etapas: la 1 (baseline) deja el servidor con usuario de operación, SSH
+# sólo por llave en otro puerto y firewall; la 2 es Swarm o Kubernetes. Una
+# plantilla es una secuencia de estos ids: [baseline, swarm].
+version: 2
 venv: .venv
-inventory: inventory/hosts.yml
 playbooks:
   - id: test
     file: playbooks/test.yml
     name: Probar conexión
-    description: Ping y quién soy en cada host, antes o después de la etapa 1. No cambia nada.
+    description: Ping y quién soy, antes o después de la etapa 1. No cambia nada.
     hosts: all
 
   - id: baseline
     file: playbooks/server-baseline.yml
     name: "Etapa 1 · Configuración básica"
     description: >-
-      Usuario infra_devops con sus llaves y sudo con contraseña; SSH sólo por
-      llave, sin root y en ssh_port; ufw y fail2ban. Si el SSH nuevo no
-      contesta, se deshace solo. Idempotente.
+      Usuario de operación con sus llaves y sudo con contraseña; SSH sólo por
+      llave, sin root y en ssh_port; ufw y fail2ban. La primera vez entra como
+      root por el 22. Si el SSH nuevo no contesta, se deshace solo. Después,
+      cambia el puerto y el usuario del servidor en cac. Idempotente.
     hosts: all
     become: true
-    become_password_ref: "op://Employee/gstd infra_devops/password"
+    become_password_from: OPS_PASSWORD
     vars:
+      - name: ops_user
+        description: El usuario de operación.
+        default: infra_devops
+      - name: ssh_port
+        description: El puerto SSH después de la etapa 1.
+        required: true
+      - name: ops_authorized_keys
+        description: Las llaves públicas que entran como el usuario de operación.
+        required: true
+      - name: public_ip
+        description: La IP pública del servidor.
+        required: true
       - name: ops_password
-        description: La contraseña de sudo de infra_devops.
-        from: "op://Employee/gstd infra_devops/password"
+        description: La contraseña de sudo del usuario de operación (mínimo 16).
         secret: true
+        from: OPS_PASSWORD
 
   - id: swarm
     file: playbooks/swarm-site.yml
@@ -40,11 +63,23 @@ playbooks:
       Cloudflare, y whoami como prueba. Idempotente.
     hosts: swarm
     become: true
-    become_password_ref: "op://Employee/gstd infra_devops/password"
+    become_password_from: OPS_PASSWORD
     vars:
+      - { name: ops_user, default: infra_devops }
+      - { name: public_ip, required: true }
+      - { name: dns_zone, description: La zona de Cloudflare., required: true }
+      - { name: base_domain, description: "El subdominio del servidor: *.<base_domain> apunta aquí.", required: true }
+      - { name: acme_email, description: El correo de Let's Encrypt., required: true }
+      - { name: acme_dns_provider, default: cloudflare }
+      - { name: firewall_web_ports, default: [80, 443] }
+      - { name: secret_hmac_key_path, default: /etc/cac/secret-hmac.key }
+      - { name: traefik_image, default: "traefik:v3.6" }
+      - { name: traefik_network, default: traefik_proxy }
+      - { name: whoami_image, default: "traefik/whoami:v1.11" }
       - name: cloudflare_dns_token
-        description: Token de Cloudflare con DNS Edit sobre la zona del servidor.
-        from: "op://Employee/cloudflare guz-studio.dev dns/credential"
+        description: Token de Cloudflare con DNS Edit y Zone Read sobre la zona.
+        secret: true
+        from: CLOUDFLARE_DNS_TOKEN
 
   - id: swarm-verify
     file: playbooks/swarm-verify.yml
@@ -52,7 +87,10 @@ playbooks:
     description: Nodo, servicios y whoami por HTTPS con certificado válido. No cambia nada.
     hosts: swarm
     become: true
-    become_password_ref: "op://Employee/gstd infra_devops/password"
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: public_ip, required: true }
+      - { name: base_domain, required: true }
 
   - id: swarm-teardown
     file: playbooks/swarm-teardown.yml
@@ -60,7 +98,7 @@ playbooks:
     description: Quita los stacks, sale del Swarm y desinstala Docker. Destructivo.
     hosts: swarm
     become: true
-    become_password_ref: "op://Employee/gstd infra_devops/password"
+    become_password_from: OPS_PASSWORD
 
   - id: k8s
     file: playbooks/k8s-site.yml
@@ -70,11 +108,34 @@ playbooks:
       wildcard por DNS, y whoami por HTTPRoute. Antes, desmontar Swarm. Idempotente.
     hosts: k8s_control_plane
     become: true
-    become_password_ref: "op://Employee/gstd infra_devops/password"
+    become_password_from: OPS_PASSWORD
     vars:
+      - { name: public_ip, required: true }
+      - { name: base_domain, required: true }
+      - { name: acme_email, required: true }
+      - { name: firewall_web_ports, default: [80, 443] }
+      - { name: secret_hmac_key_path, default: /etc/cac/secret-hmac.key }
+      - { name: whoami_image, default: "traefik/whoami:v1.11" }
+      # Las versiones de pixel-vps (leídas el 31-oct-2026), para ensayar aquí
+      # sus upgrades.
+      - { name: k8s_version, default: "1.35.0" }
+      - { name: k8s_minor, default: "1.35" }
+      - { name: containerd_version, default: "2.2.1" }
+      - { name: cilium_version, default: "1.18.6" }
+      - { name: metallb_version, default: "0.14.8" }
+      - { name: envoy_gateway_version, default: "v1.6.2" }
+      - { name: cert_manager_version, default: "v1.14.0" }
+      - { name: cnpg_version, description: Chart de CNPG (1.28.0)., default: "0.27.0" }
+      - { name: helm_version, default: "v3.19.0" }
+      # pixel-vps usa el pool por defecto de Cilium (10.0.0.0/8), que se solapa
+      # con la red de Services (10.96.0.0/12). Aquí no.
+      - { name: pod_cidr, default: 10.244.0.0/16 }
+      - { name: service_cidr, default: 10.96.0.0/12 }
+      - { name: install_cnpg, default: false }
       - name: cloudflare_dns_token
-        description: Token de Cloudflare con DNS Edit sobre la zona del servidor.
-        from: "op://Employee/cloudflare guz-studio.dev dns/credential"
+        description: Token de Cloudflare con DNS Edit y Zone Read sobre la zona.
+        secret: true
+        from: CLOUDFLARE_DNS_TOKEN
 
   - id: k8s-verify
     file: playbooks/k8s-verify.yml
@@ -82,7 +143,9 @@ playbooks:
     description: Nodo, pods, Gateway, certificado y whoami por HTTPS. No cambia nada.
     hosts: k8s_control_plane
     become: true
-    become_password_ref: "op://Employee/gstd infra_devops/password"
+    become_password_from: OPS_PASSWORD
+    vars:
+      - { name: base_domain, required: true }
 
   - id: k8s-teardown
     file: playbooks/k8s-teardown.yml
@@ -90,4 +153,4 @@ playbooks:
     description: kubeadm reset, paquetes fuera y red limpia. Destructivo.
     hosts: k8s_control_plane
     become: true
-    become_password_ref: "op://Employee/gstd infra_devops/password"
+    become_password_from: OPS_PASSWORD

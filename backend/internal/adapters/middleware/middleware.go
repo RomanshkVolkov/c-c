@@ -408,10 +408,18 @@ var patWritable = []struct {
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/[^/]+$`), domain.ScopeDeploysManage},
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/deployables/[^/]+/secret-refs$`), domain.ScopeDeploysManage},
 	// Configurar un servidor: guardar una versión de su config y crear o
-	// guardar una plantilla. Todo añade una versión y no pisa ninguna. Abrir
-	// una ejecución (`provisioning-runs`), cambiar la conexión y borrar **no**
-	// están: un token configura, una persona aplica (ScopeServersManage).
+	// guardar una plantilla. Todo añade una versión y no pisa ninguna.
+	// Cambiar la conexión y borrar **no** están (ScopeServersManage).
+	//
+	// Y **registrar** una ejecución, que es lo que hace `cac provision` desde
+	// una terminal: abrir la fila y cerrarla. Registrar no aplica nada —el
+	// playbook corre en la máquina de quien lo lanza, con su agente SSH y su
+	// 1Password, que piden aprobación— y sin esto lo que se aplicó desde una
+	// terminal no quedaría en el historial. El MCP no tiene ninguna herramienta
+	// que corra un playbook (`mcp::tests::the_server_config_tools_configure_but_never_apply`).
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/config$`), domain.ScopeServersManage},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-runs/?$`), domain.ScopeServersManage},
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-runs/[^/]+$`), domain.ScopeServersManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/?$`), domain.ScopeServersManage},
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/[^/]+$`), domain.ScopeServersManage},
 }

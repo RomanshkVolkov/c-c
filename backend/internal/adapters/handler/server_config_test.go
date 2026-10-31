@@ -313,3 +313,28 @@ func TestARunKeepsWhatWasAppliedEvenAfterTheConfigChanges(t *testing.T) {
 		t.Errorf("la lista no trae lo aplicado: %+v", runs)
 	}
 }
+
+// Una ejecución dice por dónde entró: la app, o una terminal con `cac
+// provision` y un token. Mutante: no mirar ViaToken al abrirla.
+func TestARunSaysWhetherItCameFromATerminal(t *testing.T) {
+	db, cleanup := provisioningDB(t)
+	defer cleanup()
+	_, prov := configHandler(db)
+	open := func(c *domain.ClaimsJWT) domain.ProvisioningRun {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		prov.Start(rec, serverReq(http.MethodPost, "srv-1", "", `{"kind":"playbook","playbook":"test"}`, c))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("abrir → %d: %s", rec.Code, rec.Body.String())
+		}
+		return decode[domain.ProvisioningRun](t, rec)
+	}
+	if got := open(claims("u-ana", "org-1", domain.OrgRoleMember)).Source; got != "app" {
+		t.Errorf("desde la app quedó %q", got)
+	}
+	token := claims("u-ana", "org-1", domain.OrgRoleMember)
+	token.ViaToken = true
+	if got := open(token).Source; got != "cli" {
+		t.Errorf("con un token quedó %q, se esperaba cli", got)
+	}
+}

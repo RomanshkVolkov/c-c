@@ -14,7 +14,7 @@ use std::io::{BufRead, Write};
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
 
-struct Cfg {
+pub(crate) struct Cfg {
     base: String,
     token: String,
 }
@@ -32,7 +32,7 @@ struct Cfg {
 const VIA_HEADER: &str = "X-Cac-Via";
 const VIA_MCP: &str = "mcp";
 
-fn cfg() -> Result<Cfg, String> {
+pub(crate) fn cfg() -> Result<Cfg, String> {
     let base = std::env::var("CAC_URL")
         .unwrap_or_else(|_| "https://cac.guz-studio.dev".to_string())
         .trim_end_matches('/')
@@ -44,7 +44,7 @@ fn cfg() -> Result<Cfg, String> {
 }
 
 /// GET a cac API path and return the `data` field of the envelope.
-fn api_get(cfg: &Cfg, path: &str) -> Result<Value, String> {
+pub(crate) fn api_get(cfg: &Cfg, path: &str) -> Result<Value, String> {
     let url = format!("{}{}", cfg.base, path);
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -144,11 +144,11 @@ fn api_download(cfg: &Cfg, path: &str) -> Result<(Vec<u8>, String, Option<String
     })
 }
 
-fn api_post(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
+pub(crate) fn api_post(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
     api_write(cfg, "POST", path, body)
 }
 
-fn api_patch(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
+pub(crate) fn api_patch(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
     api_write(cfg, "PATCH", path, body)
 }
 
@@ -660,7 +660,7 @@ fn push_q(q: &mut Vec<String>, key: &str, val: Option<String>) {
     }
 }
 
-fn urlencode(s: &str) -> String {
+pub(crate) fn urlencode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {

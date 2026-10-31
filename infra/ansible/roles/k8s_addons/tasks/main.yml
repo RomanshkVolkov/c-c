@@ -13,7 +13,8 @@
     - {name: cnpg, url: "https://cloudnative-pg.github.io/charts"}
 
 # VXLAN y con kube-proxy, como pixel-vps; el pool de pods es pod_cidr (ver
-# group_vars: aquí no se solapa con la red de Services).
+# los defaults de `k8s` en cac.playbooks.yml: aquí no se solapa con la red de
+# Services).
 - name: Cilium {{ cilium_version }}
   kubernetes.core.helm:
     name: cilium

@@ -6,8 +6,8 @@
   ansible.builtin.assert:
     that: cloudflare_dns_token | default('') | length > 0
     fail_msg: >-
-      Falta cloudflare_dns_token. Desde la app sale de cac.playbooks.yml; desde la
-      terminal, `make swarm` lo lee con `op run` de secrets.env.
+      Falta cloudflare_dns_token. Sale del secreto CLOUDFLARE_DNS_TOKEN de la
+      config del servidor en cac: su referencia de 1Password.
     quiet: true
 
 # El registro A del servidor y su wildcard: sin ellos no hay a quién emitirle.

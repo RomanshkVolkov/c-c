@@ -25,7 +25,11 @@ func (s *ProvisioningService) WithConfigs(c *ServerConfigService) *ProvisioningS
 	return s
 }
 
-func (s *ProvisioningService) Start(server *domain.ServerResponse, userID string, req domain.StartProvisioningRequest) (*domain.ProvisioningRun, error) {
+func (s *ProvisioningService) Start(server *domain.ServerResponse, userID string, viaToken bool, req domain.StartProvisioningRequest) (*domain.ProvisioningRun, error) {
+	src := "app"
+	if viaToken {
+		src = "cli"
+	}
 	run := &domain.ProvisioningRun{
 		ServerID:  server.ID,
 		OrgID:     server.OrgID,
@@ -37,6 +41,7 @@ func (s *ProvisioningService) Start(server *domain.ServerResponse, userID string
 		StartedBy: userID,
 		StartedAt: time.Now().UTC(),
 		Status:    domain.ProvisioningRunning,
+		Source:    src,
 	}
 	run.ID = uuid.NewString()
 	// La foto se saca aquí, del backend, y no de lo que diga la app: lo que

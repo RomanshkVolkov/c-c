@@ -1,30 +1,32 @@
 # Atajos para correr infra/ansible desde la terminal. La app corre lo mismo
-# desde la pestaña Provisioning (cac.playbooks.yml).
+# desde la pestaña Provisioning del servidor.
 #
-#   make setup            # .venv + Ansible + collections (una vez)
-#   make test             # ping a todos
-#   make baseline         # etapa 1: usuario, SSH, firewall
-#   make swarm            # etapa 2: Swarm + Traefik
-#   make swarm-verify / swarm-down / k8s / k8s-verify / k8s-down
+#   make setup                     # .venv + Ansible + collections (una vez)
+#   make plan     SERVER=gstd P=swarm   # qué se correría y qué falta en cac
+#   make test     SERVER=gstd      # ping
+#   make baseline SERVER=gstd      # etapa 1: usuario, SSH, firewall
+#   make swarm    SERVER=gstd      # etapa 2: Swarm + Traefik
+#   make swarm-verify / swarm-down / k8s / k8s-verify / k8s-down  SERVER=…
 #
-# LIMIT=gstd limita los hosts.
+# Todo pasa por `cac provision`, el mismo binario de la app: lee la config del
+# servidor de cac (dominio, puertos, versiones y DÓNDE está cada secreto en
+# 1Password), genera el inventario, lee los secretos con `op` y apunta la
+# ejecución en cac. Necesita CAC_TOKEN (un token personal con servers:manage) y
+# 1Password desbloqueado. Ningún valor pasa por aquí.
 
 VENV     := .venv
-PLAYBOOK := $(VENV)/bin/ansible-playbook
 GALAXY   := $(VENV)/bin/ansible-galaxy
-LIMIT    ?=
-LIMITARG := $(if $(LIMIT),--limit=$(LIMIT),)
-# Todo menos `test` hace sudo, así que lee la contraseña. Los secretos llegan como variables de entorno sólo a este proceso; `op run`
-# además tacha sus valores de la salida.
-# Cada objetivo pide sólo los secretos que usa (`op run` falla si una
-# referencia del fichero no existe): OPS_PASSWORD para sudo, y además el token
-# de Cloudflare para lo que emite certificados.
-secret       = $(shell sed -n 's/^$(1)=//p' secrets.env)
-WITH_SUDO    := OPS_PASSWORD='$(call secret,OPS_PASSWORD)' op run --
-WITH_SECRETS := op run --env-file=secrets.env --
+PLAYBOOK := $(VENV)/bin/ansible-playbook
+# El binario de la app (`cac`); en un AppImage, su ruta.
+CAC      ?= cac
+SERVER   ?=
+P        ?=
+
+need_server = $(if $(SERVER),,$(error falta SERVER=<nombre o id del servidor en cac>))
+provision   = $(call need_server)$(CAC) provision run --server '$(SERVER)' --playbook $(1) --folder .
 
 .DEFAULT_GOAL := help
-.PHONY: help setup syntax test baseline swarm swarm-verify swarm-down k8s k8s-verify k8s-down
+.PHONY: help setup syntax plan test baseline swarm swarm-verify swarm-down k8s k8s-verify k8s-down
 
 help: ## Esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-13s\033[0m %s\n", $$1, $$2}'
@@ -35,29 +37,37 @@ setup: ## Crea el .venv e instala Ansible y las collections
 	$(VENV)/bin/pip install --quiet "ansible-core>=2.20,<2.21" passlib
 	$(GALAXY) collection install -r requirements.yml -p ./collections
 
+# Con un inventario de mentira: el de verdad lo genera cac al correr, y
+# ansible.cfg sólo deja el plugin yaml (que lee .json).
 syntax: ## --syntax-check de todos los playbooks
-	@for p in playbooks/*.yml; do $(PLAYBOOK) --syntax-check $$p || exit 1; done
+	@inv=$$(mktemp --suffix=.json); \
+	echo '{"all":{"hosts":{"x":{}},"children":{"swarm":{"hosts":{"x":{}}},"k8s_control_plane":{"hosts":{"x":{}}}}}}' > $$inv; \
+	for p in playbooks/*.yml; do $(PLAYBOOK) -i $$inv --syntax-check $$p >/dev/null || { rm -f $$inv; exit 1; }; done; \
+	rm -f $$inv; echo "sintaxis ok"
+
+plan: ## Qué se correría con la config de cac, y qué le falta (P=<playbook>)
+	$(call need_server)$(CAC) provision plan --server '$(SERVER)' --playbook $(or $(P),$(error falta P=<playbook>)) --folder .
 
 test: ## Probar conexión
-	$(PLAYBOOK) playbooks/test.yml $(LIMITARG)
+	$(call provision,test)
 
 baseline: ## Etapa 1: usuario de operación, SSH endurecido, firewall
-	$(WITH_SUDO) $(PLAYBOOK) playbooks/server-baseline.yml $(LIMITARG)
+	$(call provision,baseline)
 
 swarm: ## Swarm + Traefik + whoami
-	$(WITH_SECRETS) $(PLAYBOOK) playbooks/swarm-site.yml $(LIMITARG)
+	$(call provision,swarm)
 
 swarm-verify: ## Verificar Swarm
-	$(WITH_SUDO) $(PLAYBOOK) playbooks/swarm-verify.yml $(LIMITARG)
+	$(call provision,swarm-verify)
 
 swarm-down: ## Desmontar Swarm y Docker (destructivo)
-	$(WITH_SUDO) $(PLAYBOOK) playbooks/swarm-teardown.yml $(LIMITARG)
+	$(call provision,swarm-teardown)
 
 k8s: ## Kubernetes con kubeadm como pixel-vps
-	$(WITH_SECRETS) $(PLAYBOOK) playbooks/k8s-site.yml $(LIMITARG)
+	$(call provision,k8s)
 
 k8s-verify: ## Verificar Kubernetes
-	$(WITH_SUDO) $(PLAYBOOK) playbooks/k8s-verify.yml $(LIMITARG)
+	$(call provision,k8s-verify)
 
 k8s-down: ## Desmontar Kubernetes (destructivo)
-	$(WITH_SUDO) $(PLAYBOOK) playbooks/k8s-teardown.yml $(LIMITARG)
+	$(call provision,k8s-teardown)

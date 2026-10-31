@@ -16,8 +16,8 @@
   ansible.builtin.assert:
     that: ops_password | default('') | length >= 16
     fail_msg: >-
-      Falta ops_password (o es corta). Desde la app sale de cac.playbooks.yml;
-      desde la terminal, `make baseline` la lee con `op run` de secrets.env.
+      Falta ops_password (o es corta). Sale del secreto OPS_PASSWORD de la
+      config del servidor en cac: su referencia de 1Password.
     quiet: true
 
 # La sal sale del nombre del host: el hash es el mismo en cada pasada y el

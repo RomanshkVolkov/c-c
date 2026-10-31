@@ -53,6 +53,10 @@ type ProvisioningRun struct {
 	// de antes, o un repo de Ansible con su propio inventario).
 	ConfigSeq   int            `json:"configSeq"`
 	TemplateID  string         `gorm:"type:varchar(36)" json:"templateId,omitempty"`
+	// app | cli: desde la pestaña Provisioning, o desde una terminal con
+	// `cac provision` y un token personal. Las dos aplican en la máquina de
+	// quien lo lanza, con su 1Password; esto sólo dice por dónde entró.
+	Source string `gorm:"type:varchar(10);default:'app'" json:"source"`
 	TemplateSeq int            `json:"templateSeq,omitempty"`
 	Applied     *AppliedConfig `gorm:"type:jsonb;serializer:json" json:"applied,omitempty"`
 }
