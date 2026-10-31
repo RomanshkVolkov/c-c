@@ -238,6 +238,10 @@ Connect Claude Code):
 - **Tocar el valor de un secret.** Por aquí sólo viajan nombres y referencias.
   Los valores los lee de 1Password el botón «Rotar en el servidor» de la app.
 
+Configurar el **servidor** mismo —qué playbooks lleva, sus variables y sus
+secretos por referencia— es otro permiso, `servers:manage`, y otro documento:
+[provisioning.md](provisioning.md).
+
 ## 9. Lo que no hace (todavía)
 
 - Con la [GitHub App](github.md) instalada y el workflow que publica la imagen

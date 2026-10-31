@@ -1981,6 +1981,90 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "get_server_config",
+            "description": "How a server is configured in cac, in one call: the current version of its configuration (template, its own variables, and its secrets BY NAME with where each one lives in 1Password — opRefs, never a value), the effective configuration (template variables with the server's on top, the playbooks the template runs in order, and the secrets the template still misses), and the list of versions (who saved each, from the app or an agent, and the note). With `seq`, that version instead of the current one. Read-only.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "seq": { "type": "integer", "description": "A version number from the list. Default: the current one." }
+                },
+                "required": ["serverId"]
+            }
+        },
+        {
+            "name": "set_server_config",
+            "description": "Save a NEW version of a server's configuration; the previous ones stay and can be read or restored. By default it merges with the current version: `vars` and `opRefs` you send are added or changed, `removeVars` / `removeOpRefs` take keys out, the rest stays; `replace: true` makes the version exactly what you send. `basedOnServerId` starts from another server of the same organization (its template, variables and refs, except the ones the template marks per-server, like a sudo password). Secrets go ONLY as references in `opRefs` (NAME → op://vault/item/field): cac rejects a value, and rejects a secret disguised as a variable. Needs the `servers:manage` scope (and an org admin behind the token). It never runs a playbook: applying stays a person's decision in the app.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "templateId": { "type": "string", "description": "From list_server_templates. Empty string removes the template." },
+                    "templateSeq": { "type": "integer", "description": "Pin a template version. Default: its latest." },
+                    "vars": { "type": "object", "description": "Ansible variables of this server (base_domain, ssh_port, ops_authorized_keys…). Never a secret." },
+                    "removeVars": { "type": "array", "items": { "type": "string" } },
+                    "opRefs": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Secret NAME (UPPER_SNAKE_CASE) → op://vault/item/field." },
+                    "removeOpRefs": { "type": "array", "items": { "type": "string" } },
+                    "replace": { "type": "boolean" },
+                    "basedOnServerId": { "type": "string" },
+                    "note": { "type": "string", "description": "Why this version: shown in the history." },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["serverId"]
+            }
+        },
+        {
+            "name": "list_server_templates",
+            "description": "The server templates of an organization (orgId from list_servers), each with its latest version: the playbooks it runs in order, its variables, the secrets a server using it must bring (requires) and which of those are per-server. Read-only.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "orgId": { "type": "string" } },
+                "required": ["orgId"]
+            }
+        },
+        {
+            "name": "get_server_template",
+            "description": "One server template with all its versions, newest first. Read-only.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "orgId": { "type": "string" }, "templateId": { "type": "string" } },
+                "required": ["orgId", "templateId"]
+            }
+        },
+        {
+            "name": "set_server_template",
+            "description": "Create a server template (without templateId: needs a name and its playbooks) or save a NEW version of one (with templateId: merges with its latest — `vars` added or changed, `removeVars` out; `playbooks`, `requires` and `perServer` replace the lists when sent). A template is an ordered list of playbook ids from the repo's cac.playbooks.yml (e.g. [\"baseline\", \"swarm\", \"valkey\"]), shared variables (versions, images, CIDRs…), the secret NAMES a server must bring (`requires`) and which of them are per-server. Never a secret value. Needs the `servers:manage` scope (and an org admin behind the token).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "orgId": { "type": "string" },
+                    "templateId": { "type": "string" },
+                    "name": { "type": "string" },
+                    "description": { "type": "string" },
+                    "playbooks": { "type": "array", "items": { "type": "string" } },
+                    "vars": { "type": "object" },
+                    "removeVars": { "type": "array", "items": { "type": "string" } },
+                    "requires": { "type": "array", "items": { "type": "string" } },
+                    "perServer": { "type": "array", "items": { "type": "string" } },
+                    "note": { "type": "string" },
+                    "dryRun": { "type": "boolean" }
+                },
+                "required": ["orgId"]
+            }
+        },
+        {
+            "name": "list_provisioning_runs",
+            "description": "What was applied to a server, newest first: each playbook run with who launched it, when, how it ended, its PLAY RECAP, and — when it ran from cac's configuration — the version it used and a snapshot of what was applied (variables and secret references, never values). Read-only: running a playbook stays a person's decision in the app.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "limit": { "type": "integer", "description": "1–50. Default 10." }
+                },
+                "required": ["serverId"]
+            }
+        },
+        {
             "name": "set_secret_refs",
             "description": "Set a service's secrets BY NAME: each one says where its value lives in 1Password (opRef, op://vault/item/field) and whether it is used at runtime, at build time or both. By default it merges by name: what you send is added or changed, the rest stays; `remove` takes names out, and `replace: true` makes the list exactly what you send. No secret value ever goes through cac: the app's \"Rotate on the server\" reads them from 1Password. Needs the `deploys:manage` scope.",
             "inputSchema": {
@@ -2969,6 +3053,97 @@ fn deploy_update_body(current: &Value, args: &Value) -> Result<(Value, Vec<Strin
 /// lo pedido encima (por nombre); `remove` quita; `replace` deja sólo lo
 /// pedido. La ruta reemplaza la lista entera, así que «añadir uno» tiene que
 /// mandar también los demás o se perderían.
+/// El cuerpo de una versión nueva de la config de un servidor: la actual con
+/// lo pedido encima (o sólo lo pedido, con `replace`). Los secretos van por
+/// referencia; el backend rechaza un valor, pero aquí se avisa antes con un
+/// mensaje que dice qué hacer.
+fn server_config_body(current: &Value, args: &Value, replace: bool) -> Result<Value, String> {
+    let base = |key: &str| -> serde_json::Map<String, Value> {
+        if replace {
+            serde_json::Map::new()
+        } else {
+            current.get(key).and_then(|v| v.as_object()).cloned().unwrap_or_default()
+        }
+    };
+    let vars = merge_object(base("vars"), args.get("vars"), &arg_names(args, "removeVars").unwrap_or_default())?;
+    let refs = merge_object(base("opRefs"), args.get("opRefs"), &arg_names(args, "removeOpRefs").unwrap_or_default())?;
+    for (name, r) in &refs {
+        let r = r.as_str().unwrap_or("");
+        if !(r.starts_with("op://") || r.starts_with("op-env://")) {
+            return Err(format!(
+                "opRefs.{name} must be a 1Password reference (op://vault/item/field), never the secret itself"
+            ));
+        }
+    }
+    let template_id = match args.get("templateId") {
+        Some(Value::String(s)) => s.clone(),
+        _ if replace => String::new(),
+        _ => current.get("templateId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+    };
+    let template_seq = match arg_i64(args, "templateSeq") {
+        Some(n) => n,
+        // Cambiar de plantilla sin decir versión es la última; seguir con la
+        // misma conserva la que estaba clavada.
+        None if args.get("templateId").is_some() || replace => 0,
+        None => current.get("templateSeq").and_then(|v| v.as_i64()).unwrap_or(0),
+    };
+    Ok(json!({
+        "templateId": template_id,
+        "templateSeq": template_seq,
+        "vars": vars,
+        "opRefs": refs,
+        "note": arg_str(args, "note").unwrap_or_default(),
+    }))
+}
+
+/// El cuerpo de una versión de plantilla: la última con lo pedido encima. Las
+/// listas se sustituyen si se mandan; las variables se combinan.
+fn server_template_body(latest: &Value, args: &Value) -> Result<Value, String> {
+    let list = |key: &str| -> Value {
+        match args.get(key) {
+            Some(Value::Array(a)) => Value::Array(a.clone()),
+            _ => latest.get(key).cloned().filter(|v| v.is_array()).unwrap_or(json!([])),
+        }
+    };
+    let vars = merge_object(
+        latest.get("vars").and_then(|v| v.as_object()).cloned().unwrap_or_default(),
+        args.get("vars"),
+        &arg_names(args, "removeVars").unwrap_or_default(),
+    )?;
+    let playbooks = list("playbooks");
+    if playbooks.as_array().map(|a| a.is_empty()).unwrap_or(true) {
+        return Err("A template needs its playbooks, in order (ids from cac.playbooks.yml)".into());
+    }
+    Ok(json!({
+        "playbooks": playbooks,
+        "vars": vars,
+        "requires": list("requires"),
+        "perServer": list("perServer"),
+        "note": arg_str(args, "note").unwrap_or_default(),
+    }))
+}
+
+/// Un objeto con otro encima, menos las claves de `remove`.
+fn merge_object(
+    mut base: serde_json::Map<String, Value>,
+    set: Option<&Value>,
+    remove: &[String],
+) -> Result<serde_json::Map<String, Value>, String> {
+    match set {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(o)) => {
+            for (k, v) in o {
+                base.insert(k.clone(), v.clone());
+            }
+        }
+        Some(_) => return Err("vars and opRefs must be objects (name → value)".into()),
+    }
+    for k in remove {
+        base.remove(k);
+    }
+    Ok(base)
+}
+
 fn merge_secret_refs(current: &[Value], set: &[Value], remove: &[String], replace: bool) -> Result<Vec<Value>, String> {
     let entry = |v: &Value| -> Result<Value, String> {
         let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("").trim().to_string();
@@ -3408,6 +3583,133 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                 body,
             )?;
             Ok(json!({ "updated": updated, "changed": changed }))
+        }
+
+        "get_server_config" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let base = format!("/api/v1/servers/{}/config", urlencode(&server));
+            let summary = api_get(cfg, &base)?;
+            let seq = arg_i64(args, "seq").filter(|n| *n > 0);
+            let (version, effective) = match seq {
+                Some(n) => (
+                    api_get(cfg, &format!("{base}/versions/{n}"))?,
+                    api_get(cfg, &format!("{base}/effective?seq={n}"))?,
+                ),
+                None => (summary.get("current").cloned().unwrap_or(Value::Null), api_get(cfg, &format!("{base}/effective"))?),
+            };
+            let versions: Vec<Value> = summary
+                .get("versions")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .map(|v| {
+                            json!({
+                                "seq": v.get("seq"), "createdAt": v.get("createdAt"),
+                                "createdBy": v.get("createdByName"), "source": v.get("source"),
+                                "note": v.get("note"), "templateId": v.get("templateId"),
+                                "templateSeq": v.get("templateSeq"), "basedOn": v.get("basedOn"),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok(json!({ "version": version, "effective": effective, "versions": versions }))
+        }
+
+        "set_server_config" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let path = format!("/api/v1/servers/{}/config", urlencode(&server));
+            let summary = api_get(cfg, &path)?;
+            if arg_bool(args, "dryRun") {
+                return dry_run(cfg, "servers:manage", Ok(summary));
+            }
+            let current = summary.get("current").cloned().unwrap_or(Value::Null);
+            let based_on = arg_str(args, "basedOnServerId");
+            // Basar en otro: el backend copia del origen y pone encima lo que
+            // se manda. Combinar aquí con la actual mezclaría dos servidores.
+            let replace = arg_bool(args, "replace") || based_on.is_some();
+            let body = server_config_body(&current, args, replace)?;
+            let mut body = body;
+            if let Some(src) = based_on {
+                body["basedOnServerId"] = json!(src);
+            }
+            let saved = api_put(cfg, &path, body)?;
+            Ok(json!({ "saved": saved }))
+        }
+
+        "list_server_templates" => {
+            let org = arg_str(args, "orgId").ok_or("orgId is required")?;
+            let data = api_get(cfg, &format!("/api/v1/organizations/{}/server-templates", urlencode(&org)))?;
+            Ok(json!({ "templates": data }))
+        }
+
+        "get_server_template" => {
+            let org = arg_str(args, "orgId").ok_or("orgId is required")?;
+            let id = arg_str(args, "templateId").ok_or("templateId is required")?;
+            let data = api_get(cfg, &format!(
+                "/api/v1/organizations/{}/server-templates/{}",
+                urlencode(&org), urlencode(&id)
+            ))?;
+            Ok(json!({ "template": data }))
+        }
+
+        "set_server_template" => {
+            let org = arg_str(args, "orgId").ok_or("orgId is required")?;
+            let base = format!("/api/v1/organizations/{}/server-templates", urlencode(&org));
+            match arg_str(args, "templateId") {
+                None => {
+                    let name = arg_str(args, "name").ok_or("name is required to create a template (or pass templateId)")?;
+                    if arg_bool(args, "dryRun") {
+                        return dry_run(cfg, "servers:manage", api_get(cfg, &base));
+                    }
+                    let mut body = server_template_body(&Value::Null, args)?;
+                    body["name"] = json!(name);
+                    body["description"] = json!(arg_str(args, "description").unwrap_or_default());
+                    let created = api_post(cfg, &format!("{base}/"), body)?;
+                    Ok(json!({ "created": created }))
+                }
+                Some(id) => {
+                    let path = format!("{base}/{}", urlencode(&id));
+                    let detail = api_get(cfg, &path)?;
+                    if arg_bool(args, "dryRun") {
+                        return dry_run(cfg, "servers:manage", Ok(detail));
+                    }
+                    let latest = detail
+                        .get("versions")
+                        .and_then(|v| v.as_array())
+                        .and_then(|a| a.first())
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    let body = server_template_body(&latest, args)?;
+                    let saved = api_put(cfg, &path, body)?;
+                    Ok(json!({ "saved": saved }))
+                }
+            }
+        }
+
+        "list_provisioning_runs" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let limit = arg_i64(args, "limit").unwrap_or(10).clamp(1, 50) as usize;
+            let data = api_get(cfg, &format!("/api/v1/servers/{}/provisioning-runs", urlencode(&server)))?;
+            let runs: Vec<Value> = data
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .take(limit)
+                        .map(|r| {
+                            json!({
+                                "id": r.get("id"), "playbook": r.get("playbook"), "project": r.get("project"),
+                                "target": r.get("target"), "status": r.get("status"), "exitCode": r.get("exitCode"),
+                                "startedBy": r.get("startedByName"), "startedAt": r.get("startedAt"),
+                                "finishedAt": r.get("finishedAt"), "summary": r.get("summary"),
+                                "configSeq": r.get("configSeq"), "templateId": r.get("templateId"),
+                                "templateSeq": r.get("templateSeq"), "applied": r.get("applied"),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok(json!({ "runs": runs }))
         }
 
         "set_secret_refs" => {
@@ -6566,6 +6868,81 @@ mod tests {
             assert!(tool(&defs, name)["description"].as_str().unwrap().contains("deploys:manage"), "{name}");
         }
         assert!(tool(&defs, "update_deploy_config")["inputSchema"]["properties"].get("migrateCommand").is_none());
+    }
+
+    /// Las herramientas de la config de un servidor: están, las que escriben
+    /// piden `servers:manage`, y ninguna aplica nada. Roturas que atrapa:
+    /// quitar una; una de escritura sin su scope en la descripción; una
+    /// herramienta nueva que «provisiona» (todo lo que lleve `provision` en el
+    /// nombre sólo puede ser la lista de lo aplicado).
+    #[test]
+    fn the_server_config_tools_configure_but_never_apply() {
+        let defs = tool_defs();
+        for name in ["get_server_config", "set_server_config", "list_server_templates", "get_server_template", "set_server_template", "list_provisioning_runs"] {
+            assert!(!tool(&defs, name).is_null(), "falta {name}");
+        }
+        for name in ["set_server_config", "set_server_template"] {
+            assert!(tool(&defs, name)["description"].as_str().unwrap().contains("servers:manage"), "{name}");
+        }
+        let provisioning: Vec<&str> = defs
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|d| d["name"].as_str())
+            .filter(|n| n.contains("provision") || n.contains("playbook") || n.contains("apply"))
+            .collect();
+        assert_eq!(provisioning, vec!["list_provisioning_runs"], "una herramienta que aplica algo");
+    }
+
+    /// La config nueva es la actual con lo pedido encima; `replace` es sólo lo
+    /// pedido; y un secreto pegado en vez de su referencia se para aquí, con
+    /// un mensaje que dice qué hacer. Roturas que atrapa: no combinar con la
+    /// actual; ignorar `removeVars`; aceptar un valor en `opRefs`; perder la
+    /// versión clavada de la plantilla al tocar sólo variables.
+    #[test]
+    fn a_server_config_merges_and_refuses_a_pasted_secret() {
+        let current = json!({
+            "templateId": "t1", "templateSeq": 3,
+            "vars": { "base_domain": "gstd.guz-studio.dev", "ssh_port": 7337, "old": true },
+            "opRefs": { "OPS_PASSWORD": "op://Employee/gstd/password" }
+        });
+        let body = server_config_body(&current, &json!({
+            "vars": { "ssh_port": 2222 }, "removeVars": ["old"],
+            "opRefs": { "CLOUDFLARE_DNS_TOKEN": "op://Employee/cf/credential" }
+        }), false).unwrap();
+        assert_eq!(body["vars"], json!({ "base_domain": "gstd.guz-studio.dev", "ssh_port": 2222 }));
+        assert_eq!(body["opRefs"]["OPS_PASSWORD"], "op://Employee/gstd/password");
+        assert_eq!(body["opRefs"]["CLOUDFLARE_DNS_TOKEN"], "op://Employee/cf/credential");
+        assert_eq!((body["templateId"].as_str(), body["templateSeq"].as_i64()), (Some("t1"), Some(3)));
+
+        let only = server_config_body(&current, &json!({ "vars": { "a": 1 } }), true).unwrap();
+        assert_eq!(only["vars"], json!({ "a": 1 }));
+        assert_eq!(only["opRefs"], json!({}));
+        assert_eq!(only["templateId"], "");
+
+        let err = server_config_body(&current, &json!({ "opRefs": { "OPS_PASSWORD": "hunter2" } }), false).unwrap_err();
+        assert!(err.contains("op://"), "{err}");
+
+        // Cambiar de plantilla sin versión es su última.
+        let moved = server_config_body(&current, &json!({ "templateId": "t2" }), false).unwrap();
+        assert_eq!((moved["templateId"].as_str(), moved["templateSeq"].as_i64()), (Some("t2"), Some(0)));
+    }
+
+    /// Una versión de plantilla sustituye las listas que se mandan y combina
+    /// las variables. Sin playbooks no hay plantilla.
+    #[test]
+    fn a_template_version_replaces_lists_and_merges_vars() {
+        let latest = json!({
+            "playbooks": ["baseline", "swarm"], "vars": { "traefik_image": "traefik:v3.5", "acme_email": "a@x" },
+            "requires": ["OPS_PASSWORD"], "perServer": ["OPS_PASSWORD"]
+        });
+        let body = server_template_body(&latest, &json!({
+            "playbooks": ["baseline", "swarm", "valkey"], "vars": { "traefik_image": "traefik:v3.6" }
+        })).unwrap();
+        assert_eq!(body["playbooks"], json!(["baseline", "swarm", "valkey"]));
+        assert_eq!(body["vars"], json!({ "traefik_image": "traefik:v3.6", "acme_email": "a@x" }));
+        assert_eq!(body["requires"], json!(["OPS_PASSWORD"]));
+        assert!(server_template_body(&Value::Null, &json!({ "vars": {} })).is_err());
     }
 
     /// Leer un deploy: la cola, los errores aunque queden arriba, lo que dijo
