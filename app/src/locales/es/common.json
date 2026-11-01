@@ -831,6 +831,57 @@
     "fromTerminal": "terminal",
     "applied": "Lo aplicado"
   },
+  "provisionRequests": {
+    "title": "Peticiones de ejecución",
+    "risk": {
+      "read": "lectura",
+      "change": "cambia",
+      "destructive": "destructivo"
+    },
+    "status": {
+      "checking": "ensayando",
+      "awaiting_approval": "espera aprobación",
+      "approved": "autorizada",
+      "rejected": "rechazada",
+      "running": "corriendo",
+      "verifying": "verificando",
+      "succeeded": "hecha y verificada",
+      "failed": "falló",
+      "verify_failed": "la verificación falló",
+      "violated": "cambió algo siendo lectura",
+      "expired": "caducada"
+    },
+    "preAuthorized": "pre-autorizada",
+    "askedBy": "Pidió {{name}} {{when}} · config v{{seq}}",
+    "viaAgent": "vía agente",
+    "flag": {
+      "check-failed": "El ensayo falló",
+      "unreachable": "No se llegó al servidor",
+      "host-count": "No es un solo host",
+      "read-would-change": "Es lectura y cambiaría algo",
+      "touches-access": "Toca SSH o el firewall fuera de baseline",
+      "destructive": "Destructivo",
+      "changes": "Cambios"
+    },
+    "checkSummary": "Ensayo en {{hosts}}: {{changed}} cambios, {{ok}} ok",
+    "showDiff": "Ver el diff",
+    "hideDiff": "Ocultar el diff",
+    "acknowledge": "Vi las banderas rojas y apruebo igual",
+    "typeServer": "Escribe «{{name}}» para confirmar",
+    "note": "Nota (opcional)",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "approveTitle": "¿Aprobar {{playbook}} en {{server}}?",
+    "approveBody": "Se autoriza una sola ejecución con la config v{{seq}}, durante {{minutes}} minutos, y después su verificación.",
+    "approved": "Aprobada",
+    "rejected": "Rechazada",
+    "adminDecides": "La aprueba o rechaza un admin de la organización.",
+    "grantUntil": "Autorizada hasta las {{time}}. Se corre con:",
+    "copy": "Copiar el comando",
+    "copied": "Copiado",
+    "rollbackHint": "Rollback propuesto: {{rollback}}. Es otra petición; no corre solo.",
+    "decisionNote": "{{name}}: {{note}}"
+  },
   "serverConfig": {
     "title": "Configuración del servidor",
     "lead": "Vive en cac, versionada: con qué plantilla se monta, sus variables y dónde está cada secreto en 1Password. Nunca un valor.",

@@ -831,6 +831,57 @@
     "fromTerminal": "terminal",
     "applied": "What was applied"
   },
+  "provisionRequests": {
+    "title": "Execution requests",
+    "risk": {
+      "read": "read",
+      "change": "change",
+      "destructive": "destructive"
+    },
+    "status": {
+      "checking": "dry run",
+      "awaiting_approval": "awaiting approval",
+      "approved": "authorized",
+      "rejected": "rejected",
+      "running": "running",
+      "verifying": "verifying",
+      "succeeded": "done and verified",
+      "failed": "failed",
+      "verify_failed": "verification failed",
+      "violated": "changed something as a read",
+      "expired": "expired"
+    },
+    "preAuthorized": "pre-authorized",
+    "askedBy": "Asked by {{name}} {{when}} · config v{{seq}}",
+    "viaAgent": "via agent",
+    "flag": {
+      "check-failed": "The dry run failed",
+      "unreachable": "The server could not be reached",
+      "host-count": "Not exactly one host",
+      "read-would-change": "A read that would change something",
+      "touches-access": "Touches SSH or the firewall outside baseline",
+      "destructive": "Destructive",
+      "changes": "Changes"
+    },
+    "checkSummary": "Dry run on {{hosts}}: {{changed}} changed, {{ok}} ok",
+    "showDiff": "Show the diff",
+    "hideDiff": "Hide the diff",
+    "acknowledge": "I saw the red flags and approve anyway",
+    "typeServer": "Type “{{name}}” to confirm",
+    "note": "Note (optional)",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approveTitle": "Approve {{playbook}} on {{server}}?",
+    "approveBody": "This authorizes a single run with config v{{seq}}, for {{minutes}} minutes, followed by its verification.",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "adminDecides": "An admin of the organization approves or rejects it.",
+    "grantUntil": "Authorized until {{time}}. Run it with:",
+    "copy": "Copy the command",
+    "copied": "Copied",
+    "rollbackHint": "Proposed rollback: {{rollback}}. It is another request; it never runs by itself.",
+    "decisionNote": "{{name}}: {{note}}"
+  },
   "serverConfig": {
     "title": "Server configuration",
     "lead": "Lives in cac, versioned: which template builds it, its variables and where each secret lives in 1Password. Never a value.",

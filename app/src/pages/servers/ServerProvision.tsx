@@ -22,6 +22,9 @@ import type { AnsibleEvent, AnsibleManifest, AnsibleTools, InventoryHost, Provis
 import type { EffectiveConfig, PlanGaps, StartedRun } from "@/types/server-config";
 import { useServerContext } from "./ServerLayout";
 import ServerConfigPanel, { stableJson } from "./ServerConfigPanel";
+import ProvisioningRequests from "@/components/servers/ProvisioningRequests";
+import { useOrgsStore } from "@/store/orgs.store";
+import { useAuthStore } from "@/store/auth.store";
 import Picker from "@/components/ui/picker";
 
 const NADA: never[] = [];
@@ -74,6 +77,10 @@ export default function ServerProvision() {
   const lines = useProvisionStore((s) => s.lines);
   const history = useProvisionStore((s) => s.history[server.id] ?? NADA);
   const { setPrefs, start, attach, push, finished, loadHistory, closeOrphan } = useProvisionStore.getState();
+  // Aprobar una petición es de admin, como guardar la config (el backend lo
+  // vuelve a exigir, y además en persona).
+  const isAdmin = useOrgsStore((s) => s.orgs.find((o) => o.id === server.orgId)?.role === "admin");
+  const superadmin = useAuthStore((s) => !!s.session?.superadmin);
 
   const [tools, setTools] = useState<AnsibleTools | null>(null);
   const [manifest, setManifest] = useState<AnsibleManifest | null>(null);
@@ -349,6 +356,7 @@ export default function ServerProvision() {
     <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <div className="space-y-4">
         <ServerConfigPanel server={server} manifest={manifest} effective={effective} onChanged={() => void loadEffective()} />
+        <ProvisioningRequests server={server} canDecide={isAdmin || superadmin} />
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">{t("common:provision.project")}</CardTitle>

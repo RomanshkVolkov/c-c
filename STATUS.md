@@ -13,6 +13,19 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**31-oct (noche), en `main`: un agente pide aplicar y cac sigue el protocolo**
+(command-and-control-283, decisión 4d28f4ab). Cada playbook declara su riesgo
+(`read`/`change`/`destructive`) con su `verify` y su `rollback`. Un agente pide
+(`request_provisioning` o `cac provision request`), su máquina corre el ensayo
+(`--check --diff`) y el backend lo evalúa con banderas. **Sólo una lectura
+limpia va pre-autorizada**; lo que cambia lo aprueba una persona **en persona**
+en la pestaña Provisioning (lo destructivo, escribiendo el nombre del
+servidor), **también en un servidor de pruebas, como simulacro**. Se corre con
+`cac provision run --grant`: autorización de un uso, 15 minutos, atada a
+playbook y versión de la config, y después su `verify`. Un token ya no abre
+una ejecución sin autorización. Backend **desplegado**; la app, **sin
+release**. Falta el simulacro en gstd (E).
+
 **31-oct (tarde), en `main`: la config de un servidor vive en cac**
 (command-and-control-272). Plantillas de servidor (una secuencia de playbooks
 de `infra/ansible` + variables + los nombres de los secretos que exige) y una

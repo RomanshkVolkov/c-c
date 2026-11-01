@@ -1,0 +1,144 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+/**
+ * La bandeja de peticiones de ejecución (decisión 4d28f4ab).
+ *
+ * Lo que se fija:
+ * 1. Aprobar pide lo que el protocolo pide: el nombre del servidor escrito a
+ *    mano si es destructivo, y reconocer las banderas rojas si las hay. Sin
+ *    eso el botón no se deja apretar (y el backend lo vuelve a exigir).
+ * 2. Aprobar se confirma y manda exactamente la decisión; rechazar no pide
+ *    confirmación.
+ * 3. Quien no es admin no ve botones: ve quién decide.
+ * 4. Una autorizada enseña el comando con el que se corre.
+ * 5. Una respuesta con otra forma no rompe la pestaña.
+ */
+
+const { api } = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock("@/lib/api", () => ({ api }));
+const { confirmar } = vi.hoisted(() => ({ confirmar: vi.fn() }));
+vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
+vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/clipboard", () => ({ copyText: vi.fn(async () => {}) }));
+
+const { default: ProvisioningRequests, canApprove, grantCommand } = await import("./ProvisioningRequests");
+const en = (await import("@/locales/en/common.json")).default.provisionRequests;
+const disabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled;
+
+const server = { id: "srv-1", name: "gstd" };
+
+function request(over: Record<string, unknown> = {}) {
+  return {
+    id: "rq-1", serverId: "srv-1", playbook: "swarm", project: "ansible", risk: "change",
+    verify: "swarm-verify", rollback: "swarm-teardown", configSeq: 3, reason: "levantar Traefik",
+    requestedBy: "u-1", requestedByName: "Jose", source: "mcp", status: "awaiting_approval",
+    check: { hosts: ["gstd"], ok: 20, changed: 4, unreachable: 0, failed: 0, changedTasks: ["Instalar Traefik"], paths: [], diff: "+new", exitCode: 0 },
+    flags: [{ code: "changes", level: "info", detail: "changed=4" }],
+    autoApproved: false, createdAt: new Date().toISOString(),
+    ...over,
+  };
+}
+
+function serve(...reqs: unknown[]) {
+  api.get.mockResolvedValue({ success: true, data: reqs });
+}
+
+beforeEach(() => {
+  api.get.mockReset();
+  api.post.mockReset().mockResolvedValue({ success: true });
+  confirmar.mockReset().mockResolvedValue(true);
+});
+afterEach(cleanup);
+
+describe("aprobar sigue el protocolo", () => {
+  // Roturas que atrapa: aceptar el nombre con otra caja, o ignorar una
+  // bandera roja; y exigir algo de más a un change limpio.
+  it("lo destructivo pide el nombre exacto, y una bandera roja pide reconocerse", () => {
+    const red = [{ code: "touches-access", level: "red" as const }];
+    expect(canApprove({ risk: "change", flags: [] }, "gstd", "", false)).toBe(true);
+    expect(canApprove({ risk: "destructive", flags: [] }, "gstd", "", false)).toBe(false);
+    expect(canApprove({ risk: "destructive", flags: [] }, "gstd", "GSTD", false)).toBe(false);
+    expect(canApprove({ risk: "destructive", flags: [] }, "gstd", "gstd", false)).toBe(true);
+    expect(canApprove({ risk: "change", flags: red }, "gstd", "", false)).toBe(false);
+    expect(canApprove({ risk: "change", flags: red }, "gstd", "", true)).toBe(true);
+    expect(canApprove({ risk: "change", flags: [{ code: "changes", level: "amber" as const }] }, "gstd", "", false)).toBe(true);
+  });
+
+  it("con una bandera roja, el botón espera a que se reconozca y manda la decisión entera", async () => {
+    serve(request({ flags: [{ code: "touches-access", level: "red", detail: "/etc/ssh/sshd_config" }] }));
+    render(<ProvisioningRequests server={server} canDecide />);
+    const approve = await screen.findByRole("button", { name: en.approve });
+    expect(disabled(approve)).toBe(true);
+    expect(screen.getByText("/etc/ssh/sshd_config")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(disabled(approve)).toBe(false);
+    fireEvent.change(screen.getByRole("textbox", { name: en.note }), { target: { value: " simulacro " } });
+    fireEvent.click(approve);
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(confirmar).toHaveBeenCalledOnce();
+    expect(api.post).toHaveBeenCalledWith(
+      "/api/v1/servers/srv-1/provisioning-requests/rq-1/decision",
+      { approve: true, note: "simulacro", confirmServer: "", acknowledgeFlags: true },
+      true,
+    );
+  });
+
+  it("si no se confirma, no se aprueba", async () => {
+    confirmar.mockResolvedValueOnce(false);
+    serve(request());
+    render(<ProvisioningRequests server={server} canDecide />);
+    fireEvent.click(await screen.findByRole("button", { name: en.approve }));
+    await waitFor(() => expect(confirmar).toHaveBeenCalled());
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("lo destructivo no se aprueba hasta escribir el nombre del servidor", async () => {
+    serve(request({ playbook: "swarm-teardown", risk: "destructive", flags: [{ code: "destructive", level: "amber" }] }));
+    render(<ProvisioningRequests server={server} canDecide />);
+    const approve = await screen.findByRole("button", { name: en.approve });
+    expect(disabled(approve)).toBe(true);
+    fireEvent.change(screen.getByRole("textbox", { name: en.typeServer.replace("{{name}}", "gstd") }), { target: { value: "gstd" } });
+    expect(disabled(approve)).toBe(false);
+    fireEvent.click(approve);
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    // Sin bandera roja no se marcó nada, y no se dice que se vio: si la
+    // pantalla mandara siempre `true`, la comprobación del backend no
+    // serviría de nada.
+    expect(api.post.mock.calls[0][1]).toMatchObject({ approve: true, confirmServer: "gstd", acknowledgeFlags: false });
+  });
+
+  it("rechazar no pide confirmación", async () => {
+    serve(request());
+    render(<ProvisioningRequests server={server} canDecide />);
+    fireEvent.click(await screen.findByRole("button", { name: en.reject }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(confirmar).not.toHaveBeenCalled();
+    expect(api.post.mock.calls[0][1]).toMatchObject({ approve: false });
+  });
+});
+
+describe("lo que se ve", () => {
+  it("quien no es admin no decide: ve quién lo hace", async () => {
+    serve(request());
+    render(<ProvisioningRequests server={server} canDecide={false} />);
+    expect(await screen.findByText(en.adminDecides)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en.approve })).toBeNull();
+  });
+
+  it("una autorizada enseña con qué se corre", async () => {
+    serve(request({ status: "approved", grantExpiresAt: new Date(Date.now() + 600_000).toISOString() }));
+    render(<ProvisioningRequests server={server} canDecide />);
+    expect(await screen.findByText("cac provision run --server 'gstd' --grant rq-1")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en.approve })).toBeNull();
+    // Un nombre con comilla no rompe el comando.
+    expect(grantCommand("it's", "x")).toBe("cac provision run --server 'it'\\''s' --grant x");
+  });
+
+  it("una respuesta con otra forma no rompe la pestaña", async () => {
+    api.get.mockResolvedValue({ success: true, data: [{ id: 1 }, null, "x"] });
+    const { container } = render(<ProvisioningRequests server={server} canDecide />);
+    await waitFor(() => expect(api.get).toHaveBeenCalled());
+    expect(container.textContent).toBe("");
+  });
+});

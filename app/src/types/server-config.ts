@@ -74,3 +74,66 @@ export interface StartedRun {
   varNames: string[];
   target: string;
 }
+
+/**
+ * Una petición de ejecución (backend `domain/provisioning_request.go`): un
+ * agente pide aplicar un playbook, su ensayo se evalúa, y lo que no es una
+ * lectura limpia lo aprueba una persona aquí. Decisión 4d28f4ab.
+ */
+export type ProvisioningRisk = "read" | "change" | "destructive";
+
+export type ProvisioningRequestStatus =
+  | "checking"
+  | "awaiting_approval"
+  | "approved"
+  | "rejected"
+  | "running"
+  | "verifying"
+  | "succeeded"
+  | "failed"
+  | "verify_failed"
+  | "violated"
+  | "expired";
+
+export interface RiskFlag {
+  code: string;
+  level: "red" | "amber" | "info";
+  detail?: string;
+}
+
+export interface ProvisioningCheck {
+  hosts: string[];
+  ok: number;
+  changed: number;
+  unreachable: number;
+  failed: number;
+  changedTasks: string[] | null;
+  paths: string[] | null;
+  diff: string;
+  exitCode: number;
+}
+
+export interface ProvisioningRequest {
+  id: string;
+  serverId: string;
+  playbook: string;
+  project: string;
+  risk: ProvisioningRisk;
+  verify?: string;
+  rollback?: string;
+  configSeq: number;
+  reason: string;
+  requestedBy: string;
+  requestedByName: string;
+  source: "mcp" | "app";
+  status: ProvisioningRequestStatus;
+  check?: ProvisioningCheck | null;
+  flags: RiskFlag[];
+  checkedAt?: string;
+  decidedByName?: string;
+  decidedAt?: string;
+  decisionNote?: string;
+  autoApproved: boolean;
+  grantExpiresAt?: string;
+  createdAt: string;
+}
