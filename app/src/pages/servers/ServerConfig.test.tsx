@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 /**
  * La config de un servidor en cac, y aplicar con ella (manifiesto v2).
@@ -40,7 +40,8 @@ vi.mock("./ServerLayout", () => ({ useServerContext: () => ({ server }) }));
 
 const { default: ServerProvision, live } = await import("./ServerProvision");
 const { configBody, stableJson } = await import("./ServerConfigPanel");
-const { templateFromManifest, orderedPlaybooks } = await import("@/components/servers/ServerTemplateDialog");
+const { templateFromManifest, orderedPlaybooks, stagePlaybooks } = await import("@/components/servers/ServerTemplateDialog");
+const { varFields, fromInput } = await import("@/components/servers/ansible-vars");
 const { useProvisionStore } = await import("@/store/provision.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
 const { pick } = await import("@/test-pick");
@@ -69,6 +70,7 @@ const manifest = {
       vars: [
         { name: "ops_user", description: "", secret: false, required: false, default: "otro" },
         { name: "traefik_image", description: "", secret: false, required: false, default: "traefik:v3.6" },
+        { name: "public_ip", description: "La IP pública.", secret: false, required: true },
         { name: "dashboard_pass", description: "", secret: true, required: false, default: "nunca" },
         { name: "cloudflare_dns_token", description: "", secret: true, required: false, from: "CLOUDFLARE_DNS_TOKEN" },
       ],
@@ -101,6 +103,10 @@ const current = {
 
 let gaps = { vars: [] as string[], secrets: [] as string[] };
 let requests: unknown[] = [];
+const tplCurrent = {
+  id: "tv1", templateId: "tpl-1", seq: 1, playbooks: ["baseline", "swarm"], vars: { traefik_image: "traefik:v3.7" },
+  requires: ["CLOUDFLARE_DNS_TOKEN", "OPS_PASSWORD"], perServer: ["OPS_PASSWORD"], source: "app", note: "", createdAt: "2026-10-31T09:00:00Z",
+};
 const report = { hosts: ["gstd"], ok: 3, changed: 1, unreachable: 0, failed: 0, changedTasks: ["x"], paths: [], diff: "", exitCode: 0 };
 
 function backend() {
@@ -108,7 +114,7 @@ function backend() {
     if (path.includes("/config/effective")) return { success: true, data: effective };
     if (path.endsWith("/provisioning-requests")) return { success: true, data: requests };
     if (path.endsWith("/config")) return { success: true, data: { current, versions: [current] } };
-    if (path.includes("/server-templates")) return { success: true, data: [{ id: "tpl-1", orgId: "org-1", name: "Swarm + Traefik", description: "", current: null }] };
+    if (path.includes("/server-templates")) return { success: true, data: [{ id: "tpl-1", orgId: "org-1", name: "Swarm + Traefik", description: "", current: tplCurrent }] };
     if (path === "/api/v1/servers/") return { success: true, data: [server, { ...server, id: "srv-2", name: "dev" }] };
     return { success: true, data: [] };
   });
@@ -158,6 +164,9 @@ describe("las piezas puras", () => {
     expect(configBody("", "{}", [{ name: "ops_password", ref: "op://v/i/f" }], "")).toEqual({ error: "badRefs" });
     expect(configBody("", "{}", [{ name: "A", ref: "op://v/i/f" }, { name: "A", ref: "op://v/i/g" }], "")).toEqual({ error: "badRefs" });
     expect(configBody("", "[1]", [], "")).toEqual({ error: "badJson" });
+    // Un secreto que la plantilla pide y aún no tiene referencia se enseña
+    // vacío: no se guarda, y no impide guardar lo demás.
+    expect(configBody("", "{}", [{ name: "CLOUDFLARE_DNS_TOKEN", ref: "" }], "")).toEqual({ body: { templateId: "", vars: {}, opRefs: {}, note: "" } });
     expect(configBody("t", '{"a":1}', [{ name: "A", ref: " op://v/i/f " }, { name: "", ref: "" }], " por qué ")).toEqual({
       body: { templateId: "t", vars: { a: 1 }, opRefs: { A: "op://v/i/f" }, note: "por qué" },
     });
@@ -176,6 +185,93 @@ describe("las piezas puras", () => {
     expect(tpl.requires).toEqual(["CLOUDFLARE_DNS_TOKEN", "OPS_PASSWORD"]);
     expect(tpl.perServer).toEqual(["OPS_PASSWORD"]);
     expect(orderedPlaybooks(manifest, new Set(["swarm", "baseline"]))).toEqual(["baseline", "swarm"]);
+  });
+});
+
+describe("el formulario en vez del JSON", () => {
+  // Roturas que atrapa: un secreto como variable; perder una descripción que
+  // trae otra etapa; la de sudo sin marcar; lo obligatorio no primero.
+  it("las variables de unas etapas se leen como campos", () => {
+    const f = varFields(manifest, ["baseline", "swarm"]);
+    expect(f.shared.map((x) => [x.name, x.default])).toEqual([
+      ["ops_user", "infra_devops"],
+      ["traefik_image", "traefik:v3.6"],
+    ]);
+    expect(f.perServer.map((x) => x.name)).toEqual(["ssh_port", "public_ip"]);
+    expect(f.perServer[1].description).toBe("La IP pública.");
+    expect(f.secrets).toEqual([
+      { name: "CLOUDFLARE_DNS_TOKEN", description: "", sudo: false },
+      { name: "OPS_PASSWORD", description: "", sudo: true },
+    ]);
+  });
+
+  // Roturas que atrapa: quedarse con la descripción vacía de la primera etapa
+  // cuando otra la trae; no poner primero lo obligatorio.
+  it("la descripción sale de la etapa que la tenga, y lo obligatorio va primero", () => {
+    const v = (name: string, extra: Record<string, unknown> = {}) => ({ name, description: "", secret: false, required: false, ...extra });
+    const m = {
+      ...manifest,
+      playbooks: [
+        { ...manifest.playbooks[0], id: "a", become: false, vars: [v("note"), v("tok", { secret: true, from: "TOK" })] },
+        { ...manifest.playbooks[0], id: "b", become: false, vars: [v("domain", { required: true }), v("tok", { secret: true, from: "TOK", description: "El token." })] },
+      ],
+    };
+    const f = varFields(m, ["a", "b"]);
+    expect(f.perServer.map((x) => x.name)).toEqual(["domain", "note"]);
+    expect(f.secrets).toEqual([{ name: "TOK", description: "El token.", sudo: false }]);
+  });
+
+  // Roturas que atrapa: un puerto guardado como texto; un «0755» convertido
+  // en número; una lista a medio escribir que se pierde; vacío guardado.
+  it("lo escrito vuelve a su tipo", () => {
+    expect(fromInput("7337")).toBe(7337);
+    expect(fromInput("0755", "0644")).toBe("0755");
+    expect(fromInput("[80, 443]", [80])).toEqual([80, 443]);
+    expect(fromInput('["ssh-ed25519 A"]')).toEqual(["ssh-ed25519 A"]);
+    expect(fromInput("[80,")).toBe("[80,");
+    expect(fromInput("true")).toBe(true);
+    expect(fromInput("  ")).toBeUndefined();
+  });
+
+  // Rotura que atrapa: ofrecer una verificación o un desmontaje como etapa.
+  it("en una plantilla sólo se eligen etapas", () => {
+    const m = { ...manifest, playbooks: [...manifest.playbooks, { ...manifest.playbooks[1], id: "swarm-verify", risk: "read" }, { ...manifest.playbooks[1], id: "swarm-teardown", risk: "destructive" }] };
+    expect(stagePlaybooks(m).map((p) => p.id)).toEqual(["baseline", "swarm"]);
+  });
+
+  // Roturas que atrapa: nacer con todo marcado; no rellenar los defaults
+  // solos; la de sudo compartida por defecto; no poder cambiarlo.
+  it("una plantilla nueva empieza vacía y se rellena sola al elegir", async () => {
+    render(<ServerProvision />);
+    fireEvent.click(await screen.findByRole("button", { name: /nueva plantilla|new template/i }));
+    const etapas = (await within(await screen.findByRole("dialog")).findAllByRole("checkbox")) as HTMLInputElement[];
+    expect(etapas.every((c) => !c.checked)).toBe(true);
+    fireEvent.change(screen.getByLabelText(/^(nombre|name)$/i), { target: { value: "Swarm" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /etapa 2/i }));
+    expect((within(screen.getByRole("dialog")).getByLabelText("traefik_image") as HTMLInputElement).value).toBe("traefik:v3.6");
+    await pick(screen.getByRole("combobox", { name: /CLOUDFLARE_DNS_TOKEN/ }), /cada servidor pone el suyo|each server sets its own/i);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /crear plantilla|create template/i })));
+    const [path, body] = api.post.mock.calls.find(([p]) => String(p).includes("/server-templates/"))!;
+    expect(path).toBe("/api/v1/organizations/org-1/server-templates/");
+    expect(body).toMatchObject({
+      name: "Swarm",
+      playbooks: ["swarm"],
+      vars: { ops_user: "otro", traefik_image: "traefik:v3.6" },
+      requires: ["CLOUDFLARE_DNS_TOKEN", "OPS_PASSWORD"],
+      perServer: ["CLOUDFLARE_DNS_TOKEN", "OPS_PASSWORD"],
+    });
+  });
+
+  // Roturas que atrapa: imponer la IP del servidor sin que se pida; guardarla
+  // mal; un puerto como texto; un secreto que falta guardado vacío.
+  it("en el servidor, lo suyo se rellena con ayuda y lo que falta se ve", async () => {
+    render(<ServerProvision />);
+    const ip = (await screen.findByLabelText(/^public_ip/)) as HTMLInputElement;
+    expect(ip.value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: /13\.140\.235\.112/ }));
+    fireEvent.change(screen.getByLabelText(/^ssh_port/), { target: { value: "2222" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /guardar como versión nueva|save as a new version/i })));
+    expect(api.put.mock.calls[0][1]).toMatchObject({ vars: { base_domain: "gstd.guz-studio.dev", public_ip: "13.140.235.112", ssh_port: 2222 } });
   });
 });
 

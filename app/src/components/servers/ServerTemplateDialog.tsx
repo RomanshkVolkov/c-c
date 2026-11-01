@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import Picker from "@/components/ui/picker";
+import { VarInput, varFields } from "@/components/servers/ansible-vars";
 import type { APIResponse } from "@/types/auth";
-import type { AnsibleManifest } from "@/types/ansible";
+import type { AnsibleManifest, PlaybookDef } from "@/types/ansible";
 import type { ServerTemplate } from "@/types/server-config";
 
 /**
@@ -41,10 +42,25 @@ export function orderedPlaybooks(manifest: AnsibleManifest, picked: Set<string>)
 }
 
 /**
+ * Las etapas que se pueden poner en una plantilla: lo que monta algo
+ * (`change`). Una verificación corre sola después de su etapa y un
+ * desmontaje se pide aparte; meterlos en la secuencia los correría como una
+ * etapa más. Un manifiesto sin riesgos declarados enseña todo.
+ */
+export function stagePlaybooks(manifest: AnsibleManifest): PlaybookDef[] {
+  const declared = manifest.playbooks.some((p) => p.risk);
+  return manifest.playbooks.filter((p) => !declared || p.risk === "change");
+}
+
+/**
  * Crear una plantilla de servidor, o guardar una versión nueva de una. Una
- * plantilla es una secuencia de playbooks del manifiesto, las variables que
+ * plantilla es una secuencia de etapas del manifiesto, los valores que
  * comparten y los **nombres** de los secretos que un servidor tiene que traer.
  * Nunca un valor: cac rechaza un secreto como variable.
+ *
+ * Se rellena sola: al elegir las etapas salen sus variables con su default y
+ * su descripción, y los secretos con lo que son. Sólo se toca lo que se quiere
+ * cambiar.
  */
 export default function ServerTemplateDialog({
   open,
@@ -66,8 +82,10 @@ export default function ServerTemplateDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [varsText, setVarsText] = useState("{}");
-  const [perServer, setPerServer] = useState<Set<string>>(new Set());
+  // Lo que se cambió de los defaults (y, al editar, lo que ya tenía).
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  // null = lo que diga el manifiesto (la de sudo, de cada servidor).
+  const [perServer, setPerServer] = useState<Set<string> | null>(null);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -77,26 +95,30 @@ export default function ServerTemplateDialog({
     setName(template?.name ?? "");
     setDescription(template?.description ?? "");
     setPicked(new Set(cur?.playbooks ?? []));
-    setVarsText(JSON.stringify(cur?.vars ?? {}, null, 2));
-    setPerServer(new Set(cur?.perServer ?? []));
+    setValues({ ...(cur?.vars ?? {}) });
+    setPerServer(cur ? new Set(cur.perServer ?? []) : null);
     setNote("");
   }, [open, template]);
 
   const playbookIds = manifest ? orderedPlaybooks(manifest, picked) : [...picked];
-  const derived = useMemo(
-    () => (manifest ? templateFromManifest(manifest, playbookIds) : { vars: {}, requires: template?.current?.requires ?? [], perServer: [] }),
+  const fields = useMemo(
+    () => (manifest ? varFields(manifest, playbookIds) : { shared: [], perServer: [], secrets: [] }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [manifest, playbookIds.join(",")],
   );
-  const requires = manifest ? derived.requires : (template?.current?.requires ?? []);
-  let vars: Record<string, unknown> | null = null;
-  try {
-    const parsed = JSON.parse(varsText);
-    vars = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-  } catch {
-    vars = null;
+  const requires = manifest ? fields.secrets.map((s) => s.name) : (template?.current?.requires ?? []);
+  const own = perServer ?? new Set(fields.secrets.filter((s) => s.sudo).map((s) => s.name));
+
+  // Lo que se guarda: cada variable de las etapas con su valor (el default si
+  // no se tocó), más lo que ya tenía la plantilla y no sale en el formulario.
+  const shown = new Set([...fields.shared, ...fields.perServer].map((f) => f.name));
+  const vars: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(values)) if (!shown.has(k) && v !== undefined) vars[k] = v;
+  for (const f of fields.shared) {
+    const v = f.name in values ? values[f.name] : f.default;
+    if (v !== undefined) vars[f.name] = v;
   }
-  const canSave = !saving && playbookIds.length > 0 && vars !== null && (!!template || name.trim().length > 0);
+  const canSave = !saving && playbookIds.length > 0 && (!!template || name.trim().length > 0);
 
   const toggle = (id: string) => {
     const next = new Set(picked);
@@ -105,22 +127,13 @@ export default function ServerTemplateDialog({
     setPicked(next);
   };
 
-  const fillDefaults = () => {
-    if (!manifest) return;
-    const { vars: defaults, perServer: ps } = templateFromManifest(manifest, playbookIds);
-    // Lo escrito se queda; sólo se añade lo que falta.
-    setVarsText(JSON.stringify({ ...defaults, ...(vars ?? {}) }, null, 2));
-    if (perServer.size === 0) setPerServer(new Set(ps));
-  };
-
   const save = async () => {
-    if (!vars) return;
     setSaving(true);
     const body = {
       playbooks: playbookIds,
       vars,
       requires,
-      perServer: [...perServer].filter((p) => requires.includes(p)),
+      perServer: [...own].filter((p) => requires.includes(p)).sort(),
       note: note.trim(),
     };
     try {
@@ -144,17 +157,19 @@ export default function ServerTemplateDialog({
     }
   };
 
-  const allIds = manifest ? manifest.playbooks.map((p) => ({ id: p.id, name: p.name })) : playbookIds.map((id) => ({ id, name: id }));
+  const stages = manifest ? stagePlaybooks(manifest) : playbookIds.map((id) => ({ id, name: id, description: "" }) as PlaybookDef);
+  const nameOf = (id?: string | null) => (id ? (manifest?.playbooks.find((p) => p.id === id)?.name ?? id) : "");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{template ? t("common:serverConfig.editTemplate", { name: template.name }) : t("common:serverConfig.newTemplate")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
+        <div className="space-y-5 text-sm">
+          <p className="text-xs text-muted-foreground">{t("common:serverConfig.templateLead")}</p>
           {!template && (
-            <>
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="tpl-name">{t("common:serverConfig.templateName")}</Label>
                 <Input id="tpl-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Swarm + Traefik" />
@@ -163,62 +178,119 @@ export default function ServerTemplateDialog({
                 <Label htmlFor="tpl-desc">{t("common:serverConfig.templateDescription")}</Label>
                 <Input id="tpl-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
-            </>
+            </div>
           )}
-          <div className="space-y-1">
-            <p className="text-xs font-medium">{t("common:serverConfig.templatePlaybooks")}</p>
-            {!manifest && <p className="text-xs text-muted-foreground">{t("common:serverConfig.pickFolderForPlaybooks")}</p>}
-            <ul className="space-y-1">
-              {allIds.map((p) => (
+
+          <section className="space-y-2">
+            <div>
+              <p className="text-sm font-medium">{t("common:serverConfig.stepStages")}</p>
+              <p className="text-xs text-muted-foreground">{t("common:serverConfig.stagesLead")}</p>
+            </div>
+            {!manifest && <p className="text-xs text-destructive">{t("common:serverConfig.pickFolderForPlaybooks")}</p>}
+            <ul className="space-y-1.5">
+              {stages.map((p) => (
                 <li key={p.id}>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={picked.has(p.id)} onChange={() => toggle(p.id)} disabled={!manifest} />
-                    <span className="font-mono text-xs">{p.id}</span>
-                    <span className="text-xs text-muted-foreground">{p.name}</span>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border p-2 has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                    <input className="mt-0.5" type="checkbox" checked={picked.has(p.id)} onChange={() => toggle(p.id)} disabled={!manifest} />
+                    <span className="min-w-0 space-y-0.5">
+                      <span className="block text-sm">{p.name}</span>
+                      {p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}
+                      {(p.verify || p.rollback) && (
+                        <span className="block text-[11px] text-muted-foreground">
+                          {[
+                            p.verify && t("common:serverConfig.verifiedBy", { name: nameOf(p.verify) }),
+                            p.rollback &&
+                              (p.rollback === "manual"
+                                ? t("common:serverConfig.rollbackManual")
+                                : t("common:serverConfig.undoneBy", { name: nameOf(p.rollback) })),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      )}
+                    </span>
                   </label>
                 </li>
               ))}
             </ul>
-            {playbookIds.length > 0 && <p className="font-mono text-xs text-muted-foreground">{playbookIds.join(" → ")}</p>}
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="tpl-vars">{t("common:serverConfig.vars")}</Label>
-              {manifest && (
-                <Button type="button" variant="ghost" size="sm" onClick={fillDefaults} disabled={playbookIds.length === 0}>
-                  {t("common:serverConfig.fillDefaults")}
-                </Button>
-              )}
-            </div>
-            <Textarea id="tpl-vars" className="min-h-40 font-mono text-xs" value={varsText} onChange={(e) => setVarsText(e.target.value)} />
-            {vars === null && <p className="text-xs text-destructive">{t("common:serverConfig.badJson")}</p>}
-            <p className="text-xs text-muted-foreground">{t("common:serverConfig.noSecretsInVars")}</p>
-          </div>
-          {requires.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium">{t("common:serverConfig.requires")}</p>
-              <ul className="space-y-1">
-                {requires.map((r) => (
-                  <li key={r}>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={perServer.has(r)}
-                        onChange={() => {
-                          const next = new Set(perServer);
-                          if (next.has(r)) next.delete(r);
-                          else next.add(r);
-                          setPerServer(next);
-                        }}
-                      />
-                      <span className="font-mono text-xs">{r}</span>
-                      <span className="text-xs text-muted-foreground">{t("common:serverConfig.perServer")}</span>
-                    </label>
+            {playbookIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {t("common:serverConfig.runsInOrder")} <span className="font-mono">{playbookIds.join(" → ")}</span>
+              </p>
+            )}
+          </section>
+
+          {playbookIds.length > 0 && fields.shared.length > 0 && (
+            <section className="space-y-2">
+              <div>
+                <p className="text-sm font-medium">{t("common:serverConfig.stepShared")}</p>
+                <p className="text-xs text-muted-foreground">{t("common:serverConfig.sharedLead")}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {fields.shared.map((f) => (
+                  <VarInput
+                    key={f.name}
+                    idPrefix="tpl"
+                    field={f}
+                    value={f.name in values ? values[f.name] : f.default}
+                    onChange={(v) => setValues({ ...values, [f.name]: v })}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {playbookIds.length > 0 && fields.perServer.length > 0 && (
+            <section className="space-y-1">
+              <p className="text-sm font-medium">{t("common:serverConfig.stepPerServer")}</p>
+              <p className="text-xs text-muted-foreground">{t("common:serverConfig.perServerLead")}</p>
+              <ul className="space-y-0.5 text-xs">
+                {fields.perServer.map((f) => (
+                  <li key={f.name}>
+                    <span className="font-mono">{f.name}</span>
+                    {f.description && <span className="text-muted-foreground"> — {f.description}</span>}
                   </li>
                 ))}
               </ul>
-            </div>
+            </section>
           )}
+
+          {requires.length > 0 && (
+            <section className="space-y-2">
+              <div>
+                <p className="text-sm font-medium">{t("common:serverConfig.stepSecrets")}</p>
+                <p className="text-xs text-muted-foreground">{t("common:serverConfig.secretsLead")}</p>
+              </div>
+              <ul className="space-y-2">
+                {(manifest ? fields.secrets : requires.map((r) => ({ name: r, description: "", sudo: false }))).map((s) => (
+                  <li key={s.name} className="flex flex-wrap items-center gap-2 rounded-md border p-2">
+                    <span className="min-w-0 flex-1 space-y-0.5">
+                      <span className="block font-mono text-xs">{s.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {s.description || (s.sudo ? t("common:serverConfig.sudoSecret") : "")}
+                      </span>
+                    </span>
+                    <Picker
+                      aria-label={t("common:serverConfig.secretScope", { name: s.name })}
+                      value={own.has(s.name) ? "own" : "shared"}
+                      onChange={(v) => {
+                        const next = new Set(own);
+                        if (v === "own") next.add(s.name);
+                        else next.delete(s.name);
+                        setPerServer(next);
+                      }}
+                      options={[
+                        { value: "own", label: t("common:serverConfig.secretOwn") },
+                        { value: "shared", label: t("common:serverConfig.secretShared") },
+                      ]}
+                      className="w-56"
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <div className="space-y-1">
             <Label htmlFor="tpl-note">{t("common:serverConfig.note")}</Label>
             <Input id="tpl-note" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -229,7 +301,7 @@ export default function ServerTemplateDialog({
             {t("common:serverConfig.cancel")}
           </Button>
           <Button onClick={() => void save()} disabled={!canSave}>
-            {t("common:serverConfig.saveVersion")}
+            {template ? t("common:serverConfig.saveVersion") : t("common:serverConfig.createTemplate")}
           </Button>
         </DialogFooter>
       </DialogContent>

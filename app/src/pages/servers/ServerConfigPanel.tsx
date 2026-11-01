@@ -8,6 +8,7 @@ import { desde } from "@/lib/desde";
 import { lineDiff } from "@/lib/line-diff";
 import { useConfirm } from "@/components/ConfirmDialog";
 import ServerTemplateDialog from "@/components/servers/ServerTemplateDialog";
+import { VarInput, toInput, varFields } from "@/components/servers/ansible-vars";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,12 +54,20 @@ export function configBody(
   for (const r of rows) {
     const name = r.name.trim();
     const ref = r.ref.trim();
-    if (!name && !ref) continue;
+    // Una fila sin referencia es un secreto que aún falta (la plantilla lo
+    // pide y se enseña vacío): no se guarda, y `missing` lo sigue diciendo.
+    if (!ref) continue;
     if (!SECRET_NAME.test(name) || !OP_REF.test(ref) || name in opRefs) return { error: "badRefs" };
     opRefs[name] = ref;
   }
   return { body: { templateId, vars: vars as Record<string, unknown>, opRefs, note: note.trim() } };
 }
+
+/** Las filas, más una vacía por cada secreto que pide la plantilla y no está. */
+export const withRequired = (rows: RefRow[], requires: string[]): RefRow[] => [
+  ...rows,
+  ...requires.filter((n) => !rows.some((r) => r.name === n)).map((name) => ({ name, ref: "" })),
+];
 
 const rowsOf = (refs: Record<string, string> | undefined): RefRow[] =>
   Object.entries(refs ?? {})
@@ -95,7 +104,7 @@ export default function ServerConfigPanel({
   effective,
   onChanged,
 }: {
-  server: Pick<Server, "id" | "orgId" | "name">;
+  server: Pick<Server, "id" | "orgId" | "name"> & Partial<Pick<Server, "host" | "sshPort">>;
   manifest: AnsibleManifest | null;
   effective: EffectiveConfig | null;
   onChanged: () => void;
@@ -133,7 +142,8 @@ export default function ServerConfigPanel({
     setTemplates(Array.isArray(tpls?.data) ? tpls.data : []);
     setTemplateId(s.current?.templateId ?? "");
     setVarsText(stableJson(s.current?.vars ?? {}));
-    setRows(rowsOf(s.current?.opRefs));
+    const tpl = (Array.isArray(tpls?.data) ? tpls.data : []).find((x) => x.id === s.current?.templateId);
+    setRows(withRequired(rowsOf(s.current?.opRefs), tpl?.current?.requires ?? []));
     setNote("");
     setChecks({});
   }, [server.id, server.orgId]);
@@ -147,6 +157,35 @@ export default function ServerConfigPanel({
   const empty = { templateId: "", vars: {}, opRefs: {} };
   const dirty = "body" in draft && asText(draft.body) !== asText(current ?? empty);
   const template = templates.find((x) => x.id === templateId) ?? null;
+  // Con la plantilla y el manifiesto, las variables salen como formulario:
+  // lo de este servidor, y lo heredado que se puede cambiar sólo aquí.
+  const fields = useMemo(
+    () => (manifest?.version === 2 && template?.current ? varFields(manifest, template.current.playbooks) : null),
+    [manifest, template],
+  );
+  let vars: Record<string, unknown> | null = null;
+  try {
+    const v = JSON.parse(varsText || "{}");
+    vars = v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch {
+    vars = null;
+  }
+  const setVar = (name: string, v: unknown) => {
+    if (!vars) return;
+    const next = { ...vars };
+    if (v === undefined) delete next[name];
+    else next[name] = v;
+    setVarsText(stableJson(next));
+  };
+  // Lo que se sabe ya del servidor registrado: se ofrece, no se impone.
+  const suggestions: Record<string, unknown> = { public_ip: server.host, ssh_port: server.sshPort };
+  const secretInfo = new Map((fields?.secrets ?? []).map((x) => [x.name, x]));
+  const required = new Set(template?.current?.requires ?? []);
+  const pickTemplate = (id: string) => {
+    setTemplateId(id);
+    const tpl = templates.find((x) => x.id === id);
+    setRows(withRequired(rows, tpl?.current?.requires ?? []));
+  };
   const others = useMemo(() => servers.filter((s) => s.id !== server.id && s.orgId === server.orgId), [servers, server]);
 
   const put = async (body: Record<string, unknown>) => {
@@ -226,7 +265,7 @@ export default function ServerConfigPanel({
             <Picker
               aria-label={t("common:serverConfig.template")}
               value={templateId}
-              onChange={setTemplateId}
+              onChange={pickTemplate}
               options={[{ value: "", label: t("common:serverConfig.noTemplate") }, ...templates.map((x) => ({ value: x.id, label: x.name }))]}
               className="flex-1"
               disabled={!canEdit}
@@ -251,17 +290,71 @@ export default function ServerConfigPanel({
           )}
         </div>
 
-        <div className="space-y-1">
-          <Label htmlFor="cfg-vars" className="text-xs">{t("common:serverConfig.vars")}</Label>
-          <Textarea id="cfg-vars" className="min-h-32 font-mono text-xs" value={varsText} onChange={(e) => setVarsText(e.target.value)} readOnly={!canEdit} />
-          {"error" in draft && draft.error === "badJson" && <p className="text-xs text-destructive">{t("common:serverConfig.badJson")}</p>}
-          <p className="text-xs text-muted-foreground">{t("common:serverConfig.noSecretsInVars")}</p>
-        </div>
+        {fields && vars && fields.perServer.length > 0 && (
+          <section className="space-y-2">
+            <div>
+              <p className="text-xs font-medium">{t("common:serverConfig.thisServer")}</p>
+              <p className="text-[11px] text-muted-foreground">{t("common:serverConfig.thisServerLead")}</p>
+            </div>
+            {fields.perServer.map((f) => {
+              const hint = suggestions[f.name];
+              return (
+                <div key={f.name} className="space-y-0.5">
+                  <VarInput idPrefix="cfg" field={f} value={vars?.[f.name]} onChange={(v) => setVar(f.name, v)} readOnly={!canEdit} />
+                  {canEdit && hint !== undefined && hint !== "" && vars?.[f.name] === undefined && (
+                    <Button type="button" variant="link" size="sm" className="h-auto p-0 text-[11px]" onClick={() => setVar(f.name, hint)}>
+                      {t("common:serverConfig.useFromServer", { value: toInput(hint) })}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        )}
+
+        {fields && vars && fields.shared.length > 0 && (
+          <details className="space-y-2 rounded-md border p-2">
+            <summary className="cursor-pointer text-xs font-medium">
+              {t("common:serverConfig.inherited", { count: fields.shared.length })}
+            </summary>
+            <p className="pt-1 text-[11px] text-muted-foreground">{t("common:serverConfig.inheritedLead")}</p>
+            <div className="space-y-2 pt-1">
+              {fields.shared.map((f) => (
+                <VarInput
+                  key={f.name}
+                  idPrefix="cfg"
+                  field={f}
+                  value={vars?.[f.name]}
+                  placeholder={toInput(template?.current?.vars?.[f.name] ?? f.default)}
+                  onChange={(v) => setVar(f.name, v)}
+                  readOnly={!canEdit}
+                />
+              ))}
+            </div>
+          </details>
+        )}
+
+        <details className="rounded-md border p-2" open={!fields || !vars}>
+          <summary className="cursor-pointer text-xs font-medium">{t("common:serverConfig.asJson")}</summary>
+          <div className="space-y-1 pt-2">
+            <Label htmlFor="cfg-vars" className="text-xs">{t("common:serverConfig.vars")}</Label>
+            <Textarea id="cfg-vars" className="min-h-32 font-mono text-xs" value={varsText} onChange={(e) => setVarsText(e.target.value)} readOnly={!canEdit} />
+            {"error" in draft && draft.error === "badJson" && <p className="text-xs text-destructive">{t("common:serverConfig.badJson")}</p>}
+            <p className="text-xs text-muted-foreground">{t("common:serverConfig.noSecretsInVars")}</p>
+          </div>
+        </details>
 
         <div className="space-y-1">
           <p className="text-xs font-medium">{t("common:serverConfig.secrets")}</p>
+          <p className="text-[11px] text-muted-foreground">{t("common:serverConfig.secretsPanelLead")}</p>
           {rows.map((r, i) => (
-            <div key={i} className="flex gap-1">
+            <div key={i} className="space-y-0.5">
+            <div className="flex gap-1">
+              {required.has(r.name) ? (
+                <span className="flex w-40 shrink-0 items-center truncate font-mono text-xs" title={r.name}>
+                  {r.name}
+                </span>
+              ) : (
               <Input
                 aria-label={t("common:serverConfig.secretName")}
                 className="w-40 font-mono text-xs"
@@ -270,6 +363,7 @@ export default function ServerConfigPanel({
                 readOnly={!canEdit}
                 onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
               />
+              )}
               <Input
                 aria-label={t("common:serverConfig.secretRef")}
                 className="flex-1 font-mono text-xs"
@@ -289,6 +383,13 @@ export default function ServerConfigPanel({
                 </Button>
               )}
             </div>
+            {required.has(r.name) && (
+              <p className="text-[11px] text-muted-foreground">
+                {secretInfo.get(r.name)?.description || (secretInfo.get(r.name)?.sudo ? t("common:serverConfig.sudoSecret") : "")}
+                {template?.current?.perServer?.includes(r.name) ? ` ${t("common:serverConfig.ownHint")}` : ""}
+              </p>
+            )}
+            </div>
           ))}
           {"error" in draft && draft.error === "badRefs" && <p className="text-xs text-destructive">{t("common:serverConfig.badRefs")}</p>}
           {effective && effective.missing.length > 0 && (
@@ -296,7 +397,7 @@ export default function ServerConfigPanel({
           )}
           <div className="flex gap-2">
             {canEdit && (
-              <Button variant="outline" size="sm" onClick={() => setRows([...rows, { name: effective?.missing[rows.length] ?? "", ref: "" }])}>
+              <Button variant="outline" size="sm" onClick={() => setRows([...rows, { name: "", ref: "" }])}>
                 <Plus className="mr-1 size-4" />
                 {t("common:serverConfig.addSecret")}
               </Button>
