@@ -11,9 +11,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
  *    claves en otro orden.
  * 3. Una plantilla nace del manifiesto: sus defaults, los secretos que piden
  *    sus playbooks y la contraseña de sudo como de cada servidor.
- * 4. Aplicar con la config de cac apunta la versión, lanza en Rust con la
- *    efectiva (sin valores) y, con la plantilla, corre la secuencia y para en
- *    la primera que falla.
+ * 4. Aplicar es ensayar y pedir (el protocolo también en persona): abre la
+ *    petición, ensaya con `--check` sin abrir ejecución y manda lo que cac
+ *    evalúa; la plantilla se ensaya en orden y para en el primer ensayo que
+ *    falla. Una autorizada se corre desde la bandeja con su autorización y
+ *    después su verificación.
  * 5. Sin lo que pide el playbook (una variable, una referencia) no se aplica.
  */
 
@@ -42,6 +44,7 @@ const { templateFromManifest, orderedPlaybooks } = await import("@/components/se
 const { useProvisionStore } = await import("@/store/provision.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
 const { pick } = await import("@/test-pick");
+const manifestLoaded = () => invoke.mock.calls.some(([c]) => c === "ansible_tools");
 
 const manifest = {
   version: 2,
@@ -51,7 +54,7 @@ const manifest = {
   playbooks: [
     {
       id: "baseline", file: "playbooks/server-baseline.yml", name: "Etapa 1", description: "", hosts: "all",
-      become: true, becomePasswordFrom: "OPS_PASSWORD",
+      become: true, becomePasswordFrom: "OPS_PASSWORD", risk: "change", verify: "test", rollback: "manual",
       vars: [
         { name: "ops_user", description: "", secret: false, required: false, default: "infra_devops" },
         { name: "ssh_port", description: "", secret: false, required: true },
@@ -62,7 +65,7 @@ const manifest = {
     },
     {
       id: "swarm", file: "playbooks/swarm-site.yml", name: "Etapa 2", description: "", hosts: "swarm",
-      become: true, becomePasswordFrom: "OPS_PASSWORD",
+      become: true, becomePasswordFrom: "OPS_PASSWORD", risk: "change", verify: "swarm-verify", rollback: "swarm-teardown",
       vars: [
         { name: "ops_user", description: "", secret: false, required: false, default: "otro" },
         { name: "traefik_image", description: "", secret: false, required: false, default: "traefik:v3.6" },
@@ -97,10 +100,13 @@ const current = {
 };
 
 let gaps = { vars: [] as string[], secrets: [] as string[] };
+let requests: unknown[] = [];
+const report = { hosts: ["gstd"], ok: 3, changed: 1, unreachable: 0, failed: 0, changedTasks: ["x"], paths: [], diff: "", exitCode: 0 };
 
 function backend() {
   api.get.mockImplementation(async (path: string) => {
-    if (path.endsWith("/config/effective")) return { success: true, data: effective };
+    if (path.includes("/config/effective")) return { success: true, data: effective };
+    if (path.endsWith("/provisioning-requests")) return { success: true, data: requests };
     if (path.endsWith("/config")) return { success: true, data: { current, versions: [current] } };
     if (path.includes("/server-templates")) return { success: true, data: [{ id: "tpl-1", orgId: "org-1", name: "Swarm + Traefik", description: "", current: null }] };
     if (path === "/api/v1/servers/") return { success: true, data: [server, { ...server, id: "srv-2", name: "dev" }] };
@@ -116,6 +122,8 @@ function backend() {
         return gaps;
       case "ansible_run_with_config":
         return { runId: `run-${channels.length}`, varNames: [], target: "gstd" };
+      case "ansible_check_report":
+        return report;
       case "check_op_refs":
         return [{ opRef: "x", ok: true, error: "" }];
     }
@@ -127,10 +135,14 @@ beforeEach(() => {
   channels.length = 0;
   live.backendRunId = null;
   gaps = { vars: [], secrets: [] };
+  requests = [];
   useProvisionStore.setState({ prefs: { "srv-1": { projectDir: "/p/infra/ansible", limit: "", playbookId: "swarm" } }, inFlight: null, lines: [], history: {} });
   useOrgsStore.setState({ orgs: [{ id: "org-1", name: "G", slug: "g", role: "admin" }] } as never);
   api.get.mockReset();
-  api.post.mockReset().mockResolvedValue({ success: true, data: { id: "run-cac" } });
+  api.post.mockReset().mockImplementation(async (path: string) => ({
+    success: true,
+    data: { id: path.endsWith("/provisioning-requests") ? `rq-${api.post.mock.calls.length}` : "run-cac" },
+  }));
   api.patch.mockReset().mockResolvedValue({ success: true });
   api.put.mockReset().mockResolvedValue({ success: true, data: {} });
   confirmar.mockReset().mockResolvedValue(true);
@@ -212,57 +224,120 @@ describe("la config del servidor", () => {
 
 describe("aplicar con la config de cac", () => {
   const exit = async (i: number, code: number) => {
+    await act(async () => channels[i].onmessage?.({ event: "line", data: { stream: "stdout", text: `PLAY RECAP ${i}` } }));
     await act(async () => channels[i].onmessage?.({ event: "exit", data: { code, cancelled: false } }));
   };
+  const posts = (suffix: string) => api.post.mock.calls.filter(([p]) => String(p).endsWith(suffix));
+  const runs = () => invoke.mock.calls.filter(([c]) => c === "ansible_run_with_config").map(([, a]) => a as { playbookId: string; check: boolean });
 
-  // Roturas que atrapa: no apuntar la versión; mandar a Rust otra cosa que la
-  // efectiva; un valor en lo que viaja a cac.
-  it("apunta la versión y lanza con la efectiva", async () => {
+  // Roturas que atrapa: aplicar sin ensayar (check falso); abrir una
+  // ejecución en cac por un ensayo; pedir sin el riesgo, su verify o su
+  // versión; no mandar a cac lo que salió del ensayo; un valor en lo que viaja.
+  it("aplicar es ensayar y pedir, y un ensayo no es una ejecución", async () => {
     render(<ServerProvision />);
-    const aplicar = (await screen.findByRole("button", { name: /^(aplicar|apply)$/i })) as HTMLButtonElement;
-    await waitFor(() => expect(aplicar.disabled).toBe(false));
-    await act(async () => fireEvent.click(aplicar));
+    const ensayar = (await screen.findByRole("button", { name: /^(ensayar|rehearse)$/i })) as HTMLButtonElement;
+    await waitFor(() => expect(ensayar.disabled).toBe(false));
+    await act(async () => fireEvent.click(ensayar));
 
     expect(confirmar.mock.calls[0][0].description).toMatch(/3/);
-    const [path, body] = api.post.mock.calls[0];
-    expect(path).toBe("/api/v1/servers/srv-1/provisioning-runs");
-    expect(body).toMatchObject({ kind: "playbook", playbook: "playbooks/swarm-site.yml", target: "gstd", configSeq: 3 });
+    const [[, body]] = posts("/provisioning-requests");
+    expect(body).toMatchObject({ playbook: "swarm", risk: "change", verify: "swarm-verify", rollback: "swarm-teardown", configSeq: 3 });
     expect(JSON.stringify(body)).not.toMatch(/op:\/\//);
-    const run = invoke.mock.calls.find(([c]) => c === "ansible_run_with_config")!;
-    expect(run[1]).toMatchObject({ projectDir: "/p/infra/ansible", playbookId: "swarm", effective });
+    await waitFor(() => expect(channels.length).toBe(1));
+    expect(runs()).toEqual([expect.objectContaining({ playbookId: "swarm", check: true, effective })]);
+
+    await exit(0, 0);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/servers/srv-1/provisioning-requests/rq-1/check", report, true));
+    const read = invoke.mock.calls.find(([c]) => c === "ansible_check_report")!;
+    expect(read[1]).toEqual({ lines: ["PLAY RECAP 0"], exitCode: 0 });
+    expect(posts("/provisioning-runs")).toHaveLength(0);
   });
 
-  // Rotura que atrapa: seguir con la etapa 2 cuando la 1 falló.
-  it("la plantilla corre en orden y para en la primera que falla", async () => {
+  // Rotura que atrapa: seguir ensayando la etapa 2 cuando el ensayo de la 1
+  // falló, o no seguir cuando salió bien.
+  it("la plantilla se ensaya en orden y para en el primer ensayo que falla", async () => {
     render(<ServerProvision />);
-    const plantilla = (await screen.findByRole("button", { name: /aplicar la plantilla|apply the template/i })) as HTMLButtonElement;
+    const plantilla = (await screen.findByRole("button", { name: /ensayar la plantilla|rehearse the template/i })) as HTMLButtonElement;
     await waitFor(() => expect(plantilla.disabled).toBe(false));
     await act(async () => fireEvent.click(plantilla));
     await waitFor(() => expect(channels.length).toBe(1));
-    expect(invoke.mock.calls.filter(([c]) => c === "ansible_run_with_config").map(([, a]) => (a as { playbookId: string }).playbookId)).toEqual(["baseline"]);
-
     await exit(0, 2);
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     await new Promise((r) => setTimeout(r, 0));
-    expect(invoke.mock.calls.filter(([c]) => c === "ansible_run_with_config")).toHaveLength(1);
+    expect(runs().map((r) => r.playbookId)).toEqual(["baseline"]);
 
-    // Y si la 1 acaba bien, sigue con la 2.
     channels.length = 0;
     await act(async () => fireEvent.click(plantilla));
     await waitFor(() => expect(channels.length).toBe(1));
     await exit(0, 0);
     await waitFor(() => expect(channels.length).toBe(2));
-    expect(invoke.mock.calls.filter(([c]) => c === "ansible_run_with_config").map(([, a]) => (a as { playbookId: string }).playbookId)).toEqual([
-      "baseline",
-      "baseline",
-      "swarm",
-    ]);
+    expect(runs().map((r) => r.playbookId)).toEqual(["baseline", "baseline", "swarm"]);
+    expect(runs().every((r) => r.check)).toBe(true);
+  });
+
+  // Roturas que atrapa: correr sin gastar la autorización (sin requestId, o
+  // con el fichero en vez del id que casa el backend); saltarse la
+  // verificación; correr la verificación cuando el playbook falló.
+  it("una autorizada se corre desde la bandeja, con su autorización y después su verificación", async () => {
+    requests = [
+      {
+        id: "rq-9", serverId: "srv-1", playbook: "swarm", project: "ansible", risk: "change", verify: "swarm-verify",
+        rollback: "swarm-teardown", configSeq: 3, reason: "", requestedBy: "u1", source: "mcp", status: "approved",
+        flags: [], autoApproved: false, createdAt: new Date().toISOString(), grantExpiresAt: new Date(Date.now() + 600_000).toISOString(),
+      },
+    ];
+    render(<ServerProvision />);
+    const correr = (await screen.findByRole("button", { name: /correr ahora|run now/i })) as HTMLButtonElement;
+    await waitFor(() => expect(manifestLoaded()).toBe(true));
+    await act(async () => fireEvent.click(correr));
+    await waitFor(() => expect(channels.length).toBe(1));
+    expect(api.get).toHaveBeenCalledWith("/api/v1/servers/srv-1/config/effective?seq=3", true);
+    expect(posts("/provisioning-runs")[0][1]).toMatchObject({ playbook: "swarm", requestId: "rq-9", configSeq: 3 });
+    expect(runs()).toEqual([expect.objectContaining({ playbookId: "swarm", check: false })]);
+
+    await exit(0, 0);
+    await waitFor(() => expect(channels.length).toBe(2));
+    expect(posts("/provisioning-runs")[1][1]).toMatchObject({ playbook: "swarm-verify", requestId: "rq-9" });
+    expect(runs().map((r) => r.playbookId)).toEqual(["swarm", "swarm-verify"]);
+  });
+
+  it("si el playbook falla, no se verifica; y si cambió su riesgo, no corre", async () => {
+    requests = [
+      {
+        id: "rq-9", serverId: "srv-1", playbook: "swarm", project: "ansible", risk: "change", verify: "swarm-verify",
+        rollback: "swarm-teardown", configSeq: 3, reason: "", requestedBy: "u1", source: "mcp", status: "approved",
+        flags: [], autoApproved: false, createdAt: new Date().toISOString(),
+      },
+      {
+        id: "rq-8", serverId: "srv-1", playbook: "baseline", project: "ansible", risk: "read", verify: "",
+        rollback: "", configSeq: 3, reason: "", requestedBy: "u1", source: "mcp", status: "approved",
+        flags: [], autoApproved: true, createdAt: new Date().toISOString(),
+      },
+    ];
+    render(<ServerProvision />);
+    const correr = (await screen.findAllByRole("button", { name: /correr ahora|run now/i }))[0];
+    await waitFor(() => expect(manifestLoaded()).toBe(true));
+    await act(async () => fireEvent.click(correr));
+    await waitFor(() => expect(channels.length).toBe(1));
+    await exit(0, 2);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runs()).toHaveLength(1);
+
+    // baseline es `change` en el manifiesto y se aprobó como `read`.
+    // Mientras corre, la bandeja no ofrece correr: se vuelve a buscar.
+    const otro = (await screen.findAllByRole("button", { name: /correr ahora|run now/i }))[1];
+    confirmar.mockClear();
+    await act(async () => fireEvent.click(otro));
+    expect(confirmar).not.toHaveBeenCalled();
+    expect(runs()).toHaveLength(1);
+    expect(posts("/provisioning-runs")).toHaveLength(1);
   });
 
   it("sin lo que pide el playbook no se aplica, y se dice qué falta", async () => {
     gaps = { vars: [], secrets: ["CLOUDFLARE_DNS_TOKEN"] };
     render(<ServerProvision />);
     await screen.findByText(/CLOUDFLARE_DNS_TOKEN/);
-    const aplicar = screen.getByRole("button", { name: /^(aplicar|apply)$/i }) as HTMLButtonElement;
+    const aplicar = screen.getByRole("button", { name: /^(ensayar|rehearse)$/i }) as HTMLButtonElement;
     expect(aplicar.disabled).toBe(true);
   });
 });

@@ -87,6 +87,8 @@ export const useProvisionStore = create<ProvisionState>()(
         if (!f) return;
         set({ inFlight: null });
         if (f.runId) await invoke("ansible_cancel", { runId: f.runId }).catch(() => {});
+        // Un ensayo no abre ejecución en cac: no hay nada que cerrar allí.
+        if (!f.backendRunId) return;
         await api
           .patch(`/api/v1/servers/${f.serverId}/provisioning-runs/${f.backendRunId}`, { status: "interrupted", summary: "", logTail: "" }, true)
           .catch(() => {});

@@ -20,6 +20,10 @@ export interface PlaybookDef {
   becomePasswordRef?: string | null;
   /** v2: el NOMBRE del secreto de la config del servidor que es la de sudo. */
   becomePasswordFrom?: string | null;
+  /** v2: el riesgo, su verificación y su rollback (el protocolo). */
+  risk?: string | null;
+  verify?: string | null;
+  rollback?: string | null;
   vars: VarDef[];
 }
 

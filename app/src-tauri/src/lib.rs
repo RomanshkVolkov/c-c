@@ -1916,6 +1916,7 @@ pub fn run() {
             ansible::ansible_inventory,
             ansible::ansible_run,
             ansible::ansible_run_with_config,
+            ansible::ansible_check_report,
             ansible::ansible_plan_gaps,
             ansible::ansible_cancel,
             pty::pty_open,

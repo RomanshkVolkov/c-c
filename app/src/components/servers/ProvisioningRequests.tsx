@@ -56,7 +56,19 @@ function isRequest(x: unknown): x is ProvisioningRequest {
  * rechaza. **Sólo aquí**: el backend no deja decidir con un token. También en
  * un servidor de pruebas: allí es un simulacro, con el mismo protocolo.
  */
-export default function ProvisioningRequests({ server, canDecide }: { server: { id: string; name: string }; canDecide: boolean }) {
+export default function ProvisioningRequests({
+  server,
+  canDecide,
+  onRun,
+  refreshKey = 0,
+}: {
+  server: { id: string; name: string };
+  canDecide: boolean;
+  /** Correr una autorizada desde aquí (la app, manifiesto v2). Sin él, sólo el comando. */
+  onRun?: (req: ProvisioningRequest) => void;
+  /** Sube cuando la pestaña ensayó o corrió algo: se relee. */
+  refreshKey?: number;
+}) {
   const { t } = useT();
   const [requests, setRequests] = useState<ProvisioningRequest[]>([]);
 
@@ -68,7 +80,7 @@ export default function ProvisioningRequests({ server, canDecide }: { server: { 
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const anyLive = requests.some((r) => LIVE.has(r.status));
   useEffect(() => {
@@ -85,7 +97,7 @@ export default function ProvisioningRequests({ server, canDecide }: { server: { 
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         {requests.map((r) => (
-          <RequestRow key={r.id} req={r} server={server} canDecide={canDecide} onChanged={() => void load()} />
+          <RequestRow key={r.id} req={r} server={server} canDecide={canDecide} onRun={onRun} onChanged={() => void load()} />
         ))}
       </CardContent>
     </Card>
@@ -96,11 +108,13 @@ function RequestRow({
   req,
   server,
   canDecide,
+  onRun,
   onChanged,
 }: {
   req: ProvisioningRequest;
   server: { id: string; name: string };
   canDecide: boolean;
+  onRun?: (req: ProvisioningRequest) => void;
   onChanged: () => void;
 }) {
   const { t } = useT();
@@ -233,6 +247,11 @@ function RequestRow({
           )}
           <div className="flex items-center gap-1">
             <code className="min-w-0 flex-1 truncate rounded bg-muted px-1.5 py-1 font-mono text-[11px]">{grantCommand(server.name, req.id)}</code>
+            {onRun && (
+              <Button size="sm" onClick={() => onRun(req)}>
+                {t("common:provisionRequests.runNow")}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

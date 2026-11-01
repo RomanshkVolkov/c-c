@@ -776,15 +776,26 @@ pub fn ansible_run_with_config(
     project_dir: String,
     playbook_id: String,
     effective: serde_json::Value,
+    check: Option<bool>,
     on_event: Channel<AnsibleEvent>,
 ) -> Result<StartedRun, String> {
     let manifest = ansible_manifest(project_dir.clone())?;
-    let (spec, gaps) = plan_run(&project_dir, &manifest, &playbook_id, &effective)?;
+    let (mut spec, gaps) = plan_run(&project_dir, &manifest, &playbook_id, &effective)?;
     gaps.check()?;
+    // El ensayo del protocolo (`--check --diff`): la app lo corre antes de
+    // pedir, igual que `cac provision request`.
+    spec.check = check.unwrap_or(false);
     let var_names = spec.var_names();
     let target = spec.host.as_ref().map(|h| h.name.clone()).unwrap_or_default();
     let run_id = ansible_run(spec, on_event)?;
     Ok(StartedRun { run_id, var_names, target })
+}
+
+/// Lee la salida de un ensayo como lo que cac evalúa: la misma lectura que
+/// hace `cac provision request`, para que la app y la terminal manden lo mismo.
+#[tauri::command]
+pub fn ansible_check_report(lines: Vec<String>, exit_code: i32) -> serde_json::Value {
+    crate::provision_cli::check_report(&lines, exit_code)
 }
 
 impl PlanGaps {
@@ -1536,6 +1547,16 @@ playbooks:
         s.check = true;
         let args = build_args(&s, Path::new("/tmp/v.json"), None);
         assert!(args.contains(&"--check".to_string()) && args.contains(&"--diff".to_string()), "{args:?}");
+    }
+
+    /// La app ensaya con el mismo comando con el que aplica: lo que decide si
+    /// es ensayo es el parámetro, y sin él no es ensayo. Si el comando
+    /// ignorara el parámetro, «Ensayar» aplicaría de verdad.
+    #[test]
+    fn the_app_rehearses_through_the_check_parameter() {
+        let src = include_str!("ansible.rs");
+        let body = src.split("pub fn ansible_run_with_config(").nth(1).and_then(|r| r.split("\n}\n").next()).unwrap();
+        assert!(body.contains("spec.check = check.unwrap_or(false);"), "el ensayo de la app no llega a Rust");
     }
 
     fn effective() -> serde_json::Value {

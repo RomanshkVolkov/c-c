@@ -109,11 +109,11 @@ lectura) y su `rollback` (otro playbook, o `manual`).
 
 | Paso | Quién | Qué |
 |---|---|---|
-| 1 · Ensayo | quien pide (`cac provision request` o `request_provisioning`) | `--check --diff` en su máquina; la salida, tachada |
+| 1 · Ensayo | quien pide (`cac provision request`, `request_provisioning` o «Ensayar» en la app) | `--check --diff` en su máquina; la salida, tachada |
 | 2 · Evaluación | cac | Banderas: un host que no es uno, una lectura que cambiaría algo, tocar SSH o el firewall fuera de `baseline`, un ensayo fallido, lo destructivo |
 | 3 · Aprobación | una persona en la app | Ve el ensayo y las banderas. Una roja se reconoce a propósito; lo destructivo se confirma escribiendo el nombre del servidor |
-| 4 · Ejecución | `cac provision run --grant` | Autorización de un solo uso, 15 minutos, atada a playbook + servidor + versión de la config |
-| 5 · Verificación | el mismo `run` | Corre su `verify`; si falla, propone el `rollback` como otra petición (nunca corre solo) y avisa |
+| 4 · Ejecución | `cac provision run --grant`, o «Correr ahora» en la bandeja de la app | Autorización de un solo uso, 15 minutos, atada a playbook + servidor + versión de la config |
+| 5 · Verificación | el mismo `run` (o la app, después de correr) | Corre su `verify`; si falla, propone el `rollback` como otra petición (nunca corre solo) y avisa |
 | 6 · Registro | cac | Cada paso con quién y cuándo, en la petición y en las ejecuciones |
 
 **Sólo una lectura con un ensayo limpio va pre-autorizada.** Ninguna
@@ -121,8 +121,14 @@ configuración ni ningún token cambia eso. Si aun así una ejecución autorizad
 como lectura cambia algo, su recap la delata al cerrar y la petición queda
 `violated`.
 
+**En la app también.** Con un manifiesto v2, «Aplicar» ya no aplica: ensaya y
+deja la petición, igual que un agente. Una persona no se salta el protocolo
+por estar en persona; sólo la aprobación tiene que ser suya. (Un manifiesto
+v1, sin `risk`, sigue aplicando directo con su confirmación.)
+
 Lo vigilan `handler.TestAnAgentAsksAndOnlyAPersonApproves` (y sus hermanas en
 `provisioning_request_test.go`), `domain.TestOnlyACleanReadIsPreAuthorized`,
 `middleware.TestATokenConfiguresButNeverDeploys` (decidir no se abre a un
-token) y, en la app, `provision_cli::tests::a_request_only_ever_dry_runs` y
+token) y, en la app, `provision_cli::tests::a_request_only_ever_dry_runs`,
+`ansible::tests::the_app_rehearses_through_the_check_parameter`, `ServerConfig.test.tsx` («aplicar es ensayar y pedir») y
 `mcp::tests::the_server_config_tools_configure_but_never_apply`.

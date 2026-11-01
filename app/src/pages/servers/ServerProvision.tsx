@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import type { APIResponse } from "@/types/auth";
 import type { AnsibleEvent, AnsibleManifest, AnsibleTools, InventoryHost, ProvisioningRun } from "@/types/ansible";
-import type { EffectiveConfig, PlanGaps, StartedRun } from "@/types/server-config";
+import type { EffectiveConfig, PlanGaps, ProvisioningRequest, StartedRun } from "@/types/server-config";
 import { useServerContext } from "./ServerLayout";
 import ServerConfigPanel, { stableJson } from "./ServerConfigPanel";
 import ProvisioningRequests from "@/components/servers/ProvisioningRequests";
@@ -36,6 +36,11 @@ const NADA: never[] = [];
  * pierde, que es justo cuando la ejecución sí se queda sin nadie.
  */
 export const live: { backendRunId: string | null } = { backendRunId: null };
+
+/** Cómo acabó algo que se lanzó: su estado, su código y su salida (tachada). */
+type Ended = { status: "succeeded" | "failed" | "cancelled"; code: number | null; lines: string[] };
+
+const projectName = (dir: string) => dir.split("/").filter(Boolean).pop() ?? "";
 
 const VARIANTE: Record<ProvisioningRun["status"], "default" | "secondary" | "destructive" | "outline"> = {
   running: "secondary",
@@ -93,6 +98,8 @@ export default function ServerProvision() {
   const [effective, setEffective] = useState<EffectiveConfig | null>(null);
   const [gaps, setGaps] = useState<PlanGaps | null>(null);
   const [openRun, setOpenRun] = useState<string | null>(null);
+  // Sube para que la bandeja relea tras un ensayo o una ejecución.
+  const [requestsKey, setRequestsKey] = useState(0);
   const bottom = useRef<HTMLDivElement>(null);
   const converter = useMemo(() => new AnsiToHtml({ escapeXML: true }), []);
 
@@ -191,17 +198,22 @@ export default function ServerProvision() {
    * dejaba «aplicando» para siempre y borraba la salida que ya había llegado.
    */
   const execute = async (
-    startBody: Record<string, unknown>,
+    startBody: Record<string, unknown> | null,
     launch: (channel: Channel<AnsibleEvent>) => Promise<string>,
-  ): Promise<{ ended: Promise<"succeeded" | "failed" | "cancelled"> }> => {
-    const res = await api.post<APIResponse<ProvisioningRun>>(`/api/v1/servers/${server.id}/provisioning-runs`, startBody, true);
-    if (!res?.success || !res.data) throw new Error(res?.error ?? "provisioning-runs");
-    const backendRunId = res.data.id;
+  ): Promise<{ ended: Promise<Ended> }> => {
+    // Sin cuerpo es un ensayo: no cambia nada, así que no se abre ejecución
+    // en cac (lo que queda es la petición con su ensayo).
+    let backendRunId = "";
+    if (startBody) {
+      const res = await api.post<APIResponse<ProvisioningRun>>(`/api/v1/servers/${server.id}/provisioning-runs`, startBody, true);
+      if (!res?.success || !res.data) throw new Error(res?.error ?? "provisioning-runs");
+      backendRunId = res.data.id;
+    }
     live.backendRunId = backendRunId;
     start({ serverId: server.id, runId: "", backendRunId });
 
-    let settle: (s: "succeeded" | "failed" | "cancelled") => void = () => {};
-    const ended = new Promise<"succeeded" | "failed" | "cancelled">((r) => (settle = r));
+    let settle: (e: Ended) => void = () => {};
+    const ended = new Promise<Ended>((r) => (settle = r));
     const channel = new Channel<AnsibleEvent>();
     let buffer: string[] = [];
     const flush = () => {
@@ -220,27 +232,31 @@ export default function ServerProvision() {
       const all = useProvisionStore.getState().lines;
       const status = finalStatus(ev.data.code, ev.data.cancelled);
       finished();
-      void api
-        .patch(
-          `/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`,
-          { status, exitCode: ev.data.code, summary: playRecap(all), logTail: logTail(all) },
-          true,
-        )
-        .catch(() => {})
-        .finally(() => void loadHistory(server.id));
-      if (status === "succeeded") toast.success(t("common:provision.done"));
-      else if (status === "failed") toast.error(t("common:provision.failed", { code: ev.data.code ?? "?" }));
-      settle(status);
+      if (backendRunId) {
+        void api
+          .patch(
+            `/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`,
+            { status, exitCode: ev.data.code, summary: playRecap(all), logTail: logTail(all) },
+            true,
+          )
+          .catch(() => {})
+          .finally(() => void loadHistory(server.id));
+        if (status === "succeeded") toast.success(t("common:provision.done"));
+        else if (status === "failed") toast.error(t("common:provision.failed", { code: ev.data.code ?? "?" }));
+      }
+      settle({ status, code: ev.data.code, lines: all });
     };
 
     const runId = await launch(channel).catch(async (e) => {
       clearInterval(timer);
       live.backendRunId = null;
       finished();
-      await api
-        .patch(`/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`, { status: "failed", summary: String(e), logTail: "" }, true)
-        .catch(() => {});
-      void loadHistory(server.id);
+      if (backendRunId) {
+        await api
+          .patch(`/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`, { status: "failed", summary: String(e), logTail: "" }, true)
+          .catch(() => {});
+        void loadHistory(server.id);
+      }
       throw e;
     });
     attach(backendRunId, runId);
@@ -249,7 +265,7 @@ export default function ServerProvision() {
 
   const run = async () => {
     if (!playbook || !manifest) return;
-    if (v2) return runWithConfig([playbook.id]);
+    if (v2) return rehearse([playbook.id]);
     const varNames = [...playbook.vars.map((v) => v.name), ...extraParsed.vars.map((v) => v.name)];
     const ok = await confirm({
       title: t("common:provision.confirmTitle", { playbook: playbook.name, server: server.name }),
@@ -265,7 +281,7 @@ export default function ServerProvision() {
     setStarting(true);
     try {
       await execute(
-        { kind: "playbook", project: prefs.projectDir.split("/").filter(Boolean).pop() ?? "", playbook: playbook.file, target: prefs.limit, varNames },
+        { kind: "playbook", project: projectName(prefs.projectDir), playbook: playbook.file, target: prefs.limit, varNames },
         (channel) =>
           invoke<string>("ansible_run", {
             spec: {
@@ -294,18 +310,23 @@ export default function ServerProvision() {
   };
 
   /**
-   * Manifiesto v2: con la config de cac del servidor. Uno o la secuencia de su
-   * plantilla, en orden, una ejecución por playbook, y para en la primera que
-   * no acaba bien. Se confirma una vez, diciendo qué versión de la config se
-   * aplica.
+   * Manifiesto v2: el protocolo, también en persona (jose, 1-nov: «un
+   * simulacro siempre»). Aplicar es **ensayar y pedir**: por cada playbook se
+   * abre una petición, se corre su ensayo (`--check --diff`, no cambia nada)
+   * y cac lo evalúa con sus banderas. Lo aprueba un admin en la bandeja, y se
+   * corre con `runGrant`. Es el mismo camino que `cac provision request`.
+   *
+   * La plantilla se ensaya en orden y para en el primer ensayo que falla: el
+   * de una etapa puede fallar porque la anterior aún no está aplicada, y eso
+   * también se dice.
    */
-  const runWithConfig = async (ids: string[]) => {
+  const rehearse = async (ids: string[]) => {
     if (!manifest || !effective || ids.length === 0) return;
     const names = ids.map((id) => manifest.playbooks.find((p) => p.id === id)?.name ?? id);
     const ok = await confirm({
-      title: t("common:provision.confirmTitle", { playbook: names.join(" → "), server: server.name }),
-      description: t("common:provision.confirmConfig", { seq: effective.configSeq, files: ids.join(" → ") }),
-      confirmText: t("common:provision.run"),
+      title: t("common:provision.rehearseTitle", { playbook: names.join(" → "), server: server.name }),
+      description: t("common:provision.rehearseBody", { seq: effective.configSeq, files: ids.join(" → ") }),
+      confirmText: t("common:provision.rehearse"),
     });
     if (!ok) return;
     setStarting(true);
@@ -313,30 +334,103 @@ export default function ServerProvision() {
       for (const id of ids) {
         const pb = manifest.playbooks.find((p) => p.id === id);
         if (!pb) throw new Error(id);
-        const varNames = [...new Set([...pb.vars.map((v) => v.name), ...Object.keys(effective.vars)])].sort();
+        if (!pb.risk) throw new Error(t("common:provision.noRisk", { id }));
+        const res = await api.post<APIResponse<ProvisioningRequest>>(
+          `/api/v1/servers/${server.id}/provisioning-requests`,
+          {
+            playbook: id,
+            project: projectName(prefs.projectDir),
+            risk: pb.risk,
+            verify: pb.verify ?? "",
+            rollback: pb.rollback ?? "",
+            configSeq: effective.configSeq,
+            reason: "",
+          },
+          true,
+        );
+        if (!res?.success || !res.data) throw new Error(res?.error ?? "provisioning-requests");
+        const { ended } = await execute(null, (channel) =>
+          invoke<StartedRun>("ansible_run_with_config", {
+            projectDir: prefs.projectDir,
+            playbookId: id,
+            effective,
+            check: true,
+            onEvent: channel,
+          }).then((r) => r.runId),
+        );
+        const { status, code, lines: out } = await ended;
+        if (status === "cancelled") throw new Error(t("common:provision.rehearseCancelled"));
+        const report = await invoke<unknown>("ansible_check_report", { lines: out, exitCode: code ?? -1 });
+        await api.put(`/api/v1/servers/${server.id}/provisioning-requests/${res.data.id}/check`, report, true);
+        setRequestsKey((k) => k + 1);
+        if (code !== 0) break;
+      }
+      toast.success(t("common:provision.rehearsed"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+      setRequestsKey((k) => k + 1);
+    }
+  };
+
+  /**
+   * Corre una petición autorizada: gasta la autorización (el backend comprueba
+   * playbook, versión y caducidad) y, si acaba bien, corre su verificación. El
+   * riesgo aprobado tiene que seguir siendo el del manifiesto; si cambió, se
+   * pide otra vez (como `cac provision run --grant`).
+   */
+  const runGrant = async (req: ProvisioningRequest) => {
+    if (!manifest) return;
+    const pb = manifest.playbooks.find((p) => p.id === req.playbook);
+    if (!pb || pb.risk !== req.risk) {
+      toast.error(t("common:provision.riskChanged", { playbook: req.playbook }));
+      return;
+    }
+    const ok = await confirm({
+      title: t("common:provision.confirmTitle", { playbook: pb.name, server: server.name }),
+      description: t("common:provision.confirmGrant", { seq: req.configSeq, verify: req.verify || "—" }),
+      confirmText: t("common:provision.run"),
+      destructive: req.risk === "destructive",
+    });
+    if (!ok) return;
+    setStarting(true);
+    try {
+      const eff = await api.get<APIResponse<EffectiveConfig>>(`/api/v1/servers/${server.id}/config/effective?seq=${req.configSeq}`, true);
+      const at = eff?.data;
+      if (!at) throw new Error(eff?.error ?? "config/effective");
+      const one = async (id: string) => {
+        const p = manifest.playbooks.find((x) => x.id === id);
+        const varNames = [...new Set([...(p?.vars ?? []).map((v) => v.name), ...Object.keys(at.vars)])].sort();
         const { ended } = await execute(
           {
             kind: "playbook",
-            project: prefs.projectDir.split("/").filter(Boolean).pop() ?? "",
-            playbook: pb.file,
-            target: effective.connection.name,
+            project: projectName(prefs.projectDir),
+            // Con autorización, el backend la casa por el id del playbook.
+            playbook: id,
+            target: at.connection.name,
             varNames,
-            configSeq: effective.configSeq,
+            configSeq: req.configSeq,
+            requestId: req.id,
           },
           (channel) =>
             invoke<StartedRun>("ansible_run_with_config", {
               projectDir: prefs.projectDir,
               playbookId: id,
-              effective,
+              effective: at,
+              check: false,
               onEvent: channel,
             }).then((r) => r.runId),
         );
-        if ((await ended) !== "succeeded") break;
-      }
+        return (await ended).status;
+      };
+      const status = await one(req.playbook);
+      if (status === "succeeded" && req.risk !== "read" && req.verify) await one(req.verify);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setStarting(false);
+      setRequestsKey((k) => k + 1);
     }
   };
 
@@ -356,7 +450,12 @@ export default function ServerProvision() {
     <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <div className="space-y-4">
         <ServerConfigPanel server={server} manifest={manifest} effective={effective} onChanged={() => void loadEffective()} />
-        <ProvisioningRequests server={server} canDecide={isAdmin || superadmin} />
+        <ProvisioningRequests
+          server={server}
+          canDecide={isAdmin || superadmin}
+          refreshKey={requestsKey}
+          onRun={v2 && tools?.ansiblePlaybook && !busy ? (r) => void runGrant(r) : undefined}
+        />
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">{t("common:provision.project")}</CardTitle>
@@ -479,17 +578,17 @@ export default function ServerProvision() {
               <div className="flex gap-2">
                 <Button className="flex-1" disabled={!canRun} onClick={() => void run()}>
                   {busy ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Play className="mr-1 size-4" />}
-                  {busy ? t("common:provision.running") : t("common:provision.run")}
+                  {busy ? t("common:provision.running") : t(v2 ? "common:provision.rehearse" : "common:provision.run")}
                 </Button>
                 {v2 && effective && effective.playbooks.length > 1 && (
                   <Button
                     variant="outline"
                     disabled={!tools?.ansiblePlaybook || busy || effective.missing.length > 0}
-                    onClick={() => void runWithConfig(effective.playbooks)}
+                    onClick={() => void rehearse(effective.playbooks)}
                     title={effective.playbooks.join(" → ")}
                   >
                     <ListOrdered className="mr-1 size-4" />
-                    {t("common:provision.runTemplate")}
+                    {t("common:provision.rehearseTemplate")}
                   </Button>
                 )}
                 {inFlight?.serverId === server.id && (

@@ -790,6 +790,15 @@
     "restart": "Restart"
   },
   "provision": {
+    "rehearse": "Rehearse",
+    "rehearseTemplate": "Rehearse the template",
+    "rehearseTitle": "Rehearse “{{playbook}}” on {{server}}?",
+    "rehearseBody": "Runs {{files}} with --check --diff and version {{seq}} of the config: nothing changes on the server. It leaves one request per playbook with what would change and its flags; an admin approves it below, and then it runs from here or from the terminal.",
+    "rehearsed": "Rehearsal sent to cac: review the request below",
+    "rehearseCancelled": "The rehearsal was cancelled",
+    "noRisk": "“{{id}}” declares no risk in cac.playbooks.yml",
+    "riskChanged": "“{{playbook}}” no longer has the risk it was approved with in the manifest: ask again.",
+    "confirmGrant": "Runs with the approved authorization and version {{seq}} of the config, then its verification ({{verify}}). Secrets are read from 1Password here; cac keeps what was applied, never a value.",
     "project": "Ansible project",
     "pick": "Pick folder",
     "noAnsible": "ansible-playbook not found: create the project's venv (make create-venv).",
@@ -821,12 +830,10 @@
       "cancelled": "Stopped",
       "interrupted": "Interrupted"
     },
-    "confirmConfig": "Runs {{files}} with version {{seq}} of the server's config in cac, from this machine. Secrets are read from 1Password here; cac keeps the version and what was applied, never a value.",
     "withConfig": "With config v{{seq}} from cac, against {{host}}.",
     "noConfig": "This server has no config in cac yet: save it above.",
     "missingVars": "The config is missing variables: {{names}}",
     "missingSecrets": "The config is missing 1Password references: {{names}}",
-    "runTemplate": "Apply the template",
     "configVersion": "config v{{seq}}",
     "fromTerminal": "terminal",
     "applied": "What was applied"
@@ -879,6 +886,7 @@
     "grantUntil": "Authorized until {{time}}. Run it with:",
     "copy": "Copy the command",
     "copied": "Copied",
+    "runNow": "Run now",
     "rollbackHint": "Proposed rollback: {{rollback}}. It is another request; it never runs by itself.",
     "decisionNote": "{{name}}: {{note}}"
   },

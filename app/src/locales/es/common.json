@@ -790,6 +790,15 @@
     "restart": "Reiniciar"
   },
   "provision": {
+    "rehearse": "Ensayar",
+    "rehearseTemplate": "Ensayar la plantilla",
+    "rehearseTitle": "¿Ensayar «{{playbook}}» en {{server}}?",
+    "rehearseBody": "Corre {{files}} con --check --diff y la versión {{seq}} de la config: no cambia nada en el servidor. Queda una petición por playbook con lo que cambiaría y sus banderas; la aprueba un admin abajo y después se corre desde aquí o desde la terminal.",
+    "rehearsed": "Ensayo enviado a cac: revisa la petición abajo",
+    "rehearseCancelled": "Se canceló el ensayo",
+    "noRisk": "«{{id}}» no declara su riesgo en cac.playbooks.yml",
+    "riskChanged": "«{{playbook}}» ya no tiene en el manifiesto el riesgo con el que se aprobó: hay que pedirlo otra vez.",
+    "confirmGrant": "Corre con la autorización aprobada y la versión {{seq}} de la config, y después su verificación ({{verify}}). Los secretos se leen de 1Password aquí; en cac queda lo aplicado, nunca un valor.",
     "project": "Proyecto de Ansible",
     "pick": "Elegir carpeta",
     "noAnsible": "No se encuentra ansible-playbook: crea el venv del proyecto (make create-venv).",
@@ -821,12 +830,10 @@
       "cancelled": "Parado",
       "interrupted": "Interrumpido"
     },
-    "confirmConfig": "Corre {{files}} con la versión {{seq}} de la config del servidor en cac, desde esta máquina. Los secretos se leen de 1Password aquí; en cac queda la versión y lo aplicado, nunca un valor.",
     "withConfig": "Con la config v{{seq}} de cac, contra {{host}}.",
     "noConfig": "Este servidor no tiene config en cac todavía: guárdala arriba.",
     "missingVars": "Faltan variables en la config: {{names}}",
     "missingSecrets": "Faltan referencias de 1Password en la config: {{names}}",
-    "runTemplate": "Aplicar la plantilla",
     "configVersion": "config v{{seq}}",
     "fromTerminal": "terminal",
     "applied": "Lo aplicado"
@@ -879,6 +886,7 @@
     "grantUntil": "Autorizada hasta las {{time}}. Se corre con:",
     "copy": "Copiar el comando",
     "copied": "Copiado",
+    "runNow": "Correr ahora",
     "rollbackHint": "Rollback propuesto: {{rollback}}. Es otra petición; no corre solo.",
     "decisionNote": "{{name}}: {{note}}"
   },
