@@ -72,7 +72,11 @@ Es el principio, y está construido para que no se pueda romper sin que se note:
 | `POST /api/v1/organizations/{id}/server-templates` | admin | Crea una plantilla con su versión 1 |
 | `GET /api/v1/organizations/{id}/server-templates/{tplId}` | viewer | Una plantilla con todas sus versiones |
 | `PUT /api/v1/organizations/{id}/server-templates/{tplId}` | admin | Guarda una versión nueva |
-| `POST /api/v1/servers/{id}/provisioning-runs` | member | Abre una ejecución; con `configSeq`, guarda lo aplicado |
+| `POST /api/v1/servers/{id}/provisioning-runs` | member | Abre una ejecución; con `configSeq`, guarda lo aplicado. Con un token, sólo con `requestId` de una petición autorizada |
+| `GET /api/v1/servers/{id}/provisioning-requests[/{rqid}]` | viewer | Las peticiones de ejecución, o una |
+| `POST /api/v1/servers/{id}/provisioning-requests` | member | Pide aplicar un playbook (`risk`, `verify`, `rollback`, `configSeq`, `reason`) |
+| `PUT /api/v1/servers/{id}/provisioning-requests/{rqid}/check` | member | El ensayo, una vez; cac lo evalúa |
+| `POST /api/v1/servers/{id}/provisioning-requests/{rqid}/decision` | admin, **en persona** | Aprobar o rechazar. Ningún token llega |
 
 ## 5. Con un agente (MCP)
 
@@ -87,9 +91,38 @@ Connect Claude Code) guarda configs y plantillas:
 | `set_server_template` | Crea una plantilla, o guarda una versión nueva de una |
 | `list_provisioning_runs` | Lo que se le aplicó a un servidor, con la foto de cada ejecución |
 
-**Lo que no hace, a propósito:** correr un playbook. Abrir una ejecución
-(`provisioning-runs`) está fuera del alcance de cualquier token: un agente
-configura, una persona aplica desde la app (o con su 1Password desde su
-terminal). Lo vigila `middleware.TestATokenConfiguresButNeverDeploys`. Tampoco
-cambia cómo se entra al servidor (host, usuario, puerto), que es la ficha del
-servidor, ni toca ningún valor de un secreto.
+**Lo que no hace, a propósito:** aplicar. Un agente **pide**
+(`request_provisioning`) y lee cómo va (`get_provisioning_request`); la
+ejecución corre en la terminal de una persona, con su 1Password, y sólo con
+una autorización. Tampoco cambia cómo se entra al servidor (host, usuario,
+puerto), que es la ficha del servidor, ni toca ningún valor de un secreto.
+
+## 6. Pedir una ejecución: el protocolo
+
+Decisión 4d28f4ab (jose, 31-oct-2026), que sustituye a «un token configura, una
+persona aplica». **Se sigue siempre, también en un servidor de pruebas**: allí
+es un simulacro, y no se relaja nada.
+
+Cada playbook del manifiesto declara su `risk` —`read` (no cambia nada),
+`change` o `destructive`— y los que cambian nombran su `verify` (un playbook de
+lectura) y su `rollback` (otro playbook, o `manual`).
+
+| Paso | Quién | Qué |
+|---|---|---|
+| 1 · Ensayo | quien pide (`cac provision request` o `request_provisioning`) | `--check --diff` en su máquina; la salida, tachada |
+| 2 · Evaluación | cac | Banderas: un host que no es uno, una lectura que cambiaría algo, tocar SSH o el firewall fuera de `baseline`, un ensayo fallido, lo destructivo |
+| 3 · Aprobación | una persona en la app | Ve el ensayo y las banderas. Una roja se reconoce a propósito; lo destructivo se confirma escribiendo el nombre del servidor |
+| 4 · Ejecución | `cac provision run --grant` | Autorización de un solo uso, 15 minutos, atada a playbook + servidor + versión de la config |
+| 5 · Verificación | el mismo `run` | Corre su `verify`; si falla, propone el `rollback` como otra petición (nunca corre solo) y avisa |
+| 6 · Registro | cac | Cada paso con quién y cuándo, en la petición y en las ejecuciones |
+
+**Sólo una lectura con un ensayo limpio va pre-autorizada.** Ninguna
+configuración ni ningún token cambia eso. Si aun así una ejecución autorizada
+como lectura cambia algo, su recap la delata al cerrar y la petición queda
+`violated`.
+
+Lo vigilan `handler.TestAnAgentAsksAndOnlyAPersonApproves` (y sus hermanas en
+`provisioning_request_test.go`), `domain.TestOnlyACleanReadIsPreAuthorized`,
+`middleware.TestATokenConfiguresButNeverDeploys` (decidir no se abre a un
+token) y, en la app, `provision_cli::tests::a_request_only_ever_dry_runs` y
+`mcp::tests::the_server_config_tools_configure_but_never_apply`.

@@ -2065,6 +2065,34 @@ fn tool_defs() -> Value {
             }
         },
         {
+            "name": "request_provisioning",
+            "description": "ASK to apply a playbook of the repo's cac.playbooks.yml to a server, following cac's protocol (decision 4d28f4ab). It opens a request with the server's current config version, runs the DRY RUN on this machine (`ansible-playbook --check --diff`: nothing changes; 1Password asks the person to approve each secret it reads) and sends it to cac, which evaluates it and raises flags (more than one host, a read that would change something, touching SSH or the firewall outside `baseline`, a failed dry run). Only a `read` playbook with a clean dry run comes back `approved` at once; anything that changes or destroys comes back `awaiting_approval` and a PERSON approves it in the app — also on a test server, where it is a drill, never relaxed. This tool never applies anything. Once approved, the person (or you, in their terminal) runs `cac provision run --server <name> --grant <id> --folder <ansible project>`: a single-use grant that expires in 15 minutes, then the playbook's `verify`. If verify fails, propose its rollback as a NEW request; it never runs by itself. Needs the `servers:manage` scope and the server's config in cac (set_server_config).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string", "description": "The server's id or exact name." },
+                    "playbook": { "type": "string", "description": "The playbook id in cac.playbooks.yml (`swarm`, `swarm-verify`…)." },
+                    "reason": { "type": "string", "description": "Why you ask, in a sentence: the approver reads it." },
+                    "folder": { "type": "string", "description": "The Ansible project with cac.playbooks.yml (in cac's repo, `infra/ansible`). Default: the current folder." },
+                    "dryRun": { "type": "boolean", "description": "Only check the token and the server's config, without opening a request or touching the server." }
+                },
+                "required": ["serverId", "playbook", "reason"]
+            }
+        },
+        {
+            "name": "get_provisioning_request",
+            "description": "One execution request of a server (with `requestId`) or its latest ones: status (checking, awaiting_approval, approved, rejected, running, verifying, succeeded, failed, verify_failed, violated, expired), its risk, the dry run cac evaluated (hosts, changed tasks, files, diff — never a value), the flags, who asked and who decided, and until when an approval is valid. Read-only.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "serverId": { "type": "string" },
+                    "requestId": { "type": "string" },
+                    "limit": { "type": "integer", "description": "Without requestId: 1–50. Default 10." }
+                },
+                "required": ["serverId"]
+            }
+        },
+        {
             "name": "set_secret_refs",
             "description": "Set a service's secrets BY NAME: each one says where its value lives in 1Password (opRef, op://vault/item/field) and whether it is used at runtime, at build time or both. By default it merges by name: what you send is added or changed, the rest stays; `remove` takes names out, and `replace: true` makes the list exactly what you send. No secret value ever goes through cac: the app's \"Rotate on the server\" reads them from 1Password. Needs the `deploys:manage` scope.",
             "inputSchema": {
@@ -3683,6 +3711,45 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                     let body = server_template_body(&latest, args)?;
                     let saved = api_put(cfg, &path, body)?;
                     Ok(json!({ "saved": saved }))
+                }
+            }
+        }
+
+        "request_provisioning" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let playbook = arg_str(args, "playbook").ok_or("playbook is required")?;
+            let reason = arg_str(args, "reason").ok_or("reason is required: the approver reads it")?;
+            let folder = arg_str(args, "folder").unwrap_or_else(|| ".".into());
+            if arg_bool(args, "dryRun") {
+                let found = crate::provision_cli::pick_server(&api_get(cfg, "/api/v1/servers")?, &server)?;
+                let id = found["id"].as_str().unwrap_or_default().to_string();
+                return dry_run(cfg, "servers:manage", api_get(cfg, &format!("/api/v1/servers/{}/config/effective", urlencode(&id))));
+            }
+            // Sólo ensaya: `request` no tiene camino para correr de verdad
+            // (provision_cli::tests::a_request_only_ever_dry_runs).
+            let req = crate::provision_cli::request(&server, &playbook, &reason, &folder, false)?;
+            let next = match req["status"].as_str() {
+                Some("approved") => format!(
+                    "Pre-authorized (a clean read). Run it in the person's terminal: cac provision run --server {} --grant {} --folder {}",
+                    server,
+                    req["id"].as_str().unwrap_or(""),
+                    folder
+                ),
+                Some("awaiting_approval") => "Waiting for a person to approve it in the app (Servers → Provisioning → Requests). Tell them; check it with get_provisioning_request.".into(),
+                _ => "The request did not pass: read its flags.".into(),
+            };
+            Ok(json!({ "request": req, "next": next }))
+        }
+
+        "get_provisioning_request" => {
+            let server = arg_str(args, "serverId").ok_or("serverId is required")?;
+            let base = format!("/api/v1/servers/{}/provisioning-requests", urlencode(&server));
+            match arg_str(args, "requestId") {
+                Some(id) => api_get(cfg, &format!("{base}/{}", urlencode(&id))),
+                None => {
+                    let limit = arg_i64(args, "limit").unwrap_or(10).clamp(1, 50) as usize;
+                    let data = api_get(cfg, &base)?;
+                    Ok(json!(data.as_array().map(|a| a.iter().take(limit).cloned().collect::<Vec<_>>()).unwrap_or_default()))
                 }
             }
         }
@@ -6878,10 +6945,10 @@ mod tests {
     #[test]
     fn the_server_config_tools_configure_but_never_apply() {
         let defs = tool_defs();
-        for name in ["get_server_config", "set_server_config", "list_server_templates", "get_server_template", "set_server_template", "list_provisioning_runs"] {
+        for name in ["get_server_config", "set_server_config", "list_server_templates", "get_server_template", "set_server_template", "list_provisioning_runs", "request_provisioning", "get_provisioning_request"] {
             assert!(!tool(&defs, name).is_null(), "falta {name}");
         }
-        for name in ["set_server_config", "set_server_template"] {
+        for name in ["set_server_config", "set_server_template", "request_provisioning"] {
             assert!(tool(&defs, name)["description"].as_str().unwrap().contains("servers:manage"), "{name}");
         }
         let provisioning: Vec<&str> = defs
@@ -6891,7 +6958,28 @@ mod tests {
             .filter_map(|d| d["name"].as_str())
             .filter(|n| n.contains("provision") || n.contains("playbook") || n.contains("apply"))
             .collect();
-        assert_eq!(provisioning, vec!["list_provisioning_runs"], "una herramienta que aplica algo");
+        // Quien la lee —un agente— sabe que pide y no aplica, y que lo demás
+        // lo aprueba una persona también en pruebas.
+        let ask = tool(&defs, "request_provisioning")["description"].as_str().unwrap().to_string();
+        for must in ["never applies anything", "PERSON approves", "drill", "--grant"] {
+            assert!(ask.contains(must), "request_provisioning no dice «{must}»");
+        }
+        // Pedir y leer, nada más (decisión 4d28f4ab): ninguna herramienta
+        // aplica. Una nueva con `provision`, `playbook` o `apply` en el
+        // nombre tiene que pasar por aquí y decir qué hace.
+        assert_eq!(
+            provisioning,
+            vec!["list_provisioning_runs", "request_provisioning", "get_provisioning_request"],
+            "una herramienta que aplica algo"
+        );
+        // Y el MCP sólo llega a Ansible por `provision_cli::request`, que sólo
+        // ensaya: ni `run_playbook`, ni la ejecución con autorización.
+        let src = include_str!("mcp.rs");
+        let code = src.split("#[cfg(test)]").next().unwrap();
+        assert!(code.contains("crate::provision_cli::request("));
+        for forbidden in ["run_playbook", "provision_cli::run", "provision_cli::main", "run_grant", "execute("] {
+            assert!(!code.contains(forbidden), "el MCP llama a {forbidden}");
+        }
     }
 
     /// La config nueva es la actual con lo pedido encima; `replace` es sólo lo

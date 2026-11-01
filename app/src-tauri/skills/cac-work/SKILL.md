@@ -26,7 +26,7 @@ apagando.
 | Una pregunta, una explicación, revisar algo sin cambiarlo | **`search` primero** y la sección del acierto (paso 1). El mapa, sólo si no encuentra. **Sin tarea.** Si descubres algo que vale la pena guardar, coméntalo en la tarea a la que le toca. |
 | Un arreglo pequeño, un commit | La tarea (busca si ya existe), la referencia en el commit (paso 5) y el cierre (paso 7). Sin subtareas, sin decisiones, sin tocar el runbook salvo que cambie algo de él. |
 | Una feature, una investigación larga, varios commits | Todo: el mapa, el tablero al día, **el diseño escrito antes de construir**, la tarea con sus subtareas (cada una con su brief), las decisiones y el runbook. |
-| Configurar un servidor (qué se le monta, sus variables, de dónde salen sus secretos) | La config vive en cac, no en el repo de Ansible: `get_server_config`, y guardar con `set_server_config` / `set_server_template` (plantilla = playbooks en orden). Los secretos, **sólo** como referencia `op://`. Aplicar un playbook es de una persona en la app: tú dejas la config lista y lo dices. |
+| Configurar un servidor (qué se le monta, sus variables, de dónde salen sus secretos) | La config vive en cac, no en el repo de Ansible: `get_server_config`, y guardar con `set_server_config` / `set_server_template` (plantilla = playbooks en orden). Los secretos, **sólo** como referencia `op://`. Aplicar no lo haces tú: **pides** con `request_provisioning` (corre el ensayo y cac lo evalúa). Sólo una lectura limpia queda autorizada; lo que cambia lo aprueba una persona en la app, **también en un servidor de pruebas** (es un simulacro). Con la autorización, se corre `cac provision run --grant <id>` en su terminal; si el `verify` falla, el rollback es otra petición. |
 
 Poner el tablero al día (paso 3) es para cuando vas a trabajar, no para una
 pregunta, y sólo en las listas que vas a tocar.
@@ -393,4 +393,4 @@ de 2026, a partir de lo que fue fallando al trabajar con cac. Cada regla tiene
 detrás algo que pasó de verdad; si cambias una, mira antes en el registro de
 decisiones del espacio Command and control por qué está._
 
-<!-- cac-work v19 -->
+<!-- cac-work v20 -->
