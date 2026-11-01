@@ -449,13 +449,7 @@ export default function ServerProvision() {
   return (
     <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <div className="space-y-4">
-        <ServerConfigPanel server={server} manifest={manifest} effective={effective} onChanged={() => void loadEffective()} />
-        <ProvisioningRequests
-          server={server}
-          canDecide={isAdmin || superadmin}
-          refreshKey={requestsKey}
-          onRun={v2 && tools?.ansiblePlaybook && !busy ? (r) => void runGrant(r) : undefined}
-        />
+        {/* La carpeta primero: la plantilla, la config y los playbooks se leen de ella. */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">{t("common:provision.project")}</CardTitle>
@@ -479,6 +473,13 @@ export default function ServerProvision() {
             {manifest?.discovered && <p className="text-xs text-muted-foreground">{t("common:provision.noManifest")}</p>}
           </CardContent>
         </Card>
+        <ServerConfigPanel server={server} manifest={manifest} effective={effective} onChanged={() => void loadEffective()} />
+        <ProvisioningRequests
+          server={server}
+          canDecide={isAdmin || superadmin}
+          refreshKey={requestsKey}
+          onRun={v2 && tools?.ansiblePlaybook && !busy ? (r) => void runGrant(r) : undefined}
+        />
 
         {manifest && manifest.playbooks.length > 0 && playbook && (
           <Card>
