@@ -39,20 +39,33 @@ referencias) y el PLAY RECAP; nunca un valor.
 ```sh
 make setup                        # .venv con ansible-core y las collections (una vez)
 make plan SERVER=gstd P=swarm     # qué se correría, y qué le falta a la config en cac
-make test SERVER=gstd             # ping (antes o después de la etapa 1)
-make baseline SERVER=gstd         # etapa 1
-make swarm SERVER=gstd            # Swarm + Traefik + whoami
-make swarm-verify SERVER=gstd     # nodo, servicios y whoami por HTTPS con cert válido
-make swarm-down SERVER=gstd       # DESTRUCTIVO: quita los stacks, el Swarm y Docker
-make k8s SERVER=gstd              # Kubernetes (después de swarm-down)
+make test SERVER=gstd             # pide `test` (ping): lectura, va pre-autorizada si su ensayo sale limpio
+make baseline SERVER=gstd         # pide la etapa 1
+make swarm SERVER=gstd            # pide Swarm + Traefik + whoami
+make swarm-verify SERVER=gstd     # pide la verificación: nodo, servicios, whoami por HTTPS
+make swarm-down SERVER=gstd       # pide el desmontaje (DESTRUCTIVO)
+make k8s SERVER=gstd              # pide Kubernetes (después de swarm-down)
 make k8s-verify SERVER=gstd
 make k8s-down SERVER=gstd         # DESTRUCTIVO
+make run SERVER=gstd GRANT=<id>   # corre una petición autorizada, y después su verify
 ```
+
+**Ningún atajo aplica nada: pide** (decisión 4d28f4ab). Cada uno abre una
+petición en cac, corre el ensayo (`--check --diff`, que no cambia nada) y cac
+lo evalúa: un solo host, nada que toque SSH o el firewall fuera de `baseline`.
+Sólo una lectura (`risk: read`) con un ensayo limpio queda autorizada en el
+acto; un `change` lo aprueba una persona en la app (Servidores → Provisioning →
+Peticiones) y un `destructive`, además, escribiendo el nombre del servidor.
+**También en un servidor de pruebas**: allí es un simulacro del mismo
+protocolo. La autorización es de un solo uso, caduca a los 15 minutos y vale
+sólo para ese playbook y esa versión de la config; `make run` la gasta, corre
+el `verify` del playbook y, si falla, propone su `rollback` (que es otra
+petición: no corre solo).
 
 Todo pasa por `cac provision` (el binario de la app; `CAC=/ruta/al/AppImage`
 si no está en el PATH): la misma receta que el botón. Necesita `CAC_TOKEN`, un
-token personal con **`servers:manage`**, y 1Password desbloqueado. Un agente en
-la terminal de una persona puede correrlo; por MCP sólo se configura.
+token personal con **`servers:manage`**, y 1Password desbloqueado, que pide la
+huella para cada secreto: el último candado, que ninguna política quita.
 
 ## Un servidor nuevo
 
@@ -62,7 +75,7 @@ la terminal de una persona puede correrlo; por MCP sólo se configura.
    contraseña de sudo, generada en 1Password, como `OPS_PASSWORD`: no se copia
    al basarse en otro (`perServer`).
 3. `make plan SERVER=<nombre> P=baseline` y, si no falta nada, `make baseline`
-   (la primera vez entra como root por el 22).
+   (la primera vez entra como root por el 22); con la aprobación, `make run`.
 4. En cac, cambiar el puerto y el usuario del servidor a `ssh_port` /
    `infra_devops`. Después, la etapa 2.
 

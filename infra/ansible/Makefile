@@ -1,17 +1,21 @@
 # Atajos para correr infra/ansible desde la terminal. La app corre lo mismo
 # desde la pestaña Provisioning del servidor.
 #
-#   make setup                     # .venv + Ansible + collections (una vez)
+#   make setup                          # .venv + Ansible + collections (una vez)
 #   make plan     SERVER=gstd P=swarm   # qué se correría y qué falta en cac
-#   make test     SERVER=gstd      # ping
-#   make baseline SERVER=gstd      # etapa 1: usuario, SSH, firewall
-#   make swarm    SERVER=gstd      # etapa 2: Swarm + Traefik
-#   make swarm-verify / swarm-down / k8s / k8s-verify / k8s-down  SERVER=…
+#   make test     SERVER=gstd           # pide `test` (y su ensayo)
+#   make swarm    SERVER=gstd           # pide la etapa 2: Swarm + Traefik
+#   make baseline / swarm-verify / swarm-down / k8s / k8s-verify / k8s-down  SERVER=…
+#   make run      SERVER=gstd GRANT=<id> # corre una petición autorizada, y su verify
+#
+# Nada se aplica sin el protocolo (decisión 4d28f4ab): cada atajo **pide**,
+# corre el ensayo (`--check --diff`, no cambia nada) y cac lo evalúa. Sólo una
+# lectura limpia queda autorizada en el acto; lo demás lo aprueba una persona
+# en la app, también en un servidor de pruebas. Con la autorización, `make run`.
 #
 # Todo pasa por `cac provision`, el mismo binario de la app: lee la config del
-# servidor de cac (dominio, puertos, versiones y DÓNDE está cada secreto en
-# 1Password), genera el inventario, lee los secretos con `op` y apunta la
-# ejecución en cac. Necesita CAC_TOKEN (un token personal con servers:manage) y
+# servidor de cac, genera el inventario, lee los secretos con `op` y apunta
+# todo en cac. Necesita CAC_TOKEN (un token personal con servers:manage) y
 # 1Password desbloqueado. Ningún valor pasa por aquí.
 
 VENV     := .venv
@@ -21,12 +25,14 @@ PLAYBOOK := $(VENV)/bin/ansible-playbook
 CAC      ?= cac
 SERVER   ?=
 P        ?=
+GRANT    ?=
+REASON   ?=
 
 need_server = $(if $(SERVER),,$(error falta SERVER=<nombre o id del servidor en cac>))
-provision   = $(call need_server)$(CAC) provision run --server '$(SERVER)' --playbook $(1) --folder .
+provision   = $(call need_server)$(CAC) provision request --server '$(SERVER)' --playbook $(1) --reason '$(REASON)' --folder .
 
 .DEFAULT_GOAL := help
-.PHONY: help setup syntax plan test baseline swarm swarm-verify swarm-down k8s k8s-verify k8s-down
+.PHONY: help setup syntax plan run test baseline swarm swarm-verify swarm-down k8s k8s-verify k8s-down
 
 help: ## Esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-13s\033[0m %s\n", $$1, $$2}'
@@ -47,6 +53,9 @@ syntax: ## --syntax-check de todos los playbooks
 
 plan: ## Qué se correría con la config de cac, y qué le falta (P=<playbook>)
 	$(call need_server)$(CAC) provision plan --server '$(SERVER)' --playbook $(or $(P),$(error falta P=<playbook>)) --folder .
+
+run: ## Corre una petición autorizada y su verify (GRANT=<id>)
+	$(call need_server)$(CAC) provision run --server '$(SERVER)' --grant $(or $(GRANT),$(error falta GRANT=<id de la petición>)) --folder .
 
 test: ## Probar conexión
 	$(call provision,test)

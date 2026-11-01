@@ -77,7 +77,25 @@ pub struct PlaybookDef {
     pub become_password_from: Option<String>,
     #[serde(default)]
     pub vars: Vec<VarDef>,
+    /// v2: `read`, `change` o `destructive`. Es lo que cac mira cuando un
+    /// agente pide aplicarlo: sólo `read` puede ir pre-autorizado (decisión
+    /// 4d28f4ab).
+    #[serde(default)]
+    pub risk: Option<String>,
+    /// El playbook `read` que comprueba que salió bien.
+    #[serde(default)]
+    pub verify: Option<String>,
+    /// El que lo deshace, o `manual`. Nunca corre solo.
+    #[serde(default)]
+    pub rollback: Option<String>,
 }
+
+pub const RISK_READ: &str = "read";
+pub const RISK_CHANGE: &str = "change";
+pub const RISK_DESTRUCTIVE: &str = "destructive";
+/// Un rollback que no es un playbook: se arregla a mano (la consola del
+/// proveedor). Dicho, no callado.
+pub const ROLLBACK_MANUAL: &str = "manual";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -162,7 +180,52 @@ pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
             }
         }
     }
+    if v2 {
+        check_risks(&m)?;
+    }
     Ok(m)
+}
+
+/// Cada playbook de un manifiesto v2 declara su riesgo; los que cambian o
+/// destruyen nombran un `verify` que es un playbook de lectura de este mismo
+/// manifiesto y un `rollback` que es otro playbook de aquí o `manual`. Un
+/// verify que cambia algo no verificaría: lo que comprobaría es lo que acaba
+/// de tocar.
+fn check_risks(m: &Manifest) -> Result<(), String> {
+    let risk_of = |id: &str| m.playbooks.iter().find(|p| p.id == id).and_then(|p| p.risk.clone());
+    for p in &m.playbooks {
+        let risk = p.risk.as_deref().unwrap_or("");
+        match risk {
+            RISK_READ => {}
+            RISK_CHANGE | RISK_DESTRUCTIVE => {
+                let verify = p.verify.as_deref().ok_or_else(|| {
+                    format!("{MANIFEST_FILE}: `{}` is {risk} and needs a `verify` playbook", p.id)
+                })?;
+                if risk_of(verify).as_deref() != Some(RISK_READ) {
+                    return Err(format!(
+                        "{MANIFEST_FILE}: the verify of `{}` (`{verify}`) is not a `read` playbook of this manifest",
+                        p.id
+                    ));
+                }
+                let rollback = p.rollback.as_deref().ok_or_else(|| {
+                    format!("{MANIFEST_FILE}: `{}` is {risk} and needs a `rollback` (a playbook, or `manual`)", p.id)
+                })?;
+                if rollback != ROLLBACK_MANUAL && risk_of(rollback).is_none() {
+                    return Err(format!(
+                        "{MANIFEST_FILE}: the rollback of `{}` (`{rollback}`) is not a playbook of this manifest",
+                        p.id
+                    ));
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "{MANIFEST_FILE}: `{}` needs `risk: read`, `change` or `destructive`",
+                    p.id
+                ))
+            }
+        }
+    }
+    Ok(())
 }
 
 /// El nombre de un secreto en la config de un servidor, como lo valida cac
@@ -210,6 +273,9 @@ pub fn discover(project: &Path) -> Manifest {
                 become_password_ref: None,
                 become_password_from: None,
                 vars: vec![],
+                risk: None,
+                verify: None,
+                rollback: None,
             });
         }
     }
@@ -278,6 +344,10 @@ pub struct RunSpec {
     pub become_password: Option<String>,
     #[serde(default)]
     pub become_password_ref: Option<String>,
+    /// El ensayo: `--check --diff`. Ansible no cambia nada y dice qué
+    /// cambiaría (paso 1 del protocolo).
+    #[serde(default)]
+    pub check: bool,
 }
 
 /// Un host del inventario generado: cómo se entra, a qué grupos pertenece (los
@@ -495,6 +565,10 @@ pub fn build_args(spec: &RunSpec, vars_file: &Path, inventory_file: Option<&Path
     }
     args.push("-e".into());
     args.push(format!("@{}", vars_file.display()));
+    if spec.check {
+        args.push("--check".into());
+        args.push("--diff".into());
+    }
     args
 }
 
@@ -674,6 +748,7 @@ pub fn plan_run(
         vars: run_vars,
         become_password: None,
         become_password_ref,
+        check: false,
     };
     Ok((spec, gaps))
 }
@@ -1130,6 +1205,7 @@ mod tests {
             vars: vec![],
             become_password: Some("contraseña-de-sudo".into()),
             become_password_ref: None,
+            check: false,
         }
     }
 
@@ -1291,16 +1367,16 @@ playbooks:
     // v2; un nombre de secreto en minúsculas.
     #[test]
     fn a_v2_manifest_names_secrets_and_never_references_them() {
-        let ok = "version: 2\nplaybooks:\n  - {id: swarm, file: s.yml, name: S, become: true, become_password_from: OPS_PASSWORD, vars: [{name: tok, secret: true, from: CF_TOKEN}, {name: img, default: 'traefik:v3.6'}]}\n";
+        let ok = "version: 2\nplaybooks:\n  - {id: swarm, risk: read, file: s.yml, name: S, become: true, become_password_from: OPS_PASSWORD, vars: [{name: tok, secret: true, from: CF_TOKEN}, {name: img, default: 'traefik:v3.6'}]}\n";
         let m = parse_manifest(ok).unwrap();
         assert_eq!(m.playbooks[0].become_password_from.as_deref(), Some("OPS_PASSWORD"));
         assert_eq!(m.playbooks[0].vars[1].default, Some(serde_json::json!("traefik:v3.6")));
         for bad in [
-            "version: 2\nplaybooks:\n  - {id: a, file: a.yml, name: a, vars: [{name: t, secret: true, from: 'op://v/i/f'}]}\n",
-            "version: 2\nplaybooks:\n  - {id: a, file: a.yml, name: a, vars: [{name: t, secret: true, from: cf_token}]}\n",
-            "version: 2\nplaybooks:\n  - {id: a, file: a.yml, name: a, vars: [{name: t, secret: true, from: CF, default: x}]}\n",
-            "version: 2\nplaybooks:\n  - {id: a, file: a.yml, name: a, become: true, become_password_ref: 'op://v/i/f'}\n",
-            "version: 2\nplaybooks:\n  - {id: a, file: a.yml, name: a, become: true, become_password_from: 'op://v/i/f'}\n",
+            "version: 2\nplaybooks:\n  - {id: a, risk: read, file: a.yml, name: a, vars: [{name: t, secret: true, from: 'op://v/i/f'}]}\n",
+            "version: 2\nplaybooks:\n  - {id: a, risk: read, file: a.yml, name: a, vars: [{name: t, secret: true, from: cf_token}]}\n",
+            "version: 2\nplaybooks:\n  - {id: a, risk: read, file: a.yml, name: a, vars: [{name: t, secret: true, from: CF, default: x}]}\n",
+            "version: 2\nplaybooks:\n  - {id: a, risk: read, file: a.yml, name: a, become: true, become_password_ref: 'op://v/i/f'}\n",
+            "version: 2\nplaybooks:\n  - {id: a, risk: read, file: a.yml, name: a, become: true, become_password_from: 'op://v/i/f'}\n",
             "version: 1\nplaybooks:\n  - {id: a, file: a.yml, name: a}\n",
         ] {
             assert!(parse_manifest(bad).is_err(), "{bad}");
@@ -1405,15 +1481,61 @@ playbooks:
     file: playbooks/swarm-site.yml
     name: Swarm
     hosts: swarm
+    risk: change
+    verify: swarm-verify
+    rollback: manual
     become: true
     become_password_from: OPS_PASSWORD
     vars:
       - { name: traefik_image, default: "traefik:v3.6" }
       - { name: base_domain, required: true }
       - { name: cloudflare_dns_token, secret: true, from: CLOUDFLARE_DNS_TOKEN }
+  - { id: swarm-verify, file: playbooks/swarm-verify.yml, name: Verificar, hosts: swarm, risk: read }
 "#,
         )
         .unwrap()
+    }
+
+    // Cada playbook v2 declara su riesgo; lo que cambia o destruye nombra un
+    // verify de lectura de este manifiesto y un rollback (otro playbook, o
+    // `manual`). Roturas que atrapa: aceptar un riesgo inventado o ausente,
+    // un change sin verify o sin rollback, un verify que no es de lectura o
+    // que no existe, y un rollback que no existe.
+    #[test]
+    fn every_v2_playbook_declares_its_risk() {
+        let pb = |extra: &str| {
+            format!(
+                "version: 2\nplaybooks:\n  - {{id: v, file: v.yml, name: v, risk: read}}\n  - {{id: w, file: w.yml, name: w, risk: change, verify: v, rollback: manual}}\n  - {{id: a, file: a.yml, name: a{extra}}}\n"
+            )
+        };
+        for ok in [", risk: read", ", risk: change, verify: v, rollback: manual", ", risk: destructive, verify: v, rollback: w"] {
+            assert!(parse_manifest(&pb(ok)).is_ok(), "{ok}: {:?}", parse_manifest(&pb(ok)).err());
+        }
+        for bad in [
+            "",
+            ", risk: low",
+            ", risk: change, rollback: manual",
+            ", risk: change, verify: v",
+            ", risk: change, verify: w, rollback: manual",
+            ", risk: change, verify: nadie, rollback: manual",
+            ", risk: destructive, verify: v, rollback: nadie",
+        ] {
+            assert!(parse_manifest(&pb(bad)).is_err(), "aceptó `{bad}`");
+        }
+        // Un manifiesto v1 sigue sin riesgos: es el de un repo de fuera, y
+        // un agente no puede pedir nada con él.
+        assert!(parse_manifest("version: 1\ninventory: i.ini\nplaybooks:\n  - {id: a, file: a.yml, name: a}\n").is_ok());
+    }
+
+    // El ensayo es el mismo comando con `--check --diff`, y sin ellos no se
+    // ensaya. Rotura que atrapa: olvidar uno de los dos.
+    #[test]
+    fn a_dry_run_is_check_and_diff() {
+        let mut s = spec();
+        assert!(!build_args(&s, Path::new("/tmp/v.json"), None).iter().any(|a| a == "--check" || a == "--diff"));
+        s.check = true;
+        let args = build_args(&s, Path::new("/tmp/v.json"), None);
+        assert!(args.contains(&"--check".to_string()) && args.contains(&"--diff".to_string()), "{args:?}");
     }
 
     fn effective() -> serde_json::Value {

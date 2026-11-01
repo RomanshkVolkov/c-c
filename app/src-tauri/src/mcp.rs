@@ -152,7 +152,7 @@ pub(crate) fn api_patch(cfg: &Cfg, path: &str, body: Value) -> Result<Value, Str
     api_write(cfg, "PATCH", path, body)
 }
 
-fn api_put(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
+pub(crate) fn api_put(cfg: &Cfg, path: &str, body: Value) -> Result<Value, String> {
     api_write(cfg, "PUT", path, body)
 }
 

@@ -14,6 +14,17 @@
 #     referencia aquí es un error: son de cada servidor, no del repo.
 #   - `become_password_from: NOMBRE`: la contraseña de sudo, igual.
 #
+# Y cada playbook declara su riesgo, que es lo que cac mira cuando un agente
+# pide aplicarlo (decisión 4d28f4ab):
+#   - `risk: read`: no cambia nada. Es lo único que va pre-autorizado, y sólo
+#     si su ensayo (`--check --diff`) dice que no cambiaría nada.
+#   - `risk: change`: cambia la máquina. Siempre lo aprueba una persona.
+#   - `risk: destructive`: borra o tumba. Lo aprueba una persona escribiendo
+#     el nombre del servidor.
+#   Los que cambian o destruyen nombran su `verify` (un playbook `read` que
+#   comprueba que salió bien) y su `rollback` (el que lo deshace, o `manual`
+#   si no hay playbook que lo deshaga). El rollback nunca corre solo.
+#
 # Por etapas: la 1 (baseline) deja el servidor con usuario de operación, SSH
 # sólo por llave en otro puerto y firewall; la 2 es Swarm o Kubernetes. Una
 # plantilla es una secuencia de estos ids: [baseline, swarm].
@@ -25,6 +36,7 @@ playbooks:
     name: Probar conexión
     description: Ping y quién soy, antes o después de la etapa 1. No cambia nada.
     hosts: all
+    risk: read
 
   - id: baseline
     file: playbooks/server-baseline.yml
@@ -35,6 +47,11 @@ playbooks:
       root por el 22. Si el SSH nuevo no contesta, se deshace solo. Después,
       cambia el puerto y el usuario del servidor en cac. Idempotente.
     hosts: all
+    risk: change
+    verify: test
+    # Si el SSH nuevo no contesta se deshace solo; si algo queda mal después,
+    # se arregla desde la consola del proveedor.
+    rollback: manual
     become: true
     become_password_from: OPS_PASSWORD
     vars:
@@ -62,6 +79,9 @@ playbooks:
       Docker, Swarm, Traefik con wildcard *.<base_domain> por DNS en
       Cloudflare, y whoami como prueba. Idempotente.
     hosts: swarm
+    risk: change
+    verify: swarm-verify
+    rollback: swarm-teardown
     become: true
     become_password_from: OPS_PASSWORD
     vars:
@@ -86,6 +106,7 @@ playbooks:
     name: Verificar Swarm
     description: Nodo, servicios y whoami por HTTPS con certificado válido. No cambia nada.
     hosts: swarm
+    risk: read
     become: true
     become_password_from: OPS_PASSWORD
     vars:
@@ -97,6 +118,9 @@ playbooks:
     name: Desmontar Swarm
     description: Quita los stacks, sale del Swarm y desinstala Docker. Destructivo.
     hosts: swarm
+    risk: destructive
+    verify: test
+    rollback: swarm
     become: true
     become_password_from: OPS_PASSWORD
 
@@ -107,6 +131,9 @@ playbooks:
       containerd, kubeadm, Cilium, MetalLB, Envoy Gateway, cert-manager con el
       wildcard por DNS, y whoami por HTTPRoute. Antes, desmontar Swarm. Idempotente.
     hosts: k8s_control_plane
+    risk: change
+    verify: k8s-verify
+    rollback: k8s-teardown
     become: true
     become_password_from: OPS_PASSWORD
     vars:
@@ -142,6 +169,7 @@ playbooks:
     name: Verificar Kubernetes
     description: Nodo, pods, Gateway, certificado y whoami por HTTPS. No cambia nada.
     hosts: k8s_control_plane
+    risk: read
     become: true
     become_password_from: OPS_PASSWORD
     vars:
@@ -152,5 +180,8 @@ playbooks:
     name: Desmontar Kubernetes
     description: kubeadm reset, paquetes fuera y red limpia. Destructivo.
     hosts: k8s_control_plane
+    risk: destructive
+    verify: test
+    rollback: k8s
     become: true
     become_password_from: OPS_PASSWORD
