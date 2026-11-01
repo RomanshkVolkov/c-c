@@ -36,6 +36,9 @@ func TestNoSecretTypeCarriesAValue(t *testing.T) {
 		// van como `OpRefs`, nombre → referencia, igual que aquí.
 		domain.ServerTemplate{}, domain.ServerTemplateVersion{}, domain.ServerConfigVersion{},
 		domain.AppliedConfig{}, domain.ConfigOrigin{}, domain.PutServerConfigRequest{},
+		// El protocolo de ejecución (31-oct-2026): el ensayo va ya tachado.
+		domain.ProvisioningRequest{}, domain.ProvisioningCheck{}, domain.RiskFlag{},
+		domain.CreateProvisioningRequest{}, domain.DecideProvisioningRequest{},
 		domain.CreateServerTemplateRequest{}, domain.PutServerTemplateRequest{},
 		domain.EffectiveConfig{}, domain.ServerConnection{},
 	} {

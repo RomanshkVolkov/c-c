@@ -86,6 +86,13 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Get("/{id}/provisioning-runs", provH.List)
 		r.Post("/{id}/provisioning-runs", provH.Start)
 		r.Patch("/{id}/provisioning-runs/{rid}", provH.Finish)
+		// Lo que un agente pide aplicar, con su ensayo y su aprobación. Ver
+		// domain.ProvisioningRequest.
+		r.Get("/{id}/provisioning-requests", provH.Requests)
+		r.Post("/{id}/provisioning-requests", provH.CreateRequest)
+		r.Get("/{id}/provisioning-requests/{rqid}", provH.GetRequest)
+		r.Put("/{id}/provisioning-requests/{rqid}/check", provH.SubmitCheck)
+		r.Post("/{id}/provisioning-requests/{rqid}/decision", provH.Decide)
 		// Su config versionada: lo que se le aplica, sin ningún valor secreto.
 		r.Get("/{id}/config", configH.Config)
 		r.Put("/{id}/config", configH.Save)

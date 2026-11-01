@@ -51,14 +51,18 @@ type ProvisioningRun struct {
 	// se aplicó, para leer después cómo se configuró la máquina aunque la
 	// config haya cambiado. 0 / vacío = una ejecución sin config en cac (las
 	// de antes, o un repo de Ansible con su propio inventario).
-	ConfigSeq   int            `json:"configSeq"`
-	TemplateID  string         `gorm:"type:varchar(36)" json:"templateId,omitempty"`
+	ConfigSeq  int    `json:"configSeq"`
+	TemplateID string `gorm:"type:varchar(36)" json:"templateId,omitempty"`
 	// app | cli: desde la pestaña Provisioning, o desde una terminal con
 	// `cac provision` y un token personal. Las dos aplican en la máquina de
 	// quien lo lanza, con su 1Password; esto sólo dice por dónde entró.
-	Source string `gorm:"type:varchar(10);default:'app'" json:"source"`
+	Source      string         `gorm:"type:varchar(10);default:'app'" json:"source"`
 	TemplateSeq int            `json:"templateSeq,omitempty"`
 	Applied     *AppliedConfig `gorm:"type:jsonb;serializer:json" json:"applied,omitempty"`
+	// La petición cuya autorización gastó esta ejecución (ver
+	// ProvisioningRequest). Vacío = la lanzó una persona desde la app, que es
+	// su propia aprobación. Con un token nunca está vacío.
+	RequestID string `gorm:"type:varchar(36);index" json:"requestId,omitempty"`
 }
 
 const (
@@ -87,6 +91,9 @@ type StartProvisioningRequest struct {
 	// La versión de la config de cac con la que se lanza. Sin ella (0), una
 	// ejecución con su propio inventario: no se apunta config.
 	ConfigSeq int `json:"configSeq" validate:"min=0"`
+	// La petición autorizada con la que se corre. Obligatoria con un token:
+	// un agente no aplica nada sin el protocolo.
+	RequestID string `json:"requestId" validate:"max=36"`
 }
 
 // FinishProvisioningRequest la cierra con el resultado.

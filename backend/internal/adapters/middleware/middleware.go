@@ -417,9 +417,15 @@ var patWritable = []struct {
 	// 1Password, que piden aprobación— y sin esto lo que se aplicó desde una
 	// terminal no quedaría en el historial. El MCP no tiene ninguna herramienta
 	// que corra un playbook (`mcp::tests::the_server_config_tools_configure_but_never_apply`).
+	// Y con un token, abrir la fila exige una petición autorizada: sin ella,
+	// 403 `grant-required` (ProvisioningService.Start, decisión 4d28f4ab).
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/config$`), domain.ScopeServersManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-runs/?$`), domain.ScopeServersManage},
 	{http.MethodPatch, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-runs/[^/]+$`), domain.ScopeServersManage},
+	// Pedir una ejecución y mandar su ensayo. **Decidir no está, ni estará**:
+	// aprobar es de una persona en persona (ProvisioningService.Decide).
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-requests/?$`), domain.ScopeServersManage},
+	{http.MethodPut, regexp.MustCompile(`^/api/v1/servers/[^/]+/provisioning-requests/[^/]+/check$`), domain.ScopeServersManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/?$`), domain.ScopeServersManage},
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/organizations/[^/]+/server-templates/[^/]+$`), domain.ScopeServersManage},
 }

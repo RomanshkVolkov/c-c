@@ -51,7 +51,7 @@ func (h *ProvisioningHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	run, err := h.svc.Start(server, user.UserID, user.ViaToken, req)
 	if err != nil {
-		SendErrorResponse(w, http.StatusInternalServerError, "Failed to start run", err.Error())
+		requestError(w, err)
 		return
 	}
 	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.ProvisioningRun]{Success: true, Data: run})
@@ -81,4 +81,116 @@ func (h *ProvisioningHandler) Finish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[any]{Success: true, Message: "Recorded"})
+}
+
+// requestError traduce los errores del protocolo. Una autorización que no casa
+// —gastada, caducada, de otro playbook o de otra versión— se lee igual desde
+// fuera (409): no se cuenta cuál de las cosas falló.
+func requestError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrBadRisk), errors.Is(err, domain.ErrBadPlaybookID),
+		errors.Is(err, domain.ErrVerifyRequired), errors.Is(err, domain.ErrRollbackRequired),
+		errors.Is(err, domain.ErrConfigSeqRequired), errors.Is(err, domain.ErrConfirmServerName),
+		errors.Is(err, domain.ErrAcknowledgeFlags):
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+	case errors.Is(err, domain.ErrInPersonOnly), errors.Is(err, domain.ErrGrantRequired):
+		SendErrorResponse(w, http.StatusForbidden, "Forbidden", err.Error())
+	case errors.Is(err, domain.ErrRequestNotFound), errors.Is(err, repository.ErrConfigVersionNotFound):
+		SendErrorResponse(w, http.StatusNotFound, "Not found", err.Error())
+	case errors.Is(err, domain.ErrRequestState), errors.Is(err, domain.ErrRequestExpired),
+		errors.Is(err, domain.ErrGrantMismatch):
+		SendErrorResponse(w, http.StatusConflict, "Conflict", err.Error())
+	default:
+		SendErrorResponse(w, http.StatusInternalServerError, "Provisioning request failed", err.Error())
+	}
+}
+
+// Requests: las peticiones de ejecución del servidor, para cualquiera de la
+// org (como el historial de ejecuciones).
+func (h *ProvisioningHandler) Requests(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	out, err := h.svc.Requests(server.ID)
+	if err != nil {
+		requestError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.ProvisioningRequestResponse]{Success: true, Data: out})
+}
+
+func (h *ProvisioningHandler) GetRequest(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleViewer)
+	if !ok {
+		return
+	}
+	out, err := h.svc.GetRequest(server.ID, chi.URLParam(r, "rqid"))
+	if err != nil {
+		requestError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ProvisioningRequestResponse]{Success: true, Data: out})
+}
+
+// CreateRequest: pedir es del mismo permiso que lanzar (miembro). Pedir no
+// cambia nada: abre una petición que espera su ensayo.
+func (h *ProvisioningHandler) CreateRequest(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	req, err := ValidateStrictRequest[domain.CreateProvisioningRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.svc.Request(server, user, req)
+	if err != nil {
+		requestError(w, err)
+		return
+	}
+	SendResult(w, http.StatusCreated, domain.APIResponse[*domain.ProvisioningRequest]{Success: true, Data: out})
+}
+
+// SubmitCheck: el ensayo, una vez por petición.
+func (h *ProvisioningHandler) SubmitCheck(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	req, err := ValidateStrictRequest[domain.ProvisioningCheck](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.svc.SubmitCheck(server, chi.URLParam(r, "rqid"), req)
+	if err != nil {
+		requestError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ProvisioningRequestResponse]{Success: true, Data: out})
+}
+
+// Decide: de admin, como cambiar la conexión del servidor, y en persona.
+// Ningún token llega aquí: la ruta no está en `patWritable`, y el servicio lo
+// vuelve a mirar (`ViaToken`) por si algún día alguien la añadiera.
+func (h *ProvisioningHandler) Decide(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleAdmin)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	req, err := ValidateStrictRequest[domain.DecideProvisioningRequest](r)
+	if err != nil {
+		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
+		return
+	}
+	out, err := h.svc.Decide(server, user, chi.URLParam(r, "rqid"), req)
+	if err != nil {
+		requestError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ProvisioningRequestResponse]{Success: true, Data: out})
 }

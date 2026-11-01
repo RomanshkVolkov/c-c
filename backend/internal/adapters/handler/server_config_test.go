@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -332,9 +333,14 @@ func TestARunSaysWhetherItCameFromATerminal(t *testing.T) {
 	if got := open(claims("u-ana", "org-1", domain.OrgRoleMember)).Source; got != "app" {
 		t.Errorf("desde la app quedó %q", got)
 	}
+	// Con un token, sólo con una petición autorizada (31-oct-2026, decisión
+	// 4d28f4ab): que entonces quede `cli` lo fija
+	// TestAnAgentAsksAndOnlyAPersonApproves.
 	token := claims("u-ana", "org-1", domain.OrgRoleMember)
 	token.ViaToken = true
-	if got := open(token).Source; got != "cli" {
-		t.Errorf("con un token quedó %q, se esperaba cli", got)
+	rec := httptest.NewRecorder()
+	prov.Start(rec, serverReq(http.MethodPost, "srv-1", "", `{"kind":"playbook","playbook":"test"}`, token))
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "grant-required") {
+		t.Errorf("un token sin petición abrió una ejecución → %d: %s", rec.Code, rec.Body.String())
 	}
 }

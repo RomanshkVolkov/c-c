@@ -103,6 +103,9 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		// Registrar lo que `cac provision` aplica desde una terminal.
 		{http.MethodPost, "/api/v1/servers/s1/provisioning-runs", domain.ScopeServersManage},
 		{http.MethodPatch, "/api/v1/servers/s1/provisioning-runs/r1", domain.ScopeServersManage},
+		// Pedir una ejecución y mandar su ensayo (31-oct-2026, decisión 4d28f4ab).
+		{http.MethodPost, "/api/v1/servers/s1/provisioning-requests", domain.ScopeServersManage},
+		{http.MethodPut, "/api/v1/servers/s1/provisioning-requests/q1/check", domain.ScopeServersManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))
@@ -283,6 +286,12 @@ func TestATokenConfiguresButNeverDeploys(t *testing.T) {
 		// por la ruta de su config (31-oct-2026).
 		{http.MethodDelete, "/api/v1/organizations/o1/server-templates/t1"},
 		{http.MethodPost, "/api/v1/servers/s1/config"},
+		// Un token pide; **nunca** decide. Aprobar su propia petición sería
+		// saltarse el protocolo entero (31-oct-2026, decisión 4d28f4ab).
+		{http.MethodPost, "/api/v1/servers/s1/provisioning-requests/q1/decision"},
+		{http.MethodPut, "/api/v1/servers/s1/provisioning-requests/q1/decision"},
+		{http.MethodPatch, "/api/v1/servers/s1/provisioning-requests/q1"},
+		{http.MethodDelete, "/api/v1/servers/s1/provisioning-requests/q1"},
 	} {
 		if scope, ok := patScopeFor(req(c.method, c.path)); ok {
 			t.Errorf("%s %s se abrió a un token (%s)", c.method, c.path, scope)

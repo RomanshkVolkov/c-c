@@ -101,6 +101,7 @@ func DBConnection() {
 		&domain.TelemetryDevice{},
 		&domain.ServerIntegration{},
 		&domain.ProvisioningRun{},
+		&domain.ProvisioningRequest{},
 		&domain.ServerTemplate{},
 		&domain.ServerTemplateVersion{},
 		&domain.ServerConfigVersion{},
