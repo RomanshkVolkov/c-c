@@ -106,6 +106,7 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		// Pedir una ejecución y mandar su ensayo (31-oct-2026, decisión 4d28f4ab).
 		{http.MethodPost, "/api/v1/servers/s1/provisioning-requests", domain.ScopeServersManage},
 		{http.MethodPut, "/api/v1/servers/s1/provisioning-requests/q1/check", domain.ScopeServersManage},
+		{http.MethodPost, "/api/v1/servers/s1/provisioning-requests/q1/discard", domain.ScopeServersManage},
 	}
 	for _, c := range cases {
 		got, ok := patScopeFor(req(c.method, c.path))

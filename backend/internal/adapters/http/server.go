@@ -93,6 +93,7 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Get("/{id}/provisioning-requests/{rqid}", provH.GetRequest)
 		r.Put("/{id}/provisioning-requests/{rqid}/check", provH.SubmitCheck)
 		r.Post("/{id}/provisioning-requests/{rqid}/decision", provH.Decide)
+		r.Post("/{id}/provisioning-requests/{rqid}/discard", provH.Discard)
 		// Su config versionada: lo que se le aplica, sin ningún valor secreto.
 		r.Get("/{id}/config", configH.Config)
 		r.Put("/{id}/config", configH.Save)

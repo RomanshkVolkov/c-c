@@ -323,3 +323,53 @@ func TestARequestBelongsToItsServer(t *testing.T) {
 	p.prov.CreateRequest(rec, requestReq(http.MethodPost, "srv-1", "", strings.Replace(swarmAsk, `"configSeq":1`, `"configSeq":9`, 1), agent()))
 	expect(t, rec, http.StatusNotFound, "config-version-not-found", "pedir con una versión que no existe")
 }
+
+func (p *protocol) discard(id string, c *domain.ClaimsJWT) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	p.prov.Discard(rec, requestReq(http.MethodPost, "srv-1", id, "", c))
+	return rec
+}
+
+// Una petición que se quedó sin ensayo decía «ensayando» hasta caducar (24 h)
+// y no había forma de quitarla (gstd, 2-nov-2026). Roturas que atrapa: que la
+// descarte cualquier miembro; que no pueda su dueño o un admin; descartar una
+// ya ensayada (eso es rechazar, y es de un admin en persona); que un ensayo
+// que llega tarde la resucite.
+func TestARequestLeftWithoutItsCheckIsDiscarded(t *testing.T) {
+	p, cleanup := newProtocol(t)
+	defer cleanup()
+
+	// La pidió u-ana (por su agente). Otro miembro no la toca.
+	mine := p.ask(swarmAsk)
+	expect(t, p.discard(mine.ID, claims("u-otro", "org-1", domain.OrgRoleMember)), http.StatusForbidden, "provisioning-request-not-yours", "descartar la de otro")
+	if st := p.status(mine.ID); st != domain.ProvisioningRequestChecking {
+		t.Fatalf("la de otro quedó %s", st)
+	}
+	// Su dueño, también con su token, sí.
+	if rec := p.discard(mine.ID, agent()); rec.Code != http.StatusOK {
+		t.Fatalf("su dueño no la descartó: %d %s", rec.Code, rec.Body.String())
+	}
+	if st := p.status(mine.ID); st != domain.ProvisioningRequestDiscarded {
+		t.Fatalf("descartada se lee %s", st)
+	}
+	// Un ensayo que llega tarde no la resucita.
+	if rec := p.check(mine.ID, cleanDryRun()); rec.Code == http.StatusOK {
+		t.Error("un ensayo tardío entró en una descartada")
+	}
+	if st := p.status(mine.ID); st != domain.ProvisioningRequestDiscarded {
+		t.Errorf("tras el ensayo tardío se lee %s", st)
+	}
+
+	// Un admin descarta la de otro.
+	other := p.ask(swarmAsk)
+	if rec := p.discard(other.ID, claims("u-admin", "org-1", domain.OrgRoleAdmin)); rec.Code != http.StatusOK {
+		t.Fatalf("el admin no la descartó: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Una ya ensayada no se descarta: se rechaza.
+	checked := p.ask(swarmAsk)
+	if rec := p.check(checked.ID, cleanDryRun()); rec.Code != http.StatusOK {
+		t.Fatalf("ensayo → %d", rec.Code)
+	}
+	expect(t, p.discard(checked.ID, person()), http.StatusConflict, "provisioning-request-state", "descartar una ensayada")
+}

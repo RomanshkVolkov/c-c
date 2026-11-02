@@ -108,6 +108,15 @@ func (r *ProvisioningRepository) SubmitCheck(serverID, id string, now time.Time,
 	return oneRow(res)
 }
 
+// Discard: sólo sobre una que sigue esperando su ensayo, en la misma sentencia
+// (si el ensayo llega a la vez, gana uno de los dos, no los dos).
+func (r *ProvisioningRepository) Discard(serverID, id string, now time.Time, by string) error {
+	res := r.db.Model(&domain.ProvisioningRequest{}).
+		Where("id = ? AND server_id = ? AND status = ?", id, serverID, domain.ProvisioningRequestChecking).
+		Updates(map[string]any{"status": domain.ProvisioningRequestDiscarded, "decided_by": by, "decided_at": now})
+	return oneRow(res)
+}
+
 // Decide aprueba o rechaza, sólo si espera decisión y no ha caducado.
 func (r *ProvisioningRepository) Decide(serverID, id string, now time.Time, fields map[string]any) error {
 	res := r.db.Model(&domain.ProvisioningRequest{}).

@@ -93,7 +93,8 @@ func requestError(w http.ResponseWriter, err error) {
 		errors.Is(err, domain.ErrConfigSeqRequired), errors.Is(err, domain.ErrConfirmServerName),
 		errors.Is(err, domain.ErrAcknowledgeFlags):
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid request", err.Error())
-	case errors.Is(err, domain.ErrInPersonOnly), errors.Is(err, domain.ErrGrantRequired):
+	case errors.Is(err, domain.ErrInPersonOnly), errors.Is(err, domain.ErrGrantRequired),
+		errors.Is(err, domain.ErrNotYourRequest):
 		SendErrorResponse(w, http.StatusForbidden, "Forbidden", err.Error())
 	case errors.Is(err, domain.ErrRequestNotFound), errors.Is(err, repository.ErrConfigVersionNotFound):
 		SendErrorResponse(w, http.StatusNotFound, "Not found", err.Error())
@@ -166,6 +167,24 @@ func (h *ProvisioningHandler) SubmitCheck(w http.ResponseWriter, r *http.Request
 		return
 	}
 	out, err := h.svc.SubmitCheck(server, chi.URLParam(r, "rqid"), req)
+	if err != nil {
+		requestError(w, err)
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[*domain.ProvisioningRequestResponse]{Success: true, Data: out})
+}
+
+// Discard: quitar una petición que se quedó sin ensayo. Quien la pidió (un
+// miembro, o su agente con `servers:manage`) o un admin.
+func (h *ProvisioningHandler) Discard(w http.ResponseWriter, r *http.Request) {
+	server, ok := scopeServer(w, r, h.servers, domain.OrgRoleMember)
+	if !ok {
+		return
+	}
+	user, _ := currentUser(r)
+	role, _ := user.RoleInOrg(server.OrgID)
+	admin := user.Superadmin || role == domain.OrgRoleAdmin
+	out, err := h.svc.Discard(server, user, admin, chi.URLParam(r, "rqid"))
 	if err != nil {
 		requestError(w, err)
 		return

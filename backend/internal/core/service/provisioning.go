@@ -188,6 +188,26 @@ func (s *ProvisioningService) SubmitCheck(server *domain.ServerResponse, id stri
 	return s.repo.Request(server.ID, id)
 }
 
+// Discard quita de en medio una petición que se quedó sin ensayo. Sólo la que
+// sigue esperándolo (`checking`): una ensayada se rechaza, y lo demás ya
+// terminó. La descarta quien la pidió o un admin; un ensayo que llegue
+// después no entra (`SubmitCheck` sólo escribe sobre una en `checking`).
+func (s *ProvisioningService) Discard(server *domain.ServerResponse, user *domain.ClaimsJWT, admin bool, id string) (*domain.ProvisioningRequestResponse, error) {
+	p, err := s.repo.Request(server.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	// Que siga en `checking` lo mira el repositorio en la misma sentencia que
+	// la cambia: si no, 409.
+	if !admin && p.RequestedBy != user.UserID {
+		return nil, domain.ErrNotYourRequest
+	}
+	if err := s.repo.Discard(server.ID, id, time.Now().UTC(), user.UserID); err != nil {
+		return nil, err
+	}
+	return s.repo.Request(server.ID, id)
+}
+
 // Decide es el paso 3: aprobar o rechazar. **Sólo una persona en persona**:
 // con un token, ni el de un admin, se puede decidir. Es la misma regla que
 // firmar la revisión de un doc (`ViaToken`).

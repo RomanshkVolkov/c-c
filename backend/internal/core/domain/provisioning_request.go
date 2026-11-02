@@ -64,6 +64,10 @@ const (
 	ProvisioningRequestVerifyFailed = "verify_failed"
 	// Una ejecución autorizada como lectura cambió algo según su recap.
 	ProvisioningRequestViolated = "violated"
+	// Se quedó sin ensayo (la app se cerró, se cayó la red, el backend lo
+	// rechazó) y quien la pidió, o un admin, la quitó de en medio. Sin esto
+	// decía «ensayando» hasta caducar, 24 h (gstd, 2-nov-2026).
+	ProvisioningRequestDiscarded = "discarded"
 	// Se pasó su plazo sin correr, o sin decidir. No se guarda: se calcula al
 	// leer (`Expired`), y la condición de gastar la autorización ya mira la
 	// hora en la misma sentencia.
@@ -105,6 +109,7 @@ var (
 	ErrRequestNotFound     = errors.New("provisioning-request-not-found")
 	ErrRequestState        = errors.New("provisioning-request-state")
 	ErrRequestExpired      = errors.New("provisioning-request-expired")
+	ErrNotYourRequest      = errors.New("provisioning-request-not-yours")
 	ErrInPersonOnly        = errors.New("in-person-only")
 	ErrConfirmServerName   = errors.New("confirm-server-name")
 	ErrAcknowledgeFlags    = errors.New("acknowledge-flags")
