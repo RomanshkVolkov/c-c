@@ -22,7 +22,7 @@
     chart_version: "{{ cilium_version }}"
     release_namespace: kube-system
     wait: true
-    wait_timeout: 10m
+    timeout: 10m
     values:
       kubeProxyReplacement: false
       routingMode: tunnel
@@ -55,7 +55,7 @@
     release_namespace: envoy-gateway-system
     create_namespace: true
     wait: true
-    wait_timeout: 10m
+    timeout: 10m
 
 - name: cert-manager {{ cert_manager_version }}
   kubernetes.core.helm:

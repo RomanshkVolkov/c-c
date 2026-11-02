@@ -1,12 +1,17 @@
 ---
 # ansible-galaxy collection install -r requirements.yml -p ./collections
-# Versiones fijadas a propósito.
+# Versiones fijadas a propósito: las últimas estables (2-nov-2026), que piden
+# ansible-core >= 2.18 (la del venv es 2.20). Las anteriores (posix 1.6,
+# general 10, docker 3, kubernetes.core 5) usaban APIs que ansible-core 2.23 y
+# 2.24 quitan, y llenaban la salida de avisos de deprecación. Al subir una de
+# versión mayor, mirar en su changelog los breaking_changes de los módulos de
+# aquí (cada línea dice cuáles).
 collections:
   - name: community.docker      # docker_swarm, docker_network, docker_secret
-    version: "3.13.0"
-  - name: community.general     # cloudflare_dns, ufw
-    version: "10.7.0"
-  - name: ansible.posix         # sysctl
-    version: "1.6.2"
-  - name: kubernetes.core       # helm (sólo necesita el binario en el servidor)
-    version: "5.0.0"
+    version: "5.4.0"
+  - name: community.general     # cloudflare_dns, ufw, modprobe
+    version: "13.5.0"
+  - name: ansible.posix         # sysctl, authorized_key
+    version: "2.2.2"
+  - name: kubernetes.core       # helm, helm_repository (sólo necesita el binario en el servidor)
+    version: "6.6.0"

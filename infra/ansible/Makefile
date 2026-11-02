@@ -41,7 +41,7 @@ setup: ## Crea el .venv e instala Ansible y las collections
 	python3 -m venv $(VENV)
 	$(VENV)/bin/pip install --quiet --upgrade pip
 	$(VENV)/bin/pip install --quiet "ansible-core>=2.20,<2.21" passlib
-	$(GALAXY) collection install -r requirements.yml -p ./collections
+	$(GALAXY) collection install -r requirements.yml -p ./collections --force
 
 # Con un inventario de mentira: el de verdad lo genera cac al correr, y
 # ansible.cfg sólo deja el plugin yaml (que lee .json).
