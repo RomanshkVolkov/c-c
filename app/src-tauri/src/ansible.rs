@@ -1602,6 +1602,85 @@ playbooks:
         assert!(serde_yaml::to_string(&packages["when"]).unwrap().contains("k8s_rehearsal_blind_install"), "los paquetes se ensayan sin su repo");
     }
 
+    /// Las variables `ansible_<algo>` de un texto de Ansible.
+    fn ansible_vars_in(text: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let b = text.as_bytes();
+        let mut i = 0;
+        while let Some(pos) = text[i..].find("ansible_") {
+            let start = i + pos;
+            let boundary = start == 0 || !(b[start - 1].is_ascii_alphanumeric() || b[start - 1] == b'_' || b[start - 1] == b'.');
+            let end = start + text[start..].find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(text.len() - start);
+            if boundary {
+                out.push(text[start..end].to_string());
+            }
+            i = end.max(start + 1);
+        }
+        out
+    }
+
+    // ansible-core 2.24 deja de inyectar los datos del servidor como
+    // `ansible_<dato>`: hay que leerlos de `ansible_facts['…']`, y
+    // `inject_facts_as_vars = False` hace que un uso viejo falle en vez de
+    // avisar (los avisos de k8s, 2-nov-2026). Rotura que atrapa: un
+    // `ansible_swaptotal_mb` o parecido que vuelve a un rol, o quitar el
+    // ajuste del ansible.cfg.
+    #[test]
+    fn server_facts_are_read_from_ansible_facts() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let cfg = std::fs::read_to_string(root.join("ansible.cfg")).unwrap();
+        assert!(cfg.lines().any(|l| l.split_whitespace().collect::<String>() == "inject_facts_as_vars=False"), "ansible.cfg vuelve a inyectar los datos del servidor");
+        // Variables de conexión y mágicas: no son datos del servidor.
+        let allowed = [
+            "ansible_host", "ansible_port", "ansible_user", "ansible_check_mode", "ansible_playbook_python", "ansible_managed",
+            "ansible_ssh_extra_args", "ansible_facts", "ansible_python_interpreter", "ansible_become_password", "ansible_connection",
+        ];
+        fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().is_some_and(|x| x == "yml" || x == "j2") {
+                    out.push(p);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(&root.join("roles"), &mut files);
+        walk(&root.join("playbooks"), &mut files);
+        for f in &files {
+            let text = std::fs::read_to_string(f).unwrap();
+            for line in text.lines().filter(|l| !l.trim_start().starts_with('#')) {
+                for v in ansible_vars_in(line) {
+                    assert!(allowed.contains(&v.as_str()), "{}: `{v}` es un dato del servidor: léelo de ansible_facts", f.display());
+                }
+            }
+        }
+    }
+
+    // Un handler corre al FINAL del play: kubeadm init hablaba con el
+    // containerd de antes, con el CRI apagado, y al repetir ni siquiera se
+    // reiniciaba (la configuración ya estaba escrita). Rotura que atrapa:
+    // quitar el flush antes de kubeadm, o la comprobación de que containerd
+    // contesta por CRI.
+    #[test]
+    fn containerd_answers_by_cri_before_kubeadm() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_node/tasks/main.yml")).unwrap());
+        let pos = |pred: &dyn Fn(&serde_yaml::Value) -> bool| tasks.iter().position(|t| pred(t));
+        let configure = pos(&|t| t.get("notify").and_then(|n| n.as_str()) == Some("Reiniciar containerd")).expect("configurar containerd");
+        let flush = pos(&|t| t.get("ansible.builtin.meta").and_then(|m| m.as_str()) == Some("flush_handlers")).expect("el reinicio no se adelanta");
+        assert!(flush > configure, "el flush va después de configurar containerd");
+        let cri = pos(&|t| {
+            t.get("ansible.builtin.command").and_then(|c| c.as_str()).is_some_and(|c| c.starts_with("crictl")) && t.get("until").is_some()
+        })
+        .expect("nada espera a que containerd conteste por CRI");
+        assert!(cri > flush);
+        let restart = pos(&|t| t.get("ansible.builtin.systemd_service").and_then(|s| s.get("state")).and_then(|s| s.as_str()) == Some("restarted"))
+            .expect("sin reinicio cuando containerd no contesta por CRI");
+        assert!(restart > flush && restart < cri);
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

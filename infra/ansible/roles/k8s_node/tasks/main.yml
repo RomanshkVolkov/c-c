@@ -4,7 +4,7 @@
 # falta para sumar un worker a pixel-vps (después, `kubeadm join`).
 - name: Sin swap (kubelet no arranca con swap)
   ansible.builtin.command: swapoff -a
-  when: ansible_swaptotal_mb | int > 0
+  when: ansible_facts['swaptotal_mb'] | int > 0
   changed_when: true
 
 - name: Sin swap al arrancar
@@ -51,7 +51,7 @@
 
 - name: Repo de Docker
   ansible.builtin.apt_repository:
-    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
     filename: docker
     state: present
 
@@ -115,6 +115,42 @@
     name: containerd
     state: started
     enabled: true
+
+# El reinicio de arriba es un handler, y un handler corre al FINAL del play:
+# kubeadm init hablaba con el containerd de antes, con el CRI apagado
+# («unknown service runtime.v1.RuntimeService», gstd, 2-nov-2026). Se corre
+# ya. Y como al repetir la configuración ya está escrita y no se pide
+# reinicio, lo que manda es si containerd contesta por CRI: si no, se reinicia
+# aquí y se espera a que conteste.
+- name: Reiniciar containerd si su configuración cambió
+  ansible.builtin.meta: flush_handlers
+
+- name: ¿containerd contesta por CRI?
+  ansible.builtin.command: crictl --runtime-endpoint unix:///run/containerd/containerd.sock version
+  register: cri_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: not (k8s_rehearsal_blind_install | default(false))
+
+- name: Reiniciar containerd para que lea su configuración
+  ansible.builtin.systemd_service:
+    name: containerd
+    state: restarted
+  when:
+    - not (k8s_rehearsal_blind_install | default(false))
+    - cri_check.rc | default(0) != 0
+
+- name: containerd contesta por CRI
+  ansible.builtin.command: crictl --runtime-endpoint unix:///run/containerd/containerd.sock version
+  register: cri_ready
+  until: cri_ready.rc == 0
+  retries: 12
+  delay: 5
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - cri_check.rc | default(0) != 0
 
 - name: kubelet al arrancar
   when: not (k8s_rehearsal_blind_install | default(false))
