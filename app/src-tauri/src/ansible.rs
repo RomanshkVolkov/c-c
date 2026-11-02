@@ -1681,6 +1681,25 @@ playbooks:
         assert!(restart > flush && restart < cri);
     }
 
+    // Con el ufw de la etapa 1, un pod no llegaba a la API (10.96.0.1 → la IP
+    // del nodo, 6443): MetalLB se reiniciaba con `i/o timeout` y helm se
+    // rendía (gstd, 2-nov-2026). Rotura que atrapa: un nodo de k8s que no
+    // abre el firewall a la red de pods o a la de servicios.
+    #[test]
+    fn a_k8s_node_lets_its_own_networks_in() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let tasks = ansible_tasks(&std::fs::read_to_string(root.join("roles/k8s_node/tasks/main.yml")).unwrap());
+        let ufw = tasks
+            .iter()
+            .find(|t| t.get("community.general.ufw").and_then(|u| u.get("from_ip")).is_some())
+            .expect("el nodo no abre el firewall a las redes del clúster");
+        assert_eq!(ufw["community.general.ufw"]["rule"].as_str(), Some("allow"));
+        let items = serde_yaml::to_string(&ufw["loop"]).unwrap();
+        for net in ["pod_cidr", "service_cidr"] {
+            assert!(items.contains(net), "falta {net}");
+        }
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

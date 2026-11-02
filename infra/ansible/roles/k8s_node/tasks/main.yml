@@ -13,6 +13,19 @@
     regexp: '^([^#].*\sswap\s.*)$'
     replace: '# \1'
 
+# El firewall de la etapa 1 sólo deja entrar SSH y lo web. Lo que viene de la
+# red de pods o de servicios es del propio clúster: un pod que habla con la
+# API (10.96.0.1 → la IP del nodo, 6443) entra por INPUT y ufw lo descartaba.
+# MetalLB se reiniciaba con «dial tcp 10.96.0.1:443: i/o timeout» y helm se
+# rendía (gstd, 2-nov-2026).
+- name: El firewall deja pasar la red de pods y la de servicios
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+  loop:
+    - "{{ pod_cidr }}"
+    - "{{ service_cidr }}"
+
 - name: Módulos del kernel
   ansible.builtin.copy:
     dest: /etc/modules-load.d/k8s.conf
