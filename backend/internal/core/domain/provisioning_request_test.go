@@ -191,4 +191,25 @@ func TestABigDiffIsCutCleanly(t *testing.T) {
 	if c.Hosts == nil {
 		t.Error("hosts nil viaja como null")
 	}
+	if c.Failures == nil {
+		t.Error("failures nil viaja como null")
+	}
+}
+
+// Del log de un ensayo se guarda el final, que es donde está el fallo.
+// Roturas que atrapa: guardarlo entero (un playbook largo), quedarse con el
+// principio en vez del final, o partir un carácter (Postgres rechaza la fila).
+func TestALongRehearsalLogKeepsItsEnd(t *testing.T) {
+	log := strings.Repeat("ñ", provisioningLogTailBytes) + "\nfatal: [gstd]: FAILED!"
+	c := BoundCheck(ProvisioningCheck{LogTail: log})
+	if len(c.LogTail) > provisioningLogTailBytes+8 || !utf8.ValidString(c.LogTail) {
+		t.Fatalf("cola de %d bytes, válida=%v", len(c.LogTail), utf8.ValidString(c.LogTail))
+	}
+	if !strings.HasSuffix(c.LogTail, "fatal: [gstd]: FAILED!") {
+		t.Error("se perdió el final del log")
+	}
+	short := BoundCheck(ProvisioningCheck{LogTail: "ok"})
+	if short.LogTail != "ok" {
+		t.Errorf("un log corto se tocó: %q", short.LogTail)
+	}
 }

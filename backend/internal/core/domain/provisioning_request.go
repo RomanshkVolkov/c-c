@@ -79,6 +79,8 @@ const (
 	ProvisioningDecisionTTL = 24 * time.Hour
 
 	provisioningDiffBytes = 32 << 10
+	// El final de la salida de un ensayo: unas 80 líneas.
+	provisioningLogTailBytes = 16 << 10
 )
 
 // Banderas: lo que la evaluación del ensayo encuentra.
@@ -127,6 +129,21 @@ type ProvisioningCheck struct {
 	Paths    []string `json:"paths"    validate:"max=500,dive,max=500"`
 	Diff     string   `json:"diff"`
 	ExitCode int      `json:"exitCode"`
+	// Qué falló y por qué, y el final de la salida (ya tachada en la máquina
+	// que corrió): lo que hace falta para diagnosticar el ensayo sin su
+	// pantalla, p. ej. un agente por MCP. Hasta el 2-nov-2026 de un ensayo
+	// fallido sólo quedaba «falló».
+	Failures []ProvisioningFailure `json:"failures" validate:"max=50,dive"`
+	LogTail  string                `json:"logTail"`
+}
+
+// ProvisioningFailure: una tarea que falló en un host, con el mensaje de
+// Ansible (la línea `[ERROR]`, que es la única que da el motivo cuando la
+// tarea oculta su salida con no_log).
+type ProvisioningFailure struct {
+	Host    string `json:"host"    validate:"max=200"`
+	Task    string `json:"task"    validate:"max=300"`
+	Message string `json:"message" validate:"max=1000"`
 }
 
 // RiskFlag es una cosa que la evaluación encontró. `red` pide que quien
@@ -326,8 +343,20 @@ func BoundCheck(c ProvisioningCheck) ProvisioningCheck {
 		}
 		c.Diff = cut + "\n…"
 	}
+	if len(c.LogTail) > provisioningLogTailBytes {
+		// Del log se queda el final, que es donde está el fallo; se avanza
+		// hasta que el corte sea UTF-8 válido.
+		cut := c.LogTail[len(c.LogTail)-provisioningLogTailBytes:]
+		for len(cut) > 0 && !utf8.ValidString(cut) {
+			cut = cut[1:]
+		}
+		c.LogTail = "…\n" + cut
+	}
 	if c.Hosts == nil {
 		c.Hosts = []string{}
+	}
+	if c.Failures == nil {
+		c.Failures = []ProvisioningFailure{}
 	}
 	return c
 }
