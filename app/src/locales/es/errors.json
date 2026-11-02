@@ -238,5 +238,12 @@
   "task-claimed-by-other": "La tarea ya está en curso con otra persona: comenta en ella en vez de tomarla.",
   "blocker-not-found": "Esa tarea no existe en esta organización, así que no se puede esperar a ella.",
   "blocker-is-self": "Una tarea no puede esperarse a sí misma.",
-  "backup-agent-too-old": "Para entrar con un usuario fijo, actualiza el agente del servidor (v13 o más)."
+  "backup-agent-too-old": "Para entrar con un usuario fijo, actualiza el agente del servidor (v13 o más).",
+  "bad-since": "Esa fecha no vale: usa un instante como 2026-11-02T08:00:00Z.",
+  "incident-origin-not-here": "Esa tarea no es de esta organización.",
+  "incident-supersedes-not-here": "El incidente que quieres sustituir no es de esta organización.",
+  "incident-already-superseded": "Ese incidente ya se sustituyó; nombra el que lo sustituyó.",
+  "incident-nothing-to-add": "No hay nada que añadir: pasa un commit, una prueba, un servidor o un área.",
+  "no-such-server": "Esta organización no tiene un servidor con ese nombre.",
+  "bad-commit": "Eso no es un commit: pasa un sha o owner/repo@sha."
 }

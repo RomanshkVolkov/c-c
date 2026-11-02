@@ -531,5 +531,14 @@
     "today": "today",
     "yesterday": "yesterday",
     "tomorrow": "tomorrow"
+  },
+  "incidents": {
+    "title": "What already bit here",
+    "open": "Open",
+    "fixed": "Fixed",
+    "none": "Nothing has bitten here yet. What bites is recorded from the MCP with record_incident.",
+    "recordedBy": "Recorded by {{who}} on {{when}}",
+    "fromTask": "in {{ref}}",
+    "serverTitle": "What has bitten here"
   }
 }

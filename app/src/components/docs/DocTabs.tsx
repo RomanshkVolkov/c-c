@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import DecisionForm from "@/components/docs/DecisionForm";
 import DecisionList from "@/components/docs/DecisionList";
+import IncidentList from "@/components/incidents/IncidentList";
 import DocHeader from "@/components/docs/DocHeader";
 import DocHistory from "@/components/docs/DocHistory";
 import ShareDoc from "@/components/docs/ShareDoc";
@@ -390,6 +391,11 @@ export default function DocTabs({
                           <Pencil className="mr-1 size-3" /> {t("work:docs.writeIt")}
                         </Button>
                       </div>
+                    )}
+                    {/* Lo que mordió en este nodo, bajo su overview: es lo que
+                        enseña «Trampas que ya han mordido» (domain.Incident). */}
+                    {activeTab === "overview" && target && (
+                      <IncidentList node={target.id} heading className="mt-8" />
                     )}
                   </div>
                   {WITH_TOC.includes(activeTab) && body && <DocToc markdown={body} />}

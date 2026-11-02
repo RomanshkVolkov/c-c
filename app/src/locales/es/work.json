@@ -531,5 +531,14 @@
     "today": "hoy",
     "yesterday": "ayer",
     "tomorrow": "mañana"
+  },
+  "incidents": {
+    "title": "Lo que ya mordió aquí",
+    "open": "Abierto",
+    "fixed": "Arreglado",
+    "none": "Aquí no ha mordido nada todavía. Lo que muerde se apunta desde el MCP con record_incident.",
+    "recordedBy": "Lo apuntó {{who}} el {{when}}",
+    "fromTask": "en {{ref}}",
+    "serverTitle": "Lo que ha mordido aquí"
   }
 }

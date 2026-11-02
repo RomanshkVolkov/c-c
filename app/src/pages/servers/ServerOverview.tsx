@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bot, Cable, Rocket, ScrollText, RefreshCw } from "lucide-react";
+import { Bot, Cable, CircleAlert, Rocket, ScrollText, RefreshCw } from "lucide-react";
+import IncidentList from "@/components/incidents/IncidentList";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { desde } from "@/lib/desde";
@@ -59,6 +60,18 @@ export default function ServerOverview() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      {/* Lo que ya mordió en este servidor, arriba y a lo ancho: es lo primero
+          que hay que leer antes de tocarlo (command-and-control-289). */}
+      <Card className="md:col-span-2">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm font-medium">
+            <CircleAlert className="size-4" /> {t("work:incidents.serverTitle")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <IncidentList serverId={server.id} emptyHint />
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm font-medium">

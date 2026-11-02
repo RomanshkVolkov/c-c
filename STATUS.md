@@ -13,6 +13,20 @@ tablero: **App** `ca0bfd49-0909-43eb-8135-bc8ecd0f282c` y **Backend**
 
 ## 🟢 Al día
 
+**2-nov, en `main`: lo que mordió se registra y se encuentra al tocarlo**
+(command-and-control-289). Un **incidente** es un registro, como una
+decisión: cuelga de un nodo y se ata a **servidores** y **áreas**, con los
+commits que lo arreglan, la prueba que lo guarda, su tarea y su estado
+(abierto/arreglado). Título y cuerpo no se editan (se sustituye); el estado
+cambia y lo demás se añade. Lo encuentran la búsqueda (por el nombre del
+servidor aunque el cuerpo no lo diga), el mapa (`incidents` de cada nodo),
+`list_incidents`, `get_server_config` / `request_provisioning` y la pantalla
+del servidor. Hooks: la sesión enseña las trampas abiertas, y `cac-prompt`
+inyecta los incidentes de lo que nombra el prompt. Además, el lector de
+`search_misses` (sólo admin) para la revisión del 4-nov. Skill cac-work
+**v21**: `remember as:"trap"` deja de anunciarse. Falta: migrar los 16 de la
+283 y las Trampas (con el sí de jose) y la release.
+
 **31-oct (noche), en `main`: un agente pide aplicar y cac sigue el protocolo**
 (command-and-control-283, decisión 4d28f4ab). Cada playbook declara su riesgo
 (`read`/`change`/`destructive`) con su `verify` y su `rollback`. Un agente pide

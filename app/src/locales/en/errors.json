@@ -238,5 +238,12 @@
   "task-claimed-by-other": "The task is already in progress with someone else: comment on it instead of taking it.",
   "blocker-not-found": "That task does not exist in this organization, so this one cannot wait for it.",
   "blocker-is-self": "A task cannot wait for itself.",
-  "backup-agent-too-old": "To log in with a fixed user, update the server's agent (v13 or later)."
+  "backup-agent-too-old": "To log in with a fixed user, update the server's agent (v13 or later).",
+  "bad-since": "That date isn't valid: use an instant like 2026-11-02T08:00:00Z.",
+  "incident-origin-not-here": "That task isn't in this organization.",
+  "incident-supersedes-not-here": "The incident to replace isn't in this organization.",
+  "incident-already-superseded": "That incident was already replaced; name the one that replaced it.",
+  "incident-nothing-to-add": "There's nothing to add: give a commit, a test, a server or an area.",
+  "no-such-server": "This organization has no server by that name.",
+  "bad-commit": "That isn't a commit: give a sha or owner/repo@sha."
 }
