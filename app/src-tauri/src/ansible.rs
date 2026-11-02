@@ -1700,6 +1700,26 @@ playbooks:
         }
     }
 
+    // cert-manager antes de 1.16.4 / 1.17.1 no puede borrar el TXT del reto
+    // DNS en Cloudflare (`DELETE /zones//dns_records/…`, cert-manager#7540) y
+    // el certificado no se emite nunca: gstd, 2-nov-2026, con la v1.14.0 de
+    // pixel-vps. Rotura que atrapa: volver a una versión sin el arreglo.
+    #[test]
+    fn cert_manager_can_clean_its_cloudflare_challenge() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible");
+        let m = parse_manifest(&std::fs::read_to_string(root.join(MANIFEST_FILE)).unwrap()).unwrap();
+        let v = m.playbooks.iter().find(|p| p.id == "k8s").unwrap().vars.iter().find(|v| v.name == "cert_manager_version").unwrap();
+        let tag = v.default.as_ref().and_then(|d| d.as_str()).unwrap().trim_start_matches('v').to_string();
+        let n: Vec<u32> = tag.split('.').map(|x| x.parse().unwrap()).collect();
+        let fixed = match (n[0], n[1]) {
+            (1, m) if m < 16 => false,
+            (1, 16) => n[2] >= 4,
+            (1, 17) => n[2] >= 1,
+            _ => true,
+        };
+        assert!(fixed, "cert-manager {tag} no puede limpiar el reto DNS en Cloudflare (cert-manager#7540)");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.

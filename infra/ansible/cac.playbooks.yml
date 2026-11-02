@@ -155,7 +155,11 @@ playbooks:
       - { name: cilium_version, default: "1.18.6" }
       - { name: metallb_version, default: "0.14.8" }
       - { name: envoy_gateway_version, default: "v1.6.2" }
-      - { name: cert_manager_version, default: "v1.14.0" }
+      # No la de pixel-vps (v1.14.0): esa no puede borrar el TXT del reto DNS
+      # desde que Cloudflare dejó de devolver la zona en cada registro
+      # (cert-manager#7540, arreglado en 1.16.4/1.17.1), y el certificado no
+      # se emite nunca (gstd, 2-nov-2026). Soporta k8s 1.33–1.36.
+      - { name: cert_manager_version, default: "v1.21.3" }
       - { name: cnpg_version, description: Chart de CNPG (1.28.0)., default: "0.27.0" }
       - { name: helm_version, default: "v3.19.0" }
       # pixel-vps usa el pool por defecto de Cilium (10.0.0.0/8), que se solapa
