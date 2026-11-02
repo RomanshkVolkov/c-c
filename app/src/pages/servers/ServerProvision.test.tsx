@@ -244,3 +244,75 @@ describe("aplicar un playbook", () => {
     expect(screen.getByRole("button", { name: /^(parar|stop)$/i })).toBeTruthy();
   });
 });
+
+describe("correr una autorizada", () => {
+  const v2 = {
+    version: 2, venv: ".venv", inventory: "", discovered: false,
+    playbooks: [
+      { id: "k8s", file: "playbooks/k8s-site.yml", name: "Kubernetes", description: "", hosts: "k8s", become: true, risk: "change", verify: "k8s-verify", rollback: "manual", vars: [] },
+      { id: "k8s-verify", file: "playbooks/k8s-verify.yml", name: "Verificar k8s", description: "", hosts: "k8s", become: true, risk: "read", vars: [] },
+    ],
+  };
+  const effective = {
+    serverId: "srv-1", configSeq: 5, playbooks: ["k8s"], vars: {}, opRefs: {}, requires: [], perServer: [], missing: [],
+    connection: { name: "gstd", host: "1.2.3.4", sshPort: 7337, sshUser: "ops" },
+  };
+  const req = (over: Record<string, unknown> = {}) => ({
+    id: "rq-1", serverId: "srv-1", playbook: "k8s", project: "ansible", risk: "change", verify: "k8s-verify", rollback: "manual",
+    configSeq: 5, reason: "", requestedBy: "u-1", requestedByName: "Jose", source: "app", status: "approved", flags: [],
+    autoApproved: false, createdAt: new Date().toISOString(), ...over,
+  });
+
+  function serveV2(request: ReturnType<typeof req>) {
+    invoke.mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "ansible_manifest": return v2;
+        case "ansible_tools": return { platformSupported: true, reason: "", ansiblePlaybook: "/p/.venv/bin/ansible-playbook", op: "/usr/bin/op" };
+        case "ansible_plan_gaps": return { vars: [], secrets: [] };
+        case "ansible_run_with_config": return { runId: `rust-${channels.length}`, varNames: [], target: "gstd" };
+      }
+      throw new Error(`comando inesperado ${cmd}`);
+    });
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes("/config/effective")) return { success: true, data: effective };
+      if (url.endsWith("/provisioning-requests")) return { success: true, data: [request] };
+      return { success: true, data: [] };
+    });
+    let n = 0;
+    api.post.mockImplementation(async () => ({ success: true, data: { id: `run-cac-${++n}` } }));
+  }
+  const started = () => api.post.mock.calls.filter((c) => String(c[0]).endsWith("/provisioning-runs")).map((c) => c[1].playbook);
+
+  // Rotura que atrapa: arrancar la verificación antes de que cac haya cerrado
+  // la ejecución. Cerrarla es lo que pasa la petición a «verificando»; si la
+  // verificación llega antes, el backend contesta 409 y la petición se queda
+  // «verificando» para siempre (swarm y k8s en gstd, 2-nov-2026).
+  it("la verificación arranca cuando cac ya cerró la ejecución del playbook", async () => {
+    serveV2(req());
+    let close: (v: unknown) => void = () => {};
+    api.patch.mockImplementationOnce(() => new Promise((r) => (close = r)));
+    render(<ServerProvision />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(correr ahora|run now)$/i }));
+    await waitFor(() => expect(channels.length).toBe(1));
+    expect(started()).toEqual(["k8s"]);
+
+    act(() => channels[0].onmessage!({ event: "exit", data: { code: 0, cancelled: false } }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+    // Con el cierre en el aire, la verificación todavía no sale.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(started()).toEqual(["k8s"]);
+
+    await act(async () => close({ success: true }));
+    await waitFor(() => expect(started()).toEqual(["k8s", "k8s-verify"]));
+  });
+
+  // Rotura que atrapa: volver a aplicar el playbook (o no hacer nada) al
+  // rescatar una que se quedó «verificando» sin verificación.
+  it("una que se quedó verificando corre sólo su verificación", async () => {
+    serveV2(req({ status: "verifying", runId: "run-viejo" }));
+    render(<ServerProvision />);
+    fireEvent.click(await screen.findByRole("button", { name: /^(correr la verificación|run the verification)$/i }));
+    await waitFor(() => expect(started()).toEqual(["k8s-verify"]));
+    expect(invoke.mock.calls.filter((c) => c[0] === "ansible_run_with_config").map((c) => c[1].playbookId)).toEqual(["k8s-verify"]);
+  });
+});

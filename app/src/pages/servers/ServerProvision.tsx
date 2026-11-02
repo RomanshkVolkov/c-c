@@ -239,19 +239,28 @@ export default function ServerProvision() {
       const all = useProvisionStore.getState().lines;
       const status = finalStatus(ev.data.code, ev.data.cancelled);
       finished();
-      if (backendRunId) {
-        void api
-          .patch(
-            `/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`,
-            { status, exitCode: ev.data.code, summary: playRecap(all), logTail: logTail(all) },
-            true,
-          )
-          .catch(() => {})
-          .finally(() => void loadHistory(server.id));
-        if (status === "succeeded") toast.success(t("common:provision.done"));
-        else if (status === "failed") toast.error(t("common:provision.failed", { code: ev.data.code ?? "?" }));
+      if (!backendRunId) {
+        settle({ status, code: ev.data.code, lines: all });
+        return;
       }
-      settle({ status, code: ev.data.code, lines: all });
+      if (status === "succeeded") toast.success(t("common:provision.done"));
+      else if (status === "failed") toast.error(t("common:provision.failed", { code: ev.data.code ?? "?" }));
+      // `ended` espera a que cac haya cerrado la ejecución: cerrarla es lo que
+      // pasa la petición a «verificando», y la verificación que arranca justo
+      // después la necesita ahí. Contestando antes, las dos peticiones se
+      // cruzaban, la verificación llegaba primero (409) y la petición se
+      // quedaba «verificando» sin verificación (jose, 2-nov-2026, swarm y k8s).
+      void api
+        .patch(
+          `/api/v1/servers/${server.id}/provisioning-runs/${backendRunId}`,
+          { status, exitCode: ev.data.code, summary: playRecap(all), logTail: logTail(all) },
+          true,
+        )
+        .catch(() => {})
+        .finally(() => {
+          void loadHistory(server.id);
+          settle({ status, code: ev.data.code, lines: all });
+        });
     };
 
     const runId = await launch(channel).catch(async (e) => {
@@ -404,8 +413,14 @@ export default function ServerProvision() {
       return;
     }
     const ok = await confirm({
-      title: t("common:provision.confirmTitle", { playbook: pb.name, server: server.name }),
-      description: t("common:provision.confirmGrant", { seq: req.configSeq, verify: req.verify || "—" }),
+      title: t("common:provision.confirmTitle", {
+        playbook: req.status === "verifying" ? (manifest.playbooks.find((p) => p.id === req.verify)?.name ?? req.verify) : pb.name,
+        server: server.name,
+      }),
+      description:
+        req.status === "verifying"
+          ? t("common:provision.confirmVerifyOnly", { playbook: pb.name })
+          : t("common:provision.confirmGrant", { seq: req.configSeq, verify: req.verify || "—" }),
       confirmText: t("common:provision.run"),
       destructive: req.risk === "destructive",
     });
@@ -440,6 +455,12 @@ export default function ServerProvision() {
         );
         return (await ended).status;
       };
+      // Una que se quedó «verificando» sin verificación sólo corre la
+      // verificación: el playbook ya se aplicó.
+      if (req.status === "verifying") {
+        if (req.verify) await one(req.verify);
+        return;
+      }
       const status = await one(req.playbook);
       if (status === "succeeded" && req.risk !== "read" && req.verify) await one(req.verify);
     } catch (e) {

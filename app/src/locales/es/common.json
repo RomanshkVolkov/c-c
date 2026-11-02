@@ -799,6 +799,7 @@
     "noRisk": "«{{id}}» no declara su riesgo en cac.playbooks.yml",
     "riskChanged": "«{{playbook}}» ya no tiene en el manifiesto el riesgo con el que se aprobó: hay que pedirlo otra vez.",
     "confirmGrant": "Corre con la autorización aprobada y la versión {{seq}} de la config, y después su verificación ({{verify}}). Los secretos se leen de 1Password aquí; en cac queda lo aplicado, nunca un valor.",
+    "confirmVerifyOnly": "«{{playbook}}» ya se aplicó; esto corre sólo su verificación. Es de lectura: no cambia nada en el servidor.",
     "project": "Proyecto de Ansible",
     "pick": "Elegir carpeta",
     "noAnsible": "No se encuentra ansible-playbook: crea el venv del proyecto (make create-venv).",
@@ -901,6 +902,8 @@
     "copy": "Copiar el comando",
     "copied": "Copiado",
     "runNow": "Correr ahora",
+    "verifyPending": "Aplicada; falta correr su verificación ({{verify}}).",
+    "runVerify": "Correr la verificación",
     "rollbackHint": "Rollback propuesto: {{rollback}}. Es otra petición; no corre solo.",
     "decisionNote": "{{name}}: {{note}}"
   },

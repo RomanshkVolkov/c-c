@@ -253,3 +253,23 @@ describe("lo que se ve", () => {
     expect(container.textContent).toBe("");
   });
 });
+
+describe("una aplicada sin verificación", () => {
+  // Roturas que atrapa: no dar manera de correr la verificación de una que se
+  // quedó «verificando» (así quedaron swarm y k8s en gstd, 2-nov-2026), o
+  // ofrecerla también cuando la verificación ya arrancó.
+  it("ofrece correr sólo la verificación, y no si ya arrancó", async () => {
+    useAuthStore.setState({ session: null } as never);
+    const onRun = vi.fn();
+    serve(request({ status: "verifying", runId: "run-1" }));
+    render(<ProvisioningRequests server={server} canDecide onRun={onRun} />);
+    fireEvent.click(await screen.findByRole("button", { name: en.runVerify }));
+    expect(onRun).toHaveBeenCalledWith(expect.objectContaining({ id: "rq-1", status: "verifying" }));
+    cleanup();
+
+    serve(request({ status: "verifying", runId: "run-1", verifyRunId: "run-2" }));
+    render(<ProvisioningRequests server={server} canDecide onRun={onRun} />);
+    await screen.findByText(/swarm/);
+    expect(screen.queryByRole("button", { name: en.runVerify })).toBeNull();
+  });
+});

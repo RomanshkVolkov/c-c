@@ -353,6 +353,16 @@ function RequestRow({
           </div>
         </div>
       )}
+      {/* Aplicada, pero su verificación no llegó a arrancar (la app se cerró, o
+          la carrera de antes del 2-nov-2026): se corre aquí, sin otra aprobación. */}
+      {req.status === "verifying" && req.verify && !req.verifyRunId && onRun && (
+        <div className="flex items-center justify-between gap-2 border-t pt-2 text-xs">
+          <span className="text-muted-foreground">{t("common:provisionRequests.verifyPending", { verify: req.verify })}</span>
+          <Button size="sm" onClick={() => onRun(req)}>
+            {t("common:provisionRequests.runVerify")}
+          </Button>
+        </div>
+      )}
       {(req.status === "verify_failed" || req.status === "failed" || req.status === "violated") && req.rollback && (
         <p className="text-xs text-destructive">{t("common:provisionRequests.rollbackHint", { rollback: req.rollback })}</p>
       )}

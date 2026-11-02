@@ -799,6 +799,7 @@
     "noRisk": "“{{id}}” declares no risk in cac.playbooks.yml",
     "riskChanged": "“{{playbook}}” no longer has the risk it was approved with in the manifest: ask again.",
     "confirmGrant": "Runs with the approved authorization and version {{seq}} of the config, then its verification ({{verify}}). Secrets are read from 1Password here; cac keeps what was applied, never a value.",
+    "confirmVerifyOnly": "“{{playbook}}” was already applied; this runs only its verification. It is read-only: nothing changes on the server.",
     "project": "Ansible project",
     "pick": "Pick folder",
     "noAnsible": "ansible-playbook not found: create the project's venv (make create-venv).",
@@ -901,6 +902,8 @@
     "copy": "Copy the command",
     "copied": "Copied",
     "runNow": "Run now",
+    "verifyPending": "Applied; its verification ({{verify}}) has not run yet.",
+    "runVerify": "Run the verification",
     "rollbackHint": "Proposed rollback: {{rollback}}. It is another request; it never runs by itself.",
     "decisionNote": "{{name}}: {{note}}"
   },

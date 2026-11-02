@@ -146,5 +146,8 @@ export interface ProvisioningRequest {
   decisionNote?: string;
   autoApproved: boolean;
   grantExpiresAt?: string;
+  /** La ejecución del playbook y la de su verificación, cuando arrancaron. */
+  runId?: string;
+  verifyRunId?: string;
   createdAt: string;
 }
