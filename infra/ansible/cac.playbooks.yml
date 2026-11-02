@@ -9,6 +9,8 @@
 # config. Aquí cada playbook sólo declara qué variables pide:
 #   - `default`: el valor con el que nace una plantilla. Nunca en un secreto.
 #   - `required`: sin él, la app no deja correr.
+#   - `type: list`: es una lista aunque no traiga default (la app la pide una
+#     por línea).
 #   - `secret` + `from: NOMBRE`: el valor sale del secreto NOMBRE de la config
 #     del servidor (una referencia de 1Password) y se tacha de la salida. Una
 #     referencia aquí es un error: son de cada servidor, no del repo.
@@ -63,6 +65,7 @@ playbooks:
         required: true
       - name: ops_authorized_keys
         description: Las llaves públicas que entran como el usuario de operación.
+        type: list
         required: true
       - name: public_ip
         description: La IP pública del servidor.

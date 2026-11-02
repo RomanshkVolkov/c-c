@@ -41,7 +41,7 @@ vi.mock("./ServerLayout", () => ({ useServerContext: () => ({ server }) }));
 const { default: ServerProvision, live } = await import("./ServerProvision");
 const { configBody, stableJson } = await import("./ServerConfigPanel");
 const { templateFromManifest, orderedPlaybooks, stagePlaybooks } = await import("@/components/servers/ServerTemplateDialog");
-const { varFields, fromInput } = await import("@/components/servers/ansible-vars");
+const { varFields, fromInput, fromLines, toLines } = await import("@/components/servers/ansible-vars");
 const { useProvisionStore } = await import("@/store/provision.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
 const { pick } = await import("@/test-pick");
@@ -59,6 +59,7 @@ const manifest = {
       vars: [
         { name: "ops_user", description: "", secret: false, required: false, default: "infra_devops" },
         { name: "ssh_port", description: "", secret: false, required: true },
+        { name: "ops_authorized_keys", description: "Las llaves.", secret: false, required: true, type: "list" },
         // Un default en un secreto lo rechaza Rust al leer el manifiesto; aquí,
         // por si acaso, tampoco pasa a la plantilla.
         { name: "ops_password", description: "", secret: true, required: false, from: "OPS_PASSWORD", default: "nunca" },
@@ -197,8 +198,9 @@ describe("el formulario en vez del JSON", () => {
       ["ops_user", "infra_devops"],
       ["traefik_image", "traefik:v3.6"],
     ]);
-    expect(f.perServer.map((x) => x.name)).toEqual(["ssh_port", "public_ip"]);
-    expect(f.perServer[1].description).toBe("La IP pública.");
+    expect(f.perServer.map((x) => x.name)).toEqual(["ssh_port", "ops_authorized_keys", "public_ip"]);
+    expect(f.perServer[2].description).toBe("La IP pública.");
+    expect(f.perServer.map((x) => x.list)).toEqual([false, true, false]);
     expect(f.secrets).toEqual([
       { name: "CLOUDFLARE_DNS_TOKEN", description: "", sudo: false },
       { name: "OPS_PASSWORD", description: "", sudo: true },
@@ -206,18 +208,20 @@ describe("el formulario en vez del JSON", () => {
   });
 
   // Roturas que atrapa: quedarse con la descripción vacía de la primera etapa
-  // cuando otra la trae; no poner primero lo obligatorio.
+  // cuando otra la trae (o sin el tipo lista); no poner primero lo obligatorio.
   it("la descripción sale de la etapa que la tenga, y lo obligatorio va primero", () => {
     const v = (name: string, extra: Record<string, unknown> = {}) => ({ name, description: "", secret: false, required: false, ...extra });
     const m = {
       ...manifest,
       playbooks: [
-        { ...manifest.playbooks[0], id: "a", become: false, vars: [v("note"), v("tok", { secret: true, from: "TOK" })] },
-        { ...manifest.playbooks[0], id: "b", become: false, vars: [v("domain", { required: true }), v("tok", { secret: true, from: "TOK", description: "El token." })] },
+        { ...manifest.playbooks[0], id: "a", become: false, vars: [v("note"), v("tok", { secret: true, from: "TOK" }), v("keys")] },
+        { ...manifest.playbooks[0], id: "b", become: false, vars: [v("domain", { required: true }), v("tok", { secret: true, from: "TOK", description: "El token." }), v("keys", { type: "list" })] },
       ],
     };
     const f = varFields(m, ["a", "b"]);
-    expect(f.perServer.map((x) => x.name)).toEqual(["domain", "note"]);
+    expect(f.perServer.map((x) => x.name)).toEqual(["domain", "note", "keys"]);
+    // Que otra etapa la declare lista también cuenta.
+    expect(f.perServer[2].list).toBe(true);
     expect(f.secrets).toEqual([{ name: "TOK", description: "El token.", sudo: false }]);
   });
 
@@ -231,6 +235,17 @@ describe("el formulario en vez del JSON", () => {
     expect(fromInput("[80,")).toBe("[80,");
     expect(fromInput("true")).toBe(true);
     expect(fromInput("  ")).toBeUndefined();
+  });
+
+  // Roturas que atrapa: una llave partida por sus espacios; una línea vacía
+  // guardada como elemento; un puerto de la lista guardado como texto; una
+  // lista vacía guardada.
+  it("una lista se escribe una por línea", () => {
+    expect(fromLines("ssh-ed25519 AAA jose@x\n\n  ssh-rsa BBB ci  \n")).toEqual(["ssh-ed25519 AAA jose@x", "ssh-rsa BBB ci"]);
+    expect(fromLines("80\n443", [80])).toEqual([80, 443]);
+    expect(fromLines("0755")).toEqual(["0755"]);
+    expect(fromLines(" \n ")).toBeUndefined();
+    expect(toLines(["a b", 2])).toBe("a b\n2");
   });
 
   // Rotura que atrapa: ofrecer una verificación o un desmontaje como etapa.
@@ -273,6 +288,20 @@ describe("el formulario en vez del JSON", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /guardar como versión nueva|save as a new version/i })));
     expect(api.put.mock.calls[0][1]).toMatchObject({ vars: { base_domain: "gstd.guz-studio.dev", public_ip: "13.140.235.112", ssh_port: 2222 } });
   });
+});
+
+// Roturas que atrapa: las llaves en un campo de una línea (no caben dos);
+// perder el salto de línea recién escrito, que no deja escribir la segunda;
+// guardarlas como un texto en vez de una lista.
+it("las llaves de un servidor se escriben una por línea y se guardan como lista", async () => {
+  render(<ServerProvision />);
+  const keys = (await screen.findByLabelText(/^ops_authorized_keys/)) as HTMLTextAreaElement;
+  expect(keys.tagName).toBe("TEXTAREA");
+  fireEvent.change(keys, { target: { value: "ssh-ed25519 AAA jose@x\n" } });
+  expect(keys.value).toBe("ssh-ed25519 AAA jose@x\n");
+  fireEvent.change(keys, { target: { value: "ssh-ed25519 AAA jose@x\nssh-ed25519 BBB ci" } });
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: /guardar como versión nueva|save as a new version/i })));
+  expect(api.put.mock.calls[0][1].vars.ops_authorized_keys).toEqual(["ssh-ed25519 AAA jose@x", "ssh-ed25519 BBB ci"]);
 });
 
 describe("la config del servidor", () => {

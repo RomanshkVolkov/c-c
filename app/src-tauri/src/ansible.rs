@@ -117,7 +117,17 @@ pub struct VarDef {
     pub secret: bool,
     #[serde(default)]
     pub required: bool,
+    /// v2: qué forma tiene el valor, cuando el default no lo dice (una
+    /// variable obligatoria no lo trae). Hoy sólo `list`: la pantalla la pide
+    /// una por línea, y una lista escrita como un texto suelto se vuelve
+    /// lista al correr, porque un `join` de Jinja sobre un texto lo parte
+    /// letra a letra.
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
+
+/// Las formas que puede declarar una variable.
+pub const VAR_KIND_LIST: &str = "list";
 
 pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
     let m: Manifest = serde_yaml::from_str(text).map_err(|e| format!("{MANIFEST_FILE}: {e}"))?;
@@ -158,6 +168,14 @@ pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
             }
             if v2 && (v.secret || v.from.is_some()) && v.default.is_some() {
                 return Err(format!("{MANIFEST_FILE}: `{}` is secret and cannot have a default", v.name));
+            }
+            if let Some(k) = &v.kind {
+                if k != VAR_KIND_LIST {
+                    return Err(format!("{MANIFEST_FILE}: `{}` has type `{k}`; the only type is `list`", v.name));
+                }
+                if v.default.as_ref().is_some_and(|d| !d.is_array()) {
+                    return Err(format!("{MANIFEST_FILE}: `{}` is a list and its default is not", v.name));
+                }
             }
         }
         if let Some(r) = &p.become_password_ref {
@@ -702,6 +720,15 @@ pub fn plan_run(
     if let Some(cfg) = effective.get("vars").and_then(|v| v.as_object()) {
         for (k, v) in cfg {
             vars.insert(k.clone(), v.clone());
+        }
+    }
+    // Una lista que llegó como texto (una sola llave pegada en el JSON, o por
+    // MCP) se vuelve lista: una por línea.
+    for v in pb.vars.iter().filter(|v| v.kind.as_deref() == Some(VAR_KIND_LIST)) {
+        if let Some(serde_json::Value::String(text)) = vars.get(&v.name) {
+            let items: Vec<serde_json::Value> =
+                text.lines().map(str::trim).filter(|l| !l.is_empty()).map(|l| serde_json::Value::String(l.into())).collect();
+            vars.insert(v.name.clone(), serde_json::Value::Array(items));
         }
     }
 
@@ -1602,6 +1629,32 @@ playbooks:
         assert_eq!(gaps.secrets, vec!["CLOUDFLARE_DNS_TOKEN", "OPS_PASSWORD"]);
         assert!(gaps.check().is_err());
         assert!(plan_run("/p", &v2(), "nada", &effective()).is_err());
+    }
+
+    // Una lista declarada (`type: list`) que no trae default: las llaves SSH.
+    // Roturas que atrapa: aceptar otro tipo, o un default que no es lista; y
+    // dejar pasar una sola llave pegada como texto, que el `join('\n')` del
+    // rol partiría letra a letra en el authorized_keys.
+    #[test]
+    fn a_list_written_as_text_becomes_a_list() {
+        let m = parse_manifest(
+            "version: 2\nplaybooks:\n  - {id: b, risk: read, file: b.yml, name: B, vars: [{name: keys, type: list, required: true}, {name: ports, default: [80]}]}\n",
+        )
+        .unwrap();
+        assert_eq!(m.playbooks[0].vars[0].kind.as_deref(), Some("list"));
+        for bad in [
+            "version: 2\nplaybooks:\n  - {id: b, risk: read, file: b.yml, name: B, vars: [{name: k, type: lista}]}\n",
+            "version: 2\nplaybooks:\n  - {id: b, risk: read, file: b.yml, name: B, vars: [{name: k, type: list, default: x}]}\n",
+        ] {
+            assert!(parse_manifest(bad).is_err(), "{bad}");
+        }
+        let plan = |keys: serde_json::Value| {
+            let e = serde_json::json!({ "vars": { "keys": keys }, "connection": { "name": "s", "host": "h", "sshPort": 22, "sshUser": "u" } });
+            plan_run("/p", &m, "b", &e).unwrap().0.host.unwrap().vars["keys"].clone()
+        };
+        assert_eq!(plan(serde_json::json!("ssh-ed25519 AAA a@b")), serde_json::json!(["ssh-ed25519 AAA a@b"]));
+        assert_eq!(plan(serde_json::json!("ssh-ed25519 A\n\n ssh-rsa B \n")), serde_json::json!(["ssh-ed25519 A", "ssh-rsa B"]));
+        assert_eq!(plan(serde_json::json!(["x", "y"])), serde_json::json!(["x", "y"]));
     }
 
     // Correr de verdad con un inventario generado: Ansible lo recibe por

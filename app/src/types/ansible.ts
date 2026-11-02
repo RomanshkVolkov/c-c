@@ -39,6 +39,8 @@ export interface VarDef {
   required: boolean;
   /** v2: con lo que nace una plantilla. */
   default?: unknown;
+  /** v2: la forma del valor cuando el default no la dice. Hoy sólo `list`. */
+  type?: string | null;
 }
 
 export interface AnsibleTools {

@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useT } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { AnsibleManifest, PlaybookDef } from "@/types/ansible";
 
 /**
@@ -19,6 +21,12 @@ export interface VarField {
   description: string;
   default?: unknown;
   required: boolean;
+  /**
+   * Una lista: se escribe una por línea. Lo dice `type: list` en el manifiesto
+   * o un default que es lista; una obligatoria (las llaves) no trae default,
+   * y sin el tipo salía como un campo de una línea.
+   */
+  list: boolean;
 }
 export interface SecretField {
   name: string;
@@ -41,12 +49,14 @@ export function varFields(manifest: AnsibleManifest, playbookIds: string[]) {
       }
       if (v.secret) continue;
       const has = v.default !== undefined && v.default !== null;
+      const list = v.type === "list" || Array.isArray(v.default);
       const f = byName.get(v.name);
-      if (!f) byName.set(v.name, { name: v.name, description: v.description ?? "", default: has ? v.default : undefined, required: v.required });
+      if (!f) byName.set(v.name, { name: v.name, description: v.description ?? "", default: has ? v.default : undefined, required: v.required, list });
       else {
         if (!f.description && v.description) f.description = v.description;
         if (f.default === undefined && has) f.default = v.default;
         f.required = f.required || v.required;
+        f.list = f.list || list;
       }
     }
     if (p.become && p.becomePasswordFrom) {
@@ -97,6 +107,25 @@ export function fromInput(text: string, like?: unknown): unknown {
   return text;
 }
 
+/** Una lista como se escribe en el área de texto: una por línea. */
+export function toLines(v: unknown): string {
+  if (Array.isArray(v)) return v.map(toInput).join("\n");
+  return toInput(v);
+}
+
+/**
+ * Lo escrito una por línea, de vuelta a lista. Las líneas vacías no cuentan
+ * (una llave SSH lleva espacios, así que la línea entera es un elemento).
+ * Cada elemento se parece al primero del default (`[80, 443]` da números);
+ * sin default, es texto. Nada escrito es `undefined`: no se guarda.
+ */
+export function fromLines(text: string, like?: unknown): unknown[] | undefined {
+  const items = text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+  if (items.length === 0) return undefined;
+  const first = Array.isArray(like) && like.length > 0 ? like[0] : "";
+  return items.map((l) => fromInput(l, first));
+}
+
 /** Un campo del formulario de variables: nombre, para qué es y su valor. */
 export function VarInput({
   field,
@@ -115,21 +144,40 @@ export function VarInput({
 }) {
   const { t } = useT();
   const id = `${idPrefix}-${field.name}`;
-  const list = Array.isArray(field.default) || Array.isArray(value);
+  const list = field.list || Array.isArray(value);
+  // Lo que se está escribiendo se guarda tal cual mientras diga lo mismo que
+  // el valor: si no, un salto de línea recién puesto (todavía vacío) se
+  // perdería en cada tecla. Si el valor cambia por fuera, manda el valor.
+  const [text, setText] = useState(() => toLines(value));
+  const shown = JSON.stringify(fromLines(text, field.default)) === JSON.stringify(value) ? text : toLines(value);
   return (
     <div className="space-y-0.5">
       <Label htmlFor={id} className="font-mono text-xs">
         {field.name}
         {field.required && value === undefined && !placeholder ? <span className="text-destructive"> *</span> : null}
       </Label>
-      <Input
-        id={id}
-        className="h-8 font-mono text-xs"
-        value={toInput(value)}
-        placeholder={placeholder ?? (list ? '["…", "…"]' : "")}
-        readOnly={readOnly}
-        onChange={(e) => onChange(fromInput(e.target.value, field.default))}
-      />
+      {list ? (
+        <Textarea
+          id={id}
+          className="min-h-16 font-mono text-xs break-all"
+          value={shown}
+          placeholder={placeholder}
+          readOnly={readOnly}
+          onChange={(e) => {
+            setText(e.target.value);
+            onChange(fromLines(e.target.value, field.default));
+          }}
+        />
+      ) : (
+        <Input
+          id={id}
+          className="h-8 font-mono text-xs"
+          value={toInput(value)}
+          placeholder={placeholder}
+          readOnly={readOnly}
+          onChange={(e) => onChange(fromInput(e.target.value, field.default))}
+        />
+      )}
       {(field.description || list) && (
         <p className="text-[11px] text-muted-foreground">
           {field.description}

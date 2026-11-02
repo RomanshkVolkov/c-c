@@ -909,7 +909,7 @@
     "secretScope": "What happens to {{name}} when copying",
     "sudoSecret": "The operations user's sudo password.",
     "createTemplate": "Create template",
-    "listHint": "It's a list: [\"one\", \"two\"].",
+    "listHint": "One per line.",
     "thisServer": "This server",
     "thisServerLead": "What the template can't know: fill it in for this machine.",
     "useFromServer": "Use {{value}} (from the registered server)",
