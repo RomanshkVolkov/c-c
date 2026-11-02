@@ -48,6 +48,14 @@
             mode: "0644"
           register: sshd_conf
 
+        # Un puerto que dejó un deshacer anterior ya no hace falta: el de la
+        # configuración nueva es el que vale.
+        - name: Sin el puerto de un deshacer anterior
+          ansible.builtin.file:
+            path: /etc/ssh/sshd_config.d/00-cac-port.conf
+            state: absent
+          register: old_port
+
         - name: sshd la acepta
           ansible.builtin.command: sshd -t
           changed_when: false
@@ -63,7 +71,7 @@
               rm -f /etc/systemd/system/ssh.service.d/00-socket.conf &&
               systemctl enable ssh.service &&
               systemctl restart ssh.service
-          when: sshd_conf is changed
+          when: sshd_conf is changed or old_port is changed
 
         - name: Escucha en el puerto nuevo
           ansible.builtin.wait_for:
@@ -111,16 +119,37 @@
             password_login.rc == 0 or
             'Permission denied (publickey)' not in password_login.stderr
 
+      # Deshacer es volver a escuchar en el puerto por el que se entró a esta
+      # ejecución (`ansible_port`), que el firewall deja pasar (la regla de
+      # SSH del rol abre ese y el nuevo). Antes se borraba la configuración
+      # nueva y nada más: si el puerto de antes venía de `ssh.socket` (que el
+      # cambio ya había quitado), sshd volvía al 22, que el firewall no deja
+      # pasar, y el servidor se quedó sin SSH (gstd, 2-nov-2026).
       rescue:
         - name: Deshacer el cambio de SSH
           ansible.builtin.file:
             path: /etc/ssh/sshd_config.d/00-cac-hardening.conf
             state: absent
 
+        - name: sshd escucha en el puerto por el que se entró
+          ansible.builtin.copy:
+            dest: /etc/ssh/sshd_config.d/00-cac-port.conf
+            content: "# Lo dejó el deshacer de la etapa 1: el puerto por el que se entró.\nPort {{ ansible_port | default(22) }}\n"
+            mode: "0644"
+
+        - name: sshd la acepta
+          ansible.builtin.command: sshd -t
+          changed_when: false
+
         - name: Reiniciar sshd con la configuración de antes
           ansible.builtin.systemd_service:
             name: ssh
             state: restarted
+
+        - name: Vuelve a escuchar en el puerto por el que se entró
+          ansible.builtin.wait_for:
+            port: "{{ ansible_port | default(22) }}"
+            timeout: 30
 
         - name: Parar aquí
           ansible.builtin.fail:

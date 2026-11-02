@@ -1546,6 +1546,25 @@ playbooks:
         assert!(seen >= 2, "no se encontraron los ssh de la etapa 1");
     }
 
+    // El deshacer de la etapa 1 borraba la configuración nueva y reiniciaba
+    // sshd: si el puerto de antes venía de `ssh.socket` (que el cambio ya
+    // había quitado), sshd volvía al 22, que el firewall no deja pasar, y
+    // gstd se quedó sin SSH (2-nov-2026). Roturas que atrapa: un deshacer que
+    // no vuelve a escuchar en el puerto por el que se entró, o que no
+    // comprueba que escucha.
+    #[test]
+    fn undoing_the_ssh_change_keeps_the_port_it_came_in_by() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../infra/ansible/playbooks/server-baseline.yml");
+        let plays: Vec<serde_yaml::Value> = serde_yaml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let block = plays[0]["tasks"].as_sequence().unwrap().iter().find(|t| t.get("rescue").is_some()).expect("el cambio de SSH tiene su deshacer");
+        let rescue = serde_yaml::to_string(&block["rescue"]).unwrap();
+        assert!(rescue.contains("Port {{ ansible_port"), "el deshacer no vuelve al puerto por el que se entró");
+        let waits = block["rescue"].as_sequence().unwrap().iter().any(|t| {
+            t.get("ansible.builtin.wait_for").and_then(|w| w.get("port")).and_then(|p| p.as_str()).is_some_and(|p| p.contains("ansible_port"))
+        });
+        assert!(waits, "el deshacer no comprueba que sshd escucha en ese puerto");
+    }
+
     // v2: sin inventario y sin referencias. Roturas que atrapa: aceptar un
     // op:// en el manifiesto; un default en un secreto; become_password_ref en
     // v2; un nombre de secreto en minúsculas.
