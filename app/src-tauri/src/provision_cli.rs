@@ -478,7 +478,56 @@ pub fn check_report(lines: &[String], exit_code: i32) -> Value {
         "paths": paths,
         "diff": diff,
         "exitCode": exit_code,
+        "failures": failures(lines),
+        "logTail": log_tail(lines, CHECK_TAIL_LINES),
     })
+}
+
+/// Cuántas líneas del final de un ensayo se guardan en cac: lo que hace
+/// falta para diagnosticarlo sin la pantalla de quien lo corrió (por MCP).
+pub const CHECK_TAIL_LINES: usize = 80;
+const MAX_FAILURES: usize = 20;
+const MAX_FAILURE_CHARS: usize = 600;
+
+/// Qué falló y por qué, de la salida de Ansible: una entrada por host y
+/// tarea, con el mensaje.
+///
+/// El mensaje sale de la línea `[ERROR]: …` de esa tarea si la hay, porque es
+/// la única que da el motivo cuando la tarea oculta su resultado (`no_log`: el
+/// `fatal`/`failed` sólo dice «censored»). Si no, del `msg` del JSON del
+/// `fatal`. Las líneas ya llegan tachadas (los secretos son `***`).
+pub fn failures(lines: &[String]) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    let mut task = String::new();
+    let mut error = String::new();
+    for raw in lines {
+        let l = strip_ansi(raw);
+        if let Some(rest) = l.strip_prefix("TASK [") {
+            task = rest.split(']').next().unwrap_or("").to_string();
+            error.clear();
+            continue;
+        }
+        if let Some(e) = l.strip_prefix("[ERROR]: ") {
+            if error.is_empty() {
+                error = e.trim().to_string();
+            }
+            continue;
+        }
+        let Some(rest) = l.strip_prefix("fatal: [").or_else(|| l.strip_prefix("failed: [")) else { continue };
+        let host = rest.split(']').next().unwrap_or("").split(" -> ").next().unwrap_or("").to_string();
+        let from_json = l
+            .split_once("=> ")
+            .and_then(|(_, j)| serde_json::from_str::<Value>(j).ok())
+            .and_then(|v| v.get("msg").and_then(|m| m.as_str()).map(str::to_string))
+            .unwrap_or_default();
+        let message = if error.is_empty() { from_json } else { error.clone() };
+        let message: String = message.chars().take(MAX_FAILURE_CHARS).collect();
+        let dup = out.iter().any(|f| f["host"] == host.as_str() && f["task"] == task.as_str());
+        if !dup && out.len() < MAX_FAILURES {
+            out.push(json!({ "host": host, "task": task, "message": message }));
+        }
+    }
+    out
 }
 
 fn strip_ansi(s: &str) -> String {
@@ -635,6 +684,39 @@ mod tests {
     // en el texto de la función, porque correrla necesita cac y un servidor:
     // ningún camino suyo llama a `play` sin pasar por `dry_run`, y `dry_run`
     // pone `check`. Rotura que atrapa: que `request` corra el spec tal cual.
+    // Lo que hace falta para diagnosticar un ensayo o una ejecución sin la
+    // pantalla de quien la corrió (por MCP). Salidas reales de gstd,
+    // 2-nov-2026. Roturas que atrapa: perder el motivo de una tarea con
+    // `no_log` (sólo diría «censored»); tomar el host delegado
+    // (`gstd -> localhost`) en vez del servidor; repetir la misma tarea por
+    // cada elemento de un bucle; no llevar el log al informe.
+    #[test]
+    fn a_failure_says_which_task_and_why() {
+        let out = s(&[
+            "TASK [traefik : Registros DNS del servidor] ****",
+            "[ERROR]: Task failed: Module failed: No zone found with name 76ceb04a6ad4b73126de517449eefc79",
+            "Origin: /p/roles/traefik/tasks/main.yml:15:3",
+            "failed: [gstd -> localhost] (item=(censored due to no_log)) => {\"censored\": \"the output has been hidden due to the fact that 'no_log: true' was specified for this result\", \"changed\": false}",
+            "failed: [gstd -> localhost] (item=(censored due to no_log)) => {\"censored\": \"hidden\", \"changed\": false}",
+            "TASK [Traefik en 1/1] ****",
+            "fatal: [gstd]: FAILED! => {\"attempts\": 24, \"changed\": false, \"msg\": \"Command would have run if not in check mode\", \"rc\": 0}",
+            "PLAY RECAP ****",
+            "gstd : ok=15 changed=0 unreachable=0 failed=1",
+        ]);
+        let f = failures(&out);
+        assert_eq!(
+            f,
+            vec![
+                json!({ "host": "gstd", "task": "traefik : Registros DNS del servidor", "message": "Task failed: Module failed: No zone found with name 76ceb04a6ad4b73126de517449eefc79" }),
+                json!({ "host": "gstd", "task": "Traefik en 1/1", "message": "Command would have run if not in check mode" }),
+            ]
+        );
+        let r = check_report(&out, 2);
+        assert_eq!(r["failures"], json!(f));
+        assert!(r["logTail"].as_str().unwrap().ends_with("failed=1"));
+        assert!(failures(&s(&["TASK [ok] ***", "ok: [gstd]"])).is_empty());
+    }
+
     #[test]
     fn a_request_only_ever_dry_runs() {
         let src = include_str!("provision_cli.rs");

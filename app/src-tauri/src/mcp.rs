@@ -44,6 +44,13 @@ pub(crate) fn cfg() -> Result<Cfg, String> {
 }
 
 /// GET a cac API path and return the `data` field of the envelope.
+/// Qué falló en una ejecución, leído de su cola de log: para diagnosticarla
+/// sin la pantalla de quien la corrió.
+fn run_failures(run: &Value) -> Value {
+    let lines: Vec<String> = run.get("logTail").and_then(|t| t.as_str()).unwrap_or("").lines().map(str::to_string).collect();
+    json!(crate::provision_cli::failures(&lines))
+}
+
 pub(crate) fn api_get(cfg: &Cfg, path: &str) -> Result<Value, String> {
     let url = format!("{}{}", cfg.base, path);
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -2054,7 +2061,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "list_provisioning_runs",
-            "description": "What was applied to a server, newest first: each playbook run with who launched it, when, how it ended, its PLAY RECAP, and — when it ran from cac's configuration — the version it used and a snapshot of what was applied (variables and secret references, never values). Read-only: running a playbook stays a person's decision in the app.",
+            "description": "What was applied to a server, newest first: each playbook run with who launched it, when, how it ended, its PLAY RECAP, `failures` (host, task and the error message of each task that failed — the `[ERROR]` line, which is the only reason given when a task hides its output with no_log), `logTail` (the end of its output, secrets already redacted) and — when it ran from cac's configuration — the version it used and a snapshot of what was applied (variables and secret references, never values). Start a diagnosis from `failures`. Read-only: running a playbook stays a person's decision in the app.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2081,7 +2088,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "get_provisioning_request",
-            "description": "One execution request of a server (with `requestId`) or its latest ones: status (checking, awaiting_approval, approved, rejected, running, verifying, succeeded, failed, verify_failed, violated, expired), its risk, the dry run cac evaluated (hosts, changed tasks, files, diff — never a value), the flags, who asked and who decided, and until when an approval is valid. Read-only.",
+            "description": "A request's dry run is in `check`: its counts, the tasks that would change, the diff, `failures` (host, task and error message of each task that failed) and `logTail` (the end of its output, secrets redacted). One execution request of a server (with `requestId`) or its latest ones: status (checking, awaiting_approval, approved, rejected, running, verifying, succeeded, failed, verify_failed, violated, expired), its risk, the dry run cac evaluated (hosts, changed tasks, files, diff — never a value), the flags, who asked and who decided, and until when an approval is valid. Read-only.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -3771,6 +3778,7 @@ fn call_tool(cfg: &Cfg, name: &str, args: &Value) -> Result<Value, String> {
                                 "finishedAt": r.get("finishedAt"), "summary": r.get("summary"),
                                 "configSeq": r.get("configSeq"), "templateId": r.get("templateId"),
                                 "templateSeq": r.get("templateSeq"), "applied": r.get("applied"),
+                                "failures": run_failures(r), "logTail": r.get("logTail"),
                             })
                         })
                         .collect()
@@ -6979,6 +6987,24 @@ mod tests {
         assert!(code.contains("crate::provision_cli::request("));
         for forbidden in ["run_playbook", "provision_cli::run", "provision_cli::main", "run_grant", "execute("] {
             assert!(!code.contains(forbidden), "el MCP llama a {forbidden}");
+        }
+    }
+
+    // Diagnosticar por MCP sin la pantalla de quien corrió: cada ejecución
+    // trae qué falló y la cola de su log. Rotura que atrapa: devolver la
+    // lista sin ellos (como hasta el 2-nov-2026, que sólo daba el recap).
+    #[test]
+    fn a_run_says_what_failed() {
+        let run = json!({ "logTail": "TASK [Traefik en 1/1] ***\nfatal: [gstd]: FAILED! => {\"msg\": \"no replicas\"}\nPLAY RECAP ***" });
+        assert_eq!(run_failures(&run), json!([{ "host": "gstd", "task": "Traefik en 1/1", "message": "no replicas" }]));
+        assert_eq!(run_failures(&json!({})), json!([]));
+        let src = include_str!("mcp.rs");
+        let handler = src.split("\"list_provisioning_runs\" => {").nth(1).unwrap().split("\n        }\n").next().unwrap();
+        assert!(handler.contains("\"failures\": run_failures(r)") && handler.contains("\"logTail\": r.get(\"logTail\")"));
+        let defs = tool_defs();
+        for name in ["list_provisioning_runs", "get_provisioning_request"] {
+            let d = tool(&defs, name)["description"].as_str().unwrap().to_string();
+            assert!(d.contains("failures") && d.contains("logTail"), "{name} no dice dónde mirar");
         }
     }
 

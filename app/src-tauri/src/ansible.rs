@@ -799,7 +799,7 @@ pub struct StartedRun {
 }
 
 #[tauri::command]
-pub fn ansible_run_with_config(
+pub async fn ansible_run_with_config(
     project_dir: String,
     playbook_id: String,
     effective: serde_json::Value,
@@ -814,7 +814,7 @@ pub fn ansible_run_with_config(
     spec.check = check.unwrap_or(false);
     let var_names = spec.var_names();
     let target = spec.host.as_ref().map(|h| h.name.clone()).unwrap_or_default();
-    let run_id = ansible_run(spec, on_event)?;
+    let run_id = ansible_run(spec, on_event).await?;
     Ok(StartedRun { run_id, var_names, target })
 }
 
@@ -1043,7 +1043,7 @@ impl Drop for VarsFile {
 /// Corre un playbook y va contando la salida por el canal. Devuelve el id con
 /// el que se cancela.
 #[tauri::command]
-pub fn ansible_run(spec: RunSpec, on_event: Channel<AnsibleEvent>) -> Result<String, String> {
+pub async fn ansible_run(spec: RunSpec, on_event: Channel<AnsibleEvent>) -> Result<String, String> {
     run_playbook(spec, std::sync::Arc::new(move |e| {
         let _ = on_event.send(e);
     }))
@@ -1700,7 +1700,7 @@ playbooks:
     #[test]
     fn the_app_rehearses_through_the_check_parameter() {
         let src = include_str!("ansible.rs");
-        let body = src.split("pub fn ansible_run_with_config(").nth(1).and_then(|r| r.split("\n}\n").next()).unwrap();
+        let body = src.split("pub async fn ansible_run_with_config(").nth(1).and_then(|r| r.split("\n}\n").next()).unwrap();
         assert!(body.contains("spec.check = check.unwrap_or(false);"), "el ensayo de la app no llega a Rust");
     }
 

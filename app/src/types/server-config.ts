@@ -111,6 +111,16 @@ export interface ProvisioningCheck {
   paths: string[] | null;
   diff: string;
   exitCode: number;
+  /** Qué falló y por qué (desde el 2-nov-2026; antes, ausente). */
+  failures?: ProvisioningFailure[] | null;
+  /** El final de la salida, ya tachada. */
+  logTail?: string;
+}
+
+export interface ProvisioningFailure {
+  host: string;
+  task: string;
+  message: string;
 }
 
 export interface ProvisioningRequest {

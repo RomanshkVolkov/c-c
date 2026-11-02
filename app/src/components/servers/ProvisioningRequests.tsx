@@ -120,6 +120,7 @@ function RequestRow({
   const { t } = useT();
   const confirm = useConfirm();
   const [showDiff, setShowDiff] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [note, setNote] = useState("");
   const [typed, setTyped] = useState("");
   const [ack, setAck] = useState(false);
@@ -193,6 +194,16 @@ function RequestRow({
               ok: check.ok,
             })}
           </p>
+          {(check.failures ?? []).length > 0 && (
+            <ul className="space-y-1" aria-label={t("common:provisionRequests.failures")}>
+              {(check.failures ?? []).map((f, i) => (
+                <li key={i} className="rounded border border-destructive/40 bg-destructive/5 p-1.5">
+                  <p className="font-mono text-[11px]">{f.task || "?"}</p>
+                  <p className="break-words text-destructive">{f.message}</p>
+                </li>
+              ))}
+            </ul>
+          )}
           {(check.changedTasks ?? []).length > 0 && (
             <ul className="list-inside list-disc">
               {(check.changedTasks ?? []).map((task) => (
@@ -206,6 +217,14 @@ function RequestRow({
                 {t(showDiff ? "common:provisionRequests.hideDiff" : "common:provisionRequests.showDiff")}
               </Button>
               {showDiff && <pre className="max-h-64 overflow-auto rounded bg-muted p-2 font-mono text-[11px]">{check.diff}</pre>}
+            </>
+          )}
+          {check.logTail && (
+            <>
+              <Button variant="ghost" size="sm" className="h-6 px-1 text-xs" onClick={() => setShowLog((v) => !v)}>
+                {t(showLog ? "common:provisionRequests.hideLog" : "common:provisionRequests.showLog")}
+              </Button>
+              {showLog && <pre className="max-h-64 overflow-auto rounded bg-muted p-2 font-mono text-[11px]">{check.logTail}</pre>}
             </>
           )}
         </div>

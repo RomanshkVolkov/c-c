@@ -649,12 +649,14 @@ mod tests {
     /// Lo que espera a 1Password o a un servidor no corre en el hilo de la
     /// ventana. Tauri corre ahí los comandos síncronos, y «Comprobar» —un `op
     /// read` por secret, más de veinte— dejaba la app trabada sin pintar nada
-    /// hasta acabar (jose, 23-oct-2026). Roturas que atrapa: volver a hacer
-    /// síncrono cualquiera de estos.
+    /// hasta acabar (jose, 23-oct-2026). Y «Ensayar» lee los secretos de un
+    /// playbook antes de lanzarlo: síncrono, el modal no se cerraba ni el
+    /// botón pintaba su spinner durante ese rato (jose, 2-nov-2026).
+    /// Roturas que atrapa: volver a hacer síncrono cualquiera de estos.
     #[test]
     fn what_waits_for_1password_or_a_server_does_not_freeze_the_window() {
-        let src = [include_str!("secrets.rs"), include_str!("lib.rs")].concat();
-        for name in ["op_list_vaults", "op_item_create", "rotate_service_secrets", "check_op_refs", "op_item_fields", "capture_service_env"] {
+        let src = [include_str!("secrets.rs"), include_str!("lib.rs"), include_str!("ansible.rs")].concat();
+        for name in ["op_list_vaults", "op_item_create", "rotate_service_secrets", "check_op_refs", "op_item_fields", "capture_service_env", "ansible_run", "ansible_run_with_config"] {
             assert!(
                 src.contains(&format!("async fn {name}(")),
                 "{name} es síncrono: Tauri lo corre en el hilo de la ventana y la traba mientras espera"

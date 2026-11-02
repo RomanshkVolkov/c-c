@@ -135,6 +135,31 @@ describe("lo que se ve", () => {
     expect(grantCommand("it's", "x")).toBe("cac provision run --server 'it'\\''s' --grant x");
   });
 
+  // Un ensayo fallido dice qué tarea y por qué, sin abrir el log de nadie.
+  // Roturas que atrapa: no enseñar los fallos; perder el mensaje; un ensayo
+  // de antes (sin `failures` ni `logTail`) que rompe la fila.
+  it("un ensayo fallido dice qué tarea falló y por qué, y deja ver el final de la salida", async () => {
+    serve(
+      request({
+        flags: [{ code: "check-failed", level: "red" }],
+        check: {
+          hosts: ["gstd"], ok: 15, changed: 0, unreachable: 0, failed: 1, changedTasks: [], paths: [], diff: "", exitCode: 2,
+          failures: [{ host: "gstd", task: "traefik : Registros DNS del servidor", message: "No zone found with name 76ceb04a" }],
+          logTail: "TASK [x]\nfatal: [gstd]: FAILED!",
+        },
+      }),
+      request({ id: "rq-2", check: { hosts: ["gstd"], ok: 1, changed: 0, unreachable: 0, failed: 0, changedTasks: [], paths: [], diff: "", exitCode: 0 } }),
+    );
+    render(<ProvisioningRequests server={server} canDecide />);
+    const list = await screen.findByRole("list", { name: en.failures });
+    expect(list.textContent).toContain("traefik : Registros DNS del servidor");
+    expect(list.textContent).toContain("No zone found with name 76ceb04a");
+    expect(screen.queryByText(/fatal: \[gstd\]/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: en.showLog }));
+    expect(screen.getByText(/fatal: \[gstd\]: FAILED!/)).toBeTruthy();
+    expect(screen.getByTestId("request-rq-2")).toBeTruthy();
+  });
+
   it("una respuesta con otra forma no rompe la pestaña", async () => {
     api.get.mockResolvedValue({ success: true, data: [{ id: 1 }, null, "x"] });
     const { container } = render(<ProvisioningRequests server={server} canDecide />);
