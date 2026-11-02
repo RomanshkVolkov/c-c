@@ -8,7 +8,7 @@ import { desde } from "@/lib/desde";
 import { lineDiff } from "@/lib/line-diff";
 import { useConfirm } from "@/components/ConfirmDialog";
 import ServerTemplateDialog from "@/components/servers/ServerTemplateDialog";
-import { VarInput, toInput, toLines, varFields } from "@/components/servers/ansible-vars";
+import { VarInput, listPreview, toInput, varFields } from "@/components/servers/ansible-vars";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -325,7 +325,7 @@ export default function ServerConfigPanel({
                   idPrefix="cfg"
                   field={f}
                   value={vars?.[f.name]}
-                  placeholder={(f.list ? toLines : toInput)(template?.current?.vars?.[f.name] ?? f.default)}
+                  placeholder={(f.list ? listPreview : toInput)(template?.current?.vars?.[f.name] ?? f.default)}
                   onChange={(v) => setVar(f.name, v)}
                   readOnly={!canEdit}
                 />

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useT } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Plus, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { AnsibleManifest, PlaybookDef } from "@/types/ansible";
 
 /**
@@ -22,7 +23,7 @@ export interface VarField {
   default?: unknown;
   required: boolean;
   /**
-   * Una lista: se escribe una por línea. Lo dice `type: list` en el manifiesto
+   * Una lista: un campo por elemento. Lo dice `type: list` en el manifiesto
    * o un default que es lista; una obligatoria (las llaves) no trae default,
    * y sin el tipo salía como un campo de una línea.
    */
@@ -107,20 +108,26 @@ export function fromInput(text: string, like?: unknown): unknown {
   return text;
 }
 
-/** Una lista como se escribe en el área de texto: una por línea. */
-export function toLines(v: unknown): string {
-  if (Array.isArray(v)) return v.map(toInput).join("\n");
-  return toInput(v);
+/** Una lista como se enseña en una sola línea (el valor heredado, en gris). */
+export function listPreview(v: unknown): string {
+  return Array.isArray(v) ? v.map(toInput).join(", ") : toInput(v);
+}
+
+/** Un valor como filas del formulario: una por elemento, y al menos una. */
+export function toItems(v: unknown): string[] {
+  if (Array.isArray(v)) return v.length > 0 ? v.map(toInput) : [""];
+  return [toInput(v)];
 }
 
 /**
- * Lo escrito una por línea, de vuelta a lista. Las líneas vacías no cuentan
- * (una llave SSH lleva espacios, así que la línea entera es un elemento).
- * Cada elemento se parece al primero del default (`[80, 443]` da números);
- * sin default, es texto. Nada escrito es `undefined`: no se guarda.
+ * Las filas de una lista, de vuelta a lista. Las vacías no cuentan (una fila
+ * recién agregada todavía no es nada); una llave SSH lleva espacios, así que
+ * la fila entera es un elemento. Cada elemento se parece al primero del
+ * default (`[80, 443]` da números); sin default, es texto. Nada escrito es
+ * `undefined`: no se guarda.
  */
-export function fromLines(text: string, like?: unknown): unknown[] | undefined {
-  const items = text.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+export function fromItems(rows: string[], like?: unknown): unknown[] | undefined {
+  const items = rows.map((l) => l.trim()).filter((l) => l !== "");
   if (items.length === 0) return undefined;
   const first = Array.isArray(like) && like.length > 0 ? like[0] : "";
   return items.map((l) => fromInput(l, first));
@@ -142,14 +149,8 @@ export function VarInput({
   readOnly?: boolean;
   idPrefix: string;
 }) {
-  const { t } = useT();
   const id = `${idPrefix}-${field.name}`;
   const list = field.list || Array.isArray(value);
-  // Lo que se está escribiendo se guarda tal cual mientras diga lo mismo que
-  // el valor: si no, un salto de línea recién puesto (todavía vacío) se
-  // perdería en cada tecla. Si el valor cambia por fuera, manda el valor.
-  const [text, setText] = useState(() => toLines(value));
-  const shown = JSON.stringify(fromLines(text, field.default)) === JSON.stringify(value) ? text : toLines(value);
   return (
     <div className="space-y-0.5">
       <Label htmlFor={id} className="font-mono text-xs">
@@ -157,17 +158,7 @@ export function VarInput({
         {field.required && value === undefined && !placeholder ? <span className="text-destructive"> *</span> : null}
       </Label>
       {list ? (
-        <Textarea
-          id={id}
-          className="min-h-16 font-mono text-xs break-all"
-          value={shown}
-          placeholder={placeholder}
-          readOnly={readOnly}
-          onChange={(e) => {
-            setText(e.target.value);
-            onChange(fromLines(e.target.value, field.default));
-          }}
-        />
+        <ListInput id={id} field={field} value={value} placeholder={placeholder} onChange={onChange} readOnly={readOnly} />
       ) : (
         <Input
           id={id}
@@ -178,11 +169,87 @@ export function VarInput({
           onChange={(e) => onChange(fromInput(e.target.value, field.default))}
         />
       )}
-      {(field.description || list) && (
-        <p className="text-[11px] text-muted-foreground">
-          {field.description}
-          {list ? ` ${t("common:serverConfig.listHint")}` : ""}
-        </p>
+      {field.description && <p className="text-[11px] text-muted-foreground">{field.description}</p>}
+    </div>
+  );
+}
+
+/**
+ * Una lista como filas: un campo por elemento, una × para quitarlo y «Agregar
+ * otra» (o Enter en la última) para la siguiente.
+ */
+function ListInput({
+  id,
+  field,
+  value,
+  placeholder,
+  onChange,
+  readOnly,
+}: {
+  id: string;
+  field: VarField;
+  value: unknown;
+  placeholder?: string;
+  onChange: (v: unknown) => void;
+  readOnly?: boolean;
+}) {
+  const { t } = useT();
+  // Las filas se guardan tal cual mientras digan lo mismo que el valor: si
+  // no, una fila recién agregada (vacía todavía) desaparecería al momento.
+  // Si el valor cambia por fuera, mandan las filas del valor.
+  const [rows, setRows] = useState<string[]>(() => toItems(value));
+  const [focusRow, setFocusRow] = useState<number | null>(null);
+  const shown = JSON.stringify(fromItems(rows, field.default)) === JSON.stringify(value) ? rows : toItems(value);
+  const write = (next: string[]) => {
+    setRows(next);
+    onChange(fromItems(next, field.default));
+  };
+  const add = () => {
+    setFocusRow(shown.length);
+    write([...shown, ""]);
+  };
+  return (
+    <div className="space-y-1">
+      {shown.map((row, i) => (
+        <div key={i} className="flex items-center gap-1">
+          <Input
+            id={i === 0 ? id : undefined}
+            aria-label={i === 0 ? undefined : `${field.name} ${i + 1}`}
+            className="h-8 font-mono text-xs"
+            value={row}
+            placeholder={i === 0 ? placeholder : undefined}
+            readOnly={readOnly}
+            autoFocus={focusRow === i}
+            onChange={(e) => write(shown.map((r, j) => (j === i ? e.target.value : r)))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !readOnly && i === shown.length - 1 && row.trim() !== "") {
+                e.preventDefault();
+                add();
+              }
+            }}
+          />
+          {!readOnly && shown.length > 1 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              aria-label={t("common:serverConfig.removeItem", { name: field.name, n: i + 1 })}
+              onClick={() => {
+                setFocusRow(null);
+                write(shown.filter((_, j) => j !== i));
+              }}
+            >
+              <X className="size-3.5" />
+            </Button>
+          )}
+        </div>
+      ))}
+      {!readOnly && (
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-1.5 text-xs" onClick={add}>
+          <Plus className="size-3.5" />
+          {t("common:serverConfig.addItem")}
+        </Button>
       )}
     </div>
   );

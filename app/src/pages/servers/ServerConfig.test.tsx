@@ -41,7 +41,7 @@ vi.mock("./ServerLayout", () => ({ useServerContext: () => ({ server }) }));
 const { default: ServerProvision, live } = await import("./ServerProvision");
 const { configBody, stableJson } = await import("./ServerConfigPanel");
 const { templateFromManifest, orderedPlaybooks, stagePlaybooks } = await import("@/components/servers/ServerTemplateDialog");
-const { varFields, fromInput, fromLines, toLines } = await import("@/components/servers/ansible-vars");
+const { varFields, fromInput, fromItems, toItems } = await import("@/components/servers/ansible-vars");
 const { useProvisionStore } = await import("@/store/provision.store");
 const { useOrgsStore } = await import("@/store/orgs.store");
 const { pick } = await import("@/test-pick");
@@ -237,15 +237,17 @@ describe("el formulario en vez del JSON", () => {
     expect(fromInput("  ")).toBeUndefined();
   });
 
-  // Roturas que atrapa: una llave partida por sus espacios; una línea vacía
+  // Roturas que atrapa: una llave partida por sus espacios; una fila vacía
   // guardada como elemento; un puerto de la lista guardado como texto; una
-  // lista vacía guardada.
-  it("una lista se escribe una por línea", () => {
-    expect(fromLines("ssh-ed25519 AAA jose@x\n\n  ssh-rsa BBB ci  \n")).toEqual(["ssh-ed25519 AAA jose@x", "ssh-rsa BBB ci"]);
-    expect(fromLines("80\n443", [80])).toEqual([80, 443]);
-    expect(fromLines("0755")).toEqual(["0755"]);
-    expect(fromLines(" \n ")).toBeUndefined();
-    expect(toLines(["a b", 2])).toBe("a b\n2");
+  // lista vacía guardada; una lista vacía sin ninguna fila donde escribir.
+  it("una lista son filas, una por elemento", () => {
+    expect(fromItems(["ssh-ed25519 AAA jose@x", "", "  ssh-rsa BBB ci  "])).toEqual(["ssh-ed25519 AAA jose@x", "ssh-rsa BBB ci"]);
+    expect(fromItems(["80", "443"], [80])).toEqual([80, 443]);
+    expect(fromItems(["0755"])).toEqual(["0755"]);
+    expect(fromItems([" ", ""])).toBeUndefined();
+    expect(toItems(["a b", 2])).toEqual(["a b", "2"]);
+    expect(toItems(undefined)).toEqual([""]);
+    expect(toItems([])).toEqual([""]);
   });
 
   // Rotura que atrapa: ofrecer una verificación o un desmontaje como etapa.
@@ -290,16 +292,22 @@ describe("el formulario en vez del JSON", () => {
   });
 });
 
-// Roturas que atrapa: las llaves en un campo de una línea (no caben dos);
-// perder el salto de línea recién escrito, que no deja escribir la segunda;
-// guardarlas como un texto en vez de una lista.
-it("las llaves de un servidor se escriben una por línea y se guardan como lista", async () => {
+// Roturas que atrapa: no poder agregar una segunda llave; que la fila
+// recién agregada (vacía) desaparezca antes de escribir en ella; que Enter
+// no abra la siguiente; quitar la que no es; guardarlas como un texto.
+it("las llaves de un servidor son filas: se agregan con +, se quitan con × y se guardan como lista", async () => {
   render(<ServerProvision />);
-  const keys = (await screen.findByLabelText(/^ops_authorized_keys/)) as HTMLTextAreaElement;
-  expect(keys.tagName).toBe("TEXTAREA");
-  fireEvent.change(keys, { target: { value: "ssh-ed25519 AAA jose@x\n" } });
-  expect(keys.value).toBe("ssh-ed25519 AAA jose@x\n");
-  fireEvent.change(keys, { target: { value: "ssh-ed25519 AAA jose@x\nssh-ed25519 BBB ci" } });
+  const first = (await screen.findByLabelText(/^ops_authorized_keys/)) as HTMLInputElement;
+  expect(first.tagName).toBe("INPUT");
+  fireEvent.change(first, { target: { value: "ssh-ed25519 AAA jose@x" } });
+  fireEvent.click(screen.getByRole("button", { name: /agregar otra|add another/i }));
+  fireEvent.change(screen.getByLabelText("ops_authorized_keys 2"), { target: { value: "ssh-rsa VIEJA" } });
+  fireEvent.keyDown(screen.getByLabelText("ops_authorized_keys 2"), { key: "Enter" });
+  fireEvent.change(screen.getByLabelText("ops_authorized_keys 3"), { target: { value: "ssh-ed25519 BBB ci" } });
+  fireEvent.click(screen.getByRole("button", { name: /(quitar|remove) ops_authorized_keys 2/i }));
+  expect(screen.queryByLabelText("ops_authorized_keys 3")).toBeNull();
+  // Una fila vacía al final no se guarda.
+  fireEvent.click(screen.getByRole("button", { name: /agregar otra|add another/i }));
   await act(async () => fireEvent.click(screen.getByRole("button", { name: /guardar como versión nueva|save as a new version/i })));
   expect(api.put.mock.calls[0][1].vars.ops_authorized_keys).toEqual(["ssh-ed25519 AAA jose@x", "ssh-ed25519 BBB ci"]);
 });
