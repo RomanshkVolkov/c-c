@@ -22,7 +22,7 @@ vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => confirmar }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/clipboard", () => ({ copyText: vi.fn(async () => {}) }));
 
-const { default: ProvisioningRequests, canApprove, grantCommand, isStale, STALE_CHECK_MS } = await import("./ProvisioningRequests");
+const { default: ProvisioningRequests, canApprove, grantCommand, isStale, STALE_CHECK_MS, visibleRequests, RECENT_CLOSED } = await import("./ProvisioningRequests");
 const { useAuthStore } = await import("@/store/auth.store");
 const en = (await import("@/locales/en/common.json")).default.provisionRequests;
 const disabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled;
@@ -175,6 +175,32 @@ describe("una petición que se quedó sin ensayo", () => {
     render(<ProvisioningRequests server={server} canDecide />);
     expect(await screen.findByText(en.status.checking)).toBeTruthy();
     expect(screen.queryByRole("button", { name: en.discard })).toBeNull();
+  });
+});
+
+// Con todas a la vista, las descartadas y rechazadas de un simulacro empujaban
+// el playbook fuera de la pantalla. Roturas que atrapa: esconder una abierta
+// (algo espera a alguien); enseñar todas las cerradas; perder el orden; no
+// poder verlas.
+describe("la bandeja no se llena de lo cerrado", () => {
+  const closed = (n: number) => Array.from({ length: n }, (_, i) => request({ id: `c-${i}`, status: i % 2 ? "discarded" : "rejected" }));
+  it("enseña las abiertas y las últimas cerradas", () => {
+    const all = [request({ id: "a-1", status: "awaiting_approval" }), ...closed(5), request({ id: "a-2", status: "approved" })] as never[];
+    const { shown, hidden } = visibleRequests(all, false);
+    expect(shown.map((r) => r.id)).toEqual(["a-1", "c-0", "c-1", "c-2", "a-2"]);
+    expect(hidden).toBe(5 - RECENT_CLOSED);
+    expect(visibleRequests(all, true).shown).toHaveLength(7);
+  });
+
+  it("las anteriores se ven al pedirlo", async () => {
+    serve(...closed(5));
+    render(<ProvisioningRequests server={server} canDecide />);
+    await screen.findByTestId("request-c-0");
+    expect(screen.queryByTestId("request-c-4")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: en.showOlder_other.replace("{{count}}", "2") }));
+    expect(screen.getByTestId("request-c-4")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: en.showFewer }));
+    expect(screen.queryByTestId("request-c-4")).toBeNull();
   });
 });
 

@@ -312,6 +312,38 @@ it("las llaves de un servidor son filas: se agregan con +, se quitan con × y se
   expect(api.put.mock.calls[0][1].vars.ops_authorized_keys).toEqual(["ssh-ed25519 AAA jose@x", "ssh-ed25519 BBB ci"]);
 });
 
+// Cada línea de la salida llamaba a `scrollIntoView`, que también desplaza la
+// página: durante una ejecución te subía arriba (jose, 2-nov-2026). Roturas
+// que atrapa: volver a desplazar la página; no seguir el final de la salida;
+// arrastrar al final a quien subió a leer.
+it("la salida sigue su final sin mover la página, y no arrastra a quien sube a leer", async () => {
+  const proto = Element.prototype as unknown as { scrollIntoView?: () => void };
+  const had = proto.scrollIntoView;
+  const intoView = vi.fn();
+  proto.scrollIntoView = intoView;
+  try {
+    render(<ServerProvision />);
+    const out = (await screen.findByLabelText(/salida de la ejecución|run output/i)) as HTMLPreElement;
+    let top = 0;
+    Object.defineProperty(out, "scrollHeight", { configurable: true, get: () => 500 });
+    Object.defineProperty(out, "clientHeight", { configurable: true, get: () => 100 });
+    Object.defineProperty(out, "scrollTop", { configurable: true, get: () => top, set: (v: number) => (top = v) });
+    act(() => useProvisionStore.setState({ lines: ["uno"] }));
+    expect(top).toBe(500);
+    top = 100;
+    fireEvent.scroll(out);
+    act(() => useProvisionStore.setState({ lines: ["uno", "dos"] }));
+    expect(top).toBe(100);
+    top = 400;
+    fireEvent.scroll(out);
+    act(() => useProvisionStore.setState({ lines: ["uno", "dos", "tres"] }));
+    expect(top).toBe(500);
+    expect(intoView).not.toHaveBeenCalled();
+  } finally {
+    proto.scrollIntoView = had;
+  }
+});
+
 describe("la config del servidor", () => {
   it("sin tocar no hay nada que guardar, y lo guardado son referencias", async () => {
     render(<ServerProvision />);

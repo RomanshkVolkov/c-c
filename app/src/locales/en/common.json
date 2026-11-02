@@ -821,6 +821,7 @@
     "done": "Playbook applied",
     "failed": "The playbook failed (code {{code}})",
     "noOutput": "The output will show up here.",
+    "output": "Run output",
     "history": "Applied to this server",
     "noHistory": "No playbook has been applied from cac yet.",
     "status": {
@@ -859,6 +860,9 @@
       "expired": "expired",
       "discarded": "discarded"
     },
+    "showOlder_one": "Show the older one",
+    "showOlder_other": "Show the {{count}} older ones",
+    "showFewer": "Show only the latest",
     "staleBadge": "no dry run",
     "stale": "It was left without its dry run: nobody is running it. Nothing changed; to apply, rehearse again.",
     "discard": "Discard",

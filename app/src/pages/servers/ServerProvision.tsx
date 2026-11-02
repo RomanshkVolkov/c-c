@@ -100,7 +100,10 @@ export default function ServerProvision() {
   const [openRun, setOpenRun] = useState<string | null>(null);
   // Sube para que la bandeja relea tras un ensayo o una ejecución.
   const [requestsKey, setRequestsKey] = useState(0);
-  const bottom = useRef<HTMLDivElement>(null);
+  const log = useRef<HTMLPreElement>(null);
+  // Si quien mira está al final de la salida, la salida le sigue; si subió a
+  // leer algo, se queda donde está.
+  const following = useRef(true);
   const converter = useMemo(() => new AnsiToHtml({ escapeXML: true }), []);
 
   // Algo que quedó a medias de antes (la app se cerró o se recargó).
@@ -151,8 +154,12 @@ export default function ServerProvision() {
     void loadProject(prefs.projectDir);
   }, [prefs.projectDir, loadProject]);
 
+  // Sólo se desplaza el cuadro de la salida. Con `scrollIntoView` se
+  // desplazaba también la página para enseñarlo, y durante una ejecución cada
+  // línea te subía arriba (jose, 2-nov-2026).
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
+    const el = log.current;
+    if (el && following.current) el.scrollTop = el.scrollHeight;
   }, [lines.length]);
 
   const playbook = manifest?.playbooks.find((p) => p.id === prefs.playbookId) ?? manifest?.playbooks[0];
@@ -456,7 +463,7 @@ export default function ServerProvision() {
   };
 
   return (
-    <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+    <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
       <div className="space-y-4">
         {/* La carpeta primero: la plantilla, la config y los playbooks se leen de ella. */}
         <Card>
@@ -482,14 +489,6 @@ export default function ServerProvision() {
             {manifest?.discovered && <p className="text-xs text-muted-foreground">{t("common:provision.noManifest")}</p>}
           </CardContent>
         </Card>
-        <ServerConfigPanel server={server} manifest={manifest} effective={effective} onChanged={() => void loadEffective()} />
-        <ProvisioningRequests
-          server={server}
-          canDecide={isAdmin || superadmin}
-          refreshKey={requestsKey}
-          onRun={v2 && tools?.ansiblePlaybook && !busy ? (r) => void runGrant(r) : undefined}
-        />
-
         {manifest && manifest.playbooks.length > 0 && playbook && (
           <Card>
             <CardHeader className="pb-2">
@@ -585,8 +584,8 @@ export default function ServerProvision() {
               </>
               )}
 
-              <div className="flex gap-2">
-                <Button className="flex-1" disabled={!canRun} onClick={() => void run()}>
+              <div className="flex flex-wrap gap-2">
+                <Button className="min-w-32 flex-1" disabled={!canRun} onClick={() => void run()}>
                   {busy ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Play className="mr-1 size-4" />}
                   {busy ? t("common:provision.running") : t(v2 ? "common:provision.rehearse" : "common:provision.run")}
                 </Button>
@@ -612,17 +611,35 @@ export default function ServerProvision() {
             </CardContent>
           </Card>
         )}
+        <ServerConfigPanel server={server} manifest={manifest} effective={effective} onChanged={() => void loadEffective()} />
       </div>
 
       <div className="min-w-0 space-y-4">
-        <pre className="max-h-[28rem] min-h-40 overflow-auto rounded-md bg-zinc-900 p-3 font-mono text-xs whitespace-pre text-zinc-100">
+        {/* La salida se queda a la vista mientras se baja por la bandeja y el
+            historial. */}
+        <pre
+          ref={log}
+          aria-label={t("common:provision.output")}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+          }}
+          className="z-10 max-h-[28rem] min-h-40 overflow-auto rounded-md bg-zinc-900 p-3 font-mono text-xs whitespace-pre text-zinc-100 lg:sticky lg:top-0"
+        >
           {lines.length === 0 ? (
             <span className="text-zinc-400">{t("common:provision.noOutput")}</span>
           ) : (
             lines.map((l, i) => <div key={i} dangerouslySetInnerHTML={{ __html: converter.toHtml(l) }} />)
           )}
-          <div ref={bottom} />
         </pre>
+
+        <ProvisioningRequests
+          server={server}
+          canDecide={isAdmin || superadmin}
+          refreshKey={requestsKey}
+          onRun={v2 && tools?.ansiblePlaybook && !busy ? (r) => void runGrant(r) : undefined}
+        />
+
 
         <div className="space-y-1">
           <p className="text-sm font-medium">{t("common:provision.history")}</p>

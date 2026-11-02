@@ -42,6 +42,23 @@ export function isStale(req: Pick<ProvisioningRequest, "status" | "createdAt">, 
   return req.status === "checking" && now - new Date(req.createdAt).getTime() > STALE_CHECK_MS;
 }
 
+/** De las cerradas, cuántas se ven sin pedirlo: las últimas. */
+export const RECENT_CLOSED = 3;
+
+/**
+ * Lo que se ve de la bandeja: todas las abiertas (lo que espera algo de
+ * alguien) y las últimas cerradas; el resto, tras «Ver las anteriores». Con
+ * todas a la vista, las descartadas y rechazadas de un simulacro empujaban el
+ * playbook fuera de la pantalla (jose, 2-nov-2026).
+ */
+export function visibleRequests(all: ProvisioningRequest[], showAll: boolean): { shown: ProvisioningRequest[]; hidden: number } {
+  const open = all.filter((r) => LIVE.has(r.status));
+  const closed = all.filter((r) => !LIVE.has(r.status));
+  const keep = showAll ? closed : closed.slice(0, RECENT_CLOSED);
+  const ids = new Set([...open, ...keep].map((r) => r.id));
+  return { shown: all.filter((r) => ids.has(r.id)), hidden: closed.length - keep.length };
+}
+
 /** El comando con el que se corre una petición autorizada. */
 export function grantCommand(serverName: string, id: string): string {
   return `cac provision run --server '${serverName.replace(/'/g, "'\\''")}' --grant ${id}`;
@@ -84,6 +101,7 @@ export default function ProvisioningRequests({
 }) {
   const { t } = useT();
   const [requests, setRequests] = useState<ProvisioningRequest[]>([]);
+  const [showAll, setShowAll] = useState(false);
 
   const load = useCallback(async () => {
     const res = await api.get<APIResponse<unknown>>(`/api/v1/servers/${server.id}/provisioning-requests`, true).catch(() => null);
@@ -103,15 +121,21 @@ export default function ProvisioningRequests({
   }, [anyLive, load]);
 
   if (requests.length === 0) return null;
+  const { shown, hidden } = visibleRequests(requests, showAll);
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">{t("common:provisionRequests.title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        {requests.map((r) => (
+        {shown.map((r) => (
           <RequestRow key={r.id} req={r} server={server} canDecide={canDecide} onRun={onRun} onChanged={() => void load()} />
         ))}
+        {(hidden > 0 || showAll) && (
+          <Button variant="ghost" size="sm" className="h-7 w-full text-xs" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? t("common:provisionRequests.showFewer") : t("common:provisionRequests.showOlder", { count: hidden })}
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

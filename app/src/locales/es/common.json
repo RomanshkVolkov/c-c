@@ -821,6 +821,7 @@
     "done": "Playbook aplicado",
     "failed": "El playbook falló (código {{code}})",
     "noOutput": "La salida aparecerá aquí.",
+    "output": "Salida de la ejecución",
     "history": "Lo aplicado a este servidor",
     "noHistory": "Todavía no se ha aplicado ningún playbook desde cac.",
     "status": {
@@ -859,6 +860,9 @@
       "expired": "caducada",
       "discarded": "descartada"
     },
+    "showOlder_one": "Ver la anterior",
+    "showOlder_other": "Ver las {{count}} anteriores",
+    "showFewer": "Ver sólo las últimas",
     "staleBadge": "sin ensayo",
     "stale": "Se quedó sin ensayo: nadie lo está corriendo. No cambia nada; para aplicar, ensaya de nuevo.",
     "discard": "Descartar",
