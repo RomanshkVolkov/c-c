@@ -60,6 +60,11 @@ func TestEachEndpointAsksForTheRightScope(t *testing.T) {
 		// `append` concatena en la base sin leer antes, así que no puede pisar a
 		// quien esté escribiendo, y el registro es append-only por diseño.
 		{http.MethodPost, "/api/v1/docs/list/abc/tabs/runbook/append", domain.ScopeDocsWrite},
+		// Lo que mordió: apuntarlo y añadirle un commit sólo agregan; cambiar su
+		// estado cambia lo que dice del mundo (domain.Incident).
+		{http.MethodPost, "/api/v1/docs/list/abc/incidents", domain.ScopeDocsWrite},
+		{http.MethodPost, "/api/v1/incidents/abc/additions", domain.ScopeDocsWrite},
+		{http.MethodPatch, "/api/v1/incidents/abc", domain.ScopeDocsManage},
 		{http.MethodPost, "/api/v1/docs/space/abc/decisions", domain.ScopeDocsWrite},
 		// Enlazar una decisión añade; quitar un enlace cambia lo que dice (#91).
 		{http.MethodPost, "/api/v1/docs/decisions/d1/links", domain.ScopeDocsWrite},
@@ -154,6 +159,7 @@ func TestAppendScopeCannotChangeExistingWork(t *testing.T) {
 	for _, c := range []struct{ method, path string }{
 		{http.MethodPut, "/api/v1/docs/list/abc/tabs/overview"},
 		{http.MethodPatch, "/api/v1/docs/list/abc"},
+		{http.MethodPatch, "/api/v1/incidents/abc"},
 	} {
 		scope, _ := patScopeFor(req(c.method, c.path))
 		if scope == domain.ScopeDocsWrite {

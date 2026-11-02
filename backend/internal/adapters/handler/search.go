@@ -11,6 +11,7 @@ import (
 
 type SearchHandler interface {
 	Search(w http.ResponseWriter, r *http.Request)
+	Misses(w http.ResponseWriter, r *http.Request)
 }
 
 // searcher: lo que el handler usa de service.SearchService. Interfaz para que
@@ -19,6 +20,7 @@ type searcher interface {
 	Search(query, orgID, userID string, limit int) (domain.SearchResults, error)
 	SearchOrgs(query string, orgIDs []string, userID string, limit int) (domain.SearchResults, error)
 	RecordMiss(userID, orgID, query string) error
+	Misses(orgID string, unscoped bool, days int) ([]domain.SearchMissSummary, error)
 }
 
 type searchHandler struct{ svc searcher }
@@ -62,7 +64,7 @@ func (h *searchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if agentFoundNothing(r.Context(), res) {
-		_ = h.svc.RecordMiss(user.UserID, orgID, r.URL.Query().Get("q"))
+		_ = h.svc.RecordMiss(user.UserID, missOrg(user, orgID), r.URL.Query().Get("q"))
 	}
 	SendResult(w, http.StatusOK, domain.APIResponse[domain.SearchResults]{Success: true, Data: res})
 }
@@ -83,4 +85,47 @@ func MemberOrgs(user *domain.ClaimsJWT) []string {
 		}
 	}
 	return out
+}
+
+// missOrg: la org con la que se guarda una búsqueda fallida. La que se pidió;
+// y si no se pidió ninguna (el MCP casi nunca la pasa) y el token es de una
+// sola, ésa. Con varias no se sabe de cuál era, y se guarda sin org: hasta el
+// 2-nov-2026 se guardaban todas así, y la revisión no podía separarlas.
+func missOrg(user *domain.ClaimsJWT, orgID string) string {
+	if orgID != "" {
+		return orgID
+	}
+	if orgs := MemberOrgs(user); len(orgs) == 1 {
+		return orgs[0]
+	}
+	return ""
+}
+
+// Misses: GET /api/v1/search/misses?orgId=&days=. Lo que los agentes buscaron
+// y no encontraron, agrupado: el dato con el que se decide si hace falta
+// búsqueda por significado o lo que falta es escribirlo (decisión 82f9678a).
+//
+// Sólo un admin de la org, o un superadmin: son consultas de todo el equipo, y
+// el texto de una puede ser de una tarea que quien pregunta no ve. Las que se
+// guardaron sin org sólo las ve un superadmin.
+func (h *searchHandler) Misses(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		SendErrorResponse(w, http.StatusUnauthorized, "Unauthorized", "no-claims")
+		return
+	}
+	orgID := r.URL.Query().Get("orgId")
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	if !user.Superadmin {
+		if role, member := user.RoleInOrg(orgID); orgID == "" || !member || role != domain.OrgRoleAdmin {
+			SendErrorResponse(w, http.StatusForbidden, "Only an admin of the organization can read its failed searches", "insufficient-role")
+			return
+		}
+	}
+	out, err := h.svc.Misses(orgID, user.Superadmin, days)
+	if err != nil {
+		SendErrorResponse(w, http.StatusInternalServerError, "Failed to read the failed searches", err.Error())
+		return
+	}
+	SendResult(w, http.StatusOK, domain.APIResponse[[]domain.SearchMissSummary]{Success: true, Data: out})
 }

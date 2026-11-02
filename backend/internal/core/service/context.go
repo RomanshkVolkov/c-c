@@ -19,6 +19,7 @@ type ContextService struct {
 	docs   *repository.DocRepository
 	github *repository.GitHubRepository
 	repo   *repository.ContextRepository
+	inc    *repository.IncidentRepository
 }
 
 func NewContextService(db *gorm.DB) *ContextService {
@@ -27,6 +28,7 @@ func NewContextService(db *gorm.DB) *ContextService {
 		docs:   repository.NewDocRepository(db),
 		github: repository.NewGitHubRepository(db),
 		repo:   repository.NewContextRepository(db),
+		inc:    repository.NewIncidentRepository(db),
 	}
 }
 
@@ -225,7 +227,7 @@ func (s *ContextService) decorateTasks(spaceKey string, tasks []domain.ContextTa
 // saber qué mirar sin abrir nada.
 func (s *ContextService) changes(orgID, spaceID, spaceKey string, since time.Time, nodes []domain.ContextNode, docs []repository.ContextDocRow) (domain.ContextChanges, error) {
 	out := domain.ContextChanges{Since: since, Tasks: []domain.ContextTask{}, Decisions: []domain.ContextChangedDecision{},
-		Docs: []domain.ContextChangedDoc{}, RepoDocs: []domain.ContextRepoDoc{}}
+		Docs: []domain.ContextChangedDoc{}, RepoDocs: []domain.ContextRepoDoc{}, Incidents: []domain.IncidentSummary{}}
 	tasks, err := s.repo.ChangedTasks(spaceID, since, domain.ContextMaxInProgress)
 	if err != nil {
 		return out, err
@@ -265,6 +267,14 @@ func (s *ContextService) changes(orgID, spaceID, spaceKey string, since time.Tim
 			OwnerKind: n.Kind, OwnerID: n.ID, Path: n.Path, Tab: x.Key, PageID: x.PageID, PageTitle: x.PageTitle, UpdatedAt: x.UpdatedAt,
 		})
 	}
+	// Un extra, como en el índice: si falla, los cambios salen sin ellos.
+	incidents, _ := s.inc.List(domain.IncidentFilter{
+		OrgIDs: []string{orgID}, SpaceID: spaceID, Since: &since, Limit: domain.ContextMaxInProgress,
+	})
+	if len(incidents) > domain.ContextMaxInProgress {
+		incidents = incidents[:domain.ContextMaxInProgress]
+	}
+	out.Incidents = append(out.Incidents, incidents...)
 	repoDocs, err := s.repo.ChangedRepoDocs(orgID, spaceID, since)
 	if err != nil {
 		return out, err
@@ -335,6 +345,19 @@ func (s *ContextService) attachDocs(orgID string, out *domain.ContextMap, docs [
 	}
 	for _, d := range built {
 		slices.SortStableFunc(d.Tabs, func(a, b domain.ContextTab) int { return order[a.Key] - order[b.Key] })
+	}
+	// Lo que mordió en cada nodo. Un extra, como las secciones: si falla, el
+	// mapa sale sin ello.
+	incidents, _ := s.inc.ForDocs(orgID, docIDs)
+	truncatedIncidents := false
+	for docID, list := range incidents {
+		if len(list) > domain.ContextMaxIncidents {
+			list, truncatedIncidents = list[:domain.ContextMaxIncidents], true
+		}
+		get(docID).Incidents = list
+	}
+	if truncatedIncidents {
+		out.Truncated = append(out.Truncated, "incidents")
 	}
 	truncatedPages, truncatedDecisions := false, false
 	for _, p := range pages {

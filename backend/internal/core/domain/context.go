@@ -66,6 +66,8 @@ type ContextChanges struct {
 	Decisions []ContextChangedDecision `json:"decisions"`
 	Docs      []ContextChangedDoc      `json:"docs"`
 	RepoDocs  []ContextRepoDoc         `json:"repoDocs"`
+	// Incidents: los apuntados o tocados (estado, un commit nuevo) desde `Since`.
+	Incidents []IncidentSummary `json:"incidents"`
 }
 
 // ContextChangedDecision: una decisión apuntada desde `Since`, con el nodo.
@@ -147,6 +149,9 @@ type ContextDoc struct {
 	Tabs       []ContextTab      `json:"tabs"`
 	Pages      []ContextPage     `json:"pages,omitempty"`
 	Decisions  []ContextDecision `json:"decisions,omitempty"`
+	// Incidents: lo que mordió aquí y sigue vigente, los abiertos primero
+	// (ver Incident). Sin cuerpo: se lee con `get_incident`.
+	Incidents []IncidentSummary `json:"incidents,omitempty"`
 }
 
 // ContextTab: una pestaña con contenido, su tamaño y sus títulos (hasta el
@@ -218,6 +223,7 @@ const (
 	ContextMaxHeadingLevel = 3
 	ContextMaxPagesPerDoc  = 40
 	ContextMaxDecisions    = 15
+	ContextMaxIncidents    = 15
 	ContextMaxRepoDocs     = 80
 	ContextMaxInProgress   = 30
 )

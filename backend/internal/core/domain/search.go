@@ -69,6 +69,9 @@ const (
 	// documento. Va con los docs: es documentación, y hasta el 22-oct-2026 lo
 	// que se apuntaba «para leerse dentro de un año» no lo encontraba nadie.
 	SearchDecision SearchKind = "decision"
+	// SearchIncident: algo que ya mordió (domain.Incident), vigente. Va con
+	// los docs, con su misma valla: la organización.
+	SearchIncident SearchKind = "incident"
 )
 
 // SearchResults keeps the sources apart all the way to the client.
@@ -239,6 +242,16 @@ type SearchMiss struct {
 	OrgID     string    `gorm:"type:varchar(36);index" json:"orgId"`
 	Query     string    `gorm:"type:varchar(200);not null" json:"query"`
 	CreatedAt time.Time `gorm:"index" json:"createdAt"`
+}
+
+// SearchMissSummary: una consulta fallida, con cuántas veces y la última.
+// Es lo que se revisa para decidir si hace falta búsqueda por significado
+// (decisión 82f9678a): agrupadas se ve qué falla de verdad, y no cien filas.
+type SearchMissSummary struct {
+	Query  string    `json:"query"`
+	Count  int       `json:"count"`
+	LastAt time.Time `json:"lastAt"`
+	OrgID  string    `json:"orgId,omitempty"`
 }
 
 // NothingForAnAgent: si no hubo acierto en lo que el MCP enseña (tareas, notas

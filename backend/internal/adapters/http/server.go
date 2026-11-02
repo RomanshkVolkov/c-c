@@ -60,6 +60,10 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 	configH := handler.NewServerConfigHandler(svc, configSvc)
 	provH := handler.NewProvisioningHandler(svc, service.NewProvisioningService(repository.NewProvisioningRepository(db)).WithConfigs(configSvc))
 
+	incH := handler.NewIncidentHandler(
+		service.NewIncidentService(repository.NewIncidentRepository(db), repository.NewDocRepository(db)),
+		service.NewDocService(repository.NewDocRepository(db)), svc)
+
 	r.Route("/api/v1/servers", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", h.ListServers)
@@ -73,6 +77,8 @@ func InitServerRoutesWith(db *gorm.DB, r *chi.Mux, bus *events.Hub, gh *service.
 		r.Delete("/{id}", h.DeleteServer)
 		// Platform hub (kubernetes servers): read-only cluster views.
 		r.Get("/{id}/k8s/routes", k8sH.Routes)
+		// Lo que ha mordido en este servidor (domain.Incident).
+		r.Get("/{id}/incidents", incH.ForServer)
 		r.Get("/{id}/k8s/health", k8sH.Health)
 		// Integrations (vault + launcher).
 		r.Get("/{id}/integrations", intgH.List)

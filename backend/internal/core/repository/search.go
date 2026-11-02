@@ -271,6 +271,19 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 				  AND NOT EXISTS (SELECT 1 FROM decisions n WHERE n.supersedes_id = dec.id)`
 		args = append(args, orgID)
 	}
+	// Lo que mordió (domain.Incident): sus servidores y sus áreas van en el
+	// índice, así que «gstd» lo trae aunque el cuerpo no lo diga. Uno
+	// sustituido no sale, como una decisión.
+	incidentPart := ""
+	if r.hasSearchColumn("incidents") {
+		incidentPart = `UNION ALL
+				SELECT 'incident', d.owner_kind, d.owner_id, '', inc.id, inc.title, inc.body,
+				       ts_rank_cd(inc.search, q.q), inc.updated_at
+				FROM incidents inc JOIN docs d ON d.id = inc.doc_id, q
+				WHERE inc.org_id = ? AND inc.search @@ q.q
+				  AND NOT EXISTS (SELECT 1 FROM incidents n WHERE n.supersedes_id = inc.id)`
+		args = append(args, orgID)
+	}
 	args = append(args, limit)
 	var rows []row
 	err := r.db.Raw(`
@@ -289,6 +302,7 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 				`+mirrorPart+`
 				`+repoPart+`
 				`+decisionPart+`
+				`+incidentPart+`
 			) x
 			ORDER BY score DESC, updated_at DESC
 			LIMIT ?
@@ -316,6 +330,14 @@ func (r *SearchRepository) Docs(query, orgID string, limit int) ([]domain.Search
 			continue
 		}
 		link := "/tasks?doc=" + x.OwnerKind + ":" + x.OwnerID
+		if x.Src == "incident" {
+			out = append(out, domain.SearchHit{
+				Kind: domain.SearchIncident, ID: x.PageID, Title: x.PageTitle,
+				Where: x.Name + " › incidentes", Snippet: domain.CleanSnippet(x.Snippet),
+				OwnerKind: x.OwnerKind, OwnerID: x.OwnerID, Link: link + "&tab=overview&incident=" + x.PageID,
+			})
+			continue
+		}
 		if x.Src == "decision" {
 			out = append(out, domain.SearchHit{
 				Kind: domain.SearchDecision, ID: x.PageID, Title: x.PageTitle,
@@ -500,4 +522,28 @@ func (r *SearchRepository) RecordMiss(userID, orgID, query string) error {
 		return err
 	}
 	return r.db.Where("created_at < ?", time.Now().AddDate(0, 0, -90)).Delete(&domain.SearchMiss{}).Error
+}
+
+// Misses: las búsquedas de agente sin aciertos desde `since`, agrupadas por
+// consulta (sin distinguir mayúsculas), las más repetidas primero.
+//
+// `orgID` vacío y `unscoped` a la vez son todas (sólo un superadmin). Las que
+// se guardaron sin org —las del MCP antes del 2-nov-2026, que buscaba en todas
+// las del token— sólo salen con `unscoped`: no se sabe de qué org eran, y su
+// texto puede hablar de otra.
+func (r *SearchRepository) Misses(orgID string, unscoped bool, since time.Time, limit int) ([]domain.SearchMissSummary, error) {
+	out := []domain.SearchMissSummary{}
+	q := r.db.Table("search_misses").
+		Select("lower(query) AS query, count(*) AS count, max(created_at) AS last_at, max(org_id) AS org_id").
+		Where("created_at > ?", since)
+	switch {
+	case orgID != "" && unscoped:
+		q = q.Where("org_id = ? OR org_id = ''", orgID)
+	case orgID != "":
+		q = q.Where("org_id = ?", orgID)
+	case !unscoped:
+		return out, nil
+	}
+	err := q.Group("lower(query)").Order("count DESC, last_at DESC").Limit(limit).Scan(&out).Error
+	return out, err
 }

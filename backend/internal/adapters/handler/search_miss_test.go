@@ -39,8 +39,9 @@ func TestOnlyAnAgentSearchThatFoundNothingIsRecorded(t *testing.T) {
 }
 
 type fakeSearcher struct {
-	res    domain.SearchResults
-	missed []string
+	res         domain.SearchResults
+	missed      []string
+	missesAsked []string
 }
 
 func (f *fakeSearcher) Search(q, orgID, userID string, limit int) (domain.SearchResults, error) {
@@ -48,6 +49,10 @@ func (f *fakeSearcher) Search(q, orgID, userID string, limit int) (domain.Search
 }
 func (f *fakeSearcher) SearchOrgs(q string, orgIDs []string, userID string, limit int) (domain.SearchResults, error) {
 	return f.res, nil
+}
+func (f *fakeSearcher) Misses(orgID string, unscoped bool, days int) ([]domain.SearchMissSummary, error) {
+	f.missesAsked = append(f.missesAsked, orgID)
+	return []domain.SearchMissSummary{}, nil
 }
 func (f *fakeSearcher) RecordMiss(userID, orgID, q string) error {
 	f.missed = append(f.missed, userID+"|"+orgID+"|"+q)
@@ -69,5 +74,60 @@ func TestTheSearchHandlerRecordsAnAgentMiss(t *testing.T) {
 	h.Search(httptest.NewRecorder(), req(domain.ViaApp))
 	if len(f.missed) != 1 || f.missed[0] != "u-ana|org-1|como despliego" {
 		t.Fatalf("guardadas: %v", f.missed)
+	}
+}
+
+// Las búsquedas fallidas son de todo el equipo, y el texto de una puede ser de
+// algo que quien pregunta no ve: sólo un admin de la org, o un superadmin.
+//
+// Roturas que atrapa: dejar leer a un miembro raso; dejar leer a un admin de
+// otra org; no pasar la org pedida al servicio.
+func TestOnlyAnAdminOfTheOrgReadsItsFailedSearches(t *testing.T) {
+	ask := func(c *domain.ClaimsJWT, org string) (int, *fakeSearcher) {
+		f := &fakeSearcher{}
+		h := &searchHandler{svc: f}
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/search/misses?orgId="+org, nil)
+		r = r.WithContext(context.WithValue(r.Context(), repository.UserContextKey, c))
+		rec := httptest.NewRecorder()
+		h.Misses(rec, r)
+		return rec.Code, f
+	}
+	in := func(org string, role domain.OrgRole) *domain.ClaimsJWT {
+		return &domain.ClaimsJWT{UserID: "u", Orgs: []domain.OrgMembershipClaim{{OrgID: org, Role: role}}}
+	}
+	if code, _ := ask(in("org-1", domain.OrgRoleMember), "org-1"); code != http.StatusForbidden {
+		t.Errorf("un miembro raso lee: %d", code)
+	}
+	if code, _ := ask(in("org-2", domain.OrgRoleAdmin), "org-1"); code != http.StatusForbidden {
+		t.Errorf("un admin de otra org lee: %d", code)
+	}
+	if code, _ := ask(in("org-1", domain.OrgRoleAdmin), ""); code != http.StatusForbidden {
+		t.Errorf("un admin sin org lee todas: %d", code)
+	}
+	code, f := ask(in("org-1", domain.OrgRoleAdmin), "org-1")
+	if code != http.StatusOK || len(f.missesAsked) != 1 || f.missesAsked[0] != "org-1" {
+		t.Errorf("el admin de la org: %d %v", code, f.missesAsked)
+	}
+	if code, _ := ask(&domain.ClaimsJWT{UserID: "root", Superadmin: true}, ""); code != http.StatusOK {
+		t.Errorf("un superadmin no lee: %d", code)
+	}
+}
+
+// Sin `orgId` (lo normal en el MCP), un token de una sola org guarda la
+// búsqueda con ésa; con varias, sin org, porque no se sabe de cuál era.
+//
+// Rotura que atrapa: guardarla siempre sin org (como hasta el 2-nov-2026, y
+// la revisión no podía separarlas), o con la primera de varias.
+func TestAMissWithoutOrgKeepsTheOnlyOrgOfTheToken(t *testing.T) {
+	one := &domain.ClaimsJWT{Orgs: []domain.OrgMembershipClaim{{OrgID: "org-1"}}}
+	two := &domain.ClaimsJWT{Orgs: []domain.OrgMembershipClaim{{OrgID: "org-1"}, {OrgID: "org-2"}}}
+	if got := missOrg(one, ""); got != "org-1" {
+		t.Errorf("una sola org: %q", got)
+	}
+	if got := missOrg(two, ""); got != "" {
+		t.Errorf("varias orgs: %q", got)
+	}
+	if got := missOrg(two, "org-2"); got != "org-2" {
+		t.Errorf("la pedida: %q", got)
 	}
 }

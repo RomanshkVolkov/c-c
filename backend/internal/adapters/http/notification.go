@@ -32,6 +32,7 @@ func InitNotificationRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, push *serv
 	r.Route("/api/v1/search", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", search.Search)
+		r.Get("/misses", search.Misses)
 	})
 
 	r.Route("/api/v1/notifications", func(r chi.Router) {

@@ -2,6 +2,7 @@ package service
 
 import (
 	"strings"
+	"time"
 
 	"github.com/guz-studio/cac/backend/internal/core/domain"
 	"github.com/guz-studio/cac/backend/internal/core/repository"
@@ -117,4 +118,12 @@ func (s *SearchService) RecordMiss(userID, orgID, query string) error {
 		return nil
 	}
 	return s.repo.RecordMiss(userID, orgID, strings.TrimSpace(query))
+}
+
+// Misses: ver SearchRepository.Misses. `days` entre 1 y 90 (lo que se guarda).
+func (s *SearchService) Misses(orgID string, unscoped bool, days int) ([]domain.SearchMissSummary, error) {
+	if days <= 0 || days > 90 {
+		days = 30
+	}
+	return s.repo.Misses(orgID, unscoped, time.Now().AddDate(0, 0, -days), 200)
 }

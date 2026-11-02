@@ -305,6 +305,11 @@ var patWritable = []struct {
 	// registro de decisiones es append-only por diseño.
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/tabs/[^/]+/append/?$`), domain.ScopeDocsWrite},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/decisions/?$`), domain.ScopeDocsWrite},
+	// Apuntar lo que mordió y añadirle lo que llegó después (un commit, la
+	// prueba): las dos sólo añaden; título y cuerpo no se editan nunca
+	// (domain.Incident).
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/incidents/?$`), domain.ScopeDocsWrite},
+	{http.MethodPost, regexp.MustCompile(`^/api/v1/incidents/[^/]+/additions/?$`), domain.ScopeDocsWrite},
 	// Enlazar una decisión a una tarea o una sección también sólo añade (#91).
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/decisions/[^/]+/links/?$`), domain.ScopeDocsWrite},
 	// Pedir una revisión, con el permiso de añadir y no con el de pisar: no toca
@@ -381,6 +386,8 @@ var patWritable = []struct {
 	{http.MethodPut, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/move/?$`), domain.ScopeDocsManage},
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+$`), domain.ScopeDocsManage},
+	// Abrir o cerrar un incidente cambia lo que dice del mundo: Manage.
+	{http.MethodPatch, regexp.MustCompile(`^/api/v1/incidents/[^/]+$`), domain.ScopeDocsManage},
 	// Quitar un enlace de una decisión cambia a qué dice aplicarse (#91).
 	{http.MethodDelete, regexp.MustCompile(`^/api/v1/docs/decisions/[^/]+/links/[^/]+$`), domain.ScopeDocsManage},
 	{http.MethodPost, regexp.MustCompile(`^/api/v1/docs/[^/]+/[^/]+/pages/[^/]+/restore/?$`), domain.ScopeDocsManage},

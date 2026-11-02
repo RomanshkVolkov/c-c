@@ -213,6 +213,18 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.Cal
 	// Docs: one markdown overview per space/folder/list, sharing the task
 	// module's image-service client and media store.
 	docH := handler.NewDocHandler(docSvc, images, store)
+	// El registro de lo que mordió: cuelga de un nodo y se encuentra por
+	// servidor y por área. Ver domain/incident.go.
+	incH := handler.NewIncidentHandler(
+		service.NewIncidentService(repository.NewIncidentRepository(db), repository.NewDocRepository(db)),
+		docSvc, service.NewServerService(repository.NewServerRepository(db)))
+	r.Route("/api/v1/incidents", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Get("/", incH.List)
+		r.Get("/{id}", incH.Get)
+		r.Post("/{id}/additions", incH.Add)
+		r.Patch("/{id}", incH.SetStatus)
+	})
 	r.Route("/api/v1/docs", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Get("/", docH.Index) // ?orgId= — which nodes have a document
@@ -233,6 +245,8 @@ func InitTaskRoutes(db *gorm.DB, r *chi.Mux, hub *events.Hub, calls *service.Cal
 		r.Post("/{kind}/{ownerId}/tabs/{tab}/append", docH.AppendTab)
 		r.Patch("/{kind}/{ownerId}", docH.Patch)
 		r.Post("/{kind}/{ownerId}/decisions", docH.AddDecision)
+		// Apuntar lo que mordió en el nodo (domain.Incident).
+		r.Post("/{kind}/{ownerId}/incidents", incH.Record)
 		// Pedir que alguien lo revise, sin firmarlo (#92).
 		r.Post("/{kind}/{ownerId}/review-request", docH.RequestReview)
 		r.Get("/{kind}/{ownerId}/versions", docH.Versions)
